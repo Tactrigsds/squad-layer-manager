@@ -272,9 +272,7 @@ function LoadedSelectLayersView({
 	)
 
 	if (activity.id === 'EDITING_ITEM') {
-		return (
-			<EditLayerDialog stores={dialogStores} open={entry.active} onOpenChange={onSelectLayersChange} onSelectLayer={onEditedLayer} />
-		)
+		return <EditLayerDialog stores={dialogStores} open={entry.active} onOpenChange={onSelectLayersChange} onSelectLayer={onEditedLayer} />
 	} else if (activity.id === 'ADDING_ITEM') {
 		return (
 			<SelectLayersDialog
@@ -593,12 +591,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						>
 							{LL.getItemNumber(index)}
 						</span>
-						<Button
-							ref={dragProps.handleRef}
-							variant="ghost"
-							size="icon"
-							{...editButtonProps('data-[can-edit=true]:cursor-grab')}
-						>
+						<Button ref={dragProps.handleRef} variant="ghost" size="icon" {...editButtonProps('data-[can-edit=true]:cursor-grab')}>
 							<Icons.GripVertical />
 						</Button>
 					</span>
@@ -615,9 +608,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 										setBy={item.tagsSetBy}
 										disabled={!canEdit}
 										revealAddOnHover
-										onAdd={(tagId) =>
-											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId })
-										}
+										onAdd={(tagId) => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'add-tag', tagId })}
 										onRemove={(tagId) =>
 											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'remove-tag', tagId })
 										}
@@ -1057,9 +1048,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										size="icon"
 										title="Swap Factions"
 										disabled={!canEdit || !L.swapFactions(item.layerId)}
-										onClick={() =>
-											LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })
-										}
+										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 									>
 										<Icons.ArrowLeftRight />
 									</Button>
@@ -1304,9 +1293,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 				<StartActivityInteraction
 					loaderName="selectLayers"
 					createActivity={UP.createEditingQueueVariant(activities['add-before'])}
-					matchKey={(key) =>
-						Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })
-					}
+					matchKey={(key) => Obj.deepEqualStrict(key, { ...activities['add-before'], serverId: props.stores.squadServer.serverId })}
 					preload="viewport"
 					render={Menu.Item}
 					disabled={!canEdit}
@@ -1316,9 +1303,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 				<StartActivityInteraction
 					loaderName="selectLayers"
 					createActivity={UP.createEditingQueueVariant(activities['add-after'])}
-					matchKey={(key) =>
-						Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })
-					}
+					matchKey={(key) => Obj.deepEqualStrict(key, { ...activities['add-after'], serverId: props.stores.squadServer.serverId })}
 					preload="viewport"
 					render={Menu.Item}
 					disabled={!canEdit}

@@ -446,12 +446,7 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 		if ((userDefinedPermissionExpressions[role.type] ?? []).includes('*')) {
 			for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
 				perms.push(
-					RBAC.tracedPerm(
-						permType,
-						[role],
-						{ negated: allNegatingPerms.has(permType) },
-						RBAC.unrestrictedRoleGrantArgs(permType),
-					),
+					RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }, RBAC.unrestrictedRoleGrantArgs(permType)),
 				)
 			}
 		}
@@ -479,20 +474,12 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 		if (globalPaths && globalPaths.length > 0) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm(
-					'global-settings:write',
-					[role],
-					{ negated: isNegated('global-settings:write') },
-					{ paths: [...globalPaths] },
-				),
+				RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
 			)
 		}
 		for (const grant of roleServerGrants[role.type] ?? []) {
 			for (const serverId of grant.serverIds) {
-				RBAC.addTracedPerms(
-					perms,
-					RBAC.tracedPerm(grant.permission, [role], { negated: isNegated(grant.permission) }, { serverId }),
-				)
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm(grant.permission, [role], { negated: isNegated(grant.permission) }, { serverId }))
 			}
 		}
 		for (const grant of roleServerSettingsGrants[role.type] ?? []) {

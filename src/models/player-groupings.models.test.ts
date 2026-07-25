@@ -231,9 +231,7 @@ describe('PlayerGroupingsSchema', () => {
 		const parsed = PG.PlayerGroupingsSchema.parse({ a: { rules: [adminRule('Whitelist', 'Members'), rule('f-hq', 'HQ')] } })
 		expect(parsed.a.rules).toEqual([adminRule('Whitelist', 'Members'), rule('f-hq', 'HQ')])
 		// each variant carries only its own source field
-		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', flag: 'f-hq', group: 'HQ' }] } }).success).toBe(
-			false,
-		)
+		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', flag: 'f-hq', group: 'HQ' }] } }).success).toBe(false)
 		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', adminGroup: '', group: 'HQ' }] } }).success).toBe(
 			false,
 		)

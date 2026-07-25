@@ -54,12 +54,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 						{config.repoUrl && (
 							<div className="flex flex-col space-y-1">
 								<span className="font-semibold">Repository:</span>
-								<a
-									href={config.repoUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-blue-600 hover:underline"
-								>
+								<a href={config.repoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
 									{config.repoUrl}
 								</a>
 							</div>
@@ -67,12 +62,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 						{config.issuesUrl && (
 							<div className="flex flex-col space-y-1">
 								<span className="font-semibold">Report issues here, including the information below:</span>
-								<a
-									href={config.issuesUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-blue-600 hover:underline"
-								>
+								<a href={config.issuesUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
 									{config.issuesUrl}
 								</a>
 							</div>

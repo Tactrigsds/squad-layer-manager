@@ -116,8 +116,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 		ctx.server.event$
 			.pipe(
 				Rx.filter(
-					([ctx, e]) =>
-						Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
+					([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
 				),
 				C.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
 					const ctx = { ..._ctx, signal }
@@ -601,13 +600,7 @@ const dispatchOp = C.spanOp(
 							SquadRcon.warnAllAdmins(
 								{ ...ctx, signal: CleanupSys.shutdownSignal },
 								{
-									msg: WARNS.teamswaps.notifyAdminSwapsSaved(
-										name,
-										se.swaps.size,
-										added.length,
-										removed.length,
-										factionLines,
-									),
+									msg: WARNS.teamswaps.notifyAdminSwapsSaved(name, se.swaps.size, added.length, removed.length, factionLines),
 								},
 								excludeSteamIds,
 							).catch((error) => {

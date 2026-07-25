@@ -292,8 +292,7 @@ const fetchAdminList = C.spanOp(
 		}
 
 		for (const [_idx, source] of sources.entries()) {
-			const sourceLabel =
-				source.type === 'sftp' ? `${source.username}@${source.host}:${source.port}${source.filePath}` : source.source
+			const sourceLabel = source.type === 'sftp' ? `${source.username}@${source.host}:${source.port}${source.filePath}` : source.source
 			log.info(`Fetching admin list '${listId}' from ${source.type} source ${sourceLabel}`)
 			let data = ''
 			try {

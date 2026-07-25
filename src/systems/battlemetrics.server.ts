@@ -337,9 +337,7 @@ async function bmFetch<T = null>(
 					lastError = new Error(`BattleMetrics API rate limited: 429 Too Many Requests`)
 					if (attempt < RETRY.maxAttempts - 1) {
 						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, rateLimiter.backoffUntil - Date.now())
-						log.warn(
-							`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`,
-						)
+						log.warn(`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
 						await sleep(delay, ctx.signal)
 						continue
 					}

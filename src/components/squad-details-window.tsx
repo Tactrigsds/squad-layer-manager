@@ -56,9 +56,7 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 	getId: (props) => String(props.uniqueSquadId),
 	loadAsync: async ({ props }) => {
 		const squadServerFrameKey = props.stores.squadServer
-		const isLive = ChatPrt.Sel.chatState(ZusUtils.getState(squadServerFrameKey)).squads.some(
-			(sq) => sq.uniqueId === props.uniqueSquadId,
-		)
+		const isLive = ChatPrt.Sel.chatState(ZusUtils.getState(squadServerFrameKey)).squads.some((sq) => sq.uniqueId === props.uniqueSquadId)
 		if (!isLive) {
 			const serverId = squadServerFrameKey.serverId
 			await RPC.queryClient.fetchQuery(
@@ -111,9 +109,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const currentPlayers = ZusUtils.useStore(
 		squadServerFrameKey,
 		ZusUtils.useShallow((s) =>
-			liveSquad
-				? ChatPrt.Sel.chatState(s).players.filter((p) => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId)
-				: [],
+			liveSquad ? ChatPrt.Sel.chatState(s).players.filter((p) => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId) : [],
 		),
 	)
 

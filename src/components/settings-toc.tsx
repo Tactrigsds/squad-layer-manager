@@ -131,11 +131,7 @@ function TocItem({
 	// parent rows pin (and stack under their own ancestors) while their children scroll past; leaf rows never pin
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const header = (
-		<div
-			ref={headerRef}
-			className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')}
-			style={{ paddingLeft: depth * 12 }}
-		>
+		<div ref={headerRef} className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')} style={{ paddingLeft: depth * 12 }}>
 			{hasChildren ? (
 				<button
 					type="button"
@@ -329,8 +325,7 @@ export default function SettingsToc({
 				label: s.displayName,
 				path: '',
 				writable: write.kind !== 'none',
-				children:
-					(serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
+				children: (serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
 			}
 		})
 		if (creatingServer) {

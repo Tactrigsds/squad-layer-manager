@@ -177,8 +177,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			nextUpItem &&
 			ctx.vote.state?.itemId !== nextUpItem.itemId &&
 			currentMatch.status !== 'post-game' &&
-			(!currentMatch.startTime ||
-				currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
+			(!currentMatch.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
 		) {
 			let autostartTime: Date | undefined
 			if (currentMatch.startTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {

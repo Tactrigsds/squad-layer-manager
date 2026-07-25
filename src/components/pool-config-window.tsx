@@ -70,9 +70,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				<DraggableWindowTitle>
 					<span className="flex items-center gap-2">
 						Pool Configuration
-						{readOnly && (
-							<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
-						)}
+						{readOnly && <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>}
 					</span>
 				</DraggableWindowTitle>
 				<TabsList

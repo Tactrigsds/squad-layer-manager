@@ -118,12 +118,7 @@ function ColumnsSection({
 				{columns.map((col, idx) => (
 					<React.Fragment key={col.name}>
 						<ColumnDropSeparator position="before" columnName={col.name} />
-						<ColumnRow
-							col={col}
-							index={idx}
-							onToggleVisible={(v) => setVisible(col.name, v)}
-							onRemove={() => remove(col.name)}
-						/>
+						<ColumnRow col={col} index={idx} onToggleVisible={(v) => setVisible(col.name, v)} onRemove={() => remove(col.name)} />
 					</React.Fragment>
 				))}
 				{columns.length > 0 && <ColumnDropSeparator position="after" columnName={columns[columns.length - 1].name} />}
@@ -299,9 +294,7 @@ function ExtraMenuItemsSection({ value, patch }: { value: LayerTableConfig; patc
 						<div className="min-w-0 flex-1">
 							<Comparison
 								node={item as F.EditableCompNode}
-								setNode={(update) =>
-									setItem(idx, typeof update === 'function' ? update(item as F.EditableCompNode) : update)
-								}
+								setNode={(update) => setItem(idx, typeof update === 'function' ? update(item as F.EditableCompNode) : update)}
 							/>
 						</div>
 						<Button

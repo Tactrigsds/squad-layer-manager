@@ -315,9 +315,7 @@ function AuditLogEntry({ event, actorName }: { event: AppEvents.AppEvent; actorN
 		<details className="border-b py-1 last:border-0 group">
 			<summary className="flex gap-2 items-baseline text-sm cursor-pointer list-none">
 				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-					{new Date(event.time).toLocaleString()}
-				</span>
+				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(event.time).toLocaleString()}</span>
 				<span className="font-medium whitespace-nowrap">{actorName}</span>
 				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(event)}</span>
 				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
@@ -479,9 +477,7 @@ function ServersSection({
 			setSelected(NEW_SERVER_SELECTION)
 			return
 		}
-		setSelected((cur) =>
-			cur && cur !== NEW_SERVER_SELECTION && servers.some((s) => s.id === cur) ? cur : pickDefaultSelection(servers),
-		)
+		setSelected((cur) => (cur && cur !== NEW_SERVER_SELECTION && servers.some((s) => s.id === cur) ? cur : pickDefaultSelection(servers)))
 	}, [creating, servers])
 
 	// the TOC (and page-load fragments) navigate to a server's anchor, but only the selected server is mounted; select
@@ -638,13 +634,7 @@ function ServerList({
 									{server.enabled ? 'Disconnect' : 'Connect'}
 								</Button>
 								{canDelete && (
-									<Button
-										size="icon"
-										variant="ghost"
-										disabled={busy}
-										title="Delete server"
-										onClick={() => onDelete(server)}
-									>
+									<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={() => onDelete(server)}>
 										<Icons.Trash2 className="h-4 w-4" />
 									</Button>
 								)}
@@ -725,9 +715,7 @@ function ServerSettingsSection({
 							<CardTitle className="flex items-center gap-2">
 								Server Settings
 								{access.write.kind === 'none' && (
-									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
-										Read-only
-									</span>
+									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
 								)}
 							</CardTitle>
 							<CardDescription>
@@ -857,9 +845,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								label="Server ID"
 								placeholder="my-server-1"
 								defaultValue={newId}
-								onChange={(e) =>
-									SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { id: e.target.value })
-								}
+								onChange={(e) => SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { id: e.target.value })}
 							/>
 							{newId.length > 0 && !idRes.success && <p className="text-xs text-destructive">Invalid server id</p>}
 						</div>
@@ -959,9 +945,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 							<CardTitle className="flex items-center gap-2">
 								Global Settings
 								{writeAccess.kind === 'none' && (
-									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
-										Read-only
-									</span>
+									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
 								)}
 							</CardTitle>
 							<CardDescription>Edit the global settings for this SLM instance.</CardDescription>

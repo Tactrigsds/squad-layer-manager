@@ -113,11 +113,7 @@ export default function WarnChatBox({
 						className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
 						title="Prefix the message with your username"
 					>
-						<Checkbox
-							checked={prefixName}
-							onCheckedChange={(checked: boolean) => setPrefixName(checked)}
-							className="h-3.5 w-3.5"
-						/>
+						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
 						{username}:
 					</label>
 				)}

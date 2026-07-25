@@ -14,9 +14,7 @@ test.describe('queue item constraints', () => {
 		const app = await createAppFixture({
 			// Gorodok twice, two apart: within the Map repeat rule's window of 4
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.gorodokAas),
-			filters: [
-				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' }),
-			],
+			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' })],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
 				// just the one rule, so an item's indicators are attributable to it and nothing else

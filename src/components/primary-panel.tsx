@@ -130,12 +130,10 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
 											matchActivity={(root) =>
-												UP.Trans.viewingTeams(serverId).match(root) ||
-												UP.Trans.editingTeamswaps(serverId).match(root)
+												UP.Trans.viewingTeams(serverId).match(root) || UP.Trans.editingTeamswaps(serverId).match(root)
 											}
 											matchActivityForStatusText={(root) =>
-												UP.Trans.editingTeamswaps(serverId).match(root) ||
-												UP.Trans.viewingTeams(serverId).match(root)
+												UP.Trans.editingTeamswaps(serverId).match(root) || UP.Trans.viewingTeams(serverId).match(root)
 											}
 											event$={teamswapEvent$}
 											className="min-w-0"
@@ -145,9 +143,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							},
 						]}
 						value={tab}
-						onChange={(value) =>
-							ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')
-						}
+						onChange={(value) => ClientOnlySettings.Actions.setPrimaryPanelTab(value === 'teams' ? 'VIEWING_TEAMS' : 'VIEWING_QUEUE')}
 					/>
 					<Separator />
 				</div>

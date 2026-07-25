@@ -61,9 +61,7 @@ test.describe('the filter editor form', () => {
 
 			await app.waitFor(
 				() => {
-					const row = app.readDb().prepare('select name from filters where id = ?').get('raas-only') as
-						| { name: string }
-						| undefined
+					const row = app.readDb().prepare('select name from filters where id = ?').get('raas-only') as { name: string } | undefined
 					return row?.name === 'RAAS Only (renamed)' ? row : null
 				},
 				{ label: 'renamed filter persisted' },

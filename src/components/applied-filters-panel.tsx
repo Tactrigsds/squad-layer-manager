@@ -122,9 +122,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 			<ScrollArea ref={scrollRef} className="max-w-[55vw]">
 				<div className="flex flex-row gap-2 w-max">
 					{extraFilterIds.map((filterId) => {
-						return (
-							<FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
-						)
+						return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
 					})}
 				</div>
 				<ScrollBar orientation="horizontal" />

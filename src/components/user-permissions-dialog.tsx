@@ -108,11 +108,7 @@ function RoleSection(props: {
 			<div className="flex items-center justify-between">
 				<div className="flex items-center space-x-3">
 					{props.simulate && (
-						<Checkbox
-							id={props.checkboxId}
-							checked={props.enabled}
-							onCheckedChange={(checked) => props.onToggle(checked === true)}
-						/>
+						<Checkbox id={props.checkboxId} checked={props.enabled} onCheckedChange={(checked) => props.onToggle(checked === true)} />
 					)}
 					<div>
 						<Label htmlFor={props.checkboxId} className="font-semibold">
@@ -264,8 +260,8 @@ export default function UserPermissionsDialog(props: {
 						Simulate
 					</Label>
 					<span className="text-xs text-muted-foreground text-balance leading-relaxed">
-						Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never
-						gaining it.
+						Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never gaining
+						it.
 					</span>
 				</div>
 
@@ -307,9 +303,7 @@ export default function UserPermissionsDialog(props: {
 															<Checkbox
 																id={checkboxId}
 																checked={!isPermDisabled(perm)}
-																onCheckedChange={(checked) =>
-																	checked ? enablePerm(perm) : disablePerm(perm)
-																}
+																onCheckedChange={(checked) => (checked ? enablePerm(perm) : disablePerm(perm))}
 															/>
 														)}
 													</TableCell>
@@ -415,16 +409,9 @@ export default function UserPermissionsDialog(props: {
 										>
 											<div className="flex items-center space-x-3">
 												{simulate && simulatable && (
-													<Checkbox
-														id={checkboxId}
-														checked={false}
-														onCheckedChange={() => addRole(simulatable)}
-													/>
+													<Checkbox id={checkboxId} checked={false} onCheckedChange={() => addRole(simulatable)} />
 												)}
-												<Label
-													htmlFor={checkboxId}
-													className={cn('font-semibold', !simulatable && 'text-muted-foreground')}
-												>
+												<Label htmlFor={checkboxId} className={cn('font-semibold', !simulatable && 'text-muted-foreground')}>
 													{formatRoleName(role)}
 												</Label>
 											</div>

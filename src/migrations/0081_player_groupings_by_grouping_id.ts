@@ -69,9 +69,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 			const rawColor = typeof g?.color === 'string' ? g.color : ''
 			groups[group] = {
-				color: UUID_RE.test(rawColor)
-					? { type: 'flag', flag: rawColor }
-					: { type: 'custom', color: rawColor || DEFAULT_GROUP_COLOR },
+				color: UUID_RE.test(rawColor) ? { type: 'flag', flag: rawColor } : { type: 'custom', color: rawColor || DEFAULT_GROUP_COLOR },
 			}
 
 			for (const [flag, priority] of Object.entries(g?.associations ?? {})) {

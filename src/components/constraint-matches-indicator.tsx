@@ -224,8 +224,7 @@ export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
 						<>
 							{descriptors.map((d) => (
 								<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
-									{boldValue(d.fieldValue)} was played {boldValue(d.repeatOffset)} match{d.repeatOffset === 1 ? '' : 'es'}{' '}
-									prior
+									{boldValue(d.fieldValue)} was played {boldValue(d.repeatOffset)} match{d.repeatOffset === 1 ? '' : 'es'} prior
 								</span>
 							))}
 							<span>Should be &gt; {boldValue(constraint.rule.within)}</span>

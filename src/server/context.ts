@@ -220,10 +220,8 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 
 			let log = opts.module?.getLogger() ?? baseLogger
 
-			const resolveLevel = (
-				level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined,
-				fallback: Pino.Level,
-			): Pino.Level => (typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback))
+			const resolveLevel = (level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined, fallback: Pino.Level): Pino.Level =>
+				typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback)
 
 			const extraText = opts.extraText ? `${opts.extraText(...(args as Parameters<Cb>))} ` : ''
 			const startedAt = performance.now()

@@ -28,8 +28,8 @@ function TeamswapsHelpWindow() {
 						Right-click a player and choose <strong className="text-foreground">Swap Next</strong> to queue them.
 					</li>
 					<li>
-						Click <strong className="text-foreground">Save</strong> to commit your queue. Players are notified in-game that they
-						will be swapped at the start of the next round.
+						Click <strong className="text-foreground">Save</strong> to commit your queue. Players are notified in-game that they will
+						be swapped at the start of the next round.
 					</li>
 					<li>
 						Click <strong className="text-foreground">Swap Now</strong> to immediately execute all saved swaps.

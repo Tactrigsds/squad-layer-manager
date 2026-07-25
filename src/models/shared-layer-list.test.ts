@@ -93,9 +93,7 @@ describe('backburner draft ops', () => {
 
 	it('skips draft ops from a stale edit window', () => {
 		const initial = SLL.createNewState([queueItem()])
-		expect(() =>
-			apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 99 }),
-		).toThrowError()
+		expect(() => apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 99 })).toThrowError()
 	})
 
 	it('is exempt from the pending-generation gate', () => {

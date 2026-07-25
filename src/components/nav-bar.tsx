@@ -296,8 +296,7 @@ export default function NavBar() {
 													to="/servers/$serverId"
 													params={{ serverId: server.id }}
 												>
-													{server.displayName}{' '}
-													<Icons.Dot className={cn(server.enabled ? 'text-green-500' : 'text-red-500')} />
+													{server.displayName} <Icons.Dot className={cn(server.enabled ? 'text-green-500' : 'text-red-500')} />
 												</TSR.Link>
 											</DropdownMenuItem>
 										))}
@@ -320,9 +319,7 @@ export default function NavBar() {
 									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
 								>
 									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
-									<AvatarFallback className="text-xs sm:text-sm">
-										{user.displayName.slice(0, 2).toUpperCase()}
-									</AvatarFallback>
+									<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end">{userMenuContent}</DropdownMenuContent>

@@ -90,9 +90,7 @@ function InputGroupButton({
 	size = 'xs',
 	...props
 }: Omit<React.ComponentProps<typeof Button>, 'size'> & VariantProps<typeof inputGroupButtonVariants>) {
-	return (
-		<Button type={type} data-size={size} variant={variant} className={cn(inputGroupButtonVariants({ size }), className)} {...props} />
-	)
+	return <Button type={type} data-size={size} variant={variant} className={cn(inputGroupButtonVariants({ size }), className)} {...props} />
 }
 
 function InputGroupText({ className, ...props }: React.ComponentProps<'span'>) {

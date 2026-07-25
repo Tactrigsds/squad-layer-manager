@@ -711,13 +711,7 @@ function BalanceDifferentialRow({
 											strokeWidth={isCenter ? '2' : '1'}
 											className={isCenter ? 'text-foreground/40' : 'text-muted-foreground/30'}
 										/>
-										<text
-											x={`${position}%`}
-											y="48"
-											textAnchor="middle"
-											fontSize="9"
-											className="fill-muted-foreground/50"
-										>
+										<text x={`${position}%`} y="48" textAnchor="middle" fontSize="9" className="fill-muted-foreground/50">
 											{value > 0 ? `+${value}` : value}
 										</text>
 									</g>
@@ -864,12 +858,7 @@ function ScoreGrid({
 							  }
 							| undefined
 						return (
-							<OtherScoreRow
-								key={scoreType}
-								scoreType={scoreType}
-								score={scores.other[scoreType] || 0}
-								scoreRange={scoreRange}
-							/>
+							<OtherScoreRow key={scoreType} scoreType={scoreType} score={scores.other[scoreType] || 0} scoreRange={scoreRange} />
 						)
 					})}
 				</div>

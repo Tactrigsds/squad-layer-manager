@@ -68,9 +68,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	loadAsync: async ({ props }) => {
 		const serverId = props.stores.squadServer.serverId
 		await Promise.all([
-			RPC.queryClient.fetchQuery(
-				RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } }),
-			),
+			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } })),
 			RPC.queryClient.fetchInfiniteQuery(playerEventsInfiniteOptions(serverId, props.playerId)),
 			RPC.queryClient.fetchQuery(
 				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
@@ -184,9 +182,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<div className="inline-flex gap-1 items-baseline">
 					{livePlayer?.role && <div className="text-muted-foreground">{livePlayer.role}</div>}
 					<CopyIdButton label="eos" id={playerId} />
-					{(ids?.steam ?? profile?.playerIds.steam) && (
-						<CopyIdButton label="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />
-					)}
+					{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton label="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
 					{ids?.epic && <CopyIdButton label="epic" id={ids.epic} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">

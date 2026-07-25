@@ -748,10 +748,7 @@ export const router = {
 			// only checked when the op introduces layers and the user lacks force-write, to keep the common path cheap.
 			const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
 			if (forceWriteCandidates.length > 0) {
-				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(
-					ctx,
-					RBAC.perm('queue:force-write', { serverId: ctx.serverId }),
-				)
+				const forceWriteDenied = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:force-write', { serverId: ctx.serverId }))
 				if (forceWriteDenied) {
 					const serverState = await SquadServer.getServerState(ctx)
 					const poolConstraints = SETTINGS.getPoolMembershipConstraints(serverState.settings)

@@ -175,9 +175,7 @@ function dispatch() {
 			const name = rest.find((arg) => !arg.startsWith('-'))
 			const setup = !rest.includes('--no-setup')
 			const result = createWorktree(name, cwd)
-			console.log(
-				result.created ? `created ${result.path} on ${result.branch} (from ${result.base})` : `${result.path} already exists`,
-			)
+			console.log(result.created ? `created ${result.path} on ${result.branch} (from ${result.base})` : `${result.path} already exists`)
 			if (setup) {
 				install(result.path)
 				run('pnpm', ['dev:init'], result.path)

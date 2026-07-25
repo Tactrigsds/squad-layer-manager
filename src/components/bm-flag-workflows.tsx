@@ -114,9 +114,7 @@ export function ManageFlagsDialogContent(props: {
 	return (
 		<div className="grid gap-2">
 			<Label>Flags</Label>
-			{currentFlagIds.length === 0 && pending.length === 0 && (
-				<p className="text-xs text-muted-foreground">This player has no flags.</p>
-			)}
+			{currentFlagIds.length === 0 && pending.length === 0 && <p className="text-xs text-muted-foreground">This player has no flags.</p>}
 			<ul className="grid gap-1">
 				{currentFlagIds.map((id) => (
 					<FlagRow
@@ -167,9 +165,7 @@ export function ManageFlagsDialogContent(props: {
 					Add flag
 				</Button>
 			)}
-			<span className="text-xs text-muted-foreground">
-				Each reason is posted to the player's BattleMetrics profile as its own note.
-			</span>
+			<span className="text-xs text-muted-foreground">Each reason is posted to the player's BattleMetrics profile as its own note.</span>
 		</div>
 	)
 }

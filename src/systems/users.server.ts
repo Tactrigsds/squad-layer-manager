@@ -114,10 +114,7 @@ export const orpcRouter = {
 						.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
 						.from(Schema.linkedSteamAccounts)
 						.where(
-							E.and(
-								E.inArray(Schema.linkedSteamAccounts.steam64Id, parsed),
-								E.ne(Schema.linkedSteamAccounts.discordId, discordId),
-							),
+							E.and(E.inArray(Schema.linkedSteamAccounts.steam64Id, parsed), E.ne(Schema.linkedSteamAccounts.discordId, discordId)),
 						)
 						.limit(1)
 					if (taken) {
@@ -143,10 +140,7 @@ export const orpcRouter = {
 						.db()
 						.delete(Schema.linkedSteamAccounts)
 						.where(
-							E.and(
-								E.eq(Schema.linkedSteamAccounts.discordId, discordId),
-								E.inArray(Schema.linkedSteamAccounts.steam64Id, removed),
-							),
+							E.and(E.eq(Schema.linkedSteamAccounts.discordId, discordId), E.inArray(Schema.linkedSteamAccounts.steam64Id, removed)),
 						)
 				}
 				if (added.length > 0) {

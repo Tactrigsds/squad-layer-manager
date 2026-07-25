@@ -55,12 +55,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	const [groupNames, nextName, playerCount, unavailable] = ZusUtils.useStore(
 		stores.sandbox,
 		(s) =>
-			[
-				SandboxFrame.Sel.groupNames(s),
-				SandboxFrame.Sel.nextDefaultName(s),
-				SandboxFrame.Sel.players(s).length,
-				s.unavailable,
-			] as const,
+			[SandboxFrame.Sel.groupNames(s), SandboxFrame.Sel.nextDefaultName(s), SandboxFrame.Sel.players(s).length, s.unavailable] as const,
 	)
 	const full = playerCount >= SB.MAX_PLAYERS
 	const joinRef = React.useRef<HTMLInputElement>(null)
@@ -129,14 +124,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 									placeholder="10"
 									disabled={full}
 								/>
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									className="h-7"
-									disabled={full}
-									onClick={() => void bulkJoin()}
-								>
+								<Button type="button" size="sm" variant="outline" className="h-7" disabled={full} onClick={() => void bulkJoin()}>
 									Bulk join
 								</Button>
 							</div>
@@ -175,22 +163,10 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 							>
 								End match
 							</Button>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								className="h-7"
-								onClick={() => void run('end', { winnerTeamId: 1 })}
-							>
+							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('end', { winnerTeamId: 1 })}>
 								Team 1 wins
 							</Button>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								className="h-7"
-								onClick={() => void run('end', { winnerTeamId: 2 })}
-							>
+							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('end', { winnerTeamId: 2 })}>
 								Team 2 wins
 							</Button>
 							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('cycle', {})}>
@@ -293,9 +269,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 												onCheckedChange={(on) =>
 													setGroups(
 														p.name,
-														on
-															? [...new Set([...p.groups, defaultAdminGroup])]
-															: p.groups.filter((g) => !identifying.has(g)),
+														on ? [...new Set([...p.groups, defaultAdminGroup])] : p.groups.filter((g) => !identifying.has(g)),
 													)
 												}
 											/>
@@ -368,11 +342,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 	const [speaker, channels, channel] = ZusUtils.useStore(
 		stores.sandbox,
 		(s) =>
-			[
-				SandboxFrame.Sel.activeSpeaker(s),
-				SandboxFrame.Sel.availableChatChannels(s),
-				SandboxFrame.Sel.effectiveChatChannel(s),
-			] as const,
+			[SandboxFrame.Sel.activeSpeaker(s), SandboxFrame.Sel.availableChatChannels(s), SandboxFrame.Sel.effectiveChatChannel(s)] as const,
 	)
 	const players = ZusUtils.useStore(stores.sandbox, SandboxFrame.Sel.players)
 	const messageRef = React.useRef<HTMLInputElement>(null)
@@ -431,14 +401,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 						void send()
 					}}
 				/>
-				<Button
-					type="button"
-					size="sm"
-					variant="outline"
-					className="h-8"
-					disabled={players.length === 0}
-					onClick={() => void send()}
-				>
+				<Button type="button" size="sm" variant="outline" className="h-8" disabled={players.length === 0} onClick={() => void send()}>
 					Send
 				</Button>
 			</div>

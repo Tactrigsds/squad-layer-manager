@@ -125,25 +125,11 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				<span className="text-sm text-muted-foreground">/ {formatPageCount(pageCount)}</span>
 			</div>
 
-			<Button
-				variant="outline"
-				size="icon"
-				onClick={handleNext}
-				disabled={disabled || !canGoNext}
-				title="Next page"
-				className="h-8 w-8"
-			>
+			<Button variant="outline" size="icon" onClick={handleNext} disabled={disabled || !canGoNext} title="Next page" className="h-8 w-8">
 				<Icons.ChevronRight className="h-4 w-4" />
 			</Button>
 
-			<Button
-				variant="outline"
-				size="icon"
-				onClick={handleLast}
-				disabled={disabled || !canGoNext}
-				title="Last page"
-				className="h-8 w-8"
-			>
+			<Button variant="outline" size="icon" onClick={handleLast} disabled={disabled || !canGoNext} title="Last page" className="h-8 w-8">
 				<Icons.ChevronsRight className="h-4 w-4" />
 			</Button>
 		</div>

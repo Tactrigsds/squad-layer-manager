@@ -191,8 +191,8 @@ export default function BackburnerPanel(props: StoresProp) {
 						</TooltipTrigger>
 						<TooltipContent className="max-w-72">
 							<p>
-								"Layer Requests" will be made part of the layer generation process if the layer queue runs out of
-								explicitely set layers.
+								"Layer Requests" will be made part of the layer generation process if the layer queue runs out of explicitely set
+								layers.
 							</p>
 							<br />
 							<p>
@@ -624,8 +624,7 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 			// the operator select is hidden: a layer request is always allow-matchups
 			setType: () => {},
 			setLocked: (locked) => RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, locked })),
-			swapTeams: () =>
-				RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, teams: [node.teams[1], node.teams[0]] })),
+			swapTeams: () => RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, teams: [node.teams[1], node.teams[0]] })),
 			setTeamValues: (teamIndex, column, values) =>
 				RequestFrame.Actions.updateMatchup(props.stores, (node) => {
 					const teams: [F.MatchupTeamSpec, F.MatchupTeamSpec] = [...node.teams]
@@ -642,8 +641,7 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 		...(preserved.other.length > 0 ? [`${preserved.other.length} custom condition${preserved.other.length === 1 ? '' : 's'}`] : []),
 	]
 
-	const menuGridClass =
-		'grid grid-cols-[auto_min-content_auto_auto] gap-2 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:px-2'
+	const menuGridClass = 'grid grid-cols-[auto_min-content_auto_auto] gap-2 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:px-2'
 
 	return (
 		<div className="flex gap-4">
@@ -673,9 +671,7 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 					<span className="w-20 shrink-0 pt-2 text-sm text-muted-foreground">Matchup</span>
 					<MatchupConfig node={matchup} actions={matchupActions} allowedTeamValues={allowedTeamValues} showTypeSelect={false} />
 				</div>
-				{extras.length > 0 && (
-					<p className="text-xs text-muted-foreground">Also constrained by {extras.join(', ')} (kept as-is).</p>
-				)}
+				{extras.length > 0 && <p className="text-xs text-muted-foreground">Also constrained by {extras.join(', ')} (kept as-is).</p>}
 			</div>
 			<RequestFiltersColumn stores={props.stores} />
 		</div>

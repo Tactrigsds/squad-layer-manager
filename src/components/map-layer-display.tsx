@@ -29,10 +29,7 @@ export default function MapLayerDisplay({
 			)}
 			{segments.Collection && L.StaticLayerComponents.collectionAbbreviations[segments.Collection] !== null && (
 				<>
-					_
-					<span className={_extraLayerStyles.Collection}>
-						{L.StaticLayerComponents.collectionAbbreviations[segments.Collection]}
-					</span>
+					_<span className={_extraLayerStyles.Collection}>{L.StaticLayerComponents.collectionAbbreviations[segments.Collection]}</span>
 				</>
 			)}
 		</span>

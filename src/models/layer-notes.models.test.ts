@@ -65,10 +65,7 @@ describe('editNote', () => {
 	it('rewords in place, keeping position and author', () => {
 		const list: LL.List = [single('a', [note('n1', alice), note('n2', bob)])]
 		expect(LL.editNote(list, 'a', 'n1', 'reworded')).toBe(true)
-		expect(list[0].type === 'single-list-item' && list[0].notes).toEqual([
-			{ id: 'n1', author: alice, text: 'reworded' },
-			note('n2', bob),
-		])
+		expect(list[0].type === 'single-list-item' && list[0].notes).toEqual([{ id: 'n1', author: alice, text: 'reworded' }, note('n2', bob)])
 	})
 
 	it('reports no change for identical text or an unknown note', () => {

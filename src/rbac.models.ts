@@ -136,8 +136,7 @@ export const PERMISSION_DEFINITION = {
 		scope: 'global',
 	}),
 	...definePermission('queue:request-layers', {
-		description:
-			'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
+		description: 'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
 		scope: 'layer-requests',
 	}),
 	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'server' }),

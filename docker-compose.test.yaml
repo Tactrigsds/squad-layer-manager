@@ -6,12 +6,12 @@
 # The layer artifacts are baked into the image, so the tests run against the same pair production does and
 # nothing needs mounting. Failure artifacts (traces, screenshots) land in ./test-results.
 services:
-    tests:
-        build:
-            context: .
-            target: test
-        environment:
-            # chromium's sandbox needs privileges the container doesn't have; the container is the boundary
-            CI: 'true'
-        volumes:
-            - ./test-results:/app/test-results
+   tests:
+      build:
+         context: .
+         target: test
+      environment:
+         # chromium's sandbox needs privileges the container doesn't have; the container is the boundary
+         CI: 'true'
+      volumes:
+         - ./test-results:/app/test-results

@@ -448,9 +448,7 @@ export function FilterEdit(props: {
 												{field.state.meta.errors.length > 0 && (
 													<Alert variant="destructive">
 														<AlertTitle>{label}:</AlertTitle>
-														<AlertDescription>
-															{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
-														</AlertDescription>
+														<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
 													</Alert>
 												)}
 											</div>

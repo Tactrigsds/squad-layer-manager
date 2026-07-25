@@ -70,8 +70,8 @@ export default function NicknameDialog(props: { children: React.ReactNode; open?
 				<DialogHeader>
 					<DialogTitle>Set Custom Nickname</DialogTitle>
 					<DialogDescription>
-						Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord
-						display name.
+						Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display
+						name.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -88,9 +88,7 @@ export default function NicknameDialog(props: { children: React.ReactNode; open?
 							disabled={updateNicknameMutation.isPending}
 						/>
 						<div className="flex justify-between text-xs text-muted-foreground">
-							<span>
-								{nickname ? `Will display as: "${nickname.trim() || user?.username}"` : 'Will use Discord display name'}
-							</span>
+							<span>{nickname ? `Will display as: "${nickname.trim() || user?.username}"` : 'Will use Discord display name'}</span>
 							<span className={nickname.length > 64 ? 'text-destructive' : ''}>{nickname.length}/64</span>
 						</div>
 					</div>
