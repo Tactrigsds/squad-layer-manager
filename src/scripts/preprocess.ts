@@ -8,10 +8,10 @@ import path from 'path'
 import { z } from 'zod'
 
 import * as Paths from '$root/paths'
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import { ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LA from '@/models/layer-artifact'
@@ -30,7 +30,7 @@ export const ParsedNanFloatSchema = z
 	.transform((val) => parseFloat(val))
 	.pipe(z.number())
 
-const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
+const ParsedNullableFloat = ZodUtils.ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
 const Steps = z.enum(['build-layer-artifact', 'download-csvs', 'write-components-and-units', 'compress-artifact', 'all'])
 
@@ -277,7 +277,7 @@ function extraColSchema(col: LC.ColumnDef): z.ZodType {
 		case 'string':
 			throw new Error(`Extra column "${col.name}" is a string; the layer engine has no string column type yet`)
 		case 'integer':
-			return ParsedIntSchema
+			return ZodUtils.ParsedIntSchema
 		case 'boolean':
 			return z.stringbool().transform((v) => Number(v))
 		case 'float':

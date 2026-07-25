@@ -11,7 +11,7 @@ import {
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'

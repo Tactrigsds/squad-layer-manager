@@ -1,6 +1,6 @@
 import React from 'react'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 
 export type UseStateReturn<T> = [T, React.Dispatch<React.SetStateAction<T>>]
 

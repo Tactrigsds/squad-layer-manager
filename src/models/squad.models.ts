@@ -2,13 +2,13 @@ import * as dateFns from 'date-fns'
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import * as SetUtils from '@/lib/set'
-import { normalizeForMatch, simpleUniqueStringMatch } from '@/lib/string'
-import * as ZodUtils from '@/lib/zod'
+import * as SetUtils from '@/lib/set-utils'
+import * as Str from '@/lib/string-utils'
+import * as ZodUtils from '@/lib/zod-utils'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as RBAC from '@/rbac.models'
@@ -321,14 +321,14 @@ export namespace PlayerIds {
 	// possible when the real player isn't in the list, so only use this as a fallback after find().
 	export function findByUsernameLoose<T>(players: T[], cb: (item: T) => Type, username: string): T | undefined {
 		const names = players.map((p) => cb(p).username ?? '')
-		const res = simpleUniqueStringMatch(names, username)
+		const res = Str.simpleUniqueStringMatch(names, username)
 		if (res.code === 'ok') return players[res.matched]
 		// the log name may carry a tag the RCON name lacks; try the reverse direction
-		const target = normalizeForMatch(username)
+		const target = Str.normalizeForMatch(username)
 		if (!target) return undefined
 		const reverseMatches: number[] = []
 		for (let i = 0; i < names.length; i++) {
-			const name = normalizeForMatch(names[i])
+			const name = Str.normalizeForMatch(names[i])
 			if (name && target.includes(name)) reverseMatches.push(i)
 		}
 		if (reverseMatches.length === 1) return players[reverseMatches[0]]
@@ -369,7 +369,7 @@ export namespace PlayerIds {
 			})
 			if (exact.length === 1) return { code: 'ok', matched: exact[0] }
 			if (exact.length > 1) return { code: 'err:multiple-matches', count: exact.length }
-			const result = simpleUniqueStringMatch(
+			const result = Str.simpleUniqueStringMatch(
 				(players as T[]).map((p) => cb(p).username?.toLowerCase() ?? ''),
 				searchId,
 			)
@@ -381,7 +381,7 @@ export namespace PlayerIds {
 		const exact = (players as Type[]).filter((p) => p.eos === searchId || p.steam === searchId)
 		if (exact.length === 1) return { code: 'ok', matched: exact[0] }
 		if (exact.length > 1) return { code: 'err:multiple-matches', count: exact.length }
-		const result = simpleUniqueStringMatch(
+		const result = Str.simpleUniqueStringMatch(
 			(players as Type[]).map((p) => p.username?.toLowerCase() ?? ''),
 			searchId,
 		)

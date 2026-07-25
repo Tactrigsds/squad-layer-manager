@@ -5,7 +5,7 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import * as Paths from '../../paths.ts'
-import { HumanTime, NormedUrl, ParsedBigIntSchema, ParsedIntSchema, PathSegment } from '../lib/zod'
+import * as ZodUtils from '../lib/zod-utils'
 import * as Cli from '../systems/cli.server'
 
 // how a var is written into the example env files, which are regenerated from this file on every dev boot
@@ -142,7 +142,7 @@ export const groups = {
 	},
 
 	squadcalc: {
-		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app').meta({
+		PUBLIC_SQUADCALC_URL: ZodUtils.NormedUrl.default('https://squadcalc.app').meta({
 			description: 'the squadcalc instance the layer info popouts link out to. Only set it if you self-host squadcalc.',
 		}),
 	},
@@ -151,7 +151,7 @@ export const groups = {
 		OTEL_ENABLED: z.stringbool().default(true).meta({
 			description: 'turn it off if nothing is listening on the endpoint below.',
 		}),
-		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, ''))
+		OTLP_COLLECTOR_ENDPOINT: ZodUtils.NormedUrl.transform((url) => url.replace(/\/$/, ''))
 			.default('http://localhost:4318')
 			.meta({
 				description: 'where the exporters send to. docker-compose points this at its own collector service.',
@@ -170,7 +170,7 @@ export const groups = {
 					"push continuous profiles to a Pyroscope server (bundled in the otel-lgtm image). View them under Grafana's Pyroscope datasource. Adds a few percent of runtime overhead.",
 				envExample: { include: 'commented' },
 			}),
-		PYROSCOPE_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, ''))
+		PYROSCOPE_ENDPOINT: ZodUtils.NormedUrl.transform((url) => url.replace(/\/$/, ''))
 			.default('http://localhost:4040')
 			.meta({
 				description: 'where profiles are pushed. docker-compose points this at its own otel service (http://otel:4040).',
@@ -239,7 +239,7 @@ export const groups = {
 
 	// a checkout has nothing worth backing up, so none of this shows up in the dev example
 	backups: {
-		AUTOMATIC_BACKUPS_PERIODIC: HumanTime.optional().meta({
+		AUTOMATIC_BACKUPS_PERIODIC: ZodUtils.HumanTime.optional().meta({
 			description:
 				'how often to back up the main db, as a duration (e.g. 72h). Unset disables automatic backups, including the event-history prune that runs alongside them.',
 			envExample: { dev: { include: 'omit' } },
@@ -252,7 +252,7 @@ export const groups = {
 				description: 'where backups are written locally.',
 				envExample: { dev: { include: 'omit' } },
 			}),
-		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0))
+		BACKUPS_RETAIN_COUNT: ZodUtils.ParsedIntSchema.pipe(z.number().min(0))
 			.default(10)
 			.meta({
 				description:
@@ -260,7 +260,7 @@ export const groups = {
 				envExample: { dev: { include: 'omit' } },
 			}),
 
-		EVENT_HISTORY_RETENTION_PERIOD: HumanTime.optional().meta({
+		EVENT_HISTORY_RETENTION_PERIOD: ZodUtils.HumanTime.optional().meta({
 			description:
 				'server events from matches that ended longer ago than this duration (e.g. 90d) are deleted before each backup is taken. The most recent matches are always kept. Unset disables pruning.',
 			envExample: { dev: { include: 'omit' } },
@@ -275,7 +275,7 @@ export const groups = {
 					'an sftp target each backup is uploaded to after it is written locally. Setting this host enables the upload; a password or a private key is also required.',
 				envExample: { dev: { include: 'omit' } },
 			}),
-		BACKUP_SFTP_PORT: ParsedIntSchema.default(22).meta({
+		BACKUP_SFTP_PORT: ZodUtils.ParsedIntSchema.default(22).meta({
 			description: 'see BACKUP_SFTP_HOST.',
 			envExample: { dev: { include: 'omit' } },
 		}),
@@ -343,13 +343,13 @@ export const groups = {
 			secret: true,
 			description: 'the bot token of the same discord app. The bot has to be installed on the guild DISCORD_HOME_GUILD_ID names.',
 		}),
-		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema.meta({
+		DISCORD_HOME_GUILD_ID: ZodUtils.ParsedBigIntSchema.meta({
 			description: "the guild SLM resolves users and roles against, i.e. your org's discord server.",
 		}),
 	},
 
 	httpServer: {
-		PORT: ParsedIntSchema.default(3000).meta({
+		PORT: ZodUtils.ParsedIntSchema.default(3000).meta({
 			description: 'the port the app listens on. Put your reverse proxy in front of it and point ORIGIN at that.',
 			envExample: {
 				dev: { description: 'the port the app listens on. The client is served separately in development, see CLIENT_PORT.' },
@@ -363,11 +363,11 @@ export const groups = {
 					'the interface the app binds to. The image already sets 0.0.0.0, since loopback inside a container is unreachable.',
 				envExample: { dev: { description: 'the interface the app binds to.' } },
 			}),
-		CLIENT_PORT: ParsedIntSchema.default(5173).meta({
+		CLIENT_PORT: ZodUtils.ParsedIntSchema.default(5173).meta({
 			description: "the vite dev server's port. Move it to run a second instance beside a running one; ORIGIN has to move with it.",
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
-		ORIGIN: NormedUrl.default('http://localhost:3000').meta({
+		ORIGIN: ZodUtils.NormedUrl.default('http://localhost:3000').meta({
 			description:
 				"the publicly addressable url the app is reached at, from a browser's point of view. The default below only holds if the app is reached directly on PORT, with nothing in front of it. The discord oauth callback is built from this, so it also has to match a redirect uri registered on the discord app.",
 			// written out uncommented in both files, showing the url that environment is actually reached at, so
@@ -384,7 +384,7 @@ export const groups = {
 	},
 
 	layers: {
-		LAYERS_VERSION: PathSegment.default('@latest').meta({
+		LAYERS_VERSION: ZodUtils.PathSegment.default('@latest').meta({
 			description:
 				'@latest resolves to the highest version whose artifacts are present. Pinning a version no searched directory has is an error.',
 		}),
@@ -403,7 +403,7 @@ export const groups = {
 				description: "OWI's layer spreadsheet. Only used for layer sizes at the moment.",
 				envExample: { include: 'omit', dev: { include: 'commented' } },
 			}),
-		SPREADSHEET_MAP_LAYERS_GID: ParsedIntSchema.default(1212962563).meta({
+		SPREADSHEET_MAP_LAYERS_GID: ZodUtils.ParsedIntSchema.default(1212962563).meta({
 			description: 'the sheet within SPREADSHEET_ID the layers are read from.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),

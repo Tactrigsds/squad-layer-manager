@@ -32,7 +32,7 @@ import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/fr
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as RPC from '@/orpc.client'

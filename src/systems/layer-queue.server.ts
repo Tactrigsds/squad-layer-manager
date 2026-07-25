@@ -10,7 +10,7 @@ import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
-import { HumanTime } from '@/lib/zod.ts'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
@@ -192,7 +192,7 @@ export const setupInstance = C.spanOp(
 			.pipe(
 				Rx.switchMap((unexpectedNextLayer) => {
 					if (unexpectedNextLayer) {
-						return Rx.interval(HumanTime.parse('2m')).pipe(
+						return Rx.interval(ZodUtils.HumanTime.parse('2m')).pipe(
 							Rx.startWith(0),
 							Rx.map(() => unexpectedNextLayer),
 						)

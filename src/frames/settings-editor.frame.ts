@@ -2,7 +2,7 @@ import React from 'react'
 import type { z } from 'zod'
 
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'

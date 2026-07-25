@@ -1,6 +1,6 @@
 import React from 'react'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as Zus from '@/lib/zustand.ts'
 import type * as UP from '@/models/user-presence'
 import * as UPClient from '@/systems/user-presence.client'

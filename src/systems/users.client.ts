@@ -1,6 +1,6 @@
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Zus from '@/lib/zustand'

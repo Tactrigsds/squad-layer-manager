@@ -1,5 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'

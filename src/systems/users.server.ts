@@ -4,7 +4,7 @@ import { z } from 'zod'
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Rx from '@/lib/rxjs'
-import { Steam64IdSchema } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models'
@@ -99,7 +99,7 @@ export const orpcRouter = {
 			const parsed: bigint[] = []
 			const seen = new Set<string>()
 			for (const raw of input) {
-				const res = Steam64IdSchema.safeParse(raw)
+				const res = ZodUtils.Steam64IdSchema.safeParse(raw)
 				if (!res.success) return { code: 'err:invalid-steam-id' as const, steamId: raw, msg: `"${raw}" is not a valid Steam64 ID` }
 				if (seen.has(res.data)) continue
 				seen.add(res.data)

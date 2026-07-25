@@ -1,7 +1,7 @@
 import * as Im from 'immer'
 import React from 'react'
 
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'

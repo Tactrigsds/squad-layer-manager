@@ -2,9 +2,9 @@ import * as Im from 'immer'
 import { z } from 'zod'
 
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { toast } from '@/lib/toast'
-import { devValidate } from '@/lib/zod.dev'
+import * as ZodDev from '@/lib/zod-utils.dev'
 import * as Zus from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -97,7 +97,7 @@ export namespace Sel {
 
 export namespace Actions {
 	export function set(stores: KeyProp, mut: SETTINGS.SettingMutation) {
-		devValidate(SETTINGS.SettingMutationSchema, mut)
+		ZodDev.devValidate(SETTINGS.SettingMutationSchema, mut)
 		Zus.toPartialStore(stores.settings, 'settings').setState((state) =>
 			Im.produce(state, (draft) => {
 				SETTINGS.applySettingMutation(draft.edited, mut)

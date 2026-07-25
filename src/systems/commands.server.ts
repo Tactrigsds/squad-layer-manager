@@ -1,8 +1,8 @@
-import * as Arr from '@/lib/array'
-import * as Obj from '@/lib/object'
-import { simpleUniqueStringMatch } from '@/lib/string'
+import * as Arr from '@/lib/array-utils'
+import * as Obj from '@/lib/object-utils'
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
-import { formatHumanTime } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Messages from '@/messages.ts'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BB from '@/models/backburner.models'
@@ -184,7 +184,7 @@ function resolveSquadArg(
 		matchedSquad = squadsOnTeam.find((s) => s.squadId === squadNum) ?? null
 		if (!matchedSquad) return { code: 'err', msg: `No squad ${squadNum} found on team ${teamLabel}` }
 	} else {
-		const squadMatchRes = simpleUniqueStringMatch(
+		const squadMatchRes = Str.simpleUniqueStringMatch(
 			squadsOnTeam.map((s) => s.squadName.toLowerCase()),
 			squadInput.toLowerCase(),
 		)
@@ -538,7 +538,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	flag: async (h, args) => {
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
-		const matchedFlagRes = simpleUniqueStringMatch(
+		const matchedFlagRes = Str.simpleUniqueStringMatch(
 			flags.map((f) => f.name),
 			args.flag,
 		)
@@ -594,7 +594,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	removeFlag: async (h, args) => {
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
-		const matchedFlagRes = simpleUniqueStringMatch(
+		const matchedFlagRes = Str.simpleUniqueStringMatch(
 			flags.map((f) => f.name),
 			args.flag,
 		)
@@ -931,7 +931,7 @@ async function executeTimeout(
 	if (g) return g
 	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(h.ctx.serverId, durationMs))
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
-	const vars = SquadServer.messageVars({ duration: formatHumanTime(durationMs) })
+	const vars = SquadServer.messageVars({ duration: ZodUtils.formatHumanTime(durationMs) })
 	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)
 	const skipped: string[] = []
 	let lastErrMsg = ''
@@ -950,7 +950,7 @@ async function executeTimeout(
 	}
 	await h.reply(
 		[
-			`Timed out ${subjectLabel} for ${formatHumanTime(durationMs)}${reason?.label ? ` for ${reason.label}` : ''}`,
+			`Timed out ${subjectLabel} for ${ZodUtils.formatHumanTime(durationMs)}${reason?.label ? ` for ${reason.label}` : ''}`,
 			...(skipped.length > 0 ? [`Skipped (already timed out): ${skipped.join(', ')}`] : []),
 		].join('\n'),
 	)

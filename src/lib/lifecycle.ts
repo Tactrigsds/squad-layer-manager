@@ -1,6 +1,6 @@
 import * as Im from 'immer'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 
 import * as Rx from './rxjs'
 

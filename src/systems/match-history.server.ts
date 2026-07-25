@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import type * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'

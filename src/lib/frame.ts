@@ -1,7 +1,7 @@
 import * as React from 'react'
 
-import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
+import * as Gen from '@/lib/generator-utils'
+import * as Obj from '@/lib/object-utils'
 import * as ReactUtils from '@/lib/react'
 import * as Zus from '@/lib/zustand'
 

@@ -1,9 +1,9 @@
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { renderTemplate, templateVars } from '@/lib/templating'
-import { BasicStrNoWhitespace, tryParseHumanTimeToken } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
 import type * as SM from '@/models/squad.models.ts'
@@ -529,9 +529,9 @@ export function seedCommandConfigs(commands: unknown, defaultPrefix: string): Re
 }
 
 export const CommandTriggerSchema = z.union([
-	BasicStrNoWhitespace,
+	ZodUtils.BasicStrNoWhitespace,
 	z.object({
-		string: BasicStrNoWhitespace,
+		string: ZodUtils.BasicStrNoWhitespace,
 		args: z
 			.string()
 			.min(1)
@@ -722,7 +722,7 @@ export function resolveDurationArg(
 	name: string,
 	token: string,
 ): { code: 'ok'; value: number } | { code: 'err:invalid-duration'; msg: string } {
-	const value = tryParseHumanTimeToken(token)
+	const value = ZodUtils.tryParseHumanTimeToken(token)
 	if (value === undefined) {
 		return { code: 'err:invalid-duration', msg: `${name} must be a duration like 30m, 2h or 1d, got "${token}"` }
 	}

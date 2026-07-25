@@ -1,4 +1,4 @@
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
