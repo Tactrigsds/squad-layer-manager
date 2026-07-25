@@ -1,35 +1,37 @@
-import * as Paths from '$root/paths.ts'
-import * as Arr from '@/lib/array'
-import { AsyncResource } from '@/lib/async-resource.ts'
-import * as OneToMany from '@/lib/one-to-many-map.ts'
-import * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
-import * as CleanupSys from '@/systems/cleanup.server'
-import * as Settings from '@/systems/settings.server'
-
-import type * as SM from '@/models/squad.models.ts'
-import * as C from '@/server/context.ts'
-
-import { isolateContext, IsolatedBehaviorSubject } from '@/lib/isolated-subject'
-import { WritableBuffer } from '@/lib/rcon/writable-buffer'
-import { withSftp } from '@/lib/sftp-file-store.ts'
-import { HumanTime } from '@/lib/zod'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
 import * as Rx from 'rxjs'
 
+import * as Paths from '$root/paths.ts'
+import * as Arr from '@/lib/array'
+import { AsyncResource } from '@/lib/async-resource.ts'
+import { isolateContext, IsolatedBehaviorSubject } from '@/lib/isolated-subject'
+import * as OneToMany from '@/lib/one-to-many-map.ts'
+import { WritableBuffer } from '@/lib/rcon/writable-buffer'
+import { withSftp } from '@/lib/sftp-file-store.ts'
+import { HumanTime } from '@/lib/zod'
+import * as CS from '@/models/context-shared'
+import type * as SM from '@/models/squad.models.ts'
+import * as C from '@/server/context.ts'
+import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
+import * as Settings from '@/systems/settings.server'
+
 const module = initModule('fetch-admin-lists')
 let log!: CS.Logger
 
-export type AdminListStatus = {
-	code: 'init'
-} | {
-	code: 'ok'
-} | {
-	code: 'error'
-	message: string
-}
+export type AdminListStatus =
+	| {
+			code: 'init'
+	  }
+	| {
+			code: 'ok'
+	  }
+	| {
+			code: 'error'
+			message: string
+	  }
 
 // One resource per named list, rather than one merged list for the install. Merging was what made "admin" a global
 // fact: two sources with different conventions for marking an admin ended up granting each other's, and a server had
@@ -90,11 +92,7 @@ export function hasImplicitList(serverId: string): boolean {
 }
 
 // Every list that speaks for a server: the ones it names, plus its implicit one if it has one.
-export async function getListsForServerId(
-	ctx: CS.Ctx & CS.AbortSignal,
-	serverId: string,
-	opts?: { ttl?: number },
-): Promise<SM.AdminLists> {
+export async function getListsForServerId(ctx: CS.Ctx & CS.AbortSignal, serverId: string, opts?: { ttl?: number }): Promise<SM.AdminLists> {
 	const lists = await getListsForServer(ctx, listIdsForServer(serverId), opts)
 	const implicit = implicitLists.get(serverId)
 	if (implicit) lists.set(IMPLICIT_LIST_ID, implicit())
@@ -135,11 +133,7 @@ export function invalidateAll(ctx: CS.Ctx & CS.AbortSignal) {
 
 // One list. Returns null rather than throwing when the name is not configured: a server or role assignment naming a
 // deleted list is a configuration mistake to survive, not a reason to deny every permission check on that server.
-export async function getList(
-	ctx: CS.Ctx & CS.AbortSignal,
-	listId: SM.AdminListId,
-	opts?: { ttl?: number },
-): Promise<SM.AdminList | null> {
+export async function getList(ctx: CS.Ctx & CS.AbortSignal, listId: SM.AdminListId, opts?: { ttl?: number }): Promise<SM.AdminList | null> {
 	if (!Settings.GLOBAL_SETTINGS.adminLists[listId]) return null
 	try {
 		return await resourceFor(listId).get(ctx, opts)
@@ -155,9 +149,7 @@ export async function getListsForServer(
 	listIds: readonly SM.AdminListId[],
 	opts?: { ttl?: number },
 ): Promise<SM.AdminLists> {
-	const entries = await Promise.all(
-		listIds.map(async (listId) => [listId, await getList(ctx, listId, opts)] as const),
-	)
+	const entries = await Promise.all(listIds.map(async (listId) => [listId, await getList(ctx, listId, opts)] as const))
 	const lists: SM.AdminLists = new Map()
 	for (const [listId, list] of entries) {
 		if (list) lists.set(listId, list)
@@ -169,11 +161,7 @@ export async function getListsForServer(
 // or "what groups do they hold here" -- questions the merged view answers exactly. Each list has already applied its
 // own admin-identifying permissions by this point, so the admin sets union rather than being recomputed, and no list
 // can widen another's definition of admin.
-export async function getMergedForServer(
-	ctx: CS.Ctx & CS.AbortSignal,
-	serverId: string,
-	opts?: { ttl?: number },
-): Promise<SM.AdminList> {
+export async function getMergedForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string, opts?: { ttl?: number }): Promise<SM.AdminList> {
 	const lists = await getListsForServerId(ctx, serverId, opts)
 	const merged: SM.AdminList = {
 		groups: new Map(),
@@ -207,13 +195,15 @@ export function setup() {
 export const changed$: Rx.Observable<void> = Rx.defer(() =>
 	Rx.merge(
 		...configuredListIds().map((listId) =>
-			resourceFor(listId).observe({ ...CS.init(), signal: CleanupSys.shutdownSignal }).pipe(
-				Rx.map((l) => `${listId}:${fingerprint(l)}`),
-				Rx.distinctUntilChanged(),
-				Rx.skip(1),
-			)
+			resourceFor(listId)
+				.observe({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+				.pipe(
+					Rx.map((l) => `${listId}:${fingerprint(l)}`),
+					Rx.distinctUntilChanged(),
+					Rx.skip(1),
+				),
 		),
-	)
+	),
 ).pipe(
 	isolateContext(),
 	Rx.map(() => undefined),
@@ -223,11 +213,17 @@ export const changed$: Rx.Observable<void> = Rx.defer(() =>
 // stable string over the parts that drive rbac (group perms, per-id groups, admin sets); admin lists are small
 function fingerprint(l: SM.AdminList): string {
 	const idPart = (t: SM.AdminList['eos']) => {
-		const players = [...OneToMany.iter(t.players)].map(([id, g]) => `${id}=${g}`).sort().join(',')
+		const players = [...OneToMany.iter(t.players)]
+			.map(([id, g]) => `${id}=${g}`)
+			.sort()
+			.join(',')
 		const admins = [...t.admins].sort().join(',')
 		return `${players}#${admins}`
 	}
-	const groups = [...OneToMany.iter(l.groups)].map(([g, p]) => `${g}=${p}`).sort().join(',')
+	const groups = [...OneToMany.iter(l.groups)]
+		.map(([g, p]) => `${g}=${p}`)
+		.sort()
+		.join(',')
 	return `${groups}||${idPart(l.eos)}||${idPart(l.steam)}`
 }
 
@@ -325,9 +321,9 @@ const fetchAdminList = C.spanOp(
 						const [user, password] = loginString.split(':').map((v) => decodeURI(v))
 						const pathStartIndex = hostPathString.indexOf('/')
 						const remoteFilePath = pathStartIndex === -1 ? '/' : hostPathString.substring(pathStartIndex)
-						const [host, port = 21] = hostPathString.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex).split(
-							':',
-						)
+						const [host, port = 21] = hostPathString
+							.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex)
+							.split(':')
 
 						const buffer = new WritableBuffer()
 						const ftpClient = new FTPClient()

@@ -133,10 +133,7 @@ function upgradeAllowMatchups(config: any, neg: boolean): NewNode {
 				node = {
 					type: 'or',
 					neg: false,
-					children: [
-						andOf([side0For(1), side1For(2)]),
-						andOf([side0For(2), side1For(1)]),
-					],
+					children: [andOf([side0For(1), side1For(2)]), andOf([side0For(2), side1For(1)])],
 				}
 			}
 			break
@@ -177,7 +174,9 @@ function assertUpgraded(node: any, filterId: string): void {
 	if (!node || typeof node !== 'object' || !NEW_TYPES.has(node.type)) {
 		throw new Error(`filter ${filterId}: produced invalid node type ${node?.type}`)
 	}
-	if (node.children) { for (const child of node.children) assertUpgraded(child, filterId) }
+	if (node.children) {
+		for (const child of node.children) assertUpgraded(child, filterId)
+	}
 }
 
 export async function up(db: MigrationDriver): Promise<void> {

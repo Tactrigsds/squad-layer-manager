@@ -1,4 +1,5 @@
 import { test as base } from '@playwright/test'
+
 import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harness/app-fixture'
 
 // Playwright fixture: one app instance + one emulated squad server per test file (worker-scoped),
@@ -8,19 +9,25 @@ import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harne
 export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTelemetry: void }, { workerApp: AppFixture }>({
 	// so that every app built during a test -- including the ones test files build themselves -- exports its
 	// telemetry under that test's name (see SLM_TEST_OTEL)
-	// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
-	labelTelemetry: [async ({}, use, testInfo) => {
-		setCurrentTestLabel(testInfo.titlePath.join(' > '))
-		await use()
-		setCurrentTestLabel(undefined)
-	}, { auto: true }],
+	labelTelemetry: [
+		// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
+		async ({}, use, testInfo) => {
+			setCurrentTestLabel(testInfo.titlePath.join(' > '))
+			await use()
+			setCurrentTestLabel(undefined)
+		},
+		{ auto: true },
+	],
 
-	// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
-	workerApp: [async ({}, use) => {
-		const app = await createAppFixture()
-		await use(app)
-		await app.dispose()
-	}, { scope: 'worker', timeout: 180_000 }],
+	workerApp: [
+		// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
+		async ({}, use) => {
+			const app = await createAppFixture()
+			await use(app)
+			await app.dispose()
+		},
+		{ scope: 'worker', timeout: 180_000 },
+	],
 
 	app: async ({ workerApp }, use) => {
 		await use(workerApp)

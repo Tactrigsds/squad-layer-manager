@@ -1,6 +1,7 @@
-import * as Obj from '@/lib/object'
 import * as Im from 'immer'
 import * as Rx from 'rxjs'
+
+import * as Obj from '@/lib/object'
 
 // -------- Loader Configuration Types --------
 
@@ -8,50 +9,43 @@ import * as Rx from 'rxjs'
  * Configuration options for a loader.
  * Loaders can be either synchronous or asynchronous, and support lifecycle hooks.
  */
-export type LoaderConfigOptions<Key, Data = never, StoreState = unknown> =
-	& {
-		/** Time in ms before we unload an inactive loader. Default: no unload */
-		staleTime?: number
+export type LoaderConfigOptions<Key, Data = never, StoreState = unknown> = {
+	/** Time in ms before we unload an inactive loader. Default: no unload */
+	staleTime?: number
 
-		/** If true, the loader is unloaded immediately when leaving. Default: false */
-		unloadOnLeave?: boolean
+	/** If true, the loader is unloaded immediately when leaving. Default: false */
+	unloadOnLeave?: boolean
 
-		/** Called when the loader becomes active (not preloading) */
-		onEnter?: (opts: { key: Key; data: Data; draft: Im.Draft<StoreState> }) => Promise<void> | void
+	/** Called when the loader becomes active (not preloading) */
+	onEnter?: (opts: { key: Key; data: Data; draft: Im.Draft<StoreState> }) => Promise<void> | void
 
-		/** Called when the loader is being unloaded from cache */
-		onUnload?: (opts: { key: Key; data: Data | undefined; state: Im.Draft<StoreState> }) => Promise<void> | void
+	/** Called when the loader is being unloaded from cache */
+	onUnload?: (opts: { key: Key; data: Data | undefined; state: Im.Draft<StoreState> }) => Promise<void> | void
 
-		/** Called when leaving (before potential unload) */
-		onLeave?: (opts: { key: Key; data: Data; draft: Im.Draft<StoreState> }) => Promise<void> | void
+	/** Called when leaving (before potential unload) */
+	onLeave?: (opts: { key: Key; data: Data; draft: Im.Draft<StoreState> }) => Promise<void> | void
 
-		/**
-		 * Use in cases where this loader has ephemeral external dependencies.
-		 * Return true to trigger immediate unload.
-		 */
-		checkShouldUnload?: (opts: { key: Key; data: Data | undefined; state: StoreState }) => boolean
-	}
-	& ({
-		load: (opts: { key: Key; preload: boolean; state: StoreState }) => Data
-	} | {
-		loadAsync: (opts: { key: Key; preload: boolean; state: StoreState; abortController: AbortController }) => Promise<Data>
-	})
+	/**
+	 * Use in cases where this loader has ephemeral external dependencies.
+	 * Return true to trigger immediate unload.
+	 */
+	checkShouldUnload?: (opts: { key: Key; data: Data | undefined; state: StoreState }) => boolean
+} & (
+	| {
+			load: (opts: { key: Key; preload: boolean; state: StoreState }) => Data
+	  }
+	| {
+			loadAsync: (opts: { key: Key; preload: boolean; state: StoreState; abortController: AbortController }) => Promise<Data>
+	  }
+)
 
 /**
  * Full loader configuration including name and match function.
  */
-export type LoaderConfig<
-	Name extends string = string,
-	Key = any,
-	Data = any,
-	StoreState = any,
-	MatchState = any,
-> =
-	& {
-		name: Name
-		match: (state: MatchState) => Key | undefined
-	}
-	& LoaderConfigOptions<Key, Data, StoreState>
+export type LoaderConfig<Name extends string = string, Key = any, Data = any, StoreState = any, MatchState = any> = {
+	name: Name
+	match: (state: MatchState) => Key | undefined
+} & LoaderConfigOptions<Key, Data, StoreState>
 
 // -------- Loader Cache Types --------
 
@@ -70,12 +64,10 @@ export type LoaderCacheEntry<Config extends LoaderConfig, Loaded extends boolean
 }
 
 /** Extract the return type of a loader's load/loadAsync function */
-export type LoaderResult<Config extends LoaderConfig> = Config extends { loadAsync: () => infer Result } ? Result
-	: LoaderData<Config>
+export type LoaderResult<Config extends LoaderConfig> = Config extends { loadAsync: () => infer Result } ? Result : LoaderData<Config>
 
 /** Extract the data type from a loader config */
-export type LoaderData<Config extends LoaderConfig> = Config extends LoaderConfig<any, any, infer Data> ? Data
-	: never
+export type LoaderData<Config extends LoaderConfig> = Config extends LoaderConfig<any, any, infer Data> ? Data : never
 
 /** Extract the key type from a loader config */
 export type LoaderKey<Config extends LoaderConfig> = Exclude<ReturnType<Config['match']>, undefined>
@@ -94,12 +86,8 @@ export type LoadedLoaderEntry<Config extends LoaderConfig> = LoaderCacheEntry<Co
  * // Now `if (entry.name === 'a')` will narrow entry.data and entry.key
  * ```
  */
-export type LoaderCacheEntryUnion<
-	Configs extends readonly LoaderConfig[],
-	Loaded extends boolean = boolean,
-> = {
-	[K in keyof Configs]: Configs[K] extends LoaderConfig ? LoaderCacheEntry<Configs[K], Loaded>
-		: never
+export type LoaderCacheEntryUnion<Configs extends readonly LoaderConfig[], Loaded extends boolean = boolean> = {
+	[K in keyof Configs]: Configs[K] extends LoaderConfig ? LoaderCacheEntry<Configs[K], Loaded> : never
 }[number]
 
 // -------- Type Guards --------
@@ -107,9 +95,7 @@ export type LoaderCacheEntryUnion<
 /**
  * Type guard to check if a loader config has a synchronous load function.
  */
-export function hasSyncLoader<Config extends LoaderConfig>(
-	config: Config,
-): config is Extract<Config, { load: (...args: any[]) => any }> {
+export function hasSyncLoader<Config extends LoaderConfig>(config: Config): config is Extract<Config, { load: (...args: any[]) => any }> {
 	return typeof (config as any).load === 'function'
 }
 
@@ -139,14 +125,7 @@ export function hasAsyncLoader<Config extends LoaderConfig>(
  * })
  * ```
  */
-export function createLoaderConfig<
-	Name extends string,
-	Key,
-	MatchState,
->(
-	name: Name,
-	match: (state: MatchState) => Key | undefined,
-) {
+export function createLoaderConfig<Name extends string, Key, MatchState>(name: Name, match: (state: MatchState) => Key | undefined) {
 	return <Data, StoreState = unknown>(
 		config: LoaderConfigOptions<Key, Data, StoreState>,
 	): LoaderConfig<Name, Key, Data, StoreState, MatchState> => ({
@@ -158,10 +137,7 @@ export function createLoaderConfig<
 
 // -------- Lifecycle Event Dispatch --------
 
-export type LoaderManagerContext<
-	Config extends LoaderConfig,
-	StoreState,
-> = {
+export type LoaderManagerContext<Config extends LoaderConfig, StoreState> = {
 	configs: readonly Config[]
 	getCache: (draft: Im.Draft<StoreState>) => LoaderCacheEntry<Config>[]
 	setCache: (draft: Im.Draft<StoreState>, cache: LoaderCacheEntry<Config>[]) => void
@@ -173,133 +149,131 @@ export type LoaderManagerContext<
  * Dispatches loader lifecycle events when match state changes.
  * Handles loading, unloading, and lifecycle hooks for loaders.
  */
-export function dispatchLoaderEvents<
-	Config extends LoaderConfig,
-	StoreState,
-	MatchState,
->(
+export function dispatchLoaderEvents<Config extends LoaderConfig, StoreState, MatchState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	updated: MatchState | null,
 	prev: MatchState | null,
 	preloading: boolean,
 ) {
-	ctx.set(Im.produce<StoreState>(draft => {
-		const loaderCache = ctx.getCache(draft)
-		if (updated == prev) return
-		for (const config of ctx.configs) {
-			const cacheKey = updated ? config.match(updated) : undefined
-			const prevCacheKey = prev ? config.match(prev) : undefined
-			if (Obj.deepEqual(cacheKey, prevCacheKey)) continue
-			if (!cacheKey) {
-				if (!prevCacheKey || preloading) continue
-				for (const entry of loaderCache) {
-					if (!entry.active || !Obj.deepEqual(prevCacheKey, entry.key)) continue
-					if (!loaderCache.includes(entry)) return
-					if (config.unloadOnLeave) {
-						unloadLoaderEntry(ctx, config, prevCacheKey, draft)
-					} else {
-						entry.unloadSub = scheduleUnloadLoaderEntry(ctx, config, prevCacheKey)
+	ctx.set(
+		Im.produce<StoreState>((draft) => {
+			const loaderCache = ctx.getCache(draft)
+			if (updated == prev) return
+			for (const config of ctx.configs) {
+				const cacheKey = updated ? config.match(updated) : undefined
+				const prevCacheKey = prev ? config.match(prev) : undefined
+				if (Obj.deepEqual(cacheKey, prevCacheKey)) continue
+				if (!cacheKey) {
+					if (!prevCacheKey || preloading) continue
+					for (const entry of loaderCache) {
+						if (!entry.active || !Obj.deepEqual(prevCacheKey, entry.key)) continue
+						if (!loaderCache.includes(entry)) return
+						if (config.unloadOnLeave) {
+							unloadLoaderEntry(ctx, config, prevCacheKey, draft)
+						} else {
+							entry.unloadSub = scheduleUnloadLoaderEntry(ctx, config, prevCacheKey)
+						}
+						if (config.onLeave) {
+							entry.active = false
+							void config.onLeave({
+								key: prevCacheKey,
+								data: Im.current(entry.data!) as LoaderData<typeof config>,
+								draft,
+							})
+						}
 					}
-					if (config.onLeave) {
-						entry.active = false
-						void config.onLeave({
-							key: prevCacheKey,
-							data: Im.current(entry.data!) as LoaderData<typeof config>,
-							draft,
+					continue
+				}
+				const existingEntry = loaderCache.find((e) => Obj.deepEqual(e.key, cacheKey))
+				let cacheEntry: LoaderCacheEntry<typeof config>
+				let isNewAsyncEntry = false
+				if (!existingEntry) {
+					cacheEntry = { name: config.name, key: cacheKey, active: undefined!, data: undefined }
+					const args = { key: cacheKey, preload: preloading, state: Im.current(draft) as StoreState }
+					if (hasSyncLoader(config)) {
+						const data = config.load(args)
+						cacheEntry.data = data
+					} else if (hasAsyncLoader(config)) {
+						const controller = new AbortController()
+						cacheEntry.loadAbortController = controller
+						isNewAsyncEntry = true
+						startAsyncLoad(
+							ctx,
+							config,
+							cacheKey,
+							Im.current(draft) as StoreState,
+							preloading,
+							controller,
+							!preloading
+								? (data, draft) => {
+										const cache = ctx.getCache(draft)
+										const entry = cache.find((e) => Obj.deepEqual(e.key, cacheKey))
+										if (entry) {
+											entry.active = true
+											entry.unloadSub?.unsubscribe()
+											delete entry.unloadSub
+										}
+										void config.onEnter?.({ key: cacheKey, data, draft })
+									}
+								: undefined,
+						)
+					}
+
+					loaderCache.push(cacheEntry)
+				} else {
+					cacheEntry = existingEntry as LoaderCacheEntry<typeof config>
+				}
+				if (preloading) {
+					if (cacheEntry.active) continue
+					cacheEntry.active = false
+					cacheEntry.unloadSub?.unsubscribe()
+					cacheEntry.unloadSub = scheduleUnloadLoaderEntry(ctx, config as any, cacheKey as any)
+				} else {
+					if (cacheEntry.data) {
+						cacheEntry.active = true
+						cacheEntry.unloadSub?.unsubscribe()
+						delete cacheEntry.unloadSub
+						void config.onEnter?.({ key: cacheKey, data: cacheEntry.data, draft: draft })
+					} else if (!isNewAsyncEntry && !cacheEntry.data && cacheEntry.loadAbortController) {
+						// Existing entry with an in-flight async load (e.g. from preload).
+						// Restart the load with an onComplete callback so onEnter fires.
+						const existingController = cacheEntry.loadAbortController
+						const controller = new AbortController()
+						cacheEntry.loadAbortController = controller
+						existingController.abort('replaced')
+						startAsyncLoad(ctx, config as any, cacheKey, Im.current(draft) as StoreState, false, controller, (data, draft) => {
+							const cache = ctx.getCache(draft)
+							const entry = cache.find((e) => Obj.deepEqual(e.key, cacheKey))
+							if (entry) {
+								entry.active = true
+								entry.unloadSub?.unsubscribe()
+								delete entry.unloadSub
+							}
+							void config.onEnter?.({ key: cacheKey, data, draft })
 						})
 					}
 				}
-				continue
 			}
-			const existingEntry = loaderCache.find(e => Obj.deepEqual(e.key, cacheKey))
-			let cacheEntry: LoaderCacheEntry<typeof config>
-			let isNewAsyncEntry = false
-			if (!existingEntry) {
-				cacheEntry = { name: config.name, key: cacheKey, active: undefined!, data: undefined }
-				const args = { key: cacheKey, preload: preloading, state: Im.current(draft) as StoreState }
-				if (hasSyncLoader(config)) {
-					const data = config.load(args)
-					cacheEntry.data = data
-				} else if (hasAsyncLoader(config)) {
-					const controller = new AbortController()
-					cacheEntry.loadAbortController = controller
-					isNewAsyncEntry = true
-					startAsyncLoad(
-						ctx,
-						config,
-						cacheKey,
-						Im.current(draft) as StoreState,
-						preloading,
-						controller,
-						!preloading
-							? (data, draft) => {
-								const cache = ctx.getCache(draft)
-								const entry = cache.find(e => Obj.deepEqual(e.key, cacheKey))
-								if (entry) {
-									entry.active = true
-									entry.unloadSub?.unsubscribe()
-									delete entry.unloadSub
-								}
-								void config.onEnter?.({ key: cacheKey, data, draft })
-							}
-							: undefined,
-					)
-				}
-
-				loaderCache.push(cacheEntry)
-			} else {
-				cacheEntry = existingEntry as LoaderCacheEntry<typeof config>
-			}
-			if (preloading) {
-				if (cacheEntry.active) continue
-				cacheEntry.active = false
-				cacheEntry.unloadSub?.unsubscribe()
-				cacheEntry.unloadSub = scheduleUnloadLoaderEntry(ctx, config as any, cacheKey as any)
-			} else {
-				if (cacheEntry.data) {
-					cacheEntry.active = true
-					cacheEntry.unloadSub?.unsubscribe()
-					delete cacheEntry.unloadSub
-					void config.onEnter?.({ key: cacheKey, data: cacheEntry.data, draft: draft })
-				} else if (!isNewAsyncEntry && !cacheEntry.data && cacheEntry.loadAbortController) {
-					// Existing entry with an in-flight async load (e.g. from preload).
-					// Restart the load with an onComplete callback so onEnter fires.
-					const existingController = cacheEntry.loadAbortController
-					const controller = new AbortController()
-					cacheEntry.loadAbortController = controller
-					existingController.abort('replaced')
-					startAsyncLoad(ctx, config as any, cacheKey, Im.current(draft) as StoreState, false, controller, (data, draft) => {
-						const cache = ctx.getCache(draft)
-						const entry = cache.find(e => Obj.deepEqual(e.key, cacheKey))
-						if (entry) {
-							entry.active = true
-							entry.unloadSub?.unsubscribe()
-							delete entry.unloadSub
-						}
-						void config.onEnter?.({ key: cacheKey, data, draft })
-					})
-				}
-			}
-		}
-	}))
+		}),
+	)
 }
 
 /**
  * Unloads a loader entry from the cache, calling onUnload if defined.
  */
-export function unloadLoaderEntry<
-	Config extends LoaderConfig,
-	StoreState,
->(
+export function unloadLoaderEntry<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
 	draft: Im.Draft<StoreState>,
 ) {
 	const loaderCache = ctx.getCache(draft)
-	const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, key))
+	const cacheEntry = loaderCache.find((e) => Obj.deepEqual(e.key, key))
 	if (!cacheEntry) return
-	ctx.setCache(draft, loaderCache.filter(e => !Obj.deepEqual(e.key, key)))
+	ctx.setCache(
+		draft,
+		loaderCache.filter((e) => !Obj.deepEqual(e.key, key)),
+	)
 	if (config.onUnload) {
 		const args = { key, data: Im.current(cacheEntry.data), state: draft }
 		void config.onUnload(args)
@@ -311,21 +285,22 @@ export function unloadLoaderEntry<
  * Schedules an unload after the configured staleTime.
  * Returns a subscription that can be used to cancel the scheduled unload.
  */
-function scheduleUnloadLoaderEntry<
-	Config extends LoaderConfig,
-	StoreState,
->(
+function scheduleUnloadLoaderEntry<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
 ): Rx.Subscription | undefined {
 	if (config.staleTime === undefined) return
 
-	return Rx.of(1).pipe(Rx.delay(config.staleTime)).subscribe(() => {
-		ctx.set(Im.produce<StoreState>(draft => {
-			unloadLoaderEntry(ctx, config, key, draft)
-		}))
-	})
+	return Rx.of(1)
+		.pipe(Rx.delay(config.staleTime))
+		.subscribe(() => {
+			ctx.set(
+				Im.produce<StoreState>((draft) => {
+					unloadLoaderEntry(ctx, config, key, draft)
+				}),
+			)
+		})
 }
 
 // -------- Cache Entry Upsert --------
@@ -333,10 +308,7 @@ function scheduleUnloadLoaderEntry<
 /**
  * Starts an async load operation and sets up a subscription to update the cache when complete.
  */
-function startAsyncLoad<
-	Config extends LoaderConfig,
-	StoreState,
->(
+function startAsyncLoad<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Extract<Config, { loadAsync: (...args: any[]) => any }>,
 	key: LoaderKey<Config>,
@@ -352,15 +324,17 @@ function startAsyncLoad<
 
 	load$.subscribe((data: LoaderData<typeof config> | undefined) => {
 		if (data === undefined) return
-		ctx.set(Im.produce<StoreState>(draft => {
-			const cache = ctx.getCache(draft)
-			const entry = cache.find(e => Obj.deepEqual(e.key, key))
-			if (entry) {
-				entry.data = data
-				delete entry.loadAbortController
-				onComplete?.(data, draft)
-			}
-		}))
+		ctx.set(
+			Im.produce<StoreState>((draft) => {
+				const cache = ctx.getCache(draft)
+				const entry = cache.find((e) => Obj.deepEqual(e.key, key))
+				if (entry) {
+					entry.data = data
+					delete entry.loadAbortController
+					onComplete?.(data, draft)
+				}
+			}),
+		)
 	})
 }
 
@@ -369,16 +343,13 @@ function startAsyncLoad<
  * If no entry with a matching key exists, the new entry is appended.
  * If an entry with a matching key exists, it is replaced in-place.
  */
-function upsertCacheEntry<
-	Config extends LoaderConfig,
-	StoreState,
->(
+function upsertCacheEntry<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	draft: Im.Draft<StoreState>,
 	entry: LoaderCacheEntry<Config>,
 ) {
 	const cache = ctx.getCache(draft)
-	const idx = cache.findIndex(e => Obj.deepEqual(e.key, entry.key))
+	const idx = cache.findIndex((e) => Obj.deepEqual(e.key, entry.key))
 	if (idx === -1) {
 		cache.push(entry)
 	} else {
@@ -394,10 +365,7 @@ function upsertCacheEntry<
  * A preloaded entry is inactive and will be scheduled for unload per the config's staleTime.
  * Invokes the loader (sync or async) internally.
  */
-export function preloadCacheEntry<
-	Config extends LoaderConfig,
-	StoreState,
->(
+export function preloadCacheEntry<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
@@ -435,10 +403,7 @@ export function preloadCacheEntry<
  * Invokes the loader (sync or async) internally.
  * Fires the config's onEnter hook when data is available.
  */
-export function loadCacheEntry<
-	Config extends LoaderConfig,
-	StoreState,
->(
+export function loadCacheEntry<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
@@ -476,17 +441,14 @@ export function loadCacheEntry<
  * If config.unloadOnLeave is true, immediately unloads the entry.
  * Otherwise, marks the entry as inactive and schedules unload based on staleTime.
  */
-export function closeCacheEntry<
-	Config extends LoaderConfig,
-	StoreState,
->(
+export function closeCacheEntry<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	config: Config,
 	key: LoaderKey<Config>,
 	draft: Im.Draft<StoreState>,
 ) {
 	const loaderCache = ctx.getCache(draft)
-	const cacheEntry = loaderCache.find(e => Obj.deepEqual(e.key, key))
+	const cacheEntry = loaderCache.find((e) => Obj.deepEqual(e.key, key))
 	if (!cacheEntry || !cacheEntry.active) return
 
 	// Call onLeave if defined
@@ -512,23 +474,22 @@ export function closeCacheEntry<
  * Checks all loader entries and unloads any that should be unloaded
  * based on their checkShouldUnload predicate.
  */
-export function checkAndUnloadStaleEntries<
-	Config extends LoaderConfig,
-	StoreState,
->(
+export function checkAndUnloadStaleEntries<Config extends LoaderConfig, StoreState>(
 	ctx: LoaderManagerContext<Config, StoreState>,
 	state: StoreState,
 ) {
 	const cache = ctx.getCache(state as Im.Draft<StoreState>)
 	for (const entry of cache) {
-		const config = ctx.configs.find(e => e.name === entry.name)
+		const config = ctx.configs.find((e) => e.name === entry.name)
 		if (!config?.checkShouldUnload) continue
 
 		const shouldUnload = config.checkShouldUnload({ key: entry.key, data: entry.data, state })
 		if (shouldUnload) {
-			ctx.set(Im.produce<StoreState>(draft => {
-				unloadLoaderEntry(ctx, config, entry.key, draft)
-			}))
+			ctx.set(
+				Im.produce<StoreState>((draft) => {
+					unloadLoaderEntry(ctx, config, entry.key, draft)
+				}),
+			)
 		}
 	}
 }

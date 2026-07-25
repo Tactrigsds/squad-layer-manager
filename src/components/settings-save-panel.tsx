@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
@@ -8,8 +11,6 @@ import * as ZusUtils from '@/lib/zustand'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // A single Save/Reset control panel shared by every editable settings section (global settings + each server + the
 // new-server form). Sections are settings-editor frame instances; the panel derives everything it shows straight from
@@ -79,11 +80,12 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 		return sectionKeys.map((key, i): SectionView => {
 			const state = states[i]
 			const gui = state.mode === 'gui'
-			const label = state.kind === 'global'
-				? 'Global Settings'
-				: state.kind === 'server'
-				? nameById.get(state.serverId!) ?? state.serverId!
-				: state.newDisplayName.trim() || 'New Server'
+			const label =
+				state.kind === 'global'
+					? 'Global Settings'
+					: state.kind === 'server'
+						? (nameById.get(state.serverId!) ?? state.serverId!)
+						: state.newDisplayName.trim() || 'New Server'
 			// a new-server section always counts as one pending change while open; once created it no longer participates
 			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
 			const deniedIds = gui
@@ -225,7 +227,9 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 			<span className="text-sm">
 				<span className="font-medium">{totalChanges}</span> {totalChanges === 1 ? 'setting' : 'settings'} changed
 			</span>
-			<Button variant="outline" size="sm" onClick={handleReset}>Reset</Button>
+			<Button variant="outline" size="sm" onClick={handleReset}>
+				Reset
+			</Button>
 			<Button size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
 				{anySaving ? 'Saving…' : 'Save'}
 			</Button>

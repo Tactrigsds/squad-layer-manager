@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { AdminReasonPicker } from '@/components/admin-reason-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -12,8 +15,6 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 function warnTargetsEqual(a: WarnChat.WarnFocusTarget, b: WarnChat.WarnFocusTarget) {
 	if (a.kind === 'player' && b.kind === 'player') return a.playerId === b.playerId
@@ -49,7 +50,7 @@ export default function WarnChatBox({
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
 	WarnChat.useWarnFocusRequest(
-		t => !!focusTarget && warnTargetsEqual(t, focusTarget),
+		(t) => !!focusTarget && warnTargetsEqual(t, focusTarget),
 		() => WarnChat.focusWhenVisible(() => textareaRef.current),
 	)
 	const username = UsersClient.useLoggedInUser()?.displayName
@@ -91,7 +92,7 @@ export default function WarnChatBox({
 
 	// orange "targeted warn" accent, matching ServerChatBox's warn-selected channel
 	const accent = 'border-orange-500/60 focus-visible:ring-orange-500/50'
-	const resolvedPlaceholder = warnDenied ? 'Missing permission' : noTargets ? 'No one to warn' : placeholder ?? 'Warn…'
+	const resolvedPlaceholder = warnDenied ? 'Missing permission' : noTargets ? 'No one to warn' : (placeholder ?? 'Warn…')
 
 	return (
 		<div className={cn('flex flex-col gap-1', className)}>
@@ -121,8 +122,8 @@ export default function WarnChatBox({
 				<Textarea
 					ref={textareaRef}
 					value={message}
-					onChange={e => setMessage(e.target.value)}
-					onKeyDown={e => {
+					onChange={(e) => setMessage(e.target.value)}
+					onKeyDown={(e) => {
 						if (e.key === 'Enter' && !e.shiftKey) {
 							e.preventDefault()
 							void send()
@@ -136,7 +137,7 @@ export default function WarnChatBox({
 				<AdminReasonPicker
 					reasons={draft.reasons}
 					preview={draft.render}
-					onPick={reason => {
+					onPick={(reason) => {
 						setMessage(draft.pick(reason))
 						textareaRef.current?.focus()
 					}}

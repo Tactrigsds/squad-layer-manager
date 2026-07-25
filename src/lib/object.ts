@@ -3,6 +3,7 @@
 import fastDeepEqual from 'fast-deep-equal/es6/index.js'
 import { current, isDraft } from 'immer'
 import jp from 'jsonpath'
+
 import { isNullOrUndef } from './type-guards'
 
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
@@ -324,8 +325,10 @@ export function isEmpty(obj: unknown): boolean {
 	return Object.keys(obj as object).length === 0
 }
 
-export type StrictUnion<A extends object, B extends object> = A | B extends object ? (keyof A & keyof B) extends never ? A | B
-	: never
+export type StrictUnion<A extends object, B extends object> = A | B extends object
+	? keyof A & keyof B extends never
+		? A | B
+		: never
 	: A | B
 
 export type OptionalKeys<T extends object, Keys extends keyof T> = Omit<T, Keys> & Partial<Pick<T, Keys>>

@@ -1,6 +1,7 @@
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 
 // A failing test is much easier to read as a trace than as a log tail, so the app under test can

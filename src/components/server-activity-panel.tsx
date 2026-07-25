@@ -1,3 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
+import * as dateFns from 'date-fns'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import EventFilterSelect from '@/components/event-filter-select'
 import ServerChatBox from '@/components/server-chat-box'
 import { ServerEvent } from '@/components/server-event'
@@ -5,12 +10,10 @@ import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useTailingScroll } from '@/hooks/use-tailing-scroll'
-
-import { cn } from '@/lib/utils.ts'
-
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import { useTailingScroll } from '@/hooks/use-tailing-scroll'
+import { cn } from '@/lib/utils.ts'
 import * as ZusUtils from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
@@ -20,33 +23,25 @@ import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import { useQuery } from '@tanstack/react-query'
-import * as dateFns from 'date-fns'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { ServerUnreachable } from './server-offline-display.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
-function ServerChatEvents(
-	props: {
-		className?: string
-		filteredEvents: CHAT.EventEnriched[] | null
-		connectionError?: CHAT.ConnectionErrorEvent | null
-		synced: boolean
-		isLoadingHistorical: boolean
-		stores: SquadServerFrame.KeyProp
-	},
-) {
-	const selectedMatchOrdinal = ZusUtils.useStore(
-		props.stores.squadServer!,
-		s => s.chat.selectedMatchOrdinal,
-	)
+function ServerChatEvents(props: {
+	className?: string
+	filteredEvents: CHAT.EventEnriched[] | null
+	connectionError?: CHAT.ConnectionErrorEvent | null
+	synced: boolean
+	isLoadingHistorical: boolean
+	stores: SquadServerFrame.KeyProp
+}) {
+	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const serverId = props.stores.squadServer!.serverId
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const displayMatch = React.useMemo(() => {
 		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
 	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
 	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
@@ -129,13 +124,17 @@ function ServerChatEvents(
 							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
 						</div>
 					)}
-					{props.filteredEvents
-						&& props.filteredEvents.map((event: CHAT.EventEnriched) => <ServerEvent key={event.id} event={event} stores={props.stores} />)}
+					{props.filteredEvents &&
+						props.filteredEvents.map((event: CHAT.EventEnriched) => (
+							<ServerEvent key={event.id} event={event} stores={props.stores} />
+						))}
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
-							{connectionError.code === 'CONNECTION_LOST'
-								? <Icons.Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-								: <Icons.WifiOff className="h-4 w-4 flex-shrink-0" />}
+							{connectionError.code === 'CONNECTION_LOST' ? (
+								<Icons.Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+							) : (
+								<Icons.WifiOff className="h-4 w-4 flex-shrink-0" />
+							)}
 							<span className="text-xs">
 								{connectionError.code === 'CONNECTION_LOST'
 									? 'Connection lost - attempting to reconnect...'
@@ -166,32 +165,30 @@ function ServerChatEvents(
 function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer!.serverId
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes(serverId)
-	const playerCount = ZusUtils.useStore(
-		props.stores.squadServer!,
-		s => (s.chat.chatState.synced && !s.chat.chatState.connectionError) ? s.chat.chatState.interpolatedState.players.length : null,
+	const playerCount = ZusUtils.useStore(props.stores.squadServer!, (s) =>
+		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.length : null,
 	)
 	const tickRate = SquadServerClient.useTickRate(serverId)
-	const tickRateThresholds = ZusUtils.useStore(
-		SettingsClient.PublicSettingsStore,
-		s => s?.tickRateThresholds,
-	)
+	const tickRateThresholds = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.tickRateThresholds)
 
 	if (serverInfoStatusRes.code !== 'ok') return <ServerUnreachable statusRes={serverInfoStatusRes} />
 
 	const serverInfo = serverInfoStatusRes.data
 	// flag degraded tick rate with color, using the admin-configured thresholds
-	const tickRateColor = tickRate == null || !tickRateThresholds
-		? undefined
-		: tickRate >= tickRateThresholds.good
-		? 'text-green-500'
-		: tickRate >= tickRateThresholds.warning
-		? 'text-yellow-500'
-		: 'text-red-500'
+	const tickRateColor =
+		tickRate == null || !tickRateThresholds
+			? undefined
+			: tickRate >= tickRateThresholds.good
+				? 'text-green-500'
+				: tickRate >= tickRateThresholds.warning
+					? 'text-yellow-500'
+					: 'text-red-500'
 
 	return (
 		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm tabular-nums">
 			<span>
-				{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in queue
+				{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in
+				queue
 			</span>
 			{tickRate != null && (
 				<span title="Server tick rate">
@@ -204,12 +201,9 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 
 export default function ServerActivityPanel(props: { stores: SquadServerFrame.KeyProp }) {
 	const stores = props.stores
-	const synced = ZusUtils.useStore(stores.squadServer!, s => s.chat.chatState.synced)
-	const connectionError = ZusUtils.useStore(stores.squadServer!, s => s.chat.chatState.connectionError)
-	const selectedMatchOrdinal = ZusUtils.useStore(
-		stores.squadServer!,
-		s => s.chat.selectedMatchOrdinal,
-	)
+	const synced = ZusUtils.useStore(stores.squadServer!, (s) => s.chat.chatState.synced)
+	const connectionError = ZusUtils.useStore(stores.squadServer!, (s) => s.chat.chatState.connectionError)
+	const selectedMatchOrdinal = ZusUtils.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const serverId = stores.squadServer!.serverId
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
@@ -241,34 +235,28 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	// Determine which match to display - either selected or current
 	const displayMatch = React.useMemo(() => {
 		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
 	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
 	// Event filtering logic
-	const prevState = React.useRef<
-		| {
-			eventGeneration: number
-			filteredEvents: CHAT.EventEnriched[]
-			eventFilterState: CHAT.SecondaryFilterState
-			selectedOnly: boolean
-			selectedPlayerIds: ReadonlySet<SM.PlayerId>
-			matchId: number
-		}
-		| null
-	>(null)
-	const prevHistoricalState = React.useRef<
-		| {
-			selectedMatchOrdinal: number
-			filteredEvents: CHAT.EventEnriched[]
-			eventFilterState: CHAT.SecondaryFilterState
-			selectedOnly: boolean
-			selectedPlayerIds: ReadonlySet<SM.PlayerId>
-			eventsVersion: any
-		}
-		| null
-	>(null)
+	const prevState = React.useRef<{
+		eventGeneration: number
+		filteredEvents: CHAT.EventEnriched[]
+		eventFilterState: CHAT.SecondaryFilterState
+		selectedOnly: boolean
+		selectedPlayerIds: ReadonlySet<SM.PlayerId>
+		matchId: number
+	} | null>(null)
+	const prevHistoricalState = React.useRef<{
+		selectedMatchOrdinal: number
+		filteredEvents: CHAT.EventEnriched[]
+		eventFilterState: CHAT.SecondaryFilterState
+		selectedOnly: boolean
+		selectedPlayerIds: ReadonlySet<SM.PlayerId>
+		eventsVersion: any
+	} | null>(null)
 
-	const eventFilterState = ZusUtils.useStore(stores.squadServer!, s => s.chat.secondaryFilterState)
+	const eventFilterState = ZusUtils.useStore(stores.squadServer!, (s) => s.chat.secondaryFilterState)
 	const selectedOnly = ZusUtils.useStore(stores.squadServer!, ChatPrt.Sel.selectedOnly)
 	const selectedPlayerIds = ZusUtils.useStore(stores.squadServer!, SquadServerFrame.Sel.settledSelectedPlayerIds)
 
@@ -280,17 +268,17 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			// Cache check for historical events. the selection only enters the filter when selectedOnly is set, so
 			// selection churn doesn't invalidate the cache otherwise
 			if (
-				prevHistoricalState.current?.selectedMatchOrdinal === selectedMatchOrdinal
-				&& prevHistoricalState.current?.eventFilterState === eventFilterState
-				&& prevHistoricalState.current?.selectedOnly === selectedOnly
-				&& prevHistoricalState.current?.eventsVersion === historicalEventsQuery.data
-				&& (!selectedOnly || prevHistoricalState.current.selectedPlayerIds === selectedPlayerIds)
+				prevHistoricalState.current?.selectedMatchOrdinal === selectedMatchOrdinal &&
+				prevHistoricalState.current?.eventFilterState === eventFilterState &&
+				prevHistoricalState.current?.selectedOnly === selectedOnly &&
+				prevHistoricalState.current?.eventsVersion === historicalEventsQuery.data &&
+				(!selectedOnly || prevHistoricalState.current.selectedPlayerIds === selectedPlayerIds)
 			) {
 				return prevHistoricalState.current.filteredEvents
 			}
 
 			const filtered = historicalEventsQuery.data.events.filter((event: CHAT.EventEnriched) =>
-				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly })
+				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly }),
 			)
 
 			prevHistoricalState.current = {
@@ -310,43 +298,46 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 
 	const liveFilteredEvents = ZusUtils.useStore(
 		stores.squadServer!,
-		React.useCallback((s: SquadServerFrame.State) => {
-			if (selectedMatchOrdinal !== null) return null // Using historical events instead
-			if (!s.chat.chatState.synced || displayMatch?.historyEntryId === undefined) return null
+		React.useCallback(
+			(s: SquadServerFrame.State) => {
+				if (selectedMatchOrdinal !== null) return null // Using historical events instead
+				if (!s.chat.chatState.synced || displayMatch?.historyEntryId === undefined) return null
 
-			const eventFilterState = s.chat.secondaryFilterState
-			const selectedOnly = s.chat.selectedOnly
-			const selectedPlayerIds = SquadServerFrame.Sel.settledSelectedPlayerIds(s)
+				const eventFilterState = s.chat.secondaryFilterState
+				const selectedOnly = s.chat.selectedOnly
+				const selectedPlayerIds = SquadServerFrame.Sel.settledSelectedPlayerIds(s)
 
-			// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
-			if (
-				displayMatch?.historyEntryId === prevState.current?.matchId
-				&& s.chat.eventGeneration === prevState.current?.eventGeneration
-				&& eventFilterState === prevState.current.eventFilterState
-				&& selectedOnly === prevState.current.selectedOnly
-				&& (!selectedOnly || prevState.current.selectedPlayerIds === selectedPlayerIds)
-			) {
-				return prevState.current?.filteredEvents
-			}
-
-			const eventBuffer = s.chat.chatState.eventBuffer
-			const filtered: CHAT.EventEnriched[] = []
-			for (const event of eventBuffer) {
-				if (event.matchId !== displayMatch?.historyEntryId) continue
-				if (CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly })) {
-					filtered.push(event)
+				// we have all of this ceremony to prevent having to reallocate the event buffer array every time it's modified. maybe a bit excessive :shrug:
+				if (
+					displayMatch?.historyEntryId === prevState.current?.matchId &&
+					s.chat.eventGeneration === prevState.current?.eventGeneration &&
+					eventFilterState === prevState.current.eventFilterState &&
+					selectedOnly === prevState.current.selectedOnly &&
+					(!selectedOnly || prevState.current.selectedPlayerIds === selectedPlayerIds)
+				) {
+					return prevState.current?.filteredEvents
 				}
-			}
-			prevState.current = {
-				eventGeneration: s.chat.eventGeneration,
-				filteredEvents: filtered,
-				eventFilterState,
-				selectedOnly,
-				selectedPlayerIds,
-				matchId: displayMatch?.historyEntryId,
-			}
-			return filtered
-		}, [displayMatch?.historyEntryId, selectedMatchOrdinal]),
+
+				const eventBuffer = s.chat.chatState.eventBuffer
+				const filtered: CHAT.EventEnriched[] = []
+				for (const event of eventBuffer) {
+					if (event.matchId !== displayMatch?.historyEntryId) continue
+					if (CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds, selectedOnly })) {
+						filtered.push(event)
+					}
+				}
+				prevState.current = {
+					eventGeneration: s.chat.eventGeneration,
+					filteredEvents: filtered,
+					eventFilterState,
+					selectedOnly,
+					selectedPlayerIds,
+					matchId: displayMatch?.historyEntryId,
+				}
+				return filtered
+			},
+			[displayMatch?.historyEntryId, selectedMatchOrdinal],
+		),
 	)
 
 	const finalFilteredEvents = selectedMatchOrdinal !== null ? filteredEvents : liveFilteredEvents
@@ -410,14 +401,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handleNext}
-							disabled={!canGoNext}
-							className="h-8 w-8 p-0"
-							title="Next match"
-						>
+						<Button variant="ghost" size="sm" onClick={handleNext} disabled={!canGoNext} className="h-8 w-8 p-0" title="Next match">
 							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
 						{selectedMatchOrdinal !== null && (

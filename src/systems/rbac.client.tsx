@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Zus from 'zustand'
+
 import * as Obj from '@/lib/object'
 import { useStable } from '@/lib/react'
 import * as RSel from '@/lib/reselect'
@@ -7,8 +10,6 @@ import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Zus from 'zustand'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
@@ -23,7 +24,7 @@ export function usePermsCheck<T extends RBAC.PermissionType>(
 
 // for the affordances rendered where no server is in scope; see RBAC.hasPermOnAnyServer for why that is acceptable
 export function useAnyServerPermsCheck(type: RBAC.ServerPermissionType): RBAC.PermissionDeniedResponse | null {
-	return usePermsCheck((perms) => RBAC.hasPermOnAnyServer(perms, type) ? undefined : type)
+	return usePermsCheck((perms) => (RBAC.hasPermOnAnyServer(perms, type) ? undefined : type))
 }
 
 // the logged-in user's effective (non-negated) permissions, for the aggregate settings-access checks below
@@ -87,26 +88,26 @@ export const RbacStore = Zus.createStore<RbacStore>((set, get) => ({
 	disabledRoles: [],
 	disableRole: (roleToDisable) => {
 		const disabledRoles = get().disabledRoles
-		if (disabledRoles.some(r => Obj.deepEqual(roleToDisable, r))) return
+		if (disabledRoles.some((r) => Obj.deepEqual(roleToDisable, r))) return
 		set({ disabledRoles: [...disabledRoles, roleToDisable] })
 	},
-	enableRole: (role) => set({ disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, role)) }),
+	enableRole: (role) => set({ disabledRoles: get().disabledRoles.filter((r) => !Obj.deepEqual(r, role)) }),
 
 	addedRoles: [],
 	addRole: (added) => {
 		const addedRoles = get().addedRoles
-		if (addedRoles.some(a => Obj.deepEqual(a.role, added.role))) return
-		set({ addedRoles: [...addedRoles, added], disabledRoles: get().disabledRoles.filter(r => !Obj.deepEqual(r, added.role)) })
+		if (addedRoles.some((a) => Obj.deepEqual(a.role, added.role))) return
+		set({ addedRoles: [...addedRoles, added], disabledRoles: get().disabledRoles.filter((r) => !Obj.deepEqual(r, added.role)) })
 	},
-	removeRole: (role) => set({ addedRoles: get().addedRoles.filter(a => !Obj.deepEqual(a.role, role)) }),
+	removeRole: (role) => set({ addedRoles: get().addedRoles.filter((a) => !Obj.deepEqual(a.role, role)) }),
 
 	disabledPerms: [],
 	disablePerm: (perm) => {
 		const disabledPerms = get().disabledPerms
-		if (disabledPerms.some(p => RBAC.isSamePerm(p, perm))) return
+		if (disabledPerms.some((p) => RBAC.isSamePerm(p, perm))) return
 		set({ disabledPerms: [...disabledPerms, Obj.selectProps(perm, ['type', 'scope', 'args']) as RBAC.Permission] })
 	},
-	enablePerm: (perm) => set({ disabledPerms: get().disabledPerms.filter(p => !RBAC.isSamePerm(p, perm)) }),
+	enablePerm: (perm) => set({ disabledPerms: get().disabledPerms.filter((p) => !RBAC.isSamePerm(p, perm)) }),
 }))
 
 export namespace Sel {
@@ -119,9 +120,8 @@ export namespace Sel {
 			RSel.createDeepSelector([loggedInUser], (user) => RBAC.tryDenyPermissionsForRbacUser(user, req)),
 	)
 
-	export const loggedInUserPerms = RSel.createDeepSelector(
-		[loggedInUser],
-		(user): RBAC.Permission[] => RBAC.fromTracedPermissions(user.perms),
+	export const loggedInUserPerms = RSel.createDeepSelector([loggedInUser], (user): RBAC.Permission[] =>
+		RBAC.fromTracedPermissions(user.perms),
 	)
 
 	export const globalSettingsAccess = RSel.createDeepSelector(
@@ -133,10 +133,13 @@ export namespace Sel {
 	)
 
 	export const serverSettingsAccess = RSel.memoizeFactory((serverId: string) =>
-		RSel.createDeepSelector([loggedInUserPerms], (perms): ServerSettingsAccess => ({
-			canRead: RBAC.canReadServerSettings(perms, serverId),
-			write: RBAC.serverSettingsWriteAccess(perms, serverId),
-			sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
-		}))
+		RSel.createDeepSelector(
+			[loggedInUserPerms],
+			(perms): ServerSettingsAccess => ({
+				canRead: RBAC.canReadServerSettings(perms, serverId),
+				write: RBAC.serverSettingsWriteAccess(perms, serverId),
+				sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
+			}),
+		),
 	)
 }

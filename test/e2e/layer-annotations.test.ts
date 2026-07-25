@@ -1,4 +1,5 @@
 import * as LTag from '@/models/layer-tags.models'
+
 import { createAppFixture, type TestUser } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 import { expect, test } from './fixtures'
@@ -86,17 +87,20 @@ test.describe('layer tags and notes', () => {
 			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
 			await expect(page.getByText('Repeats Detected')).toBeVisible()
 			await page.getByRole('button', { name: /^(Save Anyway|Force Save)$/ }).click()
-			await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
-					const list = JSON.parse(row.layerQueue).json as { tags?: string[]; notes?: { text: string }[] }[]
-					const head = list[0]
-					return head?.tags?.length === 1 && head.tags[0] === META.id && head.notes?.[0]?.text === ADMIN_NOTE
-				} finally {
-					db.close()
-				}
-			}, { label: 'the tag and note saved onto the head item' })
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { tags?: string[]; notes?: { text: string }[] }[]
+						const head = list[0]
+						return head?.tags?.length === 1 && head.tags[0] === META.id && head.notes?.[0]?.text === ADMIN_NOTE
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'the tag and note saved onto the head item' },
+			)
 
 			// -------- a second editor --------
 			await pageB.goto(app.loginUrl(WRITER))
@@ -123,8 +127,9 @@ test.describe('layer tags and notes', () => {
 			await itemB.getByRole('button', { name: /View 2 notes/ }).click()
 			const ownNoteCard = pageB.getByRole('group', { name: 'Note' }).filter({ hasText: WRITER_NOTE })
 			await expect(ownNoteCard.getByRole('button', { name: 'Edit' })).toBeVisible()
-			await expect(pageB.getByRole('group', { name: 'Note' }).filter({ hasText: ADMIN_NOTE }).getByRole('button', { name: 'Edit' }))
-				.toHaveCount(0)
+			await expect(
+				pageB.getByRole('group', { name: 'Note' }).filter({ hasText: ADMIN_NOTE }).getByRole('button', { name: 'Edit' }),
+			).toHaveCount(0)
 		} finally {
 			await second.close()
 			await app.dispose()

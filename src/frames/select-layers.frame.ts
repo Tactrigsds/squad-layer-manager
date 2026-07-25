@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
@@ -16,10 +18,8 @@ import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
-
 import * as ConfigClient from '@/systems/config.client'
 
-import * as Rx from 'rxjs'
 import { frameManager } from './frame-manager'
 
 export type SelectType = 'generic' | 'indexed'
@@ -54,10 +54,10 @@ export function createInput(
 			pageSize: 16,
 			...(opts.initialEditedLayerId
 				? {
-					selected: [opts.initialEditedLayerId],
-					maxSelected: opts.maxSelected ?? 1,
-					minSelected: opts.minSelected ?? 1,
-				}
+						selected: [opts.initialEditedLayerId],
+						maxSelected: opts.maxSelected ?? 1,
+						minSelected: opts.minSelected ?? 1,
+					}
 				: {}),
 		}),
 		...base,
@@ -80,15 +80,14 @@ type Primary = {
 	input: Input
 }
 
-type State =
-	& Primary
-	& AppliedFiltersPrt.Store
-	& PoolCheckboxesPrt.Store
-	& LayerFilterMenuPrt.Store
-	& LayerTablePrt.Store
-	& LayerTablePrt.Predicates
+type State = Primary &
+	AppliedFiltersPrt.Store &
+	PoolCheckboxesPrt.Store &
+	LayerFilterMenuPrt.Store &
+	LayerTablePrt.Store &
+	LayerTablePrt.Predicates &
 	//  setup for this is handled by the layer table partial
-	& LayerFilterMenuPrt.Predicates
+	LayerFilterMenuPrt.Predicates
 
 export type Types = {
 	name: 'selectLayers'
@@ -104,38 +103,32 @@ const setup: Frame['setup'] = (args) => {
 	const input = args.input
 	const colConfig = input.colConfig
 
-	set(
-		{
-			cursor: args.input.cursor,
-			input,
-			initialEditedLayerId: args.input.initialEditedLayerId,
-		} satisfies Primary,
-	)
+	set({
+		cursor: args.input.cursor,
+		input,
+		initialEditedLayerId: args.input.initialEditedLayerId,
+	} satisfies Primary)
 
 	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
 	// this its predicate is unset and pool filters never apply in the select-layers dialog
 	set({ squadServer: input.squadServer } satisfies AppliedFiltersPrt.Predicates)
 
-	set(
-		{
-			baseQueryInput: undefined,
-			onLayerFocused: (layerId) => {
-				const defaultFields = getFilterMenuDefaultFields(layerId, colConfig)
-				const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, colConfig)
-				LayerFilterMenuPrt.Actions.setMenuItems({ filterMenu: args.key }, itemState)
-			},
-		} satisfies LayerTablePrt.Predicates,
-	)
+	set({
+		baseQueryInput: undefined,
+		onLayerFocused: (layerId) => {
+			const defaultFields = getFilterMenuDefaultFields(layerId, colConfig)
+			const itemState = LayerFilterMenuPrt.getDefaultFilterMenuItemState(defaultFields, colConfig)
+			LayerFilterMenuPrt.Actions.setMenuItems({ filterMenu: args.key }, itemState)
+		},
+	} satisfies LayerTablePrt.Predicates)
 
-	set(
-		{
-			resetAllConstraints() {
-				LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
-				PoolCheckboxesPrt.Actions.setCheckbox({ poolCheckboxes: args.key }, 'dnr', 'disabled')
-				AppliedFiltersPrt.Actions.disableAllAppliedFilters({ appliedFilters: args.key })
-			},
-		} satisfies LayerFilterMenuPrt.Predicates,
-	)
+	set({
+		resetAllConstraints() {
+			LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
+			PoolCheckboxesPrt.Actions.setCheckbox({ poolCheckboxes: args.key }, 'dnr', 'disabled')
+			AppliedFiltersPrt.Actions.disableAllAppliedFilters({ appliedFilters: args.key })
+		},
+	} satisfies LayerFilterMenuPrt.Predicates)
 
 	AppliedFiltersPrt.initAppliedFiltersStore({
 		...args,
@@ -146,10 +139,10 @@ const setup: Frame['setup'] = (args) => {
 		...args,
 		input: input.startingMenuItems
 			? {
-				colConfig: input.colConfig,
-				items: input.startingMenuItems,
-				emptyItems: LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, input.colConfig),
-			}
+					colConfig: input.colConfig,
+					items: input.startingMenuItems,
+					emptyItems: LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, input.colConfig),
+				}
 			: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
 	})
 	LayerTablePrt.initLayerTable(args)
@@ -157,20 +150,16 @@ const setup: Frame['setup'] = (args) => {
 	let baseQueryInput$: Rx.Observable<LQY.BaseQueryInput>
 
 	if (input.squadServer) {
-		baseQueryInput$ = Rx.combineLatest([
-			args.update$,
-			ZusUtils.toObservable(input.squadServer, true),
-		]).pipe(Rx.map(([[state], [squadServer]]) => {
-			return Sel.baseQueryInput(state, squadServer)
-		}))
+		baseQueryInput$ = Rx.combineLatest([args.update$, ZusUtils.toObservable(input.squadServer, true)]).pipe(
+			Rx.map(([[state], [squadServer]]) => {
+				return Sel.baseQueryInput(state, squadServer)
+			}),
+		)
 	} else {
 		baseQueryInput$ = args.update$.pipe(Rx.map(([state]) => Sel.baseQueryInput(state, undefined)))
 	}
 	args.sub.add(
-		baseQueryInput$.pipe(
-			Rx.retry({ count: Infinity, delay: 1000 }),
-			distinctDeepEquals(),
-		).subscribe((baseQueryInput) => {
+		baseQueryInput$.pipe(Rx.retry({ count: Infinity, delay: 1000 }), distinctDeepEquals()).subscribe((baseQueryInput) => {
 			set({ baseQueryInput })
 		}),
 	)
@@ -215,10 +204,7 @@ export namespace Sel {
 		return state.cursor !== undefined
 	}
 
-	export function preMenuFilteredQueryInput(
-		state: State,
-		squadServer?: SquadServerFrame.State,
-	): LQY.BaseQueryInput {
+	export function preMenuFilteredQueryInput(state: State, squadServer?: SquadServerFrame.State): LQY.BaseQueryInput {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 
 		// should generally not do this, but we're going to move this into frames anyway and it's low impact
@@ -229,10 +215,7 @@ export namespace Sel {
 		return {
 			cursor: state.cursor,
 			action: state.initialEditedLayerId ? 'edit' : 'add',
-			constraints: [
-				...appliedConstraints,
-				...repeatRuleConstraints,
-			],
+			constraints: [...appliedConstraints, ...repeatRuleConstraints],
 			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 	}
@@ -252,10 +235,7 @@ export namespace Actions {
 
 // a backburner template's constraints as the menu's per-column comparisons: single values become `eq`, multiple
 // (e.g. a merged request's `Map in [Chora, Fallujah]`) become `in`. The team-column split is done upstream.
-function menuItemsFromTemplate(
-	filter: F.FilterNode,
-	colConfig: LQY.EffectiveColumnAndTableConfig,
-): Record<string, F.EditableCompNode> {
+function menuItemsFromTemplate(filter: F.FilterNode, colConfig: LQY.EffectiveColumnAndTableConfig): Record<string, F.EditableCompNode> {
 	const items = LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, colConfig)
 	for (const [field, values] of Obj.objEntries(BB.templateToMenuFieldValues(filter))) {
 		if (!items[field]) continue
@@ -276,8 +256,9 @@ function getFilterMenuDefaultFields(editedLayerId: L.LayerId | undefined, colCon
 				if (value === undefined) continue
 				const colDef = LC.getColumnDef(key)
 				if (
-					colDef?.type === 'string' && colDef.enumMapping
-					&& !LC.isEnumeratedValue(key, value as string, { ...CS.init(), effectiveColsConfig: colConfig })
+					colDef?.type === 'string' &&
+					colDef.enumMapping &&
+					!LC.isEnumeratedValue(key, value as string, { ...CS.init(), effectiveColsConfig: colConfig })
 				) {
 					delete defaults[key]
 				}

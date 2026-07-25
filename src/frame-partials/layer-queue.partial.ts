@@ -1,21 +1,21 @@
+import * as Rx from 'rxjs'
+import type * as Zus from 'zustand'
+
 import type * as FRM from '@/lib/frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
+import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
-
-import { toast } from '@/lib/toast'
 import * as SLL from '@/models/shared-layer-list'
 import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Rx from 'rxjs'
-import type * as Zus from 'zustand'
 
 export type Store = {
 	queue: State
@@ -115,41 +115,39 @@ export function initLayerQueue(args: Args) {
 	}
 	const initRbSession = ODSM.Client.initSession<SLL.Operation, SLL.State>(SLL.createNewState())
 
-	set(
-		{
-			serverId,
-			rbSession: initRbSession,
+	set({
+		serverId,
+		rbSession: initRbSession,
 
-			syncedOp$: new Rx.Subject(),
-			presenceEvent$,
+		syncedOp$: new Rx.Subject(),
+		presenceEvent$,
 
-			// derived
-			layerList: initRbSession.localState.list,
-			mutations: initRbSession.localState.mutations,
-			committing: false,
-			isModified: false,
-			backburner: initRbSession.localState.backburner,
-			savedBackburner: initRbSession.localState.savedBackburner,
-			backburnerModified: false,
+		// derived
+		layerList: initRbSession.localState.list,
+		mutations: initRbSession.localState.mutations,
+		committing: false,
+		isModified: false,
+		backburner: initRbSession.localState.backburner,
+		savedBackburner: initRbSession.localState.savedBackburner,
+		backburnerModified: false,
 
-			handleServerUpdate(update) {
-				const prev = get().rbSession
-				const next = ODSM.Client.applyUpdate(prev, update, SLL.reducer, {
-					onSideEffects: ses => {
-						for (const se of ses) onSideEffect(se)
-					},
-					onDiverged: (phase, error) =>
-						console.error(`${phase === 'op' ? 'incoming' : 'acked'} queue op diverged from the server:`, error.data),
-					onRejected: (reason, opIds) => console.debug(`queue op ${opIds.join(', ')} rejected by the server: ${reason}`),
-					onUnknownAcks: opIds => console.warn(`received ack for unknown op ${opIds.join(', ')}`),
-					onSyncedOps: ops => {
-						for (const op of ops) get().syncedOp$.next(op)
-					},
-				})
-				if (next !== prev) set({ rbSession: next })
-			},
-		} satisfies State,
-	)
+		handleServerUpdate(update) {
+			const prev = get().rbSession
+			const next = ODSM.Client.applyUpdate(prev, update, SLL.reducer, {
+				onSideEffects: (ses) => {
+					for (const se of ses) onSideEffect(se)
+				},
+				onDiverged: (phase, error) =>
+					console.error(`${phase === 'op' ? 'incoming' : 'acked'} queue op diverged from the server:`, error.data),
+				onRejected: (reason, opIds) => console.debug(`queue op ${opIds.join(', ')} rejected by the server: ${reason}`),
+				onUnknownAcks: (opIds) => console.warn(`received ack for unknown op ${opIds.join(', ')}`),
+				onSyncedOps: (ops) => {
+					for (const op of ops) get().syncedOp$.next(op)
+				},
+			})
+			if (next !== prev) set({ rbSession: next })
+		},
+	} satisfies State)
 
 	args.sub.add(
 		args.update$.subscribe(([state, prev]) => {
@@ -174,11 +172,11 @@ export function initLayerQueue(args: Args) {
 	)
 
 	args.sub.add(
-		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId })).pipe(RPC.dropServerNotLoaded()).subscribe(
-			update => {
+		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId }))
+			.pipe(RPC.dropServerNotLoaded())
+			.subscribe((update) => {
 				get().handleServerUpdate(update)
-			},
-		),
+			}),
 	)
 }
 
@@ -246,7 +244,7 @@ export namespace Sel {
 	// mutation state is kept out of here (see itemState) so structural-only consumers don't re-render on mutation
 	// changes.
 	export const itemEntry = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([itemIndex], (index): ItemEntry | undefined => index.get(itemId))
+		RSel.createDeepSelector([itemIndex], (index): ItemEntry | undefined => index.get(itemId)),
 	)
 
 	export const itemState = RSel.memoizeFactory((itemId: string) =>
@@ -259,7 +257,7 @@ export namespace Sel {
 				mutationState: ItemMut.toItemMutationState(mutations, itemId, entry.parentItem?.layerId),
 				isLocallyLast: entry.isLocallyLast,
 			}
-		})
+		}),
 	)
 	export function mutations(store: Store) {
 		return store.queue.mutations
@@ -280,7 +278,7 @@ export namespace Sel {
 		return store.queue.savedBackburner
 	}
 	export const backburnerItem = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector([backburner], (items): BB.BackburnerItem | undefined => items.find(item => item.itemId === itemId))
+		RSel.createDeepSelector([backburner], (items): BB.BackburnerItem | undefined => items.find((item) => item.itemId === itemId)),
 	)
 	const backburnerMutations = RSel.createDeepSelector(
 		[backburner, savedBackburner],
@@ -290,7 +288,7 @@ export namespace Sel {
 		RSel.createDeepSelector(
 			[backburnerMutations],
 			(mutations): ItemMut.ItemMutationState => ItemMut.toItemMutationState(mutations, itemId),
-		)
+		),
 	)
 }
 
@@ -312,7 +310,7 @@ export namespace Actions {
 		const source: LL.Source = { type: 'manual', userId }
 		switch (newOp.op) {
 			case 'add': {
-				const items = newOp.items.map(item => LL.createItem(item, source))
+				const items = newOp.items.map((item) => LL.createItem(item, source))
 				op = {
 					op: 'add',
 					index: newOp.index,
@@ -412,8 +410,8 @@ export namespace Actions {
 
 	export function combineBackburnerItems(stores: KeyProp, targetItemId: string, sourceItemId: string) {
 		const list = ZusUtils.getState(stores.queue).queue.backburner
-		const target = list.find(item => item.itemId === targetItemId)
-		const source = list.find(item => item.itemId === sourceItemId)
+		const target = list.find((item) => item.itemId === targetItemId)
+		const source = list.find((item) => item.itemId === sourceItemId)
 		if (target && source) {
 			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
 			if (merged.code !== 'ok') {

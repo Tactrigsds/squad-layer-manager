@@ -1,6 +1,7 @@
 import { builtinModules } from 'node:module'
 import path from 'node:path'
 import { defineConfig } from 'rolldown'
+
 import packageJson from './package.json'
 
 // Mainly just using rolldown through vite here. haven't explored using vite as a dev server, which we would need to do if we wanted to do any kind of transforms for the server code
@@ -10,7 +11,7 @@ const externalModules: (string | RegExp)[] = Object.keys(packageJson.dependencie
 
 externalModules.push(
 	...builtinModules,
-	...builtinModules.map(m => `node:${m}`),
+	...builtinModules.map((m) => `node:${m}`),
 	// 'zlib-sync',
 	// Tailwind (a devDependency) is only reached via the dynamic import in landing.server.ts, which runs in
 	// dev/test; prod reads the prebuilt dist/landing.css. Externalize so its native oxide binary is never bundled.

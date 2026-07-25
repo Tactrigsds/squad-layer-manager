@@ -1,8 +1,9 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SM from '@/models/squad.models'
-import { describe, expect, it } from 'vitest'
 
 function makePlayer(eos: string, opts: Partial<SM.Player> = {}): SM.Player {
 	return {
@@ -60,7 +61,7 @@ describe('chat.models application-event collapse', () => {
 		expect(entry.type).toBe('APP_EVENT')
 		if (entry.type !== 'APP_EVENT') throw new Error('unreachable')
 		expect(entry.collapsed).toHaveLength(1)
-		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1'])
+		expect(entry.targetPlayers.map((p) => p.ids.eos)).toEqual(['eos-1'])
 	})
 
 	it('aggregates multiple warns under one entry', () => {
@@ -123,7 +124,7 @@ describe('chat.models application-event collapse', () => {
 		const entry = state.eventBuffer[0]
 		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
 		expect(entry.collapsed).toHaveLength(1)
-		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1'])
+		expect(entry.targetPlayers.map((p) => p.ids.eos)).toEqual(['eos-1'])
 	})
 
 	// a queue save renders the next layer itself, so its MAP_SET server event must fold into the QUEUE_UPDATED rather
@@ -187,7 +188,7 @@ describe('chat.models application-event collapse', () => {
 
 		const entry = state.eventBuffer[0]
 		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
-		expect(entry.targetPlayers.map(p => p.ids.eos)).toEqual(['eos-1', 'eos-2'])
+		expect(entry.targetPlayers.map((p) => p.ids.eos)).toEqual(['eos-1', 'eos-2'])
 	})
 
 	it('resolves actorPlayer for an in-game-user actor (external queue sync)', () => {
@@ -233,7 +234,7 @@ describe('standalone warn burst aggregation', () => {
 		expect(state.eventBuffer).toHaveLength(1)
 		const entry = state.eventBuffer[0]
 		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
-		expect(entry.warns.map(w => w.player.ids.eos)).toEqual(['eos-1', 'eos-2'])
+		expect(entry.warns.map((w) => w.player.ids.eos)).toEqual(['eos-1', 'eos-2'])
 		// tracks the latest absorbed warn's id; time anchored to the first
 		expect(entry.id).toBe(2)
 		expect(entry.time).toBe(101)
@@ -257,7 +258,7 @@ describe('standalone warn burst aggregation', () => {
 		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
 		CHAT.handleEvent(state, warnServerEvent('eos-2', 'go', 2, rcon))
 
-		expect(state.eventBuffer.map(e => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+		expect(state.eventBuffer.map((e) => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
 	})
 
 	it('keeps same-text warns from different sources separate', () => {
@@ -265,12 +266,20 @@ describe('standalone warn burst aggregation', () => {
 		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, admin('adminA')))
 		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, admin('adminB')))
 
-		expect(state.eventBuffer.map(e => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+		expect(state.eventBuffer.map((e) => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
 	})
 
 	it('does not merge warns further apart than the aggregation window', () => {
 		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
-		const first: SE.PlayerWarned = { type: 'PLAYER_WARNED', id: 1, time: 1000, matchId: 1, reason: 'stop', player: 'eos-1', source: rcon }
+		const first: SE.PlayerWarned = {
+			type: 'PLAYER_WARNED',
+			id: 1,
+			time: 1000,
+			matchId: 1,
+			reason: 'stop',
+			player: 'eos-1',
+			source: rcon,
+		}
 		const late: SE.PlayerWarned = {
 			type: 'PLAYER_WARNED',
 			id: 2,
@@ -283,7 +292,7 @@ describe('standalone warn burst aggregation', () => {
 		CHAT.handleEvent(state, first)
 		CHAT.handleEvent(state, late)
 
-		expect(state.eventBuffer.map(e => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+		expect(state.eventBuffer.map((e) => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
 	})
 
 	it('merges across an interleaving non-warn event within the window', () => {
@@ -301,7 +310,7 @@ describe('standalone warn burst aggregation', () => {
 		CHAT.handleEvent(state, chat)
 		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 3, rcon))
 
-		expect(state.eventBuffer.map(e => e.type)).toEqual(['WARNS_AGGREGATED', 'CHAT_MESSAGE'])
+		expect(state.eventBuffer.map((e) => e.type)).toEqual(['WARNS_AGGREGATED', 'CHAT_MESSAGE'])
 		const entry = state.eventBuffer[0]
 		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
 		expect(entry.warns).toHaveLength(2)
@@ -351,12 +360,16 @@ describe('warn target summary grouping', () => {
 		const summary = summaryFor(players, squads, ['a', 'b', 'c'])
 		expect(summary.type).toBe('squads')
 		if (summary.type !== 'squads') throw new Error('unreachable')
-		expect(summary.squads.map(s => s.uniqueId)).toEqual([101])
+		expect(summary.squads.map((s) => s.uniqueId)).toEqual([101])
 		expect(summary.otherPlayerCount).toBe(1)
 	})
 
 	it('players: an ad-hoc subset with no full group', () => {
-		const players = [makePlayer('a', { teamId: 1, squadId: 1 }), makePlayer('b', { teamId: 1, squadId: 1 }), makePlayer('c', { teamId: 1 })]
+		const players = [
+			makePlayer('a', { teamId: 1, squadId: 1 }),
+			makePlayer('b', { teamId: 1, squadId: 1 }),
+			makePlayer('c', { teamId: 1 }),
+		]
 		const squads = [makeSquad(1, 1, 'a', 101)]
 		expect(summaryFor(players, squads, ['a', 'c'])).toEqual({ type: 'players' })
 	})
@@ -367,7 +380,7 @@ describe('warn target summary grouping', () => {
 		const summary = summaryFor(players, squads, ['a', 'b'])
 		expect(summary.type).toBe('squads')
 		if (summary.type !== 'squads') throw new Error('unreachable')
-		expect(summary.squads.map(s => s.uniqueId)).toEqual([101])
+		expect(summary.squads.map((s) => s.uniqueId)).toEqual([101])
 		expect(summary.otherPlayerCount).toBe(0)
 	})
 
@@ -420,7 +433,7 @@ describe('chat.models recent players', () => {
 	function newGame(id: number): SE.NewGame {
 		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
 	}
-	const recentIds = (state: CHAT.ChatState) => state.interpolatedState.recentPlayers.map(p => p.ids.eos)
+	const recentIds = (state: CHAT.ChatState) => state.interpolatedState.recentPlayers.map((p) => p.ids.eos)
 
 	it('keeps a disconnected player in recentPlayers, but off the live roster', () => {
 		const state = CHAT.getInitialChatState()
@@ -428,7 +441,7 @@ describe('chat.models recent players', () => {
 		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
 		CHAT.handleEvent(state, disconnected('a', 3))
 
-		expect(state.interpolatedState.players.map(p => p.ids.eos)).toEqual(['b'])
+		expect(state.interpolatedState.players.map((p) => p.ids.eos)).toEqual(['b'])
 		expect(recentIds(state)).toEqual(['a', 'b'])
 	})
 
@@ -514,8 +527,8 @@ describe('chat.models recent squads', () => {
 	function resetEmpty(id: number): SE.Reset {
 		return { type: 'RESET', id, time: 100 + id, matchId: 1, source: 'rcon-reconnected', state: { players: [], squads: [] } }
 	}
-	const recentUniqueIds = (state: CHAT.ChatState) => state.interpolatedState.recentSquads.map(s => s.uniqueId)
-	const byEos = (state: CHAT.ChatState, eos: string) => state.interpolatedState.players.find(p => p.ids.eos === eos)!
+	const recentUniqueIds = (state: CHAT.ChatState) => state.interpolatedState.recentSquads.map((s) => s.uniqueId)
+	const byEos = (state: CHAT.ChatState, eos: string) => state.interpolatedState.players.find((p) => p.ids.eos === eos)!
 
 	function stateWithSquad() {
 		const state = CHAT.getInitialChatState()
@@ -564,8 +577,8 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, joinedSquad('a', 101, 4))
 		CHAT.handleEvent(state, joinedSquad('b', 101, 5))
 
-		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([101])
-		const byEos = (eos: string) => state.interpolatedState.players.find(p => p.ids.eos === eos)
+		expect(state.interpolatedState.squads.map((s) => s.uniqueId)).toEqual([101])
+		const byEos = (eos: string) => state.interpolatedState.players.find((p) => p.ids.eos === eos)
 		expect(byEos('a')?.squadId).toBe(1)
 		expect(byEos('b')?.squadId).toBe(1)
 	})
@@ -582,7 +595,7 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, promoted('a', 101, 5))
 		CHAT.handleEvent(state, joinedSquad('b', 101, 6))
 
-		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([101])
+		expect(state.interpolatedState.squads.map((s) => s.uniqueId)).toEqual([101])
 		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
 		expect(byEos(state, 'b')).toMatchObject({ squadId: 1, isLeader: false })
 	})
@@ -608,7 +621,7 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, promoted('a', 102, 10))
 		CHAT.handleEvent(state, joinedSquad('b', 102, 11))
 
-		expect(state.interpolatedState.squads.map(s => s.uniqueId)).toEqual([102])
+		expect(state.interpolatedState.squads.map((s) => s.uniqueId)).toEqual([102])
 		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
 		expect(byEos(state, 'b')).toMatchObject({ squadId: 1, isLeader: false })
 	})

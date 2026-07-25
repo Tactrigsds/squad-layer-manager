@@ -1,3 +1,6 @@
+import DatabaseConstructor from 'better-sqlite3'
+import { describe, expect, it } from 'vitest'
+
 import { up as migrateFilterNodes } from '@/migrations/0062_filter_nodes_operator_model'
 import { up as migrateTeamScopes } from '@/migrations/0063_filter_team_scopes_to_and_or'
 import { up as migrateBlockOperators } from '@/migrations/0065_filter_block_operators'
@@ -8,8 +11,6 @@ import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as LE from '@/models/layer-engine'
-import DatabaseConstructor from 'better-sqlite3'
-import { describe, expect, it } from 'vitest'
 
 // -------- operator selection round-trips --------
 
@@ -28,12 +29,15 @@ describe('operator selection', () => {
 	})
 
 	it('no operator set includes dedicated isnull/notnull operators', () => {
-		for (
-			const domain of [undefined, { kind: 'boolean' as const }, { kind: 'number' as const, integral: false }, {
+		for (const domain of [
+			undefined,
+			{ kind: 'boolean' as const },
+			{ kind: 'number' as const, integral: false },
+			{
 				kind: 'enum' as const,
 				mapping: 'factions',
-			}]
-		) {
+			},
+		]) {
 			const keys = F.compOpSelectOptions(domain).map((o) => o.key)
 			expect(keys).not.toContain('isnull')
 			expect(keys).not.toContain('notnull')
@@ -57,7 +61,10 @@ describe('operator selection', () => {
 		const eqNull: F.EditableCompNode = {
 			type: 'eq',
 			neg: false,
-			args: [{ type: 'column', column: 'LayerVersion' }, { type: 'value', value: null }],
+			args: [
+				{ type: 'column', column: 'LayerVersion' },
+				{ type: 'value', value: null },
+			],
 		}
 		expect(F.compOpSelectionKey(eqNull)).toBe('eq')
 		expect(F.compOpSelectionKey({ ...eqNull, neg: true })).toBe('neq')
@@ -76,7 +83,14 @@ describe('operator selection', () => {
 	})
 
 	it('carries a single value across an eq -> in change', () => {
-		const eq: F.EditableCompNode = { type: 'eq', neg: false, args: [{ type: 'column', column: 'Map' }, { type: 'value', value: 'Narva' }] }
+		const eq: F.EditableCompNode = {
+			type: 'eq',
+			neg: false,
+			args: [
+				{ type: 'column', column: 'Map' },
+				{ type: 'value', value: 'Narva' },
+			],
+		}
 		const asIn = F.applyCompOpSelection(eq, { type: 'in', neg: false })
 		expect(asIn.args[1]).toEqual({ type: 'values', values: ['Narva'] })
 	})
@@ -133,9 +147,12 @@ describe('filter lowering validation', () => {
 	// an unmapped column with a non-null value operand must not crash (value conversion goes through
 	// LC.dbValue, which throws on an unknown column)
 	it('reports (does not throw on) an unmapped column with a value operand, across operators', () => {
-		for (
-			const node of [FB.eq('NotAColumn', 'x'), FB.inValues('NotAColumn', ['a']), FB.lt('NotAColumn', 5), FB.inrange('NotAColumn', 1, 9)]
-		) {
+		for (const node of [
+			FB.eq('NotAColumn', 'x'),
+			FB.inValues('NotAColumn', ['a']),
+			FB.lt('NotAColumn', 5),
+			FB.inrange('NotAColumn', 1, 9),
+		]) {
 			const res = LE.lowerFilterNode(testCtx(), node)
 			expect(res.code).toBe('err:invalid-node')
 		}
@@ -154,7 +171,10 @@ describe('filter lowering validation', () => {
 		const node = {
 			type: 'in',
 			neg: false,
-			args: [{ type: 'column', column: 'Faction_1' }, { type: 'values', values: [{ type: 'column', column: 'Faction_2' }] }],
+			args: [
+				{ type: 'column', column: 'Faction_1' },
+				{ type: 'values', values: [{ type: 'column', column: 'Faction_2' }] },
+			],
 		} as any
 		expect(F.FilterNodeSchema.safeParse(node).success).toBe(true)
 		expect(LE.lowerFilterNode(testCtx(), node).code).toBe('ok')
@@ -164,7 +184,10 @@ describe('filter lowering validation', () => {
 		const node = {
 			type: 'in',
 			neg: false,
-			args: [{ type: 'column', column: 'Faction_1' }, { type: 'values', values: [{ type: 'column', column: 'Unit_1' }] }],
+			args: [
+				{ type: 'column', column: 'Faction_1' },
+				{ type: 'values', values: [{ type: 'column', column: 'Unit_1' }] },
+			],
 		} as any
 		expect(LE.lowerFilterNode(testCtx(), node).code).toBe('err:invalid-node')
 	})
@@ -172,8 +195,22 @@ describe('filter lowering validation', () => {
 	// the subject (arg[0]) must be a column: value-first / all-constant comparisons are unrepresentable in
 	// the builder, so they're rejected structurally and reported by the compiler
 	it('rejects a comparison whose subject is a constant', () => {
-		const twoConstants = { type: 'eq', neg: false, args: [{ type: 'value', value: 5 }, { type: 'value', value: 6 }] } as any
-		const valueFirst = { type: 'eq', neg: false, args: [{ type: 'value', value: 5 }, { type: 'column', column: 'Faction_1' }] } as any
+		const twoConstants = {
+			type: 'eq',
+			neg: false,
+			args: [
+				{ type: 'value', value: 5 },
+				{ type: 'value', value: 6 },
+			],
+		} as any
+		const valueFirst = {
+			type: 'eq',
+			neg: false,
+			args: [
+				{ type: 'value', value: 5 },
+				{ type: 'column', column: 'Faction_1' },
+			],
+		} as any
 		for (const node of [twoConstants, valueFirst]) {
 			expect(F.FilterNodeSchema.safeParse(node).success).toBe(false)
 			expect(F.isValidCompNode(node)).toBe(false)
@@ -220,7 +257,14 @@ describe('filter lowering validation', () => {
 	})
 
 	it('null in an `in` list on such a column becomes the enum index too', () => {
-		const node = { type: 'in', neg: false, args: [{ type: 'column', column: 'LayerVersion' }, { type: 'values', values: [null] }] } as any
+		const node = {
+			type: 'in',
+			neg: false,
+			args: [
+				{ type: 'column', column: 'LayerVersion' },
+				{ type: 'values', values: [null] },
+			],
+		} as any
 		const res = LE.lowerFilterNode(testCtx(), node)
 		expect(res.code).toBe('ok')
 		if (res.code === 'ok') {
@@ -246,8 +290,20 @@ describe('matchup lowering', () => {
 		expect(ir).toMatchObject({
 			op: 'or',
 			children: [
-				{ op: 'and', children: [{ op: 'in_vals', col: colOf('Faction_1') }, { op: 'in_vals', col: colOf('Faction_2') }] },
-				{ op: 'and', children: [{ op: 'in_vals', col: colOf('Faction_2') }, { op: 'in_vals', col: colOf('Faction_1') }] },
+				{
+					op: 'and',
+					children: [
+						{ op: 'in_vals', col: colOf('Faction_1') },
+						{ op: 'in_vals', col: colOf('Faction_2') },
+					],
+				},
+				{
+					op: 'and',
+					children: [
+						{ op: 'in_vals', col: colOf('Faction_2') },
+						{ op: 'in_vals', col: colOf('Faction_1') },
+					],
+				},
 			],
 		})
 	})
@@ -256,7 +312,10 @@ describe('matchup lowering', () => {
 		const ir = irFor(FB.allowMatchups([{ Faction: ['USA'] }, { Faction: ['PLA'] }], { locked: true }))
 		expect(ir).toMatchObject({
 			op: 'and',
-			children: [{ op: 'in_vals', col: colOf('Faction_1') }, { op: 'in_vals', col: colOf('Faction_2') }],
+			children: [
+				{ op: 'in_vals', col: colOf('Faction_1') },
+				{ op: 'in_vals', col: colOf('Faction_2') },
+			],
 		})
 	})
 
@@ -282,7 +341,10 @@ describe('matchup lowering', () => {
 		const ir = irFor(FB.allowMatchups([{ Faction: ['USA'], Unit: ['Armored'] }, {}], { locked: true }))
 		expect(ir).toMatchObject({
 			op: 'and',
-			children: [{ op: 'in_vals', col: colOf('Faction_1') }, { op: 'in_vals', col: colOf('Unit_1') }],
+			children: [
+				{ op: 'in_vals', col: colOf('Faction_1') },
+				{ op: 'in_vals', col: colOf('Unit_1') },
+			],
 		})
 	})
 
@@ -361,7 +423,10 @@ describe('migration 0062 (legacy filter -> operator model)', () => {
 		expect(migrated.children[0]).toEqual({
 			type: 'eq',
 			neg: false,
-			args: [{ type: 'column', column: 'Map' }, { type: 'value', value: 'Narva' }],
+			args: [
+				{ type: 'column', column: 'Map' },
+				{ type: 'value', value: 'Narva' },
+			],
 		})
 		expect(migrated.children[1].type).toBe('eq')
 		expect(migrated.children[1].neg).toBe(true)
@@ -370,13 +435,20 @@ describe('migration 0062 (legacy filter -> operator model)', () => {
 		expect(migrated.children[4]).toEqual({
 			type: 'eq',
 			neg: false,
-			args: [{ type: 'column', column: 'LayerVersion' }, { type: 'value', value: null }],
+			args: [
+				{ type: 'column', column: 'LayerVersion' },
+				{ type: 'value', value: null },
+			],
 		})
 		expect(migrated.children[5]).toMatchObject({ type: 'eq', neg: true })
 	})
 
 	it('composes node-level neg with the comparison polarity (double negative cancels)', async () => {
-		const legacy = { type: 'or', neg: false, children: [{ type: 'comp', neg: true, comp: { code: 'neq', column: 'Map', value: 'Narva' } }] }
+		const legacy = {
+			type: 'or',
+			neg: false,
+			children: [{ type: 'comp', neg: true, comp: { code: 'neq', column: 'Map', value: 'Narva' } }],
+		}
 		const migrated = await migrateOne(legacy)
 		// neq (built-in neg) with node.neg => eq
 		expect(migrated.children[0]).toMatchObject({ type: 'eq', neg: false })
@@ -457,8 +529,22 @@ describe('migration 0063 (team scopes -> or/and over concrete columns)', () => {
 		expect(out.children[0]).toEqual({
 			type: 'or',
 			children: [
-				{ type: 'eq', neg: false, args: [{ type: 'column', column: 'Unit_1' }, { type: 'value', value: 'Armored' }] },
-				{ type: 'eq', neg: false, args: [{ type: 'column', column: 'Unit_2' }, { type: 'value', value: 'Armored' }] },
+				{
+					type: 'eq',
+					neg: false,
+					args: [
+						{ type: 'column', column: 'Unit_1' },
+						{ type: 'value', value: 'Armored' },
+					],
+				},
+				{
+					type: 'eq',
+					neg: false,
+					args: [
+						{ type: 'column', column: 'Unit_2' },
+						{ type: 'value', value: 'Armored' },
+					],
+				},
 			],
 		})
 	})
@@ -468,7 +554,11 @@ describe('migration 0063 (team scopes -> or/and over concrete columns)', () => {
 		expect(every.type).toBe('and')
 		expect(every.children.map((c: any) => c.args[0].column).sort()).toEqual(['Faction_1', 'Faction_2'])
 
-		const split = await migrateScopes({ type: 'teams-split', neg: false, children: [eqTeam('Faction', 'USA'), eqTeam('Faction', 'RGF')] })
+		const split = await migrateScopes({
+			type: 'teams-split',
+			neg: false,
+			children: [eqTeam('Faction', 'USA'), eqTeam('Faction', 'RGF')],
+		})
 		expect(split.type).toBe('or')
 		expect(F.FilterNodeSchema.safeParse(split).success).toBe(true)
 	})
@@ -476,7 +566,16 @@ describe('migration 0063 (team scopes -> or/and over concrete columns)', () => {
 	it('leaves already-final filters unchanged (no scope blocks present)', async () => {
 		const final = {
 			type: 'and',
-			children: [{ type: 'eq', neg: false, args: [{ type: 'column', column: 'Map' }, { type: 'value', value: 'Narva' }] }],
+			children: [
+				{
+					type: 'eq',
+					neg: false,
+					args: [
+						{ type: 'column', column: 'Map' },
+						{ type: 'value', value: 'Narva' },
+					],
+				},
+			],
 		}
 		const out = await migrateScopes(final)
 		expect(out).toEqual(final)

@@ -1,9 +1,11 @@
-import * as Obj from '@/lib/object'
-import { assertNever } from '@/lib/type-guards'
-import * as CS from '@/models/context-shared'
 import * as E from 'drizzle-orm'
 import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
+
+import * as Obj from '@/lib/object'
+import { assertNever } from '@/lib/type-guards'
+import * as CS from '@/models/context-shared'
+
 import * as L from './layer'
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
 export type ColumnType = z.infer<typeof COLUMN_TYPE>
@@ -93,7 +95,7 @@ export const GROUP_BY_COLUMNS = [
 	'LayerVersion',
 	'Collection',
 ] as const satisfies L.LayerColumnKey[]
-export type GroupByColumn = typeof GROUP_BY_COLUMNS[number]
+export type GroupByColumn = (typeof GROUP_BY_COLUMNS)[number]
 
 export function groupByColumnDefaultValues(column: GroupByColumn, components = L.StaticLayerComponents) {
 	switch (column) {
@@ -136,36 +138,40 @@ export function isLayerColumnKey(key: string, cfg = BASE_COLUMN_CONFIG): key is 
 	return key in cfg.defs
 }
 
-export const layers = sqliteTable('layers', {
-	id: int('id').primaryKey().notNull(),
+export const layers = sqliteTable(
+	'layers',
+	{
+		id: int('id').primaryKey().notNull(),
 
-	Map: int('Map').notNull(),
-	Layer: int('Layer').notNull(),
-	Size: int('Size').notNull(),
-	Gamemode: int('Gamemode').notNull(),
-	LayerVersion: int('LayerVersion'),
-	Collection: int('Collection').notNull(),
+		Map: int('Map').notNull(),
+		Layer: int('Layer').notNull(),
+		Size: int('Size').notNull(),
+		Gamemode: int('Gamemode').notNull(),
+		LayerVersion: int('LayerVersion'),
+		Collection: int('Collection').notNull(),
 
-	Faction_1: int('Faction_1').notNull(),
-	Unit_1: int('Unit_1').notNull(),
-	Alliance_1: int('Alliance_1').notNull(),
+		Faction_1: int('Faction_1').notNull(),
+		Unit_1: int('Unit_1').notNull(),
+		Alliance_1: int('Alliance_1').notNull(),
 
-	Faction_2: int('Faction_2').notNull(),
-	Unit_2: int('Unit_2').notNull(),
-	Alliance_2: int('Alliance_2').notNull(),
-}, table => ({
-	mapIndex: index('mapIndex').on(table.Map),
-	layerIndex: index('layerIndex').on(table.Layer),
-	gamemodeIndex: index('gamemodeIndex').on(table.Gamemode),
-	sizeIndex: index('sizeIndex').on(table.Size),
-	layerVersionIndex: index('layerVersionIndex').on(table.LayerVersion),
-	faction1Index: index('faction1Index').on(table.Faction_1),
-	faction2Index: index('faction2Index').on(table.Faction_2),
-	unit1Index: index('unit1Index').on(table.Unit_1),
-	unit2Index: index('unit2Index').on(table.Unit_2),
-	alliance1Index: index('alliance1Index').on(table.Alliance_1),
-	alliance2Index: index('alliance2Index').on(table.Alliance_2),
-}))
+		Faction_2: int('Faction_2').notNull(),
+		Unit_2: int('Unit_2').notNull(),
+		Alliance_2: int('Alliance_2').notNull(),
+	},
+	(table) => ({
+		mapIndex: index('mapIndex').on(table.Map),
+		layerIndex: index('layerIndex').on(table.Layer),
+		gamemodeIndex: index('gamemodeIndex').on(table.Gamemode),
+		sizeIndex: index('sizeIndex').on(table.Size),
+		layerVersionIndex: index('layerVersionIndex').on(table.LayerVersion),
+		faction1Index: index('faction1Index').on(table.Faction_1),
+		faction2Index: index('faction2Index').on(table.Faction_2),
+		unit1Index: index('unit1Index').on(table.Unit_1),
+		unit2Index: index('unit2Index').on(table.Unit_2),
+		alliance1Index: index('alliance1Index').on(table.Alliance_1),
+		alliance2Index: index('alliance2Index').on(table.Alliance_2),
+	}),
+)
 
 function _extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 	const columns: Record<string, any> = {
@@ -281,18 +287,17 @@ export function assertedMappedValue(value: DbValueResult) {
 }
 
 export class DbValueError extends Error {
-	constructor(public path: string[], public code: string, message: string) {
+	constructor(
+		public path: string[],
+		public code: string,
+		message: string,
+	) {
 		super(message)
 	}
 }
 export type InputValue = string | number | boolean | null | undefined
 
-export function assertDbValue(
-	columnName: string,
-	value: InputValue,
-	ctx?: CS.EffectiveColumnConfig,
-	components = L.StaticLayerComponents,
-) {
+export function assertDbValue(columnName: string, value: InputValue, ctx?: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
 	const result = dbValue(columnName, value, ctx, components)
 	if (isUnmappedDbValue(result)) {
 		throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
@@ -437,11 +442,7 @@ export function fromDbValue(
 			assertNever(columnDef)
 	}
 }
-export function fromDbValues(
-	data: Record<string, DbValue>[],
-	ctx?: CS.EffectiveColumnConfig,
-	components = L.StaticLayerComponents,
-) {
+export function fromDbValues(data: Record<string, DbValue>[], ctx?: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
 	return data.map((row) => {
 		const result: Record<string, any> = {}
 		for (const [columnName, dbValue] of Object.entries(row)) {
@@ -536,16 +537,13 @@ export function packValidLayers(layers: (L.LayerId | L.KnownLayer)[]) {
 }
 
 export function packLayers(layers: (L.LayerId | L.KnownLayer)[], components = L.StaticLayerComponents) {
-	return layers.map(l => packId(l, components))
+	return layers.map((l) => packId(l, components))
 }
 
 /**
  * Unpacks a layer from its integer encoding
  */
-export function unpackId(
-	packed: number,
-	components = L.StaticLayerComponents,
-) {
+export function unpackId(packed: number, components = L.StaticLayerComponents) {
 	// Calculate bits needed for each component
 	const layerBits = Math.ceil(Math.log2(components.layers.length))
 	const factionBits = Math.ceil(Math.log2(components.factions.length))
@@ -576,13 +574,16 @@ export function unpackId(
 	const layer = components.layers[layerIndex]
 	const parsedSegments = L.parseLayerStringSegment(layer, components)!
 	const compatMappedSegments = L.applyBackwardsCompatMappings(parsedSegments, components)
-	return L.getKnownLayerId({
-		...compatMappedSegments,
-		Faction_1: components.factions[faction1Index],
-		Unit_1: components.units[unit1Index],
-		Faction_2: components.factions[faction2Index],
-		Unit_2: components.units[unit2Index],
-	}, components)!
+	return L.getKnownLayerId(
+		{
+			...compatMappedSegments,
+			Faction_1: components.factions[faction1Index],
+			Unit_1: components.units[unit1Index],
+			Faction_2: components.factions[faction2Index],
+			Unit_2: components.units[unit2Index],
+		},
+		components,
+	)!
 }
 
 export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents): LayerRow {
@@ -688,20 +689,18 @@ export const ColumnDefSchema = z.discriminatedUnion('type', [
 export type ColumnDef = z.infer<typeof ColumnDefSchema>
 export type CombinedColumnDef = ColumnDef & { table: 'layers' | 'extra-cols' }
 
-export const WEIGHT_COLUMNS = z.enum(
-	[
-		'Map',
-		'Layer',
-		'Gamemode',
-		'Size',
-		'Faction_1',
-		'Faction_2',
-		'Unit_1',
-		'Unit_2',
-		'Alliance_1',
-		'Alliance_2',
-	],
-)
+export const WEIGHT_COLUMNS = z.enum([
+	'Map',
+	'Layer',
+	'Gamemode',
+	'Size',
+	'Faction_1',
+	'Faction_2',
+	'Unit_1',
+	'Unit_2',
+	'Alliance_1',
+	'Alliance_2',
+])
 
 export type WeightColumn = z.infer<typeof WEIGHT_COLUMNS>
 
@@ -717,7 +716,10 @@ export const MATCHUP_COLUMNS = {
 	AllianceMatchup: [['Alliance_1'], ['Alliance_2']],
 	FactionMatchup: [['Faction_1'], ['Faction_2']],
 	UnitMatchup: [['Unit_1'], ['Unit_2']],
-	FactionUnitMatchup: [['Faction_1', 'Unit_1'], ['Faction_2', 'Unit_2']],
+	FactionUnitMatchup: [
+		['Faction_1', 'Unit_1'],
+		['Faction_2', 'Unit_2'],
+	],
 } as const satisfies Record<MatchupKey, [readonly WeightColumn[], readonly WeightColumn[]]>
 
 // a pick step is either a single column or a matchup between the two teams
@@ -736,12 +738,14 @@ function matchupEntries<S extends z.ZodType>(side: S) {
 	return z.array(z.object({ teams: z.tuple([side, side]), weight: z.number() })).prefault([])
 }
 
-export const MatchupWeightsSchema = z.object({
-	AllianceMatchup: matchupEntries(z.string()),
-	FactionMatchup: matchupEntries(z.string()),
-	UnitMatchup: matchupEntries(z.string()),
-	FactionUnitMatchup: matchupEntries(FactionUnitSchema),
-}).prefault({})
+export const MatchupWeightsSchema = z
+	.object({
+		AllianceMatchup: matchupEntries(z.string()),
+		FactionMatchup: matchupEntries(z.string()),
+		UnitMatchup: matchupEntries(z.string()),
+		FactionUnitMatchup: matchupEntries(FactionUnitSchema),
+	})
+	.prefault({})
 
 export type MatchupWeights = z.infer<typeof MatchupWeightsSchema>
 export type MatchupWeightEntry<K extends MatchupKey = MatchupKey> = MatchupWeights[K][number]
@@ -847,47 +851,53 @@ export const DEFAULT_GENERATION_WEIGHT = 0.1
 // deliberately permissive: an entry that is stale (a map dropped by a game update), weighted for a column that
 // isn't picked, or duplicated is inert rather than wrong, and a settings document that fails to parse takes the
 // server down with it (see loadGlobalSettings). The editor surfaces these instead; see layer-generation-config-editor.
-export const LayerGenerationConfigSchema = z.object({
-	pickOrder: z.array(PICK_KEYS).prefault([]).describe(
-		'Columns and matchups to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
-	),
-	weights: z.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() })))
-		.prefault({})
-		.describe(
-			`Relative selection weight per column value. Values not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}. Weights are relative, not probabilities: they are normalized against the values actually available in the pool at pick time.`,
+export const LayerGenerationConfigSchema = z
+	.object({
+		pickOrder: z
+			.array(PICK_KEYS)
+			.prefault([])
+			.describe(
+				'Columns and matchups to pick weighted-randomly during layer generation, in the order they are picked. Each pick narrows the candidate pool for the next.',
+			),
+		weights: z
+			.partialRecord(WEIGHT_COLUMNS, z.array(z.object({ value: z.string(), weight: z.number() })))
+			.prefault({})
+			.describe(
+				`Relative selection weight per column value. Values not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}. Weights are relative, not probabilities: they are normalized against the values actually available in the pool at pick time.`,
+			),
+		matchupWeights: MatchupWeightsSchema.describe(
+			`Relative selection weight per matchup between the two teams. Matchups are unordered, so [ADF, PLA] and [PLA, ADF] are the same entry. Pairings not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}.`,
 		),
-	matchupWeights: MatchupWeightsSchema.describe(
-		`Relative selection weight per matchup between the two teams. Matchups are unordered, so [ADF, PLA] and [PLA, ADF] are the same entry. Pairings not listed here are weighted ${DEFAULT_GENERATION_WEIGHT}.`,
-	),
-})
+	})
 	.prefault({})
 
 export type LayerGenerationConfig = z.infer<typeof LayerGenerationConfigSchema>
 
-export const LayerDbConfigSchema = z.object({
-	columns: z.array(ColumnDefSchema),
-})
-	.refine(config => {
-		const allCols = new Set(COLUMN_KEYS) as Set<string>
-		for (const col of config.columns) {
-			if (allCols.has(col.name)) {
-				const msg = `Duplicate/Preexisting column name: ${col.name}`
-				console.error(msg)
-				return false
-			}
-			allCols.add(col.name)
-		}
-		return true
-	}, {
-		error: 'Duplicate/Preexisting column name',
+export const LayerDbConfigSchema = z
+	.object({
+		columns: z.array(ColumnDefSchema),
 	})
+	.refine(
+		(config) => {
+			const allCols = new Set(COLUMN_KEYS) as Set<string>
+			for (const col of config.columns) {
+				if (allCols.has(col.name)) {
+					const msg = `Duplicate/Preexisting column name: ${col.name}`
+					console.error(msg)
+					return false
+				}
+				allCols.add(col.name)
+			}
+			return true
+		},
+		{
+			error: 'Duplicate/Preexisting column name',
+		},
+	)
 
 export type LayerDbConfig = z.infer<typeof LayerDbConfigSchema>
 
-export function buildFullLayerComponents(
-	components: BaseLayerComponents,
-	skipValidate = false,
-) {
+export function buildFullLayerComponents(components: BaseLayerComponents, skipValidate = false) {
 	// these mappings are encapsulated intentionally. only consume these via layer-components.json
 	const MAP_ABBREVIATIONS = {
 		AlBasrah: 'AB',
@@ -1039,7 +1049,8 @@ export function partitionScores(layer: any, cfg: EffectiveColumnConfig) {
 	}
 	for (const def of Object.values(cfg.defs)) {
 		if (def.table !== 'extra-cols' || def.type !== 'float') continue
-		if (def.name.endsWith('Diff') || def.name == 'Balance_Differential') partitioned.diffs[def.name.replace(/_Diff$/, '')] = layer[def.name]
+		if (def.name.endsWith('Diff') || def.name == 'Balance_Differential')
+			partitioned.diffs[def.name.replace(/_Diff$/, '')] = layer[def.name]
 		else if (def.name.endsWith('_1')) partitioned.team1[def.name.replace(/_1$/, '')] = layer[def.name]
 		else if (def.name.endsWith('_2')) partitioned.team2[def.name.replace(/_2$/, '')] = layer[def.name]
 		else partitioned.other[def.name] = layer[def.name]

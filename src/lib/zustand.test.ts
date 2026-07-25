@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as Zus from 'zustand'
+
 import * as ZusUtils from './zustand'
 
 type State = { user: { name: string; age: number }; count: number }
@@ -55,14 +56,20 @@ describe('getState with query sources', () => {
 		ZusUtils.registerQueryClient(new QueryClient())
 		const store = Zus.createStore<State>(() => ({ user: { name: 'a', age: 1 }, count: 0 }))
 		const sel = (s: State, q: { n: number }) => s.count + q.n
-		await expect(ZusUtils.getState(store, queryOpts('n', async () => ({ n: 5 })), sel)).resolves.toBe(5)
+		await expect(
+			ZusUtils.getState(
+				store,
+				queryOpts('n', async () => ({ n: 5 })),
+				sel,
+			),
+		).resolves.toBe(5)
 	})
 
 	it('samples sync sources at resolution, not at call time', async () => {
 		ZusUtils.registerQueryClient(new QueryClient())
 		const store = Zus.createStore<State>(() => ({ user: { name: 'a', age: 1 }, count: 0 }))
 		let release!: () => void
-		const gate = new Promise<void>(res => release = res)
+		const gate = new Promise<void>((res) => (release = res))
 
 		const pending = ZusUtils.getState(
 			store,
@@ -93,7 +100,7 @@ describe('getState with query sources', () => {
 describe('getState with frame keys', () => {
 	const setupFrameKey = (store: Zus.StoreApi<any>) => {
 		const key = { frameId: Symbol('frame') } as any
-		ZusUtils.registerFrameKeyResolver(k => k === key ? { store, update$: new Rx.Subject() } : undefined)
+		ZusUtils.registerFrameKeyResolver((k) => (k === key ? { store, update$: new Rx.Subject() } : undefined))
 		return key
 	}
 	afterEach(() => ZusUtils.registerFrameKeyResolver(() => undefined))

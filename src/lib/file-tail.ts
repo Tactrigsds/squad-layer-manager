@@ -1,5 +1,6 @@
 import EventEmitter from 'node:events'
 import * as fsp from 'node:fs/promises'
+
 import { getChildModule, type OtelModule } from './otel'
 
 // Tails a SquadGame.log on the local filesystem, emitting 'chunk' events as the file grows.

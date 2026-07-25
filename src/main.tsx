@@ -1,19 +1,22 @@
-import * as FeatureFlags from '@/systems/feature-flags.client'
-import * as SettingsClient from '@/systems/settings.client'
+import './index.css'
+
 import * as TSR from '@tanstack/react-router'
+import { enableMapSet } from 'immer'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { Providers } from './components/providers.tsx'
-import './index.css'
+
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
+import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
-import { enableMapSet } from 'immer'
+
+import { Providers } from './components/providers.tsx'
 import { rootRouter } from './root-router.ts'
 
 // Enable Map and Set support in Immer

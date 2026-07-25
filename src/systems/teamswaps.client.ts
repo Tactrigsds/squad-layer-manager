@@ -72,16 +72,13 @@ export namespace Sel {
 		return (store: Store) => TSW.isSwapPending(localState(store), playerId)
 	}
 
-	export function swapsToTeamEnriched(
-		store: Store & ChatPrt.Store,
-		team: MH.NormedTeamId,
-	): Map<SM.PlayerId, TSW.EnrichedTeamswap> {
+	export function swapsToTeamEnriched(store: Store & ChatPrt.Store, team: MH.NormedTeamId): Map<SM.PlayerId, TSW.EnrichedTeamswap> {
 		const swaps = localState(store).editedSwaps
 		const players = ChatPrt.Sel.chatState(store).players
 		const result: Map<SM.PlayerId, TSW.EnrichedTeamswap> = new Map()
 		for (const [playerId, swap_] of swaps.entries()) {
 			if (swap_.toTeam !== team) continue
-			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 			if (!player) continue
 			result.set(playerId, { ...swap_, player })
 		}
@@ -120,7 +117,7 @@ export namespace Sel {
 		const result = new Map<SM.PlayerId, EnrichedTeamswapWithMutation>()
 		for (const playerId of allPlayerIds) {
 			const swap_ = swaps.get(playerId) ?? savedSwaps.get(playerId)!
-			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 			if (!player) continue
 			result.set(playerId, { ...swap_, player, mutation: ItemMutations.toItemMutationState(mutations, playerId) })
 		}
@@ -156,13 +153,16 @@ export namespace Actions {
 			if (!TSW.canQueue(state, playerId)) continue
 			const toTeam = getPlayerOppositeTeam(stores, playerId)
 			if (!toTeam) continue
-			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, {
-				code: 'add-player-teamswap',
-				playerId,
-				toTeam,
-				source,
-				saved: false,
-			})
+			TSWPrt.Actions.dispatch(
+				{ teamswaps: stores.squadServer },
+				{
+					code: 'add-player-teamswap',
+					playerId,
+					toTeam,
+					source,
+					saved: false,
+				},
+			)
 		}
 		setEditing(stores.squadServer.serverId)
 	}

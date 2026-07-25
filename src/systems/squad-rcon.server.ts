@@ -1,3 +1,5 @@
+import * as Rx from 'rxjs'
+
 import { sleep } from '@/lib/async'
 import { AsyncResource } from '@/lib/async-resource'
 import type * as Cleanup from '@/lib/cleanup'
@@ -11,7 +13,6 @@ import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
-import * as Rx from 'rxjs'
 
 const module = initModule('squad-rcon')
 let log!: CS.Logger
@@ -96,12 +97,14 @@ export function initSquadRcon(
 		Rx.share(),
 	)
 
-	cleanup.push(rcon.connected$.subscribe(() => {
-		const rconCtx = { ...ctx, rcon }
-		layersStatus.invalidate(rconCtx)
-		teams.invalidate(rconCtx)
-		serverInfo.invalidate(rconCtx)
-	}))
+	cleanup.push(
+		rcon.connected$.subscribe(() => {
+			const rconCtx = { ...ctx, rcon }
+			layersStatus.invalidate(rconCtx)
+			teams.invalidate(rconCtx)
+			serverInfo.invalidate(rconCtx)
+		}),
+	)
 
 	return {
 		layersStatus,
@@ -256,9 +259,7 @@ async function fetchTeams(ctx: C.Rcon & C.ServerId & C.AsyncResourceInvocation &
 	try {
 		for (const player of players) {
 			if (player.squadId !== null && player.teamId === null) {
-				throw ctx.refetch(
-					`player ${SM.PlayerIds.prettyPrint(player.ids)} is in a squad without a team`,
-				)
+				throw ctx.refetch(`player ${SM.PlayerIds.prettyPrint(player.ids)} is in a squad without a team`)
 			}
 			if (player.isLeader && player.squadId === null) {
 				log.error(`player ${SM.PlayerIds.prettyPrint(player.ids)} is a leader without a squad, setting isLeader to false`)
@@ -267,28 +268,28 @@ async function fetchTeams(ctx: C.Rcon & C.ServerId & C.AsyncResourceInvocation &
 		}
 
 		for (const squad of squads) {
-			const group = grouped.find(group => SM.Squads.idsEqual(squad, group))
+			const group = grouped.find((group) => SM.Squads.idsEqual(squad, group))
 			if (!group) {
 				throw ctx.refetch(`squad ${SM.Squads.printKey(squad)} is empty`)
 			}
-			const leaders = group.players.filter(player => player.isLeader)
+			const leaders = group.players.filter((player) => player.isLeader)
 			if (leaders.length === 0) {
 				throw ctx.refetch(`squad ${SM.Squads.printKey(squad)} has no leaders`)
 			}
 			if (leaders.length > 1) {
 				throw ctx.refetch(
-					`squad ${SM.Squads.printKey(squad)} has multiple leaders: ${leaders.map(p => SM.PlayerIds.prettyPrint(p.ids)).join(', ')}`,
+					`squad ${SM.Squads.printKey(squad)} has multiple leaders: ${leaders.map((p) => SM.PlayerIds.prettyPrint(p.ids)).join(', ')}`,
 				)
 			}
 		}
 
 		for (const group of grouped) {
-			const squad = squads.find(squad => SM.Squads.idsEqual(squad, group))
+			const squad = squads.find((squad) => SM.Squads.idsEqual(squad, group))
 			if (!squad) {
 				throw ctx.refetch(
-					`players ${group.players.map(p => SM.PlayerIds.prettyPrint(p.ids)).join(', ')} are in a nonexistant squad ${
-						SM.Squads.printKey(group)
-					}`,
+					`players ${group.players.map((p) => SM.PlayerIds.prettyPrint(p.ids)).join(', ')} are in a nonexistant squad ${SM.Squads.printKey(
+						group,
+					)}`,
 				)
 			}
 		}
@@ -337,7 +338,7 @@ export async function getPlayer(ctx: C.SquadRcon & CS.AbortSignal, query: SM.Pla
 	const playersRes = await ctx.server.teams.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
-	const player = SM.PlayerIds.find(players, p => p.ids, query)
+	const player = SM.PlayerIds.find(players, (p) => p.ids, query)
 	if (!player) return { code: 'err:player-not-found' as const }
 	return { code: 'ok' as const, player }
 }
@@ -386,17 +387,14 @@ export const warnAllAdmins = C.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & CS.AbortSignal, options: WarnOptions, excludeSteamIds?: Set<string>) => {
-		const [currentAdminList, teamsRes] = await Promise.all([
-			AdminList.getMergedForServer(ctx, ctx.serverId),
-			ctx.server.teams.get(ctx),
-		])
+		const [currentAdminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
 		if (teamsRes.code === 'err:rcon') return
 		const admins: SM.PlayerIds.Schema[] = []
 		for (const player of teamsRes.players) {
 			if (
-				player.ids.steam
-				&& SM.AdminList.getIsAdmin(currentAdminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
-				&& !excludeSteamIds?.has(player.ids.steam)
+				player.ids.steam &&
+				SM.AdminList.getIsAdmin(currentAdminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>) &&
+				!excludeSteamIds?.has(player.ids.steam)
 			) {
 				admins.push(player.ids)
 			}
@@ -430,28 +428,24 @@ export async function getServerInfo(ctx: C.Rcon & CS.AbortSignal): Promise<SM.Se
 	}
 }
 
-export const getLayerStatus = C.spanOp(
-	'getLayerStatus',
-	{ module },
-	async (ctx: C.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {
-		const currentLayerTask = getCurrentLayer(ctx)
-		const nextLayerTask = getNextLayer(ctx)
-		const currentLayerRes = await currentLayerTask
-		const nextLayerRes = await nextLayerTask
-		if (currentLayerRes.code !== 'ok') return currentLayerRes
-		if (nextLayerRes.code !== 'ok') return nextLayerRes
+export const getLayerStatus = C.spanOp('getLayerStatus', { module }, async (ctx: C.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {
+	const currentLayerTask = getCurrentLayer(ctx)
+	const nextLayerTask = getNextLayer(ctx)
+	const currentLayerRes = await currentLayerTask
+	const nextLayerRes = await nextLayerTask
+	if (currentLayerRes.code !== 'ok') return currentLayerRes
+	if (nextLayerRes.code !== 'ok') return nextLayerRes
 
-		const serverStatus: SM.LayersStatus = {
-			currentLayer: currentLayerRes.layer,
-			nextLayer: nextLayerRes.layer,
-		}
+	const serverStatus: SM.LayersStatus = {
+		currentLayer: currentLayerRes.layer,
+		nextLayer: nextLayerRes.layer,
+	}
 
-		return {
-			code: 'ok' as const,
-			data: serverStatus,
-		}
-	},
-)
+	return {
+		code: 'ok' as const,
+		data: serverStatus,
+	}
+})
 
 export const setNextLayer = C.spanOp(
 	'setNextLayer',
@@ -466,7 +460,9 @@ export const setNextLayer = C.spanOp(
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
 		if (!newStatus.data.nextLayer) {
-			throw new Error(`Failed to set next layer. Expected ${typeof layer === 'string' ? layer : JSON.stringify(layer)}, received undefined`)
+			throw new Error(
+				`Failed to set next layer. Expected ${typeof layer === 'string' ? layer : JSON.stringify(layer)}, received undefined`,
+			)
 		}
 
 		if (newStatus.data.nextLayer && !L.areLayersCompatible(layer, newStatus.data.nextLayer)) {
@@ -490,10 +486,7 @@ export async function endMatch(ctx: C.Rcon) {
 	await ctx.rcon.execute('AdminEndMatch', { level: 'info' })
 }
 
-export async function switchPlayers(
-	ctx: C.Rcon & C.SquadRcon & CS.AbortSignal,
-	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
-) {
+export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
 	const ops: Promise<unknown>[] = []
 	for (const ids of players) {
 		const id = SM.PlayerIds.normalizeToPlayerId(ids)
@@ -512,13 +505,13 @@ export async function killPlayers(
 	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
 	reason?: string,
 ) {
-	const ids = players.map(p => SM.PlayerIds.normalizeToPlayerId(p))
+	const ids = players.map((p) => SM.PlayerIds.normalizeToPlayerId(p))
 	if (ids.length === 0) return
 	log.info(`Killing players via double team switch: %o`, ids)
 	// The two force-switches (and the wait between them) are atomic and deliberately ignore ctx.signal:
 	// once the first switch fires, aborting must not skip the second, or the player is left stranded on the
 	// opposite team instead of dead on their own.
-	const forceSwitch = () => Promise.all(ids.map(id => ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info' })))
+	const forceSwitch = () => Promise.all(ids.map((id) => ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info' })))
 	// hold the teams fetch mutex across the double switch so no poll/refetch observes the player mid-swap
 	// (on the opposite team). We invalidate only after releasing, triggering one fresh fetch of the settled
 	// (back-to-original) state.
@@ -544,11 +537,7 @@ export async function disbandSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, t
 	ctx.server.teams.invalidate(ctx)
 }
 
-export async function kickPlayer(
-	ctx: C.Rcon & C.SquadRcon & CS.AbortSignal,
-	ids: SM.PlayerIds.EosIdQueryOrPlayerId,
-	reason?: string,
-) {
+export async function kickPlayer(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, reason?: string) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Kicking player %s`, id)
 	await ctx.rcon.execute(`AdminKick "${id}" ${reason ?? ''}`.trim(), { level: 'info', signal: ctx.signal })

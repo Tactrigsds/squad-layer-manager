@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
 import { HumanTime, ParsableBigIntSchema } from '@/lib/zod'
@@ -13,7 +15,6 @@ import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
-import { z } from 'zod'
 
 // ============================== rbac (moved out of the deploy-time config so it's admin-editable at runtime) ==============================
 
@@ -21,38 +22,58 @@ import { z } from 'zod'
 // which discord entities it's assigned to. Consolidating per-role (rather than five parallel role-keyed maps) makes the
 // "a role must be defined to be referenced" invariant structural, so the schema no longer has to police it.
 // dotted path into a settings document, e.g. "vote.voteDuration" or just "vote" for the whole section
-const SettingsGrantPathSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/, {
-	error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
-})
+const SettingsGrantPathSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.regex(/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/, {
+		error: 'Must be a dotted setting path, e.g. "vote.voteDuration"',
+	})
 
 // discord ids are kept as strings here (ParsableBigInt) so they round-trip cleanly through the JSON settings editor /
 // settings GUI; rbac.server converts them to bigint at the boundary
-const RoleAssignmentsSchema = z.object({
-	discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
-	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
-	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
-	ingameAdminLists: z.array(SM.AdminListIdSchema).prefault([]).describe(
-		'Grant this role to the in-game admins of the named admin lists. A player counts as an admin of a list when that list '
-			+ "places them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers "
-			+ 'that actually use the named list.',
-	),
-	adminListGroups: z.array(z.object({
-		listId: SM.AdminListIdSchema.describe('The admin list the group belongs to'),
-		groupId: z.string().min(1).describe('The group name within that list'),
-	})).prefault([]).describe(
-		'Grant this role by admin-list group membership. A player gets it while the named list places them in the named group, '
-			+ 'admin-identifying or not (e.g. a Whitelist reserve-slot group), and only on servers that use that list.',
-	),
-}).prefault({})
+const RoleAssignmentsSchema = z
+	.object({
+		discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
+		discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
+		everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
+		ingameAdminLists: z
+			.array(SM.AdminListIdSchema)
+			.prefault([])
+			.describe(
+				'Grant this role to the in-game admins of the named admin lists. A player counts as an admin of a list when that list ' +
+					"places them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers " +
+					'that actually use the named list.',
+			),
+		adminListGroups: z
+			.array(
+				z.object({
+					listId: SM.AdminListIdSchema.describe('The admin list the group belongs to'),
+					groupId: z.string().min(1).describe('The group name within that list'),
+				}),
+			)
+			.prefault([])
+			.describe(
+				'Grant this role by admin-list group membership. A player gets it while the named list places them in the named group, ' +
+					'admin-identifying or not (e.g. a Whitelist reserve-slot group), and only on servers that use that list.',
+			),
+	})
+	.prefault({})
 
 const ServerSettingsGrantSchema = z.object({
-	access: z.enum(['read', 'write', 'write-sensitive']).prefault('write').describe(
-		'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
-	),
+	access: z
+		.enum(['read', 'write', 'write-sensitive'])
+		.prefault('write')
+		.describe(
+			'read = view settings (never connection details); write = edit non-sensitive settings; write-sensitive = view and edit the RCON/SFTP connection details',
+		),
 	serverIds: z.array(z.string()).prefault([]).describe('Server ids this grant applies to; empty = all servers'),
-	paths: z.array(SettingsGrantPathSchema).prefault([]).describe(
-		'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
-	),
+	paths: z
+		.array(SettingsGrantPathSchema)
+		.prefault([])
+		.describe(
+			'Write grants only: dotted setting paths to restrict the grant to (e.g. "queue.mainPool"); empty = all non-sensitive settings',
+		),
 })
 
 // A server-scoped permission restricted to specific servers. The unrestricted (all-servers) form is the bare
@@ -63,69 +84,93 @@ const ServerGrantSchema = z.object({
 })
 
 const RoleConfigSchema = z.object({
-	permissions: z.array(RBAC.ROLE_PERMISSION_EXPRESSION).prefault([]).describe(
-		'Permissions granted by this role. Settings permissions granted here are unrestricted (all servers / all settings); '
-			+ 'use the settings-grants below for restricted grants.',
-	),
+	permissions: z
+		.array(RBAC.ROLE_PERMISSION_EXPRESSION)
+		.prefault([])
+		.describe(
+			'Permissions granted by this role. Settings permissions granted here are unrestricted (all servers / all settings); ' +
+				'use the settings-grants below for restricted grants.',
+		),
 	// "up to N" comparisons can't ride the permission-expression grammar (grants are equality-matched), so the timeout cap
 	// is its own field. Absent = the role cannot issue timeouts; negation doesn't apply, drop the field instead.
 	maxTimeout: HumanTime.optional().describe(
 		'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
 	),
-	maxLayerRequests: z.number().int().positive().optional().describe(
-		'Maximum concurrent layer requests (backburner items) the role may hold. Absent = this role cannot request layers. Super users/roles are unlimited.',
-	),
+	maxLayerRequests: z
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.describe(
+			'Maximum concurrent layer requests (backburner items) the role may hold. Absent = this role cannot request layers. Super users/roles are unlimited.',
+		),
 	// restricted settings grants, like maxTimeout these carry arguments the expression grammar can't: they let the role
 	// edit only specific settings (and for servers, only specific servers). Unrestricted access is granted via `permissions`.
-	globalSettingsGrants: z.array(SettingsGrantPathSchema).prefault([]).describe(
-		'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). '
-			+ 'Any grant also lets the role view global settings. A "!global-settings:write" denial in permissions overrides these.',
-	),
-	serverSettingsGrants: z.array(ServerSettingsGrantSchema).prefault([]).describe(
-		"Restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. "
-			+ 'Matching "!server-settings:*" denials in permissions override these.',
-	),
-	serverGrants: z.array(ServerGrantSchema).prefault([]).describe(
-		'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. '
-			+ 'Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
-	),
+	globalSettingsGrants: z
+		.array(SettingsGrantPathSchema)
+		.prefault([])
+		.describe(
+			'Restricted global-settings write grants: dotted setting paths the role may edit (e.g. "vote.voteDuration", or "vote" for the whole section). ' +
+				'Any grant also lets the role view global settings. A "!global-settings:write" denial in permissions overrides these.',
+		),
+	serverSettingsGrants: z
+		.array(ServerSettingsGrantSchema)
+		.prefault([])
+		.describe(
+			"Restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. " +
+				'Matching "!server-settings:*" denials in permissions override these.',
+		),
+	serverGrants: z
+		.array(ServerGrantSchema)
+		.prefault([])
+		.describe(
+			'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. ' +
+				'Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
+		),
 	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
 })
 
-export const RbacSettingsSchema = z.object({
-	roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe('Defined roles, keyed by id.'),
-}).superRefine((val, ctx) => {
-	// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
-	for (const [role, cfg] of Object.entries(val.roles ?? {})) {
-		cfg.globalSettingsGrants.forEach((p, i) => {
-			const head = p.split('.')[0]
-			if (!globalSettingsTopLevelKeys().includes(head)) {
-				ctx.addIssue({ code: 'custom', message: `"${head}" is not a global setting`, path: ['roles', role, 'globalSettingsGrants', i] })
-			}
-		})
-		cfg.serverSettingsGrants.forEach((grant, i) => {
-			if (grant.access !== 'write' && grant.paths.length > 0) {
-				ctx.addIssue({
-					code: 'custom',
-					message: 'Paths only apply to write grants',
-					path: ['roles', role, 'serverSettingsGrants', i, 'paths'],
-				})
-			}
-			grant.paths.forEach((p, j) => {
+export const RbacSettingsSchema = z
+	.object({
+		roles: z.record(RBAC.UserDefinedRoleIdSchema, RoleConfigSchema).prefault({}).describe('Defined roles, keyed by id.'),
+	})
+	.superRefine((val, ctx) => {
+		// only the first path segment is validated (deeper segments that don't resolve simply never match a write)
+		for (const [role, cfg] of Object.entries(val.roles ?? {})) {
+			cfg.globalSettingsGrants.forEach((p, i) => {
 				const head = p.split('.')[0]
-				if (!serverSettingsGrantableTopLevelKeys().includes(head)) {
+				if (!globalSettingsTopLevelKeys().includes(head)) {
 					ctx.addIssue({
 						code: 'custom',
-						message: `"${head}" is not a grantable server setting`,
-						path: ['roles', role, 'serverSettingsGrants', i, 'paths', j],
+						message: `"${head}" is not a global setting`,
+						path: ['roles', role, 'globalSettingsGrants', i],
 					})
 				}
 			})
-		})
-	}
-	// default to the tiered admins/managers/owners preset (see defaultRbacSettings). Lazy thunk because the preset reads
-	// GlobalSettingsSchema, which is declared further down; also drives fresh-install seeding and the form's reset-to-default.
-}).prefault(() => defaultRbacSettings())
+			cfg.serverSettingsGrants.forEach((grant, i) => {
+				if (grant.access !== 'write' && grant.paths.length > 0) {
+					ctx.addIssue({
+						code: 'custom',
+						message: 'Paths only apply to write grants',
+						path: ['roles', role, 'serverSettingsGrants', i, 'paths'],
+					})
+				}
+				grant.paths.forEach((p, j) => {
+					const head = p.split('.')[0]
+					if (!serverSettingsGrantableTopLevelKeys().includes(head)) {
+						ctx.addIssue({
+							code: 'custom',
+							message: `"${head}" is not a grantable server setting`,
+							path: ['roles', role, 'serverSettingsGrants', i, 'paths', j],
+						})
+					}
+				})
+			})
+		}
+		// default to the tiered admins/managers/owners preset (see defaultRbacSettings). Lazy thunk because the preset reads
+		// GlobalSettingsSchema, which is declared further down; also drives fresh-install seeding and the form's reset-to-default.
+	})
+	.prefault(() => defaultRbacSettings())
 
 // hoisted so the RbacSettingsSchema refine above can call them at parse time (the schemas are declared further down)
 export function globalSettingsTopLevelKeys(): string[] {
@@ -199,181 +244,226 @@ export function trimStaleSettingsGrants(raw: unknown): { settings: unknown; drop
 	return { settings: { ...(raw as Record<string, unknown>), rbac: { ...(rbac as Record<string, unknown>), roles } }, dropped }
 }
 
-export const NavLinkSchema = z.array(z.object({
-	label: z.string(),
-	url: z.url(),
-}))
+export const NavLinkSchema = z.array(
+	z.object({
+		label: z.string(),
+		url: z.url(),
+	}),
+)
 
 // ============================== global settings ==============================
 
-export const GlobalSettingsSchema = z.object({
-	topBarColor: z.string().prefault('green').nullable().describe(
-		'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
-	),
-	adminActionReasons: AAR.AdminActionReasonsSchema.describe(
-		'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that '
-			+ 'action, so every reason needs at least one. The text reaches the player verbatim and takes {{label}}, {{duration}} '
-			+ '(timeouts only) and any Message Variables below.',
-	),
-	requireReasonFor: z.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE).prefault([]).describe(
-		'Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.',
-	),
-	messageVariables: z.array(z.object({
-		name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
-			error: 'Letters, digits and underscore only; must not start with a digit',
-		}),
-		value: z.string(),
-	})).prefault([]).describe(
-		'Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz").',
-	),
-	chat: CHAT.ChatConfigSchema.prefault({}).describe(
-		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
-	),
-	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
-	seedSandboxServer: z.boolean().prefault(true).describe(
-		'Create a sandbox server on startup if none exists. A sandbox has no real squad server behind it: SLM emulates one in-process, so '
-			+ 'it is somewhere to learn the queue, try a filter or reproduce a bug without touching anyone real. Turning this off leaves any '
-			+ 'existing sandbox alone; delete it from the server registry to be rid of it.',
-	),
-	tickRateThresholds: z.object({
-		good: z.number().positive().prefault(60).describe(
-			'At or above this tick rate the live server tick rate displays as good (green)',
+export const GlobalSettingsSchema = z
+	.object({
+		topBarColor: z
+			.string()
+			.prefault('green')
+			.nullable()
+			.describe(
+				'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
+			),
+		adminActionReasons: AAR.AdminActionReasonsSchema.describe(
+			'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that ' +
+				'action, so every reason needs at least one. The text reaches the player verbatim and takes {{label}}, {{duration}} ' +
+				'(timeouts only) and any Message Variables below.',
 		),
-		warning: z.number().positive().prefault(50).describe(
-			'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+		requireReasonFor: z
+			.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE)
+			.prefault([])
+			.describe('Actions that require a reason (a preset or custom text). Performing one of these without a reason is rejected.'),
+		messageVariables: z
+			.array(
+				z.object({
+					name: z
+						.string()
+						.trim()
+						.regex(/^[A-Za-z_][A-Za-z0-9_]*$/, {
+							error: 'Letters, digits and underscore only; must not start with a digit',
+						}),
+					value: z.string(),
+				}),
+			)
+			.prefault([])
+			.describe('Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz").'),
+		chat: CHAT.ChatConfigSchema.prefault({}).describe(
+			'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 		),
-	}).prefault({}).describe('Thresholds for coloring the live server tick rate display'),
-	balanceTriggerLevels: z.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
-		.prefault({ '150x2': 'warn' })
-		.describe(
-			'Which balance triggers run, and how severely each one reports when it fires (info, warn, or violation). A trigger with no '
-				+ 'level set here is not evaluated at all.',
+		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+		seedSandboxServer: z
+			.boolean()
+			.prefault(true)
+			.describe(
+				'Create a sandbox server on startup if none exists. A sandbox has no real squad server behind it: SLM emulates one in-process, so ' +
+					'it is somewhere to learn the queue, try a filter or reproduce a bug without touching anyone real. Turning this off leaves any ' +
+					'existing sandbox alone; delete it from the server registry to be rid of it.',
+			),
+		tickRateThresholds: z
+			.object({
+				good: z
+					.number()
+					.positive()
+					.prefault(60)
+					.describe('At or above this tick rate the live server tick rate displays as good (green)'),
+				warning: z
+					.number()
+					.positive()
+					.prefault(50)
+					.describe(
+						'At or above this tick rate (but below the good threshold) the tick rate displays as a warning (yellow); below it, as unhealthy (red)',
+					),
+			})
+			.prefault({})
+			.describe('Thresholds for coloring the live server tick rate display'),
+		balanceTriggerLevels: z
+			.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
+			.prefault({ '150x2': 'warn' })
+			.describe(
+				'Which balance triggers run, and how severely each one reports when it fires (info, warn, or violation). A trigger with no ' +
+					'level set here is not evaluated at all.',
+			),
+		playerFlagsRequiringNote: z
+			.array(z.uuid())
+			.prefault([])
+			.describe(
+				"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
+			),
+		playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
+			'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
 		),
-	playerFlagsRequiringNote: z.array(z.uuid()).prefault([]).describe(
-		"Flags (by id) that require a reason to be given when added, which is included in the note posted to the player's BattleMetrics profile",
-	),
-	playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
-		'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
-	),
-	navLinks: NavLinkSchema.optional().describe(
-		'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
-	),
-	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
-	allowedPrefixes: z.array(CMD.PrefixSchema).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
-		'Prefixes an in-game command may start with. Every command trigger must begin with one of these.',
-	),
-	defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
-		'The allowed prefix that commands introduced by future SLM versions are seeded with',
-	),
-	commands: CMD.AllCommandConfigSchema,
-	adminLists: z.record(SM.AdminListIdSchema, SM.AdminListDefSchema).prefault({}).describe(
-		'The admin lists this install knows about, by name. Each serves the same Admins.cfg the gameserver reads, in the same format, '
-			+ 'and carries its own admin-identifying permissions. Naming them is what lets a server choose which apply to it and a role '
-			+ "assignment say which list's groups it means.",
-	),
-	rbac: RbacSettingsSchema,
-	layerTable: LQY.LayerTableConfigSchema.prefault({
-		orderedColumns: [
-			{ name: 'id', visible: false },
-			{ name: 'Size' },
-			{ name: 'Layer' },
-			{ name: 'Map', visible: false },
-			{ name: 'Gamemode', visible: false },
-			{ name: 'LayerVersion', visible: false },
+		navLinks: NavLinkSchema.optional().describe(
+			'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
+		),
+		warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
+		allowedPrefixes: z
+			.array(CMD.PrefixSchema)
+			.min(1)
+			.prefault([CMD.FALLBACK_PREFIX])
+			.describe('Prefixes an in-game command may start with. Every command trigger must begin with one of these.'),
+		defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
+			'The allowed prefix that commands introduced by future SLM versions are seeded with',
+		),
+		commands: CMD.AllCommandConfigSchema,
+		adminLists: z
+			.record(SM.AdminListIdSchema, SM.AdminListDefSchema)
+			.prefault({})
+			.describe(
+				'The admin lists this install knows about, by name. Each serves the same Admins.cfg the gameserver reads, in the same format, ' +
+					'and carries its own admin-identifying permissions. Naming them is what lets a server choose which apply to it and a role ' +
+					"assignment say which list's groups it means.",
+			),
+		rbac: RbacSettingsSchema,
+		layerTable: LQY.LayerTableConfigSchema.prefault({
+			orderedColumns: [
+				{ name: 'id', visible: false },
+				{ name: 'Size' },
+				{ name: 'Layer' },
+				{ name: 'Map', visible: false },
+				{ name: 'Gamemode', visible: false },
+				{ name: 'LayerVersion', visible: false },
 
-			{ name: 'Faction_1' },
-			{ name: 'Unit_1' },
-			{ name: 'Alliance_1', visible: false },
+				{ name: 'Faction_1' },
+				{ name: 'Unit_1' },
+				{ name: 'Alliance_1', visible: false },
 
-			{ name: 'Faction_2' },
-			{ name: 'Unit_2' },
-			{ name: 'Alliance_2', visible: false },
+				{ name: 'Faction_2' },
+				{ name: 'Unit_2' },
+				{ name: 'Alliance_2', visible: false },
 
-			{ name: 'Balance_Differential' },
-			{ name: 'Asymmetry_Score' },
-		],
-		defaultSortBy: { type: 'random' },
-		extraLayerSelectMenuItems: [
-			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Balance_Differential' }, { type: 'value' }, { type: 'value' }] },
-			{ type: 'inrange', neg: false, args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }] },
-		],
-	}).describe('Configures the appearance of the layers table and layer select menu'),
-	layerTags: LTag.TagsSchema,
-	layerGeneration: LC.LayerGenerationConfigSchema.prefault({
-		pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
-	}).describe(
-		"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick "
-			+ 'order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.',
-	),
-}).superRefine((val, ctx) => {
-	const allowedPrefixes = val.allowedPrefixes ?? [CMD.FALLBACK_PREFIX]
-	const seenPrefix = new Set<string>()
-	allowedPrefixes.forEach((p, i) => {
-		if (seenPrefix.has(p)) {
-			ctx.addIssue({ code: 'custom', message: `Duplicate prefix "${p}"`, path: ['allowedPrefixes', i] })
-		}
-		seenPrefix.add(p)
+				{ name: 'Balance_Differential' },
+				{ name: 'Asymmetry_Score' },
+			],
+			defaultSortBy: { type: 'random' },
+			extraLayerSelectMenuItems: [
+				{
+					type: 'inrange',
+					neg: false,
+					args: [{ type: 'column', column: 'Balance_Differential' }, { type: 'value' }, { type: 'value' }],
+				},
+				{
+					type: 'inrange',
+					neg: false,
+					args: [{ type: 'column', column: 'Asymmetry_Score' }, { type: 'value' }, { type: 'value' }],
+				},
+			],
+		}).describe('Configures the appearance of the layers table and layer select menu'),
+		layerTags: LTag.TagsSchema,
+		layerGeneration: LC.LayerGenerationConfigSchema.prefault({
+			pickOrder: ['Map', 'Gamemode', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2'],
+		}).describe(
+			"How layers are picked during generation, vote generation and the layer table's random sort. Each column or matchup in the pick " +
+				'order is drawn weighted-randomly in turn, narrowing the pool the next one draws from.',
+		),
 	})
-	// commands seeded for future SLM versions take defaultPrefix, so it has to be one an admin actually accepts;
-	// otherwise the next release's new commands would fail this schema on load and refuse to boot
-	const defaultPrefix = val.defaultPrefix ?? CMD.FALLBACK_PREFIX
-	if (!allowedPrefixes.includes(defaultPrefix)) {
-		ctx.addIssue({
-			code: 'custom',
-			message: `Default prefix "${defaultPrefix}" must be one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
-			path: ['defaultPrefix'],
-		})
-	}
-	const hasAllowedPrefix = (s: string) => allowedPrefixes.some((p) => s.startsWith(p))
-	const prefixIssue = (s: string, noun: string, path: (string | number)[]) => {
-		ctx.addIssue({
-			code: 'custom',
-			message: `${noun} "${s}" must start with one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
-			path,
-		})
-	}
-
-	// every trigger string across every command is one namespace, so dispatch never has to break a tie.
-	// matching is case-insensitive, like dispatch.
-	const triggerOwner = new Map<string, string>()
-	for (const [id, cmd] of Object.entries(val.commands ?? {})) {
-		;(cmd.triggers ?? []).forEach((trigger, j) => {
-			const string = CMD.triggerString(trigger)
-			if (!hasAllowedPrefix(string)) prefixIssue(string, 'Trigger', ['commands', id, 'triggers', j])
-			const key = string.toLowerCase()
-			const owner = triggerOwner.get(key)
-			if (owner !== undefined) {
-				ctx.addIssue({
-					code: 'custom',
-					message: owner === id
-						? `Duplicate trigger "${string}"`
-						: `Trigger "${string}" is already used by the "${owner}" command. Pick a different string.`,
-					path: ['commands', id, 'triggers', j],
-				})
+	.superRefine((val, ctx) => {
+		const allowedPrefixes = val.allowedPrefixes ?? [CMD.FALLBACK_PREFIX]
+		const seenPrefix = new Set<string>()
+		allowedPrefixes.forEach((p, i) => {
+			if (seenPrefix.has(p)) {
+				ctx.addIssue({ code: 'custom', message: `Duplicate prefix "${p}"`, path: ['allowedPrefixes', i] })
 			}
-			triggerOwner.set(key, id)
-
-			const args = CMD.triggerArgs(trigger)
-			if (args === undefined) return
-			const res = CMD.resolveTriggerArgs(id as CMD.CommandId, args)
-			if (res.code !== 'ok') ctx.addIssue({ code: 'custom', message: res.msg, path: ['commands', id, 'triggers', j, 'args'] })
+			seenPrefix.add(p)
 		})
-	}
+		// commands seeded for future SLM versions take defaultPrefix, so it has to be one an admin actually accepts;
+		// otherwise the next release's new commands would fail this schema on load and refuse to boot
+		const defaultPrefix = val.defaultPrefix ?? CMD.FALLBACK_PREFIX
+		if (!allowedPrefixes.includes(defaultPrefix)) {
+			ctx.addIssue({
+				code: 'custom',
+				message: `Default prefix "${defaultPrefix}" must be one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
+				path: ['defaultPrefix'],
+			})
+		}
+		const hasAllowedPrefix = (s: string) => allowedPrefixes.some((p) => s.startsWith(p))
+		const prefixIssue = (s: string, noun: string, path: (string | number)[]) => {
+			ctx.addIssue({
+				code: 'custom',
+				message: `${noun} "${s}" must start with one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
+				path,
+			})
+		}
 
-	const seenTagId = new Set<string>()
-	const seenTagLabel = new Set<string>()
-	val.layerTags?.forEach((tag, i) => {
-		if (seenTagId.has(tag.id)) {
-			ctx.addIssue({ code: 'custom', message: `Duplicate tag id "${tag.id}"`, path: ['layerTags', i, 'id'] })
+		// every trigger string across every command is one namespace, so dispatch never has to break a tie.
+		// matching is case-insensitive, like dispatch.
+		const triggerOwner = new Map<string, string>()
+		for (const [id, cmd] of Object.entries(val.commands ?? {})) {
+			;(cmd.triggers ?? []).forEach((trigger, j) => {
+				const string = CMD.triggerString(trigger)
+				if (!hasAllowedPrefix(string)) prefixIssue(string, 'Trigger', ['commands', id, 'triggers', j])
+				const key = string.toLowerCase()
+				const owner = triggerOwner.get(key)
+				if (owner !== undefined) {
+					ctx.addIssue({
+						code: 'custom',
+						message:
+							owner === id
+								? `Duplicate trigger "${string}"`
+								: `Trigger "${string}" is already used by the "${owner}" command. Pick a different string.`,
+						path: ['commands', id, 'triggers', j],
+					})
+				}
+				triggerOwner.set(key, id)
+
+				const args = CMD.triggerArgs(trigger)
+				if (args === undefined) return
+				const res = CMD.resolveTriggerArgs(id as CMD.CommandId, args)
+				if (res.code !== 'ok') ctx.addIssue({ code: 'custom', message: res.msg, path: ['commands', id, 'triggers', j, 'args'] })
+			})
 		}
-		seenTagId.add(tag.id)
-		const label = tag.label.trim().toLowerCase()
-		if (seenTagLabel.has(label)) {
-			ctx.addIssue({ code: 'custom', message: `Another tag is already labeled "${tag.label}"`, path: ['layerTags', i, 'label'] })
-		}
-		seenTagLabel.add(label)
+
+		const seenTagId = new Set<string>()
+		const seenTagLabel = new Set<string>()
+		val.layerTags?.forEach((tag, i) => {
+			if (seenTagId.has(tag.id)) {
+				ctx.addIssue({ code: 'custom', message: `Duplicate tag id "${tag.id}"`, path: ['layerTags', i, 'id'] })
+			}
+			seenTagId.add(tag.id)
+			const label = tag.label.trim().toLowerCase()
+			if (seenTagLabel.has(label)) {
+				ctx.addIssue({ code: 'custom', message: `Another tag is already labeled "${tag.label}"`, path: ['layerTags', i, 'label'] })
+			}
+			seenTagLabel.add(label)
+		})
 	})
-})
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>
 // the pre-decode shape (e.g. HumanTime fields as '5m' strings instead of milliseconds) -- what gets persisted/displayed for editing
@@ -383,7 +473,7 @@ export type GlobalSettingsInput = z.input<typeof GlobalSettingsSchema>
 // settings before GlobalSettingsSchema parses them (the schema has no defaults for command triggers, since they
 // depend on a sibling field). Call this instead of parsing raw global settings directly.
 export function parseGlobalSettings(raw: unknown) {
-	const input = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
+	const input = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
 	const defaultPrefix = typeof input.defaultPrefix === 'string' ? input.defaultPrefix : CMD.FALLBACK_PREFIX
 	return GlobalSettingsSchema.safeParse({ ...input, commands: CMD.seedCommandConfigs(input.commands, defaultPrefix) })
 }
@@ -517,11 +607,13 @@ export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
 export type PoolRepeatRuleConfig = z.infer<typeof RepeatRuleConfigSchema>
 
 export const PoolConfigurationSchema = z.object({
-	poolFilter: PoolFilterSettingSchema.nullable().prefault(null).meta({
-		description:
-			'The single filter defining pool membership. Out-of-pool layers can only be queued by users with the queue:force-write permission, '
-			+ 'are warned about, and are never autogenerated. The filter entity must have both its match and miss indicators (emoji + alert message) configured.',
-	}),
+	poolFilter: PoolFilterSettingSchema.nullable()
+		.prefault(null)
+		.meta({
+			description:
+				'The single filter defining pool membership. Out-of-pool layers can only be queued by users with the queue:force-write permission, ' +
+				'are warned about, and are never autogenerated. The filter entity must have both its match and miss indicators (emoji + alert message) configured.',
+		}),
 	indicateMatches: z.array(F.FilterEntityIdSchema).prefault([]).meta({
 		description: "Layers matching these filters display the filter's match indicator",
 	}),
@@ -537,20 +629,23 @@ export const PoolConfigurationSchema = z.object({
 	constrainGeneration: z.array(AppliedFilterSettingSchema).prefault([]).meta({
 		description: 'Autogenerated layers are constrained by these filters in the given state, in addition to the pool filter',
 	}),
-	skipWarningsForTags: z.array(LTag.TagIdSchema).prefault([]).meta({
-		description:
-			'Queue items carrying any of these tags raise no warnings: not when saving the queue, and not in the admin reminder before the '
-			+ 'layer is played. Being out of pool still gates saving on queue:force-write.',
-	}),
-	repeatRules: z.array(RepeatRuleConfigSchema).describe(
-		'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is '
-			+ 'broken, constrain autogeneration, or both.',
-	).refine(
-		(rules) => new Set(rules.map((r) => r.label)).size === rules.length,
-		{
+	skipWarningsForTags: z
+		.array(LTag.TagIdSchema)
+		.prefault([])
+		.meta({
+			description:
+				'Queue items carrying any of these tags raise no warnings: not when saving the queue, and not in the admin reminder before the ' +
+				'layer is played. Being out of pool still gates saving on queue:force-write.',
+		}),
+	repeatRules: z
+		.array(RepeatRuleConfigSchema)
+		.describe(
+			'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is ' +
+				'broken, constrain autogeneration, or both.',
+		)
+		.refine((rules) => new Set(rules.map((r) => r.label)).size === rules.length, {
 			error: 'Repeat rule labels must be unique',
-		},
-	),
+		}),
 })
 
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
@@ -569,9 +664,11 @@ export const SftpLogConnectionSchema = z.object({
 	logFile: z.string().min(1),
 	pollInterval: HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
 	reconnectInterval: HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
-	maxReconnectAttempts: z.int().min(1).prefault(10).describe(
-		'How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.',
-	),
+	maxReconnectAttempts: z
+		.int()
+		.min(1)
+		.prefault(10)
+		.describe('How many consecutive SFTP failures to tolerate (reconnecting between each) before tearing down the server.'),
 })
 
 export const SandboxConnectionSchema = z.object({
@@ -611,9 +708,12 @@ export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
-	maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
-		'How long the queue is meant to get. Reaching it turns the queue counter red; nothing is rejected.',
-	),
+	maxQueueSize: z
+		.int()
+		.min(1)
+		.max(100)
+		.prefault(20)
+		.describe('How long the queue is meant to get. Reaching it turns the queue counter red; nothing is rejected.'),
 	lowQueueWarningThreshold: z
 		.number()
 		.positive()
@@ -625,30 +725,42 @@ export const QueueSettingsSchema = z.object({
 	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
 		'Which layers this server considers playable, and which of them it warns about.',
 	),
-	layerRequests: z.object({
-		maxTotal: z.number().int().positive().prefault(50).describe(
-			'Maximum number of layer requests the backburner may hold across all users',
-		),
-	}).prefault({}).describe('Limits on the backburner, where layers players request in-game wait to be picked up.'),
+	layerRequests: z
+		.object({
+			maxTotal: z
+				.number()
+				.int()
+				.positive()
+				.prefault(50)
+				.describe('Maximum number of layer requests the backburner may hold across all users'),
+		})
+		.prefault({})
+		.describe('Limits on the backburner, where layers players request in-game wait to be picked up.'),
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
-export const PublicServerSettingsSchema = z
-	.object({
-		adminLists: z.array(SM.AdminListIdSchema).prefault([]).describe(
-			'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up '
-				+ 'roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
+export const PublicServerSettingsSchema = z.object({
+	adminLists: z
+		.array(SM.AdminListIdSchema)
+		.prefault([])
+		.describe(
+			'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up ' +
+				'roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
 		),
-		updatesToSquadServerDisabled: z.boolean().prefault(false).describe(
-			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just '
-				+ 'never sets the map itself. For running SLM alongside something else that owns the rotation.',
+	updatesToSquadServerDisabled: z
+		.boolean()
+		.prefault(false)
+		.describe(
+			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just ' +
+				'never sets the map itself. For running SLM alongside something else that owns the rotation.',
 		),
-		// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
-		// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
-		// ServerSettingsSchema its encodability -- and the settings editor needs that to show HumanTime fields as
-		// "5s" rather than 5000.
-		queue: QueueSettingsSchema.prefault({}),
-		vote: z.object({
+	// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
+	// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
+	// ServerSettingsSchema its encodability -- and the settings editor needs that to show HumanTime fields as
+	// "5s" rather than 5000.
+	queue: QueueSettingsSchema.prefault({}),
+	vote: z
+		.object({
 			voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
 			startVoteReminderThreshold: HumanTime.prefault('20m').describe(
 				'How far into a match admins start being reminded that no vote has been started yet.',
@@ -657,36 +769,46 @@ export const PublicServerSettingsSchema = z
 			internalVoteReminderInterval: HumanTime.prefault('15s').describe(
 				'How often admins are reminded to vote while an internal (admin-only) vote is open.',
 			),
-			autoStartVoteDelay: HumanTime.prefault('20m').nullable().describe(
-				'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
-			),
+			autoStartVoteDelay: HumanTime.prefault('20m')
+				.nullable()
+				.describe(
+					'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
+				),
 			autoStartVoteCutoff: HumanTime.prefault('30m').describe(
-				'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long '
-					+ 'does not open a vote nobody is around for.',
+				'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long ' +
+					'does not open a vote nobody is around for.',
 			),
-			voteDisplayProps: z.array(DH.LAYER_DISPLAY_PROP).prefault(['map', 'gamemode']).describe(
-				'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
-			),
+			voteDisplayProps: z
+				.array(DH.LAYER_DISPLAY_PROP)
+				.prefault(['map', 'gamemode'])
+				.describe('Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.'),
 			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
-		}).prefault({}),
-		overrideAdminSetNextLayer: z.boolean().prefault(false).describe(
-			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight '
-				+ 'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
+		})
+		.prefault({}),
+	overrideAdminSetNextLayer: z
+		.boolean()
+		.prefault(false)
+		.describe(
+			'What happens when the next layer is set from outside SLM (an in-game admin, or another RCON tool). On, SLM sets it straight ' +
+				'back to whatever the queue says. Off, SLM adopts the change by putting that layer at the front of the queue.',
 		),
-		warnOnNextLayerChange: z.boolean().prefault(false).describe(
-			'Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.',
-		),
-		postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
-			'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is '
-				+ 'running low.',
-		),
-		fogOffDelay: HumanTime.prefault('25s').describe(
-			'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
-		),
-		remindersAndAnnouncementsEnabled: z.boolean().prefault(true).describe(
-			'Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.',
-		),
-		rconCacheTTL: z.object({
+	warnOnNextLayerChange: z
+		.boolean()
+		.prefault(false)
+		.describe('Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.'),
+	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
+		'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is ' +
+			'running low.',
+	),
+	fogOffDelay: HumanTime.prefault('25s').describe(
+		'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
+	),
+	remindersAndAnnouncementsEnabled: z
+		.boolean()
+		.prefault(true)
+		.describe('Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.'),
+	rconCacheTTL: z
+		.object({
 			layersStatus: HumanTime.prefault('5s').describe(
 				'How stale the cached current/next layer may be before a read refetches it over RCON.',
 			),
@@ -696,10 +818,12 @@ export const PublicServerSettingsSchema = z
 			teams: HumanTime.prefault('5s').describe(
 				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
 			),
-		}).prefault({}).describe(
+		})
+		.prefault({})
+		.describe(
 			'How long RCON responses stay cached. Lower means fresher data and more RCON traffic; these are the dominant source of roster/status latency.',
 		),
-	})
+})
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
@@ -709,9 +833,9 @@ EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-
 
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema.describe(
-		'How SLM reaches this server. Local: SLM shares the box, reading the log file and dialing RCON directly. SFTP: SLM is remote, '
-			+ 'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and '
-			+ "handles both, so the RCON password lives in the agent's config rather than here.",
+		'How SLM reaches this server. Local: SLM shares the box, reading the log file and dialing RCON directly. SFTP: SLM is remote, ' +
+			'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and ' +
+			"handles both, so the RCON password lives in the agent's config rather than here.",
 	),
 	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
@@ -742,10 +866,7 @@ export function getPoolFilterConstraint(
 
 // one constraint per filter appearing in indicateMatches/indicateMisses/warnFor. never applied as a query filter --
 // these only drive indicators and save-time/in-game warnings.
-export function getIndicationAndWarnConstraints(
-	settings: PublicServerSettings,
-	opts?: { includeWarns?: boolean },
-): LQY.Constraint[] {
+export function getIndicationAndWarnConstraints(settings: PublicServerSettings, opts?: { includeWarns?: boolean }): LQY.Constraint[] {
 	const pool = settings.queue.mainPool
 	const configs = new Map<F.FilterEntityId, { showIndicator: LQY.IndicatorState; warn: LQY.FilterApplicationState }>()
 	const entry = (filterId: F.FilterEntityId) => {
@@ -774,13 +895,11 @@ export function getIndicationAndWarnConstraints(
 			filterApplState: 'disabled',
 			showIndicator: config.showIndicator,
 			warn: config.warn,
-		}))
+		}),
+	)
 }
 
-export function getSettingsConstraints(
-	settings: PublicServerSettings,
-	opts?: { generatingLayers?: boolean },
-) {
+export function getSettingsConstraints(settings: PublicServerSettings, opts?: { generatingLayers?: boolean }) {
 	const constraints: LQY.Constraint[] = []
 	const queue = settings.queue
 
@@ -829,15 +948,17 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 	return result
 }
 
-export const SettingsPathSchema = z.array(z.union([z.string(), z.number()]))
-	.refine(path => {
+export const SettingsPathSchema = z.array(z.union([z.string(), z.number()])).refine(
+	(path) => {
 		// does not check the last key because it could be undefined
 		const valid = checkPublicSettingsPath(path)
 		if (!valid) console.warn("settings path doesn't resolve", path)
 		return valid
-	}, {
+	},
+	{
 		error: 'Path must resolve to a valid setting',
-	})
+	},
+)
 
 export type SettingsPath = (string | number)[]
 
@@ -937,9 +1058,9 @@ export namespace Grants {
 			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
 			hasSensitivePaths
 				? (perms) => {
-					if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
-					return `server-settings:write-sensitive on ${serverId}`
-				}
+						if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
+						return `server-settings:write-sensitive on ${serverId}`
+					}
 				: undefined,
 		])
 	}

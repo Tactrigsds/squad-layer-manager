@@ -1,13 +1,12 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import { up } from './0094_command_allowed_chats'
 
 function makeDb(commands: unknown) {
 	const db = new DatabaseConstructor(':memory:')
 	db.exec(`CREATE TABLE globalSettings (id INTEGER PRIMARY KEY, settings TEXT)`)
-	db.prepare(`INSERT INTO globalSettings (id, settings) VALUES (1, ?)`).run(
-		JSON.stringify({ json: { commands }, meta: undefined }),
-	)
+	db.prepare(`INSERT INTO globalSettings (id, settings) VALUES (1, ?)`).run(JSON.stringify({ json: { commands }, meta: undefined }))
 	return db
 }
 
@@ -31,7 +30,9 @@ describe('0094_command_allowed_chats', () => {
 	})
 
 	test('leaves the rest of a command alone', async () => {
-		const db = makeDb({ timeout: { triggers: ['/timeout', { string: '/to2h', args: '{{arg1}} 2h' }], scopes: ['admin'], enabled: false } })
+		const db = makeDb({
+			timeout: { triggers: ['/timeout', { string: '/to2h', args: '{{arg1}} 2h' }], scopes: ['admin'], enabled: false },
+		})
 		await up(db)
 		expect(readCommands(db).timeout).toEqual({
 			triggers: ['/timeout', { string: '/to2h', args: '{{arg1}} 2h' }],

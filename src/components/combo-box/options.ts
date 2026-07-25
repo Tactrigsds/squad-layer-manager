@@ -1,6 +1,6 @@
 import * as DH from '@/lib/display-helpers.ts'
-import type { ComboBoxOption } from './combo-box.tsx'
 
+import type { ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 
 // the string cmdk identifies an option's item by, which is what it reports as the highlighted item.
@@ -22,7 +22,7 @@ export function normalizeOptions<T extends string | null>(
 ): ComboBoxOption<T>[] | typeof LOADING {
 	if (rawOptions === LOADING) return LOADING
 
-	const options = rawOptions.map((item): ComboBoxOption<T> => typeof item === 'string' || item === null ? { value: item as T } : item)
+	const options = rawOptions.map((item): ComboBoxOption<T> => (typeof item === 'string' || item === null ? { value: item as T } : item))
 
 	const seen = new Set<T>()
 	const duplicates: T[] = []

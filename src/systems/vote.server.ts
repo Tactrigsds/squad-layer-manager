@@ -1,3 +1,10 @@
+import * as Otel from '@opentelemetry/api'
+import { Mutex, type MutexInterface, withTimeout } from 'async-mutex'
+import * as dateFns from 'date-fns'
+import * as E from 'drizzle-orm'
+import * as Rx from 'rxjs'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema'
 import { isAbortError, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as Cleanup from '@/lib/cleanup'
@@ -27,12 +34,6 @@ import * as Rbac from '@/systems/rbac.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Users from '@/systems/users.server'
-import * as Otel from '@opentelemetry/api'
-import { Mutex, type MutexInterface, withTimeout } from 'async-mutex'
-import * as dateFns from 'date-fns'
-import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 export type VoteContext = {
 	voteEndTask: Rx.Subscription | null
@@ -63,61 +64,72 @@ export const router = {
 			return startVote(ctx, { ...input, initiator: { discordId: ctx.user.discordId } })
 		}),
 
-	endVoteEarly: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
-		if (denyRes) return denyRes
-		return await endVote(ctx, {
-			reason: 'ended-early',
-			endedBy: { discordId: ctx.user.discordId },
-		})
-	}),
+	endVoteEarly: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
+			if (denyRes) return denyRes
+			return await endVote(ctx, {
+				reason: 'ended-early',
+				endedBy: { discordId: ctx.user.discordId },
+			})
+		}),
 
-	abortVote: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
-		if (ctxRes.code !== 'ok') return ctxRes
-		const ctx = ctxRes.ctx
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
-		if (denyRes) return denyRes
-		return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
-	}),
+	abortVote: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
+			if (denyRes) return denyRes
+			return await abortVote(ctx, { aborter: { discordId: ctx.user.discordId } })
+		}),
 
-	cancelVoteAutostart: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string() })).handler(
-		async ({ context: _ctx, input }) => {
+	cancelVoteAutostart: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			return await cancelVoteAutostart(ctx, { user: { discordId: ctx.user.discordId } })
-		},
-	),
+		}),
 
-	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context, signal, input },
-	) {
-		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) =>
-			Rx.from((async function*() {
-				let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
-				const voteState = ctx.vote.state
-				if (voteState) {
-					const ids = getVoteStateDiscordIds(voteState)
-					const users = await Users.buildUsers(
-						await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids)),
-					)
-					initialState = { ...voteState, parts: { users } }
-				}
-				yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
-				for await (const update of toAsyncGenerator(ctx.vote.update$)) {
-					const withParts = await includeVoteStateUpdatePart(getBaseCtx(), update)
-					yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
-				}
-			})())).pipe(withAbortSignal(signal!))
+	watchUpdates: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, signal, input }) {
+			const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) =>
+				Rx.from(
+					(async function* () {
+						let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
+						const voteState = ctx.vote.state
+						if (voteState) {
+							const ids = getVoteStateDiscordIds(voteState)
+							const users = await Users.buildUsers(
+								await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids)),
+							)
+							initialState = { ...voteState, parts: { users } }
+						}
+						yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
+						for await (const update of toAsyncGenerator(ctx.vote.update$)) {
+							const withParts = await includeVoteStateUpdatePart(getBaseCtx(), update)
+							yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
+						}
+					})(),
+				),
+			).pipe(withAbortSignal(signal!))
 
-		yield* toAsyncGenerator(obs)
-	}),
+			yield* toAsyncGenerator(obs)
+		}),
 }
 
 export function initVoteContext(cleanup: Cleanup.Tasks) {
@@ -143,10 +155,7 @@ export function initVoteContext(cleanup: Cleanup.Tasks) {
 export const syncVoteStateWithQueueState = C.spanOp(
 	'syncVoteStateWithQueueState',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
-	async (
-		ctx: C.SquadServer & C.Vote & C.MatchHistory & C.ServerSettings & CS.AbortSignal,
-		queue: LL.List,
-	) => {
+	async (ctx: C.SquadServer & C.Vote & C.MatchHistory & C.ServerSettings & CS.AbortSignal, queue: LL.List) => {
 		const serverId = ctx.serverId
 		let newVoteState: V.VoteState | undefined | null
 
@@ -157,15 +166,18 @@ export const syncVoteStateWithQueueState = C.spanOp(
 		const vote = ctx.vote
 
 		if (vote.state?.code === 'in-progress') {
-			if (queue.some(item => item.itemId === vote.state!.itemId)) return
+			if (queue.some((item) => item.itemId === vote.state!.itemId)) return
 
 			// setting to null rather than calling clearVote indicates that a new "ready" vote state might be set instead
 			newVoteState = null
 		} else if (
-			nextUpItem && LL.isVoteItem(nextUpItem) && !nextUpItem.endingVoteState
-			&& nextUpItem && ctx.vote.state?.itemId !== nextUpItem.itemId
-			&& currentMatch.status !== 'post-game'
-			&& (!currentMatch.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
+			nextUpItem &&
+			LL.isVoteItem(nextUpItem) &&
+			!nextUpItem.endingVoteState &&
+			nextUpItem &&
+			ctx.vote.state?.itemId !== nextUpItem.itemId &&
+			currentMatch.status !== 'post-game' &&
+			(!currentMatch.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
 		) {
 			let autostartTime: Date | undefined
 			if (currentMatch.startTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
@@ -175,7 +187,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			}
 			newVoteState = {
 				code: 'ready',
-				choiceIds: nextUpItem.choices.map(choice => choice.itemId),
+				choiceIds: nextUpItem.choices.map((choice) => choice.itemId),
 				itemId: nextUpItem.itemId,
 				voterType: vote.state?.voterType ?? 'public',
 				autostartTime,
@@ -196,13 +208,13 @@ export const syncVoteStateWithQueueState = C.spanOp(
 			vote.autostartVoteSub = null
 			if (newVoteState?.code === 'ready' && newVoteState.autostartTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
 				log.info('scheduling autostart vote to %s for %s', newVoteState.autostartTime.toISOString(), newVoteState.itemId)
-				vote.autostartVoteSub = Rx.of(1).pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now()))).subscribe(
-					() => {
+				vote.autostartVoteSub = Rx.of(1)
+					.pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now())))
+					.subscribe(() => {
 						startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' }).catch((err) => {
 							if (!isAbortError(err)) log.error(err)
 						})
-					},
-				)
+					})
 			}
 			vote.state = newVoteState
 			addReleaseTask(() => vote.update$.next(update))
@@ -223,15 +235,7 @@ export const startVote = C.spanOp(
 		mutexes: (ctx) => ctx.vote.mtx,
 	},
 	async (
-		ctx:
-			& C.Db
-			& C.SquadServer
-			& C.Rcon
-			& C.Vote
-			& C.LayerQueue
-			& C.MatchHistory
-			& C.ServerSettings
-			& CS.AbortSignal,
+		ctx: C.Db & C.SquadServer & C.Rcon & C.Vote & C.LayerQueue & C.MatchHistory & C.ServerSettings & CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
@@ -250,12 +254,7 @@ export const startVote = C.spanOp(
 			return { code: 'err:item-not-found' as const, msg: Messages.WARNS.vote.start.itemNotFound }
 		}
 
-		const initiateVoteRes = V.canInitiateVote(
-			itemId,
-			layerQueue,
-			opts.voterType ?? 'public',
-			ctx.vote.state ?? undefined,
-		)
+		const initiateVoteRes = V.canInitiateVote(itemId, layerQueue, opts.voterType ?? 'public', ctx.vote.state ?? undefined)
 
 		const msgMap = {
 			'err:item-not-found': Messages.WARNS.vote.start.itemNotFound,
@@ -263,8 +262,8 @@ export const startVote = C.spanOp(
 			'err:editing-in-progress': Messages.WARNS.vote.start.editingInProgress,
 			'err:public-vote-not-first': Messages.WARNS.vote.start.publicVoteNotFirst,
 			'err:vote-in-progress': Messages.WARNS.vote.start.voteAlreadyInProgress,
-			'ok': null,
-		} satisfies Record<typeof initiateVoteRes['code'], string | null>
+			ok: null,
+		} satisfies Record<(typeof initiateVoteRes)['code'], string | null>
 
 		if (initiateVoteRes.code !== 'ok') {
 			return {
@@ -281,7 +280,7 @@ export const startVote = C.spanOp(
 			deadline: Date.now() + duration,
 			votes: [],
 			initiator: opts.initiator,
-			choiceIds: item.choices.map(choice => choice.itemId),
+			choiceIds: item.choices.map((choice) => choice.itemId),
 			itemId: item.itemId,
 			voterType: opts.voterType ?? 'public',
 		} satisfies V.VoteState
@@ -289,13 +288,14 @@ export const startVote = C.spanOp(
 		log.info('registering vote deadline')
 		const update = {
 			state: updatedVoteState,
-			source: opts.initiator === 'autostart'
-				? { type: 'system', event: 'automatic-start-vote' }
-				: {
-					type: 'manual',
-					event: 'start-vote',
-					user: opts.initiator,
-				},
+			source:
+				opts.initiator === 'autostart'
+					? { type: 'system', event: 'automatic-start-vote' }
+					: {
+							type: 'manual',
+							event: 'start-vote',
+							user: opts.initiator,
+						},
 		} satisfies V.VoteStateUpdate
 
 		ctx.vote.autostartVoteSub?.unsubscribe()
@@ -324,7 +324,7 @@ export const startVote = C.spanOp(
 				matchId: currentMatch.historyEntryId,
 				causeId: null,
 				choiceCount: item.choices.length,
-				choices: item.choices.map(choice => choice.layerId),
+				choices: item.choices.map((choice) => choice.layerId),
 				durationMs: duration,
 			}),
 		)
@@ -406,7 +406,7 @@ export const abortVote = C.spanOp(
 		module,
 		levels: { event: 'info' },
 		attrs: (_, opts) => ({ [ATTRS.Vote.ABORTER]: ATTRS.formatUserId(opts.aborter) }),
-		mutexes: ctx => ctx.vote.mtx,
+		mutexes: (ctx) => ctx.vote.mtx,
 	},
 	async (
 		ctx: C.Db & C.Rcon & C.SquadServer & C.MatchHistory & C.Vote & C.LayerQueue & C.ServerSettings & CS.AbortSignal,
@@ -500,9 +500,10 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote & C
 
 	const currentTime = Date.now()
 	const finalReminderWaitTime = Math.max(0, ctx.vote.state.deadline - ctx.serverSettings.settings.vote.finalVoteReminder - currentTime)
-	const regularReminderInterval = ctx.vote.state.voterType === 'internal'
-		? ctx.serverSettings.settings.vote.internalVoteReminderInterval
-		: ctx.serverSettings.settings.vote.voteReminderInterval
+	const regularReminderInterval =
+		ctx.vote.state.voterType === 'internal'
+			? ctx.serverSettings.settings.vote.internalVoteReminderInterval
+			: ctx.serverSettings.settings.vote.voteReminderInterval
 	const finalReminderBuffer = finalReminderWaitTime - regularReminderInterval
 
 	// -------- schedule regular reminders --------
@@ -533,23 +534,25 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote & C
 	// -------- schedule final reminder --------
 	if (finalReminderWaitTime > 0) {
 		ctx.vote.voteEndTask.add(
-			Rx.timer(finalReminderWaitTime).pipe(
-				C.durableSub('final-vote-reminder', { module }, async (_, signal) => {
-					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
-					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
-					const serverState = await SquadServer.getServerState(ctx)
-					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
-					if (!voteItem || !LL.isVoteItem(voteItem)) return
-					const msg = Messages.BROADCASTS.vote.voteReminder(
-						ctx.vote.state,
-						voteItem,
-						ctx.serverSettings.settings.vote.finalVoteReminder,
-						true,
-						voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
-					)
-					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
-				}),
-			).subscribe(),
+			Rx.timer(finalReminderWaitTime)
+				.pipe(
+					C.durableSub('final-vote-reminder', { module }, async (_, signal) => {
+						const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+						if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
+						const serverState = await SquadServer.getServerState(ctx)
+						const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
+						if (!voteItem || !LL.isVoteItem(voteItem)) return
+						const msg = Messages.BROADCASTS.vote.voteReminder(
+							ctx.vote.state,
+							voteItem,
+							ctx.serverSettings.settings.vote.finalVoteReminder,
+							true,
+							voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
+						)
+						await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
+					}),
+				)
+				.subscribe(),
 		)
 	}
 
@@ -609,7 +612,7 @@ export const endVote = C.spanOp(
 			C.setSpanOpAttrs({ tally })
 
 			const winnerId = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
-			const winnerChoice = listItem.choices.find(c => c.itemId === winnerId)
+			const winnerChoice = listItem.choices.find((c) => c.itemId === winnerId)
 			endingVoteState = {
 				code: 'ended:winner',
 				endedEarly: opts.reason === 'ended-early' ? opts.endedBy : undefined,
@@ -636,7 +639,13 @@ export const endVote = C.spanOp(
 			await broadcastVoteUpdate(
 				ctx,
 				endingVoteState,
-				Messages.BROADCASTS.vote.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early'),
+				Messages.BROADCASTS.vote.winnerSelected(
+					tally!,
+					listItem,
+					endingVoteState.winnerId,
+					displayProps,
+					opts.reason === 'ended-early',
+				),
 			)
 		}
 		if (endingVoteState.code === 'ended:insufficient-votes') {
@@ -654,7 +663,7 @@ export const endVote = C.spanOp(
 				winnerLayerId: endingVoteState.code === 'ended:winner' ? listItem.layerId : null,
 				// the tally is keyed by queue item id, which means nothing once the item is gone: resolve it to layers
 				tally: tally
-					? listItem.choices.map(choice => ({ layerId: choice.layerId, votes: tally!.totals.get(choice.itemId) ?? 0 }))
+					? listItem.choices.map((choice) => ({ layerId: choice.layerId, votes: tally!.totals.get(choice.itemId) ?? 0 }))
 					: undefined,
 				totalVotes: tally?.totalVotes,
 				turnoutPercentage: tally?.turnoutPercentage,
@@ -677,15 +686,12 @@ async function broadcastVoteUpdate(
 			break
 		case 'internal':
 			{
-				await SquadRcon.warnAllAdmins(
-					ctx,
-					({ player }) => {
-						if (!opts?.onlyNotifyNonVotingAdmins) return msg
-						if (!V.isVoteStateWithVoteData(voteState)) return
-						if (SM.PlayerIds.find(voteState.votes, ({ playerIds }) => playerIds, player.ids)) return
-						return msg
-					},
-				)
+				await SquadRcon.warnAllAdmins(ctx, ({ player }) => {
+					if (!opts?.onlyNotifyNonVotingAdmins) return msg
+					if (!V.isVoteStateWithVoteData(voteState)) return
+					if (SM.PlayerIds.find(voteState.votes, ({ playerIds }) => playerIds, player.ids)) return
+					return msg
+				})
 			}
 			break
 		default:
@@ -706,7 +712,7 @@ async function includeVoteStateUpdatePart(ctx: C.Db, update: V.VoteStateUpdate) 
 	}
 	const discordIdsArray = Array.from(discordIds)
 	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
-	const users = await Promise.all(dbUsers.map(user => Users.buildUser(user)))
+	const users = await Promise.all(dbUsers.map((user) => Users.buildUser(user)))
 	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
 	return withParts
 }

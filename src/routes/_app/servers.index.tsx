@@ -1,10 +1,11 @@
+import { createFileRoute, Link } from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as SettingsClient from '@/systems/settings.client'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
 
 export const Route = createFileRoute('/_app/servers/')({
 	component: RouteComponent,
@@ -22,7 +23,7 @@ function RouteComponent() {
 				</CardHeader>
 				<CardContent className="space-y-2">
 					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers available.</p>}
-					{servers.map(server => {
+					{servers.map((server) => {
 						const serverId = server.id
 						const usable = SettingsClient.isServerUsable(server)
 						const button = (
@@ -33,13 +34,13 @@ function RouteComponent() {
 							</Button>
 						)
 						// disabled/broken servers have no usable dashboard, so render a static button instead of a link
-						return usable
-							? (
-								<Link key={serverId} to="/servers/$serverId" params={{ serverId }}>
-									{button}
-								</Link>
-							)
-							: <div key={serverId}>{button}</div>
+						return usable ? (
+							<Link key={serverId} to="/servers/$serverId" params={{ serverId }}>
+								{button}
+							</Link>
+						) : (
+							<div key={serverId}>{button}</div>
+						)
 					})}
 				</CardContent>
 			</Card>

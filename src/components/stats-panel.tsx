@@ -1,3 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { ServerActivityCharts } from '@/components/server-activity-charts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -5,13 +9,10 @@ import * as ZusUtils from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer!.serverId
-	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, s => s.chat.selectedMatchOrdinal)
+	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
@@ -29,7 +30,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 
 	const displayMatch = React.useMemo(() => {
 		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
 	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
 	return (

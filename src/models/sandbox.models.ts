@@ -6,16 +6,22 @@ import { z } from 'zod'
 //
 // Schemas only, so this stays importable from the client. The executor is src/emulator/verbs.ts.
 
-export const PlayerNameSchema = z.string().min(1).max(32).regex(
-	/^[^\s]+$/,
-	'A player name cannot contain spaces: the command line addresses players by a single token.',
-)
+export const PlayerNameSchema = z
+	.string()
+	.min(1)
+	.max(32)
+	.regex(/^[^\s]+$/, 'A player name cannot contain spaces: the command line addresses players by a single token.')
 
 // Squad's Admins.cfg is colon- and comma-delimited, so a group name holding either would render a file that parses
 // back as something else
-export const GroupNameSchema = z.string().trim().min(1).max(64).regex(/^[^:,\s]+$/, {
-	error: 'A group name cannot contain spaces, colons or commas',
-})
+export const GroupNameSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(64)
+	.regex(/^[^:,\s]+$/, {
+		error: 'A group name cannot contain spaces, colons or commas',
+	})
 
 // A real squad server holds 100, and the app's own player-count handling is written against that. Fabricating a
 // 101st player would be testing against a world that cannot exist.
@@ -173,7 +179,12 @@ export const SANDBOX_VERBS = {
 	end: def({
 		usage: 'end [1|2]',
 		summary: 'end the match, optionally naming the winning team',
-		input: z.object({ winnerTeamId: z.union([z.literal(1), z.literal(2)]).nullable().prefault(null) }),
+		input: z.object({
+			winnerTeamId: z
+				.union([z.literal(1), z.literal(2)])
+				.nullable()
+				.prefault(null),
+		}),
 		tokens: ([team]) => {
 			if (team && team !== '1' && team !== '2') throw new Error('usage: end [1|2]')
 			return { winnerTeamId: team ? (Number(team) as 1 | 2) : null }
@@ -208,7 +219,7 @@ export type SandboxVerb = keyof typeof SANDBOX_VERBS
 export const SANDBOX_VERB = Object.keys(SANDBOX_VERBS) as SandboxVerb[]
 export const SandboxVerbSchema = z.enum(SANDBOX_VERB as [SandboxVerb, ...SandboxVerb[]])
 
-export type SandboxVerbInput<V extends SandboxVerb> = z.output<typeof SANDBOX_VERBS[V]['input']>
+export type SandboxVerbInput<V extends SandboxVerb> = z.output<(typeof SANDBOX_VERBS)[V]['input']>
 
 // One wire shape for every verb, so the router is a single procedure rather than one per verb. The args are
 // validated against the named verb's own schema on the way in.

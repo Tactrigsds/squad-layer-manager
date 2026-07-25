@@ -60,52 +60,51 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}, [values, useInternalState])
 
-	const setOpen = React.useCallback((value: boolean) => {
-		if (value) {
-			// When opening with confirm mode, reset internal state to current prop values
-			if (props.confirm) {
-				setInternalValues(values)
+	const setOpen = React.useCallback(
+		(value: boolean) => {
+			if (value) {
+				// When opening with confirm mode, reset internal state to current prop values
+				if (props.confirm) {
+					setInternalValues(values)
+				}
+				// When opening, store the initial values for potential reset (only if reset is true, not an array)
+				if (reset === true) {
+					setInitialValues(useInternalState ? internalValues : values)
+				}
+			} else {
+				// When closing, if selectOnClose is true, apply internal state to props
+				if (selectOnClose) {
+					_onSelect(internalValues)
+				}
 			}
-			// When opening, store the initial values for potential reset (only if reset is true, not an array)
-			if (reset === true) {
-				setInitialValues(useInternalState ? internalValues : values)
-			}
-		} else {
-			// When closing, if selectOnClose is true, apply internal state to props
-			if (selectOnClose) {
-				_onSelect(internalValues)
-			}
-		}
-		_setOpen(value)
-	}, [
-		_onSelect,
-		internalValues,
-		selectOnClose,
-		useInternalState,
-		reset,
-		values,
-		props.confirm,
-	])
+			_setOpen(value)
+		},
+		[_onSelect, internalValues, selectOnClose, useInternalState, reset, values, props.confirm],
+	)
 
 	// opt-in, as the name says: an unset prop leaves the trigger free to use the width its container
 	// gives it, and the label's ellipsis cuts only when it actually runs out
 	const restrictValueSize = props.restrictValueSize ?? false
-	useImperativeHandle(props.ref, () => ({
-		focus: () => {
-			setOpen(true)
-		},
-		get isFocused() {
-			return open
-		},
-		clear: (ephemeral) => {
-			if (selectOnClose) {
-				setInternalValues([])
-				if (!ephemeral) _onSelect([])
-			} else {
-				if (!ephemeral) _onSelect([])
-			}
-		},
-	}), [open, _onSelect, selectOnClose, setOpen])
+	useImperativeHandle(
+		props.ref,
+		() => ({
+			focus: () => {
+				setOpen(true)
+			},
+			get isFocused() {
+				return open
+			},
+			clear: (ephemeral) => {
+				if (selectOnClose) {
+					setInternalValues([])
+					if (!ephemeral) _onSelect([])
+				} else {
+					if (!ephemeral) _onSelect([])
+				}
+			},
+		}),
+		[open, _onSelect, selectOnClose, setOpen],
+	)
 
 	function onSelect(updater: React.SetStateAction<T[]>) {
 		if (useInternalState) {
@@ -127,10 +126,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}
 
-	const options = React.useMemo(
-		() => normalizeOptions('ComboBoxMulti', props.options, props.sort ?? true),
-		[props.options, props.sort],
-	)
+	const options = React.useMemo(() => normalizeOptions('ComboBoxMulti', props.options, props.sort ?? true), [props.options, props.sort])
 	const optionsByValue = React.useMemo(() => {
 		const map = new Map<T, ComboBoxOption<T>>()
 		if (options !== LOADING) {
@@ -142,16 +138,14 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	// the value of the option the mouse is currently over (either column); drives the floating description box
 	const [hoveredValue, setHoveredValue] = useState<T | null>(null)
 	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
-	const hoveredDescription = hoveredValue !== null ? optionsByValue.get(hoveredValue)?.description ?? null : null
+	const hoveredDescription = hoveredValue !== null ? (optionsByValue.get(hoveredValue)?.description ?? null) : null
 	const hoveredOption = hoveredValue !== null ? optionsByValue.get(hoveredValue) : undefined
 
 	const displayValues = useInternalState ? internalValues : values
 
 	const confirmedSet = props.confirm ? new Set(values) : null
-	const hasChanges = confirmedSet !== null && (
-		displayValues.length !== confirmedSet.size
-		|| displayValues.some(v => !confirmedSet.has(v))
-	)
+	const hasChanges =
+		confirmedSet !== null && (displayValues.length !== confirmedSet.size || displayValues.some((v) => !confirmedSet.has(v)))
 
 	const chipDisplay = props.chipDisplay ?? false
 	let valuesDisplay = ''
@@ -196,33 +190,29 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						props.className,
 					)}
 				>
-					{showChips
-						? (
-							<span className="flex grow flex-wrap items-center gap-1">
-								{displayValues.map((value) => {
-									const option = optionsByValue.get(value)
-									const label = option ? (option.label ?? option.value) : value
-									return (
-										<span
-											key={value === null ? NULL.current : value}
-											className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
-										>
-											{label === null ? DisplayHelpers.NULL_DISPLAY : label}
-										</span>
-									)
-								})}
-								{selectionLimit && (
-									<span className="self-center text-xs text-muted-foreground">
-										({displayValues.length}/{selectionLimit})
+					{showChips ? (
+						<span className="flex grow flex-wrap items-center gap-1">
+							{displayValues.map((value) => {
+								const option = optionsByValue.get(value)
+								const label = option ? (option.label ?? option.value) : value
+								return (
+									<span
+										key={value === null ? NULL.current : value}
+										className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
+									>
+										{label === null ? DisplayHelpers.NULL_DISPLAY : label}
 									</span>
-								)}
-							</span>
-						)
-						: (
-							<span className="grow overflow-hidden text-ellipsis">
-								{valuesDisplay}
-							</span>
-						)}
+								)
+							})}
+							{selectionLimit && (
+								<span className="self-center text-xs text-muted-foreground">
+									({displayValues.length}/{selectionLimit})
+								</span>
+							)}
+						</span>
+					) : (
+						<span className="grow overflow-hidden text-ellipsis">{valuesDisplay}</span>
+					)}
 					<ChevronsUpDown className={cn('ml-2 h-4 w-4 shrink-0 opacity-50', showChips && 'mt-1 self-start')} />
 				</Button>
 			)}
@@ -234,10 +224,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		<Popover open={open} onOpenChange={setOpen}>
 			{trigger}
 			<PopoverContent align="start" className="min-w-[600px] p-0 overflow-hidden">
-				{
-					/* gate on open so the option elements aren't built on every render while closed --
-				    option lists can be thousands of entries long */
-				}
+				{/* gate on open so the option elements aren't built on every render while closed --
+				    option lists can be thousands of entries long */}
 				{open && (
 					// when any option carries a description, a floating box tracking the hovered option is anchored to the
 					// body panel: it sits directly above the panel (flipping below when there's no room) and spans its full
@@ -253,8 +241,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 									onCloseAutoFocus={(e) => e.preventDefault()}
 									className="pointer-events-none w-[var(--radix-popover-trigger-width)] max-w-none space-y-1 p-3"
 								>
-									{hoveredOption?.label != null
-										&& <div className="text-sm font-medium font-mono break-words">{hoveredOption.label}</div>}
+									{hoveredOption?.label != null && (
+										<div className="text-sm font-medium font-mono break-words">{hoveredOption.label}</div>
+									)}
 									<div className="text-xs text-muted-foreground break-words">{hoveredDescription}</div>
 								</PopoverContent>
 								<Command shouldFilter={!props.setInputValue} className="flex flex-col">
@@ -262,7 +251,11 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 									<div className="flex border-b shrink-0">
 										{/* Left header: search input */}
 										<div className="flex-1 border-r">
-											<CommandInput value={props.inputValue} onValueChange={props.setInputValue} placeholder="Search options..." />
+											<CommandInput
+												value={props.inputValue}
+												onValueChange={props.setInputValue}
+												placeholder="Search options..."
+											/>
 										</div>
 										{/* Right header: selected count + action buttons */}
 										<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
@@ -271,35 +264,39 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 												{selectionLimit ? `/${selectionLimit}` : ''})
 											</span>
 											<span className="flex items-center space-x-1">
-												{reset && (() => {
-													const resetToValues = Array.isArray(reset) ? reset : initialValues
-													const resetValues = resetToValues.filter(val => optionsByValue.has(val))
-													const currentSet = new Set(displayValues)
-													const resetSet = new Set(resetValues)
-													const isIdentical = currentSet.size === resetSet.size && [...currentSet].every(val => resetSet.has(val))
-													return (
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() => onSelect(resetValues)}
-															disabled={isIdentical}
-															className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-															title="Reset to Initial"
-														>
-															<Undo2 className="h-4 w-4" />
-														</Button>
-													)
-												})()}
+												{reset &&
+													(() => {
+														const resetToValues = Array.isArray(reset) ? reset : initialValues
+														const resetValues = resetToValues.filter((val) => optionsByValue.has(val))
+														const currentSet = new Set(displayValues)
+														const resetSet = new Set(resetValues)
+														const isIdentical =
+															currentSet.size === resetSet.size && [...currentSet].every((val) => resetSet.has(val))
+														return (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => onSelect(resetValues)}
+																disabled={isIdentical}
+																className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+																title="Reset to Initial"
+															>
+																<Undo2 className="h-4 w-4" />
+															</Button>
+														)
+													})()}
 												{options !== LOADING && options.length > 0 && displayValues.length < options.length && (
 													<Button
 														variant="ghost"
 														size="sm"
 														onClick={() => {
 															const allValues = options
-																.filter(opt => !opt.disabled)
-																.map(opt => opt.value)
-																.filter(val =>
-																	!selectionLimit || displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit
+																.filter((opt) => !opt.disabled)
+																.map((opt) => opt.value)
+																.filter(
+																	(val) =>
+																		!selectionLimit ||
+																		displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit,
 																)
 															onSelect(allValues)
 														}}
@@ -348,43 +345,50 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															Loading...
 														</CommandItem>
 													)}
-													{options !== LOADING && options.map((option) => (
-														<CommandItem
-															key={option.value}
-															value={option.value === null ? NULL.current : option.value}
-															keywords={option.keywords}
-															onMouseEnter={() => setHoveredValue(option.value)}
-															onMouseLeave={() => setHoveredValue((cur) => cur === option.value ? null : cur)}
-															disabled={option.disabled
-																|| (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
-															onSelect={() => {
-																if (option.disabled) return
-																onSelect((prevValues) => {
-																	if (prevValues.includes(option.value)) {
-																		return prevValues.filter((v) => v !== option.value)
-																	} else {
-																		return [...prevValues, option.value]
-																	}
-																})
-															}}
-														>
-															<Check className={cn('mr-2 h-4 w-4', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
-															{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-														</CommandItem>
-													))}
+													{options !== LOADING &&
+														options.map((option) => (
+															<CommandItem
+																key={option.value}
+																value={option.value === null ? NULL.current : option.value}
+																keywords={option.keywords}
+																onMouseEnter={() => setHoveredValue(option.value)}
+																onMouseLeave={() => setHoveredValue((cur) => (cur === option.value ? null : cur))}
+																disabled={
+																	option.disabled ||
+																	(selectionLimit
+																		? values.length >= selectionLimit && !values.includes(option.value)
+																		: false)
+																}
+																onSelect={() => {
+																	if (option.disabled) return
+																	onSelect((prevValues) => {
+																		if (prevValues.includes(option.value)) {
+																			return prevValues.filter((v) => v !== option.value)
+																		} else {
+																			return [...prevValues, option.value]
+																		}
+																	})
+																}}
+															>
+																<Check
+																	className={cn(
+																		'mr-2 h-4 w-4',
+																		displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
+																	)}
+																/>
+																{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+															</CommandItem>
+														))}
 												</CommandGroup>
 											</CommandList>
 										</div>
 
 										{/* Right — selected items */}
 										<div className="flex-1 overflow-y-auto p-2 space-y-1">
-											{displayValues.length === 0
-												? (
-													<div className="text-sm text-muted-foreground text-center py-8">
-														No items selected
-													</div>
-												)
-												: displayValues.map((value) => {
+											{displayValues.length === 0 ? (
+												<div className="text-sm text-muted-foreground text-center py-8">No items selected</div>
+											) : (
+												displayValues.map((value) => {
 													const option = optionsByValue.get(value)
 													const displayText = option ? (option.label ?? option.value) : value
 													return (
@@ -392,7 +396,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															key={value}
 															className="flex items-center justify-between p-2 bg-muted rounded-sm text-sm cursor-pointer"
 															onMouseEnter={() => setHoveredValue(value)}
-															onMouseLeave={() => setHoveredValue((cur) => cur === value ? null : cur)}
+															onMouseLeave={() => setHoveredValue((cur) => (cur === value ? null : cur))}
 															onMouseDown={(e) => {
 																if (e.button === 1) {
 																	e.preventDefault()
@@ -413,7 +417,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															</Button>
 														</div>
 													)
-												})}
+												})
+											)}
 										</div>
 									</div>
 

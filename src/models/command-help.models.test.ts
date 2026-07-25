@@ -1,7 +1,8 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
-import { describe, expect, it } from 'vitest'
 
 function reason(label: string, actions: AAR.AdminActionType[]): AAR.AdminActionReason {
 	return {

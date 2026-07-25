@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -7,8 +10,7 @@ import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as UP from '@/models/user-presence'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { useStorePoolConfigApi } from './pool-config-panels.helpers.ts'
 import { NextLayerPanel, PoolFiltersPanel, RepeatRulesPanel } from './pool-config-panels.tsx'
 import type { PoolConfigWindowProps } from './pool-config-window.helpers.ts'
@@ -47,7 +49,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 
 	const [settingsChanged, saving, validationErrors] = ZusUtils.useStore(
 		stores.squadServer!,
-		ZusUtils.useShallow(s => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
+		ZusUtils.useShallow((s) => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
 	)
 
 	const mainPoolApi = useStorePoolConfigApi(stores.squadServer!, ['queue', 'mainPool'])
@@ -84,20 +86,23 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
-				{tab === 'filters'
-					? <PoolFiltersPanel api={mainPoolApi} />
-					: tab === 'repeatRules'
-					? <RepeatRulesPanel api={mainPoolApi} />
-					: <NextLayerPanel apis={nextLayerApis} />}
+				{tab === 'filters' ? (
+					<PoolFiltersPanel api={mainPoolApi} />
+				) : tab === 'repeatRules' ? (
+					<RepeatRulesPanel api={mainPoolApi} />
+				) : (
+					<NextLayerPanel apis={nextLayerApis} />
+				)}
 			</div>
 			{!readOnly && (
 				<div className="flex items-center justify-end gap-2 px-6 py-3 border-t">
 					<div className="flex flex-col gap-2 mr-auto">
-						{validationErrors && validationErrors.map((error) => (
-							<Alert key={error} variant="destructive">
-								<AlertDescription>{error}</AlertDescription>
-							</Alert>
-						))}
+						{validationErrors &&
+							validationErrors.map((error) => (
+								<Alert key={error} variant="destructive">
+									<AlertDescription>{error}</AlertDescription>
+								</Alert>
+							))}
 					</div>
 					<Tooltip>
 						<TooltipTrigger asChild>

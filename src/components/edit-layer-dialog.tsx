@@ -1,5 +1,13 @@
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
-import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
+import {
+	HeadlessDialog,
+	HeadlessDialogContent,
+	HeadlessDialogFooter,
+	HeadlessDialogHeader,
+	HeadlessDialogTitle,
+} from '@/components/ui/headless-dialog'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
@@ -9,7 +17,7 @@ import * as ZusUtils from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
-import React from 'react'
+
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import LayerTable from './layer-table.tsx'
@@ -34,31 +42,27 @@ type EditLayerDialogContentProps = {
 
 const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function EditLayerDialogContent(props) {
 	const defaultLayerIdRef = React.useRef(props.layerId)
-	const frameInputRef = useRefConstructor(
-		() =>
-			SelectLayersFrame.createInput({
-				cursor: props.cursor,
-				initialEditedLayerId: defaultLayerIdRef.current,
-				selected: defaultLayerIdRef.current ? [defaultLayerIdRef.current] : [],
-				maxSelected: 1,
-				minSelected: defaultLayerIdRef.current ? 1 : 0,
-				squadServer: props.stores?.squadServer,
-			}),
+	const frameInputRef = useRefConstructor(() =>
+		SelectLayersFrame.createInput({
+			cursor: props.cursor,
+			initialEditedLayerId: defaultLayerIdRef.current,
+			selected: defaultLayerIdRef.current ? [defaultLayerIdRef.current] : [],
+			maxSelected: 1,
+			minSelected: defaultLayerIdRef.current ? 1 : 0,
+			squadServer: props.stores?.squadServer,
+		}),
 	)
-	const frameKey = useFrameLifecycle(
-		SelectLayersFrame.frame,
-		{
-			frameKey: props.stores?.selectLayers,
-			input: frameInputRef.current,
-			equalityFn: Obj.deepEqual,
-		},
-	)
+	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
+		frameKey: props.stores?.selectLayers,
+		input: frameInputRef.current,
+		equalityFn: Obj.deepEqual,
+	})
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
 	useFrameTeardownOnUnmount(frameKey, !props.stores?.selectLayers)
 
 	const [initialLayerId, editedLayerId] = ZusUtils.useStore(
 		frameKey,
-		ZusUtils.useShallow(s => [s.initialEditedLayerId, s.layerTable.selected[0]]),
+		ZusUtils.useShallow((s) => [s.initialEditedLayerId, s.layerTable.selected[0]]),
 	)
 
 	const canSubmit = !!editedLayerId && initialLayerId !== editedLayerId
@@ -76,10 +80,8 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 					<HeadlessDialogTitle>Edit Layer</HeadlessDialogTitle>
 				</div>
 				<div className="flex justify-end items-center space-x-2">
-					{
-						/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
-					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */
-					}
+					{/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
+					   which isn't available in this select-layers-only context. Left as-is (pre-existing before this migration pass). */}
 					<AppliedFiltersPanel stores={{ appliedFilters: frameKey, squadServer: props.stores?.squadServer }} />
 				</div>
 			</HeadlessDialogHeader>

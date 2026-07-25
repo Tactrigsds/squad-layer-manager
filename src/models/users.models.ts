@@ -1,6 +1,7 @@
+import { z } from 'zod'
+
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as DM from '@/models/discord.models'
-import { z } from 'zod'
 
 export const GuiUserIdSchema = z.object({
 	discordId: z.bigint(),

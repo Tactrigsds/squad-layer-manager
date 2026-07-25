@@ -31,13 +31,11 @@ test.describe('collaborative queue editing', () => {
 			await pageB.getByRole('button', { name: 'Start Editing' }).click()
 
 			// A deletes the head; B is looking at the same session, so B sees it go
-			await panelA.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' })
-				.getByRole('button', { name: 'Delete' }).click()
+			await panelA.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
 			await expect(panelB.getByText('Gorodok_RAAS_v1')).toBeHidden({ timeout: 15_000 })
 
 			// and B's own edit lands on top of A's, in both clients
-			await panelB.getByRole('listitem').filter({ hasText: 'Skorpo_RAAS_v1' })
-				.getByRole('button', { name: 'Delete' }).click()
+			await panelB.getByRole('listitem').filter({ hasText: 'Skorpo_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
 			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeHidden({ timeout: 15_000 })
 			await expect(panelA.getByRole('listitem')).toHaveCount(1)
 
@@ -46,16 +44,19 @@ test.describe('collaborative queue editing', () => {
 			await pageB.getByRole('button', { name: 'Save', exact: true }).click()
 
 			// what was saved is what both of them were looking at
-			await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
-					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					return list.length === 1 && list[0].layerId === LAYERS.sumariSeed
-				} finally {
-					db.close()
-				}
-			}, { label: 'the queue both editors were looking at' })
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+						return list.length === 1 && list[0].layerId === LAYERS.sumariSeed
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'the queue both editors were looking at' },
+			)
 
 			const setNext = await app.emu.expectCommand(/^AdminSetNextLayer /, { timeoutMs: 20_000 })
 			expect(setNext.body).toContain('Sumari_Seed_v1')

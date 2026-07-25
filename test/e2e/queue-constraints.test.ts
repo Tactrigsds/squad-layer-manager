@@ -1,4 +1,5 @@
 import * as FB from '@/models/filter-builders'
+
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, queue, queueItem, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
@@ -13,9 +14,7 @@ test.describe('queue item constraints', () => {
 		const app = await createAppFixture({
 			// Gorodok twice, two apart: within the Map repeat rule's window of 4
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.gorodokAas),
-			filters: [
-				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' }),
-			],
+			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]), { alertMessage: 'RAAS layers are in the pool' })],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
 				// just the one rule, so an item's indicators are attributable to it and nothing else
@@ -92,18 +91,21 @@ test.describe('queue item constraints', () => {
 			await expect(saveAnyway).toBeVisible()
 
 			await saveAnyway.click()
-			await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
-					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					// the row clicked in the table is whichever Gorodok AAS layer sorts first, so match the layer
-					// rather than a particular faction matchup of it
-					return list.length === 3 && list[0].layerId.startsWith('GD-AAS-')
-				} finally {
-					db.close()
-				}
-			}, { label: 'queue saved over the repeat warning' })
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+						// the row clicked in the table is whichever Gorodok AAS layer sorts first, so match the layer
+						// rather than a particular faction matchup of it
+						return list.length === 3 && list[0].layerId.startsWith('GD-AAS-')
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'queue saved over the repeat warning' },
+			)
 		} finally {
 			await app.dispose()
 		}
@@ -115,11 +117,7 @@ test.describe('queue item constraints', () => {
 	test("skips warnings for an item tagged with one of the pool's skipWarningsForTags", async ({ page }) => {
 		const planned = layerTag('planned', 'aaaaaa')
 		const app = await createAppFixture({
-			layerQueue: [
-				queueItem(LAYERS.gorodokRaas),
-				queueItem(LAYERS.sumariSeed),
-				queueItem(LAYERS.gorodokAas, { tags: [planned.id] }),
-			],
+			layerQueue: [queueItem(LAYERS.gorodokRaas), queueItem(LAYERS.sumariSeed), queueItem(LAYERS.gorodokAas, { tags: [planned.id] })],
 			globalSettings: (settings) => {
 				settings.layerTags = [planned]
 			},
@@ -154,16 +152,19 @@ test.describe('queue item constraints', () => {
 			// the save commits on the first attempt: had the tagged repeat still warned, this would have surfaced the
 			// warning and waited for a second click instead
 			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
-			await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
-					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					return list.length === 4 && list.some((item) => item.layerId.startsWith('NV-RAAS-'))
-				} finally {
-					db.close()
-				}
-			}, { label: 'queue saved without a repeat warning' })
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+						return list.length === 4 && list.some((item) => item.layerId.startsWith('NV-RAAS-'))
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'queue saved without a repeat warning' },
+			)
 			await expect(page.getByRole('button', { name: 'Save Anyway' })).toHaveCount(0)
 			await expect(page.getByText('Repeats Detected')).toHaveCount(0)
 		} finally {
@@ -192,16 +193,19 @@ test.describe('queue item constraints', () => {
 			await expect(section.getByText('planned')).toBeVisible()
 
 			await page.getByRole('button', { name: 'Save Changes' }).click()
-			await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
-					const pool = JSON.parse(row.settings).json.queue.mainPool as { skipWarningsForTags?: string[] }
-					return pool.skipWarningsForTags?.includes(planned.id) ?? false
-				} finally {
-					db.close()
-				}
-			}, { label: 'skipWarningsForTags persisted' })
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
+						const pool = JSON.parse(row.settings).json.queue.mainPool as { skipWarningsForTags?: string[] }
+						return pool.skipWarningsForTags?.includes(planned.id) ?? false
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'skipWarningsForTags persisted' },
+			)
 		} finally {
 			await app.dispose()
 		}

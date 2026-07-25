@@ -1,6 +1,7 @@
-import * as ATTRS from '@/models/otel-attrs'
 import * as Otel from '@opentelemetry/api'
 import type pino from 'pino'
+
+import * as ATTRS from '@/models/otel-attrs'
 
 export type OtelModule = {
 	name: string
@@ -15,7 +16,7 @@ export function getChildModule(module: OtelModule, submoduleName: string) {
 	let log: pino.Logger | undefined
 	return {
 		name: name,
-		getLogger: () => log ??= module.getLogger().child({ [ATTRS.Module.NAME]: name }),
+		getLogger: () => (log ??= module.getLogger().child({ [ATTRS.Module.NAME]: name })),
 		tracer: Otel.trace.getTracer(name),
 	}
 }

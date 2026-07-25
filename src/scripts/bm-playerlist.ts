@@ -32,15 +32,17 @@ serverUrl.searchParams.set('include', 'player')
 const serverData = await bmFetch(serverUrl)
 
 const players: any[] = (serverData.included ?? []).filter((item: any) => item.type === 'player')
-const playerIds = players.map(p => p.id)
+const playerIds = players.map((p) => p.id)
 
 // Request 2+: fetch each player individually (in parallel) to get their flags
-const playerDetails = await Promise.all(playerIds.map(id => {
-	const u = new URL(`${BM_HOST}/players/${id}`)
-	u.searchParams.set('include', 'flagPlayer,playerFlag')
-	u.searchParams.set('fields[playerFlag]', 'name,color,description')
-	return bmFetch(u)
-}))
+const playerDetails = await Promise.all(
+	playerIds.map((id) => {
+		const u = new URL(`${BM_HOST}/players/${id}`)
+		u.searchParams.set('include', 'flagPlayer,playerFlag')
+		u.searchParams.set('fields[playerFlag]', 'name,color,description')
+		return bmFetch(u)
+	}),
+)
 
 const flagsByPlayer = new Map<string, string[]>()
 for (const detail of playerDetails) {

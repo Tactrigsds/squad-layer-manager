@@ -1,12 +1,14 @@
+import { ContextMenu } from '@radix-ui/react-context-menu'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { MatchTeamDisplay } from '@/components/teams-display'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { usePlayerGroupColor } from '@/systems/battlemetrics.client'
-import { ContextMenu } from '@radix-ui/react-context-menu'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import PlayerContextMenuOptions from './player-context-menu-options'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
@@ -27,15 +29,20 @@ export interface PlayerDisplayProps {
 	disableContextMenu?: boolean
 }
 
-function PlayerButton(
-	{ username, stores, ref, disableContextMenu, playerId, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-		username: string
-		playerId: string
-		stores: SquadServerFrame.KeyProp
-		disableContextMenu?: boolean
-		ref?: React.Ref<HTMLButtonElement>
-	},
-) {
+function PlayerButton({
+	username,
+	stores,
+	ref,
+	disableContextMenu,
+	playerId,
+	...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+	username: string
+	playerId: string
+	stores: SquadServerFrame.KeyProp
+	disableContextMenu?: boolean
+	ref?: React.Ref<HTMLButtonElement>
+}) {
 	const button = (
 		<button ref={ref} type="button" className="font-bold hover:underline cursor-pointer" {...props}>
 			{username}
@@ -52,9 +59,16 @@ function PlayerButton(
 	)
 }
 
-export function PlayerDisplay(
-	{ player, showTeam, showSquad, showRole, className, matchId, stores, disableContextMenu }: PlayerDisplayProps,
-) {
+export function PlayerDisplay({
+	player,
+	showTeam,
+	showSquad,
+	showRole,
+	className,
+	matchId,
+	stores,
+	disableContextMenu,
+}: PlayerDisplayProps) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
 	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
 	const groupColor = usePlayerGroupColor(playerId, player.adminGroups ?? [])
@@ -65,11 +79,11 @@ export function PlayerDisplay(
 				<span
 					title="This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams"
 					className="inline-block"
-					onClickCapture={e => {
+					onClickCapture={(e) => {
 						if (!e.shiftKey) return
 						e.preventDefault()
 						e.stopPropagation()
-						SquadServerFrame.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : player.teamId ?? undefined)
+						SquadServerFrame.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : (player.teamId ?? undefined))
 					}}
 				>
 					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-admin" />
@@ -91,20 +105,14 @@ export function PlayerDisplay(
 				disableContextMenu={disableContextMenu}
 				style={groupColor ? { color: groupColor } : undefined}
 			/>
-			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null)
-				? (
-					<span className="inline-flex flex-nowrap">
-						({showTeam && player.teamId !== null && <MatchTeamDisplay matchId={matchId} teamId={player.teamId} stores={stores} />}
-						{showTeam && player.teamId !== null && showSquad && player.squadId !== null && ', '}
-						{showSquad && player.squadId !== null && player.squadId})
-					</span>
-				)
-				: null}
-			{showRole && player.role && (
-				<span className="text-muted-foreground text-xs">
-					[{player.role}]
+			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null) ? (
+				<span className="inline-flex flex-nowrap">
+					({showTeam && player.teamId !== null && <MatchTeamDisplay matchId={matchId} teamId={player.teamId} stores={stores} />}
+					{showTeam && player.teamId !== null && showSquad && player.squadId !== null && ', '}
+					{showSquad && player.squadId !== null && player.squadId})
 				</span>
-			)}
+			) : null}
+			{showRole && player.role && <span className="text-muted-foreground text-xs">[{player.role}]</span>}
 		</span>
 	)
 }

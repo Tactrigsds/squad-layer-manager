@@ -7,6 +7,7 @@ import path from 'node:path'
 import type { CommonServerOptions, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
+
 import * as AR from './src/app-routes.ts'
 import * as Env from './src/server/env.ts'
 
@@ -93,7 +94,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@': path.resolve(__dirname, 'src'),
-			'$root': path.resolve(__dirname),
+			$root: path.resolve(__dirname),
 		},
 	},
 	test: {

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import type * as USR from '@/models/users.models'
 import { getUserInitials } from '@/models/users.models'
 import * as UsersClient from '@/systems/users.client'
+
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 
 // A discord user rendered as their avatar, with their name on hover. `label` prefixes the tooltip ("Set By").

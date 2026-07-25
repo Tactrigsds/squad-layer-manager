@@ -1,3 +1,6 @@
+import StringComparison from 'string-comparison'
+import { z } from 'zod'
+
 import { createId } from '@/lib/id'
 import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object'
@@ -8,8 +11,6 @@ import * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import type * as LC from '@/models/layer-columns'
 import * as USR from '@/models/users.models'
-import StringComparison from 'string-comparison'
-import { z } from 'zod'
 
 export const ItemIdSchema = z.string().min(1)
 export type ItemId = z.infer<typeof ItemIdSchema>
@@ -38,7 +39,7 @@ export function sameOwner(a: USR.GuiOrChatUserId, b: USR.GuiOrChatUserId): boole
 }
 
 export function ownedItems(items: BackburnerItem[], owner: USR.GuiOrChatUserId): BackburnerItem[] {
-	return items.filter(item => sameOwner(item.source, owner))
+	return items.filter((item) => sameOwner(item.source, owner))
 }
 
 export type MergeTemplatesResult =
@@ -58,7 +59,7 @@ export function mergeTemplateFilters(target: F.FilterNode, source: F.FilterNode)
 	mergeTeamParts(parts, a, b)
 	parts.filterIds = unionValues(a.filterIds, b.filterIds)
 	parts.excludedFilterIds = unionValues(a.excludedFilterIds, b.excludedFilterIds)
-	const conflicts = parts.filterIds.filter(id => parts.excludedFilterIds.includes(id))
+	const conflicts = parts.filterIds.filter((id) => parts.excludedFilterIds.includes(id))
 	if (conflicts.length > 0) return { code: 'err:conflicting-filters', filterIds: conflicts }
 	parts.other = [...a.other, ...b.other]
 	return { code: 'ok', filter: buildTemplateFilter(parts) }
@@ -73,17 +74,26 @@ function unionValues<T>(a: T[], b: T[]): T[] {
 }
 
 function hasTeamParts(parts: TemplateParts): boolean {
-	return parts.factions.length > 0 || parts.alliances.length > 0 || parts.units.length > 0
-		|| (!!parts.matchup && matchupHasValues(parts.matchup))
+	return (
+		parts.factions.length > 0 ||
+		parts.alliances.length > 0 ||
+		parts.units.length > 0 ||
+		(!!parts.matchup && matchupHasValues(parts.matchup))
+	)
 }
 
 // a template's team constraints as one matchup: the explicit matchup node if present, with loose
 // either-team singles folded into side 0 (equivalent for unlocked matchups, which is what singles produce)
 function asMatchup(parts: TemplateParts): F.MatchupNode {
-	const node = parts.matchup && matchupHasValues(parts.matchup)
-		? (structuredClone(parts.matchup) as F.MatchupNode)
-		: (FB.allowMatchups([{}, {}]) as F.MatchupNode)
-	const singles: [F.TeamColumn, string[]][] = [['Faction', parts.factions], ['Alliance', parts.alliances], ['Unit', parts.units]]
+	const node =
+		parts.matchup && matchupHasValues(parts.matchup)
+			? (structuredClone(parts.matchup) as F.MatchupNode)
+			: (FB.allowMatchups([{}, {}]) as F.MatchupNode)
+	const singles: [F.TeamColumn, string[]][] = [
+		['Faction', parts.factions],
+		['Alliance', parts.alliances],
+		['Unit', parts.units],
+	]
 	for (const [column, values] of singles) {
 		if (values.length > 0) node.teams[0][column] = unionValues(node.teams[0][column] ?? [], values)
 	}
@@ -130,7 +140,7 @@ export function withPoolFilter(filter: F.FilterNode, poolFilter: { filterId: str
 
 export function removeByIds(items: BackburnerItem[], itemIds: ItemId[]): BackburnerItem[] {
 	const ids = new Set(itemIds)
-	return items.filter(item => !ids.has(item.itemId))
+	return items.filter((item) => !ids.has(item.itemId))
 }
 
 // draft-vs-saved diff, so panel rows can be colour-coded like the shared layer list's mutations. Items present
@@ -138,8 +148,8 @@ export function removeByIds(items: BackburnerItem[], itemIds: ItemId[]): Backbur
 // items counts as stable, so a single reorder marks just the item that jumped rather than everything it shifted.
 export function diffMutations(draft: BackburnerItem[], saved: BackburnerItem[]): ItemMut.Mutations {
 	const mutations = ItemMut.initMutations()
-	const savedById = new Map(saved.map(item => [item.itemId, item]))
-	const draftIds = new Set(draft.map(item => item.itemId))
+	const savedById = new Map(saved.map((item) => [item.itemId, item]))
+	const draftIds = new Set(draft.map((item) => item.itemId))
 	for (const item of draft) {
 		const prev = savedById.get(item.itemId)
 		if (!prev) mutations.added.add(item.itemId)
@@ -152,8 +162,8 @@ export function diffMutations(draft: BackburnerItem[], saved: BackburnerItem[]):
 	// shared items in draft order, keyed by their position in the saved order; the longest increasing run of
 	// those positions is the set that kept its relative order, everything else moved
 	const savedIndex = new Map(saved.map((item, index) => [item.itemId, index]))
-	const shared = draft.filter(item => savedIndex.has(item.itemId))
-	const stable = longestIncreasingRun(shared.map(item => savedIndex.get(item.itemId)!))
+	const shared = draft.filter((item) => savedIndex.has(item.itemId))
+	const stable = longestIncreasingRun(shared.map((item) => savedIndex.get(item.itemId)!))
 	shared.forEach((item, position) => {
 		if (!stable.has(position)) mutations.moved.add(item.itemId)
 	})
@@ -268,7 +278,7 @@ function stringValues(node: { args: readonly unknown[] }): string[] | undefined 
 	if (!arg || typeof arg !== 'object') return undefined
 	if (arg.type === 'value') return typeof arg.value === 'string' ? [arg.value] : undefined
 	if (arg.type === 'values' && Array.isArray(arg.values)) {
-		return arg.values.every(value => typeof value === 'string') ? (arg.values as string[]) : undefined
+		return arg.values.every((value) => typeof value === 'string') ? (arg.values as string[]) : undefined
 	}
 	return undefined
 }
@@ -288,11 +298,11 @@ export function parseTemplateParts(filter: F.FilterNode): TemplateParts {
 				}
 			}
 			if (
-				values?.length === 1
-				&& node.type === 'eq'
-				&& subject?.type === 'team-column'
-				&& subject.quantifier === 'either'
-				&& parts[TEAM_PART_KEYS[subject.column]].length === 0
+				values?.length === 1 &&
+				node.type === 'eq' &&
+				subject?.type === 'team-column' &&
+				subject.quantifier === 'either' &&
+				parts[TEAM_PART_KEYS[subject.column]].length === 0
 			) {
 				parts[TEAM_PART_KEYS[subject.column]].push(values[0])
 				continue
@@ -316,7 +326,7 @@ export function parseTemplateParts(filter: F.FilterNode): TemplateParts {
 }
 
 export function matchupHasValues(node: F.MatchupNode): boolean {
-	return node.teams.some(side => Object.values(side).some(values => (values?.length ?? 0) > 0))
+	return node.teams.some((side) => Object.values(side).some((values) => (values?.length ?? 0) > 0))
 }
 
 // per-column values for seeding the select-layers menu when a request is dragged into the queue. The matchup's
@@ -385,13 +395,10 @@ export type TemplateDisplayPart = { text: string; filterId?: string; excluded?: 
 
 // the segments a template renders as (rows, chat listings): map/gamemode/version/... values verbatim, team
 // pairs as "A vs B", filter names resolved by the caller, and a count for anything unrecognized
-export function templateDisplayParts(
-	filter: F.FilterNode,
-	getFilterName?: (id: string) => string | undefined,
-): TemplateDisplayPart[] {
+export function templateDisplayParts(filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): TemplateDisplayPart[] {
 	const parts = parseTemplateParts(filter)
 	const values = [...parts.layers, ...parts.maps, ...parts.gamemodes, ...parts.versions, ...parts.collections, ...parts.sizes]
-	const out: TemplateDisplayPart[] = values.map(text => ({ text }))
+	const out: TemplateDisplayPart[] = values.map((text) => ({ text }))
 	for (const values of [parts.factions, parts.alliances, parts.units]) {
 		if (values.length === 1) out.push({ text: values[0] })
 		else if (values.length >= 2) out.push({ text: `${values[0]} vs ${values[1]}` })
@@ -409,7 +416,9 @@ export function templateDisplayParts(
 }
 
 export function describeTemplate(filter: F.FilterNode, getFilterName?: (id: string) => string | undefined): string {
-	return templateDisplayParts(filter, getFilterName).map(part => part.text).join(', ')
+	return templateDisplayParts(filter, getFilterName)
+		.map((part) => part.text)
+		.join(', ')
 }
 
 // -------- request token resolution (/reqlayer) --------
@@ -452,7 +461,7 @@ export function resolveRequestTokens(input: {
 	filterEntities: { id: string; name: string }[]
 }): ResolveTokensResult {
 	const { components, filterEntities } = input
-	const tokens = input.tokens.map(t => t.trim()).filter(t => t.length > 0)
+	const tokens = input.tokens.map((t) => t.trim()).filter((t) => t.length > 0)
 	if (tokens.length === 0) return { code: 'err:empty', msg: 'Nothing requested' }
 
 	// exact lookup: normalized token -> canonical target. earlier entries win, so category priority is
@@ -509,9 +518,12 @@ export function resolveRequestTokens(input: {
 			}
 		}
 
-		const filterMatches = uniqueSubstringMatch(filterEntities.map(f => f.name), token)
+		const filterMatches = uniqueSubstringMatch(
+			filterEntities.map((f) => f.name),
+			token,
+		)
 		if (filterMatches.code === 'ok') {
-			const entity = filterEntities.find(f => f.name === filterMatches.value)!
+			const entity = filterEntities.find((f) => f.name === filterMatches.value)!
 			targets.push({ kind: 'filter', filterId: entity.id, name: entity.name })
 			continue
 		}
@@ -581,7 +593,7 @@ export function resolveRequestTokens(input: {
 
 function uniqueSubstringMatch(candidates: string[], token: string) {
 	const normalized = normalizeForMatch(token)
-	const matched = candidates.filter(candidate => normalizeForMatch(candidate).includes(normalized))
+	const matched = candidates.filter((candidate) => normalizeForMatch(candidate).includes(normalized))
 	if (matched.length === 0) return { code: 'err:not-found' as const }
 	if (matched.length > 1) return { code: 'err:multiple-matches' as const, count: matched.length }
 	return { code: 'ok' as const, value: matched[0] }
@@ -593,16 +605,18 @@ function unknownTokenMessage(
 	components: LC.LayerComponents,
 	filterEntities: { id: string; name: string }[],
 ): string {
-	const candidates = [...exact.keys(), ...components.maps.map(normalizeForMatch), ...filterEntities.map(f => normalizeForMatch(f.name))]
+	const candidates = [...exact.keys(), ...components.maps.map(normalizeForMatch), ...filterEntities.map((f) => normalizeForMatch(f.name))]
 	const sorted = StringComparison.diceCoefficient.sortMatch(normalizeForMatch(token), candidates)
 	const base = `Unknown request "${token}"`
 	if (sorted.length === 0) return base
 	const best = sorted[sorted.length - 1]
 	const target = exact.get(best.member)
 	const suggestion = target
-		? ('value' in target ? target.value : target.name)
-		: (components.maps.find(m => normalizeForMatch(m) === best.member)
-			?? filterEntities.find(f => normalizeForMatch(f.name) === best.member)?.name)
+		? 'value' in target
+			? target.value
+			: target.name
+		: (components.maps.find((m) => normalizeForMatch(m) === best.member) ??
+			filterEntities.find((f) => normalizeForMatch(f.name) === best.member)?.name)
 	return suggestion ? `${base}. Did you mean ${suggestion}?` : base
 }
 

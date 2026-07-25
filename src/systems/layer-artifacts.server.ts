@@ -1,11 +1,12 @@
-import * as Paths from '$root/paths'
-import { escapeRegex } from '@/lib/string'
-import * as LA from '@/models/layer-artifact'
-import * as Env from '@/server/env'
 import Mustache from 'mustache'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as semver from 'semver'
+
+import * as Paths from '$root/paths'
+import { escapeRegex } from '@/lib/string'
+import * as LA from '@/models/layer-artifact'
+import * as Env from '@/server/env'
 
 // Where the layer artifacts come from, and which version of them the app runs on.
 //
@@ -77,9 +78,9 @@ function resolve(): ArtifactPair {
 	const searched = dirs.map((dir) => `  - ${dir}`).join('\n')
 	const version = wanted === '@latest' ? 'any version' : `version ${wanted}`
 	throw new Error(
-		`No layer artifacts for ${version}: a directory must hold both ${tableFileName('<version>', { compressed: true })} `
-			+ `(or ${tableFileName('<version>')}) and ${layerDataFileName('<version>')}. Searched:\n${searched}\n`
-			+ `Build them with \`pnpm preprocess\`, or download a published pair into ./data.`,
+		`No layer artifacts for ${version}: a directory must hold both ${tableFileName('<version>', { compressed: true })} ` +
+			`(or ${tableFileName('<version>')}) and ${layerDataFileName('<version>')}. Searched:\n${searched}\n` +
+			`Build them with \`pnpm preprocess\`, or download a published pair into ./data.`,
 	)
 }
 
@@ -97,7 +98,7 @@ function scanPairs(dir: string): ArtifactPair[] {
 		if (tableMatch) {
 			const version = semver.valid(tableMatch[1])
 			// the uncompressed table loads quicker, so it wins when preprocess has left both behind
-			if (version && !(tables.get(version)?.endsWith(LA.ARTIFACT_EXT))) tables.set(version, path.join(dir, entry))
+			if (version && !tables.get(version)?.endsWith(LA.ARTIFACT_EXT)) tables.set(version, path.join(dir, entry))
 			continue
 		}
 		const layerDataMatch = entry.match(layerDataRegex)
@@ -110,8 +111,8 @@ function scanPairs(dir: string): ArtifactPair[] {
 	for (const [version, tablePath] of tables) {
 		if (!layerData.has(version)) {
 			throw new Error(
-				`${tablePath} has no ${layerDataFileName(version)} beside it. The table's encoded values are meaningless `
-					+ `without the components they index into, so the two always travel together. Add it, or remove the table.`,
+				`${tablePath} has no ${layerDataFileName(version)} beside it. The table's encoded values are meaningless ` +
+					`without the components they index into, so the two always travel together. Add it, or remove the table.`,
 			)
 		}
 	}
@@ -154,9 +155,7 @@ export function getVersionTemplatedPath(filePath: string): [string, string] {
 
 		if (matches.length === 0) {
 			const expectedPattern = Mustache.render(filePath, { LAYERS_VERSION: '<version>' })
-			throw new Error(
-				`No files found matching ${expectedPattern} where <version> is a valid semver (e.g., 1.2.3, v2.0.0-beta.1)`,
-			)
+			throw new Error(`No files found matching ${expectedPattern} where <version> is a valid semver (e.g., 1.2.3, v2.0.0-beta.1)`)
 		}
 
 		const versions = matches.sort((a, b) => semver.compare(a.version, b.version))

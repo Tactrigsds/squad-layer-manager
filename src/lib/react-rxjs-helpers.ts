@@ -13,7 +13,10 @@ import * as Rx from 'rxjs'
  */
 
 export class StateTimeoutError extends Error {
-	constructor(readonly tag: string, readonly ms: number) {
+	constructor(
+		readonly tag: string,
+		readonly ms: number,
+	) {
 		super(`"${tag}" produced no value within ${ms}ms of the transport being live`)
 		this.name = 'StateTimeoutError'
 	}
@@ -36,7 +39,7 @@ export function guardFirstEmit<T>(tag: string, ms: number): Rx.MonoTypeOperatorF
 			const settle = () => settled$.next()
 			const timeout$: Rx.Observable<never> = Rx.defer(() => transportLive$).pipe(
 				// the clock restarts on each reconnect, so a flapping connection can't accumulate its way to a timeout
-				Rx.switchMap((live) => live ? Rx.timer(ms) : Rx.NEVER),
+				Rx.switchMap((live) => (live ? Rx.timer(ms) : Rx.NEVER)),
 				Rx.take(1),
 				Rx.takeUntil(settled$),
 				Rx.mergeMap(() => Rx.throwError(() => new StateTimeoutError(tag, ms))),

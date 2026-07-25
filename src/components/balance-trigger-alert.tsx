@@ -3,11 +3,14 @@ import { cn } from '@/lib/utils'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as MH from '@/models/match-history.models'
+
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
-export default function BalanceTriggerAlert(
-	props: { event: BAL.BalanceTriggerEvent; referenceMatch: MH.MatchDetails; className?: string },
-) {
+export default function BalanceTriggerAlert(props: {
+	event: BAL.BalanceTriggerEvent
+	referenceMatch: MH.MatchDetails
+	className?: string
+}) {
 	if (!BAL.isKnownEventInstance(props.event)) return null
 	const trigger = BAL.TRIGGERS[props.event.triggerId]
 	if (!trigger) return null
@@ -19,9 +22,7 @@ export default function BalanceTriggerAlert(
 				<AlertIcon className="h-4 w-4 mr-2" />
 				{trigger.name}
 			</AlertTitle>
-			<AlertDescription>
-				{Messages.GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, false)}
-			</AlertDescription>
+			<AlertDescription>{Messages.GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, false)}</AlertDescription>
 		</Alert>
 	)
 }

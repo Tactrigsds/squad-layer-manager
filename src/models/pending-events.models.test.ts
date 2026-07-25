@@ -1,3 +1,5 @@
+import { describe, expect, it, vi } from 'vitest'
+
 import * as Gen from '@/lib/generator'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
@@ -5,7 +7,6 @@ import type * as MH from '@/models/match-history.models'
 import * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SM from '@/models/squad.models'
-import { describe, expect, it, vi } from 'vitest'
 
 // --- Layer IDs (from layer.test.ts) ---
 // Gorodok_RAAS_v1, Faction_1=RGF ('Russian Ground Forces'), Faction_2=ADF ('Australian Defence Force')
@@ -39,12 +40,14 @@ function makeMatchDetails(historyEntryId: number, layerId: L.LayerId): MH.MatchD
 	} as unknown as MH.MatchDetails
 }
 
-function makeState(opts: {
-	currentMatch?: PendingEvents.State['currentMatch']
-	matchId?: number
-	layerId?: L.LayerId
-	isNewMatch?: boolean
-} = {}): { state: PendingEvents.State; hooks: PendingEvents.State['hooks'] } {
+function makeState(
+	opts: {
+		currentMatch?: PendingEvents.State['currentMatch']
+		matchId?: number
+		layerId?: L.LayerId
+		isNewMatch?: boolean
+	} = {},
+): { state: PendingEvents.State; hooks: PendingEvents.State['hooks'] } {
 	const eventIdCounter = Gen.counter()
 	const hooks: PendingEvents.State['hooks'] = {
 		onNewGameDuringSync: vi.fn().mockResolvedValue({
@@ -129,7 +132,15 @@ function makeRoundEndedChain(
 				layer: 'Gorodok_RAAS_v1',
 				map: 'Gorodok',
 			},
-			ROUND_DECIDED_LOSER: { type: 'ROUND_DECIDED_LOSER', time, chainID: 0, raw: '', ...loser, layer: 'Gorodok_RAAS_v1', map: 'Gorodok' },
+			ROUND_DECIDED_LOSER: {
+				type: 'ROUND_DECIDED_LOSER',
+				time,
+				chainID: 0,
+				raw: '',
+				...loser,
+				layer: 'Gorodok_RAAS_v1',
+				map: 'Gorodok',
+			},
 		},
 	}
 }
@@ -148,16 +159,20 @@ function makePlayerConnectedChain(time: number, eos: string, controller: string,
 				ip: '1.2.3.4',
 			},
 			PLAYER_JOIN_SUCCEEDED: { type: 'PLAYER_JOIN_SUCCEEDED', time, chainID: 549, raw: '', player: { usernameNoTag: 'Test Player' } },
-			PLAYER_ADDED_TO_TEAM: { type: 'PLAYER_ADDED_TO_TEAM', time, chainID: 549, raw: '', playerIds: { username: 'Test Player' }, teamId },
+			PLAYER_ADDED_TO_TEAM: {
+				type: 'PLAYER_ADDED_TO_TEAM',
+				time,
+				chainID: 549,
+				raw: '',
+				playerIds: { username: 'Test Player' },
+				teamId,
+			},
 		},
 	}
 }
 
 // Advances state to synced via RCON_CONNECTED + TEAMS_UPDATE, returns the yielded events
-async function syncUp(
-	state: PendingEvents.State,
-	opts: { layerId?: L.LayerId; teams?: SM.Teams } = {},
-): Promise<SE.Event[]> {
+async function syncUp(state: PendingEvents.State, opts: { layerId?: L.LayerId; teams?: SM.Teams } = {}): Promise<SE.Event[]> {
 	const layerId = opts.layerId ?? LAYER_A
 	const teams = opts.teams ?? makeTeams()
 	PendingEvents.onRconConnected(state, 100, layerId, layerId)
@@ -189,22 +204,22 @@ describe('PendingEvents', () => {
 			PendingEvents.onRconDisconnected(state, 200)
 			await collect(state)
 			const events = await syncUp(state) // second: isFirstConnection becomes false
-			expect(events.find(e => e.type === 'NEW_GAME')).toMatchObject({ source: 'rcon-reconnected' })
+			expect(events.find((e) => e.type === 'NEW_GAME')).toMatchObject({ source: 'rcon-reconnected' })
 		})
 
 		it('same-match reconnect: yields RESET instead of NEW_GAME', async () => {
 			const { state } = makeState({ isNewMatch: false })
 			const events = await syncUp(state)
-			expect(events.find(e => e.type === 'RESET')).toBeDefined()
-			expect(events.find(e => e.type === 'NEW_GAME')).toBeUndefined()
+			expect(events.find((e) => e.type === 'RESET')).toBeDefined()
+			expect(events.find((e) => e.type === 'NEW_GAME')).toBeUndefined()
 		})
 
 		it('RESET carries the teams state from TEAMS_UPDATE (NEW_GAME is roster-less)', async () => {
 			const { state } = makeState()
 			const p1 = makePlayer('eos-001', 1)
 			const events = await syncUp(state, { teams: makeTeams([p1]) })
-			expect((events.find(e => e.type === 'NEW_GAME') as SE.NewGame).state).toBeUndefined()
-			const reset = events.find(e => e.type === 'RESET') as SE.Reset
+			expect((events.find((e) => e.type === 'NEW_GAME') as SE.NewGame).state).toBeUndefined()
+			const reset = events.find((e) => e.type === 'RESET') as SE.Reset
 			expect(reset.state.players).toHaveLength(1)
 			expect(reset.state.players[0]).toMatchObject({ ids: { eos: 'eos-001' } })
 		})
@@ -288,15 +303,19 @@ describe('PendingEvents', () => {
 			// 1. Round ends
 			PendingEvents.onLogEvent(
 				state,
-				makeRoundEndedChain(200, { team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' }, {
-					team: 2,
-					tickets: 150,
-					faction: 'ADF',
-					unit: 'Mechanized',
-				}),
+				makeRoundEndedChain(
+					200,
+					{ team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' },
+					{
+						team: 2,
+						tickets: 150,
+						faction: 'ADF',
+						unit: 'Mechanized',
+					},
+				),
 			)
 			const batch1 = await collect(state)
-			expect(batch1.map(e => e.type)).toEqual(['ROUND_ENDED'])
+			expect(batch1.map((e) => e.type)).toEqual(['ROUND_ENDED'])
 
 			// 2. Server transitions — TransitionMap NEW_GAME enters rolling, retaining the prior roster as a stale fallback
 			PendingEvents.onLogEvent(state, {
@@ -374,20 +393,20 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)]), 410, 350)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(411))
 			const staleBatch = await collect(state)
-			expect(staleBatch.some(e => e.type === 'RESET')).toBe(false)
+			expect(staleBatch.some((e) => e.type === 'RESET')).toBe(false)
 			expect(state.syncState.type).toBe('rolling')
 
 			// the genuine first post-roll poll: issued after the boundary, carrying the swapped roster (team 2)
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 2)]), 500, 450)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(501))
 			const rollBatch = await collect(state)
-			const reset = rollBatch.find(e => e.type === 'RESET') as SE.Reset
+			const reset = rollBatch.find((e) => e.type === 'RESET') as SE.Reset
 			expect(reset).toMatchObject({ source: 'server-roll' })
-			expect(reset.state.players.map(p => ({ eos: p.ids.eos, teamId: p.teamId }))).toEqual([{ eos: 'eos-001', teamId: 2 }])
+			expect(reset.state.players.map((p) => ({ eos: p.ids.eos, teamId: p.teamId }))).toEqual([{ eos: 'eos-001', teamId: 2 }])
 			expect(state.syncState.type).toBe('synced')
 
 			// the automatic side-swap arrived via the wholesale RESET, never as an individual team change
-			expect([...staleBatch, ...rollBatch].some(e => e.type === 'PLAYER_CHANGED_TEAM')).toBe(false)
+			expect([...staleBatch, ...rollBatch].some((e) => e.type === 'PLAYER_CHANGED_TEAM')).toBe(false)
 		})
 
 		// End-to-end for B + C + A: a player still loading (team-less) during the roll is excluded from the
@@ -420,19 +439,19 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-straggler', 1, { teamId: null })]), 401)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(402))
 			const rollBatch = await collect(state)
-			const reset = rollBatch.find(e => e.type === 'RESET') as SE.Reset
+			const reset = rollBatch.find((e) => e.type === 'RESET') as SE.Reset
 			expect(reset).toMatchObject({ source: 'server-roll' })
-			expect(reset.state.players.map(p => p.ids.eos)).toEqual(['eos-001']) // straggler excluded from snapshot
+			expect(reset.state.players.map((p) => p.ids.eos)).toEqual(['eos-001']) // straggler excluded from snapshot
 			expect(state.syncState.type).toBe('synced')
-			expect(state.currTeams?.players.some(p => p.ids.eos === 'eos-straggler')).toBe(false)
+			expect(state.currTeams?.players.some((p) => p.ids.eos === 'eos-straggler')).toBe(false)
 
 			// next poll: straggler now teamed -> reconcile ADD recovers them (as PLAYER_RECONCILED, not a fresh connect)
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-straggler', 2)]), 500)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(501))
 			const batch2 = await collect(state)
-			expect(batch2.some(e => e.type === 'PLAYER_RECONCILED')).toBe(true)
-			expect(batch2.some(e => e.type === 'PLAYER_CONNECTED')).toBe(false)
-			expect(state.currTeams?.players.find(p => p.ids.eos === 'eos-straggler')?.teamId).toBe(2)
+			expect(batch2.some((e) => e.type === 'PLAYER_RECONCILED')).toBe(true)
+			expect(batch2.some((e) => e.type === 'PLAYER_CONNECTED')).toBe(false)
+			expect(state.currTeams?.players.find((p) => p.ids.eos === 'eos-straggler')?.teamId).toBe(2)
 		})
 
 		it('defers sync on a transitional poll where players exist but none are teamed', async () => {
@@ -442,15 +461,15 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1, { teamId: null })]), 100)
 			const batch = await collect(state)
 			// the roster-less NEW_GAME boundary is emitted at connect, but the roster (RESET) is deferred
-			expect(batch.some(e => e.type === 'NEW_GAME')).toBe(true)
-			expect(batch.some(e => e.type === 'RESET')).toBe(false)
+			expect(batch.some((e) => e.type === 'NEW_GAME')).toBe(true)
+			expect(batch.some((e) => e.type === 'RESET')).toBe(false)
 			expect(state.syncState.type).toBe('syncing')
 
 			// once a player is teamed, sync completes with the RESET
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1)]), 200)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const batch2 = await collect(state)
-			expect(batch2.some(e => e.type === 'RESET')).toBe(true)
+			expect(batch2.some((e) => e.type === 'RESET')).toBe(true)
 			expect(state.syncState.type).toBe('synced')
 		})
 	})
@@ -505,11 +524,11 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(500))
 			const events = await collect(state)
 
-			const newGame = events.find(e => e.type === 'NEW_GAME') as SE.NewGame | undefined
+			const newGame = events.find((e) => e.type === 'NEW_GAME') as SE.NewGame | undefined
 			expect(newGame).toBeDefined()
 			expect(newGame!.source).toBe('server-roll')
 			expect(newGame!.state).toBeUndefined()
-			const reset = events.find(e => e.type === 'RESET') as SE.Reset | undefined
+			const reset = events.find((e) => e.type === 'RESET') as SE.Reset | undefined
 			expect(reset).toBeDefined()
 			expect(reset!.source).toBe('server-roll')
 			expect(reset!.state.players).toHaveLength(1)
@@ -538,13 +557,13 @@ describe('PendingEvents', () => {
 
 			// a tick while rolling arms the watchdog clock; still within the timeout -> no fire
 			const armed = await collectAt(state, 2000)
-			expect(armed.some(e => e.type === 'NEW_GAME')).toBe(false)
+			expect(armed.some((e) => e.type === 'NEW_GAME')).toBe(false)
 			expect(state.syncState.type).toBe('rolling')
 
 			// past the timeout -> watchdog forces a resync back to syncing, emitting a NEW_GAME(new-game-detected)
 			const fireTime = 2000 + PendingEvents.SYNC_WATCHDOG_TIMEOUT_MS + 1
 			const fired = await collectAt(state, fireTime)
-			expect(fired.some(e => e.type === 'NEW_GAME' && (e as SE.NewGame).source === 'new-game-detected')).toBe(true)
+			expect(fired.some((e) => e.type === 'NEW_GAME' && (e as SE.NewGame).source === 'new-game-detected')).toBe(true)
 			expect(state.syncState.type).toBe('syncing')
 
 			// the next teams poll after the resync boundary completes it
@@ -583,7 +602,7 @@ describe('PendingEvents', () => {
 
 			expect(state.syncState.type).toBe('synced')
 			expect(state.hooks.fetchLayersStatus).not.toHaveBeenCalled()
-			expect(events.some(e => e.type === 'NEW_GAME' && (e as SE.NewGame).source === 'new-game-detected')).toBe(false)
+			expect(events.some((e) => e.type === 'NEW_GAME' && (e as SE.NewGame).source === 'new-game-detected')).toBe(false)
 		})
 
 		it('a failed layer resolution during a roll leaves plain rolling (no newGameEvent), never completing against the stale match', async () => {
@@ -612,7 +631,7 @@ describe('PendingEvents', () => {
 			const rollBatch = await collectAt(state, 1100)
 
 			expect(state.hooks.fetchLayersStatus).toHaveBeenCalled()
-			expect(rollBatch.some(e => e.type === 'NEW_GAME')).toBe(false)
+			expect(rollBatch.some((e) => e.type === 'NEW_GAME')).toBe(false)
 			// plain rolling, crucially WITHOUT a newGameEvent
 			expect(state.syncState).toEqual({ type: 'rolling' })
 
@@ -620,7 +639,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 1)]), 1200)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(1300))
 			const pollBatch = await collectAt(state, 1400)
-			expect(pollBatch.some(e => e.type === 'RESET')).toBe(false)
+			expect(pollBatch.some((e) => e.type === 'RESET')).toBe(false)
 			expect(state.syncState.type).toBe('rolling')
 		})
 	})
@@ -662,12 +681,16 @@ describe('PendingEvents', () => {
 
 			PendingEvents.onLogEvent(
 				state,
-				makeRoundEndedChain(200, { team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' }, {
-					team: 2,
-					tickets: 150,
-					faction: 'ADF',
-					unit: 'Mechanized',
-				}),
+				makeRoundEndedChain(
+					200,
+					{ team: 1, tickets: 300, faction: 'RGF', unit: 'CombinedArms' },
+					{
+						team: 2,
+						tickets: 150,
+						faction: 'ADF',
+						unit: 'Mechanized',
+					},
+				),
 			)
 			const events = await collect(state)
 
@@ -683,12 +706,16 @@ describe('PendingEvents', () => {
 
 			PendingEvents.onLogEvent(
 				state,
-				makeRoundEndedChain(200, { team: 2, tickets: 250, faction: 'ADF', unit: 'Mechanized' }, {
-					team: 1,
-					tickets: 100,
-					faction: 'RGF',
-					unit: 'CombinedArms',
-				}),
+				makeRoundEndedChain(
+					200,
+					{ team: 2, tickets: 250, faction: 'ADF', unit: 'Mechanized' },
+					{
+						team: 1,
+						tickets: 100,
+						faction: 'RGF',
+						unit: 'CombinedArms',
+					},
+				),
 			)
 			const events = await collect(state)
 
@@ -705,12 +732,16 @@ describe('PendingEvents', () => {
 
 			PendingEvents.onLogEvent(
 				state,
-				makeRoundEndedChain(200, { team: 2, tickets: 999, faction: 'ADF', unit: 'Mechanized' }, {
-					team: 1,
-					tickets: 0,
-					faction: 'RGF',
-					unit: 'CombinedArms',
-				}),
+				makeRoundEndedChain(
+					200,
+					{ team: 2, tickets: 999, faction: 'ADF', unit: 'Mechanized' },
+					{
+						team: 1,
+						tickets: 0,
+						faction: 'RGF',
+						unit: 'CombinedArms',
+					},
+				),
 			)
 			const events = await collect(state)
 
@@ -728,12 +759,16 @@ describe('PendingEvents', () => {
 
 			PendingEvents.onLogEvent(
 				state,
-				makeRoundEndedChain(200, { team: 1, tickets: 200, faction: 'RGF', unit: 'CombinedArms' }, {
-					team: 2,
-					tickets: 200,
-					faction: 'ADF',
-					unit: 'Mechanized',
-				}),
+				makeRoundEndedChain(
+					200,
+					{ team: 1, tickets: 200, faction: 'RGF', unit: 'CombinedArms' },
+					{
+						team: 2,
+						tickets: 200,
+						faction: 'ADF',
+						unit: 'Mechanized',
+					},
+				),
 			)
 			const events = await collect(state)
 
@@ -749,10 +784,10 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makePlayerConnectedChain(300, 'eos-001', 'ctrl-001', 1))
 			const events = await collect(state)
 
-			const connected = events.find(e => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
+			const connected = events.find((e) => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
 			expect(connected).toBeDefined()
 			expect(connected.player).toMatchObject({ ids: expect.objectContaining({ eos: 'eos-001', username: 'Test Player' }), teamId: 1 })
-			expect(state.currTeams?.players.find(p => p.ids.eos === 'eos-001')).toBeDefined()
+			expect(state.currTeams?.players.find((p) => p.ids.eos === 'eos-001')).toBeDefined()
 		})
 
 		it('marks player as admin if their eos id is in admins set', async () => {
@@ -763,7 +798,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makePlayerConnectedChain(300, 'eos-001', 'ctrl-001', 1))
 			const events = await collect(state)
 
-			const connected = events.find(e => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
+			const connected = events.find((e) => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
 			expect(connected.player.isAdmin).toBe(true)
 		})
 	})
@@ -805,7 +840,7 @@ describe('PendingEvents', () => {
 			})
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
+			const types = events.map((e) => e.type)
 			expect(types).toContain('PLAYER_LEFT_SQUAD')
 			expect(types).toContain('PLAYER_DISCONNECTED')
 		})
@@ -882,7 +917,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			expect(events.some(e => e.type === 'PLAYER_CHANGED_TEAM')).toBe(true)
+			expect(events.some((e) => e.type === 'PLAYER_CHANGED_TEAM')).toBe(true)
 			expect(state.currTeams?.players[0].teamId).toBe(2)
 		})
 
@@ -897,7 +932,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
+			const types = events.map((e) => e.type)
 			expect(types).toContain('PLAYER_LEFT_SQUAD')
 			expect(types).toContain('SQUAD_DISBANDED')
 		})
@@ -912,7 +947,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			expect(events.some(e => e.type === 'PLAYER_PROMOTED_TO_LEADER')).toBe(true)
+			expect(events.some((e) => e.type === 'PLAYER_PROMOTED_TO_LEADER')).toBe(true)
 		})
 
 		it('yields PLAYER_DETAILS_CHANGED when role changes', async () => {
@@ -924,7 +959,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			expect(events.some(e => e.type === 'PLAYER_DETAILS_CHANGED')).toBe(true)
+			expect(events.some((e) => e.type === 'PLAYER_DETAILS_CHANGED')).toBe(true)
 		})
 
 		it('yields SQUAD_DETAILS_CHANGED when squad locked status changes', async () => {
@@ -938,7 +973,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			expect(events.some(e => e.type === 'SQUAD_DETAILS_CHANGED')).toBe(true)
+			expect(events.some((e) => e.type === 'SQUAD_DETAILS_CHANGED')).toBe(true)
 		})
 
 		it('emits PLAYER_CONNECTED for a teamed player we never saw before (genuine arrival / missed connect log)', async () => {
@@ -951,12 +986,12 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const connects = events.filter(e => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected[]
+			const connects = events.filter((e) => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected[]
 			expect(connects).toHaveLength(1)
 			expect(connects[0].player.ids.eos).toBe('eos-002')
 			expect(connects[0].player.teamId).toBe(2)
-			expect(events.some(e => e.type === 'PLAYER_RECONCILED')).toBe(false)
-			expect(state.currTeams?.players.some(p => p.ids.eos === 'eos-002')).toBe(true)
+			expect(events.some((e) => e.type === 'PLAYER_RECONCILED')).toBe(false)
+			expect(state.currTeams?.players.some((p) => p.ids.eos === 'eos-002')).toBe(true)
 		})
 
 		it('emits PLAYER_RECONCILED (not PLAYER_CONNECTED) for a player we saw team-less who then gets a team', async () => {
@@ -966,16 +1001,16 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 1, { teamId: null })]), 200)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const batch1 = await collect(state)
-			expect(batch1.some(e => e.type === 'PLAYER_CONNECTED' || e.type === 'PLAYER_RECONCILED')).toBe(false)
-			expect(state.currTeams?.players.some(p => p.ids.eos === 'eos-002')).toBe(false)
+			expect(batch1.some((e) => e.type === 'PLAYER_CONNECTED' || e.type === 'PLAYER_RECONCILED')).toBe(false)
+			expect(state.currTeams?.players.some((p) => p.ids.eos === 'eos-002')).toBe(false)
 
 			// poll 2: eos-002 now teamed -> backfill of a player we were tracking -> PLAYER_RECONCILED
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 2)]), 300)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
 			const batch2 = await collect(state)
-			expect(batch2.some(e => e.type === 'PLAYER_RECONCILED')).toBe(true)
-			expect(batch2.some(e => e.type === 'PLAYER_CONNECTED')).toBe(false)
-			expect(state.currTeams?.players.find(p => p.ids.eos === 'eos-002')?.teamId).toBe(2)
+			expect(batch2.some((e) => e.type === 'PLAYER_RECONCILED')).toBe(true)
+			expect(batch2.some((e) => e.type === 'PLAYER_CONNECTED')).toBe(false)
+			expect(state.currTeams?.players.find((p) => p.ids.eos === 'eos-002')?.teamId).toBe(2)
 		})
 
 		it('does not emit a spurious add for players already in currTeams', async () => {
@@ -986,7 +1021,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			expect(events.some(e => e.type === 'PLAYER_RECONCILED' || e.type === 'PLAYER_CONNECTED')).toBe(false)
+			expect(events.some((e) => e.type === 'PLAYER_RECONCILED' || e.type === 'PLAYER_CONNECTED')).toBe(false)
 		})
 
 		it('establishes squad membership for an added player via PLAYER_JOINED_SQUAD', async () => {
@@ -999,10 +1034,10 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
+			const types = events.map((e) => e.type)
 			expect(types).toContain('PLAYER_CONNECTED')
 			expect(types).toContain('PLAYER_JOINED_SQUAD')
-			const recovered = state.currTeams?.players.find(p => p.ids.eos === 'eos-002')
+			const recovered = state.currTeams?.players.find((p) => p.ids.eos === 'eos-002')
 			expect(recovered?.squadId).toBe(1)
 		})
 
@@ -1018,21 +1053,21 @@ describe('PendingEvents', () => {
 
 			// first miss: grace poll, no cull
 			const batch1 = await pollAbsent(state, 200)
-			expect(batch1.some(e => e.type === 'PLAYER_DISCONNECTED')).toBe(false)
-			expect(state.currTeams?.players.some(p => p.ids.eos === 'eos-002')).toBe(true)
+			expect(batch1.some((e) => e.type === 'PLAYER_DISCONNECTED')).toBe(false)
+			expect(state.currTeams?.players.some((p) => p.ids.eos === 'eos-002')).toBe(true)
 
 			// second consecutive miss: cull
 			const batch2 = await pollAbsent(state, 300)
-			const dc = batch2.find(e => e.type === 'PLAYER_DISCONNECTED') as SE.PlayerDisconnected
+			const dc = batch2.find((e) => e.type === 'PLAYER_DISCONNECTED') as SE.PlayerDisconnected
 			expect(dc).toBeDefined()
 			expect(dc.player).toBe('eos-002')
-			expect(state.currTeams?.players.some(p => p.ids.eos === 'eos-002')).toBe(false)
+			expect(state.currTeams?.players.some((p) => p.ids.eos === 'eos-002')).toBe(false)
 		})
 
 		it('does not cull a player after a single missed poll', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1), makePlayer('eos-002', 1)], [])
 			const batch = await pollAbsent(state, 200)
-			expect(batch.some(e => e.type === 'PLAYER_DISCONNECTED')).toBe(false)
+			expect(batch.some((e) => e.type === 'PLAYER_DISCONNECTED')).toBe(false)
 			expect(state.currTeams?.players).toHaveLength(2)
 		})
 
@@ -1046,8 +1081,8 @@ describe('PendingEvents', () => {
 			await collect(state)
 
 			const batch = await pollAbsent(state, 400) // miss 1 again, not 2 consecutive
-			expect(batch.some(e => e.type === 'PLAYER_DISCONNECTED')).toBe(false)
-			expect(state.currTeams?.players.some(p => p.ids.eos === 'eos-002')).toBe(true)
+			expect(batch.some((e) => e.type === 'PLAYER_DISCONNECTED')).toBe(false)
+			expect(state.currTeams?.players.some((p) => p.ids.eos === 'eos-002')).toBe(true)
 		})
 	})
 
@@ -1078,32 +1113,32 @@ describe('PendingEvents', () => {
 
 			// polls 1-2: cycle held awaiting the creation log; no squad events yet
 			const batch1 = await pollWithUnknownSquad(state, 200)
-			expect(batch1.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+			expect(batch1.some((e) => e.type === 'SQUAD_CREATED')).toBe(false)
 			// presence recovery still runs during held cycles
 			const batch2 = await pollWithUnknownSquad(state, 300, [makePlayer('eos-002', 2)])
-			expect(batch2.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
-			expect(batch2.some(e => e.type === 'PLAYER_CONNECTED')).toBe(true)
+			expect(batch2.some((e) => e.type === 'SQUAD_CREATED')).toBe(false)
+			expect(batch2.some((e) => e.type === 'PLAYER_CONNECTED')).toBe(true)
 
 			// poll 3: threshold reached -> synthesized SQUAD_CREATED, with membership established from the same poll
 			const batch3 = await pollWithUnknownSquad(state, 400, [makePlayer('eos-002', 2)])
-			const created = batch3.find(e => e.type === 'SQUAD_CREATED') as SE.SquadCreated
+			const created = batch3.find((e) => e.type === 'SQUAD_CREATED') as SE.SquadCreated
 			expect(created).toMatchObject({
 				synthesized: true,
 				squad: expect.objectContaining({ squadId: 1, teamId: 1, creator: 'eos-ghost', squadName: 'Alpha' }),
 			})
-			expect(batch3.find(e => e.type === 'PLAYER_JOINED_SQUAD')).toMatchObject({
+			expect(batch3.find((e) => e.type === 'PLAYER_JOINED_SQUAD')).toMatchObject({
 				player: 'eos-001',
 				uniqueId: created.squad.uniqueId,
 			})
-			expect(batch3.some(e => e.type === 'PLAYER_PROMOTED_TO_LEADER')).toBe(true)
+			expect(batch3.some((e) => e.type === 'PLAYER_PROMOTED_TO_LEADER')).toBe(true)
 
 			// the squad is tracked in currTeams despite the unresolvable creator
-			expect(state.currTeams?.squads.find(s => s.uniqueId === created.squad.uniqueId)).toBeDefined()
-			expect(state.currTeams?.players.find(p => p.ids.eos === 'eos-001')?.squadId).toBe(1)
+			expect(state.currTeams?.squads.find((s) => s.uniqueId === created.squad.uniqueId)).toBeDefined()
+			expect(state.currTeams?.players.find((p) => p.ids.eos === 'eos-001')?.squadId).toBe(1)
 
 			// poll 4: the squad now matches normally; no re-synthesis
 			const batch4 = await pollWithUnknownSquad(state, 500, [makePlayer('eos-002', 2)])
-			expect(batch4.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+			expect(batch4.some((e) => e.type === 'SQUAD_CREATED')).toBe(false)
 		})
 
 		it('resets the streak when the unknown squad disappears from a poll', async () => {
@@ -1119,7 +1154,7 @@ describe('PendingEvents', () => {
 
 			// reappears: a fresh threshold's worth of polls is required again
 			const batch = await pollWithUnknownSquad(state, 500)
-			expect(batch.some(e => e.type === 'SQUAD_CREATED')).toBe(false)
+			expect(batch.some((e) => e.type === 'SQUAD_CREATED')).toBe(false)
 		})
 	})
 
@@ -1133,7 +1168,7 @@ describe('PendingEvents', () => {
 		it('preserves squad uniqueIds when the reconnect resolves to the same match', async () => {
 			const { state } = makeState({ isNewMatch: false })
 			const events1 = await syncUp(state, { teams: rosterTeams() })
-			const reset1 = events1.find(e => e.type === 'RESET') as SE.Reset
+			const reset1 = events1.find((e) => e.type === 'RESET') as SE.Reset
 			const originalUniqueId = reset1.state.squads[0].uniqueId
 
 			PendingEvents.onRconDisconnected(state, 300)
@@ -1143,14 +1178,14 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, rosterTeams(), 410)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(411))
 			const events2 = await collect(state)
-			const reset2 = events2.find(e => e.type === 'RESET') as SE.Reset
+			const reset2 = events2.find((e) => e.type === 'RESET') as SE.Reset
 			expect(reset2.state.squads[0].uniqueId).toBe(originalUniqueId)
 		})
 
 		it('mints fresh uniqueIds when the reconnect resolves to a different match', async () => {
 			const { state, hooks } = makeState({ isNewMatch: false })
 			const events1 = await syncUp(state, { teams: rosterTeams() })
-			const reset1 = events1.find(e => e.type === 'RESET') as SE.Reset
+			const reset1 = events1.find((e) => e.type === 'RESET') as SE.Reset
 			const originalUniqueId = reset1.state.squads[0].uniqueId
 
 			PendingEvents.onRconDisconnected(state, 300)
@@ -1163,7 +1198,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, rosterTeams(), 410)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(411))
 			const events2 = await collect(state)
-			const reset2 = events2.find(e => e.type === 'RESET') as SE.Reset
+			const reset2 = events2.find((e) => e.type === 'RESET') as SE.Reset
 			expect(reset2.state.squads[0].uniqueId).not.toBe(originalUniqueId)
 		})
 	})
@@ -1186,7 +1221,7 @@ describe('PendingEvents', () => {
 				attackerIds: { eos: 'eos-atk', playerController: 'ctrl_eos-atk' },
 			})
 			const events = await collect(state)
-			const died = events.find(e => e.type === 'PLAYER_DIED') as SE.PlayerDied
+			const died = events.find((e) => e.type === 'PLAYER_DIED') as SE.PlayerDied
 			expect(died).toBeDefined()
 			expect(died.victim).toBe('eos-vic')
 			expect(died.attacker).toBe('eos-atk')
@@ -1205,7 +1240,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
 			expect(warn).toBeDefined()
 			expect(warn.source).toEqual({ type: 'event', id: 'app-1' })
 			expect(state.expectations).toHaveLength(0)
@@ -1218,7 +1253,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
 			expect(warn.source).toBeUndefined()
 			expect(state.expectations).toHaveLength(1)
 		})
@@ -1230,7 +1265,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
 			expect(warn.source).toBeUndefined()
 		})
 
@@ -1244,9 +1279,9 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(202))
 			const events = await collect(state)
 
-			const warns = events.filter(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned[]
+			const warns = events.filter((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned[]
 			expect(warns).toHaveLength(2)
-			expect(warns.every(w => w.source?.type === 'event' && w.source.id === 'app-1')).toBe(true)
+			expect(warns.every((w) => w.source?.type === 'event' && w.source.id === 'app-1')).toBe(true)
 			expect(state.expectations).toHaveLength(0)
 		})
 
@@ -1261,7 +1296,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const warn = events.find(e => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
 			expect(warn.source).toBeUndefined()
 			expect(state.expectations).toHaveLength(0)
 		})
@@ -1283,7 +1318,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
 			const events = await collect(state)
 
-			const changed = events.find(e => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam
+			const changed = events.find((e) => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam
 			expect(changed?.source).toEqual({ type: 'event', id: 'app-1' })
 			expect(state.expectations).toHaveLength(0)
 		})
@@ -1295,7 +1330,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 2)], []), 500)
 			const events = await collect(state)
 
-			const changed = events.find(e => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam
+			const changed = events.find((e) => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam
 			expect(changed?.source).toBeUndefined()
 			expect(state.expectations).toHaveLength(1)
 		})
@@ -1315,7 +1350,7 @@ describe('PendingEvents', () => {
 			})
 			const events = await collect(state)
 
-			const left = events.find(e => e.type === 'PLAYER_LEFT_SQUAD') as SE.PlayerLeftSquad
+			const left = events.find((e) => e.type === 'PLAYER_LEFT_SQUAD') as SE.PlayerLeftSquad
 			expect(left?.source).toEqual({ type: 'event', id: 'app-1' })
 			expect(state.expectations).toHaveLength(0)
 		})
@@ -1336,7 +1371,7 @@ describe('PendingEvents', () => {
 			})
 			const events = await collect(state)
 
-			const disbanded = events.find(e => e.type === 'SQUAD_DISBANDED') as SE.SquadDisbanded
+			const disbanded = events.find((e) => e.type === 'SQUAD_DISBANDED') as SE.SquadDisbanded
 			expect(disbanded?.source).toEqual({ type: 'event', id: 'app-1' })
 			expect(state.expectations).toHaveLength(0)
 		})
@@ -1357,7 +1392,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
-			const renamed = events.find(e => e.type === 'SQUAD_RENAMED') as SE.SquadRenamed
+			const renamed = events.find((e) => e.type === 'SQUAD_RENAMED') as SE.SquadRenamed
 			expect(renamed?.source).toEqual({ type: 'event', id: 'app-1' })
 			expect(state.expectations).toHaveLength(0)
 		})
@@ -1388,14 +1423,14 @@ describe('PendingEvents', () => {
 			)
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
-			expect(types.filter(t => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
-			expect(types.filter(t => t === 'PLAYER_JOINED_SQUAD')).toHaveLength(2)
-			expect(types.filter(t => t === 'SQUAD_DISBANDED')).toHaveLength(1)
+			const types = events.map((e) => e.type)
+			expect(types.filter((t) => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
+			expect(types.filter((t) => t === 'PLAYER_JOINED_SQUAD')).toHaveLength(2)
+			expect(types.filter((t) => t === 'SQUAD_DISBANDED')).toHaveLength(1)
 
 			expect(state.currTeams!.squads).toHaveLength(1)
 			expect(state.currTeams!.squads[0].uniqueId).toBe(102)
-			expect(state.currTeams!.players.filter(p => p.squadId === 2)).toHaveLength(4)
+			expect(state.currTeams!.players.filter((p) => p.squadId === 2)).toHaveLength(4)
 		})
 
 		it('two solo players switch teams simultaneously, each disbanding their own squad', async () => {
@@ -1405,23 +1440,16 @@ describe('PendingEvents', () => {
 			const sq2 = makeSquad(2, 1, 'eos-002', 102)
 			const state = makeSyncedState([p1, p2], [sq1, sq2])
 
-			PendingEvents.onTeamsPolled(
-				state,
-				makeTeams(
-					[makePlayer('eos-001', 2), makePlayer('eos-002', 2)],
-					[],
-				),
-				500,
-			)
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 2), makePlayer('eos-002', 2)], []), 500)
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
-			expect(types.filter(t => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
-			expect(types.filter(t => t === 'SQUAD_DISBANDED')).toHaveLength(2)
-			expect(types.filter(t => t === 'PLAYER_CHANGED_TEAM')).toHaveLength(2)
+			const types = events.map((e) => e.type)
+			expect(types.filter((t) => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
+			expect(types.filter((t) => t === 'SQUAD_DISBANDED')).toHaveLength(2)
+			expect(types.filter((t) => t === 'PLAYER_CHANGED_TEAM')).toHaveLength(2)
 
 			expect(state.currTeams!.squads).toHaveLength(0)
-			expect(state.currTeams!.players.every(p => p.teamId === 2)).toBe(true)
+			expect(state.currTeams!.players.every((p) => p.teamId === 2)).toBe(true)
 		})
 
 		it('simultaneous leader succession in two squads', async () => {
@@ -1448,14 +1476,14 @@ describe('PendingEvents', () => {
 			)
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
-			expect(types.filter(t => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
-			expect(types.filter(t => t === 'PLAYER_PROMOTED_TO_LEADER')).toHaveLength(2)
-			expect(types.filter(t => t === 'SQUAD_DISBANDED')).toHaveLength(0)
+			const types = events.map((e) => e.type)
+			expect(types.filter((t) => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
+			expect(types.filter((t) => t === 'PLAYER_PROMOTED_TO_LEADER')).toHaveLength(2)
+			expect(types.filter((t) => t === 'SQUAD_DISBANDED')).toHaveLength(0)
 
 			expect(state.currTeams!.squads).toHaveLength(2)
-			expect(state.currTeams!.players.find(p => p.ids.eos === 'eos-002')!.isLeader).toBe(true)
-			expect(state.currTeams!.players.find(p => p.ids.eos === 'eos-004')!.isLeader).toBe(true)
+			expect(state.currTeams!.players.find((p) => p.ids.eos === 'eos-002')!.isLeader).toBe(true)
+			expect(state.currTeams!.players.find((p) => p.ids.eos === 'eos-004')!.isLeader).toBe(true)
 		})
 
 		it('mixed: team switch triggers squad disband with mid-process leader succession, plus role change on another player', async () => {
@@ -1467,26 +1495,19 @@ describe('PendingEvents', () => {
 
 			PendingEvents.onTeamsPolled(
 				state,
-				makeTeams(
-					[
-						makePlayer('eos-001', 2),
-						makePlayer('eos-002', 1, { role: 'Rifleman_01' }),
-						makePlayer('eos-003', 2),
-					],
-					[],
-				),
+				makeTeams([makePlayer('eos-001', 2), makePlayer('eos-002', 1, { role: 'Rifleman_01' }), makePlayer('eos-003', 2)], []),
 				500,
 			)
 			const events = await collect(state)
 
-			const types = events.map(e => e.type)
-			expect(types.filter(t => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
-			expect(types.filter(t => t === 'PLAYER_CHANGED_TEAM')).toHaveLength(1)
-			expect(types.filter(t => t === 'SQUAD_DISBANDED')).toHaveLength(1)
-			expect(types.filter(t => t === 'PLAYER_DETAILS_CHANGED')).toHaveLength(1)
+			const types = events.map((e) => e.type)
+			expect(types.filter((t) => t === 'PLAYER_LEFT_SQUAD')).toHaveLength(2)
+			expect(types.filter((t) => t === 'PLAYER_CHANGED_TEAM')).toHaveLength(1)
+			expect(types.filter((t) => t === 'SQUAD_DISBANDED')).toHaveLength(1)
+			expect(types.filter((t) => t === 'PLAYER_DETAILS_CHANGED')).toHaveLength(1)
 
 			expect(state.currTeams!.squads).toHaveLength(0)
-			expect(state.currTeams!.players.find(p => p.ids.eos === 'eos-001')!.teamId).toBe(2)
+			expect(state.currTeams!.players.find((p) => p.ids.eos === 'eos-001')!.teamId).toBe(2)
 		})
 	})
 
@@ -1517,7 +1538,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
 			const events = await collect(state)
 
-			const renames = events.filter(e => e.type === 'SQUAD_RENAMED') as SE.SquadRenamed[]
+			const renames = events.filter((e) => e.type === 'SQUAD_RENAMED') as SE.SquadRenamed[]
 			expect(renames).toHaveLength(2)
 			expect(renames[0].time).toBe(200)
 			expect(renames[1].time).toBe(300)
@@ -1556,10 +1577,7 @@ describe('PendingEvents', () => {
 			// p1 leaves squad1 as leader with p2 still in it → PLAYER_LEFT_SQUAD + PLAYER_PROMOTED_TO_LEADER
 			PendingEvents.onTeamsPolled(
 				state,
-				makeTeams(
-					[makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1, isLeader: true })],
-					[sq1],
-				),
+				makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1, isLeader: true })], [sq1]),
 				200,
 			)
 			const events = await collect(state)
@@ -1577,25 +1595,11 @@ describe('PendingEvents', () => {
 			const state = makeSyncedState([p1, p2], [sq1])
 
 			// Call 1: p1 leaves as leader → PLAYER_LEFT_SQUAD(p1) + PLAYER_PROMOTED_TO_LEADER(p2)
-			PendingEvents.onTeamsPolled(
-				state,
-				makeTeams(
-					[makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1 })],
-					[sq1],
-				),
-				200,
-			)
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 1, { squadId: 1 })], [sq1]), 200)
 			const batch1 = await collect(state)
 
 			// Call 2: p2 (now sole member) leaves → PLAYER_LEFT_SQUAD(p2) + SQUAD_DISBANDED
-			PendingEvents.onTeamsPolled(
-				state,
-				makeTeams(
-					[makePlayer('eos-001', 1), makePlayer('eos-002', 1)],
-					[],
-				),
-				400,
-			)
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1), makePlayer('eos-002', 1)], []), 400)
 			const batch2 = await collect(state)
 
 			const allEvents = [...batch1, ...batch2]
@@ -1620,13 +1624,13 @@ describe('PendingEvents', () => {
 			})
 			const fromLog = await collect(state)
 			// the log itself emits nothing -- the poll is the source of truth for the team change
-			expect(fromLog.find(e => e.type === 'PLAYER_CHANGED_TEAM')).toBeUndefined()
+			expect(fromLog.find((e) => e.type === 'PLAYER_CHANGED_TEAM')).toBeUndefined()
 
 			// the poll reflects team 2 and picks up the recorded attribution
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 2)], []), 3000)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
 			const fromPoll = await collect(state)
-			expect(fromPoll.find(e => e.type === 'PLAYER_CHANGED_TEAM')).toMatchObject({
+			expect(fromPoll.find((e) => e.type === 'PLAYER_CHANGED_TEAM')).toMatchObject({
 				player: 'eos-1',
 				newTeamId: 2,
 				source: { type: 'rcon' },
@@ -1658,7 +1662,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 2)], []), 4000)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(4000))
 			const events = await collect(state)
-			const changed = events.find(e => e.type === 'PLAYER_CHANGED_TEAM')
+			const changed = events.find((e) => e.type === 'PLAYER_CHANGED_TEAM')
 			expect(changed).toMatchObject({ player: 'eos-1', newTeamId: 2 })
 			expect((changed as SE.PlayerChangedTeam).source).toBeUndefined()
 		})
@@ -1679,12 +1683,12 @@ describe('PendingEvents', () => {
 			})
 			const events = await collect(state)
 
-			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toMatchObject({
+			expect(events.find((e) => e.type === 'PLAYER_LEFT_SQUAD')).toMatchObject({
 				player: 'eos-1',
 				uniqueId: 101,
 				source: { type: 'rcon' },
 			})
-			expect(events.find(e => e.type === 'SQUAD_DISBANDED')).toMatchObject({
+			expect(events.find((e) => e.type === 'SQUAD_DISBANDED')).toMatchObject({
 				uniqueId: 101,
 				source: { type: 'rcon' },
 			})
@@ -1693,7 +1697,7 @@ describe('PendingEvents', () => {
 			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-1', 1)], []), 3000)
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(3000))
 			const after = await collect(state)
-			expect(after.find(e => e.type === 'SQUAD_DISBANDED')).toBeUndefined()
+			expect(after.find((e) => e.type === 'SQUAD_DISBANDED')).toBeUndefined()
 		})
 
 		it('remove from squad: resolves the target by username and emits an attributed PLAYER_LEFT_SQUAD', async () => {
@@ -1711,12 +1715,12 @@ describe('PendingEvents', () => {
 			})
 			const events = await collect(state)
 
-			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toMatchObject({
+			expect(events.find((e) => e.type === 'PLAYER_LEFT_SQUAD')).toMatchObject({
 				player: 'eos-removed',
 				uniqueId: 101,
 				source: { type: 'rcon' },
 			})
-			expect(state.currTeams!.players.find(p => p.ids.eos === 'eos-removed')).toMatchObject({ squadId: null })
+			expect(state.currTeams!.players.find((p) => p.ids.eos === 'eos-removed')).toMatchObject({ squadId: null })
 		})
 
 		it('remove from squad: unknown username is skipped so the teams poll can reconcile organically', async () => {
@@ -1731,7 +1735,7 @@ describe('PendingEvents', () => {
 				source: { type: 'rcon' },
 			})
 			const events = await collect(state)
-			expect(events.find(e => e.type === 'PLAYER_LEFT_SQUAD')).toBeUndefined()
+			expect(events.find((e) => e.type === 'PLAYER_LEFT_SQUAD')).toBeUndefined()
 		})
 	})
 
@@ -1761,7 +1765,7 @@ describe('PendingEvents', () => {
 
 		async function collectMapSet(state: PendingEvents.State, time = 2001) {
 			const events = await collectAt(state, time)
-			return events.find(e => e.type === 'MAP_SET') as SE.MapSet | undefined
+			return events.find((e) => e.type === 'MAP_SET') as SE.MapSet | undefined
 		}
 
 		it('claims the attribution for the layer that was actually set', async () => {
@@ -1778,7 +1782,12 @@ describe('PendingEvents', () => {
 		// standalone feed entry instead of folding into the save that caused it.
 		it('is not poisoned by a stale attribution for a different layer', async () => {
 			const state = syncedState()
-			PendingEvents.pushAttribution(state, { type: 'MAP_SET_ATTRIBUTION', itemId: 'stale', layerId: LAYER_B, appEventId: 'app-stale' })
+			PendingEvents.pushAttribution(state, {
+				type: 'MAP_SET_ATTRIBUTION',
+				itemId: 'stale',
+				layerId: LAYER_B,
+				appEventId: 'app-stale',
+			})
 			PendingEvents.pushAttribution(state, { type: 'MAP_SET_ATTRIBUTION', itemId: 'item-1', layerId: LAYER_A, appEventId: 'app-1' })
 			mapSetLog(state, LAYER_A_CLASSNAME, 'RGF+CombinedArms ADF+Mechanized')
 

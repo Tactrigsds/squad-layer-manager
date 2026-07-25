@@ -1,4 +1,5 @@
 import * as FB from '@/models/filter-builders'
+
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue } from '../harness/arrange'
 import { expect, test } from './fixtures'
@@ -58,10 +59,13 @@ test.describe('the filter editor form', () => {
 
 			await page.getByRole('button', { name: 'Save' }).click()
 
-			await app.waitFor(() => {
-				const row = app.readDb().prepare('select name from filters where id = ?').get('raas-only') as { name: string } | undefined
-				return row?.name === 'RAAS Only (renamed)' ? row : null
-			}, { label: 'renamed filter persisted' })
+			await app.waitFor(
+				() => {
+					const row = app.readDb().prepare('select name from filters where id = ?').get('raas-only') as { name: string } | undefined
+					return row?.name === 'RAAS Only (renamed)' ? row : null
+				},
+				{ label: 'renamed filter persisted' },
+			)
 		} finally {
 			await app.dispose()
 		}

@@ -6,7 +6,7 @@ export function maxLength(length: number) {
 // string it used to be. Rendering one directly yields "[object Object]".
 export function formatFieldErrors(errors: unknown[]) {
 	return errors
-		.map(err => {
+		.map((err) => {
 			if (typeof err === 'string') return err
 			if (err && typeof err === 'object' && 'message' in err) return String((err as { message: unknown }).message)
 			return String(err)

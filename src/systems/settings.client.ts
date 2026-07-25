@@ -1,11 +1,12 @@
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
+import { toStream } from 'zustand-rx'
+
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as ZusUtils from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
-import { toStream } from 'zustand-rx'
 
 // ============================== public settings: safe global settings + server registry, for any connected client ==============================
 
@@ -18,14 +19,12 @@ export function getSettings() {
 // whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs).
 // warns aren't configurable here: they always require one.
 export function useReasonRequired(action: AAR.RequirableAdminActionType): boolean {
-	return ZusUtils.useStore(PublicSettingsStore, s => s?.requireReasonFor.includes(action) ?? false)
+	return ZusUtils.useStore(PublicSettingsStore, (s) => s?.requireReasonFor.includes(action) ?? false)
 }
 
 // a server is only usable when the backend has a live slice for it, which happens exactly for enabled, non-broken servers.
 // disabled/broken servers still appear in the registry (e.g. for admin UI) but their dashboard can't be loaded.
-export function isServerUsable(
-	entry: PublicSettings['servers'][number] | undefined,
-): entry is PublicSettings['servers'][number] {
+export function isServerUsable(entry: PublicSettings['servers'][number] | undefined): entry is PublicSettings['servers'][number] {
 	return !!entry && entry.enabled && !entry.broken
 }
 
@@ -50,7 +49,7 @@ export const [useGlobalSettings, globalSettings$] = RxHelpers.bind(
 // ============================== setup ==============================
 
 export function setup() {
-	RPC.observe('settings.public.watchPublicSettings', () => RPC.orpc.settings.public.watchPublicSettings.call()).subscribe(settings => {
+	RPC.observe('settings.public.watchPublicSettings', () => RPC.orpc.settings.public.watchPublicSettings.call()).subscribe((settings) => {
 		PublicSettingsStore.setState(settings)
 	})
 }

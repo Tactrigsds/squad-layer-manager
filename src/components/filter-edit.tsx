@@ -1,4 +1,22 @@
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import * as Form from '@tanstack/react-form'
+import { useMutation } from '@tanstack/react-query'
+import { useBlocker, useRouter } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import { useState } from 'react'
+import React from 'react'
+import Markdown from 'react-markdown'
+
+import {
+	AlertDialog,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
@@ -15,14 +33,6 @@ import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Form from '@tanstack/react-form'
-import { useMutation } from '@tanstack/react-query'
-import { useBlocker, useRouter } from '@tanstack/react-router'
-import { useNavigate } from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
-import { useState } from 'react'
-import React from 'react'
-import Markdown from 'react-markdown'
 
 import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
@@ -38,9 +48,12 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 
-export function FilterEdit(
-	props: { entity: F.FilterEntity; contributors: { users: USR.User[]; roles: string[] }; owner: USR.User; stores: EditFrame.KeyProp },
-) {
+export function FilterEdit(props: {
+	entity: F.FilterEntity
+	contributors: { users: USR.User[]; roles: string[] }
+	owner: USR.User
+	stores: EditFrame.KeyProp
+}) {
 	const stores = props.stores
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const frameState = () => ZusUtils.getState(stores.filterEditor)
@@ -65,15 +78,18 @@ export function FilterEdit(
 		onSubmit: async ({ value, formApi }) => {
 			const description = value.description?.trim() || null
 
-			const res = await updateFilterMutation.mutateAsync([props.entity.id, {
-				...value,
-				description,
-				emoji: value.emoji ?? null,
-				alertMessage: value.alertMessage ?? null,
-				invertedEmoji: value.invertedEmoji ?? null,
-				invertedAlertMessage: value.invertedAlertMessage ?? null,
-				filter: frameState().validatedFilter ?? undefined,
-			}])
+			const res = await updateFilterMutation.mutateAsync([
+				props.entity.id,
+				{
+					...value,
+					description,
+					emoji: value.emoji ?? null,
+					alertMessage: value.alertMessage ?? null,
+					invertedEmoji: value.invertedEmoji ?? null,
+					invertedAlertMessage: value.invertedAlertMessage ?? null,
+					filter: frameState().validatedFilter ?? undefined,
+				},
+			])
 			switch (res.code) {
 				case 'err:permission-denied':
 					RbacClient.handlePermissionDenied(res)
@@ -148,9 +164,7 @@ export function FilterEdit(
 
 	const permitEdit = !canEditRes?.code
 
-	const [filterValid, filterModified] = useFrame(
-		ZusUtils.useShallow((state) => [state.valid, state.modified]),
-	)
+	const [filterValid, filterModified] = useFrame(ZusUtils.useShallow((state) => [state.valid, state.modified]))
 
 	useBlocker({
 		enableBeforeUnload: filterModified || form.state.isDirty,
@@ -162,135 +176,190 @@ export function FilterEdit(
 		},
 	})
 
-	const saveBtn = React.useMemo(() => (
-		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
-			{([canSubmit, isDirty]) => {
-				return (
-					<Button
-						onClick={() => form.handleSubmit()}
-						disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
-					>
-						Save
-					</Button>
-				)
-			}}
-		</form.Subscribe>
-	), [
-		form,
-		filterValid,
-		filterModified,
-		loggedInUserRole,
-		permitEdit,
-	])
+	const saveBtn = React.useMemo(
+		() => (
+			<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
+				{([canSubmit, isDirty]) => {
+					return (
+						<Button
+							onClick={() => form.handleSubmit()}
+							disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
+						>
+							Save
+						</Button>
+					)
+				}}
+			</form.Subscribe>
+		),
+		[form, filterValid, filterModified, loggedInUserRole, permitEdit],
+	)
 
 	const deleteBtn = React.useMemo(
 		() => (
 			<DeleteFilterDialog onDelete={onDelete}>
-				<Button variant="destructive" disabled={!permitEdit}>Delete</Button>
+				<Button variant="destructive" disabled={!permitEdit}>
+					Delete
+				</Button>
 			</DeleteFilterDialog>
 		),
 		[onDelete, permitEdit],
 	)
 
-	const filterCard = React.useMemo(() => (
-		<FilterCard
-			stores={stores}
-		>
-			{saveBtn}
-			{deleteBtn}
-		</FilterCard>
-	), [stores, deleteBtn, saveBtn])
+	const filterCard = React.useMemo(
+		() => (
+			<FilterCard stores={stores}>
+				{saveBtn}
+				{deleteBtn}
+			</FilterCard>
+		),
+		[stores, deleteBtn, saveBtn],
+	)
 
 	const _nodeMapStore = useFrame((s) => s.nodeMapStore)
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
 			<div className="flex justify-between">
-				{!editingDetails
-					? (
-						<div className="flex w-full flex-col space-y-2">
-							<div className="flex items-center justify-between">
-								<span className="flex items-center space-x-4">
-									{props.entity.emoji && (
-										<>
-											<EmojiDisplay emoji={props.entity.emoji} className="text-3xl" />
-											<Icons.Dot />
-										</>
-									)}
-									<h3 className={Typography.H3}>{props.entity.name}</h3>
-									<Icons.Dot />
-									<small className="font-light">Owner: {props.owner.displayName}</small>
-									<Icons.Dot />
-									<Button
-										aria-label="Edit Details"
-										disabled={!permitEdit}
-										onClick={() => setEditingDetails(true)}
-										variant="ghost"
-										size="icon"
-									>
-										<Icons.Edit />
-									</Button>
-								</span>
-								<span className="flex h-min items-center space-x-2 self-end">
-									{loggedInUserRole === 'owner' && permitEdit && (
-										<Badge variant="outline" className="text-nowrap border-2 border-primary">
-											You are the owner of this filter
-										</Badge>
-									)}
-									{loggedInUserRole === 'contributor' && (
-										<Badge variant="outline" className="text-nowrap border-2 border-info">
-											You are a contributor
-										</Badge>
-									)}
-									{!permitEdit && (
-										<Badge variant="outline" className="text-nowrap border-2 border-destructive">
-											You don't have permission to modify this filter
-										</Badge>
-									)}
-									{permitWriteAll && (
-										<Badge variant="outline" className="border-success text-nowrap border-2">
-											You have write access to all filters
-										</Badge>
-									)}
-									<FilterContributors
-										filterId={props.entity.id}
-										contributors={props.contributors}
-										canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
-									>
-										<Button variant="outline">
-											Show Contributors
-										</Button>
-									</FilterContributors>
-								</span>
-							</div>
-							<Separator orientation="horizontal" />
-							<DescriptionDisplay description={props.entity.description} />
+				{!editingDetails ? (
+					<div className="flex w-full flex-col space-y-2">
+						<div className="flex items-center justify-between">
+							<span className="flex items-center space-x-4">
+								{props.entity.emoji && (
+									<>
+										<EmojiDisplay emoji={props.entity.emoji} className="text-3xl" />
+										<Icons.Dot />
+									</>
+								)}
+								<h3 className={Typography.H3}>{props.entity.name}</h3>
+								<Icons.Dot />
+								<small className="font-light">Owner: {props.owner.displayName}</small>
+								<Icons.Dot />
+								<Button
+									aria-label="Edit Details"
+									disabled={!permitEdit}
+									onClick={() => setEditingDetails(true)}
+									variant="ghost"
+									size="icon"
+								>
+									<Icons.Edit />
+								</Button>
+							</span>
+							<span className="flex h-min items-center space-x-2 self-end">
+								{loggedInUserRole === 'owner' && permitEdit && (
+									<Badge variant="outline" className="text-nowrap border-2 border-primary">
+										You are the owner of this filter
+									</Badge>
+								)}
+								{loggedInUserRole === 'contributor' && (
+									<Badge variant="outline" className="text-nowrap border-2 border-info">
+										You are a contributor
+									</Badge>
+								)}
+								{!permitEdit && (
+									<Badge variant="outline" className="text-nowrap border-2 border-destructive">
+										You don't have permission to modify this filter
+									</Badge>
+								)}
+								{permitWriteAll && (
+									<Badge variant="outline" className="border-success text-nowrap border-2">
+										You have write access to all filters
+									</Badge>
+								)}
+								<FilterContributors
+									filterId={props.entity.id}
+									contributors={props.contributors}
+									canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
+								>
+									<Button variant="outline">Show Contributors</Button>
+								</FilterContributors>
+							</span>
 						</div>
-					)
-					: (
-						<div className="space-y-4 w-full">
-							<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-								{/* Left Column - Form Fields */}
-								<div className="space-y-6">
-									{/* Name Section */}
-									<div className="space-y-2">
-										<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
+						<Separator orientation="horizontal" />
+						<DescriptionDisplay description={props.entity.description} />
+					</div>
+				) : (
+					<div className="space-y-4 w-full">
+						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+							{/* Left Column - Form Fields */}
+							<div className="space-y-6">
+								{/* Name Section */}
+								<div className="space-y-2">
+									<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
+										{(field) => {
+											const label = 'Name'
+											return (
+												<div className="flex flex-col space-y-2">
+													<Label htmlFor={field.name}>{label}</Label>
+													<Input
+														id={field.name}
+														placeholder={label}
+														defaultValue={field.state.value}
+														onBlur={field.handleBlur}
+														onChange={(e) => field.handleChange(e.target.value)}
+													/>
+													{field.state.meta.errors.length > 0 && (
+														<Alert variant="destructive">
+															<AlertTitle>{label}:</AlertTitle>
+															<AlertDescription>
+																{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+															</AlertDescription>
+														</Alert>
+													)}
+												</div>
+											)
+										}}
+									</form.Field>
+								</div>
+
+								{/* Match Indicator Section */}
+								<div className="border rounded-lg p-4 space-y-4">
+									<h3 className="font-semibold text-sm">Match Indicator</h3>
+									<div className="flex gap-4">
+										<form.Field name="emoji">
 											{(field) => {
-												const label = 'Name'
+												const label = 'Emoji'
 												return (
 													<div className="flex flex-col space-y-2">
 														<Label htmlFor={field.name}>{label}</Label>
-														<Input
-															id={field.name}
-															placeholder={label}
-															defaultValue={field.state.value}
-															onBlur={field.handleBlur}
-															onChange={(e) => field.handleChange(e.target.value)}
+														<EmojiPickerPopover
+															value={field.state.value ?? undefined}
+															onSelect={(id) => {
+																field.handleChange(id?.trim() ?? null)
+															}}
+															disabled={false}
 														/>
 														{field.state.meta.errors.length > 0 && (
 															<Alert variant="destructive">
 																<AlertTitle>{label}:</AlertTitle>
-																<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+																<AlertDescription>
+																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+																</AlertDescription>
+															</Alert>
+														)}
+													</div>
+												)
+											}}
+										</form.Field>
+										<form.Field name="alertMessage" validators={{ onChange: F.AlertMessageSchema.nullable() }}>
+											{(field) => {
+												const label = 'Alert Message'
+												return (
+													<div className="flex flex-col space-y-2 grow">
+														<Label htmlFor={field.name}>{label}</Label>
+														<Textarea
+															id={field.name}
+															placeholder={label}
+															defaultValue={field.state.value ?? ''}
+															onBlur={field.handleBlur}
+															onChange={(e) => field.setValue(e.target.value.trim() || null)}
+															rows={3}
+														/>
+														{field.state.meta.errors.length > 0 && (
+															<Alert variant="destructive">
+																<AlertTitle>{label}:</AlertTitle>
+																<AlertDescription>
+																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+																</AlertDescription>
 															</Alert>
 														)}
 													</div>
@@ -298,174 +367,114 @@ export function FilterEdit(
 											}}
 										</form.Field>
 									</div>
-
-									{/* Match Indicator Section */}
-									<div className="border rounded-lg p-4 space-y-4">
-										<h3 className="font-semibold text-sm">Match Indicator</h3>
-										<div className="flex gap-4">
-											<form.Field name="emoji">
-												{(field) => {
-													const label = 'Emoji'
-													return (
-														<div className="flex flex-col space-y-2">
-															<Label htmlFor={field.name}>{label}</Label>
-															<EmojiPickerPopover
-																value={field.state.value ?? undefined}
-																onSelect={(id) => {
-																	field.handleChange(id?.trim() ?? null)
-																}}
-																disabled={false}
-															/>
-															{field.state.meta.errors.length > 0 && (
-																<Alert variant="destructive">
-																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-																</Alert>
-															)}
-														</div>
-													)
-												}}
-											</form.Field>
-											<form.Field
-												name="alertMessage"
-												validators={{ onChange: F.AlertMessageSchema.nullable() }}
-											>
-												{(field) => {
-													const label = 'Alert Message'
-													return (
-														<div className="flex flex-col space-y-2 grow">
-															<Label htmlFor={field.name}>{label}</Label>
-															<Textarea
-																id={field.name}
-																placeholder={label}
-																defaultValue={field.state.value ?? ''}
-																onBlur={field.handleBlur}
-																onChange={(e) => field.setValue(e.target.value.trim() || null)}
-																rows={3}
-															/>
-															{field.state.meta.errors.length > 0 && (
-																<Alert variant="destructive">
-																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-																</Alert>
-															)}
-														</div>
-													)
-												}}
-											</form.Field>
-										</div>
-									</div>
-
-									{/* Miss Indicator Section */}
-									<div className="border rounded-lg p-4 space-y-4">
-										<h3 className="font-semibold text-sm">Miss Indicator</h3>
-										<div className="flex gap-4">
-											<form.Field name="invertedEmoji">
-												{(field) => {
-													const label = 'Emoji'
-													return (
-														<div className="flex flex-col space-y-2">
-															<Label htmlFor={field.name}>{label}</Label>
-															<EmojiPickerPopover
-																value={field.state.value ?? undefined}
-																onSelect={(id) => {
-																	field.handleChange(id ?? null)
-																}}
-																disabled={false}
-															/>
-															{field.state.meta.errors.length > 0 && (
-																<Alert variant="destructive">
-																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-																</Alert>
-															)}
-														</div>
-													)
-												}}
-											</form.Field>
-											<form.Field
-												name="invertedAlertMessage"
-												validators={{ onChange: F.AlertMessageSchema.nullable() }}
-											>
-												{(field) => {
-													const label = 'Alert Message'
-													return (
-														<div className="flex flex-col space-y-2 grow">
-															<Label htmlFor={field.name}>{label}</Label>
-															<Textarea
-																id={field.name}
-																placeholder={label}
-																defaultValue={field.state.value ?? ''}
-																onBlur={field.handleBlur}
-																onChange={(e) => field.setValue(e.target.value.trim() || null)}
-																rows={3}
-															/>
-															{field.state.meta.errors.length > 0 && (
-																<Alert variant="destructive">
-																	<AlertTitle>{label}:</AlertTitle>
-																	<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-																</Alert>
-															)}
-														</div>
-													)
-												}}
-											</form.Field>
-										</div>
-									</div>
 								</div>
 
-								{/* Right Column - Description */}
-								<div className="flex gap-2">
-									<form.Field
-										name="description"
-										validators={{ onChange: F.DescriptionSchema.nullable() }}
-									>
-										{(field) => {
-											const label = 'Description'
-											return (
-												<div className="flex flex-col space-y-2 grow">
-													<Label htmlFor={field.name}>{label}</Label>
-													<Textarea
-														id={field.name}
-														placeholder={label}
-														defaultValue={field.state.value ?? ''}
-														onBlur={field.handleBlur}
-														onChange={(e) => field.handleChange(e.target.value?.trim() || null)}
-														rows={15}
-														className="font-mono text-sm grow"
-													/>
-													{field.state.meta.errors.length > 0 && (
-														<Alert variant="destructive">
-															<AlertTitle>{label}:</AlertTitle>
-															<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-														</Alert>
-													)}
-												</div>
-											)
-										}}
-									</form.Field>
-									<Button
-										aria-label="Cancel Editing Details"
-										className="self-start"
-										variant="ghost"
-										size="icon"
-										onClick={() => {
-											form.reset()
-											return setEditingDetails(false)
-										}}
-									>
-										<Icons.X />
-									</Button>
+								{/* Miss Indicator Section */}
+								<div className="border rounded-lg p-4 space-y-4">
+									<h3 className="font-semibold text-sm">Miss Indicator</h3>
+									<div className="flex gap-4">
+										<form.Field name="invertedEmoji">
+											{(field) => {
+												const label = 'Emoji'
+												return (
+													<div className="flex flex-col space-y-2">
+														<Label htmlFor={field.name}>{label}</Label>
+														<EmojiPickerPopover
+															value={field.state.value ?? undefined}
+															onSelect={(id) => {
+																field.handleChange(id ?? null)
+															}}
+															disabled={false}
+														/>
+														{field.state.meta.errors.length > 0 && (
+															<Alert variant="destructive">
+																<AlertTitle>{label}:</AlertTitle>
+																<AlertDescription>
+																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+																</AlertDescription>
+															</Alert>
+														)}
+													</div>
+												)
+											}}
+										</form.Field>
+										<form.Field name="invertedAlertMessage" validators={{ onChange: F.AlertMessageSchema.nullable() }}>
+											{(field) => {
+												const label = 'Alert Message'
+												return (
+													<div className="flex flex-col space-y-2 grow">
+														<Label htmlFor={field.name}>{label}</Label>
+														<Textarea
+															id={field.name}
+															placeholder={label}
+															defaultValue={field.state.value ?? ''}
+															onBlur={field.handleBlur}
+															onChange={(e) => field.setValue(e.target.value.trim() || null)}
+															rows={3}
+														/>
+														{field.state.meta.errors.length > 0 && (
+															<Alert variant="destructive">
+																<AlertTitle>{label}:</AlertTitle>
+																<AlertDescription>
+																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
+																</AlertDescription>
+															</Alert>
+														)}
+													</div>
+												)
+											}}
+										</form.Field>
+									</div>
 								</div>
 							</div>
+
+							{/* Right Column - Description */}
+							<div className="flex gap-2">
+								<form.Field name="description" validators={{ onChange: F.DescriptionSchema.nullable() }}>
+									{(field) => {
+										const label = 'Description'
+										return (
+											<div className="flex flex-col space-y-2 grow">
+												<Label htmlFor={field.name}>{label}</Label>
+												<Textarea
+													id={field.name}
+													placeholder={label}
+													defaultValue={field.state.value ?? ''}
+													onBlur={field.handleBlur}
+													onChange={(e) => field.handleChange(e.target.value?.trim() || null)}
+													rows={15}
+													className="font-mono text-sm grow"
+												/>
+												{field.state.meta.errors.length > 0 && (
+													<Alert variant="destructive">
+														<AlertTitle>{label}:</AlertTitle>
+														<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
+													</Alert>
+												)}
+											</div>
+										)
+									}}
+								</form.Field>
+								<Button
+									aria-label="Cancel Editing Details"
+									className="self-start"
+									variant="ghost"
+									size="icon"
+									onClick={() => {
+										form.reset()
+										return setEditingDetails(false)
+									}}
+								>
+									<Icons.X />
+								</Button>
+							</div>
 						</div>
-					)}
+					</div>
+				)}
 			</div>
 			<FilterValidationErrorDisplay stores={stores} />
 			{filterCard}
-			<LayerTable
-				stores={{ layerTable: stores.filterEditor }}
-			/>
+			<LayerTable stores={{ layerTable: stores.filterEditor }} />
 		</div>
 	)
 }
@@ -477,39 +486,43 @@ function FilterContributors(props: {
 	canManage: boolean
 	children: React.ReactNode
 }) {
-	const addMutation = useMutation(RPC.orpc.filters.addFilterContributor.mutationOptions({
-		onSuccess: (res) => {
-			switch (res.code) {
-				case 'err:permission-denied':
-					return RbacClient.handlePermissionDenied(res)
-				case 'err:already-exists':
-					return toast('Contributor already added')
-				case 'ok':
-					break
-				default:
-					assertNever(res)
-			}
-			FilterEntityClient.invalidateQueriesForFilter(props.filterId)
-		},
-		onError: (err) => {
-			toast.error('Failed to add contributor', { description: err.message })
-		},
-	}))
-	const removeMutation = useMutation(RPC.orpc.filters.removeFilterContributor.mutationOptions({
-		onSuccess: (res) => {
-			switch (res.code) {
-				case 'err:permission-denied':
-					return RbacClient.handlePermissionDenied(res)
-				case 'err:not-found':
-					return toast('Contributor not found')
-				case 'ok':
-					break
-				default:
-					assertNever(res)
-			}
-			FilterEntityClient.invalidateQueriesForFilter(props.filterId)
-		},
-	}))
+	const addMutation = useMutation(
+		RPC.orpc.filters.addFilterContributor.mutationOptions({
+			onSuccess: (res) => {
+				switch (res.code) {
+					case 'err:permission-denied':
+						return RbacClient.handlePermissionDenied(res)
+					case 'err:already-exists':
+						return toast('Contributor already added')
+					case 'ok':
+						break
+					default:
+						assertNever(res)
+				}
+				FilterEntityClient.invalidateQueriesForFilter(props.filterId)
+			},
+			onError: (err) => {
+				toast.error('Failed to add contributor', { description: err.message })
+			},
+		}),
+	)
+	const removeMutation = useMutation(
+		RPC.orpc.filters.removeFilterContributor.mutationOptions({
+			onSuccess: (res) => {
+				switch (res.code) {
+					case 'err:permission-denied':
+						return RbacClient.handlePermissionDenied(res)
+					case 'err:not-found':
+						return toast('Contributor not found')
+					case 'ok':
+						break
+					default:
+						assertNever(res)
+				}
+				FilterEntityClient.invalidateQueriesForFilter(props.filterId)
+			},
+		}),
+	)
 	function addUser(user: USR.User) {
 		addMutation.mutate({ filterId: props.filterId, userId: user.discordId })
 	}
@@ -552,7 +565,9 @@ function FilterContributors(props: {
 						<div>
 							<Label htmlFor="roles">Roles</Label>
 							{props.canManage && (
-								<SelectUserDefinedRolePopover selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}>
+								<SelectUserDefinedRolePopover
+									selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}
+								>
 									<Button variant="outline" size="icon">
 										<Icons.Plus />
 									</Button>
@@ -623,8 +638,8 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 				<Command>
 					<CommandInput placeholder="Search for a user..." />
 					<CommandList>
-						{usersRes.data?.code === 'ok'
-							&& usersRes.data.users.map((user) => (
+						{usersRes.data?.code === 'ok' &&
+							usersRes.data.users.map((user) => (
 								<CommandItem key={user.discordId} onSelect={() => onSelect(user)}>
 									{user.displayName}
 								</CommandItem>
@@ -694,9 +709,11 @@ const markdownComponents = {
 		<blockquote {...props} className={cn('border-l-4 border-gray-300 py-2 pl-4 italic', Typography.Blockquote)} />
 	),
 	code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
-		inline
-			? <code {...props} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-sm dark:bg-gray-800" />
-			: <code {...props} className="my-3 block overflow-x-auto rounded-md bg-gray-100 p-3 font-mono text-sm dark:bg-gray-800" />,
+		inline ? (
+			<code {...props} className="rounded bg-gray-100 px-1 py-0.5 font-mono text-sm dark:bg-gray-800" />
+		) : (
+			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-gray-100 p-3 font-mono text-sm dark:bg-gray-800" />
+		),
 	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className="text-blue-600 hover:underline dark:text-blue-400" />,
 	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-gray-300 dark:border-gray-700" />,
 	img: ({ ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className="my-4 h-auto max-w-full rounded-md" />,

@@ -1,29 +1,33 @@
-import * as Obj from '@/lib/object'
 import { z } from 'zod'
 
+import * as Obj from '@/lib/object'
+
 // do not expose these enums, use the loaded layer data (L.StaticLayerComponents) instead
-const FACTION_ID = z.string().transform(fixFactions).pipe(
-	z.enum([
-		'ADF',
-		'PLA',
-		'PLANMC',
-		'PLAAGF',
-		'MEI',
-		'RGF',
-		'VDV',
-		'TLF',
-		'GFI',
-		'WPMC',
-		'BAF',
-		'CAF',
-		'USA',
-		'USMC',
-		'IMF',
-		'CRF',
-		'INS',
-		'AFU',
-	]),
-)
+const FACTION_ID = z
+	.string()
+	.transform(fixFactions)
+	.pipe(
+		z.enum([
+			'ADF',
+			'PLA',
+			'PLANMC',
+			'PLAAGF',
+			'MEI',
+			'RGF',
+			'VDV',
+			'TLF',
+			'GFI',
+			'WPMC',
+			'BAF',
+			'CAF',
+			'USA',
+			'USMC',
+			'IMF',
+			'CRF',
+			'INS',
+			'AFU',
+		]),
+	)
 
 const UNIT_TYPE = z.enum([
 	'Mechanized',
@@ -107,38 +111,46 @@ export const VehicleSchema = z.object({
 })
 export type Vehicle = z.infer<typeof VehicleSchema>
 
-export const UnitSchema = z.object({
-	unitObjectName: UnitId,
-	factionName: z.string(),
-	factionID: FACTION_ID,
-	shortName: z.string(),
-	displayName: z.string(),
-	description: z.string(),
-	unitBadge: z.string(),
-	alliance: z.string(),
-	actions: z.number(),
-	intelOnEnemy: z.number(),
-	useCommanderActionNearVehicle: z.boolean(),
-	hasBuddyRally: z.boolean(),
-	roles: z.array(z.string()),
-	vehicles: z.array(VehicleSchema),
-	characteristics: z.array(z.object({
-		key: z.string(),
+export const UnitSchema = z
+	.object({
+		unitObjectName: UnitId,
+		factionName: z.string(),
+		factionID: FACTION_ID,
+		shortName: z.string(),
+		displayName: z.string(),
 		description: z.string(),
-	})),
-}).transform((unit) => ({ ...unit, type: parseUnitId(unit.unitObjectName)!.unit }))
+		unitBadge: z.string(),
+		alliance: z.string(),
+		actions: z.number(),
+		intelOnEnemy: z.number(),
+		useCommanderActionNearVehicle: z.boolean(),
+		hasBuddyRally: z.boolean(),
+		roles: z.array(z.string()),
+		vehicles: z.array(VehicleSchema),
+		characteristics: z.array(
+			z.object({
+				key: z.string(),
+				description: z.string(),
+			}),
+		),
+	})
+	.transform((unit) => ({ ...unit, type: parseUnitId(unit.unitObjectName)!.unit }))
 export type Unit = z.infer<typeof UnitSchema>
 
 export const RootSchema = z.object({
-	Maps: z.array(z.any()).transform((maps) => maps.filter((map) => !['Tutorial', 'Lobby', 'Fireteam'].includes(map.gamemode))).pipe(
-		z.array(MapSchema),
-	),
-	Units: z.record(z.string(), z.any()).transform((units) =>
-		Obj.filterRecord(units, (value, key) => {
-			key = key.toLowerCase()
-			return !key.includes('tutorial') && !key.includes('test') && !key.startsWith('civ') && !key.includes('lobby')
-		})
-	).pipe(z.record(UnitId, UnitSchema)),
+	Maps: z
+		.array(z.any())
+		.transform((maps) => maps.filter((map) => !['Tutorial', 'Lobby', 'Fireteam'].includes(map.gamemode)))
+		.pipe(z.array(MapSchema)),
+	Units: z
+		.record(z.string(), z.any())
+		.transform((units) =>
+			Obj.filterRecord(units, (value, key) => {
+				key = key.toLowerCase()
+				return !key.includes('tutorial') && !key.includes('test') && !key.startsWith('civ') && !key.includes('lobby')
+			}),
+		)
+		.pipe(z.record(UnitId, UnitSchema)),
 })
 
 export type Root = z.infer<typeof RootSchema>
