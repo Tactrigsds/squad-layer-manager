@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as SandboxFrame from '@/frames/sandbox.frame'
 import { cn } from '@/lib/utils'
@@ -90,7 +91,7 @@ const CHANNEL_LABEL: Record<SandboxFrame.ConsoleChannel, string> = {
 	unified: 'All',
 	rcon: 'RCON',
 	log: 'Logs',
-	command: 'Commands',
+	command: 'Player Commands',
 }
 
 function formatEvent(event: EmuEvent): { prefix: string; body: string; tone?: string } {
@@ -109,9 +110,9 @@ function formatEvent(event: EmuEvent): { prefix: string; body: string; tone?: st
 }
 
 export function SandboxConsolePanel({ stores, className }: { stores: SandboxFrame.KeyProp; className?: string }) {
-	const [events, channel] = ZusUtils.useStore(
+	const [{ events, hidden }, channel, hideNoise] = ZusUtils.useStore(
 		stores.sandbox,
-		(s) => [SandboxFrame.Sel.visibleEvents(s), s.channel] as const,
+		(s) => [SandboxFrame.Sel.consoleView(s), s.channel, s.hideNoise] as const,
 	)
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	// a console that does not follow its own tail is a worse version of the log file it is showing
@@ -135,11 +136,19 @@ export function SandboxConsolePanel({ stores, className }: { stores: SandboxFram
 						{CHANNEL_LABEL[c]}
 					</Button>
 				))}
+				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+					<Checkbox
+						checked={hideNoise}
+						onCheckedChange={(on) => SandboxFrame.Actions.setHideNoise(stores, on === true)}
+					/>
+					Hide noise
+					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
+				</label>
 				<Button
 					type="button"
 					size="icon"
 					variant="ghost"
-					className="ml-auto h-6 w-6"
+					className="h-6 w-6"
 					title="Clear"
 					onClick={() => SandboxFrame.Actions.clearConsole(stores)}
 				>

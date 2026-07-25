@@ -17,6 +17,10 @@ export const GroupNameSchema = z.string().trim().min(1).max(64).regex(/^[^:,\s]+
 	error: 'A group name cannot contain spaces, colons or commas',
 })
 
+// A real squad server holds 100, and the app's own player-count handling is written against that. Fabricating a
+// 101st player would be testing against a world that cannot exist.
+export const MAX_PLAYERS = 100
+
 // The channels a player can actually speak in. Broadcast is deliberately absent: on a real server it is an RCON
 // command, not something a player can do, and the emulator matches that.
 export const PLAYER_CHAT_CHANNEL = z.enum(['ChatAll', 'ChatTeam', 'ChatSquad', 'ChatAdmin'])
@@ -98,7 +102,7 @@ export const SANDBOX_VERBS = {
 	'bulk-join': def({
 		usage: 'bulk-join <count>',
 		summary: 'connect several players at once, with default names',
-		input: z.object({ count: z.int().min(1).max(100) }),
+		input: z.object({ count: z.int().min(1).max(MAX_PLAYERS) }),
 		tokens: ([count]) => {
 			const n = Number(count)
 			if (!count || !Number.isInteger(n)) throw new Error('usage: bulk-join <count>')

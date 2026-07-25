@@ -6,10 +6,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import * as SandboxFrame from '@/frames/sandbox.frame'
+import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
-import type * as SB from '@/models/sandbox.models'
+import * as SB from '@/models/sandbox.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
@@ -46,16 +47,17 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 function SandboxControlWindow(props: SandboxControlWindowProps) {
 	useDraggableWindow()
 	const stores = useSandboxFrame(props.serverId)
-	const [players, groupNames, nextName, unavailable] = ZusUtils.useStore(
+	const [groupNames, nextName, playerCount, unavailable] = ZusUtils.useStore(
 		stores.sandbox,
 		(s) =>
 			[
-				SandboxFrame.Sel.players(s),
 				SandboxFrame.Sel.groupNames(s),
 				SandboxFrame.Sel.nextDefaultName(s),
+				SandboxFrame.Sel.players(s).length,
 				s.unavailable,
 			] as const,
 	)
+	const full = playerCount >= SB.MAX_PLAYERS
 	const joinRef = React.useRef<HTMLInputElement>(null)
 	const bulkRef = React.useRef<HTMLInputElement>(null)
 	const openAdminList = useOpenSandboxAdminListWindow({ serverId: props.serverId })
@@ -110,26 +112,27 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 						title="Players"
 						action={
 							<div className="flex items-center gap-1.5">
-								<Input ref={bulkRef} className="h-7 w-16" type="number" min={1} max={100} placeholder="10" />
-								<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void bulkJoin()}>
+								<Input ref={bulkRef} className="h-7 w-16" type="number" min={1} max={SB.MAX_PLAYERS} placeholder="10" disabled={full} />
+								<Button type="button" size="sm" variant="outline" className="h-7" disabled={full} onClick={() => void bulkJoin()}>
 									Bulk join
 								</Button>
 							</div>
 						}
 					>
-						<PlayersTable stores={stores} players={players} groupNames={groupNames} run={run} />
+						<PlayersTable stores={stores} groupNames={groupNames} run={run} />
 						<div className="flex items-center gap-1.5 pt-1">
 							<Input
 								ref={joinRef}
 								className="h-8"
-								placeholder={nextName}
+								placeholder={full ? `Full (${SB.MAX_PLAYERS} players)` : nextName}
+								disabled={full}
 								onKeyDown={(e) => {
 									if (e.key !== 'Enter') return
 									e.preventDefault()
 									void join()
 								}}
 							/>
-							<Button type="button" size="sm" variant="outline" className="h-8" onClick={() => void join()}>
+							<Button type="button" size="sm" variant="outline" className="h-8" disabled={full} onClick={() => void join()}>
 								<Icons.UserPlus className="mr-1 h-3.5 w-3.5" />
 								Join
 							</Button>
@@ -190,83 +193,135 @@ type RunFn = <V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) =
 // The admin checkbox and the group picker are two views of one membership: checking the box puts the player in the
 // default admin group, and clearing it drops every group that would make them an admin. Nothing is stored twice.
 function PlayersTable(
-	{ stores, players, groupNames, run }: {
+	{ stores, groupNames, run }: {
 		stores: SandboxFrame.KeyProp
-		players: ReturnType<typeof SandboxFrame.Sel.players>
 		groupNames: string[]
 		run: RunFn
 	},
 ) {
-	const adminGroups = ZusUtils.useStore(stores.sandbox, (s) => s.state?.groups ?? [])
+	const [{ players, page, pageCount, matched, total }, adminGroups] = ZusUtils.useStore(
+		stores.sandbox,
+		(s) => [SandboxFrame.Sel.playersView(s), s.state?.groups ?? []] as const,
+	)
 	const identifying = new Set(
 		adminGroups.filter((g) => g.permissions.includes('canseeadminchat')).map((g) => g.name),
 	)
 	const defaultAdminGroup = [...identifying][0] ?? 'Admin'
+	const onSearch = useDebounced<string>({
+		delay: 200,
+		onChange: (value) => SandboxFrame.Actions.setPlayerSearch(stores, value),
+	})
 
 	function setGroups(name: string, groups: string[]) {
 		void run('set-player-groups', { name, groups })
 	}
 
-	if (players.length === 0) return <p className="text-sm text-muted-foreground">Nobody connected.</p>
+	if (total === 0) return <p className="text-sm text-muted-foreground">Nobody connected.</p>
 
 	return (
-		<div className="overflow-x-auto">
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Player</TableHead>
-						<TableHead className="w-14">Team</TableHead>
-						<TableHead className="w-16">Squad</TableHead>
-						<TableHead className="w-16">Admin</TableHead>
-						<TableHead className="min-w-[12rem]">Groups</TableHead>
-						<TableHead className="w-10" />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{players.map((p) => (
-						<TableRow key={p.eosId}>
-							<TableCell className="font-medium">{p.name}</TableCell>
-							<TableCell className="text-muted-foreground">{p.teamId ?? '-'}</TableCell>
-							<TableCell className="text-muted-foreground">{p.squadId ?? '-'}</TableCell>
-							<TableCell>
-								<Checkbox
-									checked={p.isAdmin}
-									aria-label={`${p.name} is an admin`}
-									onCheckedChange={(on) =>
-										setGroups(
-											p.name,
-											on
-												? [...new Set([...p.groups, defaultAdminGroup])]
-												: p.groups.filter((g) => !identifying.has(g)),
-										)}
-								/>
-							</TableCell>
-							<TableCell>
-								<ComboBoxMulti
-									title="Group"
-									values={p.groups}
-									options={groupNames}
-									emptyLabel="None"
-									chipDisplay
-									onSelect={(next) => setGroups(p.name, typeof next === 'function' ? next(p.groups) : next)}
-								/>
-							</TableCell>
-							<TableCell>
+		<div className="space-y-1.5">
+			<div className="flex items-center gap-1.5">
+				<Input
+					className="h-7"
+					placeholder="Search players"
+					aria-label="Search players by name"
+					onChange={(e) => onSearch(e.target.value)}
+				/>
+				<span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+					{matched === total ? `${total}/${SB.MAX_PLAYERS}` : `${matched} of ${total}`}
+				</span>
+			</div>
+			{matched === 0
+				? <p className="text-sm text-muted-foreground">No player matches that name.</p>
+				: (
+					<>
+						<div className="overflow-x-auto">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Player</TableHead>
+										<TableHead className="w-14">Team</TableHead>
+										<TableHead className="w-16">Squad</TableHead>
+										<TableHead className="w-16">Admin</TableHead>
+										<TableHead className="min-w-[12rem]">Groups</TableHead>
+										<TableHead className="w-10" />
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{players.map((p) => (
+										<TableRow key={p.eosId}>
+											<TableCell className="font-medium">{p.name}</TableCell>
+											<TableCell className="text-muted-foreground">{p.teamId ?? '-'}</TableCell>
+											<TableCell className="text-muted-foreground">{p.squadId ?? '-'}</TableCell>
+											<TableCell>
+												<Checkbox
+													checked={p.isAdmin}
+													aria-label={`${p.name} is an admin`}
+													onCheckedChange={(on) =>
+														setGroups(
+															p.name,
+															on
+																? [...new Set([...p.groups, defaultAdminGroup])]
+																: p.groups.filter((g) => !identifying.has(g)),
+														)}
+												/>
+											</TableCell>
+											<TableCell>
+												<ComboBoxMulti
+													title="Group"
+													values={p.groups}
+													options={groupNames}
+													emptyLabel="None"
+													chipDisplay
+													onSelect={(next) => setGroups(p.name, typeof next === 'function' ? next(p.groups) : next)}
+												/>
+											</TableCell>
+											<TableCell>
+												<Button
+													type="button"
+													size="icon"
+													variant="ghost"
+													className="h-6 w-6"
+													title={`Disconnect ${p.name}`}
+													onClick={() => void run('leave', { name: p.name })}
+												>
+													<Icons.LogOut className="h-3.5 w-3.5" />
+												</Button>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</div>
+						{pageCount > 1 && (
+							<div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
 								<Button
 									type="button"
 									size="icon"
 									variant="ghost"
 									className="h-6 w-6"
-									title={`Disconnect ${p.name}`}
-									onClick={() => void run('leave', { name: p.name })}
+									aria-label="Previous page"
+									disabled={page === 0}
+									onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page - 1)}
 								>
-									<Icons.LogOut className="h-3.5 w-3.5" />
+									<Icons.ChevronLeft className="h-3.5 w-3.5" />
 								</Button>
-							</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
+								<span className="tabular-nums">{page + 1} / {pageCount}</span>
+								<Button
+									type="button"
+									size="icon"
+									variant="ghost"
+									className="h-6 w-6"
+									aria-label="Next page"
+									disabled={page >= pageCount - 1}
+									onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page + 1)}
+								>
+									<Icons.ChevronRight className="h-3.5 w-3.5" />
+								</Button>
+							</div>
+						)}
+					</>
+				)}
 		</div>
 	)
 }

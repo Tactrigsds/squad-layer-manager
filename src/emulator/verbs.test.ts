@@ -1,5 +1,6 @@
 import Rcon from '@/lib/rcon/core-rcon'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
+import * as SB from '@/models/sandbox.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -192,6 +193,20 @@ describe('bulk join', () => {
 		await Verbs.execute(host, 'join', { name: 'Player2' })
 		await Verbs.execute(host, 'bulk-join', { count: 2 })
 		expect([...host.players.keys()].sort()).toEqual(['Player1', 'Player2', 'Player3'])
+	})
+
+	it('fills to the player cap and says how many it turned away', async () => {
+		await Verbs.execute(host, 'bulk-join', { count: SB.MAX_PLAYERS - 1 })
+		const out = await Verbs.execute(host, 'bulk-join', { count: 5 })
+		expect(host.players.size).toBe(SB.MAX_PLAYERS)
+		expect(out).toContain('4 refused')
+	})
+
+	it('refuses a join into a full server', async () => {
+		await Verbs.execute(host, 'bulk-join', { count: SB.MAX_PLAYERS })
+		await expect(Verbs.execute(host, 'join', { name: 'Latecomer' })).rejects.toThrow('full')
+		await expect(Verbs.execute(host, 'bulk-join', { count: 1 })).rejects.toThrow('full')
+		expect(host.players.size).toBe(SB.MAX_PLAYERS)
 	})
 })
 

@@ -33,6 +33,7 @@ export function nextDefaultName(host: SandboxHost): string {
 
 export function joinPlayer(host: SandboxHost, name: string): EmuPlayer {
 	if (host.players.has(name)) throw new Error(`${name} is already connected`)
+	if (host.players.size >= SB.MAX_PLAYERS) throw new Error(`the server is full (${SB.MAX_PLAYERS} players)`)
 	const player = host.emu.world.connectPlayer(makePlayer({ name, teamId: host.players.size % 2 === 0 ? 1 : 2 }))
 	host.players.set(name, player)
 	host.onPlayerJoined?.(player)
@@ -87,9 +88,14 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 		}
 		case 'bulk-join': {
 			const { count } = input as SB.SandboxVerbInput<'bulk-join'>
+			const room = SB.MAX_PLAYERS - host.players.size
+			if (room <= 0) throw new Error(`the server is full (${SB.MAX_PLAYERS} players)`)
 			const names: string[] = []
-			for (let i = 0; i < count; i++) names.push(joinPlayer(host, nextDefaultName(host)).name)
-			return `${names.length} joined: ${names.join(', ')}`
+			// clamp rather than throw partway: joining some and then failing would leave the world changed by a
+			// command that reported an error
+			for (let i = 0; i < Math.min(count, room); i++) names.push(joinPlayer(host, nextDefaultName(host)).name)
+			const short = count > room ? ` (${count - room} refused: server full)` : ''
+			return `${names.length} joined${short}: ${names.join(', ')}`
 		}
 		case 'set-player-groups': {
 			const { name, groups } = input as SB.SandboxVerbInput<'set-player-groups'>
