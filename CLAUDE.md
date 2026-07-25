@@ -28,19 +28,22 @@ If we've completed a goal or feature, then run `pnpm run lint:fix` and fix all l
 
 # Running the app in a worktree
 
-If you are working in a git worktree, do not run `pnpm server:dev` / `pnpm client:dev` and do not use ports 3000/5173: those belong to the main checkout, and an app you reach there is not running your changes. Each worktree gets its own instance instead, on its own ports, with its own database and an emulated squad server:
+Worktrees live in `~/projects/slm/<name>`, outside the repo. `EnterWorktree` puts them there and installs node_modules on the way (via the hooks in `.claude/settings.json`); by hand it is `pnpm worktree new <name>`, which provisions the dev instance too.
+
+From a worktree, do not run `pnpm server:dev` / `pnpm client:dev` and do not use ports 3000/5173: those belong to the main checkout, and an app you reach there is not running your changes. Each worktree gets its own instance instead, on its own ports, with its own database and an emulated squad server:
 
 ```sh
-pnpm install    # a fresh worktree has no node_modules of its own; dev:init fails ("No preset version ... tsx") until this runs
-pnpm dev:init   # once per worktree: claims a port slot, links .env, clones the db. Prints your URL.
-pnpm dev:emu    # the emulated squad server. Leave it running, it is a separate process on purpose.
-pnpm dev        # the app + client
-pnpm dev:slots  # which worktree owns which ports
+pnpm dev:init    # once per worktree: claims a port slot, links .env, clones the db. Prints the url.
+pnpm dev         # the app, the client and the emulator. Prints the url again.
+pnpm -s dev:url  # just the url, for reporting
+pnpm dev:slots   # which worktree owns which ports
 ```
 
-`pnpm dev` and `pnpm dev:emu` are long-lived; an agent must start them as tracked background jobs (`run_in_background`).
+`pnpm dev` is long-lived; an agent must start it as a tracked background job (`run_in_background`).
 
-Log in with `?login=<username>` (discord oauth is off for dev instances -- `dev`'s env sets `QUERY_PARAM_AUTH_BYPASS`/`DISCORD_ENABLED=false` for you; any username in the cloned db works). Wait for the app port to be listening before you hit `?login=`: navigating during boot fails the bypass request and bounces you into the real Discord oauth flow, which looks like the bypass is broken when it is not. Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad server -- e.g. `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
+That url -- `http://localhost:<client port>/?login=<user>` -- is the whole instance and the only one to hand anyone: everything else is proxied behind it, and it arrives signed in (discord oauth is off for dev instances). Wait for the port to answer before opening it: a request that lands during boot fails the bypass and bounces into the real Discord oauth flow, which looks like the bypass is broken when it is not.
+
+Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad server -- e.g. `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
 
 Never point a worktree at a real squad server or the real battlemetrics org; `dev:init` deliberately scrubs those, and re-adding them means an experiment drives production.
 
