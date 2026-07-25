@@ -51,28 +51,35 @@ function whereText(guildName: string | null) {
 	return guildName ? ` in ${guildName}` : ' in the configured Discord'
 }
 
-function Document(
-	{ title, htmlAttrs, metas, assetLinks, inlineCss, children }: {
-		title: string
-		htmlAttrs: HtmlAttrs
-		metas: readonly Meta[]
-		assetLinks: readonly AssetLink[]
-		inlineCss: string
-		children: React.ReactNode
-	},
-) {
+function Document({
+	title,
+	htmlAttrs,
+	metas,
+	assetLinks,
+	inlineCss,
+	children,
+}: {
+	title: string
+	htmlAttrs: HtmlAttrs
+	metas: readonly Meta[]
+	assetLinks: readonly AssetLink[]
+	inlineCss: string
+	children: React.ReactNode
+}) {
 	return (
 		<html {...(htmlAttrs as React.HtmlHTMLAttributes<HTMLHtmlElement>)}>
 			<head>
-				{metas.map((m) => <meta key={m.name ?? m.charSet ?? m.httpEquiv ?? m.content ?? ''} {...m} />)}
+				{metas.map((m) => (
+					<meta key={m.name ?? m.charSet ?? m.httpEquiv ?? m.content ?? ''} {...m} />
+				))}
 				<title>{title}</title>
-				{assetLinks.map((link) => <link key={link.href} {...link} />)}
+				{assetLinks.map((link) => (
+					<link key={link.href} {...link} />
+				))}
 				<style dangerouslySetInnerHTML={{ __html: inlineCss }} />
 			</head>
 			<body className="min-h-screen">
-				<div className="flex min-h-screen items-center justify-center p-6">
-					{children}
-				</div>
+				<div className="flex min-h-screen items-center justify-center p-6">{children}</div>
 			</body>
 		</html>
 	)
@@ -124,29 +131,33 @@ function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: str
 					</button>
 				</form>
 			</div>
-			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">
-				If you believe this is a mistake, contact an administrator.
-			</p>
+			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">If you believe this is a mistake, contact an administrator.</p>
 			<RepoLink repoUrl={repoUrl} />
 		</main>
 	)
 }
 
-export function LandingDocument(
-	{ variant, repoUrl, guildName, head, inlineCss }: {
-		variant: 'landing' | 'forbidden'
-		repoUrl: string
-		guildName: string | null
-		head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
-		inlineCss: string
-	},
-) {
+export function LandingDocument({
+	variant,
+	repoUrl,
+	guildName,
+	head,
+	inlineCss,
+}: {
+	variant: 'landing' | 'forbidden'
+	repoUrl: string
+	guildName: string | null
+	head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
+	inlineCss: string
+}) {
 	const title = variant === 'landing' ? 'Squad Layer Manager' : 'Access denied - Squad Layer Manager'
 	return (
 		<Document title={title} htmlAttrs={head.htmlAttrs} metas={head.metas} assetLinks={head.assetLinks} inlineCss={inlineCss}>
-			{variant === 'landing'
-				? <LandingPage repoUrl={repoUrl} guildName={guildName} />
-				: <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
+			{variant === 'landing' ? (
+				<LandingPage repoUrl={repoUrl} guildName={guildName} />
+			) : (
+				<ForbiddenPage repoUrl={repoUrl} guildName={guildName} />
+			)}
 		</Document>
 	)
 }

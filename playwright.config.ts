@@ -30,7 +30,5 @@ export default defineConfig({
 		// selectors must be role/label-based, so tests double as an accessibility check on the markup
 		testIdAttribute: 'data-test-id',
 	},
-	projects: [
-		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-	],
+	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 })

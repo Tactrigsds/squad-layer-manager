@@ -1,5 +1,14 @@
 import { useState } from 'react'
-import { HeadlessDialog, HeadlessDialogClose, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from './headless-dialog'
+
+import {
+	HeadlessDialog,
+	HeadlessDialogClose,
+	HeadlessDialogContent,
+	HeadlessDialogDescription,
+	HeadlessDialogFooter,
+	HeadlessDialogHeader,
+	HeadlessDialogTitle,
+} from './headless-dialog'
 
 export function HeadlessDialogExample() {
 	const [open, setOpen] = useState(false)
@@ -25,7 +34,8 @@ export function HeadlessDialogExample() {
 
 					<div className="py-4">
 						<p className="text-sm text-muted-foreground">
-							Are you absolutely sure you want to delete your account? All of your projects, settings, and data will be permanently removed.
+							Are you absolutely sure you want to delete your account? All of your projects, settings, and data will be permanently
+							removed.
 						</p>
 					</div>
 
@@ -53,11 +63,7 @@ export function SimpleHeadlessDialogExample() {
 
 	return (
 		<div className="p-8">
-			<button
-				type="button"
-				onClick={() => setOpen(true)}
-				className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-			>
+			<button type="button" onClick={() => setOpen(true)} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
 				Open Simple Dialog
 			</button>
 
@@ -65,9 +71,7 @@ export function SimpleHeadlessDialogExample() {
 				<HeadlessDialogContent>
 					<HeadlessDialogHeader>
 						<HeadlessDialogTitle>Confirm Action</HeadlessDialogTitle>
-						<HeadlessDialogDescription>
-							Are you sure you want to proceed with this action?
-						</HeadlessDialogDescription>
+						<HeadlessDialogDescription>Are you sure you want to proceed with this action?</HeadlessDialogDescription>
 					</HeadlessDialogHeader>
 
 					<HeadlessDialogFooter>

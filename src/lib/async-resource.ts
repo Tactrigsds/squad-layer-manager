@@ -1,9 +1,11 @@
-import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
-import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
+
+import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
+import * as C from '@/server/context.ts'
+
 import { sleep, traceTag } from './async'
 import { withThrownAsync } from './error'
 import { createId } from './id'
@@ -38,9 +40,7 @@ type AsyncValueState<T> = {
 	abort: AbortController
 }
 
-type Subscriber =
-	| { kind: 'observer'; ttl: number }
-	| { kind: 'get' }
+type Subscriber = { kind: 'observer'; ttl: number } | { kind: 'get' }
 
 /**
  *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
@@ -184,7 +184,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 
-		if (!this.state || (this.state.resolveTime !== null && (Date.now() - this.state.resolveTime > opts.ttl))) {
+		if (!this.state || (this.state.resolveTime !== null && Date.now() - this.state.resolveTime > opts.ttl)) {
 			return await this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: opts.ttl }), opts)
 		} else {
 			return await this.state!.value

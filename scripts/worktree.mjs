@@ -216,7 +216,9 @@ function dispatch() {
 				}
 				const running = processesUnder(entry.path)
 				if (running > 0) {
-					console.log(`skip  ${entry.path}\n      ${running} process(es) still running in it; stop them (pnpm dev, dev:emu) and re-run`)
+					console.log(
+						`skip  ${entry.path}\n      ${running} process(es) still running in it; stop them (pnpm dev, dev:emu) and re-run`,
+					)
 					continue
 				}
 				if (!apply) {

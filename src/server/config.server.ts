@@ -1,10 +1,12 @@
+import * as Rx from 'rxjs'
+
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as SETTINGS from '@/models/settings.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base.ts'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as Settings from '@/systems/settings.server'
-import * as Rx from 'rxjs'
+
 import * as Env from './env.ts'
 
 // Delivers the public, deploy-time config to every connected client. There is no longer a JSONC config file:
@@ -58,7 +60,7 @@ const module = initModule('config')
 const orpcBase = getOrpcBase(module)
 
 export const router = {
-	watchConfig: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: ctx, signal }) {
+	watchConfig: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx, signal }) {
 		yield* toAsyncGenerator(
 			publicConfig$.pipe(
 				Rx.map((base): PublicConfigForClient => ({ ...base, wsClientId: ctx.wsClientId })),

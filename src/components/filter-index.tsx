@@ -1,3 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import * as Typo from '@/lib/typography'
@@ -9,10 +14,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import EmojiDisplay from './emoji-display'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Badge } from './ui/badge'
@@ -28,7 +30,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	const rolesRes = useQuery(FilterEntityClient.getAllFilterRoleContributorsBase())
 	if (!cfg) return null
 	const user = PartsSys.findUser(entity.owner)!
-	const roles = rolesRes.data?.filter(role => role.filterId === entity.id)
+	const roles = rolesRes.data?.filter((role) => role.filterId === entity.id)
 
 	return (
 		<li key={entity.id}>
@@ -54,9 +56,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 									<AvatarImage src={user.avatarUrl} crossOrigin="anonymous" />
 									<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 								</Avatar>
-								<span>
-									{user?.displayName}
-								</span>
+								<span>{user?.displayName}</span>
 							</Badge>
 						</div>
 						{roles && roles.length > 0 && (
@@ -93,24 +93,24 @@ export default function FiltersIndex() {
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
 				<h2 className={Typo.H2}>Filters</h2>
-				{createDenied
-					? (
-						<PermissionDeniedTooltip denied={createDenied}>
-							<span className={cn(buttonVariants({ variant: 'secondary' }), 'pointer-events-none opacity-50')}>
-								<Icons.Plus />
-								<span>New Filter</span>
-							</span>
-						</PermissionDeniedTooltip>
-					)
-					: (
-						<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
+				{createDenied ? (
+					<PermissionDeniedTooltip denied={createDenied}>
+						<span className={cn(buttonVariants({ variant: 'secondary' }), 'pointer-events-none opacity-50')}>
 							<Icons.Plus />
 							<span>New Filter</span>
-						</Link>
-					)}
+						</span>
+					</PermissionDeniedTooltip>
+				) : (
+					<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
+						<Icons.Plus />
+						<span>New Filter</span>
+					</Link>
+				)}
 			</div>
 			<ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{filters.map((entity) => <FilterEntityCard key={entity.id} entity={entity} cfg={cfg} />)}
+				{filters.map((entity) => (
+					<FilterEntityCard key={entity.id} entity={entity} cfg={cfg} />
+				))}
 			</ul>
 		</div>
 	)

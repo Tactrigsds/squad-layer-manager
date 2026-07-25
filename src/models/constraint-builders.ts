@@ -9,11 +9,15 @@ export const filterAnon = (id: string, filter: F.FilterNode): LQY.Constraint => 
 	showIndicator: 'disabled',
 })
 
-export const filterEntity = (id: string, filterId: F.FilterEntityId, opts?: {
-	showIndicator?: LQY.IndicatorState
-	filterApplState?: LQY.FilterApplicationState
-	warn?: LQY.FilterApplicationState
-}): LQY.Constraint => ({
+export const filterEntity = (
+	id: string,
+	filterId: F.FilterEntityId,
+	opts?: {
+		showIndicator?: LQY.IndicatorState
+		filterApplState?: LQY.FilterApplicationState
+		warn?: LQY.FilterApplicationState
+	},
+): LQY.Constraint => ({
 	type: 'filter-entity',
 	id,
 	filterId,

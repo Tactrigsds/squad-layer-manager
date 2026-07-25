@@ -1,9 +1,10 @@
-import { tsMigrations } from '@/migrations/registry'
-import * as Env from '@/server/env'
-import * as Migrate from '@/server/migrate'
 import DatabaseConstructor from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
+
+import { tsMigrations } from '@/migrations/registry'
+import * as Env from '@/server/env'
+import * as Migrate from '@/server/migrate'
 
 // Applies all pending schema (.sql) and data (.ts) migrations. Run in dev via
 // `pnpm db:migrate`; in the production image via `pnpm db:migrate:prod` (bundled

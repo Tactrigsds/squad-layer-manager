@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 export default function TabsList<T extends string>(props: {
 	options: { value: T; label: string; disabled?: boolean | string }[]
@@ -32,12 +33,8 @@ export default function TabsList<T extends string>(props: {
 					if (disabledMessage) {
 						return (
 							<Tooltip key={option.value}>
-								<TooltipTrigger asChild>
-									{button}
-								</TooltipTrigger>
-								<TooltipContent>
-									{disabledMessage}
-								</TooltipContent>
+								<TooltipTrigger asChild>{button}</TooltipTrigger>
+								<TooltipContent>{disabledMessage}</TooltipContent>
 							</Tooltip>
 						)
 					}

@@ -1,10 +1,12 @@
+import React from 'react'
+
 import { renderTemplate } from '@/lib/templating'
 import { formatHumanTime } from '@/lib/zod'
 import * as ZusUtils from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
-import React from 'react'
+
 import ComboBox from './combo-box/combo-box'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
@@ -24,7 +26,7 @@ export function WarnReasonsSub(props: {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
 	const hasReasons = ZusUtils.useStore(
 		SettingsClient.PublicSettingsStore,
-		s => !!s && AAR.reasonsForAction(s.adminActionReasons, 'warn').length > 0,
+		(s) => !!s && AAR.reasonsForAction(s.adminActionReasons, 'warn').length > 0,
 	)
 	const label = props.label ?? 'Warn'
 	const disabled = !!props.denied || props.disabled
@@ -69,9 +71,8 @@ export function ReasonPicker(props: {
 	// for timeouts: the currently-entered duration, so the preview can resolve {{duration}} live
 	durationMs?: number
 }) {
-	const reasons = ZusUtils.useStore(
-		SettingsClient.PublicSettingsStore,
-		s => s ? AAR.reasonsForAction(s.adminActionReasons, props.action) : [],
+	const reasons = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) =>
+		s ? AAR.reasonsForAction(s.adminActionReasons, props.action) : [],
 	)
 	const allowCustom = !!props.customRef
 	const [selected, setSelected] = React.useState(() => props.presetRef.current || CUSTOM)
@@ -83,8 +84,8 @@ export function ReasonPicker(props: {
 		if (props.required) {
 			return (
 				<p className="text-xs text-destructive">
-					A reason is required for{' '}
-					{AAR.ADMIN_ACTIONS[props.action].displayName}, but no reasons are configured for it (see Admin Action Reasons in settings).
+					A reason is required for {AAR.ADMIN_ACTIONS[props.action].displayName}, but no reasons are configured for it (see Admin
+					Action Reasons in settings).
 				</p>
 			)
 		}
@@ -92,14 +93,16 @@ export function ReasonPicker(props: {
 	}
 
 	const customVisible = allowCustom && (reasons.length === 0 || selected === CUSTOM)
-	const selectedReason = selected === CUSTOM ? undefined : reasons.find(r => r.label === selected)
+	const selectedReason = selected === CUSTOM ? undefined : reasons.find((r) => r.label === selected)
 	return (
 		<div className="grid gap-2">
 			<Label>
 				Reason
-				{props.required
-					? <span className="text-destructive">{' '}(required)</span>
-					: <span className="text-muted-foreground">{' '}(optional)</span>}
+				{props.required ? (
+					<span className="text-destructive"> (required)</span>
+				) : (
+					<span className="text-muted-foreground"> (optional)</span>
+				)}
 			</Label>
 			{reasons.length > 0 && (
 				<ComboBox
@@ -110,13 +113,13 @@ export function ReasonPicker(props: {
 					sort={false}
 					options={[
 						{ value: CUSTOM, label: allowCustom ? 'Custom' : 'None' },
-						...reasons.map(reason => ({
+						...reasons.map((reason) => ({
 							value: reason.label,
 							keywords: reason.keywords,
 							description: AAR.reasonText(props.action, reason),
 						})),
 					]}
-					onSelect={value => {
+					onSelect={(value) => {
 						const next = value ?? CUSTOM
 						setSelected(next)
 						props.presetRef.current = next === CUSTOM ? '' : next
@@ -128,7 +131,7 @@ export function ReasonPicker(props: {
 					autoComplete="off"
 					placeholder="Enter a reason"
 					defaultValue={props.customRef!.current}
-					onChange={e => {
+					onChange={(e) => {
 						props.customRef!.current = e.target.value
 						setCustomText(e.target.value)
 					}}
@@ -156,16 +159,14 @@ export function ReasonMessagePreview(props: {
 }) {
 	const customVars = ZusUtils.useStore(
 		SettingsClient.PublicSettingsStore,
-		s => Object.fromEntries((s?.messageVariables ?? []).map(v => [v.name, v.value])) as Record<string, string>,
+		(s) => Object.fromEntries((s?.messageVariables ?? []).map((v) => [v.name, v.value])) as Record<string, string>,
 	)
 	const custom = props.customText?.trim()
 	if (!props.reason && !custom) return null
 
 	const vars: Record<string, string> = { ...customVars }
 	if (props.action === 'timeout') vars.duration = props.durationMs && props.durationMs > 0 ? formatHumanTime(props.durationMs) : ''
-	const text = props.reason
-		? AAR.formatAppliedReason(props.action, props.reason, { vars })
-		: renderTemplate(custom!, vars)
+	const text = props.reason ? AAR.formatAppliedReason(props.action, props.reason, { vars }) : renderTemplate(custom!, vars)
 
 	return (
 		<div className="grid gap-1">

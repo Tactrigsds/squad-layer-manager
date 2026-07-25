@@ -1,7 +1,8 @@
-import * as NodeMap from '@/lib/node-map'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import type * as Zus from 'zustand'
+
+import * as NodeMap from '@/lib/node-map'
 
 export type NodeMapProps = {
 	nodeId: NodeMap.NodeId
@@ -46,8 +47,5 @@ export function NodePortal(props: { nodeId: NodeMap.NodeId; store: Zus.StoreApi<
 		}
 	}, [props.nodeId])
 
-	return createPortal(
-		props.children,
-		node,
-	)
+	return createPortal(props.children, node)
 }

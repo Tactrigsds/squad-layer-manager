@@ -1,10 +1,6 @@
 import { z } from 'zod'
 
-export const PercentageSchema = z
-	.number()
-	.min(0)
-	.max(100)
-	.meta({ description: 'A percentage value between 0 and 100' })
+export const PercentageSchema = z.number().min(0).max(100).meta({ description: 'A percentage value between 0 and 100' })
 
 // largest to smallest, so formatHumanTime finds the coarsest unit that divides evenly
 const HUMAN_TIME_UNITS = [
@@ -21,13 +17,15 @@ export const HumanTimeFormat = z.union([
 	// numbers are passed through as-is, treated as already being in milliseconds (e.g. a previously-parsed value round-tripped through storage)
 	z.number(),
 ])
-export const HumanTime = z.codec(HumanTimeFormat, z.number(), {
-	decode: parseHumanTime,
-	encode: formatHumanTime,
-}).meta({
-	description:
-		'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds. numbers are passed through as-is. serializes back to the format using the most convenient round unit',
-})
+export const HumanTime = z
+	.codec(HumanTimeFormat, z.number(), {
+		decode: parseHumanTime,
+		encode: formatHumanTime,
+	})
+	.meta({
+		description:
+			'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds. numbers are passed through as-is. serializes back to the format using the most convenient round unit',
+	})
 
 export function parseHumanTime(val: string | number) {
 	if (typeof val === 'number') return val

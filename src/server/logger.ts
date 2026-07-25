@@ -1,9 +1,3 @@
-import { flattenObjToAttrs } from '@/lib/object'
-import type { OtelModule } from '@/lib/otel'
-import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
-import * as ATTRS from '@/models/otel-attrs'
 import * as Otel from '@opentelemetry/api'
 import * as OtelLogs from '@opentelemetry/api-logs'
 import type { Logger as OtelLogger } from '@opentelemetry/api-logs'
@@ -11,6 +5,14 @@ import type { NodeSDK } from '@opentelemetry/sdk-node'
 import type { LoggerOptions } from 'pino'
 import pino from 'pino'
 import format from 'quick-format-unescaped'
+
+import { flattenObjToAttrs } from '@/lib/object'
+import type { OtelModule } from '@/lib/otel'
+import { assertNever } from '@/lib/type-guards'
+import type * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
+import * as ATTRS from '@/models/otel-attrs'
+
 import * as Env from './env'
 export let baseLogger!: CS.Logger
 
@@ -20,7 +22,7 @@ export function initModule(name: string): OtelModule {
 	let log: pino.Logger | undefined
 	return {
 		name: name,
-		getLogger: () => log ??= baseLogger.child({ [ATTRS.Module.NAME]: name }),
+		getLogger: () => (log ??= baseLogger.child({ [ATTRS.Module.NAME]: name })),
 		tracer: Otel.trace.getTracer(name),
 	}
 }

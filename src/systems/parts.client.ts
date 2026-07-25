@@ -1,11 +1,12 @@
+import * as Zus from 'zustand'
+import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
+
 import * as Arr from '@/lib/array'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import type * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import type * as USR from '@/models/users.models'
-import * as Zus from 'zustand'
-import { immer as zustandImmerMiddleware } from 'zustand/middleware/immer'
 
 export type ClientParts = USR.UserPart & MH.MatchHistoryPart & LQY.LayerItemStatusesPart
 type PartsStore = ClientParts & { upsert: <K extends keyof ClientParts>(key: K, entity: ClientParts[K]) => void }

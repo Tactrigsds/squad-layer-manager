@@ -1,17 +1,13 @@
 {
 	"format_on_save": "on",
 	"file_scan_exclusions": ["**/routeTree.gen.ts", "data/**/*", ".zed/adminlist.txt", "pnpm-lock.yaml"],
-	// the repo's own pinned dprint (a devDependency) rather than a bare `dprint`, which would silently
+	// the repo's own pinned oxfmt (a devDependency) rather than a bare `oxfmt`, which would silently
 	// resolve to whatever global install a given machine happens to have, or to nothing at all. Zed runs
 	// external formatters with the project root as their working directory, so the relative path holds.
 	"formatter": {
 		"external": {
-			"command": "./node_modules/.bin/dprint",
-			"arguments": [
-				"fmt",
-				"--stdin",
-				"{buffer_path}"
-			]
+			"command": "./node_modules/.bin/oxfmt",
+			"arguments": ["--stdin-filepath", "{buffer_path}"]
 		}
 	},
 	"languages": {

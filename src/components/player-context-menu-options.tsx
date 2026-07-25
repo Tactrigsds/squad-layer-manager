@@ -1,3 +1,5 @@
+import React from 'react'
+
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
@@ -20,10 +22,17 @@ import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import React from 'react'
+
 import { PlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
-import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
+import {
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuShortcut,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+} from './ui/context-menu'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
@@ -63,7 +72,7 @@ function usePlayerLinkIds(playerIds: SM.PlayerId[], stores: SquadServerFrame.Key
 		stores.squadServer,
 		BattlemetricsClient.playerBmData$,
 		(chatStore: ChatPrt.Store, bmData: BM.PublicPlayerBmData): PlayerLinkIds[] =>
-			playerIds.map(playerId => {
+			playerIds.map((playerId) => {
 				// recent rather than live: profile links are about who the player is, so they should keep working
 				// after a mid-match disconnect
 				const player = ChatPrt.Sel.recentPlayer(playerId)(chatStore)
@@ -84,20 +93,26 @@ function partialCountSuffix(count: number, total: number) {
 	return total > 1 && count < total ? ` (${count}/${total})` : ''
 }
 
-export function PlayerOpenLinksSub(
-	{ playerIds, slots, stores }: { playerIds: SM.PlayerId[]; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
-) {
+export function PlayerOpenLinksSub({
+	playerIds,
+	slots,
+	stores,
+}: {
+	playerIds: SM.PlayerId[]
+	slots: MenuSlots
+	stores: SquadServerFrame.KeyProp
+}) {
 	const { Item, Sub, SubTrigger, SubContent } = slots
 	const players = usePlayerLinkIds(playerIds, stores)
 	const openAll = (urls: string[]) => {
 		for (const url of urls) window.open(url, '_blank', 'noopener,noreferrer')
 	}
-	const steamIds = players.map(p => p.steam).filter((s): s is string => s != null)
-	const bmUrls = players.map(p => p.bmProfileUrl ?? bmSearchUrl(p.eos))
+	const steamIds = players.map((p) => p.steam).filter((s): s is string => s != null)
+	const bmUrls = players.map((p) => p.bmProfileUrl ?? bmSearchUrl(p.eos))
 	const links: { label: string; urls: string[] }[] = [
-		{ label: 'Steam', urls: steamIds.map(id => `https://steamcommunity.com/profiles/${id}`) },
-		{ label: 'CBL', urls: steamIds.map(id => `https://communitybanlist.com/search/${id}`) },
-		{ label: 'MySquadStats', urls: steamIds.map(id => `https://mysquadstats.com/search/${id}#vanillaStats`) },
+		{ label: 'Steam', urls: steamIds.map((id) => `https://steamcommunity.com/profiles/${id}`) },
+		{ label: 'CBL', urls: steamIds.map((id) => `https://communitybanlist.com/search/${id}`) },
+		{ label: 'MySquadStats', urls: steamIds.map((id) => `https://mysquadstats.com/search/${id}#vanillaStats`) },
 		{ label: 'BattleMetrics', urls: bmUrls },
 	]
 	return (
@@ -115,17 +130,23 @@ export function PlayerOpenLinksSub(
 	)
 }
 
-export function PlayerCopyIdsSub(
-	{ playerIds, slots, stores }: { playerIds: SM.PlayerId[]; slots: MenuSlots; stores: SquadServerFrame.KeyProp },
-) {
+export function PlayerCopyIdsSub({
+	playerIds,
+	slots,
+	stores,
+}: {
+	playerIds: SM.PlayerId[]
+	slots: MenuSlots
+	stores: SquadServerFrame.KeyProp
+}) {
 	const { Item, Sub, SubTrigger, SubContent } = slots
 	const players = usePlayerLinkIds(playerIds, stores)
 	const pickAll = (pick: (p: PlayerLinkIds) => string | undefined) => players.map(pick).filter((v): v is string => v != null)
 	const ids: { label: string; values: string[] }[] = [
-		{ label: 'Username', values: pickAll(p => p.username) },
-		{ label: 'EOS ID', values: pickAll(p => p.eos) },
-		{ label: 'Steam ID', values: pickAll(p => p.steam) },
-		{ label: 'Epic ID', values: pickAll(p => p.epic) },
+		{ label: 'Username', values: pickAll((p) => p.username) },
+		{ label: 'EOS ID', values: pickAll((p) => p.eos) },
+		{ label: 'Steam ID', values: pickAll((p) => p.steam) },
+		{ label: 'Epic ID', values: pickAll((p) => p.epic) },
 	]
 	const copyAll = (label: string, values: string[]) => {
 		void navigator.clipboard.writeText(values.join('\n'))
@@ -152,15 +173,19 @@ export function PlayerCopyIdsSub(
 // the Timeout dialog body: the duration input is kept in state (in addition to the ref the confirm handler reads) so
 // the ReasonPicker's message preview can resolve {{duration}} live as the admin types. Shared with the bulk and squad
 // timeout dialogs.
-export function TimeoutDialogContent(
-	{ durationRef, customReasonRef, presetReasonRef, maxTimeout, required }: {
-		durationRef: React.MutableRefObject<string>
-		customReasonRef: React.MutableRefObject<string>
-		presetReasonRef: React.MutableRefObject<string>
-		maxTimeout: number | null | undefined
-		required?: boolean
-	},
-) {
+export function TimeoutDialogContent({
+	durationRef,
+	customReasonRef,
+	presetReasonRef,
+	maxTimeout,
+	required,
+}: {
+	durationRef: React.MutableRefObject<string>
+	customReasonRef: React.MutableRefObject<string>
+	presetReasonRef: React.MutableRefObject<string>
+	maxTimeout: number | null | undefined
+	required?: boolean
+}) {
 	const [durationText, setDurationText] = React.useState(() => durationRef.current)
 	const durationMs = ZodLib.tryParseHumanTimeToken(durationText.trim())
 	return (
@@ -172,7 +197,7 @@ export function TimeoutDialogContent(
 					autoComplete="off"
 					placeholder={maxTimeout == null ? 'e.g. 30m, 2h, 1d' : `e.g. 30m, 2h (max ${ZodLib.formatHumanTime(maxTimeout)})`}
 					defaultValue={durationRef.current}
-					onChange={e => {
+					onChange={(e) => {
 						durationRef.current = e.target.value
 						setDurationText(e.target.value)
 					}}
@@ -189,15 +214,18 @@ export function TimeoutDialogContent(
 	)
 }
 
-export function PlayerMenuItems(
-	{ playerId, slots, stores, omitWarn }: {
-		playerId: SM.PlayerId
-		slots: MenuSlots
-		stores: SquadServerFrame.KeyProp
-		// hidden inside the player details window, which has its own warn box at the bottom
-		omitWarn?: boolean
-	},
-) {
+export function PlayerMenuItems({
+	playerId,
+	slots,
+	stores,
+	omitWarn,
+}: {
+	playerId: SM.PlayerId
+	slots: MenuSlots
+	stores: SquadServerFrame.KeyProp
+	// hidden inside the player details window, which has its own warn box at the bottom
+	omitWarn?: boolean
+}) {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
@@ -231,36 +259,31 @@ export function PlayerMenuItems(
 		MatchHistoryClient.currentMatch$(serverId),
 		(chatStore: ChatPrt.Store, currentMatch: MH.MatchDetails | undefined): MH.NormedTeamId | null => {
 			if (!currentMatch) return null
-			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, (p) => p.ids, playerId)
 			if (!player?.teamId) return null
 			const normed = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 			return normed === 'A' ? 'B' : 'A'
 		},
 	)
 
-	const playerInfo = ZusUtils.useStore(
-		stores.squadServer,
-		(chatStore: ChatPrt.Store) => {
-			const players = ChatPrt.Sel.chatState(chatStore).players
-			const squads = ChatPrt.Sel.chatState(chatStore).squads
-			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
-			if (!player) return null
-			const squad = player.squadId !== null
-				? squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)
-				: undefined
-			return {
-				squadId: player.squadId,
-				teamId: player.teamId,
-				username: player.ids.username,
-				role: player.role,
-				squadName: squad?.squadName ?? null,
-				isCommander: player.isLeader && squad?.squadName === 'Command Squad',
-				isLeader: player.isLeader,
-				isAdmin: player.isAdmin,
-				inAdminCam: ChatPrt.Sel.chatState(chatStore).adminCamPlayerIds.includes(playerId),
-			}
-		},
-	)
+	const playerInfo = ZusUtils.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+		const players = ChatPrt.Sel.chatState(chatStore).players
+		const squads = ChatPrt.Sel.chatState(chatStore).squads
+		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
+		if (!player) return null
+		const squad = player.squadId !== null ? squads.find((s) => s.squadId === player.squadId && s.teamId === player.teamId) : undefined
+		return {
+			squadId: player.squadId,
+			teamId: player.teamId,
+			username: player.ids.username,
+			role: player.role,
+			squadName: squad?.squadName ?? null,
+			isCommander: player.isLeader && squad?.squadName === 'Command Squad',
+			isLeader: player.isLeader,
+			isAdmin: player.isAdmin,
+			inAdminCam: ChatPrt.Sel.chatState(chatStore).adminCamPlayerIds.includes(playerId),
+		}
+	})
 
 	const group = ZusUtils.useStore(
 		stores.squadServer,
@@ -275,17 +298,14 @@ export function PlayerMenuItems(
 			bmStore: BM.StoreState,
 			settings: PublicSettings | undefined,
 		): string | undefined => {
-			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, (p) => p.ids, playerId)
 			if (player?.teamId == null) return undefined
 			const enriched = TeamsPanelModels.Sel.playersForTeam(player.teamId)(chatStore, currentMatch, bmData, bmStore, settings)
-			return SM.PlayerIds.find(enriched, p => p.ids, playerId)?.group
+			return SM.PlayerIds.find(enriched, (p) => p.ids, playerId)?.group
 		},
 	)
 
-	const existingSwap = ZusUtils.useStore(
-		stores.squadServer,
-		s => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null,
-	)
+	const existingSwap = ZusUtils.useStore(stores.squadServer, (s) => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null)
 
 	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow([playerId]))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue([playerId]))
@@ -298,7 +318,7 @@ export function PlayerMenuItems(
 	async function swapNow() {
 		if (!otherTeam) return
 		const initialTeam = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(playerId)
-		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
+		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe((state) => {
 			if (TSWClient.Sel.localState(state).players.get(playerId) !== initialTeam) closeDialog()
 		})
 		try {
@@ -660,10 +680,7 @@ export function PlayerMenuItems(
 	return (
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item
-					onClick={() => TSWClient.Actions.swapNext(stores, [playerId])}
-					disabled={!!manageDenied || !otherTeam || !canQueue}
-				>
+				<Item onClick={() => TSWClient.Actions.swapNext(stores, [playerId])} disabled={!!manageDenied || !otherTeam || !canQueue}>
 					Swap Next
 				</Item>
 			</PermissionDeniedTooltip>
@@ -706,10 +723,7 @@ export function PlayerMenuItems(
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<Item
-					onClick={() => TSWClient.Actions.removeSwap(stores, [playerId])}
-					disabled={!!manageDenied || !existingSwap}
-				>
+				<Item onClick={() => TSWClient.Actions.removeSwap(stores, [playerId])} disabled={!!manageDenied || !existingSwap}>
 					Delete Swap
 				</Item>
 			</PermissionDeniedTooltip>
@@ -757,8 +771,6 @@ export function PlayerMenuItems(
 	)
 }
 
-export default function PlayerContextMenuOptions(
-	{ playerId, stores }: { playerId: SM.PlayerId; stores: SquadServerFrame.KeyProp },
-) {
+export default function PlayerContextMenuOptions({ playerId, stores }: { playerId: SM.PlayerId; stores: SquadServerFrame.KeyProp }) {
 	return <PlayerMenuItems playerId={playerId} slots={contextMenuSlots} stores={stores} />
 }

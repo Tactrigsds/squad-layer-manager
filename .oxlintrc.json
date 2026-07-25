@@ -1,11 +1,6 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"plugins": [
-		"import",
-		"typescript",
-		"promise",
-		"react"
-	],
+	"plugins": ["import", "typescript", "promise", "react"],
 	"categories": {
 		"correctness": "error",
 		"suspicious": "warn",
@@ -102,18 +97,14 @@
 	},
 	"overrides": [
 		{
-			"files": [
-				"*.test.ts"
-			],
+			"files": ["*.test.ts"],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off"
 			}
 		},
 		{
 			// playwright fixtures call `use(value)`, which the rule misreads as React 19's `use` hook
-			"files": [
-				"test/e2e/**"
-			],
+			"files": ["test/e2e/**"],
 			"rules": {
 				"react-hooks/rules-of-hooks": "off"
 			}

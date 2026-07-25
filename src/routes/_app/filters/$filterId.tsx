@@ -1,3 +1,7 @@
+import { createFileRoute } from '@tanstack/react-router'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import { FilterEdit } from '@/components/filter-edit'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
@@ -9,9 +13,6 @@ import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as UsersClient from '@/systems/users.client'
-import { createFileRoute } from '@tanstack/react-router'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 // editor frames minted by the loader, per filter id. Each loader run creates a fresh instance (and a post-save
 // router.invalidate() re-runs the loader), so several can accumulate before the route is left; onLeave sweeps them.
@@ -61,9 +62,7 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	},
 
 	head: ({ loaderData }) => ({
-		meta: [
-			{ title: loaderData ? `SLM - ${loaderData.entity.name}` : undefined },
-		],
+		meta: [{ title: loaderData ? `SLM - ${loaderData.entity.name}` : undefined }],
 	}),
 })
 
@@ -90,30 +89,29 @@ function RouteComponent() {
 	const frameKey = useLiveFrameKey(params.filterId, loaderData?.frameKey, loaderData?.frameInput)
 
 	React.useEffect(() => {
-		const sub = FilterEntityClient.filterMutation$.pipe()
-			.subscribe({
-				next: async (mutation) => {
-					const loggedInUser = await UsersClient.fetchLoggedInUser()
-					if (!mutation || mutation.key !== params.filterId) return
-					switch (mutation.type) {
-						case 'add':
-							break
-						case 'update': {
-							if (mutation.userId === loggedInUser?.discordId) return
-							toast(`Filter ${mutation.value.name} was updated by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
-							break
-						}
-						case 'delete': {
-							if (mutation.userId === loggedInUser?.discordId) return
-							toast(`Filter ${mutation.value.name} was deleted by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
-							void rootRouter.navigate({ to: '/filters' })
-							break
-						}
-						default:
-							assertNever(mutation.type)
+		const sub = FilterEntityClient.filterMutation$.pipe().subscribe({
+			next: async (mutation) => {
+				const loggedInUser = await UsersClient.fetchLoggedInUser()
+				if (!mutation || mutation.key !== params.filterId) return
+				switch (mutation.type) {
+					case 'add':
+						break
+					case 'update': {
+						if (mutation.userId === loggedInUser?.discordId) return
+						toast(`Filter ${mutation.value.name} was updated by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
+						break
 					}
-				},
-			})
+					case 'delete': {
+						if (mutation.userId === loggedInUser?.discordId) return
+						toast(`Filter ${mutation.value.name} was deleted by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
+						void rootRouter.navigate({ to: '/filters' })
+						break
+					}
+					default:
+						assertNever(mutation.type)
+				}
+			},
+		})
 		return () => sub.unsubscribe()
 	}, [params.filterId])
 

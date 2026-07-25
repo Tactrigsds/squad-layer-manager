@@ -1,3 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React, { useRef } from 'react'
+
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
@@ -11,13 +15,17 @@ import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React, { useRef } from 'react'
+
 import type { LayerInfoWindowProps } from './layer-info-window.helpers'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'
-import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, OpenWindowInteraction } from './ui/draggable-window'
+import {
+	DraggableWindowClose,
+	DraggableWindowDragBar,
+	DraggableWindowPinToggle,
+	DraggableWindowTitle,
+	OpenWindowInteraction,
+} from './ui/draggable-window'
 import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
@@ -53,9 +61,7 @@ DraggableWindowStore.getState().registerDefinition<LayerInfoWindowProps, unknown
 	},
 })
 
-function LayerInfoTrigger(
-	props: React.HTMLAttributes<HTMLElement> & { ref?: React.Ref<HTMLElement> },
-) {
+function LayerInfoTrigger(props: React.HTMLAttributes<HTMLElement> & { ref?: React.Ref<HTMLElement> }) {
 	return <span ref={props.ref} {...props} />
 }
 
@@ -86,7 +92,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 		scores = LC.partitionScores(layer, cfg)
 	}
 
-	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
+	const hasScores = scores && Object.values(scores).some((type) => Object.values(type).some((score) => typeof score === 'number'))
 
 	React.useEffect(() => {
 		if (!hasScores && tab === 'scores') {
@@ -97,9 +103,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 	return (
 		<div className="min-w-0 min-h-0 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>
-					{DH.displayLayer(layerId)}
-				</DraggableWindowTitle>
+				<DraggableWindowTitle>{DH.displayLayer(layerId)}</DraggableWindowTitle>
 				<TabsList
 					options={[
 						{ value: 'details', label: 'Details' },
@@ -165,7 +169,7 @@ export function LayerInfo(props: LayerInfoContentProps) {
 		props.close?.()
 	}
 
-	const hasScores = scores && Object.values(scores).some(type => Object.values(type).some(score => typeof score === 'number'))
+	const hasScores = scores && Object.values(scores).some((type) => Object.values(type).some((score) => typeof score === 'number'))
 	if (layerRes.isLoading) {
 		return (
 			<div className="w-full h-full grid place-items-center">
@@ -179,11 +183,7 @@ export function LayerInfo(props: LayerInfoContentProps) {
 	}
 
 	return (
-		<div
-			ref={contentRef}
-			className="space-y-3 data-[tab=scores]:max-w-200 data-[tab=details]:max-w-200 mx-auto"
-			data-tab={activeTab}
-		>
+		<div ref={contentRef} className="space-y-3 data-[tab=scores]:max-w-200 data-[tab=details]:max-w-200 mx-auto" data-tab={activeTab}>
 			<div className="flex justify-between items-center space-x-2">
 				<div className="flex items-center gap-3">
 					{!props.hideLayerName && <MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />}
@@ -196,16 +196,16 @@ export function LayerInfo(props: LayerInfoContentProps) {
 						<Icons.Clipboard />
 					</Button>
 					{!props.hidePopoutButton && (
-						<Button
-							onClick={openInPopoutWindow}
-							size="icon"
-							variant="ghost"
-							title="Open in popout window"
-						>
+						<Button onClick={openInPopoutWindow} size="icon" variant="ghost" title="Open in popout window">
 							<Icons.ExternalLink />
 						</Button>
 					)}
-					<a className={buttonVariants({ variant: 'ghost', size: 'icon' })} title="Open in SquadCalc" href={squadcalcUrl} target="_blank">
+					<a
+						className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+						title="Open in SquadCalc"
+						href={squadcalcUrl}
+						target="_blank"
+					>
 						<Icons.Map />
 					</a>
 					{layerDetails?.layerConfig && <LayerConfigInfo layerConfig={layerDetails.layerConfig} />}
@@ -229,11 +229,11 @@ export function LayerInfo(props: LayerInfoContentProps) {
 	)
 }
 
-function LayerDetailsDisplay(
-	{ layerDetails }: {
-		layerDetails: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
-	},
-) {
+function LayerDetailsDisplay({
+	layerDetails,
+}: {
+	layerDetails: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
+}) {
 	const team1Vehicles = layerDetails.team1?.vehicles || []
 	const team2Vehicles = layerDetails.team2?.vehicles || []
 
@@ -258,14 +258,8 @@ function LayerDetailsDisplay(
 				/>
 
 				{/* Vehicles Row */}
-				<VehiclesOnly
-					title="Team 1 Vehicles"
-					vehicles={team1Vehicles}
-				/>
-				<VehiclesOnly
-					title="Team 2 Vehicles"
-					vehicles={team2Vehicles}
-				/>
+				<VehiclesOnly title="Team 1 Vehicles" vehicles={team1Vehicles} />
+				<VehiclesOnly title="Team 2 Vehicles" vehicles={team2Vehicles} />
 			</div>
 		</div>
 	)
@@ -287,11 +281,13 @@ function TeamInfoOnly({
 	return (
 		<section className="space-y-1">
 			<div className="text-sm">
-				<strong>{title}{role && ` (${role})`}</strong> - {faction} ({unit?.type || 'Unknown'})
+				<strong>
+					{title}
+					{role && ` (${role})`}
+				</strong>{' '}
+				- {faction} ({unit?.type || 'Unknown'})
 			</div>
-			<div className="text-sm font-light">
-				{unit?.displayName || 'Unknown'}
-			</div>
+			<div className="text-sm font-light">{unit?.displayName || 'Unknown'}</div>
 			{tickets && (
 				<div className="text-xs text-muted-foreground">
 					<strong>Starting Tickets:</strong> {tickets}
@@ -301,7 +297,11 @@ function TeamInfoOnly({
 			{unit && unit.characteristics && unit.characteristics.length > 0 && (
 				<div className="mt-4">
 					<ul className="space-y-0.5 text-xs font-light ml-4 mt-2">
-						{unit.characteristics.map((char) => <li key={char.description} className="list-disc">{char.description}</li>)}
+						{unit.characteristics.map((char) => (
+							<li key={char.description} className="list-disc">
+								{char.description}
+							</li>
+						))}
 					</ul>
 				</div>
 			)}
@@ -309,28 +309,22 @@ function TeamInfoOnly({
 	)
 }
 
-function VehiclesOnly({
-	title,
-	vehicles,
-}: {
-	title: string
-	vehicles: SLL.Vehicle[]
-}) {
+function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicle[] }) {
 	return (
 		<section className="space-y-1">
 			<h4 className="text-sm font-medium">{title}</h4>
 			{vehicles.length > 0 && (
 				<div className="grid grid-cols-[auto_auto_auto_auto] gap-x-3 text-sm font-light whitespace-nowrap mt-2" role="table">
-					<div className="text-right font-medium" role="columnheader">#</div>
+					<div className="text-right font-medium" role="columnheader">
+						#
+					</div>
 					<div className="flex items-center font-medium" role="columnheader">
 						<TooltipProvider>
 							<Tooltip>
 								<TooltipTrigger>
 									<Icons.Info size={16} className="text-blue-400 hover:text-blue-300 cursor-pointer" />
 								</TooltipTrigger>
-								<TooltipContent>
-									Delay/Respawn (in minutes)
-								</TooltipContent>
+								<TooltipContent>Delay/Respawn (in minutes)</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
 					</div>
@@ -339,13 +333,15 @@ function VehiclesOnly({
 							<TooltipTrigger>
 								<Icons.Car size={16} className="text-green-400" />
 							</TooltipTrigger>
-							<TooltipContent>
-								Vehicle Type
-							</TooltipContent>
+							<TooltipContent>Vehicle Type</TooltipContent>
 						</Tooltip>
 					</div>
-					<div className="font-medium" role="columnheader">Name</div>
-					{vehicles.map((vehicle) => <IndividualVehicleRow key={vehicle.name} vehicle={vehicle} />)}
+					<div className="font-medium" role="columnheader">
+						Name
+					</div>
+					{vehicles.map((vehicle) => (
+						<IndividualVehicleRow key={vehicle.name} vehicle={vehicle} />
+					))}
 				</div>
 			)}
 		</section>
@@ -357,7 +353,9 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 
 	return (
 		<>
-			<div className="text-right" role="cell">{vehicle.count}</div>
+			<div className="text-right" role="cell">
+				{vehicle.count}
+			</div>
 			<div role="cell">{delayRespawnInfo}</div>
 			<div role="cell">{vehicle.vehType}</div>
 			<div role="cell">{vehicle.name}</div>
@@ -425,176 +423,147 @@ function OtherScoreRow({
 					)}
 				</span>
 			</div>
-			{scoreRange && scoreRange.poolCutoff !== undefined
-				? (
-					<div className="space-y-1">
-						<svg width="100%" height="56" className="overflow-visible">
-							{/* Background bar */}
-							<rect
-								x="0"
-								y="4"
-								width="100%"
-								height="8"
-								rx="4"
-								fill="currentColor"
-								className="text-muted"
-							/>
-							{/* Score bar */}
-							<rect
-								x="0"
-								y="4"
-								width={`${Math.min(percentage, 100)}%`}
-								height="8"
-								rx="4"
-								fill="currentColor"
-								className="text-muted-foreground transition-all duration-200"
-							/>
-
-							{/* Scale markers */}
-							{scoreRange.logarithmic
-								? (
-									(() => {
-										const logMin = Math.log(scoreRange.min)
-										const logMax = Math.log(scoreRange.max)
-										// Generate tick marks at reasonable intervals for log scale
-										const tickValues = [1, 2, 5, 10, 20, 30]
-											.filter(v => v >= scoreRange.min && v <= scoreRange.max)
-
-										return tickValues.map(tickValue => {
-											const tickPercentage = ((Math.log(tickValue) - logMin) / (logMax - logMin)) * 100
-											return (
-												<g key={tickValue}>
-													<line
-														x1={`${tickPercentage}%`}
-														y1="20"
-														x2={`${tickPercentage}%`}
-														y2="28"
-														stroke="currentColor"
-														strokeWidth="1"
-														className="text-muted-foreground/30"
-													/>
-													<text
-														x={`${tickPercentage}%`}
-														y="48"
-														textAnchor="middle"
-														fontSize="9"
-														className="fill-muted-foreground/50"
-													>
-														{tickValue}
-													</text>
-												</g>
-											)
-										})
-									})()
-								)
-								: (
-									(() => {
-										// Linear scale markers
-										// Target approximately 1 marking per 50px (assuming typical chart width of ~300-500px)
-										const range = scoreRange.max - scoreRange.min
-										const targetMarkingCount = Math.max(2, Math.floor(400 / 50)) // Assume ~400px width, minimum 2 markings
-
-										// Calculate step size to get whole numbers
-										const idealStep = range / targetMarkingCount
-										let step = Math.max(1, Math.round(idealStep))
-
-										// Round step to nice numbers (1, 2, 5, 10, 20, 50, etc.)
-										if (step > 1) {
-											const magnitude = Math.pow(10, Math.floor(Math.log10(step)))
-											const normalized = step / magnitude
-											if (normalized <= 1) step = magnitude
-											else if (normalized <= 2) step = 2 * magnitude
-											else if (normalized <= 5) step = 5 * magnitude
-											else step = 10 * magnitude
-										}
-
-										const tickValues: number[] = []
-										const startValue = Math.ceil(scoreRange.min / step) * step
-
-										for (let value = startValue; value <= scoreRange.max; value += step) {
-											tickValues.push(value)
-										}
-
-										// Always include min and max values
-										if (!tickValues.includes(scoreRange.min)) {
-											tickValues.unshift(scoreRange.min)
-										}
-										if (!tickValues.includes(scoreRange.max)) {
-											tickValues.push(scoreRange.max)
-										}
-
-										// Determine if min/max are whole numbers
-										const minIsWhole = Number.isInteger(scoreRange.min)
-										const maxIsWhole = Number.isInteger(scoreRange.max)
-										const useDecimals = minIsWhole && maxIsWhole
-
-										return tickValues.map(tickValue => {
-											const tickPercentage = ((tickValue - scoreRange.min) / range) * 100
-											// Format: if using decimals and this is a whole number, show 1 decimal, otherwise show 2
-											let label: string
-											if (Number.isInteger(tickValue)) {
-												label = useDecimals ? tickValue.toFixed(1) : tickValue.toString()
-											} else {
-												label = tickValue.toFixed(2)
-											}
-
-											return (
-												<g key={tickValue}>
-													<line
-														x1={`${tickPercentage}%`}
-														y1="20"
-														x2={`${tickPercentage}%`}
-														y2="28"
-														stroke="currentColor"
-														strokeWidth="1"
-														className="text-muted-foreground/30"
-													/>
-													<text
-														x={`${tickPercentage}%`}
-														y="48"
-														textAnchor="middle"
-														fontSize="9"
-														className="fill-muted-foreground/50"
-													>
-														{label}
-													</text>
-												</g>
-											)
-										})
-									})()
-								)}
-
-							{/* Pool cutoff line */}
-							<line
-								x1={`${cutoffPercentage}%`}
-								y1="0"
-								x2={`${cutoffPercentage}%`}
-								y2="16"
-								stroke="white"
-								strokeWidth="2"
-							/>
-							{/* Pool cutoff label */}
-							<text
-								x={`${cutoffPercentage}%`}
-								y="32"
-								textAnchor="middle"
-								fontSize="10"
-								fill="white"
-								className="font-medium"
-							>
-								Pool Cutoff ({scoreRange.poolCutoff})
-							</text>
-						</svg>
-					</div>
-				)
-				: (
-					<div className="h-1 rounded-full bg-muted">
-						<div
-							className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
-							style={{ width: `${Math.min(percentage, 100)}%` }}
+			{scoreRange && scoreRange.poolCutoff !== undefined ? (
+				<div className="space-y-1">
+					<svg width="100%" height="56" className="overflow-visible">
+						{/* Background bar */}
+						<rect x="0" y="4" width="100%" height="8" rx="4" fill="currentColor" className="text-muted" />
+						{/* Score bar */}
+						<rect
+							x="0"
+							y="4"
+							width={`${Math.min(percentage, 100)}%`}
+							height="8"
+							rx="4"
+							fill="currentColor"
+							className="text-muted-foreground transition-all duration-200"
 						/>
-					</div>
-				)}
+
+						{/* Scale markers */}
+						{scoreRange.logarithmic
+							? (() => {
+									const logMin = Math.log(scoreRange.min)
+									const logMax = Math.log(scoreRange.max)
+									// Generate tick marks at reasonable intervals for log scale
+									const tickValues = [1, 2, 5, 10, 20, 30].filter((v) => v >= scoreRange.min && v <= scoreRange.max)
+
+									return tickValues.map((tickValue) => {
+										const tickPercentage = ((Math.log(tickValue) - logMin) / (logMax - logMin)) * 100
+										return (
+											<g key={tickValue}>
+												<line
+													x1={`${tickPercentage}%`}
+													y1="20"
+													x2={`${tickPercentage}%`}
+													y2="28"
+													stroke="currentColor"
+													strokeWidth="1"
+													className="text-muted-foreground/30"
+												/>
+												<text
+													x={`${tickPercentage}%`}
+													y="48"
+													textAnchor="middle"
+													fontSize="9"
+													className="fill-muted-foreground/50"
+												>
+													{tickValue}
+												</text>
+											</g>
+										)
+									})
+								})()
+							: (() => {
+									// Linear scale markers
+									// Target approximately 1 marking per 50px (assuming typical chart width of ~300-500px)
+									const range = scoreRange.max - scoreRange.min
+									const targetMarkingCount = Math.max(2, Math.floor(400 / 50)) // Assume ~400px width, minimum 2 markings
+
+									// Calculate step size to get whole numbers
+									const idealStep = range / targetMarkingCount
+									let step = Math.max(1, Math.round(idealStep))
+
+									// Round step to nice numbers (1, 2, 5, 10, 20, 50, etc.)
+									if (step > 1) {
+										const magnitude = Math.pow(10, Math.floor(Math.log10(step)))
+										const normalized = step / magnitude
+										if (normalized <= 1) step = magnitude
+										else if (normalized <= 2) step = 2 * magnitude
+										else if (normalized <= 5) step = 5 * magnitude
+										else step = 10 * magnitude
+									}
+
+									const tickValues: number[] = []
+									const startValue = Math.ceil(scoreRange.min / step) * step
+
+									for (let value = startValue; value <= scoreRange.max; value += step) {
+										tickValues.push(value)
+									}
+
+									// Always include min and max values
+									if (!tickValues.includes(scoreRange.min)) {
+										tickValues.unshift(scoreRange.min)
+									}
+									if (!tickValues.includes(scoreRange.max)) {
+										tickValues.push(scoreRange.max)
+									}
+
+									// Determine if min/max are whole numbers
+									const minIsWhole = Number.isInteger(scoreRange.min)
+									const maxIsWhole = Number.isInteger(scoreRange.max)
+									const useDecimals = minIsWhole && maxIsWhole
+
+									return tickValues.map((tickValue) => {
+										const tickPercentage = ((tickValue - scoreRange.min) / range) * 100
+										// Format: if using decimals and this is a whole number, show 1 decimal, otherwise show 2
+										let label: string
+										if (Number.isInteger(tickValue)) {
+											label = useDecimals ? tickValue.toFixed(1) : tickValue.toString()
+										} else {
+											label = tickValue.toFixed(2)
+										}
+
+										return (
+											<g key={tickValue}>
+												<line
+													x1={`${tickPercentage}%`}
+													y1="20"
+													x2={`${tickPercentage}%`}
+													y2="28"
+													stroke="currentColor"
+													strokeWidth="1"
+													className="text-muted-foreground/30"
+												/>
+												<text
+													x={`${tickPercentage}%`}
+													y="48"
+													textAnchor="middle"
+													fontSize="9"
+													className="fill-muted-foreground/50"
+												>
+													{label}
+												</text>
+											</g>
+										)
+									})
+								})()}
+
+						{/* Pool cutoff line */}
+						<line x1={`${cutoffPercentage}%`} y1="0" x2={`${cutoffPercentage}%`} y2="16" stroke="white" strokeWidth="2" />
+						{/* Pool cutoff label */}
+						<text x={`${cutoffPercentage}%`} y="32" textAnchor="middle" fontSize="10" fill="white" className="font-medium">
+							Pool Cutoff ({scoreRange.poolCutoff})
+						</text>
+					</svg>
+				</div>
+			) : (
+				<div className="h-1 rounded-full bg-muted">
+					<div
+						className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
+						style={{ width: `${Math.min(percentage, 100)}%` }}
+					/>
+				</div>
+			)}
 		</div>
 	)
 }
@@ -679,57 +648,44 @@ function BalanceDifferentialRow({
 					<span className="text-xs text-muted-foreground">(logarithmic scale)</span>
 				</span>
 			</div>
-			{scoreRange && scoreRange.poolCutoff !== undefined
-				? (
-					<div className="space-y-1">
-						<svg width="100%" height="56" className="overflow-visible">
-							{/* Background bar */}
+			{scoreRange && scoreRange.poolCutoff !== undefined ? (
+				<div className="space-y-1">
+					<svg width="100%" height="56" className="overflow-visible">
+						{/* Background bar */}
+						<rect x="0" y="4" width="100%" height="8" rx="4" fill="currentColor" className="text-muted" />
+
+						{/* Differential indicator - show blue extending left if positive (Team 1 advantage), red extending right if negative (Team 2 advantage) */}
+						{diff > 0 ? (
 							<rect
-								x="0"
+								x={`${diffPercentage}%`}
 								y="4"
-								width="100%"
+								width={`${Math.min(Math.abs(50 - diffPercentage), 50)}%`}
 								height="8"
 								rx="4"
 								fill="currentColor"
-								className="text-muted"
+								className="text-blue-500 transition-all duration-200"
 							/>
+						) : diff < 0 ? (
+							<rect
+								x="50%"
+								y="4"
+								width={`${Math.min(Math.abs(diffPercentage - 50), 50)}%`}
+								height="8"
+								rx="4"
+								fill="currentColor"
+								className="text-red-500 transition-all duration-200"
+							/>
+						) : null}
 
-							{/* Differential indicator - show blue extending left if positive (Team 1 advantage), red extending right if negative (Team 2 advantage) */}
-							{diff > 0
-								? (
-									<rect
-										x={`${diffPercentage}%`}
-										y="4"
-										width={`${Math.min(Math.abs(50 - diffPercentage), 50)}%`}
-										height="8"
-										rx="4"
-										fill="currentColor"
-										className="text-blue-500 transition-all duration-200"
-									/>
-								)
-								: diff < 0
-								? (
-									<rect
-										x="50%"
-										y="4"
-										width={`${Math.min(Math.abs(diffPercentage - 50), 50)}%`}
-										height="8"
-										rx="4"
-										fill="currentColor"
-										className="text-red-500 transition-all duration-200"
-									/>
-								)
-								: null}
-
-							{/* Scale markers - logarithmic */}
-							{scoreRange && (() => {
+						{/* Scale markers - logarithmic */}
+						{scoreRange &&
+							(() => {
 								const markers = []
 								const maxAbs = Math.max(Math.abs(scoreRange.min), Math.abs(scoreRange.max))
 
 								// Generate logarithmically spaced markers
 								// Common intervals: 0, ±1, ±2, ±5, ±10, ±20, ±30, etc.
-								const tickValues = [0, 1, 2, 5, 10, 20, 30]
-									.filter(v => v <= maxAbs)
+								const tickValues = [0, 1, 2, 5, 10, 20, 30].filter((v) => v <= maxAbs)
 
 								// Add positive values (going left from center)
 								for (const value of tickValues) {
@@ -755,94 +711,91 @@ function BalanceDifferentialRow({
 											strokeWidth={isCenter ? '2' : '1'}
 											className={isCenter ? 'text-foreground/40' : 'text-muted-foreground/30'}
 										/>
-										<text
-											x={`${position}%`}
-											y="48"
-											textAnchor="middle"
-											fontSize="9"
-											className="fill-muted-foreground/50"
-										>
+										<text x={`${position}%`} y="48" textAnchor="middle" fontSize="9" className="fill-muted-foreground/50">
 											{value > 0 ? `+${value}` : value}
 										</text>
 									</g>
 								))
 							})()}
 
-							{/* Positive pool cutoff line */}
-							<line
-								x1={`${poolCutoffPositivePercentage}%`}
-								y1="0"
-								x2={`${poolCutoffPositivePercentage}%`}
-								y2="16"
-								stroke="white"
-								strokeWidth="2"
-							/>
-							{/* Positive pool cutoff label */}
-							<text
-								x={`${poolCutoffPositivePercentage}%`}
-								y="32"
-								textAnchor="middle"
-								fontSize="10"
-								fill="white"
-								className="font-medium"
-							>
-								Pool Cutoff (+{scoreRange.poolCutoff})
-							</text>
-
-							{/* Negative pool cutoff line */}
-							<line
-								x1={`${poolCutoffNegativePercentage}%`}
-								y1="0"
-								x2={`${poolCutoffNegativePercentage}%`}
-								y2="16"
-								stroke="white"
-								strokeWidth="2"
-							/>
-							{/* Negative pool cutoff label */}
-							<text
-								x={`${poolCutoffNegativePercentage}%`}
-								y="32"
-								textAnchor="middle"
-								fontSize="10"
-								fill="white"
-								className="font-medium"
-							>
-								Pool Cutoff (-{scoreRange.poolCutoff})
-							</text>
-
-							{/* Current value indicator */}
-							<circle
-								cx={`${diffPercentage}%`}
-								cy="8"
-								r="5"
-								fill="currentColor"
-								className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
-							/>
-						</svg>
-					</div>
-				)
-				: (
-					<div className="h-1 rounded-full bg-muted">
-						<div
-							className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
-							style={{ width: `${Math.min(Math.abs(diffPercentage - 50), 50)}%`, marginLeft: diff >= 0 ? '50%' : `${diffPercentage}%` }}
+						{/* Positive pool cutoff line */}
+						<line
+							x1={`${poolCutoffPositivePercentage}%`}
+							y1="0"
+							x2={`${poolCutoffPositivePercentage}%`}
+							y2="16"
+							stroke="white"
+							strokeWidth="2"
 						/>
-					</div>
-				)}
+						{/* Positive pool cutoff label */}
+						<text
+							x={`${poolCutoffPositivePercentage}%`}
+							y="32"
+							textAnchor="middle"
+							fontSize="10"
+							fill="white"
+							className="font-medium"
+						>
+							Pool Cutoff (+{scoreRange.poolCutoff})
+						</text>
+
+						{/* Negative pool cutoff line */}
+						<line
+							x1={`${poolCutoffNegativePercentage}%`}
+							y1="0"
+							x2={`${poolCutoffNegativePercentage}%`}
+							y2="16"
+							stroke="white"
+							strokeWidth="2"
+						/>
+						{/* Negative pool cutoff label */}
+						<text
+							x={`${poolCutoffNegativePercentage}%`}
+							y="32"
+							textAnchor="middle"
+							fontSize="10"
+							fill="white"
+							className="font-medium"
+						>
+							Pool Cutoff (-{scoreRange.poolCutoff})
+						</text>
+
+						{/* Current value indicator */}
+						<circle
+							cx={`${diffPercentage}%`}
+							cy="8"
+							r="5"
+							fill="currentColor"
+							className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
+						/>
+					</svg>
+				</div>
+			) : (
+				<div className="h-1 rounded-full bg-muted">
+					<div
+						className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
+						style={{
+							width: `${Math.min(Math.abs(diffPercentage - 50), 50)}%`,
+							marginLeft: diff >= 0 ? '50%' : `${diffPercentage}%`,
+						}}
+					/>
+				</div>
+			)}
 		</div>
 	)
 }
 
-function ScoreGrid(
-	{ scores, layerDetails }: {
-		scores: LC.PartitionedScores
-		layerDetails?: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
-	},
-) {
+function ScoreGrid({
+	scores,
+	layerDetails,
+}: {
+	scores: LC.PartitionedScores
+	layerDetails?: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
+}) {
 	// Only render dimensions defined in score-ranges.json paired section
-	const pairedFields = new Set(scoreRanges.paired.map(range => range.field))
+	const pairedFields = new Set(scoreRanges.paired.map((range) => range.field))
 	const zScoreTypes = Object.keys(scores.diffs)
-		.filter(score => score !== 'Balance_Differential' && pairedFields.has(score))
+		.filter((score) => score !== 'Balance_Differential' && pairedFields.has(score))
 		.sort()
 	const otherScores = Object.keys(scores.other)
 
@@ -882,29 +835,30 @@ function ScoreGrid(
 					{scores.diffs['Balance_Differential'] !== undefined && (
 						<BalanceDifferentialRow
 							diff={scores.diffs['Balance_Differential']}
-							scoreRange={scoreRanges.regular.find(range => range.field === 'Balance_Differential') as {
-								min: number
-								max: number
-								field: string
-								poolCutoff?: number
-							} | undefined}
+							scoreRange={
+								scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as
+									| {
+											min: number
+											max: number
+											field: string
+											poolCutoff?: number
+									  }
+									| undefined
+							}
 						/>
 					)}
-					{otherScores.map(scoreType => {
-						const scoreRange = scoreRanges.regular.find(range => range.field === scoreType) as {
-							min: number
-							max: number
-							field: string
-							poolCutoff?: number
-							logarithmic?: boolean
-						} | undefined
+					{otherScores.map((scoreType) => {
+						const scoreRange = scoreRanges.regular.find((range) => range.field === scoreType) as
+							| {
+									min: number
+									max: number
+									field: string
+									poolCutoff?: number
+									logarithmic?: boolean
+							  }
+							| undefined
 						return (
-							<OtherScoreRow
-								key={scoreType}
-								scoreType={scoreType}
-								score={scores.other[scoreType] || 0}
-								scoreRange={scoreRange}
-							/>
+							<OtherScoreRow key={scoreType} scoreType={scoreType} score={scores.other[scoreType] || 0} scoreRange={scoreRange} />
 						)
 					})}
 				</div>
@@ -946,38 +900,27 @@ function ZScoreRow({
 	return (
 		<div className="space-y-2">
 			<div className="flex justify-between items-center">
-				<span className="text-xs text-blue-500">
-					{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}
-				</span>
+				<span className="text-xs text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : 'N/A'}</span>
 				<span className="text-sm font-medium">
 					{scoreType.replace(/_/g, ' ')}
 					<span className="text-xs font-light">
-						<span className="font-light">(diff:{' '}</span>
+						<span className="font-light">(diff: </span>
 						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
 							{Math.abs(diff).toFixed(2)}
-						</span>)
+						</span>
+						)
 					</span>
 				</span>
-				<span className="text-xs text-red-500">
-					{team2Score !== undefined ? team2Score.toFixed(2) : 'N/A'}
-				</span>
+				<span className="text-xs text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : 'N/A'}</span>
 			</div>
 
 			{/* SVG visualization */}
 			<svg width="100%" height="48" className="overflow-visible">
 				{/* Main axis line */}
-				<line
-					x1="0"
-					y1="24"
-					x2="100%"
-					y2="24"
-					stroke="currentColor"
-					strokeWidth="2"
-					className="text-muted"
-				/>
+				<line x1="0" y1="24" x2="100%" y2="24" stroke="currentColor" strokeWidth="2" className="text-muted" />
 
 				{/* Standard deviation markers */}
-				{stdMarkers.map(marker => {
+				{stdMarkers.map((marker) => {
 					const position = ((marker - Z_MIN) / Z_RANGE) * 100
 					const isZero = marker === 0
 					return (
@@ -991,13 +934,7 @@ function ZScoreRow({
 								strokeWidth={isZero ? '2' : '1'}
 								className={isZero ? 'text-foreground/40' : 'text-muted-foreground/30'}
 							/>
-							<text
-								x={`${position}%`}
-								y="42"
-								textAnchor="middle"
-								fontSize="10"
-								className="fill-muted-foreground/50"
-							>
+							<text x={`${position}%`} y="42" textAnchor="middle" fontSize="10" className="fill-muted-foreground/50">
 								{marker}
 							</text>
 						</g>
@@ -1017,13 +954,7 @@ function ZScoreRow({
 							className="text-blue-500"
 							strokeLinecap="round"
 						/>
-						<circle
-							cx={`${team1Position}%`}
-							cy="8"
-							r="4"
-							fill="currentColor"
-							className="text-blue-500"
-						/>
+						<circle cx={`${team1Position}%`} cy="8" r="4" fill="currentColor" className="text-blue-500" />
 					</g>
 				)}
 
@@ -1040,13 +971,7 @@ function ZScoreRow({
 							className="text-red-500"
 							strokeLinecap="round"
 						/>
-						<circle
-							cx={`${team2Position}%`}
-							cy="40"
-							r="4"
-							fill="currentColor"
-							className="text-red-500"
-						/>
+						<circle cx={`${team2Position}%`} cy="40" r="4" fill="currentColor" className="text-red-500" />
 					</g>
 				)}
 			</svg>

@@ -17,16 +17,21 @@ export type ClientOnlySettingsStore = {
 	pinnedCommands: string[]
 }
 
-export const Store = Zus.createStore<ClientOnlySettingsStore>()(ZusMiddle.persist<ClientOnlySettingsStore>(() => ({
-	displayTeamsNormalized: true,
-	chartTab: 'population',
-	chartTimeInterval: 5,
-	primaryPanelTab: 'VIEWING_QUEUE',
-	pinnedCommands: [],
-}), {
-	name: 'settings:v1',
-	storage: ZusMiddle.createJSONStorage(() => localStorage),
-}))
+export const Store = Zus.createStore<ClientOnlySettingsStore>()(
+	ZusMiddle.persist<ClientOnlySettingsStore>(
+		() => ({
+			displayTeamsNormalized: true,
+			chartTab: 'population',
+			chartTimeInterval: 5,
+			primaryPanelTab: 'VIEWING_QUEUE',
+			pinnedCommands: [],
+		}),
+		{
+			name: 'settings:v1',
+			storage: ZusMiddle.createJSONStorage(() => localStorage),
+		},
+	),
+)
 
 export namespace Actions {
 	export function setDisplayTeamsNormalized(value: boolean) {

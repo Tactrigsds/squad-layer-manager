@@ -1,234 +1,234 @@
 name: SLM Docker CI
 # Allow writing to GitHub Packages
 permissions:
-  contents: read
-  packages: write
+   contents: read
+   packages: write
 
 on:
-  push:
-    branches: ["main", "dev"]
+   push:
+      branches: ['main', 'dev']
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.branch.outputs.IMAGE_TAG }}
-      test-image: ${{ steps.branch.outputs.TEST_IMAGE_REPO }}@${{ steps.test-image.outputs.digest }}
-    steps:
-      - uses: actions/checkout@v4
+   build:
+      runs-on: ubuntu-latest
+      outputs:
+         image-tag: ${{ steps.branch.outputs.IMAGE_TAG }}
+         test-image: ${{ steps.branch.outputs.TEST_IMAGE_REPO }}@${{ steps.test-image.outputs.digest }}
+      steps:
+         - uses: actions/checkout@v4
 
-      - name: Get branches and generate tags
-        id: branch
-        run: |
-          if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
-            BRANCH_NAME=$(echo ${GITHUB_HEAD_REF})
-          else
-            BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
-          fi
+         - name: Get branches and generate tags
+           id: branch
+           run: |
+              if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
+                BRANCH_NAME=$(echo ${GITHUB_HEAD_REF})
+              else
+                BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
+              fi
 
-          if [[ "$BRANCH_NAME" =~ [A-Z] ]]; then
-            echo "Error: Branch name must be lowercase"
-            exit 1
-          fi
+              if [[ "$BRANCH_NAME" =~ [A-Z] ]]; then
+                echo "Error: Branch name must be lowercase"
+                exit 1
+              fi
 
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
+              echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
-          # Get all branches that contain the current commit
-          git fetch --all
-          ALL_BRANCHES=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ',' | sed 's/,$//')
-          echo "ALL_BRANCHES=$ALL_BRANCHES" >> $GITHUB_OUTPUT
+              # Get all branches that contain the current commit
+              git fetch --all
+              ALL_BRANCHES=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ',' | sed 's/,$//')
+              echo "ALL_BRANCHES=$ALL_BRANCHES" >> $GITHUB_OUTPUT
 
-          # Create colon-delimited list for GIT_BRANCH build arg
-          BRANCHES_LIST=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ':' | sed 's/:$//')
-          echo "BRANCHES_LIST=$BRANCHES_LIST" >> $GITHUB_OUTPUT
+              # Create colon-delimited list for GIT_BRANCH build arg
+              BRANCHES_LIST=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ':' | sed 's/:$//')
+              echo "BRANCHES_LIST=$BRANCHES_LIST" >> $GITHUB_OUTPUT
 
-          # Generate tags for all branches
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          COMMIT_SHA="${{ github.sha }}"
-          SHORT_SHA="${COMMIT_SHA:0:7}"
-          CURRENT_BRANCH="$BRANCH_NAME"
+              # Generate tags for all branches
+              OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+              COMMIT_SHA="${{ github.sha }}"
+              SHORT_SHA="${COMMIT_SHA:0:7}"
+              CURRENT_BRANCH="$BRANCH_NAME"
 
-          TAGS=""
+              TAGS=""
 
-          # Always add commit tag
-          TAGS="ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA"
+              # Always add commit tag
+              TAGS="ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA"
 
-          # Don't add latest tag here - will be added after quality checks pass
+              # Don't add latest tag here - will be added after quality checks pass
 
-          # Add tag for each branch containing this commit
-          IFS=',' read -ra BRANCH_ARRAY <<< "$ALL_BRANCHES"
-          for branch in "${BRANCH_ARRAY[@]}"; do
-            # Skip empty entries and clean up whitespace
-            branch=$(echo "$branch" | xargs)
-            if [[ -n "$branch" && "$branch" != "main" ]]; then
-              TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$branch"
-            fi
-          done
+              # Add tag for each branch containing this commit
+              IFS=',' read -ra BRANCH_ARRAY <<< "$ALL_BRANCHES"
+              for branch in "${BRANCH_ARRAY[@]}"; do
+                # Skip empty entries and clean up whitespace
+                branch=$(echo "$branch" | xargs)
+                if [[ -n "$branch" && "$branch" != "main" ]]; then
+                  TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$branch"
+                fi
+              done
 
-          # Add tag for current branch if it's different and not already covered
-          if [[ "$CURRENT_BRANCH" != "main" && "$ALL_BRANCHES" != *"$CURRENT_BRANCH"* ]]; then
-            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$CURRENT_BRANCH"
-          fi
+              # Add tag for current branch if it's different and not already covered
+              if [[ "$CURRENT_BRANCH" != "main" && "$ALL_BRANCHES" != *"$CURRENT_BRANCH"* ]]; then
+                TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$CURRENT_BRANCH"
+              fi
 
-          # Handle pull request tags
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:latest-$CURRENT_BRANCH"
-          fi
+              # Handle pull request tags
+              if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+                TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:latest-$CURRENT_BRANCH"
+              fi
 
-          # Handle tag releases
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG_NAME="${{ github.ref_name }}"
-            TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:$TAG_NAME"
-          fi
+              # Handle tag releases
+              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+                TAG_NAME="${{ github.ref_name }}"
+                TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:$TAG_NAME"
+              fi
 
-          echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
+              echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
 
-          # Export the commit-specific tag for quality checks
-          echo "IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA" >> $GITHUB_OUTPUT
+              # Export the commit-specific tag for quality checks
+              echo "IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA" >> $GITHUB_OUTPUT
 
-          # The test image is handed to the integration suite by digest, so this tag only exists to keep the
-          # version reachable in GHCR; one per branch rather than one per commit.
-          echo "TEST_IMAGE_REPO=ghcr.io/$OWNER/squad-layer-manager" >> $GITHUB_OUTPUT
-          echo "TEST_IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:test-$BRANCH_NAME" >> $GITHUB_OUTPUT
+              # The test image is handed to the integration suite by digest, so this tag only exists to keep the
+              # version reachable in GHCR; one per branch rather than one per commit.
+              echo "TEST_IMAGE_REPO=ghcr.io/$OWNER/squad-layer-manager" >> $GITHUB_OUTPUT
+              echo "TEST_IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:test-$BRANCH_NAME" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+         - name: Set up Docker Buildx
+           uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+         - name: Login to GitHub Container Registry
+           uses: docker/login-action@v3
+           with:
+              registry: ghcr.io
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and tag Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: runtime
-          push: true
-          cache-from: type=gha
-          build-args: |
-            GIT_SHA=${{ github.sha }}
-            GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-          tags: ${{ steps.branch.outputs.TAGS }}
+         - name: Build and tag Docker image
+           uses: docker/build-push-action@v6
+           with:
+              context: .
+              target: runtime
+              push: true
+              cache-from: type=gha
+              build-args: |
+                 GIT_SHA=${{ github.sha }}
+                 GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
+              tags: ${{ steps.branch.outputs.TAGS }}
 
-      # The test stage is `FROM runtime`, so building it here costs only the layers the tests add: the runtime
-      # graph is already in this builder. The integration suite then pulls it by digest instead of rebuilding
-      # the whole thing (rust wasm, pnpm install, vite build) in a parallel job with a cold cache.
-      # cache-to only on this build: exporting the test graph exports the runtime and builder stages with it.
-      - name: Build and push test image
-        id: test-image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: test
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            GIT_SHA=${{ github.sha }}
-            GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-          tags: ${{ steps.branch.outputs.TEST_IMAGE_TAG }}
+         # The test stage is `FROM runtime`, so building it here costs only the layers the tests add: the runtime
+         # graph is already in this builder. The integration suite then pulls it by digest instead of rebuilding
+         # the whole thing (rust wasm, pnpm install, vite build) in a parallel job with a cold cache.
+         # cache-to only on this build: exporting the test graph exports the runtime and builder stages with it.
+         - name: Build and push test image
+           id: test-image
+           uses: docker/build-push-action@v6
+           with:
+              context: .
+              target: test
+              push: true
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
+              build-args: |
+                 GIT_SHA=${{ github.sha }}
+                 GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
+              tags: ${{ steps.branch.outputs.TEST_IMAGE_TAG }}
 
-  quality-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+   quality-checks:
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
+         - name: Setup Node.js
+           uses: actions/setup-node@v4
+           with:
+              node-version: '24'
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.22.0
+         - name: Install pnpm
+           uses: pnpm/action-setup@v4
+           with:
+              version: 10.22.0
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+         - name: Install dependencies
+           run: pnpm install --frozen-lockfile
 
-      - name: Run type checking
-        run: pnpm run check
+         - name: Run type checking
+           run: pnpm run check
 
-      - name: Run format checking
-        run: pnpm run format:check
+         - name: Run format checking
+           run: pnpm run format:check
 
-      - name: Run linting
-        run: pnpm run lint
+         - name: Run linting
+           run: pnpm run lint
 
-      - name: Run tests
-        run: pnpm run test
+         - name: Run tests
+           run: pnpm run test
 
-  # the integration/e2e suites, called as a job so that tagging and deploying can gate on them. Runs the test
-  # image the build job already produced rather than building its own.
-  integration-tests:
-    needs: build
-    uses: ./.github/workflows/integration-tests.yml
-    permissions:
-      contents: read
-      packages: read
-    with:
-      test-image: ${{ needs.build.outputs.test-image }}
+   # the integration/e2e suites, called as a job so that tagging and deploying can gate on them. Runs the test
+   # image the build job already produced rather than building its own.
+   integration-tests:
+      needs: build
+      uses: ./.github/workflows/integration-tests.yml
+      permissions:
+         contents: read
+         packages: read
+      with:
+         test-image: ${{ needs.build.outputs.test-image }}
 
-  tag-latest:
-    runs-on: ubuntu-latest
-    needs: [build, quality-checks, integration-tests]
-    if: github.ref == 'refs/heads/main'
-    outputs:
-      is-current: ${{ steps.tip.outputs.IS_CURRENT }}
-    steps:
-      # runs gated on the integration suite can finish out of order, so an older
-      # commit's run must not clobber :latest (or deploy) behind a newer one
-      - name: Check this commit is still the tip of main
-        id: tip
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TIP_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq '.sha')
-          if [[ "$TIP_SHA" == "${{ github.sha }}" ]]; then
-            echo "IS_CURRENT=true" >> $GITHUB_OUTPUT
-          else
-            echo "IS_CURRENT=false" >> $GITHUB_OUTPUT
-            echo "::notice::main has moved to $TIP_SHA; skipping latest tag and deploy for ${{ github.sha }}"
-          fi
+   tag-latest:
+      runs-on: ubuntu-latest
+      needs: [build, quality-checks, integration-tests]
+      if: github.ref == 'refs/heads/main'
+      outputs:
+         is-current: ${{ steps.tip.outputs.IS_CURRENT }}
+      steps:
+         # runs gated on the integration suite can finish out of order, so an older
+         # commit's run must not clobber :latest (or deploy) behind a newer one
+         - name: Check this commit is still the tip of main
+           id: tip
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           run: |
+              TIP_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq '.sha')
+              if [[ "$TIP_SHA" == "${{ github.sha }}" ]]; then
+                echo "IS_CURRENT=true" >> $GITHUB_OUTPUT
+              else
+                echo "IS_CURRENT=false" >> $GITHUB_OUTPUT
+                echo "::notice::main has moved to $TIP_SHA; skipping latest tag and deploy for ${{ github.sha }}"
+              fi
 
-      - name: Login to GitHub Container Registry
-        if: steps.tip.outputs.IS_CURRENT == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+         - name: Login to GitHub Container Registry
+           if: steps.tip.outputs.IS_CURRENT == 'true'
+           uses: docker/login-action@v3
+           with:
+              registry: ghcr.io
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag image as latest
-        if: steps.tip.outputs.IS_CURRENT == 'true'
-        run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          COMMIT_TAG="${{ needs.build.outputs.image-tag }}"
-          LATEST_TAG="ghcr.io/$OWNER/squad-layer-manager:latest"
+         - name: Tag image as latest
+           if: steps.tip.outputs.IS_CURRENT == 'true'
+           run: |
+              OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+              COMMIT_TAG="${{ needs.build.outputs.image-tag }}"
+              LATEST_TAG="ghcr.io/$OWNER/squad-layer-manager:latest"
 
-          # Tag the commit-tagged image as latest without pulling/pushing
-          docker buildx imagetools create --tag $LATEST_TAG $COMMIT_TAG
+              # Tag the commit-tagged image as latest without pulling/pushing
+              docker buildx imagetools create --tag $LATEST_TAG $COMMIT_TAG
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [build, quality-checks, integration-tests, tag-latest]
-    if: github.ref == 'refs/heads/main' && needs.tag-latest.outputs.is-current == 'true'
-    steps:
-      - name: Run deployment script from variable
-        env:
-          SECRETS_JSON: ${{ toJSON(secrets) }}
-          GITHUB_REF: ${{ github.ref }}
-          DEPLOY_SCRIPT: ${{ vars.DEPLOY_JOB_SCRIPT }}
-        run: |
-          set -e
+   deploy:
+      runs-on: ubuntu-latest
+      needs: [build, quality-checks, integration-tests, tag-latest]
+      if: github.ref == 'refs/heads/main' && needs.tag-latest.outputs.is-current == 'true'
+      steps:
+         - name: Run deployment script from variable
+           env:
+              SECRETS_JSON: ${{ toJSON(secrets) }}
+              GITHUB_REF: ${{ github.ref }}
+              DEPLOY_SCRIPT: ${{ vars.DEPLOY_JOB_SCRIPT }}
+           run: |
+              set -e
 
-          # Export all secrets as environment variables
-          echo "$SECRETS_JSON" | jq -r 'to_entries[] | "export \(.key)=\"\(.value)\""' > /tmp/secrets.env
-          source /tmp/secrets.env
-          rm -f /tmp/secrets.env
+              # Export all secrets as environment variables
+              echo "$SECRETS_JSON" | jq -r 'to_entries[] | "export \(.key)=\"\(.value)\""' > /tmp/secrets.env
+              source /tmp/secrets.env
+              rm -f /tmp/secrets.env
 
-          # Convert line endings and run the deployment script
-          echo "$DEPLOY_SCRIPT" | tr -d '\r' | bash
+              # Convert line endings and run the deployment script
+              echo "$DEPLOY_SCRIPT" | tr -d '\r' | bash

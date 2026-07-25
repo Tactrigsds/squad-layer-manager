@@ -1,3 +1,7 @@
+import type React from 'react'
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
+
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
@@ -11,9 +15,6 @@ import type * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import type React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 export type ApplyAs = 'regular' | 'inverted' | 'disabled'
 
@@ -40,18 +41,14 @@ export type Context = 'add' | 'edit' | 'generate'
 
 export type Args = FRM.SetupArgs<{ context: Context; editedLayerId?: L.LayerId; extraFiltersScope?: 'global' | 'local' }, Store>
 
-export function initAppliedFiltersStore(
-	args: Args,
-) {
+export function initAppliedFiltersStore(args: Args) {
 	const set = ZusUtils.toPartialSetter(args.set, 'appliedFilters')
 	const localScope = args.input.extraFiltersScope === 'local'
-	set(
-		{
-			poolApplyAs: 'regular',
-			filterStates: new Map(),
-			localExtraFilters: localScope ? new Set<F.FilterEntityId>() : undefined,
-		} satisfies AppliedFiltersSlice,
-	)
+	set({
+		poolApplyAs: 'regular',
+		filterStates: new Map(),
+		localExtraFilters: localScope ? new Set<F.FilterEntityId>() : undefined,
+	} satisfies AppliedFiltersSlice)
 
 	// filter entities stream in over the websocket after boot, so a frame can be set up before they land (the
 	// explore-layers frame is built in the /_app loader). seeding synchronously would drop every configured pool filter
@@ -76,10 +73,10 @@ export function initAppliedFiltersStore(
 	})()
 
 	if (!localScope) {
-		const unsub = ExtraFiltersStore.subscribe(extraFiltersState => {
+		const unsub = ExtraFiltersStore.subscribe((extraFiltersState) => {
 			// only extra filters are owned by this store -- the pool's configured filters keep their state
 			const poolFilterIds = getDefaultSelectableIds(args.get().squadServer)
-			set(state => ({
+			set((state) => ({
 				filterStates: new Map(
 					Gen.filter(state.filterStates, ([id]) => extraFiltersState.extraFilters.has(id) || poolFilterIds.has(id)),
 				),
@@ -93,7 +90,7 @@ export function initAppliedFiltersStore(
 function getDefaultSelectableIds(squadServer: SquadServerFrame.Key | undefined) {
 	if (!squadServer) return new Set<F.FilterEntityId>()
 	const pool = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool
-	return new Set(pool.defaultSelectable.map(c => c.filterId))
+	return new Set(pool.defaultSelectable.map((c) => c.filterId))
 }
 
 function getInitialFilterStates(context: Context, squadServer: SquadServerFrame.Key | undefined, localScope = false) {
@@ -136,9 +133,9 @@ export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((se
 	void (async () => {
 		await sleep(0)
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		set(state => ({
+		set((state) => ({
 			...state,
-			extraFilters: new Set(Gen.filter(state.extraFilters.values(), f => filterEntities.has(f))),
+			extraFilters: new Set(Gen.filter(state.extraFilters.values(), (f) => filterEntities.has(f))),
 		}))
 	})()
 
@@ -184,11 +181,13 @@ export namespace Sel {
 		const extras = extraFilters(store)
 		for (const [filterId, applState] of store.appliedFilters.filterStates.entries()) {
 			if (!filterEntities.has(filterId)) continue
-			constraints.push(CB.filterEntity('applied-filter:' + filterId, filterId, {
-				filterApplState: applState,
-				// configured filters get their indication from the indicate lists; extras always indicate
-				showIndicator: extras.has(filterId) ? 'both' : 'disabled',
-			}))
+			constraints.push(
+				CB.filterEntity('applied-filter:' + filterId, filterId, {
+					filterApplState: applState,
+					// configured filters get their indication from the indicate lists; extras always indicate
+					showIndicator: extras.has(filterId) ? 'both' : 'disabled',
+				}),
+			)
 		}
 
 		return constraints
@@ -201,7 +200,7 @@ export namespace Actions {
 	}
 
 	export function setAppliedFilterState(stores: KeyProp, filterId: F.FilterEntityId, applyAs: ApplyAs) {
-		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(state => {
+		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState((state) => {
 			const filterStates = new Map(state.filterStates)
 			filterStates.set(filterId, applyAs)
 			return { filterStates }
@@ -209,7 +208,7 @@ export namespace Actions {
 	}
 
 	export function disableAllAppliedFilters(stores: KeyProp) {
-		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(state => {
+		ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState((state) => {
 			const filterStates = new Map(state.filterStates)
 			for (const filterId of filterStates.keys()) {
 				filterStates.set(filterId, 'disabled')
@@ -227,19 +226,17 @@ export namespace Actions {
 			const pool = SquadServerFrame.Sel.settings(ZusUtils.getState(squadServer)).queue.mainPool
 			const configuredIds = new Set([
 				...(pool.poolFilter ? [pool.poolFilter.filterId] : []),
-				...pool.defaultSelectable.map(c => c.filterId),
+				...pool.defaultSelectable.map((c) => c.filterId),
 			])
-			filterIds = filterIds.filter(id => !configuredIds.has(id))
+			filterIds = filterIds.filter((id) => !configuredIds.has(id))
 		}
 		if (state.appliedFilters.localExtraFilters) {
 			const localExtraFilters = new Set(filterIds)
 			// mirror the global-scope subscription: dropping an extra drops its applied state too
 			const poolFilterIds = getDefaultSelectableIds(squadServer)
-			ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState(slice => ({
+			ZusUtils.toPartialStore(stores.appliedFilters, 'appliedFilters').setState((slice) => ({
 				localExtraFilters,
-				filterStates: new Map(
-					Gen.filter(slice.filterStates, ([id]) => localExtraFilters.has(id) || poolFilterIds.has(id)),
-				),
+				filterStates: new Map(Gen.filter(slice.filterStates, ([id]) => localExtraFilters.has(id) || poolFilterIds.has(id))),
 			}))
 			return
 		}
@@ -249,8 +246,8 @@ export namespace Actions {
 	}
 
 	export function removeExtraFilter(filterId: F.FilterEntityId) {
-		ExtraFiltersStore.setState(state => ({
-			extraFilters: new Set(Gen.filter(state.extraFilters, id => id !== filterId)),
+		ExtraFiltersStore.setState((state) => ({
+			extraFilters: new Set(Gen.filter(state.extraFilters, (id) => id !== filterId)),
 		}))
 	}
 }

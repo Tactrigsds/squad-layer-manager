@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useDebounced } from '@/hooks/use-debounce.ts'
@@ -10,8 +13,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'
@@ -81,9 +83,9 @@ function HelpTooltip({ label, trigger, children }: { label: string; trigger?: Re
 
 function getMissingIndicatorFields(entity: F.FilterEntity, kind: 'match' | 'miss'): string[] {
 	if (kind === 'match') {
-		return [!entity.emoji && 'match emoji', !entity.alertMessage && 'match alert message'].filter(v => typeof v === 'string')
+		return [!entity.emoji && 'match emoji', !entity.alertMessage && 'match alert message'].filter((v) => typeof v === 'string')
 	}
-	return [!entity.invertedEmoji && 'miss emoji', !entity.invertedAlertMessage && 'miss alert message'].filter(v => typeof v === 'string')
+	return [!entity.invertedEmoji && 'miss emoji', !entity.invertedAlertMessage && 'miss alert message'].filter((v) => typeof v === 'string')
 }
 
 // warns that a filter used as an indicator is missing the entity fields the indicator renders from; links to the
@@ -125,9 +127,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 		if (poolFilter && mode) api.set(['poolFilter', 'mode'], mode)
 	}
 
-	const missingIndicators = entity
-		? [...getMissingIndicatorFields(entity, 'match'), ...getMissingIndicatorFields(entity, 'miss')]
-		: []
+	const missingIndicators = entity ? [...getMissingIndicatorFields(entity, 'match'), ...getMissingIndicatorFields(entity, 'miss')] : []
 
 	return (
 		<div className="space-y-3">
@@ -143,15 +143,13 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 						The toggle in front of the filter flips it between including its matching layers in the pool and excluding them from it.
 					</p>
 					<p>
-						The filter's match indicators (emoji and alert message, plus the inverted pair for misses) are what mark a layer as in or out of
-						the pool across the app, so the pool filter needs all of them configured.
+						The filter's match indicators (emoji and alert message, plus the inverted pair for misses) are what mark a layer as in or
+						out of the pool across the app, so the pool filter needs all of them configured.
 					</p>
 				</HelpTooltip>
 			</span>
 			<div className="border rounded-md p-3 space-y-2">
-				<p className="text-xs text-muted-foreground">
-					The single filter deciding which layers are in the server's layer pool
-				</p>
+				<p className="text-xs text-muted-foreground">The single filter deciding which layers are in the server's layer pool</p>
 				<div className="flex items-center gap-2">
 					<InvertToggle
 						pressed={poolFilter?.mode === 'exclude'}
@@ -167,17 +165,11 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 						enabled={!api.writeDenied}
 					/>
 				</div>
-				{!poolFilter && (
-					<p className="text-sm text-muted-foreground">
-						No pool filter configured: every layer is in the pool.
-					</p>
-				)}
+				{!poolFilter && <p className="text-sm text-muted-foreground">No pool filter configured: every layer is in the pool.</p>}
 				{entity && missingIndicators.length > 0 && (
 					<Alert variant="destructive">
 						<AlertDescription className="flex items-center gap-1">
-							<span>
-								The pool filter must have match and miss indicators configured. Missing: {missingIndicators.join(', ')}.
-							</span>
+							<span>The pool filter must have match and miss indicators configured. Missing: {missingIndicators.join(', ')}.</span>
 							<FilterEntityLink filterId={entity.id} />
 						</AlertDescription>
 					</Alert>
@@ -249,9 +241,9 @@ const SELECTABLE_STATE_TITLES: Record<SETTINGS.SelectableFilterApplyAs, string> 
 function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: SecondaryListConfig }) {
 	const path = [config.key]
 	const rawValue = (api.useValue(path) as (string | SETTINGS.AppliedFilterSetting | SETTINGS.SelectableFilterSetting)[] | null) ?? []
-	const entries = rawValue.map(v => typeof v === 'string' ? { filterId: v, applyAs: undefined } : v)
+	const entries = rawValue.map((v) => (typeof v === 'string' ? { filterId: v, applyAs: undefined } : v))
 	const filterEntities = FilterEntityClient.useFilterEntities()
-	const memberIds = entries.map(e => e.filterId)
+	const memberIds = entries.map((e) => e.filterId)
 
 	const add = (filterId: string | null) => {
 		if (filterId === null) return
@@ -260,7 +252,10 @@ function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: Seco
 	}
 	const remove = (filterId: string) => {
 		const current = (api.getValue(path) as (string | SETTINGS.AppliedFilterSetting | SETTINGS.SelectableFilterSetting)[] | null) ?? []
-		api.set(path, current.filter(v => (typeof v === 'string' ? v : v.filterId) !== filterId))
+		api.set(
+			path,
+			current.filter((v) => (typeof v === 'string' ? v : v.filterId) !== filterId),
+		)
 	}
 	const setApplyAs = (index: number, applyAs?: SETTINGS.SelectableFilterApplyAs) => {
 		if (!applyAs) return
@@ -370,8 +365,8 @@ function SkipWarningsForTagsSection({ api }: { api: PoolConfigApi }) {
 				<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Skip warnings for</h4>
 				<HelpTooltip label="About skipping warnings">
 					<p>
-						A queue item carrying any of these tags raises no warnings: none in the save dialog, and none in the admin reminder sent before
-						it is played.
+						A queue item carrying any of these tags raises no warnings: none in the save dialog, and none in the admin reminder sent
+						before it is played.
 					</p>
 					<p>Out-of-pool layers still need the force-write permission to save, and indicators still display as usual.</p>
 				</HelpTooltip>
@@ -382,7 +377,12 @@ function SkipWarningsForTagsSection({ api }: { api: PoolConfigApi }) {
 						tags={tags}
 						disabled={!!api.writeDenied}
 						onAdd={(tag) => api.set(path, [...((api.getValue(path) as LTag.TagId[] | null) ?? []), tag])}
-						onRemove={(tag) => api.set(path, ((api.getValue(path) as LTag.TagId[] | null) ?? []).filter(t => t !== tag))}
+						onRemove={(tag) =>
+							api.set(
+								path,
+								((api.getValue(path) as LTag.TagId[] | null) ?? []).filter((t) => t !== tag),
+							)
+						}
 					/>
 				</PermissionDeniedTooltip>
 			</div>
@@ -400,15 +400,17 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Secondary Filters</h4>
 					<HelpTooltip label="About secondary filters">
 						<p>
-							Secondary filters never decide what is in the pool; they add behavior on top of it: displaying match or miss indicators on
-							layers, being offered during layer selection, warning when a matching layer is queued or about to be played, and further
-							constraining autogeneration.
+							Secondary filters never decide what is in the pool; they add behavior on top of it: displaying match or miss indicators
+							on layers, being offered during layer selection, warning when a matching layer is queued or about to be played, and
+							further constraining autogeneration.
 						</p>
 						<p>A filter can appear in several of these lists at once.</p>
 					</HelpTooltip>
 				</span>
 				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-					{SECONDARY_LISTS.map((config) => <SecondaryFilterList key={config.key} api={api} config={config} />)}
+					{SECONDARY_LISTS.map((config) => (
+						<SecondaryFilterList key={config.key} api={api} config={config} />
+					))}
 				</div>
 			</div>
 		</div>
@@ -419,7 +421,7 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 // is gated on write access to exactly that setting. Descriptions come from the schema so they can't drift from the
 // ones the settings page shows.
 export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnNextLayerChange'] as const
-export type NextLayerSettingKey = typeof NEXT_LAYER_SETTING_KEYS[number]
+export type NextLayerSettingKey = (typeof NEXT_LAYER_SETTING_KEYS)[number]
 
 const NEXT_LAYER_LABELS: Record<NextLayerSettingKey, string> = {
 	overrideAdminSetNextLayer: 'Override the next layer when it is set outside SLM',
@@ -441,7 +443,9 @@ function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; la
 				/>
 			</PermissionDeniedTooltip>
 			<div className="min-w-0 space-y-1">
-				<Label htmlFor={id} className="cursor-pointer font-medium">{label}</Label>
+				<Label htmlFor={id} className="cursor-pointer font-medium">
+					{label}
+				</Label>
 				<p className="text-sm text-muted-foreground">{description}</p>
 			</div>
 		</div>
@@ -510,7 +514,10 @@ function RepeatRuleRow(props: {
 
 	const deleteRule = () => {
 		const rules = api.getValue(rulesPath) as LQY.RepeatRule[]
-		api.set(rulesPath, rules.filter((_, i) => i !== index))
+		api.set(
+			rulesPath,
+			rules.filter((_, i) => i !== index),
+		)
 		onStructural()
 	}
 
@@ -606,13 +613,7 @@ function RepeatRuleRow(props: {
 			</div>
 			<div className="contents">
 				<PermissionDeniedTooltip denied={api.writeDenied}>
-					<Button
-						size="icon"
-						variant="outline"
-						onClick={deleteRule}
-						disabled={!!api.writeDenied}
-						className="h-8 w-8"
-					>
+					<Button size="icon" variant="outline" onClick={deleteRule} disabled={!!api.writeDenied} className="h-8 w-8">
 						<Icons.Minus className="h-4 w-4" />
 					</Button>
 				</PermissionDeniedTooltip>
@@ -621,10 +622,7 @@ function RepeatRuleRow(props: {
 	)
 }
 
-export function RepeatRulesPanel(props: {
-	className?: string
-	api: PoolConfigApi
-}) {
+export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi }) {
 	const { api } = props
 	const rulesPath = ['repeatRules']
 	const rulesLength = ((api.useValue(rulesPath) as LQY.RepeatRule[] | null) ?? []).length
@@ -641,18 +639,11 @@ export function RepeatRulesPanel(props: {
 		<div className={cn('space-y-3', props.className)}>
 			<div className="flex items-center justify-between">
 				<span className="flex items-center gap-2">
-					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>
-						Repeat Rules
-					</h4>
+					<h4 className={cn(Typography.H4, 'text-sm font-medium text-muted-foreground')}>Repeat Rules</h4>
 					<ConstraintViolationIcon />
 				</span>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={!!api.writeDenied}
-						onClick={addRule}
-					>
+					<Button size="sm" variant="outline" disabled={!!api.writeDenied} onClick={addRule}>
 						<Icons.Plus className="h-4 w-4 mr-2" />
 						Add Repeat Rule
 					</Button>
@@ -671,7 +662,9 @@ export function RepeatRulesPanel(props: {
 						<div>Target Values</div>
 						<div>
 							<HelpTooltip label="About repeat rule warnings" trigger="Warn">
-								<p>Warn the editor before saving a layer that violates this rule, and in-game admins when one is about to be played</p>
+								<p>
+									Warn the editor before saving a layer that violates this rule, and in-game admins when one is about to be played
+								</p>
 							</HelpTooltip>
 						</div>
 						<div>
@@ -683,12 +676,7 @@ export function RepeatRulesPanel(props: {
 					</div>
 					{/* Rules; keyed on resetKey/structuralKey too so uncontrolled inputs re-seed after structural changes/resets */}
 					{Array.from({ length: rulesLength }, (_, index) => (
-						<RepeatRuleRow
-							key={`${api.resetKey}:${structuralKey}:${index}`}
-							index={index}
-							api={api}
-							onStructural={onStructural}
-						/>
+						<RepeatRuleRow key={`${api.resetKey}:${structuralKey}:${index}`} index={index} api={api} onStructural={onStructural} />
 					))}
 				</div>
 			</div>

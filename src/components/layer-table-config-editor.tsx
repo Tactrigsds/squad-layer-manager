@@ -1,3 +1,7 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+import type * as Rx from 'rxjs'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import { Comparison } from '@/components/filter-card'
 import { Button } from '@/components/ui/button'
@@ -10,20 +14,30 @@ import type * as LQY from '@/models/layer-queries.models'
 import { LAYERS_QUERY_SORT_DIRECTION } from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import type * as Rx from 'rxjs'
 
 type LayerTableConfig = LQY.LayerTableConfig
 
 // a fresh comparison for a new "extra menu item": column unset so the user picks it in the widget
 function blankComp(): F.EditableCompNode {
-	return { type: 'eq', neg: false, args: [{ type: 'column', column: undefined }, { type: 'value', value: undefined }] }
+	return {
+		type: 'eq',
+		neg: false,
+		args: [
+			{ type: 'column', column: undefined },
+			{ type: 'value', value: undefined },
+		],
+	}
 }
 
-export default function LayerTableConfigEditor(
-	{ value, onChange, reset$ }: { value: LayerTableConfig; onChange: (next: LayerTableConfig) => void; reset$: Rx.Subject<void> },
-) {
+export default function LayerTableConfigEditor({
+	value,
+	onChange,
+	reset$,
+}: {
+	value: LayerTableConfig
+	onChange: (next: LayerTableConfig) => void
+	reset$: Rx.Subject<void>
+}) {
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const columnOptions = React.useMemo(() => {
 		if (!cfg) return []
@@ -52,13 +66,15 @@ function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: st
 	)
 }
 
-function ColumnsSection(
-	{ value, patch, columnOptions }: {
-		value: LayerTableConfig
-		patch: (next: Partial<LayerTableConfig>) => void
-		columnOptions: { value: string; label: string }[]
-	},
-) {
+function ColumnsSection({
+	value,
+	patch,
+	columnOptions,
+}: {
+	value: LayerTableConfig
+	patch: (next: Partial<LayerTableConfig>) => void
+	columnOptions: { value: string; label: string }[]
+}) {
 	const columns = value.orderedColumns
 	const addOptions = columnOptions.filter((o) => !columns.some((c) => c.name === o.value))
 
@@ -66,22 +82,24 @@ function ColumnsSection(
 	// but reads the latest columns/patch off a ref, so reordering doesn't depend on re-registering on every edit.
 	const stateRef = React.useRef({ columns, patch })
 	stateRef.current = { columns, patch }
-	DndKit.useDragEnd(React.useCallback((evt) => {
-		const { active, over } = evt
-		if (active.type !== 'layer-table-column' || !over) return
-		const slot = over.slots.find((s) => s.dragItem.type === 'layer-table-column')
-		if (!slot) return
-		const targetName = String(slot.dragItem.id)
-		if (targetName === active.id) return
-		const { columns, patch } = stateRef.current
-		const moved = columns.find((c) => c.name === active.id)
-		if (!moved) return
-		const without = columns.filter((c) => c.name !== active.id)
-		let insertAt = without.findIndex((c) => c.name === targetName)
-		if (insertAt < 0) return
-		if (slot.position === 'after') insertAt += 1
-		patch({ orderedColumns: [...without.slice(0, insertAt), moved, ...without.slice(insertAt)] })
-	}, []))
+	DndKit.useDragEnd(
+		React.useCallback((evt) => {
+			const { active, over } = evt
+			if (active.type !== 'layer-table-column' || !over) return
+			const slot = over.slots.find((s) => s.dragItem.type === 'layer-table-column')
+			if (!slot) return
+			const targetName = String(slot.dragItem.id)
+			if (targetName === active.id) return
+			const { columns, patch } = stateRef.current
+			const moved = columns.find((c) => c.name === active.id)
+			if (!moved) return
+			const without = columns.filter((c) => c.name !== active.id)
+			let insertAt = without.findIndex((c) => c.name === targetName)
+			if (insertAt < 0) return
+			if (slot.position === 'after') insertAt += 1
+			patch({ orderedColumns: [...without.slice(0, insertAt), moved, ...without.slice(insertAt)] })
+		}, []),
+	)
 
 	function setVisible(name: string, visible: boolean) {
 		patch({ orderedColumns: columns.map((c) => (c.name === name ? { ...c, visible } : c)) })
@@ -126,14 +144,17 @@ function ColumnDropSeparator({ position, columnName }: { position: 'before' | 'a
 	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
 }
 
-function ColumnRow(
-	{ col, index, onToggleVisible, onRemove }: {
-		col: { name: string; visible?: boolean }
-		index: number
-		onToggleVisible: (visible: boolean) => void
-		onRemove: () => void
-	},
-) {
+function ColumnRow({
+	col,
+	index,
+	onToggleVisible,
+	onRemove,
+}: {
+	col: { name: string; visible?: boolean }
+	index: number
+	onToggleVisible: (visible: boolean) => void
+	onRemove: () => void
+}) {
 	const drag = DndKit.useDraggable({ type: 'layer-table-column', id: col.name }, { feedback: 'default' })
 	return (
 		<li
@@ -157,14 +178,17 @@ function ColumnRow(
 	)
 }
 
-function SortSection(
-	{ value, patch, columnOptions, reset$ }: {
-		value: LayerTableConfig
-		patch: (next: Partial<LayerTableConfig>) => void
-		columnOptions: { value: string; label: string }[]
-		reset$: Rx.Subject<void>
-	},
-) {
+function SortSection({
+	value,
+	patch,
+	columnOptions,
+	reset$,
+}: {
+	value: LayerTableConfig
+	patch: (next: Partial<LayerTableConfig>) => void
+	columnOptions: { value: string; label: string }[]
+	reset$: Rx.Subject<void>
+}) {
 	const sort = value.defaultSortBy
 
 	return (
@@ -206,13 +230,19 @@ function SortSection(
 						/>
 						<Select
 							value={sort.direction ?? 'ASC'}
-							onValueChange={(direction) => patch({ defaultSortBy: { ...sort, direction: direction as LQY.LayersQuerySortDirection } })}
+							onValueChange={(direction) =>
+								patch({ defaultSortBy: { ...sort, direction: direction as LQY.LayersQuerySortDirection } })
+							}
 						>
 							<SelectTrigger className="w-[130px]">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{LAYERS_QUERY_SORT_DIRECTION.options.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+								{LAYERS_QUERY_SORT_DIRECTION.options.map((d) => (
+									<SelectItem key={d} value={d}>
+										{d}
+									</SelectItem>
+								))}
 							</SelectContent>
 						</Select>
 					</>
@@ -241,9 +271,7 @@ function SeedInput({ seed, onChange, reset$ }: { seed: string | undefined; onCha
 	)
 }
 
-function ExtraMenuItemsSection(
-	{ value, patch }: { value: LayerTableConfig; patch: (next: Partial<LayerTableConfig>) => void },
-) {
+function ExtraMenuItemsSection({ value, patch }: { value: LayerTableConfig; patch: (next: Partial<LayerTableConfig>) => void }) {
 	const items = value.extraLayerSelectMenuItems ?? []
 
 	function setItem(idx: number, node: F.EditableCompNode) {
@@ -269,7 +297,13 @@ function ExtraMenuItemsSection(
 								setNode={(update) => setItem(idx, typeof update === 'function' ? update(item as F.EditableCompNode) : update)}
 							/>
 						</div>
-						<Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-destructive" onClick={() => remove(idx)}>
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8 shrink-0 text-destructive"
+							onClick={() => remove(idx)}
+						>
 							<Icons.X className="h-4 w-4" />
 						</Button>
 					</div>

@@ -6,7 +6,7 @@ import { Button, type ButtonProps } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const STATES = ['disabled', 'regular', 'inverted'] as const
-export type TriState = typeof STATES[number]
+export type TriState = (typeof STATES)[number]
 
 export interface TriStateCheckboxProps extends Omit<ButtonProps, 'onChange' | 'onClick' | 'onTouchEnd'> {
 	checked?: TriState

@@ -1,6 +1,7 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as BM from '@/models/battlemetrics.models'
 import * as PG from '@/models/player-groupings.models'
-import { describe, expect, it } from 'vitest'
 
 function flag(id: string, color: string | null = null): BM.PlayerFlag {
 	return { id, name: id, color, description: null, icon: null }
@@ -86,7 +87,7 @@ describe('getGroupNames', () => {
 
 describe('moveRule', () => {
 	const rules = [rule('a', 'A'), rule('b', 'B'), rule('c', 'C'), rule('d', 'D')]
-	const flags = (rs: PG.GroupRule[]) => rs.map((r) => r.type === 'battlemetrics' ? r.flag : '')
+	const flags = (rs: PG.GroupRule[]) => rs.map((r) => (r.type === 'battlemetrics' ? r.flag : ''))
 
 	it('moves a rule up, before and after the target', () => {
 		expect(flags(PG.moveRule(rules, 2, 0, 'before'))).toEqual(['c', 'a', 'b', 'd'])
@@ -175,8 +176,10 @@ describe('defaultGroupColor', () => {
 	it('references the first flag of the group that has a color', () => {
 		expect(PG.defaultGroupColor(GROUPING, 'HQ', ORG_FLAGS)).toEqual({ type: 'flag', flag: 'f-hq' })
 		// f-hq carries no color here, so the next flag of the group supplies it
-		expect(PG.defaultGroupColor(GROUPING, 'HQ', [flag('f-hq', null), flag('f-mod', '#0000ff')]))
-			.toEqual({ type: 'flag', flag: 'f-mod' })
+		expect(PG.defaultGroupColor(GROUPING, 'HQ', [flag('f-hq', null), flag('f-mod', '#0000ff')])).toEqual({
+			type: 'flag',
+			flag: 'f-mod',
+		})
 	})
 
 	// callers leave the entry out entirely, so the fallback covers it and a later flag pick can still seed it
@@ -197,7 +200,12 @@ describe('resolvePlayerGroups', () => {
 			['p2', withFlags('f-regular')],
 			['p3', withFlags('f-nothing')],
 		]
-		expect(PG.resolvePlayerGroups(players, groupings, 'admin')).toEqual(new Map([['p1', 'HQ'], ['p2', 'Regulars']]))
+		expect(PG.resolvePlayerGroups(players, groupings, 'admin')).toEqual(
+			new Map([
+				['p1', 'HQ'],
+				['p2', 'Regulars'],
+			]),
+		)
 		// the same roster buckets differently under another grouping -- that is the point of having several
 		expect(PG.resolvePlayerGroups(players, groupings, 'watchlist')).toEqual(new Map([['p2', 'Watched']]))
 	})
@@ -224,7 +232,9 @@ describe('PlayerGroupingsSchema', () => {
 		expect(parsed.a.rules).toEqual([adminRule('Whitelist', 'Members'), rule('f-hq', 'HQ')])
 		// each variant carries only its own source field
 		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', flag: 'f-hq', group: 'HQ' }] } }).success).toBe(false)
-		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', adminGroup: '', group: 'HQ' }] } }).success).toBe(false)
+		expect(PG.PlayerGroupingsSchema.safeParse({ a: { rules: [{ type: 'admin-list', adminGroup: '', group: 'HQ' }] } }).success).toBe(
+			false,
+		)
 	})
 
 	it('takes both color variants and rejects an untagged one', () => {

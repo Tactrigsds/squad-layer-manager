@@ -1,8 +1,10 @@
+import type pino from 'pino'
+
 import { anySignal, isAbortError } from '@/lib/async'
 import type * as F from '@/models/filter.models'
 import type * as LC from '@/models/layer-columns'
 import type * as MH from '@/models/match-history.models'
-import type pino from 'pino'
+
 import type * as LE from './layer-engine'
 
 const CtxSymbol = Symbol('context')

@@ -1,3 +1,7 @@
+import { useMutation } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -6,31 +10,28 @@ import { toast } from '@/lib/toast'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 import { invalidateLoggedInUser, useLoggedInUser } from '@/systems/users.client'
-import { useMutation } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
-export default function NicknameDialog(
-	props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void },
-) {
+export default function NicknameDialog(props: { children: React.ReactNode; open?: boolean; onOpenChange?: (newState: boolean) => void }) {
 	const user = useLoggedInUser()
 	const [nickname, setNickname] = React.useState('')
-	const updateNicknameMutation = useMutation(RPC.orpc.users.updateNickname.mutationOptions({
-		onSuccess: (result) => {
-			if (result.code === 'ok') {
-				UsersClient.invalidateLoggedInUser()
-				toast('Nickname updated successfully!')
-				invalidateLoggedInUser()
-				props.onOpenChange?.(false)
-			} else {
-				toast.error('Error updating nickname', { description: result.msg })
-			}
-		},
-		onError: (error) => {
-			toast.error('Failed to update nickname', { description: 'An unexpected error occurred' })
-			console.error('Error updating nickname:', error)
-		},
-	}))
+	const updateNicknameMutation = useMutation(
+		RPC.orpc.users.updateNickname.mutationOptions({
+			onSuccess: (result) => {
+				if (result.code === 'ok') {
+					UsersClient.invalidateLoggedInUser()
+					toast('Nickname updated successfully!')
+					invalidateLoggedInUser()
+					props.onOpenChange?.(false)
+				} else {
+					toast.error('Error updating nickname', { description: result.msg })
+				}
+			},
+			onError: (error) => {
+				toast.error('Failed to update nickname', { description: 'An unexpected error occurred' })
+				console.error('Error updating nickname:', error)
+			},
+		}),
+	)
 
 	// Update local state when user data changes or dialog opens
 	React.useEffect(() => {
@@ -64,14 +65,13 @@ export default function NicknameDialog(
 
 	return (
 		<Dialog modal open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogTrigger asChild>
-				{props.children}
-			</DialogTrigger>
+			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
 					<DialogTitle>Set Custom Nickname</DialogTitle>
 					<DialogDescription>
-						Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display name.
+						Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display
+						name.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -88,30 +88,19 @@ export default function NicknameDialog(
 							disabled={updateNicknameMutation.isPending}
 						/>
 						<div className="flex justify-between text-xs text-muted-foreground">
-							<span>
-								{nickname ? `Will display as: "${nickname.trim() || user?.username}"` : 'Will use Discord display name'}
-							</span>
-							<span className={nickname.length > 64 ? 'text-destructive' : ''}>
-								{nickname.length}/64
-							</span>
+							<span>{nickname ? `Will display as: "${nickname.trim() || user?.username}"` : 'Will use Discord display name'}</span>
+							<span className={nickname.length > 64 ? 'text-destructive' : ''}>{nickname.length}/64</span>
 						</div>
 					</div>
 
-					{!isValid && (
-						<div className="text-sm text-destructive">
-							Nickname must be 64 characters or less
-						</div>
-					)}
+					{!isValid && <div className="text-sm text-destructive">Nickname must be 64 characters or less</div>}
 				</div>
 
 				<DialogFooter className="flex flex-col sm:flex-row gap-2">
 					<Button variant="outline" onClick={handleCancel} disabled={updateNicknameMutation.isPending}>
 						Cancel
 					</Button>
-					<Button
-						onClick={handleSave}
-						disabled={!isChanged || !isValid || updateNicknameMutation.isPending}
-					>
+					<Button onClick={handleSave} disabled={!isChanged || !isValid || updateNicknameMutation.isPending}>
 						{updateNicknameMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						{updateNicknameMutation.isPending ? 'Saving...' : 'Save'}
 					</Button>

@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+
 import type { SandboxPanelWindowProps } from './sandbox-panels.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { useSandboxFrame } from './use-sandbox-frame'
@@ -46,9 +47,11 @@ export function SandboxAdminListPanel({ stores, className }: { stores: SandboxFr
 	return (
 		<div className={cn('min-h-0 rounded-md border bg-muted/30', className)}>
 			<ScrollArea className="h-full">
-				{cfg
-					? <pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
-					: <p className="p-2 text-xs text-muted-foreground">The emulated admin list is empty.</p>}
+				{cfg ? (
+					<pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
+				) : (
+					<p className="p-2 text-xs text-muted-foreground">The emulated admin list is empty.</p>
+				)}
 			</ScrollArea>
 		</div>
 	)

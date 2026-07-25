@@ -1,8 +1,9 @@
+import superjson from 'superjson'
+import { describe, expect, it } from 'vitest'
+
 import * as AppEvents from '@/models/app-events.models'
 import type * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
-import superjson from 'superjson'
-import { describe, expect, it } from 'vitest'
 
 describe('app-events persistence', () => {
 	it('round-trips an event through toRow -> fromRow (incl. bigint actor)', () => {
@@ -182,14 +183,16 @@ describe('summarizeQueueChanges', () => {
 		})
 
 	it('attributes an add to the user on the item source, and a delete to the user whose op removed it', () => {
-		const changes = AppEvents.summarizeQueueChanges(event({
-			prevList: [item('i1', LAYER_A, ALICE)],
-			list: [item('i2', LAYER_B, BOB)],
-			ops: [
-				clientOp({ op: 'delete', itemId: 'i1' }, BOB),
-				clientOp({ op: 'add', items: [item('i2', LAYER_B, BOB)], index: { outerIndex: 0, innerIndex: null } } as any, BOB),
-			],
-		}))
+		const changes = AppEvents.summarizeQueueChanges(
+			event({
+				prevList: [item('i1', LAYER_A, ALICE)],
+				list: [item('i2', LAYER_B, BOB)],
+				ops: [
+					clientOp({ op: 'delete', itemId: 'i1' }, BOB),
+					clientOp({ op: 'add', items: [item('i2', LAYER_B, BOB)], index: { outerIndex: 0, innerIndex: null } } as any, BOB),
+				],
+			}),
+		)
 		expect(changes).toEqual([
 			{ kind: 'added', itemId: 'i2', index: 0, layerIds: [LAYER_B], isVote: false, actor: { type: 'slm-user', userId: BOB } },
 			{ kind: 'removed', itemId: 'i1', layerIds: [LAYER_A], isVote: false, actor: { type: 'slm-user', userId: BOB } },
@@ -197,11 +200,13 @@ describe('summarizeQueueChanges', () => {
 	})
 
 	it('reports an edit against the layer it replaced', () => {
-		const changes = AppEvents.summarizeQueueChanges(event({
-			prevList: [item('i1', LAYER_A, ALICE)],
-			list: [item('i1', LAYER_B, ALICE)],
-			ops: [clientOp({ op: 'edit-layer', itemId: 'i1', newLayerId: LAYER_B } as any, BOB)],
-		}))
+		const changes = AppEvents.summarizeQueueChanges(
+			event({
+				prevList: [item('i1', LAYER_A, ALICE)],
+				list: [item('i1', LAYER_B, ALICE)],
+				ops: [clientOp({ op: 'edit-layer', itemId: 'i1', newLayerId: LAYER_B } as any, BOB)],
+			}),
+		)
 		expect(changes).toEqual([
 			{
 				kind: 'edited',
@@ -215,11 +220,13 @@ describe('summarizeQueueChanges', () => {
 	})
 
 	it('reports only the item that moved, not the ones it shifted along', () => {
-		const changes = AppEvents.summarizeQueueChanges(event({
-			prevList: [item('i1', LAYER_A), item('i2', LAYER_B), item('i3', LAYER_C)],
-			list: [item('i3', LAYER_C), item('i1', LAYER_A), item('i2', LAYER_B)],
-			ops: [clientOp({ op: 'move', itemId: 'i3' } as any, ALICE)],
-		}))
+		const changes = AppEvents.summarizeQueueChanges(
+			event({
+				prevList: [item('i1', LAYER_A), item('i2', LAYER_B), item('i3', LAYER_C)],
+				list: [item('i3', LAYER_C), item('i1', LAYER_A), item('i2', LAYER_B)],
+				ops: [clientOp({ op: 'move', itemId: 'i3' } as any, ALICE)],
+			}),
+		)
 		expect(changes).toEqual([
 			{
 				kind: 'moved',
@@ -235,28 +242,30 @@ describe('summarizeQueueChanges', () => {
 
 	it('ignores churn that cancelled out before the save', () => {
 		const list = [item('i1', LAYER_A, ALICE)]
-		const changes = AppEvents.summarizeQueueChanges(event({
-			prevList: list,
-			list,
-			ops: [
-				clientOp({ op: 'add', items: [item('i9', LAYER_C, BOB)], index: { outerIndex: 1, innerIndex: null } } as any, BOB),
-				clientOp({ op: 'delete', itemId: 'i9' }, BOB),
-			],
-		}))
+		const changes = AppEvents.summarizeQueueChanges(
+			event({
+				prevList: list,
+				list,
+				ops: [
+					clientOp({ op: 'add', items: [item('i9', LAYER_C, BOB)], index: { outerIndex: 1, innerIndex: null } } as any, BOB),
+					clientOp({ op: 'delete', itemId: 'i9' }, BOB),
+				],
+			}),
+		)
 		expect(changes).toEqual([])
 	})
 
 	it('attributes a roll (no userId on the op) to the system', () => {
-		const changes = AppEvents.summarizeQueueChanges(event({
-			trigger: 'roll',
-			actor: { type: 'system' },
-			prevList: [item('i1', LAYER_A), item('i2', LAYER_B)],
-			list: [item('i2', LAYER_B)],
-			ops: [{ op: 'shift-first-saved-layer', opId: SLL.createOpId() }],
-		}))
-		expect(changes).toEqual([
-			{ kind: 'removed', itemId: 'i1', layerIds: [LAYER_A], isVote: false, actor: { type: 'system' } },
-		])
+		const changes = AppEvents.summarizeQueueChanges(
+			event({
+				trigger: 'roll',
+				actor: { type: 'system' },
+				prevList: [item('i1', LAYER_A), item('i2', LAYER_B)],
+				list: [item('i2', LAYER_B)],
+				ops: [{ op: 'shift-first-saved-layer', opId: SLL.createOpId() }],
+			}),
+		)
+		expect(changes).toEqual([{ kind: 'removed', itemId: 'i1', layerIds: [LAYER_A], isVote: false, actor: { type: 'system' } }])
 	})
 })
 

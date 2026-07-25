@@ -1,5 +1,6 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
+
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 // a labeled player id ("steam: 7656...") that copies itself on click, with transient "Copied!" feedback
@@ -14,9 +15,12 @@ export function CopyIdButton({ label, id }: { label: string; id: string }) {
 		timeoutRef.current = setTimeout(() => setOpen(false), 1500)
 	}
 
-	React.useEffect(() => () => {
-		if (timeoutRef.current) clearTimeout(timeoutRef.current)
-	}, [])
+	React.useEffect(
+		() => () => {
+			if (timeoutRef.current) clearTimeout(timeoutRef.current)
+		},
+		[],
+	)
 
 	return (
 		<Tooltip open={open}>

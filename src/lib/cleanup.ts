@@ -1,15 +1,9 @@
-import type * as CS from '@/models/context-shared'
 import type { MutexInterface } from 'async-mutex'
 import * as Rx from 'rxjs'
 
-type Value =
-	| Rx.Subscription
-	| Rx.ObservableInput<unknown>
-	| Rx.Subject<unknown>
-	| MutexInterface
-	| AbortController
-	| null
-	| undefined
+import type * as CS from '@/models/context-shared'
+
+type Value = Rx.Subscription | Rx.ObservableInput<unknown> | Rx.Subject<unknown> | MutexInterface | AbortController | null | undefined
 
 export type Task = (() => Value | void) | Value | Tasks
 

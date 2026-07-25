@@ -1,3 +1,8 @@
+import * as ReactRx from '@react-rxjs/core'
+import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import React from 'react'
+import * as Rx from 'rxjs'
+
 import ServerDashboard from '@/components/server-dashboard'
 import ServerUnavailable from '@/components/server-unavailable'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
@@ -12,24 +17,18 @@ import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as ReactRx from '@react-rxjs/core'
-import { createFileRoute, useBlocker } from '@tanstack/react-router'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 export const Route = createFileRoute('/_app/servers/$serverId')({
 	component: RouteComponent,
 
 	loader: async ({ params }) => {
 		const settings = await SettingsClient.fetchSettings()
-		const serverConfig = settings.servers.find(s => s.id === params.serverId)
+		const serverConfig = settings.servers.find((s) => s.id === params.serverId)
 		return { displayName: serverConfig?.displayName ?? params.serverId }
 	},
 
 	head: ({ loaderData }) => ({
-		meta: [
-			{ title: loaderData?.displayName ? `SLM - ${loaderData?.displayName}` : undefined },
-		],
+		meta: [{ title: loaderData?.displayName ? `SLM - ${loaderData?.displayName}` : undefined }],
 	}),
 
 	onEnter() {
@@ -104,12 +103,14 @@ function ServerDashboardHost(props: { serverId: string }) {
 		// while engaged, mirror the visible panel into presence so VIEWING_QUEUE / VIEWING_TEAMS tracks
 		// the tab the user is actually looking at
 		sub.add(
-			ZusUtils.toObservable(ClientOnlySettings.Store, true).pipe(
-				Rx.map(([s]) => s.primaryPanelTab),
-				Rx.distinctUntilChanged(),
-			).subscribe((panel) => {
-				if (engaged) UPClient.Actions.ensureViewingPanel(serverId, panel)
-			}),
+			ZusUtils.toObservable(ClientOnlySettings.Store, true)
+				.pipe(
+					Rx.map(([s]) => s.primaryPanelTab),
+					Rx.distinctUntilChanged(),
+				)
+				.subscribe((panel) => {
+					if (engaged) UPClient.Actions.ensureViewingPanel(serverId, panel)
+				}),
 		)
 
 		// An "active session" can only be opened by a deliberate interaction (userInteracted$) -- this is
@@ -127,25 +128,27 @@ function ServerDashboardHost(props: { serverId: string }) {
 					Rx.switchMap(() => Rx.concat(Rx.of(true), Rx.of(false).pipe(Rx.delay(UP.INTERACT_TIMEOUT)))),
 					// the trailing `false` ends the session; stop there so movement can't silently revive it
 					Rx.takeWhile((active) => active, true),
-				)
+				),
 			),
 		)
-		sub.add(active$.subscribe((active) => {
-			try {
-				if (active) {
-					// if the user comes back to this page we want to set this as the default server again
-					SquadServerClient.SelectedServerActions.setAsDefaultServer()
-					// engage() re-establishes via the idempotent ensureViewingPanel, so interacting also
-					// recovers presence after another of this user's clients remotely reset this one
-					engage()
-					UPClient.Actions.dispatch({ code: 'page-interaction' })
-				} else {
-					UPClient.Actions.dispatch({ code: 'interaction-timeout' })
+		sub.add(
+			active$.subscribe((active) => {
+				try {
+					if (active) {
+						// if the user comes back to this page we want to set this as the default server again
+						SquadServerClient.SelectedServerActions.setAsDefaultServer()
+						// engage() re-establishes via the idempotent ensureViewingPanel, so interacting also
+						// recovers presence after another of this user's clients remotely reset this one
+						engage()
+						UPClient.Actions.dispatch({ code: 'page-interaction' })
+					} else {
+						UPClient.Actions.dispatch({ code: 'interaction-timeout' })
+					}
+				} catch (error) {
+					console.error('Error handling dashboard presence interaction', error)
 				}
-			} catch (error) {
-				console.error('Error handling dashboard presence interaction', error)
-			}
-		}))
+			}),
+		)
 
 		return () => {
 			sub.unsubscribe()
@@ -161,15 +164,14 @@ function ServerDashboardHost(props: { serverId: string }) {
 function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string) {
 	const [queueModified, requestsModified] = ZusUtils.useStore(
 		stores.squadServer!,
-		ZusUtils.useShallow(s => [s.queue.isModified, s.queue.backburnerModified]),
+		ZusUtils.useShallow((s) => [s.queue.isModified, s.queue.backburnerModified]),
 	)
 	const [editingQueue] = UPClient.useEditingQueueState(serverId)
 	const [editingRequests] = UPClient.useEditingLayerRequestsState(serverId)
 	const queueEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'queue'))
 	const requestEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'layer-requests'))
 
-	const wouldDiscard = (editingQueue && queueModified && queueEditors <= 1)
-		|| (editingRequests && requestsModified && requestEditors <= 1)
+	const wouldDiscard = (editingQueue && queueModified && queueEditors <= 1) || (editingRequests && requestsModified && requestEditors <= 1)
 	const wouldDiscardRef = React.useRef(wouldDiscard)
 	wouldDiscardRef.current = wouldDiscard
 
@@ -181,7 +183,10 @@ function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string
 		},
 	})
 
-	React.useEffect(() => () => {
-		if (wouldDiscardRef.current) toast.info('Your unsaved edits have been discarded')
-	}, [])
+	React.useEffect(
+		() => () => {
+			if (wouldDiscardRef.current) toast.info('Your unsaved edits have been discarded')
+		},
+		[],
+	)
 }

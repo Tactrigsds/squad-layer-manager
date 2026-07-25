@@ -1,3 +1,7 @@
+import * as E from 'drizzle-orm'
+import * as Rx from 'rxjs'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
@@ -15,9 +19,6 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Discord from '@/systems/discord.server'
 import * as Rbac from '@/systems/rbac.server'
-import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 // discordId set = only that user's session(s) should refetch (their perms/links changed); undefined = broadcast to
 // every session (user metadata like a nickname that others render). rbac invalidation is bridged in via setup().
@@ -66,28 +67,29 @@ export const orpcRouter = {
 		}
 		return { ...user, wsClientId: context.wsClientId }
 	}),
-	getUser: orpcBase
-		.input(z.bigint())
-		.handler(async ({ context, input }) => {
-			const user = await getUser(context, input)
-			if (!user) return { code: 'err:not-found' as const }
-			return { code: 'ok' as const, user }
-		}),
+	getUser: orpcBase.input(z.bigint()).handler(async ({ context, input }) => {
+		const user = await getUser(context, input)
+		if (!user) return { code: 'err:not-found' as const }
+		return { code: 'ok' as const, user }
+	}),
 
-	getUsers: orpcBase
-		.input(z.array(USR.UserIdSchema).optional())
-		.handler(async ({ context, input }) => {
-			const dbUsers = await context.db().select().from(Schema.users).where(input ? E.inArray(Schema.users.discordId, input) : undefined)
-			const users = await Promise.all(dbUsers.map((dbUser) => buildUser(dbUser)))
-			return { code: 'ok' as const, users }
-		}),
+	getUsers: orpcBase.input(z.array(USR.UserIdSchema).optional()).handler(async ({ context, input }) => {
+		const dbUsers = await context
+			.db()
+			.select()
+			.from(Schema.users)
+			.where(input ? E.inArray(Schema.users.discordId, input) : undefined)
+		const users = await Promise.all(dbUsers.map((dbUser) => buildUser(dbUser)))
+		return { code: 'ok' as const, users }
+	}),
 
 	getMyLinkedSteamAccounts: orpcBase.handler(async ({ context }) => {
-		const rows = await context.db()
+		const rows = await context
+			.db()
 			.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
 			.from(Schema.linkedSteamAccounts)
 			.where(E.eq(Schema.linkedSteamAccounts.discordId, context.user.discordId))
-		return { code: 'ok' as const, steamIds: rows.map(r => r.steam64Id.toString()) }
+		return { code: 'ok' as const, steamIds: rows.map((r) => r.steam64Id.toString()) }
 	}),
 
 	// replaces the caller's full set of linked steam ids; rejects any id already owned by another discord user
@@ -107,13 +109,13 @@ export const orpcRouter = {
 			const res = await DB.runTransaction(context, async (context) => {
 				const discordId = context.user.discordId
 				if (parsed.length > 0) {
-					const [taken] = await context.db()
+					const [taken] = await context
+						.db()
 						.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
 						.from(Schema.linkedSteamAccounts)
-						.where(E.and(
-							E.inArray(Schema.linkedSteamAccounts.steam64Id, parsed),
-							E.ne(Schema.linkedSteamAccounts.discordId, discordId),
-						))
+						.where(
+							E.and(E.inArray(Schema.linkedSteamAccounts.steam64Id, parsed), E.ne(Schema.linkedSteamAccounts.discordId, discordId)),
+						)
 						.limit(1)
 					if (taken) {
 						return {
@@ -123,30 +125,37 @@ export const orpcRouter = {
 						}
 					}
 				}
-				const currentRows = await context.db()
+				const currentRows = await context
+					.db()
 					.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
 					.from(Schema.linkedSteamAccounts)
 					.where(E.eq(Schema.linkedSteamAccounts.discordId, discordId))
-				const current = new Set(currentRows.map(r => r.steam64Id))
+				const current = new Set(currentRows.map((r) => r.steam64Id))
 				const next = new Set(parsed)
-				const added = parsed.filter(id => !current.has(id))
-				const removed = [...current].filter(id => !next.has(id))
+				const added = parsed.filter((id) => !current.has(id))
+				const removed = [...current].filter((id) => !next.has(id))
 
 				if (removed.length > 0) {
-					await context.db().delete(Schema.linkedSteamAccounts).where(
-						E.and(E.eq(Schema.linkedSteamAccounts.discordId, discordId), E.inArray(Schema.linkedSteamAccounts.steam64Id, removed)),
-					)
+					await context
+						.db()
+						.delete(Schema.linkedSteamAccounts)
+						.where(
+							E.and(E.eq(Schema.linkedSteamAccounts.discordId, discordId), E.inArray(Schema.linkedSteamAccounts.steam64Id, removed)),
+						)
 				}
 				if (added.length > 0) {
-					await context.db().insert(Schema.linkedSteamAccounts).values(added.map(steam64Id => ({ steam64Id, discordId })))
+					await context
+						.db()
+						.insert(Schema.linkedSteamAccounts)
+						.values(added.map((steam64Id) => ({ steam64Id, discordId })))
 				}
 				if (added.length > 0) {
-					await recordUserAccount(context, discordId, 'steam-linked', { steamIds: added.map(id => id.toString()) })
+					await recordUserAccount(context, discordId, 'steam-linked', { steamIds: added.map((id) => id.toString()) })
 				}
 				if (removed.length > 0) {
-					await recordUserAccount(context, discordId, 'steam-unlinked', { steamIds: removed.map(id => id.toString()) })
+					await recordUserAccount(context, discordId, 'steam-unlinked', { steamIds: removed.map((id) => id.toString()) })
 				}
-				return { code: 'ok' as const, steamIds: parsed.map(id => id.toString()) }
+				return { code: 'ok' as const, steamIds: parsed.map((id) => id.toString()) }
 			})
 			// after commit: linking changes the caller's linked players, so their resolved perms change. evict +
 			// push a refetch to their session (the rbac cache has no TTL, so evicting mid-transaction could repopulate
@@ -174,7 +183,7 @@ export const orpcRouter = {
 			})
 		}),
 
-	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context, signal }) {
+	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
 		const myId = context.user.discordId
 		yield* toAsyncGenerator(
 			invalidateUsers$.pipe(
@@ -194,7 +203,10 @@ export async function getUser(ctx: C.Db, discordId: bigint) {
 }
 
 export async function findDiscordIdBySteam64Id(ctx: C.Db, steam64Id: bigint): Promise<bigint | undefined> {
-	const [user] = await ctx.db().select({ discordId: Schema.users.discordId }).from(Schema.users)
+	const [user] = await ctx
+		.db()
+		.select({ discordId: Schema.users.discordId })
+		.from(Schema.users)
 		.innerJoin(Schema.linkedSteamAccounts, E.eq(Schema.users.discordId, Schema.linkedSteamAccounts.discordId))
 		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steam64Id))
 
@@ -203,7 +215,10 @@ export async function findDiscordIdBySteam64Id(ctx: C.Db, steam64Id: bigint): Pr
 
 // resolves an in-game (chat) sender's linked SLM account, e.g. for RBAC checks on chat-initiated actions
 export async function findUserBySteam64Id(ctx: C.Db, steam64Id: bigint) {
-	const [rawUser] = await ctx.db().select().from(Schema.users)
+	const [rawUser] = await ctx
+		.db()
+		.select()
+		.from(Schema.users)
 		.innerJoin(Schema.linkedSteamAccounts, E.eq(Schema.users.discordId, Schema.linkedSteamAccounts.discordId))
 		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steam64Id))
 	if (!rawUser) return null
@@ -211,13 +226,19 @@ export async function findUserBySteam64Id(ctx: C.Db, steam64Id: bigint) {
 }
 
 export async function findUserSteamIds(ctx: C.Db, userId: bigint) {
-	const rows = await ctx.db().select({ steam64Id: Schema.linkedSteamAccounts.steam64Id }).from(Schema.linkedSteamAccounts)
+	const rows = await ctx
+		.db()
+		.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+		.from(Schema.linkedSteamAccounts)
 		.where(E.eq(Schema.linkedSteamAccounts.discordId, userId))
 	return rows.map((row) => row.steam64Id)
 }
 
 export async function findUserPlayerIds(ctx: C.Db, userId: bigint) {
-	const rows = await ctx.db().select({ eosid: Schema.players.eosId, steamId: Schema.players.steamId }).from(Schema.linkedSteamAccounts)
+	const rows = await ctx
+		.db()
+		.select({ eosid: Schema.players.eosId, steamId: Schema.players.steamId })
+		.from(Schema.linkedSteamAccounts)
 		.leftJoin(Schema.players, E.eq(Schema.linkedSteamAccounts.steam64Id, Schema.players.steamId))
 		.where(E.eq(Schema.linkedSteamAccounts.discordId, userId))
 	let ids: SM.PlayerIds.IdQuery<'eos' | 'steam'>[] = []
@@ -259,7 +280,7 @@ export async function buildUser(dbUser: Schema.User): Promise<USR.User> {
 }
 
 export async function buildUsers(dbUsers: Schema.User[]): Promise<USR.User[]> {
-	return Promise.all(dbUsers.map(user => buildUser(user)))
+	return Promise.all(dbUsers.map((user) => buildUser(user)))
 }
 
 // the single way to turn a user id into text for display. Goes through buildUser so callers get the same name the

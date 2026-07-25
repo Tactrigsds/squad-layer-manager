@@ -1,10 +1,11 @@
+import { AlertCircle, Loader2 } from 'lucide-react'
+import React from 'react'
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as RPC from '@/orpc.client'
-import { AlertCircle, Loader2 } from 'lucide-react'
-import React from 'react'
 
 // a suspended component never commits, so it can't time itself out; the fallback is the only thing mounted while
 // we wait, which makes it the only place that can tell the user the wait has gone on too long. The hard failure
@@ -41,7 +42,9 @@ function StateErrorFallback(props: { label: string; error: unknown; reset: () =>
 			<AlertTitle>{timedOut ? `${props.label} didn't load` : `${props.label} failed`}</AlertTitle>
 			<AlertDescription className="space-y-2">
 				<p>{timedOut ? 'The server never sent this data. It may be busy or in a bad state.' : message}</p>
-				<Button size="sm" variant="outline" onClick={props.reset}>Retry</Button>
+				<Button size="sm" variant="outline" onClick={props.reset}>
+					Retry
+				</Button>
 			</AlertDescription>
 		</Alert>
 	)
@@ -91,9 +94,7 @@ class ErrorCatcher extends React.Component<{ label: string; children: React.Reac
  * Suspense + error boundary for subtrees that read suspending StateObservables (`RxHelpers.bind` without a default).
  * Retry resets the boundary, which drops the last subscriber and resubscribes the state observable from scratch.
  */
-export function StateBoundary(
-	props: { label: string; children: React.ReactNode; slowAfterMs?: number; fallback?: React.ReactNode },
-) {
+export function StateBoundary(props: { label: string; children: React.ReactNode; slowAfterMs?: number; fallback?: React.ReactNode }) {
 	return (
 		<ErrorCatcher label={props.label}>
 			<React.Suspense fallback={props.fallback ?? <SlowAwareFallback label={props.label} slowAfterMs={props.slowAfterMs ?? 4_000} />}>

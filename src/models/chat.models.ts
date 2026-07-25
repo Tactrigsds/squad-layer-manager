@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
 import * as Arr from '@/lib/array'
 import * as Gen from '@/lib/generator'
@@ -8,7 +10,6 @@ import { applyEventTeamMutations } from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import { baseLogger } from '@/systems/logger.client'
-import { z } from 'zod'
 
 export type PlayerRef = string
 
@@ -73,7 +74,7 @@ export type InterpolableState = {
 export namespace InterpolableState {
 	export function clone(state: InterpolableState): InterpolableState {
 		return {
-			players: state.players.map(p => ({ ...p, ids: { ...p.ids } })),
+			players: state.players.map((p) => ({ ...p, ids: { ...p.ids } })),
 			recentPlayers: [...state.recentPlayers],
 			squads: [...state.squads],
 			recentSquads: [...state.recentSquads],
@@ -84,24 +85,24 @@ export namespace InterpolableState {
 
 	// records a player as having taken part in the current match, refreshing the ids/admin status of an existing entry.
 	export function recordRecentPlayer(state: InterpolableState, player: SM.RecentPlayer) {
-		const index = SM.PlayerIds.indexOf(state.recentPlayers, p => p.ids, player.ids)
+		const index = SM.PlayerIds.indexOf(state.recentPlayers, (p) => p.ids, player.ids)
 		if (index === -1) state.recentPlayers.push(SM.toRecentPlayer(player))
 		else state.recentPlayers[index] = SM.toRecentPlayer(player)
 	}
 
 	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.IdQueryOrPlayerId) {
-		return SM.PlayerIds.find(state.recentPlayers, p => p.ids, id)
+		return SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, id)
 	}
 
 	// records a squad instance as having existed in the current match, refreshing an existing entry (e.g. a rename).
 	export function recordRecentSquad(state: InterpolableState, squad: SM.RecentSquad) {
-		const index = state.recentSquads.findIndex(s => s.uniqueId === squad.uniqueId)
+		const index = state.recentSquads.findIndex((s) => s.uniqueId === squad.uniqueId)
 		if (index === -1) state.recentSquads.push(SM.toRecentSquad(squad))
 		else state.recentSquads[index] = SM.toRecentSquad(squad)
 	}
 
 	export function findRecentSquad(state: InterpolableState, uniqueSquadId: number) {
-		return state.recentSquads.find(s => s.uniqueId === uniqueSquadId)
+		return state.recentSquads.find((s) => s.uniqueId === uniqueSquadId)
 	}
 }
 
@@ -163,8 +164,8 @@ export type EventEnriched =
 	| SE.RoundEnded
 	| SE.PlayerConnected<SM.Player>
 	| SE.PlayerReconciled<SM.Player>
-	| (SE.PlayerDisconnected<SM.Player>)
-	| (SE.PlayerDetailsChanged<SM.Player>)
+	| SE.PlayerDisconnected<SM.Player>
+	| SE.PlayerDetailsChanged<SM.Player>
 	| (SE.SquadDetailsChanged & { squad: SM.UniqueSquad; prevDetails: SE.SquadDetailsChanged['details'] })
 	| (SE.SquadRenamed & { squad: SM.UniqueSquad })
 	| (SE.PlayerChangedTeam<SM.Player> & { prevTeamId: SM.TeamId | null })
@@ -243,11 +244,7 @@ export function getInitialChatState(): ChatState {
 
 const chatLog: CS.Log = { ...CS.init(), log: baseLogger.child({ name: 'chat' }) }
 
-export function handleEvent(
-	state: ChatState,
-	event: Event | LifecycleEvent,
-	opts?: InterpolationOptions,
-) {
+export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opts?: InterpolationOptions) {
 	if (event.type === 'INIT') {
 		Object.assign(state, getInitialChatState())
 		return
@@ -285,9 +282,7 @@ export function handleEvent(
 	const src = (enriched as { source?: { type: string; id?: AppEvents.AppEventId } }).source
 	if (src?.type === 'event' && src.id !== undefined) {
 		const attributedTo = src.id
-		const appEntry = state.eventBuffer.find(
-			(e): e is EnrichedAppEvent => e.type === 'APP_EVENT' && e.id === attributedTo,
-		)
+		const appEntry = state.eventBuffer.find((e): e is EnrichedAppEvent => e.type === 'APP_EVENT' && e.id === attributedTo)
 		if (appEntry) {
 			appEntry.collapsed.push(enriched)
 			return
@@ -313,10 +308,10 @@ function warnDedupKey(reason: string, source: SE.PlayerWarned['source']): string
 	const actor = !source
 		? 'none'
 		: source.type === 'player'
-		? `player:${SM.PlayerIds.getPlayerId(source.playerIds)}`
-		: source.type === 'event'
-		? `event:${source.id}`
-		: source.type
+			? `player:${SM.PlayerIds.getPlayerId(source.playerIds)}`
+			: source.type === 'event'
+				? `event:${source.id}`
+				: source.type
 	return `${actor}\u0000${reason}`
 }
 
@@ -362,22 +357,23 @@ export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
 // the unique (instance) id of the squad a player is in per the interpolated state, or undefined if squadless
 function playerSquadUniqueId(state: InterpolableState, player: SM.Player): number | undefined {
 	if (player.squadId === null || player.teamId === null) return undefined
-	return state.squads.find(s => s.squadId === player.squadId && s.teamId === player.teamId)?.uniqueId
+	return state.squads.find((s) => s.squadId === player.squadId && s.teamId === player.teamId)?.uniqueId
 }
 
 function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent): EnrichedAppEvent {
 	const targetPlayers = AppEvents.involvedPlayerIds(appEvent)
-		.map(id => SM.PlayerIds.find(state.players, p => p.ids, { eos: id }))
+		.map((id) => SM.PlayerIds.find(state.players, (p) => p.ids, { eos: id }))
 		.filter((p): p is SM.Player => !!p)
-	const actorPlayer = appEvent.actor.type === 'ingame-user'
-		? SM.PlayerIds.find(state.players, p => p.ids, { eos: appEvent.actor.playerId }) ?? undefined
-		: undefined
+	const actorPlayer =
+		appEvent.actor.type === 'ingame-user'
+			? (SM.PlayerIds.find(state.players, (p) => p.ids, { eos: appEvent.actor.playerId }) ?? undefined)
+			: undefined
 
 	const targetSquadIds = new Set<number>()
 	// squad-typed actions name an in-game squad + team directly; resolve to the live instance (it still exists when the
 	// action is recorded, as the resulting server events arrive afterwards)
 	if (appEvent.type === 'SQUAD_DISBANDED' || appEvent.type === 'SQUAD_RENAMED') {
-		const squad = state.squads.find(s => s.squadId === appEvent.squadId && s.teamId === appEvent.teamId)
+		const squad = state.squads.find((s) => s.squadId === appEvent.squadId && s.teamId === appEvent.teamId)
 		if (squad) targetSquadIds.add(squad.uniqueId)
 	}
 	for (const player of targetPlayers) {
@@ -415,15 +411,16 @@ function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): W
 	const fullSquads: { uniqueId: number; squadName: string; teamId: SM.TeamId }[] = []
 	let coveredBySquads = 0
 	for (const squad of state.squads) {
-		const members = players.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
-		if (members.length > 0 && members.every(p => targetIds.has(idOf(p)))) {
+		const members = players.filter((p) => p.squadId === squad.squadId && p.teamId === squad.teamId)
+		if (members.length > 0 && members.every((p) => targetIds.has(idOf(p)))) {
 			fullSquads.push({ uniqueId: squad.uniqueId, squadName: squad.squadName, teamId: squad.teamId })
 			coveredBySquads += members.length
 		}
 	}
-	const squadSummary: WarnSummary | undefined = fullSquads.length > 0
-		? { type: 'squads', squads: fullSquads, otherPlayerCount: Math.max(0, targets.length - coveredBySquads) }
-		: undefined
+	const squadSummary: WarnSummary | undefined =
+		fullSquads.length > 0
+			? { type: 'squads', squads: fullSquads, otherPlayerCount: Math.max(0, targets.length - coveredBySquads) }
+			: undefined
 
 	// a warn aimed at a squad stays described as that squad even when the squad happens to be the whole server or a
 	// whole team, which is what a near-empty server makes of every squad warn. Requires the squads to account for
@@ -433,21 +430,21 @@ function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): W
 	}
 
 	// everyone currently on the server
-	if (players.length > 0 && players.every(p => targetIds.has(idOf(p)))) return { type: 'everyone' }
+	if (players.length > 0 && players.every((p) => targetIds.has(idOf(p)))) return { type: 'everyone' }
 
 	// exactly the set of admins present
-	const admins = players.filter(p => p.isAdmin)
-	if (admins.length > 0 && targets.length === admins.length && admins.every(p => targetIds.has(idOf(p)))) {
+	const admins = players.filter((p) => p.isAdmin)
+	if (admins.length > 0 && targets.length === admins.length && admins.every((p) => targetIds.has(idOf(p)))) {
 		return { type: 'all-admins' }
 	}
 
 	// one or both teams warned in full, with no targets outside those teams
 	const fullTeams: SM.TeamId[] = []
 	for (const teamId of [1, 2] as SM.TeamId[]) {
-		const teamPlayers = players.filter(p => p.teamId === teamId)
-		if (teamPlayers.length > 0 && teamPlayers.every(p => targetIds.has(idOf(p)))) fullTeams.push(teamId)
+		const teamPlayers = players.filter((p) => p.teamId === teamId)
+		if (teamPlayers.length > 0 && teamPlayers.every((p) => targetIds.has(idOf(p)))) fullTeams.push(teamId)
 	}
-	if (fullTeams.length > 0 && targets.every(p => p.teamId !== null && fullTeams.includes(p.teamId))) {
+	if (fullTeams.length > 0 && targets.every((p) => p.teamId !== null && fullTeams.includes(p.teamId))) {
 		return { type: 'teams', teamIds: fullTeams }
 	}
 
@@ -459,25 +456,31 @@ const compiledPatternMap = new WeakMap<string[], RegExp[]>()
 const SuppressionSchema = z.string().refine((s) => new RegExp(s))
 
 export const ChatConfigSchema = z.object({
-	warnSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe(
-		"Regular expressions matched against a warn's text. A warn matching any of them is left out of the live chat feed; it is still "
-			+ 'delivered in-game. Use it to keep routine SLM notifications from burying real chat.',
-	),
-	broadcastSuppressionPatterns: z.array(SuppressionSchema).prefault([]).describe(
-		"Regular expressions matched against a broadcast's text. A broadcast matching any of them is left out of the live chat feed; it is "
-			+ 'still sent in-game. Only applies to broadcasts SLM cannot attribute to a player, so one an admin sent with an in-game command '
-			+ 'is never hidden.',
-	),
+	warnSuppressionPatterns: z
+		.array(SuppressionSchema)
+		.prefault([])
+		.describe(
+			"Regular expressions matched against a warn's text. A warn matching any of them is left out of the live chat feed; it is still " +
+				'delivered in-game. Use it to keep routine SLM notifications from burying real chat.',
+		),
+	broadcastSuppressionPatterns: z
+		.array(SuppressionSchema)
+		.prefault([])
+		.describe(
+			"Regular expressions matched against a broadcast's text. A broadcast matching any of them is left out of the live chat feed; it is " +
+				'still sent in-game. Only applies to broadcasts SLM cannot attribute to a player, so one an admin sent with an in-game command ' +
+				'is never hidden.',
+		),
 })
 
 function testPatterns(patterns: string[], text: string): boolean {
 	if (patterns.length === 0) return false
 	let compiled = compiledPatternMap.get(patterns)
 	if (!compiled) {
-		compiled = patterns.map(p => new RegExp(p))
+		compiled = patterns.map((p) => new RegExp(p))
 		compiledPatternMap.set(patterns, compiled)
 	}
-	return compiled.some(pattern => pattern.test(text))
+	return compiled.some((pattern) => pattern.test(text))
 }
 
 type InterpolationOptions = {
@@ -485,11 +488,7 @@ type InterpolationOptions = {
 	broadcastSuppressionPatterns?: string[]
 }
 
-function interpolateEvent(
-	state: InterpolableState,
-	event: SE.Event,
-	opts?: InterpolationOptions,
-): EventEnriched {
+function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: InterpolationOptions): EventEnriched {
 	switch (event.type) {
 		case 'MAP_SET':
 		case 'NEW_GAME':
@@ -521,7 +520,7 @@ function interpolateEvent(
 			return { ...event }
 
 		case 'PLAYER_CONNECTED': {
-			if (SM.PlayerIds.find(state.players, p => p.ids, event.player.ids)) {
+			if (SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
@@ -532,7 +531,7 @@ function interpolateEvent(
 		// roster backfill from the teams poll -- adds the player to client state like a connect, but is not
 		// rendered in the feed (see isRenderableInFeed / ServerEvent).
 		case 'PLAYER_RECONCILED': {
-			if (SM.PlayerIds.find(state.players, p => p.ids, event.player.ids)) {
+			if (SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} reconciled but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
@@ -541,18 +540,18 @@ function interpolateEvent(
 		}
 
 		case 'PLAYER_DISCONNECTED': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
+			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
 			if (index === -1) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
 			const player = state.players[index]
-			state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
+			state.adminCamPlayerIds = state.adminCamPlayerIds.filter((id) => id !== event.player)
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player }
 		}
 
 		case 'PLAYER_DETAILS_CHANGED': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
+			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
 			if (index === -1) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
@@ -562,7 +561,7 @@ function interpolateEvent(
 		}
 
 		case 'SQUAD_DETAILS_CHANGED': {
-			const index = state.squads.findIndex(s => s.uniqueId === event.uniqueId)
+			const index = state.squads.findIndex((s) => s.uniqueId === event.uniqueId)
 			if (index === -1) {
 				return noop(`Squad ${event.uniqueId} had details changed but was not found in the squad list`)
 			}
@@ -572,7 +571,7 @@ function interpolateEvent(
 		}
 
 		case 'SQUAD_RENAMED': {
-			const index = state.squads.findIndex(s => s.uniqueId === event.uniqueId)
+			const index = state.squads.findIndex((s) => s.uniqueId === event.uniqueId)
 			if (index === -1) {
 				return noop(`Squad ${event.uniqueId} was renamed but was not found in the squad list`)
 			}
@@ -582,7 +581,7 @@ function interpolateEvent(
 		}
 
 		case 'PLAYER_CHANGED_TEAM': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
+			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
 			if (index === -1) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
@@ -592,11 +591,11 @@ function interpolateEvent(
 		}
 
 		case 'PLAYER_JOINED_SQUAD': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
+			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
 			if (index === -1) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
-			const squad = state.squads.find(s => s.uniqueId === event.uniqueId)
+			const squad = state.squads.find((s) => s.uniqueId === event.uniqueId)
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found`)
 			}
@@ -612,7 +611,7 @@ function interpolateEvent(
 		}
 
 		case 'PLAYER_PROMOTED_TO_LEADER': {
-			const squad = state.squads.find(s => s.uniqueId === event.uniqueId)
+			const squad = state.squads.find((s) => s.uniqueId === event.uniqueId)
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found for PLAYER_PROMOTED_TO_LEADER`)
 			}
@@ -633,7 +632,7 @@ function interpolateEvent(
 		}
 
 		case 'SQUAD_DISBANDED': {
-			const squadIndex = state.squads.findIndex(s => s.uniqueId === event.uniqueId)
+			const squadIndex = state.squads.findIndex((s) => s.uniqueId === event.uniqueId)
 			if (squadIndex === -1) {
 				return noop(`Squad ${event.uniqueId} disbanded but was not found in the squad list`)
 			}
@@ -643,12 +642,12 @@ function interpolateEvent(
 		}
 
 		case 'PLAYER_LEFT_SQUAD': {
-			const index = SM.PlayerIds.indexOf(state.players, p => p.ids, event.player)
+			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
 			if (index === -1) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} left squad but was not found in the player list`)
 			}
 			const wasLeader = state.players[index].isLeader
-			const squad = state.squads.find(s => s.uniqueId === event.uniqueId)
+			const squad = state.squads.find((s) => s.uniqueId === event.uniqueId)
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found for PLAYER_LEFT_SQUAD`)
 			}
@@ -657,7 +656,7 @@ function interpolateEvent(
 		}
 
 		case 'SQUAD_CREATED': {
-			const existingSquad = state.squads.find(s => s.uniqueId === event.squad.uniqueId)
+			const existingSquad = state.squads.find((s) => s.uniqueId === event.squad.uniqueId)
 			if (existingSquad) {
 				return noop(`Squad ${event.squad.uniqueId} already exists`)
 			}
@@ -669,19 +668,19 @@ function interpolateEvent(
 			// establishing membership when the creator is unknown.
 			applyEventTeamMutations(chatLog, state, event)
 			InterpolableState.recordRecentSquad(state, squad)
-			const creatorIndex = SM.PlayerIds.indexOf(state.players, p => p.ids, event.squad.creator)
+			const creatorIndex = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.squad.creator)
 			if (creatorIndex === -1) {
 				return noop(
-					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${
-						SM.PlayerIds.prettyPrint(squad.creator)
-					}`,
+					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${SM.PlayerIds.prettyPrint(
+						squad.creator,
+					)}`,
 				)
 			}
 			if (state.players[creatorIndex].teamId !== squad.teamId) {
 				return noop(
-					`Creator ${SM.PlayerIds.prettyPrint(state.players[creatorIndex].ids)} is not in the same team as the squad they created ${
-						SM.Squads.printKey(squad)
-					}`,
+					`Creator ${SM.PlayerIds.prettyPrint(state.players[creatorIndex].ids)} is not in the same team as the squad they created ${SM.Squads.printKey(
+						squad,
+					)}`,
 				)
 			}
 			return { ...event, creator: state.players[creatorIndex] }
@@ -691,12 +690,12 @@ function interpolateEvent(
 			if (testPatterns(opts?.warnSuppressionPatterns ?? [], event.reason)) {
 				return noop(`Warn reason ${event.reason} matches warn suppression pattern`)
 			}
-			const player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
+			const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.player)
 			if (!player) {
 				return noop(
-					`Player ${
-						SM.PlayerIds.prettyPrint(event.player)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
+					`Player ${SM.PlayerIds.prettyPrint(
+						event.player,
+					)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
 			return { ...event, player, targetSquadId: playerSquadUniqueId(state, player) }
@@ -706,12 +705,12 @@ function interpolateEvent(
 		case 'PLAYER_KICKED':
 		case 'POSSESSED_ADMIN_CAMERA':
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
-			const player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
+			const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.player)
 			if (!player) {
 				return noop(
-					`Player ${
-						SM.PlayerIds.prettyPrint(event.player)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
+					`Player ${SM.PlayerIds.prettyPrint(
+						event.player,
+					)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
 			if (event.type === 'PLAYER_KICKED') {
@@ -721,18 +720,18 @@ function interpolateEvent(
 				state.adminCamPlayerIds = [...state.adminCamPlayerIds, event.player]
 			}
 			if (event.type === 'UNPOSSESSED_ADMIN_CAMERA') {
-				state.adminCamPlayerIds = state.adminCamPlayerIds.filter(id => id !== event.player)
+				state.adminCamPlayerIds = state.adminCamPlayerIds.filter((id) => id !== event.player)
 			}
 			return { ...event, player }
 		}
 
 		case 'CHAT_MESSAGE': {
-			const player = SM.PlayerIds.find(state.players, p => p.ids, event.player)
+			const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.player)
 			if (!player) {
 				return noop(
-					`Player ${
-						SM.PlayerIds.prettyPrint(event.player)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
+					`Player ${SM.PlayerIds.prettyPrint(
+						event.player,
+					)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
 			return { ...event, player, authorSquadId: playerSquadUniqueId(state, player) }
@@ -746,23 +745,23 @@ function interpolateEvent(
 					}
 					return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
 				}
-				const player = SM.PlayerIds.find(state.players, p => p.ids, event.from)
+				const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.from)
 				if (!player) {
 					return noop(
-						`Player ${
-							SM.PlayerIds.prettyPrint(event.from)
-						} was involved in ${event.type} but was not found in the interpolated player list`,
+						`Player ${SM.PlayerIds.prettyPrint(
+							event.from,
+						)} was involved in ${event.type} but was not found in the interpolated player list`,
 					)
 				}
 				return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
 			} else if (event.source) {
 				if (event.source.type === 'player') {
-					const player = SM.PlayerIds.find(state.players, p => p.ids, event.source.playerIds)
+					const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.source.playerIds)
 					if (!player) {
 						return noop(
-							`Player ${
-								SM.PlayerIds.prettyPrint(event.source)
-							} was involved in ${event.type} but was not found in the interpolated player list`,
+							`Player ${SM.PlayerIds.prettyPrint(
+								event.source,
+							)} was involved in ${event.type} but was not found in the interpolated player list`,
 						)
 					}
 					return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
@@ -778,20 +777,20 @@ function interpolateEvent(
 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
-			const victim = SM.PlayerIds.find(state.players, p => p.ids, event.victim)
+			const victim = SM.PlayerIds.find(state.players, (p) => p.ids, event.victim)
 			if (!victim) {
 				return noop(
-					`Victim ${
-						SM.PlayerIds.prettyPrint(event.victim)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
+					`Victim ${SM.PlayerIds.prettyPrint(
+						event.victim,
+					)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
-			const attacker = SM.PlayerIds.find(state.players, p => p.ids, event.attacker)
+			const attacker = SM.PlayerIds.find(state.players, (p) => p.ids, event.attacker)
 			if (!attacker) {
 				return noop(
-					`Attacker ${
-						SM.PlayerIds.prettyPrint(event.attacker)
-					} was involved in ${event.type} but was not found in the interpolated player list`,
+					`Attacker ${SM.PlayerIds.prettyPrint(
+						event.attacker,
+					)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
 			if (event.type === 'PLAYER_DIED') {
@@ -828,13 +827,16 @@ function bumpPlayerStat(stats: PlayerStatsMap, playerId: SM.PlayerId, key: keyof
 	stats[playerId] = { ...prev, [key]: prev[key] + 1 }
 }
 
-export type PrimaryFilterState = null | {
-	type: 'player'
-	id: SM.PlayerId
-} | {
-	type: 'squad'
-	id: number
-}
+export type PrimaryFilterState =
+	| null
+	| {
+			type: 'player'
+			id: SM.PlayerId
+	  }
+	| {
+			type: 'squad'
+			id: number
+	  }
 
 export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED'])
 export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
@@ -948,11 +950,13 @@ export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilt
 // between events (e.g. the player details window) must drop these first, else an invisible event still produces a
 // leading separator, showing up as an empty gap or two markers in a row.
 export function isRenderableInFeed(event: EventEnriched): boolean {
-	return event.type !== 'RESET'
-		&& event.type !== 'PLAYER_DETAILS_CHANGED'
-		&& event.type !== 'TEAMS_POLLED_UPDATE'
-		&& event.type !== 'PLAYER_RECONCILED'
-		&& event.type !== 'NOOP'
+	return (
+		event.type !== 'RESET' &&
+		event.type !== 'PLAYER_DETAILS_CHANGED' &&
+		event.type !== 'TEAMS_POLLED_UPDATE' &&
+		event.type !== 'PLAYER_RECONCILED' &&
+		event.type !== 'NOOP'
+	)
 }
 
 // the raw server-event assoc types, plus 'actor' for the admin who took an app event's action
@@ -1014,7 +1018,7 @@ export function* iterAssocSquadUniqueIds(event: EventEnriched): Generator<number
 }
 
 export function hasAssocSquad(event: EventEnriched, uniqueSquadId: number): boolean {
-	return Gen.some(iterAssocSquadUniqueIds(event), id => id === uniqueSquadId)
+	return Gen.some(iterAssocSquadUniqueIds(event), (id) => id === uniqueSquadId)
 }
 
 // does this event belong in a specific squad instance's detail feed?
@@ -1024,11 +1028,7 @@ export function hasAssocSquad(event: EventEnriched, uniqueSquadId: number): bool
 // unique (instance) id resolved at event time (authorSquadId / targetSquadId / targetSquadIds), so events from a prior
 // squad that reused the same in-game id never leak into a later instance. When `squadMessagesOnly` is set, member chat
 // outside the squad channel is excluded (warns, admin actions and squad lifecycle events still show).
-export function isSquadFeedEvent(
-	event: EventEnriched,
-	uniqueSquadId: number,
-	squadMessagesOnly: boolean,
-): boolean {
+export function isSquadFeedEvent(event: EventEnriched, uniqueSquadId: number, squadMessagesOnly: boolean): boolean {
 	if (hasAssocSquad(event, uniqueSquadId)) return true
 
 	switch (event.type) {
@@ -1037,7 +1037,7 @@ export function isSquadFeedEvent(
 		case 'PLAYER_WARNED':
 			return event.targetSquadId === uniqueSquadId
 		case 'WARNS_AGGREGATED':
-			return event.warns.some(w => w.targetSquadId === uniqueSquadId)
+			return event.warns.some((w) => w.targetSquadId === uniqueSquadId)
 		case 'APP_EVENT':
 			return event.targetSquadIds.includes(uniqueSquadId)
 		default:
@@ -1054,5 +1054,5 @@ export function findLastPlayerInstance(events: EventEnriched[], playerId: SM.Pla
 }
 
 export function getPlayerRelatedEvents(events: EventEnriched[], playerId: SM.PlayerId): EventEnriched[] {
-	return events.filter(event => hasAssocPlayer(event, playerId))
+	return events.filter((event) => hasAssocPlayer(event, playerId))
 }

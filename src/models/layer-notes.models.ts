@@ -1,6 +1,7 @@
+import { z } from 'zod'
+
 import { createId } from '@/lib/id'
 import * as USR from '@/models/users.models'
-import { z } from 'zod'
 
 // Freeform notes on a layer item. A note belongs to whoever wrote it: nobody else can reword or drop it without
 // queue:manage-all-notes (enforced in layer-queue.server, mirrored in the UI).

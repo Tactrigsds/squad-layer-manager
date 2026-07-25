@@ -1,16 +1,16 @@
-import * as Paths from '$root/paths.ts'
-import * as Arr from '@/lib/array'
-import * as OneToMany from '@/lib/one-to-many-map.ts'
-import type * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
-
-import type * as SM from '@/models/squad.models.ts'
-import * as C from '@/server/context.ts'
-
-import { withSftp } from '@/lib/sftp-file-store.ts'
 import { Client as FTPClient } from 'basic-ftp'
 import fs from 'fs'
 import path from 'path'
+
+import * as Paths from '$root/paths.ts'
+import * as Arr from '@/lib/array'
+import * as OneToMany from '@/lib/one-to-many-map.ts'
+import { withSftp } from '@/lib/sftp-file-store.ts'
+import type * as CS from '@/models/context-shared'
+import type * as SM from '@/models/squad.models.ts'
+import * as C from '@/server/context.ts'
+import { initModule } from '@/server/logger'
+
 import { WritableBuffer } from './writable-buffer'
 
 const module = initModule('fetch-admin-lists')
@@ -66,9 +66,9 @@ export default C.spanOp(
 						const [user, password] = loginString.split(':').map((v) => decodeURI(v))
 						const pathStartIndex = hostPathString.indexOf('/')
 						const remoteFilePath = pathStartIndex === -1 ? '/' : hostPathString.substring(pathStartIndex)
-						const [host, port = 21] = hostPathString.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex).split(
-							':',
-						)
+						const [host, port = 21] = hostPathString
+							.substring(0, pathStartIndex === -1 ? hostPathString.length : pathStartIndex)
+							.split(':')
 
 						const buffer = new WritableBuffer()
 						const ftpClient = new FTPClient()

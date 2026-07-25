@@ -1,6 +1,7 @@
+import { z } from 'zod'
+
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
 import * as SM from '@/models/squad.models'
-import { z } from 'zod'
 
 export const BaseSchema = z.object({
 	id: z.number(),

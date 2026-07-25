@@ -83,10 +83,7 @@ function HighlightedDescription<T extends string | null>(props: { options: Combo
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
-	const options = React.useMemo(
-		() => normalizeOptions('ComboBox', props.options, props.sort ?? true),
-		[props.options, props.sort],
-	)
+	const options = React.useMemo(() => normalizeOptions('ComboBox', props.options, props.sort ?? true), [props.options, props.sort])
 
 	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
 
@@ -98,19 +95,23 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 
 	const [open, setOpen] = useState(!!props.autoOpen)
 	const _onSelect = props.onSelect
-	useImperativeHandle(props.ref, () => ({
-		focus: () => {
-			selectionInitiatedRef.current = false
-			setOpen(true)
-		},
-		get isFocused() {
-			return open
-		},
-		clear: (ephemeral) => {
-			setOpen(false)
-			if (!ephemeral) _onSelect(undefined)
-		},
-	}), [_onSelect, open])
+	useImperativeHandle(
+		props.ref,
+		() => ({
+			focus: () => {
+				selectionInitiatedRef.current = false
+				setOpen(true)
+			},
+			get isFocused() {
+				return open
+			},
+			clear: (ephemeral) => {
+				setOpen(false)
+				if (!ephemeral) _onSelect(undefined)
+			},
+		}),
+		[_onSelect, open],
+	)
 	function onSelect(value: T | undefined) {
 		selectionInitiatedRef.current = true
 		setOpen(false)
@@ -141,23 +142,23 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			}}
 		>
 			<PopoverTrigger asChild>
-				{props.children
-					? props.children
-					: (
-						<Button
-							disabled={disabled}
-							ref={btnRef}
-							variant="outline"
-							role="combobox"
-							// the trigger's content is the current selection, which makes its name change as the
-							// user picks values. Name it after what it selects instead, so it stays addressable.
-							aria-label={props.title || undefined}
-							className={cn('w-[min] justify-between overflow-hidden', props.className)}
-						>
-							<span className="truncate min-w-0">{selectedOptionDisplay}</span>
-							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-						</Button>
-					)}
+				{props.children ? (
+					props.children
+				) : (
+					<Button
+						disabled={disabled}
+						ref={btnRef}
+						variant="outline"
+						role="combobox"
+						// the trigger's content is the current selection, which makes its name change as the
+						// user picks values. Name it after what it selects instead, so it stays addressable.
+						aria-label={props.title || undefined}
+						className={cn('w-[min] justify-between overflow-hidden', props.className)}
+					>
+						<span className="truncate min-w-0">{selectedOptionDisplay}</span>
+						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+					</Button>
+				)}
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
@@ -170,10 +171,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 					if (!selectionInitiatedRef.current) btnRef.current?.focus()
 				}}
 			>
-				{
-					/* gate on open so the option elements aren't built on every render while closed --
-				    option lists can be thousands of entries long */
-				}
+				{/* gate on open so the option elements aren't built on every render while closed --
+				    option lists can be thousands of entries long */}
 				{open && (
 					<Command shouldFilter={!props.setInputValue} className="relative">
 						{hasDescriptions && <HighlightedDescription options={options as ComboBoxOption<T>[]} />}
@@ -203,8 +202,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 										{DH.MISSING_DISPLAY}
 									</CommandItem>
 								)}
-								{options !== LOADING
-									&& options.map((option) => (
+								{options !== LOADING &&
+									options.map((option) => (
 										<CommandItem
 											key={option.value}
 											value={option.value ?? undefined}

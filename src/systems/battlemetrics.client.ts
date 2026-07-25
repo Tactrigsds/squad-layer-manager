@@ -1,12 +1,13 @@
+import * as ReactRx from '@react-rxjs/core'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import * as Rx from 'rxjs'
+import * as Zus from 'zustand'
+
 import * as ZusUtils from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as PG from '@/models/player-groupings.models'
 import * as RPC from '@/orpc.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as ReactRx from '@react-rxjs/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 export const Store = Zus.createStore<BM.StoreState>(() => ({
 	selectedGroupingId: null,
@@ -19,7 +20,7 @@ export namespace Sel {
 	export const activeGroupingId = (groupingIds: string[]) => (state: BM.StoreState) =>
 		state.selectedGroupingId !== null && groupingIds.includes(state.selectedGroupingId)
 			? state.selectedGroupingId
-			: groupingIds[0] ?? null
+			: (groupingIds[0] ?? null)
 }
 
 export namespace Actions {

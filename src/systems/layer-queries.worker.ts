@@ -1,3 +1,5 @@
+import { Mutex } from 'async-mutex'
+
 import engineWasmUrl from '$root/assets/layer-engine.wasm?url'
 import * as AR from '@/app-routes'
 import { acquireInBlock } from '@/lib/async'
@@ -10,7 +12,6 @@ import * as ATTRS from '@/models/otel-attrs'
 import { LayerEngine } from '@/systems/layer-engine.shared'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import { baseLogger } from '@/systems/logger.client'
-import { Mutex } from 'async-mutex'
 // must match the loader variant the bundler resolves for 'sql.js' (browser export condition)
 
 export type ToWorker = RequestInner & Sequenced & Prioritized
@@ -139,10 +140,7 @@ onmessage = withErrorResponse(async (e) => {
 async function init(initRequest: InitRequest) {
 	L.setLayerData(initRequest.input.layerData)
 
-	const [wasm, artifact] = await Promise.all([
-		fetch(engineWasmUrl).then((res) => res.arrayBuffer()),
-		fetchLayerArtifact(),
-	])
+	const [wasm, artifact] = await Promise.all([fetch(engineWasmUrl).then((res) => res.arrayBuffer()), fetchLayerArtifact()])
 	const engine = await LayerEngine.create(wasm, new Uint8Array(artifact))
 	log.info('layer engine ready: %s layers', engine.rowCount)
 
@@ -192,15 +190,18 @@ async function fetchLayerArtifact() {
 		let storedHash: string | null = null
 
 		try {
-			const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then(handle => {
+			const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then((handle) => {
 				return handle
 			})
-			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
+			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then((handle) => {
 				return handle
 			})
-			const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
-				return text
-			})
+			const storedHashPromise = hashHandlePromise
+				.then((hashHandle) => hashHandle.getFile())
+				.then((hashFile) => hashFile.text())
+				.then((text) => {
+					return text
+				})
 			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
 		} catch {
 			;[dbHandle, hashHandle] = await Promise.all([

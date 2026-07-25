@@ -1,5 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import * as DbMeta from './db-meta'
 
 describe('db-meta build stamp', () => {

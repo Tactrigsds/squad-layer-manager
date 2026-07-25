@@ -1,10 +1,12 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { matchLog } from '@/lib/log-parsing'
 import Rcon from '@/lib/rcon/core-rcon'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as SM from '@/models/squad.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { Emulator, makePlayer } from './index'
 
 // Self-checks: the emulator is exercised through the app's own RCON client and its output is
@@ -107,7 +109,10 @@ describe('rcon frontend via the app client', () => {
 		expect(res.code).toBe('ok')
 		const rx =
 			/ID: (?<squadId>\d+) \| Name: (?<squadName>.+) \| Size: (?<size>\d+) \| Locked: (?<locked>True|False) \| Creator Name: (?<creatorName>.+) \| Creator Online IDs:([^|]+)/
-		const matches = (res as { data: string }).data.split('\n').map((l) => l.match(rx)).filter((m) => m !== null)
+		const matches = (res as { data: string }).data
+			.split('\n')
+			.map((l) => l.match(rx))
+			.filter((m) => m !== null)
 		expect(matches).toHaveLength(1)
 		expect(matches[0]!.groups!.squadName).toBe('A SQUAD')
 	})
@@ -145,10 +150,10 @@ describe('chat-stream packets parse via RCON_EVENT_MATCHERS', () => {
 	it('CHAT_MESSAGE in each channel', async () => {
 		const p = emu.world.findPlayer('grey275')!
 		for (const channel of ['ChatAll', 'ChatTeam', 'ChatSquad', 'ChatAdmin'] as const) {
-			const event = await expectEvent(
+			const event = (await expectEvent(
 				() => emu.world.chat(p, channel, `hello from ${channel}`),
 				'CHAT_MESSAGE',
-			) as SM.RconEvents.ChatMessage
+			)) as SM.RconEvents.ChatMessage
 			expect(event.channelType).toBe(channel)
 			expect(event.message).toBe(`hello from ${channel}`)
 			expect(event.playerIds.eos).toBe(p.eos)
@@ -174,7 +179,7 @@ describe('chat-stream packets parse via RCON_EVENT_MATCHERS', () => {
 	it('SQUAD_CREATED', async () => {
 		const p = emu.world.findPlayer('grey275')!
 		emu.world.leaveSquad(p)
-		const event = await expectEvent(() => emu.world.createSquad(p, 'BRAVO'), 'SQUAD_CREATED') as SM.RconEvents.SquadCreated
+		const event = (await expectEvent(() => emu.world.createSquad(p, 'BRAVO'), 'SQUAD_CREATED')) as SM.RconEvents.SquadCreated
 		expect(event.squadName).toBe('BRAVO')
 		expect(event.creatorIds.eos).toBe(p.eos)
 	})

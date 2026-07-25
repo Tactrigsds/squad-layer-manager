@@ -1,5 +1,6 @@
-import * as LP from '@/models/labeled-presets.models'
 import { describe, expect, it } from 'vitest'
+
+import * as LP from '@/models/labeled-presets.models'
 
 function preset(label: string, keywords: string[] = []): LP.LabeledPreset {
 	return { label, keywords }

@@ -39,7 +39,7 @@
 		"HOST": "0.0.0.0",
 		// the otel stack (`docker compose up -d otel`) runs on the host, not in here
 		"OTLP_COLLECTOR_ENDPOINT": "http://host.docker.internal:4318",
-		// the repo's tools (dprint, oxlint, vitest, playwright, drizzle-kit) are devDependencies, and nothing
+		// the repo's tools (oxfmt, oxlint, vitest, playwright, drizzle-kit) are devDependencies, and nothing
 		// puts them on PATH outside of `pnpm run`. The container has no global copy of any of them to fall
 		// back on the way a host does, so without this they are simply missing from every terminal in here.
 		"PATH": "${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:PATH}"
@@ -64,24 +64,18 @@
 
 	"customizations": {
 		// only the languages the repo actually contains that Zed does not handle out of the box. Everything
-		// else it needs (typescript, tailwind, the dprint formatter and the oxc lsp) is either built in or
+		// else it needs (typescript, tailwind, the oxfmt formatter and the oxc lsp) is either built in or
 		// configured in .zed/settings.json, which rides along in the bind mount.
 		// NOTE: these install into your local Zed too, not just the container's session.
 		"zed": {
 			"extensions": ["dockerfile", "sql", "html"]
 		},
 		"vscode": {
-			"extensions": [
-				"dprint.dprint",
-				"oxc.oxc-vscode",
-				"bradlc.vscode-tailwindcss",
-				"ms-playwright.playwright",
-				"vitest.explorer"
-			],
+			"extensions": ["oxc.oxc-vscode", "bradlc.vscode-tailwindcss", "ms-playwright.playwright", "vitest.explorer"],
 			"settings": {
 				// the repo is on a typescript prerelease; VS Code has to be pointed at it explicitly
 				"typescript.tsdk": "node_modules/typescript/lib",
-				"editor.defaultFormatter": "dprint.dprint",
+				"editor.defaultFormatter": "oxc.oxc-vscode",
 				"editor.formatOnSave": true,
 				// the container's login shell is bash and scripts here assume it; fish is installed if you
 				// want it, but it isn't the default

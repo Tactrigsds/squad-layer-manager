@@ -1,3 +1,8 @@
+import * as E from 'drizzle-orm'
+import fs from 'node:fs'
+import path from 'node:path'
+import * as Timers from 'node:timers/promises'
+
 import * as Schema from '$root/drizzle/schema'
 import { isAbortError, sleep } from '@/lib/async'
 import * as SFS from '@/lib/sftp-file-store'
@@ -12,10 +17,6 @@ import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
-import * as E from 'drizzle-orm'
-import fs from 'node:fs'
-import path from 'node:path'
-import * as Timers from 'node:timers/promises'
 
 const module = initModule('backups')
 let log!: CS.Logger
@@ -79,9 +80,9 @@ const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, as
 	// only pre-migration backups: a periodic one is written by the loop below, which records its own event, so an
 	// unrecorded periodic file means the event failed to write and re-adopting it would say it happened twice.
 	const unrecorded = DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH)
-		.filter(f => f.kind === 'pre-migration')
-		.map(f => ({ fileName: f.name, stat: fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)) }))
-		.filter(f => loggedAt === undefined || f.stat.mtimeMs > loggedAt)
+		.filter((f) => f.kind === 'pre-migration')
+		.map((f) => ({ fileName: f.name, stat: fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)) }))
+		.filter((f) => loggedAt === undefined || f.stat.mtimeMs > loggedAt)
 		.reverse() // oldest first, so the audit log reads in the order they were taken
 
 	for (const { fileName, stat } of unrecorded) {
@@ -139,7 +140,8 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 }
 
 async function getLastBackupEventTime(ctx: C.Db) {
-	const [row] = await ctx.db()
+	const [row] = await ctx
+		.db()
 		.select({ time: Schema.appEvents.time })
 		.from(Schema.appEvents)
 		.where(E.eq(Schema.appEvents.type, 'BACKUP_CREATED'))
@@ -161,9 +163,7 @@ async function getLastBackupTime(ctx: C.Db) {
 	const loggedAt = await getLastBackupEventTime(ctx)
 
 	const files = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH) : []
-	const writtenAt = files.length === 0
-		? undefined
-		: Math.max(...files.map(f => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
+	const writtenAt = files.length === 0 ? undefined : Math.max(...files.map((f) => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
 
 	if (loggedAt === undefined || writtenAt === undefined) return null
 	return Math.min(loggedAt, writtenAt)
@@ -236,7 +236,8 @@ const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: 
 
 		// the ordinal of the oldest match we must keep regardless of age. absent when the server hasn't played
 		// MIN_RETAINED_MATCHES matches yet, in which case nothing on it is prunable.
-		const [floor] = await ctx.db()
+		const [floor] = await ctx
+			.db()
 			.select({ ordinal: Schema.matchHistory.ordinal })
 			.from(Schema.matchHistory)
 			.where(E.eq(Schema.matchHistory.serverId, serverId))
@@ -247,19 +248,21 @@ const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: 
 
 		// a match that never recorded an end (crashed, or was never finalized) is dated by its start, and failing
 		// that by when we first saw it. a null time compares as null here, so such a match is kept.
-		const matchTime = E.sql<
-			number
-		>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
-		const staleMatches = ctx.db()
+		const matchTime = E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
+		const staleMatches = ctx
+			.db()
 			.select({ id: Schema.matchHistory.id })
 			.from(Schema.matchHistory)
-			.where(E.and(
-				E.eq(Schema.matchHistory.serverId, serverId),
-				E.lt(Schema.matchHistory.ordinal, floor.ordinal),
-				E.lt(matchTime, cutoff.getTime()),
-			))
+			.where(
+				E.and(
+					E.eq(Schema.matchHistory.serverId, serverId),
+					E.lt(Schema.matchHistory.ordinal, floor.ordinal),
+					E.lt(matchTime, cutoff.getTime()),
+				),
+			)
 
-		const [matchCount] = await ctx.db()
+		const [matchCount] = await ctx
+			.db()
 			.select({ matches: E.countDistinct(Schema.serverEvents.matchId) })
 			.from(Schema.serverEvents)
 			.where(E.inArray(Schema.serverEvents.matchId, staleMatches))
@@ -271,7 +274,8 @@ const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: 
 			// the batch is picked and deleted in one statement, inside one transaction, so nothing can slip in between
 			// the pick and the delete
 			const batch = await DB.runTransaction(ctx, async (ctx) => {
-				const ids = ctx.db()
+				const ids = ctx
+					.db()
 					.select({ id: Schema.serverEvents.id })
 					.from(Schema.serverEvents)
 					.where(E.inArray(Schema.serverEvents.matchId, staleMatches))
@@ -318,25 +322,29 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 	const remoteDir = ENV.BACKUP_SFTP_DIR
 	let uploaded = false
 	try {
-		await SFS.withSftp(target, async (sftp) => {
-			await sftp.mkdirp(remoteDir)
-			await sftp.uploadFile(localPath, `${remoteDir}/${fileName}`)
-			uploaded = true
-			log.info('uploaded backup %s to %s@%s:%s', fileName, target.username, target.host, remoteDir)
+		await SFS.withSftp(
+			target,
+			async (sftp) => {
+				await sftp.mkdirp(remoteDir)
+				await sftp.uploadFile(localPath, `${remoteDir}/${fileName}`)
+				uploaded = true
+				log.info('uploaded backup %s to %s@%s:%s', fileName, target.username, target.host, remoteDir)
 
-			// retention is best-effort, and deliberately not part of whether the upload succeeded: once the snapshot is
-			// offsite the run has done its job, and a delete we're not permitted to make must not get recorded as a
-			// backup that never left the box.
-			try {
-				for (const stale of DbBackup.staleBackupFiles(await sftp.listDir(remoteDir), { ...retentionOpts(), keep: fileName })) {
-					await sftp.unlink(`${remoteDir}/${stale}`)
-					log.info('deleted remote backup %s', stale)
+				// retention is best-effort, and deliberately not part of whether the upload succeeded: once the snapshot is
+				// offsite the run has done its job, and a delete we're not permitted to make must not get recorded as a
+				// backup that never left the box.
+				try {
+					for (const stale of DbBackup.staleBackupFiles(await sftp.listDir(remoteDir), { ...retentionOpts(), keep: fileName })) {
+						await sftp.unlink(`${remoteDir}/${stale}`)
+						log.info('deleted remote backup %s', stale)
+					}
+				} catch (err) {
+					if (isAbortError(err)) throw err
+					log.error(err, 'failed to prune old backups on %s (the upload itself succeeded)', target.host)
 				}
-			} catch (err) {
-				if (isAbortError(err)) throw err
-				log.error(err, 'failed to prune old backups on %s (the upload itself succeeded)', target.host)
-			}
-		}, ctx.signal)
+			},
+			ctx.signal,
+		)
 		return true
 	} catch (err) {
 		if (isAbortError(err)) throw err

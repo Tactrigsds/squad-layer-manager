@@ -34,7 +34,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 		if (!mainPool || !('filters' in mainPool)) continue
 
 		const oldFilters: any[] = (Array.isArray(mainPool.filters) ? mainPool.filters : [])
-			.map((f: any) => typeof f === 'string' ? { filterId: f } : f)
+			.map((f: any) => (typeof f === 'string' ? { filterId: f } : f))
 			.filter((f: any) => f && typeof f === 'object' && typeof f.filterId === 'string')
 
 		let poolFilter: { filterId: string; mode: 'include' | 'exclude' } | null = null
@@ -57,7 +57,8 @@ export async function up(db: MigrationDriver): Promise<void> {
 			if (applyAs === 'regular' || applyAs === 'inverted' || applyAs === 'disabled') {
 				pushUnique(defaultSelectable, { filterId: config.filterId, applyAs })
 			}
-			if (config.warn === 'regular' || config.warn === 'inverted') pushUnique(warnFor, { filterId: config.filterId, applyAs: config.warn })
+			if (config.warn === 'regular' || config.warn === 'inverted')
+				pushUnique(warnFor, { filterId: config.filterId, applyAs: config.warn })
 		}
 
 		const constrainGeneration: { filterId: string; applyAs: string }[] = []
@@ -86,7 +87,15 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 		delete mainPool.filters
 		delete queue.generationPool
-		Object.assign(mainPool, { poolFilter, indicateMatches, indicateMisses, defaultSelectable, warnFor, constrainGeneration, repeatRules })
+		Object.assign(mainPool, {
+			poolFilter,
+			indicateMatches,
+			indicateMisses,
+			defaultSelectable,
+			warnFor,
+			constrainGeneration,
+			repeatRules,
+		})
 
 		db.prepare(`UPDATE servers SET settings = ? WHERE id = ?`).run(JSON.stringify(wrapper), row.id)
 	}

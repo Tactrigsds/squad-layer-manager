@@ -1,3 +1,6 @@
+import * as E from 'drizzle-orm'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
 import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
@@ -15,8 +18,6 @@ import * as AppEventsSys from '@/systems/app-events.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as E from 'drizzle-orm'
-import { z } from 'zod'
 
 // Kick timeouts: a row is active while cancelled=false and expiresAt > now, and is enforced globally --
 // players with an active timeout are re-kicked on PLAYER_CONNECTED / roster RESET on every SLM server
@@ -59,7 +60,8 @@ function appliedReasonFromRow(t: SchemaModels.Timeout): AAR.AppliedReason | null
 }
 
 export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]> {
-	const rows = await ctx.db()
+	const rows = await ctx
+		.db()
 		.select({
 			timeout: Schema.timeouts,
 			username: Schema.players.username,
@@ -130,7 +132,8 @@ export async function kickWithTimeout(
 	await SquadServer.emitAppEvent(ctx, appEvent)
 	// player rows are normally upserted lazily by event persistence, which may not have run yet for a
 	// fresh connect; ensure the FK target exists
-	await ctx.db()
+	await ctx
+		.db()
 		.insert(Schema.players)
 		.values({
 			eosId: targetId,
@@ -138,16 +141,19 @@ export async function kickWithTimeout(
 			username: opts.target.ids.username ?? targetId,
 		})
 		.onConflictDoNothing({ target: Schema.players.eosId })
-	await ctx.db().insert(Schema.timeouts).values({
-		id: timeoutId,
-		playerId: targetId,
-		expiresAt,
-		appEventId: appEvent.id,
-		issuedServerId: ctx.serverId,
-		reasonLabel: opts.reason?.label ?? null,
-		reasonTemplate: opts.reason?.template ?? null,
-		reasonVars: opts.reason?.vars ?? null,
-	})
+	await ctx
+		.db()
+		.insert(Schema.timeouts)
+		.values({
+			id: timeoutId,
+			playerId: targetId,
+			expiresAt,
+			appEventId: appEvent.id,
+			issuedServerId: ctx.serverId,
+			reasonLabel: opts.reason?.label ?? null,
+			reasonTemplate: opts.reason?.template ?? null,
+			reasonVars: opts.reason?.vars ?? null,
+		})
 	const message = opts.reason ? AAR.renderAppliedReason(opts.reason) : DEFAULT_TIMEOUT_TEXT
 	await SquadServer.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServer.notifyAdminsOfWebAction(ctx, appEvent)
@@ -161,9 +167,11 @@ export async function cancelTimeout(
 	ctx: C.Db,
 	opts: { timeoutId: string; actor: AppEvents.Actor; sliceCtx?: C.Db & C.SquadServer & C.MatchHistory & CS.AbortSignal },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found'; msg: string }> {
-	const [timeout] = await ctx.db().select().from(Schema.timeouts).where(
-		E.and(E.eq(Schema.timeouts.id, opts.timeoutId), activeWhere()),
-	)
+	const [timeout] = await ctx
+		.db()
+		.select()
+		.from(Schema.timeouts)
+		.where(E.and(E.eq(Schema.timeouts.id, opts.timeoutId), activeWhere()))
 	if (!timeout) return { code: 'err:not-found', msg: 'No active timeout found' }
 	await ctx.db().update(Schema.timeouts).set({ cancelled: true }).where(E.eq(Schema.timeouts.id, opts.timeoutId))
 	const appEvent = AppEvents.create<AppEvents.TimeoutCancelled>({
@@ -207,36 +215,38 @@ export const router = {
 		return await listActiveTimeouts(ctx)
 	}),
 
-	watchActiveTimeouts: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: ctx }) {
+	watchActiveTimeouts: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal, context: ctx }) {
 		yield await listActiveTimeouts(ctx)
 		for await (const _ of toAsyncGenerator(update$.pipe(withAbortSignal(signal!)))) {
 			yield await listActiveTimeouts(ctx)
 		}
 	}),
 
-	cancelTimeout: orpcBase
-		.input(z.object({ timeoutId: z.string() }))
-		.handler(async ({ context: ctx, input }) => {
-			// which server's grant applies is a property of the timeout, so the row is read before the check rather
-			// than taken from the request
-			const [timeout] = await ctx.db().select({ issuedServerId: Schema.timeouts.issuedServerId }).from(Schema.timeouts).where(
-				E.and(E.eq(Schema.timeouts.id, input.timeoutId), activeWhere()),
-			)
-			if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
-			if (denyRes) return denyRes
-			return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
-		}),
+	cancelTimeout: orpcBase.input(z.object({ timeoutId: z.string() })).handler(async ({ context: ctx, input }) => {
+		// which server's grant applies is a property of the timeout, so the row is read before the check rather
+		// than taken from the request
+		const [timeout] = await ctx
+			.db()
+			.select({ issuedServerId: Schema.timeouts.issuedServerId })
+			.from(Schema.timeouts)
+			.where(E.and(E.eq(Schema.timeouts.id, input.timeoutId), activeWhere()))
+		if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
+		if (denyRes) return denyRes
+		return await cancelTimeout(ctx, { timeoutId: input.timeoutId, actor: { type: 'slm-user', userId: ctx.user.discordId } })
+	}),
 
 	timeoutPlayer: orpcBase
 		.input(
-			z.object({
-				serverId: z.string(),
-				playerId: SM.PlayerIdSchema,
-				durationMs: z.number().int().positive(),
-				reason: z.string().trim().min(1).optional(),
-				presetReasonLabel: z.string().min(1).optional(),
-			}).refine(i => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
+			z
+				.object({
+					serverId: z.string(),
+					playerId: SM.PlayerIdSchema,
+					durationMs: z.number().int().positive(),
+					reason: z.string().trim().min(1).optional(),
+					presetReasonLabel: z.string().min(1).optional(),
+				})
+				.refine((i) => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
 			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
@@ -248,7 +258,7 @@ export const router = {
 			if (reasonRes.code !== 'ok') return reasonRes
 			const teamsRes = await ctx.server.teams.get(ctx)
 			if (teamsRes.code !== 'ok') return teamsRes
-			const target = SM.PlayerIds.find(teamsRes.players, p => p.ids, input.playerId)
+			const target = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, input.playerId)
 			if (!target) return { code: 'err:player-not-found' as const, msg: 'Player is not on the server' }
 			return await kickWithTimeout(ctx, {
 				target,
