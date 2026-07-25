@@ -217,6 +217,23 @@ async function repointServers(driver: Database) {
 	}
 }
 
+// The user the instance's url logs in as. A super user by preference: it holds every permission, so the one
+// link works for inspecting anything, and it is the account the person running the worktree already uses.
+async function resolveLogin(driver: Database) {
+	const db = drizzle(driver)
+	const superUsers = Env.getEnvBuilder({ ...Env.groups.rbac })().SUPER_USERS
+	const candidates = superUsers.length > 0
+		? await db.select().from(Schema.users).where(E.inArray(Schema.users.discordId, superUsers)).limit(1)
+		: []
+	const [user] = candidates.length > 0 ? candidates : await db.select().from(Schema.users).limit(1)
+	if (!user) {
+		console.error('the cloned database has no users, so no login for this instance -- pass ?login=<username> yourself')
+		return
+	}
+	await Slots.setLogin(user.username)
+	console.log(`this instance signs in as ${user.username}`)
+}
+
 console.log(`cloning ${source}\n     -> ${dest}`)
 // held across the snapshot and the rename, not just checked before them
 const destLock = lockDest()
@@ -233,8 +250,9 @@ try {
 	if (integrity !== 'ok') throw new Error(`the clone failed its integrity check: ${String(integrity)}`)
 	await migrate(driver)
 	await repointServers(driver)
+	await resolveLogin(driver)
 } finally {
 	driver.close()
 }
 
-console.log(`done -- slot ${slot.slot}, app on :${slot.ports.app}, client on :${slot.ports.client}`)
+console.log(`done -- slot ${slot.slot}`)
