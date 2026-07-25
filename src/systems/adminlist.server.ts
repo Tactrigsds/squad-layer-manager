@@ -90,8 +90,12 @@ export function hasImplicitList(serverId: string): boolean {
 }
 
 // Every list that speaks for a server: the ones it names, plus its implicit one if it has one.
-export async function getListsForServerId(ctx: CS.Ctx & CS.AbortSignal, serverId: string): Promise<SM.AdminLists> {
-	const lists = await getListsForServer(ctx, listIdsForServer(serverId))
+export async function getListsForServerId(
+	ctx: CS.Ctx & CS.AbortSignal,
+	serverId: string,
+	opts?: { ttl?: number },
+): Promise<SM.AdminLists> {
+	const lists = await getListsForServer(ctx, listIdsForServer(serverId), opts)
 	const implicit = implicitLists.get(serverId)
 	if (implicit) lists.set(IMPLICIT_LIST_ID, implicit())
 	return lists
@@ -131,10 +135,14 @@ export function invalidateAll(ctx: CS.Ctx & CS.AbortSignal) {
 
 // One list. Returns null rather than throwing when the name is not configured: a server or role assignment naming a
 // deleted list is a configuration mistake to survive, not a reason to deny every permission check on that server.
-export async function getList(ctx: CS.Ctx & CS.AbortSignal, listId: SM.AdminListId): Promise<SM.AdminList | null> {
+export async function getList(
+	ctx: CS.Ctx & CS.AbortSignal,
+	listId: SM.AdminListId,
+	opts?: { ttl?: number },
+): Promise<SM.AdminList | null> {
 	if (!Settings.GLOBAL_SETTINGS.adminLists[listId]) return null
 	try {
-		return await resourceFor(listId).get(ctx)
+		return await resourceFor(listId).get(ctx, opts)
 	} catch (err) {
 		log.warn(err, `Could not read admin list '${listId}'`)
 		return null
@@ -145,9 +153,10 @@ export async function getList(ctx: CS.Ctx & CS.AbortSignal, listId: SM.AdminList
 export async function getListsForServer(
 	ctx: CS.Ctx & CS.AbortSignal,
 	listIds: readonly SM.AdminListId[],
+	opts?: { ttl?: number },
 ): Promise<SM.AdminLists> {
 	const entries = await Promise.all(
-		listIds.map(async (listId) => [listId, await getList(ctx, listId)] as const),
+		listIds.map(async (listId) => [listId, await getList(ctx, listId, opts)] as const),
 	)
 	const lists: SM.AdminLists = new Map()
 	for (const [listId, list] of entries) {
@@ -160,8 +169,12 @@ export async function getListsForServer(
 // or "what groups do they hold here" -- questions the merged view answers exactly. Each list has already applied its
 // own admin-identifying permissions by this point, so the admin sets union rather than being recomputed, and no list
 // can widen another's definition of admin.
-export async function getMergedForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string): Promise<SM.AdminList> {
-	const lists = await getListsForServerId(ctx, serverId)
+export async function getMergedForServer(
+	ctx: CS.Ctx & CS.AbortSignal,
+	serverId: string,
+	opts?: { ttl?: number },
+): Promise<SM.AdminList> {
+	const lists = await getListsForServerId(ctx, serverId, opts)
 	const merged: SM.AdminList = {
 		groups: new Map(),
 		steam: { players: new Map(), admins: new Set() },

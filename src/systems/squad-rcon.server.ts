@@ -170,7 +170,9 @@ async function fetchPlayers(ctx: C.Rcon & C.ServerId & CS.AbortSignal) {
 		data.isAdmin = false
 		data.adminGroups = []
 		if (data.ids.steam) {
-			const adminList = await AdminList.getMergedForServer(ctx, ctx.serverId)
+			// ttl Infinity: take whatever is cached and never block on a refetch. This runs inside the teams poll,
+			// which event correlation waits on, so a slow admin-list fetch here stalls match ingestion.
+			const adminList = await AdminList.getMergedForServer(ctx, ctx.serverId, { ttl: Infinity })
 			data.isAdmin = SM.AdminList.getIsAdmin(adminList, data.ids)
 			data.adminGroups = [...(SM.AdminList.getPlayerGroups(adminList, data.ids) ?? [])]
 		} else {
