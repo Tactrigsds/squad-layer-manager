@@ -71,6 +71,37 @@ function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx
 	return resource
 }
 
+// A list SLM synthesises for a server rather than fetching, keyed by server. The sandbox registers one so an
+// emulated server has admins without an operator configuring a source for something that only exists in memory.
+// Deliberately not a configured source: there is nothing to point a source at.
+export const IMPLICIT_LIST_ID = 'Emulated'
+const implicitLists = new Map<string, () => SM.AdminList>()
+
+export function registerImplicitList(serverId: string, provider: () => SM.AdminList) {
+	implicitLists.set(serverId, provider)
+}
+
+export function unregisterImplicitList(serverId: string) {
+	implicitLists.delete(serverId)
+}
+
+export function hasImplicitList(serverId: string): boolean {
+	return implicitLists.has(serverId)
+}
+
+// Every list that speaks for a server: the ones it names, plus its implicit one if it has one.
+export async function getListsForServerId(ctx: CS.Ctx & CS.AbortSignal, serverId: string): Promise<SM.AdminLists> {
+	const lists = await getListsForServer(ctx, listIdsForServer(serverId))
+	const implicit = implicitLists.get(serverId)
+	if (implicit) lists.set(IMPLICIT_LIST_ID, implicit())
+	return lists
+}
+
+// Every configured list, for the web-user path: a user is on no server, so there is no server to scope to.
+export async function getAllLists(ctx: CS.Ctx & CS.AbortSignal): Promise<SM.AdminLists> {
+	return await getListsForServer(ctx, configuredListIds())
+}
+
 // The lists a server recognises. Read from the in-memory registry rather than the db: this is asked on every roster
 // poll and every in-game permission check. Lives here rather than in rbac.server, which cannot import settings.server
 // (that already imports rbac.server).
@@ -130,7 +161,7 @@ export async function getListsForServer(
 // own admin-identifying permissions by this point, so the admin sets union rather than being recomputed, and no list
 // can widen another's definition of admin.
 export async function getMergedForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string): Promise<SM.AdminList> {
-	const lists = await getListsForServer(ctx, listIdsForServer(serverId))
+	const lists = await getListsForServerId(ctx, serverId)
 	const merged: SM.AdminList = {
 		groups: new Map(),
 		steam: { players: new Map(), admins: new Set() },
@@ -185,6 +216,52 @@ function fingerprint(l: SM.AdminList): string {
 	}
 	const groups = [...OneToMany.iter(l.groups)].map(([g, p]) => `${g}=${p}`).sort().join(',')
 	return `${groups}||${idPart(l.eos)}||${idPart(l.steam)}`
+}
+
+const GROUP_RGX = /(?<=^Group=)(?<groupID>.*?):(?<groupPerms>.*?)(?=(?:\r\n|\r|\n|\s+\/\/))/gm
+const ADMIN_RGX = /(?<=^Admin=)(?<adminID>\d{17}|[a-f0-9]{32}):(?<groupID>\S+)/gm
+
+function parseAdminsCfgInto(l: SM.AdminList, data: string) {
+	for (const m of data.matchAll(GROUP_RGX)) {
+		for (const perm of m.groups!.groupPerms.split(',')) {
+			OneToMany.set(l.groups, m.groups!.groupID, perm)
+		}
+	}
+	const steamId = /\d{17}/
+	const eosId = /[a-f0-9]{32}/
+	for (const m of data.matchAll(ADMIN_RGX)) {
+		const id = m.groups!.adminID
+		if (steamId.test(id)) {
+			OneToMany.set(l.steam.players, id, m.groups!.groupID)
+		} else if (eosId.test(id)) {
+			OneToMany.set(l.eos.players, id, m.groups!.groupID)
+		} else {
+			throw new Error(`Invalid admin ID: ${id}`)
+		}
+	}
+}
+
+function markAdmins(l: SM.AdminList, identifyingPerms: readonly string[]) {
+	for (const idType of [l.eos, l.steam]) {
+		for (const [id, group] of OneToMany.iter(idType.players)) {
+			for (const [_, permission] of OneToMany.iter(l.groups, group)) {
+				if (Arr.includes(identifyingPerms as SM.PlayerPerm[], permission)) idType.admins.add(id as never)
+			}
+		}
+	}
+}
+
+// An Admins.cfg the app holds in memory rather than fetching, parsed by exactly the path a fetched one takes so an
+// emulated list cannot behave differently from a real one.
+export function parseAdminsCfg(data: string, identifyingPerms: readonly string[]): SM.AdminList {
+	const l: SM.AdminList = {
+		groups: new Map(),
+		steam: { players: new Map(), admins: new Set() },
+		eos: { players: new Map(), admins: new Set() },
+	}
+	parseAdminsCfgInto(l, data)
+	markAdmins(l, identifyingPerms)
+	return l
 }
 
 const fetchAdminList = C.spanOp(
@@ -270,37 +347,12 @@ const fetchAdminList = C.spanOp(
 				log.error(error, `Error fetching ${source.type} admin list '${listId}': ${sourceLabel}`)
 			}
 
-			const groupRgx = /(?<=^Group=)(?<groupID>.*?):(?<groupPerms>.*?)(?=(?:\r\n|\r|\n|\s+\/\/))/gm
-			const adminRgx = /(?<=^Admin=)(?<adminID>\d{17}|[a-f0-9]{32}):(?<groupID>\S+)/gm
-
-			for (const m of data.matchAll(groupRgx)) {
-				for (const perm of m.groups!.groupPerms.split(',')) {
-					OneToMany.set(l.groups, m.groups!.groupID, perm)
-				}
-			}
-			const steamId = /\d{17}/
-			const eosId = /[a-f0-9]{32}/
-			for (const m of data.matchAll(adminRgx)) {
-				const id = m.groups!.adminID
-				if (steamId.test(id)) {
-					OneToMany.set(l.steam.players, id, m.groups!.groupID)
-				} else if (eosId.test(id)) {
-					OneToMany.set(l.eos.players, id, m.groups!.groupID)
-				} else {
-					throw new Error(`Invalid admin ID: ${id}`)
-				}
-			}
+			parseAdminsCfgInto(l, data)
 		}
 
 		log.trace(`${Object.keys(l.steam.players).length + Object.keys(l.eos.players).length} ids loaded from admin list '${listId}'`)
 
-		for (const idType of [l.eos, l.steam]) {
-			for (const [steamId, group] of OneToMany.iter(idType.players)) {
-				for (const [_, permission] of OneToMany.iter(l.groups, group)) {
-					if (Arr.includes(adminIdentifyingPerms, permission)) idType.admins.add(steamId)
-				}
-			}
-		}
+		markAdmins(l, adminIdentifyingPerms)
 
 		return l
 	},

@@ -11,6 +11,24 @@ export type SandboxHost = {
 	players: Map<string, EmuPlayer>
 	// the dev host registers new players with its BattleMetrics stub so the app's lookups resolve rather than 404
 	onPlayerJoined?: (player: EmuPlayer) => void
+	// the emulated admin list, when the host keeps one. Absent (the dev host) means no gating and no editing:
+	// that host's admins come from a real Admins.cfg on disk.
+	adminList?: {
+		isAdmin: (name: string) => boolean
+		setPlayerGroups: (name: string, groups: string[]) => void
+		defineGroup: (group: string, permissions: string[]) => void
+		deleteGroup: (group: string) => void
+		groupNames: () => string[]
+	}
+}
+
+// The name the next bulk-joined (or unnamed) player gets. Sequential rather than random so a scenario written
+// against Player1 keeps meaning the same thing.
+export function nextDefaultName(host: SandboxHost): string {
+	for (let n = 1;; n++) {
+		const candidate = `Player${n}`
+		if (!host.players.has(candidate)) return candidate
+	}
 }
 
 export function joinPlayer(host: SandboxHost, name: string): EmuPlayer {
@@ -19,6 +37,11 @@ export function joinPlayer(host: SandboxHost, name: string): EmuPlayer {
 	host.players.set(name, player)
 	host.onPlayerJoined?.(player)
 	return player
+}
+
+function requireAdminList(host: SandboxHost): NonNullable<SandboxHost['adminList']> {
+	if (!host.adminList) throw new Error('this host has no emulated admin list to edit')
+	return host.adminList
 }
 
 function requirePlayer(host: SandboxHost, name: string): EmuPlayer {
@@ -44,14 +67,50 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			return `${name} left`
 		}
 		case 'chat': {
-			const { name, message } = input as SB.SandboxVerbInput<'chat'>
-			world.chat(requirePlayer(host, name), 'ChatAll', message)
-			return `[ChatAll] ${name}: ${message}`
+			const { name, message, channel } = input as SB.SandboxVerbInput<'chat'>
+			const player = requirePlayer(host, name)
+			if (channel === 'ChatAdmin' && host.adminList && !host.adminList.isAdmin(name)) {
+				throw new Error(`${name} is not an admin, so cannot speak in admin chat`)
+			}
+			world.chat(player, channel, message)
+			return `[${channel}] ${name}: ${message}`
 		}
 		case 'admchat': {
 			const { name, message } = input as SB.SandboxVerbInput<'admchat'>
-			world.chat(requirePlayer(host, name), 'ChatAdmin', message)
+			const player = requirePlayer(host, name)
+			// a real server does not show admin chat to non-admins, let alone let them speak in it
+			if (host.adminList && !host.adminList.isAdmin(name)) {
+				throw new Error(`${name} is not an admin, so cannot speak in admin chat`)
+			}
+			world.chat(player, 'ChatAdmin', message)
 			return `[ChatAdmin] ${name}: ${message}`
+		}
+		case 'bulk-join': {
+			const { count } = input as SB.SandboxVerbInput<'bulk-join'>
+			const names: string[] = []
+			for (let i = 0; i < count; i++) names.push(joinPlayer(host, nextDefaultName(host)).name)
+			return `${names.length} joined: ${names.join(', ')}`
+		}
+		case 'set-player-groups': {
+			const { name, groups } = input as SB.SandboxVerbInput<'set-player-groups'>
+			requirePlayer(host, name)
+			const list = requireAdminList(host)
+			const unknown = groups.filter((g) => !list.groupNames().includes(g))
+			if (unknown.length > 0) throw new Error(`no such group: ${unknown.join(', ')}`)
+			list.setPlayerGroups(name, groups)
+			return groups.length > 0 ? `${name} is now in ${groups.join(', ')}` : `${name} is no longer in the admin list`
+		}
+		case 'define-group': {
+			const { group, permissions } = input as SB.SandboxVerbInput<'define-group'>
+			requireAdminList(host).defineGroup(group, permissions)
+			return `group ${group} grants ${permissions.length > 0 ? permissions.join(', ') : 'nothing'}`
+		}
+		case 'delete-group': {
+			const { group } = input as SB.SandboxVerbInput<'delete-group'>
+			const list = requireAdminList(host)
+			if (!list.groupNames().includes(group)) throw new Error(`no such group: ${group}`)
+			list.deleteGroup(group)
+			return `group ${group} removed`
 		}
 		case 'players': {
 			const list = world.playerList()

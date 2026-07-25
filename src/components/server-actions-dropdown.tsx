@@ -20,6 +20,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useOpenSandboxControlWindow } from './sandbox-control-window.helpers'
 
 void import('@/components/sandbox-control-window')
+void import('@/components/sandbox-panels')
 
 // Permission checks gate these menu items, so a denial at call time is a race. Surface it the same
 // way handlePermissionDenied would (refresh perms + user-facing message), but as a thrown error so a

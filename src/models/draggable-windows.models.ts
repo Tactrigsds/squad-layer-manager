@@ -8,6 +8,8 @@ export const WINDOW_ID = z.enum([
 	'timeouts',
 	'pool-config',
 	'sandbox-control',
+	'sandbox-admin-list',
+	'sandbox-console',
 ])
 
 export type WindowId = z.infer<typeof WINDOW_ID>

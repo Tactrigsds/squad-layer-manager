@@ -11,6 +11,24 @@ export const PlayerNameSchema = z.string().min(1).max(32).regex(
 	'A player name cannot contain spaces: the command line addresses players by a single token.',
 )
 
+// Squad's Admins.cfg is colon- and comma-delimited, so a group name holding either would render a file that parses
+// back as something else
+export const GroupNameSchema = z.string().trim().min(1).max(64).regex(/^[^:,\s]+$/, {
+	error: 'A group name cannot contain spaces, colons or commas',
+})
+
+// The channels a player can actually speak in. Broadcast is deliberately absent: on a real server it is an RCON
+// command, not something a player can do, and the emulator matches that.
+export const PLAYER_CHAT_CHANNEL = z.enum(['ChatAll', 'ChatTeam', 'ChatSquad', 'ChatAdmin'])
+export type PlayerChatChannel = z.infer<typeof PLAYER_CHAT_CHANNEL>
+
+// Everything the emulated server does, as it sees it. Three channels rather than one stream because they answer
+// different questions: what SLM asked for (rcon), what the game reported (log), and what a player typed (command).
+export type EmuEvent =
+	| { type: 'rcon'; dir: 'recv' | 'send'; body: string; time: number }
+	| { type: 'log'; line: string; time: number }
+	| { type: 'command'; player: string; channel: string; message: string; time: number }
+
 const NoArgs = z.object({})
 
 // `tokens` maps the positional command-line form onto the same input the router takes, so the two front ends
@@ -56,7 +74,11 @@ export const SANDBOX_VERBS = {
 	chat: def({
 		usage: 'chat <name> <message>',
 		summary: 'say something in all-chat (this is how you drive !commands)',
-		input: z.object({ name: PlayerNameSchema, message: z.string().min(1) }),
+		input: z.object({
+			name: PlayerNameSchema,
+			message: z.string().min(1),
+			channel: PLAYER_CHAT_CHANNEL.prefault('ChatAll'),
+		}),
 		tokens: ([name, ...rest]) => {
 			requireTokens([name, rest.join(' ')], 2, 'chat <name> <message>')
 			return { name, message: rest.join(' ') }
@@ -70,6 +92,47 @@ export const SANDBOX_VERBS = {
 		tokens: ([name, ...rest]) => {
 			requireTokens([name, rest.join(' ')], 2, 'admchat <name> <message>')
 			return { name, message: rest.join(' ') }
+		},
+		mutatesWorld: true,
+	}),
+	'bulk-join': def({
+		usage: 'bulk-join <count>',
+		summary: 'connect several players at once, with default names',
+		input: z.object({ count: z.int().min(1).max(100) }),
+		tokens: ([count]) => {
+			const n = Number(count)
+			if (!count || !Number.isInteger(n)) throw new Error('usage: bulk-join <count>')
+			return { count: n }
+		},
+		mutatesWorld: true,
+	}),
+	'set-player-groups': def({
+		usage: 'set-player-groups <name> [group...]',
+		summary: 'set which admin-list groups a player is in (no groups = remove them from the list)',
+		input: z.object({ name: PlayerNameSchema, groups: z.array(z.string().min(1)).prefault([]) }),
+		tokens: ([name, ...groups]) => {
+			requireTokens([name], 1, 'set-player-groups <name> [group...]')
+			return { name, groups }
+		},
+		mutatesWorld: true,
+	}),
+	'define-group': def({
+		usage: 'define-group <group> [perm...]',
+		summary: 'create or redefine an admin-list group and the permissions it grants',
+		input: z.object({ group: GroupNameSchema, permissions: z.array(z.string().min(1)).prefault([]) }),
+		tokens: ([group, ...permissions]) => {
+			requireTokens([group], 1, 'define-group <group> [perm...]')
+			return { group, permissions }
+		},
+		mutatesWorld: true,
+	}),
+	'delete-group': def({
+		usage: 'delete-group <group>',
+		summary: 'remove an admin-list group, and every membership of it',
+		input: z.object({ group: GroupNameSchema }),
+		tokens: ([group]) => {
+			requireTokens([group], 1, 'delete-group <group>')
+			return { group }
 		},
 		mutatesWorld: true,
 	}),
