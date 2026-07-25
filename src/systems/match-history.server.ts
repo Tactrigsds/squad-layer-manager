@@ -23,8 +23,9 @@ import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
 import type * as USR from '@/models/users.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
@@ -63,7 +64,7 @@ export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'
 	event$
 		.pipe(
 			Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
-			C.durableSub('onRoundEnded', { module }, async ([_ctx, e], signal) => {
+			Instr.durableSub('onRoundEnded', { module }, async ([_ctx, e], signal) => {
 				const ctx = { ..._ctx, signal }
 				if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
 				await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
@@ -85,7 +86,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 	}
 }
 
-export const loadState = C.spanOp(
+export const loadState = Instr.spanOp(
 	'loadState',
 	{ module },
 	async (ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
@@ -186,7 +187,7 @@ export const loadState = C.spanOp(
 	},
 )
 
-export const getRecentMatches = C.spanOp(
+export const getRecentMatches = Instr.spanOp(
 	'getRecentMatches',
 	{
 		module,
@@ -198,7 +199,7 @@ export const getRecentMatches = C.spanOp(
 	},
 )
 
-export const getCurrentMatch = C.spanOp(
+export const getCurrentMatch = Instr.spanOp(
 	'getCurrentMatch',
 	{
 		module,
@@ -210,7 +211,7 @@ export const getCurrentMatch = C.spanOp(
 	},
 )
 
-export const getMatchById = C.spanOp(
+export const getMatchById = Instr.spanOp(
 	'getMatchById',
 	{
 		module,
@@ -224,7 +225,7 @@ export const getMatchById = C.spanOp(
 	},
 )
 
-const loadCurrentMatch = C.spanOp(
+const loadCurrentMatch = Instr.spanOp(
 	'loadCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, _opts?: { forUpdate?: boolean }) => {
@@ -500,7 +501,7 @@ export const matchHistoryRouter = {
 		}),
 }
 
-export const addNewCurrentMatch = C.spanOp(
+export const addNewCurrentMatch = Instr.spanOp(
 	'addNewCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (
@@ -527,7 +528,7 @@ export const addNewCurrentMatch = C.spanOp(
 	},
 )
 
-export const finalizeCurrentMatch = C.spanOp(
+export const finalizeCurrentMatch = Instr.spanOp(
 	'finalizeCurrentMatch',
 	{
 		module,
@@ -608,7 +609,7 @@ export const finalizeCurrentMatch = C.spanOp(
  * Runs when rcon is connected to ensure that the match history is up-to-date. If the current layer is unexpected then we insert a new history entry for the current match.
  * Also always loads the match history state.
  */
-export const syncWithCurrentLayer = C.spanOp(
+export const syncWithCurrentLayer = Instr.spanOp(
 	'syncWithCurrentLayer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (

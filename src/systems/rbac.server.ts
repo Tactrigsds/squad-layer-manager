@@ -12,8 +12,9 @@ import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as Env from '@/server/env'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
@@ -176,7 +177,7 @@ async function fetchIsSuperUser(userId: bigint): Promise<boolean> {
 const module = initModule('rbac')
 const orpcBase = getOrpcBase(module)
 
-export const getRbacForDiscordUser = C.spanOp(
+export const getRbacForDiscordUser = Instr.spanOp(
 	'getRbacForDiscordUser',
 	{ module, levels: { event: 'trace' }, attrs: (ctx: C.UserId) => ({ [ATTRS.User.ID]: String(ctx.user.discordId) }) },
 	async (ctx: C.Db & C.UserId & CS.AbortSignal) => {
@@ -214,7 +215,7 @@ export const getRbacForDiscordUser = C.spanOp(
 	},
 )
 
-export const getRbacForPlayer = C.spanOp(
+export const getRbacForPlayer = Instr.spanOp(
 	'getRbacForPlayer',
 	{ module },
 	async (ctx: C.Db & C.PlayerIds<'eos'> & C.ServerId & CS.AbortSignal) => {

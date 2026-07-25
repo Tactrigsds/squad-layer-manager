@@ -38,10 +38,10 @@ import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
 
 import * as Config from './config.server.ts'
-import * as C from './context.ts'
 import * as DB from './db'
 import * as EnvExample from './env-example.ts'
 import * as Env from './env.ts'
+import * as Instr from './instrumentation.ts'
 import { ensureLoggerSetup, initModule } from './logger.ts'
 import * as SecretBox from './secret-box.server.ts'
 
@@ -55,7 +55,7 @@ ENV = envBuilder()
 ensureLoggerSetup()
 const log = module.getLogger()
 
-await C.spanOp('main', { module }, async () => {
+await Instr.spanOp('main', { module }, async () => {
 	// Use provided env file path if available
 	log.info('-------- Starting SLM version %s --------', formatVersion(ENV.PUBLIC_GIT_BRANCH, ENV.PUBLIC_GIT_SHA))
 	// before anything can fail on a missing var: a stale .env is the likeliest reason a dev boot doesn't get

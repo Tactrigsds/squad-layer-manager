@@ -40,8 +40,9 @@ import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
@@ -131,7 +132,7 @@ export type SquadServer = {
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
-	update$: Rx.Subject<C.OtelCtx>
+	update$: Rx.Subject<Instr.OtelCtx>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
@@ -867,7 +868,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	server.event$
 		.pipe(
 			Rx.filter(([_, event]) => event.type === 'PLAYER_DETAILS_CHANGED' && !!event.newUsername),
-			C.durableSub('onPlayerNameChanged', { module }, async ([ctx, event]) => {
+			Instr.durableSub('onPlayerNameChanged', { module }, async ([ctx, event]) => {
 				if (event.type !== 'PLAYER_DETAILS_CHANGED' || !event.newUsername) {
 					return
 				}
@@ -881,7 +882,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	server.event$
 		.pipe(
 			Rx.filter(([_, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'RESET'),
-			C.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([ctx, event], signal) => {
+			Instr.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([ctx, event], signal) => {
 				const playerIds =
 					event.type === 'PLAYER_CONNECTED'
 						? [SM.PlayerIds.getPlayerId(event.player.ids)]
@@ -895,7 +896,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		.subscribe() // -------- process log events --------
 	const logStreamAc = new AbortController()
 	cleanup.push(logStreamAc)
-	void C.spanOp('processLogEvents', { module }, async (_: unknown) => {
+	void Instr.spanOp('processLogEvents', { module }, async (_: unknown) => {
 		let chunk$: Rx.Observable<string>
 		if (settings.connections.type === 'sftp') {
 			const sftp = settings.connections.sftp
@@ -991,7 +992,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(
 		rcon.connected$
 			.pipe(
-				C.durableSub('onRconConnectStatusChange', { module }, async (connected, signal) => {
+				Instr.durableSub('onRconConnectStatusChange', { module }, async (connected, signal) => {
 					const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 					const time = Date.now()
 					let layerStatus: SM.LayersStatusResExt | undefined
@@ -1022,7 +1023,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(
 		server.rconEvent$
 			.pipe(
-				C.durableSub(
+				Instr.durableSub(
 					'onRconEvent',
 					{ module, taskScheduling: 'parallel', levels: { event: 'trace' } },
 					async ([_ctx, event], signal) => {
@@ -1069,7 +1070,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		server.teams
 			.observe({ ...slice, ...ctx })
 			.pipe(
-				C.durableSub('onTeamsPolled', { module, numTaskRetries: 0, levels: { event: 'debug' } }, async (teamsRes, signal) => {
+				Instr.durableSub('onTeamsPolled', { module, numTaskRetries: 0, levels: { event: 'debug' } }, async (teamsRes, signal) => {
 					if (teamsRes.code !== 'ok') return teamsRes
 					const receivedAt = Date.now()
 					const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
@@ -1563,7 +1564,7 @@ function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEve
 
 // Must be called with the server's slice lock held (see withSliceLock) -- it is the unlocked primitive, and callers reach it
 // through destroySliceIfRunningLocked. Taking the lock here instead would self-deadlock the callers that already hold it.
-const destroyServer = C.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
+const destroyServer = Instr.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
 	if (ctx.server.destroyed) return
 	log.info(`destroying server slice ${ctx.serverId}`)
 	ctx.server.destroyed = true
@@ -1831,7 +1832,7 @@ export async function updateServerState(
 	return newServerState
 }
 
-const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
+const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
 	const server = ctx.server
 	const [lastMatch] = await ctx
 		.db()
@@ -2039,7 +2040,7 @@ const createEvent =
 	(serverId: string): PendingEvents.State['hooks']['createEvent'] =>
 	async (newEvent) => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		return C.spanOp(
+		return Instr.spanOp(
 			'createEvent',
 			{ module },
 			async () =>
@@ -2060,7 +2061,7 @@ const onNewGameDuringSync =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] =>
 	async (currentLayerId, _time) => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		return C.spanOp(
+		return Instr.spanOp(
 			'onNewGameDuringSync',
 			{
 				module,
@@ -2078,7 +2079,7 @@ const onNewGameDuringRoll =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] =>
 	async (newLayerId, time) => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		return C.spanOp(
+		return Instr.spanOp(
 			'onNewGameDuringRoll',
 			{
 				module,

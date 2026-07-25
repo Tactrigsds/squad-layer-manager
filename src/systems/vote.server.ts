@@ -25,6 +25,7 @@ import * as V from '@/models/vote.models.ts'
 import * as RBAC from '@/rbac.models'
 import * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -152,7 +153,7 @@ export function initVoteContext(cleanup: Cleanup.Tasks) {
 	return vote
 }
 
-export const syncVoteStateWithQueueState = C.spanOp(
+export const syncVoteStateWithQueueState = Instr.spanOp(
 	'syncVoteStateWithQueueState',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
 	async (ctx: C.SquadServer & C.Vote & C.MatchHistory & C.ServerSettings & CS.AbortSignal, queue: LL.List) => {
@@ -222,7 +223,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 	},
 )
 
-export const startVote = C.spanOp(
+export const startVote = Instr.spanOp(
 	'startVote',
 	{
 		module,
@@ -333,7 +334,7 @@ export const startVote = C.spanOp(
 	},
 )
 
-export const handleVote = C.spanOp(
+export const handleVote = Instr.spanOp(
 	'handleVote',
 	{
 		module,
@@ -347,7 +348,7 @@ export const handleVote = C.spanOp(
 		const choiceIdx = parseInt(msg.message.trim())
 		const voteState = ctx.vote.state
 		if (!voteState) {
-			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
+			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'No vote in progress')
 			return
 		}
 		if (voteState.voterType === 'internal' && msg.channelType !== 'ChatAdmin') {
@@ -355,13 +356,13 @@ export const handleVote = C.spanOp(
 			return
 		}
 		if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
-			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
+			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
 			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice))
 			return
 		}
 		if (voteState.code !== 'in-progress') {
 			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.noVoteInProgress))
-			C.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
+			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
 			return
 		}
 
@@ -396,11 +397,11 @@ export const handleVote = C.spanOp(
 				)
 			})(),
 		)
-		C.setSpanStatus(Otel.SpanStatusCode.OK)
+		Instr.setSpanStatus(Otel.SpanStatusCode.OK)
 	},
 )
 
-export const abortVote = C.spanOp(
+export const abortVote = Instr.spanOp(
 	'abortVote',
 	{
 		module,
@@ -461,7 +462,7 @@ export const abortVote = C.spanOp(
 	},
 )
 
-export const cancelVoteAutostart = C.spanOp(
+export const cancelVoteAutostart = Instr.spanOp(
 	'cancelVoteAutostart',
 	{
 		module,
@@ -511,7 +512,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote & C
 		Rx.interval(regularReminderInterval)
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
-				C.durableSub('regular-vote-reminders', { module }, async (_, signal) => {
+				Instr.durableSub('regular-vote-reminders', { module }, async (_, signal) => {
 					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
@@ -536,7 +537,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote & C
 		ctx.vote.voteEndTask.add(
 			Rx.timer(finalReminderWaitTime)
 				.pipe(
-					C.durableSub('final-vote-reminder', { module }, async (_, signal) => {
+					Instr.durableSub('final-vote-reminder', { module }, async (_, signal) => {
 						const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
 						if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 						const serverState = await SquadServer.getServerState(ctx)
@@ -570,7 +571,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & C.Vote & C
 	)
 }
 
-export const endVote = C.spanOp(
+export const endVote = Instr.spanOp(
 	'endVote',
 	{
 		module,
@@ -609,7 +610,7 @@ export const endVote = C.spanOp(
 			const serverInfo = serverInfoRes.data
 
 			tally = V.tallyVotes(ctx.vote.state, serverInfo.playerCount)
-			C.setSpanOpAttrs({ tally })
+			Instr.setSpanOpAttrs({ tally })
 
 			const winnerId = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
 			const winnerChoice = listItem.choices.find((c) => c.itemId === winnerId)

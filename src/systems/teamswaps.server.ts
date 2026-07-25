@@ -21,8 +21,9 @@ import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -118,7 +119,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 				Rx.filter(
 					([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
 				),
-				C.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
+				Instr.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
 					const ctx = { ..._ctx, signal }
 					const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
 					if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
@@ -228,7 +229,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 			.pipe(
 				Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
 				Rx.delay(2000),
-				C.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([ctx], signal) => {
+				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([ctx], signal) => {
 					await dispatchOp({ ...ctx, signal }, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
 				}),
 			)
@@ -404,7 +405,7 @@ export const orpcRouter = {
 		}),
 }
 
-const dispatchOp = C.spanOp(
+const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{
 		module,
@@ -431,8 +432,8 @@ const dispatchOp = C.spanOp(
 			if (rejection.code !== 'noop') {
 				if (rejection.code === 'err:unexpected') {
 					log.error('op error while executing operation: %s op: %o', rejection.code, rejection.op)
-					C.recordGenericError(rejection)
-					C.setSpanStatus('error')
+					Instr.recordGenericError(rejection)
+					Instr.setSpanStatus('error')
 				} else {
 					log.warn('op was not succesful: %s op: %o', rejection.code, rejection.op)
 				}
@@ -626,7 +627,7 @@ const dispatchOp = C.spanOp(
 							se.reason,
 							se.message ?? (se.playerIds ? `${se.playerIds.length} player(s) never swapped` : ''),
 						)
-						C.setSpanStatus('error')
+						Instr.setSpanStatus('error')
 						break
 					}
 
@@ -645,7 +646,7 @@ const dispatchOp = C.spanOp(
 			} catch (_e) {
 				const e = _e as any
 				log.error('error processing side effects: %o', e?.message ?? e?.msg ?? e?.code ?? e)
-				C.recordGenericError(e, true)
+				Instr.recordGenericError(e, true)
 			}
 		}
 

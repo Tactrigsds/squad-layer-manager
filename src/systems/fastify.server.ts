@@ -16,9 +16,10 @@ import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as ORPCServer from '@/server/orpc-handler'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -65,7 +66,7 @@ async function getFastifyBase() {
 	})
 }
 
-export const setup = C.spanOp('setup', { module }, async () => {
+export const setup = Instr.spanOp('setup', { module }, async () => {
 	log = module.getLogger()
 	ENV = envBuilder()
 	instance = await getFastifyBase()

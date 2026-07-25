@@ -8,7 +8,7 @@ import * as OneToMany from '@/lib/one-to-many-map.ts'
 import { withSftp } from '@/lib/sftp-file-store.ts'
 import type * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models.ts'
-import * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 
 import { WritableBuffer } from './writable-buffer'
@@ -20,7 +20,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export default C.spanOp(
+export default Instr.spanOp(
 	'fetchAdminLists',
 	{ module },
 	async (sources: SM.AdminListSource[], adminIdentifyingPerms: SM.PlayerPerm[], signal?: AbortSignal): Promise<SM.AdminList> => {

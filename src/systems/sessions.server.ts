@@ -9,9 +9,10 @@ import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
 import * as Env from '@/server/env'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -145,7 +146,7 @@ export async function setup() {
 	}
 }
 
-export const validateAndUpdate = C.spanOp(
+export const validateAndUpdate = Instr.spanOp(
 	'validateAndUpdate',
 	{ module, levels: { event: 'trace' } },
 	async (ctx: C.Db & C.FastifyRequestFull & Partial<C.FastifyReply>, allowRefresh = false) => {
@@ -244,9 +245,9 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
-export const logout = C.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
+export const logout = Instr.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
+	Instr.setSpanStatus(Otel.SpanStatusCode.OK)
 	// not awaited: clearInvalidSession returns the FastifyReply (for chaining), and a reply is a thenable that only
 	// settles once the response is sent. Awaiting it here deadlocks POST /logout -- the handler blocks waiting for a
 	// send that can't happen until it returns. Same trap as the errorOrBypass note above.
@@ -264,7 +265,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...AR.COOKIE_DEFAULTS, maxAge: 0 })
 }
 
-export const getUser = C.spanOp(
+export const getUser = Instr.spanOp(
 	'getUser',
 	{ module, levels: { event: 'trace' }, attrs: ({ lock }) => ({ [ATTRS.Session.LOCK]: lock ?? false }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {

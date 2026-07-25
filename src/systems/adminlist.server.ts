@@ -13,7 +13,7 @@ import { withSftp } from '@/lib/sftp-file-store.ts'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models.ts'
-import * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Settings from '@/systems/settings.server'
@@ -273,7 +273,7 @@ export function parseAdminsCfg(data: string, identifyingPerms: readonly string[]
 	return l
 }
 
-const fetchAdminList = C.spanOp(
+const fetchAdminList = Instr.spanOp(
 	'fetchAdminList',
 	{ module },
 	async (listId: SM.AdminListId, def: SM.AdminListDef, signal?: AbortSignal): Promise<SM.AdminList> => {

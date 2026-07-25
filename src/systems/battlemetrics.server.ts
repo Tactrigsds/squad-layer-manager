@@ -11,8 +11,9 @@ import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as Env from '@/server/env'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -51,7 +52,7 @@ export async function setup() {
 
 	const persistSub = Rx.interval(CACHE_PERSIST_INTERVAL_MS)
 		.pipe(
-			C.durableSub('bm-cache-persist', { module, root: true, taskScheduling: 'exhaust' }, () =>
+			Instr.durableSub('bm-cache-persist', { module, root: true, taskScheduling: 'exhaust' }, () =>
 				persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM player cache')),
 			),
 		)
@@ -288,7 +289,7 @@ async function bmFetch<T = null>(
 	path: string,
 	init?: Omit<RequestInit, 'body' | 'method'> & { body?: unknown; responseSchema?: z.ZodType<T>; passthroughCodes?: number[] },
 ): Promise<readonly [T, Response]> {
-	return C.spanOp(
+	return Instr.spanOp(
 		'bmFetch',
 		{
 			module,
@@ -366,7 +367,7 @@ async function bmFetch<T = null>(
 				if (method === 'GET') level = 'debug'
 
 				log[level]({ status: res.status, method, path }, `${method} ${path} : ${res.status}`)
-				C.setSpanOpAttrs({ [ATTRS.Http.STATUS_CODE]: res.status })
+				Instr.setSpanOpAttrs({ [ATTRS.Http.STATUS_CODE]: res.status })
 
 				const contentType = res.headers.get('content-type') ?? ''
 				if (!contentType.includes('application/json')) {
@@ -405,7 +406,7 @@ const OrgFlagsResponse = z.object({
 	),
 })
 
-export const getOrgFlags = C.spanOp('getOrgFlags', { module }, async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
+export const getOrgFlags = Instr.spanOp('getOrgFlags', { module }, async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
 	if (orgFlagsCache) return orgFlagsCache
 
 	if (!orgFlagsFetchPromise) {
@@ -426,7 +427,7 @@ export const getOrgFlags = C.spanOp('getOrgFlags', { module }, async (ctx: CS.Ct
 	return flags
 })
 
-export const addPlayerFlags = C.spanOp(
+export const addPlayerFlags = Instr.spanOp(
 	'addPlayerFlags',
 	{ module },
 	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]) => {
@@ -440,7 +441,7 @@ export const addPlayerFlags = C.spanOp(
 	},
 )
 
-export const addPlayerNote = C.spanOp(
+export const addPlayerNote = Instr.spanOp(
 	'addPlayerNote',
 	{ module },
 	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, note: string) => {
@@ -456,7 +457,7 @@ export const addPlayerNote = C.spanOp(
 	},
 )
 
-export const removePlayerFlags = C.spanOp(
+export const removePlayerFlags = Instr.spanOp(
 	'removePlayerFlags',
 	{ module },
 	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
@@ -522,7 +523,7 @@ async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bm
 	return value
 }
 
-const bulkFetchOnlinePlayers = C.spanOp(
+const bulkFetchOnlinePlayers = Instr.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
 	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[] | undefined> => {
@@ -574,7 +575,7 @@ export async function invalidateAndRefetchPlayer(
 	return updated
 }
 
-export const fetchSinglePlayerBmData = C.spanOp(
+export const fetchSinglePlayerBmData = Instr.spanOp(
 	'fetchSinglePlayerBmData',
 	{ module, attrs: (_ctx, playerIds) => ({ [ATTRS.Player.EOS_ID]: playerIds.eos, [ATTRS.Player.STEAM_ID]: playerIds.steam }) },
 	async (ctx: CS.Ctx & CS.AbortSignal, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
@@ -604,7 +605,7 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 		Rx.interval(POLL_INTERVAL_MS)
 			.pipe(
 				Rx.startWith(0),
-				C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
+				Instr.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
 					const sliceCtx = SquadServer.resolveSliceCtx({ signal }, serverId)
 
 					const onlineEosIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
@@ -626,7 +627,7 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 				Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_RECONCILED'),
 				// parallel so one player's fetch doesn't queue behind another's; the task signal aborts as soon as
 				// the callback resolves, so the fetch must be awaited or it gets cancelled immediately
-				C.durableSub(
+				Instr.durableSub(
 					'bm-on-player-connected',
 					{ module, root: true, taskScheduling: 'parallel' },
 					async ([eventCtx, event], signal) => {
