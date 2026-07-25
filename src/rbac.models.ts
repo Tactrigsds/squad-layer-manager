@@ -189,6 +189,12 @@ export const PERMISSION_DEFINITION = {
 		scope: 'timeout',
 	}),
 
+	...definePermission('sandbox:control', {
+		description: 'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. '
+			+ 'Has no effect on a server backed by a real squad server.',
+		scope: 'server',
+	}),
+
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 
 	...definePermission('admin:manage-servers', {

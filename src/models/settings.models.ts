@@ -583,12 +583,22 @@ export const SftpLogConnectionSchema = z.object({
 	),
 })
 
-// How SLM reaches a squad server, as three mutually-exclusive modes:
+export const SandboxConnectionSchema = z.object({
+	type: z.literal('sandbox'),
+	serverName: z.string().min(1).prefault('SLM Sandbox').describe('The name the emulated server reports over RCON.'),
+	maxPlayers: z.int().min(2).max(200).prefault(100).describe('The player slot count the emulated server reports.'),
+})
+
+// How SLM reaches a squad server, as four mutually-exclusive modes:
 //   local        - SLM shares the box: reads the log file directly, dials RCON directly.
 //   sftp         - SLM is remote: tails the log over SFTP, dials RCON directly over the network.
 //   server-agent - the slm-server-agent (see ../../server-agent) runs on/near the box and handles BOTH
 //                  logs and RCON. The RCON password lives in the agent's own config, never here; SLM only
 //                  stores the shared handshake token.
+//   sandbox      - there is no squad server. SLM runs one in-process (src/emulator) and talks to it over a
+//                  loopback RCON socket, so every layer below this one behaves as it does against a real
+//                  server. Nothing here is reachable from the network and nothing outbound is real; see
+//                  src/systems/sandbox.server.ts.
 export const ServerConnectionSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('local'),
@@ -604,8 +614,10 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 		type: z.literal('server-agent'),
 		token: z.string().default('dev'),
 	}),
+	SandboxConnectionSchema,
 ])
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
+export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
 	maxQueueSize: z.int().min(1).max(100).prefault(20).describe(

@@ -291,6 +291,9 @@ function transformConnectionSecretValues(
 			}
 		case 'server-agent':
 			return { ...connections, token: fn(connections.token) }
+		// nothing to seal: the emulator's rcon password is generated per process and never persisted
+		case 'sandbox':
+			return connections
 		default:
 			assertNever(connections)
 	}
