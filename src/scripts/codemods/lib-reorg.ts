@@ -42,6 +42,11 @@ function dropImport(src: string, pattern: RegExp) {
 	return src.replace(new RegExp(`^${pattern.source}\\n`, 'gm'), '')
 }
 
+/** the old namespace names, wherever they survive -- including in prose, which the steps below skip */
+function staleNames(src: string): string {
+	return src.replace(/\bZusUtils\./g, 'Zus.').replace(/\bRxHelpers\./g, 'ReactRx.')
+}
+
 function zustand(src: string, file: string): string {
 	if (file === ZUSTAND_BARREL) return src
 
@@ -259,7 +264,7 @@ async function main() {
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = utils(rxjsAndPromise(reactRxjs(zustand(before, file), file), file), file)
+		const after = staleNames(utils(rxjsAndPromise(reactRxjs(zustand(before, file), file), file), file))
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++
