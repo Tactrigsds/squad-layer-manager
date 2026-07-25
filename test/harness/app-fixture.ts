@@ -129,6 +129,10 @@ export type AppFixtureOptions = {
 	// same file and proxies RCON, streaming both to the app over the /server-agent websocket. Exercises the
 	// full remote-agent pipeline including the RCON tunnel.
 	logSource?: 'local' | 'server-agent'
+	// a second enabled server, with an emulator and log file of its own, for anything about choosing between
+	// servers. Off by default: it costs a second emulator and a second slice, and every other test would rather
+	// have one server whose state it fully controls.
+	secondServer?: boolean | { id?: string; displayName?: string }
 }
 
 export type AppFixture = {
@@ -145,6 +149,8 @@ export type AppFixture = {
 	logFile: string
 	// the emulated squad server's SquadGame.log, which the app tails
 	squadLogPath: string
+	// the second server, when `secondServer` asked for one: its id and its own emulator
+	second: { serverId: string; displayName: string; emu: Emulator } | null
 	// the Admins.cfg the app reads as a local admin list source; rewrite it to change who is an admin
 	adminsCfgPath: string
 	child: childProcess.ChildProcess | null
@@ -292,6 +298,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 
 	const emu = new Emulator(opts.emulator)
 	await emu.start()
+	const secondOpts = opts.secondServer === true ? {} : (opts.secondServer || null)
+	const secondId = secondOpts?.id ?? 'emu-server-2'
+	const secondDisplayName = secondOpts?.displayName ?? 'Second Emulated Server'
+	const secondEmu = secondOpts ? await new Emulator(opts.emulator).start() : null
 	const bm = new BmServer()
 	const bmPort = await bm.listen()
 
@@ -364,6 +374,33 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		}),
 	)
 
+	// A second server is a whole second slice: its own emulator, its own log file, its own rcon. Sharing one
+	// emulator between two slices would have them both driving the same world, which is not what two servers
+	// means and would have them fighting over the next layer.
+	const secondLogPath = path.join(tmpDir, 'SquadGame2.log')
+	if (secondEmu) {
+		const secondSettings = SETTINGS.ServerSettingsSchema.parse({
+			connections: {
+				type: 'local',
+				logFile: secondLogPath,
+				rcon: { host: '127.0.0.1', port: secondEmu.rconPort, password: secondEmu.password },
+			},
+		})
+		applyTestServerTimings(secondSettings)
+		secondSettings.adminLists = [TEST_ADMIN_LIST]
+		await db.insert(Schema.servers).values(
+			superjsonify(Schema.servers, {
+				id: secondId,
+				displayName: secondDisplayName,
+				enabled: true,
+				defaultServer: false,
+				layerQueue: [],
+				backburner: [],
+				settings: secondSettings,
+			}),
+		)
+	}
+
 	// -------- users --------
 	// the bypass login resolves users by username against this table; the admin additionally gets
 	// every permission via the SUPER_USERS env bootstrap below
@@ -387,6 +424,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	LayerArtifacts.resolvePair()
 
 	emu.attachLogFile(squadLogPath)
+	secondEmu?.attachLogFile(secondLogPath)
 
 	const appPort = await freePort()
 	const appUrl = `http://127.0.0.1:${appPort}`
@@ -532,6 +570,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		tmpDir,
 		logFile,
 		squadLogPath,
+		second: secondEmu ? { serverId: secondId, displayName: secondDisplayName, emu: secondEmu } : null,
 		adminsCfgPath,
 		child,
 		adminUser: ADMIN_USER,
@@ -556,6 +595,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			serverAgent?.dispose()
 			await stopApp()
 			emu.dispose()
+			secondEmu?.dispose()
 			bm.close()
 			// set SLM_KEEP_TEST_TMP=1 to retain the db + app log of a failing run
 			if (!process.env.SLM_KEEP_TEST_TMP) fs.rmSync(tmpDir, { recursive: true, force: true })
