@@ -30,9 +30,11 @@ export type Slot = {
 	worktree: string
 	name: string
 	ports: SlotPorts
+	// the username `instanceUrl` logs in as; resolved from the cloned database by `dev:db:clone`
+	login?: string
 }
 
-type RegistryEntry = { slot: number; name: string; claimedAt: string }
+type RegistryEntry = { slot: number; name: string; claimedAt: string; login?: string }
 type Registry = Record<string, RegistryEntry>
 
 export function portsForSlot(slot: number): SlotPorts {
@@ -116,7 +118,16 @@ function prune(registry: Registry) {
 }
 
 function toSlot(worktree: string, entry: RegistryEntry): Slot {
-	return { slot: entry.slot, worktree, name: entry.name, ports: portsForSlot(entry.slot) }
+	return { slot: entry.slot, worktree, name: entry.name, ports: portsForSlot(entry.slot), login: entry.login }
+}
+
+// The one address for an instance: the vite dev server, which proxies everything else to the app, carrying the
+// query-param login so a browser opening it is signed in on arrival. There is deliberately no second url to
+// know about -- see docs/dev_instances.md.
+export function instanceUrl(slot: Slot, urlPath = '/'): string {
+	const url = new URL(urlPath, `http://localhost:${slot.ports.client}`)
+	if (slot.login) url.searchParams.set('login', slot.login)
+	return url.toString()
 }
 
 export async function claimSlot(cwd = process.cwd()): Promise<Slot> {
@@ -151,6 +162,14 @@ export function requireSlot(cwd = process.cwd()): Slot {
 	const slot = getSlot(cwd)
 	if (!slot) throw new Error(`this worktree has no dev slot; run \`pnpm dev:init\` first`)
 	return slot
+}
+
+export async function setLogin(login: string, cwd = process.cwd()): Promise<void> {
+	const worktree = worktreeRoot(cwd)
+	await withLock(registryPath(cwd), (registry) => {
+		const entry = registry[worktree]
+		if (entry) entry.login = login
+	})
 }
 
 export async function releaseSlot(cwd = process.cwd()): Promise<boolean> {
