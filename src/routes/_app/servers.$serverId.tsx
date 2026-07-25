@@ -32,11 +32,10 @@ export const Route = createFileRoute('/_app/servers/$serverId')({
 		],
 	}),
 
-	onEnter({ params }) {
+	onEnter() {
 		// capture how we got here so the component can decide whether to establish presence
 		// immediately (navigated in) or wait for the user's first interaction (fresh load / refresh)
 		enteredViaNavigation = RootRouter.arrivedViaNavigation()
-		SquadServerClient.SelectedServerActions.setSelectedServer(params.serverId)
 	},
 
 	onLeave() {
@@ -53,6 +52,13 @@ let enteredViaNavigation = false
 // route's pending component.
 function RouteComponent() {
 	const serverId = Route.useParams().serverId
+	// Switching servers keeps this route matched and only changes the param, so onEnter does not run again -- it fires
+	// once per entry, not per param change. Everything outside this route (the NavBar's server picker and its Server
+	// Actions) reads the selected server from the store, so syncing it here is what keeps them pointed at the server
+	// the page is actually showing. Not in the loader: loaders also run for speculative preloads.
+	React.useEffect(() => {
+		SquadServerClient.SelectedServerActions.setSelectedServer(serverId)
+	}, [serverId])
 	return (
 		<ReactRx.Subscribe source$={SquadServerClient.serverAvailability$(serverId)}>
 			<ServerRoute serverId={serverId} />
