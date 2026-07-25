@@ -201,7 +201,7 @@ function useMessageVars(value$: ValueState): Record<string, string> {
 	return vars
 }
 
-// per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
+// per-form options. `idPrefix` allowedChats the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
@@ -1106,12 +1106,12 @@ function CommandTriggersField({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
-// compact editor for a single command (`commands.<id>`): collapses the triggers/scopes/enabled sub-sections into a
+// compact editor for a single command (`commands.<id>`): collapses the triggers/allowedChats/enabled sub-sections into a
 // couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
 // shell. Schema issues (e.g. a trigger missing an allowed prefix) still surface under the card via the field's issues.
 function CommandCard({ value$, reset$, onChange }: OverrideProps) {
-	const cfg = (useFieldValue(value$, reset$) as { scopes?: CMD.CommandScope[]; enabled?: boolean; quickReference?: boolean }) ?? {}
-	const scopes = cfg.scopes ?? []
+	const cfg = (useFieldValue(value$, reset$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
+	const allowedChats = cfg.allowedChats ?? []
 	const enabled = cfg.enabled ?? true
 	const quickReference = cfg.quickReference ?? false
 	const triggers$ = React.useMemo(() => scopeValue(value$, 'triggers'), [value$])
@@ -1130,13 +1130,13 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="flex items-center gap-2">
 					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-						Scopes <HelpTip text="Chat scopes this command is available in (admin and/or public chats)." />
+						Allowed chats <HelpTip text="The in-game chats this command may be typed in." />
 					</span>
 					<ComboBoxMulti
-						title="Scope"
-						values={scopes}
-						options={CMD.COMMAND_SCOPES.options.map((scope) => ({ value: scope, label: CMD.COMMAND_SCOPE_LABELS[scope] }))}
-						onSelect={(next) => patch({ scopes: (typeof next === 'function' ? next(scopes) : next) })}
+						title="Allowed chats"
+						values={allowedChats}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: CMD.CHAT_GROUP_LABELS[group] }))}
+						onSelect={(next) => patch({ allowedChats: (typeof next === 'function' ? next(allowedChats) : next) })}
 					/>
 				</div>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -3852,7 +3852,7 @@ export default function SettingsForm(
 		// the last-saved baseline the draft was seeded from; powers each field's "reset to saved" button. May be
 		// undefined while the settings are still loading.
 		saved?: any
-		// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
+		// allowedChats field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
 		idPrefix?: string
 		// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
 		groups?: SettingsGroup[]

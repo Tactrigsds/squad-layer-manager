@@ -201,7 +201,7 @@ describe('usage strings', () => {
 	})
 
 	it('formatUsage uses the primary trigger', () => {
-		const usage = CMD.formatUsage('warn', { triggers: ['!warn'], scopes: ['admin'], enabled: true, quickReference: false })
+		const usage = CMD.formatUsage('warn', { triggers: ['!warn'], allowedChats: ['admin'], enabled: true, quickReference: false })
 		expect(usage).toBe('Usage: !warn <player> <reason|message>')
 	})
 
@@ -209,7 +209,7 @@ describe('usage strings', () => {
 	it('formatUsage skips a trigger with pinned args when picking the primary', () => {
 		const config: CMD.CommandConfig = {
 			triggers: [{ string: '!warnsp', args: '{{arg1}} spam' }, '!warn'],
-			scopes: ['admin'],
+			allowedChats: ['admin'],
 			enabled: true,
 			quickReference: false,
 		}
@@ -220,10 +220,10 @@ describe('usage strings', () => {
 
 describe('seedCommandConfigs', () => {
 	it('seeds missing commands with prefixed default triggers and leaves stored ones alone', () => {
-		const stored = { warn: { triggers: ['/w'], scopes: ['admin'], enabled: false } }
+		const stored = { warn: { triggers: ['/w'], allowedChats: ['admin'], enabled: false } }
 		const seeded = CMD.seedCommandConfigs(stored, '/')
 		expect(seeded.warn).toEqual(stored.warn)
-		expect(seeded.help).toEqual({ triggers: ['/help', '/h'], scopes: ['admin'], enabled: true, quickReference: true })
+		expect(seeded.help).toEqual({ triggers: ['/help', '/h'], allowedChats: ['admin'], enabled: true, quickReference: true })
 		expect(Object.keys(seeded).sort()).toEqual(Object.keys(CMD.COMMAND_DECLARATIONS).sort())
 	})
 

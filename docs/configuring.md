@@ -124,7 +124,7 @@ arguments are worked out, so `{{rest}}` alone means "the player, and nothing els
 Leave the args off entirely for a plain trigger.
 
 Every trigger string across every command shares one namespace, and two commands cannot claim the same one. A trigger
-runs in its command's scopes, so pinning arguments cannot turn a public trigger into an admin command; what it can do
+runs in its command's allowed chats, so pinning arguments cannot turn a public trigger into an admin command; what it can do
 is let a public trigger pass a player's own words into a public command's free-text argument, which is worth keeping
 in mind when writing one.
 
