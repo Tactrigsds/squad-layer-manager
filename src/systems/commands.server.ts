@@ -102,19 +102,19 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 	log.info('Command received: %s', cmd)
 
 	const cmdConfig = Settings.GLOBAL_SETTINGS.commands[cmd as keyof typeof Settings.GLOBAL_SETTINGS.commands]
-	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
-		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.scopes, ['admin'])) {
+	if (!CMD.chatAllowed(cmdConfig.allowedChats, msg.channelType)) {
+		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.allowedChats, ['admin'])) {
 			// non-admin is trying to use admin command, just ignore them
 			return
 		}
-		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(cmdConfig.scopes))
+		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(cmdConfig.allowedChats))
 	}
 
 	if (!cmdConfig.enabled) {
 		return await error('command-disabled', `Command "${cmd}" is disabled`)
 	}
 
-	// Authorization sits here, next to the scope and enabled gates, rather than in each handler: the declaration is
+	// Authorization sits here, next to the allowed-chat and enabled gates, rather than in each handler: the declaration is
 	// exhaustive over CommandId, so a command cannot reach its handler without having stated what it requires.
 	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
 	const permission = CMD.COMMAND_DECLARATIONS[cmd].permission

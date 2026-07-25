@@ -40,18 +40,18 @@ const QUICK_REF_SECTION_ID = 'section:quick-reference'
 // the sections that re-list commands already shown under their own section, rather than holding any of their own
 const SHORTCUT_SECTION_IDS: ReadonlySet<string> = new Set([PINNED_SECTION_ID, QUICK_REF_SECTION_ID])
 
-// Each scope is shown as its chat channel already is elsewhere in the app: admin-only in the admin blue with a shield
+// Each chat group is shown as its channel already is elsewhere in the app: admin-only in the admin blue with a shield
 // (as on an admin player and the chat box's admin target), public in ChatAll's white. Tinted outline rather than a
 // solid fill -- it's the same treatment the chat box gives its channels, and a filled badge at this size buried the
 // label. The icon does the work at a glance; the colour alone would be carrying too much.
-const SCOPE_BADGES: Record<CMD.CommandScope, { icon: React.ComponentType<{ className?: string }>; className: string }> = {
+const CHAT_GROUP_BADGES: Record<CMD.ChatGroup, { icon: React.ComponentType<{ className?: string }>; className: string }> = {
 	admin: { icon: Icons.Shield, className: 'border-admin/60 text-admin' },
 	public: { icon: Icons.Globe, className: 'border-foreground/40 text-foreground' },
 }
 
-export function CopyableCommand({ cmdString, chatScope }: { cmdString: string; chatScope: 'ChatToAdmin' | 'ChatToAll' }) {
+export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string; chatCommand: 'ChatToAdmin' | 'ChatToAll' }) {
 	const copy = async () => {
-		const consoleCommand = `${chatScope} ${cmdString}`
+		const consoleCommand = `${chatCommand} ${cmdString}`
 		try {
 			await navigator.clipboard.writeText(consoleCommand)
 			toast('Copied to clipboard', { description: consoleCommand })
@@ -98,7 +98,7 @@ function CommandDetails(
 	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
 	const args = CMDH.describeArgs(cmdId, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
-	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
+	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 
 	return (
 		<div className="space-y-3 border-l-2 pl-3 ml-1">
@@ -130,7 +130,7 @@ function CommandDetails(
 				<p className="text-xs font-medium text-muted-foreground">Examples</p>
 				{examples.map((example) => (
 					<div key={example.command} className="flex flex-wrap items-center gap-2">
-						<CopyableCommand cmdString={example.command} chatScope={chatScope} />
+						<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
 						<span className="text-xs text-muted-foreground">{example.note}</span>
 					</div>
 				))}
@@ -140,7 +140,7 @@ function CommandDetails(
 					<p className="text-xs font-medium text-muted-foreground">Shortcuts</p>
 					{shortcuts.map(({ usage, expansion }) => (
 						<div key={usage} className="flex flex-wrap items-center gap-2">
-							<CopyableCommand cmdString={usage} chatScope={chatScope} />
+							<CopyableCommand cmdString={usage} chatCommand={chatCommand} />
 							<span className="text-xs text-muted-foreground">{Messages.GENERAL.command.aliasDescription(expansion)}</span>
 						</div>
 					))}
@@ -162,25 +162,25 @@ function CommandEntry(
 	const [open, setOpen] = React.useState(false)
 	const args = CMD.COMMAND_DECLARATIONS[cmdId].args as readonly CMD.ArgDef[]
 	const argObject = Object.fromEntries(args.map(arg => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
-	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
+	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2">
 			<div className="group flex items-center gap-2">
 				<PinButton cmdId={cmdId} pinned={pinned} />
 				<div className="flex flex-wrap items-center gap-1">
 					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
-						<CopyableCommand key={cmdString} cmdString={cmdString} chatScope={chatScope} />
+						<CopyableCommand key={cmdString} cmdString={cmdString} chatCommand={chatCommand} />
 					))}
 					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this command" />
 				</div>
 				<div className="flex-1" />
 				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
-				{cmd.scopes.map((scope) => {
-					const { icon: ScopeIcon, className } = SCOPE_BADGES[scope]
+				{cmd.allowedChats.map((group) => {
+					const { icon: GroupIcon, className } = CHAT_GROUP_BADGES[group]
 					return (
-						<Badge key={scope} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
-							<ScopeIcon className="h-3 w-3" />
-							{CMD.COMMAND_SCOPE_LABELS[scope]}
+						<Badge key={group} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
+							<GroupIcon className="h-3 w-3" />
+							{CMD.CHAT_GROUP_LABELS[group]}
 						</Badge>
 					)
 				})}

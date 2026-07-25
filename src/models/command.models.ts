@@ -9,17 +9,16 @@ import type * as RBAC from '@/rbac.models'
 import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
-export const COMMAND_SCOPES = z.enum(['admin', 'public'])
-export type CommandScope = z.infer<typeof COMMAND_SCOPES>
+export const CHAT_GROUPS = z.enum(['admin', 'public'])
+export type ChatGroup = z.infer<typeof CHAT_GROUPS>
 
-export const CHAT_SCOPE_MAPPINGS = {
-	[COMMAND_SCOPES.enum.admin]: ['ChatAdmin'],
-	[COMMAND_SCOPES.enum.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
+export const CHAT_GROUP_CHANNELS = {
+	[CHAT_GROUPS.enum.admin]: ['ChatAdmin'],
+	[CHAT_GROUPS.enum.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
 }
 
-// How a scope is labelled wherever it's shown. A scope is a restriction on where a command may be typed, but a bare
-// "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
-export const COMMAND_SCOPE_LABELS: Record<CommandScope, string> = {
+// A bare "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
+export const CHAT_GROUP_LABELS: Record<ChatGroup, string> = {
 	admin: 'admin only',
 	public: 'public',
 }
@@ -53,7 +52,7 @@ export function primaryTrigger(config: CommandConfig): CommandTrigger | undefine
 
 export type CommandConfig = {
 	triggers: CommandTrigger[]
-	scopes: CommandScope[]
+	allowedChats: ChatGroup[]
 	enabled: boolean
 	// whether the command appears on the quick reference: the commands page's top section, and the only commands
 	// bare `!help` lists (see Messages.WARNS.commands.help)
@@ -184,7 +183,7 @@ export const COMMAND_DECLARATIONS = {
 				+ 'Lists the quick reference when omitted.',
 		}],
 		defaults: {
-			scopes: ['admin'],
+			allowedChats: ['admin'],
 			triggers: ['help', 'h'],
 			enabled: true,
 			quickReference: true,
@@ -201,14 +200,14 @@ export const COMMAND_DECLARATIONS = {
 			sample: '2.1',
 			describe: 'A queue item number like 2 or 2.1. Defaults to the next item.',
 		}],
-		defaults: { scopes: ['admin'], triggers: ['feedback', 'fb'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['feedback', 'fb'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('startVote', {
 		section: 'votes',
 		permission: 'vote:manage',
 		args: [],
 		defaults: {
-			scopes: ['admin'],
+			allowedChats: ['admin'],
 			triggers: ['startvote', 'sv'],
 			enabled: true,
 			quickReference: false,
@@ -218,37 +217,37 @@ export const COMMAND_DECLARATIONS = {
 		section: 'votes',
 		permission: 'vote:manage',
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['abortvote', 'av'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['abortvote', 'av'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('endVoteEarly', {
 		section: 'votes',
 		permission: 'vote:manage',
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['endvote', 'ev'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['endvote', 'ev'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('showNext', {
 		section: 'general',
 		permission: null,
 		args: [],
-		defaults: { scopes: ['admin', 'public'], triggers: ['shownext', 'sn'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['shownext', 'sn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('enableSlmUpdates', {
 		section: 'votes',
 		permission: 'squad-server:disable-slm-updates',
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['enableslm'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['enableslm'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disableSlmUpdates', {
 		section: 'votes',
 		permission: 'squad-server:disable-slm-updates',
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['disableslm'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['disableslm'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('getSlmUpdatesEnabled', {
 		section: 'votes',
 		permission: null,
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['slmstatus'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['slmstatus'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('requestLayer', {
 		section: 'layerRequests',
@@ -260,13 +259,13 @@ export const COMMAND_DECLARATIONS = {
 			describe: 'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; '
 				+ 'everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
 		}],
-		defaults: { scopes: ['admin', 'public'], triggers: ['requestlayer', 'reqlayer', 'rql'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['requestlayer', 'reqlayer', 'rql'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('listLayerRequests', {
 		section: 'layerRequests',
 		permission: null,
 		args: [],
-		defaults: { scopes: ['admin', 'public'], triggers: ['reqs', 'listreqs'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['reqs', 'listreqs'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeLayerRequest', {
 		section: 'layerRequests',
@@ -278,43 +277,43 @@ export const COMMAND_DECLARATIONS = {
 			sample: '2',
 			describe: 'The request number from the list. Removes your newest request when omitted.',
 		}],
-		defaults: { scopes: ['admin', 'public'], triggers: ['unreqlayer', 'rmreq'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['unreqlayer', 'rmreq'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapNow', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'player', name: 'player' }],
-		defaults: { scopes: ['admin'], triggers: ['swapnow'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['swapnow'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapNext', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'player', name: 'player' }],
-		defaults: { scopes: ['admin'], triggers: ['swapnext'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['swapnext'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapSquadNow', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'squad', name: 'squad' }],
-		defaults: { scopes: ['admin'], triggers: ['swapsquadnow'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnow'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapSquadNext', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'squad', name: 'squad' }],
-		defaults: { scopes: ['admin'], triggers: ['swapsquadnext'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnext'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swaps', {
 		section: 'teamswaps',
 		permission: null,
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['swaps'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['swaps'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('clearSwaps', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['clearswaps'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['clearswaps'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('flag', {
 		section: 'flags',
@@ -324,7 +323,7 @@ export const COMMAND_DECLARATIONS = {
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag in your organization.' },
 			{ kind: 'text', name: 'reason', optional: true, describe: "Posted as a note on the player's BM profile. Some flags require one." },
 		],
-		defaults: { scopes: ['admin'], triggers: ['flag'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['flag'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('removeFlag', {
 		section: 'flags',
@@ -334,67 +333,67 @@ export const COMMAND_DECLARATIONS = {
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag currently on the player.' },
 			{ kind: 'text', name: 'reason', optional: true, describe: "Posted as a note on the player's BM profile." },
 		],
-		defaults: { scopes: ['admin'], triggers: ['removeFlag', 'rf'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['removeFlag', 'rf'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('listFlags', {
 		section: 'flags',
 		permission: null,
 		args: [{ kind: 'player', name: 'player', optional: true, describe: 'Lists every flag in the organization when omitted.' }],
-		defaults: { enabled: true, scopes: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
+		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
 	}),
 	...declareCommand('warn', {
 		section: 'moderation',
 		permission: 'squad-server:warn-players',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'warn' }],
-		defaults: { scopes: ['admin'], triggers: ['warn'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['warn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('listWarnReasons', {
 		section: 'moderation',
 		permission: null,
 		args: [],
-		defaults: { scopes: ['admin'], triggers: ['warnreasons', 'warns'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['warnreasons', 'warns'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('warnSquad', {
 		section: 'moderation',
 		permission: 'squad-server:warn-players',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'warn' }],
-		defaults: { scopes: ['admin'], triggers: ['warnsquad', 'ws'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['warnsquad', 'ws'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('kill', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'kill', optional: true }],
-		defaults: { scopes: ['admin'], triggers: ['kill'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['kill'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('killSquad', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'kill', optional: true }],
-		defaults: { scopes: ['admin'], triggers: ['killsquad'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['killsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeFromSquad', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true }],
-		defaults: { scopes: ['admin'], triggers: ['rfs', 'removefromsquad'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['rfs', 'removefromsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disbandSquad', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'disband-squad', optional: true }],
-		defaults: { scopes: ['admin'], triggers: ['disband'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['disband'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('demoteCommander', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
 		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'demote-commander', optional: true }],
-		defaults: { scopes: ['admin'], triggers: ['demote'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['demote'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('broadcast', {
 		section: 'messaging',
 		permission: 'squad-server:broadcast',
 		args: [{ kind: 'reason', name: 'reason', action: 'broadcast' }],
-		defaults: { scopes: ['admin'], triggers: ['broadcast', 'b'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['broadcast', 'b'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kick', {
 		section: 'moderation',
@@ -403,7 +402,7 @@ export const COMMAND_DECLARATIONS = {
 			{ kind: 'player', name: 'player' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
 		],
-		defaults: { scopes: ['admin'], triggers: ['kick'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['kick'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kickSquad', {
 		section: 'moderation',
@@ -412,7 +411,7 @@ export const COMMAND_DECLARATIONS = {
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
 		],
-		defaults: { scopes: ['admin'], triggers: ['kicksquad'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['kicksquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('timeout', {
 		section: 'moderation',
@@ -422,7 +421,7 @@ export const COMMAND_DECLARATIONS = {
 			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
 		],
-		defaults: { scopes: ['admin'], triggers: ['timeout', 'to'], enabled: true, quickReference: true },
+		defaults: { allowedChats: ['admin'], triggers: ['timeout', 'to'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('timeoutSquad', {
 		section: 'moderation',
@@ -432,7 +431,7 @@ export const COMMAND_DECLARATIONS = {
 			{ kind: 'duration', name: 'duration' },
 			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
 		],
-		defaults: { scopes: ['admin'], triggers: ['timeoutsquad', 'tos'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['timeoutsquad', 'tos'], enabled: true, quickReference: false },
 	}),
 	// the target may be offline, so the arg is a plain token resolved against players with active timeouts
 	...declareCommand('clearTimeout', {
@@ -444,7 +443,7 @@ export const COMMAND_DECLARATIONS = {
 			sample: 'Alice',
 			describe: 'A player id, or a username substring matched against players with an active timeout.',
 		}],
-		defaults: { scopes: ['admin'], triggers: ['cleartimeout', 'ct'], enabled: true, quickReference: false },
+		defaults: { allowedChats: ['admin'], triggers: ['cleartimeout', 'ct'], enabled: true, quickReference: false },
 	}),
 }
 
@@ -503,7 +502,7 @@ function CommandConfigSchema(commandId: CommandId) {
 			"Strings that run this command, each starting with one of the allowed prefixes. A plain string takes the command's "
 				+ 'arguments as typed; give one an "args" template instead to pin some of them (what used to be a command alias)',
 		),
-		scopes: z.array(COMMAND_SCOPES).prefault(declared.scopes).describe('Scopes in which this command is available'),
+		allowedChats: z.array(CHAT_GROUPS).prefault(declared.allowedChats).describe('Which in-game chats accept this command'),
 		enabled: z.boolean().prefault(declared.enabled),
 		quickReference: z.boolean().prefault(declared.quickReference).describe(
 			'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
@@ -551,7 +550,7 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandCon
 	const match = matchCommandText(configs, words[0] ?? '')
 	if (!match) {
 		const allTriggerStrings = Obj.objValues(configs)
-			.filter((c) => chatInScope(c.scopes, msg.channelType))
+			.filter((c) => chatAllowed(c.allowedChats, msg.channelType))
 			.flatMap((c) => c.triggers.map(triggerString))
 		const sortedMatches = StringComparison.diceCoefficient.sortMatch((words[0] ?? '').toLowerCase(), allTriggerStrings)
 		if (sortedMatches.length === 0) {
@@ -929,23 +928,13 @@ export function describeTriggerExpansion(config: CommandConfig, trigger: Command
 	return template === undefined ? head : `${head} ${template}`.trim()
 }
 
-export function chatInScope(scopes: CommandScope[], msgChat: SM.ChatChannelType) {
-	for (const scope of scopes) {
-		if (CHAT_SCOPE_MAPPINGS[scope].includes(msgChat)) {
+export function chatAllowed(allowedChats: ChatGroup[], msgChat: SM.ChatChannelType) {
+	for (const group of allowedChats) {
+		if (CHAT_GROUP_CHANNELS[group].includes(msgChat)) {
 			return true
 		}
 	}
 	return false
-}
-
-export function getScopesForChat(chat: SM.ChatChannelType): CommandScope[] {
-	const matches: CommandScope[] = []
-	for (const [scope, chats] of Object.entries(CHAT_SCOPE_MAPPINGS)) {
-		if (chats.includes(chat)) {
-			matches.push(scope as CommandScope)
-		}
-	}
-	return matches
 }
 
 export function buildCommand(
@@ -958,9 +947,9 @@ export function buildCommand(
 	const config = configs[id]
 	let unrealConsoleCommand: string
 	if (excludeConsoleCommand) unrealConsoleCommand = ''
-	else if (config.scopes.includes('admin')) unrealConsoleCommand = 'ChatToAdmin'
-	else if (config.scopes.includes('public')) unrealConsoleCommand = 'ChatToAll'
-	else throw new Error(`Invalid scope for command ${id}`)
+	else if (config.allowedChats.includes('admin')) unrealConsoleCommand = 'ChatToAdmin'
+	else if (config.allowedChats.includes('public')) unrealConsoleCommand = 'ChatToAll'
+	else throw new Error(`Command ${id} allows no chats`)
 	const argSubstring = (declaration.args as readonly ArgDef[]).map((arg) => argObj[arg.name] ?? '').join(' ')
 	// only plain triggers: one that pins arguments has a signature of its own, and is listed as a shortcut instead
 	return config.triggers
