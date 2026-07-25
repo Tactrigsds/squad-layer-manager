@@ -4,7 +4,7 @@ import { normalizeForMatch, simpleUniqueStringMatch } from './string'
 
 const PYOTR = 'Пётр'
 const TANAKA = 'たなか'
-// escaped rather than literal: dprint normalizes the source file, which would collapse these two into one string
+// escaped rather than literal: oxfmt normalizes the source file, which would collapse these two into one string
 const JOSE_PRECOMPOSED = 'Jos\u00e9'
 const JOSE_DECOMPOSED = 'Jose\u0301'
 
