@@ -1,6 +1,5 @@
-import * as Rx from 'rxjs'
-
 import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'

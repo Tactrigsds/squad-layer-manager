@@ -4,10 +4,10 @@ import type { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
 import { onlineManager, QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
-import * as Rx from 'rxjs'
 
 import * as AR from '@/app-routes'
 import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
@@ -15,7 +15,6 @@ import type * as RBAC from '@/rbac.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 
-import { toCold, traceTag } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
@@ -258,8 +257,8 @@ export function observe<T>(
 	task: () => Promise<Rx.ObservableInput<T>>,
 	opts?: { onError?: (error: any, count: number) => void },
 ) {
-	return Rx.from(toCold(task)).pipe(
-		traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`),
+	return Rx.from(Rx.Ext.toCold(task)).pipe(
+		Rx.Ext.traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`),
 		Rx.concatAll(),
 		Rx.retry({
 			// without this the attempt count accumulates across the whole session, so a subscription that has

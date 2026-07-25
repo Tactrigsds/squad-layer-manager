@@ -1,5 +1,3 @@
-import * as Rx from 'rxjs'
-
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
@@ -7,6 +5,7 @@ import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'

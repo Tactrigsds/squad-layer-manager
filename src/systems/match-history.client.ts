@@ -1,6 +1,5 @@
-import * as Rx from 'rxjs'
-
 import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems/parts.client'

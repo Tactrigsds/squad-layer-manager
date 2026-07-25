@@ -1,11 +1,11 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import { Button } from '@/components/ui/button'
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Gen from '@/lib/generator.ts'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand.ts'
 import type * as F from '@/models/filter.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'

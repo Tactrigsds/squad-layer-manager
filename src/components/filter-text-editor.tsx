@@ -1,11 +1,11 @@
 import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as CM from '@/lib/codemirror'
 import * as Obj from '@/lib/object'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Typography from '@/lib/typography.ts'
 import * as Zus from '@/lib/zustand'

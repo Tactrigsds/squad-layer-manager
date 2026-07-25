@@ -1,7 +1,6 @@
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
 import * as SC from '@/models/server-console.models'
 import * as RBAC from '@/rbac.models'
@@ -99,8 +98,8 @@ export const orpcRouter = {
 			const obs = Rx.concat(backlog, live).pipe(
 				Rx.filter((events) => events.length > 0),
 				Rx.map((events) => ({ code: 'ok' as const, events })),
-				withAbortSignal(signal!),
+				Rx.Ext.withAbortSignal(signal!),
 			)
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 }

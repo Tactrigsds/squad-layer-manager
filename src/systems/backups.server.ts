@@ -4,7 +4,7 @@ import path from 'node:path'
 import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
-import { isAbortError, sleep } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import * as SFS from '@/lib/sftp-file-store'
 import { formatDurationApprox, formatHumanTime, parseHumanTime } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
@@ -48,7 +48,7 @@ async function run() {
 	try {
 		await adoptUnrecordedBackups(ctx)
 	} catch (err) {
-		if (!isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
+		if (!Prom.isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
 	}
 
 	if (ENV.AUTOMATIC_BACKUPS_PERIODIC === undefined) {
@@ -112,7 +112,7 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	// the schedule is anchored to the last backup that actually happened, not to boot: a server restarted more often
 	// than the interval would otherwise never reach its first backup at all. A backup taken shortly before a restart
 	// isn't taken again, and one that came due while we were down is taken now (BOOT_SETTLE_DELAY floors the first
-	// sleep either way, so the snapshot doesn't land while the rest of the app is still coming up).
+	// Prom.sleep either way, so the snapshot doesn't land while the rest of the app is still coming up).
 	const lastBackupAt = await getLastBackupTime(ctx)
 	const overdueBy = lastBackupAt === null ? 0 : Date.now() - (lastBackupAt + interval)
 	let wait = Math.max(BOOT_SETTLE_DELAY, -overdueBy)
@@ -122,7 +122,7 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 
 	while (!ctx.signal.aborted) {
 		try {
-			await sleep(wait, ctx.signal)
+			await Prom.sleep(wait, ctx.signal)
 		} catch {
 			break
 		}
@@ -130,7 +130,7 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 			await runBackup(ctx)
 			wait = interval
 		} catch (err) {
-			if (isAbortError(err)) break
+			if (Prom.isAbortError(err)) break
 			// a failed backup must not kill the loop, but it must not spin either: retry sooner than the full interval,
 			// since we're already past due.
 			wait = Math.min(interval, FAILED_BACKUP_RETRY_DELAY)
@@ -339,7 +339,7 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 						log.info('deleted remote backup %s', stale)
 					}
 				} catch (err) {
-					if (isAbortError(err)) throw err
+					if (Prom.isAbortError(err)) throw err
 					log.error(err, 'failed to prune old backups on %s (the upload itself succeeded)', target.host)
 				}
 			},
@@ -347,7 +347,7 @@ const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSi
 		)
 		return true
 	} catch (err) {
-		if (isAbortError(err)) throw err
+		if (Prom.isAbortError(err)) throw err
 		log.error(err, 'failed to upload backup %s to %s', fileName, target.host)
 		return uploaded
 	}

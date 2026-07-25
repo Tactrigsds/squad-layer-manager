@@ -2,8 +2,8 @@ import * as Otel from '@opentelemetry/api'
 import { os } from '@orpc/server'
 import type Pino from 'pino'
 
-import { anySignal } from '@/lib/async'
 import { getChildModule, type OtelModule } from '@/lib/otel.ts'
+import * as Prom from '@/lib/promise-utils'
 import * as ATTRS from '@/models/otel-attrs'
 
 import * as C from './context.ts'
@@ -29,7 +29,7 @@ export const getOrpcBase = (module: OtelModule) => {
 				},
 				async (ctx: Opts['context'], opts: Opts) => {
 					// narrow the connection-level signal to also abort with this particular call
-					return opts.next({ context: { ...ctx, signal: anySignal(ctx.signal, opts.signal)! } })
+					return opts.next({ context: { ...ctx, signal: Prom.anySignal(ctx.signal, opts.signal)! } })
 				},
 			)(opts.context, opts)
 		})

@@ -1,10 +1,10 @@
 import * as Otel from '@opentelemetry/api'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
-import { raceAbort, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { FixedSizeMap } from '@/lib/lru-map'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
@@ -326,7 +326,7 @@ async function bmFetch<T = null>(
 					if (attempt < RETRY.maxAttempts - 1) {
 						const delay = RETRY.baseDelayMs * 2 ** attempt
 						log.warn(`${method} ${path}: network error, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
-						await sleep(delay, ctx.signal)
+						await Prom.sleep(delay, ctx.signal)
 						continue
 					}
 					throw lastError
@@ -338,7 +338,7 @@ async function bmFetch<T = null>(
 					if (attempt < RETRY.maxAttempts - 1) {
 						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, rateLimiter.backoffUntil - Date.now())
 						log.warn(`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
-						await sleep(delay, ctx.signal)
+						await Prom.sleep(delay, ctx.signal)
 						continue
 					}
 					throw lastError
@@ -353,7 +353,7 @@ async function bmFetch<T = null>(
 					if (isRetryable(res.status) && attempt < RETRY.maxAttempts - 1) {
 						const delay = RETRY.baseDelayMs * 2 ** attempt
 						log.warn(`${method} ${path}: ${res.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
-						await sleep(delay, ctx.signal)
+						await Prom.sleep(delay, ctx.signal)
 						continue
 					}
 					log.error(
@@ -421,7 +421,7 @@ export const getOrgFlags = C.spanOp('getOrgFlags', { module }, async (ctx: CS.Ct
 		})
 	}
 
-	const flags = await raceAbort(orgFlagsFetchPromise, ctx.signal)
+	const flags = await Prom.raceAbort(orgFlagsFetchPromise, ctx.signal)
 	orgFlagsCache = flags
 	return flags
 })
@@ -676,7 +676,7 @@ export const router = {
 				.filter(([, entry]) => Date.now() <= entry.expiresAt)
 				.map(([playerId, entry]): BM.PlayerBmDataUpdate => ({ playerId, data: entry.value })),
 		)
-		yield* toAsyncGenerator(Rx.merge(initial$, playerUpdate$).pipe(withAbortSignal(signal!)))
+		yield* Rx.Ext.toAsyncGenerator(Rx.merge(initial$, playerUpdate$).pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 
 	listOrgFlags: orpcBase.handler(async ({ context: ctx }) => {

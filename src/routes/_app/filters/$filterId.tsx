@@ -1,10 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import { FilterEdit } from '@/components/filter-edit'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'

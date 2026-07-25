@@ -1,44 +1,17 @@
-import type { MutexInterface } from 'async-mutex'
+// Our own rxjs operators and bridges, reached as `Rx.Ext.*` through ./rxjs. Kept in its own module
+// rather than as a namespace inside the barrel: `export namespace` compiles to an IIFE with no pure
+// annotation, which would pin the whole rxjs re-export in the client bundle.
+//
+// Imports rxjs directly, since ./rxjs re-exports this and the other way round would be a cycle.
 import * as Rx from 'rxjs'
 
-import * as Obj from '@/lib/object'
-
+import * as Obj from './object'
 import { assertNever } from './type-guards'
-
-export function sleep(ms: number, signal?: AbortSignal) {
-	return new Promise<void>((resolve, reject) => {
-		if (signal?.aborted) return reject(signal.reason)
-		const onAbort = () => {
-			clearTimeout(timeout)
-			reject(signal!.reason)
-		}
-		const timeout = setTimeout(() => {
-			signal?.removeEventListener('abort', onAbort)
-			resolve()
-		}, ms)
-		signal?.addEventListener('abort', onAbort, { once: true })
-	})
-}
-
-/** Matches DOMExceptions from aborted signals/fetches, and anything else conventionally named AbortError. */
-export function isAbortError(error: unknown): boolean {
-	return error instanceof Error && error.name === 'AbortError'
-}
-
-/**
- * Combines signals into one that aborts when any of them do. Skips undefined entries and avoids
- * allocating a composite when zero or one signal is present.
- */
-export function anySignal(...signals: (AbortSignal | undefined)[]): AbortSignal | undefined {
-	const present = signals.filter((s): s is AbortSignal => !!s)
-	if (present.length <= 1) return present[0]
-	return AbortSignal.any(present)
-}
 
 /**
  * Like Rx.firstValueFrom, but if `signal` aborts first, unsubscribes from the source and rejects
- * with `signal.reason`. Prefer this over `raceAbort(Rx.firstValueFrom(...))`, which would leave the
- * subscription alive until the source emits.
+ * with `signal.reason`. Prefer this over `Prom.raceAbort(Rx.firstValueFrom(...))`, which would leave
+ * the subscription alive until the source emits.
  */
 export function firstValueFrom<T>(observable: Rx.Observable<T>, signal?: AbortSignal): Promise<T> {
 	if (!signal) return Rx.firstValueFrom(observable)
@@ -61,30 +34,6 @@ export function firstValueFrom<T>(observable: Rx.Observable<T>, signal?: AbortSi
 					reject(err)
 				},
 			}),
-		)
-	})
-}
-
-/**
- * Resolves/rejects with `promise`, or rejects with `signal.reason` if the signal aborts first.
- * Note: does not cancel the underlying work, only stops waiting on it. For observables, prefer
- * `firstValueFrom(observable, signal)` which tears down the subscription on abort.
- */
-export function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-	if (!signal) return promise
-	if (signal.aborted) return Promise.reject(signal.reason)
-	return new Promise<T>((resolve, reject) => {
-		const onAbort = () => reject(signal.reason)
-		signal.addEventListener('abort', onAbort, { once: true })
-		promise.then(
-			(v) => {
-				signal.removeEventListener('abort', onAbort)
-				resolve(v)
-			},
-			(e) => {
-				signal.removeEventListener('abort', onAbort)
-				reject(e)
-			},
 		)
 	})
 }
@@ -180,31 +129,6 @@ export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
 	)
 
 	return (o: Rx.Observable<T>) => fn(o, Rx.Observable)
-}
-
-export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean; priority?: number; signal?: AbortSignal }) {
-	const lock = opts?.lock ?? true
-	let release: (() => void) | undefined
-	if (lock) {
-		opts?.signal?.throwIfAborted()
-		const acquire = mutex.acquire(opts?.priority)
-		try {
-			release = await raceAbort(acquire, opts?.signal)
-		} catch (err) {
-			// if we stopped waiting but the lock is still granted later, free it immediately
-			void acquire.then(
-				(release) => release(),
-				() => {},
-			)
-			throw err
-		}
-	}
-	return {
-		[Symbol.dispose]() {
-			release?.()
-		},
-		mutex,
-	}
 }
 
 export function withAbortSignal(signal: AbortSignal) {

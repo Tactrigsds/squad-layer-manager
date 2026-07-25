@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import * as Rx from './rxjs'
 import * as Zus from './zustand'
 
 type State = { user: { name: string; age: number }; count: number }

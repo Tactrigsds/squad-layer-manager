@@ -1,14 +1,14 @@
 import { Mutex } from 'async-mutex'
 import type { MutexInterface } from 'async-mutex'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Arr from '@/lib/array'
-import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map'
 import * as ODSM from '@/lib/odsm'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
 import * as AppEvents from '@/models/app-events.models'
@@ -285,7 +285,7 @@ async function watchExecution(
 	const deadline = Date.now() + EXECUTION_TIMEOUT_MS
 	let attempts = 1
 	while (true) {
-		await sleep(EXECUTION_VERIFY_DELAY_MS, ctx.signal)
+		await Prom.sleep(EXECUTION_VERIFY_DELAY_MS, ctx.signal)
 		// the execution resolved while we waited (onTeamsModified saw the swaps land), or a later one replaced it
 		if (getState(ctx).swappingOpId !== execution.opId) return
 
@@ -382,8 +382,8 @@ export const orpcRouter = {
 					Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 					Rx.startWith(init),
 				)
-			}).pipe(withAbortSignal(signal!))
-			yield* toAsyncGenerator(obs)
+			}).pipe(Rx.Ext.withAbortSignal(signal!))
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
@@ -481,10 +481,10 @@ const dispatchOp = C.spanOp(
 							if (isManual) {
 								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal
 								const notifyCtx = { ...ctx, signal: CleanupSys.shutdownSignal }
-								sleep(500, notifyCtx.signal)
+								Prom.sleep(500, notifyCtx.signal)
 									.then(() => SquadRcon.warnAll(notifyCtx, toSwap, WARNS.teamswaps.notifyManualSwap))
 									.catch((error) => {
-										if (!isAbortError(error)) log.error(error)
+										if (!Prom.isAbortError(error)) log.error(error)
 									})
 							}
 							await swapped$
@@ -505,7 +505,7 @@ const dispatchOp = C.spanOp(
 									actor: SquadServer.actorFromUser(ctx, manualOp?.source),
 								},
 							).catch((error) => {
-								if (!isAbortError(error)) log.error(error)
+								if (!Prom.isAbortError(error)) log.error(error)
 							})
 							if (isManual) {
 								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
@@ -521,7 +521,7 @@ const dispatchOp = C.spanOp(
 									{ msg: WARNS.teamswaps.notifyAdminManualSwap(name, toSwap.length, factionLines) },
 									excludeSteamIds,
 								).catch((error) => {
-									if (!isAbortError(error)) log.error(error)
+									if (!Prom.isAbortError(error)) log.error(error)
 								})
 							}
 
@@ -604,7 +604,7 @@ const dispatchOp = C.spanOp(
 								},
 								excludeSteamIds,
 							).catch((error) => {
-								if (!isAbortError(error)) log.error(error)
+								if (!Prom.isAbortError(error)) log.error(error)
 							})
 						}
 						break

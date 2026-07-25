@@ -1,9 +1,9 @@
 import React from 'react'
-import * as Rx from 'rxjs'
 import type { z } from 'zod'
 
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
+import * as Rx from '@/lib/rxjs'
 import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
 import { toast } from '@/lib/toast'

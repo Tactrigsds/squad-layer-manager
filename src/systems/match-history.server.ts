@@ -2,17 +2,16 @@ import { Mutex } from 'async-mutex'
 import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
+import * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages'
 import * as BAL from '@/models/balance-triggers.models'
@@ -251,15 +250,15 @@ export const matchHistoryRouter = {
 				Rx.from(
 					(async function* () {
 						yield getPublicMatchHistoryState(ctx)
-						const historyUpdate$ = ctx.matchHistory.update$.pipe(withAbortSignal(signal!))
-						for await (const _ of toAsyncGenerator(historyUpdate$)) {
+						const historyUpdate$ = ctx.matchHistory.update$.pipe(Rx.Ext.withAbortSignal(signal!))
+						for await (const _ of Rx.Ext.toAsyncGenerator(historyUpdate$)) {
 							yield getPublicMatchHistoryState(ctx)
 						}
 					})(),
 				),
-			).pipe(withAbortSignal(signal!))
+			).pipe(Rx.Ext.withAbortSignal(signal!))
 
-			yield* toAsyncGenerator(state$)
+			yield* Rx.Ext.toAsyncGenerator(state$)
 		}),
 
 	getMatchEvents: orpcBase.input(z.object({ serverId: z.string(), ordinal: z.number() })).handler(async ({ input, context: _ctx }) => {

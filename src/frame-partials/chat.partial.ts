@@ -1,7 +1,6 @@
-import * as Rx from 'rxjs'
-
 import type * as FRM from '@/lib/frame'
 import * as RSel from '@/lib/reselect'
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'

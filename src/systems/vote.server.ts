@@ -2,15 +2,15 @@ import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface, withTimeout } from 'async-mutex'
 import * as dateFns from 'date-fns'
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
-import { isAbortError, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as Cleanup from '@/lib/cleanup'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Obj from '@/lib/object'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as Messages from '@/messages.ts'
@@ -120,15 +120,15 @@ export const router = {
 							initialState = { ...voteState, parts: { users } }
 						}
 						yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
-						for await (const update of toAsyncGenerator(ctx.vote.update$)) {
+						for await (const update of Rx.Ext.toAsyncGenerator(ctx.vote.update$)) {
 							const withParts = await includeVoteStateUpdatePart(getBaseCtx(), update)
 							yield { code: 'update' as const, update: withParts } satisfies V.VoteStateUpdateOrInitialWithParts
 						}
 					})(),
 				),
-			).pipe(withAbortSignal(signal!))
+			).pipe(Rx.Ext.withAbortSignal(signal!))
 
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 }
 
@@ -212,7 +212,7 @@ export const syncVoteStateWithQueueState = C.spanOp(
 					.pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now())))
 					.subscribe(() => {
 						startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' }).catch((err) => {
-							if (!isAbortError(err)) log.error(err)
+							if (!Prom.isAbortError(err)) log.error(err)
 						})
 					})
 			}
