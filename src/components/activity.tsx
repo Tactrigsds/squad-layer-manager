@@ -42,7 +42,7 @@ export function StartActivityInteraction<
 		loaderName: props.loaderName,
 		matchKey: props.matchKey,
 		trace: `StartActivityInteraction:${props.loaderName}`,
-		select: ZusUtils.useShallow(entry => [!!entry?.data, !!entry?.active] as const),
+		select: ZusUtils.useShallow((entry) => [!!entry?.data, !!entry?.active] as const),
 	})
 
 	const startActivity = () => {
@@ -51,18 +51,12 @@ export function StartActivityInteraction<
 
 	// NOTE: preloadActivity should be implemented such that it runs the work lazily
 
-	const preloadActivity = React.useCallback(
-		async () => {
-			// this is mostly redundant(maybe slightly better perf) but shows intent
-			if (isLoaded) return
+	const preloadActivity = React.useCallback(async () => {
+		// this is mostly redundant(maybe slightly better perf) but shows intent
+		if (isLoaded) return
 
-			UPClient.Actions.preloadActivity(props.createActivity())
-		},
-		[
-			isLoaded,
-			props,
-		],
-	)
+		UPClient.Actions.preloadActivity(props.createActivity())
+	}, [isLoaded, props])
 
 	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
 

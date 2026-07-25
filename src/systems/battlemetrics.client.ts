@@ -19,7 +19,7 @@ export namespace Sel {
 	export const activeGroupingId = (groupingIds: string[]) => (state: BM.StoreState) =>
 		state.selectedGroupingId !== null && groupingIds.includes(state.selectedGroupingId)
 			? state.selectedGroupingId
-			: groupingIds[0] ?? null
+			: (groupingIds[0] ?? null)
 }
 
 export namespace Actions {

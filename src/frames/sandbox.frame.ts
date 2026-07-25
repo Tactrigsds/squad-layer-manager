@@ -40,24 +40,21 @@ function createKey(frameId: symbol, input: Input): Types['key'] {
 
 function setup(args: FRM.SetupArgs<Input, Store>) {
 	const { serverId } = args.input
-	args.set(
-		{
-			serverId,
-			state: null,
-			unavailable: false,
-			playerSearch: '',
-			playerPage: 0,
-			speaker: null,
-			chatChannel: 'ChatAll',
-		} satisfies Store,
-	)
+	args.set({
+		serverId,
+		state: null,
+		unavailable: false,
+		playerSearch: '',
+		playerPage: 0,
+		speaker: null,
+		chatChannel: 'ChatAll',
+	} satisfies Store)
 
 	args.sub.add(
-		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId }))
-			.subscribe((res) => {
-				if (res.code === 'ok') args.set({ state: res, unavailable: false })
-				else args.set({ state: null, unavailable: true })
-			}),
+		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId })).subscribe((res) => {
+			if (res.code === 'ok') args.set({ state: res, unavailable: false })
+			else args.set({ state: null, unavailable: true })
+		}),
 	)
 }
 

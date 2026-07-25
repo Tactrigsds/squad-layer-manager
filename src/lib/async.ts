@@ -92,11 +92,13 @@ export function distinctDeepEquals<T>() {
 	const EMPTY = Symbol('empty')
 	let prev: typeof EMPTY | T = EMPTY
 	return (o: Rx.Observable<T>) =>
-		o.pipe(Rx.concatMap(b => {
-			if (Obj.deepEqual(b, prev)) return Rx.EMPTY
-			prev = b
-			return Rx.of(b)
-		}))
+		o.pipe(
+			Rx.concatMap((b) => {
+				if (Obj.deepEqual(b, prev)) return Rx.EMPTY
+				prev = b
+				return Rx.of(b)
+			}),
+		)
 }
 
 /**
@@ -257,7 +259,10 @@ export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: bool
 			release = await raceAbort(acquire, opts?.signal)
 		} catch (err) {
 			// if we stopped waiting but the lock is still granted later, free it immediately
-			void acquire.then((release) => release(), () => {})
+			void acquire.then(
+				(release) => release(),
+				() => {},
+			)
 			throw err
 		}
 	}
@@ -269,9 +274,7 @@ export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: bool
 	}
 }
 
-export function switchMapWithSignal<T, R>(
-	project: (value: T, signal: AbortSignal) => Rx.ObservableInput<R>,
-): Rx.OperatorFunction<T, R> {
+export function switchMapWithSignal<T, R>(project: (value: T, signal: AbortSignal) => Rx.ObservableInput<R>): Rx.OperatorFunction<T, R> {
 	return (source: Rx.Observable<T>) =>
 		new Rx.Observable<R>((subscriber) => {
 			let innerSub: Rx.Subscription | null = null

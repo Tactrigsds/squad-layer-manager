@@ -36,11 +36,7 @@ describe('0093_command_triggers', () => {
 	test('folds an alias into its target as a trigger with pinned args', async () => {
 		const db = makeDb(commands(), [{ alias: '/to2h', command: '/timeout {{arg1}} 2h {{rest2}}' }])
 		await up(db)
-		expect(readSettings(db).commands.timeout.triggers).toEqual([
-			'/timeout',
-			'/to',
-			{ string: '/to2h', args: '{{arg1}} 2h {{rest2}}' },
-		])
+		expect(readSettings(db).commands.timeout.triggers).toEqual(['/timeout', '/to', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }])
 	})
 
 	// the command word is what identified the target, so an alias with nothing after it is exactly a plain trigger
@@ -58,7 +54,10 @@ describe('0093_command_triggers', () => {
 
 	// it could not run before the migration either, so dropping it loses nothing that worked
 	test('drops an alias whose command string does not resolve', async () => {
-		const db = makeDb(commands(), [{ alias: '/gone', command: '/nosuchcommand x' }, { alias: '/rules', command: '/broadcast hi' }])
+		const db = makeDb(commands(), [
+			{ alias: '/gone', command: '/nosuchcommand x' },
+			{ alias: '/rules', command: '/broadcast hi' },
+		])
 		await up(db)
 		const settings = readSettings(db)
 		expect(settings.commands.broadcast.triggers).toEqual(['/broadcast', { string: '/rules', args: 'hi' }])
@@ -70,9 +69,12 @@ describe('0093_command_triggers', () => {
 	// this migration was 0092 on an earlier revision of its branch, so a database that ran it under that name meets
 	// it again here. Re-running it must not empty the triggers it already produced.
 	test('leaves an already-converted command alone', async () => {
-		const db = makeDb({
-			timeout: { triggers: ['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }], allowedChats: ['admin'] },
-		}, [])
+		const db = makeDb(
+			{
+				timeout: { triggers: ['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }], allowedChats: ['admin'] },
+			},
+			[],
+		)
 		await up(db)
 		expect(readSettings(db).commands.timeout.triggers).toEqual(['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }])
 	})

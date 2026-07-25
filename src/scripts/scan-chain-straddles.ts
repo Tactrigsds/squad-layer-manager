@@ -33,15 +33,13 @@ const CHAINS: ChainSpec[] = [
 	},
 ]
 
-const CHAIN_BY_PRIMARY = new Map(CHAINS.map(c => [c.primary, c]))
+const CHAIN_BY_PRIMARY = new Map(CHAINS.map((c) => [c.primary, c]))
 
 const logStartRegex = /^([[0-9.:-]+]\[[ 0-9]*]).+$/
 const chainIdRegex = /^\[[0-9.:-]+]\[\s*([0-9]+)\s*]/
 
 // type-only classification: the regexes alone, in EventMatchers order, minus the catch-all UNKNOWN
-const MATCHERS = SM.LogEvents.EventMatchers
-	.filter(m => m.event.type !== 'UNKNOWN')
-	.map(m => ({ type: m.event.type, regex: m.regex }))
+const MATCHERS = SM.LogEvents.EventMatchers.filter((m) => m.event.type !== 'UNKNOWN').map((m) => ({ type: m.event.type, regex: m.regex }))
 
 function classify(line: string): string | null {
 	for (const m of MATCHERS) if (m.regex.test(line)) return m.type
@@ -97,26 +95,26 @@ async function scanFile(path: string): Promise<Report> {
 			byType.get(e.type)!.push(e)
 		}
 
-		const primariesPresent = CHAINS.filter(c => byType.has(c.primary))
+		const primariesPresent = CHAINS.filter((c) => byType.has(c.primary))
 		if (primariesPresent.length === 0) return
 
 		if (primariesPresent.length > 1) {
-			rep.multiChainType.push({ chains: primariesPresent.map(c => c.key), line: tick.line })
+			rep.multiChainType.push({ chains: primariesPresent.map((c) => c.key), line: tick.line })
 		}
 
-		const firstPrimary = tick.events.find(e => CHAIN_BY_PRIMARY.has(e.type))!
+		const firstPrimary = tick.events.find((e) => CHAIN_BY_PRIMARY.has(e.type))!
 		const chain = CHAIN_BY_PRIMARY.get(firstPrimary.type)!
 
 		const dupes = byType.get(chain.primary)!.length
 		if (dupes > 1) {
-			rep.multiInstance.push({ chain: chain.key, count: dupes, line: tick.line, seq: tick.events.map(e => e.type) })
+			rep.multiInstance.push({ chain: chain.key, count: dupes, line: tick.line, seq: tick.events.map((e) => e.type) })
 			addFixture(rep, 'two-instances-one-tick', tick)
 		}
-		const losesConsumed = tick.events.some(e => !chain.members.includes(e.type) && CONSUMED_EVENTS.has(e.type))
+		const losesConsumed = tick.events.some((e) => !chain.members.includes(e.type) && CONSUMED_EVENTS.has(e.type))
 		addFixture(rep, losesConsumed ? 'consumed-event-shares-tick' : 'chain-tick', tick)
 
 		// non-members sharing the tick, positioned relative to the chain's own member span
-		const memberIdxs = tick.events.map((e, i) => (chain.members.includes(e.type) ? i : -1)).filter(i => i >= 0)
+		const memberIdxs = tick.events.map((e, i) => (chain.members.includes(e.type) ? i : -1)).filter((i) => i >= 0)
 		const firstMember = memberIdxs[0]
 		const lastMember = memberIdxs[memberIdxs.length - 1]
 		tick.events.forEach((e, i) => {
@@ -129,7 +127,7 @@ async function scanFile(path: string): Promise<Report> {
 			if (byType.has(req)) continue
 			let foundAfter = -1
 			for (let k = 1; k <= LOOKAHEAD && idx + k < pending.length; k++) {
-				if (pending[idx + k].events.some(e => e.type === req)) {
+				if (pending[idx + k].events.some((e) => e.type === req)) {
 					foundAfter = k
 					break
 				}
@@ -184,7 +182,7 @@ async function scanFile(path: string): Promise<Report> {
 }
 
 function addFixture(rep: Report, reason: string, tick: Tick) {
-	const existing = rep.fixtures.filter(f => f.reason === reason).length
+	const existing = rep.fixtures.filter((f) => f.reason === reason).length
 	if (reason !== 'consumed-event-shares-tick' && existing >= MAX_PER_REASON) return
 	rep.fixtures.push({ reason, file: rep.file, line: tick.line, chainId: tick.chainId, lines: tick.lines })
 }
@@ -212,9 +210,9 @@ async function main() {
 	for (const f of files) {
 		const rep = await scanFile(f)
 		console.log(
-			`\n=== ${f}\n    ticks=${rep.ticks} recognized=${rep.recognized} straddles=${rep.straddles.length} `
-				+ `missingEntirely=${rep.missingEntirely.length} collateralDrops=${rep.collateral.length} `
-				+ `multiInstance=${rep.multiInstance.length} multiChainType=${rep.multiChainType.length}`,
+			`\n=== ${f}\n    ticks=${rep.ticks} recognized=${rep.recognized} straddles=${rep.straddles.length} ` +
+				`missingEntirely=${rep.missingEntirely.length} collateralDrops=${rep.collateral.length} ` +
+				`multiInstance=${rep.multiInstance.length} multiChainType=${rep.multiChainType.length}`,
 		)
 		totals.fixtures.push(...rep.fixtures)
 		totals.ticks += rep.ticks
@@ -230,27 +228,27 @@ async function main() {
 	console.log(`ticks=${totals.ticks} recognizedEvents=${totals.recognized}`)
 
 	console.log(`\n--- STRADDLES (chain primary in tick N, required member in tick N+k): ${totals.straddles.length}`)
-	for (const [k, n] of tally(totals.straddles, s => `${s.chain} missing ${s.missing} found +${s.foundAfterTicks} tick(s)`)) {
+	for (const [k, n] of tally(totals.straddles, (s) => `${s.chain} missing ${s.missing} found +${s.foundAfterTicks} tick(s)`)) {
 		console.log(`  ${n.toString().padStart(6)}  ${k}`)
 	}
 	for (const s of totals.straddles.slice(0, 5)) console.log(`    e.g. line ${s.line}: ${s.raw}`)
 
 	console.log(`\n--- REQUIRED MEMBER NEVER FOUND (within ${LOOKAHEAD} ticks): ${totals.missingEntirely.length}`)
-	for (const [k, n] of tally(totals.missingEntirely, s => `${s.chain} missing ${s.missing}`)) {
+	for (const [k, n] of tally(totals.missingEntirely, (s) => `${s.chain} missing ${s.missing}`)) {
 		console.log(`  ${n.toString().padStart(6)}  ${k}`)
 	}
 
 	console.log(`\n--- COLLATERAL DROPS (recognized non-member event sharing a tick with a chain): ${totals.collateral.length}`)
-	for (const [k, n] of tally(totals.collateral, s => `${s.dropped} dropped by ${s.primary}`)) {
+	for (const [k, n] of tally(totals.collateral, (s) => `${s.dropped} dropped by ${s.primary}`)) {
 		console.log(`  ${n.toString().padStart(6)}  ${k}`)
 	}
 
 	console.log(`\n--- COLLATERAL DROP POSITION relative to the chain's member span`)
-	for (const [k, n] of tally(totals.collateral, s => `${s.position.padEnd(11)} ${s.dropped}`)) {
+	for (const [k, n] of tally(totals.collateral, (s) => `${s.position.padEnd(11)} ${s.dropped}`)) {
 		console.log(`  ${n.toString().padStart(6)}  ${k}`)
 	}
 	console.log(`\n--- INTERLEAVED (strictly between two chain members), non-PLAYER_RESTARTED:`)
-	for (const c of totals.collateral.filter(c => c.position === 'interleaved' && c.dropped !== 'PLAYER_RESTARTED')) {
+	for (const c of totals.collateral.filter((c) => c.position === 'interleaved' && c.dropped !== 'PLAYER_RESTARTED')) {
 		console.log(`    ${c.dropped} dropped by ${c.primary} @ line ${c.line}`)
 	}
 
@@ -258,24 +256,24 @@ async function main() {
 	for (const s of totals.multiInstance) console.log(`    line ${s.line} ${s.chain} x${s.count}: ${s.seq.join(' -> ')}`)
 
 	console.log(`\n--- TWO+ CHAIN TYPES IN ONE TICK: ${totals.multiChainType.length}`)
-	for (const [k, n] of tally(totals.multiChainType, s => s.chains.join(' + '))) console.log(`  ${n.toString().padStart(6)}  ${k}`)
+	for (const [k, n] of tally(totals.multiChainType, (s) => s.chains.join(' + '))) console.log(`  ${n.toString().padStart(6)}  ${k}`)
 
 	const fixtureOut = process.env.FIXTURE_OUT
 	if (fixtureOut) {
 		const perReason = new Map<string, number>()
-		const picked = totals.fixtures.filter(f => {
+		const picked = totals.fixtures.filter((f) => {
 			const n = perReason.get(f.reason) ?? 0
 			if (f.reason !== 'consumed-event-shares-tick' && n >= MAX_PER_REASON) return false
 			perReason.set(f.reason, n + 1)
 			return true
 		})
-		const out = picked.map(f => ({ ...f, file: f.file.split('/').pop()! }))
+		const out = picked.map((f) => ({ ...f, file: f.file.split('/').pop()! }))
 		fs.writeFileSync(fixtureOut, anonymizeIps(JSON.stringify(out, null, '\t')) + '\n')
 		console.log(`\nwrote ${picked.length} tick group(s) to ${fixtureOut}`)
-		for (const [k, n] of tally(picked, f => f.reason)) console.log(`  ${n.toString().padStart(6)}  ${k}`)
+		for (const [k, n] of tally(picked, (f) => f.reason)) console.log(`  ${n.toString().padStart(6)}  ${k}`)
 	}
 
-	const newGameDrops = totals.collateral.filter(c => c.dropped === 'NEW_GAME')
+	const newGameDrops = totals.collateral.filter((c) => c.dropped === 'NEW_GAME')
 	console.log(`\n--- NEW_GAME DROPPED: ${newGameDrops.length}`)
 	for (const d of newGameDrops) console.log(`    line ${d.line}: ${d.raw.slice(0, 170)}`)
 }

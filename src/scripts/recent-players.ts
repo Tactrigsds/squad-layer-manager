@@ -62,11 +62,9 @@ if (playersData.data && Array.isArray(playersData.data)) {
 		console.log(`    Last seen: ${player.attributes?.updatedAt}`)
 
 		// Get flags for this player
-		const flagPlayers = playersData.included?.filter(
-			(item: any) =>
-				item.type === 'flagPlayer'
-				&& item.relationships?.player?.data?.id === player.id,
-		) || []
+		const flagPlayers =
+			playersData.included?.filter((item: any) => item.type === 'flagPlayer' && item.relationships?.player?.data?.id === player.id) ||
+			[]
 
 		if (flagPlayers.length > 0) {
 			console.log(`    Flags:`)

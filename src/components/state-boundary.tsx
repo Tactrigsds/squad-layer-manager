@@ -41,7 +41,9 @@ function StateErrorFallback(props: { label: string; error: unknown; reset: () =>
 			<AlertTitle>{timedOut ? `${props.label} didn't load` : `${props.label} failed`}</AlertTitle>
 			<AlertDescription className="space-y-2">
 				<p>{timedOut ? 'The server never sent this data. It may be busy or in a bad state.' : message}</p>
-				<Button size="sm" variant="outline" onClick={props.reset}>Retry</Button>
+				<Button size="sm" variant="outline" onClick={props.reset}>
+					Retry
+				</Button>
 			</AlertDescription>
 		</Alert>
 	)
@@ -91,9 +93,7 @@ class ErrorCatcher extends React.Component<{ label: string; children: React.Reac
  * Suspense + error boundary for subtrees that read suspending StateObservables (`RxHelpers.bind` without a default).
  * Retry resets the boundary, which drops the last subscriber and resubscribes the state observable from scratch.
  */
-export function StateBoundary(
-	props: { label: string; children: React.ReactNode; slowAfterMs?: number; fallback?: React.ReactNode },
-) {
+export function StateBoundary(props: { label: string; children: React.ReactNode; slowAfterMs?: number; fallback?: React.ReactNode }) {
 	return (
 		<ErrorCatcher label={props.label}>
 			<React.Suspense fallback={props.fallback ?? <SlowAwareFallback label={props.label} slowAfterMs={props.slowAfterMs ?? 4_000} />}>

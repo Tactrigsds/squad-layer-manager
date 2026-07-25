@@ -23,7 +23,7 @@ export const rootRouter = TSR.createRouter({
 	defaultErrorComponent: RouteErrorComponent,
 })
 
-export const newRoute$ = new Rx.Observable<string>(observer => {
+export const newRoute$ = new Rx.Observable<string>((observer) => {
 	observer.next(window.location.pathname)
 	const unsub = rootRouter.subscribe('onBeforeLoad', (event) => {
 		if (!event.pathChanged || !event.toLocation) return

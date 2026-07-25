@@ -42,16 +42,14 @@ import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLink } from './filter-entity-select.tsx'
 import { StickyGroup } from './sticky-group.tsx'
 
-function ValidationWarningsDisplay(
-	props: {
-		showWarnings: boolean
-		warnings: LQY.QueueWarning[] | null
-		setShowWarnings: (showWarnings: boolean) => void
-		stores: SquadServerFrame.KeyProp
-	},
-) {
+function ValidationWarningsDisplay(props: {
+	showWarnings: boolean
+	warnings: LQY.QueueWarning[] | null
+	setShowWarnings: (showWarnings: boolean) => void
+	stores: SquadServerFrame.KeyProp
+}) {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints(props.stores.squadServer)
-	const layerList = ZusUtils.useStore(props.stores.squadServer!, s => s.queue.layerList)
+	const layerList = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList)
 	const itemsState = LayerQueueClient.useLayerItemsState(props.stores.squadServer!.serverId)
 	const filters = FilterEntityClient.useFilterEntities()
 	if (!props.showWarnings || !props.warnings || props.warnings.length === 0) return null
@@ -107,11 +105,10 @@ function ValidationWarningsDisplay(
 									>
 										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
 										<ShortLayerName layerId={item.layerId} teamParity={parity} matchDescriptors={descriptors} />
-										{descriptors.map(descriptor => {
-											const constraint = constraints.find(c => descriptor.constraintId === c.id && c.type === 'do-not-repeat') as Extract<
-												LQY.Constraint,
-												{ type: 'do-not-repeat' }
-											>
+										{descriptors.map((descriptor) => {
+											const constraint = constraints.find(
+												(c) => descriptor.constraintId === c.id && c.type === 'do-not-repeat',
+											) as Extract<LQY.Constraint, { type: 'do-not-repeat' }>
 											if (!constraint) return null
 											return (
 												<RepeatViolationDisplay
@@ -156,7 +153,7 @@ function ValidationWarningsDisplay(
 										<span className="font-mono text-muted-foreground">{LL.getItemNumber(index)}</span>
 										<ShortLayerName layerId={item.layerId} teamParity={parity} />
 										{warnings.map((warning) => {
-											const constraint = constraints.find(c => c.id === warning.constraintId)
+											const constraint = constraints.find((c) => c.id === warning.constraintId)
 											if (!constraint || constraint.type !== 'filter-entity') return null
 											const filter = filters.get(constraint.filterId)
 											if (!filter) return null
@@ -170,7 +167,10 @@ function ValidationWarningsDisplay(
 												alertMessage = filter.invertedAlertMessage
 											}
 											return (
-												<span key={constraint.id} className="text-muted-foreground flex flex-nowrap items-center gap-1">
+												<span
+													key={constraint.id}
+													className="text-muted-foreground flex flex-nowrap items-center gap-1"
+												>
 													{emoji && <EmojiDisplay showTooltip={false} emoji={emoji} />}
 													{alertMessage && <span>{alertMessage}</span>}
 													<FilterEntityLink filterId={filter.id} />
@@ -209,7 +209,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const loggedInUser = UsersClient.useLoggedInUser()
 	// const isEditing = UPClient.useIsEditing()
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
-	const numEditors = ZusUtils.useStore(UPClient.Store, state => state.editors.size)
+	const numEditors = ZusUtils.useStore(UPClient.Store, (state) => state.editors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 	const openPoolConfig = useOpenPoolConfigWindow({ stores: { squadServer: props.stores.squadServer! } })
 
@@ -245,14 +245,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 
 	const [isModified, committing] = ZusUtils.useStore(
 		props.stores.squadServer!,
-		ZusUtils.useShallow(s => [s.queue.isModified, s.queue.committing]),
+		ZusUtils.useShallow((s) => [s.queue.isModified, s.queue.committing]),
 	)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer!.serverId }))
 
 	function clear() {
 		const state = ZusUtils.getState(props.stores.squadServer!)
 		// we don't have to include children here
-		const itemIds = state.queue.layerList.map(item => item.itemId)
+		const itemIds = state.queue.layerList.map((item) => item.itemId)
 		void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'clear', itemIds })
 	}
 
@@ -260,11 +260,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		<div className="flex flex-col gap-1 grow">
 			<div
 				className="flex items-center gap-1 justify-end group"
-				data-status={committing
-					? 'saving'
-					: !isEditing
-					? 'idle'
-					: 'editing'}
+				data-status={committing ? 'saving' : !isEditing ? 'idle' : 'editing'}
 			>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -289,7 +285,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						id: 'ADDING_ITEM',
 						opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
 					})}
-					matchKey={key => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
+					matchKey={(key) => key.id === 'ADDING_ITEM' && key.opts.variant === 'toggle-position'}
 					preload="intent"
 					render={Button}
 					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
@@ -301,20 +297,25 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="genVote"
-					createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'GENERATING_VOTE', opts: { cursor: { type: 'start' } } })}
-					matchKey={key => key.id === 'GENERATING_VOTE'}
+					createActivity={UP.createEditingQueueVariant({
+						_tag: 'leaf',
+						id: 'GENERATING_VOTE',
+						opts: { cursor: { type: 'start' } },
+					})}
+					matchKey={(key) => key.id === 'GENERATING_VOTE'}
 					preload="intent"
 					render={Button}
 					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
 					variant="secondary"
 					disabled={!isEditing}
 				>
-					<Icons.Vote />Gen Vote
+					<Icons.Vote />
+					Gen Vote
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="pasteRotation"
 					createActivity={UP.createEditingQueueVariant({ _tag: 'leaf', id: 'PASTE_ROTATION', opts: {} })}
-					matchKey={key => key.id === 'PASTE_ROTATION'}
+					matchKey={(key) => key.id === 'PASTE_ROTATION'}
 					preload="intent"
 					render={Button}
 					className="flex w-min items-center space-x-0 not-group-data-[status=editing]:invisible"
@@ -346,9 +347,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
 						<span className="text-sm">Saving...</span>
 					</div>
-					<PermissionDeniedTooltip
-						denied={startEditingDenied}
-					>
+					<PermissionDeniedTooltip denied={startEditingDenied}>
 						<Button
 							className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 							variant="outline"
@@ -390,9 +389,13 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 											<span>
 												{forceSave
 													? 'Force Save'
-													: (numEditors === 1 && isModified)
-													? (showWarnings ? 'Save Anyway' : 'Save')
-													: (showWarnings ? 'Finish Editing Anyway' : 'Finish Editing')}
+													: numEditors === 1 && isModified
+														? showWarnings
+															? 'Save Anyway'
+															: 'Save'
+														: showWarnings
+															? 'Finish Editing Anyway'
+															: 'Finish Editing'}
 											</span>
 										</Button>
 									</TooltipTrigger>
@@ -401,14 +404,16 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 											{forceSave
 												? 'Save changes, even if others are still editing'
 												: isModified
-												? 'Save changes to the queue'
-												: 'Finish editing the queue'}
+													? 'Save changes to the queue'
+													: 'Finish editing the queue'}
 										</p>
 									</TooltipContent>
 								</Tooltip>
 							</ButtonGroup>
 						)
-						return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
+						return (
+							<div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
+						)
 					})()}
 				</div>
 				<Button size="icon" variant="ghost" title="Pool Configuration" onClick={(e) => openPoolConfig(e.currentTarget)}>
@@ -420,7 +425,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 }
 
 export function QueuePanelContent(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
-	const isModified = ZusUtils.useStore(props.stores.squadServer!, s => s.queue.isModified)
+	const isModified = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.isModified)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const queueLength = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
@@ -502,7 +507,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 	const serverId = props.stores.squadServer!.serverId
 	const statusRes = SquadServerClient.useLayersStatus(serverId)
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
-	const updatesDisabled = ZusUtils.useStore(props.stores.squadServer!, s => s.settings.saved.updatesToSquadServerDisabled)
+	const updatesDisabled = ZusUtils.useStore(props.stores.squadServer!, (s) => s.settings.saved.updatesToSquadServerDisabled)
 	const { enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const enableUpdatesDenied = RbacClient.usePermsCheck(
 		RBAC.perm('squad-server:disable-slm-updates', { serverId: props.stores.squadServer!.serverId }),
@@ -513,13 +518,17 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 		<Alert variant="destructive">
 			<AlertTitle>SLM Updates Disabled</AlertTitle>
 			<AlertDescription>
-				SLM is not currently syncing the queue to the squad server. {nextLayer && (
+				SLM is not currently syncing the queue to the squad server.{' '}
+				{nextLayer && (
 					<>
 						Current next layer on the server is <ShortLayerName layerId={nextLayer.id} />.
 					</>
-				)} <br />{' '}
+				)}{' '}
+				<br />{' '}
 				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
-					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>Click Here</Button>
+					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>
+						Click Here
+					</Button>
 				</PermissionDeniedTooltip>
 				to enable SLM Updates.
 			</AlertDescription>

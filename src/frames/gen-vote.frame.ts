@@ -63,10 +63,7 @@ type Primary = {
 	result: Result | null
 }
 
-type Store =
-	& Primary
-	& AppliedFiltersPrt.Store
-	& PoolCheckboxesPrt.Store
+type Store = Primary & AppliedFiltersPrt.Store & PoolCheckboxesPrt.Store
 
 function constraintsToDisplayProps(constraints: V.GenVote.ChoiceConstraintKey[]): DH.LayerDisplayProp[] | undefined {
 	const props: DH.LayerDisplayProp[] = []
@@ -94,24 +91,22 @@ const createKey: Frame['createKey'] = (frameId, input) => ({ frameId, instanceId
 const setup: Frame['setup'] = (args) => {
 	const set = args.set
 
-	set(
-		{
-			cursor: args.input.cursor,
-			server: args.input.server,
+	set({
+		cursor: args.input.cursor,
+		server: args.input.server,
 
-			chosenLayers: {},
-			choiceErrors: [],
-			choices: Array.from(Gen.map(Gen.range(V.DEFAULT_NUM_CHOICES), () => V.GenVote.initChoice())),
-			voteConfig: {
-				displayProps: constraintsToDisplayProps(V.GenVote.DEFAULT_CHOICE_COMPARISONS),
-			},
-			displayPropsManuallySet: false,
-			generating: false,
-			result: null,
-			includedConstraints: V.GenVote.DEFAULT_CHOICE_COMPARISONS,
-			uniqueConstraints: V.GenVote.DEFAULT_CHOICE_COMPARISONS,
-		} satisfies Primary,
-	)
+		chosenLayers: {},
+		choiceErrors: [],
+		choices: Array.from(Gen.map(Gen.range(V.DEFAULT_NUM_CHOICES), () => V.GenVote.initChoice())),
+		voteConfig: {
+			displayProps: constraintsToDisplayProps(V.GenVote.DEFAULT_CHOICE_COMPARISONS),
+		},
+		displayPropsManuallySet: false,
+		generating: false,
+		result: null,
+		includedConstraints: V.GenVote.DEFAULT_CHOICE_COMPARISONS,
+		uniqueConstraints: V.GenVote.DEFAULT_CHOICE_COMPARISONS,
+	} satisfies Primary)
 
 	// the applied-filters partial reads squadServer from state to seed the pool's configured filters; without
 	// this its predicate is unset and pool filters never apply in the gen-vote dialog
@@ -136,22 +131,15 @@ export namespace Sel {
 		const base: LQY.BaseQueryInput = {
 			cursor: state.cursor,
 			action: 'add',
-			constraints: [
-				...appliedConstraints,
-				...repeatRuleConstraints,
-			],
+			constraints: [...appliedConstraints, ...repeatRuleConstraints],
 			list: squadServer?.layerItemsState ?? EMPTY_LAYER_ITEMS,
 		}
 		return base
 	}
 
-	export function queryInput(
-		state: Store,
-		squadServer: SquadServerFrame.State | undefined,
-		omitIndex: number,
-	): LQY.GenVote.Input {
+	export function queryInput(state: Store, squadServer: SquadServerFrame.State | undefined, omitIndex: number): LQY.GenVote.Input {
 		const base = baseQueryInput(state, squadServer)
-		const startingChoices = state.choices.map((c, i) => (omitIndex === undefined || i === omitIndex) ? ({ ...c, layerId: undefined }) : c)
+		const startingChoices = state.choices.map((c, i) => (omitIndex === undefined || i === omitIndex ? { ...c, layerId: undefined } : c))
 
 		return {
 			...base,
@@ -178,7 +166,7 @@ export namespace Actions {
 	export function setChoiceConstraint(stores: KeyProp, index: number, key: V.GenVote.ChoiceConstraintKey, value: LC.InputValue) {
 		const s = store(stores)
 		s.setState({
-			choices: Im.produce(s.getState().choices, draft => {
+			choices: Im.produce(s.getState().choices, (draft) => {
 				draft[index].choiceConstraints[key] = value
 			}),
 		})
@@ -187,16 +175,16 @@ export namespace Actions {
 	export function setChoiceLayer(stores: KeyProp, index: number, layerId: L.LayerId) {
 		const s = store(stores)
 		const state = s.getState()
-		const choices = Im.produce(state.choices, draft => {
+		const choices = Im.produce(state.choices, (draft) => {
 			draft[index].layerId = layerId
 		})
-		const choiceErrors = Im.produce(state.choiceErrors, draft => {
+		const choiceErrors = Im.produce(state.choiceErrors, (draft) => {
 			draft[index] = undefined
 		})
 		let result: Store['result'] = null
-		if (choices.every(c => c.layerId)) {
+		if (choices.every((c) => c.layerId)) {
 			result = {
-				choices: choices.map(c => c.layerId!),
+				choices: choices.map((c) => c.layerId!),
 				voteConfig: state.voteConfig,
 			}
 		}
@@ -221,7 +209,9 @@ export namespace Actions {
 		s.setState({ generating: true })
 		const state = s.getState()
 		try {
-			const startingChoices = state.choices.map((c, i) => (onlyIndex === undefined || i === onlyIndex) ? ({ ...c, layerId: undefined }) : c)
+			const startingChoices = state.choices.map((c, i) =>
+				onlyIndex === undefined || i === onlyIndex ? { ...c, layerId: undefined } : c,
+			)
 			const base = Sel.baseQueryInput(state, ZusUtils.getState(squadServer))
 
 			const res = await LayerQueriesClient.generateVote({
@@ -239,9 +229,9 @@ export namespace Actions {
 			}
 			let result: Store['result'] = null
 			const choices = startingChoices.map((c, i) => ({ ...c, layerId: res.chosenLayers[i]?.id ?? c.layerId }))
-			if (choices.every(c => c.layerId)) {
+			if (choices.every((c) => c.layerId)) {
 				result = {
-					choices: choices.map(c => c.layerId!),
+					choices: choices.map((c) => c.layerId!),
 					voteConfig: s.getState().voteConfig,
 				}
 			}
@@ -275,15 +265,15 @@ export namespace Actions {
 
 	export function removeIncludedConstraint(stores: KeyProp, key: V.GenVote.ChoiceConstraintKey) {
 		const s = store(stores)
-		const newConstraints = s.getState().includedConstraints.filter(k => k !== key)
+		const newConstraints = s.getState().includedConstraints.filter((k) => k !== key)
 		const update: Partial<Store> = {
 			includedConstraints: newConstraints,
-			choices: Im.produce(s.getState().choices, draft => {
+			choices: Im.produce(s.getState().choices, (draft) => {
 				for (const choice of draft) {
 					delete choice.choiceConstraints[key]
 				}
 			}),
-			uniqueConstraints: s.getState().uniqueConstraints.filter(k => k !== key),
+			uniqueConstraints: s.getState().uniqueConstraints.filter((k) => k !== key),
 		}
 		// Auto-sync displayProps if not manually set
 		if (!s.getState().displayPropsManuallySet) {
@@ -301,6 +291,6 @@ export namespace Actions {
 
 	export function removeUniqueConstraint(stores: KeyProp, key: V.GenVote.ChoiceConstraintKey) {
 		const s = store(stores)
-		s.setState({ uniqueConstraints: s.getState().uniqueConstraints.filter(k => k !== key) })
+		s.setState({ uniqueConstraints: s.getState().uniqueConstraints.filter((k) => k !== key) })
 	}
 }

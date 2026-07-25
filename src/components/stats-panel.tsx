@@ -11,7 +11,7 @@ import React from 'react'
 
 export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer!.serverId
-	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, s => s.chat.selectedMatchOrdinal)
+	const selectedMatchOrdinal = ZusUtils.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
@@ -29,7 +29,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 
 	const displayMatch = React.useMemo(() => {
 		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find(m => m.ordinal === selectedMatchOrdinal)
+		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
 	}, [selectedMatchOrdinal, currentMatch, recentMatches])
 
 	return (

@@ -33,9 +33,7 @@ export const Route = createFileRoute('/_app/filters/new')({
 		return { frameKey, frameInput }
 	},
 	head: () => ({
-		meta: [
-			{ title: `SLM - New Filter` },
-		],
+		meta: [{ title: `SLM - New Filter` }],
 	}),
 })
 

@@ -117,12 +117,15 @@ export class World {
 		this.serverName = opts.serverName ?? 'SLM Emulated Squad Server'
 		this.maxPlayers = opts.maxPlayers ?? 100
 		this.currentLayer = opts.currentLayer ?? { ...DEFAULT_CURRENT }
-		this.nextLayer = opts.nextLayer !== undefined ? opts.nextLayer : {
-			level: 'Sumari Bala',
-			layer: 'Sumari_Seed_v1',
-			factions: 'RGF VDV',
-			mapDir: '/Game/Maps/Sumari/Gameplay_Layers',
-		}
+		this.nextLayer =
+			opts.nextLayer !== undefined
+				? opts.nextLayer
+				: {
+						level: 'Sumari Bala',
+						layer: 'Sumari_Seed_v1',
+						factions: 'RGF VDV',
+						mapDir: '/Game/Maps/Sumari/Gameplay_Layers',
+					}
 		this.knownLayers = opts.knownLayers ? new Set(opts.knownLayers) : null
 		this.#resolveTeams()
 	}
@@ -135,7 +138,8 @@ export class World {
 			const token = id === 1 ? t1 : t2
 			const [factionId, unit] = (token ?? '').split('+')
 			const configs = Object.values(L.StaticFactionunitConfigs).filter((c) => c.factionID === factionId)
-			const config = configs.find((c) => (unit ? c.unitObjectName.endsWith(unit) : c.unitObjectName.includes('CombinedArms'))) ?? configs[0]
+			const config =
+				configs.find((c) => (unit ? c.unitObjectName.endsWith(unit) : c.unitObjectName.includes('CombinedArms'))) ?? configs[0]
 			return {
 				id,
 				name: config?.displayName ?? `Team ${id}`,
@@ -146,7 +150,7 @@ export class World {
 
 	// each logical action gets one chainID, like a real server frame
 	#log(...lines: string[]) {
-		const header = Fmt.logHeader(this.#now(), this.#chainId = (this.#chainId + 1) % 1000)
+		const header = Fmt.logHeader(this.#now(), (this.#chainId = (this.#chainId + 1) % 1000))
 		for (const line of lines) this.#sinks.logLine(`${header}${line}`)
 	}
 
@@ -183,11 +187,7 @@ export class World {
 		}
 		this.players.set(p.eos, p)
 		// one chainID for the whole join chain, like the real server frame
-		this.#log(
-			Fmt.logPlayerConnected(p, this.currentLayer),
-			Fmt.logJoinSucceeded(p),
-			Fmt.logAddedToTeam(p, p.teamId),
-		)
+		this.#log(Fmt.logPlayerConnected(p, this.currentLayer), Fmt.logJoinSucceeded(p), Fmt.logAddedToTeam(p, p.teamId))
 		return p
 	}
 
@@ -318,7 +318,10 @@ export class World {
 					publicQueueLimit: this.publicQueueLimit,
 					gameMode: this.currentLayer.layer.split('_')[1] ?? 'RAAS',
 					mapName: this.currentLayer.layer,
-					playTimeSec: Math.max(0, Math.floor((this.#now().getTime() - (this.matchStartedAt?.getTime() ?? this.#now().getTime())) / 1000)),
+					playTimeSec: Math.max(
+						0,
+						Math.floor((this.#now().getTime() - (this.matchStartedAt?.getTime() ?? this.#now().getTime())) / 1000),
+					),
 					nextLayer: this.nextLayer,
 				})
 			case 'ShowCurrentMap':
@@ -403,10 +406,7 @@ export class World {
 				const p = this.findPlayer(target)
 				if (!p) return `Could not find player ${target}`
 				const playerId = this.playerIdOf(p)
-				this.#log(
-					Fmt.logKickingPlayer(p, reason || 'Kicked by admin'),
-					Fmt.logPlayerKicked(p, playerId),
-				)
+				this.#log(Fmt.logKickingPlayer(p, reason || 'Kicked by admin'), Fmt.logPlayerKicked(p, playerId))
 				this.players.delete(p.eos)
 				this.disconnected.push(p)
 				this.#log(Fmt.logPlayerDisconnected(p))

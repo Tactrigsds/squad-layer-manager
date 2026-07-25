@@ -58,7 +58,7 @@ const module = initModule('config')
 const orpcBase = getOrpcBase(module)
 
 export const router = {
-	watchConfig: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: ctx, signal }) {
+	watchConfig: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx, signal }) {
 		yield* toAsyncGenerator(
 			publicConfig$.pipe(
 				Rx.map((base): PublicConfigForClient => ({ ...base, wsClientId: ctx.wsClientId })),

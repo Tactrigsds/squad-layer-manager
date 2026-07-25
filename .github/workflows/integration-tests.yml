@@ -9,66 +9,66 @@ name: SLM Integration Tests
 # test image alongside the runtime one and passes it in, so this job only pulls it. On PRs it runs on its own
 # and builds the image itself.
 on:
-  workflow_call:
-    inputs:
-      test-image:
-        description: "an already-built test image, by digest, to run instead of building one here"
-        required: false
-        type: string
-        default: ""
-  pull_request:
+    workflow_call:
+        inputs:
+            test-image:
+                description: 'an already-built test image, by digest, to run instead of building one here'
+                required: false
+                type: string
+                default: ''
+    pull_request:
 
 permissions:
-  contents: read
+    contents: read
 
 jobs:
-  integration-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
+    integration-tests:
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Pull the pre-built test image
-        if: ${{ inputs.test-image }}
-        env:
-          TEST_IMAGE: ${{ inputs.test-image }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # by digest, not by tag: the tag the caller pushed is per-branch and a concurrent run may already
-          # have moved it
-          echo "$GH_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull "$TEST_IMAGE"
-          docker tag "$TEST_IMAGE" slm-test:ci
+            - name: Pull the pre-built test image
+              if: ${{ inputs.test-image }}
+              env:
+                  TEST_IMAGE: ${{ inputs.test-image }}
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  # by digest, not by tag: the tag the caller pushed is per-branch and a concurrent run may already
+                  # have moved it
+                  echo "$GH_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+                  docker pull "$TEST_IMAGE"
+                  docker tag "$TEST_IMAGE" slm-test:ci
 
-      - name: Set up Docker Buildx
-        if: ${{ !inputs.test-image }}
-        uses: docker/setup-buildx-action@v3
+            - name: Set up Docker Buildx
+              if: ${{ !inputs.test-image }}
+              uses: docker/setup-buildx-action@v3
 
-      # The layer artifacts are checked in (assets/layers) and baked into the image, so there is nothing to
-      # download, cache or mount here: the tests run against the same pair production does.
-      - name: Build test image
-        if: ${{ !inputs.test-image }}
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: test
-          load: true
-          tags: slm-test:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            # The layer artifacts are checked in (assets/layers) and baked into the image, so there is nothing to
+            # download, cache or mount here: the tests run against the same pair production does.
+            - name: Build test image
+              if: ${{ !inputs.test-image }}
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  target: test
+                  load: true
+                  tags: slm-test:ci
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
 
-      - name: Run integration and e2e tests
-        run: |
-          docker run --rm \
-            -e CI=true \
-            -v "$PWD/test-results:/app/test-results" \
-            slm-test:ci
+            - name: Run integration and e2e tests
+              run: |
+                  docker run --rm \
+                    -e CI=true \
+                    -v "$PWD/test-results:/app/test-results" \
+                    slm-test:ci
 
-      - name: Upload failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-results
-          path: test-results
-          retention-days: 7
-          if-no-files-found: ignore
+            - name: Upload failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-results
+                  path: test-results
+                  retention-days: 7
+                  if-no-files-found: ignore

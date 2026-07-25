@@ -89,8 +89,8 @@ async function main() {
 	LAYER_DB_CONFIG = readLayerDbConfig()
 	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LAYER_DB_CONFIG.columns) }
 
-	const needsSheetData = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
-		|| args.includes('download-csvs')
+	const needsSheetData =
+		args.includes('write-components-and-units') || args.includes('build-layer-artifact') || args.includes('download-csvs')
 	let data!: Awaited<ReturnType<typeof parseSquadLayerSheetData>>
 	let components!: LC.LayerComponents
 	if (needsSheetData) {
@@ -102,8 +102,8 @@ async function main() {
 
 	// the version of a build comes from the csv it ingests, and both halves of the pair are stamped with it and
 	// written side by side: the app will not load a table without the components that go with it.
-	const writesArtifacts = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
-		|| args.includes('compress-artifact')
+	const writesArtifacts =
+		args.includes('write-components-and-units') || args.includes('build-layer-artifact') || args.includes('compress-artifact')
 	let csvPath!: string
 	let layersVersion!: string
 	let tablePath!: string
@@ -332,7 +332,7 @@ function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 
 async function parseSquadLayerSheetData() {
 	const json = SLL.RootSchema.parse(
-		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then(res => res)),
+		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then((res) => res)),
 	)
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(json)
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
@@ -355,7 +355,9 @@ async function parseSquadLayerSheetData() {
 			log.error(`${map.levelName} has unknown size`)
 		}
 		if (!map.teamConfigs.team1 || !map.teamConfigs.team2) continue
-		const teamConfigs = Object.entries(map.teamConfigs).sort((a, b) => a[0].localeCompare(b[0])).map(([_, team]) => team)
+		const teamConfigs = Object.entries(map.teamConfigs)
+			.sort((a, b) => a[0].localeCompare(b[0]))
+			.map(([_, team]) => team)
 		const baseConfig = {
 			...segments,
 			Size: size,
@@ -458,7 +460,7 @@ async function parseSquadLayerSheetData() {
 	)
 
 	// Validate that all layers in availability are in mapLayers
-	const layerNames = new Set(mapLayers.map(l => l.Layer))
+	const layerNames = new Set(mapLayers.map((l) => l.Layer))
 	for (const layer of availability.keys()) {
 		if (!layerNames.has(layer)) {
 			throw new Error(`Layer ${layer} from availability not found in mapLayers`)
@@ -482,7 +484,8 @@ async function parseSquadLayerSheetData() {
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry1.Faction)!)
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry2.Faction)!)
 				Arr.upsert(components.versions, parsedSegments.LayerVersion)
-				if (!components.collections.includes(parsedSegments.Collection)) throw new Error(`Invalid collection: ${parsedSegments.Collection}`)
+				if (!components.collections.includes(parsedSegments.Collection))
+					throw new Error(`Invalid collection: ${parsedSegments.Collection}`)
 				if (!Object.keys(components.collectionAbbreviations).includes(parsedSegments.Collection)) {
 					throw new Error(`Invalid collection (no abbreviation): ${parsedSegments.Collection}`)
 				}
@@ -639,24 +642,26 @@ async function downloadPublicSheetAsCSV(gid: number, filepath: string) {
 	return await new Promise<void>((resolve, reject) => {
 		const file = fs.createWriteStream(filepath)
 
-		http.https.get(url, (response) => {
-			response.pipe(file)
+		http.https
+			.get(url, (response) => {
+				response.pipe(file)
 
-			file.on('finish', () => {
-				file.close()
-				log.info(`CSV downloaded successfully to %s`, filepath)
-				resolve()
+				file.on('finish', () => {
+					file.close()
+					log.info(`CSV downloaded successfully to %s`, filepath)
+					resolve()
+				})
+
+				file.on('error', (error) => {
+					file.close()
+					log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
+					reject(error)
+				})
 			})
-
-			file.on('error', (error) => {
-				file.close()
-				log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
+			.on('error', (error) => {
+				log.error(error, 'Error downloading CSV:')
 				reject(error)
 			})
-		}).on('error', (error) => {
-			log.error(error, 'Error downloading CSV:')
-			reject(error)
-		})
 	})
 }
 

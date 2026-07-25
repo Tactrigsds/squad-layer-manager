@@ -55,9 +55,9 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 		const matchesByDate: MatchesByDate = []
 
 		// We can't resolve a day of matches without any previous dates to go by so we just skip those
-		let firstMatchIndex = history.findIndex(m => m.startTime)
+		let firstMatchIndex = history.findIndex((m) => m.startTime)
 		if (firstMatchIndex === -1) {
-			firstMatchIndex = history.findIndex(m => m.createdAt)
+			firstMatchIndex = history.findIndex((m) => m.createdAt)
 		}
 
 		const firstMatch: MH.MatchDetails | undefined = history[firstMatchIndex]
@@ -120,7 +120,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 				setCurrentPage(1)
 				return
 			}
-			const match = historyRef.current.find(m => m.ordinal === ordinal)
+			const match = historyRef.current.find((m) => m.ordinal === ordinal)
 			if (!match) return
 			const date = match.startTime ?? match.createdAt
 			if (!date) return
@@ -136,9 +136,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 	const onLastPage = currentPage === totalPages
 
 	const hasMore = onFirstPage && currentEntries.length > MATCH_LIMIT
-	const displayedEntries = hasMore && !showFullDay
-		? currentEntries.slice(currentEntries.length - MATCH_LIMIT)
-		: currentEntries
+	const displayedEntries = hasMore && !showFullDay ? currentEntries.slice(currentEntries.length - MATCH_LIMIT) : currentEntries
 
 	// -------- Page navigation --------
 	const goToFirstPage = () => {
@@ -181,13 +179,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 				<CardTitle>Match History</CardTitle>
 				<div className="flex items-center gap-1">
 					<div className="flex items-center">
-						<Button
-							variant="outline"
-							size="sm"
-							className="rounded-r-none px-2"
-							onClick={goToLastPage}
-							disabled={onLastPage}
-						>
+						<Button variant="outline" size="sm" className="rounded-r-none px-2" onClick={goToLastPage} disabled={onLastPage}>
 							<Icons.ChevronsLeft className="h-4 w-4" />
 						</Button>
 						<Button
@@ -200,17 +192,9 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
 					</div>
-					<span className="text-sm font-mono min-w-[100px] text-center px-2">
-						{getDateDisplayText()}
-					</span>
+					<span className="text-sm font-mono min-w-[100px] text-center px-2">{getDateDisplayText()}</span>
 					<div className="flex items-center">
-						<Button
-							variant="outline"
-							size="sm"
-							className="rounded-r-none px-2"
-							onClick={goToPrevPage}
-							disabled={onFirstPage}
-						>
+						<Button variant="outline" size="sm" className="rounded-r-none px-2" onClick={goToPrevPage} disabled={onFirstPage}>
 							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
 						<Button
@@ -229,39 +213,29 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 				<Table>
 					<TableHeader>
 						<TableRow className="font-medium">
-							<TableHead className="text-right px-0.5">
-							</TableHead>
-							<TableHead className="hidden @[820px]:table-cell">
-								Time
-							</TableHead>
+							<TableHead className="text-right px-0.5"></TableHead>
+							<TableHead className="hidden @[820px]:table-cell">Time</TableHead>
 							<TableHead>Layer</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team A' : 'Team 1'}
-								{globalSettings.displayTeamsNormalized
-									&& currentStreak
-									&& currentStreak.length > 1
-									&& currentStreak.team === 'teamA' && (
-									<span className="text-green-600 font-medium ml-1">
-										({currentStreak.length} wins)
-									</span>
-								)}
+								{globalSettings.displayTeamsNormalized &&
+									currentStreak &&
+									currentStreak.length > 1 &&
+									currentStreak.team === 'teamA' && (
+										<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+									)}
 							</TableHead>
 							<TableHead className="text-center">Outcome</TableHead>
 							<TableHead>
 								{globalSettings.displayTeamsNormalized ? 'Team B' : 'Team 2'}
-								{globalSettings.displayTeamsNormalized
-									&& currentStreak
-									&& currentStreak.length > 1
-									&& currentStreak.team === 'teamB' && (
-									<span className="text-green-600 font-medium ml-1">
-										({currentStreak.length} wins)
-									</span>
-								)}
+								{globalSettings.displayTeamsNormalized &&
+									currentStreak &&
+									currentStreak.length > 1 &&
+									currentStreak.team === 'teamB' && (
+										<span className="text-green-600 font-medium ml-1">({currentStreak.length} wins)</span>
+									)}
 							</TableHead>
-							<TableHead
-								className="text-center px-0.5"
-								title="Layer Indicators"
-							>
+							<TableHead className="text-center px-0.5" title="Layer Indicators">
 								<div className="flex flex-row justify-end items-center">
 									<Icons.Flag />
 								</div>
@@ -274,64 +248,54 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{currentEntries.length === 0
-							? (
-								<TableRow>
-									<TableCell
-										colSpan={8}
-										className="text-center text-muted-foreground py-8 hidden @[900px]:table-cell"
-									>
-										No matches found
-									</TableCell>
-									<TableCell
-										colSpan={7}
-										className="text-center text-muted-foreground py-8 hidden @[820px]:table-cell @[900px]:hidden"
-									>
-										No matches found
-									</TableCell>
-									<TableCell
-										colSpan={6}
-										className="text-center text-muted-foreground py-8 table-cell @[820px]:hidden"
-									>
-										No matches found
-									</TableCell>
-								</TableRow>
-							)
-							: (
-								<>
-									{hasMore && (
-										<TableRow>
-											<TableCell colSpan={8} className="text-center py-1">
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => setShowFullDay(!showFullDay)}
-													className="h-6 text-xs text-muted-foreground"
-												>
-													{showFullDay
-														? 'Show less'
-														: `Show ${currentEntries.length - MATCH_LIMIT} more`}
-												</Button>
-											</TableCell>
-										</TableRow>
-									)}
-									{displayedEntries.map((entry) => {
-										const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
-											(event) => event.matchTriggeredId === entry.historyEntryId,
-										)
-										return (
-											<MatchHistoryRow
-												key={entry.historyEntryId}
-												entry={entry}
-												currentMatchOffset={entry.ordinal - currentMatchOrdinal}
-												balanceTriggerEvents={balanceTriggerEvents}
-												debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
-												stores={props.stores}
-											/>
-										)
-									})}
-								</>
-							)}
+						{currentEntries.length === 0 ? (
+							<TableRow>
+								<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden @[900px]:table-cell">
+									No matches found
+								</TableCell>
+								<TableCell
+									colSpan={7}
+									className="text-center text-muted-foreground py-8 hidden @[820px]:table-cell @[900px]:hidden"
+								>
+									No matches found
+								</TableCell>
+								<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell @[820px]:hidden">
+									No matches found
+								</TableCell>
+							</TableRow>
+						) : (
+							<>
+								{hasMore && (
+									<TableRow>
+										<TableCell colSpan={8} className="text-center py-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => setShowFullDay(!showFullDay)}
+												className="h-6 text-xs text-muted-foreground"
+											>
+												{showFullDay ? 'Show less' : `Show ${currentEntries.length - MATCH_LIMIT} more`}
+											</Button>
+										</TableCell>
+									</TableRow>
+								)}
+								{displayedEntries.map((entry) => {
+									const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
+										(event) => event.matchTriggeredId === entry.historyEntryId,
+									)
+									return (
+										<MatchHistoryRow
+											key={entry.historyEntryId}
+											entry={entry}
+											currentMatchOffset={entry.ordinal - currentMatchOrdinal}
+											balanceTriggerEvents={balanceTriggerEvents}
+											debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
+											stores={props.stores}
+										/>
+									)
+								})}
+							</>
+						)}
 					</TableBody>
 				</Table>
 			</CardContent>
@@ -347,63 +311,61 @@ interface MatchHistoryRowProps {
 	stores: SquadServerFrame.KeyProp
 }
 
-function MatchHistoryRow({
-	entry,
-	currentMatchOffset,
-	balanceTriggerEvents,
-	debug__showBalanceTriggers,
-	stores,
-}: MatchHistoryRowProps) {
+function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debug__showBalanceTriggers, stores }: MatchHistoryRowProps) {
 	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
-	const selectedMatchOrdinalFromStore = ZusUtils.useStore(stores.squadServer!, s => s.chat.selectedMatchOrdinal)
+	const selectedMatchOrdinalFromStore = ZusUtils.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 
 	// Determine if this match is being viewed in the activity panel
-	const isViewingThisMatch = selectedMatchOrdinalFromStore === null
-		? entry.isCurrentMatch
-		: selectedMatchOrdinalFromStore === entry.ordinal
+	const isViewingThisMatch =
+		selectedMatchOrdinalFromStore === null ? entry.isCurrentMatch : selectedMatchOrdinalFromStore === entry.ordinal
 
 	const isEditingQueue = UPClient.useIsEditing()
-	const dragProps = DndKit.useDraggable({
-		type: 'history-entry',
-		id: entry.historyEntryId,
-	}, { disabled: !isEditingQueue })
+	const dragProps = DndKit.useDraggable(
+		{
+			type: 'history-entry',
+			id: entry.historyEntryId,
+		},
+		{ disabled: !isEditingQueue },
+	)
 
 	// Track mouse down/up to detect clicks vs drags
 	const mouseDownPosRef = React.useRef<{ x: number; y: number } | null>(null)
 
 	const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
-		if (e.button === 0) { // Left click only
+		if (e.button === 0) {
+			// Left click only
 			mouseDownPosRef.current = { x: e.clientX, y: e.clientY }
 		}
 	}, [])
 
-	const handleMouseUp = React.useCallback((e: React.MouseEvent) => {
-		if (e.button === 0 && mouseDownPosRef.current) { // Left click only
-			const dx = e.clientX - mouseDownPosRef.current.x
-			const dy = e.clientY - mouseDownPosRef.current.y
-			const distance = Math.sqrt(dx * dx + dy * dy)
+	const handleMouseUp = React.useCallback(
+		(e: React.MouseEvent) => {
+			if (e.button === 0 && mouseDownPosRef.current) {
+				// Left click only
+				const dx = e.clientX - mouseDownPosRef.current.x
+				const dy = e.clientY - mouseDownPosRef.current.y
+				const distance = Math.sqrt(dx * dx + dy * dy)
 
-			// If mouse moved less than 5 pixels, treat as click (not drag)
-			if (distance < 5) {
-				// Switch to this match's events
-				if (entry.isCurrentMatch) {
-					void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)
-				} else {
-					void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, entry.ordinal)
+				// If mouse moved less than 5 pixels, treat as click (not drag)
+				if (distance < 5) {
+					// Switch to this match's events
+					if (entry.isCurrentMatch) {
+						void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)
+					} else {
+						void ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, entry.ordinal)
+					}
 				}
+				mouseDownPosRef.current = null
 			}
-			mouseDownPosRef.current = null
-		}
-	}, [entry.ordinal, entry.isCurrentMatch, stores.squadServer])
+		},
+		[entry.ordinal, entry.isCurrentMatch, stores.squadServer],
+	)
 
 	const handleMouseLeave = React.useCallback(() => {
 		mouseDownPosRef.current = null
 	}, [])
-	const statusData = LayerQueriesClient.useLayerItemStatusData(
-		entry.historyEntryId,
-		stores.squadServer,
-	)
+	const statusData = LayerQueriesClient.useLayerItemStatusData(entry.historyEntryId, stores.squadServer)
 
 	// Mock balance triggers for debug mode
 	let effectiveBalanceTriggerEvents = balanceTriggerEvents
@@ -428,26 +390,15 @@ function MatchHistoryRow({
 	}
 
 	// Get trigger info for this entry
-	const triggerLevel = BAL.getHighestPriorityTriggerEvent(
-		effectiveBalanceTriggerEvents,
-	)?.level
+	const triggerLevel = BAL.getHighestPriorityTriggerEvent(effectiveBalanceTriggerEvents)?.level
 
 	// Create trigger alerts for this entry
 	const entryTriggerAlerts = React.useMemo(() => {
 		if (effectiveBalanceTriggerEvents.length === 0) return []
 
 		const alerts: React.ReactNode[] = [...effectiveBalanceTriggerEvents]
-			.sort(
-				(a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level),
-			)
-			.map((event) => (
-				<BalanceTriggerAlert
-					key={event.id}
-					className="rounded-none"
-					event={event}
-					referenceMatch={entry}
-				/>
-			))
+			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level))
+			.map((event) => <BalanceTriggerAlert key={event.id} className="rounded-none" event={event} referenceMatch={entry} />)
 
 		return alerts
 	}, [effectiveBalanceTriggerEvents, entry])
@@ -470,12 +421,7 @@ function MatchHistoryRow({
 			globalSettings.displayTeamsNormalized,
 			statusData?.highlightedMatchDescriptors,
 		)
-	}, [
-		entry.layerId,
-		entry.ordinal,
-		globalSettings.displayTeamsNormalized,
-		statusData?.highlightedMatchDescriptors,
-	])
+	}, [entry.layerId, entry.ordinal, globalSettings.displayTeamsNormalized, statusData?.highlightedMatchDescriptors])
 
 	const layer = L.toLayer(entry.layerId)
 
@@ -494,19 +440,13 @@ function MatchHistoryRow({
 			)
 		} else if (entry.status === 'post-game') {
 			statusBadge = (
-				<Badge
-					variant="outline"
-					className="flex items-center whitespace-nowrap"
-				>
+				<Badge variant="outline" className="flex items-center whitespace-nowrap">
 					<span>Post-Game</span>
 				</Badge>
 			)
 		} else if (entry.status === 'in-progress') {
 			statusBadge = (
-				<Badge
-					variant="secondary"
-					className="flex items-center whitespace-nowrap"
-				>
+				<Badge variant="secondary" className="flex items-center whitespace-nowrap">
 					<span>In progress</span>
 				</Badge>
 			)
@@ -534,19 +474,8 @@ function MatchHistoryRow({
 
 			outcomeDisp = (
 				<span className="text-sm">
-					{team1Tickets}{' '}
-					<span
-						className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}
-					>
-						{team1Status}
-					</span>{' '}
-					-{' '}
-					<span
-						className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}
-					>
-						{team2Status}
-					</span>{' '}
-					{team2Tickets}
+					{team1Tickets} <span className={team1Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team1Status}</span> -{' '}
+					<span className={team2Status === 'W' ? 'text-green-500' : 'text-red-500'}>{team2Status}</span> {team2Tickets}
 				</span>
 			)
 		}
@@ -554,12 +483,7 @@ function MatchHistoryRow({
 		outcomeDisp = <span className="text-sm">-</span>
 	}
 
-	const [leftTeam, rightTeam] = getTeamsDisplay(
-		layer,
-		entry.ordinal,
-		globalSettings.displayTeamsNormalized,
-		extraLayerStyles,
-	)
+	const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal, globalSettings.displayTeamsNormalized, extraLayerStyles)
 
 	// Determine trigger icon
 	let TriggerIcon = null
@@ -583,9 +507,10 @@ function MatchHistoryRow({
 		}
 	}
 
-	const gameRuntime = entry.startTime && entry.status === 'post-game' && entry.endTime !== 'unknown'
-		? entry.endTime.getTime() - entry.startTime.getTime()
-		: undefined
+	const gameRuntime =
+		entry.startTime && entry.status === 'post-game' && entry.endTime !== 'unknown'
+			? entry.endTime.getTime() - entry.startTime.getTime()
+			: undefined
 
 	// Determine background color and hover state based on trigger level or current match
 	let bgColor = ''
@@ -635,46 +560,38 @@ function MatchHistoryRow({
 						</div>
 						<div className="group-data-[is-editing=true]:group-hover:opacity-0 flex justify-end items-center pr-2 gap-1">
 							{isViewingThisMatch && <Icons.Eye className="h-3 w-3 text-blue-500" />}
-							{entry.isCurrentMatch && entry.status === 'in-progress'
-								? <Icons.Play className="h-3 w-3 text-green-500" />
-								: entry.isCurrentMatch && entry.status === 'post-game'
-								? <Icons.Check className="h-3 w-3" />
-								: (
-									currentMatchOffset.toString()
-								)}
+							{entry.isCurrentMatch && entry.status === 'in-progress' ? (
+								<Icons.Play className="h-3 w-3 text-green-500" />
+							) : entry.isCurrentMatch && entry.status === 'post-game' ? (
+								<Icons.Check className="h-3 w-3" />
+							) : (
+								currentMatchOffset.toString()
+							)}
 						</div>
 					</TableCell>
 					<TableCell className="text-xs hidden @[820px]:table-cell pl-2 ">
-						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress'
-							&& (
-								<span className="font-mono font-light">
-									<Timer zeros start={entry.startTime.getTime()} />
-								</span>
-							)}
-						{entry.isCurrentMatch && entry.startTime && entry.status === 'post-game'
-							&& (
-								<span className="font-mono font-light">
-									{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
-									{entry.endTime !== 'unknown' && (
-										<span className="text-muted-foreground flex flex-nowrap items-baseline">
-											+<Timer start={entry.endTime.getTime()} className="font-mono" />
-										</span>
-									)}
-								</span>
-							)}
-						{!entry.isCurrentMatch && entry.startTime
-							&& (
-								<span className="font-mono font-light">
-									{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
-								</span>
-							)}
+						{entry.isCurrentMatch && entry.startTime && entry.status === 'in-progress' && (
+							<span className="font-mono font-light">
+								<Timer zeros start={entry.startTime.getTime()} />
+							</span>
+						)}
+						{entry.isCurrentMatch && entry.startTime && entry.status === 'post-game' && (
+							<span className="font-mono font-light">
+								{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}
+								{entry.endTime !== 'unknown' && (
+									<span className="text-muted-foreground flex flex-nowrap items-baseline">
+										+<Timer start={entry.endTime.getTime()} className="font-mono" />
+									</span>
+								)}
+							</span>
+						)}
+						{!entry.isCurrentMatch && entry.startTime && (
+							<span className="font-mono font-light">{formatMatchTimeAndDuration(entry.startTime, gameRuntime)}</span>
+						)}
 						{!entry.startTime && <span>-</span>}
 					</TableCell>
 					<TableCell>
-						<MapLayerDisplay
-							layer={layer.Layer!}
-							extraLayerStyles={extraLayerStyles}
-						/>
+						<MapLayerDisplay layer={layer.Layer!} extraLayerStyles={extraLayerStyles} />
 					</TableCell>
 					<TableCell>{leftTeam}</TableCell>
 					<TableCell className="text-center">
@@ -690,11 +607,7 @@ function MatchHistoryRow({
 							{TriggerIcon && entryTriggerAlerts.length > 0 && (
 								<Tooltip delayDuration={0}>
 									<TooltipTrigger asChild>
-										<Button
-											variant="ghost"
-											size="sm"
-											className={`h-6 w-6 p-0 ${triggerIconColor}`}
-										>
+										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${triggerIconColor}`}>
 											<TriggerIcon className="h-4 w-4" />
 										</Button>
 									</TooltipTrigger>
@@ -724,26 +637,17 @@ function MatchHistoryRow({
 						<ContextMenuSeparator />
 					</>
 				)}
-				<LayerContextMenuItems
-					selectedLayerIds={[entry.layerId]}
-					selectedHistoryEntryIds={[entry.historyEntryId]}
-				/>
+				<LayerContextMenuItems selectedLayerIds={[entry.layerId]} selectedHistoryEntryIds={[entry.historyEntryId]} />
 			</ContextMenuContent>
 		</ContextMenu>
 	)
 }
 
-function TableHead({
-	className = '',
-	...props
-}: React.ComponentProps<typeof ShadcnTableHead>) {
+function TableHead({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableHead>) {
 	return <ShadcnTableHead className={`${STD_PADDING} ${className}`} {...props} />
 }
 
-function TableCell({
-	className = '',
-	...props
-}: React.ComponentProps<typeof ShadcnTableCell>) {
+function TableCell({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableCell>) {
 	return <ShadcnTableCell className={`${STD_PADDING} ${className}`} {...props} />
 }
 

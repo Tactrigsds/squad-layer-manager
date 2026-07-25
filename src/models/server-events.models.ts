@@ -98,43 +98,39 @@ export const RCON_DISCONNECTED_META = meta()
 export type RoundEnded = {
 	type: 'ROUND_ENDED'
 	outcome: MH.MatchOutcome
-	action?: {
-		type: 'AdminChangeLayer'
-		layerId: L.LayerId
-		source: ActionSource
-	} | {
-		type: 'AdminEndMatch'
-		source: ActionSource
-	}
+	action?:
+		| {
+				type: 'AdminChangeLayer'
+				layerId: L.LayerId
+				source: ActionSource
+		  }
+		| {
+				type: 'AdminEndMatch'
+				source: ActionSource
+		  }
 } & Base
 export const ROUND_ENDED_META = meta({ players: [{ assocType: 'player', path: '$.action.source.playerIds.eos' }] })
 
-export type PlayerConnected<P = SM.Player> =
-	& {
-		type: 'PLAYER_CONNECTED'
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerConnected<P = SM.Player> = {
+	type: 'PLAYER_CONNECTED'
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_CONNECTED_META = meta({ players: [{ assocType: 'player' }] })
 
 // Emitted by the teams-poll reconciler for a player RCON reports as present but who was missing from our roster
 // (e.g. their PLAYER_CONNECTED landed during a round roll and was dropped). Semantically distinct from
 // PLAYER_CONNECTED -- it is a roster backfill, not a fresh join -- so join-only consumers (feed card, battlemetrics,
 // connection indicator, teamswap tracking) ignore it. Carries the full player so the event insert registers them.
-export type PlayerReconciled<P = SM.Player> =
-	& {
-		type: 'PLAYER_RECONCILED'
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerReconciled<P = SM.Player> = {
+	type: 'PLAYER_RECONCILED'
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_RECONCILED_META = meta({ players: [{ assocType: 'player' }] })
 
-export type PlayerDisconnected<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_DISCONNECTED'
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerDisconnected<P = SM.PlayerId> = {
+	type: 'PLAYER_DISCONNECTED'
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_DISCONNECTED_META = meta({ players: [{ assocType: 'player' }] })
 
 export type SquadCreated = {
@@ -148,14 +144,12 @@ export type SquadCreated = {
 
 export const SQUAD_CREATED_META = meta({ squads: ['$.squad'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
 
-export type ChatMessage<P = SM.PlayerId> =
-	& {
-		type: 'CHAT_MESSAGE'
-		message: string
-		channel: SM.ChatChannel
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type ChatMessage<P = SM.PlayerId> = {
+	type: 'CHAT_MESSAGE'
+	message: string
+	channel: SM.ChatChannel
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const CHAT_MESSAGE_META = meta({ players: [{ assocType: 'player' }], squads: ['$.channel.uniqueId'] })
 
 export type AdminBroadcast = {
@@ -167,37 +161,31 @@ export type AdminBroadcast = {
 export const ADMIN_BROADCAST_META = meta()
 
 // synthetic events from player state
-export type PlayerDetailsChanged<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_DETAILS_CHANGED'
-		details: Pick<SM.Player, (typeof SM.PLAYER_DETAILS)[number]>
-		newUsername?: string
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerDetailsChanged<P = SM.PlayerId> = {
+	type: 'PLAYER_DETAILS_CHANGED'
+	details: Pick<SM.Player, (typeof SM.PLAYER_DETAILS)[number]>
+	newUsername?: string
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_DETAILS_CHANGED_META = meta({ players: [{ assocType: 'player' }] })
 
-export type PlayerChangedTeam<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_CHANGED_TEAM'
-		newTeamId: SM.TeamId | null
-		// present when an admin forced the change (parsed from the log); absent for organic switches inferred from team polling
-		source?: ActionSource
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerChangedTeam<P = SM.PlayerId> = {
+	type: 'PLAYER_CHANGED_TEAM'
+	newTeamId: SM.TeamId | null
+	// present when an admin forced the change (parsed from the log); absent for organic switches inferred from team polling
+	source?: ActionSource
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_CHANGED_TEAM_META = meta({ players: [{ assocType: 'player' }] })
 
 // can originate if the player manually leaves the squad, or is removed for some other reason
-export type PlayerLeftSquad<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_LEFT_SQUAD'
-		uniqueId: number
-		// present when an admin removed the player / disbanded their squad (parsed from the log); absent for organic leaves inferred from team polling
-		source?: ActionSource
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerLeftSquad<P = SM.PlayerId> = {
+	type: 'PLAYER_LEFT_SQUAD'
+	uniqueId: number
+	// present when an admin removed the player / disbanded their squad (parsed from the log); absent for organic leaves inferred from team polling
+	source?: ActionSource
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_LEFT_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
 // this event is redundant in terms of state transfer, as it could be inferred as the last player leaving a particular squad
@@ -231,22 +219,18 @@ export const SQUAD_RENAMED_META = meta({ squads: ['$.uniqueId'] })
 /**
  * Player joined pre-existing squad
  */
-export type PlayerJoinedSquad<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_JOINED_SQUAD'
-		uniqueId: number
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerJoinedSquad<P = SM.PlayerId> = {
+	type: 'PLAYER_JOINED_SQUAD'
+	uniqueId: number
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_JOINED_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
-export type PlayerPromotedToLeader<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_PROMOTED_TO_LEADER'
-		uniqueId: number
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerPromotedToLeader<P = SM.PlayerId> = {
+	type: 'PLAYER_PROMOTED_TO_LEADER'
+	uniqueId: number
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_PROMOTED_TO_LEADER_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
 
 export type TeamsPolledUpdate = {
@@ -255,68 +239,56 @@ export type TeamsPolledUpdate = {
 
 export const TEAMS_POLLED_UPDATE_META = meta({})
 
-export type PlayerKicked<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_KICKED'
-		reason?: string
-		source?: ActionSource
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerKicked<P = SM.PlayerId> = {
+	type: 'PLAYER_KICKED'
+	reason?: string
+	source?: ActionSource
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_KICKED_META = meta({ players: [{ assocType: 'player' }] })
 
-export type PossessedAdminCamera<P = SM.PlayerId> =
-	& {
-		type: 'POSSESSED_ADMIN_CAMERA'
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PossessedAdminCamera<P = SM.PlayerId> = {
+	type: 'POSSESSED_ADMIN_CAMERA'
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const POSSESSED_ADMIN_CAMERA_META = meta({ players: [{ assocType: 'player' }] })
 
-export type UnpossessedAdminCamera<P = SM.PlayerId> =
-	& {
-		type: 'UNPOSSESSED_ADMIN_CAMERA'
-	}
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type UnpossessedAdminCamera<P = SM.PlayerId> = {
+	type: 'UNPOSSESSED_ADMIN_CAMERA'
+} & SM.PlayerAssoc<'player', P> &
+	Base
 export const UNPOSSESSED_ADMIN_CAMERA_META = meta({ players: [{ assocType: 'player' }] })
 
 export type PlayerBanned<P = SM.PlayerId> = { type: 'PLAYER_BANNED'; interval: string } & SM.PlayerAssoc<'player', P> & Base
 export const PLAYER_BANNED_META = meta({ players: [{ assocType: 'player' }] })
 
-export type PlayerWarned<P = SM.PlayerId> =
-	& { type: 'PLAYER_WARNED'; reason: string; source?: ActionSource }
-	& SM.PlayerAssoc<'player', P>
-	& Base
+export type PlayerWarned<P = SM.PlayerId> = { type: 'PLAYER_WARNED'; reason: string; source?: ActionSource } & SM.PlayerAssoc<'player', P> &
+	Base
 export const PLAYER_WARNED_META = meta({ players: [{ assocType: 'player' }] })
 
-export type PlayerDied<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_DIED'
-		damage: number
-		// null when the killing weapon was logged as `caused by nullptr`
-		weapon: string | null
-		variant: PlayerWoundedOrDiedVariant
-	}
-	& SM.PlayerAssoc<'victim', P>
-	& SM.PlayerAssoc<'attacker', P>
-	& Base
+export type PlayerDied<P = SM.PlayerId> = {
+	type: 'PLAYER_DIED'
+	damage: number
+	// null when the killing weapon was logged as `caused by nullptr`
+	weapon: string | null
+	variant: PlayerWoundedOrDiedVariant
+} & SM.PlayerAssoc<'victim', P> &
+	SM.PlayerAssoc<'attacker', P> &
+	Base
 
 export const PLAYER_DIED_META = meta({ players: [{ assocType: 'victim' }, { assocType: 'attacker' }] })
 
 export type PlayerWoundedOrDiedVariant = 'normal' | 'suicide' | 'teamkill'
 
-export type PlayerWounded<P = SM.PlayerId> =
-	& {
-		type: 'PLAYER_WOUNDED'
-		damage: number
-		// null when the wounding weapon was logged as `caused by nullptr`
-		weapon: string | null
-		variant: PlayerWoundedOrDiedVariant
-	}
-	& SM.PlayerAssoc<'victim', P>
-	& SM.PlayerAssoc<'attacker', P>
-	& Base
+export type PlayerWounded<P = SM.PlayerId> = {
+	type: 'PLAYER_WOUNDED'
+	damage: number
+	// null when the wounding weapon was logged as `caused by nullptr`
+	weapon: string | null
+	variant: PlayerWoundedOrDiedVariant
+} & SM.PlayerAssoc<'victim', P> &
+	SM.PlayerAssoc<'attacker', P> &
+	Base
 
 export const PLAYER_WOUNDED_META = meta({ players: [{ assocType: 'victim' }, { assocType: 'attacker' }] })
 
@@ -402,10 +374,12 @@ export const RconConnectedSchema = event('RCON_CONNECTED', { reconnected: z.bool
 export const RconDisconnectedSchema = event('RCON_DISCONNECTED', {})
 export const RoundEndedSchema = event('ROUND_ENDED', {
 	outcome: MH.MatchOutcomeSchema,
-	action: z.discriminatedUnion('type', [
-		z.object({ type: z.literal('AdminChangeLayer'), layerId: z.string(), source: ActionSourceSchema }),
-		z.object({ type: z.literal('AdminEndMatch'), source: ActionSourceSchema }),
-	]).optional(),
+	action: z
+		.discriminatedUnion('type', [
+			z.object({ type: z.literal('AdminChangeLayer'), layerId: z.string(), source: ActionSourceSchema }),
+			z.object({ type: z.literal('AdminEndMatch'), source: ActionSourceSchema }),
+		])
+		.optional(),
 })
 export const PlayerConnectedSchema = event('PLAYER_CONNECTED', { player: SM.PlayerSchema })
 export const PlayerReconciledSchema = event('PLAYER_RECONCILED', { player: SM.PlayerSchema })
@@ -566,7 +540,7 @@ export function fromEventRow(row: SchemaModels.ServerEvent): Event | null {
 		matchId: row.matchId,
 	}
 	const parsed = EventSchema.safeParse(candidate)
-	return parsed.success ? parsed.data as Event : null
+	return parsed.success ? (parsed.data as Event) : null
 }
 
 // The batch counterpart to fromEventRow, for the usual case of reading a match's events. Drops are always logged

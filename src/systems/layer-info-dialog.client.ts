@@ -6,11 +6,9 @@ type Store = {
 	activeTab: Tab
 }
 
-export const Store = Zus.createStore<Store>()(
-	() => ({
-		activeTab: 'details',
-	}),
-)
+export const Store = Zus.createStore<Store>()(() => ({
+	activeTab: 'details',
+}))
 
 export namespace Actions {
 	export function setActiveTab(tab: Tab) {

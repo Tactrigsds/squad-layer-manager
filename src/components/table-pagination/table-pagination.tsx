@@ -24,12 +24,7 @@ export interface TablePaginationProps {
 	disabled?: boolean
 }
 
-export function TablePagination({
-	pageIndex,
-	pageCount,
-	onPageChange,
-	disabled = false,
-}: TablePaginationProps) {
+export function TablePagination({ pageIndex, pageCount, onPageChange, disabled = false }: TablePaginationProps) {
 	const currentPage = pageIndex + 1
 	const [inputValue, setInputValue] = React.useState(String(currentPage))
 
@@ -126,9 +121,7 @@ export function TablePagination({
 					className="h-8 w-16 text-center"
 					aria-label="Page number"
 				/>
-				<span className="text-sm text-muted-foreground">
-					/ {formatPageCount(pageCount)}
-				</span>
+				<span className="text-sm text-muted-foreground">/ {formatPageCount(pageCount)}</span>
 			</div>
 
 			<Button

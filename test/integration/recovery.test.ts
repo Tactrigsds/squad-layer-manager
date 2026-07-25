@@ -28,15 +28,18 @@ describe('recovering from a broken squad server', () => {
 		await app.emu.expectCommand(/^ListPlayers$/, { timeoutMs: 30_000 })
 
 		// and the reconnect is recorded, so an admin can see the server dropped
-		await app.waitFor(() => {
-			const db = app.readDb()
-			try {
-				const row = db.prepare(`SELECT count(*) as n FROM serverEvents WHERE type = 'RCON_DISCONNECTED'`).get() as { n: number }
-				return row.n > 0
-			} finally {
-				db.close()
-			}
-		}, { label: 'the disconnect recorded as a server event', timeoutMs: 25_000 })
+		await app.waitFor(
+			() => {
+				const db = app.readDb()
+				try {
+					const row = db.prepare(`SELECT count(*) as n FROM serverEvents WHERE type = 'RCON_DISCONNECTED'`).get() as { n: number }
+					return row.n > 0
+				} finally {
+					db.close()
+				}
+			},
+			{ label: 'the disconnect recorded as a server event', timeoutMs: 25_000 },
+		)
 	})
 
 	it('keeps ingesting the log after the game rotates it', async () => {
@@ -47,19 +50,22 @@ describe('recovering from a broken squad server', () => {
 		const player = makePlayer({ name: ' post_rotation_joiner' })
 		app.emu.world.connectPlayer(player)
 
-		await app.waitFor(() => {
-			const db = app.readDb()
-			try {
-				// PLAYER_CONNECTED comes only from the log (the roster poll produces PLAYER_RECONCILED), so
-				// this can't pass on rcon polling alone
-				const row = db
-					.prepare(`SELECT count(*) as n FROM serverEvents WHERE type = 'PLAYER_CONNECTED' AND data LIKE ?`)
-					.get(`%${player.eos}%`) as { n: number }
-				return row.n > 0
-			} finally {
-				db.close()
-			}
-		}, { label: 'a log-only event from after the rotation', timeoutMs: 30_000 })
+		await app.waitFor(
+			() => {
+				const db = app.readDb()
+				try {
+					// PLAYER_CONNECTED comes only from the log (the roster poll produces PLAYER_RECONCILED), so
+					// this can't pass on rcon polling alone
+					const row = db
+						.prepare(`SELECT count(*) as n FROM serverEvents WHERE type = 'PLAYER_CONNECTED' AND data LIKE ?`)
+						.get(`%${player.eos}%`) as { n: number }
+					return row.n > 0
+				} finally {
+					db.close()
+				}
+			},
+			{ label: 'a log-only event from after the rotation', timeoutMs: 30_000 },
+		)
 	})
 
 	it('still drives the server after both faults', async () => {

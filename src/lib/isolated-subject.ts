@@ -50,7 +50,7 @@ export class IsolatedReplaySubject<T> extends Rx.ReplaySubject<T> {
 
 export function isolateContext() {
 	return <T>(source: Rx.Observable<T>) =>
-		new Rx.Observable(subscriber => {
+		new Rx.Observable((subscriber) => {
 			return source.subscribe({
 				next: (v) => rootContext(() => subscriber.next(v)),
 				error: (e) => rootContext(() => subscriber.error(e)),

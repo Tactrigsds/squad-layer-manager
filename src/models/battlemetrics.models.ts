@@ -13,20 +13,30 @@ const JsonApiResourceRef = z.object({
 const FlagPlayerInclude = z.object({
 	type: z.literal('flagPlayer'),
 	id: z.string(),
-	attributes: z.object({
-		removedAt: z.string().nullable().optional(),
-	}).nullable().optional(),
-	relationships: z.object({
-		playerFlag: z.object({
-			data: JsonApiResourceRef,
-		}),
-		player: z.object({
-			data: JsonApiResourceRef,
-		}).optional(),
-		organization: z.object({
-			data: JsonApiResourceRef,
-		}).optional(),
-	}).nullable().optional(),
+	attributes: z
+		.object({
+			removedAt: z.string().nullable().optional(),
+		})
+		.nullable()
+		.optional(),
+	relationships: z
+		.object({
+			playerFlag: z.object({
+				data: JsonApiResourceRef,
+			}),
+			player: z
+				.object({
+					data: JsonApiResourceRef,
+				})
+				.optional(),
+			organization: z
+				.object({
+					data: JsonApiResourceRef,
+				})
+				.optional(),
+		})
+		.nullable()
+		.optional(),
 })
 
 export const PlayerFlagAttributes = z.object({
@@ -53,58 +63,76 @@ const IdentifierInclude = z.object({
 		type: z.string(),
 		identifier: z.string(),
 	}),
-	relationships: z.object({
-		player: z.object({
-			data: JsonApiResourceRef,
-		}),
-	}).optional(),
+	relationships: z
+		.object({
+			player: z.object({
+				data: JsonApiResourceRef,
+			}),
+		})
+		.optional(),
 })
 
 const PlayerServerRef = z.object({
 	type: z.literal('server'),
 	id: z.string(),
-	meta: z.object({
-		timePlayed: z.number().nullable().optional(),
-	}).optional(),
+	meta: z
+		.object({
+			timePlayed: z.number().nullable().optional(),
+		})
+		.optional(),
 })
 
 export const PlayerListResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('player'),
-		id: z.string(),
-		relationships: z.object({
-			servers: z.object({
-				data: z.array(PlayerServerRef).optional(),
-			}).optional(),
-		}).optional(),
-	})),
-	included: z.array(z.discriminatedUnion('type', [
-		IdentifierInclude,
-		FlagPlayerInclude,
-		PlayerFlagInclude,
-	])).nullable().optional(),
-	links: z.object({
-		next: z.string().nullable().optional(),
-		prev: z.string().nullable().optional(),
-	}).nullable().optional(),
+	data: z.array(
+		z.object({
+			type: z.literal('player'),
+			id: z.string(),
+			relationships: z
+				.object({
+					servers: z
+						.object({
+							data: z.array(PlayerServerRef).optional(),
+						})
+						.optional(),
+				})
+				.optional(),
+		}),
+	),
+	included: z
+		.array(z.discriminatedUnion('type', [IdentifierInclude, FlagPlayerInclude, PlayerFlagInclude]))
+		.nullable()
+		.optional(),
+	links: z
+		.object({
+			next: z.string().nullable().optional(),
+			prev: z.string().nullable().optional(),
+		})
+		.nullable()
+		.optional(),
 })
 
 // ---- POST /players/quick-match ----
 
 export const PlayerQuickMatchResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('identifier'),
-		id: z.string(),
-		attributes: z.object({
-			type: z.string(),
-			identifier: z.string(),
+	data: z.array(
+		z.object({
+			type: z.literal('identifier'),
+			id: z.string(),
+			attributes: z.object({
+				type: z.string(),
+				identifier: z.string(),
+			}),
+			relationships: z
+				.object({
+					player: z
+						.object({
+							data: z.object({ type: z.literal('player'), id: z.string() }),
+						})
+						.optional(),
+				})
+				.optional(),
 		}),
-		relationships: z.object({
-			player: z.object({
-				data: z.object({ type: z.literal('player'), id: z.string() }),
-			}).optional(),
-		}).optional(),
-	})),
+	),
 })
 
 // ---- GET /players/{player_id} (single player detail with flags) ----
@@ -113,17 +141,20 @@ export const PlayerDetailResponse = z.object({
 	data: z.object({
 		type: z.literal('player'),
 		id: z.string(),
-		relationships: z.object({
-			servers: z.object({
-				data: z.array(PlayerServerRef).optional(),
-			}).optional(),
-		}).optional(),
+		relationships: z
+			.object({
+				servers: z
+					.object({
+						data: z.array(PlayerServerRef).optional(),
+					})
+					.optional(),
+			})
+			.optional(),
 	}),
-	included: z.array(z.discriminatedUnion('type', [
-		IdentifierInclude,
-		FlagPlayerInclude,
-		PlayerFlagInclude,
-	])).nullable().optional(),
+	included: z
+		.array(z.discriminatedUnion('type', [IdentifierInclude, FlagPlayerInclude, PlayerFlagInclude]))
+		.nullable()
+		.optional(),
 })
 
 // ---- Composite types used by server + client ----
@@ -166,14 +197,9 @@ export type FlagChange = z.infer<typeof FlagChangeSchema>
 // player's flags and why. Both the web workflows and the in-game commands post through here so a profile reads the
 // same regardless of where the action came from. One note per flag: a reason justifies one flag, and keeping them
 // separate is what lets a later removal's note line up with the addition's.
-export function flagChangeNote(
-	opts: { action: 'added' | 'removed'; flagName: string; actor: string; reason?: string },
-): string {
+export function flagChangeNote(opts: { action: 'added' | 'removed'; flagName: string; actor: string; reason?: string }): string {
 	const reason = opts.reason?.trim()
-	return [
-		`Flag "${opts.flagName}" ${opts.action} by ${opts.actor} via SLM.`,
-		...(reason ? [`Reason: ${reason}`] : []),
-	].join('\n')
+	return [`Flag "${opts.flagName}" ${opts.action} by ${opts.actor} via SLM.`, ...(reason ? [`Reason: ${reason}`] : [])].join('\n')
 }
 
 // ids of flags that require a reason but weren't given one. the client marks those fields required up-front; the

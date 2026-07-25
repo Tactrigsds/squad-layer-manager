@@ -1,58 +1,57 @@
 services:
-  app:
-    # if you wish to freeze your SLM install, you can do so by referencing the package created by a specific commit in https://github.com/Tactrigsds/squad-layer-manager/pkgs/container/squad-layer-manager
-    # However, it's recommanded to use :latest, as SLM has regular updates and a smooth upgrade path.
-    image: ghcr.io/tactrigsds/squad-layer-manager:latest
-    depends_on:
-      - otel
-    environment:
-      # send OTLP traces and logs to the otel collector, which is a separate image configured below
-      - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
-      # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
-      # Grafana's Pyroscope datasource. Off by default: it costs a few percent of runtime overhead, most of
-      # it heap sampling, whose sample tables are native allocations that sit in the main malloc arena for
-      # the life of the process. Uncomment the two lines below to turn it on when you have an allocation or
-      # CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the flatter-cost CPU profiles.
-      # - PYROSCOPE_ENABLED=true
-      # - PYROSCOPE_ENDPOINT=http://otel:4040
+    app:
+        # if you wish to freeze your SLM install, you can do so by referencing the package created by a specific commit in https://github.com/Tactrigsds/squad-layer-manager/pkgs/container/squad-layer-manager
+        # However, it's recommanded to use :latest, as SLM has regular updates and a smooth upgrade path.
+        image: ghcr.io/tactrigsds/squad-layer-manager:latest
+        depends_on:
+            - otel
+        environment:
+            # send OTLP traces and logs to the otel collector, which is a separate image configured below
+            - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
+            # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
+            # Grafana's Pyroscope datasource. Off by default: it costs a few percent of runtime overhead, most of
+            # it heap sampling, whose sample tables are native allocations that sit in the main malloc arena for
+            # the life of the process. Uncomment the two lines below to turn it on when you have an allocation or
+            # CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the flatter-cost CPU profiles.
+            # - PYROSCOPE_ENABLED=true
+            # - PYROSCOPE_ENDPOINT=http://otel:4040
 
-    ports:
-      # the app. ORIGIN has to match how this ends up being reached, whether that's this port directly or a
-      # reverse proxy in front of it.
-      - 3000:3000
-    volumes:
-      # the database, and any layer artifacts you drop in to override the ones the image ships. Mount the
-      # directory rather than the db file: sqlite writes -wal and -shm alongside it.
-      - ./data:/app/data
-      # Every credential SLM reads (see .env.secrets.example). Mounted rather than passed through env_file
-      # below, which would make it readable via `docker inspect`. See docs/installing.md#33-secrets.
-      - ./.env.secrets:/app/.env.secrets:ro
+        ports:
+            # the app. ORIGIN has to match how this ends up being reached, whether that's this port directly or a
+            # reverse proxy in front of it.
+            - 3000:3000
+        volumes:
+            # the database, and any layer artifacts you drop in to override the ones the image ships. Mount the
+            # directory rather than the db file: sqlite writes -wal and -shm alongside it.
+            - ./data:/app/data
+            # Every credential SLM reads (see .env.secrets.example). Mounted rather than passed through env_file
+            # below, which would make it readable via `docker inspect`. See docs/installing.md#33-secrets.
+            - ./.env.secrets:/app/.env.secrets:ro
 
-    # Will automatically restart SLM in the event of a crash.
-    restart: unless-stopped
-    command:
-      ["pnpm", "run", "server:prod"]
-    # everything that is not a credential
-    env_file: .env
-  otel:
-    # Pinned, and has to stay pinned: ./observability holds verbatim copies of this image's own Loki
-    # and Tempo config, so the tag and those files are one unit. On :latest a new image moves the
-    # binaries underneath them and they stop parsing. See observability/README.md#the-mount-contract.
-    image: grafana/otel-lgtm:0.29.0
-    restart: unless-stopped
-    ports:
-      # the grafana portal
-      - 3001:3000
-    volumes:
-      - otel_data:/data
-      # Retention (3d traces, 14d logs) and the SLM dashboards. Each of these replaces a file the image
-      # ships, so the files under ./observability reproduce the image's own config in full rather than
-      # only the parts we change. See the header comment in each.
-      - ./observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
-      - ./observability/loki-config.yaml:/otel-lgtm/loki-config.yaml:ro
-      - ./observability/grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources:ro
-      - ./observability/grafana/provisioning/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards:ro
-      - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro
+        # Will automatically restart SLM in the event of a crash.
+        restart: unless-stopped
+        command: ['pnpm', 'run', 'server:prod']
+        # everything that is not a credential
+        env_file: .env
+    otel:
+        # Pinned, and has to stay pinned: ./observability holds verbatim copies of this image's own Loki
+        # and Tempo config, so the tag and those files are one unit. On :latest a new image moves the
+        # binaries underneath them and they stop parsing. See observability/README.md#the-mount-contract.
+        image: grafana/otel-lgtm:0.29.0
+        restart: unless-stopped
+        ports:
+            # the grafana portal
+            - 3001:3000
+        volumes:
+            - otel_data:/data
+            # Retention (3d traces, 14d logs) and the SLM dashboards. Each of these replaces a file the image
+            # ships, so the files under ./observability reproduce the image's own config in full rather than
+            # only the parts we change. See the header comment in each.
+            - ./observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
+            - ./observability/loki-config.yaml:/otel-lgtm/loki-config.yaml:ro
+            - ./observability/grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources:ro
+            - ./observability/grafana/provisioning/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards:ro
+            - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro
 
 volumes:
-  otel_data:
+    otel_data:

@@ -14,9 +14,12 @@ export function CopyIdButton({ label, id }: { label: string; id: string }) {
 		timeoutRef.current = setTimeout(() => setOpen(false), 1500)
 	}
 
-	React.useEffect(() => () => {
-		if (timeoutRef.current) clearTimeout(timeoutRef.current)
-	}, [])
+	React.useEffect(
+		() => () => {
+			if (timeoutRef.current) clearTimeout(timeoutRef.current)
+		},
+		[],
+	)
 
 	return (
 		<Tooltip open={open}>

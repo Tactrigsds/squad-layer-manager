@@ -125,10 +125,7 @@ export class FixedSizeMap<K, V> extends Map<K, V> {
 	 * @param source - Source Map or iterable of key-value pairs
 	 * @returns A new FixedSizeMap instance
 	 */
-	static from<K, V>(
-		maxSize: number,
-		source: Map<K, V> | Iterable<readonly [K, V]>,
-	): FixedSizeMap<K, V> {
+	static from<K, V>(maxSize: number, source: Map<K, V> | Iterable<readonly [K, V]>): FixedSizeMap<K, V> {
 		const entries = source instanceof Map ? Array.from(source.entries()) : Array.from(source)
 		return new FixedSizeMap(maxSize, entries)
 	}

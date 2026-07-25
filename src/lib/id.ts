@@ -15,7 +15,7 @@ export function createId(size: number) {
 	for (let i = 0; i < arr.length; i++) {
 		const entropy = arr[i]
 		// we have two extra bits per character on every uint8, so save them here and append them once we accumulate 6 bits of entropy
-		excess += entropy % 4 << ((i % 3) * 2)
+		excess += (entropy % 4) << ((i % 3) * 2)
 		if (i % 3 === 0) {
 			result.push(characters[excess])
 			if (result.length === size) return result.join('')

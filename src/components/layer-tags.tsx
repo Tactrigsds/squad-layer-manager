@@ -1,7 +1,13 @@
 import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -52,7 +58,7 @@ export function LayerTags(props: {
 	// inside a `group/single-item`; the dialogs render the button unconditionally.
 	revealAddOnHover?: boolean
 }) {
-	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, s => s?.layerTags ?? [])
+	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const resolved = LTag.resolveAll(props.tags, configured)
 	const canManage = useCanManageTags()
 	const [editing, setEditing] = React.useState<LTag.Tag | 'new' | null>(null)
@@ -65,7 +71,7 @@ export function LayerTags(props: {
 
 	return (
 		<span className={cn('flex flex-wrap items-center gap-1', props.className)}>
-			{resolved.map(tag => (
+			{resolved.map((tag) => (
 				<TagChip
 					key={tag.id}
 					tag={tag}
@@ -73,7 +79,7 @@ export function LayerTags(props: {
 					disabled={props.disabled}
 					canManage={canManage}
 					onRemove={() => props.onRemove(tag.id)}
-					onEdit={() => setEditing(configured.find(t => t.id === tag.id) ?? null)}
+					onEdit={() => setEditing(configured.find((t) => t.id === tag.id) ?? null)}
 				/>
 			))}
 			<AddTagDropdown
@@ -86,18 +92,19 @@ export function LayerTags(props: {
 				labelled={resolved.length === 0}
 				revealOnHover={props.revealAddOnHover}
 			/>
-			<LayerTagDialog
-				state={editing}
-				onClose={() => setEditing(null)}
-				onCreated={add}
-			/>
+			<LayerTagDialog state={editing} onClose={() => setEditing(null)} onCreated={add} />
 		</span>
 	)
 }
 
-function TagChip(
-	props: { tag: LTag.Resolved; setBy?: USR.UserId; disabled?: boolean; canManage: boolean; onRemove: () => void; onEdit: () => void },
-) {
+function TagChip(props: {
+	tag: LTag.Resolved
+	setBy?: USR.UserId
+	disabled?: boolean
+	canManage: boolean
+	onRemove: () => void
+	onEdit: () => void
+}) {
 	const { tag } = props
 	// an interactive hover card rather than a Tooltip: the edit affordance lives inside it, and tooltips in this app are
 	// explicitly for non-interactive content (see ZI_OFFSETS.TOOLTIP)
@@ -121,26 +128,26 @@ function TagChip(
 				</button>
 			</span>
 			<HoverCardContent className="w-64 space-y-2 p-3">
-				{tag.deleted
-					? (
-						<p className="text-xs text-muted-foreground">
-							This tag has been deleted, so only the id it was created with remains. It can still be removed from the layer.
+				{tag.deleted ? (
+					<p className="text-xs text-muted-foreground">
+						This tag has been deleted, so only the id it was created with remains. It can still be removed from the layer.
+					</p>
+				) : (
+					<>
+						<p className="text-sm font-medium" style={{ color: tag.color }}>
+							{tag.label}
 						</p>
-					)
-					: (
-						<>
-							<p className="text-sm font-medium" style={{ color: tag.color }}>{tag.label}</p>
-							<p className="text-xs text-muted-foreground">
-								{tag.description ? <RichText text={tag.description} /> : <span className="italic">No description</span>}
-							</p>
-							{props.canManage && (
-								<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
-									<Icons.Pencil className="mr-1 h-3 w-3" />
-									Edit tag
-								</Button>
-							)}
-						</>
-					)}
+						<p className="text-xs text-muted-foreground">
+							{tag.description ? <RichText text={tag.description} /> : <span className="italic">No description</span>}
+						</p>
+						{props.canManage && (
+							<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
+								<Icons.Pencil className="mr-1 h-3 w-3" />
+								Edit tag
+							</Button>
+						)}
+					</>
+				)}
 				{props.setBy !== undefined && <UserLabel userId={props.setBy} label="Tagged by" />}
 			</HoverCardContent>
 		</HoverCard>
@@ -157,7 +164,7 @@ function AddTagDropdown(props: {
 	labelled?: boolean
 	revealOnHover?: boolean
 }) {
-	const available = props.configured.filter(t => !props.applied.includes(t.id))
+	const available = props.configured.filter((t) => !props.applied.includes(t.id))
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild disabled={props.disabled}>
@@ -169,7 +176,10 @@ function AddTagDropdown(props: {
 						'h-4 shrink-0 px-1 text-xs text-muted-foreground font-normal',
 						props.labelled ? 'gap-0.5' : 'w-4 px-0',
 						// data-[state=open] keeps it visible while its own menu is up, once the pointer leaves the item
-						props.revealOnHover && [REVEAL_ON_ITEM_HOVER, 'data-[state=open]:w-auto data-[state=open]:px-1 data-[state=open]:opacity-100'],
+						props.revealOnHover && [
+							REVEAL_ON_ITEM_HOVER,
+							'data-[state=open]:w-auto data-[state=open]:px-1 data-[state=open]:opacity-100',
+						],
 					)}
 				>
 					<TagPlus className="h-3 w-3" />
@@ -178,7 +188,7 @@ function AddTagDropdown(props: {
 			</DropdownMenuTrigger>
 			{/* a description runs to note length, so the menu holds it to one clipped line and reads in full on the chip's hover card */}
 			<DropdownMenuContent align="start" className="max-h-72 max-w-72 overflow-y-auto">
-				{available.map(tag => (
+				{available.map((tag) => (
 					<DropdownMenuItem key={tag.id} onSelect={() => props.onSelect(tag.id)}>
 						<span className="mr-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
 						<span className="flex min-w-0 flex-col">
@@ -215,7 +225,7 @@ function LayerTagDialog(props: { state: LTag.Tag | 'new' | null; onClose: () => 
 }
 
 function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
-	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, s => s?.layerTags ?? [])
+	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const existing = props.state === 'new' ? undefined : props.state
 	const isNew = existing === undefined
 
@@ -229,19 +239,21 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 		if (hexRef.current) hexRef.current.value = next
 	}
 
-	const upsert = useMutation(RPC.orpc.settings.global.upsertLayerTag.mutationOptions({
-		onSuccess: (res) => {
-			if (res.code === 'ok') {
-				if (isNew) props.onCreated(res.tag.id)
-				props.onClose()
-				return
-			}
-			if (res.code === 'err:duplicate-label') toast.error('Duplicate label', { description: res.message })
-			else if (res.code === 'err:invalid-settings') toast.error('Invalid tag', { description: res.message })
-			else RbacClient.handlePermissionDenied(res)
-		},
-		onError: () => toast.error('Failed to save tag'),
-	}))
+	const upsert = useMutation(
+		RPC.orpc.settings.global.upsertLayerTag.mutationOptions({
+			onSuccess: (res) => {
+				if (res.code === 'ok') {
+					if (isNew) props.onCreated(res.tag.id)
+					props.onClose()
+					return
+				}
+				if (res.code === 'err:duplicate-label') toast.error('Duplicate label', { description: res.message })
+				else if (res.code === 'err:invalid-settings') toast.error('Invalid tag', { description: res.message })
+				else RbacClient.handlePermissionDenied(res)
+			},
+			onError: () => toast.error('Failed to save tag'),
+		}),
+	)
 
 	const trimmed = label.trim()
 	const duplicate = LTag.labelConflict(configured, trimmed, existing?.id)
@@ -315,8 +327,12 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 				</div>
 			</div>
 			<DialogFooter>
-				<Button variant="outline" onClick={props.onClose}>Cancel</Button>
-				<Button disabled={!canSave} onClick={submit}>{isNew ? 'Create' : 'Save'}</Button>
+				<Button variant="outline" onClick={props.onClose}>
+					Cancel
+				</Button>
+				<Button disabled={!canSave} onClick={submit}>
+					{isNew ? 'Create' : 'Save'}
+				</Button>
 			</DialogFooter>
 		</>
 	)

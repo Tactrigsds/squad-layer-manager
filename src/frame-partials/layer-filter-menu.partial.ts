@@ -53,13 +53,11 @@ type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 
 // const
 
-export function initLayerFilterMenuStore(
-	args: Args,
-) {
+export function initLayerFilterMenuStore(args: Args) {
 	const set = ZusUtils.toPartialSetter(args.set, 'filterMenu')
 	const defaultItems = args.input.items ?? getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
-	const emptyItems = args.input.emptyItems
-		?? (args.input.items ? args.input.items : getDefaultFilterMenuItemState({}, args.input.colConfig))
+	const emptyItems =
+		args.input.emptyItems ?? (args.input.items ? args.input.items : getDefaultFilterMenuItemState({}, args.input.colConfig))
 	const filter = getFilterFromComparisons(defaultItems)
 
 	const state: FilterMenuStore = {
@@ -121,7 +119,7 @@ export namespace Sel {
 			const returnPossibleValues = LC.isEnumeratedColumn(field, { ...CS.init(), effectiveColsConfig: store.filterMenu.colConfig })
 			let excludedSiblings: string[] | undefined
 			if (field === 'Layer') {
-				excludedSiblings = [...L.LAYER_STRING_PROPERTIES as string[]]
+				excludedSiblings = [...(L.LAYER_STRING_PROPERTIES as string[])]
 			} else if (Arr.includes(L.LAYER_STRING_PROPERTIES, field)) {
 				excludedSiblings = ['Layer']
 			}
@@ -137,10 +135,8 @@ export namespace Sel {
 	}
 
 	export function swapFactionsDisabled(state: Store) {
-		const swapFactionsDisabled = !(
-			['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Alliance_1', 'Alliance_2'].some(key =>
-				F.compValue(state.filterMenu.menuItems[key]) !== undefined
-			)
+		const swapFactionsDisabled = !['Faction_1', 'Unit_1', 'Faction_2', 'Unit_2', 'Alliance_1', 'Alliance_2'].some(
+			(key) => F.compValue(state.filterMenu.menuItems[key]) !== undefined,
 		)
 		return swapFactionsDisabled
 	}
@@ -155,8 +151,8 @@ export namespace Actions {
 	}
 
 	export function swapTeams(stores: KeyProp) {
-		setMenuItems(stores, state =>
-			Im.produce(state, draft => {
+		setMenuItems(stores, (state) =>
+			Im.produce(state, (draft) => {
 				const faction1 = F.compValue(draft['Faction_1'])
 				const subFac1 = F.compValue(draft['Unit_1'])
 				const alliance1 = F.compValue(draft['Alliance_1'])
@@ -166,76 +162,75 @@ export namespace Actions {
 				F.setCompValue(draft['Faction_2'], faction1)
 				F.setCompValue(draft['Unit_2'], subFac1)
 				F.setCompValue(draft['Alliance_2'], alliance1)
-			}))
+			}),
+		)
 	}
 
 	export function setComparison(stores: KeyProp, field: string, update: React.SetStateAction<F.EditableCompNode>) {
 		setMenuItems(
 			stores,
-			Im.produce(
-				(draft) => {
-					const prevComp = draft[field]
-					const prevValue = F.compValue(prevComp)
-					const comp = typeof update === 'function' ? update(prevComp) : update
-					const column = F.compAnchorColumn(comp)
-					const value = F.compValue(comp)
-					const setFieldValue = (f: string, v: F.Value | undefined) => {
-						const fieldComp = draft[f]
-						if (!fieldComp) return
-						// a values-shaped comp (in) must stay values-shaped, or the node ends up with a value-arg its code can't read
-						const valuesArg = fieldComp.args.find((arg): arg is F.EditableValuesArg => arg?.type === 'values')
-						if (valuesArg) valuesArg.values = v === undefined ? undefined : [v]
-						else F.setCompValue(fieldComp, v)
-					}
+			Im.produce((draft) => {
+				const prevComp = draft[field]
+				const prevValue = F.compValue(prevComp)
+				const comp = typeof update === 'function' ? update(prevComp) : update
+				const column = F.compAnchorColumn(comp)
+				const value = F.compValue(comp)
+				const setFieldValue = (f: string, v: F.Value | undefined) => {
+					const fieldComp = draft[f]
+					if (!fieldComp) return
+					// a values-shaped comp (in) must stay values-shaped, or the node ends up with a value-arg its code can't read
+					const valuesArg = fieldComp.args.find((arg): arg is F.EditableValuesArg => arg?.type === 'values')
+					if (valuesArg) valuesArg.values = v === undefined ? undefined : [v]
+					else F.setCompValue(fieldComp, v)
+				}
 
-					if (column === 'Layer' && value) {
-						// TODO this section doesn't handle training modes well
-						let parsedLayer = L.parseLayerStringSegment(value as string)
-						setFieldValue('Layer', value)
-						if (!parsedLayer) {
-							return
-						}
-						parsedLayer = L.applyBackwardsCompatMappings(parsedLayer)
-						setFieldValue('Map', parsedLayer.Map)
-						setFieldValue('Gamemode', parsedLayer.Gamemode)
-						setFieldValue('LayerVersion', parsedLayer.LayerVersion)
-						setFieldValue('Collection', parsedLayer.Collection)
-					} else if (column === 'Layer' && !value) {
-						setFieldValue('Layer', undefined)
-						setFieldValue('Map', undefined)
-						setFieldValue('Gamemode', undefined)
-						setFieldValue('LayerVersion', undefined)
-						setFieldValue('Collection', undefined)
+				if (column === 'Layer' && value) {
+					// TODO this section doesn't handle training modes well
+					let parsedLayer = L.parseLayerStringSegment(value as string)
+					setFieldValue('Layer', value)
+					if (!parsedLayer) {
+						return
+					}
+					parsedLayer = L.applyBackwardsCompatMappings(parsedLayer)
+					setFieldValue('Map', parsedLayer.Map)
+					setFieldValue('Gamemode', parsedLayer.Gamemode)
+					setFieldValue('LayerVersion', parsedLayer.LayerVersion)
+					setFieldValue('Collection', parsedLayer.Collection)
+				} else if (column === 'Layer' && !value) {
+					setFieldValue('Layer', undefined)
+					setFieldValue('Map', undefined)
+					setFieldValue('Gamemode', undefined)
+					setFieldValue('LayerVersion', undefined)
+					setFieldValue('Collection', undefined)
+				} else {
+					draft[field] = comp
+				}
+
+				if (
+					column === 'Map' ||
+					(column === 'Gamemode' &&
+						// keep layer version if switching from RAAS to FRAAS or vice versa TODO test this
+						!(prevValue?.toString().includes('RAAS') && value?.toString().includes('RAAS')))
+				) {
+					setFieldValue('LayerVersion', undefined)
+				}
+
+				if ((L.LAYER_STRING_PROPERTIES as string[]).includes(column as string) && value) {
+					const excludingCurrent = L.LAYER_STRING_PROPERTIES.filter((p) => p !== column)
+					if (excludingCurrent.every((p) => F.compValue(draft[p as string]) !== undefined)) {
+						const args = {
+							Gamemode: F.compValue(draft['Gamemode'])!,
+							Map: F.compValue(draft['Map'])!,
+							LayerVersion: F.compValue(draft['LayerVersion'])!,
+						} as Parameters<typeof L.getLayerString>[0]
+						// @ts-expect-error idc
+						args[column] = value!
+						setFieldValue('Layer', L.getLayerString(args))
 					} else {
-						draft[field] = comp
+						setFieldValue('Layer', undefined)
 					}
-
-					if (
-						column === 'Map'
-						|| (column === 'Gamemode'
-							// keep layer version if switching from RAAS to FRAAS or vice versa TODO test this
-							&& !(prevValue?.toString().includes('RAAS') && value?.toString().includes('RAAS')))
-					) {
-						setFieldValue('LayerVersion', undefined)
-					}
-
-					if ((L.LAYER_STRING_PROPERTIES as string[]).includes(column as string) && value) {
-						const excludingCurrent = L.LAYER_STRING_PROPERTIES.filter((p) => p !== column)
-						if (excludingCurrent.every((p) => F.compValue(draft[p as string]) !== undefined)) {
-							const args = {
-								Gamemode: F.compValue(draft['Gamemode'])!,
-								Map: F.compValue(draft['Map'])!,
-								LayerVersion: F.compValue(draft['LayerVersion'])!,
-							} as Parameters<typeof L.getLayerString>[0]
-							// @ts-expect-error idc
-							args[column] = value!
-							setFieldValue('Layer', L.getLayerString(args))
-						} else {
-							setFieldValue('Layer', undefined)
-						}
-					}
-				},
-			),
+				}
+			}),
 		)
 	}
 

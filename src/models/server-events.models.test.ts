@@ -46,7 +46,15 @@ describe('fromEventRow', () => {
 	it('preserves an undefined optional through superjson rather than turning it into null', () => {
 		// superjson stores `undefined` as null plus a meta marker; a null reaching the schema would fail an
 		// .optional() field, so this guards the round-trip that ~4k PLAYER_CHANGED_TEAM rows in prod depend on
-		const event: SE.Event = { id: 2, type: 'PLAYER_CHANGED_TEAM', time: 1, matchId: 1, newTeamId: 2, player: 'eos-1', source: undefined }
+		const event: SE.Event = {
+			id: 2,
+			type: 'PLAYER_CHANGED_TEAM',
+			time: 1,
+			matchId: 1,
+			newTeamId: 2,
+			player: 'eos-1',
+			source: undefined,
+		}
 		const row = toRow(event)
 		expect((row.data as any).json.source).toBeNull()
 		const back = SE.fromEventRow(row)
@@ -117,7 +125,7 @@ describe('fromEventRows', () => {
 
 		const events = SE.fromEventRows(ctx, [good, bad])
 
-		expect(events.map(e => e.id)).toEqual([1])
+		expect(events.map((e) => e.id)).toEqual([1])
 		expect(warn).toHaveBeenCalledTimes(1)
 		expect(warn.mock.calls[0][0]).toEqual({ droppedEventIds: [2] })
 	})

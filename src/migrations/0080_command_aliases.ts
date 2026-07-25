@@ -23,8 +23,8 @@ export async function up(db: MigrationDriver): Promise<void> {
 	if (dropped.length > 0) {
 		const listed = dropped.map((a: any) => `${a?.string} (${a?.duration})`).join(', ')
 		console.warn(
-			`0080_command_aliases: dropping ${dropped.length} timeout alias(es) that the new alias model cannot express: ${listed}. `
-				+ `Re-add them under Settings > In-game Commands > Command Aliases if still wanted.`,
+			`0080_command_aliases: dropping ${dropped.length} timeout alias(es) that the new alias model cannot express: ${listed}. ` +
+				`Re-add them under Settings > In-game Commands > Command Aliases if still wanted.`,
 		)
 	}
 

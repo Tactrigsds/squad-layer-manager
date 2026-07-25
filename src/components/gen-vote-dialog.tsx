@@ -3,7 +3,13 @@ import AppliedFiltersPanel from '@/components/applied-filters-panel.tsx'
 import { StringEqConfig } from '@/components/filter-card'
 import PoolCheckboxes from '@/components/pool-checkboxes.tsx'
 import ShortLayerName from '@/components/short-layer-name'
-import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
+import {
+	HeadlessDialog,
+	HeadlessDialogContent,
+	HeadlessDialogDescription,
+	HeadlessDialogHeader,
+	HeadlessDialogTitle,
+} from '@/components/ui/headless-dialog'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -70,7 +76,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		voteConfig,
 	} = ZusUtils.useStore(
 		frameKey,
-		ZusUtils.useShallow(s => ({
+		ZusUtils.useShallow((s) => ({
 			choices: s.choices,
 			chosenLayers: s.chosenLayers,
 			choiceErrors: s.choiceErrors,
@@ -106,10 +112,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	const teamParity = ZusUtils.useStore(
 		LayerQueueClient.layerItemsState$(props.stores.squadServer.serverId),
-		React.useCallback((state: LQY.LayerItemsState) => {
-			if (!cursor) return 0
-			return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
-		}, [cursor]),
+		React.useCallback(
+			(state: LQY.LayerItemsState) => {
+				if (!cursor) return 0
+				return LQY.resolveTeamParityForCursor(state, LQY.fromLayerListCursor(state, cursor))
+			},
+			[cursor],
+		),
 	)
 
 	const handleSubmit = () => {
@@ -119,10 +128,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		props.onSubmit(result, cursor)
 	}
 
-	const handleEditedChoiceLayer = React.useCallback((layerId: L.LayerId) => {
-		if (editingChoiceIndex === undefined) return
-		GenVoteFrame.Actions.setChoiceLayer(genVoteStores, editingChoiceIndex, layerId)
-	}, [editingChoiceIndex, genVoteStores])
+	const handleEditedChoiceLayer = React.useCallback(
+		(layerId: L.LayerId) => {
+			if (editingChoiceIndex === undefined) return
+			GenVoteFrame.Actions.setChoiceLayer(genVoteStores, editingChoiceIndex, layerId)
+		},
+		[editingChoiceIndex, genVoteStores],
+	)
 
 	const handleEditDialogOpenChange = React.useCallback((open: boolean) => {
 		if (!open) setEditingChoiceIndex(undefined)
@@ -172,7 +184,9 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 									<Button
 										size="sm"
 										variant={includedConstraintKeys.includes(key) ? 'secondary' : 'ghost'}
-										onClick={() => includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)}
+										onClick={() =>
+											includedConstraintKeys.includes(key) ? handleRemoveConstraint(key) : handleAddConstraint(key)
+										}
 									>
 										{includedConstraintKeys.includes(key) ? <Icons.Minus /> : <Icons.Plus />}
 										{key}
@@ -182,21 +196,18 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 										variant={uniqueConstraintKeys.includes(key) ? 'default' : 'ghost'}
 										onClick={() => handleToggleUniqueConstraint(key)}
 										disabled={!includedConstraintKeys.includes(key)}
-										title={uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'}
+										title={
+											uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'
+										}
 									>
 										<Icons.Lock className="w-4 h-4" />
 									</Button>
 								</ButtonGroup>
 							))}
 						</div>
-						<Button
-							size="sm"
-							variant="default"
-							onClick={() => handleRegen()}
-							disabled={generating}
-						>
+						<Button size="sm" variant="default" onClick={() => handleRegen()} disabled={generating}>
 							<Icons.RefreshCw className={regeneratingIndex === 'all' ? 'animate-spin' : ''} />
-							{choices.some(c => c.layerId) ? 'Regenerate All' : 'Generate'}
+							{choices.some((c) => c.layerId) ? 'Regenerate All' : 'Generate'}
 						</Button>
 					</div>
 					<div className="flex gap-4">
@@ -214,31 +225,29 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 												<div className="flex items-center gap-2">
 													<span className="font-semibold text-lg">{index + 1}.</span>
 													<div>
-														{choice.layerId
-															? (
-																<div className="flex gap-1 items-center text-sm">
-																	<ShortLayerName
+														{choice.layerId ? (
+															<div className="flex gap-1 items-center text-sm">
+																<ShortLayerName
+																	layerId={choice.layerId}
+																	matchDescriptors={constraints?.matchDescriptors}
+																/>
+																{constraints && (
+																	<ConstraintEvalTooltip
+																		matchDescriptors={constraints.matchDescriptors}
+																		queriedConstraints={constraints.queriedConstraints}
+																		itemParity={teamParity}
 																		layerId={choice.layerId}
-																		matchDescriptors={constraints?.matchDescriptors}
 																	/>
-																	{constraints && (
-																		<ConstraintEvalTooltip
-																			matchDescriptors={constraints.matchDescriptors}
-																			queriedConstraints={constraints.queriedConstraints}
-																			itemParity={teamParity}
-																			layerId={choice.layerId}
-																		/>
-																	)}
-																</div>
-															)
-															: error
-															? (
-																<Alert variant="destructive" className="py-2">
-																	<Icons.AlertCircle className="h-4 w-4" />
-																	<AlertTitle>{error}</AlertTitle>
-																</Alert>
-															)
-															: <span className="text-muted-foreground">No layer selected</span>}
+																)}
+															</div>
+														) : error ? (
+															<Alert variant="destructive" className="py-2">
+																<Icons.AlertCircle className="h-4 w-4" />
+																<AlertTitle>{error}</AlertTitle>
+															</Alert>
+														) : (
+															<span className="text-muted-foreground">No layer selected</span>
+														)}
 													</div>
 												</div>
 												<ButtonGroup>
@@ -258,7 +267,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 														disabled={generating}
 														title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
 													>
-														<Icons.RefreshCw className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''} />
+														<Icons.RefreshCw
+															className={
+																regeneratingIndex === 'all' || regeneratingIndex === index
+																	? 'animate-spin'
+																	: ''
+															}
+														/>
 													</Button>
 													<Button
 														size="sm"
@@ -302,7 +317,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							<AdvancedVoteConfigEditor
 								stores={{ squadServer: props.stores.squadServer }}
 								config={voteConfig}
-								choices={choices.map(c => c.layerId).filter((id): id is string => !!id)}
+								choices={choices.map((c) => c.layerId).filter((id): id is string => !!id)}
 								onChange={handleSetVoteConfig}
 								previewPlaceholder="Generate layers to see vote preview"
 								includeResetToDefault={false}
@@ -327,15 +342,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					</div>
 				</div>
 			</HeadlessDialogContent>
-			{
-				/*
+			{/*
 				Only mount while editing. EditLayerDialog is rendered as a sibling of this dialog rather than inside its
 				content, so it does not inherit this dialog's BaseZIndexContext and both land on the same z-index.
 				Stacking is therefore decided by DOM order in #headlessui-portal-root. EditLayerDialog uses
 				unmount={false}, so if it were always mounted its portal wrapper would be pinned into the root before the
 				gen-vote wrapper and paint behind it. Mounting it on open appends its wrapper last.
-			*/
-			}
+			*/}
 			{editingChoiceIndex !== undefined && (
 				<EditLayerDialog
 					open
@@ -350,28 +363,22 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	)
 })
 
-function ChoiceConstraintSelect(
-	props: {
-		stores: GenVoteFrame.KeyProp & Partial<SquadServerFrame.KeyProp>
-		constraintKey: V.GenVote.ChoiceConstraintKey
-		index: number
-		value: string | undefined
-	},
-) {
+function ChoiceConstraintSelect(props: {
+	stores: GenVoteFrame.KeyProp & Partial<SquadServerFrame.KeyProp>
+	constraintKey: V.GenVote.ChoiceConstraintKey
+	index: number
+	value: string | undefined
+}) {
 	const handleSetConstraint = (index: number, key: V.GenVote.ChoiceConstraintKey, value: string | null | undefined) => {
 		GenVoteFrame.Actions.setChoiceConstraint(props.stores, index, key, value)
 	}
 	const column = props.constraintKey === 'Unit' ? 'Unit_1' : props.constraintKey
 
-	const input = ZusUtils.useStore(
-		props.stores.genVote,
-		props.stores.squadServer,
-		ZusUtils.useDeep(GenVoteFrame.Sel.baseQueryInput),
-	)
+	const input = ZusUtils.useStore(props.stores.genVote, props.stores.squadServer, ZusUtils.useDeep(GenVoteFrame.Sel.baseQueryInput))
 	const components = LayerQueriesClient.useLayerComponents({ ...input, column: column })
 	const disallowedValues = ZusUtils.useStore(
 		props.stores.genVote,
-		ZusUtils.useShallow(s => {
+		ZusUtils.useShallow((s) => {
 			let disallowedValues: string[] = []
 			for (let i = 0; i < s.choices.length; i++) {
 				if (i === props.index || !s.uniqueConstraints.includes(props.constraintKey)) continue
@@ -382,7 +389,7 @@ function ChoiceConstraintSelect(
 		}),
 	)
 
-	const allowedValues = Array.isArray(components.data) ? components.data.filter(v => !disallowedValues.includes(v)) : undefined
+	const allowedValues = Array.isArray(components.data) ? components.data.filter((v) => !disallowedValues.includes(v)) : undefined
 
 	return (
 		<StringEqConfig

@@ -24,10 +24,12 @@ test.describe('server dashboard', () => {
 
 		// asserted from the UI's current state outwards rather than from the first command the emulator
 		// happened to receive: the queue can regenerate, which supersedes an earlier AdminSetNextLayer
-		await expect.poll(
-			() => app.emu.rcon.commandLog.some((c) => c.body.startsWith(`AdminSetNextLayer ${queuedLayer}`)),
-			{ timeout: 20_000, message: `emulator never received AdminSetNextLayer for the queued layer ${queuedLayer}` },
-		).toBe(true)
+		await expect
+			.poll(() => app.emu.rcon.commandLog.some((c) => c.body.startsWith(`AdminSetNextLayer ${queuedLayer}`)), {
+				timeout: 20_000,
+				message: `emulator never received AdminSetNextLayer for the queued layer ${queuedLayer}`,
+			})
+			.toBe(true)
 	})
 
 	test('a player joining in game appears on the teams tab', async ({ page, app }) => {

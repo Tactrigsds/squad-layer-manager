@@ -90,11 +90,11 @@ Treat those as debts, not precedent.
   inside a browser Web Worker (`layer-queries.worker.ts`) for the layer table UI, both against the same wasm
   engine. The client is not calling a thin API over a server-side query layer, it is running the query layer.
 
-  That engine is the **columnar store**: the full table of Squad layers (every map/gamemode/faction
-  combination) held column-by-column in memory rather than row-by-row, so a filter scans one tightly packed
-  array per column it touches instead of walking whole rows. It is immutable for its lifetime and small enough
-  to ship to the browser, which is what makes running the same query layer on both sides practical in the
-  first place. It gets a full treatment in [The layer engine](#the-layer-engine-rustwasm).
+    That engine is the **columnar store**: the full table of Squad layers (every map/gamemode/faction
+    combination) held column-by-column in memory rather than row-by-row, so a filter scans one tightly packed
+    array per column it touches instead of walking whole rows. It is immutable for its lifetime and small enough
+    to ship to the browser, which is what makes running the same query layer on both sides practical in the
+    first place. It gets a full treatment in [The layer engine](#the-layer-engine-rustwasm).
 
 Systems pair up across the wire: `layer-queue.server.ts` / `layer-queue.client.ts`, `settings.server.ts` /
 `settings.client.ts`, and so on, sharing types through `src/models`.
@@ -206,18 +206,17 @@ recovery. [Observability](#observability) covers what both emit.
 `ServerSlice` is the big intersection representing everything about one running Squad server:
 
 ```ts
-export type ServerSlice =
-	& CS.Ctx
-	& SquadRcon
-	& SquadServer
-	& Vote
-	& LayerQueue
-	& MatchHistory
-	& Teamswap
-	& ServerSettings
-	& ServerSliceCleanup
-	& AdminList
-	& CS.AbortSignal
+export type ServerSlice = CS.Ctx &
+	SquadRcon &
+	SquadServer &
+	Vote &
+	LayerQueue &
+	MatchHistory &
+	Teamswap &
+	ServerSettings &
+	ServerSliceCleanup &
+	AdminList &
+	CS.AbortSignal
 ```
 
 Slices live in a module-level `Map<serverId, ServerSlice>` in `squad-server.server.ts`, guarded by a

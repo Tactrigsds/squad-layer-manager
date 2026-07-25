@@ -46,9 +46,11 @@ export function SandboxAdminListPanel({ stores, className }: { stores: SandboxFr
 	return (
 		<div className={cn('min-h-0 rounded-md border bg-muted/30', className)}>
 			<ScrollArea className="h-full">
-				{cfg
-					? <pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
-					: <p className="p-2 text-xs text-muted-foreground">The emulated admin list is empty.</p>}
+				{cfg ? (
+					<pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
+				) : (
+					<p className="p-2 text-xs text-muted-foreground">The emulated admin list is empty.</p>
+				)}
 			</ScrollArea>
 		</div>
 	)

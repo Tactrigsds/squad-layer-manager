@@ -56,7 +56,7 @@ async function run(path: string) {
 		}
 	}
 
-	const pct = (n: number) => deaths ? `${(100 * n / deaths).toFixed(1)}%` : '-'
+	const pct = (n: number) => (deaths ? `${((100 * n) / deaths).toFixed(1)}%` : '-')
 	console.log(`\ntotal deaths parsed: ${deaths}`)
 	console.log(`  paired (>=1 wound since victim's last death): ${deathsPaired} (${pct(deathsPaired)})`)
 	console.log(`     - with valid weapon: ${pairedWithWeapon}`)
@@ -73,7 +73,7 @@ async function run(path: string) {
 async function main() {
 	for (const f of process.argv.slice(2)) await run(f)
 }
-main().catch(e => {
+main().catch((e) => {
 	console.error(e)
 	process.exit(1)
 })

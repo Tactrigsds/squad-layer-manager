@@ -57,9 +57,7 @@ export class SftpTail extends EventEmitter {
 	private consecutiveFailures = 0
 	private log: CS.Logger
 
-	constructor(
-		options: SftpTailOptions,
-	) {
+	constructor(options: SftpTailOptions) {
 		super()
 
 		// Set default options.
@@ -84,11 +82,9 @@ export class SftpTail extends EventEmitter {
 		// Setup temp file.
 		this.tmpFilePath = path.join(
 			'/tmp/',
-			'slm-' + crypto
-				.createHash('md5')
-				.update(`${this.options.ftp.host}:${this.options.ftp.port}:${this.filePath}`)
-				.digest('hex')
-				+ '.log',
+			'slm-' +
+				crypto.createHash('md5').update(`${this.options.ftp.host}:${this.options.ftp.port}:${this.filePath}`).digest('hex') +
+				'.log',
 		)
 
 		// Start fetch loop.
@@ -170,11 +166,7 @@ export class SftpTail extends EventEmitter {
 				this.resetClient()
 
 				if (this.consecutiveFailures >= this.options.maxReconnectAttempts) {
-					this.log.error(
-						err,
-						'SFTP tail failed %d times consecutively, giving up.',
-						this.consecutiveFailures,
-					)
+					this.log.error(err, 'SFTP tail failed %d times consecutively, giving up.', this.consecutiveFailures)
 					this.fetchLoopActive = false
 					// hand off to the owner to tear things down. we can't await it: the owner's teardown typically
 					// calls unwatch(), which awaits this very loop. fire-and-forget, and guard against a throwing or

@@ -20,7 +20,7 @@ export function initModule(name: string): OtelModule {
 	let log: pino.Logger | undefined
 	return {
 		name: name,
-		getLogger: () => log ??= baseLogger.child({ [ATTRS.Module.NAME]: name }),
+		getLogger: () => (log ??= baseLogger.child({ [ATTRS.Module.NAME]: name })),
 		tracer: Otel.trace.getTracer(name),
 	}
 }

@@ -239,10 +239,10 @@ describe('server rolling', () => {
 		app.emu.rcon.commandLog.length = 0
 
 		app.emu.world.chat(admin, 'ChatAdmin', '!swapnext roll_swap_target')
-		await app.waitFor(
-			() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)),
-			{ label: 'acknowledgement to the admin', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)), {
+			label: 'acknowledgement to the admin',
+			timeoutMs: 20_000,
+		})
 		expect(target.teamId).toBe(2)
 
 		// noise during the same roll the swap is waiting on. Unlike the mid-roll connect/disconnect tests
@@ -256,10 +256,10 @@ describe('server rolling', () => {
 
 		// the roll flips every connected player's side, so the target only ends up back on team 2 (what
 		// they were asked to swap to) because the held swap was applied against the post-roll roster
-		await app.waitFor(
-			() => app.emu.rcon.commandLog.filter((c) => c.body === `AdminForceTeamChange ${target.eos}`).length > 0,
-			{ label: 'the held swap applied after the roll', timeoutMs: 30_000 },
-		)
+		await app.waitFor(() => app.emu.rcon.commandLog.filter((c) => c.body === `AdminForceTeamChange ${target.eos}`).length > 0, {
+			label: 'the held swap applied after the roll',
+			timeoutMs: 30_000,
+		})
 		expect(target.teamId).toBe(2)
 	})
 })

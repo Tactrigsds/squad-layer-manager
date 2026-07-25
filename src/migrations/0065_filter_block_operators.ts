@@ -20,7 +20,7 @@ function transform(node: Node): Node {
 
 	if (node.type === 'and' || node.type === 'or') {
 		const neg: boolean = node.neg ?? false
-		const type = node.type === 'and' ? (neg ? 'notall' : 'all') : (neg ? 'none' : 'some')
+		const type = node.type === 'and' ? (neg ? 'notall' : 'all') : neg ? 'none' : 'some'
 		return { type, children: children ?? [] }
 	}
 

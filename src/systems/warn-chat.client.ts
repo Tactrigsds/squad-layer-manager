@@ -9,13 +9,12 @@ import * as Zus from 'zustand'
 // render, which is what lets the caller route through the admin-action-reason codepath instead of custom text.
 export function useAdminReasonDraft(action: AAR.AdminActionType) {
 	const [pickedLabel, setPickedLabel] = React.useState<string | null>(null)
-	const reasons = ZusUtils.useStore(
-		SettingsClient.PublicSettingsStore,
-		s => s ? AAR.reasonsForAction(s.adminActionReasons, action) : [],
+	const reasons = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) =>
+		s ? AAR.reasonsForAction(s.adminActionReasons, action) : [],
 	)
 	const vars = ZusUtils.useStore(
 		SettingsClient.PublicSettingsStore,
-		s => Object.fromEntries((s?.messageVariables ?? []).map(v => [v.name, v.value])) as Record<string, string>,
+		(s) => Object.fromEntries((s?.messageVariables ?? []).map((v) => [v.name, v.value])) as Record<string, string>,
 	)
 	// a pick doesn't survive a change of action -- a warn preset is not a broadcast preset
 	React.useEffect(() => setPickedLabel(null), [action])
@@ -31,17 +30,14 @@ export function useAdminReasonDraft(action: AAR.AdminActionType) {
 		},
 		reset: () => setPickedLabel(null),
 		match(text: string) {
-			const picked = reasons.find(r => r.label === pickedLabel)
+			const picked = reasons.find((r) => r.label === pickedLabel)
 			return picked && text === render(picked) ? picked : undefined
 		},
 	}
 }
 
 // Identifies which warn chat box a "warn X" menu action wants to hand focus to.
-export type WarnFocusTarget =
-	| { kind: 'player'; playerId: string }
-	| { kind: 'squad'; uniqueSquadId: number }
-	| { kind: 'server-activity' }
+export type WarnFocusTarget = { kind: 'player'; playerId: string } | { kind: 'squad'; uniqueSquadId: number } | { kind: 'server-activity' }
 
 type WarnFocusState = { requestId: number; target: WarnFocusTarget | null; at: number }
 
@@ -55,7 +51,7 @@ const FRESHNESS_MS = 8000
 export const WarnFocusStore = Zus.createStore<WarnFocusState>(() => ({ requestId: 0, target: null, at: 0 }))
 
 export function requestWarnFocus(target: WarnFocusTarget) {
-	WarnFocusStore.setState(s => ({ requestId: s.requestId + 1, target, at: Date.now() }))
+	WarnFocusStore.setState((s) => ({ requestId: s.requestId + 1, target, at: Date.now() }))
 }
 
 // A context menu traps focus (Radix FocusScope) while it's open, and its exit animation keeps that scope

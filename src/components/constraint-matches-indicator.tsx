@@ -52,7 +52,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	const renderedFilterIds = new Set<string>()
 	for (const constraint of props.queriedConstraints) {
 		if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
-		const matched = props.matchDescriptors?.some(desc => {
+		const matched = props.matchDescriptors?.some((desc) => {
 			if (desc.constraintId !== constraint.id) return false
 			if (desc.itemId && desc.itemId !== itemId) return false
 			if (layerId && !L.layersEqual(desc.layerId, layerId)) return false
@@ -66,7 +66,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		})
 		// const indication = constraint.
 		if (constraint.showIndicator === 'disabled') continue
-		if (constraint.showIndicator === 'regular' && !matched || constraint.showIndicator === 'inverted' && matched) continue
+		if ((constraint.showIndicator === 'regular' && !matched) || (constraint.showIndicator === 'inverted' && matched)) continue
 		if (constraint.type === 'do-not-repeat') {
 			if (!matched) continue
 			renderedRepeats.push(constraint)
@@ -91,42 +91,31 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 			}
 			renderedFilterIds.add(constraint.filterId)
 			if (emoji) {
-				indicatorIcons.push(
-					<EmojiDisplay key={constraint.id} showTooltip={false} emoji={emoji} size={iconSize} />,
-				)
+				indicatorIcons.push(<EmojiDisplay key={constraint.id} showTooltip={false} emoji={emoji} size={iconSize} />)
 			}
 
-			renderedFilters.push(
-				[
-					constraint.id,
-					<Item key={constraint.id} variant="default" className="w-full">
-						<ItemMedia>
-							{emoji ? <EmojiDisplay emoji={emoji} /> : <Icons.Filter className="bg-orange-500" />}
-						</ItemMedia>
-						<ItemContent>
-							<ItemTitle>{filter.name}</ItemTitle>
-							{alertMessage && <ItemDescription className="whitespace-normal line-clamp-none text-wrap">{alertMessage}</ItemDescription>}
-						</ItemContent>
-						<ItemActions>
-							<FilterEntityLink filterId={filter.id} />
-						</ItemActions>
-					</Item>,
-				],
-			)
+			renderedFilters.push([
+				constraint.id,
+				<Item key={constraint.id} variant="default" className="w-full">
+					<ItemMedia>{emoji ? <EmojiDisplay emoji={emoji} /> : <Icons.Filter className="bg-orange-500" />}</ItemMedia>
+					<ItemContent>
+						<ItemTitle>{filter.name}</ItemTitle>
+						{alertMessage && (
+							<ItemDescription className="whitespace-normal line-clamp-none text-wrap">{alertMessage}</ItemDescription>
+						)}
+					</ItemContent>
+					<ItemActions>
+						<FilterEntityLink filterId={filter.id} />
+					</ItemActions>
+				</Item>,
+			])
 			continue
 		}
 		assertNever(constraint)
 	}
 
 	if (renderedFilters.length === 0 && renderedRepeats.length === 0) {
-		return props.padEmpty
-			? (
-				<div
-					className={cn('flex items-center', props.className)}
-					style={{ height: `${height}px` }}
-				/>
-			)
-			: null
+		return props.padEmpty ? <div className={cn('flex items-center', props.className)} style={{ height: `${height}px` }} /> : null
 	}
 
 	// repeat icon always appears at the start
@@ -205,14 +194,16 @@ export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
 	const descriptors = React.useMemo(() => {
 		if (!layerId || !matchDescriptors || itemParity === undefined) return []
 		return matchDescriptors
-			.filter(descriptor => descriptor.constraintId === constraint.id && descriptor.type === 'repeat-rule')
-			.flatMap(descriptor => {
+			.filter((descriptor) => descriptor.constraintId === constraint.id && descriptor.type === 'repeat-rule')
+			.flatMap((descriptor) => {
 				if (descriptor.type !== 'repeat-rule') return []
 				const property = LQY.resolveLayerPropertyForRepeatDescriptorField(descriptor, itemParity)
-				return [{
-					...descriptor,
-					fieldValue: L.toLayer(layerId)[property]!,
-				}]
+				return [
+					{
+						...descriptor,
+						fieldValue: L.toLayer(layerId)[property]!,
+					},
+				]
 			})
 	}, [layerId, matchDescriptors, itemParity, constraint.id])
 
@@ -226,28 +217,23 @@ export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
 				</ItemMedia>
 			)}
 			<ItemContent className="flex flex-col">
-				<ItemTitle className="leading-none">
-					{constraint.rule.label ?? constraint.rule.field}
-				</ItemTitle>
+				<ItemTitle className="leading-none">{constraint.rule.label ?? constraint.rule.field}</ItemTitle>
 				<ItemDescription className="font-light flex flex-col">
-					{descriptors.length > 0
-						? (
-							<>
-								{descriptors.map((d) => (
-									<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
-										{boldValue(d.fieldValue)} was played {boldValue(d.repeatOffset)} match{d.repeatOffset === 1 ? '' : 'es'} prior
-									</span>
-								))}
-								<span>
-									Should be &gt; {boldValue(constraint.rule.within)}
+					{descriptors.length > 0 ? (
+						<>
+							{descriptors.map((d) => (
+								<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
+									{boldValue(d.fieldValue)} was played {boldValue(d.repeatOffset)} match{d.repeatOffset === 1 ? '' : 'es'}{' '}
+									prior
 								</span>
-							</>
-						)
-						: (
-							<span className="whitespace-nowrap">
-								within <span className="font-semibold">{constraint.rule.within}</span>
-							</span>
-						)}
+							))}
+							<span>Should be &gt; {boldValue(constraint.rule.within)}</span>
+						</>
+					) : (
+						<span className="whitespace-nowrap">
+							within <span className="font-semibold">{constraint.rule.within}</span>
+						</span>
+					)}
 				</ItemDescription>
 			</ItemContent>
 		</Item>

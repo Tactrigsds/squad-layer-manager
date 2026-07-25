@@ -162,7 +162,7 @@ async function main() {
 	}
 	const out = {
 		generatedAt: new Date().toISOString(),
-		sourceFiles: files.map(f => path.basename(f)),
+		sourceFiles: files.map((f) => path.basename(f)),
 		eventCounts: Object.fromEntries([...eventCounts.entries()].sort((a, b) => b[1] - a[1])),
 		eventSamples: Object.fromEntries(eventSamples),
 		chainExamples: Object.fromEntries(chainExamples),

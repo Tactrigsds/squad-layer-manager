@@ -85,7 +85,7 @@ export function wireInvalidationSources() {
 	for (const sub of sourceSubs) sub.unsubscribe()
 	sourceSubs = [
 		AdminList.changed$.subscribe(() => invalidateAll()),
-		Discord.guildRbacEvents$.subscribe((e) => e.type === 'roles' ? invalidateAll() : invalidateUser(e.discordId)),
+		Discord.guildRbacEvents$.subscribe((e) => (e.type === 'roles' ? invalidateAll() : invalidateUser(e.discordId))),
 	]
 }
 
@@ -229,9 +229,11 @@ export const getRbacForPlayer = C.spanOp(
 		if (cached) return await cached
 		let steamId: bigint | undefined
 		if (ids.steam === undefined) {
-			const [row] = await ctx.db().select({ steamId: Schema.players.steamId }).from(Schema.players).where(
-				E.eq(Schema.players.eosId, ids.eos),
-			)
+			const [row] = await ctx
+				.db()
+				.select({ steamId: Schema.players.steamId })
+				.from(Schema.players)
+				.where(E.eq(Schema.players.eosId, ids.eos))
 			if (row && row.steamId) steamId = row.steamId
 		} else {
 			steamId = BigInt(ids.steam)
@@ -288,11 +290,7 @@ export const getRbacForPlayer = C.spanOp(
 // player is on one server, so only that server's lists may speak for them -- that is what keeps a sandbox's admins
 // out of production. A web user is on no server, so every configured list is consulted, and where the resulting role
 // applies is decided by that role's own server-scoped grants.
-async function resolveAdminListAssignments(
-	ctx: C.Db & CS.AbortSignal,
-	allIds: SM.PlayerIds.IdQuery<'steam'>[],
-	lists: SM.AdminLists,
-) {
+async function resolveAdminListAssignments(ctx: C.Db & CS.AbortSignal, allIds: SM.PlayerIds.IdQuery<'steam'>[], lists: SM.AdminLists) {
 	const roles: RBAC.Role[] = []
 	for (const assignment of roleAssignments) {
 		if (assignment.type === 'admin-list-group') {
@@ -346,9 +344,7 @@ async function resolveDiscordAssignments(ctx: CS.Ctx, userId: bigint) {
 async function resolveSuperUserPerms(userId: bigint) {
 	const isSuperUser = await fetchIsSuperUser(userId)
 	const perms: RBAC.TracedPermission[] = []
-	if (
-		!isSuperUser
-	) return []
+	if (!isSuperUser) return []
 	for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
 		RBAC.addTracedPerms(perms, RBAC.tracedPerm(permType, [SUPER_ROLE], { negated: false }, RBAC.unrestrictedRoleGrantArgs(permType)))
 	}
@@ -389,7 +385,12 @@ async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[],
 			filterId: Schema.filterRoleContributors.filterId,
 		})
 		.from(Schema.filterRoleContributors)
-		.where(E.inArray(Schema.filterRoleContributors.roleId, baseRoles.map(r => r.type)))
+		.where(
+			E.inArray(
+				Schema.filterRoleContributors.roleId,
+				baseRoles.map((r) => r.type),
+			),
+		)
 
 	const rows = await unionAll(owned, userContributed, roleContributed)
 
@@ -438,10 +439,7 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 					RBAC.tracedPerm('filters:write', [role], {}, { filterId: role.filterId }),
 				)
 			} else if (role.type === 'filter-role-contributor' || role.type === 'filter-user-contributor') {
-				RBAC.addTracedPerms(
-					perms,
-					RBAC.tracedPerm('filters:write', [role], {}, { filterId: role.filterId }),
-				)
+				RBAC.addTracedPerms(perms, RBAC.tracedPerm('filters:write', [role], {}, { filterId: role.filterId }))
 			} else {
 				assertNever(role)
 			}
@@ -450,7 +448,12 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 		if ((userDefinedPermissionExpressions[role.type] ?? []).includes('*')) {
 			for (const permType of RBAC.ROLE_GRANTABLE_PERMISSION_TYPE.options) {
 				perms.push(
-					RBAC.tracedPerm(permType, [role], { negated: allNegatingPerms.has(permType) }, RBAC.unrestrictedRoleGrantArgs(permType)),
+					RBAC.tracedPerm(
+						permType,
+						[role],
+						{ negated: allNegatingPerms.has(permType) },
+						RBAC.unrestrictedRoleGrantArgs(permType),
+					),
 				)
 			}
 		}
@@ -478,7 +481,12 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 		if (globalPaths && globalPaths.length > 0) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
+				RBAC.tracedPerm(
+					'global-settings:write',
+					[role],
+					{ negated: isNegated('global-settings:write') },
+					{ paths: [...globalPaths] },
+				),
 			)
 		}
 		for (const grant of roleServerGrants[role.type] ?? []) {
@@ -500,17 +508,27 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 				} else if (grant.access === 'write') {
 					RBAC.addTracedPerms(
 						perms,
-						RBAC.tracedPerm('server-settings:write', [role], { negated: isNegated('server-settings:write') }, {
-							serverId,
-							paths: grant.paths.length > 0 ? [...grant.paths] : null,
-						}),
+						RBAC.tracedPerm(
+							'server-settings:write',
+							[role],
+							{ negated: isNegated('server-settings:write') },
+							{
+								serverId,
+								paths: grant.paths.length > 0 ? [...grant.paths] : null,
+							},
+						),
 					)
 				} else {
 					RBAC.addTracedPerms(
 						perms,
-						RBAC.tracedPerm('server-settings:write-sensitive', [role], { negated: isNegated('server-settings:write-sensitive') }, {
-							serverId,
-						}),
+						RBAC.tracedPerm(
+							'server-settings:write-sensitive',
+							[role],
+							{ negated: isNegated('server-settings:write-sensitive') },
+							{
+								serverId,
+							},
+						),
 					)
 				}
 			}
@@ -527,12 +545,13 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 	const rbac = await getRbacForDiscordUser(ctx)
 	const perms = RBAC.fromTracedPermissions(rbac.perms)
 
-	const req: RBAC.PermissionReq<T> = typeof reqOrPerms === 'object' && 'check' in reqOrPerms
-		? reqOrPerms
-		: {
-			check: 'all',
-			permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-		}
+	const req: RBAC.PermissionReq<T> =
+		typeof reqOrPerms === 'object' && 'check' in reqOrPerms
+			? reqOrPerms
+			: {
+					check: 'all',
+					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
+				}
 
 	return RBAC.tryDenyPermissions(perms, req)
 }
@@ -543,12 +562,13 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 ) {
 	const rbac = await getRbacForPlayer(ctx)
 	const perms = RBAC.fromTracedPermissions(rbac.perms)
-	const req: RBAC.PermissionReq<T> = typeof reqOrPerms === 'object' && 'check' in reqOrPerms
-		? reqOrPerms
-		: {
-			check: 'all',
-			permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
-		}
+	const req: RBAC.PermissionReq<T> =
+		typeof reqOrPerms === 'object' && 'check' in reqOrPerms
+			? reqOrPerms
+			: {
+					check: 'all',
+					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
+				}
 
 	return RBAC.tryDenyPermissions(perms, req)
 }
@@ -570,9 +590,7 @@ export async function getUserPermissions(ctx: C.Db & C.UserId & CS.AbortSignal):
 
 // "up to N concurrent items" layer-request checks bypass the equality-matched permission path
 // (see RBAC.maxLayerRequests): undefined = no grant, null = unlimited, number = max concurrent items
-export async function getMaxLayerRequestsForUser(
-	ctx: C.Db & CS.AbortSignal & C.UserId & C.ServerId,
-): Promise<number | null | undefined> {
+export async function getMaxLayerRequestsForUser(ctx: C.Db & CS.AbortSignal & C.UserId & C.ServerId): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)
 	return RBAC.maxLayerRequests(perms, ctx.serverId)
 }
@@ -651,10 +669,12 @@ export const orpcRouter = {
 		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) return denyRes
 		const lists = await Promise.all(
-			AdminList.configuredListIds().sort().map(async (listId) => {
-				const list = await AdminList.getList(ctx, listId)
-				return { listId, groups: list ? [...list.groups.keys()].sort() : [] }
-			}),
+			AdminList.configuredListIds()
+				.sort()
+				.map(async (listId) => {
+					const list = await AdminList.getList(ctx, listId)
+					return { listId, groups: list ? [...list.groups.keys()].sort() : [] }
+				}),
 		)
 		return { code: 'ok' as const, lists }
 	}),

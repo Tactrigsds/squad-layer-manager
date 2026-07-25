@@ -21,11 +21,7 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 	return (
 		<div className="grid h-full w-fit grid-cols-[auto_min-content_auto_auto] gap-2 [&_button[role=combobox]]:w-full [&_button[role=combobox]]:px-2">
 			{fields.map((field) => (
-				<LayerFilterMenuItem
-					key={field}
-					field={field}
-					stores={props.stores}
-				/>
+				<LayerFilterMenuItem key={field} field={field} stores={props.stores} />
 			))}
 			<Button
 				className="col-span-full"
@@ -40,12 +36,7 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 	)
 }
 
-function LayerFilterMenuItem(
-	props: {
-		field: string
-		stores: LayerFilterMenuPrt.PredicatedKeyProp
-	},
-) {
+function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 	// resetAllConstraints is a Predicate set up by the owning frame (select-layers / gen-vote), not part of
 	// LayerFilterMenuPrt's own Key type, but always present on the concrete frame state at runtime.
 	const getPredicates = () => ZusUtils.getState(props.stores.filterMenu)
@@ -53,7 +44,7 @@ function LayerFilterMenuItem(
 	const [swapFactionsDisabled, possibleValues, comp] = ZusUtils.useStore(
 		props.stores.filterMenu,
 		ZusUtils.useDeep(
-			state =>
+			(state) =>
 				[
 					LayerFilterMenuPrt.Sel.swapFactionsDisabled(state),
 					state.filterMenuItemPossibleValues?.[props.field],

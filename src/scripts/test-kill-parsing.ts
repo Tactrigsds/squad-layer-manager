@@ -21,8 +21,10 @@ async function run(path: string) {
 	const dieDroppedSamples: string[] = []
 	const woundDroppedSamples: string[] = []
 	// how many parsed events carry a valid attacker eos vs not
-	let dieParsedWithAttacker = 0, dieParsedNoAttacker = 0
-	let woundParsedWithAttacker = 0, woundParsedNoAttacker = 0
+	let dieParsedWithAttacker = 0,
+		dieParsedNoAttacker = 0
+	let woundParsedWithAttacker = 0,
+		woundParsedNoAttacker = 0
 
 	const causedByOf = (line: string) => line.match(/caused by ([^\s(]+)/)?.[1] ?? '<none>'
 
@@ -66,7 +68,7 @@ async function run(path: string) {
 		}
 	}
 
-	const pct = (n: number, d: number) => d ? `${(100 * n / d).toFixed(1)}%` : '-'
+	const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : '-')
 	console.log('\n--- PLAYER_DIED ---')
 	console.log(`  raw Die() lines : ${stats.die.total}`)
 	console.log(`  parsed event    : ${stats.die.parsed}  (${pct(stats.die.parsed, stats.die.total)})`)
@@ -104,7 +106,7 @@ async function run(path: string) {
 async function main() {
 	for (const f of process.argv.slice(2)) await run(f)
 }
-main().catch(e => {
+main().catch((e) => {
 	console.error(e)
 	process.exit(1)
 })

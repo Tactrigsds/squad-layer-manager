@@ -55,7 +55,10 @@ describe('0092_named_admin_lists', () => {
 
 	test('fans an in-game-admin assignment out to every list, since it meant their union', async () => {
 		const db = makeDb({
-			adminListSources: [{ type: 'local', source: 'A.cfg' }, { type: 'local', source: 'B.cfg' }],
+			adminListSources: [
+				{ type: 'local', source: 'A.cfg' },
+				{ type: 'local', source: 'B.cfg' },
+			],
 			adminIdentifyingPermissions: ['canseeadminchat'],
 			rbac: { roles: { admins: { assignments: { includeIngameAdmins: true, adminListGroups: ['Reserve'] } } } },
 		})

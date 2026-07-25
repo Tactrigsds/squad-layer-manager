@@ -41,7 +41,7 @@ const orpcLink = new RPCLink({
 	// RPCLink expects. Cast to bridge the (behaviorally compatible) gap.
 	websocket: websocket as unknown as globalThis.WebSocket,
 	clientInterceptors: [
-		onError(error => {
+		onError((error) => {
 			// AbortErrors happen whenever an unsubscribe happens, we can safely ignore them
 			if (error instanceof Error && error.name === 'AbortError') return
 			console.error(error)
@@ -76,7 +76,9 @@ export type ConnectionStatus = 'open' | 'closed' | 'pending' | 'reconnecting'
 
 export const [useConnectStatus, connectStatus$] = (() => {
 	const connectStatusCold$: Rx.Observable<ConnectionStatus> = Rx.merge(
-		Rx.of(websocket.readyState === WebSocket.OPEN ? 'open' as const : 'pending' as const).pipe(Rx.map(state => state as ConnectionStatus)),
+		Rx.of(websocket.readyState === WebSocket.OPEN ? ('open' as const) : ('pending' as const)).pipe(
+			Rx.map((state) => state as ConnectionStatus),
+		),
 		opened$.pipe(Rx.map(() => 'open' as const)),
 		closed$.pipe(Rx.map(() => 'reconnecting' as const)),
 	).pipe(
@@ -101,10 +103,12 @@ connectStatus$.subscribe()
 // AND the document is visible (see canContinue in its retryer), and it notifies on change, so a load that goes
 // offline -> online while the page is hidden leaves those queries paused for good. The link buffers calls made
 // before the socket opens anyway, so there is nothing to pause for here.
-connectStatus$.pipe(
-	Rx.map(status => status !== 'closed'),
-	Rx.distinctUntilChanged(),
-).subscribe(online => onlineManager.setOnline(online))
+connectStatus$
+	.pipe(
+		Rx.map((status) => status !== 'closed'),
+		Rx.distinctUntilChanged(),
+	)
+	.subscribe((online) => onlineManager.setOnline(online))
 
 // A backgrounded tab's socket is dropped externally (OS suspension, network sleep, a proxy idle-timeout) while nothing
 // on either side keeps it alive. partysocket has no liveness detection, so the dead socket only surfaces as a close
@@ -138,7 +142,7 @@ const shouldWarnDisconnected$ = Rx.combineLatest([
 // copies of it, and unclearable because dismissing it wouldn't make the app usable again.
 const RECONNECT_TOAST_ID = 'ws-reconnect'
 let reconnectToastShown = false
-shouldWarnDisconnected$.subscribe(warn => {
+shouldWarnDisconnected$.subscribe((warn) => {
 	if (warn && !reconnectToastShown) {
 		reconnectToastShown = true
 		// the whole state is in the title: updating a toast by id merges into the existing one, so a description set
@@ -162,26 +166,33 @@ shouldWarnDisconnected$.subscribe(warn => {
 
 // suspending state observables only get their first-emit clock while the websocket is actually up, so a
 // disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see RxHelpers.bind
-RxHelpers.setTransportLive(connectStatus$.pipe(Rx.map(status => status === 'open'), Rx.distinctUntilChanged()))
+RxHelpers.setTransportLive(
+	connectStatus$.pipe(
+		Rx.map((status) => status === 'open'),
+		Rx.distinctUntilChanged(),
+	),
+)
 
-opened$.pipe(
-	Rx.tap(() => {
-		if (disconnectTime) {
-			const reconnectionDuration = Date.now() - disconnectTime
-			console.log(`WebSocket reconnected to ${wsUrl} (took ${reconnectionDuration}ms)`)
-			disconnectTime = undefined
-		} else {
-			console.log('WebSocket connection opened to ' + wsUrl)
-		}
-		if (previousConnections) void queryClient.invalidateQueries()
-		previousConnections = true
-	}),
-	Rx.retry(),
-).subscribe()
+opened$
+	.pipe(
+		Rx.tap(() => {
+			if (disconnectTime) {
+				const reconnectionDuration = Date.now() - disconnectTime
+				console.log(`WebSocket reconnected to ${wsUrl} (took ${reconnectionDuration}ms)`)
+				disconnectTime = undefined
+			} else {
+				console.log('WebSocket connection opened to ' + wsUrl)
+			}
+			if (previousConnections) void queryClient.invalidateQueries()
+			previousConnections = true
+		}),
+		Rx.retry(),
+	)
+	.subscribe()
 
 // -------- version skew protection --------
 let previousSha: string | undefined
-ConfigClient.Store.subscribe(config => {
+ConfigClient.Store.subscribe((config) => {
 	if (!config) return
 	if (!previousSha) {
 		previousSha = config.PUBLIC_GIT_SHA
@@ -199,18 +210,20 @@ error$.subscribe(() => {
 	console.error('Websocket encountered an error')
 })
 
-closed$.pipe(
-	Rx.concatMap(async (event: any) => {
-		disconnectTime = Date.now()
-		console.error(`WebSocket connection closed: ${event.code}, ${event.reason?.reason}`)
-		if (websocket.retryCount > 5) {
-			const res = await fetch(AR.link('/check-auth'))
-			if (res.status === 401) {
-				window.location.href = AR.link('/')
+closed$
+	.pipe(
+		Rx.concatMap(async (event: any) => {
+			disconnectTime = Date.now()
+			console.error(`WebSocket connection closed: ${event.code}, ${event.reason?.reason}`)
+			if (websocket.retryCount > 5) {
+				const res = await fetch(AR.link('/check-auth'))
+				if (res.status === 401) {
+					window.location.href = AR.link('/')
+				}
 			}
-		}
-	}),
-).subscribe()
+		}),
+	)
+	.subscribe()
 
 // tanstack's default key hash is JSON.stringify, which throws on the discord ids we pass as query inputs.
 // mirrors its key sorting so hashes stay stable regardless of property order. see hashKey in query-core
@@ -220,10 +233,12 @@ function hashQueryKey(queryKey: readonly unknown[]): string {
 		if (typeof val !== 'object' || val === null || Array.isArray(val)) return val
 		const proto = Object.getPrototypeOf(val)
 		if (proto !== Object.prototype && proto !== null) return val
-		return Object.keys(val).sort().reduce<Record<string, unknown>>((sorted, key) => {
-			sorted[key] = (val as Record<string, unknown>)[key]
-			return sorted
-		}, {})
+		return Object.keys(val)
+			.sort()
+			.reduce<Record<string, unknown>>((sorted, key) => {
+				sorted[key] = (val as Record<string, unknown>)[key]
+				return sorted
+			}, {})
 	})
 }
 
@@ -253,7 +268,10 @@ export function observe<T>(
 				opts?.onError?.(error, count)
 				// resubscribing over a socket that is down just fails again, so the retry waits for the transport to come
 				// back instead of polling it. The reconnect itself is the delay, and the reconnect toast is the report.
-				const untilOpen$ = connectStatus$.pipe(Rx.filter(status => status === 'open'), Rx.take(1))
+				const untilOpen$ = connectStatus$.pipe(
+					Rx.filter((status) => status === 'open'),
+					Rx.take(1),
+				)
 				if (!transportOpen()) return untilOpen$
 
 				// every watch subscription in the app retries at once after a reconnect, so identical delays would

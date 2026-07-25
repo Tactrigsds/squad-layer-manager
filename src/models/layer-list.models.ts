@@ -70,26 +70,22 @@ export type NewVoteItem = z.infer<typeof NewVoteItemSchema>
 export const VoteItemSchema = NewVoteItemSchema.extend({
 	itemId: ItemIdSchema,
 	source: SourceSchema,
-})
-	.refine((item): boolean => {
+}).refine(
+	(item): boolean => {
 		if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') return true
 		return item.choices[0].layerId === item.layerId
-	}, { error: "if vote isn't complete, then the layerId should always be the first layer choice" })
+	},
+	{ error: "if vote isn't complete, then the layerId should always be the first layer choice" },
+)
 
 export type VoteItem = z.infer<typeof VoteItemSchema>
 
 // --- Discriminated Union ---
 
-export const NewItemSchema = z.discriminatedUnion('type', [
-	NewSingleItemSchema,
-	NewVoteItemSchema,
-])
+export const NewItemSchema = z.discriminatedUnion('type', [NewSingleItemSchema, NewVoteItemSchema])
 export type NewItem = z.infer<typeof NewItemSchema>
 
-export const ItemSchema = z.discriminatedUnion('type', [
-	SingleItemSchema,
-	VoteItemSchema,
-])
+export const ItemSchema = z.discriminatedUnion('type', [SingleItemSchema, VoteItemSchema])
 export type Item = z.infer<typeof ItemSchema>
 
 // ============================================================================
@@ -110,11 +106,14 @@ export type SparseVoteItem<I extends SparseSingleItem = SparseSingleItem> = {
 	choices: I[]
 }
 
-export type SparseItem<Id extends GenericItemId = GenericItemId> = SparseSingleItem<Id> | SparseVoteItem<SparseSingleItem<Id>> | {
-	type: string
-	itemId: Id
-	layerId: L.LayerId
-}
+export type SparseItem<Id extends GenericItemId = GenericItemId> =
+	| SparseSingleItem<Id>
+	| SparseVoteItem<SparseSingleItem<Id>>
+	| {
+			type: string
+			itemId: Id
+			layerId: L.LayerId
+	  }
 
 {
 	const _ = {} as Item satisfies SparseItem
@@ -188,7 +187,7 @@ export function toSparseItem(item: Item) {
 			type: 'vote-list-item',
 			itemId: item.itemId,
 			layerId: item.layerId,
-			choices: item.choices.map(choice => ({
+			choices: item.choices.map((choice) => ({
 				type: choice.type,
 				itemId: choice.itemId,
 				layerId: choice.layerId,
@@ -212,7 +211,7 @@ export function layerItemToDragItem(item: Pick<Item, 'itemId'>): DND.DragItem {
 export function llItemCursorsToDropItem(cursors: ItemRelativeCursor[]): DND.DropItem {
 	return {
 		type: 'relative-to-drag-item',
-		slots: cursors.map(cursor => ({
+		slots: cursors.map((cursor) => ({
 			dragItem: layerItemToDragItem({ itemId: cursor.itemId }),
 			position: cursor.position,
 		})),
@@ -314,7 +313,7 @@ export function isChildItem(itemId: ItemId, voteItemId: ItemId, layerList: List)
 }
 
 export function resolveParentItemIndex(itemId: ItemId, layerQueue: SparseItem[]): number | undefined {
-	const index = layerQueue.findIndex((layer) => (isVoteItem(layer) && layer.choices.some(l => l.itemId === itemId)))
+	const index = layerQueue.findIndex((layer) => isVoteItem(layer) && layer.choices.some((l) => l.itemId === itemId))
 	if (index === -1) return undefined
 	return index
 }
@@ -348,9 +347,7 @@ export type ItemIteratorResult<I extends SparseItem> = {
 
 export function iterItems<T extends SparseItem>(items: T[], opts?: { reverse?: boolean }): Generator<ItemIteratorResult<T>>
 export function iterItems<T extends SparseItem>(...items: T[]): Generator<ItemIteratorResult<T>>
-export function* iterItems<T extends SparseItem>(
-	...args: T[] | [T[], { reverse?: boolean }]
-): Generator<ItemIteratorResult<T>> {
+export function* iterItems<T extends SparseItem>(...args: T[] | [T[], { reverse?: boolean }]): Generator<ItemIteratorResult<T>> {
 	let itemsArray: T[]
 	let reverse = false
 
@@ -424,7 +421,7 @@ export function mergeItems(newFirstItemId: ItemId, ...items: Item[]): Item | und
 		}
 	})
 	const seenLayerIds = new Set<L.LayerId>()
-	choicesGenerator = Gen.filter(choicesGenerator, item => {
+	choicesGenerator = Gen.filter(choicesGenerator, (item) => {
 		if (seenLayerIds.has(item.layerId)) return false
 		seenLayerIds.add(item.layerId)
 		return true
@@ -486,9 +483,7 @@ export function moveItem(
 	cursor: Cursor,
 ): { merged: false | ItemId; modified: boolean } {
 	const { index: movedIndex, item: movedItem } = Obj.destrNullable(findItemById(list, movedItemId))
-	const targetIndex = cursor.type === 'index'
-		? cursor.index
-		: resolveCursorIndex(list, cursor)
+	const targetIndex = cursor.type === 'index' ? cursor.index : resolveCursorIndex(list, cursor)
 
 	if (movedIndex === undefined) {
 		console.warn('Failed to move item. item not found', movedItemId, movedItemId)
@@ -540,7 +535,7 @@ export function editLayer(list: List, source: Source, itemId: ItemId, layerId: L
 export function withTags(items: NewItem[], tags: LTag.TagId[]): NewItem[] {
 	if (tags.length === 0) return items
 	const merge = <T extends { tags?: LTag.TagId[] }>(item: T): T => ({ ...item, tags: [...new Set([...(item.tags ?? []), ...tags])] })
-	return items.map(item => (item.type === 'single-list-item' ? merge(item) : { ...item, choices: item.choices.map(merge) }))
+	return items.map((item) => (item.type === 'single-list-item' ? merge(item) : { ...item, choices: item.choices.map(merge) }))
 }
 
 // who a tag is attributed to is decided by whoever the add itself is attributed to, so a client can't credit a tag to
@@ -552,7 +547,7 @@ export function withTagAttribution<T extends NewItem>(items: T[], source: Source
 		const attribution = LTag.attribute(undefined, item.tags ?? [], setBy)
 		return (attribution ? { ...rest, tagsSetBy: attribution } : rest) as I
 	}
-	return items.map(item => (item.type === 'single-list-item' ? stamp(item) : { ...item, choices: item.choices.map(stamp) }) as T)
+	return items.map((item) => (item.type === 'single-list-item' ? stamp(item) : { ...item, choices: item.choices.map(stamp) }) as T)
 }
 
 // tags belong to layer items only, so a vote item's id is a no-op here (its choices carry their own tags). One tag at a
@@ -571,7 +566,7 @@ export function addTag(list: List, itemId: ItemId, tagId: LTag.TagId, setBy?: US
 export function removeTag(list: List, itemId: ItemId, tagId: LTag.TagId): boolean {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item' || !item.tags) return false
-	const remaining = item.tags.filter(id => id !== tagId)
+	const remaining = item.tags.filter((id) => id !== tagId)
 	if (remaining.length === item.tags.length) return false
 	if (remaining.length === 0) delete item.tags
 	else item.tags = remaining
@@ -586,7 +581,7 @@ export function removeTag(list: List, itemId: ItemId, tagId: LTag.TagId): boolea
 export function addNote(list: List, itemId: ItemId, note: LNote.Note): boolean {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item') return false
-	if (item.notes?.some(existing => existing.id === note.id)) return false
+	if (item.notes?.some((existing) => existing.id === note.id)) return false
 	item.notes = [...(item.notes ?? []), note]
 	return true
 }
@@ -594,16 +589,16 @@ export function addNote(list: List, itemId: ItemId, note: LNote.Note): boolean {
 export function editNote(list: List, itemId: ItemId, noteId: LNote.NoteId, text: string): boolean {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item' || !item.notes) return false
-	const note = item.notes.find(note => note.id === noteId)
+	const note = item.notes.find((note) => note.id === noteId)
 	if (!note || note.text === text) return false
-	item.notes = item.notes.map(note => (note.id === noteId ? { ...note, text } : note))
+	item.notes = item.notes.map((note) => (note.id === noteId ? { ...note, text } : note))
 	return true
 }
 
 export function deleteNote(list: List, itemId: ItemId, noteId: LNote.NoteId): boolean {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item' || !item.notes) return false
-	const remaining = item.notes.filter(note => note.id !== noteId)
+	const remaining = item.notes.filter((note) => note.id !== noteId)
 	if (remaining.length === item.notes.length) return false
 	if (remaining.length === 0) delete item.notes
 	else item.notes = remaining
@@ -613,7 +608,7 @@ export function deleteNote(list: List, itemId: ItemId, noteId: LNote.NoteId): bo
 export function findNote(list: List, itemId: ItemId, noteId: LNote.NoteId): LNote.Note | undefined {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item || item.type !== 'single-list-item') return undefined
-	return item.notes?.find(note => note.id === noteId)
+	return item.notes?.find((note) => note.id === noteId)
 }
 
 export function deleteItem(list: List, itemId: ItemId) {
@@ -649,12 +644,7 @@ export function cloneAndInsertItem(list: List, itemId: ItemId, source: Source): 
 	return { item: clonedItem, index: insertIndex }
 }
 
-export function configureVote(
-	list: List,
-	source: Source,
-	itemId: ItemId,
-	config?: Partial<V.AdvancedVoteConfig> | null,
-) {
+export function configureVote(list: List, source: Source, itemId: ItemId, config?: Partial<V.AdvancedVoteConfig> | null) {
 	const { item } = Obj.destrNullable(findItemById(list, itemId))
 	if (!item) return
 	if (!isParentVoteItem(item)) throw new Error('Cannot configure vote on non-vote item')
@@ -684,14 +674,10 @@ export function splice(list: List, indexOrCursor: ItemRelativeCursor | ItemIndex
 		const parentItem = list[index.outerIndex]
 		if (!isParentVoteItem(parentItem)) throw new Error('Cannot splice non-vote item index on a vote choice')
 
-		const newItems = Gen.map(iterItems(...items), res => res.item)
+		const newItems = Gen.map(iterItems(...items), (res) => res.item)
 
-		const singleItems = Gen.filter(newItems, item => item.type === 'single-list-item') as Generator<SingleItem>
-		parentItem.choices.splice(
-			index.innerIndex,
-			deleteCount,
-			...singleItems,
-		)
+		const singleItems = Gen.filter(newItems, (item) => item.type === 'single-list-item') as Generator<SingleItem>
+		parentItem.choices.splice(index.innerIndex, deleteCount, ...singleItems)
 		if (parentItem.choices.length === 0) {
 			list.splice(index.outerIndex, 1)
 		}
@@ -804,9 +790,11 @@ export function isLocallyFirstIndex(index: ItemIndex) {
 
 export function displayLayerListItem(item: Item, index: ItemIndex) {
 	if (isVoteItem(item)) {
-		return item.choices.map((choice, innerIndex) =>
-			`${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`
-		).join('\n')
+		return item.choices
+			.map(
+				(choice, innerIndex) => `${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`,
+			)
+			.join('\n')
 	}
 	return `${getItemNumber(index)} ${DH.displayLayer(item.layerId)}`
 }

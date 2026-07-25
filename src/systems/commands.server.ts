@@ -119,9 +119,10 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
 	const permission = CMD.COMMAND_DECLARATIONS[cmd].permission
 	if (permission !== null) {
-		const required = permission === 'battlemetrics:write-flags'
-			? RBAC.perm('battlemetrics:write-flags')
-			: RBAC.perm(permission, { serverId: ctx.serverId })
+		const required =
+			permission === 'battlemetrics:write-flags'
+				? RBAC.perm('battlemetrics:write-flags')
+				: RBAC.perm(permission, { serverId: ctx.serverId })
 		const denyRes = await Rbac.tryDenyPermissionsForPlayer(ctx, required)
 		if (denyRes) return await error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	}
@@ -173,17 +174,20 @@ function resolveSquadArg(
 	}
 	const teamLabel = teamInput ?? String(rawTeamId)
 
-	const squadsOnTeam = teamsState.squads.filter(s => s.teamId === rawTeamId)
+	const squadsOnTeam = teamsState.squads.filter((s) => s.teamId === rawTeamId)
 	const squadNum = parseInt(squadInput)
 	let matchedSquad: SM.Squad | null = null
 	if (squadInput.toLowerCase() === 'cmd') {
-		matchedSquad = squadsOnTeam.find(s => SM.isCommandSquad(s)) ?? null
+		matchedSquad = squadsOnTeam.find((s) => SM.isCommandSquad(s)) ?? null
 		if (!matchedSquad) return { code: 'err', msg: `No command squad found on team ${teamLabel}` }
 	} else if (!isNaN(squadNum)) {
-		matchedSquad = squadsOnTeam.find(s => s.squadId === squadNum) ?? null
+		matchedSquad = squadsOnTeam.find((s) => s.squadId === squadNum) ?? null
 		if (!matchedSquad) return { code: 'err', msg: `No squad ${squadNum} found on team ${teamLabel}` }
 	} else {
-		const squadMatchRes = simpleUniqueStringMatch(squadsOnTeam.map(s => s.squadName.toLowerCase()), squadInput.toLowerCase())
+		const squadMatchRes = simpleUniqueStringMatch(
+			squadsOnTeam.map((s) => s.squadName.toLowerCase()),
+			squadInput.toLowerCase(),
+		)
 		if (squadMatchRes.code === 'err:not-found') {
 			return { code: 'err', msg: `No squad matches "${squadInput}" on team ${teamLabel}` }
 		}
@@ -193,7 +197,7 @@ function resolveSquadArg(
 		matchedSquad = squadsOnTeam[squadMatchRes.matched]
 	}
 
-	const players = teamsState.players.filter(p => p.teamId === rawTeamId && p.squadId === matchedSquad.squadId)
+	const players = teamsState.players.filter((p) => p.teamId === rawTeamId && p.squadId === matchedSquad.squadId)
 	return { code: 'ok', value: { teamId: rawTeamId, teamLabel, squad: matchedSquad, players } }
 }
 
@@ -225,12 +229,10 @@ async function resolveArgDefs(
 	defs: readonly CMD.ArgDef[],
 	tokens: string[],
 	sender: SM.Player,
-): Promise<
-	{ code: 'ok'; args: Record<string, unknown> } | { code: 'err'; msg: string } | { code: 'err:missing-arg'; argName: string }
-> {
+): Promise<{ code: 'ok'; args: Record<string, unknown> } | { code: 'err'; msg: string } | { code: 'err:missing-arg'; argName: string }> {
 	let teamsState: TeamsState | undefined
 	let currentMatch: MH.MatchDetails | undefined
-	if (defs.some(d => d.kind === 'player' || d.kind === 'squad')) {
+	if (defs.some((d) => d.kind === 'player' || d.kind === 'squad')) {
 		const teamsRes = await ctx.server.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
 		teamsState = teamsRes
@@ -238,7 +240,7 @@ async function resolveArgDefs(
 	}
 
 	const preds: CMD.AssignPredicates = {
-		isTeamToken: t => (currentMatch ? resolveTeamToken(currentMatch, t) !== null : false),
+		isTeamToken: (t) => (currentMatch ? resolveTeamToken(currentMatch, t) !== null : false),
 		isPresetToken: (action, t) => !!LP.findByKeyword(AAR.reasonsForAction(Settings.GLOBAL_SETTINGS.adminActionReasons, action), t),
 	}
 	const assignRes = CMD.assignArgTokens(defs, tokens, preds)
@@ -271,7 +273,7 @@ async function resolveArgDefs(
 				out[def.name] = window.join(' ')
 				break
 			case 'player': {
-				const res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsState!.players, p => p.ids, window[0])
+				const res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsState!.players, (p) => p.ids, window[0])
 				if (res.code === 'err:not-found') return { code: 'err', msg: `No player matches found for "${window[0]}"` }
 				if (res.code === 'err:multiple-matches') return { code: 'err', msg: `${res.count} players match "${window[0]}"` }
 				out[def.name] = res.matched
@@ -314,9 +316,7 @@ function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): M
 // exhaustive by construction: a new CommandId without a handler is a compile error
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
 	help: async (h, args) => {
-		await h.reply(
-			Messages.WARNS.commands.help(Settings.GLOBAL_SETTINGS.commands, args.section),
-		)
+		await h.reply(Messages.WARNS.commands.help(Settings.GLOBAL_SETTINGS.commands, args.section))
 		return { code: 'ok' }
 	},
 
@@ -453,14 +453,16 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
 		const nextSwaps: TSW.TeamswapCollection = new Map(
-			players.map(p => [SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user }] as const),
+			players.map(
+				(p) => [SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user }] as const,
+			),
 		)
 		const errors = await Teamswaps.dispatchSwapNext(h.ctx, nextSwaps)
-		const alreadyMarked = errors.filter(e => (e as TSW.OpError).code === 'err:already-marked').length
+		const alreadyMarked = errors.filter((e) => (e as TSW.OpError).code === 'err:already-marked').length
 		if (alreadyMarked === nextSwaps.size) {
 			return await h.error('already-marked', `All players in "${squad.squadName}" are already marked to swap teams`)
 		}
-		if (errors.some(e => (e as TSW.OpError).code === 'err:currently-swapping')) {
+		if (errors.some((e) => (e as TSW.OpError).code === 'err:currently-swapping')) {
 			return await h.error('currently-swapping', 'A team swap is currently in progress')
 		}
 		const queued = nextSwaps.size - alreadyMarked
@@ -497,7 +499,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (swaps.size <= 8) {
 			const teamsStateRes = await h.ctx.server.teams.get(h.ctx)
 			const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
-			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, p => p.ids, playerId)?.ids.username ?? playerId
+			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, (p) => p.ids, playerId)?.ids.username ?? playerId
 			const lines = [header]
 			if (toA.length > 0) {
 				lines.push(`\nto ${factionA}:`)
@@ -536,7 +538,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	flag: async (h, args) => {
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
-		const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
+		const matchedFlagRes = simpleUniqueStringMatch(
+			flags.map((f) => f.name),
+			args.flag,
+		)
 		if (matchedFlagRes.code === 'err:not-found') {
 			return await h.error('not-found', `No flag matches found for "${args.flag}"`)
 		}
@@ -570,14 +575,16 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 				reason,
 			})
-			const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
-				log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
-				return false
-			})
+			const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note)
+				.then(() => true)
+				.catch((err) => {
+					log.warn({ err, targetIds }, 'failed to post BM note after adding flag')
+					return false
+				})
 			await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, targetIds.eos)
 			await h.reply(
-				`Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile`
-					+ (noteAdded ? '' : ', but failed to post the accompanying note'),
+				`Added flag "${flagToUpdate.name}" to ${targetIds.username}'s BM profile` +
+					(noteAdded ? '' : ', but failed to post the accompanying note'),
 			)
 			return { code: 'ok' }
 		}
@@ -587,7 +594,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	removeFlag: async (h, args) => {
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
-		const matchedFlagRes = simpleUniqueStringMatch(flags.map(f => f.name), args.flag)
+		const matchedFlagRes = simpleUniqueStringMatch(
+			flags.map((f) => f.name),
+			args.flag,
+		)
 		if (matchedFlagRes.code === 'err:not-found') {
 			return await h.error('not-found', `No flag matches found for "${args.flag}"`)
 		}
@@ -617,14 +627,16 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			actor: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 			reason: args.reason?.trim(),
 		})
-		const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note).then(() => true).catch((err) => {
-			log.warn({ err, targetIds: target.ids }, 'failed to post BM note after removing flag')
-			return false
-		})
+		const noteAdded = await Battlemetrics.addPlayerNote(h.ctx, bmPlayerData.bmPlayerId, note)
+			.then(() => true)
+			.catch((err) => {
+				log.warn({ err, targetIds: target.ids }, 'failed to post BM note after removing flag')
+				return false
+			})
 		await Battlemetrics.invalidateAndRefetchPlayer(h.ctx, target.ids.eos)
 		await h.reply(
-			`Removed flag "${flagToRemove.name}" from ${target.ids.username}'s BM profile`
-				+ (noteAdded ? '' : ', but failed to post the accompanying note'),
+			`Removed flag "${flagToRemove.name}" from ${target.ids.username}'s BM profile` +
+				(noteAdded ? '' : ', but failed to post the accompanying note'),
 		)
 		return { code: 'ok' }
 	},
@@ -634,7 +646,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			if (flags.length === 0) {
 				return 'none'
 			}
-			return Arr.paged(flags.map(f => f.name), 4).map(g => g.join('\n'))
+			return Arr.paged(
+				flags.map((f) => f.name),
+				4,
+			).map((g) => g.join('\n'))
 		}
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
 
@@ -647,7 +662,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (!bmPlayerData) {
 			return await h.error('not-in-battlemetrics', `Unable to resolve player "${args.player.ids.username}" in battlemetrics`)
 		}
-		const playerFlags = flags.filter(f => bmPlayerData.flagIds.includes(f.id))
+		const playerFlags = flags.filter((f) => bmPlayerData.flagIds.includes(f.id))
 
 		await h.reply(formatFlagList(playerFlags))
 		return { code: 'ok' }
@@ -676,19 +691,19 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				.filter((a) => r.actionTexts[a] !== undefined)
 				.map((a) => AAR.ADMIN_ACTIONS[a].displayName)
 				.join(', ')
-		const entries = reasons.map(r => {
+		const entries = reasons.map((r) => {
 			const head = `${r.label} (${r.keywords.join(', ')})`
 			return `${head}\n${actionsFor(r)}`
 		})
 		// each reason is a 2-line block (label, then its actions); blank line between blocks
-		await h.reply(Arr.paged(entries, 3).map(g => g.join('\n\n')))
+		await h.reply(Arr.paged(entries, 3).map((g) => g.join('\n\n')))
 		return { code: 'ok' }
 	},
 
 	warnSquad: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
-		const targetIds = players.map(p => SM.PlayerIds.getPlayerId(p.ids))
+		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars())
 		// squad warns carry the same @Squad tag the web squad warn box prepends
 		const message = AAR.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
@@ -716,7 +731,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (players.length === 0) return await h.error('empty-squad', `Squad "${squad.squadName}" has no players`)
 		const g = await requireReasonGuard(h, 'kill', !!args.reason)
 		if (g) return g
-		const targetIds = players.map(p => SM.PlayerIds.getPlayerId(p.ids))
+		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars())
 		const reason = applied && AAR.renderAppliedReason(applied)
 		await SquadServer.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
@@ -793,24 +808,27 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		// the target may be offline, so match against players holding active timeouts rather than the roster
 		const active = await Timeouts.listActiveTimeouts(h.ctx)
 		const token = args.player
-		let matches = active.filter(t => t.playerId === token || t.steamId?.toString() === token)
+		let matches = active.filter((t) => t.playerId === token || t.steamId?.toString() === token)
 		if (matches.length === 0) {
 			const lower = token.toLowerCase()
-			matches = active.filter(t => (t.username ?? '').toLowerCase().includes(lower))
+			matches = active.filter((t) => (t.username ?? '').toLowerCase().includes(lower))
 		}
-		const matchedPlayerIds = new Set(matches.map(t => t.playerId))
+		const matchedPlayerIds = new Set(matches.map((t) => t.playerId))
 		if (matchedPlayerIds.size === 0) return await h.error('not-found', `No active timeout matches "${token}"`)
-		if (matchedPlayerIds.size > 1) return await h.error('multiple-matches', `${matchedPlayerIds.size} timed-out players match "${token}"`)
+		if (matchedPlayerIds.size > 1)
+			return await h.error('multiple-matches', `${matchedPlayerIds.size} timed-out players match "${token}"`)
 		for (const timeout of matches) {
 			await Timeouts.cancelTimeout(h.ctx, { timeoutId: timeout.id, actor: ingameActor(h.sender), sliceCtx: h.ctx })
 		}
-		await h.reply(`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`)
+		await h.reply(
+			`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`,
+		)
 		return { code: 'ok' }
 	},
 
 	requestLayer: async (h, args) => {
-		const tokens = args.request.split(/\s+/).filter(t => t.length > 0)
-		const filterEntities = Array.from(FilterEntity.state.filters.values()).map(f => ({ id: f.id, name: f.name }))
+		const tokens = args.request.split(/\s+/).filter((t) => t.length > 0)
+		const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
 		const resolveRes = BB.resolveRequestTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
 		if (resolveRes.code !== 'ok') return await h.error('invalid-request', resolveRes.msg)
 		const source = await resolveChatOwner(h)
@@ -842,7 +860,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return { code: 'ok' }
 		}
 		const owner = await resolveChatOwner(h)
-		const pages = Arr.paged(BB.getLayerRequestSummary(items, LayerQueue.backburnerFilterName, owner), 4).map(page => page.join('\n'))
+		const pages = Arr.paged(BB.getLayerRequestSummary(items, LayerQueue.backburnerFilterName, owner), 4).map((page) => page.join('\n'))
 		for (const page of pages) await h.reply(page)
 		return { code: 'ok' }
 	},
@@ -899,7 +917,7 @@ async function executeKick(
 	const reason = resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, SquadServer.messageVars())
 	await SquadServer.kickPlayersAction(
 		h.ctx,
-		targets.map(t => SM.PlayerIds.getPlayerId(t.ids)),
+		targets.map((t) => SM.PlayerIds.getPlayerId(t.ids)),
 		ingameActor(h.sender),
 		reason || undefined,
 	)
@@ -936,10 +954,12 @@ async function executeTimeout(
 			targets.length === 1 ? lastErrMsg : `All ${targets.length} players already have active timeouts`,
 		)
 	}
-	await h.reply([
-		`Timed out ${subjectLabel} for ${formatHumanTime(durationMs)}${reason?.label ? ` for ${reason.label}` : ''}`,
-		...(skipped.length > 0 ? [`Skipped (already timed out): ${skipped.join(', ')}`] : []),
-	].join('\n'))
+	await h.reply(
+		[
+			`Timed out ${subjectLabel} for ${formatHumanTime(durationMs)}${reason?.label ? ` for ${reason.label}` : ''}`,
+			...(skipped.length > 0 ? [`Skipped (already timed out): ${skipped.join(', ')}`] : []),
+		].join('\n'),
+	)
 	return { code: 'ok' }
 }
 

@@ -22,7 +22,7 @@ export const BACKUP_FILE_EXT = '.sqlite3.gz'
 // why a backup was taken. It is in the file name so that a pre-migration snapshot can be found (and restored) as
 // what it is, and so that retention can pin the newest one -- not because the two are separate collections.
 export const BACKUP_KINDS = ['periodic', 'pre-migration'] as const
-export type BackupKind = typeof BACKUP_KINDS[number]
+export type BackupKind = (typeof BACKUP_KINDS)[number]
 
 function filePrefix(dbPath: string, kind: BackupKind) {
 	const db = path.basename(dbPath).replace(/\.sqlite3?$/, '')
@@ -54,7 +54,10 @@ export function fileName(dbPath: string, kind: BackupKind, sha: string | null | 
 // A backup with no stamp (`unknown`, or an older name with no sha at all) never matches.
 export function shaMatchesRequest(fileSha: string | null, requested: string): boolean {
 	if (!fileSha || fileSha === 'unknown') return false
-	const req = requested.trim().toLowerCase().replace(/^commit-/, '')
+	const req = requested
+		.trim()
+		.toLowerCase()
+		.replace(/^commit-/, '')
 	return req.length > 0 && (fileSha.startsWith(req) || req.startsWith(fileSha))
 }
 
@@ -85,7 +88,7 @@ export function kindOf(fileName: string, dbPath: string): BackupKind | null {
 // every backup of THIS database in a directory listing, newest first, of either kind
 export function backupFiles(fileNames: string[], dbPath: string): BackupFile[] {
 	return fileNames
-		.map(name => parseBackupFile(name, dbPath))
+		.map((name) => parseBackupFile(name, dbPath))
 		.filter((f): f is BackupFile => f !== null)
 		.sort((a, b) => (a.stamp < b.stamp ? 1 : a.stamp > b.stamp ? -1 : 0))
 }
@@ -100,11 +103,11 @@ export function backupFiles(fileNames: string[], dbPath: string): BackupFile[] {
 export function staleBackupFiles(fileNames: string[], opts: { dbPath: string; retainCount: number; keep?: string }) {
 	if (opts.retainCount === 0) return []
 	const all = backupFiles(fileNames, opts.dbPath)
-	const kept = new Set(all.slice(0, opts.retainCount).map(f => f.name))
-	const rollbackPoint = all.find(f => f.kind === 'pre-migration')
+	const kept = new Set(all.slice(0, opts.retainCount).map((f) => f.name))
+	const rollbackPoint = all.find((f) => f.kind === 'pre-migration')
 	if (rollbackPoint) kept.add(rollbackPoint.name)
 	if (opts.keep) kept.add(opts.keep)
-	return all.filter(f => !kept.has(f.name)).map(f => f.name)
+	return all.filter((f) => !kept.has(f.name)).map((f) => f.name)
 }
 
 export function pruneBackups(opts: { dir: string; dbPath: string; retainCount: number; keep?: string }) {
@@ -116,20 +119,13 @@ export function pruneBackups(opts: { dir: string; dbPath: string; retainCount: n
 // streamed, so a multi-GB db never lands in memory. gzip is a big win here: a sqlite file is mostly repetitive page
 // structure and text, and the archive is what we ship over sftp and keep N copies of at both ends.
 async function gzipFile(sourcePath: string, destPath: string, signal?: AbortSignal) {
-	await Stream.pipeline(
-		fs.createReadStream(sourcePath),
-		Zlib.createGzip(),
-		fs.createWriteStream(destPath),
-		{ signal },
-	)
+	await Stream.pipeline(fs.createReadStream(sourcePath), Zlib.createGzip(), fs.createWriteStream(destPath), { signal })
 }
 
 // Snapshots the db via `snapshot` (which sqlite writes itself) and gzips it into destPath. Both stages land on temp
 // names and only the finished archive is renamed into place (atomic within the directory): a crash at either step
 // would otherwise leave a partial file that still looks like a complete backup.
-export async function writeBackup(
-	opts: { destPath: string; snapshot: (destPath: string) => Promise<unknown>; signal?: AbortSignal },
-) {
+export async function writeBackup(opts: { destPath: string; snapshot: (destPath: string) => Promise<unknown>; signal?: AbortSignal }) {
 	fs.mkdirSync(path.dirname(opts.destPath), { recursive: true })
 	const snapshotPath = `${opts.destPath}.snapshot.tmp`
 	const tmpPath = `${opts.destPath}.tmp`

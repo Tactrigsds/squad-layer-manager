@@ -26,29 +26,24 @@ export function setup() {
 
 export const router = {
 	getLayerInfo: orpcBase.input(z.object({ layerId: L.LayerIdSchema })).handler(async ({ context: ctx, input }) => {
-		const lqContext = { ...ctx, ...await resolveLayerEngineContext() }
+		const lqContext = { ...ctx, ...(await resolveLayerEngineContext()) }
 		return await LayerQueries.getLayerInfo({ ctx: lqContext, input })
 	}),
 }
 
 // loads the engine on first call (see LayerEngine.getEngine), so resolve this only on paths that go on to query it.
-export async function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(
-	ctx: Ctx,
-): Promise<Ctx & CS.LayerQuery> {
+export async function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(ctx: Ctx): Promise<Ctx & CS.LayerQuery> {
 	return {
 		...ctx,
 		log,
-		...await resolveLayerEngineContext(),
+		...(await resolveLayerEngineContext()),
 		filters: FilterEntity.state.filters,
 		generationConfig: Settings.GLOBAL_SETTINGS.layerGeneration,
 	}
 }
 
 export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue & CS.AbortSignal): Promise<LQY.LayerItemsState> {
-	return LQY.resolveLayerItemsState(
-		LayerQueue.getSavedQueue(ctx),
-		await MatchHistory.getRecentMatches(ctx),
-	)
+	return LQY.resolveLayerItemsState(LayerQueue.getSavedQueue(ctx), await MatchHistory.getRecentMatches(ctx))
 }
 
 async function resolveLayerEngineContext(): Promise<CS.LayerEngine> {

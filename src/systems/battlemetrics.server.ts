@@ -48,13 +48,13 @@ export async function setup() {
 		log.warn({ err }, 'Failed to load BM player cache from DB')
 	}
 
-	const persistSub = Rx.interval(CACHE_PERSIST_INTERVAL_MS).pipe(
-		C.durableSub(
-			'bm-cache-persist',
-			{ module, root: true, taskScheduling: 'exhaust' },
-			() => persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM player cache')),
-		),
-	).subscribe()
+	const persistSub = Rx.interval(CACHE_PERSIST_INTERVAL_MS)
+		.pipe(
+			C.durableSub('bm-cache-persist', { module, root: true, taskScheduling: 'exhaust' }, () =>
+				persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM player cache')),
+			),
+		)
+		.subscribe()
 
 	const evictSub = Rx.interval(CACHE_EVICTION_INTERVAL_MS).subscribe(() => evictExpiredCacheEntries())
 
@@ -161,10 +161,7 @@ function countInWindow(now: number, windowMs: number): number {
 
 function canDispatch(now: number): boolean {
 	if (now < rateLimiter.backoffUntil) return false
-	return (
-		countInWindow(now, 1_000) < RATE_LIMITS.perSecond
-		&& countInWindow(now, 60_000) < RATE_LIMITS.perMinute
-	)
+	return countInWindow(now, 1_000) < RATE_LIMITS.perSecond && countInWindow(now, 60_000) < RATE_LIMITS.perMinute
 }
 
 function scheduleDrain() {
@@ -207,27 +204,33 @@ function drainQueue() {
 
 const meter = Otel.metrics.getMeter('battlemetrics')
 
-meter.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_SECOND, {
-	description: 'Number of BattleMetrics API requests in the last 1s window',
-}).addCallback((result) => {
-	const now = Date.now()
-	pruneTimestamps(now)
-	result.observe(countInWindow(now, 1_000))
-})
+meter
+	.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_SECOND, {
+		description: 'Number of BattleMetrics API requests in the last 1s window',
+	})
+	.addCallback((result) => {
+		const now = Date.now()
+		pruneTimestamps(now)
+		result.observe(countInWindow(now, 1_000))
+	})
 
-meter.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_MINUTE, {
-	description: 'Number of BattleMetrics API requests in the last 60s window',
-}).addCallback((result) => {
-	const now = Date.now()
-	pruneTimestamps(now)
-	result.observe(countInWindow(now, 60_000))
-})
+meter
+	.createObservableGauge(ATTRS.Battlemetrics.REQUESTS_PER_MINUTE, {
+		description: 'Number of BattleMetrics API requests in the last 60s window',
+	})
+	.addCallback((result) => {
+		const now = Date.now()
+		pruneTimestamps(now)
+		result.observe(countInWindow(now, 60_000))
+	})
 
-meter.createObservableGauge(ATTRS.Battlemetrics.QUEUE_SIZE, {
-	description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot',
-}).addCallback((result) => {
-	result.observe(rateLimiter.queue.length)
-})
+meter
+	.createObservableGauge(ATTRS.Battlemetrics.QUEUE_SIZE, {
+		description: 'Number of queued BattleMetrics API requests waiting for a rate limit slot',
+	})
+	.addCallback((result) => {
+		result.observe(rateLimiter.queue.length)
+	})
 
 function acquireRateSlot(signal?: AbortSignal): Promise<void> {
 	if (signal?.aborted) return Promise.reject(signal.reason)
@@ -296,8 +299,8 @@ async function bmFetch<T = null>(
 			const url = `${ENV.BM_HOST}${path}`
 
 			const headers: Record<string, string> = {
-				'Authorization': `Bearer ${ENV.BM_PAT}`,
-				'Accept': 'application/json',
+				Authorization: `Bearer ${ENV.BM_PAT}`,
+				Accept: 'application/json',
 				...(init?.headers as Record<string, string>),
 			}
 
@@ -333,7 +336,9 @@ async function bmFetch<T = null>(
 					lastError = new Error(`BattleMetrics API rate limited: 429 Too Many Requests`)
 					if (attempt < RETRY.maxAttempts - 1) {
 						const delay = Math.max(RETRY.baseDelayMs * 2 ** attempt, rateLimiter.backoffUntil - Date.now())
-						log.warn(`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`)
+						log.warn(
+							`${method} ${path}: 429 rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${RETRY.maxAttempts})`,
+						)
 						await sleep(delay, ctx.signal)
 						continue
 					}
@@ -352,7 +357,10 @@ async function bmFetch<T = null>(
 						await sleep(delay, ctx.signal)
 						continue
 					}
-					log.error({ status: res.status, statusText: res.statusText, body: text }, `${method} ${path}: ${res.status} ${res.statusText}`)
+					log.error(
+						{ status: res.status, statusText: res.statusText, body: text },
+						`${method} ${path}: ${res.status} ${res.statusText}`,
+					)
 					throw lastError
 				}
 				let level: 'info' | 'debug' = 'info'
@@ -389,37 +397,35 @@ async function bmFetch<T = null>(
 // -------- BM data fetching --------
 
 const OrgFlagsResponse = z.object({
-	data: z.array(z.object({
-		type: z.literal('playerFlag'),
-		id: z.string(),
-		attributes: BM.PlayerFlagAttributes,
-	})),
+	data: z.array(
+		z.object({
+			type: z.literal('playerFlag'),
+			id: z.string(),
+			attributes: BM.PlayerFlagAttributes,
+		}),
+	),
 })
 
-export const getOrgFlags = C.spanOp(
-	'getOrgFlags',
-	{ module },
-	async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
-		if (orgFlagsCache) return orgFlagsCache
+export const getOrgFlags = C.spanOp('getOrgFlags', { module }, async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
+	if (orgFlagsCache) return orgFlagsCache
 
-		if (!orgFlagsFetchPromise) {
-			// the fetch is shared between callers, so tie it to process shutdown rather than any single caller's signal
-			orgFlagsFetchPromise = (async () => {
-				const [data] = await bmFetch({ ...ctx, signal: CleanupSys.shutdownSignal }, 'GET', `/player-flags?page[size]=100`, {
-					responseSchema: OrgFlagsResponse,
-				})
-				return data.data.map((f) => ({ id: f.id, ...f.attributes }))
-			})().catch((err) => {
-				orgFlagsFetchPromise = null
-				throw err
+	if (!orgFlagsFetchPromise) {
+		// the fetch is shared between callers, so tie it to process shutdown rather than any single caller's signal
+		orgFlagsFetchPromise = (async () => {
+			const [data] = await bmFetch({ ...ctx, signal: CleanupSys.shutdownSignal }, 'GET', `/player-flags?page[size]=100`, {
+				responseSchema: OrgFlagsResponse,
 			})
-		}
+			return data.data.map((f) => ({ id: f.id, ...f.attributes }))
+		})().catch((err) => {
+			orgFlagsFetchPromise = null
+			throw err
+		})
+	}
 
-		const flags = await raceAbort(orgFlagsFetchPromise, ctx.signal)
-		orgFlagsCache = flags
-		return flags
-	},
-)
+	const flags = await raceAbort(orgFlagsFetchPromise, ctx.signal)
+	orgFlagsCache = flags
+	return flags
+})
 
 export const addPlayerFlags = C.spanOp(
 	'addPlayerFlags',
@@ -456,32 +462,33 @@ export const removePlayerFlags = C.spanOp(
 	{ module },
 	async (ctx: CS.Ctx & CS.AbortSignal, bmPlayerId: string, flagIds: string[]): Promise<('ok' | 'already-removed')[]> => {
 		if (flagIds.length === 0) return []
-		return Promise.all(flagIds.map(async (flagId) => {
-			const [, res] = await bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`, { passthroughCodes: [400] })
-			if (res.status === 400) {
-				const bodyText = await res.text()
-				const body = JSON.parse(bodyText)
-				if (body.details === 'Flag is already removed') {
-					return 'already-removed' as const
+		return Promise.all(
+			flagIds.map(async (flagId) => {
+				const [, res] = await bmFetch(ctx, 'DELETE', `/players/${bmPlayerId}/relationships/flags/${flagId}`, {
+					passthroughCodes: [400],
+				})
+				if (res.status === 400) {
+					const bodyText = await res.text()
+					const body = JSON.parse(bodyText)
+					if (body.details === 'Flag is already removed') {
+						return 'already-removed' as const
+					}
+					throw new Error(`Battlemetrics API error: ${res.status} ${res.statusText}\n${bodyText}`)
 				}
-				throw new Error(`Battlemetrics API error: ${res.status} ${res.statusText}\n${bodyText}`)
-			}
-			return 'ok' as const
-		}))
+				return 'ok' as const
+			}),
+		)
 	},
 )
 
-async function fetchPlayerDetail(
-	ctx: CS.Ctx & CS.AbortSignal,
-	eosId: string,
-	bmPlayerId: string,
-): Promise<BM.PlayerFlagsAndProfile> {
+async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bmPlayerId: string): Promise<BM.PlayerFlagsAndProfile> {
 	const { BM_ORG_ID } = getEnv()
-	const detailPath = `/players/${bmPlayerId}`
-		+ `?include=identifier,flagPlayer,playerFlag`
-		+ `&filter[identifiers]=eosID,steamID`
-		+ `&fields[identifier]=type,identifier`
-		+ `&fields[playerFlag]=name,color,description,icon`
+	const detailPath =
+		`/players/${bmPlayerId}` +
+		`?include=identifier,flagPlayer,playerFlag` +
+		`&filter[identifiers]=eosID,steamID` +
+		`&fields[identifier]=type,identifier` +
+		`&fields[playerFlag]=name,color,description,icon`
 
 	const [detailData] = await bmFetch(ctx, 'GET', detailPath, {
 		responseSchema: BM.PlayerDetailResponse,
@@ -524,7 +531,7 @@ const bulkFetchOnlinePlayers = C.spanOp(
 		if (teamsRes.code !== 'ok') return
 		const onlinePlayers = teamsRes.players
 
-		const onlineEosIds = onlinePlayers.map(p => SM.PlayerIds.getPlayerId(p.ids))
+		const onlineEosIds = onlinePlayers.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		const uncached = onlinePlayers.filter((p) => !getCachedPlayer(SM.PlayerIds.getPlayerId(p.ids)))
 
 		if (uncached.length > 0) {
@@ -542,13 +549,15 @@ const bulkFetchOnlinePlayers = C.spanOp(
 			}
 
 			// Fetch full detail for each matched player in parallel.
-			await Promise.all(uncached.map(async (p) => {
-				const bmPlayerId = eosIdToBmId.get(p.ids.eos)
-				if (!bmPlayerId) return
-				await fetchPlayerDetail(ctx, p.ids.eos, bmPlayerId).catch((err) => {
-					log.warn({ err, playerIds: p.ids }, 'failed to fetch player bm detail')
-				})
-			}))
+			await Promise.all(
+				uncached.map(async (p) => {
+					const bmPlayerId = eosIdToBmId.get(p.ids.eos)
+					if (!bmPlayerId) return
+					await fetchPlayerDetail(ctx, p.ids.eos, bmPlayerId).catch((err) => {
+						log.warn({ err, playerIds: p.ids }, 'failed to fetch player bm detail')
+					})
+				}),
+			)
 		}
 
 		log.info('fetched %d online players (%d fetched from BM api)', onlineEosIds.length, uncached.length)
@@ -593,37 +602,45 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 	const serverId = ctx.serverId
 
 	ctx.cleanup.push(
-		Rx.interval(POLL_INTERVAL_MS).pipe(
-			Rx.startWith(0),
-			C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
-				const sliceCtx = SquadServer.resolveSliceCtx({ signal }, serverId)
+		Rx.interval(POLL_INTERVAL_MS)
+			.pipe(
+				Rx.startWith(0),
+				C.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
+					const sliceCtx = SquadServer.resolveSliceCtx({ signal }, serverId)
 
-				const onlineEosIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
-					log.warn({ err }, 'bulk fetch online players failed')
-					return [] as string[]
-				})
-				if (onlineEosIds) {
-					for (const eosId of onlineEosIds) {
-						const value = getCachedPlayer(eosId)
-						if (value) playerUpdate$.next({ playerId: eosId, data: value })
+					const onlineEosIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
+						log.warn({ err }, 'bulk fetch online players failed')
+						return [] as string[]
+					})
+					if (onlineEosIds) {
+						for (const eosId of onlineEosIds) {
+							const value = getCachedPlayer(eosId)
+							if (value) playerUpdate$.next({ playerId: eosId, data: value })
+						}
 					}
-				}
-			}),
-		).subscribe(),
-		ctx.server.event$.pipe(
-			// PLAYER_RECONCILED included: a backfilled player is one we became aware of and should fetch BM data for.
-			Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_RECONCILED'),
-			// parallel so one player's fetch doesn't queue behind another's; the task signal aborts as soon as
-			// the callback resolves, so the fetch must be awaited or it gets cancelled immediately
-			C.durableSub('bm-on-player-connected', { module, root: true, taskScheduling: 'parallel' }, async ([eventCtx, event], signal) => {
-				if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
-				const playerIds = event.player.ids
-				const sliceCtx = SquadServer.resolveSliceCtx({ ...eventCtx, signal }, serverId)
-				await fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
-					log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
-				})
-			}),
-		).subscribe(),
+				}),
+			)
+			.subscribe(),
+		ctx.server.event$
+			.pipe(
+				// PLAYER_RECONCILED included: a backfilled player is one we became aware of and should fetch BM data for.
+				Rx.filter(([eventCtx, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_RECONCILED'),
+				// parallel so one player's fetch doesn't queue behind another's; the task signal aborts as soon as
+				// the callback resolves, so the fetch must be awaited or it gets cancelled immediately
+				C.durableSub(
+					'bm-on-player-connected',
+					{ module, root: true, taskScheduling: 'parallel' },
+					async ([eventCtx, event], signal) => {
+						if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
+						const playerIds = event.player.ids
+						const sliceCtx = SquadServer.resolveSliceCtx({ ...eventCtx, signal }, serverId)
+						await fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
+							log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
+						})
+					},
+				),
+			)
+			.subscribe(),
 	)
 }
 
@@ -636,20 +653,25 @@ export const router = {
 
 	// on-demand cache bust: drops each player's cached BM data and refetches, pushing the fresh result down the watch
 	// stream. A player whose refetch fails is left with whatever was cached rather than failing the batch.
-	refreshPlayerBmData: orpcBase.meta({ type: 'mutation' }).input(z.object({
-		playerIds: z.array(z.string()).min(1),
-	})).handler(async ({ input, context: ctx }) => {
-		const failed: string[] = []
-		for (const playerId of input.playerIds) {
-			await refreshPlayerFlags(ctx, playerId, SM.PlayerIds.queryFromPlayerId(playerId)).catch((err) => {
-				log.warn({ err, playerId }, 'failed to refresh player bm data')
-				failed.push(playerId)
-			})
-		}
-		return { code: 'ok' as const, refreshedCount: input.playerIds.length - failed.length, failed }
-	}),
+	refreshPlayerBmData: orpcBase
+		.meta({ type: 'mutation' })
+		.input(
+			z.object({
+				playerIds: z.array(z.string()).min(1),
+			}),
+		)
+		.handler(async ({ input, context: ctx }) => {
+			const failed: string[] = []
+			for (const playerId of input.playerIds) {
+				await refreshPlayerFlags(ctx, playerId, SM.PlayerIds.queryFromPlayerId(playerId)).catch((err) => {
+					log.warn({ err, playerId }, 'failed to refresh player bm data')
+					failed.push(playerId)
+				})
+			}
+			return { code: 'ok' as const, refreshedCount: input.playerIds.length - failed.length, failed }
+		}),
 
-	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal, context: _ctx }) {
+	watchPlayerBmData: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal, context: _ctx }) {
 		const initial$ = Rx.from(
 			[...playerFlagsAndProfileCache.entries()]
 				.filter(([, entry]) => Date.now() <= entry.expiresAt)
@@ -664,94 +686,119 @@ export const router = {
 
 	// one dialog's worth of edits lands as one action: one permission check, one refresh, and one audit event
 	// carrying the whole change, rather than an add and a remove that only happened to be submitted together.
-	updateFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
-		playerId: z.string(),
-		add: z.array(BM.FlagChangeSchema).prefault([]),
-		remove: z.array(BM.FlagChangeSchema).prefault([]),
-	})).handler(async ({ input, context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
-		if (denyRes) return denyRes
+	updateFlags: orpcBase
+		.meta({ type: 'mutation' })
+		.input(
+			z.object({
+				playerId: z.string(),
+				add: z.array(BM.FlagChangeSchema).prefault([]),
+				remove: z.array(BM.FlagChangeSchema).prefault([]),
+			}),
+		)
+		.handler(async ({ input, context: ctx }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
+			if (denyRes) return denyRes
 
-		const orgFlags = await getOrgFlags(ctx)
-		// the client marks those fields required, but it's the client of a permission-gated mutation: re-check here
-		const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
-		if (missing.length > 0) {
-			return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
-		}
+			const orgFlags = await getOrgFlags(ctx)
+			// the client marks those fields required, but it's the client of a permission-gated mutation: re-check here
+			const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
+			if (missing.length > 0) {
+				return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
+			}
 
-		const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
-		const current = await fetchSinglePlayerBmData(ctx, playerIds)
-		if (!current) return { code: 'err:not-found' as const }
+			const playerIds = SM.PlayerIds.queryFromPlayerId(input.playerId)
+			const current = await fetchSinglePlayerBmData(ctx, playerIds)
+			if (!current) return { code: 'err:not-found' as const }
 
-		// the dialog was built against flags that may have moved since; drop anything already in its target state
-		// rather than failing the whole submit over it
-		const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
-		const toRemove = input.remove.filter((f) => current.flagIds.includes(f.id))
-		if (toAdd.length === 0 && toRemove.length === 0) return { code: 'err:no-changes' as const }
+			// the dialog was built against flags that may have moved since; drop anything already in its target state
+			// rather than failing the whole submit over it
+			const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
+			const toRemove = input.remove.filter((f) => current.flagIds.includes(f.id))
+			if (toAdd.length === 0 && toRemove.length === 0) return { code: 'err:no-changes' as const }
 
-		const addRes = await addPlayerFlags(ctx, current.bmPlayerId, toAdd.map((f) => f.id))
-		if (addRes.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
-		await removePlayerFlags(ctx, current.bmPlayerId, toRemove.map((f) => f.id))
+			const addRes = await addPlayerFlags(
+				ctx,
+				current.bmPlayerId,
+				toAdd.map((f) => f.id),
+			)
+			if (addRes.code === 'player-already-has-flag') return { code: 'err:already-flagged' as const }
+			await removePlayerFlags(
+				ctx,
+				current.bmPlayerId,
+				toRemove.map((f) => f.id),
+			)
 
-		const added = resolveFlagChanges(toAdd, orgFlags)
-		const removed = resolveFlagChanges(toRemove, orgFlags)
-		const noteResults = await Promise.all([
-			postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx)),
-			postFlagChangeNotes(ctx, current.bmPlayerId, 'removed', removed, actorLabel(ctx)),
-		])
+			const added = resolveFlagChanges(toAdd, orgFlags)
+			const removed = resolveFlagChanges(toRemove, orgFlags)
+			const noteResults = await Promise.all([
+				postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx)),
+				postFlagChangeNotes(ctx, current.bmPlayerId, 'removed', removed, actorLabel(ctx)),
+			])
 
-		const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
-		await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
+			const updated = await refreshPlayerFlags(ctx, input.playerId, playerIds)
+			await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
 
-		return { code: 'ok' as const, data: updated, noteAdded: noteResults.every(Boolean), added, removed }
-	}),
+			return { code: 'ok' as const, data: updated, noteAdded: noteResults.every(Boolean), added, removed }
+		}),
 
 	// add-only, applied across many players (bulk selection / squad): one flag set with per-flag reasons, added to
 	// every target that doesn't already have it. Each player lands its own PLAYER_FLAGS_UPDATED event and BM notes,
 	// so the audit trail reads the same as if each had been flagged singly. A player already carrying a flag is left
 	// untouched rather than failing the batch.
-	addFlags: orpcBase.meta({ type: 'mutation' }).input(z.object({
-		playerIds: z.array(z.string()).min(1),
-		add: z.array(BM.FlagChangeSchema).min(1),
-	})).handler(async ({ input, context: ctx }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
-		if (denyRes) return denyRes
+	addFlags: orpcBase
+		.meta({ type: 'mutation' })
+		.input(
+			z.object({
+				playerIds: z.array(z.string()).min(1),
+				add: z.array(BM.FlagChangeSchema).min(1),
+			}),
+		)
+		.handler(async ({ input, context: ctx }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
+			if (denyRes) return denyRes
 
-		const orgFlags = await getOrgFlags(ctx)
-		const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
-		if (missing.length > 0) {
-			return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
-		}
+			const orgFlags = await getOrgFlags(ctx)
+			const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
+			if (missing.length > 0) {
+				return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
+			}
 
-		let flaggedCount = 0
-		let allNotesAdded = true
-		for (const playerId of input.playerIds) {
-			const playerIds = SM.PlayerIds.queryFromPlayerId(playerId)
-			const current = await fetchSinglePlayerBmData(ctx, playerIds)
-			if (!current) continue
-			const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
-			if (toAdd.length === 0) continue
+			let flaggedCount = 0
+			let allNotesAdded = true
+			for (const playerId of input.playerIds) {
+				const playerIds = SM.PlayerIds.queryFromPlayerId(playerId)
+				const current = await fetchSinglePlayerBmData(ctx, playerIds)
+				if (!current) continue
+				const toAdd = input.add.filter((f) => !current.flagIds.includes(f.id))
+				if (toAdd.length === 0) continue
 
-			const addRes = await addPlayerFlags(ctx, current.bmPlayerId, toAdd.map((f) => f.id))
-			if (addRes.code === 'player-already-has-flag') continue
+				const addRes = await addPlayerFlags(
+					ctx,
+					current.bmPlayerId,
+					toAdd.map((f) => f.id),
+				)
+				if (addRes.code === 'player-already-has-flag') continue
 
-			const added = resolveFlagChanges(toAdd, orgFlags)
-			const noteAdded = await postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx))
-			if (!noteAdded) allNotesAdded = false
+				const added = resolveFlagChanges(toAdd, orgFlags)
+				const noteAdded = await postFlagChangeNotes(ctx, current.bmPlayerId, 'added', added, actorLabel(ctx))
+				if (!noteAdded) allNotesAdded = false
 
-			await refreshPlayerFlags(ctx, playerId, playerIds)
-			await persistFlagsUpdatedEvent(ctx, { playerId, added, removed: [] })
-			flaggedCount++
-		}
+				await refreshPlayerFlags(ctx, playerId, playerIds)
+				await persistFlagsUpdatedEvent(ctx, { playerId, added, removed: [] })
+				flaggedCount++
+			}
 
-		return { code: 'ok' as const, flaggedCount, playerCount: input.playerIds.length, noteAdded: allNotesAdded }
-	}),
+			return { code: 'ok' as const, flaggedCount, playerCount: input.playerIds.length, noteAdded: allNotesAdded }
+		}),
 }
 
 type ResolvedFlagChange = { id: string; name: string; reason?: string }
 
 function resolveFlagChanges(flags: BM.FlagChange[], orgFlags: BM.PlayerFlag[]): ResolvedFlagChange[] {
-	return BM.resolveFlags(flags.map((f) => f.id), orgFlags).map((flag) => ({
+	return BM.resolveFlags(
+		flags.map((f) => f.id),
+		orgFlags,
+	).map((flag) => ({
 		id: flag.id,
 		name: flag.name,
 		reason: flags.find((f) => f.id === flag.id)?.reason?.trim() || undefined,
@@ -779,7 +826,7 @@ async function postFlagChangeNotes(
 				.catch((err) => {
 					log.warn({ err, bmPlayerId, flag: flag.name }, 'failed to post BM note after flag change')
 					return false
-				})
+				}),
 		),
 	)
 	return results.every(Boolean)
@@ -793,10 +840,7 @@ async function refreshPlayerFlags(ctx: CS.Ctx & CS.AbortSignal, eosId: string, p
 	return updated
 }
 
-async function persistFlagsUpdatedEvent(
-	ctx: C.User & C.Db,
-	e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>,
-) {
+async function persistFlagsUpdatedEvent(ctx: C.User & C.Db, e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>) {
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PlayerFlagsUpdated>({

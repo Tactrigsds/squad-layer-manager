@@ -27,15 +27,18 @@ const MAX_CACHED_QUERIES = 512
 const randomLayerCache = new LRUMap<string, { pages: Map<number, number[]>; totalCount: number }>(MAX_CACHED_QUERIES)
 let cachedSeed: string | null = null
 
-export type QueryLayersResponsePart = {
-	code: 'layers-page'
-	layers: PostProcessedLayer[]
-	totalCount: number
-	pageCount: number
-} | {
-	code: 'menu-item-possible-values'
-	values: Record<string, string[]>
-} | F.InvalidFilterNodeResult
+export type QueryLayersResponsePart =
+	| {
+			code: 'layers-page'
+			layers: PostProcessedLayer[]
+			totalCount: number
+			pageCount: number
+	  }
+	| {
+			code: 'menu-item-possible-values'
+			values: Record<string, string[]>
+	  }
+	| F.InvalidFilterNodeResult
 
 // the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
 // streamed query need the log and the generation config on top
@@ -66,10 +69,7 @@ type CompiledConstraints = {
 	menuItemConditions?: Record<string, LE.Ir>
 }
 
-export function buildQueryConstraints(
-	ctx: QueryCtx,
-	input: LQY.BaseQueryInput,
-): CompiledConstraints | F.InvalidFilterNodeResult {
+export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput): CompiledConstraints | F.InvalidFilterNodeResult {
 	const lower = lowerCtx(ctx)
 	const constraints = input.constraints ?? []
 	const list = input.list ?? LQY.initLayerItemsState()
@@ -222,9 +222,10 @@ function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorInde
 		}
 		case 'Faction':
 		case 'Alliance': {
-			const [colA, colB] = rule.field === 'Faction'
-				? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
-				: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
+			const [colA, colB] =
+				rule.field === 'Faction'
+					? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
+					: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
 			return {
 				op: 'or',
 				children: [
@@ -268,31 +269,28 @@ export async function* queryLayersStreamed(args: {
 		if (ir !== null) indicatorConstraints.push(idx)
 	})
 
-	const res = input.sort?.type === 'random'
-		? drawRandomPage(ctx, {
-			where: compiled.where,
-			input,
-			seed: input.sort.seed ?? LQY.getSeed(),
-			pageIndex: input.pageIndex!,
-			pageSize: input.pageSize!,
-			indicators,
-			columns,
-		})
-		: ctx.engine.query<LE.SelectResponse>({
-			kind: 'select',
-			where: compiled.where,
-			indicators,
-			sort: columnSort(ctx, input.sort),
-			pageIndex: input.pageIndex!,
-			pageSize: input.pageSize!,
-			columns,
-		})
+	const res =
+		input.sort?.type === 'random'
+			? drawRandomPage(ctx, {
+					where: compiled.where,
+					input,
+					seed: input.sort.seed ?? LQY.getSeed(),
+					pageIndex: input.pageIndex!,
+					pageSize: input.pageSize!,
+					indicators,
+					columns,
+				})
+			: ctx.engine.query<LE.SelectResponse>({
+					kind: 'select',
+					where: compiled.where,
+					indicators,
+					sort: columnSort(ctx, input.sort),
+					pageIndex: input.pageIndex!,
+					pageSize: input.pageSize!,
+					columns,
+				})
 
-	const layers = postProcessLayers(
-		ctx,
-		{ rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints },
-		input,
-	)
+	const layers = postProcessLayers(ctx, { rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints }, input)
 	yield {
 		code: 'layers-page' as const,
 		layers,
@@ -326,26 +324,31 @@ function columnSort(ctx: CS.LayerEngine, sort: LQY.LayersQuerySort | null | unde
 
 // Weighted generation. The engine does the picking, since it holds the group universe; this is the bookkeeping around
 // it: exclude what sibling pages already took, and replay a page that's revisited instead of re-drawing it.
-function drawRandomPage(ctx: CS.LayerQuery, args: {
-	where: LE.Ir
-	input: LQY.BaseQueryInput
-	seed: string
-	pageIndex: number
-	pageSize: number
-	indicators: LE.Ir[]
-	columns: number[]
-}): LE.SelectResponse {
+function drawRandomPage(
+	ctx: CS.LayerQuery,
+	args: {
+		where: LE.Ir
+		input: LQY.BaseQueryInput
+		seed: string
+		pageIndex: number
+		pageSize: number
+		indicators: LE.Ir[]
+		columns: number[]
+	},
+): LE.SelectResponse {
 	const { where, input, seed, pageIndex, pageSize, indicators, columns } = args
 	if (cachedSeed !== seed) {
 		randomLayerCache.clear()
 		cachedSeed = seed
 	}
-	const cacheKey = simpleHash(JSON.stringify({
-		where,
-		cursor: input.cursor,
-		list: input.list,
-		generation: ctx.generationConfig,
-	}))
+	const cacheKey = simpleHash(
+		JSON.stringify({
+			where,
+			cursor: input.cursor,
+			list: input.list,
+			generation: ctx.generationConfig,
+		}),
+	)
 	let entry = randomLayerCache.get(cacheKey)
 	if (!entry) {
 		entry = { pages: new Map<number, number[]>(), totalCount: 0 }
@@ -386,7 +389,10 @@ function drawRandomPage(ctx: CS.LayerQuery, args: {
 	entry.totalCount = res.totalCount
 	if (entry.pages.size < MAX_PAGES_PER_QUERY) {
 		const idIndex = columns.indexOf(idCol)
-		entry.pages.set(pageIndex, res.rows.map((row) => row[idIndex]!))
+		entry.pages.set(
+			pageIndex,
+			res.rows.map((row) => row[idIndex]!),
+		)
 	}
 	return res
 }
@@ -474,11 +480,7 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 			pageSize: 1,
 			columns,
 		})
-		const [layer] = postProcessLayers(
-			ctx,
-			{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] },
-			input,
-		)
+		const [layer] = postProcessLayers(ctx, { rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] }, input)
 		if (layer) {
 			choice.layerId = layer.id
 			chosenLayers[i] = layer
@@ -546,7 +548,7 @@ export async function generateWithBackburner(args: {
 	// top of them; the full configured constraints only shape the draw when no template is consumed
 	const repeatBase = buildQueryConstraints(ctx, {
 		...input,
-		constraints: (input.constraints ?? []).filter(c => c.type === 'do-not-repeat'),
+		constraints: (input.constraints ?? []).filter((c) => c.type === 'do-not-repeat'),
 	})
 	if (repeatBase.code !== 'ok') return repeatBase
 
@@ -580,11 +582,7 @@ export async function generateWithBackburner(args: {
 		pageSize: 1,
 		columns,
 	})
-	const [layer] = postProcessLayers(
-		ctx,
-		{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] },
-		input,
-	)
+	const [layer] = postProcessLayers(ctx, { rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] }, input)
 	return { code: 'ok', layer: layer ?? null, consumedItemIds, invalidItemIds }
 }
 
@@ -675,8 +673,9 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	const layerItems = list.layerItems
 
 	// match state is needed for both indication and warning, so evaluate any constraint with either active
-	const filterConstraints = constraints.filter((c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
-		c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled')
+	const filterConstraints = constraints.filter(
+		(c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
+			c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled'),
 	)
 	const lower = lowerCtx(ctx)
 	const filterIrs: LE.Ir[] = []
@@ -709,9 +708,8 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
 				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
-				const active = constraint.type === 'do-not-repeat'
-					|| constraint.showIndicator !== 'disabled'
-					|| constraint.warn !== 'disabled'
+				const active =
+					constraint.type === 'do-not-repeat' || constraint.showIndicator !== 'disabled' || constraint.warn !== 'disabled'
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
@@ -753,12 +751,12 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		if (!present.has(item.layerId)) continue
 		// seeding and training layers are played outside the pool and repeat rules by design
 		if (L.isSeedingOrTrainingLayer(item.layerId)) continue
-		if (LQY.getTags(item)?.some(tag => skipWarningsForTags.includes(tag))) continue
+		if (LQY.getTags(item)?.some((tag) => skipWarningsForTags.includes(tag))) continue
 		for (const constraint of constraints) {
-			const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
+			const descriptors = matchDescriptors.get(item.itemId)?.filter((d) => d.constraintId === constraint.id)
 			const matched = descriptors?.length !== undefined && descriptors.length > 0
 			if (constraint.type === 'filter-entity') {
-				if (constraint.warn === 'regular' && matched || constraint.warn === 'inverted' && !matched) {
+				if ((constraint.warn === 'regular' && matched) || (constraint.warn === 'inverted' && !matched)) {
 					warns.push({ itemId: item.itemId, type: 'filter-entity-warning', matched, constraintId: constraint.id })
 				}
 			} else if (constraint.type === 'do-not-repeat' && constraint.warn) {
@@ -899,9 +897,9 @@ function getisMatchedByRepeatRuleDirect(
 			case 'Layer':
 			case 'Size':
 				if (
-					layer[rule.field]
-					&& targetLayer[rule.field] === layer[rule.field]
-					&& (!LQY.valueFilteredByTargetValues(rule, layer[rule.field]))
+					layer[rule.field] &&
+					targetLayer[rule.field] === layer[rule.field] &&
+					!LQY.valueFilteredByTargetValues(rule, layer[rule.field])
 				) {
 					descriptors.push(getViolationDescriptor(rule.field))
 				}
@@ -910,11 +908,7 @@ function getisMatchedByRepeatRuleDirect(
 				const checkFaction = (team: MH.NormedTeamId) => {
 					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					if (
-						targetFaction
-						&& previousFaction === targetFaction
-						&& (!LQY.valueFilteredByTargetValues(rule, previousFaction))
-					) {
+					if (targetFaction && previousFaction === targetFaction && !LQY.valueFilteredByTargetValues(rule, previousFaction)) {
 						descriptors.push(getViolationDescriptor(`Faction_${team}`))
 					}
 				}
@@ -927,7 +921,7 @@ function getisMatchedByRepeatRuleDirect(
 					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
 					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
 
-					if (targetAlliance && targetAlliance === previousAlliance && (!LQY.valueFilteredByTargetValues(rule, previousAlliance))) {
+					if (targetAlliance && targetAlliance === previousAlliance && !LQY.valueFilteredByTargetValues(rule, previousAlliance)) {
 						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
 					}
 				}

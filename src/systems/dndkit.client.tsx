@@ -25,7 +25,7 @@ export function DragContextProvider(props: { children: React.ReactNode }) {
 	return (
 		<DndKitReact.DragDropProvider
 			plugins={DRAG_PLUGINS}
-			onDragEnd={event => {
+			onDragEnd={(event) => {
 				const { operation } = event
 				const { source, target } = operation
 				if (!target || !source) return
@@ -43,9 +43,7 @@ export function DragContextProvider(props: { children: React.ReactNode }) {
 				})
 			}}
 		>
-			<DndKit.DragEndContext.Provider value={dragEndContextValue}>
-				{props.children}
-			</DndKit.DragEndContext.Provider>
+			<DndKit.DragEndContext.Provider value={dragEndContextValue}>{props.children}</DndKit.DragEndContext.Provider>
 		</DndKitReact.DragDropProvider>
 	)
 }

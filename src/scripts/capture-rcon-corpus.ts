@@ -74,9 +74,9 @@ function record(pkt: RawPacket) {
 	if (currentCapture && pkt.direction === 'received') currentCapture.packets.push(pkt)
 	const bodyPreview = pkt.body.length > 120 ? pkt.body.slice(0, 120) + `... (${pkt.body.length} chars)` : pkt.body
 	console.log(
-		`${pkt.direction === 'sent' ? '>>' : '<<'} type=${pkt.type} id=${pkt.id} size=${pkt.size}${pkt.note ? ` [${pkt.note}]` : ''} body=${
-			JSON.stringify(bodyPreview)
-		}`,
+		`${pkt.direction === 'sent' ? '>>' : '<<'} type=${pkt.type} id=${pkt.id} size=${pkt.size}${pkt.note ? ` [${pkt.note}]` : ''} body=${JSON.stringify(
+			bodyPreview,
+		)}`,
 	)
 }
 
@@ -84,12 +84,26 @@ function record(pkt: RawPacket) {
 function decodeAll(onPacket: (pkt: RawPacket) => void) {
 	while (stream.byteLength >= 7) {
 		if (
-			stream[0] === 0 && stream[1] === 1 && stream[2] === 0 && stream[3] === 0
-			&& stream[4] === 0 && stream[5] === 0 && stream[6] === 0
+			stream[0] === 0 &&
+			stream[1] === 1 &&
+			stream[2] === 0 &&
+			stream[3] === 0 &&
+			stream[4] === 0 &&
+			stream[5] === 0 &&
+			stream[6] === 0
 		) {
 			const hex = stream.subarray(0, 7).toString('hex')
 			stream = stream.subarray(7)
-			onPacket({ direction: 'received', time: Date.now(), size: 7, id: 0, type: TYPE.response, body: '', hex, note: 'SOH-7-byte-sequence' })
+			onPacket({
+				direction: 'received',
+				time: Date.now(),
+				size: 7,
+				id: 0,
+				type: TYPE.response,
+				body: '',
+				hex,
+				note: 'SOH-7-byte-sequence',
+			})
 			continue
 		}
 		if (stream.byteLength < 4) break
@@ -213,7 +227,8 @@ async function main() {
 	]
 
 	if (EXEC_FILE) {
-		const cmds = fs.readFileSync(EXEC_FILE, 'utf8')
+		const cmds = fs
+			.readFileSync(EXEC_FILE, 'utf8')
 			.split('\n')
 			.map((l) => l.trim())
 			.filter((l) => l && !l.startsWith('#'))
@@ -264,18 +279,20 @@ async function main() {
 	const outFile = path.join(outDir, `capture-${stamp}.json`)
 	fs.writeFileSync(
 		outFile,
-		anonymizeIps(JSON.stringify(
-			{
-				capturedAt: new Date().toISOString(),
-				host: HOST,
-				note: 'raw RCON capture for emulator corpus (ips anonymized). See capture-rcon-corpus.ts',
-				captures,
-				serverPackets,
-				sessionLog,
-			},
-			null,
-			'\t',
-		)),
+		anonymizeIps(
+			JSON.stringify(
+				{
+					capturedAt: new Date().toISOString(),
+					host: HOST,
+					note: 'raw RCON capture for emulator corpus (ips anonymized). See capture-rcon-corpus.ts',
+					captures,
+					serverPackets,
+					sessionLog,
+				},
+				null,
+				'\t',
+			),
+		),
 	)
 	console.log(`\nwrote ${outFile}`)
 	console.log(`commands captured: ${captures.length}, server(chat) packets: ${serverPackets.length}`)

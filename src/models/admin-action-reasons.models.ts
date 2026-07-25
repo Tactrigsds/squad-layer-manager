@@ -19,14 +19,7 @@ export type AdminActionType = z.infer<typeof ADMIN_ACTION_TYPE>
 
 // actions whose reason requirement is configurable. warn is excluded: a warn is nothing but its reason, so one
 // is always required.
-export const REQUIRABLE_ADMIN_ACTION_TYPE = z.enum([
-	'kill',
-	'kick',
-	'timeout',
-	'remove-from-squad',
-	'disband-squad',
-	'demote-commander',
-])
+export const REQUIRABLE_ADMIN_ACTION_TYPE = z.enum(['kill', 'kick', 'timeout', 'remove-from-squad', 'disband-squad', 'demote-commander'])
 export type RequirableAdminActionType = z.infer<typeof REQUIRABLE_ADMIN_ACTION_TYPE>
 
 export type AdminActionDescriptor = {
@@ -38,12 +31,12 @@ export type AdminActionDescriptor = {
 }
 
 export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
-	'warn': { displayName: 'Warn', targetKind: 'players', permission: 'squad-server:warn-players', reasonDelivery: 'native' },
-	'broadcast': { displayName: 'Broadcast', targetKind: 'players', permission: 'squad-server:broadcast', reasonDelivery: 'native' },
-	'kill': { displayName: 'Kill', targetKind: 'players', permission: 'squad-server:manage-players', reasonDelivery: 'native' },
+	warn: { displayName: 'Warn', targetKind: 'players', permission: 'squad-server:warn-players', reasonDelivery: 'native' },
+	broadcast: { displayName: 'Broadcast', targetKind: 'players', permission: 'squad-server:broadcast', reasonDelivery: 'native' },
+	kill: { displayName: 'Kill', targetKind: 'players', permission: 'squad-server:manage-players', reasonDelivery: 'native' },
 	// the AdminKick reason string carries the text, for both plain kicks and timeouts
-	'kick': { displayName: 'Kick', targetKind: 'players', permission: 'squad-server:kick-players', reasonDelivery: 'native' },
-	'timeout': { displayName: 'Timeout', targetKind: 'players', permission: 'squad-server:timeout-players', reasonDelivery: 'native' },
+	kick: { displayName: 'Kick', targetKind: 'players', permission: 'squad-server:kick-players', reasonDelivery: 'native' },
+	timeout: { displayName: 'Timeout', targetKind: 'players', permission: 'squad-server:timeout-players', reasonDelivery: 'native' },
 	'remove-from-squad': {
 		displayName: 'Remove from Squad',
 		targetKind: 'players',
@@ -66,18 +59,17 @@ export const ADMIN_ACTIONS: Record<AdminActionType, AdminActionDescriptor> = {
 
 export const AdminActionReasonSchema = LP.LabeledPresetSchema.extend({
 	// per-action text; a reason applies to an action iff it has text here
-	actionTexts: z.partialRecord(ADMIN_ACTION_TYPE, z.string().trim().min(1)).prefault({}).describe(
-		'Per-action text. The reason is available for an action only if it has text for that action.',
-	),
+	actionTexts: z
+		.partialRecord(ADMIN_ACTION_TYPE, z.string().trim().min(1))
+		.prefault({})
+		.describe('Per-action text. The reason is available for an action only if it has text for that action.'),
 }).refine((r) => Object.keys(r.actionTexts).length > 0, {
 	error: 'A reason must have text for at least one action',
 	path: ['actionTexts'],
 })
 export type AdminActionReason = z.infer<typeof AdminActionReasonSchema>
 
-export const AdminActionReasonsSchema = z.array(AdminActionReasonSchema)
-	.superRefine(LP.addLabelKeywordUniquenessIssues)
-	.prefault([])
+export const AdminActionReasonsSchema = z.array(AdminActionReasonSchema).superRefine(LP.addLabelKeywordUniquenessIssues).prefault([])
 
 export function reasonsForAction(reasons: AdminActionReason[], action: AdminActionType): AdminActionReason[] {
 	return reasons.filter((r) => r.actionTexts[action] !== undefined)
@@ -139,10 +131,7 @@ export function applyCustomReason(text: string, vars: Record<string, string>): A
 // renders an applied reason (mustache templating over the snapshotted vars plus {{label}}), with optional
 // per-render extras (e.g. the remaining timeout duration) and the leading tag naming who the message is aimed at
 // (`@Squad<id>`, `@admins`, or the recipients themselves)
-export function renderAppliedReason(
-	applied: AppliedReason,
-	opts?: { audienceTag?: string; extraVars?: Record<string, string> },
-): string {
+export function renderAppliedReason(applied: AppliedReason, opts?: { audienceTag?: string; extraVars?: Record<string, string> }): string {
 	const rendered = renderTemplate(applied.template, { ...applied.vars, label: applied.label ?? '', ...opts?.extraVars })
 	return opts?.audienceTag ? `${opts.audienceTag} ${rendered}` : rendered
 }

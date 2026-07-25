@@ -19,18 +19,19 @@ type OldSource = { type: string; source?: string; host?: string; filePath?: stri
 type NewDef = { source: OldSource; adminIdentifyingPermissions: string[] }
 
 function baseNameFor(source: OldSource): string {
-	const raw = source.type === 'sftp'
-		? `${source.host ?? 'sftp'}${source.filePath ?? ''}`
-		: source.source ?? source.type
+	const raw = source.type === 'sftp' ? `${source.host ?? 'sftp'}${source.filePath ?? ''}` : (source.source ?? source.type)
 	// the file or endpoint the list actually comes from is the recognisable part
 	const tail = raw.split(/[/\\]/).filter(Boolean).pop() ?? raw
-	const cleaned = tail.replace(/\.(cfg|txt|ini)$/i, '').replace(/[^A-Za-z0-9 _-]/g, '-').replace(/^-+|-+$/g, '')
+	const cleaned = tail
+		.replace(/\.(cfg|txt|ini)$/i, '')
+		.replace(/[^A-Za-z0-9 _-]/g, '-')
+		.replace(/^-+|-+$/g, '')
 	return cleaned.length > 0 ? cleaned.slice(0, 64) : source.type
 }
 
 function uniqueName(base: string, taken: Set<string>): string {
 	if (!taken.has(base)) return base
-	for (let n = 2;; n++) {
+	for (let n = 2; ; n++) {
 		const candidate = `${base}-${n}`
 		if (!taken.has(candidate)) return candidate
 	}
@@ -77,7 +78,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 			}
 			if (Array.isArray(a.adminListGroups)) {
 				a.adminListGroups = a.adminListGroups.flatMap((g: unknown) =>
-					typeof g === 'string' ? names.map((listId) => ({ listId, groupId: g })) : []
+					typeof g === 'string' ? names.map((listId) => ({ listId, groupId: g })) : [],
 				)
 			}
 		}

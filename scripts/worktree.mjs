@@ -175,7 +175,9 @@ function dispatch() {
 			const name = rest.find((arg) => !arg.startsWith('-'))
 			const setup = !rest.includes('--no-setup')
 			const result = createWorktree(name, cwd)
-			console.log(result.created ? `created ${result.path} on ${result.branch} (from ${result.base})` : `${result.path} already exists`)
+			console.log(
+				result.created ? `created ${result.path} on ${result.branch} (from ${result.base})` : `${result.path} already exists`,
+			)
 			if (setup) {
 				install(result.path)
 				run('pnpm', ['dev:init'], result.path)
@@ -216,7 +218,9 @@ function dispatch() {
 				}
 				const running = processesUnder(entry.path)
 				if (running > 0) {
-					console.log(`skip  ${entry.path}\n      ${running} process(es) still running in it; stop them (pnpm dev, dev:emu) and re-run`)
+					console.log(
+						`skip  ${entry.path}\n      ${running} process(es) still running in it; stop them (pnpm dev, dev:emu) and re-run`,
+					)
 					continue
 				}
 				if (!apply) {

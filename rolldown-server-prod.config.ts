@@ -10,7 +10,7 @@ const externalModules: (string | RegExp)[] = Object.keys(packageJson.dependencie
 
 externalModules.push(
 	...builtinModules,
-	...builtinModules.map(m => `node:${m}`),
+	...builtinModules.map((m) => `node:${m}`),
 	// 'zlib-sync',
 	// Tailwind (a devDependency) is only reached via the dynamic import in landing.server.ts, which runs in
 	// dev/test; prod reads the prebuilt dist/landing.css. Externalize so its native oxide binary is never bundled.

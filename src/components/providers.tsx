@@ -16,9 +16,7 @@ import { TooltipProvider } from './ui/tooltip'
 export function Providers(props: { children: ReactNode }) {
 	return (
 		<QueryClientProvider client={RPC.queryClient}>
-			<ProvidersInner>
-				{props.children}
-			</ProvidersInner>
+			<ProvidersInner>{props.children}</ProvidersInner>
 		</QueryClientProvider>
 	)
 }
@@ -35,9 +33,7 @@ function ProvidersInner(props: { children: ReactNode }) {
 					<AlertDialogProvider>
 						<Toaster />
 						<ResetOtherSessionsManager />
-						<DraggableWindowOutlet outletKey="default">
-							{props.children}
-						</DraggableWindowOutlet>
+						<DraggableWindowOutlet outletKey="default">{props.children}</DraggableWindowOutlet>
 					</AlertDialogProvider>
 				</DragContextProvider>
 			</TooltipProvider>

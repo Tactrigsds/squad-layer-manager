@@ -79,9 +79,9 @@ export type Simulation = {
 // the perms a simulation leaves the user with, before negations are recalculated. Added roles contribute perms the user
 // already holds, so the only thing they change on their own is which roles a perm is attributed to.
 export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Simulation): RBAC.TracedPermission[] {
-	const isRoleDisabled = (role: RBAC.Role) => simulation.disabledRoles.some(disabled => Obj.deepEqual(role, disabled))
+	const isRoleDisabled = (role: RBAC.Role) => simulation.disabledRoles.some((disabled) => Obj.deepEqual(role, disabled))
 
-	const perms: RBAC.TracedPermission[] = basePerms.map(p => ({ ...p, allowedByRoles: [...p.allowedByRoles] }))
+	const perms: RBAC.TracedPermission[] = basePerms.map((p) => ({ ...p, allowedByRoles: [...p.allowedByRoles] }))
 	for (const added of simulation.addedRoles) {
 		if (isRoleDisabled(added.role)) continue
 		for (const perm of added.perms) {
@@ -89,9 +89,10 @@ export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Si
 		}
 	}
 
-	return perms.filter(p =>
-		p.allowedByRoles.some(role => !isRoleDisabled(role))
-		&& !simulation.disabledPerms.some(disabled => RBAC.isSamePerm(disabled, p))
+	return perms.filter(
+		(p) =>
+			p.allowedByRoles.some((role) => !isRoleDisabled(role)) &&
+			!simulation.disabledPerms.some((disabled) => RBAC.isSamePerm(disabled, p)),
 	)
 }
 
@@ -135,7 +136,7 @@ export function setup() {
 	// every suspending perms hook hangs on this one, so it starts before the first render rather than with it
 	void RPC.queryClient.prefetchQuery(loggedInUserQueryOptions)
 	void RPC.queryClient.prefetchQuery(RPC.orpc.users.getMyLinkedSteamAccounts.queryOptions())
-	FilterEntityClient.filterMutation$.subscribe(async s => {
+	FilterEntityClient.filterMutation$.subscribe(async (s) => {
 		const loggedInUser = await fetchLoggedInUser()
 		if (!loggedInUser) return
 		if (s.value.owner !== loggedInUser.discordId) return
@@ -148,11 +149,13 @@ export function useMyLinkedSteamAccounts() {
 }
 
 export function useUpdateLinkedSteamAccountsMutation() {
-	return useMutation(RPC.orpc.users.updateLinkedSteamAccounts.mutationOptions({
-		onSuccess: (res) => {
-			if (res.code === 'ok') void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.getMyLinkedSteamAccounts.key() })
-		},
-	}))
+	return useMutation(
+		RPC.orpc.users.updateLinkedSteamAccounts.mutationOptions({
+			onSuccess: (res) => {
+				if (res.code === 'ok') void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.getMyLinkedSteamAccounts.key() })
+			},
+		}),
+	)
 }
 
 export namespace Sel {

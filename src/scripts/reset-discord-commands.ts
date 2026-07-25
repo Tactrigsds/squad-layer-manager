@@ -32,9 +32,7 @@ try {
 	await rest.put(D.Routes.applicationGuildCommands(appId, guildId), { body: [] })
 } catch (err) {
 	if (err instanceof D.DiscordAPIError && NOT_INSTALLED_CODES.includes(err.code)) {
-		console.warn(
-			`  skipped: the app is not installed in guild ${guildId} (${err.message}), so it has no guild-scoped commands.`,
-		)
+		console.warn(`  skipped: the app is not installed in guild ${guildId} (${err.message}), so it has no guild-scoped commands.`)
 	} else {
 		throw err
 	}

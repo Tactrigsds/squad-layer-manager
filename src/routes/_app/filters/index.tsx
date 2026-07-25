@@ -5,9 +5,7 @@ export const Route = createFileRoute('/_app/filters/')({
 	component: RouteComponent,
 
 	head: () => ({
-		meta: [
-			{ title: 'SLM - Filters' },
-		],
+		meta: [{ title: 'SLM - Filters' }],
 	}),
 })
 

@@ -47,8 +47,8 @@ export async function timeoutPlayers(
 		return
 	}
 	const results = await Promise.allSettled(
-		opts.playerIds.map(playerId =>
-			mutateAsync({ serverId: opts.serverId, playerId, durationMs, reason: opts.reason, presetReasonLabel: opts.presetReasonLabel })
+		opts.playerIds.map((playerId) =>
+			mutateAsync({ serverId: opts.serverId, playerId, durationMs, reason: opts.reason, presetReasonLabel: opts.presetReasonLabel }),
 		),
 	)
 	let timedOut = 0
@@ -74,7 +74,7 @@ export async function timeoutPlayers(
 export function useCanCancelSomeTimeout(): boolean {
 	const user = UsersClient.useLoggedInUser()
 	if (!user) return false
-	return RBAC.fromTracedPermissions(user.perms).some(p => p.type === 'squad-server:timeout-players')
+	return RBAC.fromTracedPermissions(user.perms).some((p) => p.type === 'squad-server:timeout-players')
 }
 
 export function useMaxTimeout(serverId: string): number | null | undefined {

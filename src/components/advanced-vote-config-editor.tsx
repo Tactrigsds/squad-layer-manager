@@ -29,14 +29,10 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 	const usingDefault = !props.config?.displayProps && !props.config?.duration
 	const statuses = DH.toDisplayPropStatuses(displayProps)
 
-	const preview = props.choices.length > 0
-		? BROADCASTS.vote.started(
-			{ choiceIds: [], voterType: 'public' },
-			props.choices,
-			duration,
-			displayProps,
-		)
-		: (props.previewPlaceholder ?? 'No layers selected for preview')
+	const preview =
+		props.choices.length > 0
+			? BROADCASTS.vote.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps)
+			: (props.previewPlaceholder ?? 'No layers selected for preview')
 	const valid = props.choices.length > 0 ? V.validateChoicesWithDisplayProps(props.choices, displayProps) : true
 
 	function setDisplayProps(update: Partial<DH.LayerDisplayPropsStatuses>) {
@@ -80,9 +76,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 		<div className="grid gap-4">
 			<div className="space-y-2">
 				<h4 className="font-medium leading-none">Vote Display Options</h4>
-				<p className="text-sm text-muted-foreground">
-					Choose what info to show to voters
-				</p>
+				<p className="text-sm text-muted-foreground">Choose what info to show to voters</p>
 			</div>
 			<div className="grid gap-4">
 				<div className="grid grid-cols-2 gap-4">
@@ -105,9 +99,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 										onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="map">
-										Map
-									</Label>
+									<Label htmlFor="map">Map</Label>
 								</div>
 								<div className="flex items-center space-x-2">
 									<Checkbox
@@ -116,9 +108,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="gamemode">
-										Gamemode
-									</Label>
+									<Label htmlFor="gamemode">Gamemode</Label>
 								</div>
 							</div>
 						</div>
@@ -148,16 +138,14 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 				</div>
 				{!valid && (
 					<div className="bg-destructive/10 border border-destructive rounded p-2">
-						<p className="text-sm text-destructive">
-							Warning: Can't distinguish between vote choices.
-						</p>
+						<p className="text-sm text-destructive">Warning: Can't distinguish between vote choices.</p>
 					</div>
 				)}
 				<div className="space-y-2">
 					<Label>Preview</Label>
 					<pre
 						style={{
-							'fontFamily': `"Roboto Condensed", 'sans-serif'`,
+							fontFamily: `"Roboto Condensed", 'sans-serif'`,
 							color: '#fcff00',
 						}}
 						className="text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap"
@@ -178,12 +166,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 					/>
 				</div>
 				{(props.includeResetToDefault ?? true) && (
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={resetToDefault}
-						disabled={usingDefault || props.readonly}
-					>
+					<Button variant="outline" size="sm" onClick={resetToDefault} disabled={usingDefault || props.readonly}>
 						Reset to Default
 					</Button>
 				)}

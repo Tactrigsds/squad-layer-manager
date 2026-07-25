@@ -20,11 +20,7 @@ const opPropsClient = { userId: USR.UserIdSchema }
 const opPropsEditWindow = { editWindowSeqId: z.number() }
 
 // when present ensures that this op is only applied during the edit window it was intended for
-function getItemOpEntries<
-	Props extends { [key: string]: z.ZodType },
->(
-	props: Props,
-) {
+function getItemOpEntries<Props extends { [key: string]: z.ZodType }>(props: Props) {
 	return [
 		z.object({
 			...props,
@@ -101,12 +97,7 @@ function buildOperationSchema<
 	BaseProps extends { [key: string]: z.ZodType },
 	ClientProps extends { [key: string]: z.ZodType },
 	EditWindowProps extends { [key: string]: z.ZodType },
->(
-	itemSchema: Item,
-	baseProps: BaseProps,
-	clientProps: ClientProps,
-	editWindowProps: EditWindowProps,
-) {
+>(itemSchema: Item, baseProps: BaseProps, clientProps: ClientProps, editWindowProps: EditWindowProps) {
 	return z.discriminatedUnion('op', [
 		z.object({
 			...baseProps,
@@ -133,10 +124,12 @@ function buildOperationSchema<
 			itemId: LL.ItemIdSchema,
 			// the external actor whose layer change triggered this reconciliation (used to attribute the QUEUE_UPDATED);
 			// absent for internal/unattributed sources
-			externalSource: z.discriminatedUnion('type', [
-				z.object({ type: z.literal('player'), playerId: z.string() }),
-				z.object({ type: z.literal('rcon') }),
-			]).optional(),
+			externalSource: z
+				.discriminatedUnion('type', [
+					z.object({ type: z.literal('player'), playerId: z.string() }),
+					z.object({ type: z.literal('rcon') }),
+				])
+				.optional(),
 		}),
 		z.object({
 			...baseProps,
@@ -293,7 +286,7 @@ export type NewOperation = z.infer<typeof NewOperationSchema>
 export type NewClientOperation = Extract<NewOperation, { op: ClientOpcode }>
 
 export function isOpForItem(op: Operation): op is ItemOperation {
-	return (ItemOperationSchema.options.map(op => op.shape.op.value as string)).includes(op.op)
+	return ItemOperationSchema.options.map((op) => op.shape.op.value as string).includes(op.op)
 }
 
 export type State = {
@@ -324,45 +317,45 @@ export type Rejection =
 
 export type SideEffect =
 	| {
-		// saved list has changed, and needs to be written to the database and/or published to the squad server
-		code: 'request-list-save'
-		list: LL.List
-		// the saved list before this save -- diffed against `list` for the QUEUE_UPDATED app event
-		prevList: LL.List
-		opId: string
-		lastSaveOpId: null | string
-	}
+			// saved list has changed, and needs to be written to the database and/or published to the squad server
+			code: 'request-list-save'
+			list: LL.List
+			// the saved list before this save -- diffed against `list` for the QUEUE_UPDATED app event
+			prevList: LL.List
+			opId: string
+			lastSaveOpId: null | string
+	  }
 	| {
-		// requests that a queue item be generated before the list is saved. happens when the saved list would be empty
-		code: 'request-queue-item-generation'
-	}
+			// requests that a queue item be generated before the list is saved. happens when the saved list would be empty
+			code: 'request-queue-item-generation'
+	  }
 	| {
-		// the saved backburner changed and needs to be written to the database (and app events emitted)
-		code: 'request-backburner-save'
-		items: BB.BackburnerItem[]
-		prevItems: BB.BackburnerItem[]
-		opId: string
-		trigger: 'user-save' | 'chat-write' | 'consumed'
-		source?: USR.GuiOrChatUserId
-		// for 'consumed': the generated layer that satisfied the consumed templates
-		layerId?: string | null
-	}
+			// the saved backburner changed and needs to be written to the database (and app events emitted)
+			code: 'request-backburner-save'
+			items: BB.BackburnerItem[]
+			prevItems: BB.BackburnerItem[]
+			opId: string
+			trigger: 'user-save' | 'chat-write' | 'consumed'
+			source?: USR.GuiOrChatUserId
+			// for 'consumed': the generated layer that satisfied the consumed templates
+			layerId?: string | null
+	  }
 	| {
-		// the save had nothing to write, but the edit window still closed -- editors are done and the draft
-		// state was reset, so this is the no-write counterpart of 'request-list-save'
-		code: 'edit-window-closed'
-	}
+			// the save had nothing to write, but the edit window still closed -- editors are done and the draft
+			// state was reset, so this is the no-write counterpart of 'request-list-save'
+			code: 'edit-window-closed'
+	  }
 	| {
-		// success is false when the op was skipped (stale edit window, pending generation)
-		code: 'op-outcome'
-		op: Operation
-		success: boolean
-	}
+			// success is false when the op was skipped (stale edit window, pending generation)
+			code: 'op-outcome'
+			op: Operation
+			success: boolean
+	  }
 	| {
-		// no more sideEffects for this reducer call
-		code: 'complete'
-		opId: string
-	}
+			// no more sideEffects for this reducer call
+			code: 'complete'
+			opId: string
+	  }
 
 export type Update = ODSM.ClientUpdate<State, Operation, Rejection['code']>
 
@@ -387,17 +380,23 @@ export const reducer: ODSM.Reducer<Operation, State, SideEffect> = (oldState, op
 	}
 	const result = LL.ListSchema.safeParse(state.list)
 	if (!result.success) {
-		throw new ODSM.RejectedError<Rejection>({ code: 'invalid-list', error: result.error }, {
-			message: 'list failed schema validation',
-			cause: result.error,
-		})
+		throw new ODSM.RejectedError<Rejection>(
+			{ code: 'invalid-list', error: result.error },
+			{
+				message: 'list failed schema validation',
+				cause: result.error,
+			},
+		)
 	}
 	const savedResult = LL.ListSchema.safeParse(state.savedList)
 	if (!savedResult.success) {
-		throw new ODSM.RejectedError<Rejection>({ code: 'invalid-saved-list', error: savedResult.error }, {
-			message: 'savedList failed schema validation',
-			cause: savedResult.error,
-		})
+		throw new ODSM.RejectedError<Rejection>(
+			{ code: 'invalid-saved-list', error: savedResult.error },
+			{
+				message: 'savedList failed schema validation',
+				cause: savedResult.error,
+			},
+		)
 	}
 	emit({ code: 'complete', opId: ops.at(-1)?.opId ?? '' })
 	return [state, sideEffects]
@@ -454,12 +453,17 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 
 		case 'unshift-first-saved-layer': {
 			const prevList = Obj.deepClone(session.savedList)
-			LL.addItemsDeterministic(session.savedList, newOp.itemSource, { outerIndex: 0, innerIndex: null }, {
-				type: 'single-list-item',
-				itemId: newOp.itemId,
-				layerId: newOp.layerId,
-				source: newOp.itemSource,
-			})
+			LL.addItemsDeterministic(
+				session.savedList,
+				newOp.itemSource,
+				{ outerIndex: 0, innerIndex: null },
+				{
+					type: 'single-list-item',
+					itemId: newOp.itemId,
+					layerId: newOp.layerId,
+					source: newOp.itemSource,
+				},
+			)
 			saveList(session, newOp, session.savedList, onSideEffect, prevList)
 			break
 		}
@@ -476,7 +480,11 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		case 'add': {
 			const items = LL.withTagAttribution(newOp.items, source)
 			LL.addItemsDeterministic(list, source, newOp.index, ...items)
-			ItemMut.tryApplyMutation('added', items.map(item => item.itemId), mutations)
+			ItemMut.tryApplyMutation(
+				'added',
+				items.map((item) => item.itemId),
+				mutations,
+			)
 			if (source.type === 'manual') LL.changeGeneratedLayerAttributionInPlace(list, mutations, source.userId)
 			break
 		}
@@ -490,7 +498,11 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 						if (!LL.isVoteItem(item)) throw new Error('Expected parent vote item')
 						ItemMut.tryApplyMutation('edited', [item.itemId], mutations)
 						ItemMut.tryApplyMutation('added', [item.choices[0].itemId], mutations)
-						ItemMut.tryApplyMutation('moved', item.choices.slice(1).map(choice => choice.itemId), mutations)
+						ItemMut.tryApplyMutation(
+							'moved',
+							item.choices.slice(1).map((choice) => choice.itemId),
+							mutations,
+						)
 					}
 				} else {
 					ItemMut.tryApplyMutation('moved', [newOp.itemId], mutations)
@@ -662,13 +674,13 @@ export function isBackburnerOp(op: Operation): op is BackburnerOp {
 function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEffect?: ODSM.OnSideEffect<SideEffect>): boolean {
 	switch (newOp.op) {
 		case 'backburner-add': {
-			if (session.backburner.some(item => item.itemId === newOp.item.itemId)) break
+			if (session.backburner.some((item) => item.itemId === newOp.item.itemId)) break
 			session.backburner = [...session.backburner, newOp.item]
 			break
 		}
 
 		case 'backburner-update': {
-			const index = session.backburner.findIndex(item => item.itemId === newOp.itemId)
+			const index = session.backburner.findIndex((item) => item.itemId === newOp.itemId)
 			if (index === -1) break
 			const next = [...session.backburner]
 			next[index] = { ...next[index], filter: newOp.filter }
@@ -682,7 +694,7 @@ function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEff
 		}
 
 		case 'backburner-reorder': {
-			const index = session.backburner.findIndex(item => item.itemId === newOp.itemId)
+			const index = session.backburner.findIndex((item) => item.itemId === newOp.itemId)
 			if (index === -1) break
 			const next = [...session.backburner]
 			const [item] = next.splice(index, 1)
@@ -693,8 +705,8 @@ function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEff
 
 		case 'backburner-combine': {
 			if (newOp.targetItemId === newOp.sourceItemId) break
-			const targetIndex = session.backburner.findIndex(item => item.itemId === newOp.targetItemId)
-			const sourceIndex = session.backburner.findIndex(item => item.itemId === newOp.sourceItemId)
+			const targetIndex = session.backburner.findIndex((item) => item.itemId === newOp.targetItemId)
+			const sourceIndex = session.backburner.findIndex((item) => item.itemId === newOp.sourceItemId)
 			if (targetIndex === -1 || sourceIndex === -1) break
 			const target = session.backburner[targetIndex]
 			const source = session.backburner[sourceIndex]
@@ -715,7 +727,7 @@ function applyBackburnerOperation(session: State, newOp: BackburnerOp, onSideEff
 				switch (write.kind) {
 					case 'add': {
 						const without = BB.removeByIds(items, write.evictItemIds)
-						if (without.some(item => item.itemId === write.item.itemId)) return without
+						if (without.some((item) => item.itemId === write.item.itemId)) return without
 						return [...without, write.item]
 					}
 					case 'remove':

@@ -11,10 +11,13 @@ import { useShallow as useShallowImported } from 'zustand/react/shallow'
 
 // ripped from zustand types
 type Get<T, K, F> = K extends keyof T ? T[K] : F
-export type Mutate<S, Ms> = number extends Ms['length' & keyof Ms] ? S
-	: Ms extends [] ? S
-	: Ms extends [[infer Mi, infer Ma], ...infer Mrs] ? Mutate<StoreMutators<S, Ma>[Mi & StoreMutatorIdentifier], Mrs>
-	: never
+export type Mutate<S, Ms> = number extends Ms['length' & keyof Ms]
+	? S
+	: Ms extends []
+		? S
+		: Ms extends [[infer Mi, infer Ma], ...infer Mrs]
+			? Mutate<StoreMutators<S, Ma>[Mi & StoreMutatorIdentifier], Mrs>
+			: never
 
 export type Setter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'setState', never>
 export type Getter<T, Mis extends [StoreMutatorIdentifier, unknown][] = []> = Get<Mutate<StoreApi<T>, Mis>, 'getState', never>
@@ -30,17 +33,15 @@ export function toPartialSetter<T, K extends keyof T>(store: StoreApi<T>, key: K
 export function toPartialSetter<T, K extends keyof T>(set: Setter<T>, key: K): Setter<T[K]>
 export function toPartialSetter(a: StoreApi<any> | Setter<any>, key: any): any {
 	const set: Setter<any> = typeof a === 'function' ? a : a.setState
-	return ((partial: any, replace?: boolean) => {
+	return (partial: any, replace?: boolean) => {
 		set((state: any) => {
 			const prev = state[key]
 			const resolved = typeof partial === 'function' ? partial(prev) : partial
 			// merging only makes sense for plain objects -- spreading arrays/Maps/class instances would mangle them
-			const next = !replace && isPlainObject(prev) && isPlainObject(resolved)
-				? { ...prev, ...resolved }
-				: resolved
+			const next = !replace && isPlainObject(prev) && isPlainObject(resolved) ? { ...prev, ...resolved } : resolved
 			return { [key]: next }
 		})
-	})
+	}
 }
 
 // returns a getter scoped to property K of T
@@ -59,19 +60,26 @@ type MaybeInput = AnyInput<any> | null | undefined
 // synchronously readable + subscribable sources, i.e. what frame keys resolve to
 type SyncSource<T> = StoreApi<T> | StateObservable<T>
 type ResolvedInput<T> = SyncSource<T> | QuerySource<T>
-type InputState<S> = S extends null | undefined ? undefined
-	: S extends Readonly<{ _: infer FT extends FRM.FrameTypes }> ? FT['state']
-	: S extends StateObservable<infer T> ? T
-	: S extends StoreApi<infer T> ? T
-	: S extends QuerySource<infer T> ? T | undefined
-	: never
+type InputState<S> = S extends null | undefined
+	? undefined
+	: S extends Readonly<{ _: infer FT extends FRM.FrameTypes }>
+		? FT['state']
+		: S extends StateObservable<infer T>
+			? T
+			: S extends StoreApi<infer T>
+				? T
+				: S extends QuerySource<infer T>
+					? T | undefined
+					: never
 type InputStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
 // query sources are awaited rather than sampled, so they are never pending-undefined here
 type ResolvedState<S> = S extends QuerySource<infer T> ? T : InputState<S>
 type ResolvedStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: ResolvedState<Inputs[K]> }
 type IsQuery<T> = T extends { queryKey: unknown } ? true : false
 type HasQuery<Inputs extends readonly unknown[]> = Inputs extends readonly [infer H, ...infer R]
-	? IsQuery<H> extends true ? true : HasQuery<R>
+	? IsQuery<H> extends true
+		? true
+		: HasQuery<R>
 	: false
 type Returns<Inputs extends MaybeInput[], R> = HasQuery<Inputs> extends true ? Promise<R> : R
 
@@ -144,37 +152,35 @@ function subscribe(s: AnyStore<any> | null, update: () => void): () => void {
 
 // any query source among the inputs makes the return a promise. see docs/architecture.md
 export function getState<I extends MaybeInput>(source: I): Returns<[I], ResolvedState<I>>
-export function getState<Inputs extends MaybeInput[], R>(
-	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]
-): Returns<Inputs, R>
+export function getState<Inputs extends MaybeInput[], R>(...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]): Returns<Inputs, R>
 export function getState<Inputs extends MaybeInput[]>(...inputs: Inputs): Returns<Inputs, ResolvedStates<Inputs>>
 export function getState(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
 	// relies on sources being createStore StoreApis rather than callable create() hooks, which would also be functions
 	const hasSelector = typeof args[args.length - 1] === 'function'
 	const inputs = (hasSelector ? args.slice(0, -1) : args) as MaybeInput[]
-	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
+	const selector = hasSelector ? (args[args.length - 1] as (...states: any[]) => any) : undefined
 
 	const sample = (input: MaybeInput) => getSourceState(resolveInput(input) as SyncSource<any> | null)
-	const finish = (states: any[]) => selector ? selector(...states) : states.length === 1 ? states[0] : states
+	const finish = (states: any[]) => (selector ? selector(...states) : states.length === 1 ? states[0] : states)
 
 	if (!inputs.some(isQuerySource)) return finish(inputs.map(sample))
 
 	const client = requireQueryClient()
 	// ensureQueryData serves cached data and fetches only when absent, matching what useQueries does on mount;
 	// fetchQuery would refetch every time
-	return Promise.all(inputs.filter(isQuerySource).map(query => client.ensureQueryData(query as any)))
-		// sync sources are sampled after the await, so the selector sees the most coherent snapshot available at
-		// the moment it computes. a frame key torn down mid-flight rejects here rather than reading a stale instance
-		.then(resolved => {
-			let qIdx = 0
-			return finish(inputs.map(input => isQuerySource(input) ? resolved[qIdx++] : sample(input)))
-		})
+	return (
+		Promise.all(inputs.filter(isQuerySource).map((query) => client.ensureQueryData(query as any)))
+			// sync sources are sampled after the await, so the selector sees the most coherent snapshot available at
+			// the moment it computes. a frame key torn down mid-flight rejects here rather than reading a stale instance
+			.then((resolved) => {
+				let qIdx = 0
+				return finish(inputs.map((input) => (isQuerySource(input) ? resolved[qIdx++] : sample(input))))
+			})
+	)
 }
 
 export function useStore<I extends MaybeInput>(store: I): InputState<I>
-export function useStore<Inputs extends MaybeInput[], R>(
-	...args: [...Inputs, (...states: InputStates<Inputs>) => R]
-): R
+export function useStore<Inputs extends MaybeInput[], R>(...args: [...Inputs, (...states: InputStates<Inputs>) => R]): R
 export function useStore<Inputs extends MaybeInput[]>(...inputs: Inputs): InputStates<Inputs>
 export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
 	return useStoreImpl(args, false)
@@ -182,9 +188,7 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 
 // useStore, but suspends until every query source has resolved, so the selector never sees a pending `undefined`
 export function useStore_Susp<I extends MaybeInput>(store: I): ResolvedState<I>
-export function useStore_Susp<Inputs extends MaybeInput[], R>(
-	...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]
-): R
+export function useStore_Susp<Inputs extends MaybeInput[], R>(...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]): R
 export function useStore_Susp<Inputs extends MaybeInput[]>(...inputs: Inputs): ResolvedStates<Inputs>
 export function useStore_Susp(...args: (MaybeInput | ((...states: any[]) => any))[]): any {
 	return useStoreImpl(args, true)
@@ -194,7 +198,7 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 	const hasSelector = typeof args[args.length - 1] === 'function'
 	// nullish inputs stay in the array as placeholders so hook/effect-dep counts are stable across renders
 	const allInputs = ((hasSelector ? args.slice(0, -1) : args) as MaybeInput[]).map(resolveInput)
-	const selector = hasSelector ? args[args.length - 1] as (...states: any[]) => any : undefined
+	const selector = hasSelector ? (args[args.length - 1] as (...states: any[]) => any) : undefined
 
 	const regularSources = allInputs.filter((s): s is SyncSource<any> | null => !isQuerySource(s))
 	const querySources = allInputs.filter(isQuerySource)
@@ -204,18 +208,19 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 	const queryCount = React.useRef(querySources.length)
 	if (queryCount.current !== querySources.length) {
 		throw new Error(
-			`useStore was called with ${querySources.length} query sources after ${queryCount.current} on a previous render. `
-				+ 'The number of query sources passed to a given useStore call must not change across renders; '
-				+ "pass a stable set and use the query's own `enabled` option to make one inert.",
+			`useStore was called with ${querySources.length} query sources after ${queryCount.current} on a previous render. ` +
+				'The number of query sources passed to a given useStore call must not change across renders; ' +
+				"pass a stable set and use the query's own `enabled` option to make one inert.",
 		)
 	}
 	// suspend is fixed per call site (useStore vs useStore_Susp), so the branch taken here is stable per component
 	/* eslint-disable react-hooks/rules-of-hooks */
-	const queryResults = querySources.length === 0
-		? NO_QUERIES
-		: suspend
-		? useSuspenseQueries({ queries: querySources as any[] })
-		: useQueries({ queries: querySources })
+	const queryResults =
+		querySources.length === 0
+			? NO_QUERIES
+			: suspend
+				? useSuspenseQueries({ queries: querySources as any[] })
+				: useQueries({ queries: querySources })
 	/* eslint-enable react-hooks/rules-of-hooks */
 
 	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
@@ -224,13 +229,15 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 	// prop change that no source emitted for
 	const getSnapshot = () => {
 		let qIdx = 0
-		const states = allInputs.map(input =>
-			isQuerySource(input) ? queryResults[qIdx++]?.data : getSourceState(input as SyncSource<any> | null)
+		const states = allInputs.map((input) =>
+			isQuerySource(input) ? queryResults[qIdx++]?.data : getSourceState(input as SyncSource<any> | null),
 		)
 		const prev = cache.current
 		if (
-			prev && prev.selector === selector && prev.states.length === states.length
-			&& prev.states.every((v, i) => Object.is(v, states[i]))
+			prev &&
+			prev.selector === selector &&
+			prev.states.length === states.length &&
+			prev.states.every((v, i) => Object.is(v, states[i]))
 		) {
 			return prev.value
 		}
@@ -241,8 +248,8 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 
 	const subscribeAll = React.useCallback(
 		(onChange: () => void) => {
-			const unsubs = regularSources.map(s => subscribe(s as any, onChange))
-			return () => unsubs.forEach(unsub => unsub())
+			const unsubs = regularSources.map((s) => subscribe(s as any, onChange))
+			return () => unsubs.forEach((unsub) => unsub())
 		},
 		// query data flows in through getSnapshot, so only the sources force a resubscribe
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,17 +310,20 @@ export function toRxSub(unsub: UnsubscribeFn) {
 export const useShallow = useShallowImported
 export function useDeep<S, U>(selector: (state: S) => U): (state: S) => U {
 	const prev = React.useRef<U | undefined>(void 0)
-	return React.useCallback((state: S) => {
-		const next = selector(state)
-		return Obj.deepEqual(prev.current, next) ? (prev.current as U) : prev.current = next
-	}, [selector])
+	return React.useCallback(
+		(state: S) => {
+			const next = selector(state)
+			return Obj.deepEqual(prev.current, next) ? (prev.current as U) : (prev.current = next)
+		},
+		[selector],
+	)
 }
 
 export function toObservable<S extends NonNullable<object>, EmitCurrent extends boolean | undefined>(
 	store: AnyStore<S>,
 	emitCurrent?: EmitCurrent,
 ): Rx.Observable<[S, EmitCurrent extends true ? S | null : S]> {
-	return new Rx.Observable(subscriber => {
+	return new Rx.Observable((subscriber) => {
 		// prev starts at the state as of subscription so the first update carries a real previous value
 		let prev: S = getState(store)
 		if (emitCurrent) subscriber.next([prev, null as any])

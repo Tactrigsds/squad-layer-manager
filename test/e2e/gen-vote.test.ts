@@ -50,16 +50,19 @@ test.describe('generating a vote', () => {
 			await expect(voteItem.getByRole('listitem')).toHaveCount(3)
 
 			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
-			const saved = await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
-					const list = JSON.parse(row.layerQueue).json as { layerId?: string; choices?: unknown[] }[]
-					return list.length === 2 && list[0].choices?.length === 3 ? list : null
-				} finally {
-					db.close()
-				}
-			}, { label: 'saved queue with the generated vote' })
+			const saved = await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId?: string; choices?: unknown[] }[]
+						return list.length === 2 && list[0].choices?.length === 3 ? list : null
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'saved queue with the generated vote' },
+			)
 			expect(saved[1].layerId).toBe(LAYERS.harjuRaas)
 		} finally {
 			await app.dispose()

@@ -56,10 +56,10 @@ describe('teamswaps', () => {
 		app.emu.world.chat(admin, 'ChatAdmin', '!swapnext swap_later')
 
 		// the app acknowledges the request to the admin, but leaves the player where they are
-		await app.waitFor(
-			() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)),
-			{ label: 'acknowledgement to the admin', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)), {
+			label: 'acknowledgement to the admin',
+			timeoutMs: 20_000,
+		})
 		expect(forceChangesFor(held.eos)).toHaveLength(0)
 		expect(held.teamId).toBe(2)
 

@@ -125,7 +125,7 @@ function ResetSessionButton({ clientId }: { clientId: string }) {
 // spread so it can be a Radix TooltipTrigger `asChild` target.
 const PresenceAvatar = React.forwardRef<
 	HTMLSpanElement,
-	& {
+	{
 		user: USR.User
 		presence: UP.ClientPresence
 		size: string
@@ -134,8 +134,7 @@ const PresenceAvatar = React.forwardRef<
 		badgeCurrent?: boolean
 		avatarClassName?: string
 		fallbackClassName?: string
-	}
-	& React.HTMLAttributes<HTMLSpanElement>
+	} & React.HTMLAttributes<HTMLSpanElement>
 >(function PresenceAvatar({ user, presence, size, badge, badgeCurrent, avatarClassName, fallbackClassName, ...rest }, ref) {
 	const interrupted = presence.connectionState === 'connection-interrupted'
 	return (
@@ -182,35 +181,34 @@ export type UserPresencePanelProps = {
 }
 
 export default function UserPresencePanel(props: UserPresencePanelProps) {
-	const layerList = ZusUtils.useStore(
-		props.stores?.squadServer ?? null,
-		state => state ? LayerQueuePrt.Sel.layerList(state) : [],
-	)
+	const layerList = ZusUtils.useStore(props.stores?.squadServer ?? null, (state) => (state ? LayerQueuePrt.Sel.layerList(state) : []))
 
 	// per-client (not deduped by user): each of a user's tabs/devices shows separately
 	const matchingClientPresence = ZusUtils.useStore(
 		UPClient.Store,
-		ZusUtils.useDeep(state =>
-			MapUtils.filter(state.presence, (_clientId, presence) => props.matchActivity ? props.matchActivity(presence.activityState) : true)
+		ZusUtils.useDeep((state) =>
+			MapUtils.filter(state.presence, (_clientId, presence) =>
+				props.matchActivity ? props.matchActivity(presence.activityState) : true,
+			),
 		),
 	)
-	const myClientId = ZusUtils.useStore(ConfigClient.Store, config => config?.wsClientId)
+	const myClientId = ZusUtils.useStore(ConfigClient.Store, (config) => config?.wsClientId)
 
-	const allUserIds = new Set(Array.from(matchingClientPresence.values(), p => p.userId))
+	const allUserIds = new Set(Array.from(matchingClientPresence.values(), (p) => p.userId))
 
 	// -------- Track temporary event text for users (e.g., "Finished editing") --------
 	const [userEventText, setUserEventText] = React.useState<Map<bigint, string>>(new Map())
 	const eventTextTimeouts = React.useRef<Map<bigint, ReturnType<typeof setTimeout>>>(new Map())
 
 	const showEventText = React.useCallback((userId: bigint, message: string) => {
-		setUserEventText(prev => new Map(prev).set(userId, message))
+		setUserEventText((prev) => new Map(prev).set(userId, message))
 		const existingTimeout = eventTextTimeouts.current.get(userId)
 		if (existingTimeout) {
 			clearTimeout(existingTimeout)
 		}
 		const timeout = setTimeout(() => {
 			eventTextTimeouts.current.delete(userId)
-			setUserEventText(prev => {
+			setUserEventText((prev) => {
 				const next = new Map(prev)
 				next.delete(userId)
 				return next
@@ -221,7 +219,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	React.useEffect(() => {
 		if (!props.event$) return
-		const sub = props.event$.subscribe(event => {
+		const sub = props.event$.subscribe((event) => {
 			showEventText(event.userId, UP.PRESENCE_EVENT_TEXT[event.action])
 		})
 		return () => sub.unsubscribe()
@@ -282,7 +280,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	// Create a map of users by their discordId for quick lookup
 	const userMap = React.useMemo(() => {
 		const map = new Map<bigint, USR.User>()
-		users.forEach(user => {
+		users.forEach((user) => {
 			map.set(user.discordId, user)
 		})
 		return map
@@ -291,23 +289,21 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	// Sort clients based on presence priority
 	const sortedClientPresence = React.useMemo(() => {
 		const oldestLastSeenToDisplay = Date.now() - UP.DISPLAYED_AWAY_PRESENCE_WINDOW
-		const clientList = Array.from(matchingClientPresence.entries()).map(([clientId, presence]) => {
-			const user = userMap.get(presence.userId)
-			return user ? { clientId, user, presence } : null
-		}).filter((item): item is { clientId: string; user: USR.User; presence: UP.ClientPresence } => {
-			if (!item) return false
-			// Only show clients that are not away, or that have been seen in the last 5 minutes
-			if (!item.presence.away) return true
-			if (!item.presence.lastSeen) return false
-			return item.presence.lastSeen > oldestLastSeenToDisplay
-		})
+		const clientList = Array.from(matchingClientPresence.entries())
+			.map(([clientId, presence]) => {
+				const user = userMap.get(presence.userId)
+				return user ? { clientId, user, presence } : null
+			})
+			.filter((item): item is { clientId: string; user: USR.User; presence: UP.ClientPresence } => {
+				if (!item) return false
+				// Only show clients that are not away, or that have been seen in the last 5 minutes
+				if (!item.presence.away) return true
+				if (!item.presence.lastSeen) return false
+				return item.presence.lastSeen > oldestLastSeenToDisplay
+			})
 
 		return props.sourcePresenceFn ? clientList.sort(props.sourcePresenceFn) : clientList
-	}, [
-		matchingClientPresence,
-		userMap,
-		props.sourcePresenceFn,
-	])
+	}, [matchingClientPresence, userMap, props.sourcePresenceFn])
 
 	// publish the clients this panel is showing to the shared registry, and read back the count of each
 	// user's clients across ALL panels -- a user with more than one visible (even split across panels)
@@ -365,15 +361,10 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			}
 		}
 		return result
-	}, [
-		sortedClientPresence,
-		userEventText,
-		layerList,
-		props,
-	])
+	}, [sortedClientPresence, userEventText, layerList, props])
 
 	const actionCount = React.useMemo(() => {
-		return groupedPresence.reduce((count, group) => count + group.entries.filter(e => e.activityText !== null).length, 0)
+		return groupedPresence.reduce((count, group) => count + group.entries.filter((e) => e.activityText !== null).length, 0)
 	}, [groupedPresence])
 
 	// -------- Compact mode: switch when content overflows the container --------
@@ -428,8 +419,9 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 								{sortedClientPresence.map((entry) => {
 									const { clientId, user, presence } = entry
 									const eventText = userEventText.get(user.discordId)
-									const activityText = eventText
-										?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+									const activityText =
+										eventText ??
+										(presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
 									return (
 										<div key={clientId} className="flex items-center gap-2">
 											<PresenceAvatar
@@ -448,7 +440,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
-														Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+														Last seen{' '}
+														{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 													</span>
 												)}
 												{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -484,8 +477,12 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 													<Tooltip key={clientId} delayDuration={0}>
 														<TooltipTrigger asChild>
 															<PresenceAvatar
-																onMouseOver={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, true)}
-																onMouseOut={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, false)}
+																onMouseOver={() =>
+																	UPClient.Actions.setHoveredActivityUserId(user.discordId, true)
+																}
+																onMouseOut={() =>
+																	UPClient.Actions.setHoveredActivityUserId(user.discordId, false)
+																}
 																user={user}
 																presence={presence}
 																badge={badgeFor(entry)}
@@ -498,11 +495,15 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 														<TooltipContent>
 															<div className="text-center">
 																<div className="font-medium">
-																	{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}
+																	{user.displayName}{' '}
+																	{loggedInUser?.discordId === user.discordId ? '(You)' : ''}
 																</div>
 																{presence.away && presence.lastSeen && (
 																	<div className="text-xs mt-1">
-																		Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+																		Last seen{' '}
+																		{DateFns.formatDistanceToNow(new Date(presence.lastSeen), {
+																			addSuffix: true,
+																		})}
 																	</div>
 																)}
 																{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -512,9 +513,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 												)
 											})}
 										</div>
-										<span className="text-xs font-medium whitespace-nowrap">
-											{group.activityText}
-										</span>
+										<span className="text-xs font-medium whitespace-nowrap">{group.activityText}</span>
 									</div>
 								</div>
 							)
@@ -548,19 +547,20 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											</div>
 											{activityText && (
 												<span className="activity-text">
-													<span className="text-xs font-medium whitespace-nowrap">
-														{activityText}
-													</span>
+													<span className="text-xs font-medium whitespace-nowrap">{activityText}</span>
 												</span>
 											)}
 										</div>
 									</TooltipTrigger>
 									<TooltipContent>
 										<div className="text-center">
-											<div className="font-medium">{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}</div>
+											<div className="font-medium">
+												{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}
+											</div>
 											{presence.away && presence.lastSeen && (
 												<div className="text-xs mt-1">
-													Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+													Last seen{' '}
+													{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 												</div>
 											)}
 											{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}

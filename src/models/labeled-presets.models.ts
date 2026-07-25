@@ -9,18 +9,18 @@ import { z } from 'zod'
 
 export const LabeledPresetSchema = z.object({
 	label: z.string().trim().min(1).max(60).describe('Short name shown in menus and the audit log'),
-	keywords: z.array(BasicStrNoWhitespace).min(1).describe(
-		'What admins type to select this preset in in-game chat commands. At least one is required, and none may contain whitespace.',
-	),
+	keywords: z
+		.array(BasicStrNoWhitespace)
+		.min(1)
+		.describe(
+			'What admins type to select this preset in in-game chat commands. At least one is required, and none may contain whitespace.',
+		),
 })
 export type LabeledPreset = z.infer<typeof LabeledPresetSchema>
 
 // labels unique and keywords unique across all presets, all case-insensitive. A keyword equal to its own preset's
 // label is unremarkable (labels aren't matched in chat), so only keyword-vs-keyword collisions are ambiguous.
-export function addLabelKeywordUniquenessIssues(
-	presets: Pick<LabeledPreset, 'label' | 'keywords'>[],
-	ctx: z.core.$RefinementCtx,
-): void {
+export function addLabelKeywordUniquenessIssues(presets: Pick<LabeledPreset, 'label' | 'keywords'>[], ctx: z.core.$RefinementCtx): void {
 	const seenLabels = new Set<string>()
 	const seenKeywords = new Set<string>()
 	presets.forEach((preset, i) => {
@@ -59,7 +59,10 @@ export function keywordStrings(presets: { keywords: string[] }[]): string[] {
 // the keyword a label seeds when the operator hasn't typed one: lowercased, with runs of anything that isn't a
 // letter/digit collapsed to a dash, so it is always a valid (whitespace-free) keyword.
 export function keywordFromLabel(label: string): string {
-	return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+	return label
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
 }
 
 // how a preset reads wherever its typeable form has to be advertised (in-game help, error hints): its label, plus

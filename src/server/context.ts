@@ -51,10 +51,7 @@ export type OtelCtx = CS.Ctx & {
 }
 
 // overrwrites other stored links
-export function storeLinkToActiveSpan<T extends CS.Ctx>(
-	ctx: T,
-	type: ATTR.SpanLink.SourceType,
-): T & OtelCtx {
+export function storeLinkToActiveSpan<T extends CS.Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & OtelCtx {
 	const link = buildSourceLinkToActiveSpan(type)
 	return {
 		...ctx,
@@ -64,9 +61,7 @@ export function storeLinkToActiveSpan<T extends CS.Ctx>(
 	}
 }
 
-export function buildSourceLinkToActiveSpan(
-	type: ATTR.SpanLink.SourceType,
-): Otel.Link | undefined {
+export function buildSourceLinkToActiveSpan(type: ATTR.SpanLink.SourceType): Otel.Link | undefined {
 	const activeSpan = Otel.trace.getActiveSpan()
 	if (!activeSpan) return
 	return {
@@ -82,10 +77,7 @@ function flushOtelLinksInPlace(ctx: OtelCtx) {
 }
 
 // LRU map in case of leaks
-const spanStatusMap = new LRUMap<
-	string,
-	{ code: Otel.SpanStatusCode; message?: string }
->(500)
+const spanStatusMap = new LRUMap<string, { code: Otel.SpanStatusCode; message?: string }>(500)
 
 // Every op records here, which is what turns the spans we already emit into rate/error/duration
 // without needing a spanmetrics connector in the collector. Lazily resolved: the global meter provider
@@ -122,9 +114,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 			valueError?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
 		}
 		root?: boolean
-		attrs?:
-			| Record<string, any>
-			| ((...args: Parameters<Cb>) => Record<string, any>)
+		attrs?: Record<string, any> | ((...args: Parameters<Cb>) => Record<string, any>)
 		extraText?: (...args: Parameters<Cb>) => string
 		mutexes?: (...args: Parameters<Cb>) => MutexInterface[] | MutexInterface
 	},
@@ -161,12 +151,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				for (const link of flushOtelLinksInPlace(ctx as OtelCtx)) {
 					const source = link.attributes?.[ATTR.SpanLink.SOURCE]
 					// explicitly included links take precedence
-					if (
-						source
-						&& links.some(
-							(l) => link!.attributes?.[ATTR.SpanLink.SOURCE] == source,
-						)
-					) {
+					if (source && links.some((l) => link!.attributes?.[ATTR.SpanLink.SOURCE] == source)) {
 						continue
 					}
 					links.push(link)
@@ -225,103 +210,86 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		}
 
 		const tracer = opts.module.tracer
-		return await tracer.startActiveSpan(
-			fullName,
-			{ root: opts.root, links, kind: opts.kind },
-			spanContext,
-			async (span) => {
-				// Set all collected attributes on the span
-				if (Object.keys(spanAttrs).length > 0) {
-					setSpanOpAttrs(spanAttrs)
+		return await tracer.startActiveSpan(fullName, { root: opts.root, links, kind: opts.kind }, spanContext, async (span) => {
+			// Set all collected attributes on the span
+			if (Object.keys(spanAttrs).length > 0) {
+				setSpanOpAttrs(spanAttrs)
+			}
+
+			let log = opts.module?.getLogger() ?? baseLogger
+
+			const resolveLevel = (
+				level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined,
+				fallback: Pino.Level,
+			): Pino.Level => (typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback))
+
+			const extraText = opts.extraText ? `${opts.extraText(...(args as Parameters<Cb>))} ` : ''
+			const startedAt = performance.now()
+			let metricOutcome: ATTR.Op.Outcome = 'ok'
+			try {
+				const result = await withAcquired(opts.mutexes ?? (() => []), cb as Cb)(...(args as Parameters<Cb>))
+				let statusString: string | undefined
+				// a returned `err:*` code. Captured rather than logged here so the op produces exactly one
+				// record: it used to emit an `OP : ... : value-error : <msg>` line and then fall through
+				// and emit an `op : ... : <code>` line for the same failure.
+				let valueError: { message: string; cause?: unknown } | undefined
+				if (result !== null && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
+					statusString = result.code
+					if (result.code === 'ok') {
+						setSpanStatus(Otel.SpanStatusCode.OK)
+					} else if (result.code.includes('err')) {
+						const message = result.msg ? `${result.code}: ${result.msg}` : result.code
+						valueError = { message, cause: result.error || result.err }
+						setSpanStatus(Otel.SpanStatusCode.ERROR, message)
+					}
 				}
-
-				let log = opts.module?.getLogger() ?? baseLogger
-
-				const resolveLevel = (
-					level: Pino.Level | ((...a: Parameters<Cb>) => Pino.Level) | undefined,
-					fallback: Pino.Level,
-				): Pino.Level => typeof level === 'function' ? level(...(args as Parameters<Cb>)) : (level ?? fallback)
-
-				const extraText = opts.extraText
-					? `${opts.extraText(...(args as Parameters<Cb>))} `
-					: ''
-				const startedAt = performance.now()
-				let metricOutcome: ATTR.Op.Outcome = 'ok'
-				try {
-					const result = await withAcquired(
-						opts.mutexes ?? (() => []),
-						cb as Cb,
-					)(...(args as Parameters<Cb>))
-					let statusString: string | undefined
-					// a returned `err:*` code. Captured rather than logged here so the op produces exactly one
-					// record: it used to emit an `OP : ... : value-error : <msg>` line and then fall through
-					// and emit an `op : ... : <code>` line for the same failure.
-					let valueError: { message: string; cause?: unknown } | undefined
-					if (
-						result !== null
-						&& typeof result === 'object'
-						&& 'code' in result
-						&& typeof result.code === 'string'
-					) {
-						statusString = result.code
-						if (result.code === 'ok') {
-							setSpanStatus(Otel.SpanStatusCode.OK)
-						} else if (result.code.includes('err')) {
-							const message = result.msg
-								? `${result.code}: ${result.msg}`
-								: result.code
-							valueError = { message, cause: result.error || result.err }
-							setSpanStatus(Otel.SpanStatusCode.ERROR, message)
-						}
-					}
-					let spanStatus = spanStatusMap.get(span.spanContext().spanId)
-					if (!spanStatus) {
-						spanStatus = { code: Otel.SpanStatusCode.OK }
-						span.setStatus({ code: Otel.SpanStatusCode.OK })
-					}
-					const isError = spanStatus.code === Otel.SpanStatusCode.ERROR
-					metricOutcome = valueError ? 'value-error' : isError ? 'error' : 'ok'
-					const logLevel = valueError
-						? resolveLevel(opts.levels?.valueError, 'warn')
-						: isError
+				let spanStatus = spanStatusMap.get(span.spanContext().spanId)
+				if (!spanStatus) {
+					spanStatus = { code: Otel.SpanStatusCode.OK }
+					span.setStatus({ code: Otel.SpanStatusCode.OK })
+				}
+				const isError = spanStatus.code === Otel.SpanStatusCode.ERROR
+				metricOutcome = valueError ? 'value-error' : isError ? 'error' : 'ok'
+				const logLevel = valueError
+					? resolveLevel(opts.levels?.valueError, 'warn')
+					: isError
 						? resolveLevel(opts.levels?.error, 'warn')
 						: resolveLevel(opts.levels?.event, 'debug')
-					statusString ??= isError ? (spanStatus?.message ?? 'error') : 'ok'
-					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-					// the value-error message carries the code plus its detail, so prefer it over the bare code
-					const outcome = valueError?.message ?? statusString
-					const opMsg = `op : ${fullName}${extraTextPart} : ${outcome}`
-					if (valueError?.cause) {
-						log?.[logLevel](valueError.cause as Error, opMsg)
-					} else {
-						log?.[logLevel](opMsg)
-					}
-					return result as Awaited<ReturnType<Cb>>
-				} catch (error) {
-					const message = recordGenericError(error)
-					const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
-					metricOutcome = isAbortError(error) ? 'aborted' : 'error'
-					if (isAbortError(error)) {
-						// expected cancellation (request dropped, slice destroyed, shutdown) -- not a failure
-						log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
-					} else if (error instanceof Error) {
-						log?.error(error, `${name}${extraTextPart} : error: ${message}`)
-					} else {
-						log?.error(`${name}${extraTextPart} : error: ${message}`)
-					}
-					throw error
-				} finally {
-					getOpDurationHistogram().record((performance.now() - startedAt) / 1000, {
-						[ATTR.Op.NAME]: fullName,
-						[ATTR.Op.OUTCOME]: metricOutcome,
-						// already resolved from ctx by CONTEXT_ATTR_MAPPING above; bounded by the number of servers
-						...(spanAttrs[ATTR.SquadServer.ID] ? { [ATTR.SquadServer.ID]: spanAttrs[ATTR.SquadServer.ID] } : {}),
-					})
-					spanStatusMap.delete(span.spanContext().spanId)
-					span.end()
+				statusString ??= isError ? (spanStatus?.message ?? 'error') : 'ok'
+				const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
+				// the value-error message carries the code plus its detail, so prefer it over the bare code
+				const outcome = valueError?.message ?? statusString
+				const opMsg = `op : ${fullName}${extraTextPart} : ${outcome}`
+				if (valueError?.cause) {
+					log?.[logLevel](valueError.cause as Error, opMsg)
+				} else {
+					log?.[logLevel](opMsg)
 				}
-			},
-		)
+				return result as Awaited<ReturnType<Cb>>
+			} catch (error) {
+				const message = recordGenericError(error)
+				const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
+				metricOutcome = isAbortError(error) ? 'aborted' : 'error'
+				if (isAbortError(error)) {
+					// expected cancellation (request dropped, slice destroyed, shutdown) -- not a failure
+					log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
+				} else if (error instanceof Error) {
+					log?.error(error, `${name}${extraTextPart} : error: ${message}`)
+				} else {
+					log?.error(`${name}${extraTextPart} : error: ${message}`)
+				}
+				throw error
+			} finally {
+				getOpDurationHistogram().record((performance.now() - startedAt) / 1000, {
+					[ATTR.Op.NAME]: fullName,
+					[ATTR.Op.OUTCOME]: metricOutcome,
+					// already resolved from ctx by CONTEXT_ATTR_MAPPING above; bounded by the number of servers
+					...(spanAttrs[ATTR.SquadServer.ID] ? { [ATTR.SquadServer.ID]: spanAttrs[ATTR.SquadServer.ID] } : {}),
+				})
+				spanStatusMap.delete(span.spanContext().spanId)
+				span.end()
+			}
+		})
 	}
 }
 
@@ -391,13 +359,10 @@ export function initMutexStore<Ctx extends object>(ctx?: Ctx): Ctx {
 export type ResolvedRoute = CS.Ctx & { route: AR.ResolvedRoute }
 
 // could also be ws upgrade
-export type FastifyRequest =
-	& CS.Ctx
-	& {
-		req: Fastify.FastifyRequest
-		cookies: AR.Cookies
-	}
-	& Partial<ResolvedRoute>
+export type FastifyRequest = CS.Ctx & {
+	req: Fastify.FastifyRequest
+	cookies: AR.Cookies
+} & Partial<ResolvedRoute>
 
 export type FastifyRequestFull = FastifyRequest & AttachedFastify
 
@@ -444,23 +409,13 @@ export type AuthedUser = User & AuthSession
 
 export type AttachedFastify = Db & Partial<ResolvedRoute> & CS.AbortSignal
 export type Websocket = CS.Ctx & { ws: ws.WebSocket }
-export type OrpcSessionBase =
-	& CS.Ctx
-	& AuthedUser
-	& WSSession
-	& Websocket
-	& FastifyRequest
-	& Db
+export type OrpcSessionBase = CS.Ctx & AuthedUser & WSSession & Websocket & FastifyRequest & Db
 
-export type OrpcBase =
-	& OrpcSessionBase
-	& CS.AbortSignal
+export type OrpcBase = OrpcSessionBase & CS.AbortSignal
 
 export type AsyncResourceInvocation = CS.Ctx & {
 	resOpts: AsyncResourceInvocationOpts
-	refetch: (
-		...args: ConstructorParameters<typeof ImmediateRefetchError>
-	) => ImmediateRefetchError
+	refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => ImmediateRefetchError
 }
 
 export type Rcon = CS.Ctx & {
@@ -489,18 +444,13 @@ export type MatchEventsCache = CS.Ctx & {
 	matchEventsCache: MatchEventsCacheSys.MatchEventsCacheContext
 } & ServerId
 
-export type SquadServer =
-	& CS.Ctx
-	& { server: SquadServerSys.SquadServer }
-	& ServerId
+export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & ServerId
 
 export type Teamswap = CS.Ctx & {
 	teamswaps: TeamswapSys.TeamswapContext
 } & ServerId
 
-export type UserPresence =
-	& CS.Ctx
-	& UserPresenceSys.UserPresenceContext
+export type UserPresence = CS.Ctx & UserPresenceSys.UserPresenceContext
 
 export type ServerSettings = CS.Ctx & {
 	serverSettings: SettingsSys.ServerSettingsSlice
@@ -509,19 +459,18 @@ export type ServerSettings = CS.Ctx & {
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
 }
-export type ServerSlice =
-	& CS.Ctx
-	& SquadRcon
-	& SquadServer
-	& Vote
-	& LayerQueue
-	& MatchHistory
-	& MatchEventsCache
-	& Teamswap
-	& ServerSettings
-	& ServerSliceCleanup
+export type ServerSlice = CS.Ctx &
+	SquadRcon &
+	SquadServer &
+	Vote &
+	LayerQueue &
+	MatchHistory &
+	MatchEventsCache &
+	Teamswap &
+	ServerSettings &
+	ServerSliceCleanup &
 	// aborts when the slice is destroyed or the process shuts down
-	& CS.AbortSignal
+	CS.AbortSignal
 
 /**
  * Creates an operator that wraps an observable with retry logic and additional trace context.

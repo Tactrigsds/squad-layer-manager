@@ -64,7 +64,7 @@ export function build(target: Target): string {
 		const rendered = Object.entries(group as Record<string, z.ZodType>)
 			.filter(([, schema]) => target.contents === 'all' || Env.isSecret(schema) === (target.contents === 'secrets'))
 			.map(([name, schema]) => renderVar(name, schema, target.audience))
-			.filter(v => v !== undefined)
+			.filter((v) => v !== undefined)
 		if (rendered.length === 0) continue
 
 		const meta = Env.groupMeta[groupName as keyof typeof Env.groups]
