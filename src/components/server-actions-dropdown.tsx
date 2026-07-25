@@ -13,9 +13,13 @@ import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as SandboxClient from '@/systems/sandbox.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import { useMutation } from '@tanstack/react-query'
+import { useOpenSandboxControlWindow } from './sandbox-control-window.helpers'
+
+void import('@/components/sandbox-control-window')
 
 // Permission checks gate these menu items, so a denial at call time is a race. Surface it the same
 // way handlePermissionDenied would (refresh perms + user-facing message), but as a thrown error so a
@@ -49,7 +53,7 @@ export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp 
 }
 
 export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp; slots: MenuSlots }) {
-	const { Item } = props.slots
+	const { Item, Separator } = props.slots
 	const stores = props.stores
 	const serverId = stores.squadServer!.serverId
 	const playerCount = ZusUtils.useStore(
@@ -67,6 +71,10 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	const openDialog = useAlertDialog()
+	// only servers SLM emulates itself come back here, so this is both "is a sandbox" and "may drive it"
+	const sandboxServersRes = SandboxClient.useSandboxServers()
+	const isSandbox = !!sandboxServersRes.data?.includes(serverId)
+	const openSandboxWindow = useOpenSandboxControlWindow({ serverId })
 
 	function disableFogOfWar() {
 		toast.promise(
@@ -169,6 +177,12 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					Disable Fog Of War
 				</Item>
 			</PermissionDeniedTooltip>
+			{isSandbox && (
+				<>
+					<Separator />
+					<Item onClick={() => openSandboxWindow()}>Sandbox Controls</Item>
+				</>
+			)}
 		</>
 	)
 }

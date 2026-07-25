@@ -1,6 +1,14 @@
 import { z } from 'zod'
 
-export const WINDOW_ID = z.enum(['player-details', 'layer-info', 'squad-details', 'teamswaps-help', 'timeouts', 'pool-config'])
+export const WINDOW_ID = z.enum([
+	'player-details',
+	'layer-info',
+	'squad-details',
+	'teamswaps-help',
+	'timeouts',
+	'pool-config',
+	'sandbox-control',
+])
 
 export type WindowId = z.infer<typeof WINDOW_ID>
 
