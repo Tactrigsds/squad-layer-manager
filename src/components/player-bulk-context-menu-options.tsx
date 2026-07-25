@@ -48,16 +48,16 @@ export default function PlayerBulkContextMenuOptions(
 	const closeDialog = useCloseAlertDialog()
 
 	const removePlayersFromSquadMutation = SquadServerClient.useRemovePlayersFromSquadMutation()
+	const serverId = stores.squadServer.serverId
 	const killMutation = SquadServerClient.useKillMutation()
 	const kickMutation = SquadServerClient.useKickPlayersMutation()
 	const timeoutMutation = TimeoutsClient.useTimeoutPlayerMutation()
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
-	const maxTimeout = TimeoutsClient.useMaxTimeout()
+	const maxTimeout = TimeoutsClient.useMaxTimeout(serverId)
 	const killReasonRequired = SettingsClient.useReasonRequired('kill')
 	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
 	const timeoutReasonRequired = SettingsClient.useReasonRequired('timeout')
 	const removeReasonRequired = SettingsClient.useReasonRequired('remove-from-squad')
-	const serverId = stores.squadServer.serverId
 	const openOrFocusWindow = useOpenOrFocusWindow()
 	// holds the latest custom-reason input value; the alert dialog only resolves a button id, so we read the
 	// reason from here rather than the (unmounting) DOM input when the dialog confirms
@@ -66,10 +66,10 @@ export default function PlayerBulkContextMenuOptions(
 	const presetReasonRef = React.useRef('')
 	const timeoutDurationRef = React.useRef('')
 
-	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
-	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
-	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players'))
-	const timeoutDenied = RbacClient.usePermsCheck('squad-server:timeout-players')
+	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: serverId }))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
+	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
+	const timeoutDenied = RbacClient.usePermsCheck(SM.Grants.anyTimeout(serverId))
 	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 

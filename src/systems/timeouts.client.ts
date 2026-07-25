@@ -68,8 +68,17 @@ export async function timeoutPlayers(
 
 // the logged-in user's effective max timeout: undefined = cannot issue timeouts, null = unlimited,
 // number = max ms. Timeout grants are comparator-matched, so RbacClient.usePermsCheck (equality) can't gate this.
-export function useMaxTimeout(): number | null | undefined {
+// affordance for the cross-server timeout lists, which show timeouts from every server at once: cancelling
+// re-checks against the timeout's own issuing server (see timeouts.server cancelTimeout), so this only decides
+// whether to offer the control at all.
+export function useCanCancelSomeTimeout(): boolean {
+	const user = UsersClient.useLoggedInUser()
+	if (!user) return false
+	return RBAC.fromTracedPermissions(user.perms).some(p => p.type === 'squad-server:timeout-players')
+}
+
+export function useMaxTimeout(serverId: string): number | null | undefined {
 	const user = UsersClient.useLoggedInUser()
 	if (!user) return undefined
-	return RBAC.maxTimeoutDurationMs(RBAC.fromTracedPermissions(user.perms))
+	return RBAC.maxTimeoutDurationMs(RBAC.fromTracedPermissions(user.perms), serverId)
 }

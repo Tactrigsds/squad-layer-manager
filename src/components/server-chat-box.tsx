@@ -82,8 +82,8 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 		}), [channel, stores.squadServer])
 
 	const username = UsersClient.useLoggedInUser()?.displayName
-	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
-	const broadcastDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:broadcast'))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
+	const broadcastDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:broadcast', { serverId: serverId }))
 	const selectedCount = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
 	const selectionIsAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
 	const notifyAdminsChecked = notifyAdmins ?? !selectionIsAllAdmins

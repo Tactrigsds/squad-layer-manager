@@ -247,7 +247,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		props.stores.squadServer!,
 		ZusUtils.useShallow(s => [s.queue.isModified, s.queue.committing]),
 	)
-	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write'))
+	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer!.serverId }))
 
 	function clear() {
 		const state = ZusUtils.getState(props.stores.squadServer!)
@@ -504,7 +504,9 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
 	const updatesDisabled = ZusUtils.useStore(props.stores.squadServer!, s => s.settings.saved.updatesToSquadServerDisabled)
 	const { enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
-	const enableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates'))
+	const enableUpdatesDenied = RbacClient.usePermsCheck(
+		RBAC.perm('squad-server:disable-slm-updates', { serverId: props.stores.squadServer!.serverId }),
+	)
 	if (!updatesDisabled) return null
 
 	return (

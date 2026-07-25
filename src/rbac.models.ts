@@ -91,10 +91,12 @@ export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-s
 export const PERM_SCOPE_ARGS = {
 	global: z.undefined(),
 	filter: z.object({ filterId: F.FilterEntityIdSchema }),
+	// acts on one squad server's live state or its queue. null serverId = all servers, as everywhere below
+	server: z.object({ serverId: z.string().nullable() }),
 	// null = unlimited (Infinity doesn't serialize and zod rejects it)
-	timeout: z.object({ maxDurationMs: z.number().int().positive().nullable() }),
+	timeout: z.object({ serverId: z.string().nullable(), maxDurationMs: z.number().int().positive().nullable() }),
 	// null = unlimited
-	'layer-requests': z.object({ maxQueued: z.number().int().positive().nullable() }),
+	'layer-requests': z.object({ serverId: z.string().nullable(), maxQueued: z.number().int().positive().nullable() }),
 	// null serverId = all servers
 	'server-settings': z.object({ serverId: z.string().nullable() }),
 	// paths are dotted setting-path prefixes (e.g. "queue.mainPool"); null = all non-sensitive settings
@@ -117,14 +119,14 @@ function definePermission<T extends string, S extends PermScope>(type: T, args: 
 export const PERMISSION_DEFINITION = {
 	...definePermission('site:authorized', { description: 'Access the site', scope: 'global' }),
 
-	...definePermission('queue:write', { description: 'Add, remove, edit or reorder layers in the queue', scope: 'global' }),
+	...definePermission('queue:write', { description: 'Add, remove, edit or reorder layers in the queue', scope: 'server' }),
 	...definePermission('queue:force-write', {
 		description: "Add, remove, edit or reorder layers in the queue, even if the layer isn't in the pool",
-		scope: 'global',
+		scope: 'server',
 	}),
 	...definePermission('queue:manage-all-notes', {
 		description: "Edit or delete anyone's notes on queued layers. Writing notes, and managing your own, only needs queue:write",
-		scope: 'global',
+		scope: 'server',
 	}),
 	...definePermission('queue:manage-tags', {
 		description: 'Create and edit layer tags from the queue, without needing settings access',
@@ -134,7 +136,7 @@ export const PERMISSION_DEFINITION = {
 		description: 'Request layers (the backburner below the queue and /reqlayer in-game), up to the granted number of concurrent requests',
 		scope: 'layer-requests',
 	}),
-	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'global' }),
+	...definePermission('vote:manage', { description: 'Start and abort votes', scope: 'server' }),
 
 	...definePermission('global-settings:read', { description: 'View global settings and the audit log', scope: 'global' }),
 	...definePermission('global-settings:write', {
@@ -165,18 +167,22 @@ export const PERMISSION_DEFINITION = {
 		scope: 'filter',
 	}),
 
-	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'global' }),
-	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'global' }),
-	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'global' }),
-	...definePermission('squad-server:manage-players', {
-		description: 'Disband squads, remove players from squads, and manage team swaps',
-		scope: 'global',
+	...definePermission('squad-server:view', {
+		description: "View a server's dashboard: its roster, chat, queue and match history",
+		scope: 'server',
 	}),
-	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'global' }),
-	...definePermission('squad-server:broadcast', { description: 'Send server-wide broadcast messages', scope: 'global' }),
+	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'server' }),
+	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'server' }),
+	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'server' }),
+	...definePermission('squad-server:manage-players', {
+		description: 'Kill players, disband squads, remove players from squads, demote commanders, and manage team swaps',
+		scope: 'server',
+	}),
+	...definePermission('squad-server:warn-players', { description: 'Send in-game warnings to players', scope: 'server' }),
+	...definePermission('squad-server:broadcast', { description: 'Send server-wide broadcast messages', scope: 'server' }),
 	...definePermission('squad-server:kick-players', {
 		description: 'Kick players from the server (no timeout; they may rejoin immediately)',
-		scope: 'global',
+		scope: 'server',
 	}),
 	...definePermission('squad-server:timeout-players', {
 		description: 'Kick players with a timeout barring them from rejoining, up to the granted maximum duration',
@@ -196,6 +202,7 @@ export type KnownPermission = (typeof PERMISSION_DEFINITION)[keyof typeof PERMIS
 export type PermissionType = KnownPermission['type']
 
 export type GlobalPermissionType = Extract<KnownPermission, { scope: 'global' }>['type']
+export type ServerPermissionType = Extract<KnownPermission, { scope: 'server' }>['type']
 
 export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [PermissionType, ...PermissionType[]])
 export const GLOBAL_PERMISSION_TYPE = z.enum(
@@ -204,10 +211,20 @@ export const GLOBAL_PERMISSION_TYPE = z.enum(
 		...GlobalPermissionType[],
 	],
 )
+export const SERVER_PERMISSION_TYPE = z.enum(
+	Object.values(PERMISSION_DEFINITION).flatMap((def) => def.scope === 'server' ? [def.type] : []) as [
+		ServerPermissionType,
+		...ServerPermissionType[],
+	],
+)
 
-// permissions grantable as bare expressions in role definitions. Global-scope perms plus the settings perms, which a
-// bare expression grants unrestricted (all servers / all paths); restricted settings grants live in the rbac settings'
-// globalSettingsGrants/serverSettingsGrants maps instead.
+export function isServerScoped(type: PermissionType): type is ServerPermissionType {
+	return PERMISSION_DEFINITION[type].scope === 'server'
+}
+
+// permissions grantable as bare expressions in role definitions. Global- and server-scope perms plus the settings
+// perms, which a bare expression grants unrestricted (all servers / all paths); restricted grants live in the rbac
+// settings' globalSettingsGrants/serverSettingsGrants/serverGrants lists instead.
 const ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES = [
 	'global-settings:write',
 	'server-settings:read',
@@ -215,16 +232,23 @@ const ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES = [
 	'server-settings:write-sensitive',
 ] as const satisfies PermissionType[]
 
-export type RoleGrantablePermissionType = GlobalPermissionType | (typeof ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES)[number]
+export type RoleGrantablePermissionType =
+	| GlobalPermissionType
+	| ServerPermissionType
+	| (typeof ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES)[number]
 
 export const ROLE_GRANTABLE_PERMISSION_TYPE = z.enum(
-	[...GLOBAL_PERMISSION_TYPE.options, ...ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES] as unknown as [
+	[
+		...GLOBAL_PERMISSION_TYPE.options,
+		...SERVER_PERMISSION_TYPE.options,
+		...ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES,
+	] as unknown as [
 		RoleGrantablePermissionType,
 		...RoleGrantablePermissionType[],
 	],
 )
 
-// the scope args a bare role expression grants for one of the grantable settings perms: unrestricted everything
+// the scope args a bare role expression grants: unrestricted everything (all servers, all paths)
 export function unrestrictedRoleGrantArgs<T extends RoleGrantablePermissionType>(type: T): PermArgs<T> {
 	switch (type as RoleGrantablePermissionType) {
 		case 'global-settings:write':
@@ -235,6 +259,7 @@ export function unrestrictedRoleGrantArgs<T extends RoleGrantablePermissionType>
 		case 'server-settings:write':
 			return { serverId: null, paths: null } as PermArgs<T>
 		default:
+			if (isServerScoped(type as PermissionType)) return { serverId: null } as PermArgs<T>
 			return undefined as PermArgs<T>
 	}
 }
@@ -295,7 +320,14 @@ type PermissionFor<K extends PermissionType> = {
 // unioned fields, which doesn't narrow.)
 export type Permission<T extends PermissionType = PermissionType> = T extends unknown ? PermissionFor<T> : never
 
-export function perm<T extends PermissionType>(type: T, scopeOpts?: PermArgs<T>): Permission<T> {
+// Scope args are required for every permission that has them, and rejected for the ones that don't (global scope,
+// whose PermArgs is `undefined`). Written as a rest tuple because that is the only way to make a parameter's
+// optionality depend on the type argument: without it a server-scoped `perm('queue:write')` compiles and silently
+// asks for an all-servers grant, which is exactly the mistake worth catching at the call site.
+export function perm<T extends PermissionType>(
+	type: T,
+	...[scopeOpts]: undefined extends PermArgs<T> ? [scopeOpts?: PermArgs<T>] : [scopeOpts: PermArgs<T>]
+): Permission<T> {
 	// the generic construction can't be checked against the distributive union, but each concrete instantiation is sound
 	return {
 		type,
@@ -311,7 +343,9 @@ export function tracedPerm<T extends PermissionType>(
 	scopeOpts?: PermArgs<T>,
 ) {
 	return {
-		...perm(type, scopeOpts),
+		// the rest-tuple signature on perm() can't be satisfied from a plain optional parameter; role expansion builds
+		// its own args from the stored grant, so the requirement is already met by construction here
+		...(perm as (type: T, scopeOpts?: PermArgs<T>) => Permission<T>)(type, scopeOpts),
 		allowedByRoles: roles,
 		negated: opts?.negated ?? false,
 		negating: opts?.negating ?? false,
@@ -362,10 +396,16 @@ export type PermissionDeniedResponse = {
 }
 
 export type PermitCheckerCallback = (perms: Permission[]) => string | undefined
+
+// permissions whose args carry a serverId. The bare-string permit form matches on type alone, which for these would
+// mean "holds this on *some* server" -- a sandbox-only grant would satisfy a check against a production server. So
+// they are excluded from that form and must be passed as a built `perm(type, { serverId })`.
+export type ServerAwarePermissionType = ServerPermissionType | 'squad-server:timeout-players' | 'queue:request-layers'
+
 export type PermitChecker<T extends PermissionType = PermissionType> =
 	| Permission<T>
 	| PermitCheckerCallback
-	| T
+	| Exclude<T, ServerAwarePermissionType>
 
 export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: PermitChecker<T>[] }
 export function permReq<T extends PermissionType>(check: 'all' | 'any', permits: (PermitChecker<T> | undefined)[]): PermissionReq<T> {
@@ -468,33 +508,57 @@ export function getManagePermReqForFilterEntity(id: F.FilterEntityId): Permissio
 	}
 }
 
-// the effective max kick-timeout duration a set of perms grants: undefined = no grant at all,
+// the effective max kick-timeout duration a set of perms grants on `serverId`: undefined = no grant at all,
 // null = unlimited, number = max ms. Deliberately not routed through arePermsEqual: "up to N" is a
 // comparator, not an equality match.
-export function maxTimeoutDurationMs(perms: Permission[]): number | null | undefined {
+export function maxTimeoutDurationMs(perms: Permission[], serverId: string | null): number | null | undefined {
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'squad-server:timeout-players') continue
 		const args = p.args
-		if (!args) continue
+		if (!args || !grantAppliesTo(args, serverId)) continue
 		if (args.maxDurationMs === null) return null
 		if (max === undefined || args.maxDurationMs > max) max = args.maxDurationMs
 	}
 	return max
 }
 
-// the effective max concurrent layer requests a set of perms grants: undefined = no grant at all,
+// the effective max concurrent layer requests a set of perms grants on `serverId`: undefined = no grant at all,
 // null = unlimited, number = max items. A comparator like maxTimeoutDurationMs, not an equality match.
-export function maxLayerRequests(perms: Permission[]): number | null | undefined {
+export function maxLayerRequests(perms: Permission[], serverId: string | null): number | null | undefined {
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'queue:request-layers') continue
 		const args = p.args
-		if (!args) continue
+		if (!args || !grantAppliesTo(args, serverId)) continue
 		if (args.maxQueued === null) return null
 		if (max === undefined || args.maxQueued > max) max = args.maxQueued
 	}
 	return max
+}
+
+// Whether the dashboard for `serverId` is visible. Any server-scoped permission implies it: you cannot kick a player
+// or edit a queue you are not allowed to look at, so requiring both would just be a grant every role has to remember.
+// squad-server:view on its own is therefore the read-only grant.
+export function canViewServer(perms: Permission[], serverId: string): boolean {
+	return perms.some((p) => isServerScoped(p.type) && serverIdMatches(p.args as { serverId: string | null } | undefined, serverId))
+}
+
+// "holds this on at least one server", for the two client affordances that have no server in scope: the layer
+// table's force-select toggle and the row selectability the query stream marks. Deliberately loose, and
+// deliberately not spellable as a bare-string permit -- the authoritative check is the server-scoped one the
+// queue handler runs (see layer-queue.server dispatchOp), which rejects the write regardless of what the UI offered.
+export function hasPermOnAnyServer(perms: Permission[], type: ServerPermissionType): boolean {
+	return perms.some((p) => p.type === type)
+}
+
+// "holds any layer-request grant on this server". A comparator perm, so it can't ride the equality-matched
+// permission path (and its bare-string form is barred, which is the point: it would ignore the server).
+export function anyLayerRequestGrant(serverId: string): PermitCheckerCallback {
+	return (perms) => {
+		if (maxLayerRequests(perms, serverId) !== undefined) return
+		return `queue:request-layers on ${serverId}`
+	}
 }
 
 // ============================== settings access ==============================
@@ -514,6 +578,22 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 function serverIdMatches(args: { serverId: string | null } | undefined, serverId: string): boolean {
 	// missing args = a legacy/defensive grant; treat as unrestricted
 	return !args || args.serverId === null || args.serverId === serverId
+}
+
+// Does a grant apply to the server being asked about? A null `serverId` asks for the grant that holds on *every*
+// server, which only an unrestricted grant satisfies; a concrete one is also satisfied by an unrestricted grant.
+function grantAppliesTo(args: { serverId: string | null } | undefined, serverId: string | null): boolean {
+	if (serverId === null) return (args?.serverId ?? null) === null
+	return serverIdMatches(args, serverId)
+}
+
+// Every plain server-scoped permission subsumes the same way, so this is one branch rather than a case per
+// permission: adding a server-scoped permission needs no change here.
+function serverScopedSubsumedBy(perm: Permission, perms: Permission[]): boolean {
+	const args = perm.args as { serverId: string | null } | undefined
+	return perms.some((p) =>
+		p.type === perm.type && grantAppliesTo(p.args as { serverId: string | null } | undefined, args?.serverId ?? null)
+	)
 }
 
 function collectWriteAccess(pathSets: (string[] | null)[]): SettingsWriteAccess {
@@ -597,7 +677,7 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 	switch (perm.type) {
 		case 'squad-server:timeout-players': {
 			const args = perm.args
-			const max = maxTimeoutDurationMs(perms)
+			const max = maxTimeoutDurationMs(perms, args?.serverId ?? null)
 			if (max === undefined) return false
 			if (max === null) return true
 			if (!args || args.maxDurationMs === null) return false
@@ -605,7 +685,7 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 		}
 		case 'queue:request-layers': {
 			const args = perm.args
-			const max = maxLayerRequests(perms)
+			const max = maxLayerRequests(perms, args?.serverId ?? null)
 			if (max === undefined) return false
 			if (max === null) return true
 			if (!args || args.maxQueued === null) return false
@@ -640,6 +720,7 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 			return pathsCoveredBy(args ? args.paths : null, serverSettingsWriteAccess(perms, serverId))
 		}
 		default:
+			if (isServerScoped(perm.type)) return serverScopedSubsumedBy(perm, perms)
 			return perms.some((p) => arePermsEqual(p, perm))
 	}
 }

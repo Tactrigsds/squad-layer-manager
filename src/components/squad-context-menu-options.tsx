@@ -52,13 +52,14 @@ export function SquadMenuItems(
 	const killReasonRequired = SettingsClient.useReasonRequired('kill')
 	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
 	const timeoutReasonRequired = SettingsClient.useReasonRequired('timeout')
+	const serverId = stores.squadServer.serverId
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const killMutation = SquadServerClient.useKillMutation()
 	const kickMutation = SquadServerClient.useKickPlayersMutation()
 	const timeoutMutation = TimeoutsClient.useTimeoutPlayerMutation()
-	const maxTimeout = TimeoutsClient.useMaxTimeout()
+	const maxTimeout = TimeoutsClient.useMaxTimeout(serverId)
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
 	// null when the squad isn't currently live, in which case there's nothing to warn
@@ -76,9 +77,9 @@ export function SquadMenuItems(
 
 	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(squadPlayerIds))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
-	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
-	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
-	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players'))
+	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: serverId }))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
+	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
 	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
 	// coming from usePermsCheck
 	const timeoutDenied = maxTimeout === undefined
@@ -87,7 +88,6 @@ export function SquadMenuItems(
 
 	const squadLabel = `"${squad.squadName}"`
 	const teamId = squad.teamId as 1 | 2
-	const serverId = stores.squadServer.serverId
 
 	// mirrors the player/bulk Swap Now flow: confirm, then swap. The dialog auto-closes if any member changes
 	// teams while it's open (their swap would be a no-op or wrong), warning the admin the selection went stale.
