@@ -27,9 +27,11 @@ export const CHAT_GROUP_LABELS: Record<ChatGroup, string> = {
 // used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }`. See docs/configuring.md.
 export type CommandTrigger = string | { string: string; args: string }
 
-// `{{argN}}` is the Nth word typed after the trigger; `{{restN}}` is word N onwards joined by spaces, and `{{rest}}`
-// is all of them. Indices are 1-based, matching how they read in chat.
-export const TRIGGER_ARG_SYNTAX = '{{arg1}}, {{arg2}} and so on for single words, {{rest}} or {{rest2}} for the words from there on'
+// The indices count the words the CALLER TYPES after the trigger, not the words of the command that ends up running:
+// pinned text occupies no index, so `{{arg1}} 2h {{rest2}}` takes a player and a reason, never a duration. `{{restN}}`
+// is the Nth typed word onwards joined by spaces, `{{rest}}` is all of them. 1-based, matching how they read in chat.
+export const TRIGGER_ARG_SYNTAX =
+	'{{arg1}} for the first word typed after the trigger, {{arg2}} for the second, {{rest2}} for the second onwards'
 
 export function triggerString(trigger: CommandTrigger): string {
 	return typeof trigger === 'string' ? trigger : trigger.string

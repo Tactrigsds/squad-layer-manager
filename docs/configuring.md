@@ -112,8 +112,20 @@ command aliases used to be:
 | `/say`    | `{{rest}}`                                   | `/say back in 5`        | `/broadcast back in 5`       |
 | `/warnsp` | `{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}` | `/warnsp Alice`         | `/warn Alice spam`           |
 
-`{{arg1}}`, `{{arg2}}` and so on are single words typed after the trigger. `{{restN}}` is word N onwards joined by
-spaces, and `{{rest}}` is every word. Use `{{restN}}` for anything that can be more than one word, such as a reason.
+**The numbers count the words the caller types, not the words of the command that ends up running.** `{{arg1}}` is
+the first word typed after the trigger, `{{arg2}}` the second, and so on; `{{restN}}` is the Nth word typed onwards,
+joined by spaces, and `{{rest}}` is all of them. Use `{{restN}}` for anything that can be more than one word, such as
+a reason.
+
+Pinned text sits outside that counting, which is what makes `{{arg1}} 2h {{rest2}}` read correctly: the caller never
+types the duration, so nothing indexes it.
+
+```
+they type:   Alice      spamming badly
+             {{arg1}}   {{rest2}}          <- the numbers count these words
+it runs:     Alice  2h  spamming badly
+                    ^^ pinned text, never typed, so no placeholder refers to it
+```
 
 Once a trigger has pinned arguments, the command's card in Settings > In-game Commands shows which placeholder fills
 which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest3}} <reason|message>`), including whether each one is
