@@ -13,7 +13,9 @@
 import * as Fsp from 'node:fs/promises'
 import * as Path from 'node:path'
 
-const ROOTS = ['src', 'test']
+// drizzle/ is in here because drizzle/schema.ts imports @/lib -- miss it and the integration suite
+// fails at import time with a bare-package resolution error rather than a typecheck error
+const ROOTS = ['src', 'test', 'drizzle']
 const SELF = 'src/scripts/codemods/lib-reorg.ts'
 /** the one module allowed to import zustand directly: it is the barrel */
 const ZUSTAND_BARREL = 'src/lib/zustand.ts'
@@ -72,7 +74,7 @@ function zustand(src: string, file: string): string {
 	// `m` matters: plenty of these files open with a comment rather than an import.
 	if (!hadBarrel && /\bZus\./.test(src)) {
 		const rel = file.startsWith('src/lib/') ? './zustand' : '@/lib/zustand'
-		src = src.replace(/^import /m, `import * as Zus from '${rel}'\nimport `)
+		src = insertImport(src, `import * as Zus from '${rel}'`)
 	}
 	return src
 }
@@ -87,7 +89,7 @@ function reactRxjs(src: string, file: string): string {
 	const hadBarrel = /import \* as RxHelpers from '@\/lib\/react-rxjs(-helpers)?(\.ts)?'/.test(src)
 
 	// before RxHelpers -> ReactRx, or our guarded bind would be renamed alongside the package's
-	src = src.replace(/\bReactRx\.bind\(/g, 'ReactRx.bindWithDefault(')
+	src = src.replace(/\bReactRx\.bind(<[^<>]*>)?\(/g, (_all, targs: string | undefined) => `ReactRx.bindWithDefault${targs ?? ''}(`)
 	// vote.client.ts imported the package's bind bare; both of its binds pass a default
 	src = src.replace(/^import \{ bind \} from '@react-rxjs\/core'\n/m, '')
 	if (!/\bReactRx\b/.test(src) && /(?<![.\w])bind\(/.test(src)) {
@@ -103,7 +105,7 @@ function reactRxjs(src: string, file: string): string {
 
 	if (!hadBarrel && /\bReactRx\./.test(src)) {
 		const rel = file.startsWith('src/lib/') ? './react-rxjs' : '@/lib/react-rxjs'
-		src = src.replace(/^import /m, `import * as ReactRx from '${rel}'\nimport `)
+		src = insertImport(src, `import * as ReactRx from '${rel}'`)
 	}
 	return src
 }
@@ -118,8 +120,15 @@ function relTo(file: string, mod: string) {
 	return file.startsWith('src/lib/') ? `./${mod}` : `@/lib/${mod}`
 }
 
+/**
+ * Add an import. Prepends when the file has none left: dropping a package import can remove every
+ * import in a file (feature-flags.client.ts imported only zustand), and an anchored insert would
+ * then silently do nothing and leave the namespace undefined.
+ */
 function insertImport(src: string, line: string) {
-	return src.includes(line) ? src : src.replace(/^import /m, `${line}\nimport `)
+	if (src.includes(line)) return src
+	if (!/^import /m.test(src)) return `${line}\n\n${src}`
+	return src.replace(/^import /m, `${line}\nimport `)
 }
 
 function rxjsAndPromise(src: string, file: string): string {
@@ -232,7 +241,7 @@ function utils(src: string, file: string): string {
 				src = src.replace(new RegExp(`(?<![.\\w])${sym}\\b`, 'g'), `${ns}.${sym}`)
 			}
 			if (symbols.length && !new RegExp(`\\* as ${ns} from`).test(src)) {
-				src = src.replace(/^import /m, `import * as ${ns} from '${prefix}${to}'\nimport `)
+				src = insertImport(src, `import * as ${ns} from '${prefix}${to}'`)
 			}
 		}
 

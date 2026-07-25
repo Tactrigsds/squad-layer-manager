@@ -1,3 +1,5 @@
+import * as Zus from '@/lib/zustand'
+
 export type ChartTab = 'population' | 'kd' | 'wd'
 export type ChartTimeInterval = 1 | 5 | 10
 // mirrors the ON_PRIMARY_PANEL variants in models/user-presence.ts (kept as a literal union so this module stays dependency-free)

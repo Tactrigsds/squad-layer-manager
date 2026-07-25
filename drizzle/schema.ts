@@ -1,7 +1,7 @@
 import { customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
 
-import { enumTupleOptions } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 
 import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
@@ -60,7 +60,7 @@ export const balanceTriggerEvents = sqliteTable('balanceTriggerEvents', {
 	matchTriggeredId: integer('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 	// the generic form of the message
 	strongerTeam: text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
-	level: text('level', { enum: enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
+	level: text('level', { enum: ZodUtils.enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
 	evaluationResult: json('evaluationResult').notNull(),
 })
 
@@ -68,7 +68,7 @@ export const serverEvents = sqliteTable(
 	'serverEvents',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		type: text('type', { enum: enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
 		time: timestamp('time').notNull(),
 		matchId: integer('matchId')
 			.references(() => matchHistory.id, { onDelete: 'cascade' })
@@ -94,10 +94,10 @@ export const appEvents = sqliteTable(
 	{
 		// synchronously-allocated string id (createAppEventId) -- referenced by serverEvents.appEventId
 		id: text('id').primaryKey(),
-		type: text('type', { enum: enumTupleOptions(APP_EVENT_TYPE) }).notNull(),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(APP_EVENT_TYPE) }).notNull(),
 		time: timestamp('time').notNull(),
 		// actor, flattened for querying ("all actions by user X / player Y")
-		actorType: text('actorType', { enum: enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
+		actorType: text('actorType', { enum: ZodUtils.enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
 		actorUserId: bigintText('actorUserId'),
 		actorPlayerId: text('actorPlayerId'),
 		// scope: null for global (audit-only) actions
@@ -177,7 +177,7 @@ export const playerEventAssociations = sqliteTable(
 		playerId: text('playerId')
 			.references(() => players.eosId, { onDelete: 'cascade' })
 			.notNull(),
-		assocType: text('assocType', { enum: enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE) }).notNull(),
+		assocType: text('assocType', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE) }).notNull(),
 		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
