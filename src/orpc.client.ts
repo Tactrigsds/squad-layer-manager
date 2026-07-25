@@ -3,6 +3,7 @@ import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import { toast } from '@/lib/toast'
 import * as ZusUtils from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
+import type * as RBAC from '@/rbac.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 import { createORPCClient, onError } from '@orpc/client'
@@ -287,7 +288,12 @@ export function dropServerNotLoaded<T>(): Rx.OperatorFunction<T | SM.ServerNotLo
  * The query-side counterpart to dropServerNotLoaded: reads err:server-not-loaded as "no data". Every endpoint that can
  * return it is reachable only from the server dashboard, which unmounts itself when the server goes away, so the only
  * way a component sees this is a teardown race it is already on its way out of.
+ *
+ * A squad-server:view denial reads the same way and for the same reason: watchLoadedServers omits servers the session
+ * may not view, so the dashboard for one is never mounted in the first place.
  */
-export function selectLoaded<T>(res: T | SM.ServerNotLoaded): T | undefined {
-	return SM.isServerNotLoaded(res) ? undefined : res
+export function selectLoaded<T>(res: T | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse): T | undefined {
+	if (SM.isServerNotLoaded(res)) return undefined
+	if (res && typeof res === 'object' && 'code' in res && res.code === 'err:permission-denied') return undefined
+	return res as T
 }

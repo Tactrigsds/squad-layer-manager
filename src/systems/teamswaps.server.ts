@@ -386,14 +386,14 @@ export const orpcRouter = {
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
 	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string(), op: TSW.OpSchema })).handler(
 		async ({ context, input: { serverId, op: input } }) => {
-			const ctxRes = SquadServer.trySliceCtx(context, serverId)
+			const ctxRes = await SquadServer.trySliceCtx(context, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const source = 'source' in input ? input.source : undefined
 			if (!source?.discordId || source.discordId !== ctx.user.discordId) {
 				return { code: 'err:invalid-source' as const }
 			}
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players'))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			await dispatchOp(ctx, [input], { sourceWsClientId: context.wsClientId })
 		},

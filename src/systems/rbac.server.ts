@@ -57,6 +57,8 @@ let roleMaxLayerRequests: Record<string, number> = {}
 // restricted settings grants (roles[role].globalSettingsGrants / .serverSettingsGrants)
 let roleGlobalSettingsGrants: Record<string, RoleConfig['globalSettingsGrants']> = {}
 let roleServerSettingsGrants: Record<string, RoleConfig['serverSettingsGrants']> = {}
+// per-server grants of the server-scoped permissions (roles[role].serverGrants)
+let roleServerGrants: Record<string, RoleConfig['serverGrants']> = {}
 let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
@@ -113,6 +115,7 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	roleMaxLayerRequests = {}
 	roleGlobalSettingsGrants = {}
 	roleServerSettingsGrants = {}
+	roleServerGrants = {}
 	roleAssignments = []
 
 	for (const roleType of objKeys(rbac.roles)) {
@@ -123,6 +126,7 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 		if (cfg.maxLayerRequests !== undefined) roleMaxLayerRequests[roleType] = cfg.maxLayerRequests
 		if (cfg.globalSettingsGrants.length > 0) roleGlobalSettingsGrants[roleType] = cfg.globalSettingsGrants
 		if (cfg.serverSettingsGrants.length > 0) roleServerSettingsGrants[roleType] = cfg.serverSettingsGrants
+		if (cfg.serverGrants.length > 0) roleServerGrants[roleType] = cfg.serverGrants
 
 		for (const discordRoleId of cfg.assignments.discordRoleIds) {
 			roleAssignments.push({ type: 'discord-role', role: RBAC.userDefinedRole(roleType), discordRoleId: BigInt(discordRoleId) })
@@ -318,11 +322,11 @@ async function resolveSuperUserPerms(userId: bigint) {
 	}
 	RBAC.addTracedPerms(
 		perms,
-		RBAC.tracedPerm('squad-server:timeout-players', [SUPER_ROLE], { negated: false }, { maxDurationMs: null }),
+		RBAC.tracedPerm('squad-server:timeout-players', [SUPER_ROLE], { negated: false }, { serverId: null, maxDurationMs: null }),
 	)
 	RBAC.addTracedPerms(
 		perms,
-		RBAC.tracedPerm('queue:request-layers', [SUPER_ROLE], { negated: false }, { maxQueued: null }),
+		RBAC.tracedPerm('queue:request-layers', [SUPER_ROLE], { negated: false }, { serverId: null, maxQueued: null }),
 	)
 	return perms
 }
@@ -428,13 +432,13 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 		if (roleMaxTimeouts[role.type] !== undefined) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { maxDurationMs: roleMaxTimeouts[role.type] }),
+				RBAC.tracedPerm('squad-server:timeout-players', [role], {}, { serverId: null, maxDurationMs: roleMaxTimeouts[role.type] }),
 			)
 		}
 		if (roleMaxLayerRequests[role.type] !== undefined) {
 			RBAC.addTracedPerms(
 				perms,
-				RBAC.tracedPerm('queue:request-layers', [role], {}, { maxQueued: roleMaxLayerRequests[role.type] }),
+				RBAC.tracedPerm('queue:request-layers', [role], {}, { serverId: null, maxQueued: roleMaxLayerRequests[role.type] }),
 			)
 		}
 		// restricted settings grants; a matching negation in any role's expressions wins over these too
@@ -444,6 +448,14 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 				perms,
 				RBAC.tracedPerm('global-settings:write', [role], { negated: isNegated('global-settings:write') }, { paths: [...globalPaths] }),
 			)
+		}
+		for (const grant of roleServerGrants[role.type] ?? []) {
+			for (const serverId of grant.serverIds) {
+				RBAC.addTracedPerms(
+					perms,
+					RBAC.tracedPerm(grant.permission, [role], { negated: isNegated(grant.permission) }, { serverId }),
+				)
+			}
 		}
 		for (const grant of roleServerSettingsGrants[role.type] ?? []) {
 			const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
@@ -509,16 +521,14 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 	return RBAC.tryDenyPermissions(perms, req)
 }
 
-// for the shared entry points reachable from both the GUI and in-game chat. The player takes precedence: a chat
-// command authorizes whoever typed it, which resolves without a linked account. Neither identity present means the
-// action is system-initiated (vote autostart, generation) and goes unchecked.
-export async function tryDenyPermissionsForActor<T extends RBAC.PermissionType>(
-	ctx: C.Db & Partial<C.UserId> & Partial<C.PlayerIds> & CS.AbortSignal,
-	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
-) {
-	if (ctx.player) return await tryDenyPermissionsForPlayer({ ...ctx, player: ctx.player }, reqOrPerms)
-	if (ctx.user) return await tryDenyPermissionsForUser({ ...ctx, user: ctx.user }, reqOrPerms)
-	return null
+// Deliberately no `tryDenyPermissionsFor(Actor)` here: authorization happens at the entry point, where the identity
+// is known concretely (a user over oRPC, a player in chat), never inside a shared action function. A helper that
+// falls back to "no identity, so allow" would make every such check fail-open for any future caller that reaches it
+// without one. Checks that genuinely depend on loaded state stay where the state is, inside the transaction.
+
+// whether this user may look at `serverId` at all; see RBAC.canViewServer for why it is not a plain permission check
+export async function canViewServerForUser(ctx: C.Db & C.UserId & CS.AbortSignal, serverId: string): Promise<boolean> {
+	return RBAC.canViewServer(await getUserPermissions(ctx), serverId)
 }
 
 // for the aggregate (non-equality) checks: settings access, timeouts
@@ -528,13 +538,17 @@ export async function getUserPermissions(ctx: C.Db & C.UserId & CS.AbortSignal):
 
 // "up to N concurrent items" layer-request checks bypass the equality-matched permission path
 // (see RBAC.maxLayerRequests): undefined = no grant, null = unlimited, number = max concurrent items
-export async function getMaxLayerRequestsForUser(ctx: C.Db & CS.AbortSignal & C.UserId): Promise<number | null | undefined> {
+export async function getMaxLayerRequestsForUser(
+	ctx: C.Db & CS.AbortSignal & C.UserId & C.ServerId,
+): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)
-	return RBAC.maxLayerRequests(perms)
+	return RBAC.maxLayerRequests(perms, ctx.serverId)
 }
-export async function getMaxLayerRequestsForPlayer(ctx: C.Db & CS.AbortSignal & C.PlayerIds): Promise<number | null | undefined> {
+export async function getMaxLayerRequestsForPlayer(
+	ctx: C.Db & CS.AbortSignal & C.PlayerIds & C.ServerId,
+): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForPlayer(ctx)).perms)
-	return RBAC.maxLayerRequests(perms)
+	return RBAC.maxLayerRequests(perms, ctx.serverId)
 }
 
 export const orpcRouter = {

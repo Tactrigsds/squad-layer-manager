@@ -27,7 +27,7 @@ DraggableWindowStore.getState().registerDefinition<TimeoutsWindowProps, unknown>
 function TimeoutsWindow() {
 	useDraggableWindow()
 	const timeouts = TimeoutsClient.useActiveTimeouts()
-	const canCancel = TimeoutsClient.useMaxTimeout() !== undefined
+	const canCancel = TimeoutsClient.useCanCancelSomeTimeout()
 	const cancelMutation = TimeoutsClient.useCancelTimeoutMutation()
 
 	const userIds = [...new Set(timeouts.flatMap(t => (t.actor?.type === 'slm-user' ? [t.actor.userId] : [])))]

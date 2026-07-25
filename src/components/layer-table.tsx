@@ -18,7 +18,6 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as RBAC from '@/rbac.models'
 import * as GlobalSettings from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -709,7 +708,7 @@ export function LayerTableControlPanel(
 		}
 	}
 
-	const forceSelectDenied = RbacClient.usePermsCheck(RBAC.perm('queue:force-write'))
+	const forceSelectDenied = RbacClient.useAnyServerPermsCheck('queue:force-write')
 
 	const [rawSetDialogOpen, _setRawSetDialogOpen] = React.useState(false)
 	const rawSetDialogRef = React.useRef<SetRawDialogHandle>(null)

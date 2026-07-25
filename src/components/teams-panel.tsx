@@ -1716,7 +1716,7 @@ function SwapsPanel(
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswapsState(stores.squadServer!.serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, s => s.teamswapEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
-	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
+	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: stores.squadServer!.serverId }))
 
 	const handleFinishOrSave = () => {
 		const shouldSave = swapsModified && (numEditors <= 1 || forceSave)

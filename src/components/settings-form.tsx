@@ -2112,35 +2112,33 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 					</Button>
 				</div>
 			)}
-			<div className="grid grid-cols-[minmax(160px,14rem)_1fr] gap-4">
-				<div className="sticky top-2 self-start max-h-[70vh] overflow-y-auto space-y-2 pr-1">
-					<div className="space-y-1">
-						{roleIds.length === 0 && <p className="text-xs text-muted-foreground">No roles defined yet.</p>}
-						{roleIds.map((id) => (
-							<button
-								key={id}
-								type="button"
-								onClick={() => setSelected(id)}
-								className={cn(
-									'flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left font-mono text-sm',
-									id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
-								)}
-							>
-								<span className="truncate">{id}</span>
-								{!isRoleAssigned(rbac.roles?.[id]) && (
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<Icons.TriangleAlert className="ml-auto h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
-										</TooltipTrigger>
-										<TooltipContent>No assignments, so this role is never granted to anyone</TooltipContent>
-									</Tooltip>
-								)}
-							</button>
-						))}
-					</div>
-					<div className="flex items-center gap-1.5 pt-1">
+			<div className="space-y-3">
+				<div className="flex flex-wrap items-center gap-1.5">
+					{roleIds.length === 0 && <p className="text-xs text-muted-foreground">No roles defined yet.</p>}
+					{roleIds.map((id) => (
+						<button
+							key={id}
+							type="button"
+							onClick={() => setSelected(id)}
+							className={cn(
+								'flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left font-mono text-sm',
+								id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
+							)}
+						>
+							<span className="max-w-[16rem] truncate">{id}</span>
+							{!isRoleAssigned(rbac.roles?.[id]) && (
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Icons.TriangleAlert className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
+									</TooltipTrigger>
+									<TooltipContent>No assignments, so this role is never granted to anyone</TooltipContent>
+								</Tooltip>
+							)}
+						</button>
+					))}
+					<div className="flex items-center gap-1.5">
 						<Input
-							className="h-8 font-mono"
+							className="h-8 w-[11rem] font-mono"
 							placeholder="new-role-id"
 							value={newRole}
 							onChange={(e) => setNewRole(e.target.value)}
@@ -2168,7 +2166,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 							assigned={isRoleAssigned(rbac.roles?.[selected])}
 						/>
 					)
-					: <p className="self-start text-sm text-muted-foreground">Select or add a role to configure it.</p>}
+					: <p className="text-sm text-muted-foreground">Select or add a role to configure it.</p>}
 			</div>
 		</div>
 	)
@@ -2466,6 +2464,7 @@ function PermScopeCell(
 				/>
 			)
 
+		case 'server':
 		case 'server-settings':
 			return (
 				<ScopeValueRows

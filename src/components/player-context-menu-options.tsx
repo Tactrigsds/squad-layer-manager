@@ -209,10 +209,11 @@ export function PlayerMenuItems(
 	const presetReasonRef = React.useRef('')
 	const timeoutDurationRef = React.useRef('')
 
+	const serverId = stores.squadServer.serverId
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
 	const kickMutation = SquadServerClient.useKickPlayersMutation()
 	const timeoutMutation = TimeoutsClient.useTimeoutPlayerMutation()
-	const maxTimeout = TimeoutsClient.useMaxTimeout()
+	const maxTimeout = TimeoutsClient.useMaxTimeout(serverId)
 	const killReasonRequired = SettingsClient.useReasonRequired('kill')
 	const kickReasonRequired = SettingsClient.useReasonRequired('kick')
 	const timeoutReasonRequired = SettingsClient.useReasonRequired('timeout')
@@ -224,7 +225,6 @@ export function PlayerMenuItems(
 	const disbandSquadMutation = SquadServerClient.useDisbandSquadMutation()
 	const removeFromSquadMutation = SquadServerClient.useRemoveFromSquadMutation()
 	const resetSquadNameMutation = SquadServerClient.useResetSquadNameMutation()
-	const serverId = stores.squadServer.serverId
 
 	const otherTeam = ZusUtils.useStore(
 		stores.squadServer,
@@ -290,10 +290,10 @@ export function PlayerMenuItems(
 	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow([playerId]))
 	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue([playerId]))
 
-	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players'))
-	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players'))
-	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players'))
-	const timeoutDenied = RbacClient.usePermsCheck('squad-server:timeout-players')
+	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: serverId }))
+	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
+	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
+	const timeoutDenied = RbacClient.usePermsCheck(SM.Grants.anyTimeout(serverId))
 
 	async function swapNow() {
 		if (!otherTeam) return

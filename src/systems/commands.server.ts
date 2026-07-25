@@ -118,6 +118,18 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		return await error('command-disabled', `Command "${cmd}" is disabled`)
 	}
 
+	// Authorization sits here, next to the scope and enabled gates, rather than in each handler: the declaration is
+	// exhaustive over CommandId, so a command cannot reach its handler without having stated what it requires.
+	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
+	const permission = CMD.COMMAND_DECLARATIONS[cmd].permission
+	if (permission !== null) {
+		const required = permission === 'battlemetrics:write-flags'
+			? RBAC.perm('battlemetrics:write-flags')
+			: RBAC.perm(permission, { serverId: ctx.serverId })
+		const denyRes = await Rbac.tryDenyPermissionsForPlayer(ctx, required)
+		if (denyRes) return await error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
+	}
+
 	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender)
 	if (resolved.code !== 'ok') {
 		return await error('invalid-args', resolved.msg)
@@ -314,8 +326,6 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	startVote: async (h) => {
 		const res = await Vote.startVote(h.ctx, { initiator: h.user })
 		switch (res.code) {
-			case 'err:permission-denied':
-				return await h.error('permission-denied', Messages.WARNS.permissionDenied(res))
 			case 'err:invalid-item-type':
 			case 'err:public-vote-not-first':
 			case 'err:vote-not-allowed':
@@ -780,7 +790,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	clearTimeout: async (h, args) => {
-		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, SM.Grants.anyTimeout())
+		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, SM.Grants.anyTimeout(h.ctx.serverId))
 		if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 
 		// the target may be offline, so match against players holding active timeouts rather than the roster
@@ -854,7 +864,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		if (!BB.sameOwner(target.source, owner)) {
 			// removing someone else's request needs queue:write
-			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write'))
+			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write', { serverId: h.ctx.serverId }))
 			if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 		}
 		await LayerQueue.removeBackburnerRequestsFromChat(h.ctx, { itemIds: [target.itemId], source: owner })
@@ -889,11 +899,6 @@ async function executeKick(
 ): Promise<HandlerResult> {
 	const g = await requireReasonGuard(h, 'kick', !!resolvedReason)
 	if (g) return g
-	const denyRes = await Rbac.tryDenyPermissionsForPlayer(
-		h.ctx,
-		RBAC.perm('squad-server:kick-players'),
-	)
-	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	const reason = resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, SquadServer.messageVars())
 	await SquadServer.kickPlayersAction(
 		h.ctx,
@@ -915,7 +920,7 @@ async function executeTimeout(
 ): Promise<HandlerResult> {
 	const g = await requireReasonGuard(h, 'timeout', !!resolvedReason)
 	if (g) return g
-	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(durationMs))
+	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(h.ctx.serverId, durationMs))
 	if (denyRes) return await h.error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	const vars = SquadServer.messageVars({ duration: formatHumanTime(durationMs) })
 	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)
@@ -942,14 +947,6 @@ async function executeTimeout(
 }
 
 async function toggleSlmUpdates(h: HandlerCtx, disabled: boolean): Promise<HandlerResult> {
-	const res = await LayerQueue.toggleUpdatesToSquadServer({ ctx: h.ctx, input: { disabled } })
-	switch (res.code) {
-		case 'ok':
-			return { code: 'ok' }
-		case 'err:permission-denied':
-			await h.reply(Messages.WARNS.permissionDenied(res))
-			return res
-		default:
-			assertNever(res)
-	}
+	await LayerQueue.toggleUpdatesToSquadServer({ ctx: h.ctx, input: { disabled } })
+	return { code: 'ok' }
 }

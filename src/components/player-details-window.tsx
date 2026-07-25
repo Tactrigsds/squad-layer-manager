@@ -289,7 +289,7 @@ function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
 // active kick-timeout badge + cancel; rendered regardless of connection status since timeouts outlive the session
 function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 	const timeout = TimeoutsClient.useActiveTimeouts().find(t => t.playerId === playerId && !t.cancelled)
-	const canCancel = TimeoutsClient.useMaxTimeout() !== undefined
+	const canCancel = TimeoutsClient.useCanCancelSomeTimeout()
 	const cancelMutation = TimeoutsClient.useCancelTimeoutMutation()
 	if (!timeout) return null
 	return (

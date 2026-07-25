@@ -52,6 +52,13 @@ const ServerSettingsGrantSchema = z.object({
 	),
 })
 
+// A server-scoped permission restricted to specific servers. The unrestricted (all-servers) form is the bare
+// expression in `permissions`, so a grant here always names at least one server.
+const ServerGrantSchema = z.object({
+	permission: RBAC.SERVER_PERMISSION_TYPE.describe('The server-scoped permission this grant covers'),
+	serverIds: z.array(z.string()).min(1).describe('Server ids this grant applies to'),
+})
+
 const RoleConfigSchema = z.object({
 	permissions: z.array(RBAC.ROLE_PERMISSION_EXPRESSION).prefault([]).describe(
 		'Permissions granted by this role. Settings permissions granted here are unrestricted (all servers / all settings); '
@@ -74,6 +81,10 @@ const RoleConfigSchema = z.object({
 	serverSettingsGrants: z.array(ServerSettingsGrantSchema).prefault([]).describe(
 		"Restricted server-settings grants. Any grant also lets the role view the server's (non-sensitive) settings. "
 			+ 'Matching "!server-settings:*" denials in permissions override these.',
+	),
+	serverGrants: z.array(ServerGrantSchema).prefault([]).describe(
+		'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. '
+			+ 'Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
 	),
 	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
 })
@@ -403,6 +414,7 @@ export function defaultRbacSettings() {
 	// in-game admin capabilities, shared by admins and managers (all global-scope perms)
 	const adminPermissions: RBAC.RolePermissionExpression[] = [
 		'site:authorized',
+		'squad-server:view',
 		'queue:write',
 		'queue:manage-tags',
 		'vote:manage',
@@ -884,7 +896,7 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 
 export namespace Grants {
 	export function globalSettingsRead() {
-		return RBAC.permReq('any', [
+		return RBAC.permReq<'global-settings:read' | 'global-settings:write'>('any', [
 			RBAC.perm('global-settings:read'),
 			'global-settings:write',
 		])

@@ -20,6 +20,7 @@ import React from 'react'
 type Editing = { note: LNote.Note } | 'new' | null
 
 export function LayerNotes(props: {
+	serverId: string
 	notes: LNote.Note[] | undefined
 	onAdd: (text: string) => void
 	onEdit: (noteId: LNote.NoteId, text: string) => void
@@ -44,6 +45,7 @@ export function LayerNotes(props: {
 				? notes.map(note => (
 					<NoteChip
 						key={note.id}
+						serverId={props.serverId}
 						note={note}
 						disabled={props.disabled}
 						onEdit={() => setEditing({ note })}
@@ -52,6 +54,7 @@ export function LayerNotes(props: {
 				))
 				: notes.length > 0 && (
 					<NoteListPopover
+						serverId={props.serverId}
 						notes={notes}
 						disabled={props.disabled}
 						onEdit={(note) => setEditing({ note })}
@@ -78,7 +81,7 @@ export function LayerNotes(props: {
 	)
 }
 
-function NoteChip(props: { note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
+function NoteChip(props: { serverId: string; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
 	return (
 		<HoverCard openDelay={200}>
 			<HoverCardTrigger asChild>
@@ -87,13 +90,14 @@ function NoteChip(props: { note: LNote.Note; disabled?: boolean; onEdit: () => v
 				</span>
 			</HoverCardTrigger>
 			<HoverCardContent className="w-72 space-y-2 p-3">
-				<NoteBody note={props.note} disabled={props.disabled} onEdit={props.onEdit} onDelete={props.onDelete} />
+				<NoteBody serverId={props.serverId} note={props.note} disabled={props.disabled} onEdit={props.onEdit} onDelete={props.onDelete} />
 			</HoverCardContent>
 		</HoverCard>
 	)
 }
 
 function NoteListPopover(props: {
+	serverId: string
 	notes: LNote.Note[]
 	disabled?: boolean
 	onEdit: (note: LNote.Note) => void
@@ -111,6 +115,7 @@ function NoteListPopover(props: {
 				{props.notes.map(note => (
 					<NoteBody
 						key={note.id}
+						serverId={props.serverId}
 						note={note}
 						disabled={props.disabled}
 						onEdit={() => props.onEdit(note)}
@@ -122,8 +127,8 @@ function NoteListPopover(props: {
 	)
 }
 
-function NoteBody(props: { note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
-	const canManage = useCanManageNote(props.note)
+function NoteBody(props: { serverId: string; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
+	const canManage = useCanManageNote(props.serverId, props.note)
 	return (
 		<div role="group" aria-label="Note" className="space-y-1">
 			<UserLabel userId={props.note.author} />
@@ -194,8 +199,8 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 	)
 }
 
-function useCanManageNote(note: LNote.Note) {
+function useCanManageNote(serverId: string, note: LNote.Note) {
 	const user = UsersClient.useLoggedInUser()
-	const manageAllDenied = RbacClient.usePermsCheck(RBAC.perm('queue:manage-all-notes'))
+	const manageAllDenied = RbacClient.usePermsCheck(RBAC.perm('queue:manage-all-notes', { serverId }))
 	return LNote.isAuthor(note, user?.discordId) || manageAllDenied === null
 }
