@@ -102,21 +102,6 @@ export function distinctDeepEquals<T>() {
 		)
 }
 
-/**
- * Check roughly every iteration of the event loop for some condition to be met
- */
-export async function sleepUntil<T>(cb: () => T | undefined, maxRetries = 25, signal?: AbortSignal) {
-	let i = 0
-	while (i < maxRetries) {
-		signal?.throwIfAborted()
-		const v = cb()
-		if (v !== undefined) return v as T
-		i++
-		await sleep(0, signal)
-	}
-	console.trace('sleepUntil timed out')
-}
-
 export async function* toAsyncGenerator<T>(observable: Rx.Observable<T>) {
 	type Elt = { code: 'next'; value: T } | { code: 'error'; error: any } | { code: 'complete' }
 
@@ -170,23 +155,6 @@ export function toCold<T>(task: () => Rx.ObservableInput<T>) {
 	})
 }
 
-// crude version of bufferTime which retains a reference to a shared buffer
-export function externBufferTime<T>(time: number, buffer: T[]) {
-	return (o: Rx.Observable<T>) =>
-		o.pipe(
-			Rx.map((v) => {
-				buffer.push(v)
-				return buffer
-			}),
-			Rx.sample(Rx.interval(time)),
-			Rx.map((b) => {
-				const result = [...b]
-				b.length = 0
-				return result
-			}),
-		)
-}
-
 export function filterTruthy() {
 	return <T>(o: Rx.Observable<T>) => o.pipe(Rx.filter((v) => !!v))
 }
@@ -214,42 +182,6 @@ export function traceTag<T>(tag: string): Rx.OperatorFunction<T, T> {
 	return (o: Rx.Observable<T>) => fn(o, Rx.Observable)
 }
 
-export function cancellableTimeout(ms: number): Rx.Observable<void> {
-	return new Rx.Observable((subscriber) => {
-		const timeout = setTimeout(() => {
-			subscriber.next()
-		}, ms)
-		return () => clearTimeout(timeout)
-	})
-}
-
-export async function resolvePromises<T extends object>(obj: T): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
-	const entries = Object.entries(obj)
-	const resolvedEntries = await Promise.all(entries.map(async ([key, value]) => [key, await value]))
-	return Object.fromEntries(resolvedEntries) as {
-		[K in keyof T]: Awaited<T[K]>
-	}
-}
-
-export type AsyncTask<T extends any[]> = { params: T; task: (...params: T) => Promise<void> }
-export class AsyncExclusiveTaskRunner {
-	queue: AsyncTask<any>[] = []
-	running = false
-	async runExclusiveUntilEmpty() {
-		if (this.running) return
-		this.running = true
-		try {
-			while (this.queue.length > 0) {
-				const task = this.queue.shift()!
-				await task.task(...task.params)
-			}
-		} finally {
-			this.running = false
-			this.queue = []
-		}
-	}
-}
-
 export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: boolean; priority?: number; signal?: AbortSignal }) {
 	const lock = opts?.lock ?? true
 	let release: (() => void) | undefined
@@ -273,49 +205,6 @@ export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: bool
 		},
 		mutex,
 	}
-}
-
-export function switchMapWithSignal<T, R>(project: (value: T, signal: AbortSignal) => Rx.ObservableInput<R>): Rx.OperatorFunction<T, R> {
-	return (source: Rx.Observable<T>) =>
-		new Rx.Observable<R>((subscriber) => {
-			let innerSub: Rx.Subscription | null = null
-			let controller: AbortController | null = null
-			let outerComplete = false
-
-			const outerSub = source.subscribe({
-				next(value) {
-					controller?.abort()
-					innerSub?.unsubscribe()
-
-					controller = new AbortController()
-					innerSub = Rx.from(project(value, controller.signal)).subscribe({
-						next(v) {
-							subscriber.next(v)
-						},
-						error(e) {
-							subscriber.error(e)
-						},
-						complete() {
-							innerSub = null
-							if (outerComplete) subscriber.complete()
-						},
-					})
-				},
-				error(e) {
-					subscriber.error(e)
-				},
-				complete() {
-					outerComplete = true
-					if (!innerSub || innerSub.closed) subscriber.complete()
-				},
-			})
-
-			return () => {
-				controller?.abort()
-				innerSub?.unsubscribe()
-				outerSub.unsubscribe()
-			}
-		})
 }
 
 export function withAbortSignal(signal: AbortSignal) {
