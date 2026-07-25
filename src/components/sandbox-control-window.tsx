@@ -15,10 +15,13 @@ import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import type { SandboxControlWindowProps } from './sandbox-control-window.helpers'
-import { SandboxAdminListPanel, SandboxConsolePanel } from './sandbox-panels'
-import { useOpenSandboxAdminListWindow, useOpenSandboxConsoleWindow } from './sandbox-panels.helpers'
+import { SandboxAdminListPanel } from './sandbox-panels'
+import { useOpenSandboxAdminListWindow } from './sandbox-panels.helpers'
+import { ServerConsolePanel } from './server-console-panel'
+import { useOpenServerConsoleWindow } from './server-console-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 import { useSandboxFrame } from './use-sandbox-frame'
+import { useServerConsoleFrame } from './use-server-console-frame'
 
 DraggableWindowStore.getState().registerDefinition<SandboxControlWindowProps, unknown>({
 	type: WINDOW_ID.enum['sandbox-control'],
@@ -61,7 +64,8 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	const joinRef = React.useRef<HTMLInputElement>(null)
 	const bulkRef = React.useRef<HTMLInputElement>(null)
 	const openAdminList = useOpenSandboxAdminListWindow({ serverId: props.serverId })
-	const openConsole = useOpenSandboxConsoleWindow({ serverId: props.serverId })
+	const openConsole = useOpenServerConsoleWindow({ serverId: props.serverId })
+	const consoleStores = useServerConsoleFrame(props.serverId)
 
 	async function run<V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) {
 		const res = await SandboxFrame.Actions.run(stores, verb, args)
@@ -180,7 +184,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 							</Button>
 						}
 					>
-						<SandboxConsolePanel stores={stores} className="h-64" />
+						<ServerConsolePanel stores={consoleStores} className="h-64" />
 					</Section>
 				</div>
 			</ScrollArea>

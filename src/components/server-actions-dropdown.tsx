@@ -18,9 +18,11 @@ import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import { useMutation } from '@tanstack/react-query'
 import { useOpenSandboxControlWindow } from './sandbox-control-window.helpers'
+import { useOpenServerConsoleWindow } from './server-console-window.helpers'
 
 void import('@/components/sandbox-control-window')
 void import('@/components/sandbox-panels')
+void import('@/components/server-console-window')
 
 // Permission checks gate these menu items, so a denial at call time is a race. Surface it the same
 // way handlePermissionDenied would (refresh perms + user-facing message), but as a thrown error so a
@@ -76,6 +78,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const sandboxServersRes = SandboxClient.useSandboxServers()
 	const isSandbox = !!sandboxServersRes.data?.includes(serverId)
 	const openSandboxWindow = useOpenSandboxControlWindow({ serverId })
+	const consoleDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:view-console', { serverId: serverId }))
+	const openConsoleWindow = useOpenServerConsoleWindow({ serverId })
 
 	function disableFogOfWar() {
 		toast.promise(
@@ -178,12 +182,11 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					Disable Fog Of War
 				</Item>
 			</PermissionDeniedTooltip>
-			{isSandbox && (
-				<>
-					<Separator />
-					<Item onClick={() => openSandboxWindow()}>Sandbox Controls</Item>
-				</>
-			)}
+			<Separator />
+			<PermissionDeniedTooltip denied={consoleDenied}>
+				<Item disabled={!!consoleDenied} onClick={() => openConsoleWindow()}>Server Console</Item>
+			</PermissionDeniedTooltip>
+			{isSandbox && <Item onClick={() => openSandboxWindow()}>Sandbox Controls</Item>}
 		</>
 	)
 }

@@ -190,6 +190,12 @@ export const PERMISSION_DEFINITION = {
 		description: 'Kick players with a timeout barring them from rejoining, up to the granted maximum duration',
 		scope: 'timeout',
 	}),
+	...definePermission('squad-server:view-console', {
+		description: "Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, "
+			+ 'including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the '
+			+ 'dashboard does. Read-only: it cannot issue commands.',
+		scope: 'server',
+	}),
 
 	...definePermission('sandbox:control', {
 		description: 'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. '

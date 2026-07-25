@@ -26,13 +26,6 @@ export const MAX_PLAYERS = 100
 export const PLAYER_CHAT_CHANNEL = z.enum(['ChatAll', 'ChatTeam', 'ChatSquad', 'ChatAdmin'])
 export type PlayerChatChannel = z.infer<typeof PLAYER_CHAT_CHANNEL>
 
-// Everything the emulated server does, as it sees it. Three channels rather than one stream because they answer
-// different questions: what SLM asked for (rcon), what the game reported (log), and what a player typed (command).
-export type EmuEvent =
-	| { type: 'rcon'; dir: 'recv' | 'send'; body: string; time: number }
-	| { type: 'log'; line: string; time: number }
-	| { type: 'command'; player: string; channel: string; message: string; time: number }
-
 const NoArgs = z.object({})
 
 // `tokens` maps the positional command-line form onto the same input the router takes, so the two front ends

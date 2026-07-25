@@ -14,6 +14,9 @@ Sandbox Controls**, which appears only on sandbox servers and only for users hol
 server. From there you connect fabricated players, speak as them in all or admin chat, form squads, end matches and
 drop the RCON connection to watch SLM reconnect.
 
+The window embeds the [server console](./server_console.md), which is not sandbox-specific: the same window is
+available on every server, under its own permission.
+
 The window shows nothing about the world except the puppet names, which is deliberate. Every verb addresses players
 by name and that mapping is the only state the window cannot get elsewhere. What the roster, chat and queue actually
 look like belongs on the dashboard, and reading it there is the honest test: it shows what SLM sees rather than what

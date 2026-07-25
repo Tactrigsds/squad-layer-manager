@@ -9,7 +9,7 @@ export const WINDOW_ID = z.enum([
 	'pool-config',
 	'sandbox-control',
 	'sandbox-admin-list',
-	'sandbox-console',
+	'server-console',
 ])
 
 export type WindowId = z.infer<typeof WINDOW_ID>

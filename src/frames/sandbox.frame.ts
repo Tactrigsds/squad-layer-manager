@@ -1,6 +1,5 @@
 import type * as FRM from '@/lib/frame'
 import * as ZusUtils from '@/lib/zustand'
-import type { EmuEvent } from '@/models/sandbox.models'
 import type * as SB from '@/models/sandbox.models'
 import * as RPC from '@/orpc.client'
 import type { SandboxState } from '@/systems/sandbox.shared'
@@ -21,13 +20,6 @@ export type Types = {
 	state: Store
 }
 
-export type ConsoleChannel = 'unified' | 'rcon' | 'log' | 'command'
-export const CONSOLE_CHANNELS: ConsoleChannel[] = ['unified', 'rcon', 'log', 'command']
-
-// The console is a tail, not a transcript: a busy world produces log lines indefinitely and nothing here is
-// persisted, so old entries are dropped rather than growing the tab forever.
-const MAX_EVENTS = 500
-
 export const PLAYERS_PAGE_SIZE = 15
 
 export type Store = {
@@ -35,9 +27,6 @@ export type Store = {
 	// null until the first stream frame arrives, or when the server stops being a sandbox
 	state: SandboxState | null
 	unavailable: boolean
-	events: EmuEvent[]
-	channel: ConsoleChannel
-	hideNoise: boolean
 	playerSearch: string
 	playerPage: number
 	// who the chat box speaks as, held rather than derived so it survives the roster changing under it
@@ -56,9 +45,6 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 			serverId,
 			state: null,
 			unavailable: false,
-			events: [],
-			channel: 'unified',
-			hideNoise: true,
 			playerSearch: '',
 			playerPage: 0,
 			speaker: null,
@@ -73,15 +59,6 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 				else args.set({ state: null, unavailable: true })
 			}),
 	)
-
-	args.sub.add(
-		RPC.observe(`sandbox.watchEvents:${serverId}`, () => RPC.orpc.sandbox.watchEvents.call({ serverId }))
-			.subscribe((batch) => {
-				const prev = args.get().events
-				const next = prev.concat(batch)
-				args.set({ events: next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next })
-			}),
-	)
 }
 
 export const frame: Frame = frameManager.createFrame<Types>({
@@ -89,40 +66,6 @@ export const frame: Frame = frameManager.createFrame<Types>({
 	createKey,
 	setup,
 })
-
-const TICK_RATE_LINE = /Server Tick Rate:/
-
-// SLM polls the same handful of rcon commands on a timer and the game reports its tick rate on another, so most of
-// what a quiet world produces says only that nothing has changed. Dropping it is what makes the console readable at
-// a glance; the checkbox is there because "nothing changed" is occasionally the thing being diagnosed.
-function denoise(events: readonly EmuEvent[]): EmuEvent[] {
-	const keep = new Array<boolean>(events.length).fill(true)
-	const lastResponse = new Map<string, string>()
-	let pending: { command: string; index: number } | null = null
-	for (let i = 0; i < events.length; i++) {
-		const event = events[i]
-		if (event.type === 'log') {
-			if (TICK_RATE_LINE.test(event.line)) keep[i] = false
-			continue
-		}
-		if (event.type !== 'rcon') continue
-		if (event.dir === 'recv') {
-			pending = { command: event.body, index: i }
-			continue
-		}
-		// a send with no command outstanding is the server pushing chat at us, which is never a repeat
-		if (!pending) continue
-		const { command, index } = pending
-		pending = null
-		if (lastResponse.get(command) === event.body) {
-			keep[i] = false
-			keep[index] = false
-		} else {
-			lastResponse.set(command, event.body)
-		}
-	}
-	return events.filter((_, i) => keep[i])
-}
 
 export namespace Sel {
 	const EMPTY: never[] = []
@@ -188,23 +131,11 @@ export namespace Sel {
 		const available = availableChatChannels(state)
 		return available.includes(state.chatChannel) ? state.chatChannel : 'ChatAll'
 	}
-
-	// hidden is reported so the console can say how much it is keeping from you, rather than quietly dropping it
-	export function consoleView(state: Store): { events: EmuEvent[]; hidden: number } {
-		const inChannel = state.channel === 'unified' ? state.events : state.events.filter((e) => e.type === state.channel)
-		if (!state.hideNoise) return { events: inChannel, hidden: 0 }
-		const events = denoise(inChannel)
-		return { events, hidden: inChannel.length - events.length }
-	}
 }
 
 export namespace Actions {
 	function store(stores: KeyProp) {
 		return ZusUtils.resolveStore<Store>(stores.sandbox)
-	}
-
-	export function setChannel(stores: KeyProp, channel: ConsoleChannel) {
-		store(stores).setState({ channel })
 	}
 
 	export function setSpeaker(stores: KeyProp, speaker: string) {
@@ -221,14 +152,6 @@ export namespace Actions {
 
 	export function setPlayerPage(stores: KeyProp, playerPage: number) {
 		store(stores).setState({ playerPage })
-	}
-
-	export function setHideNoise(stores: KeyProp, hideNoise: boolean) {
-		store(stores).setState({ hideNoise })
-	}
-
-	export function clearConsole(stores: KeyProp) {
-		store(stores).setState({ events: [] })
 	}
 
 	// Every mutation is a verb, so the window has one way to change the world and the server has one place to

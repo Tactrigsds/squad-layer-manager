@@ -1,4 +1,4 @@
-import { type EmuEvent, Emulator, type EmuPlayer } from '@/emulator'
+import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
 import { distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import type * as CS from '@/models/context-shared'
@@ -260,23 +260,6 @@ export const orpcRouter = {
 			Rx.startWith(undefined),
 			Rx.map(() => sandboxState(instance)),
 			distinctDeepEquals(),
-			withAbortSignal(signal!),
-		)
-		yield* toAsyncGenerator(obs)
-	}),
-
-	// What the emulated server is doing, as it sees it. Buffered rather than one message per line: a busy world
-	// produces log lines faster than a websocket round trip, and the console renders them in batches anyway.
-	watchEvents: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context, input, signal },
-	) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
-		if (denyRes) return
-		const instance = instances.get(input.serverId)
-		if (!instance) return
-		const obs = new Rx.Observable<EmuEvent>((subscriber) => instance.emu.onEvent((e) => subscriber.next(e))).pipe(
-			Rx.bufferTime(120),
-			Rx.filter((batch) => batch.length > 0),
 			withAbortSignal(signal!),
 		)
 		yield* toAsyncGenerator(obs)
