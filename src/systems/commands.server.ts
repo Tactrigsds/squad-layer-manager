@@ -85,40 +85,36 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 	const ctx: HandlerCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
 	const h: HandlerCtx = { ctx: ctx, msg, sender, user: { discordId, steamId: sender.ids.steam }, reply, error }
 
-	// an alias is a plain text substitution for a complete command, so it's expanded up front and everything after
-	// this point (scope, enabled, arg resolution) runs against the command it points at. Anything typed after the
-	// alias is dropped: aliases take no arguments of their own.
-	const alias = CMD.findAlias(Settings.GLOBAL_SETTINGS.commandAliases, Settings.GLOBAL_SETTINGS.commands, msg.message.split(/\s+/)[0])
-	if (alias) log.info('Command alias expanded: %s -> %s', alias.alias, alias.command)
-	const effectiveMsg = alias ? { ...msg, message: alias.command } : msg
-
-	const parseRes = CMD.parseCommand(effectiveMsg, Settings.GLOBAL_SETTINGS.commands)
+	// the trigger that matched decides the arguments: a plain one takes them as typed, one with an args template
+	// pins some of them and feeds the rest through its placeholders (see CMD.parseCommand)
+	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands)
 	if (parseRes.code === 'err:unknown-command') {
 		// just don't respond to unknown commands from non-admins
 		if (!sender.isAdmin) return
-		// an alias pointing at a command string that no longer exists: report the alias, not its stale expansion
-		if (alias) return await error('unknown-command', `Alias "${alias.alias}" points at a command that no longer exists`)
 		return await error('unknown-command', parseRes.msg)
 	}
 
-	const { cmd, tokens } = parseRes
+	const { cmd, trigger, tokens } = parseRes
 
+	if (CMD.triggerArgs(trigger) !== undefined) {
+		log.info('Command trigger %s ran %s with: %s', CMD.triggerString(trigger), cmd, tokens.join(' '))
+	}
 	log.info('Command received: %s', cmd)
 
 	const cmdConfig = Settings.GLOBAL_SETTINGS.commands[cmd as keyof typeof Settings.GLOBAL_SETTINGS.commands]
-	if (!CMD.chatInScope(cmdConfig.scopes, msg.channelType)) {
-		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.scopes, ['admin'])) {
+	if (!CMD.chatAllowed(cmdConfig.allowedChats, msg.channelType)) {
+		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.allowedChats, ['admin'])) {
 			// non-admin is trying to use admin command, just ignore them
 			return
 		}
-		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(cmdConfig.scopes))
+		return await error('wrong-chat', Messages.WARNS.commands.wrongChat(cmdConfig.allowedChats))
 	}
 
 	if (!cmdConfig.enabled) {
 		return await error('command-disabled', `Command "${cmd}" is disabled`)
 	}
 
-	// Authorization sits here, next to the scope and enabled gates, rather than in each handler: the declaration is
+	// Authorization sits here, next to the allowed-chat and enabled gates, rather than in each handler: the declaration is
 	// exhaustive over CommandId, so a command cannot reach its handler without having stated what it requires.
 	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
 	const permission = CMD.COMMAND_DECLARATIONS[cmd].permission
@@ -130,7 +126,7 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		if (denyRes) return await error('permission-denied', Messages.WARNS.permissionDenied(denyRes))
 	}
 
-	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender)
+	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender, trigger)
 	if (resolved.code !== 'ok') {
 		return await error('invalid-args', resolved.msg)
 	}
@@ -203,17 +199,22 @@ function resolveSquadArg(
 
 // central arg resolution: token windows via the declared arg kinds, then per-kind resolution.
 // every failure surfaces as a single message the caller sends back to the sender.
+//
+// A missing argument is reported against the trigger that was typed, not the command's own signature: `/to2h` typed
+// bare runs `/timeout` with only `2h`, whose honest complaint names <duration>, which that trigger pins and the
+// caller has no way to supply.
 async function resolveArgs<Id extends CMD.CommandId>(
 	ctx: C.Db & C.ServerSlice,
 	cmd: Id,
 	cmdConfig: CMD.CommandConfig,
 	tokens: string[],
 	sender: SM.Player,
+	trigger?: CMD.CommandTrigger,
 ): Promise<{ code: 'ok'; args: CMD.CommandArgs<Id> } | { code: 'err'; msg: string }> {
 	const defs = CMD.COMMAND_DECLARATIONS[cmd].args as readonly CMD.ArgDef[]
 	const res = await resolveArgDefs(ctx, defs, tokens, sender)
 	if (res.code === 'err:missing-arg') {
-		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig) }
+		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig, trigger, Settings.GLOBAL_SETTINGS.requireReasonFor) }
 	}
 	if (res.code !== 'ok') return res
 	return { code: 'ok', args: res.args as CMD.CommandArgs<Id> }
@@ -314,11 +315,7 @@ function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): M
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
 	help: async (h, args) => {
 		await h.reply(
-			Messages.WARNS.commands.help(
-				Settings.GLOBAL_SETTINGS.commands,
-				Settings.GLOBAL_SETTINGS.commandAliases,
-				args.section,
-			),
+			Messages.WARNS.commands.help(Settings.GLOBAL_SETTINGS.commands, args.section),
 		)
 		return { code: 'ok' }
 	},

@@ -189,7 +189,8 @@ export const WARNS = {
 					)
 				} else {
 					if (opts?.updated) {
-						const showNextString = commands.showNext.strings[0]
+						const showNextTrigger = CMD.primaryTrigger(commands.showNext)
+						const showNextString = showNextTrigger ? CMD.triggerString(showNextTrigger) : 'shownext'
 						const runWithPart = opts.isAdmin ? ` (run with ${showNextString})` : ''
 						lines.push(`Next layer Changed. Will be chosen via vote${runWithPart}:`)
 					} else {
@@ -255,33 +256,32 @@ export const WARNS = {
 		unknownCommand(cmdText: string, closestMatch: string) {
 			return `Unknown: ${cmdText}.\nDid you mean "${closestMatch}"?`
 		},
-		// Takes the command's scopes rather than the chats they map to, so admin-only can be named as such: it's the
-		// common case by far, and it matches how the scope is labelled on the commands page (CMD.COMMAND_SCOPE_LABELS),
+		// Takes the chat groups rather than the channels they map to, so admin-only can be named as such: it's the
+		// common case by far, and it matches how they're labelled on the commands page (CMD.CHAT_GROUP_LABELS),
 		// where the raw ChatAdmin/ChatTeam enum names never appear.
-		wrongChat(scopes: CMD.CommandScope[]) {
-			if (scopes.length === 1 && scopes[0] === 'admin') return 'Admin only commands must be used in admin chat'
-			const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
+		wrongChat(allowedChats: CMD.ChatGroup[]) {
+			if (allowedChats.length === 1 && allowedChats[0] === 'admin') return 'Admin only commands must be used in admin chat'
+			const correctChats = allowedChats.flatMap((s) => CMD.CHAT_GROUP_CHANNELS[s])
 			return `Command not available in this chat. Try using ${correctChats.join(' or ')}`
 		},
 		// `section` is the raw token typed after the help command; omitted means the quick reference. Returns one
 		// string per warn, since chat can only take a few lines at a time.
-		help(
-			commands: CMD.CommandConfigs,
-			aliases: readonly CMD.CommandAlias[] = [],
-			section?: string,
-		) {
-			const listing = CMDH.resolveHelpListing(commands, aliases, section)
+		help(commands: CMD.CommandConfigs, section?: string) {
+			const listing = CMDH.resolveHelpListing(commands, section)
 			if (listing.code === 'err:unknown-section') return [listing.msg]
 
-			const commandLines = listing.commands.map((id) => {
+			const lines = listing.commands.flatMap((id) => {
 				const cmd = commands[id]
-				const sortedStrings = cmd.strings.toSorted((a, b) => a.length - b.length)
+				const plain = cmd.triggers.filter((t) => CMD.triggerArgs(t) === undefined).map(CMD.triggerString)
+				const sortedStrings = plain.toSorted((a, b) => a.length - b.length)
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
-				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
+				const own = `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
+				// a trigger that pins arguments takes a different thing from the caller, so it gets its own line
+				const shortcuts = cmd.triggers
+					.filter((t) => CMD.triggerArgs(t) !== undefined)
+					.map((t) => `[${CMD.formatTriggerUsage(id, t)}]: ${GENERAL.command.aliasDescription(CMD.describeTriggerExpansion(cmd, t))}`)
+				return [own, ...shortcuts]
 			})
-			// aliases take no args of their own, so they list as the shortcut and what it expands to
-			const aliasLines = listing.aliases.map((a) => `[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`)
-			const lines = [...commandLines, ...aliasLines]
 			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
 			const groups = Arr.paged(lines, 3)
 			groups[0].unshift(`${listing.title}:`)

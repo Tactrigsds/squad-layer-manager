@@ -10,7 +10,6 @@ import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-pan
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -90,6 +89,14 @@ const DEBOUNCE_MS = 250
 function scopeValue(parent$: ValueState, key: string | number): ValueState {
 	const child$ = parent$.pipe(Rx.map((v: any) => v?.[key]), Rx.distinctUntilChanged()) as ValueState
 	child$.getValue = () => (parent$.getValue() as any)?.[key]
+	return child$
+}
+
+// derive a child value-state through a projection rather than a key, for a child whose shape in the parent varies
+// (a union member). Same contract as scopeValue.
+function mapValue<T, U>(parent$: ValueState<T>, project: (v: T) => U): ValueState<U> {
+	const child$ = parent$.pipe(Rx.map(project), Rx.distinctUntilChanged()) as ValueState<U>
+	child$.getValue = () => project(parent$.getValue())
 	return child$
 }
 
@@ -818,25 +825,15 @@ function repointPrefix(str: string, oldPrefix: string, newPrefix: string): strin
 	return newPrefix + str.slice(oldPrefix.length)
 }
 
-type CommandsMap = Record<string, { strings?: string[] } | undefined>
-type AliasList = { alias: string; command: string }[]
+type CommandsMap = Record<string, { triggers?: CMD.CommandTrigger[] } | undefined>
 
-function mapCommandStrings(commands: CommandsMap, fn: (s: string) => string): CommandsMap {
+// only a trigger's string carries a prefix; its args template is arguments, which never do
+function mapTriggerStrings(commands: CommandsMap, fn: (s: string) => string): CommandsMap {
 	const out: CommandsMap = {}
-	for (const [id, cmd] of Object.entries(commands)) out[id] = { ...cmd, strings: (cmd?.strings ?? []).map(fn) }
+	for (const [id, cmd] of Object.entries(commands)) {
+		out[id] = { ...cmd, triggers: (cmd?.triggers ?? []).map((t) => CMD.withTriggerString(t, fn(CMD.triggerString(t)))) }
+	}
 	return out
-}
-
-// the command string an alias's expansion starts with (its remaining words are arguments, which carry no prefix)
-function aliasCommandWord(command: string): string {
-	return command.trim().split(/\s+/)[0] ?? ''
-}
-
-// re-points the leading command string of an alias's expansion, leaving its arguments and spacing untouched
-function repointCommandText(command: string, oldPrefix: string, newPrefix: string, prefixes: string[]): string {
-	const match = /^(\s*)(\S+)([\s\S]*)$/.exec(command)
-	if (!match || prefixUsedBy(match[2], prefixes) !== oldPrefix) return command
-	return match[1] + repointPrefix(match[2], oldPrefix, newPrefix) + match[3]
 }
 
 // one editable prefix. The char input is committed on blur/Enter (not per keystroke) because committing propagates a
@@ -909,11 +906,10 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	const rootOnChange = React.useContext(RootOnChangeContext)
 	const root = (useFieldValue(root$, reset$) as
-		| { defaultPrefix?: string; commands?: CommandsMap; commandAliases?: AliasList }
+		| { defaultPrefix?: string; commands?: CommandsMap }
 		| undefined) ?? {}
 	const prefixes = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
 	const commands = root.commands ?? {}
-	const aliases = root.commandAliases ?? []
 	const defaultPrefix = root.defaultPrefix ?? prefixes[0] ?? ''
 
 	const [newPrefix, setNewPrefix] = React.useState('')
@@ -924,13 +920,10 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 		reset$.next()
 	}
 
-	// an alias counts twice over: once for the shortcut, once for the command string it expands to
 	function usageOf(prefix: string): number {
 		let n = 0
-		for (const cmd of Object.values(commands)) for (const s of cmd?.strings ?? []) if (prefixUsedBy(s, prefixes) === prefix) n++
-		for (const a of aliases) {
-			if (prefixUsedBy(a.alias, prefixes) === prefix) n++
-			if (prefixUsedBy(aliasCommandWord(a.command), prefixes) === prefix) n++
+		for (const cmd of Object.values(commands)) {
+			for (const t of cmd?.triggers ?? []) if (prefixUsedBy(CMD.triggerString(t), prefixes) === prefix) n++
 		}
 		return n
 	}
@@ -940,19 +933,13 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 		if (!next || next === oldPrefix || !CMD.isValidPrefix(next)) return
 		const nextPrefixes = prefixes.map((p, i) => (i === idx ? next : p))
 		// target by the OLD prefix list so longest-match stays stable while rewriting
-		const nextCommands = mapCommandStrings(
+		const nextCommands = mapTriggerStrings(
 			commands,
 			(s) => (prefixUsedBy(s, prefixes) === oldPrefix ? repointPrefix(s, oldPrefix, next) : s),
 		)
-		const nextAliases = aliases.map((a) => ({
-			...a,
-			alias: prefixUsedBy(a.alias, prefixes) === oldPrefix ? repointPrefix(a.alias, oldPrefix, next) : a.alias,
-			command: repointCommandText(a.command, oldPrefix, next, prefixes),
-		}))
 		writeRoot({
 			allowedPrefixes: nextPrefixes,
 			commands: nextCommands,
-			commandAliases: nextAliases,
 			defaultPrefix: defaultPrefix === oldPrefix ? next : defaultPrefix,
 		})
 	}
@@ -1025,77 +1012,168 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	)
 }
 
-// bespoke editor for a command's `strings` array (inline-prefixed, short): lays the inputs out horizontally so they
-// don't each hog a full row. Each string is an uncontrolled TextInputField scoped to its index (re-seeds on reset$).
-function CommandStringsField({ value$, reset$, onChange }: OverrideProps) {
-	const strings = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
-	function structural(next: string[]) {
+// The seed for a trigger being given pinned arguments. Correct as-is for a single-argument command; for anything else
+// it fails validation immediately, and the message names the arguments the command actually takes, which is the
+// fastest way to tell the admin what to write.
+const NEW_TRIGGER_ARGS = '{{rest}}'
+
+// bespoke editor for a command's `triggers` array (inline-prefixed, short). A plain trigger is one input; pinning
+// arguments to it grows a second one on the same row rather than moving it to a table of its own, since it is still
+// just a way of running this command.
+function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps & { cmdId: CMD.CommandId }) {
+	const triggers = (useFieldValue(value$, reset$) as CMD.CommandTrigger[] | undefined) ?? []
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
+	// document would re-render all of them on every keystroke anywhere in the form
+	const requireReasonFor$ = React.useMemo(() => scopeValue(root$, 'requireReasonFor'), [root$])
+	const requireReasonFor = useFieldValue(requireReasonFor$, reset$) as AAR.AdminActionType[] | undefined
+	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
+	const current = () => ((value$.getValue() as CMD.CommandTrigger[]) ?? [])
+	function structural(next: CMD.CommandTrigger[]) {
 		onChange(next)
 		reset$.next()
 	}
+	const setAt = (idx: number, next: CMD.CommandTrigger) => onChange(current().map((t, i) => (i === idx ? next : t)))
+
 	return (
-		<div className="flex flex-wrap items-center gap-2">
-			{strings.map((_, idx) => (
-				// oxlint-disable-next-line no-array-index-key
-				<div key={idx} className="flex items-center gap-1">
-					<div className="w-40">
-						<TextInputField
-							value$={scopeValue(value$, idx)}
-							reset$={reset$}
-							numeric={false}
-							placeholder="prefix + command"
-							onChange={(v) => onChange(((value$.getValue() as string[]) ?? []).map((s, i) => (i === idx ? (v ?? '') : s)))}
-						/>
+		<div className="space-y-1">
+			{triggers.map((trigger, idx) => {
+				const args = CMD.triggerArgs(trigger)
+				const trigger$ = scopeValue(value$, idx)
+				return (
+					// oxlint-disable-next-line no-array-index-key
+					<div key={idx} className="flex items-center gap-1">
+						<div className="w-40 shrink-0">
+							<TextInputField
+								value$={mapValue(trigger$, (t) => CMD.triggerString(t ?? ''))}
+								reset$={reset$}
+								numeric={false}
+								placeholder="prefix + command"
+								onChange={(v) => setAt(idx, CMD.withTriggerString(current()[idx] ?? '', v ?? ''))}
+							/>
+						</div>
+						{args === undefined
+							? (
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									className="h-6 px-2 text-xs text-muted-foreground"
+									title="Pin some of this command's arguments, so the trigger becomes a shortcut"
+									onClick={() =>
+										structural(current().map((t, i) => (i === idx ? { string: CMD.triggerString(t), args: NEW_TRIGGER_ARGS } : t)))}
+								>
+									Pin args
+								</Button>
+							)
+							: (
+								<>
+									<div className="min-w-0 flex-1">
+										<TextInputField
+											value$={mapValue(trigger$, (t) => CMD.triggerArgs(t) ?? '')}
+											reset$={reset$}
+											numeric={false}
+											placeholder="{{arg1}} 2h {{rest2}}"
+											onChange={(v) => {
+												const t = current()[idx] ?? ''
+												// Unpin's reset pulse reaches this input before it unmounts; taking that for an edit would re-pin the row
+												if (CMD.triggerArgs(t) === undefined) return
+												setAt(idx, { string: CMD.triggerString(t), args: v ?? '' })
+											}}
+										/>
+									</div>
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="h-6 px-2 text-xs text-muted-foreground"
+										title="Take this command's arguments as typed instead"
+										onClick={() => structural(current().map((t, i) => (i === idx ? CMD.triggerString(t) : t)))}
+									>
+										Unpin
+									</Button>
+								</>
+							)}
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-6 w-6 shrink-0 text-destructive"
+							aria-label={`Remove trigger ${idx + 1}`}
+							onClick={() => structural(triggers.filter((_, i) => i !== idx))}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
 					</div>
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="h-6 w-6 shrink-0 text-destructive"
-						aria-label={`Remove string ${idx + 1}`}
-						onClick={() => structural(strings.filter((_, i) => i !== idx))}
-					>
-						<Icons.X className="h-4 w-4" />
-					</Button>
+				)
+			})}
+			<div className="flex items-center gap-2">
+				<Button type="button" variant="outline" size="sm" onClick={() => structural([...current(), ''])}>
+					<Icons.Plus className="mr-1 h-4 w-4" />Add
+				</Button>
+			</div>
+			{
+				/* only where a template is actually being edited: this field renders once per command, and the signature under
+			    every one of them buries the commands themselves */
+			}
+			{triggers.some((t) => CMD.triggerArgs(t) !== undefined) && (
+				<div className="space-y-0.5 text-xs text-muted-foreground">
+					{signature.length === 0
+						? <span>This command takes no arguments, so pinned args can only be fixed text.</span>
+						: (
+							<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+								<span>Takes</span>
+								{signature.map(({ ref, arg }) => (
+									<span key={ref} className="whitespace-nowrap">
+										<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
+										<span className="ml-1 font-mono">{arg}</span>
+									</span>
+								))}
+							</div>
+						)}
+					<span>
+						A template over the words typed after the trigger. {'{{^arg2}}default{{/arg2}}'} fills one in when it is left out; {'{{rest2}}'}
+						{' '}
+						takes everything from the second word on.
+					</span>
 				</div>
-			))}
-			<Button type="button" variant="outline" size="sm" onClick={() => structural([...strings, ''])}>
-				<Icons.Plus className="mr-1 h-4 w-4" />Add
-			</Button>
+			)}
 		</div>
 	)
 }
 
-// compact editor for a single command (`commands.<id>`): collapses the strings/scopes/enabled sub-sections into a
+// compact editor for a single command (`commands.<id>`): collapses the triggers/allowedChats/enabled sub-sections into a
 // couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
-// shell. Schema issues (e.g. a string missing an allowed prefix) still surface under the card via the field's issues.
-function CommandCard({ value$, reset$, onChange }: OverrideProps) {
-	const cfg = (useFieldValue(value$, reset$) as { scopes?: CMD.CommandScope[]; enabled?: boolean; quickReference?: boolean }) ?? {}
-	const scopes = cfg.scopes ?? []
+// shell. Schema issues (e.g. a trigger missing an allowed prefix) still surface under the card via the field's issues.
+function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
+	const cmdId = path[1] as CMD.CommandId
+	const cfg = (useFieldValue(value$, reset$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
+	const allowedChats = cfg.allowedChats ?? []
 	const enabled = cfg.enabled ?? true
 	const quickReference = cfg.quickReference ?? false
-	const strings$ = React.useMemo(() => scopeValue(value$, 'strings'), [value$])
+	const triggers$ = React.useMemo(() => scopeValue(value$, 'triggers'), [value$])
 	function patch(p: Record<string, unknown>) {
 		onChange({ ...((value$.getValue() as Record<string, unknown>) ?? {}), ...p })
 	}
 	return (
 		<div className="space-y-2">
-			<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+			<div className="space-y-1">
 				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-					Strings <HelpTip text="Command strings that trigger this command. Each must start with one of the allowed prefixes." />
+					Triggers{' '}
+					<HelpTip text="Strings that run this command, each starting with one of the allowed prefixes. Pin arguments to one to make it a shortcut." />
 				</span>
-				<CommandStringsField value$={strings$} reset$={reset$} onChange={(v) => patch({ strings: v })} path={[]} />
+				<CommandTriggersField value$={triggers$} reset$={reset$} onChange={(v) => patch({ triggers: v })} path={[]} cmdId={cmdId} />
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="flex items-center gap-2">
 					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-						Scopes <HelpTip text="Chat scopes this command is available in (admin and/or public chats)." />
+						Allowed chats <HelpTip text="The in-game chats this command may be typed in." />
 					</span>
 					<ComboBoxMulti
-						title="Scope"
-						values={scopes}
-						options={CMD.COMMAND_SCOPES.options.map((scope) => ({ value: scope, label: CMD.COMMAND_SCOPE_LABELS[scope] }))}
-						onSelect={(next) => patch({ scopes: (typeof next === 'function' ? next(scopes) : next) })}
+						title="Allowed chats"
+						values={allowedChats}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: CMD.CHAT_GROUP_LABELS[group] }))}
+						onSelect={(next) => patch({ allowedChats: (typeof next === 'function' ? next(allowedChats) : next) })}
 					/>
 				</div>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -1111,88 +1189,6 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 				</label>
 			</div>
 		</div>
-	)
-}
-
-// what an alias's command text points at, for the status column. `undefined` means there's nothing useful to say:
-// either the text is still empty, or its args are malformed, which surfaces as a schema issue under the field instead.
-type AliasStatus = { broken: boolean; label: string; title: string }
-function aliasStatus(command: string, commands: CMD.CommandConfigs | undefined): AliasStatus | undefined {
-	if (!commands || command.trim() === '') return undefined
-	const res = CMD.resolveAliasCommand(command, commands)
-	if (res.code === 'err:invalid-args') return undefined
-	if (res.code === 'err:unknown-command') return { broken: true, label: 'Unavailable', title: res.msg }
-	if (!commands[res.cmdId].enabled) {
-		return { broken: true, label: 'Disabled', title: `The "${res.cmdId}" command is disabled, so this alias does nothing.` }
-	}
-	return { broken: false, label: res.cmdId, title: `Runs the "${res.cmdId}" command.` }
-}
-
-// bespoke editor for `commandAliases`: an alias is just a shortcut string and the full command it runs, so the row is
-// two text fields plus a status showing which command it resolves to (and whether that command is usable).
-function CommandAliasesField({ value$, reset$, onChange }: OverrideProps) {
-	return (
-		<PresetTableField
-			value$={value$}
-			reset$={reset$}
-			onChange={onChange}
-			headers={
-				<>
-					<TableHead className="w-[12rem]">Alias</TableHead>
-					<TableHead>Full command</TableHead>
-					<TableHead className="w-[9rem]">Runs</TableHead>
-					<TableHead className="w-8" />
-				</>
-			}
-			newRow={() => ({ alias: '', command: '' })}
-			Row={CommandAliasRow}
-		/>
-	)
-}
-
-function CommandAliasRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
-	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const alias$ = React.useMemo(() => scopeValue(row$, 'alias'), [row$])
-	const command$ = React.useMemo(() => scopeValue(row$, 'command'), [row$])
-	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	// the command text is read reactively so the status follows the input (a debounce behind it, like every other field)
-	const command = (useFieldValue(command$, reset$) as string | undefined) ?? ''
-	const commands = ((useFieldValue(root$, reset$) as { commands?: CMD.CommandConfigs } | undefined) ?? {}).commands
-	const status = aliasStatus(command, commands)
-
-	const setField = (key: 'alias' | 'command') => (v: any) => {
-		const arr = [...((parent$.getValue() as CMD.CommandAlias[]) ?? [])]
-		arr[idx] = { ...arr[idx], [key]: v ?? '' }
-		parentOnChange(arr)
-	}
-
-	return (
-		<TableRow>
-			<TableCell className="align-top">
-				<TextInputField value$={alias$} reset$={reset$} onChange={setField('alias')} numeric={false} placeholder="/rules" />
-			</TableCell>
-			<TableCell className="align-top">
-				<TextInputField
-					value$={command$}
-					reset$={reset$}
-					onChange={setField('command')}
-					numeric={false}
-					placeholder="/broadcast Read the rules"
-				/>
-			</TableCell>
-			<TableCell className="align-top">
-				{status && (
-					<Badge variant={status.broken ? 'destructive' : 'outline'} className="font-mono text-xs" title={status.title}>
-						{status.label}
-					</Badge>
-				)}
-			</TableCell>
-			<TableCell className="align-top">
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
-					<Icons.X className="h-4 w-4" />
-				</Button>
-			</TableCell>
-		</TableRow>
 	)
 }
 
@@ -2858,7 +2854,6 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
-	if (path.length === 1 && last === 'commandAliases') return CommandAliasesField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField

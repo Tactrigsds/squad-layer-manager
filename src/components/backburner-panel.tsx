@@ -188,7 +188,7 @@ export default function BackburnerPanel(props: StoresProp) {
 							</p>
 							<br />
 							<p>
-								Ingame command example: <CopyableCommand cmdString={commandExample?.command} chatScope="ChatToAdmin" />
+								Ingame command example: <CopyableCommand cmdString={commandExample?.command} chatCommand="ChatToAdmin" />
 							</p>
 						</TooltipContent>
 					</Tooltip>
