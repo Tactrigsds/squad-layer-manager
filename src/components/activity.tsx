@@ -1,7 +1,7 @@
 import React from 'react'
 
 import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as Zus from '@/lib/zustand.ts'
 import type * as UP from '@/models/user-presence'
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -43,7 +43,7 @@ export function StartActivityInteraction<
 		loaderName: props.loaderName,
 		matchKey: props.matchKey,
 		trace: `StartActivityInteraction:${props.loaderName}`,
-		select: ZusUtils.useShallow((entry) => [!!entry?.data, !!entry?.active] as const),
+		select: Zus.useShallow((entry) => [!!entry?.data, !!entry?.active] as const),
 	})
 
 	const startActivity = () => {

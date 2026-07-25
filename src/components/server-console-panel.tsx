@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type { ConsoleEvent } from '@/models/server-console.models'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
@@ -34,7 +34,7 @@ function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?
 }
 
 export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame.KeyProp; className?: string }) {
-	const [{ events, hidden }, tab, hideNoise, denied] = ZusUtils.useStore(
+	const [{ events, hidden }, tab, hideNoise, denied] = Zus.useStore(
 		stores.serverConsole,
 		(s) => [ConsoleFrame.Sel.view(s), s.tab, s.hideNoise, s.denied] as const,
 	)

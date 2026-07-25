@@ -1,5 +1,3 @@
-import * as Zus from 'zustand'
-
 export type Tab = 'details' | 'scores'
 
 type Store = {

@@ -8,7 +8,7 @@ import * as CM from '@/lib/codemirror'
 import * as Obj from '@/lib/object'
 import { toast } from '@/lib/toast'
 import * as Typography from '@/lib/typography.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 
 import type { FilterTextEditorProps } from './filter-text-editor.types'
@@ -18,7 +18,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const viewRef = React.useRef<CM.EditorView | null>(null)
 	const [errorText, setErrorText] = React.useState('')
 
-	const getState = () => ZusUtils.getState(props.stores.filterEditor)
+	const getState = () => Zus.getState(props.stores.filterEditor)
 
 	const onChange = React.useCallback(
 		(value: string) => {
@@ -74,7 +74,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		})
 
 		let first = true
-		const unsub = ZusUtils.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
+		const unsub = Zus.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
 			if (!first && frameState.tree === prevFrameState.tree) return
 			first = false
 			CM.setDoc(view, stringifyCompact(F.treeToFilterNode(frameState.tree)))

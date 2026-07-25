@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { UserLabel } from '@/components/user-avatar'
 import { toast } from '@/lib/toast'
 import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as LTag from '@/models/layer-tags.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -59,7 +59,7 @@ export function LayerTags(props: {
 	// inside a `group/single-item`; the dialogs render the button unconditionally.
 	revealAddOnHover?: boolean
 }) {
-	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
+	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const resolved = LTag.resolveAll(props.tags, configured)
 	const canManage = useCanManageTags()
 	const [editing, setEditing] = React.useState<LTag.Tag | 'new' | null>(null)
@@ -226,7 +226,7 @@ function LayerTagDialog(props: { state: LTag.Tag | 'new' | null; onClose: () => 
 }
 
 function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => void; onCreated: (id: LTag.TagId) => void }) {
-	const configured = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
+	const configured = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const existing = props.state === 'new' ? undefined : props.state
 	const isNew = existing === undefined
 

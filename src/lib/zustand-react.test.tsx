@@ -5,9 +5,8 @@ import { act, cleanup, render as rtlRender, renderHook as rtlRenderHook, screen 
 import * as React from 'react'
 import * as Rx from 'rxjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import * as Zus from 'zustand'
 
-import * as ZusUtils from './zustand'
+import * as Zus from './zustand'
 
 type State = { count: number; name: string }
 const createStore = () => Zus.createStore<State>(() => ({ count: 0, name: 'a' }))
@@ -27,7 +26,7 @@ afterEach(cleanup)
 describe('useStore', () => {
 	it('reads a single store and re-renders on change', () => {
 		const store = createStore()
-		const { result } = renderHook(() => ZusUtils.useStore(store, (s: State) => s.count))
+		const { result } = renderHook(() => Zus.useStore(store, (s: State) => s.count))
 		expect(result.current).toBe(0)
 		act(() => store.setState({ count: 1 }))
 		expect(result.current).toBe(1)
@@ -36,7 +35,7 @@ describe('useStore', () => {
 	it('reads multiple sources through a selector', () => {
 		const a = createStore()
 		const b = Zus.createStore(() => ({ suffix: '!' }))
-		const { result } = renderHook(() => ZusUtils.useStore(a, b, (x: State, y: { suffix: string }) => x.name + y.suffix))
+		const { result } = renderHook(() => Zus.useStore(a, b, (x: State, y: { suffix: string }) => x.name + y.suffix))
 		expect(result.current).toBe('a!')
 		act(() => a.setState({ name: 'z' }))
 		expect(result.current).toBe('z!')
@@ -45,14 +44,14 @@ describe('useStore', () => {
 	it('packs multiple sources into a tuple without a selector', () => {
 		const a = createStore()
 		const b = Zus.createStore(() => ({ other: 1 }))
-		const { result } = renderHook(() => ZusUtils.useStore(a, b))
+		const { result } = renderHook(() => Zus.useStore(a, b))
 		expect(result.current).toEqual([{ count: 0, name: 'a' }, { other: 1 }])
 	})
 
 	it('keeps tuple identity stable when nothing changed', () => {
 		const a = createStore()
 		const b = Zus.createStore(() => ({ other: 1 }))
-		const { result, rerender } = renderHook(() => ZusUtils.useStore(a, b))
+		const { result, rerender } = renderHook(() => Zus.useStore(a, b))
 		const first = result.current
 		rerender()
 		expect(result.current).toBe(first)
@@ -60,14 +59,14 @@ describe('useStore', () => {
 
 	it('reads nullish inputs as undefined', () => {
 		const store = createStore()
-		const { result } = renderHook(() => ZusUtils.useStore(null, store, (x: undefined, y: State) => [x, y.count]))
+		const { result } = renderHook(() => Zus.useStore(null, store, (x: undefined, y: State) => [x, y.count]))
 		expect(result.current).toEqual([undefined, 0])
 	})
 
 	// the observable path is duck-typed on getValue/pipe, which BehaviorSubject satisfies
 	it('reads an observable source and re-renders on emission', () => {
 		const subject = new Rx.BehaviorSubject({ n: 1 })
-		const { result } = renderHook(() => ZusUtils.useStore(subject as any, (s: { n: number }) => s.n))
+		const { result } = renderHook(() => Zus.useStore(subject as any, (s: { n: number }) => s.n))
 		expect(result.current).toBe(1)
 		act(() => subject.next({ n: 2 }))
 		expect(result.current).toBe(2)
@@ -76,7 +75,7 @@ describe('useStore', () => {
 	it('mixes an observable with a store', () => {
 		const store = createStore()
 		const subject = new Rx.BehaviorSubject({ n: 10 })
-		const { result } = renderHook(() => ZusUtils.useStore(store, subject as any, (s: State, o: { n: number }) => s.count + o.n))
+		const { result } = renderHook(() => Zus.useStore(store, subject as any, (s: State, o: { n: number }) => s.count + o.n))
 		expect(result.current).toBe(10)
 		act(() => subject.next({ n: 20 }))
 		expect(result.current).toBe(20)
@@ -88,7 +87,7 @@ describe('useStore', () => {
 	it('recomputes when the selector closes over a changed prop', () => {
 		const store = Zus.createStore<{ items: Record<string, string> }>(() => ({ items: { a: 'apple', b: 'banana' } }))
 		const { result, rerender } = renderHook(
-			({ id }: { id: string }) => ZusUtils.useStore(store, (s: { items: Record<string, string> }) => s.items[id]),
+			({ id }: { id: string }) => Zus.useStore(store, (s: { items: Record<string, string> }) => s.items[id]),
 			{ initialProps: { id: 'a' } },
 		)
 		expect(result.current).toBe('apple')
@@ -100,7 +99,7 @@ describe('useStore', () => {
 		const store = createStore()
 		// mutates the store during render, i.e. before effects run
 		function Probe() {
-			const count = ZusUtils.useStore(store, (s: State) => s.count)
+			const count = Zus.useStore(store, (s: State) => s.count)
 			const done = React.useRef(false)
 			if (!done.current) {
 				done.current = true
@@ -118,7 +117,7 @@ describe('useStore', () => {
 		let renders = 0
 		const { rerender } = renderHook(() => {
 			renders++
-			return ZusUtils.useStore(store, (s: State) => ({ count: s.count }))
+			return Zus.useStore(store, (s: State) => ({ count: s.count }))
 		})
 		expect(renders).toBe(1)
 		rerender()
@@ -132,7 +131,7 @@ describe('useStore', () => {
 		let renders = 0
 		renderHook(() => {
 			renders++
-			return ZusUtils.useStore(store, (s: State) => s.count)
+			return Zus.useStore(store, (s: State) => s.count)
 		})
 		expect(renders).toBe(1)
 		act(() => store.setState({ name: 'other' }))
@@ -146,7 +145,7 @@ describe('useStore', () => {
 				<QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 			</React.StrictMode>
 		)
-		const { result } = rtlRenderHook(() => ZusUtils.useStore(store, (s: State) => s.count), { wrapper: strictWrapper })
+		const { result } = rtlRenderHook(() => Zus.useStore(store, (s: State) => s.count), { wrapper: strictWrapper })
 		expect(result.current).toBe(0)
 		act(() => store.setState({ count: 3 }))
 		expect(result.current).toBe(3)
@@ -155,9 +154,7 @@ describe('useStore', () => {
 	it('reads query sources and re-renders when their data arrives', async () => {
 		const store = createStore()
 		const query = { queryKey: ['thing'], queryFn: async () => ({ n: 7 }) } as any
-		const { result } = renderHook(() =>
-			ZusUtils.useStore(store, query, (s: State, q: { n: number } | undefined) => s.count + (q?.n ?? 0)),
-		)
+		const { result } = renderHook(() => Zus.useStore(store, query, (s: State, q: { n: number } | undefined) => s.count + (q?.n ?? 0)))
 		expect(result.current).toBe(0)
 		await act(async () => {
 			await new Promise((r) => setTimeout(r, 10))
@@ -174,7 +171,7 @@ describe('useStore', () => {
 		try {
 			const { rerender } = renderHook(
 				({ withQuery }: { withQuery: boolean }) =>
-					withQuery ? ZusUtils.useStore(store, query, (s: State) => s.count) : ZusUtils.useStore(store, (s: State) => s.count),
+					withQuery ? Zus.useStore(store, query, (s: State) => s.count) : Zus.useStore(store, (s: State) => s.count),
 				{ initialProps: { withQuery: false } },
 			)
 			expect(() => rerender({ withQuery: true })).toThrow(/number of query sources/)
@@ -185,7 +182,7 @@ describe('useStore', () => {
 
 	it('unsubscribes on unmount', () => {
 		const store = createStore()
-		const { unmount } = renderHook(() => ZusUtils.useStore(store, (s: State) => s.count))
+		const { unmount } = renderHook(() => Zus.useStore(store, (s: State) => s.count))
 		expect((store as any).getState()).toBeDefined()
 		unmount()
 		act(() => store.setState({ count: 9 }))
@@ -193,9 +190,9 @@ describe('useStore', () => {
 })
 
 describe('useStore_Susp', () => {
-	type Query = ZusUtils.QuerySource<{ n: number }>
+	type Query = Zus.QuerySource<{ n: number }>
 	function Probe(props: { store: Zus.StoreApi<State>; query: Query }) {
-		const value = ZusUtils.useStore_Susp(props.store, props.query, (s, q) => s.count + q.n)
+		const value = Zus.useStore_Susp(props.store, props.query, (s, q) => s.count + q.n)
 		return <span data-testid="value">{value}</span>
 	}
 
@@ -218,7 +215,7 @@ describe('useStore_Susp', () => {
 
 	it('reads sync sources without suspending when no query source is passed', () => {
 		const store = createStore()
-		const { result } = renderHook(() => ZusUtils.useStore_Susp(store, (s: State) => s.count))
+		const { result } = renderHook(() => Zus.useStore_Susp(store, (s: State) => s.count))
 		expect(result.current).toBe(0)
 		act(() => store.setState({ count: 2 }))
 		expect(result.current).toBe(2)

@@ -3,7 +3,7 @@ import React from 'react'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -72,12 +72,12 @@ export default function PlayerBulkContextMenuOptions({
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
 	const timeoutDenied = RbacClient.usePermsCheck(SM.Grants.anyTimeout(serverId))
-	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
-	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
+	const canSwapNow = Zus.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
+	const canQueue = Zus.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 
 	// when the selection is exactly one full squad, the warn action targets the squad details window and the
 	// menu item reads "Warn Squad"; otherwise it routes to the server activity "selected" warn box
-	const fullSquad = ZusUtils.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+	const fullSquad = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
 		const state = ChatPrt.Sel.chatState(chatStore)
 		return detectFullSquadSelection(playerIds, state.players, state.squads)
 	})
@@ -87,7 +87,7 @@ export default function PlayerBulkContextMenuOptions({
 	function selectedPlayerList() {
 		// recent rather than live, so a player who dropped since being selected is still named rather than
 		// rendering as a bare id
-		const players = ChatPrt.Sel.recentPlayers(ZusUtils.getState(stores.squadServer))
+		const players = ChatPrt.Sel.recentPlayers(Zus.getState(stores.squadServer))
 		return (
 			<ul className="max-h-48 space-y-0.5 overflow-y-auto rounded border bg-muted/30 p-2 text-sm">
 				{playerIds.map((id) => {
@@ -103,9 +103,9 @@ export default function PlayerBulkContextMenuOptions({
 	}
 
 	async function swapNow() {
-		const initialState = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer))
+		const initialState = TSWClient.Sel.localState(Zus.getState(stores.squadServer))
 		const initialTeams = new Map(playerIds.map((id) => [id, initialState.players.get(id)]))
-		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe((state) => {
+		const unsubscribe = Zus.resolveReadStore(stores.squadServer).subscribe((state) => {
 			const current = TSWClient.Sel.localState(state)
 			if (playerIds.some((id) => current.players.get(id) !== initialTeams.get(id))) closeDialog()
 		})

@@ -10,7 +10,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as UP from '@/models/user-presence'
 import * as RootRouter from '@/root-router'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -103,7 +103,7 @@ function ServerDashboardHost(props: { serverId: string }) {
 		// while engaged, mirror the visible panel into presence so VIEWING_QUEUE / VIEWING_TEAMS tracks
 		// the tab the user is actually looking at
 		sub.add(
-			ZusUtils.toObservable(ClientOnlySettings.Store, true)
+			Zus.toObservable(ClientOnlySettings.Store, true)
 				.pipe(
 					Rx.map(([s]) => s.primaryPanelTab),
 					Rx.distinctUntilChanged(),
@@ -162,14 +162,14 @@ function ServerDashboardHost(props: { serverId: string }) {
 // goes away: leaving with edits nobody else is holding loses them. So warn on the way out, and once we are
 // gone say what happened -- the dashboard is torn down by then, so the discard itself is never seen.
 function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string) {
-	const [queueModified, requestsModified] = ZusUtils.useStore(
+	const [queueModified, requestsModified] = Zus.useStore(
 		stores.squadServer!,
-		ZusUtils.useShallow((s) => [s.queue.isModified, s.queue.backburnerModified]),
+		Zus.useShallow((s) => [s.queue.isModified, s.queue.backburnerModified]),
 	)
 	const [editingQueue] = UPClient.useEditingQueueState(serverId)
 	const [editingRequests] = UPClient.useEditingLayerRequestsState(serverId)
-	const queueEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'queue'))
-	const requestEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'layer-requests'))
+	const queueEditors = Zus.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'queue'))
+	const requestEditors = Zus.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'layer-requests'))
 
 	const wouldDiscard = (editingQueue && queueModified && queueEditors <= 1) || (editingRequests && requestsModified && requestEditors <= 1)
 	const wouldDiscardRef = React.useRef(wouldDiscard)

@@ -15,7 +15,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as UP from '@/models/user-presence'
@@ -49,7 +49,7 @@ function ValidationWarningsDisplay(props: {
 	stores: SquadServerFrame.KeyProp
 }) {
 	const constraints = LayerQueriesClient.useLayerItemStatusConstraints(props.stores.squadServer)
-	const layerList = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList)
+	const layerList = Zus.useStore(props.stores.squadServer!, (s) => s.queue.layerList)
 	const itemsState = LayerQueueClient.useLayerItemsState(props.stores.squadServer!.serverId)
 	const filters = FilterEntityClient.useFilterEntities()
 	if (!props.showWarnings || !props.warnings || props.warnings.length === 0) return null
@@ -92,7 +92,7 @@ function ValidationWarningsDisplay(props: {
 									LQYClient.Actions.setHoveredConstraintItemId(item.itemId ?? null)
 								}
 								const onMouseOut = () => {
-									const state = ZusUtils.getState(LQYClient.Store)
+									const state = Zus.getState(LQYClient.Store)
 									if (state.hoveredConstraintItemId !== item.itemId) return
 									LQYClient.Actions.setHoveredConstraintItemId(null)
 								}
@@ -139,7 +139,7 @@ function ValidationWarningsDisplay(props: {
 									LQYClient.Actions.setHoveredConstraintItemId(item.itemId ?? null)
 								}
 								const onMouseOut = () => {
-									const state = ZusUtils.getState(LQYClient.Store)
+									const state = Zus.getState(LQYClient.Store)
 									if (state.hoveredConstraintItemId !== item.itemId) return
 									LQYClient.Actions.setHoveredConstraintItemId(null)
 								}
@@ -187,9 +187,9 @@ function ValidationWarningsDisplay(props: {
 
 function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 	const loggedInUser = UsersClient.useLoggedInUser()
-	return ZusUtils.useStore(
+	return Zus.useStore(
 		stores.squadServer!,
-		ZusUtils.useShallow((s) => SquadServerFrame.selectQueueWarnings(s, loggedInUser?.discordId)),
+		Zus.useShallow((s) => SquadServerFrame.selectQueueWarnings(s, loggedInUser?.discordId)),
 	)
 }
 
@@ -206,7 +206,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 	const loggedInUser = UsersClient.useLoggedInUser()
 	// const isEditing = UPClient.useIsEditing()
 	const [isEditing, setIsEditing] = UPClient.useEditingQueueState(props.stores.squadServer!.serverId)
-	const numEditors = ZusUtils.useStore(UPClient.Store, (state) => state.editors.size)
+	const numEditors = Zus.useStore(UPClient.Store, (state) => state.editors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 	const openPoolConfig = useOpenPoolConfigWindow({ stores: { squadServer: props.stores.squadServer! } })
 
@@ -219,7 +219,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			// user has already edited away from. Gating on those both blocks a save that shouldn't be blocked and drops
 			// the acknowledgement when the real statuses land.
 			await SquadServerFrame.awaitCurrentStatuses(props.stores.squadServer!)
-			const currentWarnings = SquadServerFrame.selectQueueWarnings(ZusUtils.getState(props.stores.squadServer!), loggedInUser?.discordId)
+			const currentWarnings = SquadServerFrame.selectQueueWarnings(Zus.getState(props.stores.squadServer!), loggedInUser?.discordId)
 			if (currentWarnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)
 				return
@@ -228,8 +228,8 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			setIsEditing(false)
 			setForceSave(false)
 			setShowWarnings(false)
-			const editorCount = ZusUtils.getState(UPClient.Store).editors.size
-			const isModified = ZusUtils.getState(props.stores.squadServer!).queue.isModified
+			const editorCount = Zus.getState(UPClient.Store).editors.size
+			const isModified = Zus.getState(props.stores.squadServer!).queue.isModified
 
 			if (isModified && (editorCount === 0 || forceSave)) {
 				await LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'save', force: forceSave })
@@ -237,14 +237,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 		}
 	}
 
-	const [isModified, committing] = ZusUtils.useStore(
+	const [isModified, committing] = Zus.useStore(
 		props.stores.squadServer!,
-		ZusUtils.useShallow((s) => [s.queue.isModified, s.queue.committing]),
+		Zus.useShallow((s) => [s.queue.isModified, s.queue.committing]),
 	)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('queue:write', { serverId: props.stores.squadServer!.serverId }))
 
 	function clear() {
-		const state = ZusUtils.getState(props.stores.squadServer!)
+		const state = Zus.getState(props.stores.squadServer!)
 		// we don't have to include children here
 		const itemIds = state.queue.layerList.map((item) => item.itemId)
 		void LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'clear', itemIds })
@@ -414,12 +414,12 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 }
 
 export function QueuePanelContent(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
-	const isModified = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.isModified)
+	const isModified = Zus.useStore(props.stores.squadServer!, (s) => s.queue.isModified)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
-	const queueLength = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
-	const maxQueueSize = ZusUtils.useStore(props.stores.squadServer!, (s) => SquadServerFrame.Sel.settings(s).queue.maxQueueSize)
-	const queueMutations = ZusUtils.useStore(props.stores.squadServer!, (s) => s.queue.mutations)
+	const queueLength = Zus.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
+	const maxQueueSize = Zus.useStore(props.stores.squadServer!, (s) => SquadServerFrame.Sel.settings(s).queue.maxQueueSize)
+	const queueMutations = Zus.useStore(props.stores.squadServer!, (s) => s.queue.mutations)
 
 	const warnings = useQueueWarnings(props.stores)
 	const [showWarnings, setShowWarnings] = React.useState(false)
@@ -496,7 +496,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 	const serverId = props.stores.squadServer!.serverId
 	const statusRes = SquadServerClient.useLayersStatus(serverId)
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
-	const updatesDisabled = ZusUtils.useStore(props.stores.squadServer!, (s) => s.settings.saved.updatesToSquadServerDisabled)
+	const updatesDisabled = Zus.useStore(props.stores.squadServer!, (s) => s.settings.saved.updatesToSquadServerDisabled)
 	const { enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const enableUpdatesDenied = RbacClient.usePermsCheck(
 		RBAC.perm('squad-server:disable-slm-updates', { serverId: props.stores.squadServer!.serverId }),

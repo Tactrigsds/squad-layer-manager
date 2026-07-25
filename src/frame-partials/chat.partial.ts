@@ -2,7 +2,7 @@ import * as Rx from 'rxjs'
 
 import type * as FRM from '@/lib/frame'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
@@ -33,8 +33,8 @@ export type KeyProp = { chat: Key }
 export type Args = FRM.SetupArgs<{ serverId: string }, Store, Store>
 
 export function initChat(args: Args) {
-	const set = ZusUtils.toPartialSetter(args.set, 'chat')
-	const get = ZusUtils.toPartialGetter(args.get, 'chat')
+	const set = Zus.toPartialSetter(args.set, 'chat')
+	const get = Zus.toPartialGetter(args.get, 'chat')
 	const serverId = args.input.serverId
 
 	set({
@@ -205,15 +205,15 @@ export namespace Sel {
 
 export namespace Actions {
 	export function setSecondaryFilterState(stores: KeyProp, state: CHAT.SecondaryFilterState) {
-		ZusUtils.toPartialStore(stores.chat, 'chat').setState({ secondaryFilterState: state })
+		Zus.toPartialStore(stores.chat, 'chat').setState({ secondaryFilterState: state })
 	}
 
 	export function setSelectedOnly(stores: KeyProp, selectedOnly: boolean) {
-		ZusUtils.toPartialStore(stores.chat, 'chat').setState({ selectedOnly })
+		Zus.toPartialStore(stores.chat, 'chat').setState({ selectedOnly })
 	}
 
 	export async function setSelectedMatchOrdinal(stores: KeyProp, ordinal: number | null) {
-		const chat = ZusUtils.toPartialStore(stores.chat, 'chat')
+		const chat = Zus.toPartialStore(stores.chat, 'chat')
 		const currentMatch = await MatchHistoryClient.currentMatch$(chat.getState().serverId).getValue()
 		chat.setState({ selectedMatchOrdinal: currentMatch?.ordinal === ordinal ? null : ordinal })
 	}

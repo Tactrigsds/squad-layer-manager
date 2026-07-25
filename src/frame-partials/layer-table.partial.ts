@@ -9,7 +9,7 @@ import { distinctDeepEquals, traceTag } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -130,8 +130,8 @@ export function initLayerTable(args: Args) {
 	const setStore = args.set
 	const input = args.input
 
-	const get = ZusUtils.toPartialGetter(args.get, 'layerTable')
-	const set = ZusUtils.toPartialSetter(args.set, 'layerTable')
+	const get = Zus.toPartialGetter(args.get, 'layerTable')
+	const set = Zus.toPartialSetter(args.set, 'layerTable')
 	const initialLayerTable: LayerTable = {
 		colConfig: input.colConfig,
 		sort: input.sort,
@@ -301,7 +301,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function slice(stores: KeyProp) {
-		return ZusUtils.toPartialStore(stores.layerTable, 'layerTable')
+		return Zus.toPartialStore(stores.layerTable, 'layerTable')
 	}
 
 	export function setSort(stores: KeyProp, update: React.SetStateAction<LQY.LayersQuerySort | null>) {
@@ -356,7 +356,7 @@ export namespace Actions {
 		(rowSelectionUpdate) => {
 			const updated =
 				typeof rowSelectionUpdate === 'function'
-					? rowSelectionUpdate(Sel.tanstackRowSelection(ZusUtils.getState(stores.layerTable)))
+					? rowSelectionUpdate(Sel.tanstackRowSelection(Zus.getState(stores.layerTable)))
 					: rowSelectionUpdate
 			const selected: L.LayerId[] = Object.keys(updated).filter((id) => updated[id])
 			setSelected(stores, selected)
@@ -409,7 +409,7 @@ export namespace Actions {
 
 	export function getTanstackActions(stores: KeyProp) {
 		const setSorting: React.Dispatch<React.SetStateAction<TanstackSortingState>> = (sortingUpdate) => {
-			const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
+			const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
 			const updated = typeof sortingUpdate === 'function' ? sortingUpdate(current) : current
 
 			if (updated.length === 0) {

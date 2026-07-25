@@ -3,7 +3,7 @@ import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 import * as Obj from '@/lib/object'
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -63,12 +63,12 @@ export function useLoggedInUserBase() {
 
 // NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
 export function useLoggedInUser() {
-	return ZusUtils.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)
+	return Zus.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)
 }
 
 // suspends until the logged-in user is loaded instead of returning undefined
 export function useSuspendableLoggedInUser() {
-	return ZusUtils.useStore_Susp(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.loggedInUser)
+	return Zus.useStore_Susp(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.loggedInUser)
 }
 
 export type Simulation = {

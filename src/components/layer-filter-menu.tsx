@@ -4,7 +4,7 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as Zus from '@/lib/zustand.ts'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 
@@ -12,9 +12,9 @@ import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
 
 export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
-	const fields = ZusUtils.useStore(
+	const fields = Zus.useStore(
 		props.stores.filterMenu,
-		ZusUtils.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
+		Zus.useShallow((s) => Object.keys(s.filterMenu.menuItems)),
 	)
 
 	// [&_button[role=combobox]]:w-full forces every combobox trigger (operator + value selects) to fill its
@@ -41,11 +41,11 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.PredicatedKeyProp }) {
 	// resetAllConstraints is a Predicate set up by the owning frame (select-layers / gen-vote), not part of
 	// LayerFilterMenuPrt's own Key type, but always present on the concrete frame state at runtime.
-	const getPredicates = () => ZusUtils.getState(props.stores.filterMenu)
+	const getPredicates = () => Zus.getState(props.stores.filterMenu)
 	const ref = React.useRef<ComparisonHandle>(null)
-	const [swapFactionsDisabled, possibleValues, comp] = ZusUtils.useStore(
+	const [swapFactionsDisabled, possibleValues, comp] = Zus.useStore(
 		props.stores.filterMenu,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			(state) =>
 				[
 					LayerFilterMenuPrt.Sel.swapFactionsDisabled(state),
@@ -56,7 +56,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 	)
 
 	React.useEffect(() => {
-		const sub = ZusUtils.getState(props.stores.filterMenu).filterMenu.clearAll$.subscribe(() => {
+		const sub = Zus.getState(props.stores.filterMenu).filterMenu.clearAll$.subscribe(() => {
 			ref.current?.clear(true)
 		})
 		return () => sub.unsubscribe()

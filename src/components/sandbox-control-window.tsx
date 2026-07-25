@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import * as SandboxFrame from '@/frames/sandbox.frame'
 import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SB from '@/models/sandbox.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -52,7 +52,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 function SandboxControlWindow(props: SandboxControlWindowProps) {
 	useDraggableWindow()
 	const stores = useSandboxFrame(props.serverId)
-	const [groupNames, nextName, playerCount, unavailable] = ZusUtils.useStore(
+	const [groupNames, nextName, playerCount, unavailable] = Zus.useStore(
 		stores.sandbox,
 		(s) =>
 			[SandboxFrame.Sel.groupNames(s), SandboxFrame.Sel.nextDefaultName(s), SandboxFrame.Sel.players(s).length, s.unavailable] as const,
@@ -210,7 +210,7 @@ type RunFn = <V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) =
 // The admin checkbox and the group picker are two views of one membership: checking the box puts the player in the
 // default admin group, and clearing it drops every group that would make them an admin. Nothing is stored twice.
 function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyProp; groupNames: string[]; run: RunFn }) {
-	const [{ players, page, pageCount, matched, total }, adminGroups] = ZusUtils.useStore(
+	const [{ players, page, pageCount, matched, total }, adminGroups] = Zus.useStore(
 		stores.sandbox,
 		(s) => [SandboxFrame.Sel.playersView(s), s.state?.groups ?? []] as const,
 	)
@@ -339,12 +339,12 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 // Two selects and a message: who is speaking and on which channel. Admin chat is offered only to admins, because a
 // real server does not carry a non-admin's words into it.
 function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunFn }) {
-	const [speaker, channels, channel] = ZusUtils.useStore(
+	const [speaker, channels, channel] = Zus.useStore(
 		stores.sandbox,
 		(s) =>
 			[SandboxFrame.Sel.activeSpeaker(s), SandboxFrame.Sel.availableChatChannels(s), SandboxFrame.Sel.effectiveChatChannel(s)] as const,
 	)
-	const players = ZusUtils.useStore(stores.sandbox, SandboxFrame.Sel.players)
+	const players = Zus.useStore(stores.sandbox, SandboxFrame.Sel.players)
 	const messageRef = React.useRef<HTMLInputElement>(null)
 
 	async function send() {

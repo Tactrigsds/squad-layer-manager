@@ -20,7 +20,7 @@ import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map'
 import * as StrUtils from '@/lib/string'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -99,18 +99,18 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const isDesktop = useIsDesktopSize()
 	const currentMatch = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
-	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	// per-team state below stays keyed by normed team id, so a team keeps its filters and sorting when the
 	// displayed order flips
 	const [leftTeam, rightTeam] = MH.getDisplayedTeamOrder(currentMatch?.ordinal ?? 0, displayTeamsNormalized)
-	const showSwapsPanel = ZusUtils.useStore(
+	const showSwapsPanel = Zus.useStore(
 		props.stores.squadServer!,
 		UPClient.Store,
 		(tswStore, upStore) => TSWClient.Sel.hasSwaps(tswStore) || upStore.teamswapEditors.size > 0,
 	)
 	const [searchQuery, setSearchQuery] = React.useState('')
 	const [showSelected, setShowSelected] = React.useState(false)
-	const selectedCount = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.selectedPlayerCount)
+	const selectedCount = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.selectedPlayerCount)
 	const showSelectedId = React.useId()
 	React.useEffect(() => {
 		if (selectedCount === 0 && showSelected) setShowSelected(false)
@@ -119,7 +119,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	const adminsOnlyId = React.useId()
 	const [hideSpoilers, setHideSpoilers] = React.useState(true)
 	const hideSpoilersId = React.useId()
-	const secondaryFilterState = ZusUtils.useStore(props.stores.squadServer!, ChatPrt.Sel.secondaryFilterState)
+	const secondaryFilterState = Zus.useStore(props.stores.squadServer!, ChatPrt.Sel.secondaryFilterState)
 	React.useEffect(() => {
 		if (secondaryFilterState === 'ADMIN') setAdminsOnly(true)
 	}, [secondaryFilterState])
@@ -131,7 +131,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 	// shared so sorting either team's table applies to both -- only squad filtering stays per-team
 	const [sortingTeams, setSortingTeams] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
 	const [sortingCombined, setSortingCombined] = React.useState<SortingState>(DEFAULT_COMBINED_SORTING)
-	const allPlayersA = ZusUtils.useStore(
+	const allPlayersA = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
@@ -139,7 +139,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelModels.Sel.playersForTeam('A'),
 	)
-	const allPlayersB = ZusUtils.useStore(
+	const allPlayersB = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
@@ -230,7 +230,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						onChange={(e) => setSearchQuery(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key !== 'Enter' || !searchQuery.trim()) return
-							const { players } = ChatPrt.Sel.chatState(ZusUtils.getState(props.stores.squadServer!))
+							const { players } = ChatPrt.Sel.chatState(Zus.getState(props.stores.squadServer!))
 							const matched = matchPlayersBySearch(players, searchQuery)
 							const matchedIds = players.filter((_, i) => matched.has(i)).map((p) => SM.PlayerIds.getPlayerId(p.ids))
 							// additive, like every other selection action -- merge matches into the current selection
@@ -355,12 +355,12 @@ function TeamTitle(props: { teamId: MH.NormedTeamId; stores: SquadServerFrame.Ke
 }
 
 function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
-	const leftCount = ZusUtils.useStore(
+	const leftCount = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.teamPlayerCount(props.leftTeam),
 	)
-	const rightCount = ZusUtils.useStore(
+	const rightCount = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.teamPlayerCount(props.rightTeam),
@@ -373,10 +373,10 @@ function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Norm
 }
 
 function ControlPanel() {
-	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
-	const activeGroupingId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
 	// distinct players with an active timeout; the expiry check trims rows the server hasn't swept yet
 	const timedOutCount = new Set(
 		TimeoutsClient.useActiveTimeouts()
@@ -437,7 +437,7 @@ function SelectOrSpinner({
 	onCheckedChange: (checked: boolean) => void
 	stores: SquadServerFrame.KeyProp
 }) {
-	const isPending = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.isSwapPending(playerId))
+	const isPending = Zus.useStore(stores.squadServer!, TSWClient.Sel.isSwapPending(playerId))
 	return (
 		<div className="h-4 w-4 flex items-center justify-center shrink-0">
 			{isPending ? (
@@ -1162,11 +1162,11 @@ const matchesCombinedSquadFilter = (player: CombinedPlayer, squadFilter: string)
 	squadFilter === FILTER_NONE ? player.squadId === null : squadFilter === `${player.normedTeam}:${player.squadId}`
 
 function useGroupColorByName(): Map<string, string> {
-	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
-	const activeGroupingId = ZusUtils.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
 	return React.useMemo(() => {
 		const result = new Map<string, string>()
 		const grouping = activeGroupingId ? playerGroupings?.[activeGroupingId] : undefined
@@ -1214,7 +1214,7 @@ function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
 // id/name, member count and creator, wraps the squad context menu, and its checkbox selects/deselects
 // every (visible) member of the squad. The "Unassigned" group (null squad) has no context menu.
 function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[]; colSpan: number; stores: SquadServerFrame.KeyProp }) {
-	const selectedCount = ZusUtils.useStore(
+	const selectedCount = Zus.useStore(
 		props.stores.squadServer!,
 		(s: SquadServerFrame.State) => props.playerIds.filter((id) => SquadServerFrame.Sel.playerSelection(s)[id]).length,
 	)
@@ -1310,8 +1310,8 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	enableSquadGroups?: boolean
 	className?: string
 }) {
-	const rowSelection = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
-	const savedSwaps = ZusUtils.useStore(props.stores.squadServer!, (s) => TSWClient.Sel.localState(s).savedSwaps)
+	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
+	const savedSwaps = Zus.useStore(props.stores.squadServer!, (s) => TSWClient.Sel.localState(s).savedSwaps)
 	const stores = props.stores
 	const setRowSelection: OnChangeFn<RowSelectionState> = React.useCallback(
 		(updater) => SquadServerFrame.Actions.setSelection(stores, updater),
@@ -1502,12 +1502,12 @@ function TeamPlayerTable(props: {
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
-	const rowSelection = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
+	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 	const groupColorByName = useGroupColorByName()
 
-	const players = ZusUtils.useStore(
+	const players = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
@@ -1515,12 +1515,12 @@ function TeamPlayerTable(props: {
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelModels.Sel.playersForTeam(props.teamId),
 	)
-	const squads = ZusUtils.useStore(
+	const squads = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.squadsForTeam(props.teamId),
 	)
-	const statsMayBeInaccurate = ZusUtils.useStore(
+	const statsMayBeInaccurate = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.statsMayBeInaccurate,
@@ -1593,12 +1593,12 @@ function CombinedPlayerTable(props: {
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
-	const rowSelection = ZusUtils.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
+	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	const matchId = match?.historyEntryId ?? 0
 	const groupColorByName = useGroupColorByName()
 
-	const playersA = ZusUtils.useStore(
+	const playersA = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
@@ -1606,7 +1606,7 @@ function CombinedPlayerTable(props: {
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelModels.Sel.playersForTeam('A'),
 	)
-	const playersB = ZusUtils.useStore(
+	const playersB = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		BattlemetricsClient.playerBmData$,
@@ -1614,17 +1614,17 @@ function CombinedPlayerTable(props: {
 		SettingsClient.PublicSettingsStore,
 		TeamsPanelModels.Sel.playersForTeam('B'),
 	)
-	const squadsA = ZusUtils.useStore(
+	const squadsA = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.squadsForTeam('A'),
 	)
-	const squadsB = ZusUtils.useStore(
+	const squadsB = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.squadsForTeam('B'),
 	)
-	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	const ordinal = match?.ordinal ?? 0
 	const teamOrder = MH.getDisplayedTeamOrder(ordinal, displayTeamsNormalized)
 	const [leftTeam, rightTeam] = teamOrder
@@ -1632,7 +1632,7 @@ function CombinedPlayerTable(props: {
 		() => [leftTeam, rightTeam].flatMap((normedTeam) => (normedTeam === 'A' ? squadsA : squadsB).map((squad) => ({ squad, normedTeam }))),
 		[squadsA, squadsB, leftTeam, rightTeam],
 	)
-	const statsMayBeInaccurate = ZusUtils.useStore(
+	const statsMayBeInaccurate = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		ChatPrt.Sel.statsMayBeInaccurate,
@@ -1734,7 +1734,7 @@ function CombinedPlayerTable(props: {
 }
 
 function TeamsAfterSwap(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.NormedTeamId; stores: SquadServerFrame.KeyProp }) {
-	const counts = ZusUtils.useStore(
+	const counts = Zus.useStore(
 		props.stores.squadServer!,
 		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
 		(frameState, currentMatch) => {
@@ -1773,10 +1773,10 @@ function SwapsPanel({
 	rightTeam: MH.NormedTeamId
 	stores: SquadServerFrame.KeyProp
 }) {
-	const canExecute = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.canExecuteSavedTeamswaps)
-	const swapsModified = ZusUtils.useStore(stores.squadServer!, TSWClient.Sel.swapsModified)
+	const canExecute = Zus.useStore(stores.squadServer!, TSWClient.Sel.canExecuteSavedTeamswaps)
+	const swapsModified = Zus.useStore(stores.squadServer!, TSWClient.Sel.swapsModified)
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswapsState(stores.squadServer!.serverId)
-	const numEditors = ZusUtils.useStore(UPClient.Store, (s) => s.teamswapEditors.size)
+	const numEditors = Zus.useStore(UPClient.Store, (s) => s.teamswapEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
 	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: stores.squadServer!.serverId }))
 
@@ -1886,7 +1886,7 @@ function TeamSwapsDisplay(props: {
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
-	const swaps = ZusUtils.useStore(
+	const swaps = Zus.useStore(
 		props.stores.squadServer!,
 		React.useCallback(
 			(frameState: TSWClient.Store & ChatPrt.Store) => TSWClient.Sel.swapsToTeamEnrichedWithMutations(frameState, props.teamId),

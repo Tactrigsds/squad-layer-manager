@@ -1,11 +1,10 @@
 import { useMutation } from '@tanstack/react-query'
 import type * as React from 'react'
 import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
-import { toStream } from 'zustand-rx'
 
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import { toast } from '@/lib/toast'
+import * as Zus from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
@@ -31,7 +30,7 @@ export const [useServerAvailability, serverAvailability$] = RxHelpers.bind('squa
 		// suspend rather than briefly claiming the server doesn't exist while settings are still in flight.
 		// fireImmediately: settings are normally already loaded by the time anything subscribes, and without the
 		// current value replayed combineLatest would sit waiting on a settings *change* that never comes
-		toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }).pipe(Rx.filter((settings) => !!settings)),
+		Zus.toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }).pipe(Rx.filter((settings) => !!settings)),
 		loadedServerIds$,
 	]).pipe(
 		Rx.map(([settings, loadedIds]): ServerAvailability => {

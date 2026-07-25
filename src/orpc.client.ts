@@ -10,7 +10,7 @@ import * as Rx from 'rxjs'
 import * as AR from '@/app-routes'
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
 import type * as RBAC from '@/rbac.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
@@ -245,7 +245,7 @@ function hashQueryKey(queryKey: readonly unknown[]): string {
 }
 
 export const queryClient = new QueryClient({ defaultOptions: { queries: { queryKeyHashFn: hashQueryKey } } })
-ZusUtils.registerQueryClient(queryClient)
+Zus.registerQueryClient(queryClient)
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
 const MAX_RETRY_DELAY = 10_000

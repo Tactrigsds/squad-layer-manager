@@ -4,7 +4,7 @@ import * as Rx from 'rxjs'
 
 import * as Arr from '@/lib/array'
 import type * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as EFB from '@/models/editable-filter-builders'
@@ -55,7 +55,7 @@ type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 // const
 
 export function initLayerFilterMenuStore(args: Args) {
-	const set = ZusUtils.toPartialSetter(args.set, 'filterMenu')
+	const set = Zus.toPartialSetter(args.set, 'filterMenu')
 	const defaultItems = args.input.items ?? getDefaultFilterMenuItemState(args.input.defaultFields ?? {}, args.input.colConfig)
 	const emptyItems =
 		args.input.emptyItems ?? (args.input.items ? args.input.items : getDefaultFilterMenuItemState({}, args.input.colConfig))
@@ -145,7 +145,7 @@ export namespace Sel {
 
 export namespace Actions {
 	export function setMenuItems(stores: KeyProp, update: React.SetStateAction<Record<string, F.EditableCompNode>>) {
-		const slice = ZusUtils.toPartialStore(stores.filterMenu, 'filterMenu')
+		const slice = Zus.toPartialStore(stores.filterMenu, 'filterMenu')
 		const updated = typeof update === 'function' ? update(slice.getState().menuItems) : update
 		const filter = getFilterFromComparisons(updated)
 		slice.setState({ menuItems: updated, filter })
@@ -236,7 +236,7 @@ export namespace Actions {
 	}
 
 	export function resetFilter(stores: KeyProp, field: string) {
-		const slice = ZusUtils.toPartialStore(stores.filterMenu, 'filterMenu')
+		const slice = Zus.toPartialStore(stores.filterMenu, 'filterMenu')
 		const emptyComparison = slice.getState().emptyItems[field]
 		if (emptyComparison) {
 			setComparison(stores, field, emptyComparison)
@@ -244,7 +244,7 @@ export namespace Actions {
 	}
 
 	export function resetAllFilters(stores: KeyProp) {
-		const slice = ZusUtils.toPartialStore(stores.filterMenu, 'filterMenu')
+		const slice = Zus.toPartialStore(stores.filterMenu, 'filterMenu')
 		Object.entries(slice.getState().emptyItems).forEach(([field, item]) => {
 			setComparison(stores, field, item)
 		})

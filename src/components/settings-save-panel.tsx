@@ -7,7 +7,7 @@ import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingChange } from '@/lib/settings-diff'
 import { formatChangeValue } from '@/lib/settings-diff'
 import * as SettingsNav from '@/lib/settings-nav'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -73,7 +73,7 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 	const zIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 	const states = SettingsEditorFrame.useSectionStates(sectionKeys)
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 
 	const sections: SectionView[] = React.useMemo(() => {
 		const nameById = new Map((servers ?? []).map((s) => [s.id, s.displayName]))

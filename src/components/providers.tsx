@@ -5,7 +5,7 @@ import React from 'react'
 
 import { ResetOtherSessionsManager } from '@/components/reset-other-sessions-manager'
 import { Toaster } from '@/components/ui/sonner'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
@@ -24,7 +24,7 @@ export function Providers(props: { children: ReactNode }) {
 }
 
 function ProvidersInner(props: { children: ReactNode }) {
-	const slmConfig = ZusUtils.useStore(ConfigClient.Store)
+	const slmConfig = Zus.useStore(ConfigClient.Store)
 	const flags = FeatureFlagClient.useFeatureFlags()
 
 	return (

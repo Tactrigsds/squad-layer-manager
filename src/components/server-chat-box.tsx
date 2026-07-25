@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -47,9 +47,7 @@ const CHANNEL_CFG: Record<
 
 export default function ServerChatBox({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = stores.squadServer.serverId
-	const initialChannel: Channel = SquadServerFrame.Sel.hasSelection(ZusUtils.getState(stores.squadServer))
-		? 'warn-selected'
-		: 'warn-admins'
+	const initialChannel: Channel = SquadServerFrame.Sel.hasSelection(Zus.getState(stores.squadServer)) ? 'warn-selected' : 'warn-admins'
 	const [channel, setChannel] = React.useState<Channel>(initialChannel)
 	const [message, setMessage] = React.useState('')
 	// warning admins prefixes the sender's name by default so they know who warned them; other channels default off
@@ -79,7 +77,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	// broadcast is a deliberate choice, so leave it alone.
 	React.useEffect(
 		() =>
-			ZusUtils.resolveReadStore(stores.squadServer).subscribe((state, prev) => {
+			Zus.resolveReadStore(stores.squadServer).subscribe((state, prev) => {
 				const now = SquadServerFrame.Sel.hasSelection(state)
 				if (now === SquadServerFrame.Sel.hasSelection(prev)) return
 				if (channel === 'broadcast') return
@@ -91,8 +89,8 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	const username = UsersClient.useLoggedInUser()?.displayName
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const broadcastDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:broadcast', { serverId: serverId }))
-	const selectedCount = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
-	const selectionIsAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
+	const selectedCount = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const selectionIsAllAdmins = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
 	const notifyAdminsChecked = notifyAdmins ?? !selectionIsAllAdmins
 	// broadcasts get the reasons' broadcast text, not their warn text
 	const draft = WarnChat.useAdminReasonDraft(channel === 'broadcast' ? 'broadcast' : 'warn')
@@ -124,7 +122,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 					...(asPreset ? { presetReasonLabel: asPreset.label } : { message: text }),
 				})
 			} else {
-				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(ZusUtils.getState(stores.squadServer))]
+				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(Zus.getState(stores.squadServer))]
 				if (playerIds.length === 0) return
 				res = await warnPlayersMutation.mutateAsync({
 					serverId,

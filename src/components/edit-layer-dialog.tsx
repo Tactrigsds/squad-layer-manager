@@ -13,7 +13,7 @@ import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object'
 import { useRefConstructor } from '@/lib/react.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
@@ -60,9 +60,9 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
 	useFrameTeardownOnUnmount(frameKey, !props.stores?.selectLayers)
 
-	const [initialLayerId, editedLayerId] = ZusUtils.useStore(
+	const [initialLayerId, editedLayerId] = Zus.useStore(
 		frameKey,
-		ZusUtils.useShallow((s) => [s.initialEditedLayerId, s.layerTable.selected[0]]),
+		Zus.useShallow((s) => [s.initialEditedLayerId, s.layerTable.selected[0]]),
 	)
 
 	const canSubmit = !!editedLayerId && initialLayerId !== editedLayerId

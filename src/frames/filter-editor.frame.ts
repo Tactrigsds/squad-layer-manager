@@ -1,7 +1,6 @@
 import * as Im from 'immer'
 import * as React from 'react'
 import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { sleep } from '@/lib/async'
@@ -11,7 +10,7 @@ import * as MapUtils from '@/lib/map'
 import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object'
 import * as Sparse from '@/lib/sparse-tree'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -196,7 +195,7 @@ type UpdateNodeFn = (cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void)
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<FilterEditor>(stores.filterEditor)
+		return Zus.resolveStore<FilterEditor>(stores.filterEditor)
 	}
 
 	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {

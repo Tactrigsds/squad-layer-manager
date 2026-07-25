@@ -1,13 +1,12 @@
 import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
-import * as ZusRx from 'zustand-rx'
 
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { distinctDeepEquals } from '@/lib/async'
 import * as RxHelpers from '@/lib/react-rxjs-helpers'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
@@ -26,7 +25,7 @@ export const [useLayerItemsState, layerItemsState$] = RxHelpers.bind('layerQueue
 	if (!serverId) return Rx.of({ layerItems: [], firstLayerItemParity: 0 } satisfies LQY.LayerItemsState)
 	const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
 	return Rx.combineLatest([
-		ZusRx.toStream(ZusUtils.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
+		Zus.toStream(Zus.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
 			Rx.map((s) => s.queue.layerList),
 			Rx.distinctUntilChanged(),
 		),
