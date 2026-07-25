@@ -47,8 +47,8 @@ const bm = new BmServer()
 bm.onNote = ({ bmPlayerId, note }) => console.log(`[bm] note on ${bmPlayerId}:\n${note}`)
 await bm.listen(slot.ports.bm)
 
-const { commands, join } = EmuControl.createEmuCommands({ emu, bm })
-const control = await EmuControl.serve(DevInstance.EMU_SOCKET_PATH, commands)
+const { host, join } = EmuControl.createEmuHost({ emu, bm })
+const control = await EmuControl.serve(DevInstance.EMU_SOCKET_PATH, host)
 
 for (let i = 0; i < Number(args.values.players); i++) join(`DevPlayer${i + 1}`)
 
@@ -83,7 +83,7 @@ rl?.prompt()
 rl?.on('close', shutdown)
 rl?.on('line', (line) => {
 	void (async () => {
-		const { ok, output } = await EmuControl.dispatch(commands, line.trim().split(/\s+/).filter(Boolean))
+		const { ok, output } = await EmuControl.dispatch(host, line.trim().split(/\s+/).filter(Boolean))
 		if (output) (ok ? console.log : console.error)(output)
 		rl.prompt()
 	})()

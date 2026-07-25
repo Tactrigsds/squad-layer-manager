@@ -44,7 +44,9 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
@@ -142,7 +144,7 @@ export const orpcRouter = {
 		const names = new Set<string>()
 		for (const slice of globalState.slices.values()) {
 			try {
-				const adminList = await AdminList.adminList.get({ ...baseCtx, ...slice }, { ttl: Infinity })
+				const adminList = await AdminList.getMergedForServer({ ...baseCtx, ...slice }, slice.serverId)
 				for (const group of adminList.groups.keys()) names.add(group)
 			} catch (err) {
 				// one unreachable admin list must not deny the editor every other server's groups
@@ -455,7 +457,7 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+			const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
 			if (teamsRes.code !== 'ok') return teamsRes
 			const admins = teamsRes.players
 				.filter(p => {
@@ -701,13 +703,24 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	const signal = anySignal(ctx.signal, sliceAbort.signal)!
 	ctx = { ...ctx, signal }
 
-	// local/sftp dial RCON directly; server-agent tunnels it through the agent (the agent holds the password)
+	// the emulator has to be listening before anything can dial it, and it owns its own (ephemeral) port
+	if (Sandbox.isSandbox(settings.connections)) await Sandbox.ensureInstance(serverId, settings.connections)
+
+	// local/sftp dial RCON directly; server-agent tunnels it through the agent (the agent holds the password).
+	// sandbox dials the in-process emulator over loopback, so the real packet framing still runs.
 	const rconTransport = settings.connections.type === 'server-agent'
 		? ServerAgent.rconTransportFor(serverId)
-		: new DirectSocketTransport(settings.connections.rcon)
-	const rcon = new Rcon({ serverId, transport: rconTransport })
+		: new DirectSocketTransport(
+			settings.connections.type === 'sandbox' ? Sandbox.connectionFor(serverId) : settings.connections.rcon,
+		)
+	const rcon = new Rcon({
+		serverId,
+		transport: rconTransport,
+		onTraffic: (dir, body, reqId) => ServerConsole.record(serverId, { type: 'rcon', dir, body, reqId, time: Date.now() }),
+	})
 	rcon.ensureConnected()
 	cleanup.push(() => rcon.disconnect())
+	cleanup.push(() => ServerConsole.disposeFor(serverId))
 
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
@@ -759,6 +772,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			? Settings.GLOBAL_SETTINGS.logFilePollInterval * 2
 			: settings.connections.type === 'server-agent'
 			? 1000
+			// in-process: a log line is delivered in the same tick the world writes it
+			: settings.connections.type === 'sandbox'
+			? 0
 			: assertNever(settings.connections),
 	})
 
@@ -782,7 +798,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		destroyed: false,
 		cleanupId: null,
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon }, cleanup, { cacheTTL: settings.rconCacheTTL, onFatalError: onResourceFatalError }),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
+			cacheTTL: settings.rconCacheTTL,
+			onFatalError: onResourceFatalError,
+		}),
 	}
 
 	cleanup.push(
@@ -917,6 +936,17 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			)
 		} else if (settings.connections.type === 'server-agent') {
 			chunk$ = ServerAgent.streamFor(serverId)
+		} else if (settings.connections.type === 'sandbox') {
+			// straight from the world, with no file in between. The instance outlives this subscription, so the
+			// unsubscribe has to detach the listener or a slice restart would leave the old one writing into a dead stream.
+			chunk$ = new Rx.Observable<string>((subscriber) => {
+				const instance = Sandbox.getInstance(serverId)
+				if (!instance) {
+					subscriber.error(new Error(`sandbox ${serverId} has no running emulator`))
+					return
+				}
+				return instance.emu.onLogLine((line) => subscriber.next(line + '\n'))
+			})
 		} else {
 			assertNever(settings.connections)
 		}
@@ -928,6 +958,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		const logSource = settings.connections.type satisfies ATTRS.SquadLogs.Source
 		const countedChunk$ = chunk$.pipe(
 			Rx.tap((chunk) => {
+				// the console tails the same point the counters do, so it shows what was actually ingested rather
+				// than what a particular source happened to produce
+				ServerConsole.recordLogChunk(serverId, chunk, Date.now())
 				const attrs = { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource }
 				logIoCounter.add(Buffer.byteLength(chunk, 'utf8'), attrs)
 				let lines = 0
@@ -1010,6 +1043,13 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 						try {
 							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
+								ServerConsole.record(serverId, {
+									type: 'command',
+									player: event.playerIds.username ?? 'unknown',
+									channel: event.channelType,
+									message: event.message,
+									time: event.time,
+								})
 								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some((prefix) => event.message.startsWith(prefix))) {
 									opts.push(
 										Commands.handleCommand(ctx, event).then((res) => {
@@ -1067,7 +1107,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	)
 
 	void LayerQueue.setupInstance({ ...ctx, ...slice })
-	Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
+	// A sandbox's players are fabricated, so their eos ids belong to nobody. BattleMetrics is a real, org-wide
+	// outbound service: looking them up would spam it with garbage and any flag or note written while looking at
+	// the sandbox would land on the live org. It is left off entirely rather than stubbed.
+	if (!Sandbox.isSandbox(settings.connections)) Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
 
 	server.cleanupId = CleanupSys.register(async () => {
 		await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
@@ -1296,7 +1339,7 @@ export async function warnPlayers(
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
 // whether they're all admins and whether they're the entire online admin roster
 async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
-	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
 	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
 
 	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
@@ -1801,6 +1844,8 @@ export async function disableServer(serverId: string) {
 	if (res.code !== 'ok') return res
 
 	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+	// the emulator deliberately outlives a slice restart, but not the server being switched off
+	Sandbox.disposeInstance(serverId)
 	log.info('Server %s disabled', serverId)
 	return { code: 'ok' as const }
 }
@@ -1808,6 +1853,7 @@ export async function disableServer(serverId: string) {
 export async function deleteServer(serverId: string) {
 	const ctx = getBaseCtx()
 	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+	Sandbox.disposeInstance(serverId)
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
 

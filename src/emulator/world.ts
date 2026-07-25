@@ -12,6 +12,8 @@ export type WorldSinks = {
 	// AdminChangeLayer travels asynchronously on a real server; the facade schedules the
 	// endMatch/startNewGame transition when this fires
 	layerChangeRequested?: (layer: Fmt.LayerLike) => void
+	// a player said something. Reported separately from the chat packet it produces, because "who typed what"
+	// is a different thing to observe than the wire traffic carrying it
 }
 
 export type WorldOptions = {
@@ -201,6 +203,9 @@ export class World {
 	}
 
 	createSquad(p: EmuPlayer, name: string): EmuSquad {
+		// leaving the old one first, or it is left registered with nobody in it and consumers reading ListSquads
+		// against ListPlayers see a squad that cannot exist
+		if (p.squadId !== null) this.#dropFromSquad(p)
 		const teamId = p.teamId ?? 1
 		const squadId = Math.max(0, ...this.squads.filter((s) => s.teamId === teamId).map((s) => s.squadId)) + 1
 		const squad: EmuSquad = { teamId, squadId, name, locked: false, creator: p }
@@ -216,6 +221,7 @@ export class World {
 
 	// another player joins an existing squad. The creator is already in it (createSquad puts them there).
 	joinSquad(p: EmuPlayer, squad: EmuSquad): EmuPlayer {
+		if (p.squadId !== null) this.#dropFromSquad(p)
 		p.teamId = squad.teamId
 		p.squadId = squad.squadId
 		p.isLeader = false

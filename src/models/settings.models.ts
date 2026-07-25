@@ -31,14 +31,17 @@ const RoleAssignmentsSchema = z.object({
 	discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
 	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
 	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
-	includeIngameAdmins: z.boolean().prefault(false).describe(
-		'Grant this role to in-game admins. A player counts as an in-game admin when the admin list places them in a group '
-			+ 'holding one of the admin-identifying permissions (configured by Admin list sources / Admin identifying permissions '
-			+ 'in global settings).',
+	ingameAdminLists: z.array(SM.AdminListIdSchema).prefault([]).describe(
+		'Grant this role to the in-game admins of the named admin lists. A player counts as an admin of a list when that list '
+			+ "places them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers "
+			+ 'that actually use the named list.',
 	),
-	adminListGroups: z.array(z.string()).prefault([]).describe(
-		'Grant this role to in-game players by their admin-list group membership. A player gets it while the admin list '
-			+ 'places them in any of the selected groups, admin-identifying or not (e.g. a Whitelist reserve-slot group).',
+	adminListGroups: z.array(z.object({
+		listId: SM.AdminListIdSchema.describe('The admin list the group belongs to'),
+		groupId: z.string().min(1).describe('The group name within that list'),
+	})).prefault([]).describe(
+		'Grant this role by admin-list group membership. A player gets it while the named list places them in the named group, '
+			+ 'admin-identifying or not (e.g. a Whitelist reserve-slot group), and only on servers that use that list.',
 	),
 }).prefault({})
 
@@ -227,6 +230,11 @@ export const GlobalSettingsSchema = z.object({
 		'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 	),
 	logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+	seedSandboxServer: z.boolean().prefault(true).describe(
+		'Create a sandbox server on startup if none exists. A sandbox has no real squad server behind it: SLM emulates one in-process, so '
+			+ 'it is somewhere to learn the queue, try a filter or reproduce a bug without touching anyone real. Turning this off leaves any '
+			+ 'existing sandbox alone; delete it from the server registry to be rid of it.',
+	),
 	tickRateThresholds: z.object({
 		good: z.number().positive().prefault(60).describe(
 			'At or above this tick rate the live server tick rate displays as good (green)',
@@ -258,12 +266,10 @@ export const GlobalSettingsSchema = z.object({
 		'The allowed prefix that commands introduced by future SLM versions are seeded with',
 	),
 	commands: CMD.AllCommandConfigSchema,
-	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
-		'Where to load admins from. Each source serves the same Admins.cfg the gameserver reads, in the same format.',
-	),
-	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
-		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
-			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
+	adminLists: z.record(SM.AdminListIdSchema, SM.AdminListDefSchema).prefault({}).describe(
+		'The admin lists this install knows about, by name. Each serves the same Admins.cfg the gameserver reads, in the same format, '
+			+ 'and carries its own admin-identifying permissions. Naming them is what lets a server choose which apply to it and a role '
+			+ "assignment say which list's groups it means.",
 	),
 	rbac: RbacSettingsSchema,
 	layerTable: LQY.LayerTableConfigSchema.prefault({
@@ -568,12 +574,22 @@ export const SftpLogConnectionSchema = z.object({
 	),
 })
 
-// How SLM reaches a squad server, as three mutually-exclusive modes:
+export const SandboxConnectionSchema = z.object({
+	type: z.literal('sandbox'),
+	serverName: z.string().min(1).prefault('SLM Sandbox').describe('The name the emulated server reports over RCON.'),
+	maxPlayers: z.int().min(2).max(200).prefault(100).describe('The player slot count the emulated server reports.'),
+})
+
+// How SLM reaches a squad server, as four mutually-exclusive modes:
 //   local        - SLM shares the box: reads the log file directly, dials RCON directly.
 //   sftp         - SLM is remote: tails the log over SFTP, dials RCON directly over the network.
 //   server-agent - the slm-server-agent (see ../../server-agent) runs on/near the box and handles BOTH
 //                  logs and RCON. The RCON password lives in the agent's own config, never here; SLM only
 //                  stores the shared handshake token.
+//   sandbox      - there is no squad server. SLM runs one in-process (src/emulator) and talks to it over a
+//                  loopback RCON socket, so every layer below this one behaves as it does against a real
+//                  server. Nothing here is reachable from the network and nothing outbound is real; see
+//                  src/systems/sandbox.server.ts.
 export const ServerConnectionSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('local'),
@@ -589,8 +605,10 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 		type: z.literal('server-agent'),
 		token: z.string().default('dev'),
 	}),
+	SandboxConnectionSchema,
 ])
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
+export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 
 export const QueueSettingsSchema = z.object({
 	maxQueueSize: z.int().min(1).max(100).prefault(20).describe(
@@ -617,6 +635,10 @@ export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
 export const PublicServerSettingsSchema = z
 	.object({
+		adminLists: z.array(SM.AdminListIdSchema).prefault([]).describe(
+			'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up '
+				+ 'roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
+		),
 		updatesToSquadServerDisabled: z.boolean().prefault(false).describe(
 			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just '
 				+ 'never sets the map itself. For running SLM alongside something else that owns the rotation.',

@@ -1,6 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
-import { up } from './0092_command_triggers'
+import { up } from './0093_command_triggers'
 
 function makeDb(commands: unknown, commandAliases: unknown) {
 	const db = new DatabaseConstructor(':memory:')
@@ -22,7 +22,7 @@ const commands = () => ({
 	startVote: { strings: ['/startvote'], scopes: ['admin'], enabled: true },
 })
 
-describe('0092_command_triggers', () => {
+describe('0093_command_triggers', () => {
 	test('turns command strings into plain triggers', async () => {
 		const db = makeDb(commands(), [])
 		await up(db)
@@ -65,6 +65,16 @@ describe('0092_command_triggers', () => {
 		for (const cmd of Object.values<any>(settings.commands)) {
 			expect(cmd.triggers.some((t: any) => (typeof t === 'string' ? t : t.string) === '/gone')).toBe(false)
 		}
+	})
+
+	// this migration was 0092 on an earlier revision of its branch, so a database that ran it under that name meets
+	// it again here. Re-running it must not empty the triggers it already produced.
+	test('leaves an already-converted command alone', async () => {
+		const db = makeDb({
+			timeout: { triggers: ['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }], allowedChats: ['admin'] },
+		}, [])
+		await up(db)
+		expect(readSettings(db).commands.timeout.triggers).toEqual(['/timeout', { string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }])
 	})
 
 	test('is a no-op on settings with no commands', async () => {

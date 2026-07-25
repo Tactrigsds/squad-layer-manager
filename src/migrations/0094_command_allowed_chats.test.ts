@@ -1,6 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
-import { up } from './0093_command_allowed_chats'
+import { up } from './0094_command_allowed_chats'
 
 function makeDb(commands: unknown) {
 	const db = new DatabaseConstructor(':memory:')
@@ -16,7 +16,7 @@ function readCommands(db: InstanceType<typeof DatabaseConstructor>) {
 	return JSON.parse(row.settings).json.commands
 }
 
-describe('0093_command_allowed_chats', () => {
+describe('0094_command_allowed_chats', () => {
 	test('renames scopes to allowedChats, values untouched', async () => {
 		const db = makeDb({
 			timeout: { triggers: ['/timeout'], scopes: ['admin'], enabled: true },

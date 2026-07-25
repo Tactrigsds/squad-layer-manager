@@ -46,8 +46,9 @@ import * as m0088 from './0088_backburner_column'
 import * as m0089 from './0089_admin_lists_to_global'
 import * as m0090 from './0090_settings_reorg'
 import * as m0091 from './0091_per_server_permission_grants'
-import * as m0092 from './0092_command_triggers'
-import * as m0093 from './0093_command_allowed_chats'
+import * as m0092 from './0092_named_admin_lists'
+import * as m0093 from './0093_command_triggers'
+import * as m0094 from './0094_command_allowed_chats'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -78,6 +79,7 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0089_admin_lists_to_global', up: m0089.up },
 	{ name: '0090_settings_reorg', up: m0090.up },
 	{ name: '0091_per_server_permission_grants', up: m0091.up },
-	{ name: '0092_command_triggers', up: m0092.up },
-	{ name: '0093_command_allowed_chats', up: m0093.up },
+	{ name: '0092_named_admin_lists', up: m0092.up },
+	{ name: '0093_command_triggers', up: m0093.up },
+	{ name: '0094_command_allowed_chats', up: m0094.up },
 ]

@@ -84,8 +84,7 @@ export const NEW_SERVER_DRAFT: SETTINGS.ServerSettings = {
 		logFile: '',
 		rcon: { host: '', port: 21114, password: '' },
 	},
-	adminListSources: [],
-	adminIdentifyingPermissions: ['canseeadminchat'],
+	adminLists: {},
 } as unknown as SETTINGS.ServerSettings
 
 function editSchema(state: SettingsEditor): z.ZodType<any> {

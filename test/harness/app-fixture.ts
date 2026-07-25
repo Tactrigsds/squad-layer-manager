@@ -174,6 +174,8 @@ export const ADMIN_USER: TestUser = { discordId: 900000000000000001n, username: 
 // deciding which connected players are admins
 const ADMIN_GROUP = 'SlmTestAdmin'
 const ADMIN_PERM: SM.PlayerPerm = 'canseeadminchat'
+// the single admin list the harness defines; tests name it when assigning roles to in-game admins
+export const TEST_ADMIN_LIST = 'test-admins'
 // a group holding no admin-identifying permission, for reserveAdmins
 const RESERVE_GROUP = 'SlmTestReserve'
 const RESERVE_PERM: SM.PlayerPerm = 'reserve'
@@ -310,9 +312,11 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
 	const globalSettings = parsedSettings.data
 	applyTestTimings(globalSettings)
-	// admin lists are global (see migration 0089); default them to the test Admins.cfg, before the hook so a test can override
-	globalSettings.adminListSources = [{ type: 'local', source: adminsCfgPath }]
-	globalSettings.adminIdentifyingPermissions = [ADMIN_PERM]
+	// admin lists are named and per-server (see migration 0092); the harness defines one and every test server uses it,
+	// set before the hook so a test can override
+	globalSettings.adminLists = {
+		[TEST_ADMIN_LIST]: { source: { type: 'local', source: adminsCfgPath }, adminIdentifyingPermissions: [ADMIN_PERM] },
+	}
 	opts.globalSettings?.(globalSettings)
 	await db.insert(Schema.globalSettings).values(
 		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
@@ -335,6 +339,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	})
 	const layerQueue = opts.layerQueue ?? []
 	applyTestServerTimings(serverSettings)
+	// the harness's list applies to the test server, or nothing in it would recognise an admin
+	serverSettings.adminLists = [TEST_ADMIN_LIST]
 	opts.serverSettings?.(serverSettings)
 
 	// Put the emulated server's next layer where a steady-state server's would be: on the head of
