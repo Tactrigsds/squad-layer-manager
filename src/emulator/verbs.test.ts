@@ -74,6 +74,29 @@ describe('execute', () => {
 		}
 	})
 
+	// an empty squad is a state a real server never reports, and the app rejects the pair as inconsistent and
+	// retries forever. Creating a second squad used to leave the first one behind like that.
+	it('never leaves a squad behind with nobody in it', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		for (const squadName of ['Able', 'Baker', 'Charlie']) {
+			await Verbs.execute(host, 'squad', { name: 'Alice', squadName })
+		}
+		const members = (s: { teamId: number; squadId: number }) => emu.world.squadMembers(s).length
+		expect(emu.world.squads.filter((s) => members(s) === 0)).toEqual([])
+		expect(emu.world.squads).toHaveLength(1)
+	})
+
+	it('leaves the old squad standing when it still has members', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await Verbs.execute(host, 'join', { name: 'Bob' })
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Able' })
+		const able = emu.world.squads[0]
+		emu.world.joinSquad(host.players.get('Bob')!, able)
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Baker' })
+		expect(emu.world.squads.map((s) => s.name).sort()).toEqual(['Able', 'Baker'])
+		expect(emu.world.squadMembers(able).map((p) => p.name)).toEqual(['Bob'])
+	})
+
 	it('writes squad creation to the log, which is where the app reads it', async () => {
 		await Verbs.execute(host, 'join', { name: 'Alice' })
 		const lines: string[] = []
