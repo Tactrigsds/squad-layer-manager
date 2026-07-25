@@ -16,8 +16,8 @@ export type RoleAssignmentsValue = {
 	discordRoleIds?: (string | number)[]
 	discordUserIds?: (string | number)[]
 	everyMember?: boolean
-	includeIngameAdmins?: boolean
-	adminListGroups?: string[]
+	ingameAdminLists?: string[]
+	adminListGroups?: { listId: string; groupId: string }[]
 }
 export type RoleConfig = {
 	permissions?: string[]

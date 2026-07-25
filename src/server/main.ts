@@ -24,7 +24,9 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -88,6 +90,7 @@ await C.spanOp('main', { module }, async () => {
 	UserPresence.setup()
 	MatchEventsCache.setup()
 	MatchHistory.setup()
+	ServerConsole.setup()
 	SquadRcon.setup()
 	Teamswaps.setup()
 	Users.setup()
@@ -113,6 +116,10 @@ await C.spanOp('main', { module }, async () => {
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
+	// both before SquadServer.setup: it boots a slice per registered server, and the seeded sandbox has to be
+	// registered by then to get one
+	Sandbox.setup()
+	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 

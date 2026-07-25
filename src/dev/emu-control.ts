@@ -2,154 +2,33 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import type { BmServer } from '../emulator/bm-server.ts'
 import type { Emulator, EmuPlayer } from '../emulator/index.ts'
-import { makePlayer } from '../emulator/index.ts'
+import * as Verbs from '../emulator/verbs.ts'
 
-// The scenario verbs the emulator host understands, and the socket that carries them.
+// The socket that carries scenario commands to the emulator host.
 //
-// One registry drives both front ends: the repl inside `pnpm dev:emu` and the one-shot `pnpm emuctl` from any
-// other terminal. They dispatch the same commands against the same live world, so neither can grow a verb the
-// other lacks.
+// The verbs themselves live in @/models/sandbox.models and run through src/emulator/verbs.ts, shared with the
+// app's sandbox window. This module is only the dev host's two front ends -- the repl inside `pnpm dev:emu` and
+// the one-shot `pnpm emuctl` from any other terminal -- plus the transport between them.
 //
 // A unix socket rather than a port: it needs no slot allocation, it is unreachable from the network, and it
 // lives in the worktree's own data/dev, so it is scoped to the instance by construction.
 
-export type EmuCommand = {
-	usage: string
-	run: (args: string[]) => string | void | Promise<string | void>
-}
-export type EmuCommands = Record<string, EmuCommand>
-
 type Request = { args: string[] }
 type Response = { ok: boolean; output: string }
 
-export function createEmuCommands(ctx: { emu: Emulator; bm: BmServer }): { commands: EmuCommands; join: (name: string) => EmuPlayer } {
-	const { emu, bm } = ctx
-	// Named players, so a scenario can refer to someone by the name it gave them rather than by an eos id.
-	const players = new Map<string, EmuPlayer>()
-
-	function join(name: string): EmuPlayer {
-		if (players.has(name)) throw new Error(`${name} is already connected`)
-		const player = emu.world.connectPlayer(makePlayer({ name, teamId: players.size % 2 === 0 ? 1 : 2 }))
-		players.set(name, player)
-		// so the app's battlemetrics lookups resolve this player rather than 404
-		bm.addPlayer({ eosId: player.eos, steamId: player.steam })
-		return player
+export function createEmuHost(ctx: { emu: Emulator; bm: BmServer }): { host: Verbs.SandboxHost; join: (name: string) => EmuPlayer } {
+	const host: Verbs.SandboxHost = {
+		emu: ctx.emu,
+		// Named players, so a scenario can refer to someone by the name it gave them rather than by an eos id.
+		players: new Map(),
+		onPlayerJoined: (player) => ctx.bm.addPlayer({ eosId: player.eos, steamId: player.steam }),
 	}
-
-	function requirePlayer(name: string): EmuPlayer {
-		const player = players.get(name)
-		if (!player) throw new Error(`no player named '${name}' -- 'players' lists them, 'join ${name}' connects them`)
-		return player
-	}
-
-	const commands: EmuCommands = {
-		help: {
-			usage: 'help                   list these commands',
-			run: () => Object.values(commands).map(({ usage }) => `  ${usage}`).join('\n'),
-		},
-		join: {
-			usage: 'join <name>            a player connects',
-			run: ([name]) => {
-				if (!name) throw new Error('usage: join <name>')
-				const player = join(name)
-				return `${name} joined team ${player.teamId} (steam ${player.steam}, eos ${player.eos})`
-			},
-		},
-		leave: {
-			usage: 'leave <name>           a player disconnects',
-			run: ([name]) => {
-				if (!name) throw new Error('usage: leave <name>')
-				emu.world.disconnectPlayer(requirePlayer(name))
-				players.delete(name)
-				return `${name} left`
-			},
-		},
-		chat: {
-			usage: 'chat <name> <message>  say something in all-chat (this is how you drive !commands)',
-			run: ([name, ...rest]) => {
-				if (!name || rest.length === 0) throw new Error('usage: chat <name> <message>')
-				emu.world.chat(requirePlayer(name), 'ChatAll', rest.join(' '))
-				return `[ChatAll] ${name}: ${rest.join(' ')}`
-			},
-		},
-		admchat: {
-			usage: 'admchat <name> <msg>   say something in admin chat',
-			run: ([name, ...rest]) => {
-				if (!name || rest.length === 0) throw new Error('usage: admchat <name> <message>')
-				emu.world.chat(requirePlayer(name), 'ChatAdmin', rest.join(' '))
-				return `[ChatAdmin] ${name}: ${rest.join(' ')}`
-			},
-		},
-		players: {
-			usage: 'players                who is connected',
-			run: () => {
-				const list = emu.world.playerList()
-				if (list.length === 0) return '(nobody connected)'
-				return list.map((p) => `  ${p.name}\tteam ${p.teamId ?? '-'}\tsquad ${p.squadId ?? '-'}`).join('\n')
-			},
-		},
-		squad: {
-			usage: 'squad <name> <squad>   a player creates and leads a squad',
-			run: ([name, ...rest]) => {
-				if (!name || rest.length === 0) throw new Error('usage: squad <name> <squad name>')
-				const squad = emu.world.createSquad(requirePlayer(name), rest.join(' '))
-				return `${name} created squad ${squad.squadId} '${rest.join(' ')}' on team ${squad.teamId}`
-			},
-		},
-		cam: {
-			usage: 'cam <name> [off]       a player enters admin camera, or leaves it with `off`',
-			run: ([name, off]) => {
-				if (!name || (off && off !== 'off')) throw new Error('usage: cam <name> [off]')
-				const player = requirePlayer(name)
-				if (off) {
-					emu.world.unpossessAdminCam(player)
-					return `${name} left admin camera`
-				}
-				emu.world.possessAdminCam(player)
-				return `${name} entered admin camera`
-			},
-		},
-		end: {
-			usage: 'end [1|2]              end the match, optionally naming the winning team',
-			run: ([team]) => {
-				if (team && team !== '1' && team !== '2') throw new Error('usage: end [1|2]')
-				emu.world.endMatch(team ? { winnerTeamId: Number(team) } : undefined)
-				return team ? `match ended, team ${team} won` : 'match ended'
-			},
-		},
-		rcon: {
-			usage: 'rcon <command>         run a raw rcon command against the world',
-			run: (rest) => {
-				if (rest.length === 0) throw new Error('usage: rcon <command>')
-				return emu.world.handleCommand(rest.join(' '))
-			},
-		},
-		cycle: {
-			usage: 'cycle                  drop and restore rcon, as a server restart would',
-			run: async () => {
-				await emu.cycleRcon()
-				return 'rcon cycled'
-			},
-		},
-		rotate: {
-			usage: 'rotate                 rotate the log file, as the game does',
-			run: () => {
-				emu.rotateLog()
-				return 'log rotated'
-			},
-		},
-	}
-
-	return { commands, join }
+	return { host, join: (name) => Verbs.joinPlayer(host, name) }
 }
 
-export async function dispatch(commands: EmuCommands, args: string[]): Promise<Response> {
-	const [name, ...rest] = args
-	if (!name) return { ok: true, output: '' }
-	const command = commands[name]
-	if (!command) return { ok: false, output: `unknown command '${name}' -- try 'help'` }
+export async function dispatch(host: Verbs.SandboxHost, args: string[]): Promise<Response> {
 	try {
-		return { ok: true, output: (await command.run(rest)) ?? '' }
+		return { ok: true, output: await Verbs.executeTokens(host, args) }
 	} catch (err) {
 		return { ok: false, output: err instanceof Error ? err.message : String(err) }
 	}
@@ -172,7 +51,7 @@ async function clearStaleSocket(socketPath: string) {
 	fs.rmSync(socketPath, { force: true })
 }
 
-export async function serve(socketPath: string, commands: EmuCommands): Promise<net.Server> {
+export async function serve(socketPath: string, host: Verbs.SandboxHost): Promise<net.Server> {
 	await clearStaleSocket(socketPath)
 	const server = net.createServer((socket) => {
 		let buffered = ''
@@ -185,7 +64,7 @@ export async function serve(socketPath: string, commands: EmuCommands): Promise<
 			void (async () => {
 				let response: Response
 				try {
-					response = await dispatch(commands, (JSON.parse(line) as Request).args)
+					response = await dispatch(host, (JSON.parse(line) as Request).args)
 				} catch (err) {
 					response = { ok: false, output: err instanceof Error ? err.message : String(err) }
 				}

@@ -33,7 +33,8 @@ type RbacCache = {
 	users: Map<USR.UserId, Promise<RBAC.UserRbac>>
 
 	// primary steam/eosid sourced roles, with inverse lookup as above to resolve discord accounts
-	players: Map<SM.PlayerId, Promise<RBAC.UserRbac>>
+	// keyed by playerCacheKey(serverId, playerId): which admin lists speak for a player is a per-server question
+	players: Map<string, Promise<RBAC.UserRbac>>
 }
 let cache!: RbacCache
 // discordId -> the player ids cached under it, so evictUser can drop a user's linked player entries without a db hit
@@ -88,6 +89,15 @@ export function wireInvalidationSources() {
 	]
 }
 
+// NUL rather than ':' -- a server id may hold most things, but not a NUL byte, so the split is unambiguous
+function playerCacheKey(serverId: string, playerId: SM.PlayerId): string {
+	return `${serverId}\0${playerId}`
+}
+
+function playerIdFromCacheKey(key: string): SM.PlayerId {
+	return key.slice(key.indexOf('\0') + 1) as SM.PlayerId
+}
+
 // clears every cached perm set (settings/adminlist/discord-role change) and notifies clients to refetch
 export function invalidateAll() {
 	cache.users.clear()
@@ -101,7 +111,10 @@ export function invalidateUser(discordId: bigint) {
 	cache.users.delete(discordId)
 	const players = userPlayerIndex.get(discordId)
 	if (players) {
-		for (const playerId of players) cache.players.delete(playerId)
+		// player entries are keyed by server as well, so drop every server's entry for each linked player
+		for (const key of [...cache.players.keys()]) {
+			if (players.has(playerIdFromCacheKey(key))) cache.players.delete(key)
+		}
 		userPlayerIndex.delete(discordId)
 	}
 	invalidation$.next({ scope: 'user', discordId })
@@ -137,11 +150,11 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 		if (cfg.assignments.everyMember) {
 			roleAssignments.push({ type: 'discord-server-member', role: RBAC.userDefinedRole(roleType) })
 		}
-		for (const group of cfg.assignments.adminListGroups) {
-			roleAssignments.push({ type: 'admin-list-group', groupId: group, role: RBAC.userDefinedRole(roleType) })
+		for (const { listId, groupId } of cfg.assignments.adminListGroups) {
+			roleAssignments.push({ type: 'admin-list-group', listId, groupId, role: RBAC.userDefinedRole(roleType) })
 		}
-		if (cfg.assignments.includeIngameAdmins) {
-			roleAssignments.push({ type: 'ingame-admin', role: RBAC.userDefinedRole(roleType) })
+		for (const listId of cfg.assignments.ingameAdminLists) {
+			roleAssignments.push({ type: 'ingame-admin', listId, role: RBAC.userDefinedRole(roleType) })
 		}
 	}
 
@@ -176,7 +189,7 @@ export const getRbacForDiscordUser = C.spanOp(
 
 		const userRbacPromise = (async () => {
 			const ingameRolesPromise = (async () => {
-				return resolveAdminListAssignments(ctx, playerIds)
+				return resolveAdminListAssignments(ctx, playerIds, await AdminList.getAllLists(ctx))
 			})()
 			const discordRolesPromise = resolveDiscordAssignments(ctx, discordUserId)
 			const baseRoles = RBAC.Role.merge(await ingameRolesPromise, await discordRolesPromise)
@@ -191,12 +204,13 @@ export const getRbacForDiscordUser = C.spanOp(
 		})()
 
 		cache.users.set(discordUserId, userRbacPromise)
+		// The linked players are indexed (so invalidating this user drops their entries) but no longer seeded with this
+		// result: a user's roles are resolved against every configured admin list, a player's only against the ones
+		// their server uses, so handing this answer to the player cache would grant roles on servers that do not
+		// recognise the list behind them. getRbacForPlayer resolves discord roles itself, so nothing is lost but a
+		// recomputation.
 		const linkedPlayerIds = new Set<SM.PlayerId>()
-		for (const ids of playerIds) {
-			const playerId = SM.PlayerIds.getPlayerId(ids)
-			cache.players.set(playerId, userRbacPromise)
-			linkedPlayerIds.add(playerId)
-		}
+		for (const ids of playerIds) linkedPlayerIds.add(SM.PlayerIds.getPlayerId(ids))
 		userPlayerIndex.set(discordUserId, linkedPlayerIds)
 		return await userRbacPromise
 	},
@@ -205,10 +219,13 @@ export const getRbacForDiscordUser = C.spanOp(
 export const getRbacForPlayer = C.spanOp(
 	'getRbacForPlayer',
 	{ module },
-	async (ctx: C.Db & C.PlayerIds<'eos'> & CS.AbortSignal) => {
+	async (ctx: C.Db & C.PlayerIds<'eos'> & C.ServerId & CS.AbortSignal) => {
 		const ids = ctx.player.ids
 		const playerId = SM.PlayerIds.getPlayerId(ids)
-		const cached = cache.players.get(playerId)
+		// keyed by server as well as player: which admin lists speak for a player is per-server, so one cache entry
+		// cannot answer for two servers without leaking one server's admins into the other
+		const cacheKey = playerCacheKey(ctx.serverId, playerId)
+		const cached = cache.players.get(cacheKey)
 		if (cached) return await cached
 		let steamId: bigint | undefined
 		if (ids.steam === undefined) {
@@ -228,7 +245,11 @@ export const getRbacForPlayer = C.spanOp(
 		const rbacPromise = (async () => {
 			let adminListAssignmentsPromise: Promise<RBAC.Role[]>
 			if (steamId) {
-				adminListAssignmentsPromise = resolveAdminListAssignments(ctx, [{ ...ids, steam: steamId.toString() }])
+				adminListAssignmentsPromise = resolveAdminListAssignments(
+					ctx,
+					[{ ...ids, steam: steamId.toString() }],
+					await AdminList.getListsForServerId(ctx, ctx.serverId),
+				)
 			} else {
 				adminListAssignmentsPromise = Promise.resolve([])
 			}
@@ -249,7 +270,7 @@ export const getRbacForPlayer = C.spanOp(
 			return { roles, perms }
 		})()
 
-		cache.players.set(playerId, rbacPromise)
+		cache.players.set(cacheKey, rbacPromise)
 		if (discordId) {
 			cache.users.set(discordId, rbacPromise)
 			let linked = userPlayerIndex.get(discordId)
@@ -263,21 +284,32 @@ export const getRbacForPlayer = C.spanOp(
 	},
 )
 
-async function resolveAdminListAssignments(ctx: C.Db & CS.AbortSignal, allIds: SM.PlayerIds.IdQuery<'steam'>[]) {
-	const adminList = await AdminList.adminList.get(ctx)
+// Resolved against a named set of lists rather than "the admin list". The two callers ask different questions: a
+// player is on one server, so only that server's lists may speak for them -- that is what keeps a sandbox's admins
+// out of production. A web user is on no server, so every configured list is consulted, and where the resulting role
+// applies is decided by that role's own server-scoped grants.
+async function resolveAdminListAssignments(
+	ctx: C.Db & CS.AbortSignal,
+	allIds: SM.PlayerIds.IdQuery<'steam'>[],
+	lists: SM.AdminLists,
+) {
 	const roles: RBAC.Role[] = []
 	for (const assignment of roleAssignments) {
 		if (assignment.type === 'admin-list-group') {
+			const list = lists.get(assignment.listId)
+			if (!list) continue
 			for (const ids of allIds) {
-				const groups = SM.AdminList.getPlayerGroups(adminList, ids)
+				const groups = SM.AdminList.getPlayerGroups(list, ids)
 				if (groups?.has(assignment.groupId)) {
 					RBAC.Role.push(roles, assignment.role)
 				}
 			}
 		}
 		if (assignment.type === 'ingame-admin') {
+			const list = lists.get(assignment.listId)
+			if (!list) continue
 			for (const ids of allIds) {
-				const isAdmin = SM.AdminList.getIsAdmin(adminList, ids)
+				const isAdmin = SM.AdminList.getIsAdmin(list, ids)
 				if (isAdmin) {
 					RBAC.Role.push(roles, assignment.role)
 				}
@@ -506,7 +538,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 }
 
 export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>(
-	ctx: C.Db & C.PlayerIds & CS.AbortSignal,
+	ctx: C.Db & C.PlayerIds & C.ServerId & CS.AbortSignal,
 	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
 ) {
 	const rbac = await getRbacForPlayer(ctx)
@@ -612,11 +644,18 @@ export const orpcRouter = {
 		return Discord.searchGuildMembers(query)
 	}),
 
-	// the admin-list groups currently defined across the configured sources, for the role-assignment adminListGroups picker
+	// the groups each configured admin list defines, for the role-assignment picker. Grouped by list rather than
+	// unioned: an assignment names the list it means, so the picker has to offer the pair, and two lists defining the
+	// same group name are two different grants.
 	listAdminListGroups: orpcBase.handler(async ({ context: ctx }) => {
 		const denyRes = await tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) return denyRes
-		const list = await AdminList.adminList.get(ctx)
-		return { code: 'ok' as const, groups: [...list.groups.keys()].sort() }
+		const lists = await Promise.all(
+			AdminList.configuredListIds().sort().map(async (listId) => {
+				const list = await AdminList.getList(ctx, listId)
+				return { listId, groups: list ? [...list.groups.keys()].sort() : [] }
+			}),
+		)
+		return { code: 'ok' as const, lists }
 	}),
 }

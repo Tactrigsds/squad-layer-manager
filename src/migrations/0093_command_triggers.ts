@@ -24,10 +24,18 @@ export async function up(db: MigrationDriver): Promise<void> {
 	const ownerOf = new Map<string, string>()
 	for (const [id, cmd] of Object.entries<any>(commands)) {
 		if (!cmd || typeof cmd !== 'object') continue
-		const strings: unknown[] = Array.isArray(cmd.strings) ? cmd.strings : []
-		cmd.triggers = strings.filter((s): s is string => typeof s === 'string')
-		delete cmd.strings
-		for (const s of cmd.triggers as string[]) ownerOf.set(s.toLowerCase(), id)
+		// a command already converted keeps the triggers it has: this migration was 0092 on an earlier revision of
+		// its branch, so a database that ran it under that name would otherwise be re-run here and emptied
+		if (Array.isArray(cmd.strings)) {
+			cmd.triggers = cmd.strings.filter((s: unknown): s is string => typeof s === 'string')
+			delete cmd.strings
+		} else if (!Array.isArray(cmd.triggers)) {
+			cmd.triggers = []
+		}
+		for (const t of cmd.triggers as unknown[]) {
+			const str = typeof t === 'string' ? t : (t as { string?: unknown })?.string
+			if (typeof str === 'string') ownerOf.set(str.toLowerCase(), id)
+		}
 	}
 
 	const aliases: any[] = Array.isArray(settings.commandAliases) ? settings.commandAliases : []
@@ -49,7 +57,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 	if (dropped.length > 0) {
 		console.warn(
-			`0092_command_triggers: dropping ${dropped.length} command alias(es) whose command string does not resolve: `
+			`0093_command_triggers: dropping ${dropped.length} command alias(es) whose command string does not resolve: `
 				+ `${dropped.join(', ')}. They could not run before this migration either. Re-add them under `
 				+ `Settings > In-game Commands as triggers on the command they were meant to run.`,
 		)

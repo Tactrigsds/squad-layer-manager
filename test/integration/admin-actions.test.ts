@@ -34,6 +34,12 @@ beforeAll(async () => {
 		adminSteamIds: [ADMIN_STEAM_ID],
 		globalSettings: (s) => {
 			s.adminActionReasons = REASONS as typeof s.adminActionReasons
+			// shortcuts onto !warn: one pins the reason outright, the other only supplies it when the caller
+			// leaves it out
+			s.commands.warn.triggers.push(
+				{ string: '!warntox', args: '{{arg1}} tox' },
+				{ string: '!warnsp', args: '{{arg1}} {{^rest2}}tox{{/rest2}}{{rest2}}' },
+			)
 		},
 	})
 	app.emu.world.connectPlayer(admin)
@@ -69,6 +75,32 @@ describe('admin actions from in-game chat', () => {
 		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
 		// and nobody else was warned for it
 		expect(warnsTo(leader)).toHaveLength(0)
+	})
+
+	// the templated-trigger path: the words typed after the trigger are rendered into its args template, and
+	// the result is dispatched as if the admin had typed the command out in full
+	it('warns through a trigger that pins the reason', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!warntox squad_member')
+
+		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn through the shortcut', timeoutMs: 20_000 })
+		// the pinned token went through reason resolution, not just into the message: `tox` is a keyword
+		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
+		expect(warnsTo(leader)).toHaveLength(0)
+	})
+
+	it('fills an omitted word from the template default, and yields to one that is typed', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!warnsp squad_member')
+
+		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn using the default reason', timeoutMs: 20_000 })
+		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!warnsp squad_member being rude')
+
+		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn with the reason the caller typed', timeoutMs: 20_000 })
+		expect(warnsTo(member)[0]).toContain('being rude')
 	})
 
 	it('warns every member of a squad', async () => {
