@@ -113,6 +113,40 @@ function install(dest, opts) {
 	run('pnpm', ['install'], dest, opts)
 }
 
+// Build products and local inputs that are gitignored, so a fresh worktree has none of them and nothing that
+// reads layers builds or boots until it does. Copied from the main checkout rather than symlinked: a worktree
+// that edits layer-engine/ rebuilds over its own copy, and must not overwrite the main checkout's in the
+// process. Notes go to stderr because a hook's stdout is the worktree path and nothing else.
+const ARTIFACTS = ['assets/layer-engine.wasm', 'layer-db.json']
+
+function ensureArtifacts(dest, { build = false, force = false } = {}) {
+	const root = mainCheckout(dest)
+	if (path.resolve(dest) === path.resolve(root)) return
+	for (const artifact of ARTIFACTS) {
+		const link = path.join(dest, artifact)
+		if (fs.existsSync(link) && !force) continue
+		const target = path.join(root, artifact)
+		if (fs.existsSync(target)) {
+			fs.mkdirSync(path.dirname(link), { recursive: true })
+			fs.copyFileSync(target, link)
+			console.error(`  ${artifact} copied from the main checkout`)
+			continue
+		}
+		if (!artifact.endsWith('.wasm')) {
+			console.error(`  ${artifact}: the main checkout has none, skipping`)
+			continue
+		}
+		// Only ever on the paths that can afford it: a cargo build is minutes, and a WorktreeCreate hook that
+		// takes minutes reads as a hung one.
+		if (build) {
+			console.error(`  ${artifact}: the main checkout has none either, building it`)
+			run('pnpm', ['run', 'build:engine'], dest, { quiet: true })
+			continue
+		}
+		console.error(`  ${artifact}: the main checkout has none either -- build it with \`pnpm build:engine\``)
+	}
+}
+
 function slotRegistryPath(cwd) {
 	return path.join(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)), 'slm-dev-slots.json')
 }
@@ -157,6 +191,7 @@ function dispatch() {
 			const input = readHookInput()
 			const result = createWorktree(input.name, input.cwd || cwd)
 			install(result.path, { quiet: true })
+			ensureArtifacts(result.path)
 			process.stdout.write(result.path + '\n')
 			break
 		}
@@ -181,10 +216,17 @@ function dispatch() {
 				run('pnpm', ['dev:init'], result.path)
 				console.log(`\ncd ${result.path}`)
 			} else {
+				ensureArtifacts(result.path)
 				console.log(`\nnext: cd ${result.path} && pnpm dev:init`)
 			}
 			break
 		}
+
+		// What `dev:init` calls, so the artifact list lives in one place. Provisioning a dev instance is slow
+		// and interactive enough to wait on a build when the main checkout has nothing to copy.
+		case 'ensure-artifacts':
+			ensureArtifacts(git(['rev-parse', '--show-toplevel'], cwd), { build: true, force: rest.includes('--force') })
+			break
 
 		case 'ls': {
 			const root = mainCheckout(cwd)

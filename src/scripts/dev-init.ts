@@ -46,27 +46,12 @@ for (const name of ['.env', '.env.secrets']) {
 	console.log(`  ${name} -> ${target}`)
 }
 
-// Build products and local inputs that are gitignored, so a fresh worktree has none of them and the app
-// refuses to boot without the engine. Copied from the main checkout rather than symlinked: a worktree that
-// edits layer-engine/ rebuilds over its own copy, and must not overwrite the main checkout's in the process.
-const ARTIFACTS = ['assets/layer-engine.wasm', 'layer-db.json']
-for (const artifact of ARTIFACTS) {
-	const link = path.join(worktree, artifact)
-	if (fs.existsSync(link) && !args.values.force) continue
-	const target = path.join(root, artifact)
-	if (fs.existsSync(target)) {
-		fs.mkdirSync(path.dirname(link), { recursive: true })
-		fs.copyFileSync(target, link)
-		console.log(`  ${artifact} copied from the main checkout`)
-		continue
-	}
-	if (artifact.endsWith('.wasm')) {
-		console.log(`  ${artifact}: the main checkout has none either, building it`)
-		const res = childProcess.spawnSync('pnpm', ['run', 'build:engine'], { cwd: worktree, stdio: 'inherit' })
-		if (res.status !== 0) process.exit(res.status ?? 1)
-		continue
-	}
-	console.log(`  ${artifact}: the main checkout has none, skipping`)
+// `worktree new` and the WorktreeCreate hook have already done this; a worktree made any other way has not.
+{
+	const ensureArgs = [path.join(worktree, 'scripts/worktree.mjs'), 'ensure-artifacts']
+	if (args.values.force) ensureArgs.push('--force')
+	const res = childProcess.spawnSync(process.execPath, ensureArgs, { cwd: worktree, stdio: 'inherit' })
+	if (res.status !== 0) process.exit(res.status ?? 1)
 }
 
 if (!args.values['no-clone']) {
