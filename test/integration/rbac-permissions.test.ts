@@ -1,6 +1,6 @@
 import { type EmuPlayer, makePlayer } from '@/emulator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 
 // The in-game timeout command is gated by SM.Grants.satisfyingTimeout: an admin may only issue a timeout up to the
@@ -56,7 +56,7 @@ beforeAll(async () => {
 					discordRoleIds: [],
 					discordUserIds: [CAPPED_USER.discordId.toString()],
 					everyMember: false,
-					includeIngameAdmins: false,
+					ingameAdminLists: [],
 					adminListGroups: [],
 				},
 			}
@@ -71,7 +71,7 @@ beforeAll(async () => {
 					discordRoleIds: [],
 					discordUserIds: [],
 					everyMember: false,
-					includeIngameAdmins: true,
+					ingameAdminLists: [TEST_ADMIN_LIST],
 					adminListGroups: [],
 				},
 			}

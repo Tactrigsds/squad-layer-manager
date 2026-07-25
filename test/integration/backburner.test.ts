@@ -35,7 +35,7 @@ beforeAll(async () => {
 					discordRoleIds: [],
 					discordUserIds: [REQUESTER.discordId.toString()],
 					everyMember: false,
-					includeIngameAdmins: false,
+					ingameAdminLists: [],
 					adminListGroups: [],
 				},
 			}

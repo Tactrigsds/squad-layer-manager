@@ -14,6 +14,9 @@ import { parseArgs } from 'node:util'
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
 
+// the single admin list a dev clone keeps, pointed at the worktree's emulated Admins.cfg
+const DEV_ADMIN_LIST = 'dev'
+
 // Clones the main checkout's database into this worktree and re-points its servers at the worktree's
 // emulator, so an experiment runs against realistic data instead of an empty db.
 //
@@ -178,25 +181,39 @@ async function repointServers(driver: Database) {
 		)
 	}
 
-	// admin lists are global now (migration 0089 hoisted them). Point the single global source at this worktree's
-	// emulated Admins.cfg, keeping the migrated identifying perms (fall back if the source install had none)
+	// admin lists are named (migration 0092). Replace whatever the source install had with a single 'dev' list pointed
+	// at this worktree's emulated Admins.cfg, keep the migrated identifying perms, and point every server at it --
+	// otherwise a cloned server would recognise no admins at all.
 	const gsRows = await db.select().from(Schema.globalSettings)
 	if (gsRows.length > 0) {
 		const gsRaw = unsuperjsonify(Schema.globalSettings, gsRows[0]) as {
-			settings: Record<string, unknown> & { adminIdentifyingPermissions?: string[] }
+			settings: Record<string, unknown> & { adminLists?: Record<string, { adminIdentifyingPermissions?: string[] }> }
 		}
-		const identifyingPerms = gsRaw.settings.adminIdentifyingPermissions?.length
-			? gsRaw.settings.adminIdentifyingPermissions
-			: ['canseeadminchat']
+		const migratedPerms = Object.values(gsRaw.settings.adminLists ?? {})
+			.flatMap((l) => l.adminIdentifyingPermissions ?? [])
+		const identifyingPerms = migratedPerms.length > 0 ? [...new Set(migratedPerms)] : ['canseeadminchat']
 		const settings = {
 			...gsRaw.settings,
-			adminListSources: [{ type: 'local', source: DevInstance.ADMINS_CFG_PATH }],
-			adminIdentifyingPermissions: identifyingPerms,
+			adminLists: {
+				[DEV_ADMIN_LIST]: {
+					source: { type: 'local', source: DevInstance.ADMINS_CFG_PATH },
+					adminIdentifyingPermissions: identifyingPerms,
+				},
+			},
 		}
 		await db.update(Schema.globalSettings)
 			.set(superjsonify(Schema.globalSettings, { settings }))
 			.where(E.eq(Schema.globalSettings.id, gsRows[0].id))
-		console.log('re-pointed global admin list source at the emulated Admins.cfg')
+		console.log('re-pointed the admin list at the emulated Admins.cfg')
+
+		const serverRows = await db.select().from(Schema.servers)
+		for (const row of serverRows) {
+			const raw = unsuperjsonify(Schema.servers, row) as { id: string; settings: Record<string, unknown> }
+			await db.update(Schema.servers)
+				.set(superjsonify(Schema.servers, { settings: { ...raw.settings, adminLists: [DEV_ADMIN_LIST] } }))
+				.where(E.eq(Schema.servers.id, raw.id))
+		}
+		console.log(`pointed ${serverRows.length} server(s) at the '${DEV_ADMIN_LIST}' admin list`)
 	}
 }
 

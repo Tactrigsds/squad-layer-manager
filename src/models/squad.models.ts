@@ -593,6 +593,29 @@ export const AdminListSourceSchema = z.discriminatedUnion('type', [
 ])
 export type AdminListSource = z.infer<typeof AdminListSourceSchema>
 export type AdminListSourceType = AdminListSource['type']
+
+// Admin lists are named so that everything else can refer to one: a server picks which lists apply to it, and a role
+// assignment says which list's groups (or which list's admins) grant the role. Without names all of that could only
+// ever say "the admin list", which is exactly the ambiguity that made per-server admins impossible to express.
+export const AdminListIdSchema = z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9 _-]*$/, {
+	error: 'An admin list name may hold letters, digits, spaces, underscores and dashes, and must start with a letter or digit',
+})
+export type AdminListId = z.infer<typeof AdminListIdSchema>
+
+// Identifying permissions are per-list because they are a property of the list's own convention, not of the install:
+// one source may mark its admins with `canseeadminchat` while another uses a bespoke group perm, and merging them
+// globally makes every list inherit the loosest definition of "admin" any of them uses.
+export const AdminListDefSchema = z.object({
+	source: AdminListSourceSchema,
+	adminIdentifyingPermissions: z.array(PLAYER_PERM).prefault([]).describe(
+		'Group permissions in THIS list that mark a player as an in-game admin (e.g. "canseeadminchat"). A player granted any '
+			+ 'of these is treated as an admin for the servers using this list, which drives admin-only warns and admin presence.',
+	),
+})
+export type AdminListDef = z.infer<typeof AdminListDefSchema>
+
+// one fetched list per configured name
+export type AdminLists = Map<AdminListId, AdminList>
 // steamId -> groups
 export type SquadAdmins<T extends PlayerId> = OneToManyMap<T, string>
 // group -> permissions

@@ -46,6 +46,7 @@ import * as PG from '@/models/player-groupings.models'
 import * as PermRows from '@/models/rbac-perm-rows'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
+import * as SquadModels from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -1788,6 +1789,8 @@ function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConf
 	}
 }
 
+const PLAYER_PERM_OPTIONS = SquadModels.PLAYER_PERM.options.map((perm) => ({ value: perm }))
+
 const ADMIN_SOURCE_TYPE_OPTIONS: { value: SM.AdminListSourceType; label: string }[] = [
 	{ value: 'remote', label: 'Remote URL' },
 	{ value: 'local', label: 'Local file' },
@@ -1809,146 +1812,157 @@ function defaultAdminSource(type: SM.AdminListSourceType): SM.AdminListSource {
 // a never-emitting stand-in so useFieldValue can be called unconditionally when there is no root document (e.g. tests)
 const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as ValueState
 
-// bespoke editor for a server's `adminListSources` (a discriminated union of remote/local/ftp/sftp). sftp holds its own
-// connection details, with a shortcut to copy them from the server's sftp log connection when one is configured.
-function AdminListSourcesField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as SM.AdminListSource[] | undefined) ?? []
-	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	const connType$ = React.useMemo(() => scopeValue(scopeValue(root$, 'connections'), 'type'), [root$])
-	const canCopyFromLog = useFieldValue(connType$, reset$) === 'sftp'
+// Editor for the named admin lists (global settings). Each is a name, one source (remote/local/ftp/sftp) and the
+// group permissions that mark an admin *in that list*. The name is what servers and role assignments refer to, so
+// renaming one is a breaking edit -- hence the rename is explicit rather than an inline text field that fires per
+// keystroke.
+function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
+	const value = (useFieldValue(value$, reset$) as Record<string, SM.AdminListDef> | undefined) ?? {}
+	const names = Object.keys(value)
+	const [newName, setNewName] = React.useState('')
 
-	// `quiet` skips reset$ so an in-flight keystroke in an uncontrolled field isn't clobbered; structural edits (add/remove,
-	// type change) leave it off so the fields re-seed after re-indexing.
-	const update = React.useCallback((fn: (v: SM.AdminListSource[]) => SM.AdminListSource[], quiet?: boolean) => {
-		onChange(fn((value$.getValue() as SM.AdminListSource[] | undefined) ?? []))
+	const update = React.useCallback((fn: (v: Record<string, SM.AdminListDef>) => Record<string, SM.AdminListDef>, quiet?: boolean) => {
+		onChange(fn((value$.getValue() as Record<string, SM.AdminListDef> | undefined) ?? {}))
 		if (!quiet) reset$.next()
 	}, [onChange, value$, reset$])
 
-	const patch = (idx: number, p: Partial<SM.AdminListSource>, quiet?: boolean) =>
-		update((v) => v.map((s, i) => i === idx ? { ...s, ...p } as SM.AdminListSource : s), quiet)
+	const patchSource = (name: string, p: Partial<SM.AdminListSource>, quiet?: boolean) =>
+		update((v) => ({ ...v, [name]: { ...v[name], source: { ...v[name].source, ...p } as SM.AdminListSource } }), quiet)
 
-	function copyFromLog(idx: number) {
-		const connections = (root$.getValue() as { connections?: { type?: string; sftp?: any } } | undefined)?.connections
-		if (!connections || connections.type !== 'sftp') return
-		const sftp = connections.sftp
-		patch(idx, { host: sftp.host, port: sftp.port, username: sftp.username, password: sftp.password })
+	const canAdd = /^[A-Za-z0-9][A-Za-z0-9 _-]*$/.test(newName) && !(newName in value)
+	function addList() {
+		if (!canAdd) return
+		update((v) => ({ ...v, [newName]: { source: defaultAdminSource('local'), adminIdentifyingPermissions: [] } }))
+		setNewName('')
 	}
 
 	return (
-		<div className="space-y-2">
-			{value.length === 0 && <p className="text-xs text-muted-foreground">No admin list sources.</p>}
-			{value.map((source, idx) => (
-				// oxlint-disable-next-line no-array-index-key
-				<div key={idx} className="space-y-3 rounded-md border p-3">
-					<div className="flex items-end gap-2">
-						<div className="space-y-1">
-							<Label className="text-xs text-muted-foreground">Source Type</Label>
+		<div className="space-y-3">
+			{names.length === 0 && <p className="text-xs text-muted-foreground">No admin lists defined.</p>}
+			{names.map((name) => {
+				const def = value[name]
+				const source = def.source
+				return (
+					<div key={name} className="space-y-2 rounded-md border p-3">
+						<div className="flex items-center gap-2">
+							<code className="font-mono text-sm font-semibold">{name}</code>
 							<Select
 								value={source.type}
-								onValueChange={(t) => update((v) => v.map((s, i) => i === idx ? defaultAdminSource(t as SM.AdminListSourceType) : s))}
+								onValueChange={(t) =>
+									update((v) => ({ ...v, [name]: { ...v[name], source: defaultAdminSource(t as SM.AdminListSourceType) } }))}
 							>
-								<SelectTrigger className="w-40">
+								<SelectTrigger className="h-8 w-[9rem]">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
 								</SelectContent>
 							</Select>
+							<Button
+								type="button"
+								size="icon"
+								variant="ghost"
+								className="ml-auto h-7 w-7 text-destructive"
+								title={`Delete ${name}`}
+								onClick={() =>
+									update((v) => {
+										const next = { ...v }
+										delete next[name]
+										return next
+									})}
+							>
+								<Icons.Trash2 className="h-4 w-4" />
+							</Button>
 						</div>
-						<div className="flex-1" />
-						<Button
-							type="button"
-							size="icon"
-							variant="ghost"
-							className="h-6 w-6 shrink-0 text-destructive"
-							aria-label="Remove admin list source"
-							onClick={() => update((v) => v.filter((_, i) => i !== idx))}
-						>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</div>
-					{source.type === 'sftp'
-						? (
-							<div className="space-y-3">
-								<div className="grid grid-cols-[1fr_7rem] gap-2">
-									<div className="space-y-1">
-										<Label className="text-xs text-muted-foreground">Host</Label>
-										<TextInputField
-											value$={scopeValue(scopeValue(value$, idx), 'host')}
-											reset$={reset$}
-											onChange={(next) => patch(idx, { host: (next as string) ?? '' }, true)}
-											numeric={false}
-											placeholder="sftp.host.com"
-										/>
-									</div>
-									<div className="space-y-1">
-										<Label className="text-xs text-muted-foreground">Port</Label>
-										<TextInputField
-											value$={scopeValue(scopeValue(value$, idx), 'port')}
-											reset$={reset$}
-											onChange={(next) => patch(idx, { port: typeof next === 'number' ? next : 22 }, true)}
-											numeric
-											placeholder="22"
-										/>
-									</div>
-								</div>
+
+						{source.type === 'sftp'
+							? (
 								<div className="grid grid-cols-2 gap-2">
-									<div className="space-y-1">
-										<Label className="text-xs text-muted-foreground">Username</Label>
-										<TextInputField
-											value$={scopeValue(scopeValue(value$, idx), 'username')}
-											reset$={reset$}
-											onChange={(next) => patch(idx, { username: (next as string) ?? '' }, true)}
-											numeric={false}
-										/>
-									</div>
-									<div className="space-y-1">
-										<Label className="text-xs text-muted-foreground">Password</Label>
-										<TextInputField
-											value$={scopeValue(scopeValue(value$, idx), 'password')}
-											reset$={reset$}
-											onChange={(next) => patch(idx, { password: (next as string) ?? '' }, true)}
-											numeric={false}
-											secret
-										/>
-									</div>
-								</div>
-								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">File path</Label>
-									<TextInputField
-										value$={scopeValue(scopeValue(value$, idx), 'filePath')}
-										reset$={reset$}
-										onChange={(next) => patch(idx, { filePath: (next as string) ?? '' }, true)}
-										numeric={false}
-										placeholder="/SquadGame/Saved/Admins.cfg"
+									<Input
+										className="h-8"
+										placeholder="host"
+										defaultValue={source.host}
+										onChange={(e) => patchSource(name, { host: e.target.value }, true)}
+									/>
+									<Input
+										className="h-8"
+										type="number"
+										placeholder="22"
+										defaultValue={source.port}
+										onChange={(e) => patchSource(name, { port: Number(e.target.value) }, true)}
+									/>
+									<Input
+										className="h-8"
+										placeholder="username"
+										defaultValue={source.username}
+										onChange={(e) => patchSource(name, { username: e.target.value }, true)}
+									/>
+									<Input
+										className="h-8"
+										type="password"
+										placeholder="password"
+										defaultValue={source.password}
+										onChange={(e) => patchSource(name, { password: e.target.value }, true)}
+									/>
+									<Input
+										className="col-span-2 h-8"
+										placeholder="/path/to/Admins.cfg"
+										defaultValue={source.filePath}
+										onChange={(e) => patchSource(name, { filePath: e.target.value }, true)}
 									/>
 								</div>
-								{canCopyFromLog && (
-									<Button type="button" variant="outline" size="sm" onClick={() => copyFromLog(idx)}>
-										<Icons.Copy className="mr-1 h-4 w-4" />Copy connection from log source
-									</Button>
-								)}
-							</div>
-						)
-						: (
-							<div className="space-y-1">
-								<Label className="text-xs text-muted-foreground">
-									{source.type === 'remote' ? 'URL' : source.type === 'local' ? 'File path' : 'FTP URI'}
-								</Label>
-								<TextInputField
-									value$={scopeValue(scopeValue(value$, idx), 'source')}
-									reset$={reset$}
-									onChange={(next) => patch(idx, { source: (next as string) ?? '' }, true)}
-									numeric={false}
+							)
+							: (
+								<Input
+									className="h-8"
 									placeholder={ADMIN_SOURCE_STRING_PLACEHOLDER[source.type]}
+									defaultValue={source.source}
+									onChange={(e) => patchSource(name, { source: e.target.value }, true)}
 								/>
-							</div>
-						)}
-				</div>
-			))}
-			<Button type="button" variant="outline" size="sm" onClick={() => update((v) => [...v, defaultAdminSource('remote')])}>
-				<Icons.Plus className="mr-1 h-4 w-4" />Add source
-			</Button>
+							)}
+
+						<div className="space-y-1">
+							<label className="flex items-center gap-1 text-xs text-muted-foreground">
+								Admin-identifying permissions
+								<HelpTip text="Group permissions in this list that mark a player as an in-game admin on the servers using it." />
+							</label>
+							<ComboBoxMulti
+								title="Permission"
+								values={def.adminIdentifyingPermissions}
+								options={PLAYER_PERM_OPTIONS}
+								emptyLabel="Select permissions..."
+								chipDisplay
+								onSelect={(next) =>
+									update((v) => ({
+										...v,
+										[name]: {
+											...v[name],
+											adminIdentifyingPermissions: (typeof next === 'function'
+												? next(v[name].adminIdentifyingPermissions)
+												: next) as SM.PlayerPerm[],
+										},
+									}))}
+							/>
+						</div>
+					</div>
+				)
+			})}
+			<div className="flex items-center gap-1.5">
+				<Input
+					className="h-8 w-[14rem]"
+					placeholder="new list name"
+					value={newName}
+					onChange={(e) => setNewName(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key !== 'Enter') return
+						e.preventDefault()
+						addList()
+					}}
+				/>
+				<Button type="button" size="sm" variant="outline" className="h-8" disabled={!canAdd} onClick={addList}>
+					<Icons.Plus className="mr-1 h-4 w-4" />Add list
+				</Button>
+			</div>
 		</div>
 	)
 }
@@ -2035,8 +2049,20 @@ function isAssignmentEmpty(a: RoleAssignmentsValue): boolean {
 	return (a.discordRoleIds?.length ?? 0) === 0
 		&& (a.discordUserIds?.length ?? 0) === 0
 		&& !a.everyMember
-		&& !a.includeIngameAdmins
+		&& (a.ingameAdminLists?.length ?? 0) === 0
 		&& (a.adminListGroups?.length ?? 0) === 0
+}
+
+// "list/group" for the multi-select, which deals in flat strings. Neither an admin list name nor a Squad group name
+// may contain a slash, so the first one separates them unambiguously.
+function encodeListGroup(listId: string, groupId: string): string {
+	return `${listId}/${groupId}`
+}
+
+function decodeListGroup(pair: string): { listId: string; groupId: string } | null {
+	const idx = pair.indexOf('/')
+	if (idx <= 0 || idx === pair.length - 1) return null
+	return { listId: pair.slice(0, idx), groupId: pair.slice(idx + 1) }
 }
 
 function isRoleAssigned(cfg: RoleConfig | undefined): boolean {
@@ -2593,17 +2619,31 @@ function RoleAssignmentsEditor(
 	const changeDiscordRole = (oldId: string, nextId: string) => changeAssignment('discordRoleIds', oldId, nextId)
 	const changeDiscordUser = (oldId: string, nextId: string) => changeAssignment('discordUserIds', oldId, nextId)
 
-	// in-game users get this role via their admin-list group membership; the picker lists the groups defined across the
-	// configured admin-list sources, unioned with any already-selected group that no longer appears in a source
+	// A group only means something together with the list that defines it, so options and selections are both the pair,
+	// encoded as "list/group" for the multi-select. Two lists may define the same group name and they are not the same
+	// grant. Already-selected pairs are kept even when their list or group is gone, so opening the editor never
+	// silently drops a grant.
 	const groupsRes = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
-	const availableGroups = groupsRes.data?.code === 'ok' ? groupsRes.data.groups : []
+	const availableLists = groupsRes.data?.code === 'ok' ? groupsRes.data.lists : []
+	const availablePairs = availableLists.flatMap((l) => l.groups.map((g) => encodeListGroup(l.listId, g)))
 	const selectedGroups = cfg.assignments?.adminListGroups ?? []
-	const groupOptions = [...new Set([...availableGroups, ...selectedGroups])].sort().map((group) => ({
-		value: group,
-		label: availableGroups.includes(group) ? group : `${group} (not in any current source)`,
+	const selectedPairs = selectedGroups.map((g) => encodeListGroup(g.listId, g.groupId))
+	const groupOptions = [...new Set([...availablePairs, ...selectedPairs])].sort().map((pair) => ({
+		value: pair,
+		label: availablePairs.includes(pair) ? pair : `${pair} (not in any current list)`,
+	}))
+	const availableListIds = availableLists.map((l) => l.listId)
+	const selectedIngameLists = cfg.assignments?.ingameAdminLists ?? []
+	const ingameListOptions = [...new Set([...availableListIds, ...selectedIngameLists])].sort().map((listId) => ({
+		value: listId,
+		label: availableListIds.includes(listId) ? listId : `${listId} (not configured)`,
 	}))
 	function setGroups(next: string[]) {
-		update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { adminListGroups: next })))
+		const pairs = next.map(decodeListGroup).filter((p): p is { listId: string; groupId: string } => p !== null)
+		update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { adminListGroups: pairs })))
+	}
+	function setIngameLists(next: string[]) {
+		update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { ingameAdminLists: next })))
 	}
 
 	return (
@@ -2622,21 +2662,24 @@ function RoleAssignmentsEditor(
 				<span className="text-sm">Granted to every server member</span>
 			</div>
 
-			<div className="flex items-center gap-2">
-				<Switch
-					checked={!!cfg.assignments?.includeIngameAdmins}
-					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { includeIngameAdmins: on })))}
-				/>
-				<span className="flex items-center gap-1 text-sm">
-					Granted to in-game admins
+			<div className="space-y-1.5">
+				<label className="flex items-center gap-1 text-xs text-muted-foreground">
+					In-game admins of these lists
 					<HelpTip
-						text="A player is an in-game admin when the admin list puts them in a group that holds one of the admin-identifying permissions."
-						links={[
-							{ label: 'Admin list sources', anchor: 'setting:adminListSources' },
-							{ label: 'Admin identifying permissions', anchor: 'setting:adminIdentifyingPermissions' },
-						]}
+						text="A player is an in-game admin of a list when that list puts them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers that use the list."
+						links={[{ label: 'Admin lists', anchor: 'setting:adminLists' }]}
 					/>
-				</span>
+				</label>
+				<div className="max-w-[28rem]">
+					<ComboBoxMulti
+						title="Admin list"
+						values={selectedIngameLists}
+						options={ingameListOptions}
+						emptyLabel="Select admin lists..."
+						chipDisplay
+						onSelect={(next) => setIngameLists(typeof next === 'function' ? next(selectedIngameLists) : next)}
+					/>
+				</div>
 			</div>
 
 			<div className="space-y-1.5">
@@ -2690,20 +2733,20 @@ function RoleAssignmentsEditor(
 					Admin-list groups
 					<HelpTip
 						text="Grant this role by admin-list group membership. A player gets it while the admin list places them in any selected group, admin-identifying or not (e.g. a Whitelist reserve-slot group)."
-						links={[{ label: 'Admin list sources', anchor: 'setting:adminListSources' }]}
+						links={[{ label: 'Admin lists', anchor: 'setting:adminLists' }]}
 					/>
 				</label>
 				{groupOptions.length === 0
-					? <p className="text-xs text-muted-foreground">No admin-list groups are defined in the configured sources.</p>
+					? <p className="text-xs text-muted-foreground">No admin-list groups are defined in the configured lists.</p>
 					: (
-						<div className="max-w-[24rem]">
+						<div className="max-w-[28rem]">
 							<ComboBoxMulti
 								title="Group"
-								values={selectedGroups}
+								values={selectedPairs}
 								options={groupOptions}
 								emptyLabel="Select admin-list groups..."
 								chipDisplay
-								onSelect={(next) => setGroups(typeof next === 'function' ? next(selectedGroups) : next)}
+								onSelect={(next) => setGroups(typeof next === 'function' ? next(selectedPairs) : next)}
 							/>
 						</div>
 					)}
@@ -2768,7 +2811,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
-	if (path.length === 1 && last === 'adminListSources') return AdminListSourcesField
+	if (path.length === 1 && last === 'adminLists') return AdminListsField
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard

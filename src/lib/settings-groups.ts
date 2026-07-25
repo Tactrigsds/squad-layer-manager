@@ -16,7 +16,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 	{
 		slug: 'rbac',
 		label: 'Permissions & Roles',
-		keys: ['rbac', 'adminListSources', 'adminIdentifyingPermissions'],
+		keys: ['rbac', 'adminLists'],
 	},
 	{
 		slug: 'warns-and-broadcasts',
@@ -84,7 +84,7 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	// server
 	'queue',
 	'rconCacheTTL',
-	'adminListSources',
+	'adminLists',
 ])
 
 // paths the TOC must treat as leaves even though their schema node is an object with properties: they render via
