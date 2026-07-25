@@ -69,7 +69,10 @@ docker/logs
 docker/squad-dedicated
 
 .tanstack/
-.claude/
+# settings.json is project config (the worktree hooks) and is tracked; everything else here is per-user
+# preference or claude code's own runtime state
+.claude/*
+!.claude/settings.json
 
 dist-server/
 

@@ -2,6 +2,7 @@
 import babel from '@rolldown/plugin-babel'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import type { ServerResponse } from 'node:http'
 import path from 'node:path'
 import type { CommonServerOptions, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
@@ -56,21 +57,18 @@ export default defineConfig({
 
 									// Copy all headers from upstream
 									proxyRes.headers.forEach((value, key) => {
-										if (key.toLowerCase() === 'keep-alive' || key.toLowerCase() === 'connection') return
+										const name = key.toLowerCase()
+										if (name === 'keep-alive' || name === 'connection' || name === 'set-cookie') return
 										res.setHeader(key, value)
 									})
+									copyCookies(proxyRes, res)
 
 									// Pipe the body
 									const body = await proxyRes.text()
 									res.end(body)
 									return
 								} else {
-									// Apply cookie header from upstream server
-									const cookieHeader = proxyRes.headers.get('set-cookie')
-									if (cookieHeader) {
-										res.setHeader('set-cookie', cookieHeader)
-									}
-
+									copyCookies(proxyRes, res)
 									next()
 								}
 							} catch (error) {
@@ -106,6 +104,14 @@ export default defineConfig({
 		exclude: ['**/node_modules/**', 'test/integration/**', 'test/e2e/**', '.claude/**'],
 	},
 })
+
+// Headers.get('set-cookie') joins multiple cookies into one comma-separated header, which a browser reads as a
+// single cookie with garbage attributes: logging in through this port set the session and silently dropped
+// every cookie after it. getSetCookie keeps them apart.
+function copyCookies(from: Response, to: ServerResponse) {
+	const cookies = from.headers.getSetCookie()
+	if (cookies.length > 0) to.setHeader('set-cookie', cookies)
+}
 
 function buildDevServerConfig(): UserConfig['server'] {
 	Env.ensureEnvSetup()
