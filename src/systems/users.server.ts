@@ -1,11 +1,10 @@
 import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { Steam64IdSchema } from '@/lib/zod'
+import * as Rx from '@/lib/rxjs'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models'
@@ -100,7 +99,7 @@ export const orpcRouter = {
 			const parsed: bigint[] = []
 			const seen = new Set<string>()
 			for (const raw of input) {
-				const res = Steam64IdSchema.safeParse(raw)
+				const res = ZodUtils.Steam64IdSchema.safeParse(raw)
 				if (!res.success) return { code: 'err:invalid-steam-id' as const, steamId: raw, msg: `"${raw}" is not a valid Steam64 ID` }
 				if (seen.has(res.data)) continue
 				seen.add(res.data)
@@ -185,11 +184,11 @@ export const orpcRouter = {
 
 	watchUserInvalidation: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
 		const myId = context.user.discordId
-		yield* toAsyncGenerator(
+		yield* Rx.Ext.toAsyncGenerator(
 			invalidateUsers$.pipe(
 				Rx.filter((e) => e.discordId === undefined || e.discordId === myId),
 				Rx.map(() => undefined),
-				withAbortSignal(signal!),
+				Rx.Ext.withAbortSignal(signal!),
 			),
 		)
 	}),

@@ -1,15 +1,14 @@
 import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
 import type * as Im from 'immer'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
-import * as Arr from '@/lib/array'
-import { distinctDeepEquals, traceTag } from '@/lib/async'
+import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -130,8 +129,8 @@ export function initLayerTable(args: Args) {
 	const setStore = args.set
 	const input = args.input
 
-	const get = ZusUtils.toPartialGetter(args.get, 'layerTable')
-	const set = ZusUtils.toPartialSetter(args.set, 'layerTable')
+	const get = Zus.toPartialGetter(args.get, 'layerTable')
+	const set = Zus.toPartialSetter(args.set, 'layerTable')
 	const initialLayerTable: LayerTable = {
 		colConfig: input.colConfig,
 		sort: input.sort,
@@ -167,7 +166,7 @@ export function initLayerTable(args: Args) {
 	args.sub.add(
 		args.update$
 			.pipe(
-				traceTag('QUERY_LAYERS'),
+				Rx.Ext.traceTag('QUERY_LAYERS'),
 				Rx.map(([store]) => {
 					const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
 						cfg: store.layerTable.colConfig,
@@ -179,7 +178,7 @@ export function initLayerTable(args: Args) {
 
 					return input
 				}),
-				distinctDeepEquals(),
+				Rx.Ext.distinctDeepEquals(),
 				Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
 				Rx.switchMap((input) =>
 					LayerQueriesClient.queryLayers$(input).pipe(
@@ -301,7 +300,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function slice(stores: KeyProp) {
-		return ZusUtils.toPartialStore(stores.layerTable, 'layerTable')
+		return Zus.toPartialStore(stores.layerTable, 'layerTable')
 	}
 
 	export function setSort(stores: KeyProp, update: React.SetStateAction<LQY.LayersQuerySort | null>) {
@@ -356,7 +355,7 @@ export namespace Actions {
 		(rowSelectionUpdate) => {
 			const updated =
 				typeof rowSelectionUpdate === 'function'
-					? rowSelectionUpdate(Sel.tanstackRowSelection(ZusUtils.getState(stores.layerTable)))
+					? rowSelectionUpdate(Sel.tanstackRowSelection(Zus.getState(stores.layerTable)))
 					: rowSelectionUpdate
 			const selected: L.LayerId[] = Object.keys(updated).filter((id) => updated[id])
 			setSelected(stores, selected)
@@ -409,7 +408,7 @@ export namespace Actions {
 
 	export function getTanstackActions(stores: KeyProp) {
 		const setSorting: React.Dispatch<React.SetStateAction<TanstackSortingState>> = (sortingUpdate) => {
-			const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
+			const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
 			const updated = typeof sortingUpdate === 'function' ? sortingUpdate(current) : current
 
 			if (updated.length === 0) {

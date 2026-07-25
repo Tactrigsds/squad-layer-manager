@@ -1,4 +1,3 @@
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
@@ -23,6 +22,7 @@ import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { useForwardWheelToScroller } from '@/lib/browser'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
+import * as ReactRx from '@/lib/react-rxjs'
 import {
 	ADVANCED_GLOBAL_SETTINGS_PATHS,
 	ADVANCED_SERVER_SETTINGS_PATHS,
@@ -32,7 +32,7 @@ import {
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -71,7 +71,7 @@ function RouteComponent() {
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
 	// a server section renders for every server the user may at least read; registry management is gated separately
-	const allServers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
+	const allServers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
 	const servers = React.useMemo(
 		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id)),
 		[allServers, loggedInPerms],
@@ -667,7 +667,7 @@ function ServerSettingsSection({
 	const key = stores.settingsEditor
 	const access = RbacClient.useServerSettingsAccess(server.id)
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, loadFailed, loading, draft, saved } = state
 	// without write-sensitive the server redacts connections, so edit/validate against the connections-free schema
 	const schema = SettingsEditorFrame.Sel.schema(state)
@@ -795,7 +795,7 @@ function ServerSettingsSection({
 // rather than path grants, so no denied-path mirror here.
 function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame.KeyProp; onCancel: () => void }) {
 	const key = stores.settingsEditor
-	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, draft, issues, newId, newDisplayName } = state
 
 	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])
@@ -895,7 +895,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 	const key = stores.settingsEditor
 	const { write: writeAccess } = RbacClient.useGlobalSettingsAccess()
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, draft, saved, denied } = state
 
 	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])

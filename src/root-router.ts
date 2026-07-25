@@ -1,7 +1,7 @@
 import * as TSR from '@tanstack/react-router'
-import * as Rx from 'rxjs'
 
 import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
+import * as Rx from '@/lib/rxjs'
 
 import { routeTree } from './routeTree.gen.ts'
 

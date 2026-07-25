@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import * as Zus from 'zustand'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { useStable } from '@/lib/react'
 import * as RSel from '@/lib/reselect'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -19,7 +18,7 @@ export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 export function usePermsCheck<T extends RBAC.PermissionType>(
 	req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
 ): RBAC.PermissionDeniedResponse | null {
-	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.permsCheck(useStable(req)))
+	return Zus.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.permsCheck(useStable(req)))
 }
 
 // for the affordances rendered where no server is in scope; see RBAC.hasPermOnAnyServer for why that is acceptable
@@ -29,17 +28,17 @@ export function useAnyServerPermsCheck(type: RBAC.ServerPermissionType): RBAC.Pe
 
 // the logged-in user's effective (non-negated) permissions, for the aggregate settings-access checks below
 export function useSuspendableLoggedInUserPerms(): RBAC.Permission[] {
-	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.loggedInUserPerms)
+	return Zus.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.loggedInUserPerms)
 }
 
 export type GlobalSettingsAccess = { canRead: boolean; write: RBAC.SettingsWriteAccess }
 export function useGlobalSettingsAccess(): GlobalSettingsAccess {
-	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.globalSettingsAccess)
+	return Zus.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.globalSettingsAccess)
 }
 
 export type ServerSettingsAccess = { canRead: boolean; write: RBAC.SettingsWriteAccess; sensitive: boolean }
 export function useServerSettingsAccess(serverId: string): ServerSettingsAccess {
-	return ZusUtils.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.serverSettingsAccess(serverId))
+	return Zus.useStore_Susp(UsersClient.loggedInUserQueryOptions, RbacStore, Sel.serverSettingsAccess(serverId))
 }
 
 export function useUserDefinedRoles() {

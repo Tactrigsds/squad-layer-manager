@@ -1,7 +1,8 @@
 import * as Im from 'immer'
-import * as Rx from 'rxjs'
 
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+
+import * as Rx from './rxjs'
 
 // -------- Loader Configuration Types --------
 

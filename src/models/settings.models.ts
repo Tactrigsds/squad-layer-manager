@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 import * as DH from '@/lib/display-helpers.ts'
-import * as Obj from '@/lib/object'
-import { HumanTime, ParsableBigIntSchema } from '@/lib/zod'
+import * as Obj from '@/lib/object-utils'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
@@ -34,8 +34,8 @@ const SettingsGrantPathSchema = z
 // settings GUI; rbac.server converts them to bigint at the boundary
 const RoleAssignmentsSchema = z
 	.object({
-		discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
-		discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
+		discordRoleIds: z.array(ZodUtils.ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
+		discordUserIds: z.array(ZodUtils.ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
 		everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
 		ingameAdminLists: z
 			.array(SM.AdminListIdSchema)
@@ -93,7 +93,7 @@ const RoleConfigSchema = z.object({
 		),
 	// "up to N" comparisons can't ride the permission-expression grammar (grants are equality-matched), so the timeout cap
 	// is its own field. Absent = the role cannot issue timeouts; negation doesn't apply, drop the field instead.
-	maxTimeout: HumanTime.optional().describe(
+	maxTimeout: ZodUtils.HumanTime.optional().describe(
 		'Maximum kick-timeout duration (e.g. "2h"). Absent = this role cannot issue timeouts. Super users/roles are unlimited.',
 	),
 	maxLayerRequests: z
@@ -288,7 +288,7 @@ export const GlobalSettingsSchema = z
 		chat: CHAT.ChatConfigSchema.prefault({}).describe(
 			'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 		),
-		logFilePollInterval: HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
+		logFilePollInterval: ZodUtils.HumanTime.prefault('1s').describe('How often a local-file log source checks the log for new lines.'),
 		seedSandboxServer: z
 			.boolean()
 			.prefault(true)
@@ -466,7 +466,7 @@ export const GlobalSettingsSchema = z
 	})
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>
-// the pre-decode shape (e.g. HumanTime fields as '5m' strings instead of milliseconds) -- what gets persisted/displayed for editing
+// the pre-decode shape (e.g. ZodUtils.HumanTime fields as '5m' strings instead of milliseconds) -- what gets persisted/displayed for editing
 export type GlobalSettingsInput = z.input<typeof GlobalSettingsSchema>
 
 // seeds configs for commands the stored settings predate, using their own defaultPrefix. Must be applied to raw
@@ -662,8 +662,8 @@ export const SftpLogConnectionSchema = z.object({
 	username: z.string().min(1),
 	password: z.string().min(1),
 	logFile: z.string().min(1),
-	pollInterval: HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
-	reconnectInterval: HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
+	pollInterval: ZodUtils.HumanTime.prefault('1s').describe('How often to poll the remote log file over SFTP for new lines.'),
+	reconnectInterval: ZodUtils.HumanTime.prefault('5s').describe('How long to wait between SFTP reconnection attempts.'),
 	maxReconnectAttempts: z
 		.int()
 		.min(1)
@@ -719,7 +719,7 @@ export const QueueSettingsSchema = z.object({
 		.positive()
 		.prefault(1)
 		.describe('Admins are warned after a map roll when the queue holds this many items or fewer.'),
-	adminQueueReminderInterval: HumanTime.prefault('10m').describe(
+	adminQueueReminderInterval: ZodUtils.HumanTime.prefault('10m').describe(
 		'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 	),
 	mainPool: PoolConfigurationSchema.prefault({ repeatRules: DEFAULT_REPEAT_RULE_CONFIGS }).describe(
@@ -756,25 +756,25 @@ export const PublicServerSettingsSchema = z.object({
 		),
 	// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
 	// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
-	// ServerSettingsSchema its encodability -- and the settings editor needs that to show HumanTime fields as
+	// ServerSettingsSchema its encodability -- and the settings editor needs that to show ZodUtils.HumanTime fields as
 	// "5s" rather than 5000.
 	queue: QueueSettingsSchema.prefault({}),
 	vote: z
 		.object({
-			voteDuration: HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
-			startVoteReminderThreshold: HumanTime.prefault('20m').describe(
+			voteDuration: ZodUtils.HumanTime.prefault('180s').describe('How long a vote stays open before it is tallied.'),
+			startVoteReminderThreshold: ZodUtils.HumanTime.prefault('20m').describe(
 				'How far into a match admins start being reminded that no vote has been started yet.',
 			),
-			voteReminderInterval: HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
-			internalVoteReminderInterval: HumanTime.prefault('15s').describe(
+			voteReminderInterval: ZodUtils.HumanTime.prefault('30s').describe('How often players are reminded to vote while a vote is open.'),
+			internalVoteReminderInterval: ZodUtils.HumanTime.prefault('15s').describe(
 				'How often admins are reminded to vote while an internal (admin-only) vote is open.',
 			),
-			autoStartVoteDelay: HumanTime.prefault('20m')
+			autoStartVoteDelay: ZodUtils.HumanTime.prefault('20m')
 				.nullable()
 				.describe(
 					'How far into a match SLM starts a vote by itself, when the next queue item is a vote. Unset to only ever start votes manually.',
 				),
-			autoStartVoteCutoff: HumanTime.prefault('30m').describe(
+			autoStartVoteCutoff: ZodUtils.HumanTime.prefault('30m').describe(
 				'How far into a match auto-starting gives up. Past this point starting a vote is left to an admin, so a match running long ' +
 					'does not open a vote nobody is around for.',
 			),
@@ -782,7 +782,7 @@ export const PublicServerSettingsSchema = z.object({
 				.array(DH.LAYER_DISPLAY_PROP)
 				.prefault(['map', 'gamemode'])
 				.describe('Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.'),
-			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
+			finalVoteReminder: ZodUtils.HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
 		})
 		.prefault({}),
 	overrideAdminSetNextLayer: z
@@ -796,11 +796,11 @@ export const PublicServerSettingsSchema = z.object({
 		.boolean()
 		.prefault(false)
 		.describe('Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.'),
-	postRollAnnouncementsTimeout: HumanTime.prefault('5m').describe(
+	postRollAnnouncementsTimeout: ZodUtils.HumanTime.prefault('5m').describe(
 		'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is ' +
 			'running low.',
 	),
-	fogOffDelay: HumanTime.prefault('25s').describe(
+	fogOffDelay: ZodUtils.HumanTime.prefault('25s').describe(
 		'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',
 	),
 	remindersAndAnnouncementsEnabled: z
@@ -809,13 +809,13 @@ export const PublicServerSettingsSchema = z.object({
 		.describe('Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.'),
 	rconCacheTTL: z
 		.object({
-			layersStatus: HumanTime.prefault('5s').describe(
+			layersStatus: ZodUtils.HumanTime.prefault('5s').describe(
 				'How stale the cached current/next layer may be before a read refetches it over RCON.',
 			),
-			serverInfo: HumanTime.prefault('10s').describe(
+			serverInfo: ZodUtils.HumanTime.prefault('10s').describe(
 				'How stale cached server info (player count, tick rate) may be before a read refetches it over RCON.',
 			),
-			teams: HumanTime.prefault('5s').describe(
+			teams: ZodUtils.HumanTime.prefault('5s').describe(
 				'How stale the cached roster may be before a read refetches it over RCON. Also the interval at which observers poll ListPlayers.',
 			),
 		})

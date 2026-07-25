@@ -15,7 +15,7 @@ import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
@@ -43,7 +43,7 @@ const MAX_PAGES = 30
 const MATCH_LIMIT = 8
 
 export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyProp }) {
-	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const featureFlags = FeatureFlags.useFeatureFlags()
 	const historyState = MatchHistoryClient.useMatchHistoryState(props.stores.squadServer!.serverId)
 	const history = historyState.recentMatches
@@ -111,7 +111,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 	matchesByDateRef.current = matchesByDate
 
 	React.useEffect(() => {
-		return ZusUtils.resolveReadStore(props.stores.squadServer!).subscribe((state, prevState) => {
+		return Zus.resolveReadStore(props.stores.squadServer!).subscribe((state, prevState) => {
 			if (state.chat.selectedMatchOrdinal === prevState.chat.selectedMatchOrdinal) return
 			const ordinal = state.chat.selectedMatchOrdinal
 			if (ordinal === null) {
@@ -310,9 +310,9 @@ interface MatchHistoryRowProps {
 }
 
 function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debug__showBalanceTriggers, stores }: MatchHistoryRowProps) {
-	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
-	const selectedMatchOrdinalFromStore = ZusUtils.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
+	const selectedMatchOrdinalFromStore = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 
 	// Determine if this match is being viewed in the activity panel
 	const isViewingThisMatch =

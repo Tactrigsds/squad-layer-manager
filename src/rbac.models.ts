@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-import * as Arr from '@/lib/array'
-import * as Obj from '@/lib/object'
+import * as Arr from '@/lib/array-utils'
+import * as Obj from '@/lib/object-utils'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 

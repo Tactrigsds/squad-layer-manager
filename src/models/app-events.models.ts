@@ -4,9 +4,9 @@ import { z } from 'zod'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as DH from '@/lib/display-helpers'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
-import { formatHumanTime } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -491,7 +491,7 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'PLAYER_KICKED':
 			return `kicked ${players(e.targets.length)}${forReason(e.reason)}`
 		case 'PLAYER_TIMED_OUT':
-			return `timed out 1 player for ${formatHumanTime(e.durationMs)}${forReason(e.reason)}`
+			return `timed out 1 player for ${ZodUtils.formatHumanTime(e.durationMs)}${forReason(e.reason)}`
 		case 'TIMEOUT_CANCELLED':
 			return `cancelled a player's timeout`
 		case 'MATCH_ENDED':

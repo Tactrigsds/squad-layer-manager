@@ -2,7 +2,7 @@ import { Mutex } from 'async-mutex'
 
 import engineWasmUrl from '$root/assets/layer-engine.wasm?url'
 import * as AR from '@/app-routes'
-import { acquireInBlock } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -100,7 +100,7 @@ const mutex = new Mutex()
 let state!: State
 
 onmessage = withErrorResponse(async (e) => {
-	using _lock = await acquireInBlock(mutex)
+	using _lock = await Prom.acquireInBlock(mutex)
 
 	const msg = e.data as RequestInner & Sequenced & Prioritized
 	function post(response: ResponseInner) {

@@ -1,20 +1,18 @@
 import type * as Im from 'immer'
 import React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
-import { toStream } from 'zustand-rx'
 
 import { frameManager } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Lifecycle from '@/lib/lifecycle'
-import * as MapUtils from '@/lib/map'
-import * as Obj from '@/lib/object'
+import * as MapUtils from '@/lib/map-utils'
+import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import type * as ST from '@/lib/state-tree'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
@@ -154,7 +152,7 @@ export type Store = {
 let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
 
 // the server opens with an 'init' update, so silence here is a genuine fault rather than an idle event feed
-const [_usePresenceUpdate, presenceUpdate$] = RxHelpers.bind<UP.PresenceUpdate>(
+const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	'userPresence.presenceUpdate',
 	RPC.observe('userPresence.watchUpdates', () => RPC.orpc.userPresence.watchUpdates.call()),
 )
@@ -382,9 +380,9 @@ export namespace Actions {
 // -------- Hooks --------
 
 export function useItemPresence(itemId: LL.ItemId) {
-	const [presence, activityHovered] = ZusUtils.useStore(
+	const [presence, activityHovered] = Zus.useStore(
 		Store,
-		ZusUtils.useDeep((state) => {
+		Zus.useDeep((state) => {
 			const res = MapUtils.find(state.presence, (_, v) => {
 				const root = v.activityState
 				const activity = root ? UP.Trans.editingQueue(root.opts.serverId).match(root)?.chosen : null
@@ -417,7 +415,7 @@ export namespace Sel {
 		return !config || lockedClientId !== config.wsClientId
 	}
 
-	// config comes from ConfigClient.Store -- use with ZusUtils.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+	// config comes from ConfigClient.Store -- use with Zus.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 	export function clientPresence(config: ReturnType<typeof ConfigClient.getConfig>, state: Store) {
 		return config ? state.presence.get(config.wsClientId) : undefined
 	}
@@ -491,7 +489,7 @@ export function useEditingLayerRequestsState(serverId: string) {
 
 export function useIsEditing() {
 	const user = UsersClient.useLoggedInUser()
-	return ZusUtils.useStore(Store, (store) => (user ? Sel.isEditing(user.discordId)(store) : false))
+	return Zus.useStore(Store, (store) => (user ? Sel.isEditing(user.discordId)(store) : false))
 }
 
 // allows familiar useState binding to a presence activity
@@ -503,9 +501,9 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 	createActivityRef.current = createActivity
 	removeActivityRef.current = removeActivity
 
-	const predicate = ZusUtils.useStore(
+	const predicate = Zus.useStore(
 		Store,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			React.useCallback(() => {
 				const config = ConfigClient.getConfig()
 				const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
@@ -534,9 +532,9 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 }
 
 export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null | undefined) => P) {
-	return ZusUtils.useStore(
+	return Zus.useStore(
 		Store,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			React.useCallback(() => {
 				const config = ConfigClient.getConfig()
 				const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
@@ -553,7 +551,7 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 	select?: (data: LoaderCacheEntry<Loader> | undefined) => O
 }) {
 	const { loaderName, matchKey: matchPredicate = () => true, trace, select = (entry) => entry?.data } = opts
-	return ZusUtils.useStore(Store, (state) => {
+	return Zus.useStore(Store, (state) => {
 		const loadedEntries = state.activityLoaderCache.filter((entry) => entry.name === loaderName && matchPredicate(entry.key as any))
 		if (loadedEntries.length > 1) console.warn(`Multiple activities loaded for ${trace ?? loaderName}`)
 		const entry = loadedEntries[0] as LoaderCacheEntry<Loader> | undefined
@@ -565,7 +563,7 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 
 export async function setup() {
 	// Subscribe to presence broadcast stream
-	presenceUpdate$.pipe(RxHelpers.retryHot()).subscribe((update) => {
+	presenceUpdate$.pipe(ReactRx.retryHot()).subscribe((update) => {
 		handleIncomingPresenceUpdate(update)
 	})
 
@@ -574,9 +572,9 @@ export async function setup() {
 	// intact (see reclaimClientId in user-presence.server.ts). So there's nothing to replay from the client here.
 
 	const settingsModified$ = Rx.combineLatest([
-		ZusUtils.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),
+		Zus.toObservable(SquadServerClient.SelectedServerStore, true).pipe(Rx.map(([s]) => s.selectedServerId)),
 		// see squad-server.client: toStream needs fireImmediately to carry the store's current value
-		toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }),
+		Zus.toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }),
 	]).pipe(
 		Rx.map(([serverId, settings]) => settings?.servers.find((s) => s.id === serverId)),
 		Rx.distinctUntilChanged(),
@@ -584,7 +582,7 @@ export async function setup() {
 			// only track settings-modified for a usable server; otherwise there's no frame to read and no edits to flush
 			if (!SettingsClient.isServerUsable(serverConfig)) return Rx.of(false)
 			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
-			return toStream(ZusUtils.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
+			return Zus.toStream(Zus.resolveReadStore(key), undefined, { fireImmediately: true }).pipe(
 				Rx.map((s) => s.settings.modified),
 				Rx.distinctUntilChanged(),
 			)

@@ -2,7 +2,7 @@ import { eq, lt } from 'drizzle-orm'
 import superjson from 'superjson'
 
 import * as Schema from '$root/drizzle/schema'
-import { sleep } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
@@ -21,7 +21,7 @@ export function setup() {
 async function runCleanupLoop() {
 	while (!CleanupSys.shutdownSignal.aborted) {
 		try {
-			await sleep(CLEANUP_INTERVAL_MS, CleanupSys.shutdownSignal)
+			await Prom.sleep(CLEANUP_INTERVAL_MS, CleanupSys.shutdownSignal)
 		} catch {
 			break
 		}

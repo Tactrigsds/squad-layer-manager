@@ -9,7 +9,7 @@ import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ValidationErrors from '@/lib/validation-errors'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
@@ -50,7 +50,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			invertedEmoji: null as string | null,
 		} satisfies FormData,
 		onSubmit: async ({ value }) => {
-			const state = ZusUtils.getState(props.stores.filterEditor)
+			const state = Zus.getState(props.stores.filterEditor)
 
 			if (!state.validatedFilter) {
 				toast.warning('Invalid filter', { description: 'Please check filter configuration' })
@@ -85,7 +85,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 		},
 	})
 
-	const isValidFilter = ZusUtils.useStore(props.stores.filterEditor, (s) => s.valid)
+	const isValidFilter = Zus.useStore(props.stores.filterEditor, (s) => s.valid)
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
 	const submitBtn = React.useMemo(

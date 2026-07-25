@@ -1,12 +1,10 @@
-import * as Rx from 'rxjs'
-import type * as Zus from 'zustand'
-
 import type * as FRM from '@/lib/frame'
 import * as ItemMut from '@/lib/item-mutations'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
@@ -47,8 +45,8 @@ export type State = {
 export type Args = FRM.SetupArgs<{ serverId: string }, Store, Store>
 
 export function initLayerQueue(args: Args) {
-	const set = ZusUtils.toPartialSetter(args.set, 'queue')
-	const get = ZusUtils.toPartialGetter(args.get, 'queue')
+	const set = Zus.toPartialSetter(args.set, 'queue')
+	const get = Zus.toPartialGetter(args.get, 'queue')
 	const serverId = args.input.serverId
 	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
 	// side effects only fire when ops land on the synced timeline (incoming ops + acks of our own),
@@ -298,7 +296,7 @@ const SESSION_CLOSING_OPS = new Set<SLL.OpCode>(['save', 'reset-to-saved', 'back
 export namespace Actions {
 	// try to call this such that react will batch the rerenders
 	export async function dispatch(stores: KeyProp, newOp: SLL.NewClientOperation) {
-		const slice = ZusUtils.toPartialStore(stores.queue, 'queue')
+		const slice = Zus.toPartialStore(stores.queue, 'queue')
 		const userId = UsersClient.loggedInUserId!
 		const localState = slice.getState().rbSession.localState
 		// backburner ops belong to the backburner's own editing session, gated by its own window counter
@@ -372,7 +370,7 @@ export namespace Actions {
 	}
 
 	export function addVoteItems(stores: KeyProp, itemId: string, choices: LL.NewItem[]) {
-		const itemState = Sel.itemState(itemId)(ZusUtils.getState(stores.queue))
+		const itemState = Sel.itemState(itemId)(Zus.getState(stores.queue))
 		if (!LL.isVoteItem(itemState.item)) return
 		const index: LL.ItemIndex = { innerIndex: itemState.item.choices.length, outerIndex: itemState.index.outerIndex }
 		void dispatch(stores, { op: 'add', index, items: choices })
@@ -409,7 +407,7 @@ export namespace Actions {
 	}
 
 	export function combineBackburnerItems(stores: KeyProp, targetItemId: string, sourceItemId: string) {
-		const list = ZusUtils.getState(stores.queue).queue.backburner
+		const list = Zus.getState(stores.queue).queue.backburner
 		const target = list.find((item) => item.itemId === targetItemId)
 		const source = list.find((item) => item.itemId === sourceItemId)
 		if (target && source) {

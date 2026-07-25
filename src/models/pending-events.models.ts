@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import * as Arr from '@/lib/array'
-import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
+import * as Arr from '@/lib/array-utils'
+import * as Gen from '@/lib/generator-utils'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
 import * as CS from '@/models/context-shared'

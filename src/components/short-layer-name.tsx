@@ -2,11 +2,11 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { getTeamsDisplay } from '@/components/teams-display.tsx'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { isNullOrUndef } from '@/lib/type-guards.ts'
-import * as Typo from '@/lib/typography.ts'
+import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
@@ -36,7 +36,7 @@ export default function ShortLayerName({
 	const allowShowInfo = _allowShowInfo ?? true
 	const backfilledStyle = 'text-gray-500'
 
-	const globalSettings = ZusUtils.useStore(GlobalSettingsStore)
+	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	let partialLayer = Obj.trimUndefined(L.toLayer(layerId))
 	let backfillLayer: Partial<L.KnownLayer> | undefined
 	if (backfillLayerId) {

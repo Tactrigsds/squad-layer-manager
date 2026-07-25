@@ -1,6 +1,6 @@
 import * as dateFns from 'date-fns'
 
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import * as DH from '@/lib/display-helpers'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CMDH from '@/models/command-help.models'

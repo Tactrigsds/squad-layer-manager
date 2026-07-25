@@ -1,13 +1,24 @@
-import type { StateObservable } from '@react-rxjs/core'
 import { useQueries, useSuspenseQueries } from '@tanstack/react-query'
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 import type { StoreApi, StoreMutatorIdentifier, StoreMutators } from 'zustand'
 import { useShallow as useShallowImported } from 'zustand/react/shallow'
 
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import type { StateObservable } from '@/lib/react-rxjs'
+
+import * as Rx from './rxjs'
+
+// The only module that may import zustand directly. Everything else reaches it through here, so
+// that our additions and zustand's own API are one namespace at the call site. Enumerated rather
+// than `export *` because `useStore` and `Mutate` below deliberately shadow zustand's, and a star
+// re-export would let ours win silently.
+export { create, createStore } from 'zustand'
+export type { StoreApi } from 'zustand'
+export { createJSONStorage, persist } from 'zustand/middleware'
+export { immer } from 'zustand/middleware/immer'
+export { toStream } from 'zustand-rx'
 
 // ripped from zustand types
 type Get<T, K, F> = K extends keyof T ? T[K] : F
@@ -107,7 +118,7 @@ export function registerQueryClient(client: QueryClient) {
 }
 
 function requireQueryClient(): QueryClient {
-	if (!queryClient) throw new Error('No QueryClient registered -- ZusUtils.registerQueryClient must run before a query source is read')
+	if (!queryClient) throw new Error('No QueryClient registered -- Zus.registerQueryClient must run before a query source is read')
 	return queryClient
 }
 

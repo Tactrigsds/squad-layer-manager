@@ -19,7 +19,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
@@ -56,7 +56,7 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 	getId: (props) => String(props.uniqueSquadId),
 	loadAsync: async ({ props }) => {
 		const squadServerFrameKey = props.stores.squadServer
-		const isLive = ChatPrt.Sel.chatState(ZusUtils.getState(squadServerFrameKey)).squads.some((sq) => sq.uniqueId === props.uniqueSquadId)
+		const isLive = ChatPrt.Sel.chatState(Zus.getState(squadServerFrameKey)).squads.some((sq) => sq.uniqueId === props.uniqueSquadId)
 		if (!isLive) {
 			const serverId = squadServerFrameKey.serverId
 			await RPC.queryClient.fetchQuery(
@@ -71,19 +71,19 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const serverId = squadServerFrameKey.serverId
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 
-	const liveSquad = ZusUtils.useStore(
+	const liveSquad = Zus.useStore(
 		squadServerFrameKey,
 		(s) => ChatPrt.Sel.chatState(s).squads.find((sq) => sq.uniqueId === uniqueSquadId) ?? null,
 	)
 	// a squad that disbands while this window is open drops off `squads`, but a RecentSquad still names the instance,
 	// so the window keeps its title/team/creator instead of blanking out. Its live state (locked, the member list)
 	// legitimately goes away with it.
-	const recentSquad = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentSquad(uniqueSquadId)(s) ?? null)
+	const recentSquad = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentSquad(uniqueSquadId)(s) ?? null)
 	const knownSquad = liveSquad ?? recentSquad
 
-	const currentMatchEvents = ZusUtils.useStore(
+	const currentMatchEvents = Zus.useStore(
 		squadServerFrameKey,
-		ZusUtils.useShallow((s) =>
+		Zus.useShallow((s) =>
 			!currentMatch
 				? []
 				: ChatPrt.Sel.chatEvents(s).filter(
@@ -106,9 +106,9 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 
 	const squad = data?.squad
 
-	const currentPlayers = ZusUtils.useStore(
+	const currentPlayers = Zus.useStore(
 		squadServerFrameKey,
-		ZusUtils.useShallow((s) =>
+		Zus.useShallow((s) =>
 			liveSquad ? ChatPrt.Sel.chatState(s).players.filter((p) => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId) : [],
 		),
 	)

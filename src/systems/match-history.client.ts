@@ -1,15 +1,12 @@
-import * as ReactRx from '@react-rxjs/core'
-import { createSignal } from '@react-rxjs/utils'
-import * as Rx from 'rxjs'
-
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems/parts.client'
 
-const [initialized$, setInitialized] = createSignal<boolean>()
+const [initialized$, setInitialized] = ReactRx.createSignal<boolean>()
 
-export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
+export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
 		RPC.observe('matchHistory.watchMatchHistoryState', () => RPC.orpc.matchHistory.watchMatchHistoryState.call({ serverId })).pipe(
 			RPC.dropServerNotLoaded(),
@@ -18,7 +15,7 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bind(
 	{ recentBalanceTriggerEvents: [], recentMatches: [] } satisfies MH.PublicMatchHistoryState,
 )
 
-export const [useRecentMatches, recentMatches$] = RxHelpers.bind('matchHistory.recentMatches', (serverId: string) =>
+export const [useRecentMatches, recentMatches$] = ReactRx.bind('matchHistory.recentMatches', (serverId: string) =>
 	matchHistoryState$(serverId).pipe(
 		Rx.map((state) => {
 			return [...state.recentMatches]
@@ -26,11 +23,11 @@ export const [useRecentMatches, recentMatches$] = RxHelpers.bind('matchHistory.r
 	),
 )
 
-export const [useCurrentMatch, currentMatch$] = RxHelpers.bind('matchHistory.currentMatch', (serverId: string) =>
+export const [useCurrentMatch, currentMatch$] = ReactRx.bind('matchHistory.currentMatch', (serverId: string) =>
 	recentMatches$(serverId).pipe(Rx.map((matches) => matches[matches.length - 1] as MH.MatchDetails | undefined)),
 )
 
-export const [useInitializedRecentMatches, initializedRecentMatches$] = RxHelpers.bind(
+export const [useInitializedRecentMatches, initializedRecentMatches$] = ReactRx.bind(
 	'matchHistory.initializedRecentMatches',
 	(serverId: string) => initialized$.pipe(Rx.map(() => recentMatches$(serverId).getValue())),
 )
@@ -46,6 +43,6 @@ export function watchServer(serverId: string, sub: Rx.Subscription) {
 			setInitialized(true)
 		}),
 	)
-	sub.add(initializedRecentMatches$(serverId).pipe(RxHelpers.retryHot()).subscribe())
-	sub.add(currentMatch$(serverId).pipe(RxHelpers.retryHot()).subscribe())
+	sub.add(initializedRecentMatches$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	sub.add(currentMatch$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }

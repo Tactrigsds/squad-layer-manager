@@ -1,5 +1,6 @@
 import * as ReactRx from '@react-rxjs/core'
-import * as Rx from 'rxjs'
+
+import * as Rx from './rxjs'
 
 /**
  * react-rxjs suspends a component until its StateObservable produces a first value, and React cannot notice when
@@ -11,6 +12,14 @@ import * as Rx from 'rxjs'
  * turns into an attributable error instead of a permanent fallback. Binds with a default value can't suspend and
  * are fine on plain `ReactRx.bind`.
  */
+
+// The only module that may import react-rxjs directly. `bind` below is the guarded one; the
+// package's own is re-exported as `bindWithDefault`, so which of the two a call site wants is
+// visible in the name rather than in which namespace it happened to import.
+export { Subscribe } from '@react-rxjs/core'
+export { bind as bindWithDefault } from '@react-rxjs/core'
+export type { StateObservable } from '@react-rxjs/core'
+export { createSignal } from '@react-rxjs/utils'
 
 export class StateTimeoutError extends Error {
 	constructor(

@@ -32,9 +32,9 @@ import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/fr
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -51,7 +51,7 @@ const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 export default function NavBar() {
 	const flags = FeatureFlags.useFeatureFlags()
 	const wsStatus = RPC.useConnectStatus()
-	const { simulate, setSimulate } = ZusUtils.useStore(RbacClient.RbacStore)
+	const { simulate, setSimulate } = Zus.useStore(RbacClient.RbacStore)
 	const user = useLoggedInUser()
 
 	const avatarUrl = user?.avatarUrl
@@ -61,7 +61,7 @@ export default function NavBar() {
 	const isDesktop = useIsDesktopSize()
 	// below sm the nav links + user-avatar options all collapse into a single hamburger menu
 	const isSmall = useIsSmallViewport()
-	const activeDashboardTab = ZusUtils.useStore(SquadServerClient.DashboardTabStore, (s) => s.activeTab)
+	const activeDashboardTab = Zus.useStore(SquadServerClient.DashboardTabStore, (s) => s.activeTab)
 	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
 	const showDashboardTabs = !!isOnServerDashboard && !isDesktop
 
@@ -86,9 +86,9 @@ export default function NavBar() {
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
-	const config = ZusUtils.useStore(ConfigClient.Store)
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const selectedServerId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, (s) => s.selectedServerId)
+	const config = Zus.useStore(ConfigClient.Store)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const selectedServerId = Zus.useStore(SquadServerClient.SelectedServerStore, (s) => s.selectedServerId)
 	const selectedServer = settings?.servers.find((server) => server.id === selectedServerId)
 	// NavBar isn't a descendant of the servers/$serverId route, so it can't receive the frame via props --
 	// ensureSetup just dedupes onto the instance the route already created. Only set up a frame for a usable server;
@@ -333,7 +333,7 @@ export default function NavBar() {
 // The switch is presentational: the menu item owns the toggle so it also responds to keyboard selection, and
 // preventing the default select keeps the menu open across flips.
 function NormalizeTeamsToggle() {
-	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	return (
 		<DropdownMenuItem
 			role="menuitemcheckbox"

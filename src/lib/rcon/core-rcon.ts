@@ -1,7 +1,6 @@
 import * as Otel from '@opentelemetry/api'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
-import * as Rx from 'rxjs'
 
 import * as CS from '@/models/context-shared'
 import type * as Logs from '@/models/logs'
@@ -11,7 +10,7 @@ import * as SM from '@/models/squad.models'
 import * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 
-import { filterTruthy, firstValueFrom } from '../async'
+import * as Rx from '../rxjs'
 
 export type DecodedPacket = {
 	type: number
@@ -198,7 +197,7 @@ export default class Rcon extends EventEmitter<Events> {
 
 	connect() {
 		this.ensureConnected()
-		return Rx.firstValueFrom(this.connected$.pipe(filterTruthy()))
+		return Rx.firstValueFrom(this.connected$.pipe(Rx.Ext.filterTruthy()))
 	}
 
 	disconnect() {
@@ -242,7 +241,7 @@ export default class Rcon extends EventEmitter<Events> {
 					Rx.filter((connected) => connected),
 					Rx.take(1),
 				)
-				const res = await firstValueFrom(Rx.race([reconnected$, Rx.timer(2_000).pipe(Rx.map(() => false))]), _opts?.signal)
+				const res = await Rx.Ext.firstValueFrom(Rx.race([reconnected$, Rx.timer(2_000).pipe(Rx.map(() => false))]), _opts?.signal)
 				if (!res) {
 					recordOutcome('error')
 					return { code: 'err:rcon' as const, msg: `Rcon response timed out` }
@@ -270,7 +269,7 @@ export default class Rcon extends EventEmitter<Events> {
 				)
 				this.#send(body, this.msgId)
 				this.msgId++
-				const result = await firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
+				const result = await Rx.Ext.firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
 				recordOutcome(result.code === 'ok' ? 'ok' : 'error')
 				return result
 			}

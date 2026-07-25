@@ -2,21 +2,19 @@ import { createORPCClient, onError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import type { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
-import * as ReactRx from '@react-rxjs/core'
 import { onlineManager, QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
-import * as Rx from 'rxjs'
 
 import * as AR from '@/app-routes'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
 import type * as RBAC from '@/rbac.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
 
-import { toCold, traceTag } from './lib/async'
 import { formatVersion } from './lib/versioning'
 
 const wsHostname = window.location.origin.replace(/^http/, 'ws').replace(/\/$/, '')
@@ -91,7 +89,7 @@ export const [useConnectStatus, connectStatus$] = (() => {
 		}),
 	)
 
-	return ReactRx.bind(connectStatusCold$, 'pending')
+	return ReactRx.bindWithDefault(connectStatusCold$, 'pending')
 })()
 
 connectStatus$.subscribe()
@@ -167,8 +165,8 @@ shouldWarnDisconnected$.subscribe((warn) => {
 })
 
 // suspending state observables only get their first-emit clock while the websocket is actually up, so a
-// disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see RxHelpers.bind
-RxHelpers.setTransportLive(
+// disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see ReactRx.bind
+ReactRx.setTransportLive(
 	connectStatus$.pipe(
 		Rx.map((status) => status === 'open'),
 		Rx.distinctUntilChanged(),
@@ -245,7 +243,7 @@ function hashQueryKey(queryKey: readonly unknown[]): string {
 }
 
 export const queryClient = new QueryClient({ defaultOptions: { queries: { queryKeyHashFn: hashQueryKey } } })
-ZusUtils.registerQueryClient(queryClient)
+Zus.registerQueryClient(queryClient)
 export const orpc = createTanstackQueryUtils(_orpcClient, { path: ['orpc'] })
 
 const MAX_RETRY_DELAY = 10_000
@@ -259,8 +257,8 @@ export function observe<T>(
 	task: () => Promise<Rx.ObservableInput<T>>,
 	opts?: { onError?: (error: any, count: number) => void },
 ) {
-	return Rx.from(toCold(task)).pipe(
-		traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`),
+	return Rx.from(Rx.Ext.toCold(task)).pipe(
+		Rx.Ext.traceTag(`ORPC_${tag.replace(/[^0-9a-zA-Z_$]/g, '_')}`),
 		Rx.concatAll(),
 		Rx.retry({
 			// without this the attempt count accumulates across the whole session, so a subscription that has

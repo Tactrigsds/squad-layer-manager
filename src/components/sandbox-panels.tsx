@@ -1,7 +1,7 @@
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as SandboxFrame from '@/frames/sandbox.frame'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 
@@ -43,7 +43,7 @@ function SandboxAdminListWindow(props: SandboxPanelWindowProps) {
 // The list exactly as a squad server would be handed it, rendered from the same text the app parses. Read-only:
 // it is edited through the players table, where membership belongs.
 export function SandboxAdminListPanel({ stores, className }: { stores: SandboxFrame.KeyProp; className?: string }) {
-	const cfg = ZusUtils.useStore(stores.sandbox, SandboxFrame.Sel.adminsCfg)
+	const cfg = Zus.useStore(stores.sandbox, SandboxFrame.Sel.adminsCfg)
 	return (
 		<div className={cn('min-h-0 rounded-md border bg-muted/30', className)}>
 			<ScrollArea className="h-full">

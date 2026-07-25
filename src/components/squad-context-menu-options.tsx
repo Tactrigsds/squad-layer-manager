@@ -3,7 +3,7 @@ import React from 'react'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -75,7 +75,7 @@ export function SquadMenuItems({
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
 	// null when the squad isn't currently live, in which case there's nothing to warn
-	const { squadPlayerIds, squadExists, uniqueId } = ZusUtils.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+	const { squadPlayerIds, squadExists, uniqueId } = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
 		const state = ChatPrt.Sel.chatState(chatStore)
 		const liveSquad = state.squads.find((s) => s.squadId === squad.squadId && s.teamId === squad.teamId)
 		const squadPlayerIds = state.players
@@ -84,8 +84,8 @@ export function SquadMenuItems({
 		return { squadPlayerIds, squadExists: !!liveSquad, uniqueId: liveSquad?.uniqueId ?? null }
 	})
 
-	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(squadPlayerIds))
-	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
+	const canSwapNow = Zus.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(squadPlayerIds))
+	const canQueue = Zus.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: serverId }))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
@@ -101,9 +101,9 @@ export function SquadMenuItems({
 	async function swapNow() {
 		if (squadPlayerIds.length === 0) return
 		const initialTeams = new Map(
-			squadPlayerIds.map((id) => [id, TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(id)]),
+			squadPlayerIds.map((id) => [id, TSWClient.Sel.localState(Zus.getState(stores.squadServer)).players.get(id)]),
 		)
-		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe((state) => {
+		const unsubscribe = Zus.resolveReadStore(stores.squadServer).subscribe((state) => {
 			const current = TSWClient.Sel.localState(state)
 			if (squadPlayerIds.some((id) => current.players.get(id) !== initialTeams.get(id))) closeDialog()
 		})

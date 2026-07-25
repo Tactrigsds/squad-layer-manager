@@ -1,10 +1,9 @@
 import * as crypto from 'node:crypto'
-import * as Rx from 'rxjs'
 import { z } from 'zod'
 
 import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
-import { distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
 import * as SB from '@/models/sandbox.models'
 import * as SettingsModels from '@/models/settings.models'
@@ -261,10 +260,10 @@ export const orpcRouter = {
 			const obs = instance.changed$.pipe(
 				Rx.startWith(undefined),
 				Rx.map(() => sandboxState(instance)),
-				distinctDeepEquals(),
-				withAbortSignal(signal!),
+				Rx.Ext.distinctDeepEquals(),
+				Rx.Ext.withAbortSignal(signal!),
 			)
-			yield* toAsyncGenerator(obs)
+			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	// One procedure for every verb: the wire carries the verb name and its args, which are validated against

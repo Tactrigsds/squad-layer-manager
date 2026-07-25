@@ -1,14 +1,14 @@
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 
+import * as ReactRx from '@/lib/react-rxjs'
 import { toast } from '@/lib/toast'
-import * as ZodLib from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
 
-export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bind(
+export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bindWithDefault(
 	RPC.observe('timeouts.watchActiveTimeouts', () => RPC.orpc.timeouts.watchActiveTimeouts.call()),
 	[],
 )
@@ -38,13 +38,13 @@ export async function timeoutPlayers(
 		presetReasonLabel?: string
 	},
 ): Promise<void> {
-	const durationMs = ZodLib.tryParseHumanTimeToken(opts.durationText.trim())
+	const durationMs = ZodUtils.tryParseHumanTimeToken(opts.durationText.trim())
 	if (durationMs === undefined) {
 		toast.error('Invalid duration', { description: 'Use a duration like 30m, 2h or 1d' })
 		return
 	}
 	if (typeof opts.maxTimeout === 'number' && durationMs > opts.maxTimeout) {
-		toast.error('Duration too long', { description: `Your maximum timeout is ${ZodLib.formatHumanTime(opts.maxTimeout)}` })
+		toast.error('Duration too long', { description: `Your maximum timeout is ${ZodUtils.formatHumanTime(opts.maxTimeout)}` })
 		return
 	}
 	const results = await Promise.allSettled(
@@ -58,7 +58,7 @@ export async function timeoutPlayers(
 		if (r.status === 'fulfilled' && r.value.code === 'ok') timedOut++
 		else failed++
 	}
-	const duration = ZodLib.formatHumanTime(durationMs)
+	const duration = ZodUtils.formatHumanTime(durationMs)
 	if (timedOut > 0) toast(`Timed out ${timedOut} player${timedOut === 1 ? '' : 's'} for ${duration}`)
 	if (failed > 0) {
 		toast.error(`${failed} timeout${failed === 1 ? '' : 's'} failed`, {

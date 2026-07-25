@@ -3,10 +3,10 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { createId } from '@/lib/id'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { formatDurationApprox, formatHumanTime } from '@/lib/zod'
+import * as Rx from '@/lib/rxjs'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
@@ -106,7 +106,7 @@ export async function kickWithTimeout(
 	// emitted so a rejected kick leaves no audit record.
 	const [existing] = await getActiveTimeouts(ctx, [targetId])
 	if (existing) {
-		const remaining = formatDurationApprox(existing.expiresAt.getTime() - Date.now())
+		const remaining = ZodUtils.formatDurationApprox(existing.expiresAt.getTime() - Date.now())
 		return {
 			code: 'err:already-timed-out',
 			msg: `${
@@ -199,7 +199,7 @@ export async function enforceTimeouts(ctx: C.Db & C.ServerSlice & CS.AbortSignal
 		const applied = appliedReasonFromRow(timeout)
 		const remainingMs = timeout.expiresAt.getTime() - Date.now()
 		const message = applied
-			? AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? formatDurationApprox(remainingMs) : '' } })
+			? AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
 			: DEFAULT_TIMEOUT_TEXT
 		await SquadServer.kickPlayerAction(
 			ctx,
@@ -217,7 +217,7 @@ export const router = {
 
 	watchActiveTimeouts: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal, context: ctx }) {
 		yield await listActiveTimeouts(ctx)
-		for await (const _ of toAsyncGenerator(update$.pipe(withAbortSignal(signal!)))) {
+		for await (const _ of Rx.Ext.toAsyncGenerator(update$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
 			yield await listActiveTimeouts(ctx)
 		}
 	}),
@@ -254,7 +254,7 @@ export const router = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(ctx.serverId, input.durationMs))
 			if (denyRes) return denyRes
-			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: formatHumanTime(input.durationMs) })
+			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: ZodUtils.formatHumanTime(input.durationMs) })
 			if (reasonRes.code !== 'ok') return reasonRes
 			const teamsRes = await ctx.server.teams.get(ctx)
 			if (teamsRes.code !== 'ok') return teamsRes

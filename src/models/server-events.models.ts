@@ -2,7 +2,7 @@ import superjson from 'superjson'
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
 import type * as CS from '@/models/context-shared'

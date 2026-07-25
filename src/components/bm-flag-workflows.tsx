@@ -4,7 +4,7 @@ import React from 'react'
 
 import { BmFlagSelect, FlagLabel } from '@/components/bm-flag-picker'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -81,7 +81,7 @@ export function ManageFlagsDialogContent(props: {
 	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const requiringNote = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
+	const requiringNote = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
 	// read live so the refresh kicked off when the dialog opened lands here without reopening it
 	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(props.playerId) ?? []
 	// staged rather than applied on click: a misclick on a destructive action stays undoable while the dialog is open
@@ -178,7 +178,7 @@ export function AddFlagsDialogContent(props: {
 	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
 	const orgFlags = BattlemetricsClient.useOrgFlags()
-	const requiringNote = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
+	const requiringNote = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
 	const [pending, setPending] = React.useState<string[]>(() => props.addRef.current)
 	// while true the add button is replaced by the picker it summoned
 	const [picking, setPicking] = React.useState(false)

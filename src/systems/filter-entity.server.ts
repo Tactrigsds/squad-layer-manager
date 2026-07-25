@@ -4,10 +4,10 @@ import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
 import { returnInsertErrors } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as AppEvents from '@/models/app-events.models'
@@ -432,7 +432,7 @@ export async function* watchFilters({
 			users: await Users.buildUsers(dbUsers),
 		},
 	}
-	for await (const [ctx, mutation] of toAsyncGenerator(filterMutation$.pipe(withAbortSignal(signal!)))) {
+	for await (const [ctx, mutation] of Rx.Ext.toAsyncGenerator(filterMutation$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
 		const dbUsers = await ctx
 			.db()
 			.select()

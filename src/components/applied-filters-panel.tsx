@@ -1,12 +1,12 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import { Button } from '@/components/ui/button'
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import * as Gen from '@/lib/generator.ts'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as Gen from '@/lib/generator-utils'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand.ts'
 import type * as F from '@/models/filter.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 
@@ -20,8 +20,8 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
 	// an instance with locally-scoped extras renders its own set; otherwise the global saved one
-	const localExtraFilters = ZusUtils.useStore(props.stores.appliedFilters, (s) => s.appliedFilters.localExtraFilters)
-	const globalExtraFilters = ZusUtils.useStore(AppliedFiltersPrt.ExtraFiltersStore, (s) => s.extraFilters)
+	const localExtraFilters = Zus.useStore(props.stores.appliedFilters, (s) => s.appliedFilters.localExtraFilters)
+	const globalExtraFilters = Zus.useStore(AppliedFiltersPrt.ExtraFiltersStore, (s) => s.extraFilters)
 	const extraFilters = localExtraFilters ?? globalExtraFilters
 	const [canScrollLeft, setCanScrollLeft] = React.useState(false)
 	const [canScrollRight, setCanScrollRight] = React.useState(false)
@@ -86,12 +86,12 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 		}
 	}, [extraFilters])
 
-	const poolFilterId: F.FilterEntityId | null = ZusUtils.useStore(props.stores.squadServer ?? null, (s) =>
+	const poolFilterId: F.FilterEntityId | null = Zus.useStore(props.stores.squadServer ?? null, (s) =>
 		s ? (s.settings.saved.queue.mainPool.poolFilter?.filterId ?? null) : null,
 	)
-	const selectableFilterIds: F.FilterEntityId[] = ZusUtils.useStore(
+	const selectableFilterIds: F.FilterEntityId[] = Zus.useStore(
 		props.stores.squadServer ?? null,
-		ZusUtils.useShallow((s) => (s ? s.settings.saved.queue.mainPool.defaultSelectable.map((c) => c.filterId) : [])),
+		Zus.useShallow((s) => (s ? s.settings.saved.queue.mainPool.defaultSelectable.map((c) => c.filterId) : [])),
 	)
 	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter((id) => !selectableFilterIds.includes(id))
 
@@ -180,11 +180,11 @@ const POOL_STATE_TITLES: Record<AppliedFiltersPrt.ApplyAs, string> = {
 // the pool filter is pinned; out-of-pool layers surfaced by the inverted/disabled states stay unselectable for
 // users without queue:force-write, so no state needs to be locked away
 export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
-	const poolFilter = ZusUtils.useStore(
+	const poolFilter = Zus.useStore(
 		stores.squadServer ?? null,
-		ZusUtils.useShallow((s) => (s ? s.settings.saved.queue.mainPool.poolFilter : null)),
+		Zus.useShallow((s) => (s ? s.settings.saved.queue.mainPool.poolFilter : null)),
 	)
-	const poolApplyAs = ZusUtils.useStore(stores.appliedFilters, (s) => s.appliedFilters.poolApplyAs)
+	const poolApplyAs = Zus.useStore(stores.appliedFilters, (s) => s.appliedFilters.poolApplyAs)
 	const filter = FilterEntityClient.useFilterEntities().get(poolFilter?.filterId as string)
 	if (!poolFilter || !filter) return
 
@@ -203,7 +203,7 @@ export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFram
 }
 
 export function FilterCheckbox({ filterId, stores }: { filterId: string; stores: AppliedFiltersPrt.KeyProp }) {
-	const storeAppliedState = ZusUtils.useStore(stores.appliedFilters, (s) => s.appliedFilters.filterStates.get(filterId) ?? 'disabled')
+	const storeAppliedState = Zus.useStore(stores.appliedFilters, (s) => s.appliedFilters.filterStates.get(filterId) ?? 'disabled')
 	const filter = FilterEntityClient.useFilterEntities().get(filterId)
 
 	if (!filter) return

@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { assertNever } from '@/lib/type-guards'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SettingsClient from '@/systems/settings.client'
 import type * as SquadServerClient from '@/systems/squad-server.client'
 
@@ -77,7 +77,7 @@ function ServerStarting(props: { displayName: string }) {
 }
 
 export default function ServerUnavailable(props: { serverId: string; status: Status }) {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const serverConfig = settings?.servers.find((s) => s.id === props.serverId)
 	const displayName = serverConfig?.displayName ?? props.serverId
 
@@ -86,7 +86,7 @@ export default function ServerUnavailable(props: { serverId: string; status: Sta
 }
 
 function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'starting'>; displayName: string }) {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const { title, description } = describe(props.status, props.displayName)
 	const otherServers = settings?.servers.filter((s) => SettingsClient.isServerUsable(s) && s.id !== props.serverId) ?? []
 

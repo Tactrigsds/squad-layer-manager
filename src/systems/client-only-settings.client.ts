@@ -1,5 +1,4 @@
-import * as Zus from 'zustand'
-import * as ZusMiddle from 'zustand/middleware'
+import * as Zus from '@/lib/zustand'
 
 export type ChartTab = 'population' | 'kd' | 'wd'
 export type ChartTimeInterval = 1 | 5 | 10
@@ -18,7 +17,7 @@ export type ClientOnlySettingsStore = {
 }
 
 export const Store = Zus.createStore<ClientOnlySettingsStore>()(
-	ZusMiddle.persist<ClientOnlySettingsStore>(
+	Zus.persist<ClientOnlySettingsStore>(
 		() => ({
 			displayTeamsNormalized: true,
 			chartTab: 'population',
@@ -28,7 +27,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 		}),
 		{
 			name: 'settings:v1',
-			storage: ZusMiddle.createJSONStorage(() => localStorage),
+			storage: Zus.createJSONStorage(() => localStorage),
 		},
 	),
 )

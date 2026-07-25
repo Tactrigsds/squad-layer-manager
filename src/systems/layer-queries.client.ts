@@ -1,15 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import * as React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { toAsyncGenerator } from '@/lib/async'
-import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
+import * as Gen from '@/lib/generator-utils'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
@@ -297,9 +295,9 @@ const emptySettings = SETTINGS.PublicServerSettingsSchema.parse({})
 
 // squadServerFrameKey is optional so this can be used from contexts with no active squad-server (e.g. the filter editor)
 export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
-	return ZusUtils.useStore(
+	return Zus.useStore(
 		squadServerFrameKey ?? null,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			React.useCallback(
 				(state: SquadServerFrame.State | undefined) => SETTINGS.getSettingsConstraints(state?.settings.saved ?? emptySettings),
 				[],
@@ -334,15 +332,15 @@ export function useLayerItemStatusData(
 	squadServerFrameKey?: SquadServerFrame.Key,
 ): LayerItemStatusData | null {
 	const queriedConstraints = useLayerItemStatusConstraints(squadServerFrameKey)
-	const statuses = ZusUtils.useStore(squadServerFrameKey, (s) => s?.layerItemStatuses)
+	const statuses = Zus.useStore(squadServerFrameKey, (s) => s?.layerItemStatuses)
 	const itemId = LQY.resolveId(layerItem)
 
 	const allMatchDescriptors = statuses?.matchDescriptors
 	const presentLayers = statuses?.present
 
-	const highlightedMatchDescriptors = ZusUtils.useStore(
+	const highlightedMatchDescriptors = Zus.useStore(
 		Store,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			React.useCallback(
 				(store) => {
 					if (!allMatchDescriptors) return
@@ -425,9 +423,9 @@ export function useLayerExists(input?: LQY.LayerExistsInput, options?: { enabled
 }
 
 export function useDepKey(input?: unknown) {
-	const backgroundStateEpoch = ZusUtils.useStore(
+	const backgroundStateEpoch = Zus.useStore(
 		Store,
-		ZusUtils.useShallow((s) => s.backgroundStateEpoch),
+		Zus.useShallow((s) => s.backgroundStateEpoch),
 	)
 	return getDepKey(input, backgroundStateEpoch)
 }
@@ -562,7 +560,7 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 		Rx.takeWhile((e) => e.code !== 'end'),
 	)
 
-	yield* toAsyncGenerator(response$)
+	yield* Rx.Ext.toAsyncGenerator(response$)
 }
 
 let setup$: Promise<void> | null = null

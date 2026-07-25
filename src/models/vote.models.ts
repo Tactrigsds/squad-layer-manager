@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import type { Parts } from '@/lib/types'
-import { HumanTime } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as L from '@/models/layer'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
@@ -89,7 +89,7 @@ export type StartVoteInput = z.infer<typeof StartVoteInputSchema>
 
 export function getDefaultVoteConfig() {
 	return {
-		duration: HumanTime.parse('120s'),
+		duration: ZodUtils.HumanTime.parse('120s'),
 	} satisfies AdvancedVoteConfig
 }
 

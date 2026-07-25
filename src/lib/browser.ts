@@ -1,5 +1,6 @@
 import * as React from 'react'
-import * as Rx from 'rxjs'
+
+import * as Rx from './rxjs'
 
 export function isBrowser(): boolean {
 	return typeof window !== 'undefined' && typeof document !== 'undefined'

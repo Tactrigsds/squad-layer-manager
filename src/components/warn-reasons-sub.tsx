@@ -1,8 +1,8 @@
 import React from 'react'
 
 import { renderTemplate } from '@/lib/templating'
-import { formatHumanTime } from '@/lib/zod'
-import * as ZusUtils from '@/lib/zustand'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as Zus from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
@@ -24,7 +24,7 @@ export function WarnReasonsSub(props: {
 	onPreset: () => void
 }) {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = props.slots
-	const hasReasons = ZusUtils.useStore(
+	const hasReasons = Zus.useStore(
 		SettingsClient.PublicSettingsStore,
 		(s) => !!s && AAR.reasonsForAction(s.adminActionReasons, 'warn').length > 0,
 	)
@@ -71,7 +71,7 @@ export function ReasonPicker(props: {
 	// for timeouts: the currently-entered duration, so the preview can resolve {{duration}} live
 	durationMs?: number
 }) {
-	const reasons = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) =>
+	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
 		s ? AAR.reasonsForAction(s.adminActionReasons, props.action) : [],
 	)
 	const allowCustom = !!props.customRef
@@ -157,7 +157,7 @@ export function ReasonMessagePreview(props: {
 	customText?: string
 	durationMs?: number
 }) {
-	const customVars = ZusUtils.useStore(
+	const customVars = Zus.useStore(
 		SettingsClient.PublicSettingsStore,
 		(s) => Object.fromEntries((s?.messageVariables ?? []).map((v) => [v.name, v.value])) as Record<string, string>,
 	)
@@ -165,7 +165,8 @@ export function ReasonMessagePreview(props: {
 	if (!props.reason && !custom) return null
 
 	const vars: Record<string, string> = { ...customVars }
-	if (props.action === 'timeout') vars.duration = props.durationMs && props.durationMs > 0 ? formatHumanTime(props.durationMs) : ''
+	if (props.action === 'timeout')
+		vars.duration = props.durationMs && props.durationMs > 0 ? ZodUtils.formatHumanTime(props.durationMs) : ''
 	const text = props.reason ? AAR.formatAppliedReason(props.action, props.reason, { vars }) : renderTemplate(custom!, vars)
 
 	return (

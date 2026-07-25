@@ -1,9 +1,9 @@
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 
-import * as Obj from '@/lib/object'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as Obj from '@/lib/object-utils'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -63,12 +63,12 @@ export function useLoggedInUserBase() {
 
 // NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
 export function useLoggedInUser() {
-	return ZusUtils.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)
+	return Zus.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)
 }
 
 // suspends until the logged-in user is loaded instead of returning undefined
 export function useSuspendableLoggedInUser() {
-	return ZusUtils.useStore_Susp(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.loggedInUser)
+	return Zus.useStore_Susp(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.loggedInUser)
 }
 
 export type Simulation = {
@@ -121,7 +121,7 @@ export function invalidateUsers() {
 
 // an event feed, not state: it stays silent until something actually invalidates, so it must not be given a
 // first-emit guard (which would error the stream out of existence 15s after connecting)
-const [_, userInvalidation$] = RxHelpers.bind(
+const [_, userInvalidation$] = ReactRx.bind(
 	'users.userInvalidation',
 	RPC.observe('users.watchUserInvalidation', () => RPC.orpc.users.watchUserInvalidation.call()),
 	{ firstEmitTimeoutMs: false },

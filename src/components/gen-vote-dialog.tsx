@@ -16,9 +16,9 @@ import {
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { useRefConstructor } from '@/lib/react'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -73,9 +73,9 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		includedConstraints: includedConstraintKeys,
 		uniqueConstraints: uniqueConstraintKeys,
 		voteConfig,
-	} = ZusUtils.useStore(
+	} = Zus.useStore(
 		frameKey,
-		ZusUtils.useShallow((s) => ({
+		Zus.useShallow((s) => ({
 			choices: s.choices,
 			chosenLayers: s.chosenLayers,
 			choiceErrors: s.choiceErrors,
@@ -101,7 +101,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		}
 	}, [generating])
 	const handleToggleUniqueConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
-		const state = ZusUtils.getState(frameKey)
+		const state = Zus.getState(frameKey)
 		if (state.uniqueConstraints.includes(key)) {
 			GenVoteFrame.Actions.removeUniqueConstraint(genVoteStores, key)
 		} else {
@@ -109,7 +109,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		}
 	}
 
-	const teamParity = ZusUtils.useStore(
+	const teamParity = Zus.useStore(
 		LayerQueueClient.layerItemsState$(props.stores.squadServer.serverId),
 		React.useCallback(
 			(state: LQY.LayerItemsState) => {
@@ -121,8 +121,8 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	)
 
 	const handleSubmit = () => {
-		const result = ZusUtils.getState(frameKey).result
-		const cursor = ZusUtils.getState(frameKey).cursor
+		const result = Zus.getState(frameKey).result
+		const cursor = Zus.getState(frameKey).cursor
 		if (!result) return
 		props.onSubmit(result, cursor)
 	}
@@ -156,7 +156,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		console.log('setting config ', config)
 		if (config === null) {
 			// full reset: Actions.setVoteConfig merges onto existing state, so clear it out first via replace
-			ZusUtils.resolveStore<GenVoteFrame.Types['state']>(frameKey).setState({ voteConfig: {} })
+			Zus.resolveStore<GenVoteFrame.Types['state']>(frameKey).setState({ voteConfig: {} })
 		} else {
 			GenVoteFrame.Actions.setVoteConfig(genVoteStores, config)
 		}
@@ -364,11 +364,11 @@ function ChoiceConstraintSelect(props: {
 	}
 	const column = props.constraintKey === 'Unit' ? 'Unit_1' : props.constraintKey
 
-	const input = ZusUtils.useStore(props.stores.genVote, props.stores.squadServer, ZusUtils.useDeep(GenVoteFrame.Sel.baseQueryInput))
+	const input = Zus.useStore(props.stores.genVote, props.stores.squadServer, Zus.useDeep(GenVoteFrame.Sel.baseQueryInput))
 	const components = LayerQueriesClient.useLayerComponents({ ...input, column: column })
-	const disallowedValues = ZusUtils.useStore(
+	const disallowedValues = Zus.useStore(
 		props.stores.genVote,
-		ZusUtils.useShallow((s) => {
+		Zus.useShallow((s) => {
 			let disallowedValues: string[] = []
 			for (let i = 0; i < s.choices.length; i++) {
 				if (i === props.index || !s.uniqueConstraints.includes(props.constraintKey)) continue
