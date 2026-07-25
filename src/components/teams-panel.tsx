@@ -666,8 +666,8 @@ function StatsColumnHeader({
 						<Icons.AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
 					</TooltipTrigger>
 					<TooltipContent className="max-w-[220px]">
-						Stats may be inaccurate: SLM was not active at some points during this match, so events during those periods were
-						not counted.
+						Stats may be inaccurate: SLM was not active at some points during this match, so events during those periods were not
+						counted.
 					</TooltipContent>
 				</Tooltip>
 			)}
@@ -699,9 +699,7 @@ function StatsColumnHeader({
 									type="button"
 									className={cn(
 										'text-xs px-2 py-0.5 rounded',
-										sorted && metric === m
-											? 'bg-primary text-primary-foreground'
-											: 'text-muted-foreground hover:text-foreground',
+										sorted && metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
 									)}
 									onClick={() => {
 										setMetric(m)
@@ -719,9 +717,7 @@ function StatsColumnHeader({
 									type="button"
 									className={cn(
 										'text-xs px-2 py-0.5 rounded',
-										sorted === dir
-											? 'bg-primary text-primary-foreground'
-											: 'text-muted-foreground hover:text-foreground',
+										sorted === dir ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
 									)}
 									onClick={() => column.toggleSorting(dir === 'desc')}
 								>
@@ -840,10 +836,7 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 					<ColumnFilterSelect
 						value={filters.group}
 						onChange={filters.setGroup}
-						options={[
-							...availableGroups.map((g) => ({ value: g, label: g })),
-							{ value: FILTER_NONE, label: PG.UNGROUPED_LABEL },
-						]}
+						options={[...availableGroups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: PG.UNGROUPED_LABEL }]}
 						triggerClassName="max-w-24"
 					/>
 				</span>
@@ -1375,9 +1368,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 					<TableRow
 						className={cn(
 							'cursor-pointer select-none',
-							savedSwaps.has(row.id)
-								? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50'
-								: undefined,
+							savedSwaps.has(row.id) ? 'bg-amber-500/20 hover:bg-amber-500/40 data-[state=selected]:bg-amber-500/50' : undefined,
 						)}
 						data-state={row.getIsSelected() ? 'selected' : undefined}
 						onClick={() => row.toggleSelected()}
@@ -1638,8 +1629,7 @@ function CombinedPlayerTable(props: {
 	const teamOrder = MH.getDisplayedTeamOrder(ordinal, displayTeamsNormalized)
 	const [leftTeam, rightTeam] = teamOrder
 	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(
-		() =>
-			[leftTeam, rightTeam].flatMap((normedTeam) => (normedTeam === 'A' ? squadsA : squadsB).map((squad) => ({ squad, normedTeam }))),
+		() => [leftTeam, rightTeam].flatMap((normedTeam) => (normedTeam === 'A' ? squadsA : squadsB).map((squad) => ({ squad, normedTeam }))),
 		[squadsA, squadsB, leftTeam, rightTeam],
 	)
 	const statsMayBeInaccurate = ZusUtils.useStore(
@@ -1788,9 +1778,7 @@ function SwapsPanel({
 	const [isEditing, setIsEditing] = UPClient.useEditingTeamswapsState(stores.squadServer!.serverId)
 	const numEditors = ZusUtils.useStore(UPClient.Store, (s) => s.teamswapEditors.size)
 	const [forceSave, setForceSave] = React.useState(false)
-	const startEditingDenied = RbacClient.usePermsCheck(
-		RBAC.perm('squad-server:manage-players', { serverId: stores.squadServer!.serverId }),
-	)
+	const startEditingDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: stores.squadServer!.serverId }))
 
 	const handleFinishOrSave = () => {
 		const shouldSave = swapsModified && (numEditors <= 1 || forceSave)
@@ -1878,10 +1866,7 @@ function SwapsPanel({
 						windowId={WINDOW_ID.enum['teamswaps-help']}
 						windowProps={{} satisfies TeamswapsHelpWindowProps}
 						preload="intent"
-						render={({
-							ref,
-							...props
-						}: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+						render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
 							<Button ref={ref} variant="ghost" size="icon" className="h-7 w-7" title="Help" {...props}>
 								<Icons.CircleHelp className="h-3.5 w-3.5" />
 							</Button>

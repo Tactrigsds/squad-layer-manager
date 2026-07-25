@@ -793,9 +793,7 @@ export function isLocallyFirstIndex(index: ItemIndex) {
 export function displayLayerListItem(item: Item, index: ItemIndex) {
 	if (isVoteItem(item)) {
 		return item.choices
-			.map(
-				(choice, innerIndex) => `${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`,
-			)
+			.map((choice, innerIndex) => `${getItemNumber({ outerIndex: index.outerIndex, innerIndex })} ${DH.displayLayer(choice.layerId)}`)
 			.join('\n')
 	}
 	return `${getItemNumber(index)} ${DH.displayLayer(item.layerId)}`

@@ -322,9 +322,7 @@ export namespace Sel {
 				[1, aTeam === 1 ? 2 : 1],
 			] as [0 | 1, 1 | 2][]) {
 				for (const column of F.TEAM_COLUMNS) {
-					const values = (state.matchup.teams[sideIndex][column] ?? []).filter(
-						(value): value is string => typeof value === 'string',
-					)
+					const values = (state.matchup.teams[sideIndex][column] ?? []).filter((value): value is string => typeof value === 'string')
 					const field = F.resolveTeamColumn(column, team)
 					teamItems.push({
 						field,

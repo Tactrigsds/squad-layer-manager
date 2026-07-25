@@ -77,8 +77,7 @@ export const groups = {
 			.min(1)
 			.prefault('unknown')
 			.meta({
-				description:
-					"baked into the image at build time from the Dockerfile's GIT_SHA/GIT_BRANCH build args, and reported on boot.",
+				description: "baked into the image at build time from the Dockerfile's GIT_SHA/GIT_BRANCH build args, and reported on boot.",
 				envExample: { include: 'omit' },
 			}),
 		PUBLIC_GIT_BRANCH: z
@@ -412,8 +411,7 @@ export const groups = {
 			.string()
 			.prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv'))
 			.meta({
-				description:
-					'the csv preprocess ingests, and where a build takes its version from. Too big to ship, so it stays in ./data.',
+				description: 'the csv preprocess ingests, and where a build takes its version from. Too big to ship, so it stays in ./data.',
 				envExample: { include: 'omit', dev: { include: 'commented' } },
 			}),
 		LAYERS_OUTPUT_DIR: z

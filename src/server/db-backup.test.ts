@@ -20,11 +20,7 @@ describe('backupFiles', () => {
 			[periodic('20260101-000000'), preMigration('20260716-120000'), periodic('20260301-000000')],
 			DB_PATH,
 		)
-		expect(files.map((f) => f.name)).toEqual([
-			preMigration('20260716-120000'),
-			periodic('20260301-000000'),
-			periodic('20260101-000000'),
-		])
+		expect(files.map((f) => f.name)).toEqual([preMigration('20260716-120000'), periodic('20260301-000000'), periodic('20260101-000000')])
 	})
 
 	test('ignores anything that is not a backup of this database', () => {

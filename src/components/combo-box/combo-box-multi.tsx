@@ -271,8 +271,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														const currentSet = new Set(displayValues)
 														const resetSet = new Set(resetValues)
 														const isIdentical =
-															currentSet.size === resetSet.size &&
-															[...currentSet].every((val) => resetSet.has(val))
+															currentSet.size === resetSet.size && [...currentSet].every((val) => resetSet.has(val))
 														return (
 															<Button
 																variant="ghost"
@@ -297,8 +296,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 																.filter(
 																	(val) =>
 																		!selectionLimit ||
-																		displayValues.length + (displayValues.includes(val) ? 0 : 1) <=
-																			selectionLimit,
+																		displayValues.length + (displayValues.includes(val) ? 0 : 1) <= selectionLimit,
 																)
 															onSelect(allValues)
 														}}
@@ -354,9 +352,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 																value={option.value === null ? NULL.current : option.value}
 																keywords={option.keywords}
 																onMouseEnter={() => setHoveredValue(option.value)}
-																onMouseLeave={() =>
-																	setHoveredValue((cur) => (cur === option.value ? null : cur))
-																}
+																onMouseLeave={() => setHoveredValue((cur) => (cur === option.value ? null : cur))}
 																disabled={
 																	option.disabled ||
 																	(selectionLimit
@@ -380,8 +376,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 																		displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
 																	)}
 																/>
-																{option.label ??
-																	(option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+																{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
 															</CommandItem>
 														))}
 												</CommandGroup>
@@ -415,9 +410,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															<Button
 																variant="ghost"
 																size="sm"
-																onClick={() =>
-																	onSelect((prevValues) => prevValues.filter((v) => v !== value))
-																}
+																onClick={() => onSelect((prevValues) => prevValues.filter((v) => v !== value))}
 																className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
 															>
 																<X className="h-3 w-3" />
@@ -442,9 +435,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 												className="w-full rounded-none h-9 text-primary hover:text-primary hover:bg-primary/10 flex items-center justify-center gap-2 disabled:opacity-40"
 											>
 												<SquareCheck className="h-4 w-4" />
-												<span className="text-sm">
-													{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}
-												</span>
+												<span className="text-sm">{typeof props.confirm === 'string' ? props.confirm : 'Confirm'}</span>
 											</Button>
 										</div>
 									)}

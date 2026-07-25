@@ -162,10 +162,7 @@ describe('kick and timeout arg windows', () => {
 })
 
 describe('resolveReasonArg', () => {
-	const reasons = [
-		reason('Teamkilling', { keywords: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }),
-		reason('AFK'),
-	]
+	const reasons = [reason('Teamkilling', { keywords: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }), reason('AFK')]
 
 	it('one token resolves a preset by label or alias', () => {
 		const res = CMD.resolveReasonArg(reasons, 'warn', ['TK'])
@@ -406,9 +403,7 @@ describe('expandTriggerArgs', () => {
 
 describe('formatTriggerUsage', () => {
 	it('names the arg a whole-slot placeholder fills, and the placeholder otherwise', () => {
-		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })).toBe(
-			'!to2h <player> [reason|message]',
-		)
+		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })).toBe('!to2h <player> [reason|message]')
 		expect(CMD.formatTriggerUsage('broadcast', { string: '!eta', args: 'Round ends in {{arg1}} minutes' })).toBe('!eta <arg1>')
 	})
 

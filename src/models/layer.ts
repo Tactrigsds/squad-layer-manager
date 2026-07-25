@@ -709,9 +709,7 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 		parsedFactions[i] = {
 			faction: faction.trim(),
 			unit:
-				unit?.trim() ??
-				components.layerFactionAvailability[layer]?.find((l) => l.Faction === faction && l.isDefaultUnit)?.Unit ??
-				null,
+				unit?.trim() ?? components.layerFactionAvailability[layer]?.find((l) => l.Faction === faction && l.isDefaultUnit)?.Unit ?? null,
 		}
 	}
 	return parsedFactions

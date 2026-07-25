@@ -167,10 +167,7 @@ function ValidationWarningsDisplay(props: {
 												alertMessage = filter.invertedAlertMessage
 											}
 											return (
-												<span
-													key={constraint.id}
-													className="text-muted-foreground flex flex-nowrap items-center gap-1"
-												>
+												<span key={constraint.id} className="text-muted-foreground flex flex-nowrap items-center gap-1">
 													{emoji && <EmojiDisplay showTooltip={false} emoji={emoji} />}
 													{alertMessage && <span>{alertMessage}</span>}
 													<FilterEntityLink filterId={filter.id} />
@@ -222,10 +219,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			// user has already edited away from. Gating on those both blocks a save that shouldn't be blocked and drops
 			// the acknowledgement when the real statuses land.
 			await SquadServerFrame.awaitCurrentStatuses(props.stores.squadServer!)
-			const currentWarnings = SquadServerFrame.selectQueueWarnings(
-				ZusUtils.getState(props.stores.squadServer!),
-				loggedInUser?.discordId,
-			)
+			const currentWarnings = SquadServerFrame.selectQueueWarnings(ZusUtils.getState(props.stores.squadServer!), loggedInUser?.discordId)
 			if (currentWarnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)
 				return
@@ -258,10 +252,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 
 	return (
 		<div className="flex flex-col gap-1 grow">
-			<div
-				className="flex items-center gap-1 justify-end group"
-				data-status={committing ? 'saving' : !isEditing ? 'idle' : 'editing'}
-			>
+			<div className="flex items-center gap-1 justify-end group" data-status={committing ? 'saving' : !isEditing ? 'idle' : 'editing'}>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
@@ -411,9 +402,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 								</Tooltip>
 							</ButtonGroup>
 						)
-						return (
-							<div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
-						)
+						return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
 					})()}
 				</div>
 				<Button size="icon" variant="ghost" title="Pool Configuration" onClick={(e) => openPoolConfig(e.currentTarget)}>

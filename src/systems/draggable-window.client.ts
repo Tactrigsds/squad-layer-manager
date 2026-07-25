@@ -100,8 +100,7 @@ function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 		unloadOnLeave: false,
 		...(def.load
 			? {
-					load: ({ key, state }: { key: WindowLoaderKey; state: DraggableWindowStoreState }) =>
-						def.load!({ props: key.props, state }),
+					load: ({ key, state }: { key: WindowLoaderKey; state: DraggableWindowStoreState }) => def.load!({ props: key.props, state }),
 				}
 			: def.loadAsync
 				? {

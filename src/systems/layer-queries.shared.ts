@@ -708,19 +708,11 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
 				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
-				const active =
-					constraint.type === 'do-not-repeat' || constraint.showIndicator !== 'disabled' || constraint.warn !== 'disabled'
+				const active = constraint.type === 'do-not-repeat' || constraint.showIndicator !== 'disabled' || constraint.warn !== 'disabled'
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const descriptors = getisMatchedByRepeatRuleDirect(
-							list,
-							i,
-							constraint.id,
-							constraint.rule,
-							item.layerId,
-							item.itemId,
-						)
+						const descriptors = getisMatchedByRepeatRuleDirect(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
 						if (descriptors) itemDescriptors.push(...descriptors)
 						break
 					}

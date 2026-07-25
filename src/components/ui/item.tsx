@@ -85,11 +85,7 @@ function ItemContent({ className, ...props }: React.ComponentProps<'div'>) {
 
 function ItemTitle({ className, ...props }: React.ComponentProps<'div'>) {
 	return (
-		<div
-			data-slot="item-title"
-			className={cn('flex w-fit items-center gap-2 text-sm font-medium leading-snug', className)}
-			{...props}
-		/>
+		<div data-slot="item-title" className={cn('flex w-fit items-center gap-2 text-sm font-medium leading-snug', className)} {...props} />
 	)
 }
 

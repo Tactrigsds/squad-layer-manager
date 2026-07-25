@@ -199,17 +199,14 @@ const MessageVarsContext = React.createContext<Record<string, string>>({})
 function useMessageVars(value$: ValueState): Record<string, string> {
 	const read = (v: any): Record<string, string> =>
 		Object.fromEntries(
-			((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) =>
-				mv.name ? [[mv.name, mv.value ?? '']] : [],
-			),
+			((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) => (mv.name ? [[mv.name, mv.value ?? '']] : [])),
 		)
 	const [vars, setVars] = React.useState(() => read(value$.getValue()))
 	React.useEffect(() => {
 		const sub = value$.subscribe((v) =>
 			setVars((prev) => {
 				const next = read(v)
-				const same =
-					Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
+				const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
 				return same ? prev : next
 			}),
 		)
@@ -310,8 +307,8 @@ function RbacSuperCallout() {
 				Super users & roles
 			</p>
 			<p className="text-xs text-muted-foreground">
-				Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including
-				unlimited kick timeouts) and cannot be modified from this page.
+				Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including unlimited
+				kick timeouts) and cannot be modified from this page.
 			</p>
 			{superUsers.length > 0 && (
 				<div className="flex flex-wrap items-center gap-1.5">
@@ -329,11 +326,7 @@ function RbacSuperCallout() {
 					{superRoles.map((id) => {
 						const role = guildRoles.find((r) => r.id === id)
 						return (
-							<span
-								key={id}
-								className="flex items-center gap-1.5 rounded border bg-background px-1.5 py-0.5 text-xs"
-								title={id}
-							>
+							<span key={id} className="flex items-center gap-1.5 rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
 								{role ? (
 									<>
 										<span
@@ -629,14 +622,7 @@ function RuleRow({
 					}}
 				/>
 			)}
-			<Button
-				type="button"
-				size="icon"
-				variant="ghost"
-				className="h-6 w-6 text-destructive"
-				aria-label="Remove rule"
-				onClick={onRemove}
-			>
+			<Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" aria-label="Remove rule" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
 			</Button>
 		</li>
@@ -780,10 +766,7 @@ function GroupingCard({
 							const color = grouping.groups?.[group]?.color
 							const resolved = PG.getGroupColor(grouping, group, orgFlags)
 							return (
-								<li
-									key={group}
-									className="grid grid-cols-[1.25rem_minmax(0,8rem)_minmax(0,1fr)_auto_7rem] items-center gap-2"
-								>
+								<li key={group} className="grid grid-cols-[1.25rem_minmax(0,8rem)_minmax(0,1fr)_auto_7rem] items-center gap-2">
 									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: resolved }} />
 									<span className="min-w-0 truncate text-xs" title={group}>
 										{group}
@@ -930,9 +913,7 @@ function PrefixRow({
 				className="h-6 w-6 shrink-0 text-destructive disabled:opacity-40"
 				aria-label={`Remove prefix ${index + 1}`}
 				disabled={!removable}
-				title={
-					isDefault ? 'The default prefix cannot be removed' : usage > 0 ? `${usage} strings still use this prefix` : undefined
-				}
+				title={isDefault ? 'The default prefix cannot be removed' : usage > 0 ? `${usage} strings still use this prefix` : undefined}
 				onClick={onRemove}
 			>
 				<Icons.X className="h-4 w-4" />
@@ -1036,13 +1017,7 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 							}
 						}}
 					/>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={!newTrimmed || newInvalid || newDuplicate}
-						onClick={addPrefix}
-					>
+					<Button type="button" variant="outline" size="sm" disabled={!newTrimmed || newInvalid || newDuplicate} onClick={addPrefix}>
 						Add prefix
 					</Button>
 				</div>
@@ -1099,9 +1074,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 								className="h-6 px-2 text-xs text-muted-foreground"
 								title="Pin some of this command's arguments, so the trigger becomes a shortcut"
 								onClick={() =>
-									structural(
-										current().map((t, i) => (i === idx ? { string: CMD.triggerString(t), args: NEW_TRIGGER_ARGS } : t)),
-									)
+									structural(current().map((t, i) => (i === idx ? { string: CMD.triggerString(t), args: NEW_TRIGGER_ARGS } : t)))
 								}
 							>
 								Pin args
@@ -1505,14 +1478,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 				</div>
 			</TableCell>
 			<TableCell className="align-top">
-				<Button
-					type="button"
-					size="icon"
-					variant="ghost"
-					className="h-8 w-8 text-destructive"
-					title="Delete tag"
-					onClick={onRemove}
-				>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" title="Delete tag" onClick={onRemove}>
 					<Icons.X className="h-4 w-4" />
 				</Button>
 			</TableCell>
@@ -1565,9 +1531,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 			<TableCell className="align-top">
 				<div className="space-y-1.5">
 					{presentActions.length === 0 && (
-						<p className="text-xs text-destructive">
-							Add text for at least one action, otherwise this reason can never be used.
-						</p>
+						<p className="text-xs text-destructive">Add text for at least one action, otherwise this reason can never be used.</p>
 					)}
 					{presentActions.map((action) => {
 						const text$ = scopeValue(actionTexts$, action)
@@ -1695,8 +1659,8 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 			</PopoverTrigger>
 			<PopoverContent className="w-96 space-y-2" align="end">
 				<p className="text-xs text-muted-foreground">
-					In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it
-					has run out).
+					In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has
+					run out).
 				</p>
 				<TemplateSyntaxHint />
 				{reasonPreviewEntries(reason, customVars).map((entry) => (
@@ -1786,12 +1750,7 @@ function KeywordsCell({
 	}, [seedSource, push])
 
 	return (
-		<Input
-			ref={ref}
-			defaultValue={format(value$.getValue())}
-			placeholder="tk afk"
-			onChange={(e) => push(parse(e.currentTarget.value))}
-		/>
+		<Input ref={ref} defaultValue={format(value$.getValue())} placeholder="tk afk" onChange={(e) => push(parse(e.currentTarget.value))} />
 	)
 }
 
@@ -1894,9 +1853,9 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 					<Icons.Info className="h-4 w-4" />
 					<AlertTitle>This sandbox has an emulated admin list of its own</AlertTitle>
 					<AlertDescription>
-						It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -&gt;
-						Sandbox Controls), where you can define groups and tick which fabricated players are admins. There is no source to
-						configure, because it only exists in memory.
+						It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -&gt; Sandbox
+						Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure,
+						because it only exists in memory.
 					</AlertDescription>
 				</Alert>
 			)}
@@ -2283,14 +2242,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 								}
 							}}
 						/>
-						<Button
-							type="button"
-							size="icon"
-							variant="outline"
-							className="h-8 w-8 shrink-0"
-							disabled={!canAdd}
-							onClick={addRole}
-						>
+						<Button type="button" size="icon" variant="outline" className="h-8 w-8 shrink-0" disabled={!canAdd} onClick={addRole}>
 							<Icons.Plus className="h-4 w-4" />
 						</Button>
 					</div>
@@ -2937,10 +2889,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 								<p className="text-xs text-muted-foreground">{Messages.GENERAL.balanceTrigger.descriptions[id]}</p>
 							</div>
 							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
-								<SelectTrigger
-									className={cn('h-8 w-36 shrink-0', display?.text)}
-									aria-label={`${BAL.TRIGGERS[id].name} level`}
-								>
+								<SelectTrigger className={cn('h-8 w-36 shrink-0', display?.text)} aria-label={`${BAL.TRIGGERS[id].name} level`}>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -3556,11 +3505,7 @@ function RecordEntry({
 				{fixedKey ? (
 					<span className="font-mono text-sm">{entryKey}</span>
 				) : (
-					<Input
-						className="font-mono h-8 max-w-[16rem]"
-						defaultValue={entryKey}
-						onBlur={(e) => onRename(e.target.value.trim())}
-					/>
+					<Input className="font-mono h-8 max-w-[16rem]" defaultValue={entryKey} onBlur={(e) => onRename(e.target.value.trim())} />
 				)}
 				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ml-auto" onClick={onRemove}>
 					<Icons.X className="h-4 w-4" />
@@ -4276,13 +4221,7 @@ export default function SettingsForm({
 													onChange={onChange}
 												/>
 											) : (
-												<ObjectField
-													node={jsonSchema}
-													path={rootPath}
-													value$={value$}
-													reset$={reset$}
-													onChange={onChange}
-												/>
+												<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
 											)}
 										</ValidationContext.Provider>
 									</MessageVarsContext.Provider>

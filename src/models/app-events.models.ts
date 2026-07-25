@@ -549,8 +549,7 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
 			if (e.reason === 'override') {
-				const who =
-					e.overrode?.type === 'player' ? ' by an in-game admin' : e.overrode?.type === 'rcon' ? ' by another RCON tool' : ''
+				const who = e.overrode?.type === 'player' ? ' by an in-game admin' : e.overrode?.type === 'rcon' ? ' by another RCON tool' : ''
 				return `overrode an external layer set${who}, next layer set to ${layer}`
 			}
 			return `set next layer to ${layer}`
@@ -589,8 +588,7 @@ export function describeAppEvent(e: AppEvent): string {
 			return e.nickname === null ? 'cleared their nickname' : `set their nickname to "${e.nickname}"`
 		}
 		case 'PLAYER_FLAGS_UPDATED': {
-			const describe = (sign: string) => (f: { name: string; reason?: string }) =>
-				`${sign}${f.name}${f.reason ? ` (${f.reason})` : ''}`
+			const describe = (sign: string) => (f: { name: string; reason?: string }) => `${sign}${f.name}${f.reason ? ` (${f.reason})` : ''}`
 			const changes = [...e.added.map(describe('+')), ...e.removed.map(describe('−'))].join(', ')
 			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}`
 		}

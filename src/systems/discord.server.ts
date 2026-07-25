@@ -104,8 +104,7 @@ export async function setup() {
 		if (newMember.guild.id !== homeGuildId) return
 		// only roles matter for rbac; nickname/avatar edits don't change permissions
 		const rolesChanged =
-			oldMember.roles.cache.size !== newMember.roles.cache.size ||
-			newMember.roles.cache.some((_, id) => !oldMember.roles.cache.has(id))
+			oldMember.roles.cache.size !== newMember.roles.cache.size || newMember.roles.cache.some((_, id) => !oldMember.roles.cache.has(id))
 		if (rolesChanged) guildRbacEvents$.next({ type: 'member', discordId: BigInt(newMember.id) })
 	})
 	client.on('guildMemberAdd', (member) => {

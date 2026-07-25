@@ -279,9 +279,7 @@ export namespace Actions {
 		selectPlayers(
 			stores,
 			chatState.players
-				.filter(
-					(p) => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId),
-				)
+				.filter((p) => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
 				.map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
@@ -314,9 +312,7 @@ export namespace Actions {
 		const enriched = getEnrichedPlayers(stores)
 		selectPlayers(
 			stores,
-			enriched
-				.filter((p) => p.group === group && (teamId == null || p.teamId === teamId))
-				.map((p) => SM.PlayerIds.getPlayerId(p.ids)),
+			enriched.filter((p) => p.group === group && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 

@@ -165,8 +165,7 @@ export function DiscordMemberSelect({
 			/>
 			{unresolved && (
 				<UnresolvedNote>
-					This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise
-					unknown.
+					This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise unknown.
 				</UnresolvedNote>
 			)}
 		</div>

@@ -63,8 +63,7 @@ if (playersData.data && Array.isArray(playersData.data)) {
 
 		// Get flags for this player
 		const flagPlayers =
-			playersData.included?.filter((item: any) => item.type === 'flagPlayer' && item.relationships?.player?.data?.id === player.id) ||
-			[]
+			playersData.included?.filter((item: any) => item.type === 'flagPlayer' && item.relationships?.player?.data?.id === player.id) || []
 
 		if (flagPlayers.length > 0) {
 			console.log(`    Flags:`)

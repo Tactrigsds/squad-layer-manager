@@ -167,9 +167,7 @@ function PickOrderSection({ value, onChange }: { value: Config; onChange: (next:
 			<SectionLabel hint="Columns and matchups picked weighted-randomly during generation, in pick order. Each pick narrows the candidates for the ones below it, so the first pick shapes the result the most.">
 				Pick order
 			</SectionLabel>
-			{pickOrder.length === 0 && (
-				<p className="text-xs text-muted-foreground">Nothing configured: generation picks layers uniformly.</p>
-			)}
+			{pickOrder.length === 0 && <p className="text-xs text-muted-foreground">Nothing configured: generation picks layers uniformly.</p>}
 			<ol>
 				{pickOrder.map((key, idx) => (
 					<React.Fragment key={key}>
@@ -306,11 +304,7 @@ function WeightsSection({
 									)}
 								</td>
 								<td className="py-0.5 pr-2">
-									<WeightInput
-										weight={entry.weight}
-										onChange={(weight) => setWeight(entry.value, weight)}
-										reset$={reset$}
-									/>
+									<WeightInput weight={entry.weight} onChange={(weight) => setWeight(entry.value, weight)} reset$={reset$} />
 								</td>
 								<td className="py-0.5 pr-2 text-right tabular-nums text-muted-foreground">
 									{totalWeight > 0 && possibleValues.includes(entry.value)
@@ -411,20 +405,13 @@ function MatchupWeightsSection({
 										{text}
 										{/* a pairing the layer set doesn't have (e.g. a faction dropped by a game update): it can never be picked */}
 										{unknown && (
-											<span
-												className="ml-1.5 text-xs font-sans text-muted-foreground"
-												title={`No layers have this ${label}`}
-											>
+											<span className="ml-1.5 text-xs font-sans text-muted-foreground" title={`No layers have this ${label}`}>
 												(unknown)
 											</span>
 										)}
 									</td>
 									<td className="py-0.5 pr-2">
-										<WeightInput
-											weight={entry.weight}
-											onChange={(weight) => setWeight(entryKey, weight)}
-											reset$={reset$}
-										/>
+										<WeightInput weight={entry.weight} onChange={(weight) => setWeight(entryKey, weight)} reset$={reset$} />
 									</td>
 									<td className="py-0.5">
 										<Button

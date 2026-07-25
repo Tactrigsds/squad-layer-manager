@@ -39,9 +39,10 @@ export default defineConfig({
 								const proxyUrl = `http://${ENV.HOST}:${ENV.PORT}${req.originalUrl}`
 
 								// req.headers can have symbols attached when using vite-rolldown, and metadata prefixed with :
-								const headers = Object.fromEntries(
-									Object.entries(req.headers).filter(([key]) => !key.startsWith(':')),
-								) as Record<string, string>
+								const headers = Object.fromEntries(Object.entries(req.headers).filter(([key]) => !key.startsWith(':'))) as Record<
+									string,
+									string
+								>
 
 								const proxyRes = await fetch(proxyUrl, {
 									method: 'GET',

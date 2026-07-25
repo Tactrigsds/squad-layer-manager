@@ -63,14 +63,7 @@ export function ListEditor<Item>(props: {
 					</Button>
 				</div>
 			) : (
-				<Button
-					type="button"
-					size="sm"
-					variant="outline"
-					className="h-7"
-					disabled={props.addDisabled}
-					onClick={() => setAdding(true)}
-				>
+				<Button type="button" size="sm" variant="outline" className="h-7" disabled={props.addDisabled} onClick={() => setAdding(true)}>
 					<Icons.Plus className="mr-1 h-3.5 w-3.5" />
 					{props.addLabel}
 				</Button>

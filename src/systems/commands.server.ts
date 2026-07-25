@@ -616,10 +616,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 		const [status] = await Battlemetrics.removePlayerFlags(h.ctx, bmPlayerData.bmPlayerId, [flagToRemove.id])
 		if (status === 'already-removed') {
-			return await h.error(
-				'already-removed',
-				`Flag "${flagToRemove.name}" is already removed from ${target.ids.username}'s BM profile`,
-			)
+			return await h.error('already-removed', `Flag "${flagToRemove.name}" is already removed from ${target.ids.username}'s BM profile`)
 		}
 		const note = BM.flagChangeNote({
 			action: 'removed',
@@ -815,14 +812,11 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		const matchedPlayerIds = new Set(matches.map((t) => t.playerId))
 		if (matchedPlayerIds.size === 0) return await h.error('not-found', `No active timeout matches "${token}"`)
-		if (matchedPlayerIds.size > 1)
-			return await h.error('multiple-matches', `${matchedPlayerIds.size} timed-out players match "${token}"`)
+		if (matchedPlayerIds.size > 1) return await h.error('multiple-matches', `${matchedPlayerIds.size} timed-out players match "${token}"`)
 		for (const timeout of matches) {
 			await Timeouts.cancelTimeout(h.ctx, { timeoutId: timeout.id, actor: ingameActor(h.sender), sliceCtx: h.ctx })
 		}
-		await h.reply(
-			`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`,
-		)
+		await h.reply(`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`)
 		return { code: 'ok' }
 	},
 

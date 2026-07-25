@@ -363,10 +363,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				}
 				success = true
 			} else {
-				const otherClients = MapUtils.filter(
-					state.presence,
-					(k, v) => v.userId === op.userId && k !== op.clientId && !!v.activityState,
-				)
+				const otherClients = MapUtils.filter(state.presence, (k, v) => v.userId === op.userId && k !== op.clientId && !!v.activityState)
 
 				// client ops
 				const clientState: ClientPresence = state.presence.get(op.clientId) ?? {

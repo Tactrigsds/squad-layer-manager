@@ -781,9 +781,7 @@ export const PublicServerSettingsSchema = z.object({
 			voteDisplayProps: z
 				.array(DH.LAYER_DISPLAY_PROP)
 				.prefault(['map', 'gamemode'])
-				.describe(
-					'Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.',
-				),
+				.describe('Which parts of a layer (map, gamemode, factions, units) vote choices spell out. Admins can override this per vote.'),
 			finalVoteReminder: HumanTime.prefault('10s').describe('How long before a vote closes the last-chance reminder is sent.'),
 		})
 		.prefault({}),

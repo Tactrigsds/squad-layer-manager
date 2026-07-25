@@ -195,9 +195,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 										variant={uniqueConstraintKeys.includes(key) ? 'default' : 'ghost'}
 										onClick={() => handleToggleUniqueConstraint(key)}
 										disabled={!includedConstraintKeys.includes(key)}
-										title={
-											uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'
-										}
+										title={uniqueConstraintKeys.includes(key) ? 'Disable unique constraint' : 'Enable unique constraint'}
 									>
 										<Icons.Lock className="w-4 h-4" />
 									</Button>
@@ -226,10 +224,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 													<div>
 														{choice.layerId ? (
 															<div className="flex gap-1 items-center text-sm">
-																<ShortLayerName
-																	layerId={choice.layerId}
-																	matchDescriptors={constraints?.matchDescriptors}
-																/>
+																<ShortLayerName layerId={choice.layerId} matchDescriptors={constraints?.matchDescriptors} />
 																{constraints && (
 																	<ConstraintEvalTooltip
 																		matchDescriptors={constraints.matchDescriptors}
@@ -267,11 +262,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 														title={choice.layerId ? 'Regenerate this choice' : 'Generate this choice'}
 													>
 														<Icons.RefreshCw
-															className={
-																regeneratingIndex === 'all' || regeneratingIndex === index
-																	? 'animate-spin'
-																	: ''
-															}
+															className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''}
 														/>
 													</Button>
 													<Button

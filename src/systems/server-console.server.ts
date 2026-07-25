@@ -83,10 +83,7 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, input, signal }) {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(
-				context,
-				RBAC.perm('squad-server:view-console', { serverId: input.serverId }),
-			)
+			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('squad-server:view-console', { serverId: input.serverId }))
 			if (denyRes) {
 				yield { code: 'err:permission-denied' as const, events: [] as SC.ConsoleEvent[] }
 				return

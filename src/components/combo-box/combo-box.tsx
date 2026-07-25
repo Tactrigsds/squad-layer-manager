@@ -213,9 +213,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 												onSelect(option.value)
 											}}
 										>
-											<Check
-												className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')}
-											/>
+											<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
 											{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
 										</CommandItem>
 									))}

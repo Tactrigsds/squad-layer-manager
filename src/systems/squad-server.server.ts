@@ -326,9 +326,7 @@ export const orpcRouter = {
 						events.push(
 							...mergeEventsByTime(
 								allEvents.slice(lastEventIndex + 1),
-								ctx.server.emittedAppEvents.filter(
-									(a) => lastEventIndex === -1 || a.time >= allEvents[lastEventIndex].time,
-								),
+								ctx.server.emittedAppEvents.filter((a) => lastEventIndex === -1 || a.time >= allEvents[lastEventIndex].time),
 							),
 						)
 						events.push(sync)
@@ -589,13 +587,7 @@ export const orpcRouter = {
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / WARNS.kill.notifyKilled)
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
-			await killPlayersAction(
-				ctx,
-				input.playerIds,
-				{ type: 'slm-user', userId: ctx.user.discordId },
-				reason,
-				reasonRes.applied?.label,
-			)
+			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
 		}),
 
@@ -723,9 +715,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	const rconTransport =
 		settings.connections.type === 'server-agent'
 			? ServerAgent.rconTransportFor(serverId)
-			: new DirectSocketTransport(
-					settings.connections.type === 'sandbox' ? Sandbox.connectionFor(serverId) : settings.connections.rcon,
-				)
+			: new DirectSocketTransport(settings.connections.type === 'sandbox' ? Sandbox.connectionFor(serverId) : settings.connections.rcon)
 	const rcon = new Rcon({
 		serverId,
 		transport: rconTransport,

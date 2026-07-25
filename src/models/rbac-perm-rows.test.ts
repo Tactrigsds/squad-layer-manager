@@ -145,9 +145,7 @@ describe('configFromRows', () => {
 	})
 
 	test('a server-settings:write row with paths but no servers is still a restricted grant', () => {
-		const cfg = PermRows.configFromRows({}, [
-			{ id: 'x', type: 'server-settings:write', effect: 'allow', serverIds: [], paths: ['vote'] },
-		])
+		const cfg = PermRows.configFromRows({}, [{ id: 'x', type: 'server-settings:write', effect: 'allow', serverIds: [], paths: ['vote'] }])
 		expect(cfg.permissions).toEqual([])
 		expect(cfg.serverSettingsGrants).toEqual([{ access: 'write', serverIds: [], paths: ['vote'] }])
 	})

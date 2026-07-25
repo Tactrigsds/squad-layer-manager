@@ -8,9 +8,7 @@ function makeDb(roles: unknown, serverIds: string[]) {
 	db.exec(`CREATE TABLE servers (id TEXT PRIMARY KEY)`)
 	db.exec(`CREATE TABLE globalSettings (id INTEGER PRIMARY KEY, settings TEXT)`)
 	for (const id of serverIds) db.prepare(`INSERT INTO servers (id) VALUES (?)`).run(id)
-	db.prepare(`INSERT INTO globalSettings (id, settings) VALUES (1, ?)`).run(
-		JSON.stringify({ json: { rbac: { roles } }, meta: undefined }),
-	)
+	db.prepare(`INSERT INTO globalSettings (id, settings) VALUES (1, ?)`).run(JSON.stringify({ json: { rbac: { roles } }, meta: undefined }))
 	return db
 }
 

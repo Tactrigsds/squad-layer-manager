@@ -322,16 +322,12 @@ export function ServerActivityCharts(props: {
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 							{team1Label}:{' '}
-							<span className="font-mono font-semibold">
-								{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}
-							</span>
+							<span className="font-mono font-semibold">{overallKD.team1Ratio >= 999 ? '∞' : overallKD.team1Ratio.toFixed(2)}</span>
 						</span>
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
 							{team2Label}:{' '}
-							<span className="font-mono font-semibold">
-								{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}
-							</span>
+							<span className="font-mono font-semibold">{overallKD.team2Ratio >= 999 ? '∞' : overallKD.team2Ratio.toFixed(2)}</span>
 						</span>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
@@ -339,16 +335,12 @@ export function ServerActivityCharts(props: {
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 							{team1Label}:{' '}
-							<span className="font-mono font-semibold">
-								{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}
-							</span>
+							<span className="font-mono font-semibold">{overallWD.team1Ratio >= 999 ? '∞' : overallWD.team1Ratio.toFixed(2)}</span>
 						</span>
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team2Color }}></span>
 							{team2Label}:{' '}
-							<span className="font-mono font-semibold">
-								{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}
-							</span>
+							<span className="font-mono font-semibold">{overallWD.team2Ratio >= 999 ? '∞' : overallWD.team2Ratio.toFixed(2)}</span>
 						</span>
 					</div>
 				</div>

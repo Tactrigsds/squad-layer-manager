@@ -311,12 +311,7 @@ function CompactGrid({
 	return (
 		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
 			{entries.map((entry) => (
-				<CompactEntry
-					key={entry.id}
-					entry={entry}
-					onDetails={onDetails}
-					onUnpin={onUnpin ? () => onUnpin(entry.cmdId) : undefined}
-				/>
+				<CompactEntry key={entry.id} entry={entry} onDetails={onDetails} onUnpin={onUnpin ? () => onUnpin(entry.cmdId) : undefined} />
 			))}
 		</div>
 	)
@@ -601,8 +596,7 @@ export default function CommandsPage() {
 				<header className="pt-1 pb-3">
 					<h1 className="text-xl font-semibold">Ingame Commands</h1>
 					<p className="pt-1 text-sm text-muted-foreground">
-						Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring
-						spaces.
+						Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
 					</p>
 				</header>
 				{(pinnedShortcut || quickRefShortcut) && (
@@ -615,9 +609,7 @@ export default function CommandsPage() {
 								onUnpin={ClientOnlySettings.Actions.toggleCommandPinned}
 							/>
 						)}
-						{quickRefShortcut && (
-							<CompactSection title="Quick Reference" section={quickRefShortcut} onDetails={navigateToEntry} />
-						)}
+						{quickRefShortcut && <CompactSection title="Quick Reference" section={quickRefShortcut} onDetails={navigateToEntry} />}
 					</div>
 				)}
 				<div className="flex gap-4">
@@ -701,12 +693,7 @@ export default function CommandsPage() {
 								<div className="divide-y divide-border/70">
 									{section.entries.map((entry) => (
 										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
-											<CommandEntry
-												entry={entry}
-												settings={settings}
-												pinned={pinnedSet.has(entry.cmdId)}
-												onLink={linkToEntry}
-											/>
+											<CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
 										</div>
 									))}
 								</div>

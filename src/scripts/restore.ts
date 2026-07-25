@@ -99,11 +99,7 @@ function pick(): Candidate {
 	if (args.values['pre-migration']) wanted = wanted.filter((c) => c.kind === 'pre-migration')
 	if (commitSha) wanted = wanted.filter((c) => DbBackup.shaMatchesRequest(c.sha, commitSha))
 	if (wanted.length === 0) {
-		const scope = [
-			args.values['pre-migration'] ? 'pre-migration ' : '',
-			`backups of ${db}`,
-			commitSha ? ` from commit ${commitSha}` : '',
-		]
+		const scope = [args.values['pre-migration'] ? 'pre-migration ' : '', `backups of ${db}`, commitSha ? ` from commit ${commitSha}` : '']
 		fail(`no ${scope.join('')} in ${ENV.BACKUPS_DIR}`)
 	}
 	return wanted[0]

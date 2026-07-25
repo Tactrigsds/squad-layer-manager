@@ -385,19 +385,14 @@ export const matchHistoryRouter = {
 					E.and(
 						E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
 						E.eq(Schema.playerEventAssociations.playerId, playerId),
-						E.ne(
-							Schema.playerEventAssociations.assocType,
-							SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant'],
-						),
+						E.ne(Schema.playerEventAssociations.assocType, SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']),
 					),
 				)
 				.where(E.inArray(Schema.serverEvents.matchId, historicalMatchIds))
 				.groupBy(Schema.serverEvents.matchId)
 
 			// most-recent match first (matchId is monotonic with recency)
-			const matchesWithEvents = matchCountRows
-				.map((r) => ({ matchId: r.matchId, count: r.count }))
-				.sort((a, b) => b.matchId - a.matchId)
+			const matchesWithEvents = matchCountRows.map((r) => ({ matchId: r.matchId, count: r.count })).sort((a, b) => b.matchId - a.matchId)
 
 			let index = input.cursor === undefined ? 0 : matchesWithEvents.findIndex((m) => m.matchId < input.cursor!)
 			if (index === -1) index = matchesWithEvents.length
@@ -477,9 +472,7 @@ export const matchHistoryRouter = {
 					E.and(
 						E.eq(Schema.serverEvents.matchId, matchId),
 						E.or(
-							otherPlayers.size > 0
-								? E.inArray(Schema.playerEventAssociations.playerId, [...otherPlayers.values()])
-								: sql`1=0`,
+							otherPlayers.size > 0 ? E.inArray(Schema.playerEventAssociations.playerId, [...otherPlayers.values()]) : sql`1=0`,
 							E.inArray(Schema.squadEventAssociations.squadId, [input.uniqueSquadId]),
 							E.eq(Schema.serverEvents.type, 'NEW_GAME'),
 						),

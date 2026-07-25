@@ -34,8 +34,8 @@ export function HeadlessDialogExample() {
 
 					<div className="py-4">
 						<p className="text-sm text-muted-foreground">
-							Are you absolutely sure you want to delete your account? All of your projects, settings, and data will be
-							permanently removed.
+							Are you absolutely sure you want to delete your account? All of your projects, settings, and data will be permanently
+							removed.
 						</p>
 					</div>
 

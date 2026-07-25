@@ -323,9 +323,7 @@ describe('LogEvents.parse', () => {
 			const errors: Error[] = []
 			const unknownSameChain = '[2025.11.19-18.18.26:150][549]LogSomething: Some unrecognized line'
 			const events = await collect(
-				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, unknownSameChain, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED, NEXT_TICK_EVENT].join(
-					'\n',
-				),
+				[PLAYER_CONNECTED, PLAYER_JOIN_SUCCEEDED, unknownSameChain, PLAYER_ADDED_TO_TEAM, PLAYER_RESTARTED, NEXT_TICK_EVENT].join('\n'),
 				errors,
 			)
 			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'UNKNOWN', 'PLAYER_RESTARTED'])

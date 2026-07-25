@@ -279,8 +279,7 @@ export const filtersRouter = {
 				])
 				// the update is a partial, and a field resubmitted unchanged isn't a change worth recording
 				const changedFields = Object.keys(update).filter(
-					(field) =>
-						!Obj.deepEqual((res.prevFilter as Record<string, unknown>)[field], (update as Record<string, unknown>)[field]),
+					(field) => !Obj.deepEqual((res.prevFilter as Record<string, unknown>)[field], (update as Record<string, unknown>)[field]),
 				)
 				await recordFilterChange(ctx, 'updated', id, { filterName: res.filter.name, changedFields })
 			}

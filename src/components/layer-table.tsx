@@ -964,8 +964,8 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 					<div className="text-sm text-muted-foreground">
 						{(frameState.totalRowCount ?? 0) > 0 ? (
 							<>
-								<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span>{' '}
-								matched layers
+								<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched
+								layers
 							</>
 						) : (
 							<span className="font-semibold text-foreground">No layers matched</span>
@@ -973,9 +973,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 					</div>
 				)}
 				<div
-					data-loading={
-						frameState.isFetching || initStatus.status === 'initializing' || initStatus.status === 'downloading-layers'
-					}
+					data-loading={frameState.isFetching || initStatus.status === 'initializing' || initStatus.status === 'downloading-layers'}
 					className="flex items-center space-x-2 invisible data-[loading=true]:visible "
 				>
 					<LoaderCircle className="h-4 w-4 animate-spin" />

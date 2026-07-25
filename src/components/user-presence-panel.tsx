@@ -422,8 +422,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 									const { clientId, user, presence } = entry
 									const eventText = userEventText.get(user.discordId)
 									const activityText =
-										eventText ??
-										(presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
+										eventText ?? (presence.activityState ? UP.getHumanReadableActivity(presence.activityState, layerList) : null)
 									return (
 										<div key={clientId} className="flex items-center gap-2">
 											<PresenceAvatar
@@ -442,8 +441,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
-														Last seen{' '}
-														{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+														Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 													</span>
 												)}
 												{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -479,12 +477,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 													<Tooltip key={clientId} delayDuration={0}>
 														<TooltipTrigger asChild>
 															<PresenceAvatar
-																onMouseOver={() =>
-																	UPClient.Actions.setHoveredActivityUserId(user.discordId, true)
-																}
-																onMouseOut={() =>
-																	UPClient.Actions.setHoveredActivityUserId(user.discordId, false)
-																}
+																onMouseOver={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, true)}
+																onMouseOut={() => UPClient.Actions.setHoveredActivityUserId(user.discordId, false)}
 																user={user}
 																presence={presence}
 																badge={badgeFor(entry)}
@@ -497,8 +491,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 														<TooltipContent>
 															<div className="text-center">
 																<div className="font-medium">
-																	{user.displayName}{' '}
-																	{loggedInUser?.discordId === user.discordId ? '(You)' : ''}
+																	{user.displayName} {loggedInUser?.discordId === user.discordId ? '(You)' : ''}
 																</div>
 																{presence.away && presence.lastSeen && (
 																	<div className="text-xs mt-1">
@@ -561,8 +554,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											</div>
 											{presence.away && presence.lastSeen && (
 												<div className="text-xs mt-1">
-													Last seen{' '}
-													{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+													Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 												</div>
 											)}
 											{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}

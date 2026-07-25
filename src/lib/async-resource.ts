@@ -85,17 +85,13 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 				const ctx = C.storeLinkToActiveSpan(_ctx, 'event.setup')
 				void (async () => {
 					while (refetching) {
-						const shouldBreak = await C.spanOp(
-							'refetch',
-							{ module, root: true, levels: { event: 'trace' } },
-							async (ctx: Ctx) => {
-								const activettl = Math.min(...this.observerTTLs)
-								await sleep(activettl)
-								if (!refetching) return true
-								// observers are already counted as subscribers, so skip get()'s registration
-								await this._get(ctx, { ttl: 0 })
-							},
-						)(ctx).catch(() => {
+						const shouldBreak = await C.spanOp('refetch', { module, root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
+							const activettl = Math.min(...this.observerTTLs)
+							await sleep(activettl)
+							if (!refetching) return true
+							// observers are already counted as subscribers, so skip get()'s registration
+							await this._get(ctx, { ttl: 0 })
+						})(ctx).catch(() => {
 							// abort means the last subscriber was released and teardown already unsubscribed us; any real
 							// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
 							return true

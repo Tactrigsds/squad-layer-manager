@@ -622,8 +622,7 @@ function TeamswapsUpdatedEvent({
 		) : (
 			<>
 				{actorLabel} updated the queued teamswaps (
-				{[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')}), {queued} queued for next
-				map
+				{[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')}), {queued} queued for next map
 			</>
 		)
 	const icon = <Icons.ArrowLeftRight className="h-4 w-4 text-cyan-500 shrink-0" />
@@ -729,11 +728,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		return (
 			<EventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
 				{actorLabel} demoted{' '}
-				{target && matchId !== null ? (
-					<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
-				) : (
-					'the commander'
-				)}
+				{target && matchId !== null ? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} /> : 'the commander'}
 				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
 			</EventLine>
 		)
@@ -835,11 +830,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			</EventLine>
 		)
 	}
-	if (
-		appEvent.type === 'LAYER_REQUEST_ADDED' ||
-		appEvent.type === 'LAYER_REQUEST_REMOVED' ||
-		appEvent.type === 'LAYER_REQUEST_CONSUMED'
-	) {
+	if (appEvent.type === 'LAYER_REQUEST_ADDED' || appEvent.type === 'LAYER_REQUEST_REMOVED' || appEvent.type === 'LAYER_REQUEST_CONSUMED') {
 		const icon =
 			appEvent.type === 'LAYER_REQUEST_CONSUMED' ? (
 				<Icons.CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
@@ -1231,8 +1222,8 @@ function PlayerPromotedToLeaderEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Crown className="h-4 w-4 text-yellow-400 shrink-0" />}>
-			<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} /> promoted to
-			squad leader
+			<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} /> promoted to squad
+			leader
 		</EventLine>
 	)
 }
@@ -1281,8 +1272,8 @@ function PlayerWoundedOrDiedEvent({
 			case 'teamkill':
 				return (
 					<>
-						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} /> teamkilled
-						by <PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} /> teamkilled by{' '}
+						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />
 						{weaponSuffix}
 					</>
 				)

@@ -9,9 +9,7 @@ export default function TabsList<T extends string>(props: {
 }) {
 	return (
 		<TooltipProvider>
-			<div
-				className={cn('inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground', props.className)}
-			>
+			<div className={cn('inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground', props.className)}>
 				{props.options.map((option) => {
 					const isDisabled = !!option.disabled
 					const disabledMessage = typeof option.disabled === 'string' ? option.disabled : null

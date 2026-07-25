@@ -163,8 +163,7 @@ async function getLastBackupTime(ctx: C.Db) {
 	const loggedAt = await getLastBackupEventTime(ctx)
 
 	const files = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH) : []
-	const writtenAt =
-		files.length === 0 ? undefined : Math.max(...files.map((f) => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
+	const writtenAt = files.length === 0 ? undefined : Math.max(...files.map((f) => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
 
 	if (loggedAt === undefined || writtenAt === undefined) return null
 	return Math.min(loggedAt, writtenAt)

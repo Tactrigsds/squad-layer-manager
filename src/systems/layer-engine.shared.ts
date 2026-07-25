@@ -35,9 +35,7 @@ export class LayerEngine {
 	// copy in linear memory, and the layer table is large enough that a second copy is worth avoiding
 	static async create(wasm: BufferSource | WebAssembly.Module, artifact: Uint8Array): Promise<LayerEngine> {
 		const instance =
-			wasm instanceof WebAssembly.Module
-				? await WebAssembly.instantiate(wasm, {})
-				: (await WebAssembly.instantiate(wasm, {})).instance
+			wasm instanceof WebAssembly.Module ? await WebAssembly.instantiate(wasm, {}) : (await WebAssembly.instantiate(wasm, {})).instance
 		const exports = instance.exports as unknown as Exports
 
 		const ptr = exports.alloc(artifact.byteLength)

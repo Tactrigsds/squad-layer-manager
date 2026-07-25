@@ -1124,12 +1124,7 @@ async function* processPendingEvent(
 				if (player.squadId && (!existingSquad || !SM.Squads.idsEqual(player, existingSquad))) {
 					const playerSquad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, player))
 					if (playerSquad) {
-						yield* emitLeaveSquadEvents(
-							state as StateWithCurrentMatchAndPlayers,
-							pendingEvent.time,
-							player,
-							playerSquad.uniqueId,
-						)
+						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, playerSquad.uniqueId)
 					} else {
 						log.warn(
 							`Player ${SM.PlayerIds.prettyPrint(

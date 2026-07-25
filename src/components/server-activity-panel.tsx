@@ -401,14 +401,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handleNext}
-							disabled={!canGoNext}
-							className="h-8 w-8 p-0"
-							title="Next match"
-						>
+						<Button variant="ghost" size="sm" onClick={handleNext} disabled={!canGoNext} className="h-8 w-8 p-0" title="Next match">
 							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
 						{selectedMatchOrdinal !== null && (

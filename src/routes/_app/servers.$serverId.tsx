@@ -171,8 +171,7 @@ function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string
 	const queueEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'queue'))
 	const requestEditors = ZusUtils.useStore(UPClient.Store, UPClient.Sel.editingClientCount(serverId, 'layer-requests'))
 
-	const wouldDiscard =
-		(editingQueue && queueModified && queueEditors <= 1) || (editingRequests && requestsModified && requestEditors <= 1)
+	const wouldDiscard = (editingQueue && queueModified && queueEditors <= 1) || (editingRequests && requestsModified && requestEditors <= 1)
 	const wouldDiscardRef = React.useRef(wouldDiscard)
 	wouldDiscardRef.current = wouldDiscard
 

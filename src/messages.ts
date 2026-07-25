@@ -66,8 +66,7 @@ export const BROADCASTS = {
 					const layerName = choice ? DH.toShortLayerNameFromId(choice.layerId, undefined, displayProps) : 'Unknown'
 					return `${votes} votes - (${tally.percentages.get(choiceId)?.toFixed(0)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
-			const randomChoiceExplanation =
-				tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
+			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
 			const fullText = `\nVote ${early ? 'was' : 'has'} ended${early ? ' early' : ''}:\n${resultsText.join(
 				'\n',
 			)}\n${randomChoiceExplanation}`
@@ -190,9 +189,7 @@ export const WARNS = {
 						}
 						lines.push(
 							`Next Layer${opts?.updated ? ' changed' : ''} (Chosen via vote)\n${
-								winningLayer
-									? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n')
-									: 'unknown'
+								winningLayer ? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n') : 'unknown'
 							}`,
 						)
 					} else {
@@ -291,10 +288,7 @@ export const WARNS = {
 				// a trigger that pins arguments takes a different thing from the caller, so it gets its own line
 				const shortcuts = cmd.triggers
 					.filter((t) => CMD.triggerArgs(t) !== undefined)
-					.map(
-						(t) =>
-							`[${CMD.formatTriggerUsage(id, t)}]: ${GENERAL.command.aliasDescription(CMD.describeTriggerExpansion(cmd, t))}`,
-					)
+					.map((t) => `[${CMD.formatTriggerUsage(id, t)}]: ${GENERAL.command.aliasDescription(CMD.describeTriggerExpansion(cmd, t))}`)
 				return [own, ...shortcuts]
 			})
 			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
