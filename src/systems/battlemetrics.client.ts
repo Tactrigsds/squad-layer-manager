@@ -31,7 +31,7 @@ export namespace Actions {
 	}
 }
 
-export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
+export const [usePlayerBmData, playerBmData$] = ReactRx.bindWithDefault<BM.PublicPlayerBmData>(
 	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
 		Rx.scan((acc, update) => ({ ...acc, [update.playerId]: update.data }), {} as BM.PublicPlayerBmData),
 	),
