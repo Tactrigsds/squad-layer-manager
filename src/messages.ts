@@ -189,7 +189,8 @@ export const WARNS = {
 					)
 				} else {
 					if (opts?.updated) {
-						const showNextString = commands.showNext.strings[0]
+						const showNextTrigger = CMD.primaryTrigger(commands.showNext)
+						const showNextString = showNextTrigger ? CMD.triggerString(showNextTrigger) : 'shownext'
 						const runWithPart = opts.isAdmin ? ` (run with ${showNextString})` : ''
 						lines.push(`Next layer Changed. Will be chosen via vote${runWithPart}:`)
 					} else {
@@ -265,23 +266,22 @@ export const WARNS = {
 		},
 		// `section` is the raw token typed after the help command; omitted means the quick reference. Returns one
 		// string per warn, since chat can only take a few lines at a time.
-		help(
-			commands: CMD.CommandConfigs,
-			aliases: readonly CMD.CommandAlias[] = [],
-			section?: string,
-		) {
-			const listing = CMDH.resolveHelpListing(commands, aliases, section)
+		help(commands: CMD.CommandConfigs, section?: string) {
+			const listing = CMDH.resolveHelpListing(commands, section)
 			if (listing.code === 'err:unknown-section') return [listing.msg]
 
-			const commandLines = listing.commands.map((id) => {
+			const lines = listing.commands.flatMap((id) => {
 				const cmd = commands[id]
-				const sortedStrings = cmd.strings.toSorted((a, b) => a.length - b.length)
+				const plain = cmd.triggers.filter((t) => CMD.triggerArgs(t) === undefined).map(CMD.triggerString)
+				const sortedStrings = plain.toSorted((a, b) => a.length - b.length)
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
-				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
+				const own = `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
+				// a trigger that pins arguments takes a different thing from the caller, so it gets its own line
+				const shortcuts = cmd.triggers
+					.filter((t) => CMD.triggerArgs(t) !== undefined)
+					.map((t) => `[${CMD.formatTriggerUsage(id, t)}]: ${GENERAL.command.aliasDescription(CMD.describeTriggerExpansion(cmd, t))}`)
+				return [own, ...shortcuts]
 			})
-			// an alias lists as what you type (its shortcut plus any arguments it takes) and what it expands to
-			const aliasLines = listing.aliases.map((a) => `[${a.usage}]: ${GENERAL.command.aliasDescription(a.alias.command)}`)
-			const lines = [...commandLines, ...aliasLines]
 			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
 			const groups = Arr.paged(lines, 3)
 			groups[0].unshift(`${listing.title}:`)

@@ -200,59 +200,80 @@ describe('usage strings', () => {
 		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args, ['kill'])).toBe('<player> <reason|message>')
 	})
 
-	it('formatUsage uses the first configured string', () => {
-		const usage = CMD.formatUsage('warn', { strings: ['!warn'], scopes: ['admin'], enabled: true, quickReference: false })
+	it('formatUsage uses the primary trigger', () => {
+		const usage = CMD.formatUsage('warn', { triggers: ['!warn'], scopes: ['admin'], enabled: true, quickReference: false })
 		expect(usage).toBe('Usage: !warn <player> <reason|message>')
+	})
+
+	// a trigger that pins arguments is a shortcut, so the command is named by a plain one
+	it('formatUsage skips a trigger with pinned args when picking the primary', () => {
+		const config: CMD.CommandConfig = {
+			triggers: [{ string: '!warnsp', args: '{{arg1}} spam' }, '!warn'],
+			scopes: ['admin'],
+			enabled: true,
+			quickReference: false,
+		}
+		expect(CMD.formatUsage('warn', config)).toBe('Usage: !warn <player> <reason|message>')
+		expect(CMD.formatUsage('warn', config, config.triggers[0])).toBe('Usage: !warnsp <player>')
 	})
 })
 
 describe('seedCommandConfigs', () => {
-	it('seeds missing commands with prefixed default strings and leaves stored ones alone', () => {
-		const stored = { warn: { strings: ['/w'], scopes: ['admin'], enabled: false } }
+	it('seeds missing commands with prefixed default triggers and leaves stored ones alone', () => {
+		const stored = { warn: { triggers: ['/w'], scopes: ['admin'], enabled: false } }
 		const seeded = CMD.seedCommandConfigs(stored, '/')
 		expect(seeded.warn).toEqual(stored.warn)
-		expect(seeded.help).toEqual({ strings: ['/help', '/h'], scopes: ['admin'], enabled: true, quickReference: true })
+		expect(seeded.help).toEqual({ triggers: ['/help', '/h'], scopes: ['admin'], enabled: true, quickReference: true })
 		expect(Object.keys(seeded).sort()).toEqual(Object.keys(CMD.COMMAND_DECLARATIONS).sort())
+	})
+
+	it('prefixes every declared trigger', () => {
+		const seeded = CMD.seedCommandConfigs({}, '/') as Record<string, CMD.CommandConfig>
+		expect(seeded.timeout.triggers).toEqual(['/timeout', '/to'])
 	})
 })
 
-describe('resolveAliasCommand', () => {
+describe('parseCommand', () => {
 	const configs = CMD.seedCommandConfigs({}, '!') as unknown as CMD.CommandConfigs
+	const withTrigger = (id: CMD.CommandId, trigger: CMD.CommandTrigger): CMD.CommandConfigs => ({
+		...configs,
+		[id]: { ...configs[id], triggers: [...configs[id].triggers, trigger] },
+	})
+	const msg = (message: string) => ({ message, channelType: 'ChatAdmin' } as any)
 
-	it('resolves a command string to its id and trailing tokens', () => {
-		expect(CMD.resolveAliasCommand('!broadcast Read the rules', configs)).toEqual({
+	it('passes the words through for a plain trigger', () => {
+		expect(CMD.parseCommand(msg('!timeout Alice 2h griefing hard'), configs)).toMatchObject({
 			code: 'ok',
-			cmdId: 'broadcast',
-			tokens: ['Read', 'the', 'rules'],
-			params: [],
+			cmd: 'timeout',
+			tokens: ['Alice', '2h', 'griefing', 'hard'],
 		})
 	})
 
-	it('matches command strings case-insensitively and tolerates surrounding whitespace', () => {
-		expect(CMD.resolveAliasCommand('  !BROADCAST   hi there  ', configs)).toMatchObject({ code: 'ok', cmdId: 'broadcast' })
+	// what a command alias used to do, now reached without a second lookup or a precedence rule
+	it('feeds the words through a trigger that pins arguments', () => {
+		const cfgs = withTrigger('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })
+		expect(CMD.parseCommand(msg('!to2h Alice spamming chat'), cfgs)).toMatchObject({
+			code: 'ok',
+			cmd: 'timeout',
+			tokens: ['Alice', '2h', 'spamming', 'chat'],
+		})
+		expect(CMD.parseCommand(msg('!to2h Alice'), cfgs)).toMatchObject({ code: 'ok', tokens: ['Alice', '2h'] })
 	})
 
-	// resolves as unknown rather than invalid: an alias stored before a command's strings were renamed must still load
-	it('reports an unresolvable command string separately from bad args', () => {
-		expect(CMD.resolveAliasCommand('!nosuchcommand', configs)).toMatchObject({ code: 'err:unknown-command' })
-		expect(CMD.resolveAliasCommand('', configs)).toMatchObject({ code: 'err:unknown-command' })
-		expect(CMD.resolveAliasCommand('!broadcast', configs)).toMatchObject({ code: 'err:invalid-args' })
+	it('matches triggers case-insensitively and tolerates surrounding whitespace', () => {
+		expect(CMD.parseCommand(msg('  !TIMEOUT   Alice  2h  '), configs)).toMatchObject({ code: 'ok', cmd: 'timeout' })
 	})
 
-	it('enforces required args and checks the tokens it can parse without a roster', () => {
-		expect(CMD.resolveAliasCommand('!timeout bob', configs)).toMatchObject({ code: 'err:invalid-args' })
-		expect(CMD.resolveAliasCommand('!timeout bob notaduration', configs)).toMatchObject({ code: 'err:invalid-args' })
-		expect(CMD.resolveAliasCommand('!timeout bob 2h griefing', configs)).toMatchObject({ code: 'ok', cmdId: 'timeout' })
+	it('suggests a near miss for an unknown command', () => {
+		const res = CMD.parseCommand(msg('!timeuot Alice'), configs)
+		expect(res.code).toBe('err:unknown-command')
 	})
+})
 
-	it('accepts a command whose optional args are all omitted', () => {
-		expect(CMD.resolveAliasCommand('!startvote', configs)).toEqual({ code: 'ok', cmdId: 'startVote', tokens: [], params: [] })
-	})
-
+describe('resolveTriggerArgs', () => {
 	// the shape migration 0080 had to drop: the pinned argument sits between two the caller types
 	it('maps placeholders onto the args they fill', () => {
-		const res = CMD.resolveAliasCommand('!timeout {{arg1}} 2h {{rest2}}', configs)
-		expect(res).toMatchObject({ code: 'ok', cmdId: 'timeout' })
+		const res = CMD.resolveTriggerArgs('timeout', '{{arg1}} 2h {{rest2}}')
 		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([
 			['arg1', 'player', true],
 			['rest2', 'reason', true],
@@ -260,117 +281,112 @@ describe('resolveAliasCommand', () => {
 	})
 
 	it('skips the literal token checks for an arg a placeholder fills', () => {
-		expect(CMD.resolveAliasCommand('!timeout {{arg1}} {{arg2}} {{rest3}}', configs)).toMatchObject({ code: 'ok' })
-		expect(CMD.resolveAliasCommand('!removefromsquad {{arg1}} {{rest2}}', configs)).toMatchObject({ code: 'ok' })
+		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} {{arg2}} {{rest3}}')).toMatchObject({ code: 'ok' })
+		expect(CMD.resolveTriggerArgs('removeFromSquad', '{{arg1}} {{rest2}}')).toMatchObject({ code: 'ok' })
+	})
+
+	it('still checks literal int and duration tokens', () => {
+		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} notaduration {{rest2}}')).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('removeLayerRequest', 'notanint')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
 	it('marks a placeholder that only part-fills an arg', () => {
-		const res = CMD.resolveAliasCommand('!broadcast Round ends in {{arg1}} minutes', configs)
+		const res = CMD.resolveTriggerArgs('broadcast', 'Round ends in {{arg1}} minutes')
 		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([['arg1', 'reason', false]])
 	})
 
 	it('rejects an unknown placeholder', () => {
-		expect(CMD.resolveAliasCommand('!broadcast {{palyer}}', configs)).toMatchObject({ code: 'err:invalid-args' })
-		expect(CMD.resolveAliasCommand('!broadcast {{arg}}', configs)).toMatchObject({ code: 'err:invalid-args' })
-		expect(CMD.resolveAliasCommand('!broadcast {{arg0}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{palyer}}')).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{arg}}')).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{arg0}}')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
 	it('rejects a malformed template rather than letting it render unexpanded', () => {
-		expect(CMD.resolveAliasCommand('!broadcast {{#arg1}}oops', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{#arg1}}oops')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
 	// a multi-word value in a single-word slot would silently shift every argument after it
 	it('rejects a rest placeholder in a single-word arg', () => {
-		expect(CMD.resolveAliasCommand('!timeout {{rest}} 2h', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('timeout', '{{rest}} 2h')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
-	it('rejects a placeholder the target has no argument for', () => {
-		expect(CMD.resolveAliasCommand('!startvote {{arg1}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	it('rejects a placeholder the command has no argument for', () => {
+		expect(CMD.resolveTriggerArgs('startVote', '{{arg1}}')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
 	// the caller's first word would be read as arg1's slot and thrown away, and no honest usage could be written
 	it('rejects a skipped index', () => {
-		expect(CMD.resolveAliasCommand('!broadcast {{arg2}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{arg2}}')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
 	// referenced only as a condition, so the word it stands for is never actually used
 	it('rejects a placeholder that only gates other text', () => {
-		expect(CMD.resolveAliasCommand('!broadcast rules {{^arg1}}please{{/arg1}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', 'rules {{^arg1}}please{{/arg1}}')).toMatchObject({ code: 'err:invalid-args' })
 	})
 
-	it('still reports a missing required arg the alias neither pins nor takes', () => {
-		expect(CMD.resolveAliasCommand('!timeout {{arg1}}', configs)).toMatchObject({ code: 'err:invalid-args' })
+	it('reports a required arg the template neither pins nor takes', () => {
+		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}}')).toMatchObject({ code: 'err:invalid-args' })
+	})
+
+	// a plain trigger is NOT sugar for {{rest}}: the analysis models a placeholder as one word, so {{rest}} alone
+	// reads as "player only" and leaves <duration> missing. Pass-through has to stay its own state.
+	it('does not accept a bare rest template as a stand-in for pass-through', () => {
+		expect(CMD.resolveTriggerArgs('timeout', '{{rest}}')).toMatchObject({ code: 'err:invalid-args' })
+		expect(CMD.resolveTriggerArgs('broadcast', '{{rest}}')).toMatchObject({ code: 'ok' })
 	})
 })
 
-describe('expandAlias', () => {
+describe('expandTriggerArgs', () => {
 	it('substitutes single words and the remainder', () => {
-		expect(CMD.expandAlias('!timeout {{arg1}} 2h {{rest2}}', ['Alice', 'spamming', 'chat'])).toBe('!timeout Alice 2h spamming chat')
-		expect(CMD.expandAlias('!broadcast {{rest}}', ['back', 'in', '5'])).toBe('!broadcast back in 5')
+		expect(CMD.expandTriggerArgs('{{arg1}} 2h {{rest2}}', ['Alice', 'spamming', 'chat'])).toEqual(['Alice', '2h', 'spamming', 'chat'])
+		expect(CMD.expandTriggerArgs('{{rest}}', ['back', 'in', '5'])).toEqual(['back', 'in', '5'])
 	})
 
 	// an omitted word leaves no token behind, which is what makes the argument it feeds optional
 	it('collapses the gap an omitted word leaves', () => {
-		expect(CMD.expandAlias('!timeout {{arg1}} 2h {{rest2}}', ['Alice'])).toBe('!timeout Alice 2h')
-		expect(CMD.expandAlias('!broadcast {{rest}}', [])).toBe('!broadcast')
+		expect(CMD.expandTriggerArgs('{{arg1}} 2h {{rest2}}', ['Alice'])).toEqual(['Alice', '2h'])
+		expect(CMD.expandTriggerArgs('{{rest}}', [])).toEqual([])
 	})
 
 	it('falls back to an inverted section when the word is omitted', () => {
-		const command = '!warn {{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}'
-		expect(CMD.expandAlias(command, ['Alice'])).toBe('!warn Alice spam')
-		expect(CMD.expandAlias(command, ['Alice', 'stop', 'that'])).toBe('!warn Alice stop that')
+		const args = '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}'
+		expect(CMD.expandTriggerArgs(args, ['Alice'])).toEqual(['Alice', 'spam'])
+		expect(CMD.expandTriggerArgs(args, ['Alice', 'stop', 'that'])).toEqual(['Alice', 'stop', 'that'])
 	})
 
 	it('ignores words the template never references', () => {
-		expect(CMD.expandAlias('!broadcast Read the rules', ['and', 'then', 'some'])).toBe('!broadcast Read the rules')
+		expect(CMD.expandTriggerArgs('Read the rules', ['and', 'then', 'some'])).toEqual(['Read', 'the', 'rules'])
 	})
 
 	// mustache does not re-render what it interpolates, so a caller cannot inject template syntax of their own
 	it('leaves template syntax typed by the caller alone', () => {
-		expect(CMD.expandAlias('!broadcast {{rest}}', ['{{arg1}}', 'x'])).toBe('!broadcast {{arg1}} x')
+		expect(CMD.expandTriggerArgs('{{rest}}', ['{{arg1}}', 'x'])).toEqual(['{{arg1}}', 'x'])
 	})
 })
 
-describe('formatAliasUsage', () => {
-	const configs = CMD.seedCommandConfigs({}, '!') as unknown as CMD.CommandConfigs
-	const usage = (alias: string, command: string, required: AAR.AdminActionType[] = []) => {
-		const res = CMD.resolveAliasCommand(command, configs)
-		if (res.code !== 'ok') throw new Error(`${command}: ${res.msg}`)
-		return CMD.formatAliasUsage(alias, res.params, required)
-	}
-
+describe('formatTriggerUsage', () => {
 	it('names the arg a whole-slot placeholder fills, and the placeholder otherwise', () => {
-		expect(usage('!to2h', '!timeout {{arg1}} 2h {{rest2}}')).toBe('!to2h <player> [reason|message]')
-		expect(usage('!eta', '!broadcast Round ends in {{arg1}} minutes')).toBe('!eta <arg1>')
+		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })).toBe('!to2h <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('broadcast', { string: '!eta', args: 'Round ends in {{arg1}} minutes' })).toBe('!eta <arg1>')
+	})
+
+	it("gives a plain trigger the command's own signature", () => {
+		expect(CMD.formatTriggerUsage('timeout', '!to')).toBe('!to <player> <duration> [reason|message]')
 	})
 
 	it('follows the configured reason requirement', () => {
-		expect(usage('!k', '!kick {{arg1}} {{rest2}}', ['kick'])).toBe('!k <player> <reason|message>')
-		expect(usage('!k', '!kick {{arg1}} {{rest2}}')).toBe('!k <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest2}}' }, ['kick'])).toBe('!k <player> <reason|message>')
+		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest2}}' })).toBe('!k <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('kick', '!kick', ['kick'])).toBe('!kick <player> <reason|message>')
 	})
 
 	// a default fills the arg when the word is left out, so the word itself is optional either way
 	it('reads a placeholder with a default as optional', () => {
-		expect(usage('!warnsp', '!warn {{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}')).toBe('!warnsp <player> [reason|message]')
+		const trigger = { string: '!warnsp', args: '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}' }
+		expect(CMD.formatTriggerUsage('warn', trigger)).toBe('!warnsp <player> [reason|message]')
 	})
 
-	it('is just the alias when it takes nothing', () => {
-		expect(usage('!rules', '!broadcast Read the rules')).toBe('!rules')
-	})
-})
-
-describe('findAlias', () => {
-	const configs = CMD.seedCommandConfigs({}, '!') as unknown as CMD.CommandConfigs
-	const aliases: CMD.CommandAlias[] = [{ alias: '!rules', command: '!broadcast Read the rules' }]
-
-	it('matches an alias case-insensitively', () => {
-		expect(CMD.findAlias(aliases, configs, '!RULES')).toEqual(aliases[0])
-		expect(CMD.findAlias(aliases, configs, '!nope')).toBeUndefined()
-	})
-
-	// aliases are a fallback, so shadowing a real command string with one is a no-op rather than an override
-	it('lets a real command string win on collision', () => {
-		const shadowing: CMD.CommandAlias[] = [{ alias: '!help', command: '!broadcast nope' }]
-		expect(CMD.findAlias(shadowing, configs, '!help')).toBeUndefined()
+	it('is just the string when the template pins everything', () => {
+		expect(CMD.formatTriggerUsage('broadcast', { string: '!rules', args: 'Read the rules' })).toBe('!rules')
 	})
 })
