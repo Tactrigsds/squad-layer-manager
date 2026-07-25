@@ -91,6 +91,14 @@ function scopeValue(parent$: ValueState, key: string | number): ValueState {
 	return child$
 }
 
+// derive a child value-state through a projection rather than a key, for a child whose shape in the parent varies
+// (a union member). Same contract as scopeValue.
+function mapValue<T, U>(parent$: ValueState<T>, project: (v: T) => U): ValueState<U> {
+	const child$ = parent$.pipe(Rx.map(project), Rx.distinctUntilChanged()) as ValueState<U>
+	child$.getValue = () => project(parent$.getValue())
+	return child$
+}
+
 // current value of a field, re-read on both emissions and reset$. For widgets that render controlled.
 function useFieldValue<T>(value$: ValueState<T>, reset$: Rx.Observable<void>): T {
 	const [v, setV] = React.useState<T>(() => value$.getValue())
@@ -201,7 +209,7 @@ function useMessageVars(value$: ValueState): Record<string, string> {
 	return vars
 }
 
-// per-form options. `idPrefix` allowedChats the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
+// per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
 // settings + one per server) don't collide; it stays `setting:*` so the TOC scroll-spy and hash nav still match.
 const FormOptionsContext = React.createContext<{ idPrefix: string }>({ idPrefix: 'setting:' })
 
@@ -1011,8 +1019,14 @@ const NEW_TRIGGER_ARGS = '{{rest}}'
 // bespoke editor for a command's `triggers` array (inline-prefixed, short). A plain trigger is one input; pinning
 // arguments to it grows a second one on the same row rather than moving it to a table of its own, since it is still
 // just a way of running this command.
-function CommandTriggersField({ value$, reset$, onChange }: OverrideProps) {
+function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps & { cmdId: CMD.CommandId }) {
 	const triggers = (useFieldValue(value$, reset$) as CMD.CommandTrigger[] | undefined) ?? []
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
+	// document would re-render all of them on every keystroke anywhere in the form
+	const requireReasonFor$ = React.useMemo(() => scopeValue(root$, 'requireReasonFor'), [root$])
+	const requireReasonFor = useFieldValue(requireReasonFor$, reset$) as AAR.AdminActionType[] | undefined
+	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
 	const current = () => ((value$.getValue() as CMD.CommandTrigger[]) ?? [])
 	function structural(next: CMD.CommandTrigger[]) {
 		onChange(next)
@@ -1030,7 +1044,7 @@ function CommandTriggersField({ value$, reset$, onChange }: OverrideProps) {
 					<div key={idx} className="flex items-center gap-1">
 						<div className="w-40 shrink-0">
 							<TextInputField
-								value$={args === undefined ? trigger$ : scopeValue(trigger$, 'string')}
+								value$={mapValue(trigger$, (t) => CMD.triggerString(t ?? ''))}
 								reset$={reset$}
 								numeric={false}
 								placeholder="prefix + command"
@@ -1055,11 +1069,16 @@ function CommandTriggersField({ value$, reset$, onChange }: OverrideProps) {
 								<>
 									<div className="min-w-0 flex-1">
 										<TextInputField
-											value$={scopeValue(trigger$, 'args')}
+											value$={mapValue(trigger$, (t) => CMD.triggerArgs(t) ?? '')}
 											reset$={reset$}
 											numeric={false}
 											placeholder="{{arg1}} 2h {{rest2}}"
-											onChange={(v) => setAt(idx, { string: CMD.triggerString(current()[idx] ?? ''), args: v ?? '' })}
+											onChange={(v) => {
+												const t = current()[idx] ?? ''
+												// Unpin's reset pulse reaches this input before it unmounts; taking that for an edit would re-pin the row
+												if (CMD.triggerArgs(t) === undefined) return
+												setAt(idx, { string: CMD.triggerString(t), args: v ?? '' })
+											}}
 										/>
 									</div>
 									<Button
@@ -1091,17 +1110,33 @@ function CommandTriggersField({ value$, reset$, onChange }: OverrideProps) {
 				<Button type="button" variant="outline" size="sm" onClick={() => structural([...current(), ''])}>
 					<Icons.Plus className="mr-1 h-4 w-4" />Add
 				</Button>
-				{
-					/* only where a template is actually being edited: this field renders once per command, and the hint under
-				    every one of them buries the commands themselves */
-				}
-				{triggers.some((t) => CMD.triggerArgs(t) !== undefined) && (
-					<span className="text-xs text-muted-foreground">
-						A template over the words typed after the trigger: {'{{arg1}}'} is the first, {'{{rest2}}'}{' '}
-						is everything from the second on, and {'{{^arg2}}default{{/arg2}}'} fills one in when it is left out.
-					</span>
-				)}
 			</div>
+			{
+				/* only where a template is actually being edited: this field renders once per command, and the signature under
+			    every one of them buries the commands themselves */
+			}
+			{triggers.some((t) => CMD.triggerArgs(t) !== undefined) && (
+				<div className="space-y-0.5 text-xs text-muted-foreground">
+					{signature.length === 0
+						? <span>This command takes no arguments, so pinned args can only be fixed text.</span>
+						: (
+							<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+								<span>Takes</span>
+								{signature.map(({ ref, arg }) => (
+									<span key={ref} className="whitespace-nowrap">
+										<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
+										<span className="ml-1 font-mono">{arg}</span>
+									</span>
+								))}
+							</div>
+						)}
+					<span>
+						A template over the words typed after the trigger. {'{{^arg2}}default{{/arg2}}'} fills one in when it is left out; {'{{rest2}}'}
+						{' '}
+						takes everything from the second word on.
+					</span>
+				</div>
+			)}
 		</div>
 	)
 }
@@ -1109,7 +1144,8 @@ function CommandTriggersField({ value$, reset$, onChange }: OverrideProps) {
 // compact editor for a single command (`commands.<id>`): collapses the triggers/allowedChats/enabled sub-sections into a
 // couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
 // shell. Schema issues (e.g. a trigger missing an allowed prefix) still surface under the card via the field's issues.
-function CommandCard({ value$, reset$, onChange }: OverrideProps) {
+function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
+	const cmdId = path[1] as CMD.CommandId
 	const cfg = (useFieldValue(value$, reset$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
 	const allowedChats = cfg.allowedChats ?? []
 	const enabled = cfg.enabled ?? true
@@ -1125,7 +1161,7 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 					Triggers{' '}
 					<HelpTip text="Strings that run this command, each starting with one of the allowed prefixes. Pin arguments to one to make it a shortcut." />
 				</span>
-				<CommandTriggersField value$={triggers$} reset$={reset$} onChange={(v) => patch({ triggers: v })} path={[]} />
+				<CommandTriggersField value$={triggers$} reset$={reset$} onChange={(v) => patch({ triggers: v })} path={[]} cmdId={cmdId} />
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="flex items-center gap-2">
@@ -3852,7 +3888,7 @@ export default function SettingsForm(
 		// the last-saved baseline the draft was seeded from; powers each field's "reset to saved" button. May be
 		// undefined while the settings are still loading.
 		saved?: any
-		// allowedChats field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
+		// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
 		idPrefix?: string
 		// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
 		groups?: SettingsGroup[]
