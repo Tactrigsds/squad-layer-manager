@@ -185,7 +185,8 @@ export function buildExamples(
 	requiredReasonActions: readonly AAR.AdminActionType[] = [],
 ): CommandExample[] {
 	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
-	const cmdString = config.strings[0] ?? id
+	const primary = CMD.primaryTrigger(config)
+	const cmdString = primary ? CMD.triggerString(primary) : id
 	const firstOptional = args.findIndex((def) => argOptional(def, requiredReasonActions))
 	const minimal = firstOptional === -1 ? args.length : firstOptional
 
@@ -209,48 +210,32 @@ export function buildExamples(
 // -------- help listings --------
 
 // what a help command lists. A bare `!help` answers with the quick reference, since an admin mid-match wants the
-// handful of commands they actually use, not thirty lines paged into chat.
-// an alias as listed: `usage` is what the caller types, which for an alias with placeholders is more than its
-// shortcut (`/to2h <player> [reason]`)
-export type AliasListing = { alias: CMD.CommandAlias; usage: string }
-
+// handful of commands they actually use, not thirty lines paged into chat. A command's shortcut triggers ride along
+// with it rather than being listed separately: they are the same command, reached a different way.
 export type HelpListing =
-	| { code: 'ok'; title: string; commands: CMD.CommandId[]; aliases: AliasListing[]; hint?: string }
+	| { code: 'ok'; title: string; commands: CMD.CommandId[]; hint?: string }
 	| { code: 'err:unknown-section'; msg: string }
 
 const sectionOptions = () => CMD.sectionTokens().join(', ')
 
-// resolves what `!help [section]` should list. Only enabled commands are listed, and aliases whose target is disabled
-// or missing are dropped: neither can actually be run.
-export function resolveHelpListing(
-	configs: CMD.CommandConfigs,
-	aliases: readonly CMD.CommandAlias[],
-	sectionToken: string | undefined,
-): HelpListing {
+// resolves what `!help [section]` should list. Only enabled commands are listed: a disabled one cannot be run.
+export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: string | undefined): HelpListing {
 	const runnable = (id: CMD.CommandId) => configs[id].enabled
-	const aliasesFor = (section: CMD.CommandSection | 'all' | 'quick-reference'): AliasListing[] =>
-		aliases.flatMap((alias) => {
-			const res = CMD.resolveAliasCommand(alias.command, configs)
-			if (res.code !== 'ok' || !configs[res.cmdId].enabled) return []
-			if (section === 'quick-reference' && !configs[res.cmdId].quickReference) return []
-			if (section !== 'all' && section !== 'quick-reference' && CMD.COMMAND_DECLARATIONS[res.cmdId].section !== section) return []
-			return [{ alias, usage: CMD.formatAliasUsage(alias.alias, res.params) }]
-		})
 
 	if (sectionToken === undefined) {
 		const commands = CMD.COMMAND_IDS.filter((id) => runnable(id) && configs[id].quickReference)
-		const helpString = configs.help.strings[0] ?? 'help'
+		const primary = CMD.primaryTrigger(configs.help)
+		const helpString = primary ? CMD.triggerString(primary) : 'help'
 		return {
 			code: 'ok',
 			title: 'Commands',
 			commands,
-			aliases: aliasesFor('quick-reference'),
 			hint: `More: ${helpString} <section> -- ${sectionOptions()}`,
 		}
 	}
 
 	if (sectionToken.trim().toLowerCase() === CMD.ALL_SECTIONS_TOKEN) {
-		return { code: 'ok', title: 'All commands', commands: CMD.COMMAND_IDS.filter(runnable), aliases: aliasesFor('all') }
+		return { code: 'ok', title: 'All commands', commands: CMD.COMMAND_IDS.filter(runnable) }
 	}
 
 	const section = CMD.resolveSectionToken(sectionToken)
@@ -261,7 +246,6 @@ export function resolveHelpListing(
 		code: 'ok',
 		title: `${CMD.COMMAND_SECTIONS[section].label} commands`,
 		commands: CMD.commandsInSection(section).filter(runnable),
-		aliases: aliasesFor(section),
 	}
 }
 

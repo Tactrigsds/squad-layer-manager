@@ -1,6 +1,6 @@
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object'
-import { BasicStrNoWhitespace, HumanTime, ParsableBigIntSchema } from '@/lib/zod'
+import { HumanTime, ParsableBigIntSchema } from '@/lib/zod'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
@@ -137,7 +137,7 @@ export type RbacSettings = z.infer<typeof RbacSettingsSchema>
 
 // Grants reference settings by path, so a setting a later SLM release renames or removes leaves behind grants the
 // RbacSettingsSchema refine above rejects -- taking the whole install down at boot over a reference that is merely
-// stale. Drop those grants instead (same reasoning as unresolvable command aliases below) and hand the caller a
+// stale. Drop those grants instead and hand the caller a
 // description of each one to report. Operates on raw settings, so it must run before the schema parses them.
 export function trimStaleSettingsGrants(raw: unknown): { settings: unknown; dropped: string[] } {
 	const dropped: string[] = []
@@ -252,21 +252,10 @@ export const GlobalSettingsSchema = z.object({
 	),
 	warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
 	allowedPrefixes: z.array(CMD.PrefixSchema).min(1).prefault([CMD.FALLBACK_PREFIX]).describe(
-		'Prefixes an in-game command may start with. Every command string and command alias must begin with one of these.',
+		'Prefixes an in-game command may start with. Every command trigger must begin with one of these.',
 	),
 	defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
 		'The allowed prefix that commands introduced by future SLM versions are seeded with',
-	),
-	commandAliases: z.array(z.object({
-		alias: BasicStrNoWhitespace.describe('The shortcut typed in chat, including its prefix'),
-		command: z.string().min(1).describe(
-			'The command this alias runs, including its prefix. Arguments may be pinned here or taken from chat with '
-				+ CMD.ALIAS_REF_SYNTAX,
-		),
-	})).prefault([]).describe(
-		'Shortcuts to commands, e.g. /rules = /broadcast Read the rules. The command text is a template over the words typed after the '
-			+ 'alias, so /to2h = /timeout {{arg1}} 2h {{rest2}} pins the duration and takes the player and reason from chat. An alias runs '
-			+ 'in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
 	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
@@ -338,40 +327,32 @@ export const GlobalSettingsSchema = z.object({
 		})
 	}
 
-	// command strings and alias strings share one namespace: a real command always wins on collision, so an alias
-	// that clashes is unreachable. matching is case-insensitive, like dispatch.
-	const commandOwner = new Map<string, string>()
+	// every trigger string across every command is one namespace, so dispatch never has to break a tie.
+	// matching is case-insensitive, like dispatch.
+	const triggerOwner = new Map<string, string>()
 	for (const [id, cmd] of Object.entries(val.commands ?? {})) {
-		;(cmd.strings ?? []).forEach((s, j) => {
-			if (!hasAllowedPrefix(s)) prefixIssue(s, 'Command string', ['commands', id, 'strings', j])
-			commandOwner.set(s.toLowerCase(), id)
+		;(cmd.triggers ?? []).forEach((trigger, j) => {
+			const string = CMD.triggerString(trigger)
+			if (!hasAllowedPrefix(string)) prefixIssue(string, 'Trigger', ['commands', id, 'triggers', j])
+			const key = string.toLowerCase()
+			const owner = triggerOwner.get(key)
+			if (owner !== undefined) {
+				ctx.addIssue({
+					code: 'custom',
+					message: owner === id
+						? `Duplicate trigger "${string}"`
+						: `Trigger "${string}" is already used by the "${owner}" command. Pick a different string.`,
+					path: ['commands', id, 'triggers', j],
+				})
+			}
+			triggerOwner.set(key, id)
+
+			const args = CMD.triggerArgs(trigger)
+			if (args === undefined) return
+			const res = CMD.resolveTriggerArgs(id as CMD.CommandId, args)
+			if (res.code !== 'ok') ctx.addIssue({ code: 'custom', message: res.msg, path: ['commands', id, 'triggers', j, 'args'] })
 		})
 	}
-	const seenAlias = new Set<string>()
-	val.commandAliases?.forEach((alias, i) => {
-		const key = alias.alias.toLowerCase()
-		if (!hasAllowedPrefix(alias.alias)) prefixIssue(alias.alias, 'Alias', ['commandAliases', i, 'alias'])
-		const owner = commandOwner.get(key)
-		if (owner) {
-			ctx.addIssue({
-				code: 'custom',
-				message: `Alias "${alias.alias}" clashes with the command "${owner}". Pick a different string.`,
-				path: ['commandAliases', i, 'alias'],
-			})
-		}
-		if (seenAlias.has(key)) {
-			ctx.addIssue({ code: 'custom', message: `Duplicate alias "${alias.alias}"`, path: ['commandAliases', i, 'alias'] })
-		}
-		seenAlias.add(key)
-
-		// only malformed args are an error here. An alias whose command string doesn't resolve is left to load and
-		// surface as unavailable in the editor and the help listings: a later SLM release can rename a command's
-		// strings, and stored settings that predate the rename must not stop the server booting.
-		const res = CMD.resolveAliasCommand(alias.command, val.commands as CMD.CommandConfigs)
-		if (res.code === 'err:invalid-args') {
-			ctx.addIssue({ code: 'custom', message: res.msg, path: ['commandAliases', i, 'command'] })
-		}
-	})
 
 	const seenTagId = new Set<string>()
 	const seenTagLabel = new Set<string>()
@@ -393,7 +374,7 @@ export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>
 export type GlobalSettingsInput = z.input<typeof GlobalSettingsSchema>
 
 // seeds configs for commands the stored settings predate, using their own defaultPrefix. Must be applied to raw
-// settings before GlobalSettingsSchema parses them (the schema has no defaults for command strings, since they
+// settings before GlobalSettingsSchema parses them (the schema has no defaults for command triggers, since they
 // depend on a sibling field). Call this instead of parsing raw global settings directly.
 export function parseGlobalSettings(raw: unknown) {
 	const input = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}

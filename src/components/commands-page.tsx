@@ -6,6 +6,7 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as ZusUtils from '@/lib/zustand'
 import * as Messages from '@/messages'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
@@ -15,14 +16,12 @@ import type { PublicSettings } from '@/systems/settings.server'
 import * as Icons from 'lucide-react'
 import * as React from 'react'
 
-type CommandAlias = PublicSettings['commandAliases'][number]
-
-// an alias as listed under the command it runs: what a caller types, and the command text it expands to
-type ResolvedAlias = { alias: CommandAlias; usage: string }
+// a trigger that pins arguments, as listed under its command: what a caller types, and what it runs
+type Shortcut = { usage: string; expansion: string }
 
 // one listing in the page body. `key` identifies the command itself; `id` is the DOM anchor, which also carries the
-// section, since a pinned or quick-reference command is listed again under its own section. An alias is not an entry
-// of its own: it belongs to the command it runs, and is listed (and searched) as part of it.
+// section, since a pinned or quick-reference command is listed again under its own section. A shortcut trigger is not
+// an entry of its own: it belongs to the command it runs, and is listed (and searched) as part of it.
 type Entry = {
 	key: string
 	id: string
@@ -30,7 +29,7 @@ type Entry = {
 	search: string
 	cmdId: CMD.CommandId
 	cmd: CMD.CommandConfig
-	aliases: ResolvedAlias[]
+	shortcuts: Shortcut[]
 }
 
 type Section = { id: string; label: string; blurb?: string; entries: Entry[] }
@@ -89,10 +88,10 @@ function PinButton({ cmdId, pinned }: { cmdId: CMD.CommandId; pinned: boolean })
 // the per-argument breakdown and worked examples, shown when a command is expanded. Both are derived from the
 // command's declaration plus the installation's configured reasons/broadcasts (see command-help.models).
 function CommandDetails(
-	{ cmdId, cmd, aliases, settings }: {
+	{ cmdId, cmd, shortcuts, settings }: {
 		cmdId: CMD.CommandId
 		cmd: CMD.CommandConfig
-		aliases: ResolvedAlias[]
+		shortcuts: Shortcut[]
 		settings: PublicSettings
 	},
 ) {
@@ -136,13 +135,13 @@ function CommandDetails(
 					</div>
 				))}
 			</div>
-			{aliases.length > 0 && (
+			{shortcuts.length > 0 && (
 				<div className="space-y-1">
-					<p className="text-xs font-medium text-muted-foreground">Aliases</p>
-					{aliases.map(({ alias, usage }) => (
-						<div key={alias.alias} className="flex flex-wrap items-center gap-2">
+					<p className="text-xs font-medium text-muted-foreground">Shortcuts</p>
+					{shortcuts.map(({ usage, expansion }) => (
+						<div key={usage} className="flex flex-wrap items-center gap-2">
 							<CopyableCommand cmdString={usage} chatScope={chatScope} />
-							<span className="text-xs text-muted-foreground">{Messages.GENERAL.command.aliasDescription(alias.command)}</span>
+							<span className="text-xs text-muted-foreground">{Messages.GENERAL.command.aliasDescription(expansion)}</span>
 						</div>
 					))}
 				</div>
@@ -194,7 +193,7 @@ function CommandEntry(
 			</div>
 			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[cmdId]}</p>
 			<CollapsibleContent>
-				<CommandDetails cmdId={cmdId} cmd={cmd} aliases={entry.aliases} settings={settings} />
+				<CommandDetails cmdId={cmdId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
 			</CollapsibleContent>
 		</Collapsible>
 	)
@@ -251,7 +250,7 @@ function detailsAnchorId(entry: Entry): string {
 // Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
 // `onUnpin` is set for the pinned cards, adding an unpin control at the bottom-left.
 function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
-	const string = entry.cmd.strings[0] ?? entry.cmdId
+	const string = entry.label
 	const description = Messages.GENERAL.command.descriptions[entry.cmdId]
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
@@ -358,50 +357,43 @@ function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps:
 	return activeId
 }
 
-// An alias is searched as part of the command it runs, so typing its shortcut finds that command rather than nothing.
-// Only resolvable aliases are listed: one whose command string no longer exists cannot be run, and the settings
-// editor is where that gets reported.
-function aliasesByCommand(settings: PublicSettings): Partial<Record<CMD.CommandId, ResolvedAlias[]>> {
-	const out: Partial<Record<CMD.CommandId, ResolvedAlias[]>> = {}
-	for (const alias of settings.commandAliases) {
-		const res = CMD.resolveAliasCommand(alias.command, settings.commands)
-		if (res.code !== 'ok') continue
-		const usage = CMD.formatAliasUsage(alias.alias, res.params, settings.requireReasonFor)
-		;(out[res.cmdId] ??= []).push({ alias, usage })
-	}
-	return out
-}
-
+// a shortcut is searched as part of the command it runs, so typing one finds that command rather than nothing
 function commandEntry(
 	sectionId: string,
 	cmdId: CMD.CommandId,
 	cmd: CMD.CommandConfig,
 	sectionLabel: string,
-	aliases: ResolvedAlias[],
+	requiredReasonActions: readonly AAR.AdminActionType[],
 ): Entry {
+	const primary = CMD.primaryTrigger(cmd)
+	const shortcuts = cmd.triggers
+		.filter((t) => CMD.triggerArgs(t) !== undefined)
+		.map((t) => ({
+			usage: CMD.formatTriggerUsage(cmdId, t, requiredReasonActions),
+			expansion: CMD.describeTriggerExpansion(cmd, t),
+		}))
 	return {
 		key: cmdId,
 		id: `${sectionId}/command:${cmdId}`,
-		label: cmd.strings[0] ?? cmdId,
+		label: primary ? CMD.triggerString(primary) : cmdId,
 		search: [
 			cmdId,
-			...cmd.strings,
+			...cmd.triggers.map(CMD.triggerString),
 			Messages.GENERAL.command.descriptions[cmdId],
 			sectionLabel,
-			...aliases.flatMap((a) => [a.alias.alias, a.alias.command]),
-			aliases.length > 0 ? 'alias shortcut' : '',
+			...shortcuts.map((s) => s.expansion),
+			shortcuts.length > 0 ? 'alias shortcut' : '',
 		].join(' ').toLowerCase(),
 		cmdId,
 		cmd,
-		aliases,
+		shortcuts,
 	}
 }
 
 function buildSections(settings: PublicSettings, pinnedCommands: string[]): Section[] {
 	const sections: Section[] = []
-	const aliases = aliasesByCommand(settings)
 	const entry = (sectionId: string, cmdId: CMD.CommandId, sectionLabel: string) =>
-		commandEntry(sectionId, cmdId, settings.commands[cmdId], sectionLabel, aliases[cmdId] ?? [])
+		commandEntry(sectionId, cmdId, settings.commands[cmdId], sectionLabel, settings.requireReasonFor)
 
 	// pins are per-browser, so an id can outlive the command it named (a downgrade, or a renamed id)
 	const pinned = pinnedCommands.filter((id): id is CMD.CommandId => id in settings.commands)
