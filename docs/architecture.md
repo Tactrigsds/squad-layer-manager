@@ -106,10 +106,41 @@ Systems pair up across the wire: `layer-queue.server.ts` / `layer-queue.client.t
 Nontrivial modules are imported as namespaces, with a short abbreviation that is **globally consistent across
 the app**. `import * as F from '@/models/filter.models'` means `F` is the filter model in every file that uses
 it. Likewise `L` (layer), `LC` (layer-columns), `LQY` (layer-queries), `SM` (squad models), `CS`
-(context-shared), `C` (server context), `SLL` (shared-layer-list), `Obj`, `Arr`, `Rx`.
+(context-shared), `C` (server context), `SLL` (shared-layer-list).
 
-A reader who knows the abbreviations reads any file quickly. The cost is a vocabulary you have to learn that
-is written down nowhere but convention.
+A reader who knows the abbreviations reads any file quickly, so an alias is only worth anything if it is the
+_only_ one for its module. The lib vocabulary:
+
+| namespace                        | module                                                        |                                                    |
+| -------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| `Arr` `Obj` `Str` `Gen`          | `array-utils` `object-utils` `string-utils` `generator-utils` | free functions over a builtin                      |
+| `MapUtils` `SetUtils` `ZodUtils` | `map-utils` `set-utils` `zod-utils`                           | no good abbreviation, so none is invented          |
+| `Prom`                           | `promise-utils`                                               | promises, abort signals, mutex acquisition         |
+| `Rx`                             | `rxjs`                                                        | rxjs itself, plus our own operators under `Rx.Ext` |
+| `Zus`                            | `zustand`                                                     | zustand itself, plus our store helpers             |
+| `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
+| `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
+
+The file is always the full type name plus `-utils`; the namespace keeps an abbreviation only where a good one
+exists. Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside
+the convention.
+
+#### Third-party libraries are wrapped, not imported
+
+rxjs, zustand and react-rxjs are each reached through exactly one module in `src/lib`, which re-exports the
+package alongside our own additions. So `Rx.map` and `Rx.Ext.traceTag` come out of one namespace, and there is
+no per-file choice between two spellings of the same thing.
+
+The re-exports are enumerated rather than `export *` wherever we shadow a name the package also exports:
+`lib/zustand.ts` defines its own `useStore` and `Mutate`, and a star re-export would let ours win silently.
+Where the two things genuinely differ, they are named for the difference rather than for their origin, e.g.
+`ReactRx.bind` (guarded, can suspend) against `ReactRx.bindWithDefault` (the package's, cannot).
+
+`Rx.Ext` lives in its own module rather than as `export namespace Ext` inside the barrel: a TS namespace
+compiles to an IIFE with no pure annotation, which would pin the whole rxjs re-export in the client bundle.
+
+Wrapping is for libraries we extend. immer, date-fns, async-mutex and superjson are imported directly, because
+a barrel that adds nothing is just indirection.
 
 ### Result codes instead of exceptions
 
@@ -383,10 +414,10 @@ return <ServerDashboard stores={FRM.toProp(frameKey)} />
 slice type, an `init*(args)`, and its own `Sel`/`Actions`, which a real frame composes into its state by
 intersecting the types and calling `init*` from `setup()`. `squad-server.frame.ts` composes four of them
 (chat, server settings, layer queue, teamswaps). Partials get a scoped view of the composite state via
-`ZusUtils.toPartialSetter`/`toPartialGetter`. This is how a large frame stays modular without every slice
+`Zus.toPartialSetter`/`toPartialGetter`. This is how a large frame stays modular without every slice
 needing its own FrameManager entry.
 
-### ZusUtils
+### Zus
 
 `src/lib/zustand.ts` is the client's central abstraction. Its key type:
 
@@ -398,7 +429,7 @@ which unifies a raw zustand store, a frame instance key, a react-query options o
 `StateObservable` behind one interface. Everything downstream accepts `AnyInput`, so a component neither knows
 nor cares which of the four it was handed.
 
-`ZusUtils.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
+`Zus.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
 returns its state;
 N inputs plus a trailing selector calls `selector(...states)`; N inputs alone returns a tuple. It reads through
 `useSyncExternalStore`, caching the snapshot on the states **and** the selector's identity: the states half is
@@ -411,7 +442,7 @@ observer and re-runs its `setQueries` effect on every render. That makes the hoo
 sound only because the count is fixed for a component instance; a guard throws if it ever changes. Pass a query
 unconditionally and use its `enabled` option if you need it inert.
 
-Outside render, the counterpart is **`ZusUtils.getState`**, which mirrors the same overloads without
+Outside render, the counterpart is **`Zus.getState`**, which mirrors the same overloads without
 subscribing: one input returns its state, N inputs plus a selector calls `selector(...states)`. Both resolve
 frame keys the same way and feed the same `Sel` selectors, so the choice is only whether you want to subscribe.
 If any input is a query source, `getState` returns a **promise** (it awaits via `ensureQueryData`); that is
@@ -421,7 +452,7 @@ Merging several sources into one selector is the intended way to derive state:
 
 ```ts
 // in a component: subscribes, and re-renders when the derived value changes
-ZusUtils.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+Zus.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 ```
 
 The same selectors are reusable verbatim off the render path, applied to a `getState` read instead. From
@@ -429,20 +460,20 @@ The same selectors are reusable verbatim off the render path, applied to a `getS
 
 ```ts
 // in an event handler: reads once, subscribes to nothing
-const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
+const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
 ```
 
 The two call shapes rhyme, so moving a selector between render and handler code is a mechanical edit -- the
 merged read above works off the render path too:
 
 ```ts
-const presence = ZusUtils.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+const presence = Zus.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 ```
 
 Frame keys are recognized structurally and resolved through a resolver that `frame-manager.ts` injects at init
 (`registerFrameKeyResolver`), purely because `zustand.ts` cannot import `frame.ts` without a cycle.
 
-`ZusUtils.toObservable(store)` converts any store into an `Observable<[state, prev]>`, and is the bridge that
+`Zus.toObservable(store)` converts any store into an `Observable<[state, prev]>`, and is the bridge that
 lets frames drive RxJS pipelines from zustand state. It is also how side-effect handling works: per the
 `RbSync` rule, ops replay against several base states, so side effects never carry reduced state and instead
 react to prev/next diffs from a store subscription.
