@@ -143,7 +143,7 @@ export const orpcRouter = {
 		const names = new Set<string>()
 		for (const slice of globalState.slices.values()) {
 			try {
-				const adminList = await AdminList.adminList.get({ ...baseCtx, ...slice }, { ttl: Infinity })
+				const adminList = await AdminList.getMergedForServer({ ...baseCtx, ...slice }, slice.serverId)
 				for (const group of adminList.groups.keys()) names.add(group)
 			} catch (err) {
 				// one unreachable admin list must not deny the editor every other server's groups
@@ -456,7 +456,7 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+			const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
 			if (teamsRes.code !== 'ok') return teamsRes
 			const admins = teamsRes.players
 				.filter(p => {
@@ -792,7 +792,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		destroyed: false,
 		cleanupId: null,
 
-		...SquadRcon.initSquadRcon({ ...ctx, rcon }, cleanup, { cacheTTL: settings.rconCacheTTL, onFatalError: onResourceFatalError }),
+		...SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
+			cacheTTL: settings.rconCacheTTL,
+			onFatalError: onResourceFatalError,
+		}),
 	}
 
 	cleanup.push(
@@ -1320,7 +1323,7 @@ export async function warnPlayers(
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
 // whether they're all admins and whether they're the entire online admin roster
 async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
-	const [adminList, teamsRes] = await Promise.all([AdminList.adminList.get(ctx), ctx.server.teams.get(ctx)])
+	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
 	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
 
 	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)

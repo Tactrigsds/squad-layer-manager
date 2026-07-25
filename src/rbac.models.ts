@@ -79,8 +79,10 @@ export type RoleAssignment =
 	| { type: 'discord-role'; discordRoleId: bigint; role: Role }
 	| { type: 'discord-user'; discordUserId: bigint; role: Role }
 	| { type: 'discord-server-member'; role: Role }
-	| { type: 'admin-list-group'; role: Role; groupId: string }
-	| { type: 'ingame-admin'; role: Role }
+	// both name the admin list they speak of: which lists a server uses is per-server, so an unqualified one could not
+	// say whether it meant this server's admins or some other server's
+	| { type: 'admin-list-group'; role: Role; listId: string; groupId: string }
+	| { type: 'ingame-admin'; role: Role; listId: string }
 
 export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-server-member'] as const
 {

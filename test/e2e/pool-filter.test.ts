@@ -32,7 +32,7 @@ test.describe('pool filter', () => {
 						discordRoleIds: [],
 						discordUserIds: [String(WRITER.discordId)],
 						everyMember: false,
-						includeIngameAdmins: false,
+						ingameAdminLists: [],
 						adminListGroups: [],
 					},
 				}

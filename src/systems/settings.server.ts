@@ -9,6 +9,7 @@ import type * as CS from '@/models/context-shared'
 import * as LTag from '@/models/layer-tags.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
+import type * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models.ts'
 import type * as C from '@/server/context.ts'
@@ -97,6 +98,9 @@ export type ServerEntry = {
 	enabled: boolean
 	// true if the stored settings for this server failed schema validation (e.g. after a breaking change); it won't have a live slice until repaired
 	broken: boolean
+	// mirrored out of this server's settings so that "which admin lists speak for this server" can be answered without a
+	// db read: it is asked on every roster poll and every in-game permission check
+	adminLists: readonly SM.AdminListId[]
 }
 
 const serverRegistry = new Map<SS.ServerId, ServerEntry>()
@@ -162,6 +166,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			enabled,
 			defaultServer: row.defaultServer,
 			broken,
+			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
 		})
 	}
 	settings$.next({ scope: 'registry' })
@@ -199,6 +204,7 @@ export async function createServerEntry(ctx: C.Db, input: {
 		enabled: false,
 		defaultServer: false,
 		broken: false,
+		adminLists: newServer.settings.adminLists,
 	})
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s created', newServer.id)
@@ -363,7 +369,7 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 // settings fields that are baked into a running slice at setup time and never refreshed afterwards. `connections` requires a full
 // destroy+init restart to take effect; the admin-list fields only need the adminList resource invalidated (see
 // SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
-const ADMIN_LIST_AFFECTING_FIELDS = ['adminListSources', 'adminIdentifyingPermissions'] as const
+const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
 
 export async function updateRawServerSettings(
 	ctx: C.Db & C.User & CS.AbortSignal,
@@ -481,7 +487,7 @@ const globalRouter = {
 			outer: for (const field of ADMIN_LIST_AFFECTING_FIELDS) {
 				for (const change of changes) {
 					if (change.path.includes(field)) {
-						AdminList.adminList.invalidate(ctx)
+						AdminList.invalidateAll(ctx)
 						break outer
 					}
 				}

@@ -31,14 +31,17 @@ const RoleAssignmentsSchema = z.object({
 	discordRoleIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord role ids whose members are granted this role'),
 	discordUserIds: z.array(ParsableBigIntSchema).prefault([]).describe('Discord user ids granted this role'),
 	everyMember: z.boolean().prefault(false).describe('Grant this role to every member of the Discord server'),
-	includeIngameAdmins: z.boolean().prefault(false).describe(
-		'Grant this role to in-game admins. A player counts as an in-game admin when the admin list places them in a group '
-			+ 'holding one of the admin-identifying permissions (configured by Admin list sources / Admin identifying permissions '
-			+ 'in global settings).',
+	ingameAdminLists: z.array(SM.AdminListIdSchema).prefault([]).describe(
+		'Grant this role to the in-game admins of the named admin lists. A player counts as an admin of a list when that list '
+			+ "places them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers "
+			+ 'that actually use the named list.',
 	),
-	adminListGroups: z.array(z.string()).prefault([]).describe(
-		'Grant this role to in-game players by their admin-list group membership. A player gets it while the admin list '
-			+ 'places them in any of the selected groups, admin-identifying or not (e.g. a Whitelist reserve-slot group).',
+	adminListGroups: z.array(z.object({
+		listId: SM.AdminListIdSchema.describe('The admin list the group belongs to'),
+		groupId: z.string().min(1).describe('The group name within that list'),
+	})).prefault([]).describe(
+		'Grant this role by admin-list group membership. A player gets it while the named list places them in the named group, '
+			+ 'admin-identifying or not (e.g. a Whitelist reserve-slot group), and only on servers that use that list.',
 	),
 }).prefault({})
 
@@ -270,12 +273,10 @@ export const GlobalSettingsSchema = z.object({
 			+ '(anything typed after it is ignored), runs in the scopes of the command it points at, and loses to a real command string on collision.',
 	),
 	commands: CMD.AllCommandConfigSchema,
-	adminListSources: z.array(SM.AdminListSourceSchema).prefault([]).describe(
-		'Where to load admins from. Each source serves the same Admins.cfg the gameserver reads, in the same format.',
-	),
-	adminIdentifyingPermissions: z.array(SM.PLAYER_PERM).prefault([]).describe(
-		'In-game admin-list permissions that mark a player as an admin in SLM (e.g. "canseeadminchat"). A player granted any of these by an '
-			+ 'admin list source is treated as an admin, which drives admin-only warns and admin presence.',
+	adminLists: z.record(SM.AdminListIdSchema, SM.AdminListDefSchema).prefault({}).describe(
+		'The admin lists this install knows about, by name. Each serves the same Admins.cfg the gameserver reads, in the same format, '
+			+ 'and carries its own admin-identifying permissions. Naming them is what lets a server choose which apply to it and a role '
+			+ "assignment say which list's groups it means.",
 	),
 	rbac: RbacSettingsSchema,
 	layerTable: LQY.LayerTableConfigSchema.prefault({
@@ -649,6 +650,10 @@ export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
 export const PublicServerSettingsSchema = z
 	.object({
+		adminLists: z.array(SM.AdminListIdSchema).prefault([]).describe(
+			'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up '
+				+ 'roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
+		),
 		updatesToSquadServerDisabled: z.boolean().prefault(false).describe(
 			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just '
 				+ 'never sets the map itself. For running SLM alongside something else that owns the rotation.',
