@@ -2,13 +2,12 @@ import { createORPCClient, onError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import type { RouterClient } from '@orpc/server'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
-import * as ReactRx from '@react-rxjs/core'
 import { onlineManager, QueryClient } from '@tanstack/react-query'
 import { WebSocket } from 'partysocket'
 import * as Rx from 'rxjs'
 
 import * as AR from '@/app-routes'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as SM from '@/models/squad.models'
@@ -91,7 +90,7 @@ export const [useConnectStatus, connectStatus$] = (() => {
 		}),
 	)
 
-	return ReactRx.bind(connectStatusCold$, 'pending')
+	return ReactRx.bindWithDefault(connectStatusCold$, 'pending')
 })()
 
 connectStatus$.subscribe()
@@ -167,8 +166,8 @@ shouldWarnDisconnected$.subscribe((warn) => {
 })
 
 // suspending state observables only get their first-emit clock while the websocket is actually up, so a
-// disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see RxHelpers.bind
-RxHelpers.setTransportLive(
+// disconnect keeps them in Suspense (resolving on reconnect) instead of erroring them out. see ReactRx.bind
+ReactRx.setTransportLive(
 	connectStatus$.pipe(
 		Rx.map((status) => status === 'open'),
 		Rx.distinctUntilChanged(),

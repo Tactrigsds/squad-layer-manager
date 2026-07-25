@@ -1,4 +1,3 @@
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
@@ -23,6 +22,7 @@ import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { useForwardWheelToScroller } from '@/lib/browser'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
+import * as ReactRx from '@/lib/react-rxjs'
 import {
 	ADVANCED_GLOBAL_SETTINGS_PATHS,
 	ADVANCED_SERVER_SETTINGS_PATHS,

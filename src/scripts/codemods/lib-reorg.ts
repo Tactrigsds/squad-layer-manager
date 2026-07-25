@@ -77,12 +77,43 @@ function zustand(src: string, file: string): string {
 	return src
 }
 
+/** the one module allowed to import react-rxjs directly */
+const REACT_RXJS_BARREL = 'src/lib/react-rxjs.ts'
+
+function reactRxjs(src: string, file: string): string {
+	if (file === REACT_RXJS_BARREL) return src
+	if (!/RxHelpers|@react-rxjs/.test(src)) return src
+
+	const hadBarrel = /import \* as RxHelpers from '@\/lib\/react-rxjs(-helpers)?(\.ts)?'/.test(src)
+
+	// before RxHelpers -> ReactRx, or our guarded bind would be renamed alongside the package's
+	src = src.replace(/\bReactRx\.bind\(/g, 'ReactRx.bindWithDefault(')
+	// vote.client.ts imported the package's bind bare; both of its binds pass a default
+	src = src.replace(/^import \{ bind \} from '@react-rxjs\/core'\n/m, '')
+	if (!/\bReactRx\b/.test(src) && /(?<![.\w])bind\(/.test(src)) {
+		src = src.replace(/(?<![.\w])bind\(/g, 'ReactRx.bindWithDefault(')
+	}
+
+	src = dropImport(src, /import \* as ReactRx from '@react-rxjs\/core'/)
+	src = dropImport(src, /import \{ createSignal \} from '@react-rxjs\/utils'/)
+	src = src.replace(/(?<!\.)\bcreateSignal</g, 'ReactRx.createSignal<')
+
+	src = src.replace(/\bRxHelpers\b/g, 'ReactRx')
+	src = src.replace(/'@\/lib\/react-rxjs-helpers'/g, "'@/lib/react-rxjs'")
+
+	if (!hadBarrel && /\bReactRx\./.test(src)) {
+		const rel = file.startsWith('src/lib/') ? './react-rxjs' : '@/lib/react-rxjs'
+		src = src.replace(/^import /m, `import * as ReactRx from '${rel}'\nimport `)
+	}
+	return src
+}
+
 async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = zustand(before, file)
+		const after = reactRxjs(zustand(before, file), file)
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++

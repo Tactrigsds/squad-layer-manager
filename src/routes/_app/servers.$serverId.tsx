@@ -1,4 +1,3 @@
-import * as ReactRx from '@react-rxjs/core'
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
 import React from 'react'
 import * as Rx from 'rxjs'
@@ -9,6 +8,7 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
+import * as ReactRx from '@/lib/react-rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as UP from '@/models/user-presence'

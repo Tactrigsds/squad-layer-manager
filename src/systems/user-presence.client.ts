@@ -10,7 +10,7 @@ import * as Lifecycle from '@/lib/lifecycle'
 import * as MapUtils from '@/lib/map'
 import * as Obj from '@/lib/object'
 import * as ODSM from '@/lib/odsm'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
 import type * as ST from '@/lib/state-tree'
 import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
@@ -152,7 +152,7 @@ export type Store = {
 let loaderCtx: Lifecycle.LoaderManagerContext<ConfiguredLoaderConfig, Store>
 
 // the server opens with an 'init' update, so silence here is a genuine fault rather than an idle event feed
-const [_usePresenceUpdate, presenceUpdate$] = RxHelpers.bind<UP.PresenceUpdate>(
+const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 	'userPresence.presenceUpdate',
 	RPC.observe('userPresence.watchUpdates', () => RPC.orpc.userPresence.watchUpdates.call()),
 )
@@ -563,7 +563,7 @@ export function useActivityLoaderData<Loader extends ConfiguredLoaderConfig, O =
 
 export async function setup() {
 	// Subscribe to presence broadcast stream
-	presenceUpdate$.pipe(RxHelpers.retryHot()).subscribe((update) => {
+	presenceUpdate$.pipe(ReactRx.retryHot()).subscribe((update) => {
 		handleIncomingPresenceUpdate(update)
 	})
 
