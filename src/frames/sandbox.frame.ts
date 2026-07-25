@@ -28,6 +28,8 @@ export const CONSOLE_CHANNELS: ConsoleChannel[] = ['unified', 'rcon', 'log', 'co
 // persisted, so old entries are dropped rather than growing the tab forever.
 const MAX_EVENTS = 500
 
+export const PLAYERS_PAGE_SIZE = 15
+
 export type Store = {
 	serverId: string
 	// null until the first stream frame arrives, or when the server stops being a sandbox
@@ -35,6 +37,9 @@ export type Store = {
 	unavailable: boolean
 	events: EmuEvent[]
 	channel: ConsoleChannel
+	hideNoise: boolean
+	playerSearch: string
+	playerPage: number
 	// who the chat box speaks as, held rather than derived so it survives the roster changing under it
 	speaker: string | null
 	chatChannel: SB.PlayerChatChannel
@@ -53,6 +58,9 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 			unavailable: false,
 			events: [],
 			channel: 'unified',
+			hideNoise: true,
+			playerSearch: '',
+			playerPage: 0,
 			speaker: null,
 			chatChannel: 'ChatAll',
 		} satisfies Store,
@@ -82,11 +90,69 @@ export const frame: Frame = frameManager.createFrame<Types>({
 	setup,
 })
 
+const TICK_RATE_LINE = /Server Tick Rate:/
+
+// SLM polls the same handful of rcon commands on a timer and the game reports its tick rate on another, so most of
+// what a quiet world produces says only that nothing has changed. Dropping it is what makes the console readable at
+// a glance; the checkbox is there because "nothing changed" is occasionally the thing being diagnosed.
+function denoise(events: readonly EmuEvent[]): EmuEvent[] {
+	const keep = new Array<boolean>(events.length).fill(true)
+	const lastResponse = new Map<string, string>()
+	let pending: { command: string; index: number } | null = null
+	for (let i = 0; i < events.length; i++) {
+		const event = events[i]
+		if (event.type === 'log') {
+			if (TICK_RATE_LINE.test(event.line)) keep[i] = false
+			continue
+		}
+		if (event.type !== 'rcon') continue
+		if (event.dir === 'recv') {
+			pending = { command: event.body, index: i }
+			continue
+		}
+		// a send with no command outstanding is the server pushing chat at us, which is never a repeat
+		if (!pending) continue
+		const { command, index } = pending
+		pending = null
+		if (lastResponse.get(command) === event.body) {
+			keep[i] = false
+			keep[index] = false
+		} else {
+			lastResponse.set(command, event.body)
+		}
+	}
+	return events.filter((_, i) => keep[i])
+}
+
 export namespace Sel {
 	const EMPTY: never[] = []
 
 	export function players(state: Store) {
 		return state.state?.players ?? EMPTY
+	}
+
+	// One page of the roster, filtered by name. The page is clamped here rather than corrected on every roster
+	// change: players leave without asking the window first, and a page that no longer exists should show the last
+	// one, not nothing.
+	export function playersView(state: Store): {
+		players: SandboxState['players']
+		page: number
+		pageCount: number
+		matched: number
+		total: number
+	} {
+		const all = players(state)
+		const needle = state.playerSearch.trim().toLowerCase()
+		const matched = needle ? all.filter((p: SandboxState['players'][number]) => p.name.toLowerCase().includes(needle)) : all
+		const pageCount = Math.max(1, Math.ceil(matched.length / PLAYERS_PAGE_SIZE))
+		const page = Math.min(Math.max(state.playerPage, 0), pageCount - 1)
+		return {
+			players: matched.slice(page * PLAYERS_PAGE_SIZE, (page + 1) * PLAYERS_PAGE_SIZE),
+			page,
+			pageCount,
+			matched: matched.length,
+			total: all.length,
+		}
 	}
 
 	export function groupNames(state: Store): string[] {
@@ -123,9 +189,12 @@ export namespace Sel {
 		return available.includes(state.chatChannel) ? state.chatChannel : 'ChatAll'
 	}
 
-	export function visibleEvents(state: Store): EmuEvent[] {
-		if (state.channel === 'unified') return state.events
-		return state.events.filter((e) => e.type === state.channel)
+	// hidden is reported so the console can say how much it is keeping from you, rather than quietly dropping it
+	export function consoleView(state: Store): { events: EmuEvent[]; hidden: number } {
+		const inChannel = state.channel === 'unified' ? state.events : state.events.filter((e) => e.type === state.channel)
+		if (!state.hideNoise) return { events: inChannel, hidden: 0 }
+		const events = denoise(inChannel)
+		return { events, hidden: inChannel.length - events.length }
 	}
 }
 
@@ -144,6 +213,18 @@ export namespace Actions {
 
 	export function setChatChannel(stores: KeyProp, chatChannel: SB.PlayerChatChannel) {
 		store(stores).setState({ chatChannel })
+	}
+
+	export function setPlayerSearch(stores: KeyProp, playerSearch: string) {
+		store(stores).setState({ playerSearch, playerPage: 0 })
+	}
+
+	export function setPlayerPage(stores: KeyProp, playerPage: number) {
+		store(stores).setState({ playerPage })
+	}
+
+	export function setHideNoise(stores: KeyProp, hideNoise: boolean) {
+		store(stores).setState({ hideNoise })
 	}
 
 	export function clearConsole(stores: KeyProp) {
