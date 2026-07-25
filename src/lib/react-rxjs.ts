@@ -12,6 +12,14 @@ import * as Rx from 'rxjs'
  * are fine on plain `ReactRx.bind`.
  */
 
+// The only module that may import react-rxjs directly. `bind` below is the guarded one; the
+// package's own is re-exported as `bindWithDefault`, so which of the two a call site wants is
+// visible in the name rather than in which namespace it happened to import.
+export { Subscribe } from '@react-rxjs/core'
+export { bind as bindWithDefault } from '@react-rxjs/core'
+export type { StateObservable } from '@react-rxjs/core'
+export { createSignal } from '@react-rxjs/utils'
+
 export class StateTimeoutError extends Error {
 	constructor(
 		readonly tag: string,

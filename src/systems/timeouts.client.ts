@@ -1,6 +1,6 @@
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 
+import * as ReactRx from '@/lib/react-rxjs'
 import { toast } from '@/lib/toast'
 import * as ZodLib from '@/lib/zod'
 import type * as SM from '@/models/squad.models'
@@ -8,7 +8,7 @@ import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as UsersClient from '@/systems/users.client'
 
-export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bind(
+export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bindWithDefault(
 	RPC.observe('timeouts.watchActiveTimeouts', () => RPC.orpc.timeouts.watchActiveTimeouts.call()),
 	[],
 )

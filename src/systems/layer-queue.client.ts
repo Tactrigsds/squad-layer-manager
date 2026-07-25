@@ -1,18 +1,17 @@
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { distinctDeepEquals } from '@/lib/async'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
-export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bind(
+export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
 		RPC.observe('layerQueue.watchUnexpectedNextLayer', () => RPC.orpc.layerQueue.watchUnexpectedNextLayer.call({ serverId })).pipe(
 			RPC.dropServerNotLoaded(),
@@ -21,7 +20,7 @@ export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bind(
 )
 
 // serverId === '' is used as a sentinel by consumers (e.g. LayerDisplay) rendered outside any squadServer frame context
-export const [useLayerItemsState, layerItemsState$] = RxHelpers.bind('layerQueue.layerItemsState', (serverId: string) => {
+export const [useLayerItemsState, layerItemsState$] = ReactRx.bind('layerQueue.layerItemsState', (serverId: string) => {
 	if (!serverId) return Rx.of({ layerItems: [], firstLayerItemParity: 0 } satisfies LQY.LayerItemsState)
 	const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
 	return Rx.combineLatest([
@@ -40,7 +39,7 @@ export const [useLayerItemsState, layerItemsState$] = RxHelpers.bind('layerQueue
 
 export function watchServer(serverId: string, sub: Rx.Subscription) {
 	sub.add(unexpectedNextLayer$(serverId).subscribe())
-	sub.add(layerItemsState$(serverId).pipe(RxHelpers.retryHot()).subscribe())
+	sub.add(layerItemsState$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }
 
 export function useToggleSquadServerUpdates(serverId: string) {

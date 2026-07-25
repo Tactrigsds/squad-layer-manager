@@ -1,6 +1,6 @@
 import * as Rx from 'rxjs'
 
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
@@ -37,7 +37,7 @@ export async function fetchSettings() {
 // the encoded (pre-decode) form, e.g. HumanTime fields as '5m' strings rather than milliseconds -- meant for display/editing.
 // the deny response is kept in the stream (not filtered) so the Suspense boundary always resolves; a denied user (e.g. after an
 // rbac change left their session with stale perms) is handled by the consumer instead of hanging forever.
-export const [useGlobalSettings, globalSettings$] = RxHelpers.bind(
+export const [useGlobalSettings, globalSettings$] = ReactRx.bind(
 	'settings.globalSettings',
 	RPC.observe('settings.global.watchSettings', () => RPC.orpc.settings.global.watchSettings.call()),
 )

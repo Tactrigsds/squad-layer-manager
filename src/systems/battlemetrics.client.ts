@@ -1,7 +1,7 @@
-import * as ReactRx from '@react-rxjs/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as Rx from 'rxjs'
 
+import * as ReactRx from '@/lib/react-rxjs'
 import * as Zus from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as PG from '@/models/player-groupings.models'

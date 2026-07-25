@@ -1,7 +1,7 @@
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 
 import * as Obj from '@/lib/object'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Zus from '@/lib/zustand'
 import type * as USR from '@/models/users.models'
@@ -121,7 +121,7 @@ export function invalidateUsers() {
 
 // an event feed, not state: it stays silent until something actually invalidates, so it must not be given a
 // first-emit guard (which would error the stream out of existence 15s after connecting)
-const [_, userInvalidation$] = RxHelpers.bind(
+const [_, userInvalidation$] = ReactRx.bind(
 	'users.userInvalidation',
 	RPC.observe('users.watchUserInvalidation', () => RPC.orpc.users.watchUserInvalidation.call()),
 	{ firstEmitTimeoutMs: false },
