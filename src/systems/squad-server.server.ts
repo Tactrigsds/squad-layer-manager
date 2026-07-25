@@ -46,6 +46,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
@@ -712,9 +713,14 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		: new DirectSocketTransport(
 			settings.connections.type === 'sandbox' ? Sandbox.connectionFor(serverId) : settings.connections.rcon,
 		)
-	const rcon = new Rcon({ serverId, transport: rconTransport })
+	const rcon = new Rcon({
+		serverId,
+		transport: rconTransport,
+		onTraffic: (dir, body, reqId) => ServerConsole.record(serverId, { type: 'rcon', dir, body, reqId, time: Date.now() }),
+	})
 	rcon.ensureConnected()
 	cleanup.push(() => rcon.disconnect())
+	cleanup.push(() => ServerConsole.disposeFor(serverId))
 
 	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
@@ -952,6 +958,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		const logSource = settings.connections.type satisfies ATTRS.SquadLogs.Source
 		const countedChunk$ = chunk$.pipe(
 			Rx.tap((chunk) => {
+				// the console tails the same point the counters do, so it shows what was actually ingested rather
+				// than what a particular source happened to produce
+				ServerConsole.recordLogChunk(serverId, chunk, Date.now())
 				const attrs = { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource }
 				logIoCounter.add(Buffer.byteLength(chunk, 'utf8'), attrs)
 				let lines = 0
@@ -1034,6 +1043,13 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 						try {
 							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
+								ServerConsole.record(serverId, {
+									type: 'command',
+									player: event.playerIds.username ?? 'unknown',
+									channel: event.channelType,
+									message: event.message,
+									time: event.time,
+								})
 								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some((prefix) => event.message.startsWith(prefix))) {
 									opts.push(
 										Commands.handleCommand(ctx, event).then((res) => {

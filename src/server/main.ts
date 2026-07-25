@@ -26,6 +26,7 @@ import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -89,6 +90,7 @@ await C.spanOp('main', { module }, async () => {
 	UserPresence.setup()
 	MatchEventsCache.setup()
 	MatchHistory.setup()
+	ServerConsole.setup()
 	SquadRcon.setup()
 	Teamswaps.setup()
 	Users.setup()

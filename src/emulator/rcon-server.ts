@@ -44,12 +44,10 @@ export class RconServer {
 
 	// observes traffic as the server sees it: 'recv' is a command arriving from the client, 'send' is anything
 	// written back (a command response, or an unsolicited chat packet)
-	onTraffic?: (dir: 'recv' | 'send', body: string) => void
 
-	constructor(world: World, opts: { password: string; onTraffic?: (dir: 'recv' | 'send', body: string) => void }) {
+	constructor(world: World, opts: { password: string }) {
 		this.#world = world
 		this.#password = opts.password
-		this.onTraffic = opts.onTraffic
 		this.#server = net.createServer((socket) => this.#onConnection(socket))
 	}
 
@@ -92,7 +90,6 @@ export class RconServer {
 	}
 
 	broadcastChatPacket(body: string) {
-		this.onTraffic?.('send', body)
 		for (const conn of this.#conns) {
 			if (conn.authed) conn.socket.write(encode(TYPE.server, 0, body))
 		}
@@ -178,13 +175,11 @@ export class RconServer {
 
 		const cmd: ReceivedCommand = { time: Date.now(), body }
 		this.commandLog.push(cmd)
-		this.onTraffic?.('recv', body)
 		const waiters = this.#commandWaiters.filter((w) => w.pred(cmd))
 		this.#commandWaiters = this.#commandWaiters.filter((w) => !w.pred(cmd))
 		for (const w of waiters) w.resolve(cmd)
 
 		const response = this.#world.handleCommand(body)
-		if (response) this.onTraffic?.('send', response)
 		for (let i = 0; i < response.length; i += MAX_CHUNK) {
 			conn.socket.write(encode(TYPE.response, id, response.slice(i, i + MAX_CHUNK)))
 		}
