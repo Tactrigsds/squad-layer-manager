@@ -2,9 +2,19 @@
 
 A Tool for managing the upcoming layers of a squad server, and other things also.
 
+## Try it
+
+```sh
+docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:latest
+```
+
+A demo instance needs no configuration at all, and comes up on an emulated squad server with a populated roster.
+It also has no authentication, so keep it off the internet. See [docs/demo.md](docs/demo.md).
+
 ## Documentation
 
 - [Installing](docs/installing.md) - Get SLM Running
+- [Demo mode](docs/demo.md) - a zero-configuration instance to evaluate SLM or reproduce a bug
 - [Configuring](docs/configuring.md) - Configure SLM to work for your squad server
 - [Layer data](docs/layer_data.md) - the layer artifact pair, how it is resolved, and building your own.
 - [Contributing](CONTRIBUTING.md) - local dev setup, the test suites, and the pre-push hook.
