@@ -37,7 +37,8 @@ function serverCommand(): [string, string[]] {
 	// at all. register-otel.mjs installs the loader hook the auto-instrumentations need.
 	const otelLoader = ['--import', path.join(REPO_ROOT, 'register-otel.mjs')]
 	const entry = process.env.SLM_TEST_SERVER_ENTRY
-	if (entry) return ['node', ['--enable-source-maps', ...otelLoader, entry]]
+	// the same two preloads, in the same order, that `pnpm run server:prod` passes
+	if (entry) return ['node', ['--import', path.join(REPO_ROOT, 'register-source-maps.mjs'), ...otelLoader, entry]]
 	return [
 		path.join(REPO_ROOT, 'node_modules/.bin/tsx'),
 		['--tsconfig', 'tsconfig.node.json', ...otelLoader, 'src/server/main-instrumented.ts'],
