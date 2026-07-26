@@ -191,7 +191,7 @@ export function FilterEdit(props: {
 				}}
 			</form.Subscribe>
 		),
-		[form, filterValid, filterModified, loggedInUserRole, permitEdit],
+		[form, filterValid, filterModified, permitEdit],
 	)
 
 	const deleteBtn = React.useMemo(
