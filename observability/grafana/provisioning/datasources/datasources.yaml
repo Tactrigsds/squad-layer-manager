@@ -50,12 +50,19 @@ datasources:
      url: http://victoria-logs:9428
      editable: true
      jsonData:
-        # log line -> the trace it was emitted inside. trace_id is a first-class field rather than
-        # something parsed out of the message, which is why the regex matches the field and not the body.
-        derivedFields:
-           - name: 'trace_id'
-             matcherType: 'label'
-             matcherRegex: 'trace_id'
-             url: '$${__value.raw}'
-             datasourceUid: 'tempo'
-             urlDisplayLabel: 'Trace: $${__value.raw}'
+        # how many lines a panel or an Explore query returns before it stops
+        maxLines: 1000
+        # Generates the trace_id derived field (log line -> the trace it was emitted inside) and the log
+        # level rules that colour Explore by severity. The detection block is not optional here:
+        # auto-detection only runs in the settings UI, so a provisioned datasource that sets `enabled`
+        # alone gets neither.
+        otelPreset:
+           enabled: true
+           tracesDatasourceUid: tempo
+           detection:
+              traceIdField: trace_id
+              severity:
+                 # VictoriaLogs maps OTLP severityText onto `severity`, uppercase
+                 field: severity
+                 valueCase: string
+                 source: manual

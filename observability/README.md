@@ -89,6 +89,24 @@ drop the handful of boot lines written before the logger attaches a module.
 resource attributes, and the app's include a multi-kilobyte `process.command_args`. Without pinning the
 stream fields to `service.name,service.instance.id`, every process restart creates a new stream.
 
+## What a log record carries, and what Explore shows
+
+Which fields Explore renders inline on each line is **Grafana UI state**, held per user in the browser
+and not settable from a datasource. There is no `defaultFields` option and provisioning cannot seed one.
+What the config can do is make the field list worth reading in the first place, which is what these two
+settings are for.
+
+`resource/trim-log-fields` in `otel-collector.yaml` drops the resource attributes that are the same
+static JSON on every line. Measured before it: 31 fields and 2307 bytes per record, of which **80% was
+`process.*`, `host.*` and `telemetry.sdk.*`**, `process.command_args` alone being ~1.3KB. After: 18
+fields, 540 bytes. The list is deliberately shorter than the metrics one, since a log field is cheap
+where a label is not: `host.name`, `process.pid` and `process.runtime.version` stay because they are
+worth having in a bug report.
+
+The **`otelPreset`** block on the VictoriaLogs datasource generates the `trace_id` derived field and the
+log level rules that colour Explore by severity. Its `detection` block is not optional when provisioning:
+auto-detection only runs in the settings UI, so `enabled: true` on its own silently gets you neither.
+
 ## Retention
 
 Traces are kept **3 days**, logs **14 days**, metrics **90 days**, each a `-retentionPeriod` flag on its
@@ -105,10 +123,10 @@ that carried its `trace_id` is not.
 
 Both directions work, and both are configured in `grafana/provisioning/datasources/datasources.yaml`.
 
-A **log line links to its trace** through a derived field on `trace_id`. This works because
-`server/logger.ts` stamps `trace_id` and `span_id` onto every record (see `LOG.mapSpanAttrs`), and
-VictoriaLogs stores them as real fields, so the matcher targets the field rather than regexing the body.
-The message text does not need to carry the id, and it doesn't.
+A **log line links to its trace** through the `trace_id` derived field the `otelPreset` generates. This
+works because `server/logger.ts` stamps `trace_id` and `span_id` onto every record (see
+`LOG.mapSpanAttrs`), and VictoriaLogs stores them as real fields, so the link targets a field rather than
+regexing the body. The message text does not need to carry the id, and it doesn't.
 
 A **span links back to its logs** through `tracesToLogsV2` on the Traces datasource, which runs
 `trace_id:"<id>"` against VictoriaLogs. A span also links to its op's RED metrics via `tracesToMetrics`.
