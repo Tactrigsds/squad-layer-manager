@@ -40,7 +40,7 @@ void import('@/components/server-console-window')
 // wrapping toast.promise renders a single error toast instead of double-toasting.
 function permissionDeniedError(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	return new Error(RBAC_Msgs.WARNS.permissionDenied(res))
+	return new Error(RBAC_Msgs.permissionDenied(res).text())
 }
 
 const dropdownMenuSlots: MenuSlots = {

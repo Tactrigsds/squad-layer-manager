@@ -352,7 +352,7 @@ export const orpcRouter = {
 			}),
 		)
 		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, SS_Msgs.BROADCASTS.fogOff)
+			await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast())
 		}
 		return { code: 'ok' as const }
 	}),
@@ -560,7 +560,7 @@ export const orpcRouter = {
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
 			if (reasonRes.code !== 'ok') return reasonRes
-			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.WARNS.notifyKilled)
+			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.notifyKilled().warn())
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
 			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
@@ -1077,7 +1077,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		const restartedBy = AppEventsSys.restartInfo
 			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
 			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.WARNS.slmStarted(restartedBy))
+		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy).warn())
 	}
 }
 
