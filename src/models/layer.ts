@@ -36,6 +36,9 @@ export let StaticFactionunitConfigs: FactionUnitConfigMapping = unloadedLayerDat
 export let StaticExtraColumns: LC.ColumnDef[] = unloadedLayerDataProxy('StaticExtraColumns')
 
 export function setLayerData(data: LayerData) {
+	// JSON.parse allocates a fresh string per occurrence, and this data is a small vocabulary repeated across many
+	// records: 14893 faction/unit entries drawn from 25 distinct values, and the same again in factionUnits.
+	Obj.internStrings(data)
 	StaticLayerComponents = data.components
 	StaticFactionunitConfigs = data.factionUnits
 	StaticExtraColumns = data.extraColumns
