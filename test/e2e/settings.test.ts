@@ -21,4 +21,22 @@ test.describe('settings page', () => {
 		const adminLists = page.locator('[id="setting:server:__new__:adminLists"]')
 		await expect(adminLists.getByRole('combobox')).toHaveText(/Select admin lists/)
 	})
+
+	// A JSON-mode section renders no per-field anchors, so its TOC node has to collapse to a leaf. The TOC reads that
+	// mode straight off the section frames now rather than being handed it down, and nothing else exercises the path.
+	test('the table of contents follows a section between GUI and JSON mode', async ({ app, page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+
+		// scoped to the section's own toggle: the settings card also carries per-subtree JSON toggles reading the same
+		const mode = page.getByRole('group', { name: 'Server settings editor mode' })
+		// a node with children carries the expand/collapse control; a leaf renders a spacer instead
+		const expander = page.locator(`li[data-toc-id="section:server:${app.serverId}"] > div > button`)
+		await expect(expander).toHaveCount(1, { timeout: 20_000 })
+
+		await mode.getByRole('button', { name: 'JSON', exact: true }).click()
+		await expect(expander).toHaveCount(0)
+
+		await mode.getByRole('button', { name: 'GUI', exact: true }).click()
+		await expect(expander).toHaveCount(1)
+	})
 })
