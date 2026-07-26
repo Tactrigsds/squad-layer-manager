@@ -507,22 +507,20 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 				case 'reset-players': {
 					let newSavedSwaps: State['savedSwaps'] | undefined
 					let newSwaps: State['editedSwaps'] | undefined
-					const allPlayerIds = new Set([...op.players.keys(), ...state.players.keys()])
-					for (const playerId of allPlayerIds) {
-						const nextPlayerTeam = op.players.get(playerId)
-						const currentPlayerTeam = state.players.get(playerId)
-						if (nextPlayerTeam && nextPlayerTeam === currentPlayerTeam) continue
-
-						if (state.swapping) continue
-						const savedSwap = state.savedSwaps.get(playerId)
-						if (savedSwap) {
-							newSavedSwaps ??= new Map(state.savedSwaps)
-							newSavedSwaps.delete(playerId)
-						}
-						let editedSwap = state.editedSwaps.get(playerId)
-						if (editedSwap) {
-							newSwaps ??= new Map(state.editedSwaps)
-							newSwaps.delete(playerId)
+					// A roster only proves where the players it lists are, never that anyone else has left: the roster
+					// on the other side of a map roll carries just the players already sorted onto a team, and the rest
+					// land a poll later. Absence used to drop a swap, which cancelled the entire queue on every roll,
+					// moments before it was due to fire. Departures are 'player-left' (PLAYER_DISCONNECTED)'s call.
+					if (!state.swapping) {
+						for (const [playerId, team] of op.players.entries()) {
+							if (state.savedSwaps.get(playerId)?.toTeam === team) {
+								newSavedSwaps ??= new Map(state.savedSwaps)
+								newSavedSwaps.delete(playerId)
+							}
+							if (state.editedSwaps.get(playerId)?.toTeam === team) {
+								newSwaps ??= new Map(state.editedSwaps)
+								newSwaps.delete(playerId)
+							}
 						}
 					}
 					if (newSavedSwaps !== undefined) {
