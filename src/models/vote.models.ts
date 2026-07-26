@@ -1,14 +1,14 @@
 import type { MutexInterface } from 'async-mutex'
 import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
 import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
 import * as ZodUtils from '@/lib/zod-utils'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 
@@ -306,7 +306,8 @@ export function canInitiateVote(
 	}
 }
 
-export type Ctx = CS.Ctx & { vote: Ctx.Payload } & SS.Ctx
+export type Ctx = CS.Ctx & { vote: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['vote'], { name: 'vote', extends: [CS.ServerIdDef] })
 
 export namespace Ctx {
 	export type Payload = {

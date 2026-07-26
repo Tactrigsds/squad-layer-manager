@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
+import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
@@ -762,3 +763,4 @@ export type Ctx = CS.Ctx & {
 	roles: Role[]
 	perms: TracedPermission[]
 }
+export const CtxDef = CD.defCtx<Ctx>()(['roles', 'perms'], { name: 'userRbac' })

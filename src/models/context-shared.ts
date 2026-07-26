@@ -1,22 +1,22 @@
 import type * as OtelApi from '@opentelemetry/api'
 import type pino from 'pino'
 
+import * as CD from '@/lib/ctx-def'
 import * as Prom from '@/lib/promise-utils'
 
-const CtxSymbol = Symbol('context')
-export type Ctx = {
-	[CtxSymbol]: true
+export { CtxSymbol, init, isCtx } from '@/lib/ctx-def'
+export type Ctx = CD.Ctx
+
+// every per-server context composes with this, so it lives in the leaf: a domain models file taking
+// it from server-state would close a runtime cycle, since server-state imports several of them for
+// their schemas.
+export type ServerId = Ctx & {
+	serverId: string
 }
-export function init(): Ctx {
-	return {
-		[CtxSymbol]: true,
-	}
-}
-export function isCtx(ctx: any): ctx is Ctx {
-	return ctx && ctx[CtxSymbol] === true
-}
+export const ServerIdDef = CD.defCtx<ServerId>()(['serverId'], { name: 'serverId' })
 
 export type AbortSignal = { signal: globalThis.AbortSignal }
+export const AbortSignalDef = CD.defCtx<Ctx & AbortSignal>()(['signal'], { name: 'abortSignal' })
 
 // carries links to spans that produced this ctx, flushed onto the next span the instrumentation opens.
 // A primitive rather than server-side because the rcon and match-history payloads type streams with it.
@@ -25,12 +25,14 @@ export type Otel = Ctx & {
 		links: OtelApi.Link[]
 	}
 }
+export const OtelDef = CD.defCtx<Otel>()(['otel'], { name: 'otel' })
 
 export type Logger = pino.Logger
 
 export type Log = Ctx & {
 	log: Logger
 }
+export const LogDef = CD.defCtx<Log>()(['log'], { name: 'log' })
 
 export function addSignal<C extends Ctx & Partial<AbortSignal>>(ctx: C, signal: globalThis.AbortSignal): C & AbortSignal {
 	return { ...ctx, signal: ctx.signal ? Prom.anySignal(signal, ctx.signal)! : signal }

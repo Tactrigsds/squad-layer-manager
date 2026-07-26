@@ -10,7 +10,6 @@ import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.ts'
 import * as LOG from '@/models/logs.ts'
 import * as ATTR from '@/models/otel-attrs.ts'
-import type * as SS from '@/models/server-state.models'
 // Operation instrumentation: the span/metric/log wrapper every server operation goes through, and
 // the durable-subscription operator built on it. Lifted out of context.ts, which is about context
 // types and was two thirds this.
@@ -21,7 +20,7 @@ import { baseLogger } from './logger.ts'
 
 const CONTEXT_ATTR_MAPPING = [
 	{
-		ctxPath: (ctx: Partial<SS.Ctx>) => ctx?.serverId,
+		ctxPath: (ctx: Partial<CS.ServerId>) => ctx?.serverId,
 		attr: ATTR.SquadServer.ID,
 	},
 	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.discordId?.toString(), attr: ATTR.User.ID },
