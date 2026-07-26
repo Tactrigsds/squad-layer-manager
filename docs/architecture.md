@@ -193,11 +193,10 @@ const CtxSymbol = Symbol('context')
 export type Ctx = { [CtxSymbol]: true }
 ```
 
-Each capability is its own `Ctx &` type in `src/server/context.ts`: `Db`, `Rcon`, `ServerId`, `User`,
-`AbortSignal`, `Tx`, `Mutexes`, and so on. A function declares the **minimal** intersection it actually needs:
+Each capability is its own `Ctx &` type. A function declares the **minimal** intersection it actually needs:
 
 ```ts
-async function doThing(ctx: C.Db & C.User & CS.AbortSignal, ...) { ... }
+async function doThing(ctx: C.Db & USR.Ctx & CS.AbortSignal, ...) { ... }
 ```
 
 Callers build up context by spreading. The payoff is that a signature becomes a precise, checked statement of
@@ -205,6 +204,61 @@ what a function touches. The `CtxSymbol` brand exists so `CS.isCtx()` can recogn
 `spanOp` uses to find it among a function's arguments.
 
 For observables, the same rule applies with the ctx as the first element of the emitted tuple.
+
+#### A domain's contexts live in that domain's models file
+
+`V.Ctx` is the vote context, `MH.Ctx` the match-history one, and so on, reached under the same namespace as
+the rest of that domain. Where a domain has more than one, the primary stays `Ctx` and the rest go in a
+`namespace Ctx` beside it, named without a `Ctx` postfix since they are already read as `<domain>.Ctx.<name>`:
+
+```ts
+export type Ctx = CS.Ctx & { user: User }
+export namespace Ctx {
+	export type Id = CS.Ctx & { user: { discordId: bigint } }
+}
+```
+
+The runtime object a per-server context carries sits at `Ctx.Payload`, so `V.Ctx.Payload` is what lives at
+`ctx.vote`. That is a deliberate departure from naming them after the system that builds them: the old
+`LayerQueueSlice` was neither a redux slice nor the same thing as the client's frame slices.
+
+Two modules stay general rather than domain-owned:
+
+- **`src/models/context-shared.ts` (`CS`)** is the leaf every context composes on: the `Ctx` brand,
+  `AbortSignal`, `Log`, `Otel`, `Deferred`, and `ServerId`. It imports nothing but pino, promise-utils and
+  ctx-def.
+- **`src/server/context.ts` (`C`)** holds server infrastructure with no domain models file (`Db`, `Tx`,
+  `Mutexes`, the fastify and session contexts) plus the composition root, `ServerSlice`. It is types-only apart
+  from the defs, so it cannot pull anything into an import cycle.
+
+`C.SquadServer` is the one context still typed from a system rather than a models file. Its payload types
+`event$` with `C.ServerSlice`, so moving it would make the models layer depend on the type that composes it.
+
+#### Defs: contexts you can introspect
+
+Contexts are types and erase, which leaves nothing to merge, project or check at runtime. So each one has a
+**def** beside it, at the same scope level as the type it describes, carrying on the `XSchema` convention:
+
+```ts
+export type Ctx = CS.Ctx & { vote: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['vote'], { name: 'vote', extends: [CS.ServerIdDef] })
+```
+
+The key tuple is checked against the type: a missing property (including an optional one), a key that is not on
+the type, and a duplicate are each a compile error naming the offending key. The brand is auto-excluded.
+
+`extends` is what makes this usable rather than noisy. Contexts are built by composition, so without it every
+per-server def would claim `serverId` and `ServerSlice`'s nine-def merge would report nine false collisions.
+
+A duplicated _own_ key is accepted only when **every** def that owns it declares it in `collisions`; one-sided
+declaration would leave the other party able to be surprised. Its one real customer is the `user` width pun,
+where `USR.Ctx.Id` is the same key at a narrower width and a function needing only the id accepts either.
+
+`CD.select([DbDef, CS.LogDef])` returns a projector that copies exactly those keys out of a wider ctx. That
+replaces rebuilding a handler ctx field by field to avoid pollution: name the capabilities you want to carry by
+closure, and construct only the rest.
+
+Generic contexts get no def, since a def can describe only one instantiation.
 
 ### spanOp: the unit of server work
 
