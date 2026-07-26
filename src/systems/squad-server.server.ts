@@ -23,7 +23,7 @@ import { SftpTail } from '@/lib/sftp-tail'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
-import * as Messages from '@/messages.ts'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
@@ -352,7 +352,7 @@ export const orpcRouter = {
 			}),
 		)
 		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+			await SquadRcon.broadcast(ctx, SS_Msgs.BROADCASTS.fogOff)
 		}
 		return { code: 'ok' as const }
 	}),
@@ -560,7 +560,7 @@ export const orpcRouter = {
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
 			if (reasonRes.code !== 'ok') return reasonRes
-			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / WARNS.kill.notifyKilled)
+			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.WARNS.notifyKilled)
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
 			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
@@ -1077,7 +1077,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		const restartedBy = AppEventsSys.restartInfo
 			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
 			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, Messages.WARNS.slmStarted(restartedBy))
+		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.WARNS.slmStarted(restartedBy))
 	}
 }
 

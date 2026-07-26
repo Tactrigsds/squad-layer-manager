@@ -538,13 +538,11 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 export function useActivityMatch<P>(matchActivity: (prev: UP.RootActivity | null | undefined) => P) {
 	return Zus.useStore(
 		Store,
-		Zus.useDeep(
-			React.useCallback(() => {
-				const config = ConfigClient.getConfig()
-				const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
-				return matchActivity(state)
-			}, [matchActivity]),
-		),
+		Zus.useDeep(() => {
+			const config = ConfigClient.getConfig()
+			const state = (config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined) ?? null
+			return matchActivity(state)
+		}),
 	)
 }
 

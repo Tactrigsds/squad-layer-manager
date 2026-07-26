@@ -10,7 +10,9 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as Messages from '@/messages.ts'
+import * as BAL_Msgs from '@/messages/balance-triggers.messages'
+import * as LL_Msgs from '@/messages/layer-list.messages'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -141,7 +143,7 @@ export const setupInstance = Instr.spanOp(
 									})
 								await SquadRcon.warnAllAdmins(
 									ctx,
-									Messages.WARNS.queue.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
+									LL_Msgs.WARNS.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
 								)
 								return
 							}
@@ -157,7 +159,7 @@ export const setupInstance = Instr.spanOp(
 							) {
 								await SquadRcon.warnAllAdmins(
 									baseCtx,
-									Messages.WARNS.queue.votePending(
+									LL_Msgs.WARNS.votePending(
 										currentMatch.startTime,
 										serverState.settings.vote.startVoteReminderThreshold,
 										serverState.settings.vote.autoStartVoteDelay !== null,
@@ -165,7 +167,7 @@ export const setupInstance = Instr.spanOp(
 									),
 								)
 							} else if (serverState.layerQueue.length === 0) {
-								await SquadRcon.warnAllAdmins(baseCtx, Messages.WARNS.queue.empty)
+								await SquadRcon.warnAllAdmins(baseCtx, LL_Msgs.WARNS.empty)
 							}
 						}),
 					)
@@ -360,7 +362,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
-				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+				await SquadRcon.broadcast(ctx, SS_Msgs.BROADCASTS.fogOff)
 			}),
 		)
 	}
@@ -376,10 +378,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				if (!currentMatch) return
 				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
 				if (!mostRelevantEvent) return
-				await SquadRcon.warnAllAdmins(
-					ctx,
-					Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }),
-				)
+				await SquadRcon.warnAllAdmins(ctx, BAL_Msgs.WARNS.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
 			}),
 		)
 
@@ -395,7 +394,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				const queue = getSavedQueue(ctx)
 				if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
-					await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
+					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.WARNS.lowQueueItemCount(queue.length))
 				}
 			}),
 		)
@@ -561,7 +560,7 @@ export async function warnShowNext(
 	const nextLayerRes = await ctx.squadRcon.layersStatus.get(ctx)
 	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
 	const commands = Settings.GLOBAL_SETTINGS.commands
-	const showNextMsg = Messages.WARNS.queue.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin })
+	const showNextMsg = LL_Msgs.WARNS.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin })
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, showNextMsg)
 	} else {
@@ -663,10 +662,7 @@ export async function toggleUpdatesToSquadServer({
 		})
 	})
 
-	await SquadRcon.warnAllAdmins(
-		ctx,
-		input.cause ? Messages.WARNS.ingameVoteDisabledUpdates : Messages.WARNS.slmUpdatesSet(!input.disabled),
-	)
+	await SquadRcon.warnAllAdmins(ctx, input.cause ? SS_Msgs.WARNS.ingameVoteDisabledUpdates : SS_Msgs.WARNS.slmUpdatesSet(!input.disabled))
 	return { code: 'ok' as const }
 }
 
@@ -687,7 +683,7 @@ export async function requestFeedback(
 	else index = LL.resolveLayerQueueItemIndexForNumber(layerQueueNumber) ?? undefined
 	if (!index) return { code: 'err:not-found' as const }
 	const item = LL.resolveItemForIndex(layerQueue, index)!
-	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.requestFeedback(index, playerName, item))
+	await SquadRcon.warnAllAdmins(ctx, LL_Msgs.WARNS.requestFeedback(index, playerName, item))
 	return { code: 'ok' as const }
 }
 

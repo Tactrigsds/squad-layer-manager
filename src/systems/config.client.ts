@@ -1,5 +1,3 @@
-import React from 'react'
-
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as LC from '@/models/layer-columns'
@@ -54,11 +52,5 @@ export async function fetchEffectiveColConfig(): Promise<LQY.EffectiveColumnAndT
 export function useEffectiveColConfig(): LQY.EffectiveColumnAndTableConfig | undefined {
 	const config = Zus.useStore(Store)
 
-	return React.useMemo(() => {
-		if (!config) return
-		return {
-			...LC.getEffectiveColumnConfig(),
-			...config.layerTable,
-		}
-	}, [config])
+	return config ? { ...LC.getEffectiveColumnConfig(), ...config.layerTable } : undefined
 }

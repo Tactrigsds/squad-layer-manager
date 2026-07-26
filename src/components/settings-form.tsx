@@ -40,7 +40,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
-import * as Messages from '@/messages'
+import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
@@ -408,24 +408,18 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 
 	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the group name), where re-emitting would
 	// clobber an in-flight keystroke. Structural edits leave it off so inputs re-seed after re-indexing.
-	const update = React.useCallback(
-		(fn: (v: PlayerGroupingsValue) => PlayerGroupingsValue, quiet?: boolean) => {
-			onChange(fn((value$.getValue() as PlayerGroupingsValue) ?? {}))
-			if (!quiet) reset$.next()
-		},
-		[onChange, value$, reset$],
-	)
+	const update = (fn: (v: PlayerGroupingsValue) => PlayerGroupingsValue, quiet?: boolean) => {
+		onChange(fn((value$.getValue() as PlayerGroupingsValue) ?? {}))
+		if (!quiet) reset$.next()
+	}
 
 	// every rule edit re-syncs the group map, so a group can never outlive the last rule naming it
-	const updateGrouping = React.useCallback(
-		(id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => {
-			update((v) => {
-				const next = fn(v[id] ?? PG.EMPTY_GROUPING)
-				return { ...v, [id]: { ...next, groups: syncedGroups(next, orgFlags) } }
-			}, quiet)
-		},
-		[update, orgFlags],
-	)
+	const updateGrouping = (id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => {
+		update((v) => {
+			const next = fn(v[id] ?? PG.EMPTY_GROUPING)
+			return { ...v, [id]: { ...next, groups: syncedGroups(next, orgFlags) } }
+		}, quiet)
+	}
 
 	const [newGrouping, setNewGrouping] = React.useState('')
 	const trimmedNew = newGrouping.trim()
@@ -1037,7 +1031,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
 	// document would re-render all of them on every keystroke anywhere in the form
-	const requireReasonFor$ = React.useMemo(() => scopeValue(root$, 'requireReasonFor'), [root$])
+	const requireReasonFor$ = scopeValue(root$, 'requireReasonFor')
 	const requireReasonFor = useFieldValue(requireReasonFor$) as AAR.AdminActionType[] | undefined
 	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
 	const current = () => (value$.getValue() as CMD.CommandTrigger[]) ?? []
@@ -1161,7 +1155,7 @@ function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
 	const allowedChats = cfg.allowedChats ?? []
 	const enabled = cfg.enabled ?? true
 	const quickReference = cfg.quickReference ?? false
-	const triggers$ = React.useMemo(() => scopeValue(value$, 'triggers'), [value$])
+	const triggers$ = scopeValue(value$, 'triggers')
 	function patch(p: Record<string, unknown>) {
 		onChange({ ...((value$.getValue() as Record<string, unknown>) ?? {}), ...p })
 	}
@@ -1408,7 +1402,7 @@ function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
 }
 
 function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
-	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
+	const row$ = scopeValue(parent$, idx)
 	const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
 	const row = useFieldValue(row$) as LTag.Tag | undefined
 	const colorRef = React.useRef<HTMLInputElement>(null)
@@ -1487,9 +1481,9 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 
 function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const label$ = React.useMemo(() => scopeValue(row$, 'label'), [row$])
-	const keywords$ = React.useMemo(() => scopeValue(row$, 'keywords'), [row$])
-	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
+	const label$ = scopeValue(row$, 'label')
+	const keywords$ = scopeValue(row$, 'keywords')
+	const actionTexts$ = scopeValue(row$, 'actionTexts')
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
 	const actionTexts = (useFieldValue(actionTexts$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
 	const presentActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
@@ -1767,7 +1761,7 @@ function setAtPath(root: any, path: Path, value: unknown): any {
 // since callers build the array inline.
 function usePathValue(value$: ValueState, path: Path): unknown {
 	const key = JSON.stringify(path)
-	const select = React.useCallback((root: any) => getAtPath(root, JSON.parse(key) as Path), [key])
+	const select = (root: any) => getAtPath(root, JSON.parse(key) as Path)
 	return Zus.useStore(value$, select)
 }
 
@@ -1820,7 +1814,7 @@ const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as V
 function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	const value = (useFieldValue(value$) as string[] | undefined) ?? []
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	const connType$ = React.useMemo(() => scopeValue(scopeValue(root$, 'connections'), 'type'), [root$])
+	const connType$ = scopeValue(scopeValue(root$, 'connections'), 'type')
 	const isSandbox = useFieldValue(connType$) === 'sandbox'
 	const definedLists = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
 	const available = definedLists.data?.code === 'ok' ? definedLists.data.lists.map((l) => l.listId) : []
@@ -1861,13 +1855,10 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	const names = Object.keys(value)
 	const [newName, setNewName] = React.useState('')
 
-	const update = React.useCallback(
-		(fn: (v: Record<string, SM.AdminListDef>) => Record<string, SM.AdminListDef>, quiet?: boolean) => {
-			onChange(fn((value$.getValue() as Record<string, SM.AdminListDef> | undefined) ?? {}))
-			if (!quiet) reset$.next()
-		},
-		[onChange, value$, reset$],
-	)
+	const update = (fn: (v: Record<string, SM.AdminListDef>) => Record<string, SM.AdminListDef>, quiet?: boolean) => {
+		onChange(fn((value$.getValue() as Record<string, SM.AdminListDef> | undefined) ?? {}))
+		if (!quiet) reset$.next()
+	}
 
 	const patchSource = (name: string, p: Partial<SM.AdminListSource>, quiet?: boolean) =>
 		update((v) => ({ ...v, [name]: { ...v[name], source: { ...v[name].source, ...p } as SM.AdminListSource } }), quiet)
@@ -2286,11 +2277,8 @@ function RoleDetail({
 	const [renaming, setRenaming] = React.useState(false)
 	const cfg = rbac.roles?.[roleId] ?? {}
 	// scoped value-states for the timeout / layer-request cells so they can reuse the uncontrolled TextInputField
-	const timeout$ = React.useMemo(() => scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxTimeout'), [value$, roleId])
-	const layerRequests$ = React.useMemo(
-		() => scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxLayerRequests'),
-		[value$, roleId],
-	)
+	const timeout$ = scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxTimeout')
+	const layerRequests$ = scopeValue(scopeValue(scopeValue(value$, 'roles'), roleId), 'maxLayerRequests')
 
 	return (
 		<div className="min-w-0 space-y-4 rounded-md border p-3">
@@ -2879,7 +2867,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0 space-y-0.5">
 								<p className="text-sm font-medium">{BAL.TRIGGERS[id].name}</p>
-								<p className="text-xs text-muted-foreground">{Messages.GENERAL.balanceTrigger.descriptions[id]}</p>
+								<p className="text-xs text-muted-foreground">{BAL_Msgs.GENERAL.descriptions[id]}</p>
 							</div>
 							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
 								<SelectTrigger className={cn('h-8 w-36 shrink-0', display?.text)} aria-label={`${BAL.TRIGGERS[id].name} level`}>
@@ -2901,7 +2889,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 									<AlertIcon className="mr-2 h-4 w-4" />
 									{BAL.TRIGGERS[id].name}
 								</AlertTitle>
-								<AlertDescription>{Messages.GENERAL.balanceTrigger.sampleMessages[id]}</AlertDescription>
+								<AlertDescription>{BAL_Msgs.GENERAL.sampleMessages[id]}</AlertDescription>
 							</Alert>
 						)}
 					</div>
@@ -3339,15 +3327,12 @@ function ArrayItem({
 	isPrimitive: boolean
 	onRemove: () => void
 }) {
-	const value$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const onChange = React.useCallback(
-		(v: any) => {
-			const arr = [...((parent$.getValue() as any[]) ?? [])]
-			arr[idx] = v
-			parentOnChange(arr)
-		},
-		[parentOnChange, parent$, idx],
-	)
+	const value$ = scopeValue(parent$, idx)
+	const onChange = (v: any) => {
+		const arr = [...((parent$.getValue() as any[]) ?? [])]
+		arr[idx] = v
+		parentOnChange(arr)
+	}
 	return (
 		<div className={cn('flex gap-2', isPrimitive ? 'items-center' : 'items-start')}>
 			<div className={cn('flex-1 min-w-0', !isPrimitive && 'border rounded-md p-2')}>
@@ -3487,11 +3472,8 @@ function RecordEntry({
 	onRename: (next: string) => void
 	onRemove: () => void
 }) {
-	const value$ = React.useMemo(() => scopeValue(parent$, entryKey), [parent$, entryKey])
-	const onChange = React.useCallback(
-		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [entryKey]: v }),
-		[parentOnChange, parent$, entryKey],
-	)
+	const value$ = scopeValue(parent$, entryKey)
+	const onChange = (v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [entryKey]: v })
 	return (
 		<div className="border rounded-md p-2 space-y-1.5">
 			<div className="flex items-center gap-2">
@@ -3811,21 +3793,18 @@ function LocalJsonField({
 }) {
 	const [seed, setSeed] = React.useState(() => ({ value: value$.getValue(), nonce: 0 }))
 	useReset(reset$, () => setSeed((prev) => ({ value: value$.getValue(), nonce: prev.nonce + 1 })))
-	const onValidChange = React.useCallback(
-		(v: unknown) => {
-			if (v === null) return
-			onChange(toInputShape(schema, v))
-		},
-		[schema, onChange],
-	)
+	const onValidChange = (v: unknown) => {
+		if (v === null) return
+		onChange(toInputShape(schema, v))
+	}
 	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
 	// would be a surprise. This component only exists while the field is in JSON mode, so the ref resets on reopen.
 	const broughtIntoView = React.useRef(false)
-	const onReady = React.useCallback(() => {
+	const onReady = () => {
 		if (broughtIntoView.current) return
 		broughtIntoView.current = true
 		SettingsNav.scrollToAnchorSettled(domId)
-	}, [domId])
+	}
 	return (
 		<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
 			<SchemaJsonEditor
@@ -4030,11 +4009,8 @@ function Field({
 	parentOnChange: (v: Record<string, any>) => void
 	reset$: Rx.Subject<void>
 }) {
-	const value$ = React.useMemo(() => scopeValue(parent$, name), [parent$, name])
-	const onChange = React.useCallback(
-		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v }),
-		[parentOnChange, parent$, name],
-	)
+	const value$ = scopeValue(parent$, name)
+	const onChange = (v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v })
 	// keys managed inline by a sibling editor render no field of their own (e.g. defaultPrefix, chosen via the
 	// "default" markers in the allowedPrefixes editor)
 	if (path.length === 1 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(name)) return null
