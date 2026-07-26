@@ -103,7 +103,7 @@ function commandVerb(body: string): string {
 }
 
 type Events = {
-	server: [Instr.OtelCtx, DecodedPacket]
+	server: [CS.Otel, DecodedPacket]
 	auth: []
 	[key: `response${string}`]: [string]
 	RCON_ERROR: [Error]

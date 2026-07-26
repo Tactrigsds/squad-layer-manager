@@ -31,7 +31,7 @@ const module = initModule('filter-entity')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-export const filterMutation$ = new IsolatedSubject<[C.Db & Instr.OtelCtx, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
+export const filterMutation$ = new IsolatedSubject<[C.Db & CS.Otel, USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>]>()
 const ToggleFilterContributorInputSchema = z
 	.object({ filterId: F.FilterEntityIdSchema, userId: z.bigint().optional(), roleId: RBAC.UserDefinedRoleIdSchema.optional() })
 	.refine((input) => input.userId || input.roleId, {

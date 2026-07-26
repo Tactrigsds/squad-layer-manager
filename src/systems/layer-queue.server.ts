@@ -53,7 +53,7 @@ export type LayerQueueSlice = {
 	unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
 
 	// TODO we should fold this into the server events
-	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & C.ServerId]>
+	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & SS.Ctx]>
 
 	session: ODSM.Server.Session<SLL.Operation, SLL.State>
 	op$: Rx.Subject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>
@@ -80,7 +80,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState) {
+export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
 	const slice: LayerQueueSlice = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),

@@ -10,6 +10,7 @@ import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.ts'
 import * as LOG from '@/models/logs.ts'
 import * as ATTR from '@/models/otel-attrs.ts'
+import type * as SS from '@/models/server-state.models'
 // Operation instrumentation: the span/metric/log wrapper every server operation goes through, and
 // the durable-subscription operator built on it. Lifted out of context.ts, which is about context
 // types and was two thirds this.
@@ -20,7 +21,7 @@ import { baseLogger } from './logger.ts'
 
 const CONTEXT_ATTR_MAPPING = [
 	{
-		ctxPath: (ctx: Partial<C.ServerId>) => ctx?.serverId,
+		ctxPath: (ctx: Partial<SS.Ctx>) => ctx?.serverId,
 		attr: ATTR.SquadServer.ID,
 	},
 	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.discordId?.toString(), attr: ATTR.User.ID },
@@ -31,14 +32,8 @@ const CONTEXT_ATTR_MAPPING = [
 	},
 ] as const
 
-export type OtelCtx = CS.Ctx & {
-	otel: {
-		links: Otel.Link[]
-	}
-}
-
 // overrwrites other stored links
-export function storeLinkToActiveSpan<T extends CS.Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & OtelCtx {
+export function storeLinkToActiveSpan<T extends CS.Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & CS.Otel {
 	const link = buildSourceLinkToActiveSpan(type)
 	return {
 		...ctx,
@@ -57,7 +52,7 @@ function buildSourceLinkToActiveSpan(type: ATTR.SpanLink.SourceType): Otel.Link 
 	}
 }
 
-function flushOtelLinksInPlace(ctx: OtelCtx) {
+function flushOtelLinksInPlace(ctx: CS.Otel) {
 	const links = ctx.otel.links
 	ctx.otel.links = []
 	return links
@@ -111,7 +106,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		let args = _args as any[]
 
 		// -------- dynamically extract context from args --------
-		let ctx: undefined | (CS.Ctx & Partial<OtelCtx>)
+		let ctx: undefined | (CS.Ctx & Partial<CS.Otel>)
 		if (CS.isCtx(args[0])) {
 			ctx = args[0]
 		} else if (Array.isArray(args[0])) {
@@ -135,7 +130,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		// run regardless, or a spanOp whose callback doesn't take a ctx silently loses all its attributes.
 		if (ctx) {
 			if (ctx.otel) {
-				for (const link of flushOtelLinksInPlace(ctx as OtelCtx)) {
+				for (const link of flushOtelLinksInPlace(ctx as CS.Otel)) {
 					const source = link.attributes?.[ATTR.SpanLink.SOURCE]
 					// explicitly included links take precedence
 					if (source && links.some((l) => link!.attributes?.[ATTR.SpanLink.SOURCE] == source)) {

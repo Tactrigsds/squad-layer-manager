@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import * as BB from '@/models/backburner.models'
+import type * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -92,4 +93,8 @@ export function printSource(source: LQStateUpdate['source']) {
 		}
 		return `${source.user.displayName} ${eventLabels[source.event]}`
 	}
+}
+
+export type Ctx = CS.Ctx & {
+	serverId: ServerId
 }

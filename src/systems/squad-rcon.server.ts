@@ -7,6 +7,7 @@ import * as Rx from '@/lib/rxjs'
 import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
+import type * as SS from '@/models/server-state.models'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
@@ -22,16 +23,16 @@ export function setup() {
 }
 
 export type SquadRcon = {
-	rconEvent$: Rx.Observable<[Instr.OtelCtx, SM.RconEvents.Event]>
+	rconEvent$: Rx.Observable<[CS.Otel, SM.RconEvents.Event]>
 
 	layersStatus: AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>
 	serverInfo: AsyncResource<SM.ServerInfoRes, C.Rcon & CS.AbortSignal>
 	// serverId: the roster is annotated with admin status, which is a per-server question (which admin lists apply)
-	teams: AsyncResource<SM.TeamsRes, C.Rcon & C.ServerId & CS.AbortSignal>
+	teams: AsyncResource<SM.TeamsRes, C.Rcon & SS.Ctx & CS.AbortSignal>
 }
 
 export function initSquadRcon(
-	ctx: C.Rcon & C.ServerId & CS.AbortSignal,
+	ctx: C.Rcon & SS.Ctx & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
 	opts: { cacheTTL: SETTINGS.ServerSettings['rconCacheTTL']; onFatalError?: (err: unknown) => void },
 ): SquadRcon {
@@ -67,7 +68,7 @@ export function initSquadRcon(
 	)
 	cleanup.push(() => serverInfo.dispose())
 
-	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & C.ServerId & CS.AbortSignal>(
+	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & SS.Ctx & CS.AbortSignal>(
 		'teams',
 		(ctx) => fetchTeams(ctx),
 		module,
@@ -82,11 +83,9 @@ export function initSquadRcon(
 	)
 	cleanup.push(() => teams.dispose())
 
-	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<
-		[CS.Log & Instr.OtelCtx, DecodedPacket]
-	>
-	const rconEvent$: Rx.Observable<[Instr.OtelCtx, SM.RconEvents.Event]> = rconEventBase$.pipe(
-		Rx.concatMap(([ctx, pkt]): Rx.Observable<[Instr.OtelCtx, SM.RconEvents.Event]> => {
+	const rconEventBase$ = Rx.fromEvent(rcon, 'server', (...args) => args) as unknown as Rx.Observable<[CS.Log & CS.Otel, DecodedPacket]>
+	const rconEvent$: Rx.Observable<[CS.Otel, SM.RconEvents.Event]> = rconEventBase$.pipe(
+		Rx.concatMap(([ctx, pkt]): Rx.Observable<[CS.Otel, SM.RconEvents.Event]> => {
 			log.info('RCON PACKET: %s', pkt.body)
 			const [event, err] = matchLog(pkt.body, SM.RCON_EVENT_MATCHERS)
 			if (err) {
@@ -139,7 +138,7 @@ export async function getNextLayer(ctx: C.Rcon & CS.AbortSignal) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-async function fetchPlayers(ctx: C.Rcon & C.ServerId & CS.AbortSignal) {
+async function fetchPlayers(ctx: C.Rcon & SS.Ctx & CS.AbortSignal) {
 	const res = await ctx.rcon.execute('ListPlayers', { signal: ctx.signal })
 	if (res.code !== 'ok') return res
 
@@ -245,7 +244,7 @@ async function fetchSquads(ctx: C.Rcon & CS.AbortSignal) {
 	}
 }
 
-async function fetchTeams(ctx: C.Rcon & C.ServerId & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
+async function fetchTeams(ctx: C.Rcon & SS.Ctx & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
 	// stamped before the requests go out so it's a lower bound on the snapshot's validity; see TeamsRes.polledAt
 	const polledAt = Date.now()
 	const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])

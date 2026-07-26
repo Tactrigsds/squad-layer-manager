@@ -8,6 +8,7 @@ import { objKeys } from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
+import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -218,7 +219,7 @@ export const getRbacForDiscordUser = Instr.spanOp(
 export const getRbacForPlayer = Instr.spanOp(
 	'getRbacForPlayer',
 	{ module },
-	async (ctx: C.Db & SM.Ctx.Ids<'eos'> & C.ServerId & CS.AbortSignal) => {
+	async (ctx: C.Db & SM.Ctx.Ids<'eos'> & SS.Ctx & CS.AbortSignal) => {
 		const ids = ctx.player.ids
 		const playerId = SM.PlayerIds.getPlayerId(ids)
 		// keyed by server as well as player: which admin lists speak for a player is per-server, so one cache entry
@@ -543,7 +544,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 }
 
 export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>(
-	ctx: C.Db & SM.Ctx.Ids & C.ServerId & CS.AbortSignal,
+	ctx: C.Db & SM.Ctx.Ids & SS.Ctx & CS.AbortSignal,
 	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
 ) {
 	const rbac = await getRbacForPlayer(ctx)
@@ -576,13 +577,11 @@ export async function getUserPermissions(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal
 
 // "up to N concurrent items" layer-request checks bypass the equality-matched permission path
 // (see RBAC.maxLayerRequests): undefined = no grant, null = unlimited, number = max concurrent items
-export async function getMaxLayerRequestsForUser(ctx: C.Db & CS.AbortSignal & USR.Ctx.Id & C.ServerId): Promise<number | null | undefined> {
+export async function getMaxLayerRequestsForUser(ctx: C.Db & CS.AbortSignal & USR.Ctx.Id & SS.Ctx): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)
 	return RBAC.maxLayerRequests(perms, ctx.serverId)
 }
-export async function getMaxLayerRequestsForPlayer(
-	ctx: C.Db & CS.AbortSignal & SM.Ctx.Ids & C.ServerId,
-): Promise<number | null | undefined> {
+export async function getMaxLayerRequestsForPlayer(ctx: C.Db & CS.AbortSignal & SM.Ctx.Ids & SS.Ctx): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForPlayer(ctx)).perms)
 	return RBAC.maxLayerRequests(perms, ctx.serverId)
 }

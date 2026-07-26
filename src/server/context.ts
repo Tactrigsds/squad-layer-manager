@@ -7,6 +7,7 @@ import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/a
 import type * as Cleanup from '@/lib/cleanup.ts'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
 import type * as CS from '@/models/context-shared.ts'
+import type * as SS from '@/models/server-state.models'
 import type * as USR from '@/models/users.models.ts'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
 import type * as MatchEventsCacheSys from '@/systems/match-events-cache.server'
@@ -93,39 +94,35 @@ export type Rcon = CS.Ctx & {
 	rcon: RconCore
 }
 
-export type ServerId = CS.Ctx & {
-	serverId: string
-}
-
-export type SquadRcon = CS.Ctx & { squadRcon: SquadRconSys.SquadRcon } & Rcon & ServerId
+export type SquadRcon = CS.Ctx & { squadRcon: SquadRconSys.SquadRcon } & Rcon & SS.Ctx
 
 export type Vote = CS.Ctx & {
 	vote: VoteSys.VoteContext
-} & ServerId
+} & SS.Ctx
 
 export type LayerQueue = CS.Ctx & {
 	layerQueue: LayerQueueSys.LayerQueueSlice
-} & ServerId
+} & SS.Ctx
 
 export type MatchHistory = CS.Ctx & {
 	matchHistory: MatchHistorySys.MatchHistoryContext
-} & ServerId
+} & SS.Ctx
 
 export type MatchEventsCache = CS.Ctx & {
 	matchEventsCache: MatchEventsCacheSys.MatchEventsCacheContext
-} & ServerId
+} & SS.Ctx
 
 export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & SquadRcon
 
 export type Teamswap = CS.Ctx & {
 	teamswaps: TeamswapSys.TeamswapContext
-} & ServerId
+} & SS.Ctx
 
 export type UserPresence = CS.Ctx & UserPresenceSys.UserPresenceContext
 
 export type ServerSettings = CS.Ctx & {
 	serverSettings: SettingsSys.ServerSettingsSlice
-} & ServerId
+} & SS.Ctx
 
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
