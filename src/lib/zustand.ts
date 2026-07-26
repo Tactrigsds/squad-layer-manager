@@ -65,11 +65,17 @@ export function toPartialGetter(source: AnyStore<any> | Getter<any>, key: any): 
 
 export type AnyStore<T extends NonNullable<object>> = StoreApi<T> | FRM.InstanceKeyOfState<T>
 export type QuerySource<T> = UseQueryOptions<T, any, T, any>
-export type AnyInput<T extends NonNullable<object>> = AnyStore<T> | QuerySource<T> | StateObservable<T>
+// An observable carrying a current value readable without subscribing, for sources built by hand rather than by
+// react-rxjs. It is not a widening of StateObservable: that one's getValue may hand back a StatePromise, so neither
+// type contains the other and both are listed wherever a source is accepted. Two obligations come with it: it must
+// emit its current value on subscribe (`subscribe` below drops the first emission, so an observable that stays quiet
+// until its next change loses that change), and `getValue()` must agree with what it last emitted.
+export type ValueObservable<T> = Rx.Observable<T> & { getValue: () => T }
+export type AnyInput<T extends NonNullable<object>> = AnyStore<T> | QuerySource<T> | StateObservable<T> | ValueObservable<T>
 // nullish inputs are tolerated and read as `undefined` -- lets callers pass conditionally-available keys
 type MaybeInput = AnyInput<any> | null | undefined
 // synchronously readable + subscribable sources, i.e. what frame keys resolve to
-type SyncSource<T> = StoreApi<T> | StateObservable<T>
+type SyncSource<T> = StoreApi<T> | StateObservable<T> | ValueObservable<T>
 type ResolvedInput<T> = SyncSource<T> | QuerySource<T>
 type InputState<S> = S extends null | undefined
 	? undefined
@@ -77,11 +83,13 @@ type InputState<S> = S extends null | undefined
 		? FT['state']
 		: S extends StateObservable<infer T>
 			? T
-			: S extends StoreApi<infer T>
+			: S extends ValueObservable<infer T>
 				? T
-				: S extends QuerySource<infer T>
-					? T | undefined
-					: never
+				: S extends StoreApi<infer T>
+					? T
+					: S extends QuerySource<infer T>
+						? T | undefined
+						: never
 type InputStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
 // query sources are awaited rather than sampled, so they are never pending-undefined here
 type ResolvedState<S> = S extends QuerySource<infer T> ? T : InputState<S>
@@ -138,7 +146,7 @@ function resolveInput(input: MaybeInput): ResolvedInput<any> | null {
 	return input
 }
 
-function isObservable(s: SyncSource<any>): s is StateObservable<any> {
+function isObservable(s: SyncSource<any>): s is ValueObservable<any> {
 	return 'getValue' in s
 }
 
