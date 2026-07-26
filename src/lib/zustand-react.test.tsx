@@ -11,6 +11,27 @@ import * as Zus from './zustand'
 type State = { count: number; name: string }
 const createStore = () => Zus.createStore<State>(() => ({ count: 0, name: 'a' }))
 
+// stands in for a react-rxjs StateObservable that something else keeps hot: getValue() returns the current value
+// once there is one, and until then a stable promise for the first
+function stateLike<T>() {
+	const subject = new Rx.Subject<T>()
+	let current: T | undefined
+	let settle!: (v: T) => void
+	const first = new Promise<T>((res) => {
+		settle = res
+	})
+	// subscribed before the hook is, so `current` is already updated when the hook's subscriber reads it
+	subject.subscribe((v) => {
+		const isFirst = current === undefined
+		current = v
+		if (isFirst) settle(v)
+	})
+	const source = Object.assign(subject.asObservable(), { getValue: () => (current === undefined ? first : current) })
+	// getValue's real return is `T | Promise<T>`, exactly as a StateObservable's is; the cast is what the consuming
+	// types already assume, and suspending is what makes the assumption true
+	return { source: source as unknown as Zus.ValueObservable<T>, emit: (v: T) => subject.next(v) }
+}
+
 const wrapper = ({ children }: { children: React.ReactNode }) => (
 	<QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 )
@@ -70,6 +91,16 @@ describe('useStore', () => {
 		expect(result.current).toBe(1)
 		act(() => subject.next({ n: 2 }))
 		expect(result.current).toBe(2)
+	})
+
+	// a source with no value yet emits its first one asynchronously, and that emission is the one that matters.
+	// dropping a fixed first emission instead of a synchronous one would swallow it and leave this pending forever.
+	it('delivers the first emission of an observable that had no value when it subscribed', () => {
+		const { source, emit } = stateLike<{ n: number }>()
+		const { result } = renderHook(() => Zus.useStore(source, (s: any) => (typeof s?.then === 'function' ? 'pending' : s.n)))
+		expect(result.current).toBe('pending')
+		act(() => emit({ n: 1 }))
+		expect(result.current).toBe(1)
 	})
 
 	it('mixes an observable with a store', () => {
@@ -211,6 +242,34 @@ describe('useStore_Susp', () => {
 		expect(screen.getByTestId('value').textContent).toBe('7')
 		act(() => store.setState({ count: 3 }))
 		expect(screen.getByTestId('value').textContent).toBe('10')
+	})
+
+	it('suspends until an observable produces its first value, and re-renders after it does', async () => {
+		const { source, emit } = stateLike<{ n: number }>()
+		const seen: unknown[] = []
+		function ObsProbe() {
+			const n = Zus.useStore_Susp(source, (s: { n: number }) => {
+				seen.push(s)
+				return s.n
+			})
+			return <span data-testid="value">{n}</span>
+		}
+		render(
+			<React.Suspense fallback={<span data-testid="fallback">loading</span>}>
+				<ObsProbe />
+			</React.Suspense>,
+		)
+		expect(screen.getByTestId('fallback')).toBeDefined()
+		await act(async () => {
+			emit({ n: 4 })
+			await new Promise((r) => setTimeout(r, 10))
+		})
+		expect(screen.getByTestId('value').textContent).toBe('4')
+		// the subscription only lands once the component commits, i.e. after it stopped suspending
+		act(() => emit({ n: 9 }))
+		expect(screen.getByTestId('value').textContent).toBe('9')
+		// the whole point: the selector is never handed the promise
+		expect(seen.some((s) => typeof (s as { then?: unknown })?.then === 'function')).toBe(false)
 	})
 
 	it('reads sync sources without suspending when no query source is passed', () => {

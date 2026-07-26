@@ -65,11 +65,17 @@ export function toPartialGetter(source: AnyStore<any> | Getter<any>, key: any): 
 
 export type AnyStore<T extends NonNullable<object>> = StoreApi<T> | FRM.InstanceKeyOfState<T>
 export type QuerySource<T> = UseQueryOptions<T, any, T, any>
-export type AnyInput<T extends NonNullable<object>> = AnyStore<T> | QuerySource<T> | StateObservable<T>
+// An observable carrying a current value readable without subscribing, for sources built by hand rather than by
+// react-rxjs. It is not a widening of StateObservable: that one's getValue may hand back a StatePromise, so neither
+// type contains the other and both are listed wherever a source is accepted. The one obligation is that `getValue()`
+// agrees with what the observable last emitted; emitting the current value on subscribe is optional, since
+// `subscribe` below drops only a synchronous first emission.
+export type ValueObservable<T> = Rx.Observable<T> & { getValue: () => T }
+export type AnyInput<T extends NonNullable<object>> = AnyStore<T> | QuerySource<T> | StateObservable<T> | ValueObservable<T>
 // nullish inputs are tolerated and read as `undefined` -- lets callers pass conditionally-available keys
 type MaybeInput = AnyInput<any> | null | undefined
 // synchronously readable + subscribable sources, i.e. what frame keys resolve to
-type SyncSource<T> = StoreApi<T> | StateObservable<T>
+type SyncSource<T> = StoreApi<T> | StateObservable<T> | ValueObservable<T>
 type ResolvedInput<T> = SyncSource<T> | QuerySource<T>
 type InputState<S> = S extends null | undefined
 	? undefined
@@ -77,11 +83,13 @@ type InputState<S> = S extends null | undefined
 		? FT['state']
 		: S extends StateObservable<infer T>
 			? T
-			: S extends StoreApi<infer T>
+			: S extends ValueObservable<infer T>
 				? T
-				: S extends QuerySource<infer T>
-					? T | undefined
-					: never
+				: S extends StoreApi<infer T>
+					? T
+					: S extends QuerySource<infer T>
+						? T | undefined
+						: never
 type InputStates<Inputs extends MaybeInput[]> = { [K in keyof Inputs]: InputState<Inputs[K]> }
 // query sources are awaited rather than sampled, so they are never pending-undefined here
 type ResolvedState<S> = S extends QuerySource<infer T> ? T : InputState<S>
@@ -95,6 +103,16 @@ type HasQuery<Inputs extends readonly unknown[]> = Inputs extends readonly [infe
 type Returns<Inputs extends MaybeInput[], R> = HasQuery<Inputs> extends true ? Promise<R> : R
 
 const NO_QUERIES: { data?: unknown }[] = []
+
+// a StateObservable with no value yet returns a promise for its first one from getValue(). This marks that snapshot
+// so useStore_Susp can suspend on it, rather than the selector receiving a promise where a value belongs.
+class Pending {
+	constructor(readonly promise: PromiseLike<unknown>) {}
+}
+
+function isThenable(v: unknown): v is PromiseLike<unknown> {
+	return typeof (v as { then?: unknown } | null | undefined)?.then === 'function'
+}
 
 function isQuerySource(s: unknown): s is QuerySource<any> {
 	return typeof s === 'object' && s !== null && 'queryKey' in s && !('getState' in s) && !('getValue' in s)
@@ -138,7 +156,7 @@ function resolveInput(input: MaybeInput): ResolvedInput<any> | null {
 	return input
 }
 
-function isObservable(s: SyncSource<any>): s is StateObservable<any> {
+function isObservable(s: SyncSource<any>): s is ValueObservable<any> {
 	return 'getValue' in s
 }
 
@@ -155,7 +173,17 @@ function subscribe(s: AnyStore<any> | null, update: () => void): () => void {
 		return () => sub.unsubscribe()
 	}
 	if (isObservable(s)) {
-		const sub = s.pipe(Rx.skip(1)).subscribe({ next: update })
+		// a source holding a current value replays it on subscribe, and getSnapshot has already read that, so the
+		// synchronous emission is dropped as redundant. A blanket skip(1) would instead drop the first *asynchronous*
+		// emission of a source that has no value yet -- which is the one that matters, and the only one a suspended
+		// consumer is waiting for.
+		let replaying = true
+		const sub = s.subscribe({
+			next: () => {
+				if (!replaying) update()
+			},
+		})
+		replaying = false
 		return () => sub.unsubscribe()
 	}
 	return s.subscribe(update)
@@ -197,7 +225,9 @@ export function useStore(...args: (MaybeInput | ((...states: any[]) => any))[]):
 	return useStoreImpl(args, false)
 }
 
-// useStore, but suspends until every query source has resolved, so the selector never sees a pending `undefined`
+// useStore, but suspends until every source is ready, so the selector never sees a pending value: query sources
+// resolved, and observable sources holding a first value. The latter is what a react-rxjs bind needs -- plain
+// useStore would hand the selector the StatePromise that getValue() returns before the first emission.
 export function useStore_Susp<I extends MaybeInput>(store: I): ResolvedState<I>
 export function useStore_Susp<Inputs extends MaybeInput[], R>(...args: [...Inputs, (...states: ResolvedStates<Inputs>) => R]): R
 export function useStore_Susp<Inputs extends MaybeInput[]>(...inputs: Inputs): ResolvedStates<Inputs>
@@ -235,14 +265,28 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 	/* eslint-enable react-hooks/rules-of-hooks */
 
 	const cache = React.useRef<{ selector: unknown; states: any[]; value: any } | null>(null)
+	// the Pending wrapper is cached on the promise's identity so getSnapshot stays stable while suspended, and so a
+	// selector that legitimately returns a promise is never mistaken for one
+	const pending = React.useRef<{ promise: PromiseLike<unknown>; wrapper: Pending } | null>(null)
 	// useSyncExternalStore spins if this returns a fresh value while nothing changed, hence the cache. it is keyed
 	// on the selector as well as the states, since an inline selector closing over props must recompute on a
 	// prop change that no source emitted for
 	const getSnapshot = () => {
 		let qIdx = 0
-		const states = allInputs.map((input) =>
-			isQuerySource(input) ? queryResults[qIdx++]?.data : getSourceState(input as SyncSource<any> | null),
-		)
+		let unresolved: PromiseLike<unknown> | undefined
+		const states = allInputs.map((input) => {
+			if (isQuerySource(input)) return queryResults[qIdx++]?.data
+			const source = input as SyncSource<any> | null
+			const state = getSourceState(source)
+			// only observables can be pending: a store always has a state, and a query source's data came from
+			// useSuspenseQueries above
+			if (suspend && source !== null && isObservable(source) && isThenable(state)) unresolved ??= state
+			return state
+		})
+		if (unresolved) {
+			if (pending.current?.promise !== unresolved) pending.current = { promise: unresolved, wrapper: new Pending(unresolved) }
+			return pending.current.wrapper
+		}
 		const prev = cache.current
 		if (
 			prev &&
@@ -267,7 +311,11 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 		regularSources,
 	)
 
-	return React.useSyncExternalStore(subscribeAll, getSnapshot)
+	const snapshot = React.useSyncExternalStore(subscribeAll, getSnapshot)
+	// thrown after every hook has run, so the hook order is the same on the render that suspends and the one that
+	// doesn't. React retries when the promise settles, by which point getValue() returns the value itself.
+	if (snapshot instanceof Pending) throw snapshot.promise
+	return snapshot
 }
 
 // a live StoreApi view over the whole source store -- like toPartialStore but unscoped
