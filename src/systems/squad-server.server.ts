@@ -120,8 +120,8 @@ export const orpcRouter = {
 		const names = new Set<string>()
 		for (const managedServer of globalState.managedServers.values()) {
 			try {
-				const adminList = await AdminList.getMergedForServer({ ...baseCtx, ...managedServer }, managedServer.serverId)
-				for (const group of adminList.groups.keys()) names.add(group)
+				const adminLists = await AdminList.getListsForServerId({ ...baseCtx, ...managedServer }, managedServer.serverId)
+				SM.AdminList.collectGroupNames(adminLists, names)
 			} catch (err) {
 				// one unreachable admin list must not deny the editor every other server's groups
 				log.warn(err, 'Failed to read an admin list while listing groups')
@@ -427,12 +427,12 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
-		const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
+		const [adminLists, teamsRes] = await Promise.all([AdminList.getListsForServerId(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 		if (teamsRes.code !== 'ok') return teamsRes
 		const admins = teamsRes.players
 			.filter((p) => {
 				if (!p.ids.steam) return false
-				return SM.AdminList.getIsAdmin(adminList, p.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+				return SM.AdminList.isAdminInAny(adminLists, p.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
 			})
 			.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		if (admins.length === 0) return { code: 'err:no-admins-online' as const }
@@ -1295,10 +1295,10 @@ export async function warnPlayers(
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
 // whether they're all admins and whether they're the entire online admin roster
 async function resolveWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.PlayerId[]) {
-	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
+	const [adminLists, teamsRes] = await Promise.all([AdminList.getListsForServerId(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
 
-	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
+	const isAdmin = (player: SM.Player) => SM.AdminList.isAdminInAny(adminLists, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
 	const players = targets.map((target) => SM.PlayerIds.find(teamsRes.players, (p) => p.ids, target))
 	const allAdmins = players.every((player) => !!player && isAdmin(player))
 	return { players, allAdmins, isEntireAdminRoster: allAdmins && players.length === teamsRes.players.filter(isAdmin).length }

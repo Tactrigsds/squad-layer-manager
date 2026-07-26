@@ -7,7 +7,6 @@ import * as CD from '@/lib/ctx-def'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import * as SetUtils from '@/lib/set-utils'
 import * as Str from '@/lib/string-utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
@@ -643,20 +642,40 @@ export namespace AdminList {
 	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
 	export function getPlayerGroups(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
 		const groups = new Set<string>()
-		if (ids.eos) {
-			const eosGroups = list.eos.players.get(ids.eos)
-			if (eosGroups) {
-				SetUtils.union(groups, eosGroups)
-			}
-		}
-
-		if (ids.steam) {
-			const steamGroups = list.steam.players.get(ids.steam)
-			if (steamGroups) {
-				SetUtils.union(groups, steamGroups)
-			}
-		}
+		const eosGroups = ids.eos ? list.eos.players.get(ids.eos) : undefined
+		if (eosGroups) for (const group of eosGroups) groups.add(group)
+		const steamGroups = ids.steam ? list.steam.players.get(ids.steam) : undefined
+		if (steamGroups) for (const group of steamGroups) groups.add(group)
 		return groups
+	}
+
+	// Across every list a server recognises, which is the question all but one caller actually has. Appends into the
+	// array the caller is going to keep anyway rather than building a Set to copy out of: a player holds a handful of
+	// groups at most, so the linear dedupe is cheaper than allocating, and this runs once per player per roster poll.
+	export function collectPlayerGroups(lists: AdminLists, ids: PlayerIds.IdQuery<'steam'>, out: string[] = []): string[] {
+		for (const list of lists.values()) {
+			const eosGroups = ids.eos ? list.eos.players.get(ids.eos) : undefined
+			if (eosGroups) for (const group of eosGroups) if (!out.includes(group)) out.push(group)
+			const steamGroups = ids.steam ? list.steam.players.get(ids.steam) : undefined
+			if (steamGroups) for (const group of steamGroups) if (!out.includes(group)) out.push(group)
+		}
+		return out
+	}
+
+	export function isAdminInAny(lists: AdminLists, ids: PlayerIds.IdQuery<'steam'>) {
+		for (const list of lists.values()) {
+			if (getIsAdmin(list, ids)) return true
+		}
+		return false
+	}
+
+	// Every group name any of them defines. The merged view used to answer this by unioning the maps; nothing reads
+	// the perms a group carries off that union, so the names are all that has to be collected.
+	export function collectGroupNames(lists: AdminLists, out = new Set<string>()): Set<string> {
+		for (const list of lists.values()) {
+			for (const group of list.groups.keys()) out.add(group)
+		}
+		return out
 	}
 
 	// admin lists can key an admin by either id, so check both (mirrors getPlayerGroups); checking only eos when it's

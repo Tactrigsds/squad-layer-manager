@@ -595,6 +595,19 @@ export function toRow(layer: L.KnownLayer, ctx: Ctx, components = L.StaticLayerC
 	}
 }
 
+// Availability is overwhelmingly repetition: the shipped v10.4.0 artifact has 14893 entries across 254 layers, but
+// only 273 distinct entries and 55 distinct per-layer lists. Persisted as pools of each with layers indexing into
+// them, which is a 37x smaller subtree on disk and 70x in memory once expanded back with the duplicates shared.
+export type LayerFactionAvailabilityPool = {
+	entries: L.LayerFactionAvailabilityEntry[]
+	lists: number[][]
+	byLayer: Record<string, number>
+}
+
+// artifacts written before the pool existed carry the expanded form, and a deployment can mount an older pair than
+// the image ships (see layer-artifacts.server), so both shapes have to be readable
+export type PersistedLayerFactionAvailability = Record<string, L.LayerFactionAvailabilityEntry[]> | LayerFactionAvailabilityPool
+
 export type BaseLayerComponents = {
 	maps: string[]
 	alliances: string[]
@@ -609,10 +622,11 @@ export type BaseLayerComponents = {
 	factionToAlliance: Record<string, string>
 	factionToUnit: Record<string, string[]>
 	factionUnitToUnitFullName: Record<string, string>
-	layerFactionAvailability: Record<string, L.LayerFactionAvailabilityEntry[]>
+	layerFactionAvailability: PersistedLayerFactionAvailability
 }
 
-export type LayerComponents = BaseLayerComponents & {
+export type LayerComponents = Omit<BaseLayerComponents, 'layerFactionAvailability'> & {
+	layerFactionAvailability: Record<string, L.LayerFactionAvailabilityEntry[]>
 	mapAbbreviations: Record<string, string>
 	unitAbbreviations: Record<string, string>
 	unitShortNames: Record<string, string>
@@ -640,7 +654,73 @@ const BASE_LAYER_COMPONENT_KEYS = [
 ] as const satisfies (keyof BaseLayerComponents)[]
 
 export function toBaseLayerComponents(components: LayerComponents): BaseLayerComponents {
-	return Obj.selectProps(components, BASE_LAYER_COMPONENT_KEYS)
+	return {
+		...Obj.selectProps(components, BASE_LAYER_COMPONENT_KEYS),
+		layerFactionAvailability: poolLayerFactionAvailability(components.layerFactionAvailability),
+	}
+}
+
+function availabilityEntryKey(entry: L.LayerFactionAvailabilityEntry) {
+	const variants = entry.variants ? `${entry.variants.boats}/${entry.variants.noHeli}` : ''
+	return `${entry.Faction}|${entry.Unit}|${entry.allowedTeams.join(',')}|${entry.isDefaultUnit}|${variants}`
+}
+
+export function poolLayerFactionAvailability(byLayer: Record<string, L.LayerFactionAvailabilityEntry[]>): LayerFactionAvailabilityPool {
+	const entries: L.LayerFactionAvailabilityEntry[] = []
+	const entryIndexes = new Map<string, number>()
+	const lists: number[][] = []
+	const listIndexes = new Map<string, number>()
+	const layerToList: Record<string, number> = {}
+
+	for (const [layer, layerEntries] of Object.entries(byLayer)) {
+		const list = layerEntries.map((entry) => {
+			const key = availabilityEntryKey(entry)
+			let index = entryIndexes.get(key)
+			if (index === undefined) {
+				index = entries.push(entry) - 1
+				entryIndexes.set(key, index)
+			}
+			return index
+		})
+		const listKey = list.join(',')
+		let listIndex = listIndexes.get(listKey)
+		if (listIndex === undefined) {
+			listIndex = lists.push(list) - 1
+			listIndexes.set(listKey, listIndex)
+		}
+		layerToList[layer] = listIndex
+	}
+
+	return { entries, lists, byLayer: layerToList }
+}
+
+function isAvailabilityPool(value: PersistedLayerFactionAvailability): value is LayerFactionAvailabilityPool {
+	const pool = value as LayerFactionAvailabilityPool
+	return Array.isArray(pool.entries) && Array.isArray(pool.lists) && !!pool.byLayer && !Array.isArray(pool.byLayer)
+}
+
+// The expanded entries and per-layer arrays are shared between every layer that uses them, which is where the memory
+// saving is. Frozen so that sharing cannot be discovered the hard way: nothing mutates these at runtime, only
+// preprocess builds them, and it builds rather than reads.
+export function expandLayerFactionAvailability(
+	persisted: PersistedLayerFactionAvailability | undefined,
+): Record<string, L.LayerFactionAvailabilityEntry[]> {
+	// preprocess builds a scratch components object out of {} to get at the derived abbreviation maps before it has
+	// any availability to put in one
+	if (!persisted) return {}
+	if (!isAvailabilityPool(persisted)) return persisted
+
+	const entries = persisted.entries.map((entry) => {
+		if (entry.variants) Object.freeze(entry.variants)
+		Object.freeze(entry.allowedTeams)
+		return Object.freeze(entry)
+	})
+	const lists = persisted.lists.map((list) => Object.freeze(list.map((index) => entries[index])))
+	const byLayer: Record<string, L.LayerFactionAvailabilityEntry[]> = {}
+	for (const [layer, listIndex] of Object.entries(persisted.byLayer)) {
+		byLayer[layer] = lists[listIndex] as L.LayerFactionAvailabilityEntry[]
+	}
+	return byLayer
 }
 
 const baseProperties = {
@@ -990,6 +1070,7 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 
 	const layerComponents: LayerComponents = {
 		...components,
+		layerFactionAvailability: expandLayerFactionAvailability(components.layerFactionAvailability),
 		collections: Object.keys(COLLECTION_ABBREVIATIONS),
 		collectionAbbreviations: COLLECTION_ABBREVIATIONS,
 		gamemodeAbbreviations: GAMEMODE_ABBREVIATIONS,

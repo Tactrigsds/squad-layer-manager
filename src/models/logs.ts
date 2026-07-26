@@ -163,14 +163,23 @@ export function mapSpanAttrs(span: Otel.Span, record: Record<string, any>) {
 	// carried the same value under two keys.
 }
 
+// Not toLocaleTimeString: passing it a locale or options misses V8's cached formatter and builds a
+// fresh Intl.DateTimeFormat per call, which measured 36us against 0.1us here -- two thirds of the cost
+// of emitting a log line, on every line.
+function formatLocalTimeOfDay(epochMs: number): string {
+	const d = new Date(epochMs)
+	const h = d.getHours(),
+		m = d.getMinutes(),
+		s = d.getSeconds()
+	return `${h < 10 ? '0' : ''}${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`
+}
+
 export function showLogEvent(
 	obj: { level: number; [key: string]: unknown },
 	align = false,
 	excludedContextParams: ReadonlySet<string> = new Set(),
 ) {
-	// Format time with 24h time format (HH:MM:SS)
-	const dateObj = new Date(obj.time as number)
-	const time = dateObj.toLocaleTimeString([], { hour12: false })
+	const time = formatLocalTimeOfDay(obj.time as number)
 	const dimColor = '\x1b[2m' // Dim/reduced weight ANSI escape code
 	const resetColor = '\x1b[0m'
 
