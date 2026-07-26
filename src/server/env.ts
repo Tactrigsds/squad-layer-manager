@@ -392,6 +392,11 @@ export const groups = {
 			description:
 				'an extra directory to search for layer artifacts, ahead of ./data and the assets/layers the image ships. Only needed when the artifacts live outside the data mount.',
 		}),
+		LAYER_ENGINE_IDLE_RELEASE: ZodUtils.HumanTime.prefault('30s').meta({
+			description:
+				'how long the layer engine sits unqueried before its ~64MB is released again. Shorter trades reload latency for resident memory; the integration tests set it low so they are not waiting on the timer.',
+			envExample: { include: 'omit' },
+		}),
 	},
 
 	// only `pnpm preprocess` reads these, so they stay out of the deployment example
