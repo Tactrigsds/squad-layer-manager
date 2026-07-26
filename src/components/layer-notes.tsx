@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { RichText } from '@/components/rich-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,8 +14,6 @@ import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // Freeform notes on a queue item, rendered `<author>: <text>` beside the item's tags. A note belongs to its author:
 // anyone else needs queue:manage-all-notes to touch it (the server enforces the same rule).
@@ -42,25 +43,25 @@ export function LayerNotes(props: {
 	return (
 		<span className={cn('flex flex-wrap items-center gap-1', props.className)}>
 			{LNote.displayInline(notes)
-				? notes.map(note => (
-					<NoteChip
-						key={note.id}
-						serverId={props.serverId}
-						note={note}
-						disabled={props.disabled}
-						onEdit={() => setEditing({ note })}
-						onDelete={() => props.onDelete(note.id)}
-					/>
-				))
+				? notes.map((note) => (
+						<NoteChip
+							key={note.id}
+							serverId={props.serverId}
+							note={note}
+							disabled={props.disabled}
+							onEdit={() => setEditing({ note })}
+							onDelete={() => props.onDelete(note.id)}
+						/>
+					))
 				: notes.length > 0 && (
-					<NoteListPopover
-						serverId={props.serverId}
-						notes={notes}
-						disabled={props.disabled}
-						onEdit={(note) => setEditing({ note })}
-						onDelete={props.onDelete}
-					/>
-				)}
+						<NoteListPopover
+							serverId={props.serverId}
+							notes={notes}
+							disabled={props.disabled}
+							onEdit={(note) => setEditing({ note })}
+							onDelete={props.onDelete}
+						/>
+					)}
 			<Button
 				variant="ghost"
 				size="sm"
@@ -90,7 +91,13 @@ function NoteChip(props: { serverId: string; note: LNote.Note; disabled?: boolea
 				</span>
 			</HoverCardTrigger>
 			<HoverCardContent className="w-72 space-y-2 p-3">
-				<NoteBody serverId={props.serverId} note={props.note} disabled={props.disabled} onEdit={props.onEdit} onDelete={props.onDelete} />
+				<NoteBody
+					serverId={props.serverId}
+					note={props.note}
+					disabled={props.disabled}
+					onEdit={props.onEdit}
+					onDelete={props.onDelete}
+				/>
 			</HoverCardContent>
 		</HoverCard>
 	)
@@ -112,7 +119,7 @@ function NoteListPopover(props: {
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-96 max-h-80 space-y-3 overflow-y-auto p-3">
-				{props.notes.map(note => (
+				{props.notes.map((note) => (
 					<NoteBody
 						key={note.id}
 						serverId={props.serverId}
@@ -158,9 +165,7 @@ function AuthorName(props: { userId: USR.UserId }) {
 function NoteDialog(props: { state: Editing; onClose: () => void; onSubmit: (text: string) => void }) {
 	return (
 		<Dialog open={props.state !== null} onOpenChange={(next) => !next && props.onClose()}>
-			<DialogContent className="max-w-md">
-				{props.state && <NoteDialogBody {...props} state={props.state} />}
-			</DialogContent>
+			<DialogContent className="max-w-md">{props.state && <NoteDialogBody {...props} state={props.state} />}</DialogContent>
 		</Dialog>
 	)
 }
@@ -190,10 +195,16 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 				placeholder="Anything worth knowing about this layer. Links are clickable."
 				onChange={(e) => setLength(e.target.value.trim().length)}
 			/>
-			<span className="text-xs text-muted-foreground">{length} / {LNote.MAX_LENGTH}</span>
+			<span className="text-xs text-muted-foreground">
+				{length} / {LNote.MAX_LENGTH}
+			</span>
 			<DialogFooter>
-				<Button variant="outline" onClick={props.onClose}>Cancel</Button>
-				<Button disabled={length === 0} onClick={submit}>{existing ? 'Save' : 'Add'}</Button>
+				<Button variant="outline" onClick={props.onClose}>
+					Cancel
+				</Button>
+				<Button disabled={length === 0} onClick={submit}>
+					{existing ? 'Save' : 'Add'}
+				</Button>
 			</DialogFooter>
 		</>
 	)

@@ -1,9 +1,9 @@
-import { formatVersion } from '@/lib/versioning.ts'
+import Pyroscope from '@pyroscope/nodejs'
 
+import { formatVersion } from '@/lib/versioning.ts'
 import * as Env from '@/server/env'
 import * as Cleanup from '@/systems/cleanup.server'
 import { instanceId } from '@/systems/otel.server'
-import Pyroscope from '@pyroscope/nodejs'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.pyroscope })
 

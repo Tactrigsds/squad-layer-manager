@@ -72,9 +72,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/dist-server ./dist-server
 
-# Registers the OTel import-in-the-middle loader hook; `server:prod` loads it via `node --import`.
-# Without it the auto-instrumentations load but patch nothing (see register-otel.mjs).
-COPY --from=builder /app/register-otel.mjs ./register-otel.mjs
+# The two preloads `server:prod` passes to `node --import`, so the server does not start without them.
+# register-otel.mjs installs the import-in-the-middle loader hook, without which the auto-instrumentations
+# load but patch nothing; register-source-maps.mjs scopes source map support to our own code.
+COPY --from=builder /app/register-otel.mjs /app/register-source-maps.mjs ./
 
 # the server instantiates the same engine the browser does, and reads the wasm off disk
 COPY --from=builder /app/assets/layer-engine.wasm ./assets/layer-engine.wasm
@@ -120,6 +121,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY src ./src
 COPY test ./test
 COPY drizzle ./drizzle
+# the launcher both suites go through. It finds SLM_TEST_SERVER_ENTRY already set below and builds nothing,
+# which is what keeps this image testing the bundle it ships rather than a rebuild of it.
+COPY scripts/test-server-bundle.mjs ./scripts/
 COPY paths.ts tsconfig.json tsconfig.paths.json tsconfig.app.json tsconfig.node.json ./
 COPY vite.config.ts vitest.integration.config.ts playwright.config.ts index.html ./
 

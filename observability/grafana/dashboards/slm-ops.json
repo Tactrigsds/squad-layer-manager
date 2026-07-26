@@ -126,7 +126,10 @@
 				}
 			],
 			"transformations": [
-				{ "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "slm_op_name": "Op", "Value": "p95 (s)" } } },
+				{
+					"id": "organize",
+					"options": { "excludeByName": { "Time": true }, "renameByName": { "slm_op_name": "Op", "Value": "p95 (s)" } }
+				},
 				{ "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "p95 (s)", "desc": true }] } }
 			],
 			"fieldConfig": {
@@ -219,7 +222,10 @@
 				"overrides": [
 					{
 						"matcher": { "id": "byName", "options": "delay p99" },
-						"properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }]
+						"properties": [
+							{ "id": "unit", "value": "s" },
+							{ "id": "custom.axisPlacement", "value": "right" }
+						]
 					}
 				]
 			}

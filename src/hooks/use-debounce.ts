@@ -1,12 +1,15 @@
 import React from 'react'
-import * as Rx from 'rxjs'
 
 import { useRefConstructor } from '@/lib/react'
+import * as Rx from '@/lib/rxjs'
 
-export function useDebounced<T>(
-	ops: { mode?: 'debounce' | 'throttle'; defaultValue?: () => T; delay: number; onChange: (value: T) => void },
-) {
-	const subRef = useRefConstructor(() => ops.defaultValue ? new Rx.BehaviorSubject<T>(ops.defaultValue()) : new Rx.Subject<T>())
+export function useDebounced<T>(ops: {
+	mode?: 'debounce' | 'throttle'
+	defaultValue?: () => T
+	delay: number
+	onChange: (value: T) => void
+}) {
+	const subRef = useRefConstructor(() => (ops.defaultValue ? new Rx.BehaviorSubject<T>(ops.defaultValue()) : new Rx.Subject<T>()))
 
 	React.useEffect(() => {
 		const subscription = new Rx.Subscription()
@@ -24,11 +27,14 @@ export function useDebounced<T>(
 }
 
 // for when you still want to rerender immediately when state is set but you have some expensive side-effect you would like to compute asynchronously. defaultValue is expected to be referentially stable
-export function useDebouncedState<T>(defaultValue: T, opts: {
-	delay: number
-	mode?: 'debounce' | 'throttle'
-	onChange: (value: T) => void
-}) {
+export function useDebouncedState<T>(
+	defaultValue: T,
+	opts: {
+		delay: number
+		mode?: 'debounce' | 'throttle'
+		onChange: (value: T) => void
+	},
+) {
 	const prevDefaultValue = React.useRef(defaultValue)
 	const [_state, setState] = React.useState(defaultValue)
 	let state: T
@@ -40,10 +46,13 @@ export function useDebouncedState<T>(defaultValue: T, opts: {
 
 	const setDebounced = useDebounced<T>({ ...opts })
 
-	const setCombinedState = React.useCallback((value: T) => {
-		prevDefaultValue.current = defaultValue
-		setState(value)
-		setDebounced(value)
-	}, [defaultValue, setDebounced])
+	const setCombinedState = React.useCallback(
+		(value: T) => {
+			prevDefaultValue.current = defaultValue
+			setState(value)
+			setDebounced(value)
+		},
+		[defaultValue, setDebounced],
+	)
 	return [state, setCombinedState] as const
 }

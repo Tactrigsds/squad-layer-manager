@@ -1,12 +1,12 @@
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { z } from 'zod'
+
+import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
 import * as SC from '@/models/server-console.models'
 import * as RBAC from '@/rbac.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Rbac from '@/systems/rbac.server'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 // What each squad server is saying and being told, kept per server as a short tail. Every connection type feeds
 // this the same way, so the console reads identically whether the server is real, tunnelled through an agent, or
@@ -51,10 +51,7 @@ export function record(serverId: string, event: SC.ConsoleEventInput): void {
 	channel.buffer.push(stamped)
 	channel.bytes += SC.eventSize(stamped)
 	let dropped = 0
-	while (
-		dropped < channel.buffer.length
-		&& (channel.buffer.length - dropped > SC.BUFFER_SIZE || channel.bytes > SC.BUFFER_BYTES)
-	) {
+	while (dropped < channel.buffer.length && (channel.buffer.length - dropped > SC.BUFFER_SIZE || channel.bytes > SC.BUFFER_BYTES)) {
 		channel.bytes -= SC.eventSize(channel.buffer[dropped])
 		dropped++
 	}
@@ -69,7 +66,7 @@ export function recordLogChunk(serverId: string, chunk: string, time: number): v
 	for (const line of lines) record(serverId, { type: 'log', line, time })
 }
 
-// A slice teardown drops the tail with it: the events describe a connection that no longer exists, and keeping
+// A managed server teardown drops the tail with it: the events describe a connection that no longer exists, and keeping
 // them would leave a restarted server showing the previous one's traffic.
 export function disposeFor(serverId: string): void {
 	const channel = channels.get(serverId)
@@ -81,27 +78,28 @@ export function disposeFor(serverId: string): void {
 export const orpcRouter = {
 	// The tail, backlog first and then live. Batched rather than one message per line: a busy server produces log
 	// lines faster than a websocket round trip, and the console renders them in batches anyway.
-	watch: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context, input, signal },
-	) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(
-			context,
-			RBAC.perm('squad-server:view-console', { serverId: input.serverId }),
-		)
-		if (denyRes) {
-			yield { code: 'err:permission-denied' as const, events: [] as SC.ConsoleEvent[] }
-			return
-		}
-		const channel = channelFor(input.serverId)
-		log.info('Server %s: user %s opened the console', input.serverId, context.user.discordId)
+	watch: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, input, signal }) {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('squad-server:view-console', { serverId: input.serverId }))
+			if (denyRes) {
+				yield { code: 'err:permission-denied' as const, events: [] as SC.ConsoleEvent[] }
+				return
+			}
+			const channel = channelFor(input.serverId)
+			log.info('Server %s: user %s opened the console', input.serverId, context.user.discordId)
 
-		const backlog = Rx.of(channel.buffer.slice())
-		const live = channel.event$.pipe(Rx.bufferTime(120), Rx.filter((batch) => batch.length > 0))
-		const obs = Rx.concat(backlog, live).pipe(
-			Rx.filter((events) => events.length > 0),
-			Rx.map((events) => ({ code: 'ok' as const, events })),
-			withAbortSignal(signal!),
-		)
-		yield* toAsyncGenerator(obs)
-	}),
+			const backlog = Rx.of(channel.buffer.slice())
+			const live = channel.event$.pipe(
+				Rx.bufferTime(120),
+				Rx.filter((batch) => batch.length > 0),
+			)
+			const obs = Rx.concat(backlog, live).pipe(
+				Rx.filter((events) => events.length > 0),
+				Rx.map((events) => ({ code: 'ok' as const, events })),
+				Rx.Ext.withAbortSignal(signal!),
+			)
+			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
 }

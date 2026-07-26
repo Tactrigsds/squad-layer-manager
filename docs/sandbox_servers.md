@@ -1,7 +1,7 @@
 # Sandbox servers
 
 A sandbox server is a squad server SLM runs itself. There is no game server behind it: SLM starts the emulator in
-`src/emulator`, binds it to a loopback RCON port and feeds its log lines straight into the server slice.
+`src/emulator`, binds it to a loopback RCON port and feeds its log lines straight into the managed server.
 
 It exists so an install has somewhere to learn the queue, try a filter, rehearse a vote or reproduce a bug without
 touching anyone real. A fresh install gets one on startup, which is the difference between opening SLM to a working
@@ -43,13 +43,13 @@ same parser as a live server's. That is the point: a mock would not catch the bu
 
 Three things are deliberately not real:
 
-- **BattleMetrics is off for sandbox slices.** Their players are fabricated, so lookups would spam a real org-wide
+- **BattleMetrics is off for sandbox servers.** Their players are fabricated, so lookups would spam a real org-wide
   service with ids belonging to nobody, and any flag or note written while looking at the sandbox would land on the
   live org. There is no per-server BM stub in production; the integration is simply not started.
 - **Admin lists are global**, so a fabricated player is not in one and does not read as an in-game admin. Chat
   commands from sandbox players resolve permissions the same way they would anywhere, which usually means denied.
 - **The world is in memory.** An SLM restart gives you a fresh world against a database that still remembers the old
-  one's matches. The emulator survives slice restarts (a settings edit does not reset it) but not a process restart.
+  one's matches. The emulator survives a managed server restart (a settings edit does not reset it) but not a process restart.
 
 ## Sandbox data lands in the real tables
 

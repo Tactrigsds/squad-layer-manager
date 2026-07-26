@@ -1,19 +1,17 @@
-import * as MapUtils from '@/lib/map'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
-import * as ConfigClient from '@/systems/config.client'
+import { useMutation } from '@tanstack/react-query'
 
+import * as MapUtils from '@/lib/map-utils'
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
+import * as ConfigClient from '@/systems/config.client'
 import type { FilterEntityChange } from '@/systems/filter-entity.server'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as PartsSys from '@/systems/parts.client'
-import * as ReactRx from '@react-rxjs/core'
-import { createSignal } from '@react-rxjs/utils'
-import { useMutation } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
 
 export const getFilterContributorsBase = (filterId: string) =>
 	RPC.orpc.filters.getFilterContributors.queryOptions({
@@ -55,7 +53,7 @@ export function filterIndexPrefetch() {
 export const filterEntities = new Map<string, F.FilterEntity>()
 export const filterEntityChanged$ = new Rx.Subject<void>()
 
-const [initialized$, setInitialized] = createSignal<true>()
+const [initialized$, setInitialized] = ReactRx.createSignal<true>()
 
 export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.FilterEntityId, F.FilterEntity>>((s) => {
 	const promise = RPC.observe('filters.watchFilters', () => RPC.orpc.filters.watchFilters.call()).subscribe(
@@ -99,17 +97,16 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 export function setup() {
 	filterMutation$.subscribe()
 	filterEntities$.subscribe()
-	initializedFilterEntities$().pipe(RxHelpers.retryHot()).subscribe()
+	initializedFilterEntities$().pipe(ReactRx.retryHot()).subscribe()
 }
 
-export const [useFilterEntities, filterEntities$] = ReactRx.bind(
+export const [useFilterEntities, filterEntities$] = ReactRx.bindWithDefault(
 	filterEntityChanged$.pipe(Rx.map(() => MapUtils.deepClone(filterEntities))),
 	filterEntities,
 )
 
-export const [useInitializedFilterEntities, initializedFilterEntities$] = RxHelpers.bind(
-	'filterEntity.initializedFilterEntities',
-	() => initialized$.pipe(Rx.map(() => filterEntities)),
+export const [useInitializedFilterEntities, initializedFilterEntities$] = ReactRx.bind('filterEntity.initializedFilterEntities', () =>
+	initialized$.pipe(Rx.map(() => filterEntities)),
 )
 
 export function useFilterCreate() {

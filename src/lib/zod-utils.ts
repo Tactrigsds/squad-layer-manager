@@ -1,10 +1,6 @@
 import { z } from 'zod'
 
-export const PercentageSchema = z
-	.number()
-	.min(0)
-	.max(100)
-	.meta({ description: 'A percentage value between 0 and 100' })
+export const PercentageSchema = z.number().min(0).max(100).meta({ description: 'A percentage value between 0 and 100' })
 
 // largest to smallest, so formatHumanTime finds the coarsest unit that divides evenly
 const HUMAN_TIME_UNITS = [
@@ -21,13 +17,15 @@ export const HumanTimeFormat = z.union([
 	// numbers are passed through as-is, treated as already being in milliseconds (e.g. a previously-parsed value round-tripped through storage)
 	z.number(),
 ])
-export const HumanTime = z.codec(HumanTimeFormat, z.number(), {
-	decode: parseHumanTime,
-	encode: formatHumanTime,
-}).meta({
-	description:
-		'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds. numbers are passed through as-is. serializes back to the format using the most convenient round unit',
-})
+export const HumanTime = z
+	.codec(HumanTimeFormat, z.number(), {
+		decode: parseHumanTime,
+		encode: formatHumanTime,
+	})
+	.meta({
+		description:
+			'allows specification of time in seconds, minutes, hours, days, weeks, or milliseconds with the format [number][unit]. converts to milliseconds. numbers are passed through as-is. serializes back to the format using the most convenient round unit',
+	})
 
 export function parseHumanTime(val: string | number) {
 	if (typeof val === 'number') return val
@@ -141,6 +139,26 @@ export const PathSegment = z
 	.meta({
 		description: 'A valid path segment that does not contain reserved characters or relative path indicators',
 	})
+
+// `JSON.parse` allocates a fresh string for every occurrence of a value, so a schema whose output is kept around
+// pays for one copy of "PLAYER_WOUNDED" per event rather than one in total. An enum's or literal's parsed value is by
+// definition one of the schema's own values, so handing back that instance instead is a no-op semantically, and the
+// lookup table is the value set itself and so cannot grow on hostile input.
+//
+// Only reach for these where the parsed value is **retained**: cached events, settings, layer data. Validating a
+// request body that is then thrown away pays ~20% more parse time for nothing. See "Interning at parse boundaries"
+// in docs/architecture.md.
+//
+// `overwrite` rather than `transform` because it returns the same schema class: a transformed literal becomes a
+// ZodPipe, which `z.discriminatedUnion` can no longer read a discriminator out of.
+export function internedEnum<const T extends readonly string[]>(values: T) {
+	const canonical = new Map<string, T[number]>(values.map((v) => [v, v]))
+	return z.enum(values).overwrite((value) => canonical.get(value) ?? value)
+}
+
+export function internedLiteral<const T extends string>(value: T) {
+	return z.literal(value).overwrite(() => value)
+}
 
 export type EnumToTuple<S extends z.ZodEnum> = [z.infer<S>, ...z.infer<S>[]]
 

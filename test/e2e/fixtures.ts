@@ -1,4 +1,5 @@
 import { test as base } from '@playwright/test'
+
 import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harness/app-fixture'
 
 // Playwright fixture: one app instance + one emulated squad server per test file (worker-scoped),
@@ -8,20 +9,28 @@ import { type AppFixture, createAppFixture, setCurrentTestLabel } from '../harne
 export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTelemetry: void }, { workerApp: AppFixture }>({
 	// so that every app built during a test -- including the ones test files build themselves -- exports its
 	// telemetry under that test's name (see SLM_TEST_OTEL)
-	// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
-	labelTelemetry: [async ({}, use, testInfo) => {
-		setCurrentTestLabel(testInfo.titlePath.join(' > '))
-		await use()
-		setCurrentTestLabel(undefined)
-	}, { auto: true }],
+	labelTelemetry: [
+		// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
+		async ({}, use, testInfo) => {
+			setCurrentTestLabel(testInfo.titlePath.join(' > '))
+			await use()
+			setCurrentTestLabel(undefined)
+		},
+		{ auto: true },
+	],
 
-	// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
-	workerApp: [async ({}, use) => {
-		const app = await createAppFixture()
-		await use(app)
-		await app.dispose()
-	}, { scope: 'worker', timeout: 180_000 }],
+	workerApp: [
+		// eslint-disable-next-line no-empty-pattern -- playwright's fixture signature requires the deps arg
+		async ({}, use) => {
+			const app = await createAppFixture()
+			await use(app)
+			await app.dispose()
+		},
+		{ scope: 'worker', timeout: 180_000 },
+	],
 
+	// Asking for this is what boots the shared app, so a file whose tests each build their own never pays for
+	// one -- which is most of them, and every one of them used to boot a second app it never touched.
 	app: async ({ workerApp }, use) => {
 		await use(workerApp)
 	},
@@ -36,10 +45,14 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 		await use(app)
 		await app.dispose()
 	},
+})
 
-	// every test starts logged in as the seeded admin
-	page: async ({ page, workerApp }, use) => {
-		await page.goto(workerApp.loginUrl())
+// For the files whose tests all drive the shared app: every page starts on it, logged in as the seeded admin.
+// A file opts in by importing this instead of `test`, rather than each test asking for `app`, because a test
+// can read the page without naming `app` at all and would otherwise silently get a blank one.
+export const sharedAppTest = test.extend({
+	page: async ({ page, app }, use) => {
+		await page.goto(app.loginUrl())
 		await use(page)
 	},
 })

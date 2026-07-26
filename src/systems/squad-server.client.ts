@@ -1,90 +1,72 @@
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import { useMutation } from '@tanstack/react-query'
+import type * as React from 'react'
+
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
+import * as Zus from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
 import * as SettingsClient from '@/systems/settings.client'
-import { useMutation } from '@tanstack/react-query'
-import type * as React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
-import { toStream } from 'zustand-rx'
 
-// ids of the servers the backend currently has a live slice for. Runtime state, not registry config: a server can be
-// enabled and non-broken yet have no slice (still booting, or torn down by a fatal resource error), and every per-server
+// ids of the servers the backend currently has a live managed server for. Runtime state, not registry config: a server can be
+// enabled and non-broken yet have no managed server (still booting, or torn down by a fatal resource error), and every per-server
 // stream and action needs one. Gating the dashboard on this is what keeps an unloaded server from silently hanging.
-export const [useLoadedServerIds, loadedServerIds$] = RxHelpers.bind(
+export const [useLoadedServerIds, loadedServerIds$] = ReactRx.bind(
 	'squadServer.loadedServers',
 	RPC.observe('squadServer.watchLoadedServers', () => RPC.orpc.squadServer.watchLoadedServers.call()),
 )
 
 // why a server's dashboard can't be shown. `starting` is the runtime case the registry can't tell us about: the server is
-// configured to run and its settings are fine, but there's no live slice backing it yet.
+// configured to run and its settings are fine, but there's no live managed server backing it yet.
 export type ServerAvailability = 'ok' | 'not-found' | 'disabled' | 'broken' | 'starting'
 
 // combined reactively rather than read through a selector closure: the registry (enabled/broken) and the loaded set are
 // two independent sources, and both have to be able to move the result on their own. Enabling a server publishes the
-// registry change first and the slice seconds later, so the dashboard is only reachable if that second signal lands.
-export const [useServerAvailability, serverAvailability$] = RxHelpers.bind(
-	'squadServer.serverAvailability',
-	(serverId: string) =>
-		Rx.combineLatest([
-			// suspend rather than briefly claiming the server doesn't exist while settings are still in flight.
-			// fireImmediately: settings are normally already loaded by the time anything subscribes, and without the
-			// current value replayed combineLatest would sit waiting on a settings *change* that never comes
-			toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }).pipe(
-				Rx.filter((settings) => !!settings),
-			),
-			loadedServerIds$,
-		]).pipe(
-			Rx.map(([settings, loadedIds]): ServerAvailability => {
-				const entry = settings.servers.find(s => s.id === serverId)
-				if (!entry) return 'not-found'
-				if (entry.broken) return 'broken'
-				if (!entry.enabled) return 'disabled'
-				return loadedIds.includes(serverId) ? 'ok' : 'starting'
-			}),
-			Rx.distinctUntilChanged(),
-		),
+// registry change first and the managed server seconds later, so the dashboard is only reachable if that second signal lands.
+export const [useServerAvailability, serverAvailability$] = ReactRx.bind('squadServer.serverAvailability', (serverId: string) =>
+	Rx.combineLatest([
+		// suspend rather than briefly claiming the server doesn't exist while settings are still in flight.
+		// fireImmediately: settings are normally already loaded by the time anything subscribes, and without the
+		// current value replayed combineLatest would sit waiting on a settings *change* that never comes
+		Zus.toStream(SettingsClient.PublicSettingsStore, undefined, { fireImmediately: true }).pipe(Rx.filter((settings) => !!settings)),
+		loadedServerIds$,
+	]).pipe(
+		Rx.map(([settings, loadedIds]): ServerAvailability => {
+			const entry = settings.servers.find((s) => s.id === serverId)
+			if (!entry) return 'not-found'
+			if (entry.broken) return 'broken'
+			if (!entry.enabled) return 'disabled'
+			return loadedIds.includes(serverId) ? 'ok' : 'starting'
+		}),
+		Rx.distinctUntilChanged(),
+	),
 )
 
 // TODO we probably don't need to "bind" multiple observables like this. we should create some helper "derive" which lets us derive one state observable from another
-export const [useLayersStatus, layersStatus$] = RxHelpers.bind(
-	'squadServer.layersStatus',
-	(serverId: string) =>
-		RPC.observe('squadServer.watchLayersStatus', () => RPC.orpc.squadServer.watchLayersStatus.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
-		),
+export const [useLayersStatus, layersStatus$] = ReactRx.bind('squadServer.layersStatus', (serverId: string) =>
+	RPC.observe('squadServer.watchLayersStatus', () => RPC.orpc.squadServer.watchLayersStatus.call({ serverId })).pipe(
+		RPC.dropServerNotLoaded(),
+	),
 )
-export const [useServerInfoRes, serverInfoRes$] = RxHelpers.bind(
-	'squadServer.serverInfoRes',
-	(serverId: string) =>
-		RPC.observe('squadServer.watchServerInfo', () => RPC.orpc.squadServer.watchServerInfo.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
-		),
+export const [useServerInfoRes, serverInfoRes$] = ReactRx.bind('squadServer.serverInfoRes', (serverId: string) =>
+	RPC.observe('squadServer.watchServerInfo', () => RPC.orpc.squadServer.watchServerInfo.call({ serverId })).pipe(
+		RPC.dropServerNotLoaded(),
+	),
 )
-export const [useServerInfo, serverInfo$] = RxHelpers.bind(
-	'squadServer.serverInfo',
-	(serverId: string) =>
-		serverInfoRes$(serverId).pipe(
-			Rx.map(res => res.code === 'ok' ? res.data : null),
-		),
+export const [useServerInfo, serverInfo$] = ReactRx.bind('squadServer.serverInfo', (serverId: string) =>
+	serverInfoRes$(serverId).pipe(Rx.map((res) => (res.code === 'ok' ? res.data : null))),
 )
 
-export const [useServerRolling, serverRolling$] = RxHelpers.bind(
-	'squadServer.serverRolling',
-	(serverId: string) =>
-		RPC.observe('squadServer.watchServerRolling', () => RPC.orpc.squadServer.watchServerRolling.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
-		),
+export const [useServerRolling, serverRolling$] = ReactRx.bind('squadServer.serverRolling', (serverId: string) =>
+	RPC.observe('squadServer.watchServerRolling', () => RPC.orpc.squadServer.watchServerRolling.call({ serverId })).pipe(
+		RPC.dropServerNotLoaded(),
+	),
 )
 
-export const [useTickRate, tickRate$] = RxHelpers.bind(
-	'squadServer.tickRate',
-	(serverId: string) =>
-		RPC.observe('squadServer.watchTickRate', () => RPC.orpc.squadServer.watchTickRate.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
-		),
+export const [useTickRate, tickRate$] = ReactRx.bind('squadServer.tickRate', (serverId: string) =>
+	RPC.observe('squadServer.watchTickRate', () => RPC.orpc.squadServer.watchTickRate.call({ serverId })).pipe(RPC.dropServerNotLoaded()),
 )
 
 export function useEndMatch() {
@@ -218,9 +200,9 @@ export function setup() {
 
 // keeps serverInfo/serverRolling/layersStatus hot for the given server's lifetime; called from the squadServer frame's setup
 export function watchServer(serverId: string, sub: Rx.Subscription) {
-	sub.add(serverInfoRes$(serverId).pipe(RxHelpers.retryHot()).subscribe())
-	sub.add(layersStatus$(serverId).pipe(RxHelpers.retryHot()).subscribe())
-	sub.add(serverRolling$(serverId).pipe(RxHelpers.retryHot()).subscribe())
-	sub.add(tickRate$(serverId).pipe(RxHelpers.retryHot()).subscribe())
-	sub.add(serverInfo$(serverId).pipe(RxHelpers.retryHot()).subscribe())
+	sub.add(serverInfoRes$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	sub.add(layersStatus$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	sub.add(serverRolling$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	sub.add(tickRate$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	sub.add(serverInfo$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }

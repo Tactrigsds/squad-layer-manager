@@ -1,8 +1,9 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as ODSM from '@/lib/odsm'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
-import { describe, expect, it } from 'vitest'
 
 const SOURCE = { discordId: 1n }
 
@@ -25,11 +26,11 @@ function apply(state: TSW.State, ...ops: TSW.Op[]) {
 }
 
 function notifiedUpcoming(sideEffects: TSW.SideEffect[]) {
-	return sideEffects.filter(se => se.code === 'notify-upcoming-teamswaps').flatMap(se => se.players)
+	return sideEffects.filter((se) => se.code === 'notify-upcoming-teamswaps').flatMap((se) => se.players)
 }
 
 function endedEditing(sideEffects: TSW.SideEffect[]) {
-	return sideEffects.some(se => se.code === 'end-all-teamswap-editing')
+	return sideEffects.some((se) => se.code === 'end-all-teamswap-editing')
 }
 
 function rejectionOf(run: () => unknown): TSW.Rejection {
@@ -43,11 +44,14 @@ function rejectionOf(run: () => unknown): TSW.Rejection {
 
 describe('reducer notify-upcoming-teamswaps', () => {
 	it('notifies only the newly marked player when queuing alongside an existing swap', () => {
-		const state = stateWith([['a', 'A'], ['b', 'A']], [['a', 'B']])
-		const { sideEffects } = apply(
-			state,
-			op({ code: 'add-player-teamswap', playerId: 'b', toTeam: 'B', saved: true, source: SOURCE }),
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[['a', 'B']],
 		)
+		const { sideEffects } = apply(state, op({ code: 'add-player-teamswap', playerId: 'b', toTeam: 'B', saved: true, source: SOURCE }))
 		expect(notifiedUpcoming(sideEffects)).toEqual(['b'])
 	})
 
@@ -63,13 +67,28 @@ describe('reducer notify-upcoming-teamswaps', () => {
 	})
 
 	it('does not re-notify remaining players when a marked player disconnects', () => {
-		const state = stateWith([['a', 'A'], ['b', 'A']], [['a', 'B'], ['b', 'B']])
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[
+				['a', 'B'],
+				['b', 'B'],
+			],
+		)
 		const { sideEffects } = apply(state, op({ code: 'player-left', playerId: 'a' }))
 		expect(notifiedUpcoming(sideEffects)).toEqual([])
 	})
 
 	it('does not re-notify queued players when another player is swapped now', () => {
-		const state = stateWith([['a', 'A'], ['b', 'A']], [['a', 'B']])
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[['a', 'B']],
+		)
 		const swaps: TSW.TeamswapCollection = new Map([['b', { toTeam: 'B' as MH.NormedTeamId, source: SOURCE }]])
 		const { sideEffects } = apply(state, op({ code: 'swap-now', swaps, source: SOURCE }))
 		expect(notifiedUpcoming(sideEffects)).toEqual([])
@@ -85,22 +104,34 @@ describe('reducer notify-upcoming-teamswaps', () => {
 		const { state: next, sideEffects } = apply(state, op({ code: 'init-saved-teamswaps', swaps }))
 		expect(next.savedSwaps.has('a')).toBe(true)
 		expect(notifiedUpcoming(sideEffects)).toEqual([])
-		expect(sideEffects.some(se => se.code === 'save')).toBe(true)
+		expect(sideEffects.some((se) => se.code === 'save')).toBe(true)
 	})
 
 	it('notifies added players and cancels removed players on save', () => {
-		const state = stateWith([['a', 'A'], ['b', 'A']], [['a', 'B']])
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[['a', 'B']],
+		)
 		state.editedSwaps = new Map([['b', { toTeam: 'B', source: SOURCE }]])
 		const { sideEffects } = apply(state, op({ code: 'save', source: SOURCE }))
 		expect(notifiedUpcoming(sideEffects)).toEqual(['b'])
-		const cancelled = sideEffects.filter(se => se.code === 'notify-teamswaps-cancelled').flatMap(se => se.players)
+		const cancelled = sideEffects.filter((se) => se.code === 'notify-teamswaps-cancelled').flatMap((se) => se.players)
 		expect(cancelled).toEqual(['a'])
 	})
 })
 
 describe('reducer end-all-teamswap-editing', () => {
 	function withPendingEdit() {
-		const state = stateWith([['a', 'A'], ['b', 'A']], [['a', 'B']])
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[['a', 'B']],
+		)
 		state.editedSwaps = new Map(state.savedSwaps)
 		state.editedSwaps.set('b', { toTeam: 'B', source: SOURCE })
 		return state
@@ -129,7 +160,7 @@ describe('reducer end-all-teamswap-editing', () => {
 })
 
 describe('reducer execution attribution', () => {
-	const executed = (sideEffects: TSW.SideEffect[]) => sideEffects.find(se => se.code === 'teamswaps-executed')
+	const executed = (sideEffects: TSW.SideEffect[]) => sideEffects.find((se) => se.code === 'teamswaps-executed')
 
 	// the queued swaps carry the source of whoever queued each player, which is not who executed them
 	function queuedByAdmin() {
@@ -172,7 +203,7 @@ describe('reducer execution attribution', () => {
 		expect(failed.state.swapping).toBe(false)
 		expect(failed.state.pendingSwaps.size).toBe(0)
 		expect(failed.state.swappingOpId).toBeNull()
-		const se = failed.sideEffects.find(se => se.code === 'teamswap-execution-failed')
+		const se = failed.sideEffects.find((se) => se.code === 'teamswap-execution-failed')
 		expect(se?.reason).toBe('timeout')
 	})
 
@@ -182,7 +213,7 @@ describe('reducer execution attribution', () => {
 			started.state,
 			op({ code: 'teamswap-execution-failed', reason: 'not-all-players-swapped', playerIds: ['a'] }),
 		)
-		const se = sideEffects.find(se => se.code === 'teamswap-execution-failed')
+		const se = sideEffects.find((se) => se.code === 'teamswap-execution-failed')
 		expect(se?.playerIds).toEqual(['a'])
 	})
 
@@ -195,7 +226,7 @@ describe('reducer execution attribution', () => {
 })
 
 describe('reducer save trigger', () => {
-	const triggerOf = (sideEffects: TSW.SideEffect[]) => sideEffects.find(se => se.code === 'save')?.trigger
+	const triggerOf = (sideEffects: TSW.SideEffect[]) => sideEffects.find((se) => se.code === 'save')?.trigger
 
 	it('marks an admin save as a user edit', () => {
 		const state = stateWith([['a', 'A']])
@@ -205,14 +236,14 @@ describe('reducer save trigger', () => {
 
 	it('marks a map-roll execution as executed, with nobody to attribute it to', () => {
 		const state = stateWith([['a', 'A']], [['a', 'B']])
-		const save = apply(state, op({ code: 'execute-teamswaps' })).sideEffects.find(se => se.code === 'save')
+		const save = apply(state, op({ code: 'execute-teamswaps' })).sideEffects.find((se) => se.code === 'save')
 		expect(save?.trigger).toBe('executed')
 		expect(save?.source).toBeUndefined()
 	})
 
 	it('attributes a manual execution to the admin who fired it', () => {
 		const state = stateWith([['a', 'A']], [['a', 'B']])
-		const save = apply(state, op({ code: 'execute-teamswaps', source: SOURCE })).sideEffects.find(se => se.code === 'save')
+		const save = apply(state, op({ code: 'execute-teamswaps', source: SOURCE })).sideEffects.find((se) => se.code === 'save')
 		expect(save?.trigger).toBe('executed')
 		expect(save?.source).toEqual(SOURCE)
 	})
@@ -236,10 +267,7 @@ describe('reducer saved-set writes', () => {
 		const state = stateWith([['a', 'A']], [['a', 'B']])
 		const removed = apply(state, op({ code: 'remove-player-teamswaps', playerId: 'a', saved: true, source: SOURCE }))
 		expect(removed.state.editedSwaps.has('a')).toBe(false)
-		const readded = apply(
-			removed.state,
-			op({ code: 'add-player-teamswap', playerId: 'a', toTeam: 'B', saved: true, source: SOURCE }),
-		)
+		const readded = apply(removed.state, op({ code: 'add-player-teamswap', playerId: 'a', toTeam: 'B', saved: true, source: SOURCE }))
 		expect(readded.state.savedSwaps.get('a')?.toTeam).toBe('B')
 	})
 
@@ -247,7 +275,14 @@ describe('reducer saved-set writes', () => {
 	describe('with an unsaved edit in flight', () => {
 		// 'a' is queued and saved; a gui client has additionally marked 'b' without saving
 		function withPendingEdit() {
-			const state = stateWith([['a', 'A'], ['b', 'A'], ['c', 'A']], [['a', 'B']])
+			const state = stateWith(
+				[
+					['a', 'A'],
+					['b', 'A'],
+					['c', 'A'],
+				],
+				[['a', 'B']],
+			)
 			state.editedSwaps = new Map(state.savedSwaps)
 			state.editedSwaps.set('b', { toTeam: 'B', source: SOURCE })
 			return state
@@ -267,7 +302,7 @@ describe('reducer saved-set writes', () => {
 			const { state, sideEffects } = apply(withPendingEdit(), op({ code: 'clear-teamswaps', save: true, source: SOURCE }))
 			expect(state.savedSwaps.size).toBe(0)
 			expect([...state.editedSwaps.keys()]).toEqual(['b'])
-			const cancelled = sideEffects.filter(se => se.code === 'notify-teamswaps-cancelled').flatMap(se => se.players)
+			const cancelled = sideEffects.filter((se) => se.code === 'notify-teamswaps-cancelled').flatMap((se) => se.players)
 			expect(cancelled).toEqual(['a'])
 			expect(endedEditing(sideEffects)).toBe(false)
 		})
@@ -289,7 +324,7 @@ describe('reducer saved-set writes', () => {
 
 		it('still rejects a chat command for a player who is actually queued', () => {
 			const rejection = rejectionOf(() =>
-				apply(withPendingEdit(), op({ code: 'add-player-teamswap', playerId: 'a', toTeam: 'B', saved: true, source: SOURCE }))
+				apply(withPendingEdit(), op({ code: 'add-player-teamswap', playerId: 'a', toTeam: 'B', saved: true, source: SOURCE })),
 			)
 			expect(rejection.code).toBe('err:already-marked')
 		})
@@ -302,5 +337,67 @@ describe('reducer saved-set writes', () => {
 			const rejection = rejectionOf(() => apply(state, op({ code: 'clear-teamswaps', save: true, source: SOURCE })))
 			expect(rejection.code).toBe('err:nothing-queued')
 		})
+	})
+})
+
+// The roster on the other side of a roll carries only the players the server has already sorted onto a team; the
+// rest arrive a poll later. Reading absence from it as "they left" cancelled the whole queue on every map change,
+// seconds before it was due to fire.
+describe('reducer reset-players', () => {
+	function rollRoster(state: TSW.State, players: [SM.PlayerId, MH.NormedTeamId][]) {
+		return apply(state, op({ code: 'reset-players', players: new Map(players) }))
+	}
+
+	it('keeps queued swaps for players the new roster has not listed yet', () => {
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[
+				['a', 'B'],
+				['b', 'B'],
+			],
+		)
+		const { state: next } = rollRoster(state, [['a', 'A']])
+		expect([...next.savedSwaps.keys()].sort()).toEqual(['a', 'b'])
+	})
+
+	it('drops a queued swap for a player the roster already has on their target team', () => {
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[
+				['a', 'B'],
+				['b', 'B'],
+			],
+		)
+		const { state: next, sideEffects } = rollRoster(state, [['a', 'B']])
+		expect([...next.savedSwaps.keys()]).toEqual(['b'])
+		expect(sideEffects.find((se) => se.code === 'save')?.trigger).toBe('roster-change')
+	})
+
+	it('keeps a queued swap for a player the roster lists on some other team', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const { state: next } = rollRoster(state, [['a', 'A']])
+		expect(next.savedSwaps.has('a')).toBe(true)
+	})
+
+	it('leaves the queue alone while an execution is in flight', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const { state: swapping } = apply(state, op({ code: 'execute-teamswaps' }))
+		const { state: next } = rollRoster(swapping, [['a', 'B']])
+		expect(next.pendingSwaps.has('a')).toBe(true)
+	})
+
+	it('replaces the tracked players with the new roster', () => {
+		const state = stateWith([
+			['a', 'A'],
+			['b', 'A'],
+		])
+		const { state: next } = rollRoster(state, [['a', 'B']])
+		expect([...next.players.entries()]).toEqual([['a', 'B']])
 	})
 })

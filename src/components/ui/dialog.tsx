@@ -1,10 +1,11 @@
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+
 import { DraggableWindowOutlet } from './draggable-window'
 
 const Dialog = DialogPrimitive.Root

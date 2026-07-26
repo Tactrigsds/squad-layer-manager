@@ -1,21 +1,23 @@
-import * as Schema from '$root/drizzle/schema'
-import { isAbortError, sleep } from '@/lib/async'
-import * as SFS from '@/lib/sftp-file-store'
-import { formatDurationApprox, formatHumanTime, parseHumanTime } from '@/lib/zod'
-import * as AppEvents from '@/models/app-events.models'
-import * as CS from '@/models/context-shared'
-import * as MH from '@/models/match-history.models'
-import * as C from '@/server/context'
-import * as DB from '@/server/db'
-import * as DbBackup from '@/server/db-backup'
-import * as Env from '@/server/env'
-import { initModule } from '@/server/logger'
-import * as AppEventsSys from '@/systems/app-events.server'
-import * as CleanupSys from '@/systems/cleanup.server'
 import * as E from 'drizzle-orm'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as Timers from 'node:timers/promises'
+
+import * as Schema from '$root/drizzle/schema'
+import * as Prom from '@/lib/promise-utils'
+import * as SFS from '@/lib/sftp-file-store'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as AppEvents from '@/models/app-events.models'
+import * as CS from '@/models/context-shared'
+import * as MH from '@/models/match-history.models'
+import type * as C from '@/server/context'
+import * as DB from '@/server/db'
+import * as DbBackup from '@/server/db-backup'
+import * as Env from '@/server/env'
+import * as Instr from '@/server/instrumentation'
+import { initModule } from '@/server/logger'
+import * as AppEventsSys from '@/systems/app-events.server'
+import * as CleanupSys from '@/systems/cleanup.server'
 
 const module = initModule('backups')
 let log!: CS.Logger
@@ -30,8 +32,8 @@ const MIN_RETAINED_MATCHES = Math.max(100, MH.MAX_RECENT_MATCHES)
 
 // how long a boot that comes up already due for a backup waits before taking it, so the snapshot doesn't land while
 // the rest of the app is still setting itself up
-const BOOT_SETTLE_DELAY = parseHumanTime('1m')
-const FAILED_BACKUP_RETRY_DELAY = parseHumanTime('30m')
+const BOOT_SETTLE_DELAY = ZodUtils.parseHumanTime('1m')
+const FAILED_BACKUP_RETRY_DELAY = ZodUtils.parseHumanTime('30m')
 
 export function setup() {
 	log = module.getLogger()
@@ -47,7 +49,7 @@ async function run() {
 	try {
 		await adoptUnrecordedBackups(ctx)
 	} catch (err) {
-		if (!isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
+		if (!Prom.isAbortError(err)) log.error(err, 'failed to account for backups taken outside the schedule')
 	}
 
 	if (ENV.AUTOMATIC_BACKUPS_PERIODIC === undefined) {
@@ -57,10 +59,10 @@ async function run() {
 	const sftp = getSftpTarget()
 	log.info(
 		'automatic backups every %s to %s%s, event history retention: %s',
-		formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
+		ZodUtils.formatHumanTime(ENV.AUTOMATIC_BACKUPS_PERIODIC),
 		ENV.BACKUPS_DIR,
 		sftp ? ` (uploading to ${sftp.username}@${sftp.host}:${ENV.BACKUP_SFTP_DIR})` : '',
-		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
+		ENV.EVENT_HISTORY_RETENTION_PERIOD === undefined ? 'disabled' : ZodUtils.formatHumanTime(ENV.EVENT_HISTORY_RETENTION_PERIOD),
 	)
 	await runBackupLoop(ENV.AUTOMATIC_BACKUPS_PERIODIC, ctx)
 }
@@ -73,15 +75,15 @@ async function run() {
 //
 // Deliberately driven off what's on disk rather than a handoff file: it costs nothing, it's self-healing, and it
 // equally covers a snapshot taken by an out-of-band `pnpm db:migrate:prod` days before this boot.
-const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+const adoptUnrecordedBackups = Instr.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	if (!fs.existsSync(ENV.BACKUPS_DIR)) return
 	const loggedAt = await getLastBackupEventTime(ctx)
 	// only pre-migration backups: a periodic one is written by the loop below, which records its own event, so an
 	// unrecorded periodic file means the event failed to write and re-adopting it would say it happened twice.
 	const unrecorded = DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH)
-		.filter(f => f.kind === 'pre-migration')
-		.map(f => ({ fileName: f.name, stat: fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)) }))
-		.filter(f => loggedAt === undefined || f.stat.mtimeMs > loggedAt)
+		.filter((f) => f.kind === 'pre-migration')
+		.map((f) => ({ fileName: f.name, stat: fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)) }))
+		.filter((f) => loggedAt === undefined || f.stat.mtimeMs > loggedAt)
 		.reverse() // oldest first, so the audit log reads in the order they were taken
 
 	for (const { fileName, stat } of unrecorded) {
@@ -103,7 +105,7 @@ const adoptUnrecordedBackups = C.spanOp('adoptUnrecordedBackups', { module }, as
 				uploaded,
 			}),
 		)
-		log.info('recorded pre-migration backup %s, taken %s ago', fileName, formatDurationApprox(Date.now() - stat.mtimeMs))
+		log.info('recorded pre-migration backup %s, taken %s ago', fileName, ZodUtils.formatDurationApprox(Date.now() - stat.mtimeMs))
 	}
 })
 
@@ -111,17 +113,23 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	// the schedule is anchored to the last backup that actually happened, not to boot: a server restarted more often
 	// than the interval would otherwise never reach its first backup at all. A backup taken shortly before a restart
 	// isn't taken again, and one that came due while we were down is taken now (BOOT_SETTLE_DELAY floors the first
-	// sleep either way, so the snapshot doesn't land while the rest of the app is still coming up).
+	// Prom.sleep either way, so the snapshot doesn't land while the rest of the app is still coming up).
 	const lastBackupAt = await getLastBackupTime(ctx)
 	const overdueBy = lastBackupAt === null ? 0 : Date.now() - (lastBackupAt + interval)
 	let wait = Math.max(BOOT_SETTLE_DELAY, -overdueBy)
-	if (lastBackupAt === null) log.info('no previous backup found, taking one in %s', formatDurationApprox(wait))
-	else if (overdueBy > 0) log.info('backup overdue by %s, taking one in %s', formatDurationApprox(overdueBy), formatDurationApprox(wait))
-	else log.info('last backup was %s ago, next in %s', formatDurationApprox(Date.now() - lastBackupAt), formatDurationApprox(wait))
+	if (lastBackupAt === null) log.info('no previous backup found, taking one in %s', ZodUtils.formatDurationApprox(wait))
+	else if (overdueBy > 0)
+		log.info('backup overdue by %s, taking one in %s', ZodUtils.formatDurationApprox(overdueBy), ZodUtils.formatDurationApprox(wait))
+	else
+		log.info(
+			'last backup was %s ago, next in %s',
+			ZodUtils.formatDurationApprox(Date.now() - lastBackupAt),
+			ZodUtils.formatDurationApprox(wait),
+		)
 
 	while (!ctx.signal.aborted) {
 		try {
-			await sleep(wait, ctx.signal)
+			await Prom.sleep(wait, ctx.signal)
 		} catch {
 			break
 		}
@@ -129,17 +137,18 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 			await runBackup(ctx)
 			wait = interval
 		} catch (err) {
-			if (isAbortError(err)) break
+			if (Prom.isAbortError(err)) break
 			// a failed backup must not kill the loop, but it must not spin either: retry sooner than the full interval,
 			// since we're already past due.
 			wait = Math.min(interval, FAILED_BACKUP_RETRY_DELAY)
-			log.error(err, 'backup failed, retrying in %s', formatDurationApprox(wait))
+			log.error(err, 'backup failed, retrying in %s', ZodUtils.formatDurationApprox(wait))
 		}
 	}
 }
 
 async function getLastBackupEventTime(ctx: C.Db) {
-	const [row] = await ctx.db()
+	const [row] = await ctx
+		.db()
 		.select({ time: Schema.appEvents.time })
 		.from(Schema.appEvents)
 		.where(E.eq(Schema.appEvents.type, 'BACKUP_CREATED'))
@@ -161,9 +170,7 @@ async function getLastBackupTime(ctx: C.Db) {
 	const loggedAt = await getLastBackupEventTime(ctx)
 
 	const files = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH) : []
-	const writtenAt = files.length === 0
-		? undefined
-		: Math.max(...files.map(f => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
+	const writtenAt = files.length === 0 ? undefined : Math.max(...files.map((f) => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
 
 	if (loggedAt === undefined || writtenAt === undefined) return null
 	return Math.min(loggedAt, writtenAt)
@@ -172,7 +179,7 @@ async function getLastBackupTime(ctx: C.Db) {
 // prunes stale event history, then snapshots the db and (if configured) ships it offsite. The prune runs first so
 // the snapshot is of the pruned db -- a backup taken before it would carry the rows we just decided to drop, which
 // would make the prune pointless the moment the backup is restored.
-export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+export const runBackup = Instr.spanOp('runBackup', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const startedAt = Date.now()
 	const pruned = await pruneEventHistory(ctx)
 
@@ -222,7 +229,7 @@ export const runBackup = C.spanOp('runBackup', { module }, async (ctx: C.Db & CS
 // gets its own short-lived write lock, and the loop breathes in between.
 const PRUNE_BATCH_SIZE = 5_000
 
-const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: C.Db & CS.AbortSignal) => {
+const pruneEventHistory = Instr.spanOp('pruneEventHistory', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const retention = ENV.EVENT_HISTORY_RETENTION_PERIOD
 	if (retention === undefined) return undefined
 
@@ -236,7 +243,8 @@ const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: 
 
 		// the ordinal of the oldest match we must keep regardless of age. absent when the server hasn't played
 		// MIN_RETAINED_MATCHES matches yet, in which case nothing on it is prunable.
-		const [floor] = await ctx.db()
+		const [floor] = await ctx
+			.db()
 			.select({ ordinal: Schema.matchHistory.ordinal })
 			.from(Schema.matchHistory)
 			.where(E.eq(Schema.matchHistory.serverId, serverId))
@@ -247,19 +255,21 @@ const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: 
 
 		// a match that never recorded an end (crashed, or was never finalized) is dated by its start, and failing
 		// that by when we first saw it. a null time compares as null here, so such a match is kept.
-		const matchTime = E.sql<
-			number
-		>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
-		const staleMatches = ctx.db()
+		const matchTime = E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
+		const staleMatches = ctx
+			.db()
 			.select({ id: Schema.matchHistory.id })
 			.from(Schema.matchHistory)
-			.where(E.and(
-				E.eq(Schema.matchHistory.serverId, serverId),
-				E.lt(Schema.matchHistory.ordinal, floor.ordinal),
-				E.lt(matchTime, cutoff.getTime()),
-			))
+			.where(
+				E.and(
+					E.eq(Schema.matchHistory.serverId, serverId),
+					E.lt(Schema.matchHistory.ordinal, floor.ordinal),
+					E.lt(matchTime, cutoff.getTime()),
+				),
+			)
 
-		const [matchCount] = await ctx.db()
+		const [matchCount] = await ctx
+			.db()
 			.select({ matches: E.countDistinct(Schema.serverEvents.matchId) })
 			.from(Schema.serverEvents)
 			.where(E.inArray(Schema.serverEvents.matchId, staleMatches))
@@ -271,7 +281,8 @@ const pruneEventHistory = C.spanOp('pruneEventHistory', { module }, async (ctx: 
 			// the batch is picked and deleted in one statement, inside one transaction, so nothing can slip in between
 			// the pick and the delete
 			const batch = await DB.runTransaction(ctx, async (ctx) => {
-				const ids = ctx.db()
+				const ids = ctx
+					.db()
 					.select({ id: Schema.serverEvents.id })
 					.from(Schema.serverEvents)
 					.where(E.inArray(Schema.serverEvents.matchId, staleMatches))
@@ -311,35 +322,39 @@ function getSftpTarget() {
 
 // returns undefined when no target is configured, false when the upload failed. An unreachable backup host is not
 // worth failing the run over: the local backup is already on disk, and the app event records that it never left.
-const uploadBackup = C.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSignal, localPath: string, fileName: string) => {
+const uploadBackup = Instr.spanOp('uploadBackup', { module }, async (ctx: CS.AbortSignal, localPath: string, fileName: string) => {
 	const target = getSftpTarget()
 	if (!target) return undefined
 
 	const remoteDir = ENV.BACKUP_SFTP_DIR
 	let uploaded = false
 	try {
-		await SFS.withSftp(target, async (sftp) => {
-			await sftp.mkdirp(remoteDir)
-			await sftp.uploadFile(localPath, `${remoteDir}/${fileName}`)
-			uploaded = true
-			log.info('uploaded backup %s to %s@%s:%s', fileName, target.username, target.host, remoteDir)
+		await SFS.withSftp(
+			target,
+			async (sftp) => {
+				await sftp.mkdirp(remoteDir)
+				await sftp.uploadFile(localPath, `${remoteDir}/${fileName}`)
+				uploaded = true
+				log.info('uploaded backup %s to %s@%s:%s', fileName, target.username, target.host, remoteDir)
 
-			// retention is best-effort, and deliberately not part of whether the upload succeeded: once the snapshot is
-			// offsite the run has done its job, and a delete we're not permitted to make must not get recorded as a
-			// backup that never left the box.
-			try {
-				for (const stale of DbBackup.staleBackupFiles(await sftp.listDir(remoteDir), { ...retentionOpts(), keep: fileName })) {
-					await sftp.unlink(`${remoteDir}/${stale}`)
-					log.info('deleted remote backup %s', stale)
+				// retention is best-effort, and deliberately not part of whether the upload succeeded: once the snapshot is
+				// offsite the run has done its job, and a delete we're not permitted to make must not get recorded as a
+				// backup that never left the box.
+				try {
+					for (const stale of DbBackup.staleBackupFiles(await sftp.listDir(remoteDir), { ...retentionOpts(), keep: fileName })) {
+						await sftp.unlink(`${remoteDir}/${stale}`)
+						log.info('deleted remote backup %s', stale)
+					}
+				} catch (err) {
+					if (Prom.isAbortError(err)) throw err
+					log.error(err, 'failed to prune old backups on %s (the upload itself succeeded)', target.host)
 				}
-			} catch (err) {
-				if (isAbortError(err)) throw err
-				log.error(err, 'failed to prune old backups on %s (the upload itself succeeded)', target.host)
-			}
-		}, ctx.signal)
+			},
+			ctx.signal,
+		)
 		return true
 	} catch (err) {
-		if (isAbortError(err)) throw err
+		if (Prom.isAbortError(err)) throw err
 		log.error(err, 'failed to upload backup %s to %s', fileName, target.host)
 		return uploaded
 	}

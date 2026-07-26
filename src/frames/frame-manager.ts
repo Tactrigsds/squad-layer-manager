@@ -1,11 +1,9 @@
 import * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 
 export const frameManager = new FRM.FrameManager()
 
-// lets ZusUtils.useStore & co accept frame instance keys as inputs
-ZusUtils.registerFrameKeyResolver((key) => frameManager.getInstance(key))
+// lets Zus.useStore & co accept frame instance keys as inputs
+Zus.registerFrameKeyResolver((key) => frameManager.getInstance(key))
 
-export const { useFrameLifecycle, useFrameTeardownOnUnmount } = FRM.createFrameHelpers(
-	frameManager,
-)
+export const { useFrameLifecycle, useFrameTeardownOnUnmount } = FRM.createFrameHelpers(frameManager)

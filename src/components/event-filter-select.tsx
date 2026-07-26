@@ -1,8 +1,16 @@
-import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import * as CHAT from '@/models/chat.models'
-
 import * as Icons from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import * as CHAT from '@/models/chat.models'
 
 export default function EventFilterSelect(props: {
 	value: CHAT.SecondaryFilterState
@@ -40,7 +48,7 @@ export default function EventFilterSelect(props: {
 						<DropdownMenuSeparator />
 						<DropdownMenuCheckboxItem
 							checked={!!props.selectedOnly}
-							onSelect={e => e.preventDefault()}
+							onSelect={(e) => e.preventDefault()}
 							onCheckedChange={props.onSelectedOnlyChange}
 						>
 							Selected Only

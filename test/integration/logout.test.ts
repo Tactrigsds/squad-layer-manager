@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 
 // Regression: POST /logout used to deadlock. Sessions.logout awaited clearInvalidSession, which returns the
@@ -22,7 +23,8 @@ describe('POST /logout', () => {
 		// mint a session via the query-param auth bypass (enabled in the test env)
 		const login = await fetch(`${base}/check-auth?login=${ADMIN_USER.username}`, { redirect: 'manual' })
 		expect(login.status).toBe(200)
-		const sessionCookie = login.headers.getSetCookie()
+		const sessionCookie = login.headers
+			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.find((c) => c.startsWith('session-id=') && c.length > 'session-id='.length)
 		expect(sessionCookie).toMatch(/^session-id=.+/)

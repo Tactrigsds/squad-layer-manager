@@ -96,7 +96,7 @@ const servers = await fetchOrgServers()
 console.log(`Found ${servers.length} org server(s). Fetching per-server playtime...\n`)
 
 const results = await Promise.all(
-	servers.map(async server => {
+	servers.map(async (server) => {
 		try {
 			const url = new URL(`${BM_HOST}/players/${playerId}/servers/${server.id}`)
 			const data = await bmFetch(url)
@@ -108,7 +108,7 @@ const results = await Promise.all(
 )
 
 // Sort by time played descending, filter out zeros
-const played = results.filter(r => r.timePlayed > 0).sort((a, b) => b.timePlayed - a.timePlayed)
+const played = results.filter((r) => r.timePlayed > 0).sort((a, b) => b.timePlayed - a.timePlayed)
 const totalSeconds = results.reduce((sum, r) => sum + r.timePlayed, 0)
 
 function formatDuration(seconds: number): string {

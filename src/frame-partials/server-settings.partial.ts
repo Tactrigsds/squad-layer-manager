@@ -1,14 +1,15 @@
+import * as Im from 'immer'
+import { z } from 'zod'
+
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { toast } from '@/lib/toast'
-import { devValidate } from '@/lib/zod.dev'
-import * as ZusUtils from '@/lib/zustand'
+import * as ZodDev from '@/lib/zod-utils.dev'
+import * as Zus from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
-import * as Im from 'immer'
-import { z } from 'zod'
 
 export type Store = {
 	settings: SettingsPartial
@@ -33,21 +34,19 @@ export function initServerSettings(args: Args) {
 	const serverId = args.input.serverId
 	const defaultSettings = SETTINGS.PublicServerSettingsSchema.parse({})
 
-	const set = ZusUtils.toPartialSetter(args.set, 'settings')
-	const get = ZusUtils.toPartialGetter(args.get, 'settings')
+	const set = Zus.toPartialSetter(args.set, 'settings')
+	const get = Zus.toPartialGetter(args.get, 'settings')
 
-	set(
-		{
-			serverId,
-			ops: [],
-			saving: false,
-			modified: false,
+	set({
+		serverId,
+		ops: [],
+		saving: false,
+		modified: false,
 
-			saved: defaultSettings,
-			edited: defaultSettings,
-			validationErrors: null,
-		} satisfies SettingsPartial,
-	)
+		saved: defaultSettings,
+		edited: defaultSettings,
+		validationErrors: null,
+	} satisfies SettingsPartial)
 
 	args.sub.add(
 		args.update$.subscribe(([storeState, storePrevState]) => {
@@ -69,9 +68,8 @@ export function initServerSettings(args: Args) {
 	)
 
 	args.sub.add(
-		RPC.observe('settings.server.watchSettings', () => RPC.orpc.settings.server.watchSettings.call({ serverId })).pipe(
-			RPC.dropServerNotLoaded(),
-		)
+		RPC.observe('settings.server.watchSettings', () => RPC.orpc.settings.server.watchSettings.call({ serverId }))
+			.pipe(RPC.dropServerNotLoaded())
 			.subscribe(([settings, source]) => {
 				const updated = Obj.structuralMerge(get().saved, settings)
 				set({ saved: updated, edited: updated, ops: [] })
@@ -99,17 +97,17 @@ export namespace Sel {
 
 export namespace Actions {
 	export function set(stores: KeyProp, mut: SETTINGS.SettingMutation) {
-		devValidate(SETTINGS.SettingMutationSchema, mut)
-		ZusUtils.toPartialStore(stores.settings, 'settings').setState(state =>
-			Im.produce(state, draft => {
+		ZodDev.devValidate(SETTINGS.SettingMutationSchema, mut)
+		Zus.toPartialStore(stores.settings, 'settings').setState((state) =>
+			Im.produce(state, (draft) => {
 				SETTINGS.applySettingMutation(draft.edited, mut)
 				draft.ops.push(mut)
-			})
+			}),
 		)
 	}
 
 	export async function save(stores: KeyProp): Promise<boolean> {
-		const slice = ZusUtils.toPartialStore(stores.settings, 'settings')
+		const slice = Zus.toPartialStore(stores.settings, 'settings')
 		try {
 			slice.setState({ saving: true })
 			const { serverId, ops } = slice.getState()
@@ -128,6 +126,6 @@ export namespace Actions {
 	}
 
 	export function reset(stores: KeyProp) {
-		ZusUtils.toPartialStore(stores.settings, 'settings').setState(state => ({ edited: state.saved, ops: [] }))
+		Zus.toPartialStore(stores.settings, 'settings').setState((state) => ({ edited: state.saved, ops: [] }))
 	}
 }

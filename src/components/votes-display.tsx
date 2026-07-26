@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
 import type * as LL from '@/models/layer-list.models'
@@ -19,7 +18,7 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 	const options = Array.from(tally.totals)
 		.map(([itemId, voteCount]) => {
 			const index = voteState.choiceIds.findIndex((id) => id === itemId)
-			const choice = voteItem.choices.find(c => c.itemId === itemId)
+			const choice = voteItem.choices.find((c) => c.itemId === itemId)
 			return {
 				id: itemId,
 				index,

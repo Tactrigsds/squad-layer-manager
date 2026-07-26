@@ -1,11 +1,12 @@
+import { eq, lt } from 'drizzle-orm'
+import superjson from 'superjson'
+
 import * as Schema from '$root/drizzle/schema'
-import { sleep } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
-import { eq, lt } from 'drizzle-orm'
-import superjson from 'superjson'
 
 const module = initModule('persistedCache')
 let log!: ReturnType<typeof module.getLogger>
@@ -20,7 +21,7 @@ export function setup() {
 async function runCleanupLoop() {
 	while (!CleanupSys.shutdownSignal.aborted) {
 		try {
-			await sleep(CLEANUP_INTERVAL_MS, CleanupSys.shutdownSignal)
+			await Prom.sleep(CLEANUP_INTERVAL_MS, CleanupSys.shutdownSignal)
 		} catch {
 			break
 		}
@@ -45,7 +46,8 @@ async function deleteExpiredRows() {
 	// the signal: rows are upserted on every persist cycle, so a row that hasn't been
 	// touched in STALE_ROW_AGE_MS was never re-written (i.e. all its entries expired and
 	// the caller stopped persisting it).
-	return ctx.db()
+	return ctx
+		.db()
 		.delete(Schema.persistedCache)
 		.where(lt(Schema.persistedCache.updatedAt, new Date(Date.now() - STALE_ROW_AGE_MS)))
 }
@@ -55,10 +57,7 @@ const STALE_ROW_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 export async function load<T>(key: string): Promise<T | null> {
 	const ctx = DB.addPooledDb(CS.init())
-	const rows = await ctx.db()
-		.select()
-		.from(Schema.persistedCache)
-		.where(eq(Schema.persistedCache.key, key))
+	const rows = await ctx.db().select().from(Schema.persistedCache).where(eq(Schema.persistedCache.key, key))
 	if (rows.length === 0) return null
 	return superjson.deserialize(rows[0].value as ReturnType<typeof superjson.serialize>, { inPlace: true })
 }
@@ -67,7 +66,8 @@ export async function save(key: string, value: unknown): Promise<void> {
 	const ctx = DB.addPooledDb(CS.init())
 	const serialized = superjson.serialize(value)
 	const updatedAt = new Date()
-	await ctx.db({ redactParams: true })
+	await ctx
+		.db({ redactParams: true })
 		.insert(Schema.persistedCache)
 		.values({ key, value: serialized, updatedAt })
 		.onConflictDoUpdate({

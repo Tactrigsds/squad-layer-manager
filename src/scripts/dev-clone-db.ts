@@ -1,3 +1,10 @@
+import DatabaseConstructor, { type Database } from 'better-sqlite3'
+import * as E from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { parseArgs } from 'node:util'
+
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
@@ -5,12 +12,7 @@ import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import * as Migrate from '@/server/migrate'
 import * as SecretBox from '@/server/secret-box.server'
-import DatabaseConstructor, { type Database } from 'better-sqlite3'
-import * as E from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import { parseArgs } from 'node:util'
+
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
 
@@ -159,19 +161,20 @@ async function repointServers(driver: Database) {
 			...parsed.data,
 			connections: isTarget
 				? {
-					type: 'local',
-					logFile: DevInstance.SQUAD_LOG_PATH,
-					rcon: {
-						host: '127.0.0.1',
-						port: slot.ports.rcon,
-						// sealed here rather than written plaintext: this column is encrypted at rest, and a row that
-						// disagrees with that would be re-sealed on boot anyway.
-						password: SecretBox.seal(DevInstance.RCON_PASSWORD),
-					},
-				}
+						type: 'local',
+						logFile: DevInstance.SQUAD_LOG_PATH,
+						rcon: {
+							host: '127.0.0.1',
+							port: slot.ports.rcon,
+							// sealed here rather than written plaintext: this column is encrypted at rest, and a row that
+							// disagrees with that would be re-sealed on boot anyway.
+							password: SecretBox.seal(DevInstance.RCON_PASSWORD),
+						},
+					}
 				: deadConnection(row.id),
 		}
-		await db.update(Schema.servers)
+		await db
+			.update(Schema.servers)
 			.set(superjsonify(Schema.servers, { settings, enabled: isTarget, defaultServer: isTarget }))
 			.where(E.eq(Schema.servers.id, row.id))
 		console.log(
@@ -189,8 +192,7 @@ async function repointServers(driver: Database) {
 		const gsRaw = unsuperjsonify(Schema.globalSettings, gsRows[0]) as {
 			settings: Record<string, unknown> & { adminLists?: Record<string, { adminIdentifyingPermissions?: string[] }> }
 		}
-		const migratedPerms = Object.values(gsRaw.settings.adminLists ?? {})
-			.flatMap((l) => l.adminIdentifyingPermissions ?? [])
+		const migratedPerms = Object.values(gsRaw.settings.adminLists ?? {}).flatMap((l) => l.adminIdentifyingPermissions ?? [])
 		const identifyingPerms = migratedPerms.length > 0 ? [...new Set(migratedPerms)] : ['canseeadminchat']
 		const settings = {
 			...gsRaw.settings,
@@ -201,7 +203,8 @@ async function repointServers(driver: Database) {
 				},
 			},
 		}
-		await db.update(Schema.globalSettings)
+		await db
+			.update(Schema.globalSettings)
 			.set(superjsonify(Schema.globalSettings, { settings }))
 			.where(E.eq(Schema.globalSettings.id, gsRows[0].id))
 		console.log('re-pointed the admin list at the emulated Admins.cfg')
@@ -209,7 +212,8 @@ async function repointServers(driver: Database) {
 		const serverRows = await db.select().from(Schema.servers)
 		for (const row of serverRows) {
 			const raw = unsuperjsonify(Schema.servers, row) as { id: string; settings: Record<string, unknown> }
-			await db.update(Schema.servers)
+			await db
+				.update(Schema.servers)
 				.set(superjsonify(Schema.servers, { settings: { ...raw.settings, adminLists: [DEV_ADMIN_LIST] } }))
 				.where(E.eq(Schema.servers.id, raw.id))
 		}
@@ -222,9 +226,8 @@ async function repointServers(driver: Database) {
 async function resolveLogin(driver: Database) {
 	const db = drizzle(driver)
 	const superUsers = Env.getEnvBuilder({ ...Env.groups.rbac })().SUPER_USERS
-	const candidates = superUsers.length > 0
-		? await db.select().from(Schema.users).where(E.inArray(Schema.users.discordId, superUsers)).limit(1)
-		: []
+	const candidates =
+		superUsers.length > 0 ? await db.select().from(Schema.users).where(E.inArray(Schema.users.discordId, superUsers)).limit(1) : []
 	const [user] = candidates.length > 0 ? candidates : await db.select().from(Schema.users).limit(1)
 	if (!user) {
 		console.error('the cloned database has no users, so no login for this instance -- pass ?login=<username> yourself')

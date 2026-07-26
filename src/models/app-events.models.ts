@@ -1,9 +1,12 @@
+import superjson from 'superjson'
+import { z } from 'zod'
+
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as DH from '@/lib/display-helpers'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
-import { formatHumanTime } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -12,8 +15,6 @@ import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as USR from '@/models/users.models'
-import superjson from 'superjson'
-import { z } from 'zod'
 
 // Application events are SLM's audit log: they record actions SLM (or one of its users) takes.
 // A server event's `source` can link back to the app event that caused it (see server-events-base ActionSource),
@@ -228,7 +229,7 @@ function isSensitiveSettingPath(path: string) {
 
 // applied by toRow on the way to the database, so a caller that forgets to redact still can't persist a credential
 export function redactSettingChanges(changes: SettingsUpdated['changes']): SettingsUpdated['changes'] {
-	return changes?.map((c) => isSensitiveSettingPath(c.path) ? { ...c, from: REDACTED_SETTING, to: REDACTED_SETTING } : c)
+	return changes?.map((c) => (isSensitiveSettingPath(c.path) ? { ...c, from: REDACTED_SETTING, to: REDACTED_SETTING } : c))
 }
 
 // a global (or per-server) settings change. global when serverId is null, per-server otherwise. audit-only.
@@ -263,10 +264,12 @@ export const FilterContributorChangedSchema = event('FILTER_CONTRIBUTOR_CHANGED'
 	filterId: z.string(),
 	filterName: z.string().optional(),
 	// who gained or lost contributor access: an individual user, or everyone holding a role
-	contributor: z.discriminatedUnion('type', [
-		z.object({ type: z.literal('user'), userId: USR.UserIdSchema }),
-		z.object({ type: z.literal('role'), roleId: z.string() }),
-	]).optional(),
+	contributor: z
+		.discriminatedUnion('type', [
+			z.object({ type: z.literal('user'), userId: USR.UserIdSchema }),
+			z.object({ type: z.literal('role'), roleId: z.string() }),
+		])
+		.optional(),
 })
 export type FilterContributorChanged = z.infer<typeof FilterContributorChangedSchema>
 
@@ -306,10 +309,12 @@ export const QueueUpdatedSchema = event('QUEUE_UPDATED', {
 	// how a 'user-edit' save was performed. `force` is the queue panel's force-save toggle (save while others are
 	// still editing); `overrodeEditors` are the users who were mid-edit when it landed. absent for roll/external
 	// saves, and on events recorded before this was introduced.
-	save: z.object({
-		force: z.boolean(),
-		overrodeEditors: z.array(USR.UserIdSchema),
-	}).optional(),
+	save: z
+		.object({
+			force: z.boolean(),
+			overrodeEditors: z.array(USR.UserIdSchema),
+		})
+		.optional(),
 })
 export type QueueUpdated = z.infer<typeof QueueUpdatedSchema>
 
@@ -352,10 +357,12 @@ export const MapSetSchema = event('MAP_SET', {
 	layerId: L.LayerIdSchema,
 	reason: z.enum(['queue-updated', 'override']),
 	// for reason 'override': the external actor whose set SLM overrode
-	overrode: z.discriminatedUnion('type', [
-		z.object({ type: z.literal('player'), playerId: SM.PlayerIdSchema }),
-		z.object({ type: z.literal('rcon') }),
-	]).optional(),
+	overrode: z
+		.discriminatedUnion('type', [
+			z.object({ type: z.literal('player'), playerId: SM.PlayerIdSchema }),
+			z.object({ type: z.literal('rcon') }),
+		])
+		.optional(),
 })
 export type MapSet = z.infer<typeof MapSetSchema>
 
@@ -448,7 +455,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
 		case 'TEAMSWAPS_UPDATED':
-			return summarizeTeamswapChanges(e).map(c => c.playerId)
+			return summarizeTeamswapChanges(e).map((c) => c.playerId)
 		case 'MAP_SET':
 			return e.overrode?.type === 'player' ? [e.overrode.playerId] : []
 	}
@@ -458,7 +465,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 // used by the audit log; the activity feed has its own richer per-type renderers.
 export function describeAppEvent(e: AppEvent): string {
 	const players = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
-	const forReason = (reason: AppliedActionReason | undefined) => reason?.label ? ` for ${reason.label}` : ''
+	const forReason = (reason: AppliedActionReason | undefined) => (reason?.label ? ` for ${reason.label}` : '')
 	switch (e.type) {
 		case 'PLAYER_WARNED':
 			// preset-reason warns embed the label in the delivered message, so it isn't repeated here
@@ -484,7 +491,7 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'PLAYER_KICKED':
 			return `kicked ${players(e.targets.length)}${forReason(e.reason)}`
 		case 'PLAYER_TIMED_OUT':
-			return `timed out 1 player for ${formatHumanTime(e.durationMs)}${forReason(e.reason)}`
+			return `timed out 1 player for ${ZodUtils.formatHumanTime(e.durationMs)}${forReason(e.reason)}`
 		case 'TIMEOUT_CANCELLED':
 			return `cancelled a player's timeout`
 		case 'MATCH_ENDED':
@@ -500,25 +507,24 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'VOTE_ABORTED':
 			return 'aborted a vote'
 		case 'QUEUE_UPDATED': {
-			const verb = e.trigger === 'roll'
-				? 'advanced the queue on map change'
-				: e.trigger === 'external-layer-change'
-				? 'synced the queue to an external layer change'
-				: e.save?.force
-				? 'force-saved the queue'
-				: 'updated the queue'
+			const verb =
+				e.trigger === 'roll'
+					? 'advanced the queue on map change'
+					: e.trigger === 'external-layer-change'
+						? 'synced the queue to an external layer change'
+						: e.save?.force
+							? 'force-saved the queue'
+							: 'updated the queue'
 			// user-edit / roll saves have a companion MAP_SET row that states the next layer; external syncs don't
 			if (e.trigger !== 'external-layer-change') return verb
 			const nextBefore = LL.getNextLayerId(e.prevList)
 			const nextAfter = LL.getNextLayerId(e.list)
-			return nextAfter !== null && nextAfter !== nextBefore
-				? `${verb}, next layer now ${DH.toShortLayerNameFromId(nextAfter)}`
-				: verb
+			return nextAfter !== null && nextAfter !== nextBefore ? `${verb}, next layer now ${DH.toShortLayerNameFromId(nextAfter)}` : verb
 		}
 		case 'TEAMSWAPS_UPDATED': {
 			const changes = summarizeTeamswapChanges(e)
-			const added = changes.filter(c => c.kind === 'added').length
-			const removed = changes.filter(c => c.kind === 'removed').length
+			const added = changes.filter((c) => c.kind === 'added').length
+			const removed = changes.filter((c) => c.kind === 'removed').length
 			// the caller prepends the actor, which is 'SLM' when the map roll fired the queue
 			if (e.trigger === 'executed' || e.trigger === 'swapped-now') {
 				return `executed the queued teamswaps (${players(removed)})`
@@ -536,9 +542,9 @@ export function describeAppEvent(e: AppEvent): string {
 		}
 		case 'LAYER_REQUEST_CONSUMED': {
 			const n = e.itemIds.length
-			return `satisfied ${n} layer request${n === 1 ? '' : 's'} (${e.descriptions.join('; ')}), next layer ${
-				DH.toShortLayerNameFromId(e.layerId)
-			}`
+			return `satisfied ${n} layer request${n === 1 ? '' : 's'} (${e.descriptions.join('; ')}), next layer ${DH.toShortLayerNameFromId(
+				e.layerId,
+			)}`
 		}
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
@@ -552,7 +558,10 @@ export function describeAppEvent(e: AppEvent): string {
 			const scope = e.serverId ? 'server settings' : 'global settings'
 			if (!e.changes || e.changes.length === 0) return `updated ${scope}`
 			// the paths are the point of the entry; the values are in the expanded payload
-			const shown = e.changes.slice(0, 3).map(c => c.path).join(', ')
+			const shown = e.changes
+				.slice(0, 3)
+				.map((c) => c.path)
+				.join(', ')
 			const rest = e.changes.length > 3 ? ` and ${e.changes.length - 3} more` : ''
 			return `updated ${scope}: ${shown}${rest}`
 		}
@@ -590,9 +599,10 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'BACKUP_CREATED': {
 			const size = `${(e.sizeBytes / 1024 / 1024).toFixed(1)} MB`
 			const upload = e.uploaded === undefined ? '' : e.uploaded ? ', uploaded offsite' : ', offsite upload FAILED'
-			const pruned = e.pruned && e.pruned.events > 0
-				? `, pruned ${e.pruned.events} events from ${e.pruned.matches} ${e.pruned.matches === 1 ? 'match' : 'matches'}`
-				: ''
+			const pruned =
+				e.pruned && e.pruned.events > 0
+					? `, pruned ${e.pruned.events} events from ${e.pruned.matches} ${e.pruned.matches === 1 ? 'match' : 'matches'}`
+					: ''
 			const what = e.reason === 'pre-migration' ? 'backed up the database before migrating it' : 'backed up the database'
 			return `${what}, to ${e.fileName} (${size})${upload}${pruned}`
 		}
@@ -604,14 +614,12 @@ export function describeAppEvent(e: AppEvent): string {
 // a net change the save made to the queue, attributed to whoever caused it. the op span gives attribution (only
 // client ops carry a userId) while the prevList/list diff gives the net effect, so churn that cancelled out before
 // the save (an item added and then deleted again) produces no change at all.
-export type QueueChange =
-	& { itemId: LL.ItemId; actor: Actor; layerIds: L.LayerId[]; isVote: boolean }
-	& (
-		| { kind: 'added'; index: number }
-		| { kind: 'removed' }
-		| { kind: 'edited'; prevLayerIds: L.LayerId[] }
-		| { kind: 'moved'; fromIndex: number; toIndex: number }
-	)
+export type QueueChange = { itemId: LL.ItemId; actor: Actor; layerIds: L.LayerId[]; isVote: boolean } & (
+	| { kind: 'added'; index: number }
+	| { kind: 'removed' }
+	| { kind: 'edited'; prevLayerIds: L.LayerId[] }
+	| { kind: 'moved'; fromIndex: number; toIndex: number }
+)
 
 // the last actor to touch each item within the op span. an op without a userId is a server-side op (a roll, a vote
 // result, a generated item), which is SLM acting on its own.
@@ -686,11 +694,11 @@ function voteStateOf(item: LL.Item) {
 // likewise an item can change by being tagged or annotated alone, which moves no layer id. Covers a vote item's choices
 // too, since they carry their own tags and notes, and a change inside a vote reads as an edit of the vote.
 function tagsOf(item: LL.Item) {
-	return [...LL.iterItems([item])].map(({ item }) => (item.type === 'single-list-item' ? item.tags ?? [] : []))
+	return [...LL.iterItems([item])].map(({ item }) => (item.type === 'single-list-item' ? (item.tags ?? []) : []))
 }
 
 function notesOf(item: LL.Item) {
-	return [...LL.iterItems([item])].map(({ item }) => (item.type === 'single-list-item' ? item.notes ?? [] : []))
+	return [...LL.iterItems([item])].map(({ item }) => (item.type === 'single-list-item' ? (item.notes ?? []) : []))
 }
 
 // the items that actually moved, as opposed to the ones a neighbouring insert or delete shifted along. the longest
@@ -699,8 +707,8 @@ function notesOf(item: LL.Item) {
 function movedItemIds(prevIds: LL.ItemId[], nextIds: LL.ItemId[]): Set<LL.ItemId> {
 	const survivors = new Set(nextIds)
 	const existing = new Set(prevIds)
-	const before = prevIds.filter(id => survivors.has(id))
-	const after = nextIds.filter(id => existing.has(id))
+	const before = prevIds.filter((id) => survivors.has(id))
+	const after = nextIds.filter((id) => existing.has(id))
 	const lengths: number[][] = Array.from({ length: before.length + 1 }, () => new Array(after.length + 1).fill(0))
 	for (let i = before.length - 1; i >= 0; i--) {
 		for (let j = after.length - 1; j >= 0; j--) {
@@ -718,7 +726,7 @@ function movedItemIds(prevIds: LL.ItemId[], nextIds: LL.ItemId[]): Set<LL.ItemId
 		} else if (lengths[i + 1][j] >= lengths[i][j + 1]) i++
 		else j++
 	}
-	return new Set(before.filter(id => !kept.has(id)))
+	return new Set(before.filter((id) => !kept.has(id)))
 }
 
 // the net changes a QUEUE_UPDATED made to the saved queue, in queue order (removals last). Only top-level items are
@@ -731,7 +739,10 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 	const actorFor = (itemId: LL.ItemId) => actors.get(itemId) ?? e.actor
 	const prev = new Map(e.prevList.map((item, index) => [item.itemId, { item, index }]))
 	const next = new Map(e.list.map((item, index) => [item.itemId, { item, index }]))
-	const moved = movedItemIds(e.prevList.map(i => i.itemId), e.list.map(i => i.itemId))
+	const moved = movedItemIds(
+		e.prevList.map((i) => i.itemId),
+		e.list.map((i) => i.itemId),
+	)
 
 	const changes: QueueChange[] = []
 	for (const [itemId, { item, index }] of next) {
@@ -746,8 +757,10 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 		}
 		const prevLayerIds = itemLayerIds(before.item)
 		if (
-			!Obj.deepEqual(prevLayerIds, layerIds) || !Obj.deepEqual(voteStateOf(before.item), voteStateOf(item))
-			|| !Obj.deepEqual(tagsOf(before.item), tagsOf(item)) || !Obj.deepEqual(notesOf(before.item), notesOf(item))
+			!Obj.deepEqual(prevLayerIds, layerIds) ||
+			!Obj.deepEqual(voteStateOf(before.item), voteStateOf(item)) ||
+			!Obj.deepEqual(tagsOf(before.item), tagsOf(item)) ||
+			!Obj.deepEqual(notesOf(before.item), notesOf(item))
 		) {
 			changes.push({ kind: 'edited', itemId, layerIds, prevLayerIds, isVote, actor: actorFor(itemId) })
 		}
@@ -766,12 +779,10 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 
 // a net change the save made to the queued teamswaps. only an added swap carries an actor: the swap records
 // who queued that player (which is not necessarily whoever saved), while nothing records who removed one.
-export type TeamswapChange =
-	& { playerId: SM.PlayerId; toTeam: MH.NormedTeamId }
-	& (
-		| { kind: 'added'; byUserId?: USR.UserId }
-		| { kind: 'removed' }
-	)
+export type TeamswapChange = { playerId: SM.PlayerId; toTeam: MH.NormedTeamId } & (
+	| { kind: 'added'; byUserId?: USR.UserId }
+	| { kind: 'removed' }
+)
 
 // a player queued for a different team than before reads as an add (to the new team); the stale destination is not
 // worth a line of its own
@@ -808,9 +819,8 @@ export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 	const { id, type, time, actor, serverId, matchId, causeId, instanceId, ...payload } = e
 	// credentials are stripped here rather than only at the emitters: this is the one path into the table, so no
 	// future caller can persist a connection password by forgetting to redact it first
-	const redacted = e.type === 'SETTINGS_UPDATED'
-		? { ...payload, changes: redactSettingChanges((payload as SettingsUpdated).changes) }
-		: payload
+	const redacted =
+		e.type === 'SETTINGS_UPDATED' ? { ...payload, changes: redactSettingChanges((payload as SettingsUpdated).changes) } : payload
 	return {
 		id,
 		type,
@@ -837,11 +847,12 @@ export function fromRow(row: SchemaModels.AppEvent): AppEvent | null {
 	} catch {
 		return null
 	}
-	const actor = row.actorType === 'slm-user'
-		? { type: 'slm-user', userId: row.actorUserId }
-		: row.actorType === 'ingame-user'
-		? { type: 'ingame-user', playerId: row.actorPlayerId }
-		: { type: 'system' }
+	const actor =
+		row.actorType === 'slm-user'
+			? { type: 'slm-user', userId: row.actorUserId }
+			: row.actorType === 'ingame-user'
+				? { type: 'ingame-user', playerId: row.actorPlayerId }
+				: { type: 'system' }
 	const candidate = {
 		...(payload as object),
 		id: row.id,

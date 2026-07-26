@@ -1,5 +1,7 @@
-import * as FB from '@/models/filter-builders'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import * as FB from '@/models/filter-builders'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue } from '../harness/arrange'
 
@@ -40,10 +42,13 @@ describe('repeat rules during generation', () => {
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 
-		const generated = await app.waitFor(() => {
-			const q = savedQueue()
-			return q.length >= 1 && q[0].layerId && q[0].layerId !== LAYERS.gorodokRaas ? q[0] : null
-		}, { label: 'the generated layer', timeoutMs: 30_000 })
+		const generated = await app.waitFor(
+			() => {
+				const q = savedQueue()
+				return q.length >= 1 && q[0].layerId && q[0].layerId !== LAYERS.gorodokRaas ? q[0] : null
+			},
+			{ label: 'the generated layer', timeoutMs: 30_000 },
+		)
 
 		// of the two maps generation may draw from, Gorodok was just played: only Skorpo remains
 		expect(generated.layerId).toMatch(/^SK-/)

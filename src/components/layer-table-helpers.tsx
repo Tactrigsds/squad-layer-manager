@@ -2,6 +2,7 @@ import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpe
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { toast } from '@/lib/toast'
 import * as L from '@/models/layer'
+
 import LayerInfoDialog from './layer-info'
 
 void import('./layer-info')
@@ -31,29 +32,16 @@ export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; se
 		<>
 			{props.selectedLayerIds.length === 1 && L.isKnownLayer(props.selectedLayerIds[0]) && (
 				<LayerInfoDialog layerId={props.selectedLayerIds[0]}>
-					<ContextMenuItem>
-						Show layer info
-					</ContextMenuItem>
+					<ContextMenuItem>Show layer info</ContextMenuItem>
 				</LayerInfoDialog>
 			)}
-			<ContextMenuItem
-				onClick={() => copyAdminSetNextLayerCommand(props.selectedLayerIds)}
-			>
+			<ContextMenuItem onClick={() => copyAdminSetNextLayerCommand(props.selectedLayerIds)}>
 				Copy AdminSetNextLayer command
 			</ContextMenuItem>
-			<ContextMenuItem
-				onClick={() => copyLayerId(props.selectedLayerIds)}
-			>
-				Copy layer id
-			</ContextMenuItem>
-			{props.selectedHistoryEntryIds
-				&& (
-					<ContextMenuItem
-						onClick={() => copyHistoryEntryId(props.selectedHistoryEntryIds!)}
-					>
-						Copy history entry id
-					</ContextMenuItem>
-				)}
+			<ContextMenuItem onClick={() => copyLayerId(props.selectedLayerIds)}>Copy layer id</ContextMenuItem>
+			{props.selectedHistoryEntryIds && (
+				<ContextMenuItem onClick={() => copyHistoryEntryId(props.selectedHistoryEntryIds!)}>Copy history entry id</ContextMenuItem>
+			)}
 		</>
 	)
 }

@@ -1,7 +1,9 @@
+import React from 'react'
+
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -13,7 +15,7 @@ import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import React from 'react'
+
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { contextMenuSlots, PlayerCopyIdsSub, PlayerOpenLinksSub, TimeoutDialogContent } from './player-context-menu-options'
@@ -23,27 +25,27 @@ import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
 // When the selection is exactly one squad's full membership (and nothing else), returns that squad so the
 // warn action can route to the squad details window; otherwise null (mixed/partial selection).
-function detectFullSquadSelection(
-	selectedIds: SM.PlayerId[],
-	players: SM.Player[],
-	squads: SM.UniqueSquad[],
-): SM.UniqueSquad | null {
+function detectFullSquadSelection(selectedIds: SM.PlayerId[], players: SM.Player[], squads: SM.UniqueSquad[]): SM.UniqueSquad | null {
 	if (selectedIds.length === 0) return null
-	const first = SM.PlayerIds.find(players, p => p.ids, selectedIds[0])
+	const first = SM.PlayerIds.find(players, (p) => p.ids, selectedIds[0])
 	if (!first || first.squadId === null || first.teamId === null) return null
 	const { squadId, teamId } = first
 	for (const id of selectedIds) {
-		const p = SM.PlayerIds.find(players, p => p.ids, id)
+		const p = SM.PlayerIds.find(players, (p) => p.ids, id)
 		if (!p || p.squadId !== squadId || p.teamId !== teamId) return null
 	}
-	const memberCount = players.filter(p => p.squadId === squadId && p.teamId === teamId).length
+	const memberCount = players.filter((p) => p.squadId === squadId && p.teamId === teamId).length
 	if (memberCount !== selectedIds.length) return null
-	return squads.find(s => s.squadId === squadId && s.teamId === teamId) ?? null
+	return squads.find((s) => s.squadId === squadId && s.teamId === teamId) ?? null
 }
 
-export default function PlayerBulkContextMenuOptions(
-	{ playerIds, stores }: { playerIds: SM.PlayerId[]; stores: SquadServerFrame.KeyProp },
-) {
+export default function PlayerBulkContextMenuOptions({
+	playerIds,
+	stores,
+}: {
+	playerIds: SM.PlayerId[]
+	stores: SquadServerFrame.KeyProp
+}) {
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
 
@@ -70,41 +72,42 @@ export default function PlayerBulkContextMenuOptions(
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
 	const timeoutDenied = RbacClient.usePermsCheck(SM.Grants.anyTimeout(serverId))
-	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
-	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
+	const canSwapNow = Zus.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(playerIds))
+	const canQueue = Zus.useStore(stores.squadServer, TSWClient.Sel.someCanQueue(playerIds))
 
 	// when the selection is exactly one full squad, the warn action targets the squad details window and the
 	// menu item reads "Warn Squad"; otherwise it routes to the server activity "selected" warn box
-	const fullSquad = ZusUtils.useStore(
-		stores.squadServer,
-		(chatStore: ChatPrt.Store) => {
-			const state = ChatPrt.Sel.chatState(chatStore)
-			return detectFullSquadSelection(playerIds, state.players, state.squads)
-		},
-	)
+	const fullSquad = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+		const state = ChatPrt.Sel.chatState(chatStore)
+		return detectFullSquadSelection(playerIds, state.players, state.squads)
+	})
 
 	// scrollable list of the selected players' usernames, shown in the swap/kill confirmation dialogs so
 	// the admin can see exactly who is affected
 	function selectedPlayerList() {
 		// recent rather than live, so a player who dropped since being selected is still named rather than
 		// rendering as a bare id
-		const players = ChatPrt.Sel.recentPlayers(ZusUtils.getState(stores.squadServer))
+		const players = ChatPrt.Sel.recentPlayers(Zus.getState(stores.squadServer))
 		return (
 			<ul className="max-h-48 space-y-0.5 overflow-y-auto rounded border bg-muted/30 p-2 text-sm">
-				{playerIds.map(id => {
-					const p = SM.PlayerIds.find(players, p => p.ids, id)
-					return <li key={id} className="truncate">{p?.ids.usernameNoTag ?? p?.ids.username ?? id}</li>
+				{playerIds.map((id) => {
+					const p = SM.PlayerIds.find(players, (p) => p.ids, id)
+					return (
+						<li key={id} className="truncate">
+							{p?.ids.usernameNoTag ?? p?.ids.username ?? id}
+						</li>
+					)
 				})}
 			</ul>
 		)
 	}
 
 	async function swapNow() {
-		const initialState = TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer))
-		const initialTeams = new Map(playerIds.map(id => [id, initialState.players.get(id)]))
-		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
+		const initialState = TSWClient.Sel.localState(Zus.getState(stores.squadServer))
+		const initialTeams = new Map(playerIds.map((id) => [id, initialState.players.get(id)]))
+		const unsubscribe = Zus.resolveReadStore(stores.squadServer).subscribe((state) => {
 			const current = TSWClient.Sel.localState(state)
-			if (playerIds.some(id => current.players.get(id) !== initialTeams.get(id))) closeDialog()
+			if (playerIds.some((id) => current.players.get(id) !== initialTeams.get(id))) closeDialog()
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
@@ -134,8 +137,7 @@ export default function PlayerBulkContextMenuOptions(
 			const result = await openDialog({
 				title: 'Kill Players',
 				variant: 'destructive',
-				description:
-					`Kill these ${playerIds.length} players? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
+				description: `Kill these ${playerIds.length} players? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
 				content: (
 					<div className="grid gap-3 py-2">
 						{selectedPlayerList()}
@@ -203,8 +205,7 @@ export default function PlayerBulkContextMenuOptions(
 			const result = await openDialog({
 				title: 'Timeout Players',
 				variant: 'destructive',
-				description:
-					`Kick these ${playerIds.length} players? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				description: `Kick these ${playerIds.length} players? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
 				content: (
 					<div className="grid gap-3 py-2">
 						{selectedPlayerList()}
@@ -267,14 +268,18 @@ export default function PlayerBulkContextMenuOptions(
 			if (!input) return
 			// one call for the whole batch: the server aggregates the resulting squad-leaves under a single app event
 			// unwrap() keeps the presence dialogue open until it settles; the toast surfaces any error
-			await toast.promise(
-				removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds, presetReasonLabel: input.presetReasonLabel }),
-				{
+			await toast
+				.promise(removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds, presetReasonLabel: input.presetReasonLabel }), {
 					loading: `Removing ${playerIds.length} players from their squads...`,
 					success: `Removed ${playerIds.length} players from their squads`,
-					error: { message: 'Remove from squad failed', description: `Failed to remove ${playerIds.length} players`, richColors: true },
-				},
-			).unwrap().catch(() => {})
+					error: {
+						message: 'Remove from squad failed',
+						description: `Failed to remove ${playerIds.length} players`,
+						richColors: true,
+					},
+				})
+				.unwrap()
+				.catch(() => {})
 		})
 	}
 
@@ -379,7 +384,9 @@ export default function PlayerBulkContextMenuOptions(
 				targetDescription={fullSquad ? `squad "${fullSquad.squadName}"` : `these ${playerIds.length} players`}
 			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
-				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>Remove from Squad</ContextMenuItem>
+				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>
+					Remove from Squad
+				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 		</>
 	)

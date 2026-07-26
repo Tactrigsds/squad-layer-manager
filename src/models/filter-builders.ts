@@ -38,15 +38,17 @@ export const excludedFrom = (filterId: string): F.FilterNode => ({ type: 'exclud
 
 // -------- matchup builders --------
 
-export const allowMatchups = (
-	teams: [F.MatchupTeamSpec, F.MatchupTeamSpec],
-	options: { locked?: boolean } = {},
-): F.FilterNode => ({ type: 'allow-matchups', locked: options.locked ?? false, teams })
+export const allowMatchups = (teams: [F.MatchupTeamSpec, F.MatchupTeamSpec], options: { locked?: boolean } = {}): F.FilterNode => ({
+	type: 'allow-matchups',
+	locked: options.locked ?? false,
+	teams,
+})
 
-export const disallowMatchups = (
-	teams: [F.MatchupTeamSpec, F.MatchupTeamSpec],
-	options: { locked?: boolean } = {},
-): F.FilterNode => ({ type: 'disallow-matchups', locked: options.locked ?? false, teams })
+export const disallowMatchups = (teams: [F.MatchupTeamSpec, F.MatchupTeamSpec], options: { locked?: boolean } = {}): F.FilterNode => ({
+	type: 'disallow-matchups',
+	locked: options.locked ?? false,
+	teams,
+})
 
 // -------- comparison builders --------
 

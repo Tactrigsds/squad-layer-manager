@@ -1,8 +1,17 @@
+import { parse } from 'csv-parse'
+import http from 'follow-redirects'
+import * as fs from 'fs'
+import * as fsPromise from 'fs/promises'
+import { promisify } from 'node:util'
+import zlib from 'node:zlib'
+import path from 'path'
+import { z } from 'zod'
+
 import * as Paths from '$root/paths'
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import * as OneToMany from '@/lib/one-to-many-map'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import { ParsedFloatSchema, ParsedIntSchema } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LA from '@/models/layer-artifact'
@@ -11,15 +20,6 @@ import * as SLL from '@/models/squad-layer-list.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
-import { parse } from 'csv-parse'
-import http from 'follow-redirects'
-import * as fs from 'fs'
-import * as fsPromise from 'fs/promises'
-import { promisify } from 'node:util'
-import zlib from 'node:zlib'
-import path from 'path'
-
-import { z } from 'zod'
 
 const gzip = promisify(zlib.gzip)
 const module = initModule('preprocess')
@@ -30,7 +30,7 @@ export const ParsedNanFloatSchema = z
 	.transform((val) => parseFloat(val))
 	.pipe(z.number())
 
-const ParsedNullableFloat = ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
+const ParsedNullableFloat = ZodUtils.ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
 const Steps = z.enum(['build-layer-artifact', 'download-csvs', 'write-components-and-units', 'compress-artifact', 'all'])
 
@@ -89,8 +89,8 @@ async function main() {
 	LAYER_DB_CONFIG = readLayerDbConfig()
 	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LAYER_DB_CONFIG.columns) }
 
-	const needsSheetData = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
-		|| args.includes('download-csvs')
+	const needsSheetData =
+		args.includes('write-components-and-units') || args.includes('build-layer-artifact') || args.includes('download-csvs')
 	let data!: Awaited<ReturnType<typeof parseSquadLayerSheetData>>
 	let components!: LC.LayerComponents
 	if (needsSheetData) {
@@ -102,8 +102,8 @@ async function main() {
 
 	// the version of a build comes from the csv it ingests, and both halves of the pair are stamped with it and
 	// written side by side: the app will not load a table without the components that go with it.
-	const writesArtifacts = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
-		|| args.includes('compress-artifact')
+	const writesArtifacts =
+		args.includes('write-components-and-units') || args.includes('build-layer-artifact') || args.includes('compress-artifact')
 	let csvPath!: string
 	let layersVersion!: string
 	let tablePath!: string
@@ -160,7 +160,7 @@ async function main() {
 // whose rows are placed by looking their id up in that order. Columns are built straight into typed arrays with the
 // null sentinels already written.
 async function buildLayerArtifact(
-	ctx: CS.EffectiveColumnConfig,
+	ctx: LC.Ctx,
 	args: { components: LC.LayerComponents; baseLayers: L.KnownLayer[]; csvPath: string; layersVersion: string },
 ): Promise<Buffer> {
 	const { components, baseLayers, csvPath } = args
@@ -277,7 +277,7 @@ function extraColSchema(col: LC.ColumnDef): z.ZodType {
 		case 'string':
 			throw new Error(`Extra column "${col.name}" is a string; the layer engine has no string column type yet`)
 		case 'integer':
-			return ParsedIntSchema
+			return ZodUtils.ParsedIntSchema
 		case 'boolean':
 			return z.stringbool().transform((v) => Number(v))
 		case 'float':
@@ -332,7 +332,7 @@ function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 
 async function parseSquadLayerSheetData() {
 	const json = SLL.RootSchema.parse(
-		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then(res => res)),
+		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then((res) => res)),
 	)
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(json)
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
@@ -355,7 +355,9 @@ async function parseSquadLayerSheetData() {
 			log.error(`${map.levelName} has unknown size`)
 		}
 		if (!map.teamConfigs.team1 || !map.teamConfigs.team2) continue
-		const teamConfigs = Object.entries(map.teamConfigs).sort((a, b) => a[0].localeCompare(b[0])).map(([_, team]) => team)
+		const teamConfigs = Object.entries(map.teamConfigs)
+			.sort((a, b) => a[0].localeCompare(b[0]))
+			.map(([_, team]) => team)
 		const baseConfig = {
 			...segments,
 			Size: size,
@@ -458,7 +460,7 @@ async function parseSquadLayerSheetData() {
 	)
 
 	// Validate that all layers in availability are in mapLayers
-	const layerNames = new Set(mapLayers.map(l => l.Layer))
+	const layerNames = new Set(mapLayers.map((l) => l.Layer))
 	for (const layer of availability.keys()) {
 		if (!layerNames.has(layer)) {
 			throw new Error(`Layer ${layer} from availability not found in mapLayers`)
@@ -482,7 +484,8 @@ async function parseSquadLayerSheetData() {
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry1.Faction)!)
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry2.Faction)!)
 				Arr.upsert(components.versions, parsedSegments.LayerVersion)
-				if (!components.collections.includes(parsedSegments.Collection)) throw new Error(`Invalid collection: ${parsedSegments.Collection}`)
+				if (!components.collections.includes(parsedSegments.Collection))
+					throw new Error(`Invalid collection: ${parsedSegments.Collection}`)
 				if (!Object.keys(components.collectionAbbreviations).includes(parsedSegments.Collection)) {
 					throw new Error(`Invalid collection (no abbreviation): ${parsedSegments.Collection}`)
 				}
@@ -639,24 +642,26 @@ async function downloadPublicSheetAsCSV(gid: number, filepath: string) {
 	return await new Promise<void>((resolve, reject) => {
 		const file = fs.createWriteStream(filepath)
 
-		http.https.get(url, (response) => {
-			response.pipe(file)
+		http.https
+			.get(url, (response) => {
+				response.pipe(file)
 
-			file.on('finish', () => {
-				file.close()
-				log.info(`CSV downloaded successfully to %s`, filepath)
-				resolve()
+				file.on('finish', () => {
+					file.close()
+					log.info(`CSV downloaded successfully to %s`, filepath)
+					resolve()
+				})
+
+				file.on('error', (error) => {
+					file.close()
+					log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
+					reject(error)
+				})
 			})
-
-			file.on('error', (error) => {
-				file.close()
-				log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
+			.on('error', (error) => {
+				log.error(error, 'Error downloading CSV:')
 				reject(error)
 			})
-		}).on('error', (error) => {
-			log.error(error, 'Error downloading CSV:')
-			reject(error)
-		})
 	})
 }
 

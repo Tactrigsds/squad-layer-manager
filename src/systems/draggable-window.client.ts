@@ -1,11 +1,11 @@
+import * as Im from 'immer'
+import React from 'react'
+
 import * as Lifecycle from '@/lib/lifecycle'
+import * as Zus from '@/lib/zustand'
 import type { DraggableWindowContextValue } from '@/models/draggable-windows.models'
 import * as DW from '@/models/draggable-windows.models'
 import { DRAGGABLE_WINDOW_STACK_LIMIT } from '@/models/zindex'
-
-import * as Im from 'immer'
-import React from 'react'
-import * as Zus from 'zustand'
 
 // ============================================================================
 // Types
@@ -94,35 +94,41 @@ function defToLoaderConfig(def: WindowDefinition): WindowLoaderConfig {
 	return {
 		name: def.type,
 		match: (windows: WindowState[]) => {
-			const win = windows.find(w => w.type === def.type)
+			const win = windows.find((w) => w.type === def.type)
 			return win ? { windowId: win.id, props: win.props, type: win.type, outletKey: win.outletKey } : undefined
 		},
 		unloadOnLeave: false,
 		...(def.load
 			? {
-				load: ({ key, state }: { key: WindowLoaderKey; state: DraggableWindowStoreState }) => def.load!({ props: key.props, state }),
-			}
+					load: ({ key, state }: { key: WindowLoaderKey; state: DraggableWindowStoreState }) => def.load!({ props: key.props, state }),
+				}
 			: def.loadAsync
-			? {
-				loadAsync: (
-					{ key, abortController, state }: { key: WindowLoaderKey; abortController: AbortController; state: DraggableWindowStoreState },
-				) => def.loadAsync!({ props: key.props, state, abortController }),
-			}
-			: { load: () => undefined }),
+				? {
+						loadAsync: ({
+							key,
+							abortController,
+							state,
+						}: {
+							key: WindowLoaderKey
+							abortController: AbortController
+							state: DraggableWindowStoreState
+						}) => def.loadAsync!({ props: key.props, state, abortController }),
+					}
+				: { load: () => undefined }),
 		onEnter: def.onEnter
 			? ({ key, data }: { key: WindowLoaderKey; data: any }) => {
-				void def.onEnter!({ props: key.props, data })
-			}
+					void def.onEnter!({ props: key.props, data })
+				}
 			: undefined,
 		onLeave: def.onLeave
 			? ({ key, data }: { key: WindowLoaderKey; data: any }) => {
-				void def.onLeave!({ props: key.props, data })
-			}
+					void def.onLeave!({ props: key.props, data })
+				}
 			: undefined,
 		onUnload: def.onUnload
 			? ({ key, data }: { key: WindowLoaderKey; data: any }) => {
-				void def.onUnload!({ props: key.props, data })
-			}
+					void def.onUnload!({ props: key.props, data })
+				}
 			: undefined,
 	} as WindowLoaderConfig
 }
@@ -147,7 +153,7 @@ export const DraggableWindowStore = (() => {
 			loaderCache: [],
 
 			registerDefinition: (def) => {
-				const idx = loaderConfigs.findIndex(c => c.name === def.type)
+				const idx = loaderConfigs.findIndex((c) => c.name === def.type)
 				const config = defToLoaderConfig(def)
 				if (idx >= 0) {
 					loaderConfigs[idx] = config
@@ -156,12 +162,12 @@ export const DraggableWindowStore = (() => {
 				}
 
 				set((s) => ({
-					definitions: [...s.definitions.filter(d => d.type !== def.type), def],
+					definitions: [...s.definitions.filter((d) => d.type !== def.type), def],
 				}))
 			},
 
 			unregisterDefinition: (id) => {
-				const idx = loaderConfigs.findIndex(c => c.name === id)
+				const idx = loaderConfigs.findIndex((c) => c.name === id)
 				if (idx >= 0) loaderConfigs.splice(idx, 1)
 
 				set((s) => ({
@@ -183,9 +189,11 @@ export const DraggableWindowStore = (() => {
 					const windowId = def.getId(props)
 					const key: WindowLoaderKey = { type: id, windowId, props, outletKey: outletKey ?? DEFAULT_OUTLET_KEY }
 
-					loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
-						Lifecycle.preloadCacheEntry(loaderCtx as any, config, key, draft)
-					}))
+					loaderCtx.set(
+						Im.produce<DraggableWindowStoreState>((draft) => {
+							Lifecycle.preloadCacheEntry(loaderCtx as any, config, key, draft)
+						}),
+					)
 				})
 			},
 
@@ -214,15 +222,17 @@ export const DraggableWindowStore = (() => {
 					outletKey: resolvedOutletKey,
 				}
 
-				loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
-					draft.windows = DW.normalizeStackOrder([...draft.windows, openState])
-					if (draft.windows.length > DRAGGABLE_WINDOW_STACK_LIMIT) {
-						console.warn(`Too many draggable windows open, giving up on maintaining a stable window ordering`)
-					}
-					if (config) {
-						Lifecycle.loadCacheEntry(loaderCtx as any, config, key, draft)
-					}
-				}))
+				loaderCtx.set(
+					Im.produce<DraggableWindowStoreState>((draft) => {
+						draft.windows = DW.normalizeStackOrder([...draft.windows, openState])
+						if (draft.windows.length > DRAGGABLE_WINDOW_STACK_LIMIT) {
+							console.warn(`Too many draggable windows open, giving up on maintaining a stable window ordering`)
+						}
+						if (config) {
+							Lifecycle.loadCacheEntry(loaderCtx as any, config, key, draft)
+						}
+					}),
+				)
 			},
 
 			closeWindow: (id) => {
@@ -232,11 +242,18 @@ export const DraggableWindowStore = (() => {
 
 				const config = loaderConfigs.find((c) => c.name === window.type)
 				if (config) {
-					const key: WindowLoaderKey = { type: window.type, windowId: window.id, props: window.props, outletKey: window.outletKey }
-					loaderCtx.set(Im.produce<DraggableWindowStoreState>((draft) => {
-						draft.windows = DW.normalizeStackOrder(draft.windows.filter((w) => w.id !== id))
-						Lifecycle.closeCacheEntry(loaderCtx as any, config, key, draft)
-					}))
+					const key: WindowLoaderKey = {
+						type: window.type,
+						windowId: window.id,
+						props: window.props,
+						outletKey: window.outletKey,
+					}
+					loaderCtx.set(
+						Im.produce<DraggableWindowStoreState>((draft) => {
+							draft.windows = DW.normalizeStackOrder(draft.windows.filter((w) => w.id !== id))
+							Lifecycle.closeCacheEntry(loaderCtx as any, config, key, draft)
+						}),
+					)
 				} else {
 					set((s) => ({
 						windows: DW.normalizeStackOrder(s.windows.filter((w) => w.id !== id)),
@@ -246,12 +263,12 @@ export const DraggableWindowStore = (() => {
 
 			bringToFront: (id) =>
 				set((s) => ({
-					windows: DW.normalizeStackOrder(s.windows.map((w) => w.id === id ? { ...w, stackOrder: s.windows.length } : w)),
+					windows: DW.normalizeStackOrder(s.windows.map((w) => (w.id === id ? { ...w, stackOrder: s.windows.length } : w))),
 				})),
 
 			setIsPinned: (id, isPinned) =>
 				set((s) => ({
-					windows: s.windows.map((w) => w.id === id ? { ...w, isPinned } : w),
+					windows: s.windows.map((w) => (w.id === id ? { ...w, isPinned } : w)),
 				})),
 		}
 	})
@@ -300,13 +317,13 @@ export function buildUseOpenWindow<Props = unknown>(id: string) {
 // imperatively (e.g. from a menu action) — reads the current store state rather than a hook.
 export function openOrFocusWindow(type: string, props: unknown, outletKey?: unknown, anchor?: HTMLElement | null) {
 	const store = DraggableWindowStore.getState()
-	const def = store.definitions.find(d => d.type === type)
+	const def = store.definitions.find((d) => d.type === type)
 	if (!def) {
 		console.warn(`DraggableWindow: No definition found for id "${type}"`)
 		return
 	}
 	const windowId = def.getId(props)
-	if (store.windows.some(w => w.id === windowId)) store.bringToFront(windowId)
+	if (store.windows.some((w) => w.id === windowId)) store.bringToFront(windowId)
 	else store.openWindow(type, props, anchor, outletKey)
 }
 
@@ -359,9 +376,7 @@ export function useWindowLoading(windowId: string): boolean {
 /**
  * Hook to access the full loader cache entry for a window.
  */
-export function useWindowLoaderEntry<TProps = any, TData = any>(
-	windowId: string,
-): WindowLoaderCacheEntry<TProps, TData> | undefined {
+export function useWindowLoaderEntry<TProps = any, TData = any>(windowId: string): WindowLoaderCacheEntry<TProps, TData> | undefined {
 	return Zus.useStore(DraggableWindowStore, (s) => {
 		return findLoaderEntry(s.loaderCache, windowId) as WindowLoaderCacheEntry<TProps, TData> | undefined
 	})

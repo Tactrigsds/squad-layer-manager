@@ -1,7 +1,9 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { makePlayer } from '@/emulator'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as RBAC from '@/rbac.models'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
@@ -40,10 +42,7 @@ beforeAll(async () => {
 		globalSettings: (settings) => {
 			// can see the dashboard, pointedly not the console
 			settings.rbac.roles['dashboard-only'] = role(['site:authorized', 'squad-server:view'], DASHBOARD_ONLY)
-			settings.rbac.roles['console-reader'] = role(
-				['site:authorized', 'squad-server:view', 'squad-server:view-console'],
-				CONSOLE_READER,
-			)
+			settings.rbac.roles['console-reader'] = role(['site:authorized', 'squad-server:view', 'squad-server:view-console'], CONSOLE_READER)
 		},
 	})
 	dashboardOnlyClient = await createOrpcClient(app, DASHBOARD_ONLY)
@@ -59,10 +58,9 @@ afterAll(async () => {
 describe('serverConsole.watch', () => {
 	it('refuses a user holding squad-server:view but not view-console', async () => {
 		const client = dashboardOnlyClient
-		const first = await firstYield(
-			(signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }),
-			{ label: 'the denial' },
-		)
+		const first = await firstYield((signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }), {
+			label: 'the denial',
+		})
 
 		expect(first.code).toBe('err:permission-denied')
 		// and it denies by refusing to send anything, not by sending the traffic with a flag attached
@@ -71,10 +69,9 @@ describe('serverConsole.watch', () => {
 
 	it('streams the traffic to a user who holds view-console', async () => {
 		const client = consoleReaderClient
-		const first = await firstYield(
-			(signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }),
-			{ label: 'the console backlog' },
-		)
+		const first = await firstYield((signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }), {
+			label: 'the console backlog',
+		})
 
 		expect(first.code).toBe('ok')
 		// the app polls the server on a timer, so a slice that has been up has rcon traffic behind it already
@@ -89,14 +86,16 @@ describe('serverConsole.watch', () => {
 		await app.waitForRosterSync()
 		app.emu.world.chat(talker, 'ChatAll', 'said over rcon')
 
-		const seen = await app.waitFor(async () => {
-			const first = await firstYield(
-				(signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }),
-				{ label: 'the console backlog' },
-			)
-			if (first.code !== 'ok') return null
-			return first.events.find((e) => e.type === 'command' && e.message === 'said over rcon') ?? null
-		}, { label: 'the chat message to reach the console', timeoutMs: 30_000 })
+		const seen = await app.waitFor(
+			async () => {
+				const first = await firstYield((signal) => client.serverConsole.watch({ serverId: app.serverId }, { signal }), {
+					label: 'the console backlog',
+				})
+				if (first.code !== 'ok') return null
+				return first.events.find((e) => e.type === 'command' && e.message === 'said over rcon') ?? null
+			},
+			{ label: 'the chat message to reach the console', timeoutMs: 30_000 },
+		)
 
 		expect(seen).toMatchObject({ type: 'command', channel: 'ChatAll', message: 'said over rcon' })
 	})

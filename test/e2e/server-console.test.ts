@@ -1,7 +1,9 @@
-import { makePlayer } from '@/emulator'
 import type { Page } from '@playwright/test'
+
+import { makePlayer } from '@/emulator'
+
 import { createAppFixture, type TestUser } from '../harness/app-fixture'
-import { expect, test } from './fixtures'
+import { expect, sharedAppTest, test } from './fixtures'
 
 // The console is the one view that claims to show what actually crossed the wire rather than what the app
 // concluded from it, so these drive real traffic through the emulator and assert it comes out the other end.
@@ -18,8 +20,8 @@ async function openConsole(page: Page) {
 	return output
 }
 
-test.describe('server console', () => {
-	test('shows the rcon commands and responses the app and the server actually exchange', async ({ page, app }) => {
+sharedAppTest.describe('server console', () => {
+	sharedAppTest('shows the rcon commands and responses the app and the server actually exchange', async ({ page, app }) => {
 		const output = await openConsole(page)
 
 		// the app polls the server on a timer, so traffic arrives without the test provoking any. Both directions
@@ -35,7 +37,7 @@ test.describe('server console', () => {
 		expect(app.emu.rcon.commandLog.some((c) => c.body === 'ListPlayers')).toBe(true)
 	})
 
-	test('carries a player command through to its own channel', async ({ page, app }) => {
+	sharedAppTest('carries a player command through to its own channel', async ({ page, app }) => {
 		const output = await openConsole(page)
 
 		const talker = makePlayer({ name: ' e2e_talker', teamId: 1 })
@@ -55,7 +57,7 @@ test.describe('server console', () => {
 		await expect(commands.getByText('rcon <-')).toHaveCount(0)
 	})
 
-	test('hides the repeated polls and the tick rate until asked not to', async ({ page }) => {
+	sharedAppTest('hides the repeated polls and the tick rate until asked not to', async ({ page }) => {
 		await openConsole(page)
 
 		// the filter is on by default and says how much it is withholding, so it never silently swallows anything

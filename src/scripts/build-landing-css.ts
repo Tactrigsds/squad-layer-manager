@@ -1,7 +1,8 @@
-import * as Paths from '$root/paths'
-import { compileLandingCss } from '@/systems/landing-css'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import * as Paths from '$root/paths'
+import { compileLandingCss } from '@/systems/landing-css'
 
 // Prebuilds the landing/403 pages' inline stylesheet for the bundled prod server, which has no Tailwind at
 // runtime. Runs after `build:client` (so it survives vite emptying dist/) and ships dist/landing.css in the image.

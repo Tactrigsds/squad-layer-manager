@@ -1,5 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import * as SETTINGS from '../models/settings.models'
 import { up } from './0085_pool_config_single_pool_filter'
 

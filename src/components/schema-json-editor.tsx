@@ -1,15 +1,17 @@
+import stringifyCompact from 'json-stringify-pretty-compact'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as CM from '@/lib/codemirror'
-import * as Obj from '@/lib/object'
-import * as Typography from '@/lib/typography.ts'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
+import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
-import stringifyCompact from 'json-stringify-pretty-compact'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import * as Rx from 'rxjs'
+
 import type { SchemaJsonEditorProps } from './schema-json-editor.types'
 
 export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEditorProps<TOut, TIn>) {
@@ -145,7 +147,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 			>
 				{/* pr-9 keeps the toolbar clear of the fullscreen toggle pinned to the container's corner */}
 				<div className="flex min-h-7 items-center gap-2 pr-9">
-					<h3 className={cn(Typography.Small, 'ml-[45px]')}>{props.label ?? 'Settings'}</h3>
+					<h3 className={cn(Typo.Small, 'ml-[45px]')}>{props.label ?? 'Settings'}</h3>
 					{props.toolbar && <div className="ml-auto flex min-w-0 items-center gap-2">{props.toolbar}</div>}
 				</div>
 				<Tooltip>
@@ -156,7 +158,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 							variant="ghost"
 							className="absolute top-0 right-0 h-7 w-7"
 							style={{ zIndex: contentBaseZIndex + ZI_OFFSETS.MINOR_CEILING }}
-							onClick={() => setIsFullscreen(v => !v)}
+							onClick={() => setIsFullscreen((v) => !v)}
 						>
 							{isFullscreen ? <Icons.Minimize2 className="h-4 w-4" /> : <Icons.Maximize2 className="h-4 w-4" />}
 						</Button>
@@ -166,8 +168,10 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
 					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
-						<h3 className={Typography.Small}>Errors</h3>
-						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+						<h3 className={Typo.Small}>Errors</h3>
+						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+							{errorText}
+						</pre>
 					</div>
 				</div>
 			</div>

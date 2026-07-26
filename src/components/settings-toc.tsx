@@ -1,17 +1,20 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+import { z } from 'zod'
+
 import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { GLOBAL_SETTINGS_GROUPS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
+import * as Zus from '@/lib/zustand'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import { z } from 'zod'
 
 // A tree-of-contents for the settings page. Nodes mirror the global-settings schema tree; clicking one scrolls the
 // matching field (anchored by `setting:<path>` ids emitted by SettingsForm) into view within the main scroll column.
@@ -24,6 +27,11 @@ type TocNode = { id: string; label: string; path: string; writable: boolean; chi
 
 const WRITE_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
 const WRITE_NONE: RBAC.SettingsWriteAccess = { kind: 'none' }
+
+// the trees are rebuilt whenever a mode or a write grant changes, but the schemas behind them never change, so both
+// conversions are done once for the module rather than inside those memos
+const serverJsonSchema = z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node
+const globalJsonSchema = z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node
 
 function stripNullable(node: Node): Node {
 	if (node?.anyOf) {
@@ -39,40 +47,47 @@ function buildChildren(node: Node, path: (string | number)[], idPrefix: string, 
 	const props: Record<string, Node> | undefined = node?.properties
 	if (!props) return []
 	// top-level keys managed inline by a sibling editor (e.g. defaultPrefix) render no field, so emit no TOC anchor either
-	return Object.keys(props).filter((key) => !(path.length === 0 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(key))).map((key): TocNode => {
-		const inner = stripNullable(props[key])
-		const childPath = [...path, key]
-		const pathStr = childPath.join('.')
-		// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
-		// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
-		const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
-		return {
-			id: `${idPrefix}${pathStr}`,
-			label: settingLabel(childPath, key),
-			path: pathStr,
-			writable: RBAC.settingsPathOverlaps(access, childPath),
-			children: recurse ? buildChildren(inner, childPath, idPrefix, access) : [],
-		}
-	})
+	return Object.keys(props)
+		.filter((key) => !(path.length === 0 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(key)))
+		.map((key): TocNode => {
+			const inner = stripNullable(props[key])
+			const childPath = [...path, key]
+			const pathStr = childPath.join('.')
+			// only static object sections recurse; records/arrays are dynamic, and override-rendered sections
+			// (TOC_LEAF_PATHS) emit no per-property anchors, so both stay leaf nodes
+			const recurse = inner.type === 'object' && inner.properties && !TOC_LEAF_PATHS.has(pathStr)
+			return {
+				id: `${idPrefix}${pathStr}`,
+				label: settingLabel(childPath, key),
+				path: pathStr,
+				writable: RBAC.settingsPathOverlaps(access, childPath),
+				children: recurse ? buildChildren(inner, childPath, idPrefix, access) : [],
+			}
+		})
 }
 
 // mirror the form's presentation-level grouping: wrap the top-level nodes into group nodes (anchored to the group
 // headers the form emits), leaving ungrouped keys at the top level after them
 function groupTocNodes(children: TocNode[], groups: SettingsGroup[], idPrefix: string): TocNode[] {
 	const byKey = new Map(children.map((c) => [c.path, c]))
-	const { groups: grouped, ungrouped } = splitByGroups(children.map((c) => c.path), groups)
+	const { groups: grouped, ungrouped } = splitByGroups(
+		children.map((c) => c.path),
+		groups,
+	)
 	return [
 		...grouped.flatMap(({ group, keys }): TocNode[] => {
 			const children = keys.map((k) => byKey.get(k)!)
 			// no group header in the form means no group node here either; the field stands on its own
 			if (group.passthrough) return children
-			return [{
-				id: `${idPrefix}group:${group.slug}`,
-				label: group.label,
-				path: `group:${group.slug}`,
-				writable: children.some((c) => c.writable),
-				children,
-			}]
+			return [
+				{
+					id: `${idPrefix}group:${group.slug}`,
+					label: group.label,
+					path: `group:${group.slug}`,
+					writable: children.some((c) => c.writable),
+					children,
+				},
+			]
 		}),
 		...ungrouped.map((k) => byKey.get(k)!),
 	]
@@ -100,40 +115,42 @@ function flattenVisible(nodes: TocNode[], expanded: Set<string>, forceOpen: bool
 	return out
 }
 
-function TocItem(
-	{ node, depth, expanded, toggle, forceOpen, activeId, showMarkers }: {
-		node: TocNode
-		depth: number
-		expanded: Set<string>
-		toggle: (id: string) => void
-		forceOpen: boolean
-		activeId: string | null
-		showMarkers: boolean
-	},
-) {
+function TocItem({
+	node,
+	depth,
+	expanded,
+	toggle,
+	forceOpen,
+	activeId,
+	showMarkers,
+}: {
+	node: TocNode
+	depth: number
+	expanded: Set<string>
+	toggle: (id: string) => void
+	forceOpen: boolean
+	activeId: string | null
+	showMarkers: boolean
+}) {
 	const hasChildren = node.children.length > 0
 	const isOpen = forceOpen || expanded.has(node.id)
 	const isActive = node.id === activeId
 	// parent rows pin (and stack under their own ancestors) while their children scroll past; leaf rows never pin
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const header = (
-		<div
-			ref={headerRef}
-			className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')}
-			style={{ paddingLeft: depth * 12 }}
-		>
-			{hasChildren
-				? (
-					<button
-						type="button"
-						className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
-						onClick={() => toggle(node.id)}
-						aria-label={isOpen ? 'Collapse' : 'Expand'}
-					>
-						<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
-					</button>
-				)
-				: <span className="w-[18px] shrink-0" />}
+		<div ref={headerRef} className={cn('flex items-center gap-0.5', hasChildren && 'bg-background')} style={{ paddingLeft: depth * 12 }}>
+			{hasChildren ? (
+				<button
+					type="button"
+					className="p-0.5 text-muted-foreground hover:text-foreground shrink-0"
+					onClick={() => toggle(node.id)}
+					aria-label={isOpen ? 'Collapse' : 'Expand'}
+				>
+					<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} />
+				</button>
+			) : (
+				<span className="w-[18px] shrink-0" />
+			)}
 			<a
 				href={`#${node.id}`}
 				className={cn(
@@ -176,14 +193,14 @@ function TocItem(
 	)
 	return (
 		<li data-toc-id={node.id}>
-			{hasChildren
-				? (
-					<StickyGroup stickyRef={headerRef}>
-						{header}
-						{children}
-					</StickyGroup>
-				)
-				: header}
+			{hasChildren ? (
+				<StickyGroup stickyRef={headerRef}>
+					{header}
+					{children}
+				</StickyGroup>
+			) : (
+				header
+			)}
 		</li>
 	)
 }
@@ -237,17 +254,18 @@ function buildParentMap(nodes: TocNode[], parentId: string | null, map: Map<stri
 	}
 }
 
-export default function SettingsToc(
-	{ showServers, showGlobal, globalMode, servers, serverModes, creatingServer, newServerMode }: {
-		showServers: boolean
-		showGlobal: boolean
-		globalMode: 'gui' | 'json'
-		servers: { id: string; displayName: string }[]
-		serverModes: Record<string, 'gui' | 'json'>
-		creatingServer: boolean
-		newServerMode: 'gui' | 'json'
-	},
-) {
+export default function SettingsToc({
+	showServers,
+	showGlobal,
+	servers,
+	sectionKeys,
+}: {
+	showServers: boolean
+	showGlobal: boolean
+	servers: { id: string; displayName: string }[]
+	sectionKeys: SettingsEditorFrame.Key[]
+}) {
+	const { globalMode, serverModes, newServerMode, creatingServer } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.tocModes)
 	const [query, setQuery] = React.useState('')
 	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
 	const [focusedId, setFocusedId] = React.useState<string | null>(null)
@@ -283,22 +301,8 @@ export default function SettingsToc(
 		() =>
 			globalMode === 'json'
 				? []
-				: groupTocNodes(
-					buildChildren(
-						z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
-						[],
-						'setting:',
-						globalWrite,
-					),
-					GLOBAL_SETTINGS_GROUPS,
-					'setting:',
-				),
+				: groupTocNodes(buildChildren(globalJsonSchema, [], 'setting:', globalWrite), GLOBAL_SETTINGS_GROUPS, 'setting:'),
 		[globalMode, globalWrite],
-	)
-
-	const serverJsonSchema = React.useMemo(
-		() => z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
-		[],
 	)
 
 	const serverNodes = React.useMemo(() => {
@@ -315,21 +319,21 @@ export default function SettingsToc(
 		if (creatingServer) {
 			nodes.push({
 				id: 'section:server:__new__',
-				label: 'New Server',
+				label: 'New Managed Server',
 				path: '',
 				writable: true,
 				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:', WRITE_ALL),
 			})
 		}
 		return nodes
-	}, [servers, serverModes, creatingServer, newServerMode, serverJsonSchema, serverWriteById])
+	}, [servers, serverModes, creatingServer, newServerMode, serverWriteById])
 
 	const nodes = React.useMemo(() => {
 		const roots: TocNode[] = []
 		if (showServers) {
 			roots.push({
 				id: 'section:servers',
-				label: 'Servers',
+				label: 'Managed Servers',
 				path: '',
 				writable: serverNodes.some((n) => n.writable),
 				children: serverNodes,
@@ -349,8 +353,8 @@ export default function SettingsToc(
 	}, [showServers, showGlobal, globalChildren, serverNodes, globalWrite])
 
 	// markers only add signal when something on the page is write-restricted; a fully-unrestricted admin sees none
-	const showMarkers = (showGlobal && globalWrite.kind !== 'all')
-		|| servers.some((s) => (serverWriteById.get(s.id) ?? WRITE_NONE).kind !== 'all')
+	const showMarkers =
+		(showGlobal && globalWrite.kind !== 'all') || servers.some((s) => (serverWriteById.get(s.id) ?? WRITE_NONE).kind !== 'all')
 
 	const parentById = React.useMemo(() => {
 		const map = new Map<string, string | null>()
@@ -388,7 +392,7 @@ export default function SettingsToc(
 	// the search box drives the table of contents: up/down move this focus, Enter jumps to it. It defaults to the first
 	// match while searching, so Enter jumps there with nothing arrowed. With neither, the highlight follows the scroll.
 	const flatIds = flattenVisible(visible, expanded, forceOpen)
-	const focusHighlightId = focusedId ?? (q ? flatIds[0] ?? null : null)
+	const focusHighlightId = focusedId ?? (q ? (flatIds[0] ?? null) : null)
 	const highlightId = focusHighlightId ?? activeId
 
 	// keep the highlighted item in view within the (independently scrolling) sidebar
@@ -413,9 +417,7 @@ export default function SettingsToc(
 		e.preventDefault()
 		const delta = e.key === 'ArrowDown' ? 1 : -1
 		const from = flatIds.indexOf(focusHighlightId ?? '')
-		const next = from === -1
-			? (delta === 1 ? 0 : flatIds.length - 1)
-			: Math.min(Math.max(from + delta, 0), flatIds.length - 1)
+		const next = from === -1 ? (delta === 1 ? 0 : flatIds.length - 1) : Math.min(Math.max(from + delta, 0), flatIds.length - 1)
 		setFocusedId(flatIds[next])
 	}
 
@@ -448,24 +450,24 @@ export default function SettingsToc(
 				</div>
 			</div>
 			<nav className="flex-1 min-h-0 overflow-y-auto">
-				{visible.length === 0
-					? <p className="text-sm text-muted-foreground px-1">No matches.</p>
-					: (
-						<ul>
-							{visible.map((n) => (
-								<TocItem
-									key={n.id}
-									node={n}
-									depth={0}
-									expanded={expanded}
-									toggle={toggle}
-									forceOpen={forceOpen}
-									activeId={highlightId}
-									showMarkers={showMarkers}
-								/>
-							))}
-						</ul>
-					)}
+				{visible.length === 0 ? (
+					<p className="text-sm text-muted-foreground px-1">No matches.</p>
+				) : (
+					<ul>
+						{visible.map((n) => (
+							<TocItem
+								key={n.id}
+								node={n}
+								depth={0}
+								expanded={expanded}
+								toggle={toggle}
+								forceOpen={forceOpen}
+								activeId={highlightId}
+								showMarkers={showMarkers}
+							/>
+						))}
+					</ul>
+				)}
 			</nav>
 		</div>
 	)

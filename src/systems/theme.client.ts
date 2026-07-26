@@ -1,6 +1,6 @@
-import * as ZusUtils from '@/lib/zustand'
 import { z } from 'zod'
-import * as Zus from 'zustand'
+
+import * as Zus from '@/lib/zustand'
 
 // TODO combine with global-settings.ts
 const THEME = z.enum(['dark', 'light', 'system'])
@@ -45,9 +45,7 @@ export function setup() {
 }
 
 export function useTheme() {
-	const { theme, setTheme } = ZusUtils.useStore(ThemeStore)
-	const resolvedTheme = theme === 'system'
-		? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-		: theme
+	const { theme, setTheme } = Zus.useStore(ThemeStore)
+	const resolvedTheme = theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme
 	return { theme, setTheme, resolvedTheme } as const
 }

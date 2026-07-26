@@ -1,6 +1,8 @@
-import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
 import * as TSR from '@tanstack/react-router'
-import * as Rx from 'rxjs'
+
+import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
+import * as Rx from '@/lib/rxjs'
+
 import { routeTree } from './routeTree.gen.ts'
 
 // Register things for typesafety
@@ -23,7 +25,7 @@ export const rootRouter = TSR.createRouter({
 	defaultErrorComponent: RouteErrorComponent,
 })
 
-export const newRoute$ = new Rx.Observable<string>(observer => {
+export const newRoute$ = new Rx.Observable<string>((observer) => {
 	observer.next(window.location.pathname)
 	const unsub = rootRouter.subscribe('onBeforeLoad', (event) => {
 		if (!event.pathChanged || !event.toLocation) return

@@ -1,9 +1,3 @@
-import { formatVersion } from '@/lib/versioning'
-import { tsMigrations } from '@/migrations/registry'
-import * as DbBackup from '@/server/db-backup'
-import * as DbMeta from '@/server/db-meta'
-import * as Env from '@/server/env'
-import * as Migrate from '@/server/migrate'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
 import * as DateFns from 'date-fns'
 import fs from 'node:fs'
@@ -12,6 +6,13 @@ import * as readline from 'node:readline/promises'
 import * as Stream from 'node:stream/promises'
 import { parseArgs } from 'node:util'
 import * as Zlib from 'node:zlib'
+
+import { formatVersion } from '@/lib/versioning'
+import { tsMigrations } from '@/migrations/registry'
+import * as DbBackup from '@/server/db-backup'
+import * as DbMeta from '@/server/db-meta'
+import * as Env from '@/server/env'
+import * as Migrate from '@/server/migrate'
 
 // Puts a backup back. Run in dev via `pnpm db:restore`; in the production image via `pnpm db:restore:prod`, with the
 // app stopped (restore.sh does that choreography for a docker deployment).
@@ -95,8 +96,8 @@ function pick(): Candidate {
 	const commitSha = args.values['commit-sha']
 	const db = path.basename(ENV.DB_PATH)
 	let wanted = candidates()
-	if (args.values['pre-migration']) wanted = wanted.filter(c => c.kind === 'pre-migration')
-	if (commitSha) wanted = wanted.filter(c => DbBackup.shaMatchesRequest(c.sha, commitSha))
+	if (args.values['pre-migration']) wanted = wanted.filter((c) => c.kind === 'pre-migration')
+	if (commitSha) wanted = wanted.filter((c) => DbBackup.shaMatchesRequest(c.sha, commitSha))
 	if (wanted.length === 0) {
 		const scope = [args.values['pre-migration'] ? 'pre-migration ' : '', `backups of ${db}`, commitSha ? ` from commit ${commitSha}` : '']
 		fail(`no ${scope.join('')} in ${ENV.BACKUPS_DIR}`)
@@ -287,9 +288,9 @@ try {
 
 	if (pending.length > 0) {
 		console.log(
-			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n`
-				+ 'Starting this version of the app applies them again, undoing the restore -- so roll the image back before\n'
-				+ 'starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
+			`\nnote: this database is ${pending.length} migration(s) behind this build (${pending.join(', ')}).\n` +
+				'Starting this version of the app applies them again, undoing the restore -- so roll the image back before\n' +
+				'starting it (or set DB_AUTOMIGRATE=0 if you know what you are doing).',
 		)
 		process.exit(EXIT_RESTORED_BEHIND_BUILD)
 	}

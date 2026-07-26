@@ -37,7 +37,7 @@ export function intersection<T>(...sets: Set<T>[]): Set<T> {
 	const newSet = new Set<T>()
 
 	for (const value of first) {
-		if (rest.every(set => set.has(value))) {
+		if (rest.every((set) => set.has(value))) {
 			newSet.add(value)
 		}
 	}
@@ -47,7 +47,7 @@ export function intersection<T>(...sets: Set<T>[]): Set<T> {
 export function difference<T>(set: Set<T>, ...otherSets: Set<T>[]): Set<T> {
 	const newSet = new Set<T>()
 	for (const value of set) {
-		if (!otherSets.some(otherSet => otherSet.has(value))) {
+		if (!otherSets.some((otherSet) => otherSet.has(value))) {
 			newSet.add(value)
 		}
 	}
@@ -115,11 +115,7 @@ export function bulkDelete<T>(set: Set<T>, ...values: T[]): Set<T> {
 	return set
 }
 
-export function findWith<T>(
-	set: Set<T>,
-	target: T,
-	compare: (a: T, b: T) => boolean,
-): T | undefined {
+export function findWith<T>(set: Set<T>, target: T, compare: (a: T, b: T) => boolean): T | undefined {
 	for (const value of set) {
 		if (compare(value, target)) {
 			return value
@@ -128,11 +124,7 @@ export function findWith<T>(
 	return undefined
 }
 
-export function hasWith<T>(
-	set: Set<T>,
-	target: T,
-	compare: (a: T, b: T) => boolean,
-): boolean {
+export function hasWith<T>(set: Set<T>, target: T, compare: (a: T, b: T) => boolean): boolean {
 	for (const value of set) {
 		if (compare(value, target)) {
 			return true

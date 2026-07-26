@@ -72,8 +72,8 @@ export function last<T>(arr: T[]): T | undefined {
 }
 
 export function delta<T>(before: T[], after: T[]): { added: T[]; removed: T[] } {
-	const added = after.filter(item => !before.includes(item))
-	const removed = before.filter(item => !after.includes(item))
+	const added = after.filter((item) => !before.includes(item))
+	const removed = before.filter((item) => !after.includes(item))
 	return { added, removed }
 }
 
@@ -91,11 +91,11 @@ export function destrOptional<Arr extends unknown[]>(arr: Arr | undefined) {
 }
 
 export function missing<T>(arr: T[], target: T[]): T[] {
-	return arr.filter(item => !target.includes(item))
+	return arr.filter((item) => !target.includes(item))
 }
 
 export function isSubset<T>(superset: T[], subset: T[]): boolean {
-	return subset.every(item => superset.includes(item))
+	return subset.every((item) => superset.includes(item))
 }
 
 export function paged<T>(arr: T[], pageSize: number): T[][] {

@@ -1,4 +1,6 @@
-import * as Arr from '@/lib/array'
+import * as dateFns from 'date-fns'
+
+import * as Arr from '@/lib/array-utils'
 import * as DH from '@/lib/display-helpers'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CMDH from '@/models/command-help.models'
@@ -7,12 +9,12 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
+import type { WarnOptions } from '@/models/squad-rcon.models'
+import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
 import type * as RBAC from '@/rbac.models'
-import type * as C from '@/server/context'
-import type { WarnOptions } from '@/systems/squad-rcon.server'
-import * as dateFns from 'date-fns'
+
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
 function formatInterval(interval: number, options?: { terse?: boolean; round?: 'second' }) {
@@ -38,11 +40,11 @@ export const BROADCASTS = {
 		) {
 			const layerIds = Array.isArray(voteItem)
 				? voteItem
-				: state.choiceIds.flatMap(id => {
-					const choice = voteItem.choices.find(choice => choice.itemId === id)
-					if (choice) return [choice.layerId]
-					return []
-				})
+				: state.choiceIds.flatMap((id) => {
+						const choice = voteItem.choices.find((choice) => choice.itemId === id)
+						if (choice) return [choice.layerId]
+						return []
+					})
 			const lines = voteChoicesLines(layerIds, undefined, displayProps).join('\n')
 			const formattedInterval = formatInterval(duration, { terse: false, round: 'second' })
 			const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
@@ -60,21 +62,23 @@ export const BROADCASTS = {
 				.sort((a, b) => b[1] - a[1])
 				.map(([choiceId, votes]) => {
 					const isWinner = choiceId === winnerId
-					const choice = voteItem.choices.find(c => c.itemId === choiceId)
+					const choice = voteItem.choices.find((c) => c.itemId === choiceId)
 					const layerName = choice ? DH.toShortLayerNameFromId(choice.layerId, undefined, displayProps) : 'Unknown'
 					return `${votes} votes - (${tally.percentages.get(choiceId)?.toFixed(0)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
 				})
 			const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
-			const fullText = `\nVote ${early ? 'was' : 'has'} ended${early ? ' early' : ''}:\n${
-				resultsText.join('\n')
-			}\n${randomChoiceExplanation}`
+			const fullText = `\nVote ${early ? 'was' : 'has'} ended${early ? ' early' : ''}:\n${resultsText.join(
+				'\n',
+			)}\n${randomChoiceExplanation}`
 			return fullText
 		},
 		insufficientVotes(voteItem: LL.VoteItem, displayProps: DH.LayerDisplayProp[]) {
 			const defaultChoice = voteItem.choices[0]
-			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${
-				DH.toShortLayerNameFromId(defaultChoice.layerId, undefined, displayProps)
-			}`
+			return `\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(
+				defaultChoice.layerId,
+				undefined,
+				displayProps,
+			)}`
 		},
 		aborted: `\nThe vote has been aborted.`,
 		inProgressVoteCleared() {
@@ -91,8 +95,8 @@ export const BROADCASTS = {
 			const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
 
 			const lines = voteChoicesLines(
-				state.choiceIds.flatMap(id => {
-					const choice = voteItem.choices.find(choice => choice.itemId === id)
+				state.choiceIds.flatMap((id) => {
+					const choice = voteItem.choices.find((choice) => choice.itemId === id)
 					if (choice) return [choice.layerId]
 					return []
 				}),
@@ -139,7 +143,7 @@ export const WARNS = {
 				repeatViolations: _opts.repeatViolations.length > 0 ? _opts.repeatViolations : undefined,
 				poolViolations: _opts.poolViolations.length > 0 ? _opts.poolViolations : undefined,
 			}
-			const repeatedList = opts.repeatViolations ? [...new Set(opts.repeatViolations?.map(r => r.field))].join(', ') : undefined
+			const repeatedList = opts.repeatViolations ? [...new Set(opts.repeatViolations?.map((r) => r.field))].join(', ') : undefined
 			const poolList = opts.poolViolations?.join(', ')
 			let str = ''
 			if (repeatedList && poolList) {
@@ -161,127 +165,132 @@ export const WARNS = {
 		},
 
 		empty: `WARNING: Queue is empty. Please populate it`,
-		showNext: (
-			layerQueue: LL.List,
-			nextLayer: L.UnvalidatedLayer | null,
-			setByUser: USR.User | undefined,
-			commands: Record<CMD.CommandId, CMD.CommandConfig>,
-			opts?: { updated?: boolean; isAdmin?: boolean },
-		) =>
-		(ctx: C.Player) => {
-			const item = layerQueue.length > 0 ? layerQueue[0] : undefined
-			const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
-			let lines: string[] = []
-			if (item && LL.isVoteItem(item) && nextLayer && L.areLayersCompatible(item.layerId, nextLayer)) {
-				if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
-					let winningLayer: L.LayerId | undefined
+		showNext:
+			(
+				layerQueue: LL.List,
+				nextLayer: L.UnvalidatedLayer | null,
+				setByUser: USR.User | undefined,
+				commands: Record<CMD.CommandId, CMD.CommandConfig>,
+				opts?: { updated?: boolean; isAdmin?: boolean },
+			) =>
+			(ctx: SM.Ctx) => {
+				const item = layerQueue.length > 0 ? layerQueue[0] : undefined
+				const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
+				let lines: string[] = []
+				if (item && LL.isVoteItem(item) && nextLayer && L.areLayersCompatible(item.layerId, nextLayer)) {
+					if (item.endingVoteState && item.endingVoteState.code === 'ended:winner') {
+						let winningLayer: L.LayerId | undefined
 
-					for (const { item: choice } of LL.iterItems(item.choices)) {
-						if (item.endingVoteState.winnerId === choice.itemId) {
-							winningLayer = item.layerId
-							break
+						for (const { item: choice } of LL.iterItems(item.choices)) {
+							if (item.endingVoteState.winnerId === choice.itemId) {
+								winningLayer = item.layerId
+								break
+							}
+						}
+						lines.push(
+							`Next Layer${opts?.updated ? ' changed' : ''} (Chosen via vote)\n${
+								winningLayer ? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n') : 'unknown'
+							}`,
+						)
+					} else {
+						if (opts?.updated) {
+							const showNextTrigger = CMD.primaryTrigger(commands.showNext)
+							const showNextString = showNextTrigger ? CMD.triggerString(showNextTrigger) : 'shownext'
+							const runWithPart = opts.isAdmin ? ` (run with ${showNextString})` : ''
+							lines.push(`Next layer Changed. Will be chosen via vote${runWithPart}:`)
+						} else {
+							lines.push('Upcoming vote:')
+						}
+						lines.push(
+							voteChoicesLines(
+								item.choices.map((choice) => choice.layerId),
+								playerNextTeamId,
+								['layer', 'factions', 'units'],
+							).join(),
+						)
+					}
+				} else {
+					if (nextLayer === null) {
+						lines.push(`No next layer data available`)
+					} else {
+						lines.push(
+							`Next Layer${opts?.updated ? ' changed' : ''}:\n${DH.displayLayer(
+								nextLayer,
+								playerNextTeamId,
+								['layer', 'factions', 'units'],
+								'\n',
+							)}\n`,
+						)
+					}
+				}
+
+				// only show who set the layer to admins
+				if (opts?.isAdmin) {
+					let setByDisplay: string
+					if (!item) {
+						setByDisplay = `Unknown`
+					} else {
+						switch (item.source.type) {
+							case 'generated':
+								setByDisplay = `Generated`
+								break
+							case 'gameserver':
+								setByDisplay = `Game Server`
+								break
+							case 'manual':
+								{
+									const userId = item.source.userId
+									setByDisplay = `Set by ${setByUser && userId === setByUser.discordId ? setByUser.displayName : 'Unknown'}`
+								}
+								break
+							case undefined:
+							case 'unknown':
+								setByDisplay = `Unknown`
+								break
+							default:
+								assertNever(item.source)
 						}
 					}
-					lines.push(
-						`Next Layer${opts?.updated ? ' changed' : ''} (Chosen via vote)\n${
-							winningLayer ? DH.displayLayer(winningLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n') : 'unknown'
-						}`,
-					)
-				} else {
-					if (opts?.updated) {
-						const showNextString = commands.showNext.strings[0]
-						const runWithPart = opts.isAdmin ? ` (run with ${showNextString})` : ''
-						lines.push(`Next layer Changed. Will be chosen via vote${runWithPart}:`)
-					} else {
-						lines.push('Upcoming vote:')
-					}
-					lines.push(
-						voteChoicesLines(item.choices.map(choice => choice.layerId), playerNextTeamId, ['layer', 'factions', 'units']).join(),
-					)
-				}
-			} else {
-				if (nextLayer === null) {
-					lines.push(`No next layer data available`)
-				} else {
-					lines.push(
-						`Next Layer${opts?.updated ? ' changed' : ''}:\n${
-							DH.displayLayer(nextLayer, playerNextTeamId, ['layer', 'factions', 'units'], '\n')
-						}\n`,
-					)
-				}
-			}
 
-			// only show who set the layer to admins
-			if (opts?.isAdmin) {
-				let setByDisplay: string
-				if (!item) {
-					setByDisplay = `Unknown`
-				} else {
-					switch (item.source.type) {
-						case 'generated':
-							setByDisplay = `Generated`
-							break
-						case 'gameserver':
-							setByDisplay = `Game Server`
-							break
-						case 'manual':
-							{
-								const userId = item.source.userId
-								setByDisplay = `Set by ${setByUser && userId === setByUser.discordId ? setByUser.displayName : 'Unknown'}`
-							}
-							break
-						case undefined:
-						case 'unknown':
-							setByDisplay = `Unknown`
-							break
-						default:
-							assertNever(item.source)
-					}
+					lines.push(setByDisplay)
 				}
 
-				lines.push(setByDisplay)
-			}
-
-			return { msg: lines }
-		},
+				return { msg: lines }
+			},
 		requestFeedback: (index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
-			msg: [
-				`${playerName} has requested feedback for`,
-				LL.displayLayerListItem(item, index),
-			].join('\n'),
+			msg: [`${playerName} has requested feedback for`, LL.displayLayerListItem(item, index)].join('\n'),
 		}),
 	},
 	commands: {
 		unknownCommand(cmdText: string, closestMatch: string) {
 			return `Unknown: ${cmdText}.\nDid you mean "${closestMatch}"?`
 		},
-		// Takes the command's scopes rather than the chats they map to, so admin-only can be named as such: it's the
-		// common case by far, and it matches how the scope is labelled on the commands page (CMD.COMMAND_SCOPE_LABELS),
+		// Takes the chat groups rather than the channels they map to, so admin-only can be named as such: it's the
+		// common case by far, and it matches how they're labelled on the commands page (CMD.CHAT_GROUP_LABELS),
 		// where the raw ChatAdmin/ChatTeam enum names never appear.
-		wrongChat(scopes: CMD.CommandScope[]) {
-			if (scopes.length === 1 && scopes[0] === 'admin') return 'Admin only commands must be used in admin chat'
-			const correctChats = scopes.flatMap((s) => CMD.CHAT_SCOPE_MAPPINGS[s])
+		wrongChat(allowedChats: CMD.ChatGroup[]) {
+			if (allowedChats.length === 1 && allowedChats[0] === 'admin') return 'Admin only commands must be used in admin chat'
+			const correctChats = allowedChats.flatMap((s) => CMD.CHAT_GROUP_CHANNELS[s])
 			return `Command not available in this chat. Try using ${correctChats.join(' or ')}`
 		},
 		// `section` is the raw token typed after the help command; omitted means the quick reference. Returns one
 		// string per warn, since chat can only take a few lines at a time.
-		help(
-			commands: CMD.CommandConfigs,
-			aliases: readonly CMD.CommandAlias[] = [],
-			section?: string,
-		) {
-			const listing = CMDH.resolveHelpListing(commands, aliases, section)
+		help(commands: CMD.CommandConfigs, section?: string) {
+			const listing = CMDH.resolveHelpListing(commands, section)
 			if (listing.code === 'err:unknown-section') return [listing.msg]
 
-			const commandLines = listing.commands.map((id) => {
+			const lines = listing.commands.flatMap((id) => {
 				const cmd = commands[id]
-				const sortedStrings = cmd.strings.toSorted((a, b) => a.length - b.length)
+				const plain = cmd.triggers.filter((t) => CMD.triggerArgs(t) === undefined).map(CMD.triggerString)
+				const sortedStrings = plain.toSorted((a, b) => a.length - b.length)
 				const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
-				return `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
+				const own = `[${sortedStrings.join(', ')}]${signature ? ` ${signature}` : ''}: ${GENERAL.command.descriptions[id]}`
+				// a trigger that pins arguments takes a different thing from the caller, so it gets its own line
+				const shortcuts = cmd.triggers
+					.filter((t) => CMD.triggerArgs(t) !== undefined)
+					.map((t) => `[${CMD.formatTriggerUsage(id, t)}]: ${GENERAL.command.aliasDescription(CMD.describeTriggerExpansion(cmd, t))}`)
+				return [own, ...shortcuts]
 			})
-			// aliases take no args of their own, so they list as the shortcut and what it expands to
-			const aliasLines = listing.aliases.map((a) => `[${a.alias}]: ${GENERAL.command.aliasDescription(a.command)}`)
-			const lines = [...commandLines, ...aliasLines]
 			if (lines.length === 0) return [`${listing.title}: none.`, ...(listing.hint ? [listing.hint] : [])]
 			const groups = Arr.paged(lines, 3)
 			groups[0].unshift(`${listing.title}:`)
@@ -303,8 +312,9 @@ export const WARNS = {
 		empty: 'No layer requests queued.',
 	},
 	teamswaps: {
-		notifyPlayerOfUpcomingTeamswap: 'You have been marked for a team swap on mapchange. '
-			+ 'Thank you for helping with team balance and contact admins if you have issues.',
+		notifyPlayerOfUpcomingTeamswap:
+			'You have been marked for a team swap on mapchange. ' +
+			'Thank you for helping with team balance and contact admins if you have issues.',
 		notifyTeamswapCancelled: 'You will no longer be swapped to the other team on map roll.',
 		notifyManualSwap: 'You have been swapped to the other team by an admin.',
 		// added/removed are the real per-player diff against the previously saved swaps, not the net change in
@@ -336,7 +346,7 @@ export const WARNS = {
 	slmUpdatesStatus(enabled: boolean) {
 		return `Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.`
 	},
-	slmStarted: (restartedBy?: string) => restartedBy ? `SLM has been restarted by ${restartedBy}.` : `SLM has been started.`,
+	slmStarted: (restartedBy?: string) => (restartedBy ? `SLM has been restarted by ${restartedBy}.` : `SLM has been started.`),
 } satisfies WarnNode
 
 export const GENERAL = {
@@ -367,7 +377,7 @@ export const GENERAL = {
 		descriptions: {
 			'150x2': '2 consecutive games of a Team winning by 150+ tickets',
 			'200x2': '2 consecutive games of a Team winning by 200+ tickets',
-			'RWS5': '5 consecutive games of a team winning by any number of tickets',
+			RWS5: '5 consecutive games of a team winning by any number of tickets',
 			'RAM3+': 'a rolling average of 125+ tickets across any streak of 3 or more games(utilizing the max of all options).',
 		} satisfies Record<BAL.TriggerId, string>,
 		// A representative alert body, for previewing a trigger's level in the settings editor. The real text is built
@@ -375,7 +385,7 @@ export const GENERAL = {
 		sampleMessages: {
 			'150x2': 'Team A(USA) has won 2 games by 150+ tickets.',
 			'200x2': 'Team A(USA) has won 2 games by 200+ tickets.',
-			'RWS5': 'Team A(USA) has won five games in a row.',
+			RWS5: 'Team A(USA) has won five games in a row.',
 			'RAM3+': 'Team A(USA) has been winning for 4 games with an average of (125+)(163.50) tickets',
 		} satisfies Record<BAL.TriggerId, string>,
 	},

@@ -1,13 +1,18 @@
+import type { DistributiveOmit } from '@tanstack/react-query'
+import type { MutexInterface } from 'async-mutex'
+import { z } from 'zod'
+
+import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
-import * as MapUtils from '@/lib/map'
-import * as Obj from '@/lib/object'
+import type { IsolatedSubject } from '@/lib/isolated-subject'
+import * as MapUtils from '@/lib/map-utils'
+import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
+import * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
-import type { DistributiveOmit } from '@tanstack/react-query'
-import { z } from 'zod'
 
 export const TeamswapStatusSchema = z.enum(['ready', 'player-disconnected', 'player-changed-teams'])
 export type TeamswapStatus = z.infer<typeof TeamswapStatusSchema>
@@ -71,24 +76,19 @@ export function canQueue(state: State, playerId: SM.PlayerId): boolean {
 }
 
 export function allCanSwapNow(state: State, playerIds: SM.PlayerId[]): boolean {
-	return playerIds.every(id => canSwapNow(state, id))
+	return playerIds.every((id) => canSwapNow(state, id))
 }
 
 export function allCanQueue(state: State, playerIds: SM.PlayerId[]): boolean {
-	return playerIds.every(id => canQueue(state, id))
+	return playerIds.every((id) => canQueue(state, id))
 }
 
 export function someCanQueue(state: State, playerIds: SM.PlayerId[]): boolean {
-	return playerIds.some(id => canQueue(state, id))
+	return playerIds.some((id) => canQueue(state, id))
 }
 
 export function canExecuteSavedTeamswaps(state: State): boolean {
-	return (
-		state.editedSwaps === state.savedSwaps
-		&& state.savedSwaps.size > 0
-		&& !state.swapping
-		&& state.pendingSwaps.size === 0
-	)
+	return state.editedSwaps === state.savedSwaps && state.savedSwaps.size > 0 && !state.swapping && state.pendingSwaps.size === 0
 }
 
 export function isSwapPending(state: State, playerId: SM.PlayerId): boolean {
@@ -205,13 +205,7 @@ export type NewClientOp = DistributiveOmit<Op, 'opId'>
 export function createOpId() {
 	return createId(6)
 }
-type SwappingMutationOp =
-	| 'remove-player-teamswaps'
-	| 'revert-to-saved'
-	| 'clear-teamswaps'
-	| 'save'
-	| 'player-changed-team'
-	| 'player-left'
+type SwappingMutationOp = 'remove-player-teamswaps' | 'revert-to-saved' | 'clear-teamswaps' | 'save' | 'player-changed-team' | 'player-left'
 
 namespace OpErrors {
 	export type CurrentlySwapping = { code: 'err:currently-swapping' }
@@ -224,21 +218,26 @@ namespace OpErrors {
 	export type Unexpected = { code: 'err:unexpected'; error: unknown }
 }
 
-export type OpError<OpCode extends Op['code'] = Op['code']> =
-	& { op: Extract<Op, { code: OpCode }> }
-	& (
-		| OpErrors.Unexpected
-		| (OpCode extends 'add-player-teamswap' ? (OpErrors.CurrentlySwapping | OpErrors.AlreadyMarked)
-			: OpCode extends 'clear-teamswaps' ? (OpErrors.CurrentlySwapping | OpErrors.PendingSwap | OpErrors.NothingQueued)
-			: OpCode extends SwappingMutationOp ? (OpErrors.CurrentlySwapping | OpErrors.PendingSwap)
-			// teamswap-execution-failed never errors: it reports through a side effect, since rejecting the batch
-			// would discard the very state change (cancelling the pending swaps) that it exists to make
-			: OpCode extends 'teamswap-execution-completed' ? (OpErrors.CurrentlyNotSwapping)
-			: OpCode extends 'execute-teamswaps' ? (OpErrors.CurrentlySwapping | OpErrors.SwapsNotSaved)
-			: OpCode extends 'swap-now' ? OpErrors.CurrentlySwapping
-			: OpCode extends 'init-saved-teamswaps' ? OpErrors.CurrentlySwapping
-			: never)
-	)
+export type OpError<OpCode extends Op['code'] = Op['code']> = { op: Extract<Op, { code: OpCode }> } & (
+	| OpErrors.Unexpected
+	| (OpCode extends 'add-player-teamswap'
+			? OpErrors.CurrentlySwapping | OpErrors.AlreadyMarked
+			: OpCode extends 'clear-teamswaps'
+				? OpErrors.CurrentlySwapping | OpErrors.PendingSwap | OpErrors.NothingQueued
+				: OpCode extends SwappingMutationOp
+					? OpErrors.CurrentlySwapping | OpErrors.PendingSwap
+					: // teamswap-execution-failed never errors: it reports through a side effect, since rejecting the batch
+						// would discard the very state change (cancelling the pending swaps) that it exists to make
+						OpCode extends 'teamswap-execution-completed'
+						? OpErrors.CurrentlyNotSwapping
+						: OpCode extends 'execute-teamswaps'
+							? OpErrors.CurrentlySwapping | OpErrors.SwapsNotSaved
+							: OpCode extends 'swap-now'
+								? OpErrors.CurrentlySwapping
+								: OpCode extends 'init-saved-teamswaps'
+									? OpErrors.CurrentlySwapping
+									: never)
+)
 
 // the typed payload carried by a RejectedError thrown from the reducer: either a specific op failure
 // the dispatcher should surface, or a benign no-op that changed nothing (nothing to report)
@@ -255,47 +254,47 @@ export type SaveTrigger = z.infer<typeof SaveTriggerSchema>
 
 export type SideEffect =
 	| {
-		code: 'notify-upcoming-teamswaps'
-		players: SM.PlayerId[]
-	}
+			code: 'notify-upcoming-teamswaps'
+			players: SM.PlayerId[]
+	  }
 	| {
-		code: 'notify-teamswaps-cancelled'
-		players: SM.PlayerId[]
-	}
+			code: 'notify-teamswaps-cancelled'
+			players: SM.PlayerId[]
+	  }
 	| {
-		code: 'execute-teamswaps'
-		opId: string
-		swaps: TeamswapCollection
-	}
+			code: 'execute-teamswaps'
+			opId: string
+			swaps: TeamswapCollection
+	  }
 	| {
-		code: 'save'
-		swaps: TeamswapCollection
-		prevSaved: TeamswapCollection
-		source?: USR.GuiOrChatUserId
-		trigger: SaveTrigger
-	}
+			code: 'save'
+			swaps: TeamswapCollection
+			prevSaved: TeamswapCollection
+			source?: USR.GuiOrChatUserId
+			trigger: SaveTrigger
+	  }
 	| {
-		code: 'teamswaps-executed'
-		swapCount: number
-		source?: USR.GuiOrChatUserId
-	}
+			code: 'teamswaps-executed'
+			swapCount: number
+			source?: USR.GuiOrChatUserId
+	  }
 	| {
-		code: 'teamswap-execution-failed'
-		reason: 'error' | 'not-all-players-swapped' | 'timeout'
-		// for 'error'
-		message?: string
-		// for 'not-all-players-swapped': the players still on the wrong team
-		playerIds?: SM.PlayerId[]
-		source?: USR.GuiOrChatUserId
-	}
+			code: 'teamswap-execution-failed'
+			reason: 'error' | 'not-all-players-swapped' | 'timeout'
+			// for 'error'
+			message?: string
+			// for 'not-all-players-swapped': the players still on the wrong team
+			playerIds?: SM.PlayerId[]
+			source?: USR.GuiOrChatUserId
+	  }
 	| {
-		code: 'end-all-teamswap-editing'
-	}
+			code: 'end-all-teamswap-editing'
+	  }
 	| {
-		code: 'op-outcome'
-		op: Op
-		success: boolean
-	}
+			code: 'op-outcome'
+			op: Op
+			success: boolean
+	  }
 
 export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _prevOps) => {
 	let state = { ...oldState }
@@ -335,7 +334,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 					}
 					const swapEntry = { toTeam: op.toTeam, source: op.source }
 					if (op.saved) {
-						writeToSaved(state, swaps => swaps.set(op.playerId, swapEntry))
+						writeToSaved(state, (swaps) => swaps.set(op.playerId, swapEntry))
 						saveSource = op.source
 						saveTrigger = 'user-edit'
 					} else {
@@ -383,7 +382,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 						}
 						// the delete has to reach editedSwaps too, or the player stays marked there and can never be
 						// re-added (add-player-teamswap would reject them as already-marked)
-						writeToSaved(state, swaps => swaps.delete(op.playerId))
+						writeToSaved(state, (swaps) => swaps.delete(op.playerId))
 						saveSource = op.source
 						saveTrigger = 'user-edit'
 					} else {
@@ -416,7 +415,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 							break
 						}
 						emit({ code: 'notify-teamswaps-cancelled', players: playerIds })
-						writeToSaved(state, swaps => MapUtils.bulkDelete(swaps, ...playerIds))
+						writeToSaved(state, (swaps) => MapUtils.bulkDelete(swaps, ...playerIds))
 						if (op.source) saveSource = op.source
 						saveTrigger = 'user-edit'
 					} else {
@@ -512,22 +511,20 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 				case 'reset-players': {
 					let newSavedSwaps: State['savedSwaps'] | undefined
 					let newSwaps: State['editedSwaps'] | undefined
-					const allPlayerIds = new Set([...op.players.keys(), ...state.players.keys()])
-					for (const playerId of allPlayerIds) {
-						const nextPlayerTeam = op.players.get(playerId)
-						const currentPlayerTeam = state.players.get(playerId)
-						if (nextPlayerTeam && nextPlayerTeam === currentPlayerTeam) continue
-
-						if (state.swapping) continue
-						const savedSwap = state.savedSwaps.get(playerId)
-						if (savedSwap) {
-							newSavedSwaps ??= new Map(state.savedSwaps)
-							newSavedSwaps.delete(playerId)
-						}
-						let editedSwap = state.editedSwaps.get(playerId)
-						if (editedSwap) {
-							newSwaps ??= new Map(state.editedSwaps)
-							newSwaps.delete(playerId)
+					// A roster only proves where the players it lists are, never that anyone else has left: the roster
+					// on the other side of a map roll carries just the players already sorted onto a team, and the rest
+					// land a poll later. Absence used to drop a swap, which cancelled the entire queue on every roll,
+					// moments before it was due to fire. Departures are 'player-left' (PLAYER_DISCONNECTED)'s call.
+					if (!state.swapping) {
+						for (const [playerId, team] of op.players.entries()) {
+							if (state.savedSwaps.get(playerId)?.toTeam === team) {
+								newSavedSwaps ??= new Map(state.savedSwaps)
+								newSavedSwaps.delete(playerId)
+							}
+							if (state.editedSwaps.get(playerId)?.toTeam === team) {
+								newSwaps ??= new Map(state.editedSwaps)
+								newSwaps.delete(playerId)
+							}
 						}
 					}
 					if (newSavedSwaps !== undefined) {
@@ -582,7 +579,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 
 					// swapping a player now takes them out of the queue on both sets, but leaves the rest of an
 					// in-flight edit (and its in-sync-ness) intact
-					writeToSaved(state, swaps => MapUtils.bulkDelete(swaps, ...op.swaps.keys()))
+					writeToSaved(state, (swaps) => MapUtils.bulkDelete(swaps, ...op.swaps.keys()))
 					saveTrigger = 'swapped-now'
 					saveSource = op.source
 
@@ -639,14 +636,32 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 	// the reducer mutates a shallow copy, reassigning a field only when it actually changes it, so
 	// reference-equal fields mean the batch produced no net change -- a benign no-op we reject so it's
 	// dropped rather than broadcast.
-	const unchanged = state.editedSwaps === oldState.editedSwaps
-		&& state.savedSwaps === oldState.savedSwaps
-		&& state.pendingSwaps === oldState.pendingSwaps
-		&& state.players === oldState.players
-		&& state.swapping === oldState.swapping
+	const unchanged =
+		state.editedSwaps === oldState.editedSwaps &&
+		state.savedSwaps === oldState.savedSwaps &&
+		state.pendingSwaps === oldState.pendingSwaps &&
+		state.players === oldState.players &&
+		state.swapping === oldState.swapping
 	if (unchanged) throw new ODSM.RejectedError<Rejection>({ code: 'noop' })
 
 	return [state, sideEffects]
 }
 
 export type UpdateForClient = ODSM.ClientUpdate<State, Op, Rejection['code']>
+
+export type Ctx = CS.Ctx & { teamswaps: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['teamswaps'], { name: 'teamswaps', extends: [CS.ServerIdDef] })
+
+export namespace Ctx {
+	type Session = ODSM.Server.Session<Op, State>
+	type Dispatched = ODSM.Server.Dispatched<Op, Rejection>
+
+	export type Payload = {
+		session: Session
+		// outgoing operations
+		op$: IsolatedSubject<Dispatched>
+		dispatchMtx: MutexInterface
+		teamswapExecutedAt: number | null
+		haveReadSavedSwapsFromDb: boolean
+	}
+}

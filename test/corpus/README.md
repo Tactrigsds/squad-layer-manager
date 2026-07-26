@@ -38,7 +38,7 @@ Source files scanned (2026-07-12): `SquadGame-backup-2026.07.03-06.55.05.log`,
   `log-corpus.json`; they are captured live (see below).
 - The server closes older RCON sessions when a client attempts multiple logins from the same IP
   (`LogRCONServer: Warning: ...: Client is attempting multiple logins from <ip>, stopping older
-  sessions`). The emulator should reproduce this.
+sessions`). The emulator should reproduce this.
 
 ## rcon/
 

@@ -1,12 +1,17 @@
-import * as DH from '@/lib/display-helpers'
-import * as Obj from '@/lib/object'
-import type { Parts } from '@/lib/types'
-import { HumanTime } from '@/lib/zod'
-import * as L from '@/models/layer'
+import type { MutexInterface } from 'async-mutex'
+import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
+import * as DH from '@/lib/display-helpers'
+import * as Obj from '@/lib/object-utils'
+import type * as Rx from '@/lib/rxjs'
+import type { Parts } from '@/lib/types'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as CS from '@/models/context-shared'
+import * as L from '@/models/layer'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
-import { z } from 'zod'
+
 import type * as LC from './layer-columns'
 import * as LL from './layer-list.models'
 
@@ -28,7 +33,7 @@ export namespace GenVote {
 	export type ChoiceConstraints = { [k in ChoiceConstraintKey]?: LC.InputValue }
 	export function* iterChoiceCols() {
 		for (const key of CHOICE_COMPARISON_KEY.options) {
-			const colKeys = key === 'Unit' ? ['Unit_1', 'Unit_2'] as const : [key] as const
+			const colKeys = key === 'Unit' ? (['Unit_1', 'Unit_2'] as const) : ([key] as const)
 			for (const colKey of colKeys) {
 				yield [key, colKey] as const
 			}
@@ -76,11 +81,11 @@ export function validateChoicesWithDisplayProps(_choices: L.LayerId[], displayPr
 	if (displayProps.includes('gamemode')) chosenCols.add('Gamemode')
 	if (displayProps.includes('units')) chosenCols.add('Unit_1').add('Unit_2')
 	if (displayProps.includes('factions')) chosenCols.add('Faction_1').add('Faction_2')
-	const choices = _choices.map(c => {
+	const choices = _choices.map((c) => {
 		const layer = L.toLayer(c)
 		return Obj.selectProps(layer, Array.from(chosenCols))
 	})
-	const uniqueChoices = new Set(choices.map(c => JSON.stringify(c)))
+	const uniqueChoices = new Set(choices.map((c) => JSON.stringify(c)))
 	return uniqueChoices.size === choices.length
 }
 
@@ -88,7 +93,7 @@ export type StartVoteInput = z.infer<typeof StartVoteInputSchema>
 
 export function getDefaultVoteConfig() {
 	return {
-		duration: HumanTime.parse('120s'),
+		duration: ZodUtils.HumanTime.parse('120s'),
 	} satisfies AdvancedVoteConfig
 }
 
@@ -153,15 +158,25 @@ export type VoteStateWithVoteData = Extract<
 >
 
 export function isVoteStateWithVoteData(state: VoteState | EndingVoteState): state is VoteStateWithVoteData {
-	return state.code === 'in-progress' || state.code === 'ended:winner' || state.code === 'ended:aborted'
-		|| state.code === 'ended:insufficient-votes'
+	return (
+		state.code === 'in-progress' ||
+		state.code === 'ended:winner' ||
+		state.code === 'ended:aborted' ||
+		state.code === 'ended:insufficient-votes'
+	)
 }
 
 export const TallySchema = z.object({
-	totals: z.map(z.lazy(() => LL.ItemIdSchema), z.number()),
+	totals: z.map(
+		z.lazy(() => LL.ItemIdSchema),
+		z.number(),
+	),
 	totalVotes: z.number(),
 	turnoutPercentage: z.number(),
-	percentages: z.map(z.lazy(() => LL.ItemIdSchema), z.number()),
+	percentages: z.map(
+		z.lazy(() => LL.ItemIdSchema),
+		z.number(),
+	),
 	leaders: z.array(z.string()),
 })
 
@@ -206,40 +221,40 @@ export function tallyVotes(currentVote: VoteStateWithVoteData, numPlayers: numbe
 
 export type VoteStateUpdateOrInitialWithParts =
 	| {
-		code: 'initial-state'
-		state: (VoteState & Parts<USR.UserPart>) | null
-	}
+			code: 'initial-state'
+			state: (VoteState & Parts<USR.UserPart>) | null
+	  }
 	| {
-		code: 'update'
-		update: VoteStateUpdate & Parts<USR.UserPart>
-	}
+			code: 'update'
+			update: VoteStateUpdate & Parts<USR.UserPart>
+	  }
 
 export type VoteStateUpdateOrInitial =
 	| {
-		code: 'initial-state'
-		state: VoteState | null
-	}
+			code: 'initial-state'
+			state: VoteState | null
+	  }
 	| { code: 'update'; update: VoteStateUpdate }
 
 export type VoteStateUpdate = {
 	state: VoteState | null
 	source:
 		| {
-			type: 'system'
-			event:
-				| 'automatic-start-vote'
-				| 'vote-timeout'
-				| 'ended-early'
-				| 'queue-change'
-				| 'next-layer-override'
-				| 'app-startup'
-				| 'new-game'
-		}
+				type: 'system'
+				event:
+					| 'automatic-start-vote'
+					| 'vote-timeout'
+					| 'ended-early'
+					| 'queue-change'
+					| 'next-layer-override'
+					| 'app-startup'
+					| 'new-game'
+		  }
 		| {
-			type: 'manual'
-			event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change' | 'autostart-cancelled'
-			user: USR.GuiOrChatUserId
-		}
+				type: 'manual'
+				event: 'start-vote' | 'abort-vote' | 'vote' | 'queue-change' | 'autostart-cancelled'
+				user: USR.GuiOrChatUserId
+		  }
 }
 export type VoteStateUpdateSource = VoteStateUpdate['source']
 export type VoteStateUpdateSourceEvent = VoteStateUpdateSource['event']
@@ -288,5 +303,18 @@ export function canInitiateVote(
 	return {
 		code: 'ok' as const,
 		item,
+	}
+}
+
+export type Ctx = CS.Ctx & { vote: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['vote'], { name: 'vote', extends: [CS.ServerIdDef] })
+
+export namespace Ctx {
+	export type Payload = {
+		voteEndTask: Rx.Subscription | null
+		autostartVoteSub: Rx.Subscription | null
+		mtx: MutexInterface
+		state: VoteState | null
+		update$: Rx.Subject<VoteStateUpdate>
 	}
 }

@@ -3,9 +3,7 @@ import { HeadContent } from '@tanstack/react-router'
 
 export const Route = createRootRoute({
 	head: () => ({
-		meta: [
-			{ title: 'Squad Layer Manager' },
-		],
+		meta: [{ title: 'Squad Layer Manager' }],
 	}),
 	component: RootComponent,
 })

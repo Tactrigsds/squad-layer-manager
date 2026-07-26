@@ -1,17 +1,25 @@
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
-import { HeadlessDialog, HeadlessDialogContent, HeadlessDialogDescription, HeadlessDialogFooter, HeadlessDialogHeader, HeadlessDialogTitle } from '@/components/ui/headless-dialog'
+import {
+	HeadlessDialog,
+	HeadlessDialogContent,
+	HeadlessDialogDescription,
+	HeadlessDialogFooter,
+	HeadlessDialogHeader,
+	HeadlessDialogTitle,
+} from '@/components/ui/headless-dialog'
 import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { useRefConstructor } from '@/lib/react.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
-
 import { useLoggedInUser } from '@/systems/users.client'
-import React from 'react'
+
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import LayerTable, { getFullTableWidth } from './layer-table.tsx'
@@ -93,7 +101,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 
 	// collapse the table to its essential columns when the full set can't fit in the viewport.
 	// the breakpoint is derived from the table's own column sizes rather than hardcoded
-	const fullTableWidth = ZusUtils.useStore(frameKey, (s) => getFullTableWidth(s.layerTable.colConfig, s.layerTable.columnVisibility))
+	const fullTableWidth = Zus.useStore(frameKey, (s) => getFullTableWidth(s.layerTable.colConfig, s.layerTable.columnVisibility))
 	const filterMenuRef = React.useRef<HTMLDivElement>(null)
 	const [compactTable, setCompactTable] = React.useState(false)
 	React.useLayoutEffect(() => {
@@ -111,34 +119,32 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 		}
 	}, [fullTableWidth])
 
-	const canSubmit = ZusUtils.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
-	const showPoolCheckboxes = ZusUtils.useStore(frameKey, SelectLayersFrame.Sel.repeatRulesApplicable)
+	const canSubmit = Zus.useStore(frameKey, (s) => s.layerTable.selected.length > 0 && !submitted)
+	const showPoolCheckboxes = Zus.useStore(frameKey, SelectLayersFrame.Sel.repeatRulesApplicable)
 
 	const submit = props.selectQueueItems
 		? () => {
-			if (!canSubmit) return
-			setSubmitted(true)
-			const selectedLayers = ZusUtils.getState(frameKey).layerTable.selected
-			try {
-				const source: LL.Source = { type: 'manual', userId: user!.discordId }
-				if (selectMode === 'layers' || selectedLayers.length === 1) {
-					const items: LL.NewSingleItem[] = selectedLayers.map(
-						(layerId) => ({ type: 'single-list-item', layerId }),
-					)
-					;(props.selectQueueItems!)(items)
-				} else if (selectMode === 'vote') {
-					const item: LL.NewVoteItem = {
-						type: 'vote-list-item',
-						layerId: selectedLayers[0],
-						choices: selectedLayers.map(layerId => LL.createItem({ type: 'single-list-item', layerId }, source)),
+				if (!canSubmit) return
+				setSubmitted(true)
+				const selectedLayers = Zus.getState(frameKey).layerTable.selected
+				try {
+					const source: LL.Source = { type: 'manual', userId: user!.discordId }
+					if (selectMode === 'layers' || selectedLayers.length === 1) {
+						const items: LL.NewSingleItem[] = selectedLayers.map((layerId) => ({ type: 'single-list-item', layerId }))
+						props.selectQueueItems!(items)
+					} else if (selectMode === 'vote') {
+						const item: LL.NewVoteItem = {
+							type: 'vote-list-item',
+							layerId: selectedLayers[0],
+							choices: selectedLayers.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, source)),
+						}
+						props.selectQueueItems!([item])
 					}
-					;(props.selectQueueItems!)([item])
+					props.onClose()
+				} finally {
+					setSubmitted(false)
 				}
-				props.onClose()
-			} finally {
-				setSubmitted(false)
 			}
-		}
 		: undefined
 
 	// Reset selected layers when component mounts or default selection changes
@@ -189,12 +195,11 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 						/>
 					)}
 					{props.footerBeforeSubmit}
-					{submit
-						&& (
-							<Button disabled={!canSubmit} onClick={submit}>
-								Submit
-							</Button>
-						)}
+					{submit && (
+						<Button disabled={!canSubmit} onClick={submit}>
+							Submit
+						</Button>
+					)}
 				</div>
 			</HeadlessDialogFooter>
 		</HeadlessDialogContent>

@@ -1,6 +1,6 @@
 // this is very sparse at the moment, maybe we'll add more of these on-off flags later
 import type * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import type * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -21,13 +21,11 @@ export type Key = FRM.InstanceKeyOfState<Store>
 export type KeyProp = { poolCheckboxes: Key }
 
 export function initNewPoolCheckboxes(args: Args) {
-	const set = ZusUtils.toPartialSetter(args.set, 'poolCheckboxes')
+	const set = Zus.toPartialSetter(args.set, 'poolCheckboxes')
 	const defaultState = args.input.defaultState
-	set(
-		{
-			checkboxesState: defaultState,
-		} satisfies PoolCheckboxesSlice,
-	)
+	set({
+		checkboxesState: defaultState,
+	} satisfies PoolCheckboxesSlice)
 }
 
 export namespace Sel {
@@ -38,7 +36,7 @@ export namespace Sel {
 
 export namespace Actions {
 	export function setCheckbox(stores: KeyProp, type: keyof PoolCheckboxesState, value: SETTINGS.PoolFilterApplyAs) {
-		ZusUtils.toPartialStore(stores.poolCheckboxes, 'poolCheckboxes').setState(state => ({
+		Zus.toPartialStore(stores.poolCheckboxes, 'poolCheckboxes').setState((state) => ({
 			checkboxesState: { ...state.checkboxesState, [type]: value },
 		}))
 	}

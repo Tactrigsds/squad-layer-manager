@@ -1,3 +1,4 @@
+import * as CD from '@/lib/ctx-def'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
@@ -67,7 +68,7 @@ export type LowerResult = { code: 'ok'; ir: Ir } | F.InvalidFilterNodeResult
 
 // ---------------------------- filter -> IR ----------------------------
 
-export type LowerCtx = CS.Filters & CS.EffectiveColumnConfig & { colIndex: ColumnIndex }
+export type LowerCtx = F.Ctx & LC.Ctx & { colIndex: ColumnIndex }
 
 // Errors are collected against the node path rather than thrown, because the filter editor highlights the offending
 // node from them.
@@ -155,9 +156,12 @@ function lowerNode(
 			if (child) children.push(child)
 		}
 		const semantics = F.BLOCK_TYPE_SEMANTICS[node.type]
-		const base: Ir = children.length === 0
-			? (semantics.conjunction ? { op: 'true' } : { op: 'false' })
-			: { op: semantics.conjunction ? 'and' : 'or', children }
+		const base: Ir =
+			children.length === 0
+				? semantics.conjunction
+					? { op: 'true' }
+					: { op: 'false' }
+				: { op: semantics.conjunction ? 'and' : 'or', children }
 		return semantics.negated ? not(base) : base
 	}
 
@@ -170,28 +174,17 @@ function lowerNode(
 // express, since that expands one column over both teams independently.
 function lowerMatchup(ctx: LowerCtx, node: F.MatchupNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
 	const orient = (teamOf0: 1 | 2, teamOf1: 1 | 2, errs: F.NodeValidationError[]): Ir =>
-		and([
-			teamSpecIr(ctx, node.teams[0], teamOf0, path, errs),
-			teamSpecIr(ctx, node.teams[1], teamOf1, path, errs),
-		])
+		and([teamSpecIr(ctx, node.teams[0], teamOf0, path, errs), teamSpecIr(ctx, node.teams[1], teamOf1, path, errs)])
 
 	// both orientations resolve the same specs against columns of the same enum mapping, so the mirror
 	// would report every problem a second time; collect errors from the first orientation only
-	const base = node.locked
-		? orient(1, 2, errors)
-		: or([orient(1, 2, errors), orient(2, 1, [])])
+	const base = node.locked ? orient(1, 2, errors) : or([orient(1, 2, errors), orient(2, 1, [])])
 	return F.MATCHUP_TYPE_NEGATED[node.type] ? not(base) : base
 }
 
 // one side of a matchup against a concrete team. Only dimensions carrying values constrain anything;
 // an empty one is "any", and `and([])` is already `true`, so no special case is needed.
-function teamSpecIr(
-	ctx: LowerCtx,
-	spec: F.MatchupTeamSpec,
-	team: 1 | 2,
-	path: string[],
-	errors: F.NodeValidationError[],
-): Ir {
+function teamSpecIr(ctx: LowerCtx, spec: F.MatchupTeamSpec, team: 1 | 2, path: string[], errors: F.NodeValidationError[]): Ir {
 	const children: Ir[] = []
 	for (const teamColumn of F.TEAM_COLUMNS) {
 		const values = spec[teamColumn]
@@ -286,7 +279,13 @@ function lowerCompForTeam(
 			}
 			// reversed constant bounds are forgiven, matching the SQL backend; prod filters rely on it
 			const [low, high] = lo.val > hi.val ? [hi.val, lo.val] : [lo.val, hi.val]
-			return { op: 'and', children: [{ op: 'ge_val', col, val: low }, { op: 'le_val', col, val: high }] }
+			return {
+				op: 'and',
+				children: [
+					{ op: 'ge_val', col, val: low },
+					{ op: 'le_val', col, val: high },
+				],
+			}
 		}
 		default:
 			assertNever(node)
@@ -372,13 +371,7 @@ function enumNullIndex(ctx: LowerCtx, column: string): number | null {
 	return LC.isUnmappedDbValue(mapped) || mapped === null ? null : Number(mapped)
 }
 
-function scalarValue(
-	ctx: LowerCtx,
-	column: string,
-	value: F.Value,
-	path: string[],
-	errors: F.NodeValidationError[],
-): number | null {
+function scalarValue(ctx: LowerCtx, column: string, value: F.Value, path: string[], errors: F.NodeValidationError[]): number | null {
 	if (value === null) return enumNullIndex(ctx, column)
 	const encoded = encodeValue(ctx, column, value, path, errors)
 	return encoded ?? null
@@ -399,3 +392,8 @@ function encodeValue(
 	if (typeof encoded === 'boolean') return encoded ? 1 : 0
 	return Number(encoded)
 }
+
+// the columnar query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its
+// lifetime, so it is shared by every request rather than opened per query.
+export type Ctx = CS.Ctx & { engine: EngineHandle } & LC.Ctx
+export const CtxDef = CD.defCtx<Ctx>()(['engine'], { name: 'layerEngine', extends: [LC.CtxDef] })

@@ -1,49 +1,58 @@
+import * as Icons from 'lucide-react'
+import * as React from 'react'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
+import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
-import * as Icons from 'lucide-react'
-import * as React from 'react'
 
-type CommandAlias = PublicSettings['commandAliases'][number]
+// a trigger that pins arguments, as listed under its command: what a caller types, and what it runs
+type Shortcut = { usage: string; expansion: string }
 
-// one listing in the page body. `key` identifies the command/alias itself; `id` is the DOM anchor, which also carries
-// the section, since a pinned or quick-reference command is listed again under its own section.
-type Entry =
-	| { kind: 'command'; key: string; id: string; label: string; search: string; cmdId: CMD.CommandId; cmd: CMD.CommandConfig }
-	| { kind: 'alias'; key: string; id: string; label: string; search: string; alias: CommandAlias }
+// one listing in the page body. `key` identifies the command itself; `id` is the DOM anchor, which also carries the
+// section, since a pinned or quick-reference command is listed again under its own section. A shortcut trigger is not
+// an entry of its own: it belongs to the command it runs, and is listed (and searched) as part of it.
+type Entry = {
+	key: string
+	id: string
+	label: string
+	search: string
+	cmdId: CMD.CommandId
+	cmd: CMD.CommandConfig
+	shortcuts: Shortcut[]
+}
 
 type Section = { id: string; label: string; blurb?: string; entries: Entry[] }
 
 const PINNED_SECTION_ID = 'section:pinned'
 const QUICK_REF_SECTION_ID = 'section:quick-reference'
-const ALIASES_SECTION_ID = 'section:aliases'
 
 // the sections that re-list commands already shown under their own section, rather than holding any of their own
 const SHORTCUT_SECTION_IDS: ReadonlySet<string> = new Set([PINNED_SECTION_ID, QUICK_REF_SECTION_ID])
 
-// Each scope is shown as its chat channel already is elsewhere in the app: admin-only in the admin blue with a shield
+// Each chat group is shown as its channel already is elsewhere in the app: admin-only in the admin blue with a shield
 // (as on an admin player and the chat box's admin target), public in ChatAll's white. Tinted outline rather than a
 // solid fill -- it's the same treatment the chat box gives its channels, and a filled badge at this size buried the
 // label. The icon does the work at a glance; the colour alone would be carrying too much.
-const SCOPE_BADGES: Record<CMD.CommandScope, { icon: React.ComponentType<{ className?: string }>; className: string }> = {
+const CHAT_GROUP_BADGES: Record<CMD.ChatGroup, { icon: React.ComponentType<{ className?: string }>; className: string }> = {
 	admin: { icon: Icons.Shield, className: 'border-admin/60 text-admin' },
 	public: { icon: Icons.Globe, className: 'border-foreground/40 text-foreground' },
 }
 
-export function CopyableCommand({ cmdString, chatScope }: { cmdString: string; chatScope: 'ChatToAdmin' | 'ChatToAll' }) {
+export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string; chatCommand: 'ChatToAdmin' | 'ChatToAll' }) {
 	const copy = async () => {
-		const consoleCommand = `${chatScope} ${cmdString}`
+		const consoleCommand = `${chatCommand} ${cmdString}`
 		try {
 			await navigator.clipboard.writeText(consoleCommand)
 			toast('Copied to clipboard', { description: consoleCommand })
@@ -79,11 +88,21 @@ function PinButton({ cmdId, pinned }: { cmdId: CMD.CommandId; pinned: boolean })
 
 // the per-argument breakdown and worked examples, shown when a command is expanded. Both are derived from the
 // command's declaration plus the installation's configured reasons/broadcasts (see command-help.models).
-function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: CMD.CommandConfig; settings: PublicSettings }) {
+function CommandDetails({
+	cmdId,
+	cmd,
+	shortcuts,
+	settings,
+}: {
+	cmdId: CMD.CommandId
+	cmd: CMD.CommandConfig
+	shortcuts: Shortcut[]
+	settings: PublicSettings
+}) {
 	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
 	const args = CMDH.describeArgs(cmdId, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
-	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
+	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 
 	return (
 		<div className="space-y-3 border-l-2 pl-3 ml-1">
@@ -103,7 +122,11 @@ function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: C
 								{arg.presets.length > 0 && (
 									<span className="flex flex-wrap items-center gap-1 pt-1">
 										<span>Configured:</span>
-										{arg.presets.map((preset) => <Badge key={preset} variant="secondary" className="text-xs">{preset}</Badge>)}
+										{arg.presets.map((preset) => (
+											<Badge key={preset} variant="secondary" className="text-xs">
+												{preset}
+											</Badge>
+										))}
 									</span>
 								)}
 							</dd>
@@ -115,46 +138,64 @@ function CommandDetails({ cmdId, cmd, settings }: { cmdId: CMD.CommandId; cmd: C
 				<p className="text-xs font-medium text-muted-foreground">Examples</p>
 				{examples.map((example) => (
 					<div key={example.command} className="flex flex-wrap items-center gap-2">
-						<CopyableCommand cmdString={example.command} chatScope={chatScope} />
+						<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
 						<span className="text-xs text-muted-foreground">{example.note}</span>
 					</div>
 				))}
 			</div>
+			{shortcuts.length > 0 && (
+				<div className="space-y-1">
+					<p className="text-xs font-medium text-muted-foreground">Shortcuts</p>
+					{shortcuts.map(({ usage, expansion }) => (
+						<div key={usage} className="flex flex-wrap items-center gap-2">
+							<CopyableCommand cmdString={usage} chatCommand={chatCommand} />
+							<span className="text-xs text-muted-foreground">{Messages.GENERAL.command.aliasDescription(expansion)}</span>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	)
 }
 
-function CommandEntry(
-	{ entry, settings, pinned, onLink }: {
-		entry: Extract<Entry, { kind: 'command' }>
-		settings: PublicSettings
-		pinned: boolean
-		onLink: (id: string) => void
-	},
-) {
+function CommandEntry({
+	entry,
+	settings,
+	pinned,
+	onLink,
+}: {
+	entry: Entry
+	settings: PublicSettings
+	pinned: boolean
+	onLink: (id: string) => void
+}) {
 	const { cmdId, cmd } = entry
 	const [open, setOpen] = React.useState(false)
 	const args = CMD.COMMAND_DECLARATIONS[cmdId].args as readonly CMD.ArgDef[]
-	const argObject = Object.fromEntries(args.map(arg => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
-	const chatScope = cmd.scopes.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
+	const argObject = Object.fromEntries(args.map((arg) => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
+	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2">
 			<div className="group flex items-center gap-2">
 				<PinButton cmdId={cmdId} pinned={pinned} />
 				<div className="flex flex-wrap items-center gap-1">
 					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
-						<CopyableCommand key={cmdString} cmdString={cmdString} chatScope={chatScope} />
+						<CopyableCommand key={cmdString} cmdString={cmdString} chatCommand={chatCommand} />
 					))}
 					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this command" />
 				</div>
 				<div className="flex-1" />
-				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
-				{cmd.scopes.map((scope) => {
-					const { icon: ScopeIcon, className } = SCOPE_BADGES[scope]
+				{!cmd.enabled && (
+					<Badge variant="destructive" className="text-xs">
+						Disabled
+					</Badge>
+				)}
+				{cmd.allowedChats.map((group) => {
+					const { icon: GroupIcon, className } = CHAT_GROUP_BADGES[group]
 					return (
-						<Badge key={scope} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
-							<ScopeIcon className="h-3 w-3" />
-							{CMD.COMMAND_SCOPE_LABELS[scope]}
+						<Badge key={group} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
+							<GroupIcon className="h-3 w-3" />
+							{CMD.CHAT_GROUP_LABELS[group]}
 						</Badge>
 					)
 				})}
@@ -167,32 +208,9 @@ function CommandEntry(
 			</div>
 			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[cmdId]}</p>
 			<CollapsibleContent>
-				<CommandDetails cmdId={cmdId} cmd={cmd} settings={settings} />
+				<CommandDetails cmdId={cmdId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
 			</CollapsibleContent>
 		</Collapsible>
-	)
-}
-
-// an alias takes no arguments, so its listing is the shortcut itself, what it expands to, and (when the command it
-// points at is disabled or no longer exists) why it currently does nothing
-function AliasEntry(
-	{ entry, settings, onLink }: { entry: Extract<Entry, { kind: 'alias' }>; settings: PublicSettings; onLink: (id: string) => void },
-) {
-	const res = CMD.resolveAliasCommand(entry.alias.command, settings.commands)
-	const target = res.code === 'ok' ? settings.commands[res.cmdId] : undefined
-	const unusable = res.code !== 'ok' ? 'Unavailable' : !target!.enabled ? 'Disabled' : undefined
-	const chatScope = target?.scopes.includes('public') && !target.scopes.includes('admin') ? 'ChatToAll' : 'ChatToAdmin'
-	return (
-		<div id={entry.id} data-cmd-anchor className="space-y-1">
-			<div className="group flex items-center gap-2">
-				<CopyableCommand cmdString={entry.alias.alias} chatScope={chatScope} />
-				<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this alias" />
-				{unusable && <Badge variant="destructive" className="text-xs">{unusable}</Badge>}
-			</div>
-			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.aliasDescription(entry.alias.command)}</p>
-			{res.code === 'ok' && <p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[res.cmdId]}</p>}
-			{res.code === 'err:unknown-command' && <p className="text-sm text-destructive">{res.msg}</p>}
-		</div>
 	)
 }
 
@@ -235,28 +253,26 @@ function AnchorLinkIcon({ id, onNavigate, label }: { id: string; onNavigate: (id
 	)
 }
 
-// the full listing a compact card's "Details" jumps to: a command under its own declared section, an alias under
-// Aliases. The Pinned / Quick Reference cards are shortcuts, so Details links to the real entry rather than repeating
-// its arguments and examples inline.
+// the full listing a compact card's "Details" jumps to: the command under its own declared section. The Pinned /
+// Quick Reference cards are shortcuts, so Details links to the real entry rather than repeating its arguments and
+// examples inline.
 function detailsAnchorId(entry: Entry): string {
-	return entry.kind === 'command'
-		? `section:${CMD.COMMAND_DECLARATIONS[entry.cmdId].section}/command:${entry.cmdId}`
-		: `${ALIASES_SECTION_ID}/alias:${entry.alias.alias}`
+	return `section:${CMD.COMMAND_DECLARATIONS[entry.cmdId].section}/command:${entry.cmdId}`
 }
 
-// A command or alias reduced to its first string, its one-line description, and a link to the full listing. Small
-// enough to pack many per row -- the Pinned and Quick Reference sections are for scanning what exists, not reading the
-// detail. Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
-// `onUnpin` is set for the pinned cards (which are always commands), adding an unpin control at the bottom-left.
+// A command reduced to its first string, its one-line description, and a link to the full listing. Small enough to
+// pack many per row -- the Pinned and Quick Reference sections are for scanning what exists, not reading the detail.
+// Not itself a scroll target: it lives above the scrolling body, and Details is what jumps into the body.
+// `onUnpin` is set for the pinned cards, adding an unpin control at the bottom-left.
 function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
-	const string = entry.kind === 'command' ? entry.cmd.strings[0] ?? entry.cmdId : entry.alias.alias
-	const description = entry.kind === 'command'
-		? Messages.GENERAL.command.descriptions[entry.cmdId]
-		: Messages.GENERAL.command.aliasDescription(entry.alias.command)
+	const string = entry.label
+	const description = Messages.GENERAL.command.descriptions[entry.cmdId]
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
-				<code className="truncate font-mono text-sm font-medium" title={string}>{string}</code>
+				<code className="truncate font-mono text-sm font-medium" title={string}>
+					{string}
+				</code>
 				<Button
 					variant="ghost"
 					size="sm"
@@ -283,18 +299,19 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 	)
 }
 
-function CompactGrid(
-	{ entries, onDetails, onUnpin }: { entries: Entry[]; onDetails: (id: string) => void; onUnpin?: (cmdId: CMD.CommandId) => void },
-) {
+function CompactGrid({
+	entries,
+	onDetails,
+	onUnpin,
+}: {
+	entries: Entry[]
+	onDetails: (id: string) => void
+	onUnpin?: (cmdId: CMD.CommandId) => void
+}) {
 	return (
 		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
 			{entries.map((entry) => (
-				<CompactEntry
-					key={entry.id}
-					entry={entry}
-					onDetails={onDetails}
-					onUnpin={onUnpin && entry.kind === 'command' ? () => onUnpin(entry.cmdId) : undefined}
-				/>
+				<CompactEntry key={entry.id} entry={entry} onDetails={onDetails} onUnpin={onUnpin ? () => onUnpin(entry.cmdId) : undefined} />
 			))}
 		</div>
 	)
@@ -302,14 +319,17 @@ function CompactGrid(
 
 // A titled block of compact cards on a secondary background: the "Your Pinned Commands" and "Quick Reference"
 // scans that sit above the menu. Both are shortcuts into the sections below, so their cards' Details link jumps there.
-function CompactSection(
-	{ title, section, onDetails, onUnpin }: {
-		title: string
-		section: Section
-		onDetails: (id: string) => void
-		onUnpin?: (cmdId: CMD.CommandId) => void
-	},
-) {
+function CompactSection({
+	title,
+	section,
+	onDetails,
+	onUnpin,
+}: {
+	title: string
+	section: Section
+	onDetails: (id: string) => void
+	onUnpin?: (cmdId: CMD.CommandId) => void
+}) {
 	return (
 		<section className="rounded-lg bg-secondary/60 p-4">
 			<h2 className="mb-3 text-base font-semibold tracking-tight">{title}</h2>
@@ -358,31 +378,45 @@ function useActiveEntry(scrollRef: React.RefObject<HTMLDivElement | null>, deps:
 	return activeId
 }
 
-function commandEntry(sectionId: string, cmdId: CMD.CommandId, cmd: CMD.CommandConfig, sectionLabel: string): Entry {
+// a shortcut is searched as part of the command it runs, so typing one finds that command rather than nothing
+function commandEntry(
+	sectionId: string,
+	cmdId: CMD.CommandId,
+	cmd: CMD.CommandConfig,
+	sectionLabel: string,
+	requiredReasonActions: readonly AAR.AdminActionType[],
+): Entry {
+	const primary = CMD.primaryTrigger(cmd)
+	const shortcuts = cmd.triggers
+		.filter((t) => CMD.triggerArgs(t) !== undefined)
+		.map((t) => ({
+			usage: CMD.formatTriggerUsage(cmdId, t, requiredReasonActions),
+			expansion: CMD.describeTriggerExpansion(cmd, t),
+		}))
 	return {
-		kind: 'command',
 		key: cmdId,
 		id: `${sectionId}/command:${cmdId}`,
-		label: cmd.strings[0] ?? cmdId,
-		search: [cmdId, ...cmd.strings, Messages.GENERAL.command.descriptions[cmdId], sectionLabel].join(' ').toLowerCase(),
+		label: primary ? CMD.triggerString(primary) : cmdId,
+		search: [
+			cmdId,
+			...cmd.triggers.map(CMD.triggerString),
+			Messages.GENERAL.command.descriptions[cmdId],
+			sectionLabel,
+			...shortcuts.map((s) => s.expansion),
+			shortcuts.length > 0 ? 'alias shortcut' : '',
+		]
+			.join(' ')
+			.toLowerCase(),
 		cmdId,
 		cmd,
-	}
-}
-
-function aliasEntry(sectionId: string, alias: CommandAlias): Entry {
-	return {
-		kind: 'alias',
-		key: `alias:${alias.alias}`,
-		id: `${sectionId}/alias:${alias.alias}`,
-		label: alias.alias,
-		search: `${alias.alias} ${alias.command} alias shortcut`.toLowerCase(),
-		alias,
+		shortcuts,
 	}
 }
 
 function buildSections(settings: PublicSettings, pinnedCommands: string[]): Section[] {
 	const sections: Section[] = []
+	const entry = (sectionId: string, cmdId: CMD.CommandId, sectionLabel: string) =>
+		commandEntry(sectionId, cmdId, settings.commands[cmdId], sectionLabel, settings.requireReasonFor)
 
 	// pins are per-browser, so an id can outlive the command it named (a downgrade, or a renamed id)
 	const pinned = pinnedCommands.filter((id): id is CMD.CommandId => id in settings.commands)
@@ -391,52 +425,31 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 		sections.push({
 			id: PINNED_SECTION_ID,
 			label: 'Pinned',
-			entries: pinned.map((cmdId) => commandEntry(PINNED_SECTION_ID, cmdId, settings.commands[cmdId], 'Pinned')),
+			entries: pinned.map((cmdId) => entry(PINNED_SECTION_ID, cmdId, 'Pinned')),
 		})
 	}
 
 	// a pinned command is already called out in the Pinned subsection above, so it drops out of the quick-reference grid
 	const quickRef = CMD.COMMAND_IDS.filter((id) => settings.commands[id].quickReference && !pinnedSet.has(id))
-	const quickRefAliases = settings.commandAliases.filter((a) => {
-		const res = CMD.resolveAliasCommand(a.command, settings.commands)
-		return res.code === 'ok' && settings.commands[res.cmdId].quickReference
-	})
-	if (quickRef.length > 0 || quickRefAliases.length > 0) {
+	if (quickRef.length > 0) {
 		sections.push({
 			id: QUICK_REF_SECTION_ID,
 			label: 'Quick Reference',
-			entries: [
-				...quickRef.map((cmdId) => commandEntry(QUICK_REF_SECTION_ID, cmdId, settings.commands[cmdId], 'Quick Reference')),
-				...quickRefAliases.map((alias) => aliasEntry(QUICK_REF_SECTION_ID, alias)),
-			],
+			entries: quickRef.map((cmdId) => entry(QUICK_REF_SECTION_ID, cmdId, 'Quick Reference')),
 		})
 	}
 
 	for (const { section, label, ids } of CMDH.splitCommandsBySection(CMD.COMMAND_IDS)) {
 		const id = `section:${section}`
-		sections.push({
-			id,
-			label,
-			entries: ids.map((cmdId) => commandEntry(id, cmdId, settings.commands[cmdId], label)),
-		})
-	}
-
-	if (settings.commandAliases.length > 0) {
-		sections.push({
-			id: ALIASES_SECTION_ID,
-			label: 'Aliases',
-			blurb:
-				'Shortcuts for complete commands. An alias takes no arguments of its own, and runs in the same chats as the command it points at.',
-			entries: settings.commandAliases.map((alias) => aliasEntry(ALIASES_SECTION_ID, alias)),
-		})
+		sections.push({ id, label, entries: ids.map((cmdId) => entry(id, cmdId, label)) })
 	}
 
 	return sections
 }
 
 export default function CommandsPage() {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const pinnedCommands = ZusUtils.useStore(ClientOnlySettings.Store, s => s.pinnedCommands)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const pinnedCommands = Zus.useStore(ClientOnlySettings.Store, (s) => s.pinnedCommands)
 	const [query, setQuery] = React.useState('')
 	// Where the arrow keys are. Kept as state rather than read back off the scroll position: the highlight otherwise
 	// follows whatever sits at the top of the body, which only updates on a real user scroll -- so each press would
@@ -502,7 +515,7 @@ export default function CommandsPage() {
 		return () => window.removeEventListener('hashchange', onHash)
 	}, [landOnEntry])
 
-	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
+	const sections = React.useMemo(() => (settings ? buildSections(settings, pinnedCommands) : []), [settings, pinnedCommands])
 	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
 
 	// Pinned and Quick Reference render as one block above the menu, never as body sections or table-of-contents rows --
@@ -516,15 +529,15 @@ export default function CommandsPage() {
 	// a section-label match keeps the whole section, so searching "moderation" lists everything under it
 	const tocSections = q
 		? contentSections
-			.map((s) => (s.label.toLowerCase().includes(q) ? s : { ...s, entries: s.entries.filter((e) => e.search.includes(q)) }))
-			.filter((s) => s.entries.length > 0)
+				.map((s) => (s.label.toLowerCase().includes(q) ? s : { ...s, entries: s.entries.filter((e) => e.search.includes(q)) }))
+				.filter((s) => s.entries.length > 0)
 		: contentSections
 	const tocEntryIds = tocSections.flatMap((s) => s.entries.map((e) => e.id))
 
 	const activeId = useActiveEntry(scrollRef, contentSections.map((s) => s.id).join(','))
 	// the table of contents highlights the entry the keyboard is on -- the one Enter jumps to -- or the first match
 	// while searching; with neither, it follows the section the page is scrolled to
-	const focusId = cursorId ?? (q ? tocEntryIds[0] ?? null : null)
+	const focusId = cursorId ?? (q ? (tocEntryIds[0] ?? null) : null)
 	const tocHighlightId = focusId ?? activeId
 
 	if (!settings) return null
@@ -562,9 +575,7 @@ export default function CommandsPage() {
 		e.preventDefault()
 		const delta = e.key === 'ArrowDown' ? 1 : -1
 		const from = tocEntryIds.indexOf(focusId ?? '')
-		const next = from === -1
-			? (delta === 1 ? 0 : tocEntryIds.length - 1)
-			: Math.min(Math.max(from + delta, 0), tocEntryIds.length - 1)
+		const next = from === -1 ? (delta === 1 ? 0 : tocEntryIds.length - 1) : Math.min(Math.max(from + delta, 0), tocEntryIds.length - 1)
 		const nextId = tocEntryIds[next]
 		setCursorId(nextId)
 		navRef.current?.querySelector(`[data-toc-id="${CSS.escape(nextId)}"]`)?.scrollIntoView({ block: 'nearest' })
@@ -602,11 +613,9 @@ export default function CommandsPage() {
 					</div>
 				)}
 				<div className="flex gap-4">
-					{
-						/* the table of contents is the one thing that stays put: it sticks once the header and quick reference
+					{/* the table of contents is the one thing that stays put: it sticks once the header and quick reference
 					    have scrolled off, capped to the viewport with its own scroll for a long list. bg so the everyday
-					    commands pass behind it as they scroll away. */
-					}
+					    commands pass behind it as they scroll away. */}
 					<aside
 						style={{ zIndex: stickyZIndex }}
 						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-52 shrink-0 flex-col self-start border-r bg-background pr-2"
@@ -625,41 +634,43 @@ export default function CommandsPage() {
 							/>
 						</div>
 						<nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto">
-							{tocSections.length === 0
-								? <p className="px-1 text-sm text-muted-foreground">No matches.</p>
-								: (
-									<ul>
-										{tocSections.map((section) => (
-											<li key={section.id} className="pt-4 first:pt-0">
-												<button
-													type="button"
-													onClick={() => navigateToEntry(section.id)}
-													className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
-												>
-													{section.label}
-												</button>
-												<ul className="space-y-px pl-2 pt-1">
-													{section.entries.map((entry) => (
-														<li key={entry.id}>
-															<button
-																type="button"
-																data-toc-id={entry.id}
-																onClick={() => navigateToEntry(entry.id)}
-																className={cn(
-																	'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
-																	entry.id === tocHighlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
-																)}
-																title={entry.label}
-															>
-																{entry.label}
-															</button>
-														</li>
-													))}
-												</ul>
-											</li>
-										))}
-									</ul>
-								)}
+							{tocSections.length === 0 ? (
+								<p className="px-1 text-sm text-muted-foreground">No matches.</p>
+							) : (
+								<ul>
+									{tocSections.map((section) => (
+										<li key={section.id} className="pt-4 first:pt-0">
+											<button
+												type="button"
+												onClick={() => navigateToEntry(section.id)}
+												className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
+											>
+												{section.label}
+											</button>
+											<ul className="space-y-px pl-2 pt-1">
+												{section.entries.map((entry) => (
+													<li key={entry.id}>
+														<button
+															type="button"
+															data-toc-id={entry.id}
+															onClick={() => navigateToEntry(entry.id)}
+															className={cn(
+																'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
+																entry.id === tocHighlightId
+																	? 'bg-accent text-accent-foreground font-medium'
+																	: 'text-muted-foreground',
+															)}
+															title={entry.label}
+														>
+															{entry.label}
+														</button>
+													</li>
+												))}
+											</ul>
+										</li>
+									))}
+								</ul>
+							)}
 						</nav>
 					</aside>
 					<div className="min-w-0 flex-1">
@@ -682,9 +693,7 @@ export default function CommandsPage() {
 								<div className="divide-y divide-border/70">
 									{section.entries.map((entry) => (
 										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
-											{entry.kind === 'command'
-												? <CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
-												: <AliasEntry entry={entry} settings={settings} onLink={linkToEntry} />}
+											<CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
 										</div>
 									))}
 								</div>

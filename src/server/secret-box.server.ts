@@ -1,4 +1,5 @@
 import * as Crypto from 'node:crypto'
+
 import * as Env from './env.ts'
 
 // Symmetric encryption for secrets we persist (currently the RCON/SFTP passwords and server-agent token in a
@@ -105,8 +106,8 @@ function decrypt(key: Buffer, iv: Buffer, tag: Buffer, ciphertext: Buffer): stri
 // configured now.
 function unreadable(cause: unknown): Error {
 	return new Error(
-		'Could not decrypt a stored secret: it was encrypted with a different SETTINGS_ENCRYPTION_KEY than the one currently configured. '
-			+ 'Restore the previous key, or re-enter the affected connection secrets on the settings page.',
+		'Could not decrypt a stored secret: it was encrypted with a different SETTINGS_ENCRYPTION_KEY than the one currently configured. ' +
+			'Restore the previous key, or re-enter the affected connection secrets on the settings page.',
 		{ cause },
 	)
 }

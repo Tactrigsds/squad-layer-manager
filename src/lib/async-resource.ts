@@ -1,14 +1,17 @@
-import type * as CS from '@/models/context-shared'
-import * as LOG from '@/models/logs'
-import * as C from '@/server/context.ts'
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
-import * as Rx from 'rxjs'
-import { sleep, traceTag } from './async'
+
+import * as CS from '@/models/context-shared'
+import * as LOG from '@/models/logs'
+import type * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
+
 import { withThrownAsync } from './error'
 import { createId } from './id'
 import { IsolatedSubject } from './isolated-subject'
 import { getChildModule, type OtelModule } from './otel'
+import * as Prom from './promise-utils'
+import * as Rx from './rxjs'
 
 type AsyncResourceOpts<T> = {
 	defaultTTL: number
@@ -38,9 +41,7 @@ type AsyncValueState<T> = {
 	abort: AbortController
 }
 
-type Subscriber =
-	| { kind: 'observer'; ttl: number }
-	| { kind: 'get' }
+type Subscriber = { kind: 'observer'; ttl: number } | { kind: 'get' }
 
 /**
  *  Provides cached access to an async resource. Callers can provide a ttl to specify how fresh their copy of the value should be. Promises are cached instead of raw values to dedupe fetches.
@@ -82,16 +83,22 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		this.setupRefetches = (_ctx: Ctx) => {
 			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
-				const ctx = C.storeLinkToActiveSpan(_ctx, 'event.setup')
+				// a refetch is driven by the ttl timer, not by whatever was being handled when the resource
+				// was first observed, and this loop outlives that by an unbounded amount
+				const ctx = CS.withoutOtelLinks(_ctx)
 				void (async () => {
 					while (refetching) {
-						const shouldBreak = await C.spanOp('refetch', { module, root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
-							const activettl = Math.min(...this.observerTTLs)
-							await sleep(activettl)
-							if (!refetching) return true
-							// observers are already counted as subscribers, so skip get()'s registration
-							await this._get(ctx, { ttl: 0 })
-						})(ctx).catch(() => {
+						const shouldBreak = await Instr.spanOp(
+							'refetch',
+							{ module, root: true, levels: { event: 'trace' } },
+							async (ctx: Ctx) => {
+								const activettl = Math.min(...this.observerTTLs)
+								await Prom.sleep(activettl)
+								if (!refetching) return true
+								// observers are already counted as subscribers, so skip get()'s registration
+								await this._get(ctx, { ttl: 0 })
+							},
+						)(ctx).catch(() => {
 							// abort means the last subscriber was released and teardown already unsubscribed us; any real
 							// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
 							return true
@@ -131,7 +138,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 						if (error instanceof ImmediateRefetchError) {
 							this.log?.warn(error, 'immediate refetch requested: %s', error.message)
 						} else {
-							await sleep(this.opts.retryDelay, abort.signal)
+							await Prom.sleep(this.opts.retryDelay, abort.signal)
 						}
 						retriesLeft--
 						continue
@@ -184,7 +191,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		opts ??= {}
 		opts.ttl ??= this.opts.defaultTTL
 
-		if (!this.state || (this.state.resolveTime !== null && (Date.now() - this.state.resolveTime > opts.ttl))) {
+		if (!this.state || (this.state.resolveTime !== null && Date.now() - this.state.resolveTime > opts.ttl)) {
 			return await this.fetchValue(AsyncResource.includeInvocationCtx(ctx, { ttl: opts.ttl }), opts)
 		} else {
 			return await this.state!.value
@@ -257,7 +264,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		return Rx.concat(
 			this.state?.value ?? Rx.EMPTY,
 			this.valueSubject.pipe(
-				traceTag(tag),
+				Rx.Ext.traceTag(tag),
 				// TODO adjust calling code to ingest ctx
 				Rx.map(({ value }) => value),
 				Rx.tap({

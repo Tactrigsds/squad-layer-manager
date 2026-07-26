@@ -1,5 +1,6 @@
-import { runDetectingYield } from '@/server/db'
 import { describe, expect, test } from 'vitest'
+
+import { runDetectingYield } from '@/server/db'
 
 // what an awaited drizzle query looks like to the runtime: better-sqlite3 runs the statement synchronously, and the
 // query builder is a thenable that resolves from inside .then() rather than from an IO completion
@@ -43,10 +44,12 @@ describe('runDetectingYield', () => {
 	})
 
 	test('reports the yield rather than swallowing the callback failure', async () => {
-		await expect(runDetectingYield(async () => {
-			await new Promise((resolve) => setTimeout(resolve, 1))
-			throw new Error('boom')
-		})).rejects.toThrow('boom')
+		await expect(
+			runDetectingYield(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 1))
+				throw new Error('boom')
+			}),
+		).rejects.toThrow('boom')
 	})
 })
 

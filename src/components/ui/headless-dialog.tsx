@@ -1,11 +1,11 @@
-import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { CloseButton, Description, Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
-
 import { Cross2Icon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+
 import { DraggableWindowOutlet } from './draggable-window'
 
 interface DialogProps {
@@ -55,10 +55,7 @@ const HeadlessDialogContent = React.forwardRef<
 				style={{ zIndex }}
 				transition
 			/>
-			<div
-				className="fixed inset-0 flex w-screen items-center justify-center p-4"
-				style={{ zIndex }}
-			>
+			<div className="fixed inset-0 flex w-screen items-center justify-center p-4" style={{ zIndex }}>
 				<DialogPanel
 					ref={combinedRef}
 					data-mobile={isMobile}
@@ -101,12 +98,11 @@ const HeadlessDialogFooter = ({ className, ...props }: React.HTMLAttributes<HTML
 )
 HeadlessDialogFooter.displayName = 'HeadlessDialogFooter'
 
-const HeadlessDialogTitle = React.forwardRef<
-	React.ElementRef<typeof DialogTitle>,
-	React.ComponentPropsWithoutRef<typeof DialogTitle>
->(({ className, ...props }, ref) => (
-	<DialogTitle ref={ref} className={cn('text-lg font-semibold leading-none tracking-tight', className)} {...props} />
-))
+const HeadlessDialogTitle = React.forwardRef<React.ElementRef<typeof DialogTitle>, React.ComponentPropsWithoutRef<typeof DialogTitle>>(
+	({ className, ...props }, ref) => (
+		<DialogTitle ref={ref} className={cn('text-lg font-semibold leading-none tracking-tight', className)} {...props} />
+	),
+)
 HeadlessDialogTitle.displayName = 'HeadlessDialogTitle'
 
 const HeadlessDialogDescription = React.forwardRef<
@@ -115,10 +111,9 @@ const HeadlessDialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => <Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />)
 HeadlessDialogDescription.displayName = 'HeadlessDialogDescription'
 
-const HeadlessDialogClose = React.forwardRef<
-	React.ElementRef<typeof CloseButton>,
-	React.ComponentPropsWithoutRef<typeof CloseButton>
->(({ className, ...props }, ref) => <CloseButton ref={ref} className={className} {...props} />)
+const HeadlessDialogClose = React.forwardRef<React.ElementRef<typeof CloseButton>, React.ComponentPropsWithoutRef<typeof CloseButton>>(
+	({ className, ...props }, ref) => <CloseButton ref={ref} className={className} {...props} />,
+)
 HeadlessDialogClose.displayName = 'HeadlessDialogClose'
 
 export {
