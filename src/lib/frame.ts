@@ -121,7 +121,7 @@ export class FrameManager {
 	// aborts first so setup work waiting on an await bails before the tasks it would touch are torn down, then runs
 	// the tasks FILO. runCleanup is async and logs per-task failures itself, so nothing here waits on it
 	private dispose(instance: FrameInstance) {
-		instance.abort.abort()
+		instance.abort.abort(new DOMException('frame torn down', 'AbortError'))
 		instance.update$.complete()
 		void Cleanup.runCleanup(this.ctx, instance.cleanup)
 	}
