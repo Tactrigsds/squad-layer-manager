@@ -5,6 +5,7 @@ import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
@@ -149,16 +150,46 @@ export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((se
 	return { extraFilters }
 })
 
+type FilterEntities = ReadonlyMap<F.FilterEntityId, F.FilterEntity>
+
+function mainPool(squadServer: SquadServerFrame.State | undefined) {
+	return squadServer ? SquadServerFrame.Sel.settings(squadServer).queue.mainPool : undefined
+}
+
 export namespace Sel {
-	export function poolFilterSetting(store: Store): SETTINGS.PoolFilterSetting | null {
-		if (!store.squadServer) return null
-		return SquadServerFrame.Sel.settings(Zus.getState(store.squadServer)).queue.mainPool.poolFilter
+	// the extras set this instance renders and indicates: its own when locally scoped, else the global one
+	export function extraFilters(store: Store, extras: LQY.ExtraQueryFiltersStore): Set<F.FilterEntityId> {
+		return store.appliedFilters.localExtraFilters ?? extras.extraFilters
 	}
 
-	// the extras set this instance renders and indicates: its own when locally scoped, else the global one
-	export function extraFilters(store: Store): Set<F.FilterEntityId> {
-		return store.appliedFilters.localExtraFilters ?? ExtraFiltersStore.getState().extraFilters
-	}
+	export const poolFilter = RSel.createSelector([mainPool], (pool) => pool?.poolFilter ?? null)
+
+	// the pool's configured secondary filters. they render pinned, so an extra naming one is not also drawn as an extra
+	export const selectableFilterIds = RSel.createSelector([mainPool], (pool) => pool?.defaultSelectable.map((c) => c.filterId) ?? [])
+
+	const pinnedFilterIds = RSel.createSelector([poolFilter, selectableFilterIds], (poolFilter, selectable) => {
+		const pinned = new Set<F.FilterEntityId>(selectable)
+		if (poolFilter) pinned.add(poolFilter.filterId)
+		return pinned
+	})
+
+	export const extraFilterIds = RSel.createSelector(
+		[
+			(store: Store, _squadServer: SquadServerFrame.State | undefined, extras: LQY.ExtraQueryFiltersStore) =>
+				extraFilters(store, extras),
+			(_store: Store, squadServer: SquadServerFrame.State | undefined) => selectableFilterIds(squadServer),
+		],
+		(extras, selectable) => Array.from(extras).filter((id) => !selectable.includes(id)),
+	)
+
+	// filters the user can still pull in as an extra: everything the pool does not already pin
+	export const addableFilters = RSel.createSelector(
+		[
+			(squadServer: SquadServerFrame.State | undefined, _filterEntities: FilterEntities) => pinnedFilterIds(squadServer),
+			(_squadServer: SquadServerFrame.State | undefined, filterEntities: FilterEntities) => filterEntities,
+		],
+		(pinned, filterEntities) => Array.from(Gen.filter(filterEntities.values(), (filter) => !pinned.has(filter.id))),
+	)
 
 	export function constraints(store: Store): LQY.Constraint[] {
 		const constraints: LQY.Constraint[] = []
@@ -177,7 +208,7 @@ export namespace Sel {
 			}
 		}
 
-		const extras = extraFilters(store)
+		const extras = extraFilters(store, ExtraFiltersStore.getState())
 		for (const [filterId, applState] of store.appliedFilters.filterStates.entries()) {
 			if (!filterEntities.has(filterId)) continue
 			constraints.push(
@@ -242,11 +273,5 @@ export namespace Actions {
 		ExtraFiltersStore.setState({
 			extraFilters: new Set(filterIds),
 		})
-	}
-
-	export function removeExtraFilter(filterId: F.FilterEntityId) {
-		ExtraFiltersStore.setState((state) => ({
-			extraFilters: new Set(Gen.filter(state.extraFilters, (id) => id !== filterId)),
-		}))
 	}
 }

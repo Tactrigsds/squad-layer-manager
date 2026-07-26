@@ -4,10 +4,8 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import * as Gen from '@/lib/generator-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand.ts'
-import type * as F from '@/models/filter.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
@@ -17,12 +15,16 @@ import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 export default function AppliedFiltersPanel(props: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
-	const filterEntities = FilterEntityClient.useFilterEntities()
 	const scrollRef = React.useRef<HTMLDivElement>(null)
-	// an instance with locally-scoped extras renders its own set; otherwise the global saved one
-	const localExtraFilters = Zus.useStore(props.stores.appliedFilters, (s) => s.appliedFilters.localExtraFilters)
-	const globalExtraFilters = Zus.useStore(AppliedFiltersPrt.ExtraFiltersStore, (s) => s.extraFilters)
-	const extraFilters = localExtraFilters ?? globalExtraFilters
+	const squadServer = props.stores.squadServer ?? null
+	const extraFilterIds = Zus.useStore(
+		props.stores.appliedFilters,
+		squadServer,
+		AppliedFiltersPrt.ExtraFiltersStore,
+		AppliedFiltersPrt.Sel.extraFilterIds,
+	)
+	const selectableFilterIds = Zus.useStore(squadServer, AppliedFiltersPrt.Sel.selectableFilterIds)
+	const addableFilters = Zus.useStore(squadServer, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
 	const [canScrollLeft, setCanScrollLeft] = React.useState(false)
 	const [canScrollRight, setCanScrollRight] = React.useState(false)
 	const canScroll = canScrollLeft || canScrollRight
@@ -84,26 +86,9 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 				resizeObserver.disconnect()
 			}
 		}
-	}, [extraFilters])
+	}, [extraFilterIds])
 
-	const poolFilterId: F.FilterEntityId | null = Zus.useStore(props.stores.squadServer ?? null, (s) =>
-		s ? (s.settings.saved.queue.mainPool.poolFilter?.filterId ?? null) : null,
-	)
-	const selectableFilterIds: F.FilterEntityId[] = Zus.useStore(
-		props.stores.squadServer ?? null,
-		Zus.useShallow((s) => (s ? s.settings.saved.queue.mainPool.defaultSelectable.map((c) => c.filterId) : [])),
-	)
-	const extraFilterIds: F.FilterEntityId[] = Array.from(extraFilters).filter((id) => !selectableFilterIds.includes(id))
-
-	const options = Array.from(
-		Gen.map(filterEntities.values(), function* (filter) {
-			if (selectableFilterIds.includes(filter.id) || filter.id === poolFilterId) return
-			yield {
-				value: filter.id,
-				label: <FilterEntityLabel filter={filter} />,
-			}
-		}),
-	)
+	const options = addableFilters.map((filter) => ({ value: filter.id, label: <FilterEntityLabel filter={filter} /> }))
 
 	return (
 		<div className="flex items-center gap-1">
@@ -144,7 +129,13 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 				values={extraFilterIds}
 				onSelect={(update) => AppliedFiltersPrt.Actions.selectExtraFilters(props.stores, update)}
 			>
-				<Button title="Edit extra filters" variant="ghost" size={extraFilterIds.length > 0 ? 'icon' : 'default'}>
+				{/* the label text only renders while there are no extras, so the name is pinned here rather than left to it */}
+				<Button
+					title="Edit extra filters"
+					aria-label="Edit extra filters"
+					variant="ghost"
+					size={extraFilterIds.length > 0 ? 'icon' : 'default'}
+				>
 					{extraFilterIds.length === 0 && <div className="text-sm text-muted-foreground px-2">Add Extra Filters</div>}
 					<Icons.Edit />
 				</Button>
@@ -180,10 +171,7 @@ const POOL_STATE_TITLES: Record<AppliedFiltersPrt.ApplyAs, string> = {
 // the pool filter is pinned; out-of-pool layers surfaced by the inverted/disabled states stay unselectable for
 // users without queue:force-write, so no state needs to be locked away
 export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
-	const poolFilter = Zus.useStore(
-		stores.squadServer ?? null,
-		Zus.useShallow((s) => (s ? s.settings.saved.queue.mainPool.poolFilter : null)),
-	)
+	const poolFilter = Zus.useStore(stores.squadServer ?? null, AppliedFiltersPrt.Sel.poolFilter)
 	const poolApplyAs = Zus.useStore(stores.appliedFilters, (s) => s.appliedFilters.poolApplyAs)
 	const filter = FilterEntityClient.useFilterEntities().get(poolFilter?.filterId as string)
 	if (!poolFilter || !filter) return

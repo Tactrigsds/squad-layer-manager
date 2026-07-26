@@ -1,4 +1,4 @@
-import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
+import type { Column, ColumnDef, Row } from '@tanstack/react-table'
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import type { Table as CoreTable } from '@tanstack/table-core'
 import * as Icons from 'lucide-react'
@@ -25,7 +25,7 @@ import * as Zus from '@/lib/zustand'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
-import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LQY from '@/models/layer-queries.models.ts'
 import * as GlobalSettings from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -49,30 +49,6 @@ import { cn } from '@/lib/utils'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
 
-const DEFAULT_COLUMN_SIZE = 150
-const SELECT_COLUMN_SIZE = 40
-const CONSTRAINTS_COLUMN_SIZE = 80
-
-function getColumnSize(name: string, isNumeric: boolean): number {
-	return ({ Size: 100, Faction_1: 40, Faction_2: 40 } as Record<string, number>)[name] ?? (isNumeric ? 50 : DEFAULT_COLUMN_SIZE)
-}
-
-// columns that stay visible in compact mode. the select and constraints(flag) columns aren't part
-// of columnVisibility state and always render
-export const COMPACT_VISIBLE_COLUMNS: string[] = ['Layer', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2']
-
-// width the table wants when rendered with the given column visibility, derived from the same
-// size hints the column defs use. lets callers compute a compact-mode breakpoint parametrically
-export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, columnVisibility: VisibilityState): number {
-	const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
-	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
-	for (const name of Object.keys(cfg.defs)) {
-		if (!columnVisibility[name]) continue
-		width += getColumnSize(name, LC.isNumericColumn(name, ctx))
-	}
-	return width
-}
-
 const formatFloat = (value: number) => {
 	const formatted = value.toFixed(2)
 	const numeric = parseFloat(formatted)
@@ -92,7 +68,7 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
-		size: getColumnSize(colDef.name, isNumeric),
+		size: LayerTablePrt.getColumnSize(colDef.name, isNumeric),
 		minSize: colDef.name === 'Layer' ? 150 : undefined,
 		header: function ValueColHeader() {
 			const sortingState = useTableFrame((table) => table.sort)
@@ -225,7 +201,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 	const tableColDefs: ColumnDef<LayerQueriesClient.RowData>[] = [
 		{
 			id: 'select',
-			size: SELECT_COLUMN_SIZE,
+			size: LayerTablePrt.SELECT_COLUMN_SIZE,
 			header: function SelectHeader() {
 				const [selectState, disabled] = useTableFrame(
 					Zus.useShallow((table) => {
@@ -328,7 +304,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 			</span>
 		),
 		enableHiding: false,
-		size: CONSTRAINTS_COLUMN_SIZE,
+		size: LayerTablePrt.CONSTRAINTS_COLUMN_SIZE,
 		cell: function FlagColCell({ row }) {
 			const { teamParity } = React.useContext(LayerTableCellCtx)
 			return (
@@ -364,7 +340,7 @@ export default function LayerTable(props: {
 	enableForceSelect?: boolean
 	canChangeRowsPerPage?: boolean
 	canToggleColumns?: boolean
-	// hide all but COMPACT_VISIBLE_COLUMNS without touching stored visibility prefs
+	// hide all but LayerTablePrt.COMPACT_VISIBLE_COLUMNS without touching stored visibility prefs
 	compact?: boolean
 }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
@@ -375,20 +351,12 @@ export default function LayerTable(props: {
 			colConfig: table.colConfig,
 			showSelectedLayers: table.showSelectedLayers,
 			sort: table.sort,
-			columnVisibility: table.columnVisibility,
 			pageSize: table.pageSize,
 			pageIndex: table.pageIndex,
 		})),
 	)
 
-	const columnVisibility = React.useMemo((): VisibilityState => {
-		if (!props.compact) return frameState.columnVisibility
-		const vis: VisibilityState = { ...frameState.columnVisibility }
-		for (const name of Object.keys(vis)) {
-			if (!COMPACT_VISIBLE_COLUMNS.includes(name)) vis[name] = false
-		}
-		return vis
-	}, [props.compact, frameState.columnVisibility])
+	const columnVisibility = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.columnVisibility(props.compact ?? false))
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const onColumnVisibilityChange = React.useCallback(LayerTablePrt.Actions.onColumnVisibilityChange(props.stores), [props.stores])
@@ -399,20 +367,7 @@ export default function LayerTable(props: {
 
 	// shared display state for all cells -- see LayerTableCellCtx
 	const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
-	const cursor = useTableFrame((table) => table.pageData?.input.cursor)
-	// read parity from the server frame store (safe getState) passed via props, rather than the layerItemsState$
-	// observable which throws when no frame is hot. omitted outside a server context (e.g. filter editor) -> parity 0
-	const teamParity =
-		Zus.useStore(
-			props.stores.squadServer,
-			React.useCallback(
-				(s: SquadServerFrame.State | undefined) => {
-					if (!s || !cursor) return 0
-					return LQY.resolveTeamParityForCursor(s.layerItemsState, LQY.fromLayerListCursor(s.layerItemsState, cursor))
-				},
-				[cursor],
-			),
-		) ?? 0
+	const teamParity = Zus.useStore(props.stores.layerTable, props.stores.squadServer ?? null, LayerTablePrt.Sel.teamParity)
 	const cellDisplayCtx = React.useMemo(
 		(): CellDisplayCtx => ({ teamParity, displayLayersNormalized }),
 		[teamParity, displayLayersNormalized],
@@ -609,8 +564,6 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 	)
 })
 
-export function PlaceholderColumns() {}
-
 export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: LayerTablePrt.KeyProp }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
 		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
@@ -640,7 +593,6 @@ export function LayerTableControlPanel(props: {
 	const frameState = Zus.useStore(
 		props.stores.layerTable,
 		Zus.useShallow((s) => ({
-			colConfig: s.layerTable.colConfig,
 			showSelectedLayers: s.layerTable.showSelectedLayers,
 			sort: s.layerTable.sort,
 			maxSelectedLayers: s.layerTable.maxSelected,
@@ -654,11 +606,7 @@ export function LayerTableControlPanel(props: {
 
 	// while compact mode overrides visibility, toggling stored prefs would have no visible effect
 	const canToggleColumns = (props.canToggleColumns ?? true) && !props.compact
-	// Compute default visible columns from config
-	const defaultVisibleColumns = React.useMemo(() => {
-		if (!frameState.colConfig) return []
-		return frameState.colConfig.orderedColumns.filter((col) => col.visible ?? true).map((col) => col.name)
-	}, [frameState.colConfig])
+	const defaultVisibleColumns = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.defaultVisibleColumns)
 
 	const table = props.table
 
