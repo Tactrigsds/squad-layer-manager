@@ -6,8 +6,6 @@ import * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models'
 
 export type Ctx = CS.Ctx & { squadRcon: Ctx.Payload } & Ctx.Rcon & CS.ServerId
-export const CtxDef = CD.defCtx<Ctx>()(['squadRcon'], { name: 'squadRcon', extends: [Ctx.RconDef, CS.ServerIdDef] })
-
 export namespace Ctx {
 	// a live rcon connection, without any of the per-server resources built on top of it
 	export type Rcon = CS.Ctx & {
@@ -28,3 +26,7 @@ export namespace Ctx {
 export type WarnOptionsBase = { msg: string | string[] } | string | string[]
 // returning undefined indicates warning should be skipped
 export type WarnOptions = WarnOptionsBase | ((ctx: SM.Ctx) => WarnOptionsBase | undefined)
+
+// after the namespace, not beside the type: a namespace compiles to an IIFE, so Ctx.RconDef does not
+// exist until that block has run. Types do not care about order, defs are values and do.
+export const CtxDef = CD.defCtx<Ctx>()(['squadRcon'], { name: 'squadRcon', extends: [Ctx.RconDef, CS.ServerIdDef] })
