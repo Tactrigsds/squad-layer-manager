@@ -1,11 +1,14 @@
+import type React from 'react'
+
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
-import { distinctDeepEquals, sleep } from '@/lib/async'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand'
+import * as Obj from '@/lib/object-utils'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CB from '@/models/constraint-builders'
 import * as EFB from '@/models/editable-filter-builders'
@@ -15,8 +18,7 @@ import type * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import type React from 'react'
-import * as Rx from 'rxjs'
+
 import { frameManager } from './frame-manager'
 
 // The "Request a layer" editor: a pared-down layer-filter-menu (components or a specific layer string,
@@ -102,29 +104,25 @@ const setup: Frame['setup'] = (args) => {
 	const set = args.set
 	const parts = args.input.startingFilter ? BB.parseTemplateParts(args.input.startingFilter) : BB.emptyTemplateParts()
 
-	set(
-		{
-			input: args.input,
-			activeTab: parts.layers.length > 0 ? 'layer' : 'components',
-			matchup: seedMatchup(parts),
-			preserved: { sizes: parts.sizes, other: parts.other },
-			matchingCount: null,
-			matchupSideOptions: null,
-		} satisfies Primary,
-	)
+	set({
+		input: args.input,
+		activeTab: parts.layers.length > 0 ? 'layer' : 'components',
+		matchup: seedMatchup(parts),
+		preserved: { sizes: parts.sizes, other: parts.other },
+		matchingCount: null,
+		matchupSideOptions: null,
+	} satisfies Primary)
 
 	// the applied-filters partial reads squadServer from state (pool filter, configured selectable filters)
 	set({ squadServer: args.input.squadServer } satisfies AppliedFiltersPrt.Predicates)
 
-	set(
-		{
-			resetAllConstraints() {
-				LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
-				AppliedFiltersPrt.Actions.disableAllAppliedFilters({ appliedFilters: args.key })
-				ZusUtils.resolveStore<State>(args.key).setState({ matchup: FB.allowMatchups([{}, {}]) as F.MatchupNode })
-			},
-		} satisfies LayerFilterMenuPrt.Predicates,
-	)
+	set({
+		resetAllConstraints() {
+			LayerFilterMenuPrt.Actions.resetAllFilters({ filterMenu: args.key })
+			AppliedFiltersPrt.Actions.disableAllAppliedFilters({ appliedFilters: args.key })
+			Zus.resolveStore<State>(args.key).setState({ matchup: FB.allowMatchups([{}, {}]) as F.MatchupNode })
+		},
+	} satisfies LayerFilterMenuPrt.Predicates)
 
 	LayerFilterMenuPrt.initLayerFilterMenuStore({
 		...args,
@@ -147,19 +145,20 @@ const setup: Frame['setup'] = (args) => {
 	// the pool filter is special: it rides the pool toggle (on by default for new requests) rather than a row
 	void (async () => {
 		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		await sleep(0)
+		await Prom.sleep(0)
 		if (args.sub.closed) return
 		const poolFilter = args.input.squadServer
-			? SquadServerFrame.Sel.settings(ZusUtils.getState(args.input.squadServer)).queue.mainPool.poolFilter
+			? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool.poolFilter
 			: null
-		const seedFilterIds = parts.filterIds.filter(id => id !== poolFilter?.filterId)
-		const seedExcludedIds = parts.excludedFilterIds.filter(id => id !== poolFilter?.filterId)
-		const poolApplied = !args.input.startingFilter || !poolFilter
-			? true
-			: (poolFilter.mode === 'include'
-				? parts.filterIds.includes(poolFilter.filterId)
-				: parts.excludedFilterIds.includes(poolFilter.filterId))
-		ZusUtils.resolveStore<State>(args.key).setState(state => {
+		const seedFilterIds = parts.filterIds.filter((id) => id !== poolFilter?.filterId)
+		const seedExcludedIds = parts.excludedFilterIds.filter((id) => id !== poolFilter?.filterId)
+		const poolApplied =
+			!args.input.startingFilter || !poolFilter
+				? true
+				: poolFilter.mode === 'include'
+					? parts.filterIds.includes(poolFilter.filterId)
+					: parts.excludedFilterIds.includes(poolFilter.filterId)
+		Zus.resolveStore<State>(args.key).setState((state) => {
 			const filterStates = new Map(state.appliedFilters.filterStates)
 			for (const id of filterStates.keys()) filterStates.set(id, 'disabled')
 			for (const id of seedFilterIds) filterStates.set(id, 'regular')
@@ -168,9 +167,8 @@ const setup: Frame['setup'] = (args) => {
 		})
 		const templateFilterIds = [...seedFilterIds, ...seedExcludedIds]
 		if (templateFilterIds.length > 0) {
-			AppliedFiltersPrt.Actions.selectExtraFilters(
-				{ appliedFilters: args.key },
-				prev => Array.from(new Set([...prev, ...templateFilterIds])),
+			AppliedFiltersPrt.Actions.selectExtraFilters({ appliedFilters: args.key }, (prev) =>
+				Array.from(new Set([...prev, ...templateFilterIds])),
 			)
 		}
 	})()
@@ -179,22 +177,22 @@ const setup: Frame['setup'] = (args) => {
 	// degrades to no count and unfiltered options rather than killing the stream or looping
 	const firstCount = (input: LQY.LayersQueryInput): Rx.Observable<number | null> =>
 		LayerQueriesClient.queryLayers$(input).pipe(
-			Rx.filter(packet => packet.code === 'layers-page'),
-			Rx.map(packet => (packet.code === 'layers-page' ? packet.totalCount : null)),
+			Rx.filter((packet) => packet.code === 'layers-page'),
+			Rx.map((packet) => (packet.code === 'layers-page' ? packet.totalCount : null)),
 			Rx.take(1),
 			Rx.defaultIfEmpty(null),
-			Rx.catchError(error => {
+			Rx.catchError((error) => {
 				console.warn('backburner request count query failed:', error)
 				return Rx.of(null)
 			}),
 		)
 	const firstMenuValues = (input: LQY.LayersQueryInput): Rx.Observable<Record<string, string[]> | null> =>
 		LayerQueriesClient.queryLayers$(input).pipe(
-			Rx.filter(packet => packet.code === 'menu-item-possible-values'),
-			Rx.map(packet => (packet.code === 'menu-item-possible-values' ? packet.values : null)),
+			Rx.filter((packet) => packet.code === 'menu-item-possible-values'),
+			Rx.map((packet) => (packet.code === 'menu-item-possible-values' ? packet.values : null)),
 			Rx.take(1),
 			Rx.defaultIfEmpty(null),
-			Rx.catchError(error => {
+			Rx.catchError((error) => {
 				console.warn('backburner request options query failed:', error)
 				return Rx.of(null)
 			}),
@@ -202,25 +200,27 @@ const setup: Frame['setup'] = (args) => {
 
 	const squadServer = args.input.squadServer
 	const stateAndServer$: Rx.Observable<readonly [State, SquadServerFrame.State | undefined]> = squadServer
-		? Rx.combineLatest([args.update$, ZusUtils.toObservable(squadServer, true)]).pipe(
-			Rx.map(([[state], [server]]) => [state, server] as const),
-		)
+		? Rx.combineLatest([args.update$, Zus.toObservable(squadServer, true)]).pipe(
+				Rx.map(([[state], [server]]) => [state, server] as const),
+			)
 		: args.update$.pipe(Rx.map(([state]) => [state, undefined] as const))
 	args.sub.add(
-		stateAndServer$.pipe(
-			Rx.map(([state]) => Sel.queryPlan(state)),
-			distinctDeepEquals(),
-			Rx.switchMap(plan =>
-				Rx.combineLatest([
-					firstCount(plan.count),
-					plan.orientations.length > 0
-						? Rx.combineLatest(plan.orientations.map(orientation => firstMenuValues(orientation.input)))
-						: Rx.of([] as (Record<string, string[]> | null)[]),
-				]).pipe(Rx.map(([count, valueSets]) => ({ plan, count, valueSets })))
-			),
-		).subscribe(({ plan, count, valueSets }) => {
-			set({ matchingCount: count, ...mergeOptionSets(plan, valueSets) })
-		}),
+		stateAndServer$
+			.pipe(
+				Rx.map(([state]) => Sel.queryPlan(state)),
+				Rx.Ext.distinctDeepEquals(),
+				Rx.switchMap((plan) =>
+					Rx.combineLatest([
+						firstCount(plan.count),
+						plan.orientations.length > 0
+							? Rx.combineLatest(plan.orientations.map((orientation) => firstMenuValues(orientation.input)))
+							: Rx.of([] as (Record<string, string[]> | null)[]),
+					]).pipe(Rx.map(([count, valueSets]) => ({ plan, count, valueSets }))),
+				),
+			)
+			.subscribe(({ plan, count, valueSets }) => {
+				set({ matchingCount: count, ...mergeOptionSets(plan, valueSets) })
+			}),
 	)
 }
 
@@ -239,9 +239,9 @@ function mergeOptionSets(
 	}
 	const filterMenuItemPossibleValues: Record<string, string[]> = {}
 	for (const field of IDENTITY_FIELDS) {
-		filterMenuItemPossibleValues[field] = Array.from(new Set(successful.flatMap(set => set[field] ?? []))).sort()
+		filterMenuItemPossibleValues[field] = Array.from(new Set(successful.flatMap((set) => set[field] ?? []))).sort()
 	}
-	const union = (...lists: (string[] | undefined)[]) => Array.from(new Set(lists.flatMap(list => list ?? []))).sort()
+	const union = (...lists: (string[] | undefined)[]) => Array.from(new Set(lists.flatMap((list) => list ?? []))).sort()
 	const sideOptions: MatchupSideOptions = [{}, {}]
 	for (const column of F.TEAM_COLUMNS) {
 		const one = F.resolveTeamColumn(column, 1)
@@ -308,7 +308,7 @@ export namespace Sel {
 	export function queryPlan(state: State): QueryPlan {
 		const base = baseConstraints(state)
 		const menuConstraints = LayerFilterMenuPrt.Sel.filterMenuConstraints(state)
-		const identityItems = menuConstraints.flatMap(constraint => constraint.type === 'filter-menu-items' ? constraint.items : [])
+		const identityItems = menuConstraints.flatMap((constraint) => (constraint.type === 'filter-menu-items' ? constraint.items : []))
 
 		const countConstraints = [...base, ...menuConstraints]
 		if (BB.matchupHasValues(state.matchup)) {
@@ -317,11 +317,12 @@ export namespace Sel {
 
 		const orientationInput = (aTeam: 1 | 2): LQY.LayersQueryInput => {
 			const teamItems: LQY.FilterMenuItem[] = []
-			for (const [sideIndex, team] of [[0, aTeam], [1, aTeam === 1 ? 2 : 1]] as [0 | 1, 1 | 2][]) {
+			for (const [sideIndex, team] of [
+				[0, aTeam],
+				[1, aTeam === 1 ? 2 : 1],
+			] as [0 | 1, 1 | 2][]) {
 				for (const column of F.TEAM_COLUMNS) {
-					const values = (state.matchup.teams[sideIndex][column] ?? []).filter(
-						(value): value is string => typeof value === 'string',
-					)
+					const values = (state.matchup.teams[sideIndex][column] ?? []).filter((value): value is string => typeof value === 'string')
 					const field = F.resolveTeamColumn(column, team)
 					teamItems.push({
 						field,
@@ -340,11 +341,15 @@ export namespace Sel {
 		const mode: QueryPlan['mode'] = state.matchup.locked
 			? 'locked'
 			: Obj.deepEqual(state.matchup.teams[0], state.matchup.teams[1])
-			? 'single'
-			: 'dual'
-		const orientations = mode === 'dual'
-			? [{ aTeam: 1 as const, input: orientationInput(1) }, { aTeam: 2 as const, input: orientationInput(2) }]
-			: [{ aTeam: 1 as const, input: orientationInput(1) }]
+				? 'single'
+				: 'dual'
+		const orientations =
+			mode === 'dual'
+				? [
+						{ aTeam: 1 as const, input: orientationInput(1) },
+						{ aTeam: 2 as const, input: orientationInput(2) },
+					]
+				: [{ aTeam: 1 as const, input: orientationInput(1) }]
 		return { count: { constraints: countConstraints, pageSize: 1, sort: null }, mode, orientations }
 	}
 
@@ -357,7 +362,7 @@ export namespace Sel {
 			versions: menuValues('LayerVersion'),
 			collections: menuValues('Collection'),
 		}
-		const componentsPicked = Object.values(components).some(values => values.length > 0)
+		const componentsPicked = Object.values(components).some((values) => values.length > 0)
 		// the two views are kept in sync by the menu, so the tab just decides which representation lands in
 		// the template, falling back to the other when the active one is empty
 		const useLayer = layers.length > 0 && (state.activeTab === 'layer' || !componentsPicked)
@@ -369,9 +374,7 @@ export namespace Sel {
 		}
 		// the pool checkbox writes pool membership into the template itself: 'regular' pins the request to the
 		// pool, 'inverted' to outside it, 'disabled' leaves it unconstrained
-		const poolFilter = state.squadServer
-			? SquadServerFrame.Sel.settings(ZusUtils.getState(state.squadServer)).queue.mainPool.poolFilter
-			: null
+		const poolFilter = state.squadServer ? SquadServerFrame.Sel.settings(Zus.getState(state.squadServer)).queue.mainPool.poolFilter : null
 		const poolApplyAs = state.appliedFilters.poolApplyAs
 		if (poolFilter && poolApplyAs !== 'disabled') {
 			const wantsPoolMatches = (poolFilter.mode === 'include') === (poolApplyAs === 'regular')
@@ -400,11 +403,11 @@ export namespace Actions {
 	}
 
 	export function setActiveTab(stores: KeyProp, activeTab: IdentityTab) {
-		ZusUtils.resolveStore<State>(stores.backburnerRequest).setState({ activeTab })
+		Zus.resolveStore<State>(stores.backburnerRequest).setState({ activeTab })
 	}
 
 	export function updateMatchup(stores: KeyProp, update: React.SetStateAction<F.EditableMatchupNode>) {
-		ZusUtils.resolveStore<State>(stores.backburnerRequest).setState(state => ({
+		Zus.resolveStore<State>(stores.backburnerRequest).setState((state) => ({
 			matchup: typeof update === 'function' ? update(state.matchup) : update,
 		}))
 	}

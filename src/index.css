@@ -45,7 +45,9 @@
 
 @keyframes anchor-highlight-flash {
 	0% {
-		box-shadow: 0 0 0 3px hsl(var(--ring)), 0 0 14px 3px hsl(var(--ring) / 0.5);
+		box-shadow:
+			0 0 0 3px hsl(var(--ring)),
+			0 0 14px 3px hsl(var(--ring) / 0.5);
 	}
 	100% {
 		box-shadow: 0 0 0 2px hsl(var(--ring) / 0.55);

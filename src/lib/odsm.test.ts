@@ -6,7 +6,7 @@ type Op = { opId: string; value: number }
 type State = number[]
 
 // Reducer simply appends each op's value to the state array; produces no side effects
-const reducer: Reducer<Op, State> = (state, ops) => [[...state, ...ops.map(op => op.value)], []]
+const reducer: Reducer<Op, State> = (state, ops) => [[...state, ...ops.map((op) => op.value)], []]
 
 const op = (opId: string, value = 0): Op => ({ opId, value })
 
@@ -392,8 +392,8 @@ describe('RejectedError', () => {
 	// throws to reject any batch that would drive the state length <= 0 against its base, carrying a
 	// typed payload; otherwise appends. produces no side effects.
 	const gatedReducer: Reducer<Op, State> = (state, ops) => {
-		if (ops.some(op => state.length + op.value <= 0)) throw new RejectedError<Rejection>({ code: 'would-empty' })
-		return [[...state, ...ops.map(op => op.value)], []]
+		if (ops.some((op) => state.length + op.value <= 0)) throw new RejectedError<Rejection>({ code: 'would-empty' })
+		return [[...state, ...ops.map((op) => op.value)], []]
 	}
 
 	it('drops a client-authored op the reducer rejects and returns the typed rejection', () => {
@@ -463,8 +463,8 @@ describe('RejectedError', () => {
 		// produces a side effect per op, then rejects if any value is negative
 		const effectReducer: Reducer<Op, State, SE> = (state, ops) => {
 			const ses = ops.map((o): SE => ({ code: `applied-${o.opId}` }))
-			if (ops.some(o => o.value < 0)) throw new RejectedError<Rejection>({ code: 'would-empty' })
-			return [[...state, ...ops.map(o => o.value)], ses]
+			if (ops.some((o) => o.value < 0)) throw new RejectedError<Rejection>({ code: 'would-empty' })
+			return [[...state, ...ops.map((o) => o.value)], ses]
 		}
 		const session = Server.initSession<Op, State>([])
 
@@ -475,7 +475,7 @@ describe('RejectedError', () => {
 
 		const rejectedRes = Server.applyOps(accepted.session, [op('b', -1)], effectReducer)
 		expect(rejectedRes.rejected).toBe(true) // rejected branch has no `sideEffects` field at all
-		expect(rejectedRes.session.ops.map(o => o.opId)).toEqual(['a']) // rejected op left no trace
+		expect(rejectedRes.session.ops.map((o) => o.opId)).toEqual(['a']) // rejected op left no trace
 	})
 })
 
@@ -493,8 +493,10 @@ describe('Server.toClientUpdate', () => {
 	})
 
 	it('echoes the full op back to the originator when echoToSource is set', () => {
-		expect(Server.toClientUpdate(dispatched({ sourceWsClientId: 'me', echoToSource: true }), 'me'))
-			.toEqual({ code: 'op', ops: [op('a', 1)] })
+		expect(Server.toClientUpdate(dispatched({ sourceWsClientId: 'me', echoToSource: true }), 'me')).toEqual({
+			code: 'op',
+			ops: [op('a', 1)],
+		})
 	})
 
 	it('routes a rejection to the originator alone', () => {
@@ -513,8 +515,8 @@ describe('Client.applyUpdate', () => {
 	type R = { code: 'neg' }
 	// a side effect per op; rejects the whole batch if any value is negative
 	const effectReducer: Reducer<Op, State, SE> = (state, ops) => {
-		if (ops.some(o => o.value < 0)) throw new RejectedError<R>({ code: 'neg' })
-		return [[...state, ...ops.map(o => o.value)], ops.map(o => ({ code: `se-${o.opId}` }))]
+		if (ops.some((o) => o.value < 0)) throw new RejectedError<R>({ code: 'neg' })
+		return [[...state, ...ops.map((o) => o.value)], ops.map((o) => ({ code: `se-${o.opId}` }))]
 	}
 
 	it('applies an init snapshot and rebases in-flight pending ops', () => {
@@ -531,8 +533,8 @@ describe('Client.applyUpdate', () => {
 		const ses: SE[] = []
 		const synced: Op[] = []
 		const next = Client.applyUpdate(session, { code: 'op', ops: [op('a', 1)] }, effectReducer, {
-			onSideEffects: s => ses.push(...s),
-			onSyncedOps: o => synced.push(...o),
+			onSideEffects: (s) => ses.push(...s),
+			onSyncedOps: (o) => synced.push(...o),
 		})
 		expect(next.syncedState).toEqual([1])
 		expect(ses).toEqual([{ code: 'se-a' }])
@@ -544,7 +546,7 @@ describe('Client.applyUpdate', () => {
 		const ses: SE[] = []
 		let diverged: { phase: string; data: unknown } | null = null
 		const next = Client.applyUpdate(session, { code: 'op', ops: [op('a', -1)] }, effectReducer, {
-			onSideEffects: s => ses.push(...s),
+			onSideEffects: (s) => ses.push(...s),
 			onDiverged: (phase, error) => (diverged = { phase, data: error.data }),
 		})
 		expect(diverged).toEqual({ phase: 'op', data: { code: 'neg' } })
@@ -559,8 +561,8 @@ describe('Client.applyUpdate', () => {
 		const ses: SE[] = []
 		const synced: Op[] = []
 		const next = Client.applyUpdate(session, { code: 'ack', opIds: ['a'] }, effectReducer, {
-			onSideEffects: s => ses.push(...s),
-			onSyncedOps: o => synced.push(...o),
+			onSideEffects: (s) => ses.push(...s),
+			onSyncedOps: (o) => synced.push(...o),
 		})
 		expect(next.syncedState).toEqual([1])
 		expect(next.pendingOps).toEqual([])
@@ -573,8 +575,8 @@ describe('Client.applyUpdate', () => {
 		const unknown: string[][] = []
 		const synced: Op[] = []
 		const next = Client.applyUpdate(session, { code: 'ack', opIds: ['zzz'] }, effectReducer, {
-			onUnknownAcks: ids => unknown.push(ids),
-			onSyncedOps: o => synced.push(...o),
+			onUnknownAcks: (ids) => unknown.push(ids),
+			onSyncedOps: (o) => synced.push(...o),
 		})
 		expect(unknown).toEqual([['zzz']])
 		expect(synced).toEqual([]) // nothing landed, so no synced-op fan-out
@@ -598,7 +600,7 @@ describe('Client.applyUpdate', () => {
 		const update: ClientUpdate<State, Op, R['code']> = { code: 'rejected', opIds: ['a'], reason: 'neg' }
 		let seen: R['code'] | null = null
 		Client.applyUpdate(Client.initSession<Op, State>([]), update, effectReducer, {
-			onRejected: reason => (seen = reason),
+			onRejected: (reason) => (seen = reason),
 		})
 		expect(seen).toBe('neg')
 	})

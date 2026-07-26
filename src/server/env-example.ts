@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { z } from 'zod'
+
 import * as Paths from '../../paths.ts'
 import * as Env from './env.ts'
 
@@ -64,7 +65,7 @@ export function build(target: Target): string {
 		const rendered = Object.entries(group as Record<string, z.ZodType>)
 			.filter(([, schema]) => target.contents === 'all' || Env.isSecret(schema) === (target.contents === 'secrets'))
 			.map(([name, schema]) => renderVar(name, schema, target.audience))
-			.filter(v => v !== undefined)
+			.filter((v) => v !== undefined)
 		if (rendered.length === 0) continue
 
 		const meta = Env.groupMeta[groupName as keyof typeof Env.groups]

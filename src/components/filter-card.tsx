@@ -1,13 +1,19 @@
+import { Link } from '@tanstack/react-router'
+import * as Im from 'immer'
+import * as Icons from 'lucide-react'
+import { Braces, Columns3, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
+import React from 'react'
+
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-import * as Arr from '@/lib/array.ts'
-import * as Obj from '@/lib/object.ts'
+import * as Arr from '@/lib/array-utils'
+import * as Obj from '@/lib/object-utils'
 import type { Clearable, Focusable } from '@/lib/react'
 import { eltToFocusable } from '@/lib/react'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
-import * as ZusUtils from '@/lib/zustand.ts'
+import * as Zus from '@/lib/zustand.ts'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -15,11 +21,7 @@ import * as LC from '@/models/layer-columns'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import { Link } from '@tanstack/react-router'
-import * as Im from 'immer'
-import * as Icons from 'lucide-react'
-import { Braces, Columns3, ExternalLink, Minus, Plus, TextCursorInput, Undo2 } from 'lucide-react'
-import React from 'react'
+
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
@@ -58,44 +60,52 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 
-	DndKit.useDragEnd(React.useCallback(event => {
-		if (!event.over) return
-		if (event.active.type !== 'filter-node') return
-		const editor = ZusUtils.getState(props.stores.filterEditor)
-		const sourcePath = editor.tree.paths.get(event.active.id)!
-		const slot = event.over.slots.find(s => s.dragItem.type === 'filter-node')
-		if (!slot) return
-		const slotPath = editor.tree.paths.get(slot.dragItem.id.toString())!
+	DndKit.useDragEnd(
+		React.useCallback(
+			(event) => {
+				if (!event.over) return
+				if (event.active.type !== 'filter-node') return
+				const editor = Zus.getState(props.stores.filterEditor)
+				const sourcePath = editor.tree.paths.get(event.active.id)!
+				const slot = event.over.slots.find((s) => s.dragItem.type === 'filter-node')
+				if (!slot) return
+				const slotPath = editor.tree.paths.get(slot.dragItem.id.toString())!
 
-		let targetPath: Sparse.NodePath
+				let targetPath: Sparse.NodePath
 
-		switch (slot.position) {
-			case 'after':
-				targetPath = [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
-				break
-			case 'before':
-				targetPath = slotPath
-				break
-			case 'on': {
-				targetPath = [...slotPath, F.nextChildIndex(editor.tree, slotPath)]
-				break
-			}
-			default:
-				assertNever(slot.position)
-		}
+				switch (slot.position) {
+					case 'after':
+						targetPath = [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
+						break
+					case 'before':
+						targetPath = slotPath
+						break
+					case 'on': {
+						targetPath = [...slotPath, F.nextChildIndex(editor.tree, slotPath)]
+						break
+					}
+					default:
+						assertNever(slot.position)
+				}
 
-		if (Sparse.isOwnedPath(sourcePath, targetPath)) {
-			console.warn('Cannot move node to its own child')
-			return
-		}
-		EditFrame.Actions.moveNode(props.stores, sourcePath, targetPath)
-	}, [props.stores]))
+				if (Sparse.isOwnedPath(sourcePath, targetPath)) {
+					console.warn('Cannot move node to its own child')
+					return
+				}
+				EditFrame.Actions.moveNode(props.stores, sourcePath, targetPath)
+			},
+			[props.stores],
+		),
+	)
 
-	const [nodeStore, modified] = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow((s) => [s.nodeMapStore, s.modified]))
-	const rootNodeId = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.idByPath([]))!
-	const allNodeIds = ZusUtils.useStore(
+	const [nodeStore, modified] = Zus.useStore(
 		props.stores.filterEditor,
-		ZusUtils.useShallow(s => Array.from(s.tree.nodes.keys())),
+		Zus.useShallow((s) => [s.nodeMapStore, s.modified]),
+	)
+	const rootNodeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.idByPath([]))!
+	const allNodeIds = Zus.useStore(
+		props.stores.filterEditor,
+		Zus.useShallow((s) => Array.from(s.tree.nodes.keys())),
 	)
 
 	// leaf nodes & block control panels. we render these flatly for vdom perf and use NodePortal to put them in the right place in the DOM
@@ -152,9 +162,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						</TooltipContent>
 					</Tooltip>
 				</div>
-				<div className="flex items-center space-x-1 justify-end">
-					{props.children}
-				</div>
+				<div className="flex items-center space-x-1 justify-end">{props.children}</div>
 				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
 					<button
 						type="button"
@@ -180,27 +188,27 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		</div>
 	)
 
-	return <>{rendered} {leafNodes}</>
+	return (
+		<>
+			{rendered} {leafNodes}
+		</>
+	)
 }
 
 function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
-	const [nodeType, nodeMapStore] = ZusUtils.useStore(
+	const [nodeType, nodeMapStore] = Zus.useStore(
 		props.stores.filterEditor,
-		ZusUtils.useShallow(s => [
-			s.tree.nodes.get(props.nodeId)?.type,
-			s.nodeMapStore,
-		]),
+		Zus.useShallow((s) => [s.tree.nodes.get(props.nodeId)?.type, s.nodeMapStore]),
 	)
-	const nodePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
-	const immediateChildren = ZusUtils.useStore(
-		props.stores.filterEditor,
-		ZusUtils.useShallow(EditFrame.Sel.immediateChildren(props.nodeId)),
-	)
+	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
+	const immediateChildren = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.immediateChildren(props.nodeId)))
 	if (!nodePath) return null
 	if (!nodeType) return null
 
 	if (!F.isBlockType(nodeType)) {
-		{/* points to LeafFilterNode */}
+		{
+			/* points to LeafFilterNode */
+		}
 		return <LeafFilterNode nodeId={props.nodeId} stores={props.stores} />
 	}
 
@@ -249,7 +257,7 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 				<div className="flex items-center space-x-1 overflow-x-auto">
 					{props.actions.map((action, i) => {
 						// actions are a static, non-reordered config; a positional key is stable here
-						const key = action === 'separator' ? `sep-${i}` : (typeof action.label === 'string' ? action.label : `action-${i}`)
+						const key = action === 'separator' ? `sep-${i}` : typeof action.label === 'string' ? action.label : `action-${i}`
 						if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
 						return (
 							<Button
@@ -273,10 +281,8 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 }
 
 function BlockNodeControlPanel(props: NodeProps) {
-	const node = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId)) as F.ShallowEditableFilterNodeOfType<
-		F.BlockType
-	>
-	const nodePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
+	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId)) as F.ShallowEditableFilterNodeOfType<F.BlockType>
+	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
 	if (!F.isBlockType(node.type) || !nodePath) return null
 	const isRootNode = nodePath.length === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
@@ -302,7 +308,10 @@ function BlockNodeControlPanel(props: NodeProps) {
 					'separator',
 					{ label: 'map', onSelect: () => addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }) },
 					{ label: 'layer', onSelect: () => addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }) },
-					{ label: 'gamemode', onSelect: () => addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }) },
+					{
+						label: 'gamemode',
+						onSelect: () => addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }),
+					},
 					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
 					{ label: 'faction/unit', onSelect: () => addSeeded(EFB.inValues(), { group: 'team' }) },
 					{ label: 'scores', onSelect: () => addSeeded(EFB.comp(), { group: 'extra' }) },
@@ -311,12 +320,11 @@ function BlockNodeControlPanel(props: NodeProps) {
 					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
 				]}
 			/>
-			{!isRootNode
-				&& (
-					<Button size="icon" variant="ghost" onClick={deleteNode}>
-						<Minus color="hsl(var(--destructive))" />
-					</Button>
-				)}
+			{!isRootNode && (
+				<Button size="icon" variant="ghost" onClick={deleteNode}>
+					<Minus color="hsl(var(--destructive))" />
+				</Button>
+			)}
 		</div>
 	)
 }
@@ -328,11 +336,9 @@ function ChildNodeSeparator(props: {
 }) {
 	const dropProps = DndKit.useDroppable(props.item)
 	const activeItem = DndKit.useDragging()
-	const activePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString())))
-		?? null
+	const activePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
 	const slot = props.item.slots[0]
-	const itemPath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString())))
-		?? null
+	const itemPath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString()))) ?? null
 	let isValid = true
 	if (activePath && itemPath) {
 		if (activeItem!.type !== 'filter-node') isValid = false
@@ -360,9 +366,17 @@ function ChildNodeSeparator(props: {
 	)
 }
 
-const NodeWrapper = (
-	{ children, className, path, nodeId }: { children: React.ReactNode; className?: string; path: Sparse.NodePath; nodeId: string },
-) => {
+const NodeWrapper = ({
+	children,
+	className,
+	path,
+	nodeId,
+}: {
+	children: React.ReactNode
+	className?: string
+	path: Sparse.NodePath
+	nodeId: string
+}) => {
 	const dragItem: DND.DragItem = { type: 'filter-node', id: nodeId }
 	const depth = path.length
 	const dragProps = DndKit.useDraggable(dragItem, { feedback: 'default' })
@@ -373,7 +387,9 @@ const NodeWrapper = (
 			className="bg-background flex space-x-1 min-h-[20px] min-w-[40px] data-[is-dragging=true]:outline-solid rounded-md"
 			data-is-dragging={dragProps.isDragging}
 		>
-			{false ? draggingPlaceholder : (
+			{false ? (
+				draggingPlaceholder
+			) : (
 				<>
 					<button
 						type="button"
@@ -386,9 +402,7 @@ const NodeWrapper = (
 					>
 						<Icons.GripVertical />
 					</button>
-					<div className={cn('min-w-0', className)}>
-						{children}
-					</div>
+					<div className={cn('min-w-0', className)}>{children}</div>
 				</>
 			)}
 		</div>
@@ -397,9 +411,9 @@ const NodeWrapper = (
 
 type NodeProps = { nodeId: string; stores: EditFrame.KeyProp }
 export function LeafFilterNode(props: NodeProps) {
-	const editedFilterId = ZusUtils.useStore(props.stores.filterEditor, state => state.editedFilterId)
-	const node = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
-	const nodePath = ZusUtils.useStore(props.stores.filterEditor, ZusUtils.useShallow(EditFrame.Sel.nodePath(props.nodeId)))!
+	const editedFilterId = Zus.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
+	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
+	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))!
 	if (F.isBlockType(node.type)) return null
 	const depth = nodePath.length
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
@@ -421,9 +435,11 @@ export function LeafFilterNode(props: NodeProps) {
 		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
 		return (
 			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
-				{isSelectLayers
-					? <SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
-					: <CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />}
+				{isSelectLayers ? (
+					<SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+				) : (
+					<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+				)}
 				{opCluster}
 			</NodeWrapper>
 		)
@@ -453,7 +469,7 @@ export function LeafFilterNode(props: NodeProps) {
 				<ApplyFilter
 					filterId={node.filterId}
 					editedFilterId={editedFilterId}
-					setFilterId={id => actions.applyFilter.setFilterId(id)}
+					setFilterId={(id) => actions.applyFilter.setFilterId(id)}
 				/>
 				<Link
 					to="/filters/$filterId"
@@ -474,21 +490,22 @@ export function LeafFilterNode(props: NodeProps) {
 function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const cfg = ConfigClient.useEffectiveColConfig()
-	const hint = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
+	const hint = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
 	// scope the subject dropdown to the node's column group, re-derived from the chosen column so the
 	// restriction persists; the create-hint only supplies the group while the comparison is still blank.
 	const subject = props.node.args[0] as F.EditableScalarArg | undefined
-	const subjectColumn = subject?.type === 'column'
-		? subject.column
-		: subject?.type === 'team-column' && subject.column
-		? F.resolveTeamColumn(subject.column, 1)
-		: undefined
+	const subjectColumn =
+		subject?.type === 'column'
+			? subject.column
+			: subject?.type === 'team-column' && subject.column
+				? F.resolveTeamColumn(subject.column, 1)
+				: undefined
 	const group = (subjectColumn ? F.subjectColumnGroup(subjectColumn, cfg ?? undefined) : undefined) ?? hint?.group
 	const allowedColumns = group ? F.columnsInGroup(group, cfg ?? undefined) : undefined
 	return (
 		<Comparison
 			node={props.node}
-			setNode={update => actions.comp.setNode(update)}
+			setNode={(update) => actions.comp.setNode(update)}
 			teamColumnsAvailable={group === 'team' || group === undefined}
 			allowedColumns={allowedColumns}
 			defaultFocus={hint?.focus}
@@ -500,17 +517,19 @@ function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node
 // the simplified `id in [...]` node: just the layer picker, since `id` supports no other operation.
 function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
-	const hint = ZusUtils.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
+	const hint = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
 	const valuesArg = props.node.args[1]
 	const items = (valuesArg?.type === 'values' ? valuesArg.values : undefined) ?? []
 	const values = items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
 	const setValues = (update: React.SetStateAction<(string | null)[]>) =>
-		actions.comp.setNode(Im.produce((c) => {
-			const prev = (c.args[1]?.type === 'values' ? c.args[1].values : undefined) ?? []
-			const primitives = prev.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
-			const next = typeof update === 'function' ? update(primitives) : update
-			c.args[1] = { type: 'values', values: next.length === 0 ? undefined : next }
-		}))
+		actions.comp.setNode(
+			Im.produce((c) => {
+				const prev = (c.args[1]?.type === 'values' ? c.args[1].values : undefined) ?? []
+				const primitives = prev.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
+				const next = typeof update === 'function' ? update(primitives) : update
+				c.args[1] = { type: 'values', values: next.length === 0 ? undefined : next }
+			}),
+		)
 	return (
 		<div className="flex items-center space-x-1">
 			<ComboBox
@@ -639,7 +658,10 @@ export function Comparison(props: {
 			{ value: teamColumnValue(tc, 'both'), label: `${tc} (Both)` },
 			{ value: teamColumnValue(tc, 'either'), label: `${tc} (Either)` },
 		])
-		const rest = allowedBaseCols.filter((c) => !teamBaseCols.has(c)).map(baseOption).sort(byLabel)
+		const rest = allowedBaseCols
+			.filter((c) => !teamBaseCols.has(c))
+			.map(baseOption)
+			.sort(byLabel)
 		columnOptions = [...teamGroup, ...rest]
 	} else {
 		columnOptions = allowedBaseCols.map(baseOption).sort(byLabel)
@@ -655,7 +677,9 @@ export function Comparison(props: {
 			const type = keepOp ? c.type : F.defaultCompType(newDomain)
 			const neg = keepOp ? c.neg : false
 			const slots = F.COMP_TYPE_DEFS[type].argSlots
-			const args = slots.map((slot, i): F.EditableArg => i === 0 ? newAnchor : (slot === 'values' ? { type: 'values' } : { type: 'value' }))
+			const args = slots.map(
+				(slot, i): F.EditableArg => (i === 0 ? newAnchor : slot === 'values' ? { type: 'values' } : { type: 'value' }),
+			)
 			return { type, neg, args }
 		})
 	}
@@ -663,50 +687,50 @@ export function Comparison(props: {
 	const columnDef = optionsColumn ? LC.getColumnDef(optionsColumn, cfg) : undefined
 	const componentStyles = props.highlight ? 'bg-accent' : undefined
 
-	const columnBox = columnEditable
-		? (
-			<ComboBox
-				title={props.columnLabel ?? columnDef?.displayName ?? 'Column'}
-				className={componentStyles}
-				allowEmpty
-				value={currentColumnValue}
-				options={columnOptions}
-				// options are pre-ordered (team families grouped, rest alphabetical); keep that order
-				sort={false}
-				ref={columnBoxRef}
-				// selecting a column always resets and reopens the next argument, so hand focus onward on
-				// selection (ComboBox still restores focus on a plain dismiss)
-				preventCloseAutoFocus
-				onSelect={(value) => {
-					if (!value) return setNode(() => ({ type: 'eq', neg: false, args: [{ type: 'column' }, { type: 'value' }] }))
-					if (value.startsWith(TEAM_PREFIX)) {
-						const [quantifier, column] = value.slice(TEAM_PREFIX.length).split(':') as [F.TeamQuantifier, F.TeamColumn]
-						// changing only the quantifier on the same column keeps the operator and value(s)
-						if (column === anchorTeamColumn) {
-							setNode(Im.produce((c) => {
+	const columnBox = columnEditable ? (
+		<ComboBox
+			title={props.columnLabel ?? columnDef?.displayName ?? 'Column'}
+			className={componentStyles}
+			allowEmpty
+			value={currentColumnValue}
+			options={columnOptions}
+			// options are pre-ordered (team families grouped, rest alphabetical); keep that order
+			sort={false}
+			ref={columnBoxRef}
+			// selecting a column always resets and reopens the next argument, so hand focus onward on
+			// selection (ComboBox still restores focus on a plain dismiss)
+			preventCloseAutoFocus
+			onSelect={(value) => {
+				if (!value) return setNode(() => ({ type: 'eq', neg: false, args: [{ type: 'column' }, { type: 'value' }] }))
+				if (value.startsWith(TEAM_PREFIX)) {
+					const [quantifier, column] = value.slice(TEAM_PREFIX.length).split(':') as [F.TeamQuantifier, F.TeamColumn]
+					// changing only the quantifier on the same column keeps the operator and value(s)
+					if (column === anchorTeamColumn) {
+						setNode(
+							Im.produce((c) => {
 								if (c.args[0]?.type === 'team-column') c.args[0].quantifier = quantifier
-							}))
-							return
-						}
-						selectAnchor({ type: 'team-column', column, quantifier })
-						// team columns are enum-domained, so advance straight to the value
-						setFocusRequest('advance')
+							}),
+						)
 						return
 					}
-					const newAnchor: F.EditableScalarArg = { type: 'column', column: value }
-					selectAnchor(newAnchor)
-					// numeric subjects: the operator matters (eq/lt/gt/inrange), so send focus to the operator
-					// select; everything else advances straight to the value
-					const newDomain = F.argValueDomain(newAnchor, cfg)
-					setFocusRequest(newDomain?.kind === 'number' ? 'operator' : 'advance')
-				}}
-			/>
-		)
-		: (
-			<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none', componentStyles)}>
-				{props.columnLabel ?? columnDef?.displayName}
-			</span>
-		)
+					selectAnchor({ type: 'team-column', column, quantifier })
+					// team columns are enum-domained, so advance straight to the value
+					setFocusRequest('advance')
+					return
+				}
+				const newAnchor: F.EditableScalarArg = { type: 'column', column: value }
+				selectAnchor(newAnchor)
+				// numeric subjects: the operator matters (eq/lt/gt/inrange), so send focus to the operator
+				// select; everything else advances straight to the value
+				const newDomain = F.argValueDomain(newAnchor, cfg)
+				setFocusRequest(newDomain?.kind === 'number' ? 'operator' : 'advance')
+			}}
+		/>
+	) : (
+		<span className={cn(buttonVariants({ size: 'default', variant: 'outline' }), 'pointer-events-none', componentStyles)}>
+			{props.columnLabel ?? columnDef?.displayName}
+		</span>
+	)
 	// operator options come from the subject's domain once one is set, otherwise the full set is offered
 	const opOptions = F.compOpSelectOptions(domain)
 	const codeBox = (
@@ -764,9 +788,11 @@ export function Comparison(props: {
 
 	// -------- value editor(s) --------
 	const setSlotValue = (index: number, value: F.Value | undefined) =>
-		setNode(Im.produce((c) => {
-			c.args[index] = { type: 'value', value }
-		}))
+		setNode(
+			Im.produce((c) => {
+				c.args[index] = { type: 'value', value }
+			}),
+		)
 
 	// a scalar value slot may instead reference another column of the same value domain (column-vs-column).
 	// offered only in the full editor, not the locked filter menu.
@@ -784,10 +810,12 @@ export function Comparison(props: {
 	const operandKindSelector = (index: number, isColumn: boolean) => {
 		if (!allowColumnOperand) return null
 		const setKind = (kind: 'value' | 'column') =>
-			setNode(Im.produce((c) => {
-				// no-op if already that kind, so re-picking the active segment preserves the current value
-				if (c.args[index]?.type !== kind) c.args[index] = { type: kind }
-			}))
+			setNode(
+				Im.produce((c) => {
+					// no-op if already that kind, so re-picking the active segment preserves the current value
+					if (c.args[index]?.type !== kind) c.args[index] = { type: kind }
+				}),
+			)
 		return (
 			<ButtonGroup>
 				<Button
@@ -816,21 +844,22 @@ export function Comparison(props: {
 	// button to set a slot to null (IS NULL) / clear it back to an empty constant; only for `eq`, where
 	// null is meaningful. On floats, eq is null-only so the value is fixed to null (no toggle).
 	const nullToggle = (index: number, isNull: boolean) =>
-		(columnEditable && node.type === 'eq' && !enumSubject && !F.isFloatEqNullOnly(domain, node.type))
-			? (
-				<Button
-					size="icon"
-					variant={isNull ? 'secondary' : 'ghost'}
-					title={isNull ? 'Clear null' : 'Compare to null'}
-					onClick={() =>
-						setNode(Im.produce((c) => {
+		columnEditable && node.type === 'eq' && !enumSubject && !F.isFloatEqNullOnly(domain, node.type) ? (
+			<Button
+				size="icon"
+				variant={isNull ? 'secondary' : 'ghost'}
+				title={isNull ? 'Clear null' : 'Compare to null'}
+				onClick={() =>
+					setNode(
+						Im.produce((c) => {
 							c.args[index] = { type: 'value', value: isNull ? undefined : null }
-						}))}
-				>
-					<Icons.Ban className="h-4 w-4" />
-				</Button>
-			)
-			: null
+						}),
+					)
+				}
+			>
+				<Icons.Ban className="h-4 w-4" />
+			</Button>
+		) : null
 
 	// renders the editor for a single scalar value slot: a column picker when it references a column,
 	// a "null" indicator when the value is null, otherwise a constant editor chosen by the anchor's domain
@@ -848,9 +877,12 @@ export function Comparison(props: {
 						value={arg.column}
 						options={comparableColumnOptions()}
 						onSelect={(v) =>
-							setNode(Im.produce((c) => {
-								c.args[index] = { type: 'column', column: v || undefined }
-							}))}
+							setNode(
+								Im.produce((c) => {
+									c.args[index] = { type: 'column', column: v || undefined }
+								}),
+							)
+						}
 					/>
 					{nullToggle(index, false)}
 				</div>
@@ -869,9 +901,9 @@ export function Comparison(props: {
 						</TooltipTrigger>
 						<TooltipContent className="max-w-xs">
 							<p>
-								This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences
-								make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>&lt;</code>/<code>&gt;</code>{' '}
-								to compare magnitudes; <code>=</code> only checks whether the value is null.
+								This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding
+								differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>&lt;</code>/
+								<code>&gt;</code> to compare magnitudes; <code>=</code> only checks whether the value is null.
 							</p>
 						</TooltipContent>
 					</Tooltip>
@@ -918,7 +950,10 @@ export function Comparison(props: {
 					className={componentStyles}
 					title="value"
 					value={value === undefined || value === null ? undefined : String(value)}
-					options={[{ value: 'true', label: 'true' }, { value: 'false', label: 'false' }]}
+					options={[
+						{ value: 'true', label: 'true' },
+						{ value: 'false', label: 'false' },
+					]}
 					onSelect={(v) => setSlotValue(index, v === undefined ? undefined : v === 'true')}
 				/>,
 			)
@@ -943,11 +978,13 @@ export function Comparison(props: {
 			const valuesArg = node.args[1]
 			const items = (valuesArg?.type === 'values' ? valuesArg.values : undefined) ?? []
 			const setItems = (update: React.SetStateAction<F.InListItem[]>) =>
-				setNode(Im.produce((c) => {
-					const prev = (c.args[1]?.type === 'values' ? c.args[1].values : undefined) ?? []
-					const next = typeof update === 'function' ? update(prev) : update
-					c.args[1] = { type: 'values', values: next.length === 0 ? undefined : next }
-				}))
+				setNode(
+					Im.produce((c) => {
+						const prev = (c.args[1]?.type === 'values' ? c.args[1].values : undefined) ?? []
+						const next = typeof update === 'function' ? update(prev) : update
+						c.args[1] = { type: 'values', values: next.length === 0 ? undefined : next }
+					}),
+				)
 			if (optionsColumn === 'id') {
 				// layer-id lists are constant-only (there is only one id column)
 				const setValues = (update: React.SetStateAction<(string | null)[]>) =>
@@ -1041,19 +1078,17 @@ function ApplyFilter(props: ApplyFilterProps) {
 	)
 }
 
-export function StringEqConfig<T extends string | null>(
-	props: {
-		value: T | undefined
-		column: LC.GroupByColumn
-		allowedValues?: T[]
-		onSetAllValuesAllowed?: () => void
-		onSetAllValuesAllowedLabel?: string
-		setValue: (value: T | undefined) => void
-		className?: string
-		lockOnSingleOption?: boolean
-		ref?: React.ForwardedRef<ComboBoxHandle>
-	},
-) {
+export function StringEqConfig<T extends string | null>(props: {
+	value: T | undefined
+	column: LC.GroupByColumn
+	allowedValues?: T[]
+	onSetAllValuesAllowed?: () => void
+	onSetAllValuesAllowedLabel?: string
+	setValue: (value: T | undefined) => void
+	className?: string
+	lockOnSingleOption?: boolean
+	ref?: React.ForwardedRef<ComboBoxHandle>
+}) {
 	const lockOnSingleOption = props.lockOnSingleOption ?? false
 	// keep the callback identity out of the options memo -- parents often pass a fresh closure each render
 	const onSetAllValuesAllowedRef = React.useRef(props.onSetAllValuesAllowed)
@@ -1104,27 +1139,25 @@ export function StringEqConfig<T extends string | null>(
 			className={props.className}
 			title={LC.getColumnDef(props.column)?.displayName ?? props.column}
 			disabled={lockOnSingleOption && options.length === 1}
-			value={(lockOnSingleOption && options.length === 1) ? options[0].value : props.value}
+			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
 			options={options}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
 }
 
-function StringInConfig(
-	props: {
-		values: (string | null)[]
-		column: LC.GroupByColumn
-		allowedValues?: (string | null)[]
-		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		className?: string
-		ref?: React.ForwardedRef<ComboBoxHandle>
-		restrictValueSize?: boolean
-		// matchup dimensions title themselves by dimension ('Faction'), not by the underlying column ('T1')
-		title?: string
-		emptyLabel?: string
-	},
-) {
+function StringInConfig(props: {
+	values: (string | null)[]
+	column: LC.GroupByColumn
+	allowedValues?: (string | null)[]
+	setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
+	className?: string
+	ref?: React.ForwardedRef<ComboBoxHandle>
+	restrictValueSize?: boolean
+	// matchup dimensions title themselves by dimension ('Faction'), not by the underlying column ('T1')
+	title?: string
+	emptyLabel?: string
+}) {
 	const options = React.useMemo(() => {
 		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
 		const options: ComboBoxOption<string | null>[] = []
@@ -1259,9 +1292,7 @@ export function MatchupConfig(props: {
 							: 'Either team order matches: the two sides are interchangeable. Click to lock them to team 1 and team 2.'}
 					</TooltipContent>
 				</Tooltip>
-				<span className="whitespace-nowrap text-[10px] text-muted-foreground">
-					{node.locked ? 'order locked' : 'either order'}
-				</span>
+				<span className="whitespace-nowrap text-[10px] text-muted-foreground">{node.locked ? 'order locked' : 'either order'}</span>
 			</div>
 			<TeamSpecConfig
 				label={rightLabel}
@@ -1279,19 +1310,17 @@ function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; n
 }
 
 // value list for an `in` operator: a constant multi-select plus (in the editor) removable column references
-function InListConfig(
-	props: {
-		items: F.InListItem[]
-		setItems: (update: React.SetStateAction<F.InListItem[]>) => void
-		column: LC.GroupByColumn
-		allowedEnumValues?: string[]
-		comparableColumns: ComboBoxOption<string>[]
-		allowColumns: boolean
-		restrictValueSize?: boolean
-		className?: string
-		ref?: React.ForwardedRef<ComboBoxHandle>
-	},
-) {
+function InListConfig(props: {
+	items: F.InListItem[]
+	setItems: (update: React.SetStateAction<F.InListItem[]>) => void
+	column: LC.GroupByColumn
+	allowedEnumValues?: string[]
+	comparableColumns: ComboBoxOption<string>[]
+	allowColumns: boolean
+	restrictValueSize?: boolean
+	className?: string
+	ref?: React.ForwardedRef<ComboBoxHandle>
+}) {
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const primitives = props.items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
 	const columns = props.items.filter(F.isColumnListItem)
@@ -1304,7 +1333,9 @@ function InListConfig(
 			return [...next, ...prevColumns]
 		})
 	const addColumn = (column: string) =>
-		props.setItems((prev) => prev.some((i) => F.isColumnListItem(i) && i.column === column) ? prev : [...prev, { type: 'column', column }])
+		props.setItems((prev) =>
+			prev.some((i) => F.isColumnListItem(i) && i.column === column) ? prev : [...prev, { type: 'column', column }],
+		)
 	const removeColumn = (column: string) => props.setItems((prev) => prev.filter((i) => !(F.isColumnListItem(i) && i.column === column)))
 
 	const addableColumns = props.comparableColumns.filter((o) => !columns.some((c) => c.column === o.value))
@@ -1341,17 +1372,15 @@ function InListConfig(
 	)
 }
 
-function LayersInConfig(
-	props: {
-		values: (string | null)[]
-		setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
-		className?: string
-		// open the layer-select dialog once on mount (a freshly added "select layers" node)
-		autoOpen?: boolean
-	},
-) {
+function LayersInConfig(props: {
+	values: (string | null)[]
+	setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
+	className?: string
+	// open the layer-select dialog once on mount (a freshly added "select layers" node)
+	autoOpen?: boolean
+}) {
 	const [open, setOpen] = React.useState(false)
-	const filteredValues = props.values?.filter(v => v !== null)
+	const filteredValues = props.values?.filter((v) => v !== null)
 
 	// mirrors the comparison/apply-filter auto-open: rAF + cancel dodges the portal remount race
 	React.useEffect(() => {
@@ -1362,7 +1391,7 @@ function LayersInConfig(
 	}, [])
 
 	const removeValue = (layerIdToRemove: string) => {
-		props.setValues(prevValues => prevValues?.filter(layerId => layerId !== layerIdToRemove) ?? [])
+		props.setValues((prevValues) => prevValues?.filter((layerId) => layerId !== layerIdToRemove) ?? [])
 	}
 
 	// TODO implement a useImperativeHandle call
@@ -1376,8 +1405,7 @@ function LayersInConfig(
 							<Button
 								size="sm"
 								variant="ghost"
-								onClick={() =>
-									removeValue(layerId)}
+								onClick={() => removeValue(layerId)}
 								className="h-6 w-6 shrink-0 p-0 hover:bg-destructive/20 hover:text-destructive"
 							>
 								<Minus className="h-3 w-3" />
@@ -1397,22 +1425,27 @@ function LayersInConfig(
 					title="Select Layers"
 					pinMode="layers"
 					defaultSelected={filteredValues}
-					selectQueueItems={items => props.setValues(values => Arr.union(values, items.map(items => items.layerId!)))}
+					selectQueueItems={(items) =>
+						props.setValues((values) =>
+							Arr.union(
+								values,
+								items.map((items) => items.layerId!),
+							),
+						)
+					}
 				/>
 			</div>
 		</div>
 	)
 }
 
-function NumericValueConfig(
-	props: {
-		placeholder?: string
-		className?: string
-		value?: number
-		setValue: (value?: number) => void
-		ref?: React.ForwardedRef<Focusable & Clearable>
-	},
-) {
+function NumericValueConfig(props: {
+	placeholder?: string
+	className?: string
+	value?: number
+	setValue: (value?: number) => void
+	ref?: React.ForwardedRef<Focusable & Clearable>
+}) {
 	const [value, setValue] = React.useState(props.value?.toString() ?? '')
 	const inputRef = React.useRef<HTMLInputElement>(null)
 	React.useImperativeHandle(props.ref, () => ({

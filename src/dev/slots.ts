@@ -185,6 +185,8 @@ export async function releaseSlot(cwd = process.cwd()): Promise<boolean> {
 export async function listSlots(cwd = process.cwd()): Promise<Slot[]> {
 	return withLock(registryPath(cwd), (registry) => {
 		prune(registry)
-		return Object.entries(registry).map(([worktree, entry]) => toSlot(worktree, entry)).sort((a, b) => a.slot - b.slot)
+		return Object.entries(registry)
+			.map(([worktree, entry]) => toSlot(worktree, entry))
+			.sort((a, b) => a.slot - b.slot)
 	})
 }

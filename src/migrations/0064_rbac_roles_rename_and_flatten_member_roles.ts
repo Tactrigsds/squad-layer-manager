@@ -36,7 +36,9 @@ export async function up(db: MigrationDriver): Promise<void> {
 		const flat: string[] = []
 		for (const entry of memberAssignments) {
 			if (typeof entry === 'string') flat.push(entry)
-			else if (entry && Array.isArray(entry.roles)) { for (const r of entry.roles) if (typeof r === 'string') flat.push(r) }
+			else if (entry && Array.isArray(entry.roles)) {
+				for (const r of entry.roles) if (typeof r === 'string') flat.push(r)
+			}
 		}
 		rbac.roleAssignments['discord-server-member'] = [...new Set(flat)]
 		changed = true

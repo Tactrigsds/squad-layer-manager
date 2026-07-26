@@ -2,6 +2,7 @@ import * as childProcess from 'node:child_process'
 import * as net from 'node:net'
 import * as path from 'node:path'
 import { parseArgs } from 'node:util'
+
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
 
@@ -66,18 +67,24 @@ function emulatorRunning(): Promise<boolean> {
 	})
 }
 
-if (!args.values['no-emu'] && !await emulatorRunning()) {
+if (!args.values['no-emu'] && !(await emulatorRunning())) {
 	spawn('emu', '\x1b[33m', bin('tsx'), ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-emu.ts'])
 }
 
-spawn('server', '\x1b[36m', bin('tsx'), [
-	'watch',
-	`--inspect=127.0.0.1:${slot.ports.inspect}`,
-	'--include=./.env',
-	'--tsconfig',
-	'tsconfig.node.json',
-	'src/server/main-instrumented.ts',
-], { NODE_OPTIONS: '--import ./register-otel.mjs' })
+spawn(
+	'server',
+	'\x1b[36m',
+	bin('tsx'),
+	[
+		'watch',
+		`--inspect=127.0.0.1:${slot.ports.inspect}`,
+		'--include=./.env',
+		'--tsconfig',
+		'tsconfig.node.json',
+		'src/server/main-instrumented.ts',
+	],
+	{ NODE_OPTIONS: '--import ./register-otel.mjs' },
+)
 
 spawn('client', '\x1b[35m', bin('vite'), [])
 

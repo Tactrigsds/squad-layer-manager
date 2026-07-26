@@ -1,9 +1,12 @@
-import * as Arr from '@/lib/array'
-import * as Obj from '@/lib/object'
+import { z } from 'zod'
+
+import * as Arr from '@/lib/array-utils'
+import * as CD from '@/lib/ctx-def'
+import * as Obj from '@/lib/object-utils'
+import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 
-import { z } from 'zod'
 import { assertNever } from './lib/type-guards'
 
 export type GenericRole = {
@@ -70,9 +73,9 @@ export const UserDefinedRoleIdSchema = z
 	.min(3)
 	.max(32)
 	.refine((roleType) => !isInferredRoleType({ type: roleType }), {
-		error: `Role cannot be the same as one of the inferred roles: ${
-			InferredRoleSchema.options.map((opt) => opt.shape.type.value).join(', ')
-		}`,
+		error: `Role cannot be the same as one of the inferred roles: ${InferredRoleSchema.options
+			.map((opt) => opt.shape.type.value)
+			.join(', ')}`,
 	})
 
 export type RoleAssignment =
@@ -87,7 +90,7 @@ export type RoleAssignment =
 export const ROLE_ASSIGNMENT_TYPES = ['discord-role', 'discord-user', 'discord-server-member'] as const
 {
 	// typecheck
-	const _ = '' as typeof ROLE_ASSIGNMENT_TYPES[number] satisfies RoleAssignment['type']
+	const _ = '' as (typeof ROLE_ASSIGNMENT_TYPES)[number] satisfies RoleAssignment['type']
 }
 
 export const PERM_SCOPE_ARGS = {
@@ -174,7 +177,10 @@ export const PERMISSION_DEFINITION = {
 		scope: 'server',
 	}),
 	...definePermission('squad-server:end-match', { description: 'End the current match on the server', scope: 'server' }),
-	...definePermission('squad-server:disable-slm-updates', { description: 'Disable updates from slm to the game-server', scope: 'server' }),
+	...definePermission('squad-server:disable-slm-updates', {
+		description: 'Disable updates from slm to the game-server',
+		scope: 'server',
+	}),
 	...definePermission('squad-server:turn-fog-off', { description: 'Disable fog-of-war for the current match', scope: 'server' }),
 	...definePermission('squad-server:manage-players', {
 		description: 'Kill players, disband squads, remove players from squads, demote commanders, and manage team swaps',
@@ -191,15 +197,17 @@ export const PERMISSION_DEFINITION = {
 		scope: 'timeout',
 	}),
 	...definePermission('squad-server:view-console', {
-		description: "Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, "
-			+ 'including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the '
-			+ 'dashboard does. Read-only: it cannot issue commands.',
+		description:
+			"Read the server's raw rcon traffic and unparsed log lines. This is everything the game server says, " +
+			'including player IPs, steam and EOS ids, admin chat and every admin action, so it discloses more than the ' +
+			'dashboard does. Read-only: it cannot issue commands.',
 		scope: 'server',
 	}),
 
 	...definePermission('sandbox:control', {
-		description: 'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. '
-			+ 'Has no effect on a server backed by a real squad server.',
+		description:
+			'Drive a sandbox server: connect and disconnect fabricated players, speak as them, end matches and inject faults. ' +
+			'Has no effect on a server backed by a real squad server.',
 		scope: 'server',
 	}),
 
@@ -220,13 +228,13 @@ export type ServerPermissionType = Extract<KnownPermission, { scope: 'server' }>
 
 export const PERMISSION_TYPE = z.enum(Object.keys(PERMISSION_DEFINITION) as [PermissionType, ...PermissionType[]])
 export const GLOBAL_PERMISSION_TYPE = z.enum(
-	Object.values(PERMISSION_DEFINITION).flatMap((def) => def.scope === 'global' ? [def.type] : []) as [
+	Object.values(PERMISSION_DEFINITION).flatMap((def) => (def.scope === 'global' ? [def.type] : [])) as [
 		GlobalPermissionType,
 		...GlobalPermissionType[],
 	],
 )
 export const SERVER_PERMISSION_TYPE = z.enum(
-	Object.values(PERMISSION_DEFINITION).flatMap((def) => def.scope === 'server' ? [def.type] : []) as [
+	Object.values(PERMISSION_DEFINITION).flatMap((def) => (def.scope === 'server' ? [def.type] : [])) as [
 		ServerPermissionType,
 		...ServerPermissionType[],
 	],
@@ -251,16 +259,11 @@ export type RoleGrantablePermissionType =
 	| ServerPermissionType
 	| (typeof ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES)[number]
 
-export const ROLE_GRANTABLE_PERMISSION_TYPE = z.enum(
-	[
-		...GLOBAL_PERMISSION_TYPE.options,
-		...SERVER_PERMISSION_TYPE.options,
-		...ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES,
-	] as unknown as [
-		RoleGrantablePermissionType,
-		...RoleGrantablePermissionType[],
-	],
-)
+export const ROLE_GRANTABLE_PERMISSION_TYPE = z.enum([
+	...GLOBAL_PERMISSION_TYPE.options,
+	...SERVER_PERMISSION_TYPE.options,
+	...ROLE_GRANTABLE_SCOPED_PERMISSION_TYPES,
+] as unknown as [RoleGrantablePermissionType, ...RoleGrantablePermissionType[]])
 
 // the scope args a bare role expression grants: unrestricted everything (all servers, all paths)
 export function unrestrictedRoleGrantArgs<T extends RoleGrantablePermissionType>(type: T): PermArgs<T> {
@@ -290,18 +293,18 @@ export function parseNegatingPermissionType(expr: string): RoleGrantablePermissi
 
 export function fromTracedPermissions(perms: TracedPermission[]): Permission[] {
 	// Obj.exclude collapses the discriminated union; the runtime object is still a valid Permission
-	return perms.filter(perm => !perm.negated && !perm.negating).map(perm => Obj.exclude(perm, ['negated', 'negating']) as Permission)
+	return perms.filter((perm) => !perm.negated && !perm.negating).map((perm) => Obj.exclude(perm, ['negated', 'negating']) as Permission)
 }
 
 export function recalculateNegations(perms: TracedPermission[]) {
-	const recalculated = perms.map(perm => {
+	const recalculated = perms.map((perm) => {
 		let negated: boolean
 		if (perm.negating) negated = true
 		else {
 			const negatedVersion = { ...perm, negating: true, negated: true }
 			negated = perms.some((perm) => arePermsEqual(negatedVersion, perm))
 		}
-		return ({ ...perm, negated })
+		return { ...perm, negated }
 	})
 	return recalculated
 }
@@ -309,9 +312,13 @@ export function recalculateNegations(perms: TracedPermission[]) {
 export const ROLE_PERMISSION_EXPRESSION = z.union([
 	ROLE_GRANTABLE_PERMISSION_TYPE,
 	z.literal('*').describe('include all'),
-	z.string().regex(/^!/).refine((str) => ROLE_GRANTABLE_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
-		error: 'Negated permission must be a valid role-grantable permission type',
-	}).describe('negated permissions. takes precedence wherever present for a user'),
+	z
+		.string()
+		.regex(/^!/)
+		.refine((str) => ROLE_GRANTABLE_PERMISSION_TYPE.safeParse(str.slice(1)).success, {
+			error: 'Negated permission must be a valid role-grantable permission type',
+		})
+		.describe('negated permissions. takes precedence wherever present for a user'),
 ])
 
 export type RolePermissionExpression = z.infer<typeof ROLE_PERMISSION_EXPRESSION>
@@ -389,10 +396,7 @@ export function addTracedPerms(perms: TracedPermission[], ...permsToAdd: TracedP
 	}
 }
 
-export function permissionDenied(
-	checkType: PermissionReq['check'],
-	failures: string[],
-): PermissionDeniedResponse {
+export function permissionDenied(checkType: PermissionReq['check'], failures: string[]): PermissionDeniedResponse {
 	return {
 		code: 'err:permission-denied',
 		checkType,
@@ -423,7 +427,7 @@ export type PermitChecker<T extends PermissionType = PermissionType> =
 
 export type PermissionReq<T extends PermissionType = PermissionType> = { check: 'all' | 'any'; permits: PermitChecker<T>[] }
 export function permReq<T extends PermissionType>(check: 'all' | 'any', permits: (PermitChecker<T> | undefined)[]): PermissionReq<T> {
-	return { check, permits: permits.filter(v => Boolean(v)) as PermitChecker<T>[] }
+	return { check, permits: permits.filter((v) => Boolean(v)) as PermitChecker<T>[] }
 }
 
 // how a failed static permit is described in a denial response
@@ -461,9 +465,8 @@ export function tryDenyPermissions<T extends PermissionType>(
 				failures.push(errorMessage)
 			}
 		} else {
-			const hasPerm = typeof reqPerm === 'string'
-				? userPerms.some((userPerm) => userPerm.type === reqPerm)
-				: permSubsumedBy(reqPerm, userPerms)
+			const hasPerm =
+				typeof reqPerm === 'string' ? userPerms.some((userPerm) => userPerm.type === reqPerm) : permSubsumedBy(reqPerm, userPerms)
 			if (!hasPerm) {
 				failures.push(describePermit(reqPerm))
 			}
@@ -605,8 +608,8 @@ function grantAppliesTo(args: { serverId: string | null } | undefined, serverId:
 // permission: adding a server-scoped permission needs no change here.
 function serverScopedSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 	const args = perm.args as { serverId: string | null } | undefined
-	return perms.some((p) =>
-		p.type === perm.type && grantAppliesTo(p.args as { serverId: string | null } | undefined, args?.serverId ?? null)
+	return perms.some(
+		(p) => p.type === perm.type && grantAppliesTo(p.args as { serverId: string | null } | undefined, args?.serverId ?? null),
 	)
 }
 
@@ -646,19 +649,13 @@ export function serverSettingsWriteAccess(perms: Permission[], serverId: string)
 }
 
 export function canWriteSensitiveServerSettings(perms: Permission[], serverId: string): boolean {
-	return perms.some((p) =>
-		p.type === 'server-settings:write-sensitive'
-		&& serverIdMatches(p.args, serverId)
-	)
+	return perms.some((p) => p.type === 'server-settings:write-sensitive' && serverIdMatches(p.args, serverId))
 }
 
 // creating a server means supplying its connection details, which is gated by write-sensitive. A grant scoped to a
 // specific server id can't authorize a brand-new id, so creation requires an unscoped (all-servers) write-sensitive grant.
 export function canCreateServers(perms: Permission[]): boolean {
-	return perms.some((p) =>
-		p.type === 'server-settings:write-sensitive'
-		&& (p.args?.serverId ?? null) === null
-	)
+	return perms.some((p) => p.type === 'server-settings:write-sensitive' && (p.args?.serverId ?? null) === null)
 }
 
 export function canReadServerSettings(perms: Permission[], serverId: string): boolean {
@@ -761,3 +758,9 @@ export function getPermissionsByRole(permissions: TracedPermission[]): [Role, Tr
 
 	return Array.from(rolePermissionsMap.entries()).map(([roleKey, perms]) => [JSON.parse(roleKey) as Role, perms])
 }
+
+export type Ctx = CS.Ctx & {
+	roles: Role[]
+	perms: TracedPermission[]
+}
+export const CtxDef = CD.defCtx<Ctx>()(['roles', 'perms'], { name: 'userRbac' })

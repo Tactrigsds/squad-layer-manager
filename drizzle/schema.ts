@@ -1,6 +1,8 @@
-import { enumTupleOptions } from '@/lib/zod'
 import { customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
+
+import * as ZodUtils from '@/lib/zod-utils'
+
 import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
 // 64-bit ids (discord/steam) are stored as TEXT: sqlite INTEGER is signed 64-bit and better-sqlite3
@@ -19,7 +21,9 @@ export const matchHistory = sqliteTable(
 	'matchHistory',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		serverId: text('serverId').notNull().references(() => servers.id, { onDelete: 'cascade' }),
+		serverId: text('serverId')
+			.notNull()
+			.references(() => servers.id, { onDelete: 'cascade' }),
 		ordinal: integer('ordinal').notNull(),
 
 		// may not be in layerId table (RAW: prefix or outdated)
@@ -36,12 +40,7 @@ export const matchHistory = sqliteTable(
 		team1Tickets: integer('team1Tickets'),
 		team2Tickets: integer('team2Tickets'),
 		setByType: text('setByType', {
-			enum: [
-				'manual',
-				'gameserver',
-				'generated',
-				'unknown',
-			],
+			enum: ['manual', 'gameserver', 'generated', 'unknown'],
 		}).notNull(),
 		setByUserId: bigintText('setByUserId'),
 	},
@@ -54,27 +53,26 @@ export const matchHistory = sqliteTable(
 	}),
 )
 
-export const balanceTriggerEvents = sqliteTable(
-	'balanceTriggerEvents',
-	{
-		id: integer('id').primaryKey({ autoIncrement: true }),
-		triggerId: text('triggerId').notNull(),
-		triggerVersion: integer('triggerVersion').notNull(),
-		matchTriggeredId: integer('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
-		// the generic form of the message
-		strongerTeam: text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
-		level: text('level', { enum: enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
-		evaluationResult: json('evaluationResult').notNull(),
-	},
-)
+export const balanceTriggerEvents = sqliteTable('balanceTriggerEvents', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	triggerId: text('triggerId').notNull(),
+	triggerVersion: integer('triggerVersion').notNull(),
+	matchTriggeredId: integer('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
+	// the generic form of the message
+	strongerTeam: text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
+	level: text('level', { enum: ZodUtils.enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
+	evaluationResult: json('evaluationResult').notNull(),
+})
 
 export const serverEvents = sqliteTable(
 	'serverEvents',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		type: text('type', { enum: enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
 		time: timestamp('time').notNull(),
-		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }).notNull(),
+		matchId: integer('matchId')
+			.references(() => matchHistory.id, { onDelete: 'cascade' })
+			.notNull(),
 		// links this server event to the SLM app (audit) event that caused it, if any. queryable projection
 		// of the event's `source` when source.type === 'event'.
 		appEventId: text('appEventId').references(() => appEvents.id, { onDelete: 'set null' }),
@@ -96,10 +94,10 @@ export const appEvents = sqliteTable(
 	{
 		// synchronously-allocated string id (createAppEventId) -- referenced by serverEvents.appEventId
 		id: text('id').primaryKey(),
-		type: text('type', { enum: enumTupleOptions(APP_EVENT_TYPE) }).notNull(),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(APP_EVENT_TYPE) }).notNull(),
 		time: timestamp('time').notNull(),
 		// actor, flattened for querying ("all actions by user X / player Y")
-		actorType: text('actorType', { enum: enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
+		actorType: text('actorType', { enum: ZodUtils.enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
 		actorUserId: bigintText('actorUserId'),
 		actorPlayerId: text('actorPlayerId'),
 		// scope: null for global (audit-only) actions
@@ -146,10 +144,14 @@ export const timeouts = sqliteTable(
 	'timeouts',
 	{
 		id: text('id').primaryKey(),
-		playerId: text('playerId').notNull().references(() => players.eosId, { onDelete: 'cascade' }),
+		playerId: text('playerId')
+			.notNull()
+			.references(() => players.eosId, { onDelete: 'cascade' }),
 		expiresAt: timestamp('expiresAt').notNull(),
 		cancelled: boolean('cancelled').notNull().default(false),
-		createdAt: timestamp('createdAt').$defaultFn(() => new Date()).notNull(),
+		createdAt: timestamp('createdAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
 		// the PLAYER_TIMED_OUT app event recorded at creation; enforcement kicks attribute to it
 		appEventId: text('appEventId').references(() => appEvents.id, { onDelete: 'set null' }),
 		issuedServerId: text('issuedServerId').references(() => servers.id, { onDelete: 'set null' }),
@@ -169,9 +171,13 @@ export const playerEventAssociations = sqliteTable(
 	'playerEventAssociations',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		serverEventId: integer('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
-		playerId: text('playerId').references(() => players.eosId, { onDelete: 'cascade' }).notNull(),
-		assocType: text('assocType', { enum: enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE) }).notNull(),
+		serverEventId: integer('serverEventId')
+			.references(() => serverEvents.id, { onDelete: 'cascade' })
+			.notNull(),
+		playerId: text('playerId')
+			.references(() => players.eosId, { onDelete: 'cascade' })
+			.notNull(),
+		assocType: text('assocType', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE) }).notNull(),
 		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
@@ -201,8 +207,12 @@ export const squads = sqliteTable(
 export const squadEventAssociations = sqliteTable(
 	'squadEventAssociations',
 	{
-		serverEventId: integer('serverEventId').references(() => serverEvents.id, { onDelete: 'cascade' }).notNull(),
-		squadId: integer('squadId').references(() => squads.id, { onDelete: 'cascade' }).notNull(),
+		serverEventId: integer('serverEventId')
+			.references(() => serverEvents.id, { onDelete: 'cascade' })
+			.notNull(),
+		squadId: integer('squadId')
+			.references(() => squads.id, { onDelete: 'cascade' })
+			.notNull(),
 		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
@@ -216,10 +226,7 @@ export const filters = sqliteTable('filters', {
 	name: text('name').notNull(),
 	description: text('description'),
 	filter: json('filter').notNull(),
-	owner: bigintText('owner').references(
-		() => users.discordId,
-		{ onDelete: 'set null' },
-	),
+	owner: bigintText('owner').references(() => users.discordId, { onDelete: 'set null' }),
 	alertMessage: text('alertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
 	emoji: text('emoji').unique(),
@@ -276,9 +283,7 @@ export const globalSettings = sqliteTable('globalSettings', {
 export type Server = typeof servers.$inferSelect
 
 export const users = sqliteTable('users', {
-	discordId: bigintText('discordId')
-		.notNull()
-		.primaryKey(),
+	discordId: bigintText('discordId').notNull().primaryKey(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: text('username').notNull(),
 	nickname: text('nickname'),
@@ -288,13 +293,21 @@ export type User = typeof users.$inferSelect
 
 // steam accounts a user has self-linked. steam64Id is the pk (globally unique), so a steam account belongs to
 // at most one discord user. Deliberately no FK to `players`: admins may link accounts not present on any server.
-export const linkedSteamAccounts = sqliteTable('linkedSteamAccounts', {
-	steam64Id: bigintText('steam64Id').primaryKey(),
-	discordId: bigintText('discordId').notNull().references(() => users.discordId, { onDelete: 'cascade' }),
-	createdAt: timestamp('createdAt').$defaultFn(() => new Date()).notNull(),
-}, (table) => ({
-	linkedSteamDiscordIdIndex: index('linkedSteamDiscordIdIndex').on(table.discordId),
-}))
+export const linkedSteamAccounts = sqliteTable(
+	'linkedSteamAccounts',
+	{
+		steam64Id: bigintText('steam64Id').primaryKey(),
+		discordId: bigintText('discordId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		createdAt: timestamp('createdAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		linkedSteamDiscordIdIndex: index('linkedSteamDiscordIdIndex').on(table.discordId),
+	}),
+)
 
 export const sessions = sqliteTable(
 	'sessions',
@@ -311,10 +324,16 @@ export const sessions = sqliteTable(
 	}),
 )
 
-export const persistedCache = sqliteTable('persistedCache', {
-	key: text('key').primaryKey(),
-	value: json('value').notNull(),
-	updatedAt: timestamp('updatedAt').$defaultFn(() => new Date()).notNull(),
-}, (table) => ({
-	updatedAtIndex: index('persistedCacheUpdatedAtIndex').on(table.updatedAt),
-}))
+export const persistedCache = sqliteTable(
+	'persistedCache',
+	{
+		key: text('key').primaryKey(),
+		value: json('value').notNull(),
+		updatedAt: timestamp('updatedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		updatedAtIndex: index('persistedCacheUpdatedAtIndex').on(table.updatedAt),
+	}),
+)

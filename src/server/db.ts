@@ -1,14 +1,15 @@
-import { assertNever } from '@/lib/type-guards'
-import { tsMigrations } from '@/migrations/registry'
-import type * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import { highlight } from 'sql-highlight'
 
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { assertNever } from '@/lib/type-guards'
+import { tsMigrations } from '@/migrations/registry'
+import type * as CS from '@/models/context-shared'
+import { initModule } from '@/server/logger'
+
 import type * as C from './context.ts'
 import * as DbMeta from './db-meta.ts'
 import * as Env from './env.ts'
@@ -34,8 +35,8 @@ const LEGACY_DB_PATH = './data/main.sqlite3'
 function assertNotLegacyDbPath() {
 	if (process.env.DB_PATH || !fs.existsSync(LEGACY_DB_PATH)) return
 	throw new Error(
-		`Refusing to start: found a database at the old default path ${LEGACY_DB_PATH}, but the default is now ${ENV.DB_PATH}. `
-			+ `Rename it (along with any -wal/-shm files) to ${ENV.DB_PATH}, or set DB_PATH=${LEGACY_DB_PATH} to keep using it.`,
+		`Refusing to start: found a database at the old default path ${LEGACY_DB_PATH}, but the default is now ${ENV.DB_PATH}. ` +
+			`Rename it (along with any -wal/-shm files) to ${ENV.DB_PATH}, or set DB_PATH=${LEGACY_DB_PATH} to keep using it.`,
 	)
 }
 
@@ -69,8 +70,8 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 			const pending = Migrate.getPendingMigrations(driver, migrateOpts)
 			if (pending.length > 0) {
 				throw new Error(
-					`Refusing to start: ${pending.length} pending database migration(s): ${pending.join(', ')}. `
-						+ `Run \`pnpm db:migrate\` (prod: \`pnpm db:migrate:prod\`) before starting, or set DB_AUTOMIGRATE=true.`,
+					`Refusing to start: ${pending.length} pending database migration(s): ${pending.join(', ')}. ` +
+						`Run \`pnpm db:migrate\` (prod: \`pnpm db:migrate:prod\`) before starting, or set DB_AUTOMIGRATE=true.`,
 				)
 			}
 		}
@@ -187,9 +188,10 @@ async function runTxCallback<V>(txHandle: object, callback: () => Promise<V>): P
 }
 
 function reportAsyncTx(callSite: Error): void {
-	const msg = 'transaction callback yielded to the event loop: only queries may be awaited inside runTransaction, '
-		+ 'because the transaction lock is process-wide. Hoist the call above runTransaction if the write needs its '
-		+ 'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/architecture.md.'
+	const msg =
+		'transaction callback yielded to the event loop: only queries may be awaited inside runTransaction, ' +
+		'because the transaction lock is process-wide. Hoist the call above runTransaction if the write needs its ' +
+		'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/architecture.md.'
 	switch (ENV.NODE_ENV) {
 		// a violation is a latency bug rather than a correctness one, and rolling a transaction back over it in prod
 		// would turn slow writes into failed ones
@@ -243,7 +245,8 @@ export async function runTransaction<T extends C.Db, V>(
 					...ctx,
 					tx: txHandle,
 					db: () => ctx.db(opts),
-				}))
+				}),
+			)
 			driver.exec(shouldRollback ? 'ROLLBACK' : 'COMMIT')
 		} catch (err) {
 			if (driver.inTransaction) driver.exec('ROLLBACK')

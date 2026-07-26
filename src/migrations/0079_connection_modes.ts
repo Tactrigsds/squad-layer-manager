@@ -53,8 +53,8 @@ export async function up(db: MigrationDriver): Promise<void> {
 			case 'log-receiver':
 				next = { type: 'server-agent', token: logs.token }
 				console.warn(
-					`[0079] Server ${row.id}: migrated log-receiver -> server-agent and dropped its SLM-side RCON credentials. `
-						+ `RCON will not work until the slm-server-agent is deployed with RCON host/port/password configured.`,
+					`[0079] Server ${row.id}: migrated log-receiver -> server-agent and dropped its SLM-side RCON credentials. ` +
+						`RCON will not work until the slm-server-agent is deployed with RCON host/port/password configured.`,
 				)
 				break
 			default:

@@ -1,18 +1,18 @@
+import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
+import type * as Im from 'immer'
+import React from 'react'
+
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
-import * as Arr from '@/lib/array'
-import { distinctDeepEquals, traceTag } from '@/lib/async'
+import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
-import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
-import type * as Im from 'immer'
-import React from 'react'
-import * as Rx from 'rxjs'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
 
@@ -124,15 +124,13 @@ export type Store = {
 
 export type Args = FRM.SetupArgs<Input, Store, Store & Predicates>
 
-export function initLayerTable(
-	args: Args,
-) {
+export function initLayerTable(args: Args) {
 	const getStore = args.get
 	const setStore = args.set
 	const input = args.input
 
-	const get = ZusUtils.toPartialGetter(args.get, 'layerTable')
-	const set = ZusUtils.toPartialSetter(args.set, 'layerTable')
+	const get = Zus.toPartialGetter(args.get, 'layerTable')
+	const set = Zus.toPartialSetter(args.set, 'layerTable')
 	const initialLayerTable: LayerTable = {
 		colConfig: input.colConfig,
 		sort: input.sort,
@@ -166,53 +164,55 @@ export function initLayerTable(
 
 	// -------- schedule queries (poor man's useQuery) --------
 	args.sub.add(
-		args.update$.pipe(
-			traceTag('QUERY_LAYERS'),
-			Rx.map(([store]) => {
-				const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
-					cfg: store.layerTable.colConfig,
-					selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
-					pageIndex: store.layerTable.pageIndex,
-					pageSize: store.layerTable.pageSize,
-					sort: store.layerTable.sort,
-				})
+		args.update$
+			.pipe(
+				Rx.Ext.traceTag('QUERY_LAYERS'),
+				Rx.map(([store]) => {
+					const input = LayerQueriesClient.getQueryLayersInput(store.baseQueryInput ?? {}, {
+						cfg: store.layerTable.colConfig,
+						selectedLayers: store.layerTable.showSelectedLayers ? store.layerTable.selected : undefined,
+						pageIndex: store.layerTable.pageIndex,
+						pageSize: store.layerTable.pageSize,
+						sort: store.layerTable.sort,
+					})
 
-				return input
-			}),
-			distinctDeepEquals(),
-			Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
-			Rx.switchMap((input) =>
-				LayerQueriesClient.queryLayers$(input).pipe(
-					Rx.tap({
-						subscribe: () => {
-							set({ isFetching: true })
-						},
-						complete: () => {
-							set({ isFetching: false })
-						},
-						unsubscribe: () => {
-							set({ isFetching: false })
-						},
-					}),
-				)
-			),
-			Rx.retry({
-				delay: (error, count) => {
-					console.error('error during query:', error)
-					return Rx.timer(Math.min(Math.pow(2, count) * 250, 10_000))
-				},
-			}),
-		).subscribe((packet) => {
-			if (packet.code === 'layers-page' && get().pageData !== packet) {
-				set({ pageData: packet })
-				return
-			}
+					return input
+				}),
+				Rx.Ext.distinctDeepEquals(),
+				Rx.throttleTime(500, Rx.asyncScheduler, { leading: true, trailing: true }),
+				Rx.switchMap((input) =>
+					LayerQueriesClient.queryLayers$(input).pipe(
+						Rx.tap({
+							subscribe: () => {
+								set({ isFetching: true })
+							},
+							complete: () => {
+								set({ isFetching: false })
+							},
+							unsubscribe: () => {
+								set({ isFetching: false })
+							},
+						}),
+					),
+				),
+				Rx.retry({
+					delay: (error, count) => {
+						console.error('error during query:', error)
+						return Rx.timer(Math.min(Math.pow(2, count) * 250, 10_000))
+					},
+				}),
+			)
+			.subscribe((packet) => {
+				if (packet.code === 'layers-page' && get().pageData !== packet) {
+					set({ pageData: packet })
+					return
+				}
 
-			if (packet.code === 'menu-item-possible-values' && getStore().filterMenuItemPossibleValues !== packet.values) {
-				setStore({ filterMenuItemPossibleValues: packet.values })
-				return
-			}
-		}),
+				if (packet.code === 'menu-item-possible-values' && getStore().filterMenuItemPossibleValues !== packet.values) {
+					setStore({ filterMenuItemPossibleValues: packet.values })
+					return
+				}
+			}),
 	)
 
 	// -------- updates from query results --------
@@ -251,10 +251,12 @@ export namespace Sel {
 		if (!table.sort) return []
 		if (table.sort.type === 'random') return []
 
-		return [{
-			id: table.sort.sortBy,
-			desc: table.sort.direction === 'ASC' || table.sort.direction === 'ASC:ABS',
-		}]
+		return [
+			{
+				id: table.sort.sortBy,
+				desc: table.sort.direction === 'ASC' || table.sort.direction === 'ASC:ABS',
+			},
+		]
 	}
 
 	export function tanstackRowSelection(store: Store): RowSelectionState {
@@ -277,7 +279,7 @@ export namespace Sel {
 				(store: Store) => store.layerTable.minSelected,
 			],
 			(pageData, selected, minSelected) => {
-				const row = pageData?.layers.find(r => r.id === rowId)
+				const row = pageData?.layers.find((r) => r.id === rowId)
 				if (!row) return [false, false] as const
 				const isSelected = selected.includes(rowId)
 
@@ -286,19 +288,19 @@ export namespace Sel {
 
 				// Check if unchecking would violate minSelected
 				if (isSelected) {
-					const wouldBeUnderMin = (minSelected ?? 0) > (selected.length - 1)
+					const wouldBeUnderMin = (minSelected ?? 0) > selected.length - 1
 					if (wouldBeUnderMin) return [true, isSelected] as const
 				}
 
 				return [false, isSelected] as const
 			},
-		)
+		),
 	)
 }
 
 export namespace Actions {
 	function slice(stores: KeyProp) {
-		return ZusUtils.toPartialStore(stores.layerTable, 'layerTable')
+		return Zus.toPartialStore(stores.layerTable, 'layerTable')
 	}
 
 	export function setSort(stores: KeyProp, update: React.SetStateAction<LQY.LayersQuerySort | null>) {
@@ -320,7 +322,7 @@ export namespace Actions {
 
 		const numToTrim = Math.max(0, updated.length - (state.maxSelected ?? updated.length))
 		const updatedByTimeTrimmed = updated.slice(numToTrim)
-		const updatedTrimmed = updated.filter(id => updatedByTimeTrimmed.includes(id))
+		const updatedTrimmed = updated.filter((id) => updatedByTimeTrimmed.includes(id))
 		if (state.minSelected && state.minSelected > updatedTrimmed.length) {
 			return
 		}
@@ -348,40 +350,47 @@ export namespace Actions {
 		table.setState({ selected: reset, showSelectedLayers: reset.length > 0, pageIndex: 0 })
 	}
 
-	export const onSetRowSelection = (stores: KeyProp): OnChangeFn<RowSelectionState> => (rowSelectionUpdate) => {
-		const updated = typeof rowSelectionUpdate === 'function'
-			? rowSelectionUpdate(Sel.tanstackRowSelection(ZusUtils.getState(stores.layerTable)))
-			: rowSelectionUpdate
-		const selected: L.LayerId[] = Object.keys(updated).filter(id => updated[id])
-		setSelected(stores, selected)
-	}
-
-	export const onPaginationChange = (stores: KeyProp): OnChangeFn<PaginationState> => (update) => {
-		const table = slice(stores)
-		let newState: PaginationState
-		const { pageIndex, pageSize } = table.getState()
-		if (typeof update === 'function') {
-			newState = update({ pageIndex, pageSize })
-		} else {
-			newState = update
-		}
-		table.setState({
-			pageIndex: newState.pageIndex,
-			pageSize: newState.pageSize,
-		})
-	}
-
-	export const onColumnVisibilityChange = (stores: KeyProp): OnChangeFn<VisibilityState> => (update) => {
-		const table = slice(stores)
-		const updated = typeof update === 'function' ? update(table.getState().columnVisibility) : update
-		let { sort, pageIndex } = table.getState()
-		if (sort?.type === 'column' && !updated[sort.sortBy]) {
-			pageIndex = 0
-			sort = null
+	export const onSetRowSelection =
+		(stores: KeyProp): OnChangeFn<RowSelectionState> =>
+		(rowSelectionUpdate) => {
+			const updated =
+				typeof rowSelectionUpdate === 'function'
+					? rowSelectionUpdate(Sel.tanstackRowSelection(Zus.getState(stores.layerTable)))
+					: rowSelectionUpdate
+			const selected: L.LayerId[] = Object.keys(updated).filter((id) => updated[id])
+			setSelected(stores, selected)
 		}
 
-		table.setState({ columnVisibility: updated, sort, pageIndex })
-	}
+	export const onPaginationChange =
+		(stores: KeyProp): OnChangeFn<PaginationState> =>
+		(update) => {
+			const table = slice(stores)
+			let newState: PaginationState
+			const { pageIndex, pageSize } = table.getState()
+			if (typeof update === 'function') {
+				newState = update({ pageIndex, pageSize })
+			} else {
+				newState = update
+			}
+			table.setState({
+				pageIndex: newState.pageIndex,
+				pageSize: newState.pageSize,
+			})
+		}
+
+	export const onColumnVisibilityChange =
+		(stores: KeyProp): OnChangeFn<VisibilityState> =>
+		(update) => {
+			const table = slice(stores)
+			const updated = typeof update === 'function' ? update(table.getState().columnVisibility) : update
+			let { sort, pageIndex } = table.getState()
+			if (sort?.type === 'column' && !updated[sort.sortBy]) {
+				pageIndex = 0
+				sort = null
+			}
+
+			table.setState({ columnVisibility: updated, sort, pageIndex })
+		}
 
 	export function setPageIndex(stores: KeyProp, pageIndex: number) {
 		slice(stores).setState({ pageIndex })
@@ -399,10 +408,8 @@ export namespace Actions {
 
 	export function getTanstackActions(stores: KeyProp) {
 		const setSorting: React.Dispatch<React.SetStateAction<TanstackSortingState>> = (sortingUpdate) => {
-			const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
-			const updated = typeof sortingUpdate === 'function'
-				? sortingUpdate(current)
-				: current
+			const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
+			const updated = typeof sortingUpdate === 'function' ? sortingUpdate(current) : current
 
 			if (updated.length === 0) {
 				setSort(stores, null)

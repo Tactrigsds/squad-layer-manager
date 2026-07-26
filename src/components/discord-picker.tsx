@@ -1,12 +1,13 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import { LOADING } from '@/components/combo-box/constants'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // a stored id that no longer resolves to a live Discord role/member (deleted role, departed member): surface the raw
 // id with a warning rather than a confusing blank, and explain the situation below the picker
@@ -42,9 +43,7 @@ function RoleLabel({ role }: { role: { name: string; color: string | null } }) {
 	)
 }
 
-export function DiscordRoleSelect(
-	{ value, onChange, disabled }: { value: string; onChange: (next: string) => void; disabled?: boolean },
-) {
+export function DiscordRoleSelect({ value, onChange, disabled }: { value: string; onChange: (next: string) => void; disabled?: boolean }) {
 	const { roles, isResolved } = useGuildRoles()
 	const options: ComboBoxOption<string>[] = roles.map((r) => ({ value: r.id, label: <RoleLabel role={r} />, keywords: [r.name] }))
 	// stored role id that isn't among the guild's current roles -> it was deleted
@@ -84,18 +83,26 @@ function MemberLabel({ member }: { member: { displayName: string; username: stri
 	)
 }
 
-export function DiscordMemberSelect(
-	{ value, onChange, disabled }: { value: string; onChange: (next: string) => void; disabled?: boolean },
-) {
+export function DiscordMemberSelect({
+	value,
+	onChange,
+	disabled,
+}: {
+	value: string
+	onChange: (next: string) => void
+	disabled?: boolean
+}) {
 	const [input, setInput] = React.useState('')
 	const [queryTerm, setQueryTerm] = React.useState('')
 	const setDebouncedQuery = useDebounced<string>({ delay: 250, onChange: setQueryTerm })
 
-	const searchRes = useQuery(RPC.orpc.rbac.searchGuildMembers.queryOptions({
-		input: { query: queryTerm },
-		enabled: queryTerm.trim().length > 0,
-		staleTime: 60_000,
-	}))
+	const searchRes = useQuery(
+		RPC.orpc.rbac.searchGuildMembers.queryOptions({
+			input: { query: queryTerm },
+			enabled: queryTerm.trim().length > 0,
+			staleTime: 60_000,
+		}),
+	)
 	const results = searchRes.data && searchRes.data.code === 'ok' ? searchRes.data.members : []
 
 	// resolve a label for the currently-selected id if it isn't in the current search results (known SLM users only)
@@ -117,11 +124,15 @@ export function DiscordMemberSelect(
 
 	const options: ComboBoxOption<string>[] = [
 		...(value ? [{ value, label: selectedLabel(), keywords: [value] }] : []),
-		...results.filter((m) => m.id !== value).map((m): ComboBoxOption<string> => ({
-			value: m.id,
-			label: <MemberLabel member={m} />,
-			keywords: [m.displayName, m.username],
-		})),
+		...results
+			.filter((m) => m.id !== value)
+			.map(
+				(m): ComboBoxOption<string> => ({
+					value: m.id,
+					label: <MemberLabel member={m} />,
+					keywords: [m.displayName, m.username],
+				}),
+			),
 	]
 
 	// before any query is typed there's nothing to show, so the picker would otherwise read "No member found." as if it

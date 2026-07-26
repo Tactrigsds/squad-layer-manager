@@ -1,13 +1,13 @@
-import * as Obj from '@/lib/object'
+import StringComparison from 'string-comparison'
+import { z } from 'zod'
+
+import * as Obj from '@/lib/object-utils'
 import { renderTemplate, templateVars } from '@/lib/templating'
-import { BasicStrNoWhitespace, tryParseHumanTimeToken } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
 import type * as SM from '@/models/squad.models.ts'
 import type * as RBAC from '@/rbac.models'
-
-import StringComparison from 'string-comparison'
-import { z } from 'zod'
 
 export const CHAT_GROUPS = z.enum(['admin', 'public'])
 export type ChatGroup = z.infer<typeof CHAT_GROUPS>
@@ -117,21 +117,21 @@ export function commandsInSection(section: CommandSection): CommandId[] {
 type ArgCommon = { name: string; describe?: string; sample?: string }
 export type ArgDef =
 	// single token, passed through as-is
-	| ArgCommon & { kind: 'string'; optional?: true }
+	| (ArgCommon & { kind: 'string'; optional?: true })
 	// single token, coerced to an integer
-	| ArgCommon & { kind: 'int'; optional?: true }
+	| (ArgCommon & { kind: 'int'; optional?: true })
 	// single token, a HumanTime duration like 2h or 30m, resolved to milliseconds
-	| ArgCommon & { kind: 'duration'; optional?: true }
+	| (ArgCommon & { kind: 'duration'; optional?: true })
 	// single token, resolved to a unique player by id or username substring
-	| ArgCommon & { kind: 'player'; optional?: true }
+	| (ArgCommon & { kind: 'player'; optional?: true })
 	// 1-2 tokens: [team] <squad>; team = 1|2|A|B|faction, caller's team when omitted
-	| ArgCommon & { kind: 'squad' }
+	| (ArgCommon & { kind: 'squad' })
 	// rest: raw remainder joined with spaces
-	| ArgCommon & { kind: 'text'; optional?: true }
+	| (ArgCommon & { kind: 'text'; optional?: true })
 	// rest: a single token must match one of a configured reason's keywords; 2+ tokens are a custom message
-	| ArgCommon & { kind: 'reason'; action: AAR.AdminActionType; optional?: true }
+	| (ArgCommon & { kind: 'reason'; action: AAR.AdminActionType; optional?: true })
 	// single token, configured reason only
-	| ArgCommon & { kind: 'preset-reason'; action: AAR.AdminActionType; optional?: true }
+	| (ArgCommon & { kind: 'preset-reason'; action: AAR.AdminActionType; optional?: true })
 
 const REST_KINDS: ArgDef['kind'][] = ['text', 'reason']
 
@@ -176,14 +176,17 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('help', {
 		section: 'general',
 		permission: null,
-		args: [{
-			kind: 'string',
-			name: 'section',
-			optional: true,
-			sample: 'moderation',
-			describe: `One of ${COMMAND_SECTION_IDS.join(', ')}, or "${ALL_SECTIONS_TOKEN}" for every command. `
-				+ 'Lists the quick reference when omitted.',
-		}],
+		args: [
+			{
+				kind: 'string',
+				name: 'section',
+				optional: true,
+				sample: 'moderation',
+				describe:
+					`One of ${COMMAND_SECTION_IDS.join(', ')}, or "${ALL_SECTIONS_TOKEN}" for every command. ` +
+					'Lists the quick reference when omitted.',
+			},
+		],
 		defaults: {
 			allowedChats: ['admin'],
 			triggers: ['help', 'h'],
@@ -195,13 +198,15 @@ export const COMMAND_DECLARATIONS = {
 		section: 'general',
 		permission: null,
 		// queue numbers accept dotted forms like "2.1", so this stays a string arg
-		args: [{
-			kind: 'string',
-			name: 'number',
-			optional: true,
-			sample: '2.1',
-			describe: 'A queue item number like 2 or 2.1. Defaults to the next item.',
-		}],
+		args: [
+			{
+				kind: 'string',
+				name: 'number',
+				optional: true,
+				sample: '2.1',
+				describe: 'A queue item number like 2 or 2.1. Defaults to the next item.',
+			},
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['feedback', 'fb'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('startVote', {
@@ -254,14 +259,22 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('requestLayer', {
 		section: 'layerRequests',
 		permission: null,
-		args: [{
-			kind: 'text',
-			name: 'request',
-			sample: 'goro adf pla',
-			describe: 'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; '
-				+ 'everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
-		}],
-		defaults: { allowedChats: ['admin', 'public'], triggers: ['requestlayer', 'reqlayer', 'rql'], enabled: true, quickReference: false },
+		args: [
+			{
+				kind: 'text',
+				name: 'request',
+				sample: 'goro adf pla',
+				describe:
+					'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; ' +
+					'everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
+			},
+		],
+		defaults: {
+			allowedChats: ['admin', 'public'],
+			triggers: ['requestlayer', 'reqlayer', 'rql'],
+			enabled: true,
+			quickReference: false,
+		},
 	}),
 	...declareCommand('listLayerRequests', {
 		section: 'layerRequests',
@@ -272,13 +285,15 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('removeLayerRequest', {
 		section: 'layerRequests',
 		permission: null,
-		args: [{
-			kind: 'int',
-			name: 'number',
-			optional: true,
-			sample: '2',
-			describe: 'The request number from the list. Removes your newest request when omitted.',
-		}],
+		args: [
+			{
+				kind: 'int',
+				name: 'number',
+				optional: true,
+				sample: '2',
+				describe: 'The request number from the list. Removes your newest request when omitted.',
+			},
+		],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['unreqlayer', 'rmreq'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapNow', {
@@ -323,7 +338,12 @@ export const COMMAND_DECLARATIONS = {
 		args: [
 			{ kind: 'player', name: 'player' },
 			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag in your organization.' },
-			{ kind: 'text', name: 'reason', optional: true, describe: "Posted as a note on the player's BM profile. Some flags require one." },
+			{
+				kind: 'text',
+				name: 'reason',
+				optional: true,
+				describe: "Posted as a note on the player's BM profile. Some flags require one.",
+			},
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['flag'], enabled: true, quickReference: true },
 	}),
@@ -346,7 +366,10 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('warn', {
 		section: 'moderation',
 		permission: 'squad-server:warn-players',
-		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'warn' }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'reason', name: 'reason', action: 'warn' },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['warn'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('listWarnReasons', {
@@ -358,37 +381,55 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('warnSquad', {
 		section: 'moderation',
 		permission: 'squad-server:warn-players',
-		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'warn' }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'reason', name: 'reason', action: 'warn' },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['warnsquad', 'ws'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('kill', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'kill', optional: true }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'reason', name: 'reason', action: 'kill', optional: true },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['kill'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('killSquad', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'kill', optional: true }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'reason', name: 'reason', action: 'kill', optional: true },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['killsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('removeFromSquad', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['rfs', 'removefromsquad'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('disbandSquad', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'disband-squad', optional: true }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'reason', name: 'reason', action: 'disband-squad', optional: true },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['disband'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('demoteCommander', {
 		section: 'moderation',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'demote-commander', optional: true }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'reason', name: 'reason', action: 'demote-commander', optional: true },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['demote'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('broadcast', {
@@ -439,12 +480,14 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('clearTimeout', {
 		section: 'moderation',
 		permission: null,
-		args: [{
-			kind: 'string',
-			name: 'player',
-			sample: 'Alice',
-			describe: 'A player id, or a username substring matched against players with an active timeout.',
-		}],
+		args: [
+			{
+				kind: 'string',
+				name: 'player',
+				sample: 'Alice',
+				describe: 'A player id, or a username substring matched against players with an active timeout.',
+			},
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['cleartimeout', 'ct'], enabled: true, quickReference: false },
 	}),
 }
@@ -479,7 +522,7 @@ function prefixed(prefix: string, config: CommandConfig): CommandConfig {
 // added by a later release must be seeded with a prefix the installation actually allows, and zod can't express a
 // prefault that depends on a sibling field. Configs already present are passed through untouched.
 export function seedCommandConfigs(commands: unknown, defaultPrefix: string): Record<string, unknown> {
-	const stored = (commands && typeof commands === 'object') ? commands as Record<string, unknown> : {}
+	const stored = commands && typeof commands === 'object' ? (commands as Record<string, unknown>) : {}
 	const seeded: Record<string, unknown> = { ...stored }
 	for (const [id, declaration] of Object.entries(COMMAND_DECLARATIONS)) {
 		if (seeded[id] === undefined) seeded[id] = prefixed(defaultPrefix, declaration.defaults)
@@ -488,34 +531,40 @@ export function seedCommandConfigs(commands: unknown, defaultPrefix: string): Re
 }
 
 export const CommandTriggerSchema = z.union([
-	BasicStrNoWhitespace,
+	ZodUtils.BasicStrNoWhitespace,
 	z.object({
-		string: BasicStrNoWhitespace,
-		args: z.string().min(1).describe(
-			`The arguments this trigger runs the command with. A template over the words typed after it: ${TRIGGER_ARG_SYNTAX}`,
-		),
+		string: ZodUtils.BasicStrNoWhitespace,
+		args: z
+			.string()
+			.min(1)
+			.describe(`The arguments this trigger runs the command with. A template over the words typed after it: ${TRIGGER_ARG_SYNTAX}`),
 	}),
 ])
 
 function CommandConfigSchema(commandId: CommandId) {
 	const declared = COMMAND_DECLARATIONS[commandId].defaults
 	return z.object({
-		triggers: z.array(CommandTriggerSchema).describe(
-			"Strings that run this command, each starting with one of the allowed prefixes. A plain string takes the command's "
-				+ 'arguments as typed; give one an "args" template instead to pin some of them (what used to be a command alias)',
-		),
+		triggers: z
+			.array(CommandTriggerSchema)
+			.describe(
+				"Strings that run this command, each starting with one of the allowed prefixes. A plain string takes the command's " +
+					'arguments as typed; give one an "args" template instead to pin some of them (what used to be a command alias)',
+			),
 		allowedChats: z.array(CHAT_GROUPS).prefault(declared.allowedChats).describe('Which in-game chats accept this command'),
 		enabled: z.boolean().prefault(declared.enabled),
-		quickReference: z.boolean().prefault(declared.quickReference).describe(
-			'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
-		),
+		quickReference: z
+			.boolean()
+			.prefault(declared.quickReference)
+			.describe(
+				'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
+			),
 	})
 }
 
 // no prefault on the object or on `triggers`: a command's default triggers depend on `defaultPrefix`, so they're
 // seeded by seedCommandConfigs before parsing rather than baked into the schema
 export const AllCommandConfigSchema = z.object(
-	Object.fromEntries(Object.keys(COMMAND_DECLARATIONS).map(id => [id, CommandConfigSchema(id as CommandId)])) as Record<
+	Object.fromEntries(Object.keys(COMMAND_DECLARATIONS).map((id) => [id, CommandConfigSchema(id as CommandId)])) as Record<
 		CommandId,
 		ReturnType<typeof CommandConfigSchema>
 	>,
@@ -527,15 +576,23 @@ export type ResolvedReasonArg = { type: 'preset'; reason: AAR.AdminActionReason 
 // resolved by the server layer (needs the live roster); declared here so CommandArgs stays self-contained
 export type ResolvedSquadArg = { teamId: SM.TeamId; teamLabel: string; squad: SM.Squad; players: SM.Player[] }
 
-type ArgValue<D extends ArgDef> = D extends { kind: 'string' } ? string
-	: D extends { kind: 'int' } ? number
-	: D extends { kind: 'duration' } ? number
-	: D extends { kind: 'player' } ? SM.Player
-	: D extends { kind: 'squad' } ? ResolvedSquadArg
-	: D extends { kind: 'text' } ? string
-	: D extends { kind: 'reason' } ? ResolvedReasonArg
-	: D extends { kind: 'preset-reason' } ? AAR.AdminActionReason
-	: never
+type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
+	? string
+	: D extends { kind: 'int' }
+		? number
+		: D extends { kind: 'duration' }
+			? number
+			: D extends { kind: 'player' }
+				? SM.Player
+				: D extends { kind: 'squad' }
+					? ResolvedSquadArg
+					: D extends { kind: 'text' }
+						? string
+						: D extends { kind: 'reason' }
+							? ResolvedReasonArg
+							: D extends { kind: 'preset-reason' }
+								? AAR.AdminActionReason
+								: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
 	[D in Args[number] as D['name']]: D extends { optional: true } ? ArgValue<D> | undefined : ArgValue<D>
@@ -548,7 +605,10 @@ export type CommandArgs<Id extends CommandId> = ResolvedArgs<CommandDeclaration<
 // template feeds the words after it through that template; a plain one passes them straight through, which is the
 // same thing with nothing pinned.
 export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs) {
-	const words = msg.message.trim().split(/\s+/).filter((w) => w !== '')
+	const words = msg.message
+		.trim()
+		.split(/\s+/)
+		.filter((w) => w !== '')
 	const match = matchCommandText(configs, words[0] ?? '')
 	if (!match) {
 		const allTriggerStrings = Obj.objValues(configs)
@@ -664,7 +724,7 @@ export function resolveDurationArg(
 	name: string,
 	token: string,
 ): { code: 'ok'; value: number } | { code: 'err:invalid-duration'; msg: string } {
-	const value = tryParseHumanTimeToken(token)
+	const value = ZodUtils.tryParseHumanTimeToken(token)
 	if (value === undefined) {
 		return { code: 'err:invalid-duration', msg: `${name} must be a duration like 30m, 2h or 1d, got "${token}"` }
 	}
@@ -743,7 +803,10 @@ export function formatArg(def: ArgDef, requiredReasonActions: readonly AAR.Admin
 }
 
 export function formatArgSignature(args: readonly ArgDef[], requiredReasonActions: readonly AAR.AdminActionType[] = []): string {
-	return args.map((def) => formatArg(def, requiredReasonActions)).join(' ').trim()
+	return args
+		.map((def) => formatArg(def, requiredReasonActions))
+		.join(' ')
+		.trim()
 }
 
 // the usage line for a command reached through a given trigger; without one it describes the command's primary
@@ -796,9 +859,11 @@ function templateRefs(template: string): TriggerRef[] {
 // as written. That collapse is what makes a trigger parameter optional: the token simply isn't there.
 export function expandTriggerArgs(template: string, words: readonly string[]): string[] {
 	const vars = Object.fromEntries(
-		templateRefs(template).map((r) => [r.name, r.rest ? words.slice(r.index - 1).join(' ') : words[r.index - 1] ?? '']),
+		templateRefs(template).map((r) => [r.name, r.rest ? words.slice(r.index - 1).join(' ') : (words[r.index - 1] ?? '')]),
 	)
-	return renderTemplate(template, vars).split(/\s+/).filter((w) => w !== '')
+	return renderTemplate(template, vars)
+		.split(/\s+/)
+		.filter((w) => w !== '')
 }
 
 // which of the command's arguments a placeholder ends up filling. `wholeSlot` is false when the placeholder only
@@ -807,9 +872,7 @@ export function expandTriggerArgs(template: string, words: readonly string[]): s
 // caller omit a word that fills a required argument.
 export type TriggerParam = { ref: TriggerRef; def: ArgDef; wholeSlot: boolean; hasDefault: boolean }
 
-export type TriggerArgsResolution =
-	| { code: 'ok'; params: TriggerParam[] }
-	| { code: 'err:invalid-args'; msg: string }
+export type TriggerArgsResolution = { code: 'ok'; params: TriggerParam[] } | { code: 'err:invalid-args'; msg: string }
 
 // a placeholder stands in as one word during analysis, so the real assignment logic decides which argument it fills.
 // NUL can't reach here from chat, which keeps the marker distinguishable from anything an admin typed literally.
@@ -910,7 +973,7 @@ export function argTemplateSignature(
 	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
 	// one placeholder per argument, in order: every kind takes a single word except the rest kinds, which take the
 	// remainder, and squad, whose optional leading team is left out
-	const template = args.map((def, i) => REST_KINDS.includes(def.kind) ? `{{rest${i + 1}}}` : `{{arg${i + 1}}}`).join(' ')
+	const template = args.map((def, i) => (REST_KINDS.includes(def.kind) ? `{{rest${i + 1}}}` : `{{arg${i + 1}}}`)).join(' ')
 	const res = resolveTriggerArgs(cmdId, template)
 	if (res.code !== 'ok') return []
 	return res.params.map((p) => ({ ref: `{{${p.ref.name}}}`, arg: formatArg(p.def, requiredReasonActions) }))
@@ -955,12 +1018,7 @@ export function chatAllowed(allowedChats: ChatGroup[], msgChat: SM.ChatChannelTy
 	return false
 }
 
-export function buildCommand(
-	id: CommandId,
-	argObj: Record<string, string>,
-	configs: CommandConfigs,
-	excludeConsoleCommand = false,
-) {
+export function buildCommand(id: CommandId, argObj: Record<string, string>, configs: CommandConfigs, excludeConsoleCommand = false) {
 	const declaration = COMMAND_DECLARATIONS[id]
 	const config = configs[id]
 	let unrealConsoleCommand: string
@@ -974,7 +1032,7 @@ export function buildCommand(
 		.filter((t) => triggerArgs(t) === undefined)
 		.map(triggerString)
 		.toSorted((a, b) => b.length - a.length)
-		.map(str => {
+		.map((str) => {
 			return `${unrealConsoleCommand} ${str} ${argSubstring}`.trim()
 		})
 }

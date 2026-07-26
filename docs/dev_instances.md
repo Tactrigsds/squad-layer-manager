@@ -27,9 +27,9 @@ it is not there.
 
 Claude Code creates worktrees through the `WorktreeCreate`/`WorktreeRemove` hooks in `.claude/settings.json`,
 which hand the work to `scripts/worktree.mjs`, so its `EnterWorktree` lands in the same place `pnpm worktree
-new` does, node_modules included. `pnpm worktree migrate` relocates worktrees left under the old
-`.claude/worktrees`; it reports what it would do until passed `--apply`, and skips any with processes still
-running in them.
+new` does, node_modules and the gitignored artifacts included. `pnpm worktree migrate` relocates worktrees
+left under the old `.claude/worktrees`; it reports what it would do until passed `--apply`, and skips any
+with processes still running in them.
 
 ## The one url
 
@@ -130,5 +130,10 @@ old values when one is rotated. The per-worktree differences (ports, `ORIGIN`, t
 injected at spawn time instead.
 
 The gitignored build artifacts a fresh worktree lacks (`assets/layer-engine.wasm`, `layer-db.json`) are
-copied from the main checkout, or built if it has none either. They are copied rather than linked so a
-worktree working on `layer-engine/` can rebuild over its own copy -- run `pnpm build:engine` if you change it.
+copied from the main checkout by whatever creates the worktree, `dev:init` included, so nothing has to reach
+a dev instance before the engine is there. They are copied rather than linked so a worktree working on
+`layer-engine/` can rebuild over its own copy -- run `pnpm build:engine` if you change it.
+
+The list of them lives in `scripts/worktree.mjs` (`ensure-artifacts`), which is dependency-free plain node
+because it runs from a `WorktreeCreate` hook against a worktree with no node_modules yet. Only `dev:init`
+asks it to _build_ a missing engine: a hook that spends minutes in cargo reads as a hung one.

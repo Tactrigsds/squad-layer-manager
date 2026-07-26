@@ -1,6 +1,9 @@
+import * as crypto from 'node:crypto'
+import { z } from 'zod'
+
 import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
-import { distinctDeepEquals, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
 import * as SB from '@/models/sandbox.models'
 import * as SettingsModels from '@/models/settings.models'
@@ -13,16 +16,13 @@ import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
-import * as crypto from 'node:crypto'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 // A sandbox server is a squad server SLM runs itself: src/emulator, bound to a loopback RCON port, with its log
-// lines handed straight to the slice. Everything above the connection sees a normal server, which is the point --
+// lines handed straight to the managed server. Everything above the connection sees a normal server, which is the point --
 // the sandbox exercises the real RCON framing and the real log parser rather than a mock of them.
 //
-// The instance is owned here rather than by the slice because the slice is disposable: every settings edit calls
-// restartSliceIfRunning, and a world that died with it would reset the sandbox out from under whoever was using it.
+// The instance is owned here rather than by the managed server because the managed server is disposable: every settings edit calls
+// restartIfRunning, and a world that died with it would reset the sandbox out from under whoever was using it.
 
 const module = initModule('sandbox')
 const orpcBase = getOrpcBase(module)
@@ -102,7 +102,7 @@ export function getInstance(serverId: string): SandboxInstance | undefined {
 }
 
 // Started once per server and kept until the server is deleted or the process exits. The port is ephemeral and
-// therefore assigned here rather than configured, so the slice has to ask for it (connectionFor) after this resolves.
+// therefore assigned here rather than configured, so the managed server has to ask for it (connectionFor) after this resolves.
 export async function ensureInstance(serverId: string, conn: SettingsModels.SandboxConnection): Promise<SandboxInstance> {
 	const existing = instances.get(serverId)
 	if (existing) return existing
@@ -243,58 +243,55 @@ export const orpcRouter = {
 	// The control surface's own state: the puppets this sandbox knows by name and the emulated admin list. The
 	// roster, chat and queue as SLM sees them stay the dashboard's job -- this is only what the dashboard cannot
 	// show, because it exists nowhere else.
-	watchState: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context, input, signal },
-	) {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
-		if (denyRes) {
-			yield denyRes
-			return
-		}
-		const instance = instances.get(input.serverId)
-		if (!instance) {
-			yield { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
-			return
-		}
-		const obs = instance.changed$.pipe(
-			Rx.startWith(undefined),
-			Rx.map(() => sandboxState(instance)),
-			distinctDeepEquals(),
-			withAbortSignal(signal!),
-		)
-		yield* toAsyncGenerator(obs)
-	}),
+	watchState: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, input, signal }) {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
+			if (denyRes) {
+				yield denyRes
+				return
+			}
+			const instance = instances.get(input.serverId)
+			if (!instance) {
+				yield { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
+				return
+			}
+			const obs = instance.changed$.pipe(
+				Rx.startWith(undefined),
+				Rx.map(() => sandboxState(instance)),
+				Rx.Ext.distinctDeepEquals(),
+				Rx.Ext.withAbortSignal(signal!),
+			)
+			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
 
 	// One procedure for every verb: the wire carries the verb name and its args, which are validated against
 	// that verb's own schema on arrival (parseVerbArgs, inside execute).
 	//
 	// This cannot drive a real squad server, and not because of a check it performs: the only thing it can act
 	// on is an Emulator this module started, so a serverId naming a real server finds no instance and stops here.
-	execute: orpcBase.meta({ type: 'mutation' }).input(
-		z.object({ serverId: z.string() }).extend(SB.SandboxCommandSchema.shape),
-	).handler(async ({ context, input }) => {
-		const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
-		if (denyRes) return denyRes
+	execute: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }).extend(SB.SandboxCommandSchema.shape))
+		.handler(async ({ context, input }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(context, RBAC.perm('sandbox:control', { serverId: input.serverId }))
+			if (denyRes) return denyRes
 
-		const instance = instances.get(input.serverId)
-		if (!instance) return { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
+			const instance = instances.get(input.serverId)
+			if (!instance) return { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
 
-		try {
-			const output = await Verbs.execute(instance, input.verb, input.args)
-			// join/leave/squad all move the state the window renders, and a verb is the only way any of it changes
-			instance.changed$.next()
-			log.info(
-				'Sandbox %s: user %s ran %s',
-				input.serverId,
-				context.user.discordId,
-				input.verb,
-			)
-			return { code: 'ok' as const, output }
-		} catch (err) {
-			// a verb rejecting bad input ("no player named X") is an ordinary answer to the caller, not a server fault
-			return { code: 'err:rejected' as const, message: err instanceof Error ? err.message : String(err) }
-		}
-	}),
+			try {
+				const output = await Verbs.execute(instance, input.verb, input.args)
+				// join/leave/squad all move the state the window renders, and a verb is the only way any of it changes
+				instance.changed$.next()
+				log.info('Sandbox %s: user %s ran %s', input.serverId, context.user.discordId, input.verb)
+				return { code: 'ok' as const, output }
+			} catch (err) {
+				// a verb rejecting bad input ("no player named X") is an ordinary answer to the caller, not a server fault
+				return { code: 'err:rejected' as const, message: err instanceof Error ? err.message : String(err) }
+			}
+		}),
 
 	// The verb list, so the window renders whatever this build supports rather than a hardcoded copy.
 	listVerbs: orpcBase.handler(() =>
@@ -302,6 +299,6 @@ export const orpcRouter = {
 			verb,
 			usage: SB.SANDBOX_VERBS[verb].usage,
 			summary: SB.SANDBOX_VERBS[verb].summary,
-		}))
+		})),
 	),
 }

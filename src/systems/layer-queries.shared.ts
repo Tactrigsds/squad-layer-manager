@@ -1,9 +1,8 @@
 import { createId } from '@/lib/id'
 import { LRUMap } from '@/lib/lru-map'
-import * as MapUtils from '@/lib/map'
-import * as Obj from '@/lib/object'
+import * as MapUtils from '@/lib/map-utils'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -27,30 +26,33 @@ const MAX_CACHED_QUERIES = 512
 const randomLayerCache = new LRUMap<string, { pages: Map<number, number[]>; totalCount: number }>(MAX_CACHED_QUERIES)
 let cachedSeed: string | null = null
 
-export type QueryLayersResponsePart = {
-	code: 'layers-page'
-	layers: PostProcessedLayer[]
-	totalCount: number
-	pageCount: number
-} | {
-	code: 'menu-item-possible-values'
-	values: Record<string, string[]>
-} | F.InvalidFilterNodeResult
+export type QueryLayersResponsePart =
+	| {
+			code: 'layers-page'
+			layers: PostProcessedLayer[]
+			totalCount: number
+			pageCount: number
+	  }
+	| {
+			code: 'menu-item-possible-values'
+			values: Record<string, string[]>
+	  }
+	| F.InvalidFilterNodeResult
 
 // the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
 // streamed query need the log and the generation config on top
-type QueryCtx = CS.LayerEngine & CS.Filters
+type QueryCtx = LE.Ctx & F.Ctx
 
 function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
 	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
 }
 
 // the app works in whole layers: every column of the effective config, in a stable order
-function layerColumns(ctx: CS.EffectiveColumnConfig) {
+function layerColumns(ctx: LC.Ctx) {
 	return Object.keys(ctx.effectiveColsConfig.defs)
 }
 
-function columnIndexes(ctx: CS.LayerEngine, names: readonly string[]) {
+function columnIndexes(ctx: LE.Ctx, names: readonly string[]) {
 	return names.map((name) => ctx.engine.columnIndex(name))
 }
 
@@ -66,10 +68,7 @@ type CompiledConstraints = {
 	menuItemConditions?: Record<string, LE.Ir>
 }
 
-export function buildQueryConstraints(
-	ctx: QueryCtx,
-	input: LQY.BaseQueryInput,
-): CompiledConstraints | F.InvalidFilterNodeResult {
+export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput): CompiledConstraints | F.InvalidFilterNodeResult {
 	const lower = lowerCtx(ctx)
 	const constraints = input.constraints ?? []
 	const list = input.list ?? LQY.initLayerItemsState()
@@ -158,7 +157,7 @@ export function buildQueryConstraints(
 }
 
 // A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
-function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
+function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
 	if (rule.within <= 0) return { op: 'false' }
 	const col = (name: string) => ctx.engine.columnIndex(name)
 
@@ -222,9 +221,10 @@ function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorInde
 		}
 		case 'Faction':
 		case 'Alliance': {
-			const [colA, colB] = rule.field === 'Faction'
-				? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
-				: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
+			const [colA, colB] =
+				rule.field === 'Faction'
+					? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
+					: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
 			return {
 				op: 'or',
 				children: [
@@ -240,11 +240,8 @@ function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorInde
 
 // ---------------------------- queries ----------------------------
 
-export async function* queryLayersStreamed(args: {
-	input: LQY.LayersQueryInput
-	ctx: CS.LayerQuery
-}): AsyncGenerator<QueryLayersResponsePart> {
-	const ctx: CS.LayerQuery = {
+export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; ctx: LQY.Ctx }): AsyncGenerator<QueryLayersResponsePart> {
+	const ctx: LQY.Ctx = {
 		...args.ctx,
 		log: args.ctx.log.child({ query: 'queryLayers-' + createId(4) }),
 	}
@@ -268,31 +265,28 @@ export async function* queryLayersStreamed(args: {
 		if (ir !== null) indicatorConstraints.push(idx)
 	})
 
-	const res = input.sort?.type === 'random'
-		? drawRandomPage(ctx, {
-			where: compiled.where,
-			input,
-			seed: input.sort.seed ?? LQY.getSeed(),
-			pageIndex: input.pageIndex!,
-			pageSize: input.pageSize!,
-			indicators,
-			columns,
-		})
-		: ctx.engine.query<LE.SelectResponse>({
-			kind: 'select',
-			where: compiled.where,
-			indicators,
-			sort: columnSort(ctx, input.sort),
-			pageIndex: input.pageIndex!,
-			pageSize: input.pageSize!,
-			columns,
-		})
+	const res =
+		input.sort?.type === 'random'
+			? drawRandomPage(ctx, {
+					where: compiled.where,
+					input,
+					seed: input.sort.seed ?? LQY.getSeed(),
+					pageIndex: input.pageIndex!,
+					pageSize: input.pageSize!,
+					indicators,
+					columns,
+				})
+			: ctx.engine.query<LE.SelectResponse>({
+					kind: 'select',
+					where: compiled.where,
+					indicators,
+					sort: columnSort(ctx, input.sort),
+					pageIndex: input.pageIndex!,
+					pageSize: input.pageSize!,
+					columns,
+				})
 
-	const layers = postProcessLayers(
-		ctx,
-		{ rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints },
-		input,
-	)
+	const layers = postProcessLayers(ctx, { rows: res.rows, names, indicatorResults: res.indicators, indicatorConstraints }, input)
 	yield {
 		code: 'layers-page' as const,
 		layers,
@@ -314,7 +308,7 @@ export async function* queryLayersStreamed(args: {
 	}
 }
 
-function columnSort(ctx: CS.LayerEngine, sort: LQY.LayersQuerySort | null | undefined): LE.Sort | null {
+function columnSort(ctx: LE.Ctx, sort: LQY.LayersQuerySort | null | undefined): LE.Sort | null {
 	if (sort?.type !== 'column') return null
 	let direction = sort.direction
 	// only a numeric column has a meaningful absolute value
@@ -326,26 +320,31 @@ function columnSort(ctx: CS.LayerEngine, sort: LQY.LayersQuerySort | null | unde
 
 // Weighted generation. The engine does the picking, since it holds the group universe; this is the bookkeeping around
 // it: exclude what sibling pages already took, and replay a page that's revisited instead of re-drawing it.
-function drawRandomPage(ctx: CS.LayerQuery, args: {
-	where: LE.Ir
-	input: LQY.BaseQueryInput
-	seed: string
-	pageIndex: number
-	pageSize: number
-	indicators: LE.Ir[]
-	columns: number[]
-}): LE.SelectResponse {
+function drawRandomPage(
+	ctx: LQY.Ctx,
+	args: {
+		where: LE.Ir
+		input: LQY.BaseQueryInput
+		seed: string
+		pageIndex: number
+		pageSize: number
+		indicators: LE.Ir[]
+		columns: number[]
+	},
+): LE.SelectResponse {
 	const { where, input, seed, pageIndex, pageSize, indicators, columns } = args
 	if (cachedSeed !== seed) {
 		randomLayerCache.clear()
 		cachedSeed = seed
 	}
-	const cacheKey = simpleHash(JSON.stringify({
-		where,
-		cursor: input.cursor,
-		list: input.list,
-		generation: ctx.generationConfig,
-	}))
+	const cacheKey = simpleHash(
+		JSON.stringify({
+			where,
+			cursor: input.cursor,
+			list: input.list,
+			generation: ctx.generationConfig,
+		}),
+	)
 	let entry = randomLayerCache.get(cacheKey)
 	if (!entry) {
 		entry = { pages: new Map<number, number[]>(), totalCount: 0 }
@@ -386,14 +385,17 @@ function drawRandomPage(ctx: CS.LayerQuery, args: {
 	entry.totalCount = res.totalCount
 	if (entry.pages.size < MAX_PAGES_PER_QUERY) {
 		const idIndex = columns.indexOf(idCol)
-		entry.pages.set(pageIndex, res.rows.map((row) => row[idIndex]!))
+		entry.pages.set(
+			pageIndex,
+			res.rows.map((row) => row[idIndex]!),
+		)
 	}
 	return res
 }
 
 // The pick order and its weights, packed into the engine's request. The radices travel with the request, so the
 // engine's packing and LC.packStepKey cannot drift apart.
-function generationSpec(ctx: CS.LayerQuery, seed: string, pageIndex: number, numLayers: number): LE.GenSpec {
+function generationSpec(ctx: LQY.Ctx, seed: string, pageIndex: number, numLayers: number): LE.GenSpec {
 	const config = ctx.generationConfig
 	const steps: LE.StepSpec[] = config.pickOrder.map((key) => {
 		const weights: { key: number; weight: number }[] = []
@@ -429,7 +431,7 @@ function generationSpec(ctx: CS.LayerQuery, seed: string, pageIndex: number, num
 	}
 }
 
-function packMatchupEntry(ctx: CS.LayerQuery, key: LC.MatchupKey, entry: LC.MatchupWeightEntry): number | undefined {
+function packMatchupEntry(ctx: LQY.Ctx, key: LC.MatchupKey, entry: LC.MatchupWeightEntry): number | undefined {
 	const byColumn = new Map<LC.WeightColumn, LC.DbValue>()
 	const sides: [readonly LC.WeightColumn[], LC.MatchupSide][] = [
 		[LC.MATCHUP_COLUMNS[key][0], entry.teams[0]],
@@ -446,7 +448,7 @@ function packMatchupEntry(ctx: CS.LayerQuery, key: LC.MatchupKey, entry: LC.Matc
 	return LC.packStepKey(key, (column) => byColumn.get(column) ?? null)
 }
 
-export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
+export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) {
 	const { input, ctx } = args
 	const base = buildQueryConstraints(ctx, input)
 	if (base.code !== 'ok') return base
@@ -474,11 +476,7 @@ export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Inp
 			pageSize: 1,
 			columns,
 		})
-		const [layer] = postProcessLayers(
-			ctx,
-			{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] },
-			input,
-		)
+		const [layer] = postProcessLayers(ctx, { rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] }, input)
 		if (layer) {
 			choice.layerId = layer.id
 			chosenLayers[i] = layer
@@ -524,7 +522,7 @@ export function foldBackburnerTemplates(
 	return { where: acc, consumedItemIds }
 }
 
-function countSolutions(ctx: CS.LayerEngine, where: LE.Ir): number {
+function countSolutions(ctx: LE.Ctx, where: LE.Ir): number {
 	const idCol = ctx.engine.columnIndex('id')
 	return ctx.engine.query<LE.SelectResponse>({
 		kind: 'select',
@@ -538,7 +536,7 @@ function countSolutions(ctx: CS.LayerEngine, where: LE.Ir): number {
 }
 
 export async function generateWithBackburner(args: {
-	ctx: CS.LayerQuery
+	ctx: LQY.Ctx
 	input: GenerateWithBackburnerInput
 }): Promise<GenerateWithBackburnerResult | F.InvalidFilterNodeResult> {
 	const { ctx, input } = args
@@ -546,7 +544,7 @@ export async function generateWithBackburner(args: {
 	// top of them; the full configured constraints only shape the draw when no template is consumed
 	const repeatBase = buildQueryConstraints(ctx, {
 		...input,
-		constraints: (input.constraints ?? []).filter(c => c.type === 'do-not-repeat'),
+		constraints: (input.constraints ?? []).filter((c) => c.type === 'do-not-repeat'),
 	})
 	if (repeatBase.code !== 'ok') return repeatBase
 
@@ -580,11 +578,7 @@ export async function generateWithBackburner(args: {
 		pageSize: 1,
 		columns,
 	})
-	const [layer] = postProcessLayers(
-		ctx,
-		{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] },
-		input,
-	)
+	const [layer] = postProcessLayers(ctx, { rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] }, input)
 	return { code: 'ok', layer: layer ?? null, consumedItemIds, invalidItemIds }
 }
 
@@ -609,7 +603,7 @@ export async function checkBackburnerTemplates(args: {
 	return { code: 'ok', satisfiable }
 }
 
-export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: CS.LayerEngine }) {
+export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: LE.Ctx }) {
 	const known = input.filter((id) => L.isKnownLayer(id))
 	const res = ctx.engine.query<LE.MatchesResponse>({
 		kind: 'matches',
@@ -675,8 +669,9 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	const layerItems = list.layerItems
 
 	// match state is needed for both indication and warning, so evaluate any constraint with either active
-	const filterConstraints = constraints.filter((c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
-		c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled')
+	const filterConstraints = constraints.filter(
+		(c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
+			c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled'),
 	)
 	const lower = lowerCtx(ctx)
 	const filterIrs: LE.Ir[] = []
@@ -709,20 +704,11 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
 				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
-				const active = constraint.type === 'do-not-repeat'
-					|| constraint.showIndicator !== 'disabled'
-					|| constraint.warn !== 'disabled'
+				const active = constraint.type === 'do-not-repeat' || constraint.showIndicator !== 'disabled' || constraint.warn !== 'disabled'
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const descriptors = getisMatchedByRepeatRuleDirect(
-							list,
-							i,
-							constraint.id,
-							constraint.rule,
-							item.layerId,
-							item.itemId,
-						)
+						const descriptors = getisMatchedByRepeatRuleDirect(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
 						if (descriptors) itemDescriptors.push(...descriptors)
 						break
 					}
@@ -753,12 +739,12 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		if (!present.has(item.layerId)) continue
 		// seeding and training layers are played outside the pool and repeat rules by design
 		if (L.isSeedingOrTrainingLayer(item.layerId)) continue
-		if (LQY.getTags(item)?.some(tag => skipWarningsForTags.includes(tag))) continue
+		if (LQY.getTags(item)?.some((tag) => skipWarningsForTags.includes(tag))) continue
 		for (const constraint of constraints) {
-			const descriptors = matchDescriptors.get(item.itemId)?.filter(d => d.constraintId === constraint.id)
+			const descriptors = matchDescriptors.get(item.itemId)?.filter((d) => d.constraintId === constraint.id)
 			const matched = descriptors?.length !== undefined && descriptors.length > 0
 			if (constraint.type === 'filter-entity') {
-				if (constraint.warn === 'regular' && matched || constraint.warn === 'inverted' && !matched) {
+				if ((constraint.warn === 'regular' && matched) || (constraint.warn === 'inverted' && !matched)) {
 					warns.push({ itemId: item.itemId, type: 'filter-entity-warning', matched, constraintId: constraint.id })
 				}
 			} else if (constraint.type === 'do-not-repeat' && constraint.warn) {
@@ -782,7 +768,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	return { code: 'ok' as const, statuses }
 }
 
-export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerEngine; input: { layerId: L.LayerId } }) {
+export async function getLayerInfo({ ctx, input }: { ctx: LE.Ctx; input: { layerId: L.LayerId } }) {
 	if (!L.isKnownLayer(input.layerId)) return null
 	const names = layerColumns(ctx)
 	const row = ctx.engine.query<(number | null)[] | null>({
@@ -794,7 +780,7 @@ export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerEngine; input:
 	return decodeRow(ctx, row, names)
 }
 
-export async function getScoreRanges({ ctx }: { ctx: CS.LayerEngine }) {
+export async function getScoreRanges({ ctx }: { ctx: LE.Ctx }) {
 	const floatCols = Object.values(ctx.effectiveColsConfig.defs).filter((col) => col.type === 'float' && col.table === 'extra-cols')
 	if (floatCols.length === 0) return []
 	const ranges = ctx.engine.query<LE.RangeResponse[]>({
@@ -813,7 +799,7 @@ export async function getScoreRanges({ ctx }: { ctx: CS.LayerEngine }) {
 
 export type PostProcessedLayer = ReturnType<typeof postProcessLayers>[number]
 
-function decodeRow(ctx: CS.EffectiveColumnConfig, row: (number | null)[], names: string[]) {
+function decodeRow(ctx: LC.Ctx, row: (number | null)[], names: string[]) {
 	const layer: Record<string, string | number | boolean | null> = {}
 	for (let i = 0; i < names.length; i++) {
 		layer[names[i]] = LC.fromDbValue(names[i], row[i], ctx)!
@@ -822,7 +808,7 @@ function decodeRow(ctx: CS.EffectiveColumnConfig, row: (number | null)[], names:
 }
 
 function postProcessLayers(
-	ctx: CS.EffectiveColumnConfig,
+	ctx: LC.Ctx,
 	page: { rows: (number | null)[][]; names: string[]; indicatorResults: boolean[][]; indicatorConstraints: number[] },
 	baseInput: LQY.BaseQueryInput,
 ) {
@@ -899,9 +885,9 @@ function getisMatchedByRepeatRuleDirect(
 			case 'Layer':
 			case 'Size':
 				if (
-					layer[rule.field]
-					&& targetLayer[rule.field] === layer[rule.field]
-					&& (!LQY.valueFilteredByTargetValues(rule, layer[rule.field]))
+					layer[rule.field] &&
+					targetLayer[rule.field] === layer[rule.field] &&
+					!LQY.valueFilteredByTargetValues(rule, layer[rule.field])
 				) {
 					descriptors.push(getViolationDescriptor(rule.field))
 				}
@@ -910,11 +896,7 @@ function getisMatchedByRepeatRuleDirect(
 				const checkFaction = (team: MH.NormedTeamId) => {
 					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
 					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					if (
-						targetFaction
-						&& previousFaction === targetFaction
-						&& (!LQY.valueFilteredByTargetValues(rule, previousFaction))
-					) {
+					if (targetFaction && previousFaction === targetFaction && !LQY.valueFilteredByTargetValues(rule, previousFaction)) {
 						descriptors.push(getViolationDescriptor(`Faction_${team}`))
 					}
 				}
@@ -927,7 +909,7 @@ function getisMatchedByRepeatRuleDirect(
 					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
 					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
 
-					if (targetAlliance && targetAlliance === previousAlliance && (!LQY.valueFilteredByTargetValues(rule, previousAlliance))) {
+					if (targetAlliance && targetAlliance === previousAlliance && !LQY.valueFilteredByTargetValues(rule, previousAlliance)) {
 						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
 					}
 				}

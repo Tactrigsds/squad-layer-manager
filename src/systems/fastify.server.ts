@@ -1,17 +1,26 @@
+import fastifyCookie from '@fastify/cookie'
+import fastifyFormBody from '@fastify/formbody'
+import oauthPlugin from '@fastify/oauth2'
+import fastifyStatic from '@fastify/static'
+import fastifyWebsocket from '@fastify/websocket'
+import * as Otel from '@opentelemetry/api'
+import type { FastifyReply, FastifyRequest } from 'fastify'
+import fastify from 'fastify'
+import type { WebSocket } from 'ws'
+
 import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
+import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Messages from '@/messages'
 import * as CS from '@/models/context-shared'
-import { initModule } from '@/server/logger'
-
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env.ts'
-
-import { anySignal } from '@/lib/async'
+import * as Instr from '@/server/instrumentation'
+import { initModule } from '@/server/logger'
 import * as ORPCServer from '@/server/orpc-handler'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
@@ -24,15 +33,6 @@ import * as Sessions from '@/systems/sessions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
-import fastifyCookie from '@fastify/cookie'
-import fastifyFormBody from '@fastify/formbody'
-import oauthPlugin from '@fastify/oauth2'
-import fastifyStatic from '@fastify/static'
-import fastifyWebsocket from '@fastify/websocket'
-import * as Otel from '@opentelemetry/api'
-import type { FastifyReply, FastifyRequest } from 'fastify'
-import fastify from 'fastify'
-import type { WebSocket } from 'ws'
 
 const BASE_HEADERS = {
 	'Cross-Origin-Embedder-Policy': 'credentialless',
@@ -66,7 +66,7 @@ async function getFastifyBase() {
 	})
 }
 
-export const setup = C.spanOp('setup', { module }, async () => {
+export const setup = Instr.spanOp('setup', { module }, async () => {
 	log = module.getLogger()
 	ENV = envBuilder()
 	instance = await getFastifyBase()
@@ -129,7 +129,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		scope: ['identify'],
 	})
 
-	instance.get(AR.route('/login/callback'), async function(req, reply) {
+	instance.get(AR.route('/login/callback'), async function (req, reply) {
 		const tokenResult = await (this as any).discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
 			access_token: string
@@ -155,7 +155,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 		reply.redirect(AR.route('/'), 302)
 	})
 
-	instance.post(AR.route('/logout'), async function(req, res) {
+	instance.post(AR.route('/logout'), async function (req, res) {
 		// authed:false: only the session cookie is needed, so a signed-in-but-unauthorized user can still sign out
 		const ctx = buildHttpRequestContext(req, res)
 		const sessionId = ctx.cookies['session-id']
@@ -269,7 +269,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	})
 
 	instance.register(fastifyWebsocket)
-	instance.register(async function(instance) {
+	instance.register(async function (instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
 			// carries the connection-level signal; orpc middleware narrows it per-call
 			const ctx = createOrpcSessionBase(getAuthedCtx(req), connection)
@@ -324,9 +324,7 @@ export const setup = C.spanOp('setup', { module }, async () => {
 	return { serverClosed }
 })
 
-export async function authorizeRequest<
-	T extends C.FastifyRequestFull,
->(ctx: T, res?: FastifyReply) {
+export async function authorizeRequest<T extends C.FastifyRequestFull>(ctx: T, res?: FastifyReply) {
 	const validSessionRes = await Sessions.validateAndUpdate({ ...ctx, res })
 	if (validSessionRes.code !== 'ok') {
 		return validSessionRes
@@ -357,15 +355,11 @@ export async function authorizeRequest<
 }
 
 // With the websocket handler this will run once per connection.
-export function createOrpcSessionBase(
-	ctx: C.FastifyRequestFull & C.AuthedUser,
-	websocket: WebSocket,
-): C.OrpcBase {
+export function createOrpcSessionBase(ctx: C.FastifyRequestFull & C.AuthedUser, websocket: WebSocket): C.OrpcBase {
 	// reconnecting clients send the id they last held as `?prior=`, so the socket picks up its held presence
 	// (activity + locks) in place with no visible break and leaves no ghost "other session"; otherwise mint a fresh id
-	const priorClientId = typeof (ctx.req.query as { prior?: unknown })?.prior === 'string'
-		? (ctx.req.query as { prior: string }).prior
-		: undefined
+	const priorClientId =
+		typeof (ctx.req.query as { prior?: unknown })?.prior === 'string' ? (ctx.req.query as { prior: string }).prior : undefined
 	const wsClientId = UserPresenceSys.reclaimClientId(ctx.user.discordId, priorClientId) ?? createId(32)
 
 	const wsCtx: C.OrpcBase = {
@@ -378,17 +372,14 @@ export function createOrpcSessionBase(
 	return wsCtx
 }
 
-function buildHttpRequestContext(
-	req: FastifyRequest,
-	res: FastifyReply,
-): C.HttpRequestFull {
+function buildHttpRequestContext(req: FastifyRequest, res: FastifyReply): C.HttpRequestFull {
 	const ctx = buildFastifyRequestContext(req)
 	return { ...ctx, res: res }
 }
 
 function buildFastifyRequestContext(req: FastifyRequest): C.FastifyRequestFull {
 	const patchedCtx = getPatchedCtx(req)
-	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : {} as AR.Cookies
+	const cookies = req.headers.cookie ? AR.parseCookies(req.headers.cookie) : ({} as AR.Cookies)
 	const ctx: C.FastifyRequestFull = { ...patchedCtx, req, cookies }
 	return ctx
 }
@@ -397,7 +388,7 @@ function monkeyPatchContextAndLogs(request: FastifyRequest) {
 	const route = AR.resolveRoute(request.url)
 	// aborts if the client disconnects prematurely (see the onRequestAbort hook) or the process shuts down
 	const abort = new AbortController()
-	const signal = anySignal(CleanupSys.shutdownSignal, abort.signal)!
+	const signal = Prom.anySignal(CleanupSys.shutdownSignal, abort.signal)!
 	const ctx: C.AttachedFastify = DB.addPooledDb({ ...CS.init(), route: route ?? undefined, signal })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx

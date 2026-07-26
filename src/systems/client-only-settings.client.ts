@@ -1,5 +1,4 @@
-import * as Zus from 'zustand'
-import * as ZusMiddle from 'zustand/middleware'
+import * as Zus from '@/lib/zustand'
 
 export type ChartTab = 'population' | 'kd' | 'wd'
 export type ChartTimeInterval = 1 | 5 | 10
@@ -17,16 +16,21 @@ export type ClientOnlySettingsStore = {
 	pinnedCommands: string[]
 }
 
-export const Store = Zus.createStore<ClientOnlySettingsStore>()(ZusMiddle.persist<ClientOnlySettingsStore>(() => ({
-	displayTeamsNormalized: true,
-	chartTab: 'population',
-	chartTimeInterval: 5,
-	primaryPanelTab: 'VIEWING_QUEUE',
-	pinnedCommands: [],
-}), {
-	name: 'settings:v1',
-	storage: ZusMiddle.createJSONStorage(() => localStorage),
-}))
+export const Store = Zus.createStore<ClientOnlySettingsStore>()(
+	Zus.persist<ClientOnlySettingsStore>(
+		() => ({
+			displayTeamsNormalized: true,
+			chartTab: 'population',
+			chartTimeInterval: 5,
+			primaryPanelTab: 'VIEWING_QUEUE',
+			pinnedCommands: [],
+		}),
+		{
+			name: 'settings:v1',
+			storage: Zus.createJSONStorage(() => localStorage),
+		},
+	),
+)
 
 export namespace Actions {
 	export function setDisplayTeamsNormalized(value: boolean) {

@@ -55,9 +55,7 @@ const DropdownMenuSubContent = React.forwardRef<
 			style={{ zIndex, ...style }}
 			{...props}
 		>
-			<BaseZIndexContext.Provider value={zIndex}>
-				{children}
-			</BaseZIndexContext.Provider>
+			<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
 		</DropdownMenuPrimitive.SubContent>
 	)
 })
@@ -82,9 +80,7 @@ const DropdownMenuContent = React.forwardRef<
 				style={{ zIndex, ...style }}
 				{...props}
 			>
-				<BaseZIndexContext.Provider value={zIndex}>
-					{children}
-				</BaseZIndexContext.Provider>
+				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
 			</DropdownMenuPrimitive.Content>
 		</DropdownMenuPrimitive.Portal>
 	)

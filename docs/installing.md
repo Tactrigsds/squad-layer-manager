@@ -73,10 +73,10 @@ you installed already does:
 
 ```yaml
 services:
-  app:
-    volumes:
-      - ./.env.secrets:/app/.env.secrets:ro
-    env_file: .env
+   app:
+      volumes:
+         - ./.env.secrets:/app/.env.secrets:ro
+      env_file: .env
 ```
 
 SLM reads `.env.secrets` as a file and never loads it into its own environment, so the credentials stay out of
@@ -88,15 +88,15 @@ a docker secret, for instance:
 
 ```yaml
 services:
-  app:
-    environment:
-      - SECRETS_FILE=/run/secrets/slm-secrets
-    secrets:
-      - slm-secrets
+   app:
+      environment:
+         - SECRETS_FILE=/run/secrets/slm-secrets
+      secrets:
+         - slm-secrets
 
 secrets:
-  slm-secrets:
-    file: ./.env.secrets
+   slm-secrets:
+      file: ./.env.secrets
 ```
 
 The format is the same wherever it is mounted: `KEY=value`, one per line. A `SECRETS_FILE` pointing at
@@ -271,7 +271,7 @@ in your `docker-compose.yaml` before `docker compose up -d`:
 
 ```yaml
 volumes:
-  - ./.env.secrets:/app/.env.secrets:ro
+   - ./.env.secrets:/app/.env.secrets:ro
 ```
 
 Run migrations manually with `docker compose run --rm app pnpm db:migrate:prod`.

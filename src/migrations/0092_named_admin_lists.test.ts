@@ -1,5 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import { describe, expect, test } from 'vitest'
+
 import { up } from './0092_named_admin_lists'
 
 function makeDb(globalJson: unknown, servers: Record<string, unknown> = {}) {
@@ -55,7 +56,10 @@ describe('0092_named_admin_lists', () => {
 
 	test('fans an in-game-admin assignment out to every list, since it meant their union', async () => {
 		const db = makeDb({
-			adminListSources: [{ type: 'local', source: 'A.cfg' }, { type: 'local', source: 'B.cfg' }],
+			adminListSources: [
+				{ type: 'local', source: 'A.cfg' },
+				{ type: 'local', source: 'B.cfg' },
+			],
 			adminIdentifyingPermissions: ['canseeadminchat'],
 			rbac: { roles: { admins: { assignments: { includeIngameAdmins: true, adminListGroups: ['Reserve'] } } } },
 		})

@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { AdminReasonPicker } from '@/components/admin-reason-picker'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -6,24 +9,25 @@ import { Textarea } from '@/components/ui/textarea'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 type Channel = 'warn-admins' | 'broadcast' | 'warn-selected'
 
 // broadcast matches CHANNEL_STYLES.Broadcast in server-event.tsx (yellow-500); warn-selected gets orange as a
 // "targeted warn" accent distinct from both
-const CHANNEL_CFG: Record<Channel, {
-	icon: React.ComponentType<{ className?: string }>
-	triggerClass: string
-	inputClass: string
-}> = {
+const CHANNEL_CFG: Record<
+	Channel,
+	{
+		icon: React.ComponentType<{ className?: string }>
+		triggerClass: string
+		inputClass: string
+	}
+> = {
 	'warn-admins': {
 		icon: Icons.Shield,
 		triggerClass: 'border-admin/60 text-admin focus:ring-admin/50 [&_svg]:text-admin',
@@ -43,9 +47,7 @@ const CHANNEL_CFG: Record<Channel, {
 
 export default function ServerChatBox({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = stores.squadServer.serverId
-	const initialChannel: Channel = SquadServerFrame.Sel.hasSelection(ZusUtils.getState(stores.squadServer))
-		? 'warn-selected'
-		: 'warn-admins'
+	const initialChannel: Channel = SquadServerFrame.Sel.hasSelection(Zus.getState(stores.squadServer)) ? 'warn-selected' : 'warn-admins'
 	const [channel, setChannel] = React.useState<Channel>(initialChannel)
 	const [message, setMessage] = React.useState('')
 	// warning admins prefixes the sender's name by default so they know who warned them; other channels default off
@@ -64,7 +66,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	// a "warn selected" menu action routes here: force the selected channel (overriding even broadcast, since
 	// this is an explicit warn) and focus the box so the admin can type immediately
 	WarnChat.useWarnFocusRequest(
-		t => t.kind === 'server-activity',
+		(t) => t.kind === 'server-activity',
 		() => {
 			selectChannel('warn-selected')
 			WarnChat.focusWhenVisible(() => textareaRef.current)
@@ -73,19 +75,22 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 
 	// follow the teams-panel selection: empty -> non-empty picks "Selected", the reverse falls back to "Admins".
 	// broadcast is a deliberate choice, so leave it alone.
-	React.useEffect(() =>
-		ZusUtils.resolveReadStore(stores.squadServer).subscribe((state, prev) => {
-			const now = SquadServerFrame.Sel.hasSelection(state)
-			if (now === SquadServerFrame.Sel.hasSelection(prev)) return
-			if (channel === 'broadcast') return
-			selectChannel(now ? 'warn-selected' : 'warn-admins')
-		}), [channel, stores.squadServer])
+	React.useEffect(
+		() =>
+			Zus.resolveReadStore(stores.squadServer).subscribe((state, prev) => {
+				const now = SquadServerFrame.Sel.hasSelection(state)
+				if (now === SquadServerFrame.Sel.hasSelection(prev)) return
+				if (channel === 'broadcast') return
+				selectChannel(now ? 'warn-selected' : 'warn-admins')
+			}),
+		[channel, stores.squadServer],
+	)
 
 	const username = UsersClient.useLoggedInUser()?.displayName
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const broadcastDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:broadcast', { serverId: serverId }))
-	const selectedCount = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
-	const selectionIsAllAdmins = ZusUtils.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
+	const selectedCount = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const selectionIsAllAdmins = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
 	const notifyAdminsChecked = notifyAdmins ?? !selectionIsAllAdmins
 	// broadcasts get the reasons' broadcast text, not their warn text
 	const draft = WarnChat.useAdminReasonDraft(channel === 'broadcast' ? 'broadcast' : 'warn')
@@ -104,7 +109,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 		if (!text || sendDisabled) return
 		// the sender's name leads the whole message, ahead of any audience tag: "grey275: @admins ...". warn-selected
 		// leaves both to the server, which is the only path that knows who the "@..." tag should name.
-		const prefixed = (body: string) => prefixName && username ? `${username}: ${body}` : body
+		const prefixed = (body: string) => (prefixName && username ? `${username}: ${body}` : body)
 		const asPreset = draft.match(text)
 		try {
 			let res: { code: string }
@@ -117,7 +122,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 					...(asPreset ? { presetReasonLabel: asPreset.label } : { message: text }),
 				})
 			} else {
-				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(ZusUtils.getState(stores.squadServer))]
+				const playerIds = [...SquadServerFrame.Sel.selectedPlayerIds(Zus.getState(stores.squadServer))]
 				if (playerIds.length === 0) return
 				res = await warnPlayersMutation.mutateAsync({
 					serverId,
@@ -142,12 +147,12 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 	const placeholder = channelDenied
 		? 'Missing permission'
 		: channel === 'warn-admins'
-		? 'Warn all online admins…'
-		: channel === 'broadcast'
-		? 'Broadcast to the server…'
-		: selectedCount === 0
-		? 'No players selected in the teams panel'
-		: `Warn ${selectedCount} selected ${selectedCount === 1 ? 'player' : 'players'}…`
+			? 'Warn all online admins…'
+			: channel === 'broadcast'
+				? 'Broadcast to the server…'
+				: selectedCount === 0
+					? 'No players selected in the teams panel'
+					: `Warn ${selectedCount} selected ${selectedCount === 1 ? 'player' : 'players'}…`
 
 	return (
 		<div className="flex items-stretch gap-1.5 pt-1 shrink-0">
@@ -171,12 +176,16 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
 							title="Prefix the message with your username"
 						>
-							<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
+							<Checkbox
+								checked={prefixName}
+								onCheckedChange={(checked: boolean) => setPrefixName(checked)}
+								className="h-3.5 w-3.5"
+							/>
 							{username}:
 						</label>
 					)}
 				</div>
-				<Select value={channel} onValueChange={v => selectChannel(v as Channel)}>
+				<Select value={channel} onValueChange={(v) => selectChannel(v as Channel)}>
 					<SelectTrigger
 						className={cn('h-7 w-auto min-w-[7rem] gap-1.5 px-2 text-xs shrink-0 [&>span]:whitespace-nowrap', cfg.triggerClass)}
 					>
@@ -184,7 +193,9 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-xs text-admin whitespace-nowrap">Admins</SelectItem>
+						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-xs text-admin whitespace-nowrap">
+							Admins
+						</SelectItem>
 						<SelectItem value="broadcast" disabled={!!broadcastDenied} className="text-xs text-yellow-500 whitespace-nowrap">
 							Broadcast
 						</SelectItem>
@@ -197,8 +208,8 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 			<Textarea
 				ref={textareaRef}
 				value={message}
-				onChange={e => setMessage(e.target.value)}
-				onKeyDown={e => {
+				onChange={(e) => setMessage(e.target.value)}
+				onKeyDown={(e) => {
 					if (e.key === 'Enter' && !e.shiftKey) {
 						e.preventDefault()
 						void send()
@@ -214,7 +225,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				<AdminReasonPicker
 					reasons={draft.reasons}
 					preview={draft.render}
-					onPick={reason => {
+					onPick={(reason) => {
 						setMessage(draft.pick(reason))
 						textareaRef.current?.focus()
 					}}

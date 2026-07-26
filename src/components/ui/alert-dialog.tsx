@@ -48,9 +48,7 @@ const AlertDialogContent = React.forwardRef<
 				style={{ zIndex, ...style }}
 				{...props}
 			>
-				<BaseZIndexContext.Provider value={zIndex}>
-					{children}
-				</BaseZIndexContext.Provider>
+				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
 			</AlertDialogPrimitive.Content>
 		</AlertDialogPortal>
 	)
@@ -70,13 +68,7 @@ AlertDialogFooter.displayName = 'AlertDialogFooter'
 const AlertDialogTitle = React.forwardRef<
 	React.ElementRef<typeof AlertDialogPrimitive.Title>,
 	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Title
-		ref={ref}
-		className={cn('text-lg font-semibold', className)}
-		{...props}
-	/>
-))
+>(({ className, ...props }, ref) => <AlertDialogPrimitive.Title ref={ref} className={cn('text-lg font-semibold', className)} {...props} />)
 AlertDialogTitle.displayName = AlertDialogPrimitive.Title.displayName
 
 const AlertDialogDescription = React.forwardRef<

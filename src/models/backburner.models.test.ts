@@ -1,8 +1,9 @@
+import { describe, expect, it } from 'vitest'
+
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
-import { describe, expect, it } from 'vitest'
 
 const components = L.StaticLayerComponents
 
@@ -36,7 +37,7 @@ describe('resolveRequestTokens', () => {
 		const res = resolve(['fallu', 'adf', 'pla'])
 		const nodes = conjuncts(res)
 		expect(compArg(nodes[0])).toEqual({ column: 'Map', value: 'Fallujah' })
-		const matchup = nodes.find(n => n.type === 'allow-matchups')
+		const matchup = nodes.find((n) => n.type === 'allow-matchups')
 		expect(matchup).toBeDefined()
 		if (matchup?.type !== 'allow-matchups') throw new Error('unreachable')
 		expect(matchup.locked).toBe(false)
@@ -149,10 +150,7 @@ describe('template merge helpers', () => {
 	})
 
 	it('unions and dedupes applied filter lists', () => {
-		const merged = mergeOk(
-			FB.and([FB.includedIn('f1'), FB.includedIn('f2')]),
-			FB.and([FB.includedIn('f2'), FB.includedIn('f3')]),
-		)
+		const merged = mergeOk(FB.and([FB.includedIn('f1'), FB.includedIn('f2')]), FB.and([FB.includedIn('f2'), FB.includedIn('f3')]))
 		expect(BB.parseTemplateParts(merged).filterIds).toEqual(['f1', 'f2', 'f3'])
 	})
 
@@ -208,7 +206,10 @@ describe('diffMutations', () => {
 
 	it('reports no mutations when the lists match', () => {
 		const items = [item('a', 'Gorodok'), item('b', 'Fallujah')]
-		const m = BB.diffMutations(items, items.map(i => ({ ...i })))
+		const m = BB.diffMutations(
+			items,
+			items.map((i) => ({ ...i })),
+		)
 		expect(m.added.size + m.removed.size + m.edited.size + m.moved.size).toBe(0)
 	})
 })

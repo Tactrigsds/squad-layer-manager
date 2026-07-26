@@ -1,15 +1,15 @@
-import * as Schema from '$root/drizzle/schema.ts'
-import { isAbortError, toAsyncGenerator, toCold, withAbortSignal } from '@/lib/async.ts'
-import * as ATTRS from '@/models/otel-attrs'
-import * as UserPresenceSys from '@/systems/user-presence.server'
+import { Mutex } from 'async-mutex'
+import * as E from 'drizzle-orm'
+import { z } from 'zod'
 
+import * as Schema from '$root/drizzle/schema.ts'
 import * as DH from '@/lib/display-helpers.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
-
 import * as ODSM from '@/lib/odsm'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
-
-import { HumanTime } from '@/lib/zod.ts'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Messages from '@/messages.ts'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
@@ -20,21 +20,25 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LQ from '@/models/layer-queue.models'
 import * as MH from '@/models/match-history.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
+import type * as SR from '@/models/squad-rcon.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models'
-import * as AppEventsSys from '@/systems/app-events.server'
-
+import type * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models.ts'
-
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
@@ -44,37 +48,13 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
-import { Mutex } from 'async-mutex'
-import type { MutexInterface } from 'async-mutex'
-import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
-
-export type LayerQueueSlice = {
-	unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
-
-	// TODO we should fold this into the server events
-	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & C.ServerId]>
-
-	session: ODSM.Server.Session<SLL.Operation, SLL.State>
-	op$: Rx.Subject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>
-	updateLayerMtx: MutexInterface
-}
 
 // ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
 // roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
-type SideEffectCtx =
-	& C.Db
-	& C.LayerQueue
-	& C.SquadServer
-	& C.Vote
-	& C.MatchHistory
-	& C.Rcon
-	& C.ServerSettings
-	& CS.AbortSignal
-	& Partial<Pick<C.Tx, 'tx'>>
+type SideEffectCtx = C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Partial<Pick<C.Tx, 'tx'>>
 
 const module = initModule('layer-queue')
 let log!: CS.Logger
@@ -84,9 +64,9 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState) {
+export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
-	const slice: LayerQueueSlice = {
+	const payload: LQ.Ctx.Payload = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
 		update$: new IsolatedReplaySubject(1),
 
@@ -95,94 +75,100 @@ export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & C.ServerId, serv
 		updateLayerMtx: new Mutex(),
 	}
 
-	ctx.cleanup.push(
-		slice.update$,
-		slice.unexpectedNextLayerSet$,
-		slice.op$,
-		slice.updateLayerMtx,
-	)
+	ctx.cleanup.push(payload.update$, payload.unexpectedNextLayerSet$, payload.op$, payload.updateLayerMtx)
 
-	return slice
+	return payload
 }
 
-export const setupInstance = C.spanOp(
+export const setupInstance = Instr.spanOp(
 	'setupInstance',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: C.Db & C.ServerSlice) => {
+	async (ctx: C.Db & C.ManagedServer) => {
 		const serverId = ctx.serverId
 
 		// populates list with generated queue item if the list is empty
 		await dispatchOp(ctx, { op: 'init', opId: SLL.createOpId() })
 
-		ctx.layerQueue.update$.subscribe(([state, ctx]) => {
+		ctx.layerQueue.update$.subscribe(() => {
 			log.debug('pushing server state update')
 		})
 
 		// -------- schedule generic admin reminders --------
 		if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
 			ctx.cleanup.push(
-				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval).pipe(
-					C.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
-						const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
-						const serverState = await SquadServer.getServerState(baseCtx)
-						const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
-						const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
+				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval)
+					.pipe(
+						Instr.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
+							const baseCtx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
+							const serverState = await SquadServer.getServerState(baseCtx)
+							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
+							const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
 
-						// statuses need the engine, so the query ctx stays unresolved until there is a next layer to report on
-						warnCondition: {
-							const nextLayer = getSavedQueue(baseCtx)[0] ?? null
-							if (!nextLayer) break warnCondition
-							const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
-							const statusRes = await LayerQueries.getLayerItemStatuses({
-								ctx,
-								input: {
-									constraints: allConstraints,
-									skipWarningsForTags: serverState.settings.queue.mainPool.skipWarningsForTags,
-									list: await LayerQueriesServer.resolveLayerItemsState(baseCtx),
-								},
-							})
-							if (statusRes.code !== 'ok') break warnCondition
-							const warns = statusRes.statuses.warns.filter(w => w.itemId === nextLayer.itemId)
-							if (warns.length === 0) break warnCondition
-							const repeatViolations = warns.filter(w => w.type === 'repeat-rule-violation-warning').flatMap(w => w.descriptors)
-							const poolViolations = warns.filter(w => w.type === 'filter-entity-warning').map(w => {
-								const constraint = allConstraints.find(c => c.id === w.constraintId)! as Extract<LQY.Constraint, { type: 'filter-entity' }>
-								const entity = ctx.filters.get(constraint.filterId)
-								// warn 'inverted' fires when the layer does NOT match, so use the miss indicator's message
-								const missed = constraint.warn === 'inverted'
-								return (missed ? entity?.invertedAlertMessage : entity?.alertMessage)
-									?? `${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
-							})
-							await SquadRcon.warnAllAdmins(
-								ctx,
-								Messages.WARNS.queue.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
-							)
-							return
-						}
+							// statuses need the engine, so the query ctx stays unresolved until there is a next layer to report on
+							warnCondition: {
+								const nextLayer = getSavedQueue(baseCtx)[0] ?? null
+								if (!nextLayer) break warnCondition
+								const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
+								const statusRes = await LayerQueries.getLayerItemStatuses({
+									ctx,
+									input: {
+										constraints: allConstraints,
+										skipWarningsForTags: serverState.settings.queue.mainPool.skipWarningsForTags,
+										list: await LayerQueriesServer.resolveLayerItemsState(baseCtx),
+									},
+								})
+								if (statusRes.code !== 'ok') break warnCondition
+								const warns = statusRes.statuses.warns.filter((w) => w.itemId === nextLayer.itemId)
+								if (warns.length === 0) break warnCondition
+								const repeatViolations = warns
+									.filter((w) => w.type === 'repeat-rule-violation-warning')
+									.flatMap((w) => w.descriptors)
+								const poolViolations = warns
+									.filter((w) => w.type === 'filter-entity-warning')
+									.map((w) => {
+										const constraint = allConstraints.find((c) => c.id === w.constraintId)! as Extract<
+											LQY.Constraint,
+											{ type: 'filter-entity' }
+										>
+										const entity = ctx.filters.get(constraint.filterId)
+										// warn 'inverted' fires when the layer does NOT match, so use the miss indicator's message
+										const missed = constraint.warn === 'inverted'
+										return (
+											(missed ? entity?.invertedAlertMessage : entity?.alertMessage) ??
+											`${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
+										)
+									})
+								await SquadRcon.warnAllAdmins(
+									ctx,
+									Messages.WARNS.queue.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
+								)
+								return
+							}
 
-						const voteState = baseCtx.vote.state
-						if (baseCtx.server.serverRolling$.value || currentMatch.status === 'post-game') return
-						if (
-							LL.isVoteItem(serverState.layerQueue[0])
-							&& voteState?.code === 'ready'
-							&& !serverState.layerQueue[0].endingVoteState
-							&& currentMatch.startTime !== undefined
-							&& currentMatch.startTime.getTime() + serverState.settings.vote.startVoteReminderThreshold < Date.now()
-						) {
-							await SquadRcon.warnAllAdmins(
-								baseCtx,
-								Messages.WARNS.queue.votePending(
-									currentMatch.startTime,
-									serverState.settings.vote.startVoteReminderThreshold,
-									serverState.settings.vote.autoStartVoteDelay !== null,
-									Settings.GLOBAL_SETTINGS.commands,
-								),
-							)
-						} else if (serverState.layerQueue.length === 0) {
-							await SquadRcon.warnAllAdmins(baseCtx, Messages.WARNS.queue.empty)
-						}
-					}),
-				).subscribe(),
+							const voteState = baseCtx.vote.state
+							if (baseCtx.server.serverRolling$.value || currentMatch.status === 'post-game') return
+							if (
+								LL.isVoteItem(serverState.layerQueue[0]) &&
+								voteState?.code === 'ready' &&
+								!serverState.layerQueue[0].endingVoteState &&
+								currentMatch.startTime !== undefined &&
+								currentMatch.startTime.getTime() + serverState.settings.vote.startVoteReminderThreshold < Date.now()
+							) {
+								await SquadRcon.warnAllAdmins(
+									baseCtx,
+									Messages.WARNS.queue.votePending(
+										currentMatch.startTime,
+										serverState.settings.vote.startVoteReminderThreshold,
+										serverState.settings.vote.autoStartVoteDelay !== null,
+										Settings.GLOBAL_SETTINGS.commands,
+									),
+								)
+							} else if (serverState.layerQueue.length === 0) {
+								await SquadRcon.warnAllAdmins(baseCtx, Messages.WARNS.queue.empty)
+							}
+						}),
+					)
+					.subscribe(),
 			)
 		}
 
@@ -191,15 +177,15 @@ export const setupInstance = C.spanOp(
 			.pipe(
 				Rx.switchMap((unexpectedNextLayer) => {
 					if (unexpectedNextLayer) {
-						return Rx.interval(HumanTime.parse('2m')).pipe(
+						return Rx.interval(ZodUtils.HumanTime.parse('2m')).pipe(
 							Rx.startWith(0),
 							Rx.map(() => unexpectedNextLayer),
 						)
 					}
 					return Rx.EMPTY
 				}),
-				C.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
-					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+				Instr.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
+					const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 					const expectedNextLayer = LL.getNextLayerId(getSavedQueue(ctx))!
 					if (!expectedNextLayer) return
 					const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
@@ -209,102 +195,111 @@ export const setupInstance = C.spanOp(
 						`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
 					)
 				}),
-			).subscribe()
+			)
+			.subscribe()
 
 		// -------- make sure next layer set is synced with queue --------
 		{
-			ctx.server.event$.pipe(
-				Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
-				C.durableSub(
-					'sync-server-map-set',
-					{ module, mutexes: ([ctx]) => ctx.layerQueue.updateLayerMtx },
-					async ([_ctx, event], signal) => {
-						const ctx = { ..._ctx, signal }
-						// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
-						// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
-						// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
-						if (event.type !== 'MAP_SET' || SE.mapSetIsSlmOriginated(event.source)) return
-						const queue = getSavedQueue(ctx)
-						// this case will be dealt with in handleNewGame, so can ignore it here
-						if (ctx.server.serverRolling$.value) return
-						const savedNextLayerId = LL.getNextLayerId(queue)
-						const savedNextItemId = queue[0]?.itemId || null
-						if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
-						// the external actor whose set we're reacting to (post-guard, source is player / rcon / unattributed)
-						const external: { type: 'player'; playerId: string } | { type: 'rcon' } = event.source?.type === 'player'
-							? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.source.playerIds) }
-							: { type: 'rcon' }
-						if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
-							const serverState = await SquadServer.getServerState(ctx)
-							if (savedNextLayerId === null) {
-								log.warn('no next layer to sync after map set')
-								return
+			ctx.server.event$
+				.pipe(
+					Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
+					Instr.durableSub(
+						'sync-server-map-set',
+						{ module, mutexes: ([evt]) => SquadServer.require(evt.serverId).layerQueue.updateLayerMtx },
+						async ([evtCtx, event], signal) => {
+							const ctx = SquadServer.eventCtx(evtCtx, signal)
+							// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
+							// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
+							// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
+							if (event.type !== 'MAP_SET' || SE.mapSetIsSlmOriginated(event.source)) return
+							const queue = getSavedQueue(ctx)
+							// this case will be dealt with in handleNewGame, so can ignore it here
+							if (ctx.server.serverRolling$.value) return
+							const savedNextLayerId = LL.getNextLayerId(queue)
+							const savedNextItemId = queue[0]?.itemId || null
+							if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
+							// the external actor whose set we're reacting to (post-guard, source is player / rcon / unattributed)
+							const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
+								event.source?.type === 'player'
+									? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.source.playerIds) }
+									: { type: 'rcon' }
+							if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
+								const serverState = await SquadServer.getServerState(ctx)
+								if (savedNextLayerId === null) {
+									log.warn('no next layer to sync after map set')
+									return
+								}
+								await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
+									reason: 'override',
+									overrode: external,
+								})
+							} else {
+								const op: SLL.Operation = {
+									opId: SLL.createOpId(),
+									op: 'unshift-first-saved-layer',
+									itemId: LL.createItemId(),
+									itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
+									layerId: event.layerId,
+									externalSource: external,
+								}
+								await dispatchOp(ctx, op)
 							}
-							await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
-								reason: 'override',
-								overrode: external,
-							})
-						} else {
-							const op: SLL.Operation = {
-								opId: SLL.createOpId(),
-								op: 'unshift-first-saved-layer',
-								itemId: LL.createItemId(),
-								itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
-								layerId: event.layerId,
-								externalSource: external,
-							}
-							await dispatchOp(ctx, op)
-						}
-					},
-				),
-			).subscribe()
+						},
+					),
+				)
+				.subscribe()
 		}
 
 		// -------- handle AdminChangeLayer --------
 		{
-			ctx.server.event$.pipe(
-				Rx.filter(([ctx, event]) => event.type === 'ROUND_ENDED' && event.action?.type === 'AdminChangeLayer'),
-				C.durableSub('syncAdminChangeLayer', { module }, async ([_ctx, event], signal) => {
-					const ctx = { ..._ctx, signal }
-					if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
-					const external: { type: 'player'; playerId: string } | { type: 'rcon' } = event.action.source.type === 'player'
-						? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.action.source.playerIds) }
-						: { type: 'rcon' }
-					const op: SLL.Operation = {
-						opId: SLL.createOpId(),
-						op: 'unshift-first-saved-layer',
-						itemId: LL.createItemId(),
-						itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
-						layerId: event.action.layerId,
-						externalSource: external,
-					}
+			ctx.server.event$
+				.pipe(
+					Rx.filter(([ctx, event]) => event.type === 'ROUND_ENDED' && event.action?.type === 'AdminChangeLayer'),
+					Instr.durableSub('syncAdminChangeLayer', { module }, async ([evtCtx, event], signal) => {
+						const ctx = SquadServer.eventCtx(evtCtx, signal)
+						if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
+						const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
+							event.action.source.type === 'player'
+								? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.action.source.playerIds) }
+								: { type: 'rcon' }
+						const op: SLL.Operation = {
+							opId: SLL.createOpId(),
+							op: 'unshift-first-saved-layer',
+							itemId: LL.createItemId(),
+							itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
+							layerId: event.action.layerId,
+							externalSource: external,
+						}
 
-					await dispatchOp(ctx, op)
-				}),
-			).subscribe()
+						await dispatchOp(ctx, op)
+					}),
+				)
+				.subscribe()
 		}
 
 		// -------- discard drafts whose last editor left without saving --------
 		ctx.cleanup.push(
-			UserPresenceSys.editingAbandoned$(serverId).pipe(
-				C.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
-					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
-					const state = ctx.layerQueue.session.state
-					if (scope === 'queue') {
-						if (!SLL.hasMutations(state)) return
-						await dispatchOp(ctx, { op: 'discard-abandoned-queue-edits', opId: SLL.createOpId() })
-					} else {
-						if (!SLL.hasBackburnerMutations(state)) return
-						await dispatchOp(ctx, { op: 'discard-abandoned-request-edits', opId: SLL.createOpId() })
-					}
-					log.info('discarded abandoned %s edits', scope)
-				}),
-			).subscribe(),
+			UserPresenceSys.editingAbandoned$(serverId)
+				.pipe(
+					Instr.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
+						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
+						const state = ctx.layerQueue.session.state
+						if (scope === 'queue') {
+							if (!SLL.hasMutations(state)) return
+							await dispatchOp(ctx, { op: 'discard-abandoned-queue-edits', opId: SLL.createOpId() })
+						} else {
+							if (!SLL.hasBackburnerMutations(state)) return
+							await dispatchOp(ctx, { op: 'discard-abandoned-request-edits', opId: SLL.createOpId() })
+						}
+						log.info('discarded abandoned %s edits', scope)
+					}),
+				)
+				.subscribe(),
 		)
 	},
 )
 
-export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.ServerSettings, newLayerId: L.LayerId) {
+export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
 	// -------- schedule post-roll events --------
@@ -316,7 +311,7 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 	if (currentLayer.Gamemode === 'FRAAS') {
 		ctx.server.postRollEventsSub.add(
 			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
-				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
 				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
 			}),
@@ -325,29 +320,38 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 
 	// -------- schedule post-roll announcements --------
 	if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
-		const announcementTasks: (Rx.Observable<void>)[] = []
-		announcementTasks.push(toCold(async () => {
-			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-			const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
-			const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-			if (!currentMatch) return
-			const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
-			if (!mostRelevantEvent) return
-			await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
-		}))
+		const announcementTasks: Rx.Observable<void>[] = []
+		announcementTasks.push(
+			Rx.Ext.toCold(async () => {
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+				const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
+				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+				if (!currentMatch) return
+				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
+				if (!mostRelevantEvent) return
+				await SquadRcon.warnAllAdmins(
+					ctx,
+					Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }),
+				)
+			}),
+		)
 
-		announcementTasks.push(toCold(async () => {
-			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-			await warnShowNext(ctx, 'all-admins')
-		}))
+		announcementTasks.push(
+			Rx.Ext.toCold(async () => {
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+				await warnShowNext(ctx, 'all-admins')
+			}),
+		)
 
-		announcementTasks.push(toCold(async () => {
-			const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
-			const queue = getSavedQueue(ctx)
-			if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
-				await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
-			}
-		}))
+		announcementTasks.push(
+			Rx.Ext.toCold(async () => {
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+				const queue = getSavedQueue(ctx)
+				if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
+					await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
+				}
+			}),
+		)
 
 		const withWaits: Rx.Observable<unknown>[] = []
 		withWaits.push(Rx.timer(ctx.serverSettings.settings.postRollAnnouncementsTimeout))
@@ -367,12 +371,12 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 }
 
 // get the queue which is synced to the squad server
-export function getSavedQueue(ctx: C.LayerQueue) {
+export function getSavedQueue(ctx: LQ.Ctx) {
 	return ctx.layerQueue.session.state.savedList
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
+	ctx: C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
 	list: LL.List,
 	// the list this save replaces. Every next-layer change reaches the server through here -- an SLM edit, a roll, or
 	// adopting a layer someone set outside SLM -- so comparing the two heads is what tells admins the layer moved.
@@ -388,10 +392,14 @@ export async function saveQueueAndUpdateServer(
 		const prevNextLayerId = LL.getNextLayerId(prevList)
 		const nextLayerChanged = !!nextLayerId && (!prevNextLayerId || !L.areLayersCompatible(prevNextLayerId, nextLayerId))
 
-		await SquadServer.updateServerState(txCtx, { layerQueue: list }, {
-			type: 'system',
-			event: 'admin-change-layer',
-		})
+		await SquadServer.updateServerState(
+			txCtx,
+			{ layerQueue: list },
+			{
+				type: 'system',
+				event: 'admin-change-layer',
+			},
+		)
 
 		// These reach the game server over rcon, so they're deferred rather than awaited under the (global) tx lock.
 		// unlockTasks are the outermost transaction's, so this also keeps them out of the map-roll tx that
@@ -426,7 +434,7 @@ export async function saveQueueAndUpdateServer(
 
 // Draws the next queue item and applies it. Split out of handleSideEffect because a map roll defers it past that
 // transaction's commit, where it would otherwise run untraced.
-const generateAndDispatchQueueItem = C.spanOp(
+const generateAndDispatchQueueItem = Instr.spanOp(
 	'generateAndDispatchQueueItem',
 	{ module, levels: { event: 'info' } },
 	async (ctx: SideEffectCtx) => {
@@ -434,7 +442,7 @@ const generateAndDispatchQueueItem = C.spanOp(
 		const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: true })
 		const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 		const layerItemsState = await LayerQueriesServer.resolveLayerItemsState(ctx)
-		const templates = ctx.layerQueue.session.state.savedBackburner.map(item => ({ itemId: item.itemId, filter: item.filter }))
+		const templates = ctx.layerQueue.session.state.savedBackburner.map((item) => ({ itemId: item.itemId, filter: item.filter }))
 
 		const fallback = { layerId: L.DEFAULT_LAYER_ID, consumedItemIds: [] as string[] }
 		const generated = await (async function generate(
@@ -460,7 +468,7 @@ const generateAndDispatchQueueItem = C.spanOp(
 					log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
 				}
 				if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
-				const noDnrConstraints = constraints.filter(c => c.type !== 'do-not-repeat')
+				const noDnrConstraints = constraints.filter((c) => c.type !== 'do-not-repeat')
 				if (noDnrConstraints.length < constraints.length) {
 					log.info('no layers found with do-not-repeat constraints applied, retrying without')
 					return await generate(noDnrConstraints)
@@ -484,7 +492,7 @@ const generateAndDispatchQueueItem = C.spanOp(
 )
 
 export async function warnShowNext(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { updated?: boolean },
 ) {
@@ -503,21 +511,14 @@ export async function warnShowNext(
 		// isAdmin = (await ctx.adminList.get(ctx)).admins.has(playerIds.steam)
 	}
 
-	const nextLayerRes = await ctx.server.layersStatus.get(ctx)
+	const nextLayerRes = await ctx.squadRcon.layersStatus.get(ctx)
 	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
 	const commands = Settings.GLOBAL_SETTINGS.commands
 	const showNextMsg = Messages.WARNS.queue.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin })
 	if (playerIds === 'all-admins') {
-		await SquadRcon.warnAllAdmins(
-			ctx,
-			showNextMsg,
-		)
+		await SquadRcon.warnAllAdmins(ctx, showNextMsg)
 	} else {
-		await SquadRcon.warn(
-			ctx,
-			playerIds,
-			showNextMsg,
-		)
+		await SquadRcon.warn(ctx, playerIds, showNextMsg)
 	}
 }
 
@@ -527,11 +528,11 @@ export async function warnShowNext(
 // matchHistory.mtx is declared here (rather than acquired lazily by the nested getCurrentMatch call
 // below) so that every op taking both locks takes them as one ordered set. Acquiring updateLayerMtx
 // first and matchHistory.mtx later deadlocks against onNewGameDuringRoll, which takes them together.
-export const syncNextLayerToServer = C.spanOp(
+export const syncNextLayerToServer = Instr.spanOp(
 	'syncNextLayerToServer',
 	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
 	async (
-		ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db & C.MatchHistory & CS.AbortSignal,
+		ctx: SQS.Ctx & SR.Ctx.Rcon & LQ.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 		settings: SETTINGS.ServerSettings,
 		nextQueuedLayerId: L.LayerId,
 		itemId: string,
@@ -542,7 +543,7 @@ export const syncNextLayerToServer = C.spanOp(
 			| { reason: 'override'; overrode?: { type: 'player'; playerId: string } | { type: 'rcon' } },
 	) => {
 		if (settings.updatesToSquadServerDisabled) return
-		const currentStatusRes = await ctx.server.layersStatus.get(ctx)
+		const currentStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
 		if (currentStatusRes.code !== 'ok') return currentStatusRes
 		if (currentStatusRes.data.nextLayer && L.areLayersCompatible(currentStatusRes.data.nextLayer.id, nextQueuedLayerId)) return
 		const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
@@ -555,7 +556,7 @@ export const syncNextLayerToServer = C.spanOp(
 				ctx.layerQueue.unexpectedNextLayerSet$.next(null)
 				// deliberately detached (see below): observe the rejection instead of awaiting
 				SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
-					if (!isAbortError(err)) log.error(err)
+					if (!Prom.isAbortError(err)) log.error(err)
 				})
 				break
 			case 'ok': {
@@ -589,7 +590,7 @@ export const syncNextLayerToServer = C.spanOp(
 					layerId: nextQueuedLayerId,
 					appEventId: mapSetAppEventId,
 				}).catch((err) => {
-					if (!isAbortError(err)) log.error(err)
+					if (!Prom.isAbortError(err)) log.error(err)
 				})
 				break
 			}
@@ -599,13 +600,14 @@ export const syncNextLayerToServer = C.spanOp(
 	},
 )
 
-export async function toggleUpdatesToSquadServer(
-	{ ctx, input }: {
-		ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.Rcon & C.ServerSettings & CS.AbortSignal
-		input: { disabled: boolean }
-	},
-) {
-	await DB.runTransaction(ctx, { redactParams: true }, async ctx => {
+export async function toggleUpdatesToSquadServer({
+	ctx,
+	input,
+}: {
+	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
+	input: { disabled: boolean }
+}) {
+	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const serverState = await SquadServer.getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
 		await Settings.updateServerSettings(ctx, serverState.settings, {
@@ -618,13 +620,13 @@ export async function toggleUpdatesToSquadServer(
 	return { code: 'ok' as const }
 }
 
-export async function getSlmUpdatesEnabled(ctx: C.Db & C.UserOrPlayer & C.SquadServer & C.LayerQueue) {
+export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS.Ctx & LQ.Ctx) {
 	const serverState = await SquadServer.getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
 
 export async function requestFeedback(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
@@ -645,23 +647,27 @@ function getBaseCtx() {
 
 // -------- setup router --------
 export const router = {
-	watchUnexpectedNextLayer: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context, signal, input },
-	) {
-		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
-			withAbortSignal(signal!),
-		)
-		yield* toAsyncGenerator(obs)
-	}),
+	watchUnexpectedNextLayer: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, signal, input }) {
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
+				Rx.Ext.withAbortSignal(signal!),
+			)
+			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
 
 	toggleUpdatesToSquadServer: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }))
+			const denyRes = await Rbac.tryDenyPermissionsForUser(
+				ctx,
+				RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }),
+			)
 			if (denyRes) return denyRes
 			return await toggleUpdatesToSquadServer({ ctx, input })
 		}),
@@ -669,31 +675,31 @@ export const router = {
 	watchOps: orpcBase
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
-		.handler(async function*({ context, input, signal }) {
-			const updateForServer$ = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+		.handler(async function* ({ context, input, signal }) {
+			const updateForServer$ = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => {
 				const initial: SLL.Update = {
 					code: 'init',
 					state: ctx.layerQueue.session.state,
 					ops: ctx.layerQueue.session.ops,
 				}
 				const updateForClient$: Rx.Observable<SLL.Update> = ctx.layerQueue.op$.pipe(
-					Rx.map(dispatched => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+					Rx.map((dispatched) => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
 					Rx.filter((update): update is NonNullable<typeof update> => update !== null),
 					Rx.startWith(initial),
 					// if we don't do this then the orpcWs breaks
 					Rx.observeOn(Rx.asyncScheduler),
 				)
 				return updateForClient$
-			}).pipe(withAbortSignal(signal!))
+			}).pipe(Rx.Ext.withAbortSignal(signal!))
 
-			yield* toAsyncGenerator(updateForServer$)
+			yield* Rx.Ext.toAsyncGenerator(updateForServer$)
 		}),
 
 	dispatchOp: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
 		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 
@@ -706,8 +712,9 @@ export const router = {
 			}
 
 			if (
-				op.op === 'backburner-write-saved' || op.op === 'discard-abandoned-request-edits'
-				|| op.op === 'discard-abandoned-queue-edits'
+				op.op === 'backburner-write-saved' ||
+				op.op === 'discard-abandoned-request-edits' ||
+				op.op === 'discard-abandoned-queue-edits'
 			) {
 				return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
 			}
@@ -753,10 +760,7 @@ export const router = {
 // whether a template has any solutions. Pool membership rides in the template itself (see BB.withPoolFilter),
 // and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only
 // blocked until the next match shouldn't be rejected outright.
-export async function isTemplateSatisfiable(
-	ctx: C.Db & C.MatchHistory & C.LayerQueue & CS.AbortSignal,
-	filter: F.FilterNode,
-): Promise<boolean> {
+export async function isTemplateSatisfiable(ctx: C.Db & MH.Ctx & LQ.Ctx & CS.AbortSignal, filter: F.FilterNode): Promise<boolean> {
 	const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 	const res = await LayerQueries.checkBackburnerTemplates({
 		ctx: layerCtx,
@@ -771,7 +775,7 @@ export async function isTemplateSatisfiable(
 
 // writing a note only needs queue:write, which the caller has already established. Rewording or dropping someone
 // else's is what the manage-all grant is for.
-async function tryDenyNoteOp(ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal, op: SLL.Operation) {
+async function tryDenyNoteOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal, op: SLL.Operation) {
 	if (op.op !== 'edit-note' && op.op !== 'delete-note') return
 	const note = LL.findNote(ctx.layerQueue.session.state.list, op.itemId, op.noteId)
 	// a note that isn't there is left to the reducer, which no-ops on it
@@ -784,10 +788,7 @@ type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${stri
 // per-op authorization + validation for backburner draft ops arriving over the RPC. Own items need any
 // queue:request-layers grant; touching someone else's item needs queue:write. Adds/updates/combines are
 // probed for satisfiability so an impossible template can't enter the backburner.
-async function tryDenyBackburnerDraftOp(
-	ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal,
-	op: BackburnerDraftOp,
-) {
+async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal, op: BackburnerDraftOp) {
 	const state = ctx.layerQueue.session.state
 	const owner: USR.GuiOrChatUserId = { discordId: ctx.user.discordId }
 	const targets: BB.BackburnerItem[] = []
@@ -796,15 +797,15 @@ async function tryDenyBackburnerDraftOp(
 			break
 		case 'backburner-update':
 		case 'backburner-reorder': {
-			const item = state.backburner.find(item => item.itemId === op.itemId)
+			const item = state.backburner.find((item) => item.itemId === op.itemId)
 			if (item) targets.push(item)
 			break
 		}
 		case 'backburner-remove':
-			targets.push(...state.backburner.filter(item => op.itemIds.includes(item.itemId)))
+			targets.push(...state.backburner.filter((item) => op.itemIds.includes(item.itemId)))
 			break
 		case 'backburner-combine':
-			targets.push(...state.backburner.filter(item => item.itemId === op.targetItemId || item.itemId === op.sourceItemId))
+			targets.push(...state.backburner.filter((item) => item.itemId === op.targetItemId || item.itemId === op.sourceItemId))
 			break
 		// save/reset commit or discard the shared draft as a whole; any requester may do so
 		case 'backburner-save':
@@ -815,7 +816,7 @@ async function tryDenyBackburnerDraftOp(
 	}
 
 	// own items qualify with any queue:request-layers grant; touching someone else's item needs queue:write
-	const touchesOthers = targets.some(item => !BB.sameOwner(item.source, owner))
+	const touchesOthers = targets.some((item) => !BB.sameOwner(item.source, owner))
 	const authReq = touchesOthers
 		? RBAC.perm('queue:write', { serverId: ctx.serverId })
 		: RBAC.permReq('any', [RBAC.perm('queue:write', { serverId: ctx.serverId }), RBAC.anyLayerRequestGrant(ctx.serverId)])
@@ -841,12 +842,12 @@ async function tryDenyBackburnerDraftOp(
 			break
 		}
 		case 'backburner-combine': {
-			const target = state.backburner.find(item => item.itemId === op.targetItemId)
-			const source = state.backburner.find(item => item.itemId === op.sourceItemId)
+			const target = state.backburner.find((item) => item.itemId === op.targetItemId)
+			const source = state.backburner.find((item) => item.itemId === op.sourceItemId)
 			if (!target || !source) break
 			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
 			if (merged.code !== 'ok') {
-				const names = merged.filterIds.map(id => backburnerFilterName(id) ?? id)
+				const names = merged.filterIds.map((id) => backburnerFilterName(id) ?? id)
 				return {
 					code: 'err:not-combinable' as const,
 					msg: `Cannot combine: ${names.join(', ')} is applied normally on one request and inverted on the other`,
@@ -871,7 +872,7 @@ async function tryDenyBackburnerDraftOp(
 // the GUI add path rejects at the caps rather than evicting (the panel offers an explicit "evict my oldest"
 // confirm); the per-user cap doesn't apply to queue:write holders, who curate the whole backburner anyway
 export async function checkBackburnerCaps(
-	ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal,
+	ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal,
 	owner: USR.GuiOrChatUserId,
 	opts?: { list?: BB.BackburnerItem[] },
 ) {
@@ -900,7 +901,7 @@ export type AddRequestResult =
 // `source` carries their steam id plus their linked account when they have one, so ownership checks work from
 // either surface.
 export async function addBackburnerRequestFromChat(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal & C.PlayerIds,
+	ctx: C.Db & C.ManagedServer & CS.AbortSignal & SM.Ctx.Ids,
 	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.anyLayerRequestGrant(ctx.serverId))
@@ -929,14 +930,14 @@ export async function addBackburnerRequestFromChat(
 	await dispatchOp(ctx, {
 		op: 'backburner-write-saved',
 		opId: SLL.createOpId(),
-		write: { kind: 'add', item, evictItemIds: evicted.map(i => i.itemId) },
+		write: { kind: 'add', item, evictItemIds: evicted.map((i) => i.itemId) },
 		source: args.source,
 	})
 	return { code: 'ok', item, evicted }
 }
 
 export async function removeBackburnerRequestsFromChat(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal,
+	ctx: C.Db & C.ManagedServer & CS.AbortSignal,
 	args: { itemIds: string[]; source: USR.GuiOrChatUserId },
 ) {
 	await dispatchOp(ctx, {
@@ -947,7 +948,7 @@ export async function removeBackburnerRequestsFromChat(
 	})
 }
 
-export function getSavedBackburner(ctx: C.LayerQueue): BB.BackburnerItem[] {
+export function getSavedBackburner(ctx: LQ.Ctx): BB.BackburnerItem[] {
 	return ctx.layerQueue.session.state.savedBackburner
 }
 
@@ -974,7 +975,7 @@ function getForceWriteCandidateLayerIds(state: SLL.State, op: SLL.Operation): L.
 	}
 }
 
-export const dispatchOp = C.spanOp(
+export const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{
 		module,
@@ -1008,18 +1009,14 @@ export const dispatchOp = C.spanOp(
 	},
 )
 
-const handleSideEffect = C.spanOp(
+const handleSideEffect = Instr.spanOp(
 	'handleSideEffect',
 	{
 		module,
 		extraText: (ctx, op, se) => `${op.op} -> Side Effect ${se.code}`,
 		attrs: (ctx, op, se) => ({ [ATTRS.LayerQueue.OP]: op.op, [ATTRS.LayerQueue.SIDE_EFFECT]: se.code }),
 	},
-	async (
-		ctx: SideEffectCtx,
-		op: SLL.Operation,
-		se: SLL.SideEffect,
-	) => {
+	async (ctx: SideEffectCtx, op: SLL.Operation, se: SLL.SideEffect) => {
 		switch (se.code) {
 			case 'complete':
 			case 'op-outcome':
@@ -1051,10 +1048,10 @@ const handleSideEffect = C.spanOp(
 				}
 				const matchId = (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null
 				const describe = (item: BB.BackburnerItem) => BB.describeTemplate(item.filter, backburnerFilterName)
-				const prevIds = new Set(se.prevItems.map(item => item.itemId))
-				const nextIds = new Set(se.items.map(item => item.itemId))
-				const added = se.items.filter(item => !prevIds.has(item.itemId))
-				const removed = se.prevItems.filter(item => !nextIds.has(item.itemId))
+				const prevIds = new Set(se.prevItems.map((item) => item.itemId))
+				const nextIds = new Set(se.items.map((item) => item.itemId))
+				const added = se.items.filter((item) => !prevIds.has(item.itemId))
+				const removed = se.prevItems.filter((item) => !nextIds.has(item.itemId))
 				if (se.trigger === 'consumed') {
 					if (removed.length > 0) {
 						await SquadServer.emitAppEvent(
@@ -1065,7 +1062,7 @@ const handleSideEffect = C.spanOp(
 								serverId: ctx.serverId,
 								matchId,
 								causeId: null,
-								itemIds: removed.map(item => item.itemId),
+								itemIds: removed.map((item) => item.itemId),
 								descriptions: removed.map(describe),
 								layerId: se.layerId ?? L.DEFAULT_LAYER_ID,
 							}),
@@ -1097,7 +1094,7 @@ const handleSideEffect = C.spanOp(
 							serverId: ctx.serverId,
 							matchId,
 							causeId: null,
-							itemIds: removed.map(item => item.itemId),
+							itemIds: removed.map((item) => item.itemId),
 							descriptions: removed.map(describe),
 						}),
 					)
@@ -1107,8 +1104,8 @@ const handleSideEffect = C.spanOp(
 			case 'request-list-save': {
 				// the ops that make up this save: the span (lastSaveOpId, opId] from the session's op log
 				const allOps = ctx.layerQueue.session.ops
-				const startIdx = se.lastSaveOpId == null ? 0 : allOps.findIndex(o => o.opId === se.lastSaveOpId) + 1
-				const endIdx = allOps.findIndex(o => o.opId === se.opId)
+				const startIdx = se.lastSaveOpId == null ? 0 : allOps.findIndex((o) => o.opId === se.lastSaveOpId) + 1
+				const endIdx = allOps.findIndex((o) => o.opId === se.opId)
 				const ops = endIdx === -1 ? [] : allOps.slice(startIdx, endIdx + 1)
 				// classify the save by the op that triggered it, so we don't credit SLM for reacting to outside changes:
 				//  - shift-first-saved-layer  -> the map rolled
@@ -1124,13 +1121,20 @@ const handleSideEffect = C.spanOp(
 							actor: ext?.type === 'player' ? { type: 'ingame-user', playerId: ext.playerId } : { type: 'system' },
 						}
 					}
-					return { trigger: 'user-edit', actor: triggerOp?.userId ? { type: 'slm-user', userId: triggerOp.userId } : { type: 'system' } }
+					return {
+						trigger: 'user-edit',
+						actor: triggerOp?.userId ? { type: 'slm-user', userId: triggerOp.userId } : { type: 'system' },
+					}
 				})()
 				// who the saver overrode: the users still mid-edit when the save landed. the saver's own editing presence is
 				// cleared alongside the save, so exclude them rather than race the two ops.
-				const save = triggerOp?.op === 'save'
-					? { force: triggerOp.force ?? false, overrodeEditors: UserPresenceSys.getQueueEditors(ctx.serverId, triggerOp.userId) }
-					: undefined
+				const save =
+					triggerOp?.op === 'save'
+						? {
+								force: triggerOp.force ?? false,
+								overrodeEditors: UserPresenceSys.getQueueEditors(ctx.serverId, triggerOp.userId),
+							}
+						: undefined
 				const queueUpdated = AppEvents.create<AppEvents.QueueUpdated>({
 					type: 'QUEUE_UPDATED',
 					actor,

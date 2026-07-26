@@ -1,37 +1,52 @@
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import * as dateFns from 'date-fns'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
 import EventFilterSelect from '@/components/event-filter-select'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
-
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import * as dateFns from 'date-fns'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { CopyIdButton } from './copy-id-button'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import { ServerEvent } from './server-event'
-import WarnChatBox from './warn-chat-box'
-
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
-import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
+import {
+	DraggableWindowClose,
+	DraggableWindowDragBar,
+	DraggableWindowPinToggle,
+	DraggableWindowTitle,
+	useDraggableWindow,
+} from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
+import WarnChatBox from './warn-chat-box'
 
 const dropdownMenuSlots = {
 	Item: DropdownMenuItem,
@@ -65,43 +80,48 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
-	const { data } = useQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({
-		input: { serverId, playerId },
-		select: res => RPC.selectLoaded(res),
-	}))
+	const { data } = useQuery(
+		RPC.orpc.matchHistory.getPlayerDetails.queryOptions({
+			input: { serverId, playerId },
+			select: (res) => RPC.selectLoaded(res),
+		}),
+	)
 	const eventsQuery = useInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
-	const currentMatchEvents = ZusUtils.useStore(
+	const currentMatchEvents = Zus.useStore(
 		squadServerFrameKey,
-		ZusUtils.useShallow(s =>
+		Zus.useShallow((s) =>
 			currentMatch
-				? ChatPrt.Sel.chatEvents(s).filter(e =>
-					e.matchId === currentMatch.historyEntryId && (e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId))
-				)
-				: []
+				? ChatPrt.Sel.chatEvents(s).filter(
+						(e) => e.matchId === currentMatch.historyEntryId && (e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)),
+					)
+				: [],
 		),
 	)
 
 	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events
-	const historicalEvents = (eventsQuery.data?.pages ?? []).slice().reverse().flatMap(p => RPC.selectLoaded(p)?.events ?? [])
+	const historicalEvents = (eventsQuery.data?.pages ?? [])
+		.slice()
+		.reverse()
+		.flatMap((p) => RPC.selectLoaded(p)?.events ?? [])
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
-	const livePlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
-	const recentPlayer = ZusUtils.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
+	const livePlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
+	const recentPlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
 	const ids = livePlayer?.ids ?? recentPlayer?.ids
 	const groupColor = usePlayerGroupColor(playerId, livePlayer?.adminGroups ?? recentPlayer?.adminGroups ?? [])
 
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
-	const globalFilterState = ZusUtils.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
+	const globalFilterState = Zus.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
-	const filteredEvents = allEvents.filter(e => CHAT.isRenderableInFeed(e) && CHAT.showEventInFeed(e, filterState))
+	const filteredEvents = allEvents.filter((e) => CHAT.isRenderableInFeed(e) && CHAT.showEventInFeed(e, filterState))
 	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
 	const { setIsPinned } = useDraggableWindow()
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
@@ -113,30 +133,30 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					{ids?.username ?? 'Player Details'}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
 						<span className="text-muted-foreground font-normal ml-1">
-							({livePlayer.teamId !== null && currentMatch
-								? (
-									<>
-										<MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={livePlayer.teamId} stores={stores} />
-										{livePlayer.squadId !== null && ', '}
-									</>
-								)
-								: null}
+							(
+							{livePlayer.teamId !== null && currentMatch ? (
+								<>
+									<MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={livePlayer.teamId} stores={stores} />
+									{livePlayer.squadId !== null && ', '}
+								</>
+							) : null}
 							{livePlayer.squadId !== null && <>Squad {livePlayer.squadId}</>})
 						</span>
 					)}
 				</DraggableWindowTitle>
-				{connectionStatus && (
-					connectionStatus.status === 'online'
-						? <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={`Online${elapsed ? ` for ${elapsed}` : ''}`} />
-						: (
-							<span
-								className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
-								title={connectionStatus.lastSeen
+				{connectionStatus &&
+					(connectionStatus.status === 'online' ? (
+						<span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={`Online${elapsed ? ` for ${elapsed}` : ''}`} />
+					) : (
+						<span
+							className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
+							title={
+								connectionStatus.lastSeen
 									? `Last seen ${dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })}`
-									: 'Offline'}
-							/>
-						)
-				)}
+									: 'Offline'
+							}
+						/>
+					))}
 				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
 				<PlayerBmRefreshButton playerId={playerId} />
 				<PlayerFlagsButton playerId={playerId} />
@@ -166,21 +186,23 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					{ids?.epic && <CopyIdButton label="epic" id={ids.epic} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
-					{(ids?.steam ?? profile?.playerIds.steam)
-						? (
-							<>
-								<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
-								<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
-								<ExtLink href={`https://mysquadstats.com/search/${ids?.steam ?? profile?.playerIds.steam}#vanillaStats`}>
-									MySquadStats
-								</ExtLink>
-							</>
-						)
-						: <span className="italic">(no steam id)</span>}
+					{(ids?.steam ?? profile?.playerIds.steam) ? (
+						<>
+							<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
+							<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
+							<ExtLink href={`https://mysquadstats.com/search/${ids?.steam ?? profile?.playerIds.steam}#vanillaStats`}>
+								MySquadStats
+							</ExtLink>
+						</>
+					) : (
+						<span className="italic">(no steam id)</span>
+					)}
 					<ExtLink
-						href={profile
-							? profile.profileUrl
-							: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`}
+						href={
+							profile
+								? profile.profileUrl
+								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
+						}
 					>
 						BattleMetrics
 					</ExtLink>
@@ -190,9 +212,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 			<Separator />
 			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
-					<h3 className="inline">
-						Server Activity
-					</h3>
+					<h3 className="inline">Server Activity</h3>
 					<EventFilterSelect
 						variant="ghost"
 						value={filterState}
@@ -200,7 +220,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							// hack to get around close on click-out behaviour. TODO find better pattern
 							if (open) setIsPinned(true)
 						}}
-						onValueChange={v => {
+						onValueChange={(v) => {
 							setFilterState(v)
 							setIsPinned(true)
 						}}
@@ -288,7 +308,7 @@ function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
 
 // active kick-timeout badge + cancel; rendered regardless of connection status since timeouts outlive the session
 function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
-	const timeout = TimeoutsClient.useActiveTimeouts().find(t => t.playerId === playerId && !t.cancelled)
+	const timeout = TimeoutsClient.useActiveTimeouts().find((t) => t.playerId === playerId && !t.cancelled)
 	const canCancel = TimeoutsClient.useCanCancelSomeTimeout()
 	const cancelMutation = TimeoutsClient.useCancelTimeoutMutation()
 	if (!timeout) return null
@@ -320,12 +340,7 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 
 function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
 	return (
-		<a
-			href={href}
-			target="_blank"
-			rel="noopener noreferrer"
-			className="inline-flex items-center gap-0.5 text-blue-400 hover:underline"
-		>
+		<a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-400 hover:underline">
 			{children}
 			<Icons.ExternalLink className="h-2.5 w-2.5" />
 		</a>
@@ -336,7 +351,7 @@ function useElapsed(since: number | null): string | null {
 	const [, setTick] = React.useState(0)
 	React.useEffect(() => {
 		if (since === null) return
-		const id = setInterval(() => setTick(t => t + 1), 30_000)
+		const id = setInterval(() => setTick((t) => t + 1), 30_000)
 		return () => clearInterval(id)
 	}, [since])
 
@@ -398,7 +413,9 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 		return (
 			<div className="flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground italic">
 				<Icons.ChevronsDown className="h-3 w-3 shrink-0" />
-				<span>{formatGap(time - prevTime)} later, resuming {dateFns.format(time, 'h:mm a')}</span>
+				<span>
+					{formatGap(time - prevTime)} later, resuming {dateFns.format(time, 'h:mm a')}
+				</span>
 			</div>
 		)
 	}
@@ -424,7 +441,8 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 		const maxWidth = 450
 		const ellipsisWidth = 40 // approximate width for ellipsis button
 
-		for (let i = 0; i < children.length - 1; i++) { // -1 to exclude the ellipsis button
+		for (let i = 0; i < children.length - 1; i++) {
+			// -1 to exclude the ellipsis button
 			const child = children[i]
 			const childWidth = child.offsetWidth
 			const gap = 2 // gap-0.5 = 2px
@@ -452,7 +470,11 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 					style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
 					title={flag.description ?? undefined}
 				>
-					{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+					{flag.icon && (
+						<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
+							{flag.icon}
+						</span>
+					)}
 					{flag.name}
 				</span>
 			))}
@@ -476,7 +498,11 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 									style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
 									title={flag.description ?? undefined}
 								>
-									{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+									{flag.icon && (
+										<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
+											{flag.icon}
+										</span>
+									)}
 									{flag.name}
 								</span>
 							))}
@@ -491,7 +517,11 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 						className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0"
 						style={{ backgroundColor: flag.color ? `${flag.color}33` : undefined, color: flag.color ?? undefined }}
 					>
-						{flag.icon && <span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>{flag.icon}</span>}
+						{flag.icon && (
+							<span className="material-symbols-outlined leading-none" style={{ fontSize: '12px' }}>
+								{flag.icon}
+							</span>
+						)}
 						{flag.name}
 					</span>
 				))}

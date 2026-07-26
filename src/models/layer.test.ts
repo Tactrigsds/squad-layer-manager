@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import * as L from './layer'
 
 describe('getLayerCommand', () => {
@@ -28,7 +29,7 @@ describe('getLayerCommand', () => {
 		})
 
 		it('replaces FRAAS with RAAS in output', () => {
-			testLayers.forEach(layer => {
+			testLayers.forEach((layer) => {
 				const result = L.getLayerCommand(layer, 'set-next')
 				expect(result).not.toContain('FRAAS')
 				if (layer.includes('FRAAS')) {
@@ -38,7 +39,7 @@ describe('getLayerCommand', () => {
 		})
 
 		it('includes AdminSetNextLayer prefix', () => {
-			testLayers.forEach(layer => {
+			testLayers.forEach((layer) => {
 				const result = L.getLayerCommand(layer, 'set-next')
 				expect(result).toMatch(/^AdminSetNextLayer/)
 			})
@@ -57,7 +58,7 @@ describe('getLayerCommand', () => {
 		})
 
 		it('includes AdminChangeLayer prefix', () => {
-			testLayers.forEach(layer => {
+			testLayers.forEach((layer) => {
 				const result = L.getLayerCommand(layer, 'change-layer')
 				expect(result).toMatch(/^AdminChangeLayer/)
 			})
@@ -86,7 +87,7 @@ describe('getLayerCommand', () => {
 		})
 
 		it('handles all test layers correctly', () => {
-			testLayers.forEach(layer => {
+			testLayers.forEach((layer) => {
 				const result = L.getLayerCommand(layer, 'none')
 				expect(result).not.toMatch(/^Admin/)
 				expect(result.trim()).toBeTruthy()
@@ -118,7 +119,7 @@ describe('getLayerCommand', () => {
 		})
 
 		it('normalizes whitespace in output', () => {
-			testLayers.forEach(layer => {
+			testLayers.forEach((layer) => {
 				const result = L.getLayerCommand(layer, 'set-next')
 				expect(result).not.toMatch(/\s{2,}/) // No multiple consecutive spaces
 				expect(result).not.toMatch(/^\s|\s$/) // No leading or trailing spaces
@@ -201,9 +202,9 @@ describe('getLayerCommand', () => {
 		})
 
 		it('ensures consistent FRAAS to RAAS conversion across all layers', () => {
-			const fraasLayers = testLayers.filter(layer => layer.includes('FRAAS'))
+			const fraasLayers = testLayers.filter((layer) => layer.includes('FRAAS'))
 
-			fraasLayers.forEach(layer => {
+			fraasLayers.forEach((layer) => {
 				const result = L.getLayerCommand(layer, 'set-next')
 				expect(result).toContain('RAAS')
 				expect(result).not.toContain('FRAAS')
@@ -227,7 +228,7 @@ describe('getLayerCommand', () => {
 
 			it('confirms that raw layers are processed correctly after the bug fix', () => {
 				// With the bug fixed, RAW layers are handled properly via the early return
-				testLayers.forEach(rawLayer => {
+				testLayers.forEach((rawLayer) => {
 					expect(() => {
 						L.getLayerCommand(rawLayer, 'set-next')
 						L.getLayerCommand(rawLayer, 'change-layer')
@@ -238,12 +239,9 @@ describe('getLayerCommand', () => {
 
 			it('handles valid raw layers properly', () => {
 				// Test with valid but simple raw layers
-				const validEdgeCases = [
-					'RAW:TestMap_AAS_v1 USA+Infantry RUS+Infantry',
-					'RAW:AnotherMap_TC_v2 PLA+Mechanized USA+Motorized',
-				]
+				const validEdgeCases = ['RAW:TestMap_AAS_v1 USA+Infantry RUS+Infantry', 'RAW:AnotherMap_TC_v2 PLA+Mechanized USA+Motorized']
 
-				validEdgeCases.forEach(edgeCase => {
+				validEdgeCases.forEach((edgeCase) => {
 					expect(() => {
 						L.getLayerCommand(edgeCase, 'none')
 					}).not.toThrow()

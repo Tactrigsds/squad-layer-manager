@@ -1,9 +1,8 @@
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
 import type * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
 import * as PartSys from '@/systems/parts.client'
-import { bind } from '@react-rxjs/core'
-import * as Rx from 'rxjs'
-import { map, share } from 'rxjs'
 
 const voteStateCold$ = (serverId: string) =>
 	RPC.observe('vote.watchUpdates', () => RPC.orpc.vote.watchUpdates.call({ serverId })).pipe(
@@ -15,14 +14,14 @@ const voteStateCold$ = (serverId: string) =>
 				PartSys.stripParts(update.update)
 			}
 		}),
-		share(),
+		Rx.share(),
 	)
 
-export const [useVoteStateUpdate, voteStateUpdate$] = bind((serverId: string) => voteStateCold$(serverId), null)
-export const [useVoteState, voteState$] = bind(
+export const [useVoteStateUpdate, voteStateUpdate$] = ReactRx.bindWithDefault((serverId: string) => voteStateCold$(serverId), null)
+export const [useVoteState, voteState$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
 		voteStateUpdate$(serverId).pipe(
-			map((stateOrUpdate): null | V.VoteState => {
+			Rx.map((stateOrUpdate): null | V.VoteState => {
 				if (!stateOrUpdate) return null
 				return stateOrUpdate.code === 'initial-state' ? stateOrUpdate.state : stateOrUpdate.update.state
 			}),

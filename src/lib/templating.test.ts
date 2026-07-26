@@ -1,5 +1,6 @@
-import { renderTemplate } from '@/lib/templating'
 import { describe, expect, it } from 'vitest'
+
+import { renderTemplate } from '@/lib/templating'
 
 describe('renderTemplate', () => {
 	it('substitutes variables without HTML-escaping', () => {

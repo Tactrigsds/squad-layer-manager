@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
+
 import * as DbBackup from './db-backup.ts'
 import * as DbMeta from './db-meta.ts'
 
@@ -143,8 +144,8 @@ export async function withDbLockedExclusively<T>(driver: MigrationDriver, fn: ()
 		driver.pragma('locking_mode = NORMAL')
 		if (isDatabaseLocked(err)) {
 			throw new DbInUseError(
-				`${driver.name} is open in another process. Stop the app (and any other \`db:migrate\` run) before migrating: `
-					+ 'sqlite cannot safely apply schema changes to a database something else is using.',
+				`${driver.name} is open in another process. Stop the app (and any other \`db:migrate\` run) before migrating: ` +
+					'sqlite cannot safely apply schema changes to a database something else is using.',
 				{ cause: err },
 			)
 		}
@@ -188,7 +189,10 @@ function getAppliedNames(driver: MigrationDriver): Set<string> {
 // registry entries), which is the single source of truth for ordering.
 function collectMigrationNames(sqlDir: string, tsMigrations: TsMigration[]): string[] {
 	const names = [
-		...fs.readdirSync(sqlDir).filter((f) => f.endsWith('.sql')).map((f) => f.slice(0, -'.sql'.length)),
+		...fs
+			.readdirSync(sqlDir)
+			.filter((f) => f.endsWith('.sql'))
+			.map((f) => f.slice(0, -'.sql'.length)),
 		...tsMigrations.map((m) => m.name),
 	]
 	const seen = new Set<string>()
@@ -202,12 +206,18 @@ function collectMigrationNames(sqlDir: string, tsMigrations: TsMigration[]): str
 
 function collectMigrations(sqlDir: string, tsMigrations: TsMigration[]): Migration[] {
 	const ordered = collectMigrationNames(sqlDir, tsMigrations)
-	const sqlNames = new Set(fs.readdirSync(sqlDir).filter((f) => f.endsWith('.sql')).map((f) => f.slice(0, -'.sql'.length)))
+	const sqlNames = new Set(
+		fs
+			.readdirSync(sqlDir)
+			.filter((f) => f.endsWith('.sql'))
+			.map((f) => f.slice(0, -'.sql'.length)),
+	)
 	const tsByName = new Map(tsMigrations.map((m) => [m.name, m]))
-	return ordered.map((name): Migration =>
-		sqlNames.has(name)
-			? { name, kind: 'sql', sql: fs.readFileSync(path.join(sqlDir, `${name}.sql`), 'utf8') }
-			: { name, kind: 'ts', up: tsByName.get(name)!.up }
+	return ordered.map(
+		(name): Migration =>
+			sqlNames.has(name)
+				? { name, kind: 'sql', sql: fs.readFileSync(path.join(sqlDir, `${name}.sql`), 'utf8') }
+				: { name, kind: 'ts', up: tsByName.get(name)!.up },
 	)
 }
 
@@ -228,14 +238,14 @@ function baselineFromDrizzle(driver: MigrationDriver, sqlDir: string, log: (msg:
 	const count = (driver.prepare(`SELECT COUNT(*) AS c FROM "${TABLE}"`).get() as { c: number }).c
 	if (count > 0) return
 
-	const hasDrizzle = driver
-		.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='__drizzle_migrations'`)
-		.get()
+	const hasDrizzle = driver.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='__drizzle_migrations'`).get()
 	if (!hasDrizzle) return
 
-	const maxAt = (driver.prepare(`SELECT MAX(created_at) AS maxAt FROM __drizzle_migrations`).get() as {
-		maxAt: number | null
-	}).maxAt
+	const maxAt = (
+		driver.prepare(`SELECT MAX(created_at) AS maxAt FROM __drizzle_migrations`).get() as {
+			maxAt: number | null
+		}
+	).maxAt
 	if (maxAt == null) return
 
 	const journalPath = path.join(sqlDir, 'meta', '_journal.json')

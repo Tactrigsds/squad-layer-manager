@@ -70,8 +70,8 @@ export async function up(db: MigrationDriver): Promise<void> {
 		}
 
 		// the read-only role: nothing server-scoped to imply view, so it needs its own grant
-		const holdsServerScoped = grants.length > 0
-			|| (cfg.permissions as string[]).some((p) => typeof p === 'string' && MOVED_TO_SERVER_SCOPE.includes(p))
+		const holdsServerScoped =
+			grants.length > 0 || (cfg.permissions as string[]).some((p) => typeof p === 'string' && MOVED_TO_SERVER_SCOPE.includes(p))
 		if (!holdsServerScoped && (cfg.permissions as string[]).includes('site:authorized')) {
 			if (serverIds.length > 0) cfg.serverGrants = [...grants, { permission: 'squad-server:view', serverIds: [...serverIds] }]
 			else cfg.permissions = [...(cfg.permissions as string[]), 'squad-server:view']

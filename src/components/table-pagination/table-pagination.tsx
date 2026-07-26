@@ -1,7 +1,8 @@
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import * as Icons from 'lucide-react'
 import React from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 function formatPageCount(count: number): string {
 	if (count < 1000) {
@@ -24,12 +25,7 @@ export interface TablePaginationProps {
 	disabled?: boolean
 }
 
-export function TablePagination({
-	pageIndex,
-	pageCount,
-	onPageChange,
-	disabled = false,
-}: TablePaginationProps) {
+export function TablePagination({ pageIndex, pageCount, onPageChange, disabled = false }: TablePaginationProps) {
 	const currentPage = pageIndex + 1
 	const [inputValue, setInputValue] = React.useState(String(currentPage))
 
@@ -126,30 +122,14 @@ export function TablePagination({
 					className="h-8 w-16 text-center"
 					aria-label="Page number"
 				/>
-				<span className="text-sm text-muted-foreground">
-					/ {formatPageCount(pageCount)}
-				</span>
+				<span className="text-sm text-muted-foreground">/ {formatPageCount(pageCount)}</span>
 			</div>
 
-			<Button
-				variant="outline"
-				size="icon"
-				onClick={handleNext}
-				disabled={disabled || !canGoNext}
-				title="Next page"
-				className="h-8 w-8"
-			>
+			<Button variant="outline" size="icon" onClick={handleNext} disabled={disabled || !canGoNext} title="Next page" className="h-8 w-8">
 				<Icons.ChevronRight className="h-4 w-4" />
 			</Button>
 
-			<Button
-				variant="outline"
-				size="icon"
-				onClick={handleLast}
-				disabled={disabled || !canGoNext}
-				title="Last page"
-				className="h-8 w-8"
-			>
+			<Button variant="outline" size="icon" onClick={handleLast} disabled={disabled || !canGoNext} title="Last page" className="h-8 w-8">
 				<Icons.ChevronsRight className="h-4 w-4" />
 			</Button>
 		</div>

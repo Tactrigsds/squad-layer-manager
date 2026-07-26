@@ -13,7 +13,8 @@ const alertVariants = cva(
 					'border-destructive/50 text-destructive dark:border-destructive dark:bg-destructive/10 dark:text-destructive-foreground [&>svg]:text-destructive dark:[&>svg]:text-destructive-foreground',
 				info: 'border-info/50 text-info dark:border-info [&>svg]:text-info',
 				warning: 'border-warning/50 text-warning dark:border-warning [&>svg]:text-warning',
-				'repeat-violation': 'border-repeat-violation/50 text-repeat-violation dark:border-repeat-violation [&>svg]:text-repeat-violation',
+				'repeat-violation':
+					'border-repeat-violation/50 text-repeat-violation dark:border-repeat-violation [&>svg]:text-repeat-violation',
 			},
 		},
 		defaultVariants: {
@@ -24,12 +25,7 @@ const alertVariants = cva(
 
 const Alert = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertVariants>>(
 	({ className, variant, ...props }, ref) => (
-		<div
-			ref={ref}
-			role="alert"
-			className={cn(alertVariants({ variant }), className)}
-			{...props}
-		/>
+		<div ref={ref} role="alert" className={cn(alertVariants({ variant }), className)} {...props} />
 	),
 )
 Alert.displayName = 'Alert'

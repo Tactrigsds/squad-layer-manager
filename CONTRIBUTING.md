@@ -111,3 +111,22 @@ git push --no-verify
 ```
 
 The hook lives in [.githooks/pre-push.js](.githooks/pre-push.js).
+
+## Formatting
+
+[oxfmt](https://oxc.rs/docs/guide/usage/formatter) formats everything, configured in [.oxfmtrc.json](.oxfmtrc.json) and pinned to an exact version because its output can shift between minors while it is in beta.
+
+```sh
+pnpm run format         # write
+pnpm run format:check   # what the pre-push hook and CI run
+```
+
+Editors: install the [Oxc extension](https://zed.dev/extensions/oxc) for Zed or [oxc.oxc-vscode](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode) for VS Code, both of which format with the repo's own oxfmt. `.zed/settings.json` and the devcontainer already point at it.
+
+The formatter also sorts imports into four groups, blank-line separated: side effect, external, internal (`@/`, `$root/`), then relative. A side-effect import is hoisted to the top of the file wherever you write it, since its evaluation order matters and the sorter cannot reason about it.
+
+The whole-tree reformat commits are listed in [.git-blame-ignore-revs](.git-blame-ignore-revs). To keep `git blame` readable:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```

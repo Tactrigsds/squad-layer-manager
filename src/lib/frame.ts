@@ -1,11 +1,11 @@
-import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
-import * as ReactUtils from '@/lib/react'
-import * as ZusUtils from '@/lib/zustand'
-
 import * as React from 'react'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
+
+import * as Gen from '@/lib/generator-utils'
+import * as Obj from '@/lib/object-utils'
+import * as ReactUtils from '@/lib/react'
+import * as Zus from '@/lib/zustand'
+
+import * as Rx from './rxjs'
 
 type FrameId = symbol
 // default Props is the loose index-signature shape rather than `any` -- `{ frameId } & any` would collapse
@@ -57,16 +57,14 @@ export type SetupArgs<
 	input: I
 	// the instance's own key -- lets setup code call Actions/partial helpers that take keys
 	key: InstanceKeyOfState<Readable>
-	get: ZusUtils.Getter<Readable>
-	set: ZusUtils.Setter<State>
+	get: Zus.Getter<Readable>
+	set: Zus.Setter<State>
 	//                      current,  prev
 	update$: Rx.Observable<[Readable, Readable]>
 	sub: Rx.Subscription
 }
 
-export type Frame<
-	T extends FrameTypes,
-> = {
+export type Frame<T extends FrameTypes> = {
 	readonly _?: T // for inference
 	name: T['name']
 	id: FrameId
@@ -91,8 +89,8 @@ type FrameInstance = {
 	frameId: FrameId
 	refCount: number
 	store: Zus.StoreApi<FrameTypes['state']>
-	get: ZusUtils.Getter<FrameTypes['state']>
-	set: ZusUtils.Setter<FrameTypes>
+	get: Zus.Getter<FrameTypes['state']>
+	set: Zus.Setter<FrameTypes>
 	update$: Rx.Subject<any>
 	sub: Rx.Subscription
 	input: FrameTypes['input']
@@ -148,9 +146,7 @@ export class FrameManager {
 		this.cleanupReference(directKey)
 	}
 
-	createFrame<Types extends FrameTypes>(
-		opts: FrameOps<Types>,
-	) {
+	createFrame<Types extends FrameTypes>(opts: FrameOps<Types>) {
 		const id = createFrameId(opts)
 		const frame: Frame<Types> = {
 			id,
@@ -161,12 +157,9 @@ export class FrameManager {
 		return frame
 	}
 
-	ensureSetup<T extends FrameTypes>(
-		frameIdOrFrame: FrameId | Frame<T>,
-		input: T['input'],
-	): InstanceKey<T> {
+	ensureSetup<T extends FrameTypes>(frameIdOrFrame: FrameId | Frame<T>, input: T['input']): InstanceKey<T> {
 		const frame = typeof frameIdOrFrame === 'symbol' ? this.frameMap.get(frameIdOrFrame) : frameIdOrFrame
-		const frameId = frame?.id ?? frameIdOrFrame as FrameId
+		const frameId = frame?.id ?? (frameIdOrFrame as FrameId)
 		if (!frame) throw new Error(`Frame ${frameId.toString()} not found`)
 		const key = frame.createKey(frameId, input)
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(key, k))
@@ -188,7 +181,7 @@ export class FrameManager {
 			}
 
 			// instance.update$ = subject.pipe(Rx.tap({ next: () => instance.lastUsed = Date.now() }))
-			instance.sub.add(ZusUtils.toObservable(instance.store).subscribe(instance.update$))
+			instance.sub.add(Zus.toObservable(instance.store).subscribe(instance.update$))
 			instance.get = () => this.frameInstances.get(directKey)!.store.getState()
 			instance.set = (update) => this.frameInstances.get(directKey)!.store.setState(update)
 			this.frameInstances.set(directKey, instance)
@@ -270,10 +263,7 @@ export function createFrameHelpers(frameManager: FrameManager) {
 	}
 
 	// crudely just ensure the frame exists for the given input. for now just relies on FrameManagers GC behavior to clean up unused frames
-	function useFrameLifecycle<T extends FrameTypes>(
-		frameOrId: Frame<T> | FrameId,
-		options: FrameLifecycleOptions<T>,
-	) {
+	function useFrameLifecycle<T extends FrameTypes>(frameOrId: Frame<T> | FrameId, options: FrameLifecycleOptions<T>) {
 		const frameKey = ReactUtils.useStableValue(
 			(frameOrId, options) => {
 				if (options.frameKey) return options.frameKey

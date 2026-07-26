@@ -1,5 +1,6 @@
-import { HeadlessDialogExample } from '@/components/ui/headless-dialog-example'
 import { createFileRoute } from '@tanstack/react-router'
+
+import { HeadlessDialogExample } from '@/components/ui/headless-dialog-example'
 
 export const Route = createFileRoute('/_sandbox/sandbox')({
 	component: RouteComponent,

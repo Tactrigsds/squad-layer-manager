@@ -1,10 +1,11 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
-import { describe, expect, it } from 'vitest'
 
 const noPreds: CMD.AssignPredicates = { isTeamToken: () => false, isPresetToken: () => false }
 const preds = (opts: { teams?: string[]; presets?: string[] }): CMD.AssignPredicates => ({
-	isTeamToken: t => (opts.teams ?? []).includes(t),
+	isTeamToken: (t) => (opts.teams ?? []).includes(t),
 	isPresetToken: (_a, t) => (opts.presets ?? []).includes(t),
 })
 
@@ -14,7 +15,10 @@ function reason(label: string, opts: Partial<AAR.AdminActionReason> = {}): AAR.A
 
 describe('assignArgTokens', () => {
 	it('enforces required single-token args and allows optional ones', () => {
-		const args = [{ kind: 'player', name: 'player' }, { kind: 'string', name: 'flag', optional: true }] as const
+		const args = [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'string', name: 'flag', optional: true },
+		] as const
 		expect(CMD.assignArgTokens(args, [], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'player' })
 		expect(CMD.assignArgTokens(args, ['bob'], noPreds)).toEqual({
 			code: 'ok',
@@ -23,7 +27,10 @@ describe('assignArgTokens', () => {
 	})
 
 	it('captures the remainder for rest args and enforces required rest', () => {
-		const args = [{ kind: 'player', name: 'player' }, { kind: 'reason', name: 'reason', action: 'warn' }] as const
+		const args = [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'reason', name: 'reason', action: 'warn' },
+		] as const
 		expect(CMD.assignArgTokens(args, ['bob'], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'reason' })
 		expect(CMD.assignArgTokens(args, ['bob', 'stop', 'that'], noPreds)).toEqual({
 			code: 'ok',
@@ -68,7 +75,10 @@ describe('assignArgTokens', () => {
 		})
 
 		it('with a trailing rest reason, only pairs a leading team with a squad-like second token', () => {
-			const warnSquadArgs = [{ kind: 'squad', name: 'squad' }, { kind: 'reason', name: 'reason', action: 'warn' }] as const
+			const warnSquadArgs = [
+				{ kind: 'squad', name: 'squad' },
+				{ kind: 'reason', name: 'reason', action: 'warn' },
+			] as const
 			// team + numeric squad -> pair
 			expect(CMD.assignArgTokens(warnSquadArgs, ['2', '3', 'tk'], p)).toEqual({
 				code: 'ok',
@@ -152,10 +162,7 @@ describe('kick and timeout arg windows', () => {
 })
 
 describe('resolveReasonArg', () => {
-	const reasons = [
-		reason('Teamkilling', { keywords: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }),
-		reason('AFK'),
-	]
+	const reasons = [reason('Teamkilling', { keywords: ['tk'], actionTexts: { warn: 'tk warn text', kick: 'tk kick text' } }), reason('AFK')]
 
 	it('one token resolves a preset by label or alias', () => {
 		const res = CMD.resolveReasonArg(reasons, 'warn', ['TK'])
@@ -239,7 +246,7 @@ describe('parseCommand', () => {
 		...configs,
 		[id]: { ...configs[id], triggers: [...configs[id].triggers, trigger] },
 	})
-	const msg = (message: string) => ({ message, channelType: 'ChatAdmin' } as any)
+	const msg = (message: string) => ({ message, channelType: 'ChatAdmin' }) as any
 
 	it('passes the words through for a plain trigger', () => {
 		expect(CMD.parseCommand(msg('!timeout Alice 2h griefing hard'), configs)).toMatchObject({
@@ -290,11 +297,12 @@ describe('argTemplateSignature', () => {
 	// what the settings editor advertises has to be a template an admin can actually save, for every command
 	it('produces a template that resolves, for every command', () => {
 		for (const id of CMD.COMMAND_IDS) {
-			const template = CMD.argTemplateSignature(id).map((p) => p.ref).join(' ')
+			const template = CMD.argTemplateSignature(id)
+				.map((p) => p.ref)
+				.join(' ')
 			const res = CMD.resolveTriggerArgs(id, template)
 			expect(res.code, `${id}: ${res.code === 'ok' ? '' : res.msg}`).toBe('ok')
-			expect(CMD.argTemplateSignature(id).length, `${id} advertises no placeholders`)
-				.toBe(CMD.COMMAND_DECLARATIONS[id].args.length)
+			expect(CMD.argTemplateSignature(id).length, `${id} advertises no placeholders`).toBe(CMD.COMMAND_DECLARATIONS[id].args.length)
 		}
 	})
 })

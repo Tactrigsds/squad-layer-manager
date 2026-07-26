@@ -1,8 +1,15 @@
+import type { Mutex } from 'async-mutex'
+import { z } from 'zod'
+
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as CD from '@/lib/ctx-def'
+import type * as Rx from '@/lib/rxjs'
+import type { Parts } from '@/lib/types'
 import type * as BAL from '@/models/balance-triggers.models'
+import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
-import { z } from 'zod'
+import type * as USR from '@/models/users.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
@@ -28,16 +35,13 @@ type MatchDetailsCommon = {
 // Details about current match besides the layer
 export type MatchDetails =
 	| ({
-		status: 'in-progress'
-	} & MatchDetailsCommon)
-	| (
-		& {
+			status: 'in-progress'
+	  } & MatchDetailsCommon)
+	| ({
 			status: 'post-game'
 			endTime: Date | 'unknown'
 			outcome: MatchOutcome
-		}
-		& MatchDetailsCommon
-	)
+	  } & MatchDetailsCommon)
 
 export const MatchOutcomeSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('team1'), team1Tickets: z.number(), team2Tickets: z.number() }),
@@ -46,15 +50,18 @@ export const MatchOutcomeSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('unknown') }),
 ])
 export type MatchOutcome = z.infer<typeof MatchOutcomeSchema>
-export type NormalizedMatchOutcome = {
-	type: NormedTeamProp
-	teamATickets: number
-	teamBTickets: number
-} | {
-	type: 'draw'
-} | {
-	type: 'unknown'
-}
+export type NormalizedMatchOutcome =
+	| {
+			type: NormedTeamProp
+			teamATickets: number
+			teamBTickets: number
+	  }
+	| {
+			type: 'draw'
+	  }
+	| {
+			type: 'unknown'
+	  }
 
 export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }>
 
@@ -86,9 +93,7 @@ export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal
 	return (matchDetails.ordinal + offset) % 2
 }
 
-export function getTeamNormalizedOutcome(
-	matchDetails: Extract<MatchDetails, { status: 'post-game' }>,
-): NormalizedMatchOutcome {
+export function getTeamNormalizedOutcome(matchDetails: Extract<MatchDetails, { status: 'post-game' }>): NormalizedMatchOutcome {
 	if (matchDetails.outcome.type === 'draw' || matchDetails.outcome.type === 'unknown') {
 		return matchDetails.outcome
 	}
@@ -97,13 +102,13 @@ export function getTeamNormalizedOutcome(
 	switch (matchDetails.outcome.type) {
 		case 'team1':
 			return {
-				type: matchDetails.ordinal % 2 === 0 ? 'teamA' as const : 'teamB' as const,
+				type: matchDetails.ordinal % 2 === 0 ? ('teamA' as const) : ('teamB' as const),
 				teamATickets,
 				teamBTickets,
 			}
 		case 'team2':
 			return {
-				type: matchDetails.ordinal % 2 === 0 ? 'teamB' as const : 'teamA' as const,
+				type: matchDetails.ordinal % 2 === 0 ? ('teamB' as const) : ('teamA' as const),
 				teamATickets,
 				teamBTickets,
 			}
@@ -112,28 +117,26 @@ export function getTeamNormalizedOutcome(
 	}
 }
 
-export function getTeamDenormalizedOutcome(
-	matchDetails: { ordinal: number },
-	normalizedOutcome: NormalizedMatchOutcome,
-): MatchOutcome {
+export function getTeamDenormalizedOutcome(matchDetails: { ordinal: number }, normalizedOutcome: NormalizedMatchOutcome): MatchOutcome {
 	if (normalizedOutcome.type === 'draw' || normalizedOutcome.type === 'unknown') {
 		return normalizedOutcome
 	}
 
-	const [team1Tickets, team2Tickets] = matchDetails.ordinal % 2 === 0
-		? [normalizedOutcome.teamATickets, normalizedOutcome.teamBTickets]
-		: [normalizedOutcome.teamBTickets, normalizedOutcome.teamATickets]
+	const [team1Tickets, team2Tickets] =
+		matchDetails.ordinal % 2 === 0
+			? [normalizedOutcome.teamATickets, normalizedOutcome.teamBTickets]
+			: [normalizedOutcome.teamBTickets, normalizedOutcome.teamATickets]
 
 	switch (normalizedOutcome.type) {
 		case 'teamA':
 			return {
-				type: matchDetails.ordinal % 2 === 0 ? 'team1' as const : 'team2' as const,
+				type: matchDetails.ordinal % 2 === 0 ? ('team1' as const) : ('team2' as const),
 				team1Tickets: team1Tickets!,
 				team2Tickets: team2Tickets!,
 			}
 		case 'teamB':
 			return {
-				type: matchDetails.ordinal % 2 === 0 ? 'team2' as const : 'team1' as const,
+				type: matchDetails.ordinal % 2 === 0 ? ('team2' as const) : ('team1' as const),
 				team1Tickets: team1Tickets!,
 				team2Tickets: team2Tickets!,
 			}
@@ -330,8 +333,8 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 	for (let i = state.recentBalanceTriggerEvents.length - 1; i >= 0; i--) {
 		const event = state.recentBalanceTriggerEvents[i]
 		if (
-			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game')
-			|| (previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
+			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game') ||
+			(previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
 		) {
 			active.push(event)
 		}
@@ -353,9 +356,7 @@ export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: st
 		newEntry.lqItemId = opts.lqItem.itemId
 		newEntry.setByType = opts.lqItem.source.type
 
-		const setByUserId = opts.lqItem.source.type === 'manual'
-			? opts.lqItem.source.userId
-			: undefined
+		const setByUserId = opts.lqItem.source.type === 'manual' ? opts.lqItem.source.userId : undefined
 		newEntry.setByType = opts.lqItem.source.type
 		newEntry.setByUserId = setByUserId
 	}
@@ -363,3 +364,23 @@ export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: st
 }
 
 export const RECENT_HISTORY_ITEMS_PER_PAGE = 10
+
+export namespace Ctx {
+	export type Recent = CS.Ctx & {
+		recentMatches: MatchDetails[]
+	}
+	export const RecentDef = CD.defCtx<Recent>()(['recentMatches'], { name: 'recentMatches' })
+}
+
+export type Ctx = CS.Ctx & { matchHistory: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['matchHistory'], { name: 'matchHistory', extends: [CS.ServerIdDef] })
+
+export namespace Ctx {
+	export type Payload = {
+		mtx: Mutex
+		update$: Rx.Subject<void>
+		dispatchUpdate: () => void
+		recentMatches: MatchDetails[]
+		recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
+	} & Parts<USR.UserPart>
+}

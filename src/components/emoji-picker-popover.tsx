@@ -1,9 +1,11 @@
-import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
 import { EmojiStyle } from 'emoji-picker-react'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
+
 import EmojiButton from './emoji-button'
 import { UnifiedEmojiPicker } from './emoji-picker'
 

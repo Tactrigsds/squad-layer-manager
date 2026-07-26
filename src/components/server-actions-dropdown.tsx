@@ -1,13 +1,24 @@
+import { useMutation } from '@tanstack/react-query'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import type { MenuSlots } from '@/components/player-context-menu-options'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
@@ -16,7 +27,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SandboxClient from '@/systems/sandbox.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
-import { useMutation } from '@tanstack/react-query'
+
 import { useOpenSandboxControlWindow } from './sandbox-control-window.helpers'
 import { useOpenServerConsoleWindow } from './server-console-window.helpers'
 
@@ -59,16 +70,15 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const { Item, Separator } = props.slots
 	const stores = props.stores
 	const serverId = stores.squadServer!.serverId
-	const playerCount = ZusUtils.useStore(
-		stores.squadServer!,
-		s => (s.chat.chatState.synced && !s.chat.chatState.connectionError) ? s.chat.chatState.interpolatedState.players.length : null,
+	const playerCount = Zus.useStore(stores.squadServer!, (s) =>
+		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.length : null,
 	)
 	const hasPlayers = playerCount !== null && playerCount > 0
 	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match', { serverId: serverId }))
 	const disableUpdatesDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:disable-slm-updates', { serverId: serverId }))
 	const disableFogOfWarDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:turn-fog-off', { serverId: serverId }))
 
-	const updatesToSquadServerDisabled = ZusUtils.useStore(stores.squadServer!, s => s.settings.saved?.updatesToSquadServerDisabled)
+	const updatesToSquadServerDisabled = Zus.useStore(stores.squadServer!, (s) => s.settings.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
@@ -145,46 +155,35 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				<Item
 					disabled={!!endMatchDenied || !hasPlayers}
 					onClick={() => void endMatch()}
-					className={cn(
-						'bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600',
-						!hasPlayers && 'flex flex-col',
-					)}
+					className={cn('bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600', !hasPlayers && 'flex flex-col')}
 				>
 					<span>End Match</span>
-					{!hasPlayers && (
-						<small>
-							(disabled: Cannot end match when server is empty.)
-						</small>
-					)}
+					{!hasPlayers && <small>(disabled: Cannot end match when server is empty.)</small>}
 				</Item>
 			</PermissionDeniedTooltip>
-			{updatesToSquadServerDisabled
-				? (
-					<PermissionDeniedTooltip denied={disableUpdatesDenied}>
-						<Item disabled={!!disableUpdatesDenied} onClick={enableUpdates}>Re-enable SLM Updates</Item>
-					</PermissionDeniedTooltip>
-				)
-				: (
-					<PermissionDeniedTooltip denied={disableUpdatesDenied}>
-						<Item
-							disabled={!!disableUpdatesDenied}
-							onClick={disableUpdates}
-						>
-							Disable SLM Updates
-						</Item>
-					</PermissionDeniedTooltip>
-				)}
+			{updatesToSquadServerDisabled ? (
+				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+					<Item disabled={!!disableUpdatesDenied} onClick={enableUpdates}>
+						Re-enable SLM Updates
+					</Item>
+				</PermissionDeniedTooltip>
+			) : (
+				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+					<Item disabled={!!disableUpdatesDenied} onClick={disableUpdates}>
+						Disable SLM Updates
+					</Item>
+				</PermissionDeniedTooltip>
+			)}
 			<PermissionDeniedTooltip denied={disableFogOfWarDenied}>
-				<Item
-					disabled={!!disableFogOfWarDenied}
-					onClick={disableFogOfWar}
-				>
+				<Item disabled={!!disableFogOfWarDenied} onClick={disableFogOfWar}>
 					Disable Fog Of War
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={consoleDenied}>
-				<Item disabled={!!consoleDenied} onClick={() => openConsoleWindow()}>Server Console</Item>
+				<Item disabled={!!consoleDenied} onClick={() => openConsoleWindow()}>
+					Server Console
+				</Item>
 			</PermissionDeniedTooltip>
 			{isSandbox && <Item onClick={() => openSandboxWindow()}>Sandbox Controls</Item>}
 		</>

@@ -50,7 +50,13 @@
 						{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 } } },
 						{ "type": "value", "options": { "1": { "text": "UP", "color": "green", "index": 1 } } }
 					],
-					"thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{ "color": "red", "value": null },
+							{ "color": "green", "value": 1 }
+						]
+					}
 				},
 				"overrides": []
 			}
@@ -61,9 +67,7 @@
 			"description": "Live websocket sessions right now.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
-			"targets": [
-				{ "refId": "A", "expr": "max(slm_websocket_connected_clients)", "legendFormat": "clients", "instant": true }
-			],
+			"targets": [{ "refId": "A", "expr": "max(slm_websocket_connected_clients)", "legendFormat": "clients", "instant": true }],
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
 				"colorMode": "value",
@@ -83,9 +87,7 @@
 			"description": "Initialized squad server slices. A drop here without a config change means a slice failed to come up.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
 			"gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
-			"targets": [
-				{ "refId": "A", "expr": "max(slm_squad_server_count)", "legendFormat": "slices", "instant": true }
-			],
+			"targets": [{ "refId": "A", "expr": "max(slm_squad_server_count)", "legendFormat": "slices", "instant": true }],
 			"options": {
 				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
 				"colorMode": "value",
@@ -295,7 +297,10 @@
 				"overrides": [
 					{
 						"matcher": { "id": "byName", "options": "connections/s" },
-						"properties": [{ "id": "custom.axisPlacement", "value": "right" }, { "id": "unit", "value": "cps" }]
+						"properties": [
+							{ "id": "custom.axisPlacement", "value": "right" },
+							{ "id": "unit", "value": "cps" }
+						]
 					}
 				]
 			},
@@ -355,7 +360,10 @@
 				}
 			],
 			"fieldConfig": {
-				"defaults": { "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10, "lineWidth": 2 } },
+				"defaults": {
+					"min": 0,
+					"custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10, "lineWidth": 2 }
+				},
 				"overrides": []
 			}
 		},
@@ -407,7 +415,10 @@
 				}
 			],
 			"fieldConfig": {
-				"defaults": { "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10, "lineWidth": 2 } },
+				"defaults": {
+					"min": 0,
+					"custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10, "lineWidth": 2 }
+				},
 				"overrides": []
 			}
 		},
@@ -422,7 +433,10 @@
 				{ "refId": "B", "expr": "max(slm_battlemetrics_requests_per_minute)", "legendFormat": "requests /60s (limit 60)" },
 				{ "refId": "C", "expr": "max(slm_battlemetrics_queue_size)", "legendFormat": "queued" }
 			],
-			"fieldConfig": { "defaults": { "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] }
+			"fieldConfig": {
+				"defaults": { "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 } },
+				"overrides": []
+			}
 		},
 
 		{ "type": "row", "title": "Recent problems", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 } },
@@ -433,7 +447,11 @@
 			"datasource": { "type": "loki", "uid": "loki" },
 			"gridPos": { "h": 11, "w": 24, "x": 0, "y": 59 },
 			"targets": [
-				{ "refId": "A", "expr": "{service_name=\"squad-layer-manager\"} | severity_text =~ `WARN|ERROR|FATAL`", "queryType": "range" }
+				{
+					"refId": "A",
+					"expr": "{service_name=\"squad-layer-manager\"} | severity_text =~ `WARN|ERROR|FATAL`",
+					"queryType": "range"
+				}
 			],
 			"options": {
 				"showTime": true,

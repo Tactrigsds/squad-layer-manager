@@ -1,19 +1,21 @@
+import * as Form from '@tanstack/react-form'
+import { useNavigate } from '@tanstack/react-router'
+import React from 'react'
+import { z } from 'zod'
+
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Input } from '@/components/ui/input'
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ValidationErrors from '@/lib/validation-errors'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
 import * as RbacClient from '@/systems/rbac.client'
 import { invalidateLoggedInUser } from '@/systems/users.client'
-import * as Form from '@tanstack/react-form'
-import { useNavigate } from '@tanstack/react-router'
-import React from 'react'
-import { z } from 'zod'
+
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
@@ -48,7 +50,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			invertedEmoji: null as string | null,
 		} satisfies FormData,
 		onSubmit: async ({ value }) => {
-			const state = ZusUtils.getState(props.stores.filterEditor)
+			const state = Zus.getState(props.stores.filterEditor)
 
 			if (!state.validatedFilter) {
 				toast.warning('Invalid filter', { description: 'Please check filter configuration' })
@@ -83,26 +85,25 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 		},
 	})
 
-	const isValidFilter = ZusUtils.useStore(props.stores.filterEditor, s => s.valid)
+	const isValidFilter = Zus.useStore(props.stores.filterEditor, (s) => s.valid)
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
-	const submitBtn = React.useMemo(() => (
-		<form.Subscribe>
-			{(f) => (
-				<PermissionDeniedTooltip denied={createDenied}>
-					<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
-						Create
-					</Button>
-				</PermissionDeniedTooltip>
-			)}
-		</form.Subscribe>
-	), [form, isValidFilter, createDenied])
+	const submitBtn = React.useMemo(
+		() => (
+			<form.Subscribe>
+				{(f) => (
+					<PermissionDeniedTooltip denied={createDenied}>
+						<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
+							Create
+						</Button>
+					</PermissionDeniedTooltip>
+				)}
+			</form.Subscribe>
+		),
+		[form, isValidFilter, createDenied],
+	)
 
-	const filterCard = React.useMemo(() => (
-		<FilterCard stores={props.stores}>
-			{submitBtn}
-		</FilterCard>
-	), [props.stores, submitBtn])
+	const filterCard = React.useMemo(() => <FilterCard stores={props.stores}>{submitBtn}</FilterCard>, [props.stores, submitBtn])
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
@@ -281,10 +282,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 				</div>
 
 				{/* Right Column - Description */}
-				<form.Field
-					name="description"
-					validators={{ onChange: F.DescriptionSchema }}
-				>
+				<form.Field name="description" validators={{ onChange: F.DescriptionSchema }}>
 					{(field) => {
 						const label = 'Description'
 						return (
