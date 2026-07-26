@@ -2057,11 +2057,23 @@ const onNewGameDuringSync =
 			'onNewGameDuringSync',
 			{
 				module,
-				mutexes: () => [ctx.matchHistory.mtx],
+				// both, in the same order onNewGameDuringRoll takes them: the queue reconciliation below dispatches an
+				// op, and taking updateLayerMtx after matchHistory.mtx in one place and before it in another deadlocks
+				mutexes: () => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
 				levels: { event: 'info' },
 			},
 			async () => {
 				const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, currentLayerId)
+				// We've just found the server on a layer we had no record of, so a roll happened while SLM wasn't
+				// watching. The roll path shifts the queue when the head is what started playing; this path never did,
+				// so a head that was already consumed stayed at the head and got played a second time.
+				if (pushedNewMatch) {
+					const head = LayerQueue.getSavedQueue(ctx)[0]
+					if (head?.layerId && L.areLayersCompatible(head.layerId, currentLayerId)) {
+						log.info('queue head %s is already playing; consuming it rather than queueing it again', head.layerId)
+						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
+					}
+				}
 				return { match: currentMatch, isNewMatch: pushedNewMatch }
 			},
 		)()

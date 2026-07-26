@@ -174,7 +174,9 @@ export type AppFixture = {
 	// stop the app and boot it again against the same db, emulator and ports. For anything that only happens on
 	// boot -- notably the feed backfill, which rebuilds state from the db rather than from what it saw live.
 	// `child` on the fixture is the original process and goes stale across this; nothing else does.
-	restart: () => Promise<void>
+	// `whileDown` runs against the still-live emulator between the two, for what the app has to work out on boot
+	// rather than observe: a map roll it was not running for.
+	restart: (whileDown?: () => Promise<void> | void) => Promise<void>
 	dispose: () => Promise<void>
 }
 
@@ -612,8 +614,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		},
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
-		restart: async () => {
+		restart: async (whileDown?: () => Promise<void> | void) => {
 			await stopApp()
+			await whileDown?.()
 			await spawnApp()
 		},
 		dispose: async () => {
