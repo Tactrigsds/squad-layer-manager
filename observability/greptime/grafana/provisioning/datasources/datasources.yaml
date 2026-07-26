@@ -1,0 +1,37 @@
+apiVersion: 1
+
+# uid: prometheus is deliberate. The SLM dashboards reference their datasources by uid, and 28 of
+# their 34 references are prometheus-typed, so serving GreptimeDB's PromQL endpoint under that uid
+# carries them over unedited.
+datasources:
+   - name: Prometheus
+     uid: prometheus
+     type: prometheus
+     access: proxy
+     url: http://greptimedb:4000/v1/prometheus
+     isDefault: true
+     jsonData:
+        httpMethod: POST
+        httpHeaderName1: x-greptime-db-name
+        timeInterval: 15s
+     secureJsonData:
+        httpHeaderValue1: public
+
+   - name: Traces
+     uid: tempo
+     type: jaeger
+     access: proxy
+     url: http://greptimedb:4000/v1/jaeger
+     jsonData:
+        httpHeaderName1: x-greptime-db-name
+     secureJsonData:
+        httpHeaderValue1: public
+
+   - name: GreptimeDB SQL
+     uid: greptime-sql
+     type: mysql
+     access: proxy
+     url: greptimedb:4002
+     database: public
+     jsonData:
+        timezone: UTC

@@ -1,0 +1,52 @@
+receivers:
+   otlp:
+      protocols:
+         grpc:
+            endpoint: 0.0.0.0:4317
+         http:
+            endpoint: 0.0.0.0:4318
+
+processors:
+   memory_limiter:
+      check_interval: 1s
+      limit_mib: 256
+      spike_limit_mib: 64
+   batch:
+      timeout: 5s
+      send_batch_size: 1024
+
+exporters:
+   # The otlphttp exporter appends /v1/{metrics,logs,traces}, producing GreptimeDB's
+   # documented /v1/otlp/v1/* routes.
+   otlphttp/metrics:
+      endpoint: http://greptimedb:4000/v1/otlp
+      headers:
+         x-greptime-db-name: public
+
+   otlphttp/logs:
+      endpoint: http://greptimedb:4000/v1/otlp
+      headers:
+         x-greptime-db-name: public
+         x-greptime-log-table-name: otel_logs
+
+   otlphttp/traces:
+      endpoint: http://greptimedb:4000/v1/otlp
+      headers:
+         x-greptime-db-name: public
+         # Without this spans are stored unstructured and the Jaeger query API returns nothing.
+         x-greptime-pipeline-name: greptime_trace_v1
+
+service:
+   pipelines:
+      metrics:
+         receivers: [otlp]
+         processors: [memory_limiter, batch]
+         exporters: [otlphttp/metrics]
+      logs:
+         receivers: [otlp]
+         processors: [memory_limiter, batch]
+         exporters: [otlphttp/logs]
+      traces:
+         receivers: [otlp]
+         processors: [memory_limiter, batch]
+         exporters: [otlphttp/traces]
