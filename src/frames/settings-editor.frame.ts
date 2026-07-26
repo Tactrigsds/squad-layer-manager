@@ -76,16 +76,16 @@ export type Types = {
 
 export type Frame = FRM.Frame<Types>
 
-// minimal input-shape seed for a brand-new server: the required-without-default fields (connections + admin lists).
-// prefaulted fields (queue, public settings) are filled in by ServerSettingsSchema at save time.
-export const NEW_SERVER_DRAFT: SETTINGS.ServerSettings = {
+// minimal input-shape seed for a brand-new server. Typed as the schema's input so the seed is checked against it:
+// prefaulted fields (queue, the rest of the public settings) may be omitted and are filled in at save time.
+export const NEW_SERVER_DRAFT: z.input<typeof SETTINGS.ServerSettingsSchema> = {
 	connections: {
 		type: 'local',
 		logFile: '',
 		rcon: { host: '', port: 21114, password: '' },
 	},
-	adminLists: {},
-} as unknown as SETTINGS.ServerSettings
+	adminLists: [],
+}
 
 function editSchema(state: SettingsEditor): z.ZodType<any> {
 	if (state.kind === 'global') return SETTINGS.GlobalSettingsSchema
