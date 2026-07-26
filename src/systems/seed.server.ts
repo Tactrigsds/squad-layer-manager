@@ -21,21 +21,15 @@ const SEED_USER: typeof Schema.users.$inferInsert = { discordId: 1n, username: '
 
 type SeededFilter = Omit<F.FilterEntity, 'owner'>
 
-// Derived from the pool a real server runs. Ids are stable: the seeded pool configuration names them.
+// Derived from the pool a real server runs. Ids are stable: the seeded pool configuration names them, and
+// main-pool composes the other two rather than restating what they say.
 const SEEDED_FILTERS: SeededFilter[] = [
 	{
 		id: 'main-pool',
 		name: 'Main Pool',
-		description: 'The layers this server plays by default: the competitive pool, minus broken layers and same-nation matchups.',
-		filter: FB.and([
-			FB.isTrue('Z_Pool'),
-			FB.neq('Map', 'Sanxian'),
-			FB.nor([
-				FB.and([FB.inValues('Faction_1', ['USA', 'USMC']), FB.inValues('Faction_2', ['USA', 'USMC'])]),
-				FB.and([FB.inValues('Faction_1', ['PLANMC', 'PLAAGF', 'PLA']), FB.inValues('Faction_2', ['PLANMC', 'PLAAGF', 'PLA'])]),
-				FB.and([FB.inValues('Faction_1', ['VDV', 'RGF']), FB.inValues('Faction_2', ['VDV', 'RGF'])]),
-			]),
-		]),
+		description:
+			'The layers this server plays by default: the competitive pool, minus similar-faction matchups and heavy armor on hilly maps.',
+		filter: FB.and([FB.isTrue('Z_Pool'), FB.excludedFrom('similar-factions'), FB.includedIn('no-mech-on-hilly')]),
 		emoji: '✅',
 		alertMessage: 'In the main pool',
 		invertedEmoji: '⛔',
@@ -76,6 +70,19 @@ const SEEDED_FILTERS: SeededFilter[] = [
 		invertedEmoji: '🚜',
 		invertedAlertMessage: 'Heavy armor on a hilly map',
 	},
+	{
+		id: 'similar-factions',
+		name: 'Similar Factions',
+		description: 'Factions are very similar for these layers.',
+		filter: FB.or([
+			FB.inValues(FB.teamCol('Faction', 'both'), ['PLA', 'PLAAGF', 'PLANMC']),
+			FB.inValues(FB.teamCol('Faction', 'both'), ['VDV', 'RGF']),
+		]),
+		emoji: '🪞',
+		alertMessage: 'Factions are very similar for this layer. Expect teamkills.',
+		invertedEmoji: '⚔️',
+		invertedAlertMessage: 'Factions are distinct for this layer.',
+	},
 ]
 
 // The pool the seeded filters are there to define. Applied to the settings of the server a fresh install
@@ -88,7 +95,7 @@ export function applyInitialPoolConfig(settings: SETTINGS.ServerSettings): SETTI
 			mainPool: {
 				...settings.queue.mainPool,
 				poolFilter: { filterId: 'main-pool', mode: 'include' },
-				indicateMatches: ['seeding'],
+				indicateMatches: ['seeding', 'similar-factions'],
 				defaultSelectable: [{ filterId: 'no-mech-on-hilly', applyAs: 'disabled' }],
 			},
 		},

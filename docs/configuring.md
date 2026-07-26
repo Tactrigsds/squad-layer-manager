@@ -13,11 +13,16 @@ All settings are optionally editable via a built-in JSON editor.
 A database with nothing in it is seeded once, on its first boot, so there is something to look at before anything
 is configured:
 
-- Three filters: **Main Pool** (a competitive pool, minus broken layers and same-nation matchups), **Seeding**,
-  and **No Mech on Hilly Maps**. They are owned by `SLM` rather than by a person, since nobody has signed in yet.
+- Four filters, owned by `SLM` rather than by a person, since nobody has signed in yet:
+   - **Main Pool** - the competitive pool, minus the two below it. It is written as a composition (`Z_Pool`, excluded
+     from Similar Factions, included in No Mech on Hilly Maps) rather than as one flat expression, so editing either
+     of those changes what the pool means.
+   - **No Mech on Hilly Maps** - keeps mechanized and armored matchups off the maps their vehicles cannot get around.
+   - **Similar Factions** - both teams field factions of the same nation, which tends to produce teamkills.
+   - **Seeding** - small layers to run while the server fills up.
 - A [sandbox server](sandbox_servers.md), enabled and default, whose pool is configured from those filters: Main
-  Pool is the pool filter, Seeding indicates its matches, and No Mech on Hilly Maps is offered during layer
-  selection, starting unselected.
+  Pool is the pool filter, Seeding and Similar Factions indicate their matches, and No Mech on Hilly Maps is
+  offered during layer selection, starting unselected.
 
 None of it is reconciled on later boots: edit or delete any of it and it stays that way. A server you add
 yourself starts with an unconstrained pool, and you point it at whichever filters you want under its Queue
