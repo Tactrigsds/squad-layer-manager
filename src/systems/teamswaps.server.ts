@@ -1,5 +1,4 @@
 import { Mutex } from 'async-mutex'
-import type { MutexInterface } from 'async-mutex'
 import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
@@ -86,24 +85,14 @@ async function resolveSourceName(ctx: C.Db, source: TSW.Teamswap['source'], play
 	return 'Admin'
 }
 
-type Session = ODSM.Server.Session<TSW.Op, TSW.State>
-
 type Dispatched = ODSM.Server.Dispatched<TSW.Op, TSW.Rejection>
 
-export type TeamswapContext = {
-	session: Session
-	// outgoing operations
-	op$: IsolatedSubject<Dispatched>
-	dispatchMtx: MutexInterface
-	teamswapExecutedAt: number | null
-	haveReadSavedSwapsFromDb: boolean
-}
 export function setup() {
 	log = module.getLogger()
 }
 
 export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
-	const context: TeamswapContext = {
+	const context: TSW.Ctx.Payload = {
 		session: ODSM.Server.initSession(TSW.initState()),
 		op$: new IsolatedSubject<Dispatched>(),
 		dispatchMtx: new Mutex(),
@@ -239,7 +228,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	return context
 }
 
-function getState(ctx: C.Teamswap) {
+function getState(ctx: TSW.Ctx) {
 	return ctx.teamswaps.session.state
 }
 
@@ -274,7 +263,7 @@ async function unswappedPlayers(
 // Runs outside the dispatch mutex (holding it here would block every teamswap op for the duration, and would
 // deadlock against the completion this is waiting for).
 async function watchExecution(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
+	ctx: TSW.Ctx & C.ServerSlice & C.Db,
 	execution: {
 		opId: string
 		swaps: TSW.TeamswapCollection
@@ -413,7 +402,7 @@ const dispatchOp = Instr.spanOp(
 		attrs: (ctx, ops) => ({ [ATTRS.Teamswap.OP_CODES]: ops.map((o) => o.code).join(',') }),
 		extraText: (ctx, ops) => ops.map((o) => o.code).join(','),
 	},
-	async (ctx: C.Teamswap & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
+	async (ctx: TSW.Ctx & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const applied = ODSM.Server.applyOps(ctx.teamswaps.session, ops, TSW.reducer)
 		ctx.teamswaps.session = applied.session
 
@@ -659,25 +648,21 @@ const dispatchOp = Instr.spanOp(
 	},
 )
 
-export async function dispatchRevertToSaved(ctx: C.Teamswap & C.ServerSlice & C.Db) {}
+export async function dispatchRevertToSaved(ctx: TSW.Ctx & C.ServerSlice & C.Db) {}
 
-export async function dispatchClearSwaps(ctx: C.Teamswap & C.ServerSlice & C.Db, source?: TSW.Teamswap['source']) {
+export async function dispatchClearSwaps(ctx: TSW.Ctx & C.ServerSlice & C.Db, source?: TSW.Teamswap['source']) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'clear-teamswaps', save: true, source }])
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNow(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
-	swaps: TSW.TeamswapCollection,
-	source: TSW.Teamswap['source'],
-) {
+export async function dispatchSwapNow(ctx: TSW.Ctx & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection, source: TSW.Teamswap['source']) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'swap-now', swaps, source }])
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNext(ctx: C.Teamswap & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection) {
+export async function dispatchSwapNext(ctx: TSW.Ctx & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection) {
 	// dispatch each add on its own -- a batch is all-or-nothing (a rejection discards the whole batch),
 	// so batching would let one already-marked player block swapping everyone else
 	const errors: unknown[] = []

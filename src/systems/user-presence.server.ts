@@ -17,19 +17,9 @@ import * as SettingsSys from '@/systems/settings.server'
 import * as WSSessionSys from '@/systems/ws-session.server'
 
 // the two shared drafts a client can hold an editing session on
-export type DraftScope = 'queue' | 'layer-requests'
-
 type DispatchedOps = ODSM.Server.Dispatched<UP.Op, UP.Rejection>
 
-export type UserPresenceContext = {
-	userPresence: {
-		session: ODSM.Server.Session<UP.Op, UP.State>
-		op$: IsolatedSubject<DispatchedOps>
-		abandoned$: IsolatedSubject<{ serverId: string; scope: DraftScope }>
-	}
-}
-
-let globalUserPresence: UserPresenceContext['userPresence']
+let globalUserPresence: UP.Ctx['userPresence']
 
 // pending "interrupted -> disconnected" timers, keyed by wsClientId so they can be superseded when the
 // same id is reclaimed or closes again (see setup)
@@ -106,14 +96,14 @@ export const orpcRouter = {
 const DRAFT_SCOPES = ['queue', 'layer-requests'] as const
 
 // clients (not users) holding an editing session, counted per server for each shared draft
-type EditorCounts = Record<DraftScope, Map<string, number>>
+type EditorCounts = Record<UP.Ctx.DraftScope, Map<string, number>>
 function countEditingClients(state: UP.State): EditorCounts {
 	const counts: EditorCounts = { queue: new Map(), 'layer-requests': new Map() }
 	for (const client of state.presence.values()) {
 		const activity = client.activityState
 		if (!activity) continue
 		const serverId = activity.opts.serverId
-		const bump = (scope: DraftScope) => counts[scope].set(serverId, (counts[scope].get(serverId) ?? 0) + 1)
+		const bump = (scope: UP.Ctx.DraftScope) => counts[scope].set(serverId, (counts[scope].get(serverId) ?? 0) + 1)
 		if (UP.Trans.editingQueue(serverId).match(activity)) bump('queue')
 		if (UP.Trans.editingLayerRequests(serverId).match(activity)) bump('layer-requests')
 	}
@@ -220,7 +210,7 @@ export function getQueueEditors(serverId: string, exclude?: USR.UserId): USR.Use
 // the shared drafts on this server whose last editing client went away without finishing. Whoever owns the
 // draft is expected to discard it: nobody is left to commit it, and the next editor would inherit edits they
 // never made.
-export function editingAbandoned$(serverId: string): Rx.Observable<DraftScope> {
+export function editingAbandoned$(serverId: string): Rx.Observable<UP.Ctx.DraftScope> {
 	return globalUserPresence.abandoned$.pipe(
 		Rx.filter((e) => e.serverId === serverId),
 		Rx.map((e) => e.scope),
@@ -266,7 +256,7 @@ export function setup() {
 	globalUserPresence = {
 		session: ODSM.Server.initSession(UP.initState()),
 		op$: new IsolatedSubject<DispatchedOps>(),
-		abandoned$: new IsolatedSubject<{ serverId: string; scope: DraftScope }>(),
+		abandoned$: new IsolatedSubject<{ serverId: string; scope: UP.Ctx.DraftScope }>(),
 	}
 	CleanupSys.register(() => {
 		globalUserPresence.op$.complete()

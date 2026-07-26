@@ -2,12 +2,14 @@ import * as Im from 'immer'
 import { z } from 'zod'
 
 import { createId } from '@/lib/id'
+import type { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
 import type { DistributiveOmit } from '@/lib/types'
+import type * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -1073,4 +1075,16 @@ export const getAttributedHumanReadableActivity = (
 	const activityText = getHumanReadableActivity(activity, listOrIndex, withItemName)
 	if (!activityText) return null
 	return `${displayName} is ${activityText.toLowerCase()}`
+}
+
+export type Ctx = CS.Ctx & {
+	userPresence: {
+		session: ODSM.Server.Session<Op, State>
+		op$: IsolatedSubject<ODSM.Server.Dispatched<Op, Rejection>>
+		abandoned$: IsolatedSubject<{ serverId: string; scope: Ctx.DraftScope }>
+	}
+}
+
+export namespace Ctx {
+	export type DraftScope = 'queue' | 'layer-requests'
 }

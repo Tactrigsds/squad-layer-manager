@@ -1,12 +1,16 @@
 import type { DistributiveOmit } from '@tanstack/react-query'
+import type { MutexInterface } from 'async-mutex'
 import { z } from 'zod'
 
 import { createId } from '@/lib/id'
+import type { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import { assertNever } from '@/lib/type-guards'
+import type * as CS from '@/models/context-shared'
 import * as MH from '@/models/match-history.models'
+import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as USR from '@/models/users.models'
 
@@ -646,3 +650,19 @@ export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _pre
 }
 
 export type UpdateForClient = ODSM.ClientUpdate<State, Op, Rejection['code']>
+
+export type Ctx = CS.Ctx & { teamswaps: Ctx.Payload } & SS.Ctx
+
+export namespace Ctx {
+	type Session = ODSM.Server.Session<Op, State>
+	type Dispatched = ODSM.Server.Dispatched<Op, Rejection>
+
+	export type Payload = {
+		session: Session
+		// outgoing operations
+		op$: IsolatedSubject<Dispatched>
+		dispatchMtx: MutexInterface
+		teamswapExecutedAt: number | null
+		haveReadSavedSwapsFromDb: boolean
+	}
+}

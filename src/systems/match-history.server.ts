@@ -19,6 +19,7 @@ import * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LOG from '@/models/logs'
+import type * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
@@ -89,7 +90,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 export const loadState = Instr.spanOp(
 	'loadState',
 	{ module },
-	async (ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
+	async (ctx: C.Db & C.MatchHistory & MEC.Ctx & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
 		const startAtOrdinal = opts?.startAtOrdinal ?? 0
 		const recentMatchesCte = ctx
@@ -505,7 +506,7 @@ export const addNewCurrentMatch = Instr.spanOp(
 	'addNewCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (
-		ctx: C.Db & C.MatchHistory & C.MatchEventsCache & C.SquadServer & CS.AbortSignal,
+		ctx: C.Db & C.MatchHistory & MEC.Ctx & C.SquadServer & CS.AbortSignal,
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
 	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
@@ -538,7 +539,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 			[ATTRS.MatchHistory.CURRENT_LAYER_ID]: currentLayerId,
 		}),
 	},
-	async (ctx: C.Db & C.MatchHistory & C.MatchEventsCache & CS.AbortSignal, outcome: MH.MatchOutcome, time: Date) => {
+	async (ctx: C.Db & C.MatchHistory & MEC.Ctx & CS.AbortSignal, outcome: MH.MatchOutcome, time: Date) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
@@ -612,10 +613,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 export const syncWithCurrentLayer = Instr.spanOp(
 	'syncWithCurrentLayer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (
-		ctx: C.Db & C.MatchHistory & C.MatchEventsCache & C.SquadServer & CS.AbortSignal,
-		_currentLayerOnServer: L.UnvalidatedLayer | L.LayerId,
-	) => {
+	async (ctx: C.Db & C.MatchHistory & MEC.Ctx & C.SquadServer & CS.AbortSignal, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
 		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
 		return await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
