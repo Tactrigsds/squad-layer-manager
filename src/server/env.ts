@@ -163,32 +163,7 @@ export const groups = {
 			.optional()
 			.meta({
 				description:
-					'the fraction of traces sampled. 1 keeps everything, which is what unset means outside production; in production unset means 0.25, because most spans are high-frequency polling and Tempo pays to keep all of them. Set it to 1 there when you need full fidelity for a while.',
-				envExample: { include: 'commented' },
-			}),
-	},
-
-	pyroscope: {
-		PYROSCOPE_ENABLED: z
-			.stringbool()
-			.default(false)
-			.meta({
-				description:
-					"push continuous profiles to a Pyroscope server (bundled in the otel-lgtm image). View them under Grafana's Pyroscope datasource. Costs about a third of a core while it runs, so turn it on to chase a question and back off after; see observability/README.md.",
-				envExample: { include: 'commented' },
-			}),
-		PYROSCOPE_ENDPOINT: ZodUtils.NormedUrl.transform((url) => url.replace(/\/$/, ''))
-			.default('http://localhost:4040')
-			.meta({
-				description: 'where profiles are pushed. docker-compose points this at its own otel service (http://otel:4040).',
-				envExample: { include: 'commented' },
-			}),
-		PYROSCOPE_HEAP_ENABLED: z
-			.stringbool()
-			.default(true)
-			.meta({
-				description:
-					'also sample allocations and in-use heap, not just CPU/wall. Its overhead scales with allocation rate; turn it off to keep only the flatter-cost CPU profiles.',
+					'the fraction of traces sampled. 1 keeps everything, which is what unset means outside production; in production unset means 0.25, because most spans are high-frequency polling and the trace store pays to keep all of them. Set it to 1 there when you need full fidelity for a while.',
 				envExample: { include: 'commented' },
 			}),
 	},
@@ -466,12 +441,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	otel: {
 		title: 'Telemetry',
 		description:
-			'the app exports traces, metrics and logs over OTLP. docker-compose runs a grafana/otel-lgtm collector next to it, which serves the dashboards.',
-	},
-	pyroscope: {
-		title: 'Profiling',
-		description:
-			"continuous CPU and heap profiles pushed to the Pyroscope bundled in the otel-lgtm collector. Off by default; view the flamegraphs under Grafana's Pyroscope datasource.",
+			'the app exports traces, metrics and logs over OTLP. docker-compose runs an OpenTelemetry collector next to it, which routes each signal to its own store, and a Grafana that serves the dashboards.',
 	},
 	rbac: { title: 'Permissions' },
 	encryption: { title: 'Encryption' },

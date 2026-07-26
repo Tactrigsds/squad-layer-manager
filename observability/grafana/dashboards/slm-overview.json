@@ -443,14 +443,14 @@
 		{
 			"type": "logs",
 			"title": "Warnings and errors",
-			"description": "Every line here carries trace_id in its structured metadata, so the Loki derived field links straight through to the Tempo trace that produced it.",
-			"datasource": { "type": "loki", "uid": "loki" },
+			"description": "trace_id is a first-class field on every record, so each line links straight through to the trace that produced it. SLM / Logs has the same view with severity and module filters.",
+			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
 			"gridPos": { "h": 11, "w": 24, "x": 0, "y": 59 },
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "{service_name=\"squad-layer-manager\"} | severity_text =~ `WARN|ERROR|FATAL`",
-					"queryType": "range"
+					"expr": "severity:in(WARN,ERROR,FATAL)",
+					"queryType": "instant"
 				}
 			],
 			"options": {

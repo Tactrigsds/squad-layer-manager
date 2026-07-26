@@ -1,0 +1,97 @@
+{
+	"uid": "slm-logs",
+	"title": "SLM / Logs",
+	"description": "Everything the app logged, out of VictoriaLogs over LogsQL. Filter by severity and module; each line's trace_id links to the trace it was emitted inside.",
+	"tags": ["slm"],
+	"timezone": "browser",
+	"editable": true,
+	"schemaVersion": 39,
+	"refresh": "30s",
+	"time": { "from": "now-1h", "to": "now" },
+	"templating": {
+		"list": [
+			{
+				"name": "severity",
+				"label": "Severity",
+				"type": "custom",
+				"query": "everything : *,info and above : severity:in(INFO\\,WARN\\,ERROR\\,FATAL),warnings and errors : severity:in(WARN\\,ERROR\\,FATAL),errors only : severity:in(ERROR\\,FATAL)",
+				"includeAll": false,
+				"multi": false,
+				"current": { "text": "info and above", "value": "severity:in(INFO,WARN,ERROR,FATAL)" },
+				"options": []
+			},
+			{
+				"name": "module",
+				"label": "Module",
+				"description": "Values are whole LogsQL filter terms, which is what lets All be a bare * rather than a term that would hide the boot lines written before the logger attaches a module.",
+				"type": "query",
+				"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+				"query": {
+					"refId": "module",
+					"queryType": "stats",
+					"expr": "\"slm.module.name\":* | stats by (\"slm.module.name\") count() as n | format \"\\\"slm.module.name\\\":<slm.module.name>\" as filter | fields filter | sort by (filter)"
+				},
+				"refresh": 2,
+				"includeAll": true,
+				"allValue": "*",
+				"multi": false,
+				"current": { "text": "All", "value": "$__all" }
+			}
+		]
+	},
+	"panels": [
+		{
+			"type": "timeseries",
+			"title": "Log volume by severity",
+			"description": "Every record, regardless of the filters below: a quiet app and a filter that matches nothing look the same in the log panel but not here.",
+			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+			"gridPos": { "h": 7, "w": 24, "x": 0, "y": 0 },
+			"targets": [{ "refId": "A", "expr": "* | stats by (_time:1m, severity) count() as value", "queryType": "statsRange" }],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "short",
+					"custom": { "drawStyle": "bars", "fillOpacity": 70, "lineWidth": 0, "stacking": { "mode": "normal" } }
+				},
+				"overrides": [
+					{
+						"matcher": { "id": "byName", "options": "FATAL" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "dark-red" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "ERROR" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "WARN" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "INFO" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "DEBUG" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }]
+					}
+				]
+			}
+		},
+		{
+			"type": "logs",
+			"title": "Logs",
+			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+			"gridPos": { "h": 20, "w": 24, "x": 0, "y": 7 },
+			"targets": [{ "refId": "A", "expr": "$severity $module", "queryType": "instant" }],
+			"options": {
+				"showTime": true,
+				"showLabels": false,
+				"showCommonLabels": false,
+				"wrapLogMessage": true,
+				"enableLogDetails": true,
+				"dedupStrategy": "none",
+				"sortOrder": "Descending"
+			}
+		}
+	]
+}
