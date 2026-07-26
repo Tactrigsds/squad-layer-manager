@@ -1,6 +1,3 @@
-// Operation instrumentation: the span/metric/log wrapper every server operation goes through, and
-// the durable-subscription operator built on it. Lifted out of context.ts, which is about context
-// types and was two thirds this.
 import * as Otel from '@opentelemetry/api'
 import type { MutexInterface } from 'async-mutex'
 import type Pino from 'pino'
@@ -13,6 +10,10 @@ import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared.ts'
 import * as LOG from '@/models/logs.ts'
 import * as ATTR from '@/models/otel-attrs.ts'
+// Operation instrumentation: the span/metric/log wrapper every server operation goes through, and
+// the durable-subscription operator built on it. Lifted out of context.ts, which is about context
+// types and was two thirds this.
+import type * as USR from '@/models/users.models'
 
 import type * as C from './context.ts'
 import { baseLogger } from './logger.ts'
@@ -22,8 +23,8 @@ const CONTEXT_ATTR_MAPPING = [
 		ctxPath: (ctx: Partial<C.ServerId>) => ctx?.serverId,
 		attr: ATTR.SquadServer.ID,
 	},
-	{ ctxPath: (ctx: Partial<C.User>) => ctx?.user?.discordId?.toString(), attr: ATTR.User.ID },
-	{ ctxPath: (ctx: Partial<C.User>) => ctx?.user?.username, attr: ATTR.User.NAME },
+	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.discordId?.toString(), attr: ATTR.User.ID },
+	{ ctxPath: (ctx: Partial<USR.Ctx>) => ctx?.user?.username, attr: ATTR.User.NAME },
 	{
 		ctxPath: (ctx: Partial<C.WSSession>) => ctx?.wsClientId,
 		attr: ATTR.WebSocket.CLIENT_ID,

@@ -334,7 +334,7 @@ export async function broadcast(ctx: C.Rcon & CS.AbortSignal, message: string) {
 
 export type WarnOptionsBase = { msg: string | string[] } | string | string[]
 // returning undefined indicates warning should be skipped
-export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
+export type WarnOptions = WarnOptionsBase | ((ctx: SM.Ctx) => WarnOptionsBase | undefined)
 
 export async function getPlayer(ctx: C.SquadRcon & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
 	const playersRes = await ctx.squadRcon.teams.get(ctx, opts)

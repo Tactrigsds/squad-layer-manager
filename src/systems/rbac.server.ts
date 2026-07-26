@@ -179,8 +179,8 @@ const orpcBase = getOrpcBase(module)
 
 export const getRbacForDiscordUser = Instr.spanOp(
 	'getRbacForDiscordUser',
-	{ module, levels: { event: 'trace' }, attrs: (ctx: C.UserId) => ({ [ATTRS.User.ID]: String(ctx.user.discordId) }) },
-	async (ctx: C.Db & C.UserId & CS.AbortSignal) => {
+	{ module, levels: { event: 'trace' }, attrs: (ctx: USR.Ctx.Id) => ({ [ATTRS.User.ID]: String(ctx.user.discordId) }) },
+	async (ctx: C.Db & USR.Ctx.Id & CS.AbortSignal) => {
 		const discordUserId = ctx.user.discordId
 		const cached = cache.users.get(discordUserId)
 		if (cached) return await cached
@@ -218,7 +218,7 @@ export const getRbacForDiscordUser = Instr.spanOp(
 export const getRbacForPlayer = Instr.spanOp(
 	'getRbacForPlayer',
 	{ module },
-	async (ctx: C.Db & C.PlayerIds<'eos'> & C.ServerId & CS.AbortSignal) => {
+	async (ctx: C.Db & SM.Ctx.Ids<'eos'> & C.ServerId & CS.AbortSignal) => {
 		const ids = ctx.player.ids
 		const playerId = SM.PlayerIds.getPlayerId(ids)
 		// keyed by server as well as player: which admin lists speak for a player is per-server, so one cache entry
@@ -525,7 +525,7 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 
 // TODO we should implement a version of this which only loads the relevant perms for the user
 export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
-	ctx: C.Db & C.UserId & CS.AbortSignal,
+	ctx: C.Db & USR.Ctx.Id & CS.AbortSignal,
 	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
 ) {
 	const rbac = await getRbacForDiscordUser(ctx)
@@ -543,7 +543,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 }
 
 export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>(
-	ctx: C.Db & C.PlayerIds & C.ServerId & CS.AbortSignal,
+	ctx: C.Db & SM.Ctx.Ids & C.ServerId & CS.AbortSignal,
 	reqOrPerms: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>,
 ) {
 	const rbac = await getRbacForPlayer(ctx)
@@ -565,23 +565,23 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 // without one. Checks that genuinely depend on loaded state stay where the state is, inside the transaction.
 
 // whether this user may look at `serverId` at all; see RBAC.canViewServer for why it is not a plain permission check
-export async function canViewServerForUser(ctx: C.Db & C.UserId & CS.AbortSignal, serverId: string): Promise<boolean> {
+export async function canViewServerForUser(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, serverId: string): Promise<boolean> {
 	return RBAC.canViewServer(await getUserPermissions(ctx), serverId)
 }
 
 // for the aggregate (non-equality) checks: settings access, timeouts
-export async function getUserPermissions(ctx: C.Db & C.UserId & CS.AbortSignal): Promise<RBAC.Permission[]> {
+export async function getUserPermissions(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<RBAC.Permission[]> {
 	return RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)
 }
 
 // "up to N concurrent items" layer-request checks bypass the equality-matched permission path
 // (see RBAC.maxLayerRequests): undefined = no grant, null = unlimited, number = max concurrent items
-export async function getMaxLayerRequestsForUser(ctx: C.Db & CS.AbortSignal & C.UserId & C.ServerId): Promise<number | null | undefined> {
+export async function getMaxLayerRequestsForUser(ctx: C.Db & CS.AbortSignal & USR.Ctx.Id & C.ServerId): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)
 	return RBAC.maxLayerRequests(perms, ctx.serverId)
 }
 export async function getMaxLayerRequestsForPlayer(
-	ctx: C.Db & CS.AbortSignal & C.PlayerIds & C.ServerId,
+	ctx: C.Db & CS.AbortSignal & SM.Ctx.Ids & C.ServerId,
 ): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForPlayer(ctx)).perms)
 	return RBAC.maxLayerRequests(perms, ctx.serverId)

@@ -372,7 +372,7 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 // SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
 
-export async function updateRawServerSettings(ctx: C.Db & C.User & CS.AbortSignal, serverId: SS.ServerId, rawSettings: unknown) {}
+export async function updateRawServerSettings(ctx: C.Db & USR.Ctx & CS.AbortSignal, serverId: SS.ServerId, rawSettings: unknown) {}
 
 // ============================== unified settings bus ==============================
 
@@ -617,7 +617,7 @@ const serverRouter = {
 }
 
 async function recordServerRegistry(
-	ctx: C.Db & C.UserId,
+	ctx: C.Db & USR.Ctx.Id,
 	action: AppEvents.ServerRegistryChanged['action'],
 	targetServerId: string,
 	// a deleted server is already out of the registry by the time this runs, so its name has to be passed in

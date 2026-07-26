@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import type * as CS from '@/models/context-shared'
 import * as DM from '@/models/discord.models'
 
 export const GuiUserIdSchema = z.object({
@@ -69,4 +70,16 @@ export const getDefaultAvatarUrl = (discordId: bigint) => {
 
 export const getUserInitials = (user: User) => {
 	return user.username?.slice(0, 2).toUpperCase()
+}
+
+export type Ctx = CS.Ctx & {
+	user: User
+}
+
+export namespace Ctx {
+	// the same key at a narrower width: a function that only needs the id declares this and accepts
+	// either. Deliberate, and depended on by 13 signatures.
+	export type Id = CS.Ctx & {
+		user: { discordId: bigint }
+	}
 }

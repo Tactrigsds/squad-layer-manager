@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
 import * as Obj from '@/lib/object-utils'
+import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 
@@ -755,4 +756,9 @@ export function getPermissionsByRole(permissions: TracedPermission[]): [Role, Tr
 	}
 
 	return Array.from(rolePermissionsMap.entries()).map(([roleKey, perms]) => [JSON.parse(roleKey) as Role, perms])
+}
+
+export type Ctx = CS.Ctx & {
+	roles: Role[]
+	perms: TracedPermission[]
 }

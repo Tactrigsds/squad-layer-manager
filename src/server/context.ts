@@ -7,9 +7,7 @@ import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/a
 import type * as Cleanup from '@/lib/cleanup.ts'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
 import type * as CS from '@/models/context-shared.ts'
-import type * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models.ts'
-import type * as RBAC from '@/rbac.models'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
 import type * as MatchEventsCacheSys from '@/systems/match-events-cache.server'
 import type * as MatchHistorySys from '@/systems/match-history.server'
@@ -69,31 +67,6 @@ export type HttpRequest = FastifyRequest & FastifyReply
 export type HttpRequestFull = HttpRequest & AttachedFastify
 
 // sparse subset of User
-export type UserId = CS.Ctx & {
-	user: { discordId: bigint }
-}
-
-export type User = CS.Ctx & {
-	user: USR.User
-}
-
-export type Player = CS.Ctx & {
-	player: SM.Player
-}
-
-export type PlayerIds<T extends SM.PlayerIds.Fields = 'eos'> = {
-	player: {
-		ids: SM.PlayerIds.IdQuery<T>
-	}
-}
-
-export type UserOrPlayer = Partial<User> & Partial<Player>
-
-export type UserRbac = CS.Ctx & {
-	roles: RBAC.Role[]
-	perms: RBAC.TracedPermission[]
-}
-
 export type AuthSession = CS.Ctx & {
 	sessionId: string
 	expiresAt: Date
@@ -103,7 +76,7 @@ export type WSSession = CS.Ctx & {
 	wsClientId: string
 }
 
-export type AuthedUser = User & AuthSession
+export type AuthedUser = USR.Ctx & AuthSession
 
 export type AttachedFastify = Db & Partial<ResolvedRoute> & CS.AbortSignal
 export type Websocket = CS.Ctx & { ws: ws.WebSocket }
