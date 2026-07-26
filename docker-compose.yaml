@@ -9,10 +9,11 @@ services:
          # send OTLP traces and logs to the otel collector, which is a separate image configured below
          - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
          # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
-         # Grafana's Pyroscope datasource. Off by default: it costs a few percent of runtime overhead, most of
-         # it heap sampling, whose sample tables are native allocations that sit in the main malloc arena for
-         # the life of the process. Uncomment the two lines below to turn it on when you have an allocation or
-         # CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the flatter-cost CPU profiles.
+         # Grafana's Pyroscope datasource. Off by default: measured against prod it costs about a third of a
+         # core while it runs, most of it heap sampling, whose sample tables are native allocations that sit in
+         # the main malloc arena for the life of the process. Uncomment the two lines below to turn it on when
+         # you have an allocation or CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the
+         # flatter-cost CPU profiles.
          # - PYROSCOPE_ENABLED=true
          # - PYROSCOPE_ENDPOINT=http://otel:4040
 

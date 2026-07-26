@@ -156,9 +156,16 @@ export const groups = {
 			.meta({
 				description: 'where the exporters send to. docker-compose points this at its own collector service.',
 			}),
-		OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(1).meta({
-			description: 'the fraction of traces sampled. 1 keeps everything.',
-		}),
+		OTEL_TRACE_SAMPLE_RATIO: z.coerce
+			.number()
+			.min(0)
+			.max(1)
+			.optional()
+			.meta({
+				description:
+					'the fraction of traces sampled. 1 keeps everything, which is what unset means outside production; in production unset means 0.25, because most spans are high-frequency polling and Tempo pays to keep all of them. Set it to 1 there when you need full fidelity for a while.',
+				envExample: { include: 'commented' },
+			}),
 	},
 
 	pyroscope: {
@@ -167,7 +174,7 @@ export const groups = {
 			.default(false)
 			.meta({
 				description:
-					"push continuous profiles to a Pyroscope server (bundled in the otel-lgtm image). View them under Grafana's Pyroscope datasource. Adds a few percent of runtime overhead.",
+					"push continuous profiles to a Pyroscope server (bundled in the otel-lgtm image). View them under Grafana's Pyroscope datasource. Costs about a third of a core while it runs, so turn it on to chase a question and back off after; see observability/README.md.",
 				envExample: { include: 'commented' },
 			}),
 		PYROSCOPE_ENDPOINT: ZodUtils.NormedUrl.transform((url) => url.replace(/\/$/, ''))
