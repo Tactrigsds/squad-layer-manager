@@ -126,10 +126,10 @@ describe('getRouteRegex', () => {
 
 	describe('special regex characters in routes', () => {
 		test('handles routes with dots', () => {
-			const regex = getRouteRegex('/layers.bin')
+			const regex = getRouteRegex('/layers.bin.gz')
 
-			expect(regex.test('/layers.bin')).toBe(true)
-			expect(regex.test('/layersXbin')).toBe(false) // should not match due to literal dot
+			expect(regex.test('/layers.bin.gz')).toBe(true)
+			expect(regex.test('/layersXbinXgz')).toBe(false) // should not match due to literal dot
 		})
 
 		test('handles routes with other special characters', () => {
@@ -297,7 +297,7 @@ describe('getRouteRegex', () => {
 				'/login',
 				'/login/callback',
 				'/logout',
-				'/layers.bin',
+				'/layers.bin.gz',
 				'/orpc',
 			]
 
