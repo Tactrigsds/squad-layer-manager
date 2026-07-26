@@ -706,3 +706,29 @@ describe('LogEvents.parse conservation', () => {
 		else expect(errors).toEqual([])
 	})
 })
+
+describe('AdminList.getPlayerGroups', () => {
+	// admin lists key a player under either id, and a player can hold groups under both
+	const list = {
+		groups: new Map([
+			['Admins', new Set(['cheat'])],
+			['Whitelist', new Set(['reserve'])],
+		]),
+		steam: { players: new Map([['76561198000000001', new Set(['Admins', 'Whitelist'])]]), admins: new Set(['76561198000000001']) },
+		eos: { players: new Map([['0002abc', new Set(['Moderator'])]]), admins: new Set<string>() },
+	} as unknown as SM.AdminList
+
+	it('returns the groups the player holds under either id', () => {
+		const groups = SM.AdminList.getPlayerGroups(list, { steam: '76561198000000001', eos: '0002abc' } as any)
+		expect([...groups].sort()).toEqual(['Admins', 'Moderator', 'Whitelist'])
+	})
+
+	it('returns the groups held under only one of the two ids', () => {
+		expect([...SM.AdminList.getPlayerGroups(list, { steam: '76561198000000001' } as any)].sort()).toEqual(['Admins', 'Whitelist'])
+		expect([...SM.AdminList.getPlayerGroups(list, { eos: '0002abc' } as any)]).toEqual(['Moderator'])
+	})
+
+	it('is empty for a player on neither', () => {
+		expect([...SM.AdminList.getPlayerGroups(list, { steam: '76561198000000009', eos: '0002zzz' } as any)]).toEqual([])
+	})
+})
