@@ -4,8 +4,10 @@ import * as Schema from '$root/drizzle/schema'
 import { LRUMap } from '@/lib/lru-map'
 import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
+import type * as MEC from '@/models/match-events-cache.models'
 import * as SE from '@/models/server-events.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 
 const module = initModule('match-events-cache')
@@ -19,19 +21,14 @@ export function setup() {
 // enough for the windows the UI actually pages through back-to-back; anything older is re-read from the db.
 export const MAX_CACHED_MATCHES = 3
 
-export type MatchEventsCacheContext = {
-	// matchId -> enriched events
-	events: LRUMap<number, Promise<CHAT.EventEnriched[]>>
-}
-
-export function initMatchEventsCacheContext(): MatchEventsCacheContext {
+export function initMatchEventsCacheContext(): MEC.Ctx.Payload {
 	return { events: new LRUMap(MAX_CACHED_MATCHES) }
 }
 
-export const getEventsForMatches = C.spanOp(
+export const getEventsForMatches = Instr.spanOp(
 	'getEventsForMatches',
 	{ module, levels: { event: 'trace' } },
-	async (ctx: C.Db & C.MatchEventsCache & CS.AbortSignal, ..._matches: number[]) => {
+	async (ctx: C.Db & MEC.Ctx & CS.AbortSignal, ..._matches: number[]) => {
 		const matches = _matches.toSorted((a, b) => a - b)
 
 		const ops = new Map<number, Promise<CHAT.EventEnriched[]>>()

@@ -9,11 +9,11 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
+import type { WarnOptions } from '@/models/squad-rcon.models'
+import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
 import type * as RBAC from '@/rbac.models'
-import type * as C from '@/server/context'
-import type { WarnOptions } from '@/systems/squad-rcon.server'
 
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
@@ -173,7 +173,7 @@ export const WARNS = {
 				commands: Record<CMD.CommandId, CMD.CommandConfig>,
 				opts?: { updated?: boolean; isAdmin?: boolean },
 			) =>
-			(ctx: C.Player) => {
+			(ctx: SM.Ctx) => {
 				const item = layerQueue.length > 0 ? layerQueue[0] : undefined
 				const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
 				let lines: string[] = []

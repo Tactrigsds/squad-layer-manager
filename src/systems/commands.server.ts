@@ -12,6 +12,7 @@ import type * as CS from '@/models/context-shared'
 import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models'
@@ -41,12 +42,12 @@ export function setup() {
 type HandlerResult = { code: string; msg?: string } | undefined
 
 type HandlerCtx = {
-	ctx: C.Db & C.ServerSlice & Partial<C.User> & C.Player
+	ctx: C.Db & C.ServerSlice & Partial<USR.Ctx> & SM.Ctx
 	msg: SM.RconEvents.ChatMessage
 	// the resolved chat sender (steam id guaranteed)
 	sender: SM.Player
 	user: USR.GuiOrChatUserId
-	reply: (opts: SquadRcon.WarnOptions) => Promise<void>
+	reply: (opts: SR.WarnOptions) => Promise<void>
 	error: <T extends string>(reason: T, msg: string) => Promise<{ code: `err:${T}`; msg: string }>
 }
 
@@ -58,7 +59,7 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		}
 	}
 
-	async function reply(opts: SquadRcon.WarnOptions) {
+	async function reply(opts: SR.WarnOptions) {
 		await SquadRcon.warn(baseCtx, msg.playerIds, opts)
 	}
 	async function error<T extends string>(reason: T, errorMessage: string) {
@@ -233,7 +234,7 @@ async function resolveArgDefs(
 	let teamsState: TeamsState | undefined
 	let currentMatch: MH.MatchDetails | undefined
 	if (defs.some((d) => d.kind === 'player' || d.kind === 'squad')) {
-		const teamsRes = await ctx.server.teams.get(ctx)
+		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
 		teamsState = teamsRes
 		currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -497,7 +498,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const header = `Swaps: ${parts.join(', ')}`
 
 		if (swaps.size <= 8) {
-			const teamsStateRes = await h.ctx.server.teams.get(h.ctx)
+			const teamsStateRes = await h.ctx.squadRcon.teams.get(h.ctx)
 			const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
 			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, (p) => p.ids, playerId)?.ids.username ?? playerId
 			const lines = [header]

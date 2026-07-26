@@ -3,8 +3,10 @@ import { z } from 'zod'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import type * as LE from '@/models/layer-engine'
 import * as LQY from '@/models/layer-queries.models'
-import type * as C from '@/server/context'
+import type * as LQ from '@/models/layer-queue.models'
+import type * as MH from '@/models/match-history.models'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
@@ -30,7 +32,7 @@ export const router = {
 }
 
 // loads the engine on first call (see LayerEngine.getEngine), so resolve this only on paths that go on to query it.
-export async function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQueue>(ctx: Ctx): Promise<Ctx & CS.LayerQuery> {
+export async function resolveLayerQueryCtx<Ctx extends MH.Ctx & LQ.Ctx>(ctx: Ctx): Promise<Ctx & LQY.Ctx> {
 	return {
 		...ctx,
 		log,
@@ -40,11 +42,11 @@ export async function resolveLayerQueryCtx<Ctx extends C.MatchHistory & C.LayerQ
 	}
 }
 
-export async function resolveLayerItemsState(ctx: C.MatchHistory & C.LayerQueue & CS.AbortSignal): Promise<LQY.LayerItemsState> {
+export async function resolveLayerItemsState(ctx: MH.Ctx & LQ.Ctx & CS.AbortSignal): Promise<LQY.LayerItemsState> {
 	return LQY.resolveLayerItemsState(LayerQueue.getSavedQueue(ctx), await MatchHistory.getRecentMatches(ctx))
 }
 
-async function resolveLayerEngineContext(): Promise<CS.LayerEngine> {
+async function resolveLayerEngineContext(): Promise<LE.Ctx> {
 	return {
 		...CS.init(),
 		engine: await LayerEngine.getEngine(),

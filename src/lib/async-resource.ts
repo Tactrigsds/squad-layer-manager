@@ -3,7 +3,8 @@ import { Mutex, type MutexInterface } from 'async-mutex'
 
 import type * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
 
 import { withThrownAsync } from './error'
 import { createId } from './id'
@@ -82,16 +83,20 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		this.setupRefetches = (_ctx: Ctx) => {
 			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
-				const ctx = C.storeLinkToActiveSpan(_ctx, 'event.setup')
+				const ctx = Instr.storeLinkToActiveSpan(_ctx, 'event.setup')
 				void (async () => {
 					while (refetching) {
-						const shouldBreak = await C.spanOp('refetch', { module, root: true, levels: { event: 'trace' } }, async (ctx: Ctx) => {
-							const activettl = Math.min(...this.observerTTLs)
-							await Prom.sleep(activettl)
-							if (!refetching) return true
-							// observers are already counted as subscribers, so skip get()'s registration
-							await this._get(ctx, { ttl: 0 })
-						})(ctx).catch(() => {
+						const shouldBreak = await Instr.spanOp(
+							'refetch',
+							{ module, root: true, levels: { event: 'trace' } },
+							async (ctx: Ctx) => {
+								const activettl = Math.min(...this.observerTTLs)
+								await Prom.sleep(activettl)
+								if (!refetching) return true
+								// observers are already counted as subscribers, so skip get()'s registration
+								await this._get(ctx, { ttl: 0 })
+							},
+						)(ctx).catch(() => {
 							// abort means the last subscriber was released and teardown already unsubscribed us; any real
 							// fetch error is escalated by fetchValue's rejection handler (onFatalError or unhandled rejection)
 							return true

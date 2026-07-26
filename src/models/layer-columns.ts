@@ -2,6 +2,7 @@ import * as E from 'drizzle-orm'
 import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
@@ -173,7 +174,7 @@ export const layers = sqliteTable(
 	}),
 )
 
-function _extraColsSchema(ctx: CS.EffectiveColumnConfig) {
+function _extraColsSchema(ctx: Ctx) {
 	const columns: Record<string, any> = {
 		id: int('id').primaryKey().notNull(),
 	}
@@ -202,28 +203,28 @@ function _extraColsSchema(ctx: CS.EffectiveColumnConfig) {
 	return sqliteTable('layersExtra', columns, (table) => Obj.map(indexes, (cb) => cb(table)))
 }
 const extraColsSchemaCache = new WeakMap<EffectiveColumnConfig, ReturnType<typeof _extraColsSchema>>()
-export function extraColsSchema(ctx: CS.EffectiveColumnConfig) {
+export function extraColsSchema(ctx: Ctx) {
 	if (extraColsSchemaCache.has(ctx.effectiveColsConfig)) return extraColsSchemaCache.get(ctx.effectiveColsConfig)!
 	const schema = _extraColsSchema(ctx)
 	extraColsSchemaCache.set(ctx.effectiveColsConfig, schema)
 	return schema
 }
 
-function _layersView(ctx: CS.EffectiveColumnConfig) {
+function _layersView(ctx: Ctx) {
 	const extra = extraColsSchema(ctx)
 	return sqliteView('layersView').as((qb) => qb.select().from(layers).leftJoin(extra, E.eq(layers.id, extra.id)))
 }
 
 // sprinkling in a little bit of object pooling here since we call layersView pretty often and I don't know how expensive sqliteView is. probably doesn't matter much
 const viewCache = new WeakMap<EffectiveColumnConfig, ReturnType<typeof _layersView>>()
-export function layersView(ctx: CS.EffectiveColumnConfig) {
+export function layersView(ctx: Ctx) {
 	if (viewCache.has(ctx.effectiveColsConfig)) return viewCache.get(ctx.effectiveColsConfig)!
 	const view = _layersView(ctx)
 	viewCache.set(ctx.effectiveColsConfig, view)
 	return view
 }
 
-export function viewCol(name: string, ctx: CS.EffectiveColumnConfig) {
+export function viewCol(name: string, ctx: Ctx) {
 	const view = layersView(ctx)
 	const def = getColumnDef(name, ctx.effectiveColsConfig)
 	if (!def) throw new Error(`Column "${name}" not found`)
@@ -237,27 +238,27 @@ export function viewCol(name: string, ctx: CS.EffectiveColumnConfig) {
 	}
 }
 
-export function selectViewCols(cols: string[], ctx: CS.EffectiveColumnConfig) {
+export function selectViewCols(cols: string[], ctx: Ctx) {
 	return Object.fromEntries(cols.map((col) => [col, viewCol(col, ctx)]))
 }
-export function selectAllViewCols(ctx: CS.EffectiveColumnConfig) {
+export function selectAllViewCols(ctx: Ctx) {
 	return selectViewCols(Object.keys(ctx.effectiveColsConfig.defs), ctx)
 }
 
-export function isEnumeratedColumn(column: string, ctx: CS.EffectiveColumnConfig) {
+export function isEnumeratedColumn(column: string, ctx: Ctx) {
 	const def = getColumnDef(column, ctx.effectiveColsConfig)
 	if (!def) return false
 	if (def.type !== 'string') return false
 	return !!def.enumMapping
 }
 
-export function isNumericColumn(column: string, ctx: CS.EffectiveColumnConfig) {
+export function isNumericColumn(column: string, ctx: Ctx) {
 	const def = getColumnDef(column, ctx.effectiveColsConfig)
 	if (!def) return false
 	return def.type === 'float' || def.type === 'integer'
 }
 
-export function isEnumeratedValue(column: string, value: string, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
+export function isEnumeratedValue(column: string, value: string, ctx: Ctx, components = L.StaticLayerComponents) {
 	const def = getColumnDef(column, ctx.effectiveColsConfig)
 	if (!def) return false
 	if (def.type !== 'string') return false
@@ -297,7 +298,7 @@ export class DbValueError extends Error {
 }
 export type InputValue = string | number | boolean | null | undefined
 
-export function assertDbValue(columnName: string, value: InputValue, ctx?: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
+export function assertDbValue(columnName: string, value: InputValue, ctx?: Ctx, components = L.StaticLayerComponents) {
 	const result = dbValue(columnName, value, ctx, components)
 	if (isUnmappedDbValue(result)) {
 		throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
@@ -305,12 +306,7 @@ export function assertDbValue(columnName: string, value: InputValue, ctx?: CS.Ef
 	return result
 }
 
-export function assertedEnumDbValue(
-	columnName: string,
-	value: InputValue,
-	ctx?: CS.EffectiveColumnConfig,
-	components = L.StaticLayerComponents,
-) {
+export function assertedEnumDbValue(columnName: string, value: InputValue, ctx?: Ctx, components = L.StaticLayerComponents) {
 	const result = dbValue(columnName, value, ctx, components)
 	if (isUnmappedDbValue(result)) {
 		throw new Error(`Value "${value}" not found in array for column "${columnName}"`)
@@ -368,12 +364,7 @@ export function enumIncludes(arr: readonly unknown[], value: unknown): boolean {
 	return enumIndexOf(arr, value) !== -1
 }
 
-export function dbValue(
-	columnName: string,
-	value: InputValue,
-	ctx?: CS.EffectiveColumnConfig,
-	components = L.StaticLayerComponents,
-): DbValueResult {
+export function dbValue(columnName: string, value: InputValue, ctx?: Ctx, components = L.StaticLayerComponents): DbValueResult {
 	const def = getColumnDef(columnName, ctx?.effectiveColsConfig)!
 	if (columnName === 'id') {
 		if (!L.isKnownLayer(value as string)) {
@@ -410,7 +401,7 @@ export function dbValue(
 export function fromDbValue(
 	columnName: string,
 	value: string | number | boolean | null | undefined,
-	ctx?: CS.EffectiveColumnConfig,
+	ctx?: Ctx,
 	components = L.StaticLayerComponents,
 ) {
 	const columnDef = getColumnDef(columnName, ctx?.effectiveColsConfig)
@@ -442,7 +433,7 @@ export function fromDbValue(
 			assertNever(columnDef)
 	}
 }
-export function fromDbValues(data: Record<string, DbValue>[], ctx?: CS.EffectiveColumnConfig, components = L.StaticLayerComponents) {
+export function fromDbValues(data: Record<string, DbValue>[], ctx?: Ctx, components = L.StaticLayerComponents) {
 	return data.map((row) => {
 		const result: Record<string, any> = {}
 		for (const [columnName, dbValue] of Object.entries(row)) {
@@ -455,7 +446,7 @@ export function fromDbValues(data: Record<string, DbValue>[], ctx?: CS.Effective
 export function dbValues(
 	columnName: string,
 	values: (string | number | boolean | null)[],
-	ctx?: CS.EffectiveColumnConfig,
+	ctx?: Ctx,
 	components = L.StaticLayerComponents,
 ) {
 	if (values.length === 0) return []
@@ -473,7 +464,7 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 		throw new Error('Cannot pack raw or invalid layer to integer')
 	}
 
-	const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: BASE_COLUMN_CONFIG }
+	const ctx: Ctx = { ...CS.init(), effectiveColsConfig: BASE_COLUMN_CONFIG }
 	// Get enumeration indices for each component
 	const layerIndex = assertedEnumDbValue('Layer', layer.Layer, ctx, components)
 	const faction1Index = assertedEnumDbValue('Faction_1', layer.Faction_1, ctx, components)
@@ -586,7 +577,7 @@ export function unpackId(packed: number, components = L.StaticLayerComponents) {
 	)!
 }
 
-export function toRow(layer: L.KnownLayer, ctx: CS.EffectiveColumnConfig, components = L.StaticLayerComponents): LayerRow {
+export function toRow(layer: L.KnownLayer, ctx: Ctx, components = L.StaticLayerComponents): LayerRow {
 	return {
 		id: packId(layer, components) ?? 0,
 		Map: assertedEnumDbValue('Map', layer.Map, ctx, components),
@@ -1056,4 +1047,14 @@ export function partitionScores(layer: any, cfg: EffectiveColumnConfig) {
 		else partitioned.other[def.name] = layer[def.name]
 	}
 	return partitioned
+}
+
+export type Ctx = CS.Ctx & { effectiveColsConfig: EffectiveColumnConfig }
+export const CtxDef = CD.defCtx<Ctx>()(['effectiveColsConfig'], { name: 'effectiveColsConfig' })
+
+export namespace Ctx {
+	// the weighted-random layer generation config. unlike effectiveColsConfig this is admin-editable at
+	// runtime (globalSettings.layerGeneration), so holders must refresh it when settings change
+	export type Generation = CS.Ctx & { generationConfig: LayerGenerationConfig }
+	export const GenerationDef = CD.defCtx<Generation>()(['generationConfig'], { name: 'layerGeneration' })
 }

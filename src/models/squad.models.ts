@@ -3,14 +3,17 @@ import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array-utils'
+import * as CD from '@/lib/ctx-def'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as SetUtils from '@/lib/set-utils'
 import * as Str from '@/lib/string-utils'
 import * as ZodUtils from '@/lib/zod-utils'
+import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 
 export type SteamId = string
@@ -1693,4 +1696,20 @@ export namespace Grants {
 			},
 		])
 	}
+}
+
+export type Ctx = CS.Ctx & {
+	player: Player
+}
+export const CtxDef = CD.defCtx<Ctx>()(['player'], { name: 'player' })
+
+export namespace Ctx {
+	// width pun on `player`, same shape as USR.Ctx / USR.Ctx.Id
+	export type Ids<T extends PlayerIds.Fields = 'eos'> = {
+		player: {
+			ids: PlayerIds.IdQuery<T>
+		}
+	}
+
+	export type UserOrPlayer = Partial<USR.Ctx> & Partial<Ctx>
 }

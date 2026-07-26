@@ -63,7 +63,7 @@ No emdashes.
 
 Significant actions taken by the user or by the system need to be logged via app events (see src/models/app-events.models.ts)
 
-Commonly passed pieces of state should passed via the ctx object, which should always be the first argument, or in the case of observables, always the first element of the observable's data's tuple. Always check what's already available in context.ts and context-shared.ts before expanding it.
+Commonly passed pieces of state should passed via the ctx object, which should always be the first argument, or in the case of observables, always the first element of the observable's data's tuple. A domain's contexts live in that domain's models file (`V.Ctx`, `MH.Ctx`, ...), with the runtime object it carries at `Ctx.Payload`; check the domain's models file first, then context-shared.ts for the shared primitives and server/context.ts for server infrastructure. Every context has a `CtxDef` beside it -- see docs/architecture.md, "Context as duck-typed dependency injection".
 
 Functions should only specify the minimal amount of context that they need in the ctx parameter type signature.
 

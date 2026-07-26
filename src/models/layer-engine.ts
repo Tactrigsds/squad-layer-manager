@@ -1,3 +1,4 @@
+import * as CD from '@/lib/ctx-def'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
@@ -67,7 +68,7 @@ export type LowerResult = { code: 'ok'; ir: Ir } | F.InvalidFilterNodeResult
 
 // ---------------------------- filter -> IR ----------------------------
 
-export type LowerCtx = CS.Filters & CS.EffectiveColumnConfig & { colIndex: ColumnIndex }
+export type LowerCtx = F.Ctx & LC.Ctx & { colIndex: ColumnIndex }
 
 // Errors are collected against the node path rather than thrown, because the filter editor highlights the offending
 // node from them.
@@ -391,3 +392,8 @@ function encodeValue(
 	if (typeof encoded === 'boolean') return encoded ? 1 : 0
 	return Number(encoded)
 }
+
+// the columnar query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its
+// lifetime, so it is shared by every request rather than opened per query.
+export type Ctx = CS.Ctx & { engine: EngineHandle } & LC.Ctx
+export const CtxDef = CD.defCtx<Ctx>()(['engine'], { name: 'layerEngine', extends: [LC.CtxDef] })

@@ -3,7 +3,6 @@ import { LRUMap } from '@/lib/lru-map'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -42,18 +41,18 @@ export type QueryLayersResponsePart =
 
 // the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
 // streamed query need the log and the generation config on top
-type QueryCtx = CS.LayerEngine & CS.Filters
+type QueryCtx = LE.Ctx & F.Ctx
 
 function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
 	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
 }
 
 // the app works in whole layers: every column of the effective config, in a stable order
-function layerColumns(ctx: CS.EffectiveColumnConfig) {
+function layerColumns(ctx: LC.Ctx) {
 	return Object.keys(ctx.effectiveColsConfig.defs)
 }
 
-function columnIndexes(ctx: CS.LayerEngine, names: readonly string[]) {
+function columnIndexes(ctx: LE.Ctx, names: readonly string[]) {
 	return names.map((name) => ctx.engine.columnIndex(name))
 }
 
@@ -158,7 +157,7 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 }
 
 // A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
-function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
+function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: number, rule: LQY.RepeatRule): LE.Ir {
 	if (rule.within <= 0) return { op: 'false' }
 	const col = (name: string) => ctx.engine.columnIndex(name)
 
@@ -241,11 +240,8 @@ function repeatRuleIr(ctx: CS.LayerEngine, list: LQY.LayerItemsState, cursorInde
 
 // ---------------------------- queries ----------------------------
 
-export async function* queryLayersStreamed(args: {
-	input: LQY.LayersQueryInput
-	ctx: CS.LayerQuery
-}): AsyncGenerator<QueryLayersResponsePart> {
-	const ctx: CS.LayerQuery = {
+export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; ctx: LQY.Ctx }): AsyncGenerator<QueryLayersResponsePart> {
+	const ctx: LQY.Ctx = {
 		...args.ctx,
 		log: args.ctx.log.child({ query: 'queryLayers-' + createId(4) }),
 	}
@@ -312,7 +308,7 @@ export async function* queryLayersStreamed(args: {
 	}
 }
 
-function columnSort(ctx: CS.LayerEngine, sort: LQY.LayersQuerySort | null | undefined): LE.Sort | null {
+function columnSort(ctx: LE.Ctx, sort: LQY.LayersQuerySort | null | undefined): LE.Sort | null {
 	if (sort?.type !== 'column') return null
 	let direction = sort.direction
 	// only a numeric column has a meaningful absolute value
@@ -325,7 +321,7 @@ function columnSort(ctx: CS.LayerEngine, sort: LQY.LayersQuerySort | null | unde
 // Weighted generation. The engine does the picking, since it holds the group universe; this is the bookkeeping around
 // it: exclude what sibling pages already took, and replay a page that's revisited instead of re-drawing it.
 function drawRandomPage(
-	ctx: CS.LayerQuery,
+	ctx: LQY.Ctx,
 	args: {
 		where: LE.Ir
 		input: LQY.BaseQueryInput
@@ -399,7 +395,7 @@ function drawRandomPage(
 
 // The pick order and its weights, packed into the engine's request. The radices travel with the request, so the
 // engine's packing and LC.packStepKey cannot drift apart.
-function generationSpec(ctx: CS.LayerQuery, seed: string, pageIndex: number, numLayers: number): LE.GenSpec {
+function generationSpec(ctx: LQY.Ctx, seed: string, pageIndex: number, numLayers: number): LE.GenSpec {
 	const config = ctx.generationConfig
 	const steps: LE.StepSpec[] = config.pickOrder.map((key) => {
 		const weights: { key: number; weight: number }[] = []
@@ -435,7 +431,7 @@ function generationSpec(ctx: CS.LayerQuery, seed: string, pageIndex: number, num
 	}
 }
 
-function packMatchupEntry(ctx: CS.LayerQuery, key: LC.MatchupKey, entry: LC.MatchupWeightEntry): number | undefined {
+function packMatchupEntry(ctx: LQY.Ctx, key: LC.MatchupKey, entry: LC.MatchupWeightEntry): number | undefined {
 	const byColumn = new Map<LC.WeightColumn, LC.DbValue>()
 	const sides: [readonly LC.WeightColumn[], LC.MatchupSide][] = [
 		[LC.MATCHUP_COLUMNS[key][0], entry.teams[0]],
@@ -452,7 +448,7 @@ function packMatchupEntry(ctx: CS.LayerQuery, key: LC.MatchupKey, entry: LC.Matc
 	return LC.packStepKey(key, (column) => byColumn.get(column) ?? null)
 }
 
-export async function genVote(args: { ctx: CS.LayerQuery; input: LQY.GenVote.Input }) {
+export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) {
 	const { input, ctx } = args
 	const base = buildQueryConstraints(ctx, input)
 	if (base.code !== 'ok') return base
@@ -526,7 +522,7 @@ export function foldBackburnerTemplates(
 	return { where: acc, consumedItemIds }
 }
 
-function countSolutions(ctx: CS.LayerEngine, where: LE.Ir): number {
+function countSolutions(ctx: LE.Ctx, where: LE.Ir): number {
 	const idCol = ctx.engine.columnIndex('id')
 	return ctx.engine.query<LE.SelectResponse>({
 		kind: 'select',
@@ -540,7 +536,7 @@ function countSolutions(ctx: CS.LayerEngine, where: LE.Ir): number {
 }
 
 export async function generateWithBackburner(args: {
-	ctx: CS.LayerQuery
+	ctx: LQY.Ctx
 	input: GenerateWithBackburnerInput
 }): Promise<GenerateWithBackburnerResult | F.InvalidFilterNodeResult> {
 	const { ctx, input } = args
@@ -607,7 +603,7 @@ export async function checkBackburnerTemplates(args: {
 	return { code: 'ok', satisfiable }
 }
 
-export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: CS.LayerEngine }) {
+export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: LE.Ctx }) {
 	const known = input.filter((id) => L.isKnownLayer(id))
 	const res = ctx.engine.query<LE.MatchesResponse>({
 		kind: 'matches',
@@ -772,7 +768,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	return { code: 'ok' as const, statuses }
 }
 
-export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerEngine; input: { layerId: L.LayerId } }) {
+export async function getLayerInfo({ ctx, input }: { ctx: LE.Ctx; input: { layerId: L.LayerId } }) {
 	if (!L.isKnownLayer(input.layerId)) return null
 	const names = layerColumns(ctx)
 	const row = ctx.engine.query<(number | null)[] | null>({
@@ -784,7 +780,7 @@ export async function getLayerInfo({ ctx, input }: { ctx: CS.LayerEngine; input:
 	return decodeRow(ctx, row, names)
 }
 
-export async function getScoreRanges({ ctx }: { ctx: CS.LayerEngine }) {
+export async function getScoreRanges({ ctx }: { ctx: LE.Ctx }) {
 	const floatCols = Object.values(ctx.effectiveColsConfig.defs).filter((col) => col.type === 'float' && col.table === 'extra-cols')
 	if (floatCols.length === 0) return []
 	const ranges = ctx.engine.query<LE.RangeResponse[]>({
@@ -803,7 +799,7 @@ export async function getScoreRanges({ ctx }: { ctx: CS.LayerEngine }) {
 
 export type PostProcessedLayer = ReturnType<typeof postProcessLayers>[number]
 
-function decodeRow(ctx: CS.EffectiveColumnConfig, row: (number | null)[], names: string[]) {
+function decodeRow(ctx: LC.Ctx, row: (number | null)[], names: string[]) {
 	const layer: Record<string, string | number | boolean | null> = {}
 	for (let i = 0; i < names.length; i++) {
 		layer[names[i]] = LC.fromDbValue(names[i], row[i], ctx)!
@@ -812,7 +808,7 @@ function decodeRow(ctx: CS.EffectiveColumnConfig, row: (number | null)[], names:
 }
 
 function postProcessLayers(
-	ctx: CS.EffectiveColumnConfig,
+	ctx: LC.Ctx,
 	page: { rows: (number | null)[][]; names: string[]; indicatorResults: boolean[][]; indicatorConstraints: number[] },
 	baseInput: LQY.BaseQueryInput,
 ) {

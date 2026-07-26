@@ -6,7 +6,8 @@ import { getChildModule, type OtelModule } from '@/lib/otel.ts'
 import * as Prom from '@/lib/promise-utils'
 import * as ATTRS from '@/models/otel-attrs'
 
-import * as C from './context.ts'
+import type * as C from './context.ts'
+import * as Instr from './instrumentation.ts'
 
 type OrpcMeta = { logLevel?: Pino.Level; type?: 'query' | 'mutation' }
 
@@ -19,7 +20,7 @@ export const getOrpcBase = (module: OtelModule) => {
 			type Opts = typeof opts
 			const meta = opts.procedure['~orpc'].meta
 			const eventLevel = meta?.logLevel ?? (meta?.type === 'mutation' ? 'info' : 'debug')
-			return C.spanOp(
+			return Instr.spanOp(
 				opts.path[opts.path.length - 1],
 				{
 					module: submodule,

@@ -160,7 +160,7 @@ async function main() {
 // whose rows are placed by looking their id up in that order. Columns are built straight into typed arrays with the
 // null sentinels already written.
 async function buildLayerArtifact(
-	ctx: CS.EffectiveColumnConfig,
+	ctx: LC.Ctx,
 	args: { components: LC.LayerComponents; baseLayers: L.KnownLayer[]; csvPath: string; layersVersion: string },
 ): Promise<Buffer> {
 	const { components, baseLayers, csvPath } = args

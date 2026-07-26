@@ -64,7 +64,7 @@ export const COMPACT_VISIBLE_COLUMNS: string[] = ['Layer', 'Faction_1', 'Faction
 // width the table wants when rendered with the given column visibility, derived from the same
 // size hints the column defs use. lets callers compute a compact-mode breakpoint parametrically
 export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, columnVisibility: VisibilityState): number {
-	const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
+	const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
 	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
 	for (const name of Object.keys(cfg.defs)) {
 		if (!columnVisibility[name]) continue
@@ -302,7 +302,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 			return aIndex - bIndex
 		})
 
-		const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
+		const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
 
 		// add sorted first
 		for (const col of sortedColKeys) {

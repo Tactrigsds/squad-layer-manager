@@ -1,5 +1,4 @@
 import { Mutex } from 'async-mutex'
-import type { MutexInterface } from 'async-mutex'
 import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
@@ -18,11 +17,13 @@ import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -85,24 +86,14 @@ async function resolveSourceName(ctx: C.Db, source: TSW.Teamswap['source'], play
 	return 'Admin'
 }
 
-type Session = ODSM.Server.Session<TSW.Op, TSW.State>
-
 type Dispatched = ODSM.Server.Dispatched<TSW.Op, TSW.Rejection>
 
-export type TeamswapContext = {
-	session: Session
-	// outgoing operations
-	op$: IsolatedSubject<Dispatched>
-	dispatchMtx: MutexInterface
-	teamswapExecutedAt: number | null
-	haveReadSavedSwapsFromDb: boolean
-}
 export function setup() {
 	log = module.getLogger()
 }
 
 export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
-	const context: TeamswapContext = {
+	const context: TSW.Ctx.Payload = {
 		session: ODSM.Server.initSession(TSW.initState()),
 		op$: new IsolatedSubject<Dispatched>(),
 		dispatchMtx: new Mutex(),
@@ -118,7 +109,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 				Rx.filter(
 					([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
 				),
-				C.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
+				Instr.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
 					const ctx = { ..._ctx, signal }
 					const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
 					if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
@@ -227,7 +218,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 		ctx.server.event$
 			.pipe(
 				Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
-				C.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([_ctx, e], signal) => {
+				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([_ctx, e], signal) => {
 					const ctx = { ..._ctx, signal }
 					await waitForQueuedPlayers(ctx, e.matchId)
 					await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
@@ -239,7 +230,7 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 	return context
 }
 
-function getState(ctx: C.Teamswap) {
+function getState(ctx: TSW.Ctx) {
 	return ctx.teamswaps.session.state
 }
 
@@ -252,7 +243,7 @@ const ROLL_ROSTER_POLL_MS = 2_000
 // than fire into the gap. Two things are needed to see out of it: the new match's roster event, which is what
 // establishes that the app is looking at the match the swaps are for, and then a live rcon read -- the roster the
 // app carries is a poll behind by construction, since the boundary snapshot holds only the players already sorted.
-async function waitForQueuedPlayers(ctx: C.Teamswap & C.SquadServer & C.Rcon & CS.AbortSignal, matchId: number) {
+async function waitForQueuedPlayers(ctx: TSW.Ctx & C.SquadServer & SR.Ctx.Rcon & CS.AbortSignal, matchId: number) {
 	const deadline = Date.now() + ROLL_ROSTER_TIMEOUT_MS
 	await Rx.firstValueFrom(
 		ctx.server.event$.pipe(
@@ -267,7 +258,7 @@ async function waitForQueuedPlayers(ctx: C.Teamswap & C.SquadServer & C.Rcon & C
 	while (true) {
 		const swaps = getState(ctx).savedSwaps
 		if (swaps.size === 0) return
-		const teamsRes = await ctx.server.teams.get(ctx, { ttl: 0 })
+		const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
 		// only a player the server still lists is worth waiting on: mid-roll they are listed with no team yet,
 		// whereas one who left over the boundary is gone from the list entirely and would hold up everyone else
 		const unplaced =
@@ -298,11 +289,11 @@ const EXECUTION_TIMEOUT_MS = 60_000
 // has no team yet, can't be swapped and isn't counted as outstanding -- same rule onTeamsModified applies.
 // null means the teams couldn't be read, which says nothing either way.
 async function unswappedPlayers(
-	ctx: C.SquadServer & C.Rcon & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & CS.AbortSignal,
 	swaps: TSW.TeamswapCollection,
 	ordinal: number,
 ): Promise<SM.PlayerId[] | null> {
-	const teamsRes = await ctx.server.teams.get(ctx, { ttl: 0 })
+	const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
 	if (teamsRes.code === 'err:rcon') return null
 	const unswapped: SM.PlayerId[] = []
 	for (const [playerId, _swap] of swaps.entries()) {
@@ -317,7 +308,7 @@ async function unswappedPlayers(
 // Runs outside the dispatch mutex (holding it here would block every teamswap op for the duration, and would
 // deadlock against the completion this is waiting for).
 async function watchExecution(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
+	ctx: TSW.Ctx & C.ServerSlice & C.Db,
 	execution: {
 		opId: string
 		swaps: TSW.TeamswapCollection
@@ -448,7 +439,7 @@ export const orpcRouter = {
 		}),
 }
 
-const dispatchOp = C.spanOp(
+const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{
 		module,
@@ -456,7 +447,7 @@ const dispatchOp = C.spanOp(
 		attrs: (ctx, ops) => ({ [ATTRS.Teamswap.OP_CODES]: ops.map((o) => o.code).join(',') }),
 		extraText: (ctx, ops) => ops.map((o) => o.code).join(','),
 	},
-	async (ctx: C.Teamswap & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
+	async (ctx: TSW.Ctx & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const applied = ODSM.Server.applyOps(ctx.teamswaps.session, ops, TSW.reducer)
 		ctx.teamswaps.session = applied.session
 
@@ -475,8 +466,8 @@ const dispatchOp = C.spanOp(
 			if (rejection.code !== 'noop') {
 				if (rejection.code === 'err:unexpected') {
 					log.error('op error while executing operation: %s op: %o', rejection.code, rejection.op)
-					C.recordGenericError(rejection)
-					C.setSpanStatus('error')
+					Instr.recordGenericError(rejection)
+					Instr.setSpanStatus('error')
 				} else {
 					log.warn('op was not succesful: %s op: %o', rejection.code, rejection.op)
 				}
@@ -498,7 +489,7 @@ const dispatchOp = C.spanOp(
 							// swap issued mid-staging), skip a team-less target rather than throwing: we can't faithfully
 							// place a player who has no team yet, and a later poll's PLAYER_CHANGED_TEAM will reconcile them.
 							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-							const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
+							const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 300 })
 							if (teamsRes.code === 'err:rcon') return teamsRes
 							log.info('players: %o', teamsRes.players)
 							const toSwap: SM.PlayerId[] = []
@@ -670,7 +661,7 @@ const dispatchOp = C.spanOp(
 							se.reason,
 							se.message ?? (se.playerIds ? `${se.playerIds.length} player(s) never swapped` : ''),
 						)
-						C.setSpanStatus('error')
+						Instr.setSpanStatus('error')
 						break
 					}
 
@@ -689,7 +680,7 @@ const dispatchOp = C.spanOp(
 			} catch (_e) {
 				const e = _e as any
 				log.error('error processing side effects: %o', e?.message ?? e?.msg ?? e?.code ?? e)
-				C.recordGenericError(e, true)
+				Instr.recordGenericError(e, true)
 			}
 		}
 
@@ -702,25 +693,21 @@ const dispatchOp = C.spanOp(
 	},
 )
 
-export async function dispatchRevertToSaved(ctx: C.Teamswap & C.ServerSlice & C.Db) {}
+export async function dispatchRevertToSaved(ctx: TSW.Ctx & C.ServerSlice & C.Db) {}
 
-export async function dispatchClearSwaps(ctx: C.Teamswap & C.ServerSlice & C.Db, source?: TSW.Teamswap['source']) {
+export async function dispatchClearSwaps(ctx: TSW.Ctx & C.ServerSlice & C.Db, source?: TSW.Teamswap['source']) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'clear-teamswaps', save: true, source }])
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNow(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
-	swaps: TSW.TeamswapCollection,
-	source: TSW.Teamswap['source'],
-) {
+export async function dispatchSwapNow(ctx: TSW.Ctx & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection, source: TSW.Teamswap['source']) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'swap-now', swaps, source }])
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNext(ctx: C.Teamswap & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection) {
+export async function dispatchSwapNext(ctx: TSW.Ctx & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection) {
 	// dispatch each add on its own -- a batch is all-or-nothing (a rejection discards the whole batch),
 	// so batching would let one already-marked player block swapping everyone else
 	const errors: unknown[] = []
