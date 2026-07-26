@@ -140,6 +140,26 @@ export const PathSegment = z
 		description: 'A valid path segment that does not contain reserved characters or relative path indicators',
 	})
 
+// `JSON.parse` allocates a fresh string for every occurrence of a value, so a schema whose output is kept around
+// pays for one copy of "PLAYER_WOUNDED" per event rather than one in total. An enum's or literal's parsed value is by
+// definition one of the schema's own values, so handing back that instance instead is a no-op semantically, and the
+// lookup table is the value set itself and so cannot grow on hostile input.
+//
+// Only reach for these where the parsed value is **retained**: cached events, settings, layer data. Validating a
+// request body that is then thrown away pays ~20% more parse time for nothing. See "Interning at parse boundaries"
+// in docs/architecture.md.
+//
+// `overwrite` rather than `transform` because it returns the same schema class: a transformed literal becomes a
+// ZodPipe, which `z.discriminatedUnion` can no longer read a discriminator out of.
+export function internedEnum<const T extends readonly string[]>(values: T) {
+	const canonical = new Map<string, T[number]>(values.map((v) => [v, v]))
+	return z.enum(values).overwrite((value) => canonical.get(value) ?? value)
+}
+
+export function internedLiteral<const T extends string>(value: T) {
+	return z.literal(value).overwrite(() => value)
+}
+
 export type EnumToTuple<S extends z.ZodEnum> = [z.infer<S>, ...z.infer<S>[]]
 
 export function enumTupleOptions<S extends z.ZodEnum>(schema: S): EnumToTuple<S> {
