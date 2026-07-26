@@ -1,16 +1,12 @@
 import { makePlayer } from '@/emulator'
 
-import { expect, test } from './fixtures'
+import { expect, sharedAppTest as test } from './fixtures'
 
 // Drives the real client against a real app instance backed by the squad server emulator.
 // Selectors are role/label-based on purpose: a test that can't find an element is telling us the
 // markup isn't semantic yet, which is a defect in its own right.
 
 test.describe('server dashboard', () => {
-	test.beforeEach(async ({ page, app }) => {
-		await page.goto(app.loginUrl())
-	})
-
 	test('shows the current match and the layer queue', async ({ page, app }) => {
 		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 

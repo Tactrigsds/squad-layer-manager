@@ -30,9 +30,7 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 	],
 
 	// Asking for this is what boots the shared app, so a file whose tests each build their own never pays for
-	// one. The page is left where playwright opened it: a test that wants to be logged in navigates to
-	// `app.loginUrl()` itself, which is what all but the shared-app files were already doing on top of a login
-	// they never asked for.
+	// one -- which is most of them, and every one of them used to boot a second app it never touched.
 	app: async ({ workerApp }, use) => {
 		await use(workerApp)
 	},
@@ -46,6 +44,16 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 		testInfo.setTimeout(testInfo.timeout + 120_000)
 		await use(app)
 		await app.dispose()
+	},
+})
+
+// For the files whose tests all drive the shared app: every page starts on it, logged in as the seeded admin.
+// A file opts in by importing this instead of `test`, rather than each test asking for `app`, because a test
+// can read the page without naming `app` at all and would otherwise silently get a blank one.
+export const sharedAppTest = test.extend({
+	page: async ({ page, app }, use) => {
+		await page.goto(app.loginUrl())
+		await use(page)
 	},
 })
 
