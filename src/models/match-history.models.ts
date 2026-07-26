@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import type * as BAL from '@/models/balance-triggers.models'
+import type * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
 
@@ -358,3 +359,9 @@ export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: st
 }
 
 export const RECENT_HISTORY_ITEMS_PER_PAGE = 10
+
+export namespace Ctx {
+	export type Recent = CS.Ctx & {
+		recentMatches: MatchDetails[]
+	}
+}

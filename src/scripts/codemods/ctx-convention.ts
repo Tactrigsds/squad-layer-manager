@@ -50,12 +50,40 @@ function instrumentation(src: string, file: string): string {
 	return insertImport(src, `import * as Instr from '${spec}'`)
 }
 
+/**
+ * Contexts move to their domain's models file. Each entry is the old qualified name, the new one,
+ * and the import the new name needs. Order matters only in that longer names must be listed before
+ * any prefix of themselves.
+ */
+const MOVES: { from: string; to: string; imp: string }[] = [
+	{ from: 'CS.EffectiveColumnConfig', to: 'LC.Ctx', imp: "import type * as LC from '@/models/layer-columns'" },
+	{ from: 'CS.LayerGeneration', to: 'LC.Ctx.Generation', imp: "import type * as LC from '@/models/layer-columns'" },
+	{ from: 'CS.LayerEngine', to: 'LE.Ctx', imp: "import type * as LE from '@/models/layer-engine'" },
+	{ from: 'CS.LayerQuery', to: 'LQY.Ctx', imp: "import type * as LQY from '@/models/layer-queries.models'" },
+	{ from: 'CS.Filters', to: 'F.Ctx', imp: "import type * as F from '@/models/filter.models'" },
+	{ from: 'CS.MatchHistory', to: 'MH.Ctx.Recent', imp: "import type * as MH from '@/models/match-history.models'" },
+]
+
+function moveContexts(src: string, file: string): string {
+	for (const { from, to, imp } of MOVES) {
+		const re = new RegExp(`\\b${from.replace('.', '\\.')}\\b`, 'g')
+		if (!re.test(src)) continue
+		// inside the module that now declares it, the name is reached unqualified
+		const selfDeclared = file.endsWith(imp.slice(imp.lastIndexOf('/') + 1, -1) + '.ts')
+		src = src.replace(re, selfDeclared ? to.split('.').slice(1).join('.') : to)
+		// the file may already reach the destination module under the same namespace
+		const ns = to.split('.')[0]
+		if (!selfDeclared && !new RegExp(`import (?:type )?\\* as ${ns} from`).test(src)) src = insertImport(src, imp)
+	}
+	return src
+}
+
 async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = instrumentation(before, file)
+		const after = moveContexts(instrumentation(before, file), file)
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++

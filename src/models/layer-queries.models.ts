@@ -5,12 +5,14 @@ import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CB from '@/models/constraint-builders'
+import type * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as V from '@/models/vote.models'
 
 import * as F from './filter.models'
 import * as L from './layer'
 import type * as LC from './layer-columns'
+import type * as LE from './layer-engine'
 import * as LL from './layer-list.models'
 import type * as LTag from './layer-tags.models'
 import * as MH from './match-history.models'
@@ -641,3 +643,5 @@ export type QueueWarning = {
 			constraintId: string
 	  }
 )
+
+export type Ctx = CS.Ctx & LE.Ctx & CS.Log & F.Ctx & LC.Ctx.Generation
