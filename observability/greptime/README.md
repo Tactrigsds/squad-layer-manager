@@ -29,9 +29,22 @@ The SLM dashboards are mounted unmodified. They reference their datasources by u
 datasource references are prometheus-typed, so serving GreptimeDB's PromQL endpoint under
 `uid: prometheus` carries them over with no edits.
 
-Verified working against a live dev instance: every `slm_*` gauge behind SLM / Overview, the
-`slm_op_duration_seconds` histogram behind SLM / Ops, the Node runtime metrics (`nodejs_*`, `v8js_*`),
-trace ingest and the Jaeger query API.
+Verified rendering against a live dev instance: 23 of the 25 SLM / Overview queries return series,
+the two exceptions being the LogQL panel below and RCON failures, which is empty only because no
+failures had occurred. Also verified: the `slm_op_duration_seconds` histogram behind SLM / Ops, the
+Node runtime metrics (`nodejs_*`, `v8js_*`), trace ingest and the Jaeger query API.
+
+Two things had to be right before any of that rendered, and both fail silently:
+
+`timeInterval` on the Prometheus datasource must be `60s`, matching the app's
+`PeriodicExportingMetricReader` interval, exactly as in `../grafana`. It feeds `$__rate_interval`, and
+at a shorter value the window holds fewer than two samples, so every `rate()` panel renders No data
+while the gauges keep working.
+
+The `loki` and `pyroscope` uids must resolve to something even though GreptimeDB serves neither.
+Grafana fails the whole dashboard build on an unresolvable datasource uid, which blanks all 28 working
+panels along with the broken ones. The placeholders in `datasources.yaml` point at `.invalid` hosts so
+their panels error individually instead.
 
 ## What does not
 

@@ -13,7 +13,10 @@ datasources:
      jsonData:
         httpMethod: POST
         httpHeaderName1: x-greptime-db-name
-        timeInterval: 15s
+        # Must match the app's 60s PeriodicExportingMetricReader interval, as in ../../grafana. It sets
+        # $__rate_interval, and anything shorter puts fewer than two samples in the window, so every
+        # rate() panel renders No data.
+        timeInterval: 60s
      secureJsonData:
         httpHeaderValue1: public
 
@@ -35,3 +38,19 @@ datasources:
      database: public
      jsonData:
         timezone: UTC
+
+   # GreptimeDB serves neither LogQL nor profiles, but the dashboards still reference these two uids.
+   # Grafana fails the whole dashboard build on an unresolvable datasource, blanking every panel
+   # including the working ones, so these exist purely to resolve. Their panels error individually,
+   # which is the intended outcome: visibly broken beats silently absent.
+   - name: Loki (unavailable)
+     uid: loki
+     type: loki
+     access: proxy
+     url: http://greptime-has-no-logql.invalid
+
+   - name: Pyroscope (unavailable)
+     uid: pyroscope
+     type: grafana-pyroscope-datasource
+     access: proxy
+     url: http://greptime-has-no-profiling.invalid
