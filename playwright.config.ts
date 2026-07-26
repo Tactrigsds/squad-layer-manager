@@ -17,6 +17,10 @@ export default defineConfig({
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
 	retries: 0,
+	// Not raised, deliberately. A worker here is a browser and an app between them, and several of these tests
+	// wait on a cold client load inside a fixed ceiling; measured on 16 cores, 8 workers took the suite from 48s
+	// to 41s and 6 workers produced one such wait timing out. Those ceilings are what to fix first if this is to
+	// go up.
 	workers: 4,
 	reporter: process.env.CI ? 'line' : 'list',
 	timeout: 60_000,

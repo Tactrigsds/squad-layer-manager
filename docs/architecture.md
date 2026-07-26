@@ -932,8 +932,27 @@ In practice the unit-tested modules are the ones that meet the bar: `pending-eve
 | `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright.                                      |
 
 Neither of the heavy suites needs an external service, which is the payoff for having written the emulator.
+The tests boot through `main-instrumented`, so a test's telemetry actually exists and a run id lets you scope a
+Grafana query to one test.
 
-Two nice touches in the harness: `SLM_TEST_SERVER_ENTRY` points at the bundled server inside the docker image
-so CI drives the exact artifact that gets deployed, while locally it runs source through tsx so there is
-nothing to rebuild between edit and test. And the tests boot through `main-instrumented`, so a test's telemetry
-actually exists and a run id lets you scope a Grafana query to one test.
+### What the heavy suites spend their time on
+
+Both suites are dominated by two costs, and everything that has been done to them addresses one or the other.
+
+**Booting apps.** A fixture is a whole server process, and a run makes dozens of them. Both suites therefore go
+through `scripts/test-server-bundle.mjs`, which bundles the server once with rolldown (~1.5s) and points
+`SLM_TEST_SERVER_ENTRY` at it; loading the server's module graph through tsx instead costs ~3.5s of _every_
+boot. An `SLM_TEST_SERVER_ENTRY` already in the environment wins and nothing is built, which is how the docker
+test image has CI drive the exact artifact that gets deployed. `test:integration:src` / `test:e2e:src` run the
+sources through tsx, for when the bundler is what you suspect. Two other things that were paid per boot: the
+harness turns `seedSandboxServer` off (a fresh install otherwise seeds a sandbox, which is a second whole squad
+server polling away next to the one under test), and the e2e `page` fixture no longer logs in to a shared app,
+so a test that builds its own no longer pays for one it never touches.
+
+**Waiting on polls.** The app learns the roster from a polled `ListPlayers`, so `waitForRosterSync` cannot
+resolve faster than two poll intervals, and a test that acts in-game and then asserts does that repeatedly.
+`applyTestServerTimings` shortens the intervals, but only so far: the failure mode is RCON responses breaching
+core-rcon's 2s timeout under load, so poll interval, worker count and per-boot cost all trade against each
+other and none of them should be changed without re-measuring the whole suite. This is also why
+`server-rolling` is two files: one file's worth of roster waits was long enough to set the suite's wall time on
+its own.

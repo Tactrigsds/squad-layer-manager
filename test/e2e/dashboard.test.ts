@@ -7,6 +7,10 @@ import { expect, test } from './fixtures'
 // markup isn't semantic yet, which is a defect in its own right.
 
 test.describe('server dashboard', () => {
+	test.beforeEach(async ({ page, app }) => {
+		await page.goto(app.loginUrl())
+	})
+
 	test('shows the current match and the layer queue', async ({ page, app }) => {
 		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible()
 

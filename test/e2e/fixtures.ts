@@ -29,6 +29,10 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 		{ scope: 'worker', timeout: 180_000 },
 	],
 
+	// Asking for this is what boots the shared app, so a file whose tests each build their own never pays for
+	// one. The page is left where playwright opened it: a test that wants to be logged in navigates to
+	// `app.loginUrl()` itself, which is what all but the shared-app files were already doing on top of a login
+	// they never asked for.
 	app: async ({ workerApp }, use) => {
 		await use(workerApp)
 	},
@@ -42,12 +46,6 @@ export const test = base.extend<{ app: AppFixture; freshApp: AppFixture; labelTe
 		testInfo.setTimeout(testInfo.timeout + 120_000)
 		await use(app)
 		await app.dispose()
-	},
-
-	// every test starts logged in as the seeded admin
-	page: async ({ page, workerApp }, use) => {
-		await page.goto(workerApp.loginUrl())
-		await use(page)
 	},
 })
 

@@ -21,6 +21,9 @@ beforeAll(async () => {
 		serverSettings: (s) => {
 			s.remindersAndAnnouncementsEnabled = false
 		},
+		// the shipped 30s is a memory tradeoff, not part of what is under test here: what matters is that an idle
+		// engine is released and the next query reloads it, and waiting out the real window is 30s of nothing
+		env: { LAYER_ENGINE_IDLE_RELEASE: '2s' },
 	})
 }, 120_000)
 
@@ -48,7 +51,7 @@ describe('the server loads its layer engine lazily', () => {
 	it('releases it once nothing has queried for a while, and reloads on the next use', async () => {
 		await app.waitFor(() => /released the layer engine/.test(appLog()), {
 			label: 'the idle release',
-			timeoutMs: 90_000,
+			timeoutMs: 30_000,
 		})
 
 		app.emu.world.endMatch()
