@@ -22,7 +22,8 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
-	emu = new Emulator({ tickRateIntervalMs: 0 })
+	// postMatchDelayMs: the real 30s wait is the point of the default, not something a test should sit through
+	emu = new Emulator({ tickRateIntervalMs: 0, postMatchDelayMs: 20 })
 	await emu.start()
 	host = { emu, players: new Map() }
 })

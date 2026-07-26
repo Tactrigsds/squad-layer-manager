@@ -13,8 +13,8 @@ export type EmulatorOptions = WorldOptions & {
 	rconPort?: number
 	// ms until AdminChangeLayer actually travels; the real server takes seconds
 	layerChangeDelayMs?: number
-	// ms spent in WaitingPostMatch before the next world is brought up. A real server sits there for about half
-	// a minute, which is longer than anyone watching a sandbox roll wants to wait.
+	// ms spent in WaitingPostMatch before the next world is brought up, as a real server does. Defaults to the
+	// 30s a real one takes; the test harness turns it down, since a suite should never sit through it.
 	postMatchDelayMs?: number
 	// periodic tick-rate log line, like a real server's constant chatter. Also load-bearing for
 	// consumers: parseLogStream only completes an entry once the next one arrives, so a silent
@@ -39,7 +39,7 @@ export class Emulator {
 	constructor(opts: EmulatorOptions = {}) {
 		this.password = opts.password ?? 'testpassword'
 		this.#layerChangeDelayMs = opts.layerChangeDelayMs ?? 200
-		this.#postMatchDelayMs = opts.postMatchDelayMs ?? this.#layerChangeDelayMs
+		this.#postMatchDelayMs = opts.postMatchDelayMs ?? 30_000
 		this.world = new World(
 			{
 				chatPacket: (body) => this.rcon.broadcastChatPacket(body),
