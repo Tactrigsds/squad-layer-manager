@@ -1,64 +1,57 @@
-# Overrides the otel-lgtm image's datasource provisioning. The URLs are loopback because Grafana,
-# Prometheus, Loki and Tempo all run inside the single otel-lgtm container.
+# One store per signal, each reached through the API its tooling already speaks: VictoriaMetrics serves
+# the Prometheus API and VictoriaTraces the Jaeger one, so those two are Grafana's own datasources with
+# no plugin. Logs use the VictoriaLogs plugin (installed via GF_INSTALL_PLUGINS in docker-compose.yaml).
 #
-# The cross-links are the point of this file. They are what make a Loki line clickable through to its
-# Tempo trace and back again, which only works because server/logger.ts stamps trace_id/span_id onto
-# every record (see LOG.mapSpanAttrs).
+# The uids are load-bearing. Dashboards reference datasources by uid, so `prometheus` and `tempo` are
+# kept as the names the panels already use rather than renamed to match what is behind them.
 apiVersion: 1
 
 datasources:
    - name: Prometheus
      type: prometheus
      uid: prometheus
-     url: http://127.0.0.1:9090
+     url: http://victoria-metrics:8428
      isDefault: true
      editable: true
      jsonData:
+        httpMethod: POST
+        # Must match the app's PeriodicExportingMetricReader interval. It sets $__rate_interval, and
+        # anything shorter puts fewer than two samples in the window, so every rate() panel renders No
+        # data while the gauges keep working.
         timeInterval: 60s
-        # lets a spike in a RED panel be clicked straight through to an exemplar trace
         exemplarTraceIdDestinations:
            - name: trace_id
              datasourceUid: tempo
              urlDisplayLabel: 'Trace: $${__value.raw}'
 
-   - name: Tempo
-     type: tempo
+   - name: Traces
+     type: jaeger
      uid: tempo
-     url: http://127.0.0.1:3200
+     url: http://victoria-traces:10428/select/jaeger
      editable: true
      jsonData:
-        # trace -> the logs emitted inside it
+        # span -> the log lines emitted inside it
         tracesToLogsV2:
            customQuery: true
-           datasourceUid: 'loki'
-           query: '{service_name="squad-layer-manager"} | trace_id = "$${__trace.traceId}"'
-           tags:
-              - key: 'service.name'
-                value: 'service_name'
-        # trace -> the op RED metrics for the same op name
+           datasourceUid: 'victorialogs'
+           query: 'trace_id:"$${__trace.traceId}"'
+        # span -> the op RED metrics for the same op name
         tracesToMetrics:
            datasourceUid: 'prometheus'
            queries:
               - name: 'Op duration p95'
                 query: 'histogram_quantile(0.95, sum by (le) (rate(slm_op_duration_seconds_bucket{slm_op_name="$${__span.name}"}[5m])))'
-        serviceMap:
-           datasourceUid: 'prometheus'
-        search:
-           hide: false
         nodeGraph:
            enabled: true
-        lokiSearch:
-           datasourceUid: 'loki'
 
-   - name: Loki
-     type: loki
-     uid: loki
-     url: http://127.0.0.1:3100
+   - name: VictoriaLogs
+     type: victoriametrics-logs-datasource
+     uid: victorialogs
+     url: http://victoria-logs:9428
      editable: true
      jsonData:
-        # log line -> the trace it was emitted inside. matcherType `label` reads trace_id out of the
-        # structured metadata rather than regexing the body, which is why the body doesn't need to
-        # carry the id.
+        # log line -> the trace it was emitted inside. trace_id is a first-class field rather than
+        # something parsed out of the message, which is why the regex matches the field and not the body.
         derivedFields:
            - name: 'trace_id'
              matcherType: 'label'
@@ -66,9 +59,3 @@ datasources:
              url: '$${__value.raw}'
              datasourceUid: 'tempo'
              urlDisplayLabel: 'Trace: $${__value.raw}'
-
-   - name: Pyroscope
-     type: grafana-pyroscope-datasource
-     uid: pyroscope
-     url: http://127.0.0.1:4040
-     editable: true

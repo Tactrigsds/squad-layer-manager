@@ -104,7 +104,7 @@ const ANSI_ESCAPE = /\x1b\[[0-9;]*m/g
 
 // Colour is a terminal-presentation concern, but some call sites bake it into the message itself
 // (db.ts highlights SQL), and that message is also the body we ship to the log backend. Strip on the
-// way out rather than at each call site, so no future caller can leak escapes into Loki.
+// way out rather than at each call site, so no future caller can leak escapes into the log store.
 export function stripAnsi(s: string): string {
 	return s.replace(ANSI_ESCAPE, '')
 }

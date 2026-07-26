@@ -1,61 +1,62 @@
 # Observability stack
 
-Config for the `grafana/otel-lgtm` container (Grafana + Loki + Tempo + Prometheus + Pyroscope, all in
-one process tree). The app ships OTLP to it over HTTP on `:4318` (`OTLP_COLLECTOR_ENDPOINT`) and, when
-`PYROSCOPE_ENABLED` is set, profiles to Pyroscope on `:4040` (`PYROSCOPE_ENDPOINT`). Grafana is on
-<http://localhost:3001>.
+Five containers in `docker-compose.yaml`, configured from this directory. Nothing here is read by the
+app itself.
 
-`docker compose up -d otel` mounts everything here into the container. Nothing here is read by the app
-itself.
+| Service            | Image                                          | What it does                                        |
+| ------------------ | ---------------------------------------------- | --------------------------------------------------- |
+| `victoria-metrics` | `victoriametrics/victoria-metrics:v1.111.0`    | metrics, served over the Prometheus API             |
+| `victoria-logs`    | `victoriametrics/victoria-logs:v1.9.1`         | logs, queried with LogsQL                           |
+| `victoria-traces`  | `victoriametrics/victoria-traces:v0.5.0`       | traces, served over the Jaeger query API            |
+| `otel-collector`   | `otel/opentelemetry-collector-contrib:0.157.0` | receives OTLP from the app and routes it per signal |
+| `grafana`          | `grafana/grafana:13.1.1`                       | serves the dashboards                               |
 
-## The mount contract
-
-Each file here **replaces** a file the image ships, rather than merging with it. That means every one
-of them reproduces the image's own config in full, and only adds to it. If you delete a section
-because it looks irrelevant, you silently un-configure it.
-
-It also means **the image tag and these files are one unit**, which is why `docker-compose.yaml` pins
-`grafana/otel-lgtm:0.29.0` instead of tracking `:latest`. A copy of a config is a copy of one version
-of it. When the tag moves, the binary moves underneath the copy and the copy stops parsing, and Tempo
-in particular exits on a config error rather than starting with defaults: the container comes up, the
-other five components report ready, and the only symptom is Grafana failing to reach Tempo on
-`:3200`. Upgrading the tag therefore means re-copying these files from the new image in the same
-commit:
+The app ships OTLP over HTTP to the collector on `:4318` (`OTLP_COLLECTOR_ENDPOINT`). Grafana is on
+<http://localhost:3001>. Each store's HTTP port is published on loopback for ad-hoc queries:
 
 ```sh
-docker run --rm --entrypoint cat grafana/otel-lgtm:<tag> /otel-lgtm/tempo-config.yaml
+curl -s 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=severity:ERROR' --data-urlencode 'limit=10'
+curl -s 'http://localhost:8428/api/v1/query' --data-urlencode 'query=slm_rcon_connected'
 ```
 
-then re-applying the deltas in the table below. Diff it against what is here before you trust it.
+`docker compose up -d victoria-metrics victoria-logs victoria-traces otel-collector grafana` brings the
+stack up without the app, which is what you want when pointing a dev instance at it.
 
-| File                                | Replaces                            | What we add                                                                                  |
-| ----------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
-| `tempo-config.yaml`                 | `/otel-lgtm/tempo-config.yaml`      | 72h `block_retention` on `backend_scheduler` + `backend_worker` (Tempo 3 has no `compactor`) |
-| `loki-config.yaml`                  | `/otel-lgtm/loki-config.yaml`       | `limits_config.retention_period: 336h` + a `compactor` block                                 |
-| `grafana/provisioning/datasources/` | the image's datasource provisioning | `tracesToMetrics`, otherwise the image's own cross-links                                     |
-| `grafana/provisioning/dashboards/`  | the image's dashboard provisioning  | points at `grafana/dashboards/`; re-declares the image's two RED dashboards so they survive  |
-| `grafana/dashboards/`               | nothing (new)                       | the two SLM dashboards                                                                       |
+## One store per signal, and why that is not three problems
 
-## Retention
+Each store is a single zero-config binary with no external dependencies, and each speaks the query API
+its tooling already expects. That is what keeps the Grafana side boring: **two of the three datasources
+are Grafana's own**, because VictoriaMetrics serves the Prometheus API and VictoriaTraces the Jaeger
+one. Only logs need a plugin.
 
-Traces are kept **3 days**, logs **2 weeks**.
+| Datasource   | uid            | Type                              | Reads   |
+| ------------ | -------------- | --------------------------------- | ------- |
+| Prometheus   | `prometheus`   | prometheus (built in)             | metrics |
+| Traces       | `tempo`        | jaeger (built in)                 | traces  |
+| VictoriaLogs | `victorialogs` | `victoriametrics-logs-datasource` | logs    |
 
-Traces are also head-sampled. `OTEL_TRACE_SAMPLE_RATIO` unset means everything outside production and a
-quarter of root traces in it; set it to 1 there when you need full fidelity for a while. The ratio is
-worth having because most of the volume is not interesting: of ~4M spans over 14 days, the rcon execute,
-event-insert and roster-poll paths alone were about 40%, and they look the same every time. Sampling is
-`ParentBased`, so a trace is kept or dropped whole rather than arriving with holes in it.
+The `prometheus` and `tempo` uids are historical and deliberately kept: dashboards reference
+datasources by uid, and renaming them to match what is behind them would mean editing every panel for
+nothing.
 
-Traces are the highest-volume signal (one span per `C.spanOp`, plus auto-instrumented http/rcon/dns
-spans underneath each), so they get the shortest window. That's affordable because the RED metrics
-derived from them live in Prometheus and outlive them: you can still ask "when did `dispatchOp` start
-getting slow" a month later, you just can't open an individual trace from back then.
+The logs plugin is in the Grafana catalog and signed by Grafana Labs, so it installs with the single
+`GF_INSTALL_PLUGINS` line in `docker-compose.yaml`. No unsigned-plugin flag, no baked image.
 
-Logs outlive traces because they are what you go back to when someone asks what happened last week.
-The trace is gone by then, but the log line that carried its `trace_id` is not.
+## Two flags that are load-bearing
 
-Loki's `retention_period` is inert on its own. It is only enforced if the compactor is explicitly told
-to do it, which is what the `compactor` block in `loki-config.yaml` is for.
+**`-memory.allowedBytes` on each store.** Left alone they size their caches from the _host's_ RAM, so on
+a large machine they grow to fill it and the stack looks far heavier than it is. The flag caps the
+caches, not total RSS: measured against a dev instance the three stores settle at about **435MB**
+together (VictoriaMetrics ~320, VictoriaTraces ~90, VictoriaLogs ~25), against 653MB for the single
+GreptimeDB process this replaced. Raise the caps on a busy install; they are a ceiling on caching, not a
+reservation, and lowering them trades query speed for footprint rather than capping ingest.
+
+**`-opentelemetry.usePrometheusNaming` on VictoriaMetrics.** Without it, OTLP metric names keep their
+dots (`slm.op.duration`) and every PromQL expression in the dashboards silently matches nothing.
+
+`timeInterval` on the Prometheus datasource must also stay at `60s`, matching the app's
+`PeriodicExportingMetricReader` interval. It feeds `$__rate_interval`, and at a shorter value the window
+holds fewer than two samples, so every `rate()` panel renders No data while the gauges keep working.
 
 ## Dashboards
 
@@ -63,65 +64,75 @@ to do it, which is what the `compactor` block in `loki-config.yaml` is for.
   progress, pending teamswaps, BattleMetrics rate-limit headroom, and a warn/error log panel. It is
   backed by the observable gauges in `src/systems/metrics.server.ts`.
 - **SLM / Ops (RED)** (`slm-ops`) is rate/errors/duration for every `C.spanOp` in the app, plus Node
-  runtime health (event loop, heap, GC) and a Profiling section. It is backed by the `slm.op.duration`
-  histogram recorded in `spanOp`'s `finally` block, so **a new `spanOp` appears here with no extra
-  wiring**.
+  runtime health (event loop, heap, GC). It is backed by the `slm.op.duration` histogram recorded in
+  `spanOp`'s `finally` block (`src/server/instrumentation.ts`), so **a new `spanOp` appears here with
+  no extra wiring**.
+- **SLM / Logs** (`slm-logs`) is the log view: volume by severity, and a log panel filtered by severity
+  and module.
 
-The image's own RED dashboards are kept too. Those are generated by Tempo's `metrics_generator` from
-span kind and status, so they cover the auto-instrumented http/rcon spans as well.
+## Logs are LogsQL
 
-## Profiling
+Every attribute the app attaches is a first-class field, so filtering is direct rather than a JSON path
+dig. Fields whose names contain dots need quoting:
 
-Off unless `PYROSCOPE_ENABLED` is set. It defaults off both in the env schema (`src/server/env.ts`)
-and in `docker-compose.yaml`, where the two lines that turn it on are commented out: profiling is
-opt-in, enabled when you have a question to chase rather than left running by default. The agent lives
-in `src/systems/pyroscope.server.ts` and pushes CPU/wall continuously, plus allocations and in-use heap
-while `PYROSCOPE_HEAP_ENABLED` is on. Heap sampling is the half whose cost scales with allocation rate,
-which is why it is separately switchable: turning it off leaves the flatter-cost CPU profiles.
+```logsql
+severity:in(WARN,ERROR,FATAL) "slm.module.name":squad-server
+```
 
-It is not cheap. Prod ran with it on for 16 hours on 2026-07-23/24, across five deploys, and event loop
-utilization sat at 23-44% for the whole window against a 0.4-1.0% baseline either side of it: roughly a
-third of a core, some 30x what the app otherwise uses. That is affordable for an afternoon of chasing a
-question and not affordable as a standing cost, which is why it is opt-in rather than merely tunable.
+Two things worth knowing when editing the log panels:
 
-Heap sampling is worth turning off even when you do enable profiling, because its cost is not only CPU:
-the sampler's tables are native allocations in the main malloc arena, which glibc does not give back.
-Add `PYROSCOPE_HEAP_ENABLED=false` alongside `PYROSCOPE_ENABLED=true` unless it is specifically an
-allocation question you are answering.
+The **Module** variable's values are whole filter terms (`"slm.module.name":db`), not bare names, which
+is what lets its All case be a bare `*`. A `*` matches every record; `"slm.module.name":*` would quietly
+drop the handful of boot lines written before the logger attaches a module.
 
-The Ops dashboard's **Profile type** variable is populated from what Pyroscope has actually received
-rather than from a hardcoded list, because which sample types exist depends on how the agent is
-configured. If the dropdown is empty, no profiles have arrived at all, and the thing to check is
-`PYROSCOPE_ENABLED` and reachability of `PYROSCOPE_ENDPOINT` -- not the dashboard.
+**`VL-Stream-Fields` on the logs exporter is not optional.** VictoriaLogs derives the stream key from
+resource attributes, and the app's include a multi-kilobyte `process.command_args`. Without pinning the
+stream fields to `service.name,service.instance.id`, every process restart creates a new stream.
 
-Two things about reading it that are easy to get wrong:
+## Retention
 
-- The agent flushes on a **60s interval**, so a just-started process shows nothing for up to a minute,
-  and a spike shorter than the flush window is smeared across it.
-- Profiles carry `service_instance_id`, and the **Instance** variable defaults to All. Two instances
-  merge into a flame graph whose shape neither of them had, so pin one before concluding anything
-  about a single process.
+Traces are kept **3 days**, logs **14 days**, metrics **90 days**, each a `-retentionPeriod` flag on its
+own store. Changing one is an edit and a restart, with no migration and nothing to apply after the fact.
+
+Traces are the highest-volume signal (one span per `C.spanOp`, plus auto-instrumented http/rcon/dns
+spans underneath each), so they get the shortest window. That's affordable because the RED metrics
+derived from them outlive them: you can still ask "when did `dispatchOp` start getting slow" a month
+later, you just can't open an individual trace from back then. Logs outlive traces because they are what
+you go back to when someone asks what happened last week; the trace is gone by then, but the log line
+that carried its `trace_id` is not.
 
 ## Cross-linking
 
-A Loki line links to its Tempo trace and back. This works because `server/logger.ts` stamps `trace_id`
-and `span_id` onto every record (see `LOG.mapSpanAttrs`), and the Loki datasource picks them out of
-structured metadata with `matcherType: label` rather than regexing the body. So the message text does
-not need to carry the id, and it doesn't.
+Both directions work, and both are configured in `grafana/provisioning/datasources/datasources.yaml`.
+
+A **log line links to its trace** through a derived field on `trace_id`. This works because
+`server/logger.ts` stamps `trace_id` and `span_id` onto every record (see `LOG.mapSpanAttrs`), and
+VictoriaLogs stores them as real fields, so the matcher targets the field rather than regexing the body.
+The message text does not need to carry the id, and it doesn't.
+
+A **span links back to its logs** through `tracesToLogsV2` on the Traces datasource, which runs
+`trace_id:"<id>"` against VictoriaLogs. A span also links to its op's RED metrics via `tracesToMetrics`.
 
 ## Cardinality
 
-Loki indexes only `service_name` and `service_instance_id`. Everything else the app sends (including
-per-record `span_id` and `trace_id`) lands in structured metadata, which is filterable but not
-indexed. That is what keeps the stream count at 2 rather than one stream per span.
+Metrics behave the way they do in Prometheus: the cost is the number of distinct label combinations.
+`slm_squad_server_id` is bounded by the number of servers; keep anything unbounded (player ids, layer
+ids, trace ids) off metric attributes.
 
-Do not promote `slm_module_name` (or anything else) to an index label to make it filterable. It
-already is, via structured metadata, and promoting it would multiply the stream count by the number of
-modules for no query benefit.
+The bigger trap is the one the `resource/trim-metric-labels` processor exists for. VictoriaMetrics
+promotes **every** OTLP resource attribute to a label, and the SDK sends far more than a dashboard ever
+groups by: measured before the trim, each series carried 25 labels including a 1.3KB
+`process.command_args` JSON blob, and `process.pid` changed on every restart so each restart orphaned
+the entire series set. After the trim it is 10 labels and nothing restart-scoped. If you add a resource
+attribute and it does not show up in PromQL, that processor is why.
+
+Logs are different, and the thing to watch is the **stream** rather than the field count. Fields are
+cheap and unindexed-until-queried, so adding one costs nothing. Stream fields are the expensive axis,
+which is why they are pinned to two (see `VL-Stream-Fields` above).
 
 ## Changing histogram bucket boundaries
 
-If you change `explicitBucketBoundaries` on `slm.op.duration`, the old series stay in Prometheus until
-they age out, and `sum by (le)` across both boundary sets produces non-monotonic buckets and therefore
-garbage quantiles. It is transient, but if a quantile panel looks impossible right after such a
-change, this is why. Filter to a single `service_instance_id` to confirm.
+If you change `explicitBucketBoundaries` on `slm.op.duration`, the old series stay until they age out,
+and `sum by (le)` across both boundary sets produces non-monotonic buckets and therefore garbage
+quantiles. It is transient, but if a quantile panel looks impossible right after such a change, this is
+why. Filter to a single `service_instance_id` to confirm.
