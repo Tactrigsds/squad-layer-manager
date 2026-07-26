@@ -28,16 +28,19 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// How to start the app under test. In the docker image (and so in CI) SLM_TEST_SERVER_ENTRY points at
-// the bundled server, so the tests drive the very artifact that gets deployed; locally we run the
-// source through tsx, so there's nothing to rebuild between edit and test.
+// How to start the app under test. SLM_TEST_SERVER_ENTRY points at a bundled server: the docker image sets it
+// to the artifact it ships, so CI drives the very thing that gets deployed, and locally the test scripts build
+// one first, because transpiling the module graph through tsx costs ~3.5s of every boot and there are dozens
+// of those in a run (see scripts/test-server-bundle.mjs). Without it, the tsx path below runs the sources
+// directly, which is what `test:integration:src` / `test:e2e:src` are for.
 function serverCommand(): [string, string[]] {
 	// main-instrumented is the entry production runs: it starts the otel sdk (when OTEL_ENABLED) and then
 	// hands off to main. Spawning it -- rather than main directly -- is what lets a test's telemetry exist
 	// at all. register-otel.mjs installs the loader hook the auto-instrumentations need.
 	const otelLoader = ['--import', path.join(REPO_ROOT, 'register-otel.mjs')]
 	const entry = process.env.SLM_TEST_SERVER_ENTRY
-	if (entry) return ['node', ['--enable-source-maps', ...otelLoader, entry]]
+	// the same two preloads, in the same order, that `pnpm run server:prod` passes
+	if (entry) return ['node', ['--import', path.join(REPO_ROOT, 'register-source-maps.mjs'), ...otelLoader, entry]]
 	return [
 		path.join(REPO_ROOT, 'node_modules/.bin/tsx'),
 		['--tsconfig', 'tsconfig.node.json', ...otelLoader, 'src/server/main-instrumented.ts'],
@@ -272,18 +275,18 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 }
 
 // The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
-// (which wants two polls) and dominates this suite's wall time. 2s roughly halves the suite against
-// the shipped 5s.
+// (which wants two polls) and dominates this suite's wall time.
 //
-// Do not lower these further without re-measuring: at 1s the suite got faster still but started
-// failing about one run in three, and at 500ms it got both slower *and* flakier -- RCON is
-// serialized, so polling faster than it drains queues commands until responses breach the 2s
-// timeout in core-rcon and back off. The failures only appear under full-suite load, never in a
-// single file, and they land on whichever test is unluckiest rather than a consistent one.
+// What these can be is a function of how loaded the box is, because the failure mode is core-rcon's 2s
+// response timeout: poll faster than a busy machine can drain RCON and commands queue until responses
+// breach it. At 2s each the suite ran 58s; 1s each ran 41s over three clean runs, which only became safe
+// once each app stopped booting through tsx and stopped seeding a sandbox server alongside the one under
+// test. 500ms measured clean here too (36s), and is deliberately not taken: CI runs this in a container
+// on fewer cores than the machine it was measured on, and a flaky integration suite is not worth 5s.
 function applyTestServerTimings(settings: SETTINGS.ServerSettings) {
-	settings.rconCacheTTL.layersStatus = 2_000
-	settings.rconCacheTTL.serverInfo = 4_000
-	settings.rconCacheTTL.teams = 2_000
+	settings.rconCacheTTL.layersStatus = 1_000
+	settings.rconCacheTTL.serverInfo = 2_000
+	settings.rconCacheTTL.teams = 1_000
 	settings.vote.voteDuration = 8_000
 	settings.vote.finalVoteReminder = 2_000
 	settings.vote.voteReminderInterval = 3_000
@@ -328,6 +331,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	globalSettings.adminLists = {
 		[TEST_ADMIN_LIST]: { source: { type: 'local', source: adminsCfgPath }, adminIdentifyingPermissions: [ADMIN_PERM] },
 	}
+	// A fresh install seeds a sandbox, which is a whole second squad server: its own in-process emulator, its own RCON
+	// connection and its own polling loops, all running for the life of every test app. Nothing here drives it, and the
+	// RCON traffic it adds is what the poll intervals above have to leave room for. A test that wants one turns it back on.
+	globalSettings.seedSandboxServer = false
 	opts.globalSettings?.(globalSettings)
 	await db
 		.insert(Schema.globalSettings)

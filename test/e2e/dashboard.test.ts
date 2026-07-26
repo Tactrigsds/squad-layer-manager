@@ -1,6 +1,6 @@
 import { makePlayer } from '@/emulator'
 
-import { expect, test } from './fixtures'
+import { expect, sharedAppTest as test } from './fixtures'
 
 // Drives the real client against a real app instance backed by the squad server emulator.
 // Selectors are role/label-based on purpose: a test that can't find an element is telling us the

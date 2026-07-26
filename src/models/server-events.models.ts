@@ -5,6 +5,7 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
+import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -355,21 +356,21 @@ export type NewEvent = Types.DistributiveOmit<Event, 'id'>
 // prod pass it anyway, so validating here would buy nothing for that risk.
 
 const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
-	z.object({ ...BaseSchema.shape, type: z.literal(type), ...shape })
+	z.object({ ...BaseSchema.shape, type: ZodUtils.internedLiteral(type), ...shape })
 
 const MapSetSourceSchema = z.discriminatedUnion('type', [
 	...ActionSourceSchema.options,
-	z.object({ type: z.literal('layer-queue'), itemId: z.string() }),
+	z.object({ type: ZodUtils.internedLiteral('layer-queue'), itemId: z.string() }),
 ])
 
 export const MapSetSchema = event('MAP_SET', { layerId: z.string(), source: MapSetSourceSchema.optional() })
 export const NewGameSchema = event('NEW_GAME', {
-	source: z.enum(['slm-started', 'rcon-reconnected', 'server-roll', 'new-game-detected']),
+	source: ZodUtils.internedEnum(['slm-started', 'rcon-reconnected', 'server-roll', 'new-game-detected']),
 	layerId: z.string(),
 	state: SM.UniqueTeamsSchema.optional(),
 })
 export const ResetSchema = event('RESET', {
-	source: z.enum(['slm-started', 'rcon-reconnected', 'server-roll']),
+	source: ZodUtils.internedEnum(['slm-started', 'rcon-reconnected', 'server-roll']),
 	state: SM.UniqueTeamsSchema,
 })
 export const RconConnectedSchema = event('RCON_CONNECTED', { reconnected: z.boolean() })
@@ -378,8 +379,8 @@ export const RoundEndedSchema = event('ROUND_ENDED', {
 	outcome: MH.MatchOutcomeSchema,
 	action: z
 		.discriminatedUnion('type', [
-			z.object({ type: z.literal('AdminChangeLayer'), layerId: z.string(), source: ActionSourceSchema }),
-			z.object({ type: z.literal('AdminEndMatch'), source: ActionSourceSchema }),
+			z.object({ type: ZodUtils.internedLiteral('AdminChangeLayer'), layerId: z.string(), source: ActionSourceSchema }),
+			z.object({ type: ZodUtils.internedLiteral('AdminEndMatch'), source: ActionSourceSchema }),
 		])
 		.optional(),
 })
@@ -410,7 +411,7 @@ export const PlayerWarnedSchema = event('PLAYER_WARNED', {
 	source: ActionSourceSchema.optional(),
 	player: SM.PlayerIdSchema,
 })
-const PlayerWoundedOrDiedVariantSchema = z.enum(['normal', 'suicide', 'teamkill'])
+const PlayerWoundedOrDiedVariantSchema = ZodUtils.internedEnum(['normal', 'suicide', 'teamkill'])
 const woundedOrDiedShape = {
 	damage: z.number(),
 	weapon: z.string().nullable(),
