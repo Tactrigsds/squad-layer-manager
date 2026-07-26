@@ -8,47 +8,55 @@ import type * as LQY from '@/models/layer-queries.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 
-export const WARNS = {
-	lowQueueItemCount(count: number) {
-		return `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`
-	},
+export const lowQueueItemCount = Msgs.def((count: number) => ({
+	warn: () => `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`,
+}))
 
-	nextLayerWarning(layerId: L.LayerId, _opts: { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) {
-		const opts = {
-			repeatViolations: _opts.repeatViolations.length > 0 ? _opts.repeatViolations : undefined,
-			poolViolations: _opts.poolViolations.length > 0 ? _opts.poolViolations : undefined,
-		}
-		const repeatedList = opts.repeatViolations ? [...new Set(opts.repeatViolations?.map((r) => r.field))].join(', ') : undefined
-		const poolList = opts.poolViolations?.join(', ')
-		let str = ''
-		if (repeatedList && poolList) {
-			str = `Repeat violations(${repeatedList}) and pool violations (${poolList})`
-		} else if (repeatedList) {
-			str = `Repeat violations(${repeatedList})`
-		} else if (poolList) {
-			str = `Pool violations (${poolList})`
-		}
+export const nextLayerWarning = Msgs.def(
+	(layerId: L.LayerId, _opts: { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) => ({
+		warn: () => {
+			const opts = {
+				repeatViolations: _opts.repeatViolations.length > 0 ? _opts.repeatViolations : undefined,
+				poolViolations: _opts.poolViolations.length > 0 ? _opts.poolViolations : undefined,
+			}
+			const repeatedList = opts.repeatViolations ? [...new Set(opts.repeatViolations?.map((r) => r.field))].join(', ') : undefined
+			const poolList = opts.poolViolations?.join(', ')
+			let str = ''
+			if (repeatedList && poolList) {
+				str = `Repeat violations(${repeatedList}) and pool violations (${poolList})`
+			} else if (repeatedList) {
+				str = `Repeat violations(${repeatedList})`
+			} else if (poolList) {
+				str = `Pool violations (${poolList})`
+			}
 
-		return `WARNING: The next layer (${DH.displayLayer(layerId)}) has ${str}. Check SLM for more details.`
-	},
+			return `WARNING: The next layer (${DH.displayLayer(layerId)}) has ${str}. Check SLM for more details.`
+		},
+	}),
+)
 
-	votePending(matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) {
+export const votePending = Msgs.def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
+	warn: () => {
 		const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
 		const formattedTime = Msgs.formatInterval(timeUntilVote, { terse: false, round: 'second' })
 		const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
 		return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 	},
+}))
 
-	empty: `WARNING: Queue is empty. Please populate it`,
-	showNext:
-		(
-			layerQueue: LL.List,
-			nextLayer: L.UnvalidatedLayer | null,
-			setByUser: USR.User | undefined,
-			commands: Record<CMD.CommandId, CMD.CommandConfig>,
-			opts?: { updated?: boolean; isAdmin?: boolean },
-		) =>
-		(ctx: SM.Ctx) => {
+export const empty = Msgs.def(() => ({ warn: () => `WARNING: Queue is empty. Please populate it` }))
+
+export const showNext = Msgs.def(
+	(
+		layerQueue: LL.List,
+		nextLayer: L.UnvalidatedLayer | null,
+		setByUser: USR.User | undefined,
+		commands: Record<CMD.CommandId, CMD.CommandConfig>,
+		opts?: { updated?: boolean; isAdmin?: boolean },
+	) => ({
+		// the per-recipient form: warnAll re-invokes this for each player, which is what lets the layer be rendered
+		// from that player's next-team perspective
+		warn: () => (ctx: SM.Ctx) => {
 			const item = layerQueue.length > 0 ? layerQueue[0] : undefined
 			const playerNextTeamId = isNullOrUndef(ctx.player.teamId) ? undefined : ctx.player.teamId === 1 ? 2 : 1
 			let lines: string[] = []
@@ -132,7 +140,9 @@ export const WARNS = {
 
 			return { msg: lines }
 		},
-	requestFeedback: (index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
-		msg: [`${playerName} has requested feedback for`, LL.displayLayerListItem(item, index)].join('\n'),
 	}),
-} satisfies Msgs.WarnNode
+)
+
+export const requestFeedback = Msgs.def((index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
+	warn: () => ({ msg: [`${playerName} has requested feedback for`, LL.displayLayerListItem(item, index)].join('\n') }),
+}))

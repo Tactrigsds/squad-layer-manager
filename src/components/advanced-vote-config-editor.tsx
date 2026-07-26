@@ -31,7 +31,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 
 	const preview =
 		props.choices.length > 0
-			? V_Msgs.BROADCASTS.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps)
+			? V_Msgs.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps).react()
 			: (props.previewPlaceholder ?? 'No layers selected for preview')
 	const valid = props.choices.length > 0 ? V.validateChoicesWithDisplayProps(props.choices, displayProps) : true
 
