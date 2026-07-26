@@ -35,7 +35,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 
 	const serverId = stores.squadServer!.serverId
 	// memoized so the effect below doesn't re-run (and discard pending edits) on every render
-	const viewingSettingsTrans = React.useMemo(() => UP.Trans.viewingSettings(serverId), [serverId])
+	const viewingSettingsTrans = UP.Trans.viewingSettings(serverId)
 	const [, setViewingSettings] = UPClient.useActivityState(viewingSettingsTrans)
 	// presence + pending-edit lifecycle follows the window: closing it withdraws the viewing activity and
 	// discards unsaved edits, same as closing the old popover did

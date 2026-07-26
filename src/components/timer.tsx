@@ -10,12 +10,7 @@ export function Timer(props: {
 	formatTime?: (timeMs: number) => string
 }) {
 	const eltRef = React.useRef<HTMLDivElement>(null)
-	const formatTime = React.useMemo(() => {
-		if (props.formatTime) {
-			return props.formatTime
-		}
-		return props.zeros ? formatTimeLeftWithZeros : formatTimeLeft
-	}, [props.formatTime, props.zeros])
+	const formatTime = props.formatTime ?? (props.zeros ? formatTimeLeftWithZeros : formatTimeLeft)
 	if (!props.start && !props.deadline) {
 		throw new Error('Timer requires exclusively either start or deadline')
 	}

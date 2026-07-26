@@ -43,17 +43,14 @@ const DialogContent = React.forwardRef<
 	const outletKey = React.useId()
 	const contentRef = React.useRef<HTMLDivElement | null>(null)
 
-	const combinedRef = React.useCallback(
-		(node: HTMLDivElement | null) => {
-			contentRef.current = node
-			if (typeof ref === 'function') {
-				ref(node)
-			} else if (ref) {
-				;(ref as React.MutableRefObject<HTMLDivElement | null>).current = node
-			}
-		},
-		[ref],
-	)
+	const combinedRef = (node: HTMLDivElement | null) => {
+		contentRef.current = node
+		if (typeof ref === 'function') {
+			ref(node)
+		} else if (ref) {
+			;(ref as React.MutableRefObject<HTMLDivElement | null>).current = node
+		}
+	}
 
 	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
 	const zIndexStyle = { zIndex, ...style }
