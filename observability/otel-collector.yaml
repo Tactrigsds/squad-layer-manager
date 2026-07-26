@@ -24,6 +24,15 @@ processors:
          - pattern: ^(process|telemetry\.sdk|host)\..*
            action: delete
 
+   # Logs only, and a shorter list than the metrics one because a log field is cheap where a label is
+   # not. This is about the 80% of every record that is the same static JSON: process.command_args
+   # alone is ~1.3KB per line. What stays is what you would actually filter or read a log by, including
+   # host.name for a multi-host install and the runtime version for a bug report.
+   resource/trim-log-fields:
+      attributes:
+         - pattern: ^(process\.(command|command_args|executable\.[a-z]+|owner|runtime\.(name|description))|telemetry\.sdk\..*|host\.(arch|id))$
+           action: delete
+
 exporters:
    # Each store has its own OTLP path and the otlphttp exporter appends /v1/{metrics,logs,traces}, so the
    # endpoints below stop one segment short of that. Retention is not set here: it is a flag on each
@@ -49,7 +58,7 @@ service:
          exporters: [otlphttp/metrics]
       logs:
          receivers: [otlp]
-         processors: [memory_limiter, batch]
+         processors: [memory_limiter, resource/trim-log-fields, batch]
          exporters: [otlphttp/logs]
       traces:
          receivers: [otlp]
