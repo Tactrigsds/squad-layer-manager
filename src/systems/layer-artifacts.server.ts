@@ -23,9 +23,16 @@ import * as Env from '@/server/env'
 //      older one: dropping a table into the mount is how a running deployment moves between layer versions.
 //   3. assets/layers -- ships with the image, so a fresh checkout and a bare deployment both boot.
 
+// preprocess can leave both an uncompressed and a compressed table behind, and loading and serving want opposite
+// ones: the engine skips a gunzip on boot by reading the uncompressed table, while clients want the ~12x smaller
+// compressed one on the wire. Resolving one path for both couples the two.
+//
+// Clients are always served gzip, so a directory holding only an uncompressed table gets one compressed at boot
+// instead (see layer-engine.server.ts). That is why the compressed path is optional and the load path is not.
 export type ArtifactPair = {
 	version: string
-	tablePath: string
+	tableLoadPath: string
+	tableCompressedPath?: string
 	layerDataPath: string
 	dir: string
 }
@@ -87,7 +94,7 @@ function resolve(): ArtifactPair {
 // every complete pair in `dir`, oldest first. A half-pair is fatal: it is always a mistake, and skipping it
 // would quietly run the app on some other version than the one that was just put there.
 function scanPairs(dir: string): ArtifactPair[] {
-	const tables = new Map<string, string>()
+	const tables = new Map<string, { raw?: string; compressed?: string }>()
 	const layerData = new Map<string, string>()
 
 	const tableRegex = new RegExp(`^${Str.escapeRegex(TABLE_PREFIX)}(.+)${Str.escapeRegex(LA.ARTIFACT_EXT)}(\\.gz)?$`)
@@ -97,8 +104,11 @@ function scanPairs(dir: string): ArtifactPair[] {
 		const tableMatch = entry.match(tableRegex)
 		if (tableMatch) {
 			const version = semver.valid(tableMatch[1])
-			// the uncompressed table loads quicker, so it wins when preprocess has left both behind
-			if (version && !tables.get(version)?.endsWith(LA.ARTIFACT_EXT)) tables.set(version, path.join(dir, entry))
+			if (version) {
+				const found = tables.get(version) ?? {}
+				found[tableMatch[2] ? 'compressed' : 'raw'] = path.join(dir, entry)
+				tables.set(version, found)
+			}
 			continue
 		}
 		const layerDataMatch = entry.match(layerDataRegex)
@@ -108,10 +118,10 @@ function scanPairs(dir: string): ArtifactPair[] {
 		}
 	}
 
-	for (const [version, tablePath] of tables) {
+	for (const [version, found] of tables) {
 		if (!layerData.has(version)) {
 			throw new Error(
-				`${tablePath} has no ${layerDataFileName(version)} beside it. The table's encoded values are meaningless ` +
+				`${found.raw ?? found.compressed} has no ${layerDataFileName(version)} beside it. The table's encoded values are meaningless ` +
 					`without the components they index into, so the two always travel together. Add it, or remove the table.`,
 			)
 		}
@@ -126,7 +136,13 @@ function scanPairs(dir: string): ArtifactPair[] {
 
 	return [...tables.entries()]
 		.sort(([a], [b]) => semver.compare(a, b))
-		.map(([version, tablePath]) => ({ version, tablePath, layerDataPath: layerData.get(version)!, dir }))
+		.map(([version, found]) => ({
+			version,
+			tableLoadPath: found.raw ?? found.compressed!,
+			tableCompressedPath: found.compressed,
+			layerDataPath: layerData.get(version)!,
+			dir,
+		}))
 }
 
 // resolves {{LAYERS_VERSION}} in a path, picking the highest semver present when the version is `@latest`.

@@ -1,11 +1,13 @@
 import fastifyCookie from '@fastify/cookie'
 import fastifyFormBody from '@fastify/formbody'
 import oauthPlugin from '@fastify/oauth2'
+import send from '@fastify/send'
 import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import fastify from 'fastify'
+import path from 'node:path'
 import type { WebSocket } from 'ws'
 
 import * as Paths from '$root/paths'
@@ -39,6 +41,12 @@ const BASE_HEADERS = {
 	'Cross-Origin-Opener-Policy': 'same-origin',
 	'Cross-Origin-Resource-Policy': 'cross-origin',
 }
+
+// Everything vite emits into dist/assets carries a content hash, so a given url's bytes never change and the response
+// never needs revalidating. index.html and landing.css keep their names across builds and so keep having to be checked.
+const HASHED_ASSETS_DIR = path.join(Paths.DIST, 'assets') + path.sep
+const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+const REVALIDATE_CACHE_CONTROL = 'public, max-age=0'
 
 // serves a pre-rendered static page (landing/403). no-store because '/' serves different content per auth state.
 // STATIC_PAGE_HEADER marks the response so the dev vite proxy serves our body instead of the SPA shell (which it
@@ -97,10 +105,23 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 
 				// don't try to server index.html, conflicting with our routes
 				index: false,
-				setHeaders: (header) => {
+
+				// serve the .br/.gz siblings `precompress:dist` wrote instead of compressing per request. br is preferred
+				// and gzip is the floor: browsers only advertise br over https, and a deployment with no TLS proxy in front
+				// would otherwise get neither.
+				preCompressed: true,
+				// the siblings are reached through the file they compress, so they don't need routes of their own
+				globIgnore: ['**/*.br', '**/*.gz'],
+
+				// send would otherwise compute `public, max-age=0` for every file, and its headers are applied after
+				// setHeaders, so it would win over anything set there
+				cacheControl: false,
+				setHeaders: (header, filePath) => {
 					for (const [key, value] of Object.entries(BASE_HEADERS)) {
 						header.setHeader(key, value)
 					}
+					const immutable = filePath.startsWith(HASHED_ASSETS_DIR)
+					header.setHeader('Cache-Control', immutable ? IMMUTABLE_CACHE_CONTROL : REVALIDATE_CACHE_CONTROL)
 				},
 			})
 			break
@@ -164,7 +185,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		return res.redirect(AR.route('/'), 302)
 	})
 
-	instance.get(AR.route('/layers.bin'), async (req, res) => {
+	instance.get(AR.route('/layers.bin.gz'), async (req, res) => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {
 			res = res.header(key, value)
 		}
@@ -172,13 +193,23 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const ifNoneMatch = req.headers['if-none-match']
 		const etag = `"${LayerEngine.hash}"`
 		res.header('ETag', etag)
+		res.header('Cache-Control', 'no-cache')
 		if (ifNoneMatch && ifNoneMatch === etag) {
 			return res.code(304).send()
 		}
 
-		const [stream, contentType] = LayerEngine.readFilestream()
-		res.header('Content-Type', contentType)
-		return res.send(stream)
+		// the largest response the app makes, and a bare createReadStream gave it neither a Content-Length (so no
+		// download progress) nor Range support (so an interrupted download restarted from zero). send handles both.
+		// Its own validators are off: the etag above hashes the file's contents, which is what the client caches on.
+		const artifact = LayerEngine.servedArtifact()
+		const sent = await send(req.raw, encodeURI(path.basename(artifact.path)), {
+			root: path.dirname(artifact.path),
+			etag: false,
+			cacheControl: false,
+		})
+		res.code(sent.statusCode).headers(sent.headers)
+		res.header('Content-Type', artifact.contentType)
+		return res.send(sent.stream)
 	})
 
 	instance.get(AR.route('/layer-data.json'), async (req, res) => {
