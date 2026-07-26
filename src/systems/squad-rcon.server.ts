@@ -137,6 +137,11 @@ async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 
 	if (!res || res.data.length < 1) return { code: 'ok' as const, players: [] }
 
+	// ttl Infinity: take whatever is cached and never block on a refetch. This runs inside the teams poll, which
+	// event correlation waits on, so a slow admin-list fetch here stalls match ingestion. Resolved once for the whole
+	// roster rather than per player, which is what it used to be.
+	const adminLists = await AdminList.getListsForServerId(ctx, ctx.serverId, { ttl: Infinity })
+
 	for (const line of res.data.split('\n')) {
 		if (line.includes('epic:')) {
 			log.info('found line with epic id: %s', line)
@@ -165,11 +170,8 @@ async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 		data.isAdmin = false
 		data.adminGroups = []
 		if (data.ids.steam) {
-			// ttl Infinity: take whatever is cached and never block on a refetch. This runs inside the teams poll,
-			// which event correlation waits on, so a slow admin-list fetch here stalls match ingestion.
-			const adminList = await AdminList.getMergedForServer(ctx, ctx.serverId, { ttl: Infinity })
-			data.isAdmin = SM.AdminList.getIsAdmin(adminList, data.ids)
-			data.adminGroups = [...(SM.AdminList.getPlayerGroups(adminList, data.ids) ?? [])]
+			data.isAdmin = SM.AdminList.isAdminInAny(adminLists, data.ids)
+			data.adminGroups = SM.AdminList.collectPlayerGroups(adminLists, data.ids)
 		} else {
 			log.info('parsed player info data without steam id: %o', data)
 		}
@@ -375,16 +377,13 @@ export const warnAllAdmins = Instr.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: SR.Ctx & CS.AbortSignal, options: SR.WarnOptions, excludeSteamIds?: Set<string>) => {
-		const [currentAdminList, teamsRes] = await Promise.all([
-			AdminList.getMergedForServer(ctx, ctx.serverId),
-			ctx.squadRcon.teams.get(ctx),
-		])
+		const [adminLists, teamsRes] = await Promise.all([AdminList.getListsForServerId(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 		if (teamsRes.code === 'err:rcon') return
 		const admins: SM.PlayerIds.Schema[] = []
 		for (const player of teamsRes.players) {
 			if (
 				player.ids.steam &&
-				SM.AdminList.getIsAdmin(currentAdminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>) &&
+				SM.AdminList.isAdminInAny(adminLists, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>) &&
 				!excludeSteamIds?.has(player.ids.steam)
 			) {
 				admins.push(player.ids)

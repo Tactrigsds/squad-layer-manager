@@ -649,6 +649,35 @@ export namespace AdminList {
 		return groups
 	}
 
+	// Across every list a server recognises, which is the question all but one caller actually has. Appends into the
+	// array the caller is going to keep anyway rather than building a Set to copy out of: a player holds a handful of
+	// groups at most, so the linear dedupe is cheaper than allocating, and this runs once per player per roster poll.
+	export function collectPlayerGroups(lists: AdminLists, ids: PlayerIds.IdQuery<'steam'>, out: string[] = []): string[] {
+		for (const list of lists.values()) {
+			const eosGroups = ids.eos ? list.eos.players.get(ids.eos) : undefined
+			if (eosGroups) for (const group of eosGroups) if (!out.includes(group)) out.push(group)
+			const steamGroups = ids.steam ? list.steam.players.get(ids.steam) : undefined
+			if (steamGroups) for (const group of steamGroups) if (!out.includes(group)) out.push(group)
+		}
+		return out
+	}
+
+	export function isAdminInAny(lists: AdminLists, ids: PlayerIds.IdQuery<'steam'>) {
+		for (const list of lists.values()) {
+			if (getIsAdmin(list, ids)) return true
+		}
+		return false
+	}
+
+	// Every group name any of them defines. The merged view used to answer this by unioning the maps; nothing reads
+	// the perms a group carries off that union, so the names are all that has to be collected.
+	export function collectGroupNames(lists: AdminLists, out = new Set<string>()): Set<string> {
+		for (const list of lists.values()) {
+			for (const group of list.groups.keys()) out.add(group)
+		}
+		return out
+	}
+
 	// admin lists can key an admin by either id, so check both (mirrors getPlayerGroups); checking only eos when it's
 	// present misses a player listed under their steam id
 	export function getIsAdmin(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
