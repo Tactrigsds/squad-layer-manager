@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as SM from '@/models/squad.models'
 
 export const BaseSchema = z.object({
@@ -25,9 +26,9 @@ export const ActionSourceSchema = z.discriminatedUnion('type', [
 	...SM.LogEvents.ActionSourceSchema.options,
 	// link to an SLM app event (audit log). the normal SLM-originated case; upgrades over rcon/player
 	// in place when SLM recognizes its own action. AppEventId is a bare string, so it needs no import here.
-	z.object({ type: z.literal('event'), id: z.string() }),
+	z.object({ type: ZodUtils.internedLiteral('event'), id: z.string() }),
 	// SLM-caused but with no dedicated app event yet (fallback)
-	z.object({ type: z.literal('system'), reason: z.string().optional() }),
+	z.object({ type: ZodUtils.internedLiteral('system'), reason: z.string().optional() }),
 ])
 export type ActionSource = z.infer<typeof ActionSourceSchema>
 

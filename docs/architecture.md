@@ -181,6 +181,28 @@ universally. Notable house conventions:
 - No `z.brand()` anywhere. Nominal-ish typing is done informally through type aliases.
 - Exactly one `z.codec`: `HumanTime` in `src/lib/zod.ts`, which round-trips `"5m"` <-> `300000`.
 
+### Interning at parse boundaries
+
+`JSON.parse` allocates a fresh string for every occurrence of a value, so a schema whose output is **kept**
+pays for one copy of `"PLAYER_WOUNDED"` per event rather than one in total. `ZodUtils.internedEnum` and
+`ZodUtils.internedLiteral` hand back the schema's own value instead. That is a no-op semantically, since a
+parsed enum or literal is by definition one of those values, and the lookup table is the value set itself, so
+it cannot grow on hostile input the way a general intern cache would.
+
+They use `overwrite` rather than `transform` deliberately: `transform` returns a `ZodPipe`, and
+`z.discriminatedUnion` can no longer read a discriminator out of one. `overwrite` returns the same schema
+class, so `.options` and discriminated unions keep working.
+
+**Reach for them only where the parsed value is retained**, which today means the server event union: the
+match-events cache holds three matches at a time, and 6,000 events measure 1669KB parsed plainly against
+1499KB interned. Validating a request body that is then discarded gains nothing, and `layer.ts` deliberately
+hand-rolls its shape checks because zod parsing showed up hot in the bulk layer paths -- neither is a place to
+add this.
+
+The same reasoning applies outside zod. `L.setLayerData` interns the loaded layer artifact for the same
+reason, and `layerFactionAvailability` goes further and shares whole objects (see
+[The layer engine](#the-layer-engine-rustwasm)).
+
 ## Server-side machinery
 
 ### Context as duck-typed dependency injection
