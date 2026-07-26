@@ -501,6 +501,30 @@ export const addNewCurrentMatch = Instr.spanOp(
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & SQS.Ctx & CS.AbortSignal, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
 		await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
+
+			// syncWithCurrentLayer may already have recorded this same match: an rcon reconnect or the sync watchdog
+			// landing mid-roll reads the incoming layer off rcon and inserts a placeholder row for it, with no
+			// startTime because that path cannot know one. The roll's own NEW_GAME then arrives and would insert the
+			// layer a second time. Adopt the placeholder instead. A genuine re-roll onto the same layer is not caught
+			// by this: its predecessor was finalized on ROUND_ENDED, so it has an endTime.
+			if (
+				currentMatch &&
+				currentMatch.status === 'in-progress' &&
+				currentMatch.startTime === undefined &&
+				L.areLayersCompatible(currentMatch.layerId, entry.layerId)
+			) {
+				log.info('adopting placeholder match %d for %s rather than inserting a duplicate', currentMatch.historyEntryId, entry.layerId)
+				await ctx
+					.db()
+					.update(Schema.matchHistory)
+					.set(superjsonify(Schema.matchHistory, entry))
+					.where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
+				ctx.server.emittedEvents = []
+				await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
+				addReleaseTask(ctx.matchHistory.dispatchUpdate)
+				return
+			}
+
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			await ctx
 				.db()

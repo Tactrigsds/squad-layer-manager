@@ -38,6 +38,7 @@ export const SERVER_EVENT_TYPE = z.enum([
 	'SQUAD_RENAMED',
 	'LAYER_CHANGED',
 	'TEAMS_POLLED_UPDATE',
+	'INGAME_VOTE_STARTED',
 ])
 
 export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>
