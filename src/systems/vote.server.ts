@@ -13,7 +13,7 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
-import * as Messages from '@/messages.ts'
+import * as V_Msgs from '@/messages/vote.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
@@ -242,24 +242,24 @@ export const startVote = Instr.spanOp(
 		}
 		const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 		if (currentMatch.status === 'post-game') {
-			return { code: 'err:vote-not-allowed' as const, msg: Messages.WARNS.vote.start.noVoteInPostGame }
+			return { code: 'err:vote-not-allowed' as const, msg: V_Msgs.WARNS.start.noVoteInPostGame }
 		}
 
 		const duration = opts.duration ?? ctx.serverSettings.settings.vote.voteDuration
 		const layerQueue = LayerQueue.getSavedQueue(ctx)
 		const itemId = opts.itemId ?? layerQueue[0]?.itemId
 		if (!itemId) {
-			return { code: 'err:item-not-found' as const, msg: Messages.WARNS.vote.start.itemNotFound }
+			return { code: 'err:item-not-found' as const, msg: V_Msgs.WARNS.start.itemNotFound }
 		}
 
 		const initiateVoteRes = V.canInitiateVote(itemId, layerQueue, opts.voterType ?? 'public', ctx.vote.state ?? undefined)
 
 		const msgMap = {
-			'err:item-not-found': Messages.WARNS.vote.start.itemNotFound,
-			'err:invalid-item-type': Messages.WARNS.vote.start.invalidItemType,
-			'err:editing-in-progress': Messages.WARNS.vote.start.editingInProgress,
-			'err:public-vote-not-first': Messages.WARNS.vote.start.publicVoteNotFirst,
-			'err:vote-in-progress': Messages.WARNS.vote.start.voteAlreadyInProgress,
+			'err:item-not-found': V_Msgs.WARNS.start.itemNotFound,
+			'err:invalid-item-type': V_Msgs.WARNS.start.invalidItemType,
+			'err:editing-in-progress': V_Msgs.WARNS.start.editingInProgress,
+			'err:public-vote-not-first': V_Msgs.WARNS.start.publicVoteNotFirst,
+			'err:vote-in-progress': V_Msgs.WARNS.start.voteAlreadyInProgress,
 			ok: null,
 		} satisfies Record<(typeof initiateVoteRes)['code'], string | null>
 
@@ -305,7 +305,7 @@ export const startVote = Instr.spanOp(
 		await broadcastVoteUpdate(
 			ctx,
 			updatedVoteState,
-			Messages.BROADCASTS.vote.started(
+			V_Msgs.BROADCASTS.started(
 				ctx.vote.state,
 				item,
 				duration,
@@ -346,16 +346,16 @@ export const handleVote = Instr.spanOp(
 			return
 		}
 		if (voteState.voterType === 'internal' && msg.channelType !== 'ChatAdmin') {
-			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.wrongChat('AdminChat')))
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.WARNS.wrongChat('AdminChat')))
 			return
 		}
 		if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
 			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.invalidChoice))
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.WARNS.invalidChoice))
 			return
 		}
 		if (voteState.code !== 'in-progress') {
-			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, Messages.WARNS.vote.noVoteInProgress))
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.WARNS.noVoteInProgress))
 			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
 			return
 		}
@@ -384,7 +384,7 @@ export const handleVote = Instr.spanOp(
 				await SquadRcon.warn(
 					ctx,
 					msg.playerIds,
-					Messages.WARNS.vote.voteCast(
+					V_Msgs.WARNS.voteCast(
 						choiceLayerId,
 						voteItem?.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
 					),
@@ -429,7 +429,7 @@ export const abortVote = Instr.spanOp(
 				event: 'abort-vote',
 			},
 		}
-		await broadcastVoteUpdate(ctx, newVoteState, Messages.BROADCASTS.vote.aborted)
+		await broadcastVoteUpdate(ctx, newVoteState, V_Msgs.BROADCASTS.aborted)
 		ctx.vote.state = null
 		addReleaseTask(() => ctx.vote.update$.next(update))
 		ctx.vote.voteEndTask?.unsubscribe()
@@ -513,7 +513,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 					const serverState = await SquadServer.getServerState(ctx)
 					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 					if (!voteItem || !LL.isVoteItem(voteItem)) return
-					const msg = Messages.BROADCASTS.vote.voteReminder(
+					const msg = V_Msgs.BROADCASTS.voteReminder(
 						ctx.vote.state,
 						voteItem,
 						timeLeft,
@@ -537,7 +537,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 						const serverState = await SquadServer.getServerState(ctx)
 						const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 						if (!voteItem || !LL.isVoteItem(voteItem)) return
-						const msg = Messages.BROADCASTS.vote.voteReminder(
+						const msg = V_Msgs.BROADCASTS.voteReminder(
 							ctx.vote.state,
 							voteItem,
 							ctx.serverSettings.settings.vote.finalVoteReminder,
@@ -634,17 +634,11 @@ export const endVote = Instr.spanOp(
 			await broadcastVoteUpdate(
 				ctx,
 				endingVoteState,
-				Messages.BROADCASTS.vote.winnerSelected(
-					tally!,
-					listItem,
-					endingVoteState.winnerId,
-					displayProps,
-					opts.reason === 'ended-early',
-				),
+				V_Msgs.BROADCASTS.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early'),
 			)
 		}
 		if (endingVoteState.code === 'ended:insufficient-votes') {
-			await broadcastVoteUpdate(ctx, endingVoteState, Messages.BROADCASTS.vote.insufficientVotes(listItem, displayProps))
+			await broadcastVoteUpdate(ctx, endingVoteState, V_Msgs.BROADCASTS.insufficientVotes(listItem, displayProps))
 		}
 		await SquadServer.emitAppEvent(
 			ctx,
