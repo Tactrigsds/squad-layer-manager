@@ -202,6 +202,31 @@ export namespace Sel {
 	export function selectionIsAllAdmins(s: State) {
 		return allTargetsAreAdmins(selectedPlayerIds(s))(s)
 	}
+
+	// The warnings the queue would raise if it were saved as it stands: repeat-rule violations and pool-filter warnings
+	// on items the user themselves put there. Null means "nothing to warn about", which is also what an unloaded status
+	// set reports, so callers that must not skip a warning wait for current statuses first (see awaitCurrentStatuses).
+	export const queueWarnings = RSel.memoizeFactory((userDiscordId: bigint | undefined) =>
+		RSel.createDeepSelector(
+			[(s: State) => s.layerItemStatuses?.warns, (s: State) => s.queue.isModified, (s: State) => s.queue.rbSession],
+			(warns, isModified, rbSession): LQY.QueueWarning[] | null => {
+				if (!warns || warns.length === 0 || !userDiscordId) return null
+				if (!isModified || !SLL.hasUserMutations(ODSM.Client.localOps(rbSession), rbSession.localState, userDiscordId)) return null
+				return warns
+			},
+		),
+	)
+
+	// the counts and limits the queue header reads
+	export const queueHeader = RSel.createDeepSelector(
+		[(s: State) => s.queue.layerList, (s: State) => s.queue.mutations, (s: State) => s.queue.isModified, settings],
+		(list, mutations, isModified, settings) => ({
+			isModified,
+			mutations,
+			queueLength: list.length,
+			maxQueueSize: settings.queue.maxQueueSize,
+		}),
+	)
 }
 
 // ---------------------------- player selection ----------------------------
@@ -386,19 +411,6 @@ export namespace Actions {
 
 export function statusesAreCurrent(state: State) {
 	return state.layerItemStatusesFor === state.layerItemsState
-}
-
-// The warnings the queue would raise if it were saved as it stands: repeat-rule violations and pool-filter warnings on
-// items the user themselves put there. Null means "nothing to warn about", which is also what an unloaded status set
-// reports, so callers that must not skip a warning wait for current statuses first (see awaitCurrentStatuses).
-export function selectQueueWarnings(state: State, userDiscordId: bigint | undefined): LQY.QueueWarning[] | null {
-	const warns = state.layerItemStatuses?.warns
-	if (!warns || warns.length === 0 || !userDiscordId) return null
-	const modifiedByUser =
-		state.queue.isModified &&
-		SLL.hasUserMutations(ODSM.Client.localOps(state.queue.rbSession), state.queue.rbSession.localState, userDiscordId)
-	if (!modifiedByUser) return null
-	return warns
 }
 
 // Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings

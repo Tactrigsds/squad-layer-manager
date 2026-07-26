@@ -1,5 +1,5 @@
 import { createAppFixture } from '../harness/app-fixture'
-import { LAYERS, queue } from '../harness/arrange'
+import { LAYERS, queue, queueItem, voteQueueItem } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // Editing the queue in the browser: the client applies each edit optimistically as an operation and
@@ -83,6 +83,41 @@ test.describe('editing the queue', () => {
 			await page.goto(app.loginUrl())
 			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
 			await expect(queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' })).toBeVisible()
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	// the vote item's config popover holds a pending config that is only committed by its own Save, so closing
+	// it has to discard what was typed rather than leave it to be picked up the next time it opens
+	test('a vote config is discarded when its popover closes, and kept when saved', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: [voteQueueItem([LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.skorpoRaas]), queueItem(LAYERS.harjuRaas)],
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+
+			const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
+			const voteItem = queuePanel.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Vote' }) })
+			const duration = page.getByLabel('Vote Duration (seconds)')
+
+			await voteItem.getByRole('button', { name: 'Configure vote' }).click()
+			const initialDuration = await duration.inputValue()
+			await duration.fill('91')
+			await page.keyboard.press('Escape')
+			await expect(duration).toBeHidden()
+
+			// reopening reads the item's own config, not the edit that was abandoned
+			await voteItem.getByRole('button', { name: 'Configure vote' }).click()
+			await expect(duration).toHaveValue(initialDuration)
+
+			await duration.fill('92')
+			await page.getByRole('button', { name: 'Save', exact: true }).click()
+			await expect(duration).toBeHidden()
+
+			await voteItem.getByRole('button', { name: 'Configure vote' }).click()
+			await expect(duration).toHaveValue('92')
 		} finally {
 			await app.dispose()
 		}
