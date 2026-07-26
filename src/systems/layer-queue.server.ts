@@ -527,7 +527,7 @@ export async function warnShowNext(
 		// isAdmin = (await ctx.adminList.get(ctx)).admins.has(playerIds.steam)
 	}
 
-	const nextLayerRes = await ctx.server.layersStatus.get(ctx)
+	const nextLayerRes = await ctx.squadRcon.layersStatus.get(ctx)
 	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
 	const commands = Settings.GLOBAL_SETTINGS.commands
 	const showNextMsg = Messages.WARNS.queue.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin })
@@ -559,7 +559,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 			| { reason: 'override'; overrode?: { type: 'player'; playerId: string } | { type: 'rcon' } },
 	) => {
 		if (settings.updatesToSquadServerDisabled) return
-		const currentStatusRes = await ctx.server.layersStatus.get(ctx)
+		const currentStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
 		if (currentStatusRes.code !== 'ok') return currentStatusRes
 		if (currentStatusRes.data.nextLayer && L.areLayersCompatible(currentStatusRes.data.nextLayer.id, nextQueuedLayerId)) return
 		const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)

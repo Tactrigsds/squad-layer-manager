@@ -256,7 +256,7 @@ export const router = {
 			if (denyRes) return denyRes
 			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: ZodUtils.formatHumanTime(input.durationMs) })
 			if (reasonRes.code !== 'ok') return reasonRes
-			const teamsRes = await ctx.server.teams.get(ctx)
+			const teamsRes = await ctx.squadRcon.teams.get(ctx)
 			if (teamsRes.code !== 'ok') return teamsRes
 			const target = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, input.playerId)
 			if (!target) return { code: 'err:player-not-found' as const, msg: 'Player is not on the server' }

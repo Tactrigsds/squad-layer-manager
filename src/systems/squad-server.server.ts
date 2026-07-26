@@ -128,7 +128,7 @@ export type SquadServer = {
 	cleanupId: number | null
 
 	processEventsMtx: MutexInterface
-} & SquadRcon.SquadRcon
+}
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
@@ -245,7 +245,7 @@ export const orpcRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) =>
-				ctx.server.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
+				ctx.squadRcon.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
@@ -365,7 +365,7 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
-		const serverStatusRes = await ctx.server.layersStatus.get(ctx)
+		const serverStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
 		if (serverStatusRes.code !== 'ok') return serverStatusRes
 		await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
 		await emitAppEvent(
@@ -455,7 +455,7 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
-		const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
+		const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 		if (teamsRes.code !== 'ok') return teamsRes
 		const admins = teamsRes.players
 			.filter((p) => {
@@ -759,7 +759,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			fetchLayersStatus: async () => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				const data = await Rx.firstValueFrom(
-					ctx.server.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
+					ctx.squadRcon.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
 						Rx.concatMap((s): SM.LayersStatus[] => (s.code === 'ok' ? [s.data] : [])),
 						Rx.takeUntil(Rx.timer(8_000)),
 					),
@@ -804,12 +804,12 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		emittedAppEvents: [],
 		destroyed: false,
 		cleanupId: null,
-
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
-			cacheTTL: settings.rconCacheTTL,
-			onFatalError: onResourceFatalError,
-		}),
 	}
+
+	const squadRcon = SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
+		cacheTTL: settings.rconCacheTTL,
+		onFatalError: onResourceFatalError,
+	})
 
 	cleanup.push(
 		() => server.postRollEventsSub,
@@ -826,6 +826,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		signal,
 
 		rcon,
+		squadRcon,
 		server,
 
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
@@ -835,6 +836,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			...ctx,
 			serverId,
 			cleanup,
+			rcon,
+			squadRcon,
 			server,
 		}),
 		layerQueue: LayerQueue.initLayerQueueSlice({ ...ctx, cleanup, serverId }, serverState),
@@ -848,7 +851,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	globalState.sliceLifecycleUpdate$.next(serverId)
 
 	// -------- load saved events --------
-	await loadSavedEvents({ ...ctx, server, serverId })
+	await loadSavedEvents({ ...ctx, rcon, squadRcon, server, serverId })
 
 	// // -------- watch events --------
 	server.event$.subscribe(([ctx, event]) => {
@@ -998,7 +1001,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 					let layerStatus: SM.LayersStatusResExt | undefined
 					let layersData: SM.LayersStatusExt | undefined
 					if (connected) {
-						layerStatus = await ctx.server.layersStatus.get({ ...ctx, rcon })
+						layerStatus = await ctx.squadRcon.layersStatus.get({ ...ctx, rcon })
 						if (layerStatus.code !== 'ok') return layerStatus
 						layersData = layerStatus.data
 					}
@@ -1021,7 +1024,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	// -------- process rcon events --------
 	cleanup.push(
-		server.rconEvent$
+		squadRcon.rconEvent$
 			.pipe(
 				Instr.durableSub(
 					'onRconEvent',
@@ -1067,7 +1070,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	)
 
 	cleanup.push(
-		server.teams
+		squadRcon.teams
 			.observe({ ...slice, ...ctx })
 			.pipe(
 				Instr.durableSub('onTeamsPolled', { module, numTaskRetries: 0, levels: { event: 'debug' } }, async (teamsRes, signal) => {
@@ -1319,7 +1322,7 @@ export async function warnPlayers(
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
 // whether they're all admins and whether they're the entire online admin roster
 async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
-	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
+	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
 
 	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
@@ -1617,7 +1620,7 @@ function getLayersStatusExt$(serverId: string) {
 		const ctx = { ...getBaseCtx(), ...globalState.slices.get(serverId)! }
 		const sub = new Rx.Subscription()
 		sub.add(
-			ctx.server.layersStatus.observe(ctx).subscribe({
+			ctx.squadRcon.layersStatus.observe(ctx).subscribe({
 				next: async () => {
 					s.next(await fetchLayersStatusExt(ctx))
 				},
@@ -1641,7 +1644,7 @@ function getLayersStatusExt$(serverId: string) {
 }
 
 async function fetchLayersStatusExt(ctx: C.SquadServer & C.Rcon & C.MatchHistory & CS.AbortSignal) {
-	const statusRes = await ctx.server.layersStatus.get(ctx)
+	const statusRes = await ctx.squadRcon.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
 	return buildServerStatusRes(statusRes.data, await MatchHistory.getCurrentMatch(ctx))
 }

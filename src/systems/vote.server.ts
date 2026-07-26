@@ -239,7 +239,7 @@ export const startVote = Instr.spanOp(
 		ctx: C.Db & C.SquadServer & C.Rcon & C.Vote & C.LayerQueue & C.MatchHistory & C.ServerSettings & CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
-		const statusRes = await ctx.server.layersStatus.get(ctx, { ttl: 10_000 })
+		const statusRes = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 10_000 })
 		if (statusRes.code !== 'ok') {
 			return statusRes
 		}
@@ -604,7 +604,7 @@ export const endVote = Instr.spanOp(
 				...Obj.selectProps(ctx.vote.state, ['choiceIds', 'itemId', 'deadline', 'votes', 'voterType']),
 			}
 		} else {
-			const serverInfoRes = await ctx.server.serverInfo.get(ctx, { ttl: 0 })
+			const serverInfoRes = await ctx.squadRcon.serverInfo.get(ctx, { ttl: 0 })
 			if (serverInfoRes.code !== 'ok') return serverInfoRes
 
 			const serverInfo = serverInfoRes.data

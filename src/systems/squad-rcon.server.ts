@@ -337,7 +337,7 @@ export type WarnOptionsBase = { msg: string | string[] } | string | string[]
 export type WarnOptions = WarnOptionsBase | ((ctx: C.Player) => WarnOptionsBase | undefined)
 
 export async function getPlayer(ctx: C.SquadRcon & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
-	const playersRes = await ctx.server.teams.get(ctx, opts)
+	const playersRes = await ctx.squadRcon.teams.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
 	const player = SM.PlayerIds.find(players, (p) => p.ids, query)
@@ -389,7 +389,10 @@ export const warnAllAdmins = Instr.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
 	async (ctx: C.SquadRcon & CS.AbortSignal, options: WarnOptions, excludeSteamIds?: Set<string>) => {
-		const [currentAdminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
+		const [currentAdminList, teamsRes] = await Promise.all([
+			AdminList.getMergedForServer(ctx, ctx.serverId),
+			ctx.squadRcon.teams.get(ctx),
+		])
 		if (teamsRes.code === 'err:rcon') return
 		const admins: SM.PlayerIds.Schema[] = []
 		for (const player of teamsRes.players) {
@@ -460,8 +463,8 @@ export const setNextLayer = Instr.spanOp(
 		const cmd = L.getLayerCommand(layer, 'set-next')
 		log.info(`Setting next layer: %s, `, cmd)
 		await ctx.rcon.execute(cmd, { level: 'info', signal: ctx.signal })
-		ctx.server.layersStatus.invalidate(ctx)
-		const newStatus = await ctx.server.layersStatus.get(ctx)
+		ctx.squadRcon.layersStatus.invalidate(ctx)
+		const newStatus = await ctx.squadRcon.layersStatus.get(ctx)
 		if (newStatus.code !== 'ok') return newStatus
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
@@ -499,7 +502,7 @@ export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, 
 		ops.push(ctx.rcon.execute(`AdminForceTeamChange ${id}`, { level: 'info', signal: ctx.signal }))
 	}
 	await Promise.all(ops)
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 }
 
 // "Kill" trick: AdminForceTeamChange toggles a player's team and forces a respawn (death), so issuing it
@@ -521,12 +524,12 @@ export async function killPlayers(
 	// hold the teams fetch mutex across the double switch so no poll/refetch observes the player mid-swap
 	// (on the opposite team). We invalidate only after releasing, triggering one fresh fetch of the settled
 	// (back-to-original) state.
-	await ctx.server.teams.fetchMtx.runExclusive(async () => {
+	await ctx.squadRcon.teams.fetchMtx.runExclusive(async () => {
 		await forceSwitch()
 		await Prom.sleep(1000)
 		await forceSwitch()
 	})
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 	await warnAll(ctx, ids, WARNS.kill.notifyKilled(reason))
 }
 
@@ -534,30 +537,30 @@ export async function demoteCommander(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Demoting commander %s`, id)
 	await ctx.rcon.execute(`AdminDemoteCommander ${id}`, { level: 'info', signal: ctx.signal })
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 }
 
 export async function disbandSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
 	log.info(`Disbanding squad %d on team %d`, squadId, teamId)
 	await ctx.rcon.execute(`AdminDisbandSquad ${teamId} ${squadId}`, { level: 'info', signal: ctx.signal })
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 }
 
 export async function kickPlayer(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, reason?: string) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Kicking player %s`, id)
 	await ctx.rcon.execute(`AdminKick "${id}" ${reason ?? ''}`.trim(), { level: 'info', signal: ctx.signal })
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 }
 
 export async function removeFromSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Removing player %s from squad`, id)
 	await ctx.rcon.execute(`AdminRemovePlayerFromSquad ${id}`, { level: 'info', signal: ctx.signal })
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 }
 
 export async function adminRenameSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
 	await ctx.rcon.execute(`AdminRenameSquad ${teamId} ${squadId}`, { level: 'info', signal: ctx.signal })
-	ctx.server.teams.invalidate(ctx)
+	ctx.squadRcon.teams.invalidate(ctx)
 }
