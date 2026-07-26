@@ -40,7 +40,7 @@ export const routes = [
 	defRoute('/login/callback', [], 'custom', { authed: false }),
 	// authed:false so a signed-in but unauthorized user (shown the 403 page) can still log out to switch accounts
 	defRoute('/logout', [], 'custom', { authed: false }),
-	defRoute('/layers.bin', [], 'custom'),
+	defRoute('/layers.bin.gz', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),
 

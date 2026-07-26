@@ -829,9 +829,12 @@ into wasm memory would avoid the one remaining intermediate copy, but sizing the
 gzip's 4-byte `ISIZE` trailer, which is modulo 2^32 and wrong for multi-member streams. Not worth it for a copy
 that now happens once per process.
 
-`hash` (the `/layers.bin` etag) is computed in the same pass, from the on-disk bytes rather than anything the
-engine derives from them, because that artifact is served to clients byte for byte. `layersVersion` still comes
-from resolving the artifact pair rather than from the loaded engine.
+`hash` (the `/layers.bin.gz` etag) is computed in the same pass, from the bytes of the file clients download
+rather than anything the engine derives from them, because that artifact is served byte for byte. Loading and
+serving do not always read the same file: the engine prefers an uncompressed table when one is present, to skip
+the gunzip above, while the endpoint always serves gzip, compressing the table into the temp dir on boot if the
+artifact directory holds no `.gz`. `layersVersion` still comes from resolving the artifact pair rather than from
+the loaded engine.
 
 ### Availability is pooled in the artifact
 
