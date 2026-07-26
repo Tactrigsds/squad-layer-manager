@@ -19,7 +19,7 @@ import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
-import * as Messages from '@/messages'
+import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
@@ -40,7 +40,7 @@ void import('@/components/server-console-window')
 // wrapping toast.promise renders a single error toast instead of double-toasting.
 function permissionDeniedError(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	return new Error(Messages.WARNS.permissionDenied(res))
+	return new Error(RBAC_Msgs.WARNS.permissionDenied(res))
 }
 
 const dropdownMenuSlots: MenuSlots = {

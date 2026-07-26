@@ -5,7 +5,7 @@ import { useStable } from '@/lib/react'
 import * as RSel from '@/lib/reselect'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import * as Messages from '@/messages'
+import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import type { PublicSettings } from '@/systems/settings.server'
@@ -13,7 +13,7 @@ import * as UsersClient from '@/systems/users.client'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	toast.error(Messages.WARNS.permissionDenied(res))
+	toast.error(RBAC_Msgs.WARNS.permissionDenied(res))
 }
 
 export function usePermsCheck<T extends RBAC.PermissionType>(
