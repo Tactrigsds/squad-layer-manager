@@ -29,6 +29,7 @@ import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models'
+import type * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as C from '@/server/context'
 import * as DB from '@/server/db.ts'
@@ -65,7 +66,7 @@ export type LayerQueueSlice = {
 type SideEffectCtx = C.Db &
 	C.LayerQueue &
 	C.SquadServer &
-	C.Vote &
+	V.Ctx &
 	C.MatchHistory &
 	C.Rcon &
 	C.ServerSettings &
@@ -392,7 +393,7 @@ export function getSavedQueue(ctx: C.LayerQueue) {
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & C.Vote & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
+	ctx: C.Db & C.LayerQueue & C.SquadServer & V.Ctx & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
 	list: LL.List,
 	// the list this save replaces. Every next-layer change reaches the server through here -- an SLM edit, a roll, or
 	// adopting a layer someone set outside SLM -- so comparing the two heads is what tells admins the layer moved.

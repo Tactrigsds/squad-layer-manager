@@ -7,17 +7,16 @@ import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/a
 import type * as Cleanup from '@/lib/cleanup.ts'
 import type RconCore from '@/lib/rcon/core-rcon.ts'
 import type * as CS from '@/models/context-shared.ts'
+import type * as MEC from '@/models/match-events-cache.models'
 import type * as SS from '@/models/server-state.models'
+import type * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models.ts'
+import type * as V from '@/models/vote.models'
 import type * as LayerQueueSys from '@/systems/layer-queue.server'
-import type * as MatchEventsCacheSys from '@/systems/match-events-cache.server'
 import type * as MatchHistorySys from '@/systems/match-history.server'
 import type * as SettingsSys from '@/systems/settings.server'
 import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
-import type * as TeamswapSys from '@/systems/teamswaps.server'
-import type * as UserPresenceSys from '@/systems/user-presence.server'
-import type * as VoteSys from '@/systems/vote.server'
 
 import type * as DB from './db.ts'
 
@@ -96,10 +95,6 @@ export type Rcon = CS.Ctx & {
 
 export type SquadRcon = CS.Ctx & { squadRcon: SquadRconSys.SquadRcon } & Rcon & SS.Ctx
 
-export type Vote = CS.Ctx & {
-	vote: VoteSys.VoteContext
-} & SS.Ctx
-
 export type LayerQueue = CS.Ctx & {
 	layerQueue: LayerQueueSys.LayerQueueSlice
 } & SS.Ctx
@@ -108,17 +103,7 @@ export type MatchHistory = CS.Ctx & {
 	matchHistory: MatchHistorySys.MatchHistoryContext
 } & SS.Ctx
 
-export type MatchEventsCache = CS.Ctx & {
-	matchEventsCache: MatchEventsCacheSys.MatchEventsCacheContext
-} & SS.Ctx
-
 export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & SquadRcon
-
-export type Teamswap = CS.Ctx & {
-	teamswaps: TeamswapSys.TeamswapContext
-} & SS.Ctx
-
-export type UserPresence = CS.Ctx & UserPresenceSys.UserPresenceContext
 
 export type ServerSettings = CS.Ctx & {
 	serverSettings: SettingsSys.ServerSettingsSlice
@@ -129,11 +114,11 @@ export type ServerSliceCleanup = CS.Ctx & {
 }
 export type ServerSlice = CS.Ctx &
 	SquadServer &
-	Vote &
+	V.Ctx &
 	LayerQueue &
 	MatchHistory &
-	MatchEventsCache &
-	Teamswap &
+	MEC.Ctx &
+	TSW.Ctx &
 	ServerSettings &
 	ServerSliceCleanup &
 	// aborts when the slice is destroyed or the process shuts down
