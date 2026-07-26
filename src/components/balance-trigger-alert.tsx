@@ -22,7 +22,7 @@ export default function BalanceTriggerAlert(props: {
 				<AlertIcon className="h-4 w-4 mr-2" />
 				{trigger.name}
 			</AlertTitle>
-			<AlertDescription>{BAL_Msgs.GENERAL.showEvent(props.event, props.referenceMatch, false)}</AlertDescription>
+			<AlertDescription>{BAL_Msgs.showEvent(props.event, props.referenceMatch).react()}</AlertDescription>
 		</Alert>
 	)
 }
