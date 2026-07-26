@@ -168,6 +168,54 @@ test.describe('layer requests panel', () => {
 		}
 	})
 
+	test('the request dialog is seeded from the request being edited, and applies the change', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.gorodokRaas),
+			backburner: [
+				{
+					itemId: 'req-fallujah',
+					filter: FB.and([FB.eq('Map', 'Fallujah')]),
+					source: { discordId: ADMIN_USER.discordId },
+					createdAt: 1000,
+				},
+				{
+					itemId: 'req-narva',
+					filter: FB.and([FB.eq('Map', 'Narva')]),
+					source: { discordId: ADMIN_USER.discordId },
+					createdAt: 2000,
+				},
+			],
+			serverSettings: (s) => {
+				s.queue.mainPool.repeatRules = []
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			const panel = page.getByRole('tabpanel', { name: /^Queue/ })
+			await expect(panel.getByText('Layer Requests (2)')).toBeVisible({ timeout: 20_000 })
+
+			await panel.getByRole('listitem').filter({ hasText: 'Fallujah' }).getByRole('button', { name: 'Edit request' }).click()
+			const dialog = page.getByRole('dialog', { name: 'Edit layer request' })
+			const mapField = dialog.getByRole('combobox', { name: 'Map' })
+			// the form is built from the request whose pencil was clicked
+			await expect(mapField).toHaveText('Fallujah', { timeout: 10_000 })
+
+			await mapField.click()
+			await page.getByRole('option', { name: 'Sumari', exact: true }).click()
+			await expect(mapField).toHaveText('Sumari')
+			await dialog.getByRole('button', { name: 'Apply' }).click()
+
+			await expect(panel.getByRole('listitem').filter({ hasText: 'Sumari' })).toHaveCount(1)
+			await expect(panel.getByRole('listitem').filter({ hasText: 'Fallujah' })).toHaveCount(0)
+
+			// the next request opens on its own template rather than on the one the dialog last held
+			await panel.getByRole('listitem').filter({ hasText: 'Narva' }).getByRole('button', { name: 'Edit request' }).click()
+			await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Narva', { timeout: 10_000 })
+		} finally {
+			await app.dispose()
+		}
+	})
+
 	test('dragging a queue item onto the requests panel moves it into a request', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas),

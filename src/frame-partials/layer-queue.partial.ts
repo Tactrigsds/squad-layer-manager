@@ -10,6 +10,7 @@ import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as UP from '@/models/user-presence'
+import * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -257,6 +258,40 @@ export namespace Sel {
 			}
 		}),
 	)
+	export type ItemDisplay = ItemState & {
+		parentItem: LL.VoteItem | undefined
+		displayedMutation: ReturnType<typeof ItemMut.getDisplayedMutation>
+	}
+
+	// everything a queue row renders about itself: structural position, the vote item it belongs to, and the
+	// mutation it displays as
+	export const itemDisplay = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector(
+			[itemEntry(itemId), itemState(itemId)],
+			(entry, state): ItemDisplay => ({
+				...state,
+				parentItem: entry?.parentItem,
+				displayedMutation: ItemMut.getDisplayedMutation(state.mutationState),
+			}),
+		),
+	)
+
+	// whether a vote on this item could be started right now, given who may vote and what else is going on.
+	// memoized per argument set, so the row can subscribe to it directly
+	export const canInitiateVote = RSel.memoizeFactory(
+		(itemId: string, voterType: V.VoterType, voteState: Pick<V.VoteState | V.EndingVoteState, 'code'> | undefined, isModified: boolean) =>
+			RSel.createDeepSelector([layerList], (list) => V.canInitiateVote(itemId, list, voterType, voteState, isModified)),
+	)
+
+	// the parts of a vote item its config popover edits
+	export const voteItemConfig = RSel.memoizeFactory((itemId: string) =>
+		RSel.createDeepSelector([itemEntry(itemId)], (entry) => {
+			const item = entry?.item
+			if (!item || !LL.isVoteItem(item)) return undefined
+			return { voteConfig: item.voteConfig, choices: item.choices.map((choice) => choice.layerId) }
+		}),
+	)
+
 	export function mutations(store: Store) {
 		return store.queue.mutations
 	}
@@ -287,6 +322,9 @@ export namespace Sel {
 			[backburnerMutations],
 			(mutations): ItemMut.ItemMutationState => ItemMut.toItemMutationState(mutations, itemId),
 		),
+	)
+	export const backburnerItemDisplayedMutation = RSel.memoizeFactory((itemId: string) =>
+		RSel.createSelector([backburnerItemMutation(itemId)], ItemMut.getDisplayedMutation),
 	)
 }
 
