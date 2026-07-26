@@ -811,6 +811,29 @@ that now happens once per process.
 engine derives from them, because that artifact is served to clients byte for byte. `layersVersion` still comes
 from resolving the artifact pair rather than from the loaded engine.
 
+### Availability is pooled in the artifact
+
+`layerFactionAvailability` answers "which faction/unit pairs can play this layer, on which team". Written out
+per layer it is 14,893 entries across 254 layers, of which **273 entries and 55 per-layer lists are distinct**:
+a layer's availability is really a property of its map/gamemode family, and the RAAS/FRAAS pass duplicates it
+again on top of that.
+
+So `layer-data.json` persists three things instead: the distinct `entries`, the distinct `lists` as arrays of
+entry indices, and `byLayer` mapping each layer to a list index. `LC.toBaseLayerComponents` pools on the way
+out and `LC.buildFullLayerComponents` expands on the way back in, which are the two functions that already
+convert between the persisted and in-memory shapes. Consumers see the same
+`Record<string, LayerFactionAvailabilityEntry[]>` they always did.
+
+It is worth 5.99MB -> 2.25MB on disk (which every client downloads) and 2.84MB -> 0.18MB in memory. The memory
+side comes from the sharing rather than the indices: expansion hands every layer in a family the same frozen
+array. They are frozen because they are shared, and nothing mutates them at runtime -- only `preprocess.ts`
+builds availability, and it builds rather than reads.
+
+`expandLayerFactionAvailability` passes an already-expanded map through untouched, which is not just for old
+files: `preprocess` builds the expanded form from the csv and hands it straight to
+`buildFullLayerComponents`. It also means a deployment can still mount an artifact written before the pool
+existed, which [the pair resolver](#the-layer-engine-rustwasm) explicitly supports.
+
 ## Out-of-process pieces
 
 **The server agent** (`server-agent/agent`, Rust) runs on the game host. It tails
