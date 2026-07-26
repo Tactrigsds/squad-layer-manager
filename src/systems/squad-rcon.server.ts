@@ -515,7 +515,7 @@ export async function killPlayers(
 		await forceSwitch()
 	})
 	ctx.squadRcon.teams.invalidate(ctx)
-	await warnAll(ctx, ids, SM_Msgs.WARNS.notifyKilled(reason))
+	await warnAll(ctx, ids, SM_Msgs.notifyKilled(reason).warn())
 }
 
 export async function demoteCommander(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
