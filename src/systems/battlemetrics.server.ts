@@ -634,7 +634,7 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 					async ([eventCtx, event], signal) => {
 						if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
 						const playerIds = event.player.ids
-						const sliceCtx = SquadServer.resolveSliceCtx({ ...eventCtx, signal }, serverId)
+						const sliceCtx = SquadServer.eventSliceCtx(eventCtx, signal)
 						await fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
 							log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
 						})

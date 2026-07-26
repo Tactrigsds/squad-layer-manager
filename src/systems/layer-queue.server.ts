@@ -28,6 +28,7 @@ import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SR from '@/models/squad-rcon.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
@@ -53,15 +54,7 @@ import * as VoteSys from '@/systems/vote.server'
 
 // ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
 // roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
-type SideEffectCtx = C.Db &
-	LQ.Ctx &
-	C.SquadServer &
-	V.Ctx &
-	MH.Ctx &
-	SR.Ctx.Rcon &
-	SETTINGS.Ctx &
-	CS.AbortSignal &
-	Partial<Pick<C.Tx, 'tx'>>
+type SideEffectCtx = C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Partial<Pick<C.Tx, 'tx'>>
 
 const module = initModule('layer-queue')
 let log!: CS.Logger
@@ -96,7 +89,7 @@ export const setupInstance = Instr.spanOp(
 		// populates list with generated queue item if the list is empty
 		await dispatchOp(ctx, { op: 'init', opId: SLL.createOpId() })
 
-		ctx.layerQueue.update$.subscribe(([state, ctx]) => {
+		ctx.layerQueue.update$.subscribe(() => {
 			log.debug('pushing server state update')
 		})
 
@@ -212,9 +205,9 @@ export const setupInstance = Instr.spanOp(
 					Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
 					Instr.durableSub(
 						'sync-server-map-set',
-						{ module, mutexes: ([ctx]) => ctx.layerQueue.updateLayerMtx },
-						async ([_ctx, event], signal) => {
-							const ctx = { ..._ctx, signal }
+						{ module, mutexes: ([evt]) => SquadServer.requireSlice(evt.serverId).layerQueue.updateLayerMtx },
+						async ([evtCtx, event], signal) => {
+							const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
 							// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
 							// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
 							// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
@@ -262,8 +255,8 @@ export const setupInstance = Instr.spanOp(
 			ctx.server.event$
 				.pipe(
 					Rx.filter(([ctx, event]) => event.type === 'ROUND_ENDED' && event.action?.type === 'AdminChangeLayer'),
-					Instr.durableSub('syncAdminChangeLayer', { module }, async ([_ctx, event], signal) => {
-						const ctx = { ..._ctx, signal }
+					Instr.durableSub('syncAdminChangeLayer', { module }, async ([evtCtx, event], signal) => {
+						const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
 						if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
 						const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
 							event.action.source.type === 'player'
@@ -306,7 +299,7 @@ export const setupInstance = Instr.spanOp(
 	},
 )
 
-export function schedulePostRollTasks(ctx: C.SquadServer & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
+export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
 	// -------- schedule post-roll events --------
@@ -383,7 +376,7 @@ export function getSavedQueue(ctx: LQ.Ctx) {
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & LQ.Ctx & C.SquadServer & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
+	ctx: C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
 	list: LL.List,
 	// the list this save replaces. Every next-layer change reaches the server through here -- an SLM edit, a roll, or
 	// adopting a layer someone set outside SLM -- so comparing the two heads is what tells admins the layer moved.
@@ -499,7 +492,7 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 )
 
 export async function warnShowNext(
-	ctx: C.Db & C.SquadServer & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { updated?: boolean },
 ) {
@@ -539,7 +532,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 	'syncNextLayerToServer',
 	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
 	async (
-		ctx: C.SquadServer & SR.Ctx.Rcon & LQ.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
+		ctx: SQS.Ctx & SR.Ctx.Rcon & LQ.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 		settings: SETTINGS.ServerSettings,
 		nextQueuedLayerId: L.LayerId,
 		itemId: string,
@@ -611,7 +604,7 @@ export async function toggleUpdatesToSquadServer({
 	ctx,
 	input,
 }: {
-	ctx: C.Db & C.SquadServer & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
+	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
 	input: { disabled: boolean }
 }) {
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
@@ -627,13 +620,13 @@ export async function toggleUpdatesToSquadServer({
 	return { code: 'ok' as const }
 }
 
-export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & C.SquadServer & LQ.Ctx) {
+export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS.Ctx & LQ.Ctx) {
 	const serverState = await SquadServer.getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
 
 export async function requestFeedback(
-	ctx: C.Db & C.SquadServer & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
