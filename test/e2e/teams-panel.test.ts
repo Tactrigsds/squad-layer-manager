@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { makePlayer } from '@/emulator'
 
 import type { AppFixture } from '../harness/app-fixture'
-import { expect, test } from './fixtures'
+import { expect, sharedAppTest as test } from './fixtures'
 
 // The panel's filter bar (search, admins-only, spoilers, the role/group/squad filters and both sort states)
 // lives on the squad-server frame rather than in component state. What that has to preserve: filters and
