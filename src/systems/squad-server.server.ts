@@ -14,7 +14,7 @@ import * as Cleanup from '@/lib/cleanup'
 import { superjsonify } from '@/lib/drizzle'
 import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator-utils'
-import { IsolatedSubject } from '@/lib/isolated-subject'
+import { IsolatedSubject, TracedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
 import Rcon, { DirectSocketTransport } from '@/lib/rcon/core-rcon'
@@ -767,8 +767,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 		tickRate$: new Rx.BehaviorSubject(null as number | null),
 
-		event$: new IsolatedSubject(),
-		appEvent$: new IsolatedSubject(),
+		event$: new TracedSubject({ ...CS.init(), serverId }),
+		appEvent$: new TracedSubject({ ...CS.init(), serverId }),
 		processEventsMtx: new Mutex(),
 
 		eventState: eventState,
@@ -789,8 +789,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		() => server.postRollEventsSub,
 		server.serverRolling$,
 		server.tickRate$,
-		server.event$,
-		server.appEvent$,
+		// TracedSubject is an Observable rather than a Subject, so cleanup would subscribe and wait on
+		// it forever instead of completing it
+		() => server.event$.complete(),
+		() => server.appEvent$.complete(),
 		server.processEventsMtx,
 	)
 
@@ -1094,7 +1096,7 @@ export async function pushAttribution(ctx: SQS.Ctx & C.Db & CS.AbortSignal, attr
 export async function emitAppEvent(ctx: SQS.Ctx & C.Db & CS.AbortSignal, appEvent: AppEvents.AppEvent) {
 	await AppEventsSys.persistAppEvent(ctx, appEvent)
 	ctx.server.emittedAppEvents.push(appEvent)
-	ctx.server.appEvent$.next([eventCtx(ctx), appEvent])
+	ctx.server.appEvent$.emit(appEvent)
 }
 
 // resolves a preset admin-action reason against the current global settings. handlers call this before executing
@@ -1586,7 +1588,7 @@ async function collectEvents(ctx: SQS.Ctx & C.Db & CS.AbortSignal, addEventsCb: 
 			[ATTRS.SquadServer.ID]: ctx.serverId,
 			[ATTRS.ServerEvent.TYPE]: event.type,
 		})
-		ctx.server.event$.next([eventCtx(ctx), event])
+		ctx.server.event$.emit(event)
 	}
 }
 
@@ -1694,12 +1696,6 @@ function withSliceSignal<T extends object>(ctx: T, slice: C.ServerSlice) {
 // throws when the slice is missing. Only for callers running inside the slice's own lifecycle (setup loops, timers,
 // event handlers), where a missing slice is a bug rather than a state the caller has to render. oRPC handlers should
 // use trySliceCtx / sliceStream$ instead, so the client gets a code it can act on.
-// What rides on an event: the link back to the span that produced it, and the server it belongs to.
-// Deliberately not the slice -- see eventSliceCtx for the other half.
-function eventCtx(ctx: CS.ServerId): CS.Otel & CS.ServerId {
-	return Instr.storeLinkToActiveSpan({ ...CS.init(), serverId: ctx.serverId }, 'event.emitter')
-}
-
 /** the live slice, for the rare caller that needs one field off it rather than a ctx */
 export function requireSlice(serverId: string): C.ServerSlice {
 	const slice = globalState.slices.get(serverId)

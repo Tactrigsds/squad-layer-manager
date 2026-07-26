@@ -1,8 +1,9 @@
-import type * as OtelApi from '@opentelemetry/api'
+import * as OtelApi from '@opentelemetry/api'
 import type pino from 'pino'
 
 import * as CD from '@/lib/ctx-def'
 import * as Prom from '@/lib/promise-utils'
+import * as ATTR from '@/models/otel-attrs'
 
 export { CtxSymbol, init, isCtx } from '@/lib/ctx-def'
 export type Ctx = CD.Ctx
@@ -26,6 +27,24 @@ export type Otel = Ctx & {
 	}
 }
 export const OtelDef = CD.defCtx<Otel>()(['otel'], { name: 'otel' })
+
+/**
+ * Stamp a ctx with a LINK to the currently active span, overwriting any stored link.
+ *
+ * A link, deliberately, not a parent: the consumer opens its own root trace and points back at the
+ * cause. Restoring the emitter's context instead would make every downstream handler a child of
+ * whatever request triggered it, so one request's trace would grow without bound.
+ */
+export function linkToActiveSpan(type: ATTR.SpanLink.SourceType): OtelApi.Link | undefined {
+	const activeSpan = OtelApi.trace.getActiveSpan()
+	if (!activeSpan) return
+	return { context: activeSpan.spanContext(), attributes: { [ATTR.SpanLink.SOURCE]: type } }
+}
+
+export function storeLinkToActiveSpan<T extends Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & Otel {
+	const link = linkToActiveSpan(type)
+	return { ...ctx, otel: { links: link ? [link] : [] } }
+}
 
 export type Logger = pino.Logger
 

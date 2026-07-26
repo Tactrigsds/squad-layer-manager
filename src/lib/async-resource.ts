@@ -1,7 +1,7 @@
 import * as Otel from '@opentelemetry/api'
 import { Mutex, type MutexInterface } from 'async-mutex'
 
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as LOG from '@/models/logs'
 import type * as C from '@/server/context.ts'
 import * as Instr from '@/server/instrumentation'
@@ -83,7 +83,7 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		this.setupRefetches = (_ctx: Ctx) => {
 			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
-				const ctx = Instr.storeLinkToActiveSpan(_ctx, 'event.setup')
+				const ctx = CS.storeLinkToActiveSpan(_ctx, 'event.setup')
 				void (async () => {
 					while (refetching) {
 						const shouldBreak = await Instr.spanOp(
