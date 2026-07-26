@@ -23,6 +23,7 @@ import * as ATTRS from '@/models/otel-attrs'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SR from '@/models/squad-rcon.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models.ts'
@@ -152,7 +153,7 @@ export function initVoteContext(cleanup: Cleanup.Tasks) {
 export const syncVoteStateWithQueueState = Instr.spanOp(
 	'syncVoteStateWithQueueState',
 	{ module, mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: C.SquadServer & V.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal, queue: LL.List) => {
+	async (ctx: SQS.Ctx & V.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal, queue: LL.List) => {
 		const serverId = ctx.serverId
 		let newVoteState: V.VoteState | undefined | null
 
@@ -232,7 +233,7 @@ export const startVote = Instr.spanOp(
 		mutexes: (ctx) => ctx.vote.mtx,
 	},
 	async (
-		ctx: C.Db & C.SquadServer & SR.Ctx.Rcon & V.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+		ctx: C.Db & SQS.Ctx & SR.Ctx.Rcon & V.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		const statusRes = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 10_000 })
@@ -336,10 +337,7 @@ export const handleVote = Instr.spanOp(
 		module,
 		attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
 	},
-	(
-		ctx: C.Db & C.SquadServer & V.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & CS.Deferred,
-		msg: SM.RconEvents.ChatMessage,
-	) => {
+	(ctx: C.Db & SQS.Ctx & V.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & CS.Deferred, msg: SM.RconEvents.ChatMessage) => {
 		//
 		const choiceIdx = parseInt(msg.message.trim())
 		const voteState = ctx.vote.state
@@ -406,7 +404,7 @@ export const abortVote = Instr.spanOp(
 		mutexes: (ctx) => ctx.vote.mtx,
 	},
 	async (
-		ctx: C.Db & SR.Ctx.Rcon & C.SquadServer & MH.Ctx & V.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+		ctx: C.Db & SR.Ctx.Rcon & SQS.Ctx & MH.Ctx & V.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -488,7 +486,7 @@ export const cancelVoteAutostart = Instr.spanOp(
 	},
 )
 
-function registerVoteDeadlineAndReminder$(ctx: C.Db & C.SquadServer & V.Ctx & SETTINGS.Ctx) {
+function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS.Ctx) {
 	const serverId = ctx.serverId
 	ctx.vote.voteEndTask?.unsubscribe()
 
@@ -579,7 +577,7 @@ export const endVote = Instr.spanOp(
 		}),
 	},
 	async (
-		ctx: C.Db & C.SquadServer & V.Ctx & LQ.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
+		ctx: C.Db & SQS.Ctx & V.Ctx & LQ.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
 		opts: { reason: 'vote-timeout' } | { reason: 'ended-early'; endedBy: USR.GuiOrChatUserId },
 	) => {
 		if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -672,7 +670,7 @@ export const endVote = Instr.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: C.SquadServer & V.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
+	ctx: SQS.Ctx & V.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean },
