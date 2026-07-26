@@ -31,26 +31,6 @@ const CONTEXT_ATTR_MAPPING = [
 	},
 ] as const
 
-// overrwrites other stored links
-export function storeLinkToActiveSpan<T extends CS.Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & CS.Otel {
-	const link = buildSourceLinkToActiveSpan(type)
-	return {
-		...ctx,
-		otel: {
-			links: link ? [link] : [],
-		},
-	}
-}
-
-function buildSourceLinkToActiveSpan(type: ATTR.SpanLink.SourceType): Otel.Link | undefined {
-	const activeSpan = Otel.trace.getActiveSpan()
-	if (!activeSpan) return
-	return {
-		context: activeSpan.spanContext(),
-		attributes: { [ATTR.SpanLink.SOURCE]: type },
-	}
-}
-
 function flushOtelLinksInPlace(ctx: CS.Otel) {
 	const links = ctx.otel.links
 	ctx.otel.links = []
