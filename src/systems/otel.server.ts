@@ -22,6 +22,11 @@ const getCollectorEndpoint = (path: string) => {
 	return `${baseUrl}${path}`
 }
 
+// Resolved here rather than as a schema default, because NODE_ENV usually arrives via .env and so is not
+// readable at the time the env schema is built.
+const PRODUCTION_TRACE_SAMPLE_RATIO = 0.25
+const traceSampleRatio = () => ENV.OTEL_TRACE_SAMPLE_RATIO ?? (ENV.NODE_ENV === 'production' ? PRODUCTION_TRACE_SAMPLE_RATIO : 1)
+
 export let sdk!: NodeSDK
 
 // a unique id for this SLM process (otel's service.instance.id). exported so app events can record which instance
@@ -57,7 +62,7 @@ export function setupOtel() {
 		// ParentBased so a sampled parent (e.g. an inbound traced request) keeps its whole subtree; the
 		// ratio only applies to traces we root ourselves.
 		sampler: new tracing.ParentBasedSampler({
-			root: new tracing.TraceIdRatioBasedSampler(ENV.OTEL_TRACE_SAMPLE_RATIO),
+			root: new tracing.TraceIdRatioBasedSampler(traceSampleRatio()),
 		}),
 		traceExporter: traceExporter,
 		spanProcessor: new tracing.BatchSpanProcessor(traceExporter),

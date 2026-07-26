@@ -40,6 +40,12 @@ then re-applying the deltas in the table below. Diff it against what is here bef
 
 Traces are kept **3 days**, logs **2 weeks**.
 
+Traces are also head-sampled. `OTEL_TRACE_SAMPLE_RATIO` unset means everything outside production and a
+quarter of root traces in it; set it to 1 there when you need full fidelity for a while. The ratio is
+worth having because most of the volume is not interesting: of ~4M spans over 14 days, the rcon execute,
+event-insert and roster-poll paths alone were about 40%, and they look the same every time. Sampling is
+`ParentBased`, so a trace is kept or dropped whole rather than arriving with holes in it.
+
 Traces are the highest-volume signal (one span per `C.spanOp`, plus auto-instrumented http/rcon/dns
 spans underneath each), so they get the shortest window. That's affordable because the RED metrics
 derived from them live in Prometheus and outlive them: you can still ask "when did `dispatchOp` start
@@ -72,6 +78,11 @@ opt-in, enabled when you have a question to chase rather than left running by de
 in `src/systems/pyroscope.server.ts` and pushes CPU/wall continuously, plus allocations and in-use heap
 while `PYROSCOPE_HEAP_ENABLED` is on. Heap sampling is the half whose cost scales with allocation rate,
 which is why it is separately switchable: turning it off leaves the flatter-cost CPU profiles.
+
+It is not cheap. Prod ran with it on for 16 hours on 2026-07-23/24, across five deploys, and event loop
+utilization sat at 23-44% for the whole window against a 0.4-1.0% baseline either side of it: roughly a
+third of a core, some 30x what the app otherwise uses. That is affordable for an afternoon of chasing a
+question and not affordable as a standing cost, which is why it is opt-in rather than merely tunable.
 
 Heap sampling is worth turning off even when you do enable profiling, because its cost is not only CPU:
 the sampler's tables are native allocations in the main malloc arena, which glibc does not give back.
