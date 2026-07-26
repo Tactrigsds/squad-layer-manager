@@ -56,20 +56,28 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	return (
 		<div className={cn('flex min-h-0 flex-col rounded-md border', className)}>
 			<div className="flex items-center gap-1 border-b px-1 py-1">
-				{ConsoleFrame.TABS.map((t) => (
-					<Button
-						key={t}
-						type="button"
-						size="sm"
-						variant={t === tab ? 'secondary' : 'ghost'}
-						className="h-6 px-2 text-xs"
-						onClick={() => ConsoleFrame.Actions.setTab(stores, t)}
-					>
-						{TAB_LABEL[t]}
-					</Button>
-				))}
+				<div role="tablist" aria-label="Console channel" className="flex items-center gap-1">
+					{ConsoleFrame.TABS.map((t) => (
+						<Button
+							key={t}
+							type="button"
+							role="tab"
+							aria-selected={t === tab}
+							size="sm"
+							variant={t === tab ? 'secondary' : 'ghost'}
+							className="h-6 px-2 text-xs"
+							onClick={() => ConsoleFrame.Actions.setTab(stores, t)}
+						>
+							{TAB_LABEL[t]}
+						</Button>
+					))}
+				</div>
 				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-					<Checkbox checked={hideNoise} onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)} />
+					<Checkbox
+						checked={hideNoise}
+						aria-label="Hide noise"
+						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)}
+					/>
 					Hide noise
 					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
 				</label>
@@ -84,7 +92,12 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					<Icons.Eraser className="h-3.5 w-3.5" />
 				</Button>
 			</div>
-			<div ref={scrollRef} className="min-h-0 grow overflow-y-auto bg-muted/30 p-1.5">
+			<div
+				ref={scrollRef}
+				role="tabpanel"
+				aria-label={`${TAB_LABEL[tab]} console output`}
+				className="min-h-0 grow overflow-y-auto bg-muted/30 p-1.5"
+			>
 				{events.length === 0 ? (
 					<p className="text-xs text-muted-foreground">Nothing yet.</p>
 				) : (
