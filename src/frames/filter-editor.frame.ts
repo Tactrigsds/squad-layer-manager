@@ -46,8 +46,6 @@ export type CreateHint = {
 }
 
 type FilterEditorBase = {
-	sub: Rx.Subscription
-
 	editedFilterId?: string
 	savedFilter: F.EditableFilterNode
 	tree: F.FilterNodeTree
@@ -87,8 +85,6 @@ const setup: Frame['setup'] = (args) => {
 	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.and()
 
 	set({
-		sub: new Rx.Subscription(),
-
 		errors: [],
 		setErrors: (errors) => set({ errors }),
 
@@ -125,7 +121,7 @@ const setup: Frame['setup'] = (args) => {
 				validate(state)
 			}
 		})
-	get().sub.add(validateSub)
+	args.cleanup.push(validateSub)
 
 	LayerTablePrt.initLayerTable(args)
 }

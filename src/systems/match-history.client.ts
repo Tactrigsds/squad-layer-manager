@@ -1,3 +1,4 @@
+import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import type * as MH from '@/models/match-history.models'
@@ -37,12 +38,12 @@ export async function resolveInitializedRecentMatches(serverId: string) {
 	return recentMatches
 }
 
-export function watchServer(serverId: string, sub: Rx.Subscription) {
-	sub.add(
+export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
+	cleanup.push(
 		matchHistoryState$(serverId).subscribe(() => {
 			setInitialized(true)
 		}),
 	)
-	sub.add(initializedRecentMatches$(serverId).pipe(ReactRx.retryHot()).subscribe())
-	sub.add(currentMatch$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	cleanup.push(initializedRecentMatches$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	cleanup.push(currentMatch$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }

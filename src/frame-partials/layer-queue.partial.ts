@@ -147,7 +147,7 @@ export function initLayerQueue(args: Args) {
 		},
 	} satisfies State)
 
-	args.sub.add(
+	args.cleanup.push(
 		args.update$.subscribe(([state, prev]) => {
 			const queue = state.queue
 			const localState = queue.rbSession.localState
@@ -169,7 +169,7 @@ export function initLayerQueue(args: Args) {
 		}),
 	)
 
-	args.sub.add(
+	args.cleanup.push(
 		RPC.observe('layerQueue.watchOps', () => RPC.orpc.layerQueue.watchOps.call({ serverId }))
 			.pipe(RPC.dropServerNotLoaded())
 			.subscribe((update) => {

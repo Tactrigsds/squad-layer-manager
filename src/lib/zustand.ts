@@ -373,10 +373,6 @@ export function usePartialStore<T extends NonNullable<object>, K extends keyof T
 export type UnsubscribeFn = () => void
 export type SubArg = UnsubscribeFn | Rx.Subscription
 
-export function toRxSub(unsub: UnsubscribeFn) {
-	return Rx.NEVER.pipe(Rx.tap({ unsubscribe: unsub })).subscribe()
-}
-
 export const useShallow = useShallowImported
 export function useDeep<S, U>(selector: (state: S) => U): (state: S) => U {
 	const prev = React.useRef<U | undefined>(void 0)

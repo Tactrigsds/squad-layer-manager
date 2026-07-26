@@ -179,7 +179,7 @@ export function initTeamswaps(args: Args) {
 		},
 	} satisfies TeamswapSlice)
 
-	args.sub.add(
+	args.cleanup.push(
 		RPC.observe('teamswaps.watchUpdates', () => RPC.orpc.teamswaps.watchUpdates.call({ serverId }))
 			.pipe(RPC.dropServerNotLoaded())
 			.subscribe((update) => {
