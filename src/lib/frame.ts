@@ -4,7 +4,9 @@ import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
 import * as ReactUtils from '@/lib/react'
 import * as Zus from '@/lib/zustand'
+import type * as CS from '@/models/context-shared'
 
+import * as Cleanup from './cleanup'
 import * as Rx from './rxjs'
 
 type FrameId = symbol
@@ -61,7 +63,10 @@ export type SetupArgs<
 	set: Zus.Setter<State>
 	//                      current,  prev
 	update$: Rx.Observable<[Readable, Readable]>
-	sub: Rx.Subscription
+	// teardown tasks, run FILO. takes subscriptions, subjects, abort controllers and plain thunks directly
+	cleanup: Cleanup.Tasks
+	// aborted before cleanup runs. guard setup work that resumes after an await with `if (args.signal.aborted) return`
+	signal: AbortSignal
 }
 
 export type Frame<T extends FrameTypes> = {
@@ -92,7 +97,8 @@ type FrameInstance = {
 	get: Zus.Getter<FrameTypes['state']>
 	set: Zus.Setter<FrameTypes>
 	update$: Rx.Subject<any>
-	sub: Rx.Subscription
+	cleanup: Cleanup.Tasks
+	abort: AbortController
 	input: FrameTypes['input']
 	lastUsed: number
 }
@@ -100,6 +106,8 @@ type FrameInstance = {
 type DirectInstanceKey = RawInstanceKey
 
 export class FrameManager {
+	constructor(private ctx: CS.Log) {}
+
 	// there may be multiple keys for the same instance<. the inner key is always a "direct" unexposted reference
 	private keys = new WeakMap<RawInstanceKey, DirectInstanceKey>()
 	// only  direct instance keys in here
@@ -110,6 +118,14 @@ export class FrameManager {
 		this.cleanupReference(directKey)
 	})
 
+	// aborts first so setup work waiting on an await bails before the tasks it would touch are torn down, then runs
+	// the tasks FILO. runCleanup is async and logs per-task failures itself, so nothing here waits on it
+	private dispose(instance: FrameInstance) {
+		instance.abort.abort()
+		instance.update$.complete()
+		void Cleanup.runCleanup(this.ctx, instance.cleanup)
+	}
+
 	cleanupReference(directKey: DirectInstanceKey) {
 		const instance = this.frameInstances.get(directKey)
 		if (!instance) {
@@ -119,8 +135,7 @@ export class FrameManager {
 			instance.refCount--
 			return
 		}
-		instance.update$.complete()
-		instance.sub.unsubscribe()
+		this.dispose(instance)
 		this.frameInstances.delete(directKey)
 	}
 
@@ -130,8 +145,7 @@ export class FrameManager {
 		const entry = Gen.find(this.frameInstances.entries(), ([k]) => Obj.deepEqual(k, key))
 		if (!entry) return
 		const [directKey, instance] = entry
-		instance.update$.complete()
-		instance?.sub.unsubscribe()
+		this.dispose(instance)
 		this.frameInstances.delete(directKey)
 	}
 
@@ -173,7 +187,8 @@ export class FrameManager {
 				input: input,
 				refCount: 0,
 				store: Zus.createStore(() => ({})),
-				sub: new Rx.Subscription(),
+				cleanup: [],
+				abort: new AbortController(),
 				update$: new Rx.Subject(),
 				get: undefined!,
 				set: undefined!,
@@ -181,7 +196,8 @@ export class FrameManager {
 			}
 
 			// instance.update$ = subject.pipe(Rx.tap({ next: () => instance.lastUsed = Date.now() }))
-			instance.sub.add(Zus.toObservable(instance.store).subscribe(instance.update$))
+			// pushed first, so FILO tears it down last: every partial's subscription unwinds while updates still flow
+			instance.cleanup.push(Zus.toObservable(instance.store).subscribe(instance.update$))
 			instance.get = () => this.frameInstances.get(directKey)!.store.getState()
 			instance.set = (update) => this.frameInstances.get(directKey)!.store.setState(update)
 			this.frameInstances.set(directKey, instance)
@@ -192,7 +208,8 @@ export class FrameManager {
 				get: instance.get as any,
 				set: instance.set,
 				input: instance.input,
-				sub: instance.sub,
+				cleanup: instance.cleanup,
+				signal: instance.abort.signal,
 				update$: instance.update$,
 				key: directKey as InstanceKeyOfState<T['state']>,
 			})

@@ -156,7 +156,7 @@ const setup: Frame['setup'] = (args) => {
 	} else {
 		baseQueryInput$ = args.update$.pipe(Rx.map(([state]) => Sel.baseQueryInput(state, undefined)))
 	}
-	args.sub.add(
+	args.cleanup.push(
 		baseQueryInput$.pipe(Rx.retry({ count: Infinity, delay: 1000 }), Rx.Ext.distinctDeepEquals()).subscribe((baseQueryInput) => {
 			set({ baseQueryInput })
 		}),
@@ -182,7 +182,7 @@ const setup: Frame['setup'] = (args) => {
 // 	}
 // 	;(async () => {
 // 		const states = await AppliedFiltersPrt.getInitialFilterStates(!!newInput.initialEditedLayerId)
-// 		if (setupArgs.sub.closed) return
+// 		if (setupArgs.signal.aborted) return
 // 		setupArgs.set({ appliedFilters: states })
 // 	})()
 // }

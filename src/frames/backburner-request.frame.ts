@@ -146,7 +146,7 @@ const setup: Frame['setup'] = (args) => {
 	void (async () => {
 		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		await Prom.sleep(0)
-		if (args.sub.closed) return
+		if (args.signal.aborted) return
 		const poolFilter = args.input.squadServer
 			? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool.poolFilter
 			: null
@@ -204,7 +204,7 @@ const setup: Frame['setup'] = (args) => {
 				Rx.map(([[state], [server]]) => [state, server] as const),
 			)
 		: args.update$.pipe(Rx.map(([state]) => [state, undefined] as const))
-	args.sub.add(
+	args.cleanup.push(
 		stateAndServer$
 			.pipe(
 				Rx.map(([state]) => Sel.queryPlan(state)),

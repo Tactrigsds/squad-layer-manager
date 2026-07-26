@@ -54,7 +54,7 @@ export function initAppliedFiltersStore(args: Args) {
 	// explore-layers frame is built in the /_app loader). seeding synchronously would drop every configured pool filter
 	void (async () => {
 		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		if (args.sub.closed) return
+		if (args.signal.aborted) return
 		const squadServer = args.get().squadServer
 		set(getInitialFilterStates(args.input.context, squadServer, localScope))
 
@@ -68,7 +68,7 @@ export function initAppliedFiltersStore(args: Args) {
 			layerIds: [args.input.editedLayerId],
 			constraints: membershipConstraints,
 		})
-		if (args.sub.closed) return
+		if (args.signal.aborted) return
 		set({ poolApplyAs: outOfPool !== null && outOfPool.length === 0 ? 'regular' : 'disabled' })
 	})()
 
@@ -83,7 +83,7 @@ export function initAppliedFiltersStore(args: Args) {
 			}))
 		})
 
-		args.sub.add(Zus.toRxSub(unsub))
+		args.cleanup.push(unsub)
 	}
 }
 
