@@ -66,7 +66,7 @@ function RouteComponent() {
 }
 
 function ServerRoute({ serverId }: { serverId: string }) {
-	// tracks both the registry (enabled/broken) and the backend's live slices, so enabling, disabling, or losing a server
+	// tracks both the registry (enabled/broken) and the backend's live managed servers, so enabling, disabling, or losing a server
 	// mid-session swaps between the dashboard and the unavailable view without a reload
 	const availability = SquadServerClient.useServerAvailability(serverId)
 

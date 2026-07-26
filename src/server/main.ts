@@ -115,7 +115,7 @@ await Instr.spanOp('main', { module }, async () => {
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
-	// both before SquadServer.setup: it boots a slice per registered server, and the seeded sandbox has to be
+	// both before SquadServer.setup: it boots a managed server per registered server, and the seeded sandbox has to be
 	// registered by then to get one
 	Sandbox.setup()
 	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

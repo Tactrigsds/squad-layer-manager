@@ -92,11 +92,11 @@ let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
 type State = {
-	slices: Map<string, C.ServerSlice>
-	// guards every transition of a server's slice between running and not, not just setup. See withSliceLock.
-	sliceLifecycleMtxs: Map<string, MutexInterface>
-	// emits a serverId whenever that server's slice is added to or removed from `slices`
-	sliceLifecycleUpdate$: Rx.Subject<string>
+	managedServers: Map<string, C.ManagedServer>
+	// guards every transition of a managed server between running and not, not just setup. See withLifecycleLock.
+	lifecycleMtxs: Map<string, MutexInterface>
+	// emits a serverId whenever a managed server is added to or removed from `managedServers`
+	lifecycleUpdate$: Rx.Subject<string>
 	squadIdCounter: Generator<number, never, unknown>
 
 	debug__ticketOutcome?: { team1: number; team2: number }
@@ -118,9 +118,9 @@ export const orpcRouter = {
 	listAdminListGroups: orpcBase.handler(async () => {
 		const baseCtx = getBaseCtx()
 		const names = new Set<string>()
-		for (const slice of globalState.slices.values()) {
+		for (const managedServer of globalState.managedServers.values()) {
 			try {
-				const adminList = await AdminList.getMergedForServer({ ...baseCtx, ...slice }, slice.serverId)
+				const adminList = await AdminList.getMergedForServer({ ...baseCtx, ...managedServer }, managedServer.serverId)
 				for (const group of adminList.groups.keys()) names.add(group)
 			} catch (err) {
 				// one unreachable admin list must not deny the editor every other server's groups
@@ -130,16 +130,16 @@ export const orpcRouter = {
 		return [...names].sort()
 	}),
 
-	// which servers currently have a live slice. This is runtime state, not registry config: a server can be enabled and
-	// non-broken yet have no slice (still booting, or torn down by a fatal resource error), and everything served per-server
+	// which servers currently have a live managed server. This is runtime state, not registry config: a server can be enabled and
+	// non-broken yet have no managed server (still booting, or torn down by a fatal resource error), and everything served per-server
 	// needs one. The client gates the dashboard on this so it renders "unavailable" instead of hanging on silent streams.
 	watchLoadedServers: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
-		const obs = globalState.sliceLifecycleUpdate$.pipe(
+		const obs = globalState.lifecycleUpdate$.pipe(
 			Rx.startWith(null),
-			// servers the session may not view are omitted rather than listed-but-unusable, matching sliceCtx$
+			// servers the session may not view are omitted rather than listed-but-unusable, matching ctx$
 			Rx.switchMap(async () => {
 				const ids: string[] = []
-				for (const serverId of globalState.slices.keys()) {
+				for (const serverId of globalState.managedServers.keys()) {
 					if (!(await Rbac.canViewServerForUser(context, serverId))) continue
 					ids.push(serverId)
 				}
@@ -155,15 +155,15 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(
+			const obs = stream$(
 				context.wsClientId,
 				input.serverId,
-				(sliceCtx) =>
+				(serverCtx) =>
 					new Rx.Observable<SM.LayersStatusResExt>((subscriber) => {
 						const ac = new AbortController()
 						;(async () => {
-							const currentMatch = await MatchHistory.getCurrentMatch(sliceCtx)
-							const nextLayerId = sliceCtx.server.eventState.nextLayerId
+							const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
+							const nextLayerId = serverCtx.server.eventState.nextLayerId
 							subscriber.next({
 								code: 'ok',
 								data: {
@@ -172,11 +172,11 @@ export const orpcRouter = {
 									currentMatch,
 								},
 							})
-							const event$ = sliceCtx.server.event$.pipe(Rx.Ext.withAbortSignal(ac.signal))
+							const event$ = serverCtx.server.event$.pipe(Rx.Ext.withAbortSignal(ac.signal))
 							for await (const [, event] of Rx.Ext.toAsyncGenerator(event$)) {
 								if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
-								const currentMatch = await MatchHistory.getCurrentMatch(sliceCtx)
-								const nextLayerId = sliceCtx.server.eventState.nextLayerId
+								const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
+								const nextLayerId = serverCtx.server.eventState.nextLayerId
 								subscriber.next({
 									code: 'ok',
 									data: {
@@ -198,9 +198,7 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.serverRolling$).pipe(
-				Rx.Ext.withAbortSignal(signal!),
-			)
+			const obs = stream$(context.wsClientId, input.serverId, (ctx) => ctx.server.serverRolling$).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
@@ -208,7 +206,7 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.server.tickRate$.pipe(Rx.Ext.distinctDeepEquals())).pipe(
+			const obs = stream$(context.wsClientId, input.serverId, (ctx) => ctx.server.tickRate$.pipe(Rx.Ext.distinctDeepEquals())).pipe(
 				Rx.Ext.withAbortSignal(signal!),
 			)
 			yield* Rx.Ext.toAsyncGenerator(obs)
@@ -218,14 +216,14 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) =>
+			const obs = stream$(context.wsClientId, input.serverId, (ctx) =>
 				ctx.squadRcon.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
 	endMatch: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await tryCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }))
@@ -272,7 +270,7 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ lastEventId: z.number().optional(), serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+			const obs = stream$(context.wsClientId, input.serverId, (ctx) => {
 				async function getInitialEvents() {
 					const sync: CHAT.SyncedEvent = {
 						type: 'SYNCED' as const,
@@ -334,7 +332,7 @@ export const orpcRouter = {
 		}),
 
 	toggleFogOfWar: orpcBase.input(z.object({ serverId: z.string(), disabled: z.boolean() })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await tryCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off', { serverId: ctx.serverId }))
@@ -386,7 +384,7 @@ export const orpcRouter = {
 				}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
@@ -424,7 +422,7 @@ export const orpcRouter = {
 		}),
 
 	warnAdmins: orpcBase.input(z.object({ serverId: z.string(), message: z.string().min(1) })).handler(async ({ context: _ctx, input }) => {
-		const ctxRes = await trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await tryCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
@@ -457,7 +455,7 @@ export const orpcRouter = {
 				}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:broadcast', { serverId: ctx.serverId }))
@@ -479,7 +477,7 @@ export const orpcRouter = {
 	demoteCommander: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
@@ -500,7 +498,7 @@ export const orpcRouter = {
 			}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
@@ -514,7 +512,7 @@ export const orpcRouter = {
 	removeFromSquad: orpcBase
 		.input(z.object({ serverId: z.string(), playerId: SM.PlayerIdSchema, presetReasonLabel: z.string().min(1).optional() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
@@ -534,7 +532,7 @@ export const orpcRouter = {
 			}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
@@ -555,7 +553,7 @@ export const orpcRouter = {
 			}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
@@ -579,7 +577,7 @@ export const orpcRouter = {
 			}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:kick-players', { serverId: ctx.serverId }))
@@ -593,7 +591,7 @@ export const orpcRouter = {
 	renameSquad: orpcBase
 		.input(z.object({ serverId: z.string(), teamId: SM.TeamIdSchema, squadId: z.number().int().positive() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
@@ -608,80 +606,80 @@ export async function setup() {
 	const ctx = getBaseCtx()
 
 	globalState = {
-		slices: new Map(),
-		sliceLifecycleUpdate$: new IsolatedSubject(),
+		managedServers: new Map(),
+		lifecycleUpdate$: new IsolatedSubject(),
 		squadIdCounter: undefined!,
-		sliceLifecycleMtxs: new Map(),
+		lifecycleMtxs: new Map(),
 	}
 
 	const lastSquadRes = await ctx.db().select({ id: Schema.squads.id }).from(Schema.squads).orderBy(E.desc(Schema.squads.id)).limit(1)
 	const nextSquadId = lastSquadRes.length > 0 ? lastSquadRes[0].id + 1 : 0
 	globalState.squadIdCounter = Gen.counter(nextSquadId)
 
-	// Settings.setup() has already loaded the registry by this point (see main.ts); boot a slice for every server that should have one
-	await Promise.all(Settings.listServerEntries().map((entry) => ensureSliceRunning(entry.id)))
+	// Settings.setup() has already loaded the registry by this point (see main.ts); boot a managed server for every server that should have one
+	await Promise.all(Settings.listServerEntries().map((entry) => ensureRunning(entry.id)))
 }
 
-// Serializes every transition of a server's slice between running and not, so that no two of setup, teardown and restart can
+// Serializes every transition of a managed server between running and not, so that no two of setup, teardown and restart can
 // interleave and observe each other's half-applied state. Per-server, so unrelated servers never wait on each other.
 //
 // The mutex is not reentrant, so the *Locked functions below are the composable pieces: anything already holding the lock must
 // call those, and only the exported entry points may take it. Acquiring it twice in one call stack self-deadlocks.
-function withSliceLock<T>(serverId: string, fn: () => Promise<T>): Promise<T> {
-	let mtx = globalState.sliceLifecycleMtxs.get(serverId)
+function withLifecycleLock<T>(serverId: string, fn: () => Promise<T>): Promise<T> {
+	let mtx = globalState.lifecycleMtxs.get(serverId)
 	if (!mtx) {
 		mtx = new Mutex()
-		globalState.sliceLifecycleMtxs.set(serverId, mtx)
+		globalState.lifecycleMtxs.set(serverId, mtx)
 	}
 	return mtx.runExclusive(fn)
 }
 
-// boots a slice for the given server if it's enabled, not broken, and doesn't already have one running
-export async function ensureSliceRunning(serverId: string) {
-	await withSliceLock(serverId, () => ensureSliceRunningLocked(serverId))
+// boots a managed server for the given server if it's enabled, not broken, and doesn't already have one running
+export async function ensureRunning(serverId: string) {
+	await withLifecycleLock(serverId, () => ensureRunningLocked(serverId))
 }
 
-async function ensureSliceRunningLocked(serverId: string) {
-	if (globalState.slices.has(serverId)) return
+async function ensureRunningLocked(serverId: string) {
+	if (globalState.managedServers.has(serverId)) return
 	const entry = Settings.getServerEntry(serverId)
 	if (!entry || !entry.enabled || entry.broken) return
 	const ctx = getBaseCtx()
 	const serverState = await getServerState({ ...ctx, serverId })
-	await setupSlice(ctx, serverState)
+	await setupManagedServer(ctx, serverState)
 	log.info(`Server ${serverId} setup complete`)
 }
 
-// tears down the slice for a server if one is running. No-op otherwise.
-async function destroySliceIfRunningLocked(serverId: string) {
-	const slice = globalState.slices.get(serverId)
-	if (!slice) return false
-	await destroyServer({ ...getBaseCtx(), ...slice })
+// tears down a server's managed server if one is running. No-op otherwise.
+async function destroyIfRunningLocked(serverId: string) {
+	const managedServer = globalState.managedServers.get(serverId)
+	if (!managedServer) return false
+	await destroyServer({ ...getBaseCtx(), ...managedServer })
 	return true
 }
 
-// tears down and re-creates the slice for a server, picking up the latest settings from the DB. If the server isn't currently
+// tears down and re-creates a server's managed server, picking up the latest settings from the DB. If the server isn't currently
 // running (disabled, broken, or not yet started), this just ensures it's running per the usual rules -- it never force-starts it.
-export async function restartSliceIfRunning(serverId: string) {
-	await withSliceLock(serverId, async () => {
-		if (await destroySliceIfRunningLocked(serverId)) {
-			log.info(`Server ${serverId} slice destroyed for restart`)
+export async function restartIfRunning(serverId: string) {
+	await withLifecycleLock(serverId, async () => {
+		if (await destroyIfRunningLocked(serverId)) {
+			log.info(`Server ${serverId} torn down for restart`)
 		}
-		await ensureSliceRunningLocked(serverId)
+		await ensureRunningLocked(serverId)
 	})
 }
 
-// lets destroyServer cancel a slice's in-flight work before its cleanup tasks run
-const sliceAbortControllers = new Map<string, AbortController>()
+// lets destroyServer cancel a managed server's in-flight work before its cleanup tasks run
+const abortControllers = new Map<string, AbortController>()
 
-async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerState) {
+async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerState) {
 	const serverId = serverState.id
 	const settings = serverState.settings
 	const cleanup: Cleanup.Tasks = []
 
-	const sliceAbort = new AbortController()
-	sliceAbortControllers.set(serverId, sliceAbort)
-	// aborts when the slice is destroyed or the process shuts down
-	const signal = Prom.anySignal(ctx.signal, sliceAbort.signal)!
+	const abort = new AbortController()
+	abortControllers.set(serverId, abort)
+	// aborts when the managed server is destroyed or the process shuts down
+	const signal = Prom.anySignal(ctx.signal, abort.signal)!
 	ctx = { ...ctx, signal }
 
 	// the emulator has to be listening before anything can dial it, and it owns its own (ephemeral) port
@@ -704,21 +702,21 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	const layersStatusExt$: SQS.Ctx.Payload['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
-	// a resource that keeps failing after retries means the slice can't do its job -- tear the slice down instead of
+	// a resource that keeps failing after retries means the managed server can't do its job -- tear the managed server down instead of
 	// letting the error escalate to an unhandled rejection and crash the process.
 	//
-	// Takes the slice lock, which is safe only because AsyncResource discards this callback's return rather than awaiting it:
+	// Takes the lifecycle lock, which is safe only because AsyncResource discards this callback's return rather than awaiting it:
 	// nothing holding the lock ever waits on us, so there is no cycle. If the resource dies mid-setup we simply queue behind
-	// setupSlice and tear down the slice it just finished building.
-	const destroySliceAfterFatalError = async (err: unknown) => {
-		log.error(err, `Server ${serverId}: async resource failed permanently, destroying slice`)
+	// setupManagedServer and tear down the managed server it just finished building.
+	const destroyAfterFatalError = async (err: unknown) => {
+		log.error(err, `Server ${serverId}: async resource failed permanently, tearing the server down`)
 		try {
-			await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+			await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 		} catch (destroyErr) {
-			log.error(destroyErr, `Server ${serverId}: failed to destroy slice after fatal resource error`)
+			log.error(destroyErr, `Server ${serverId}: failed to tear the server down after fatal resource error`)
 		}
 	}
-	const onResourceFatalError = (err: unknown) => void destroySliceAfterFatalError(err)
+	const onResourceFatalError = (err: unknown) => void destroyAfterFatalError(err)
 
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
@@ -731,7 +729,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			onNewGameDuringSync: onNewGameDuringSync(serverId),
 			createEvent: createEvent(serverId),
 			fetchLayersStatus: async () => {
-				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+				const ctx = resolveCtx(getBaseCtx(), serverId)
 				const data = await Rx.firstValueFrom(
 					ctx.squadRcon.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
 						Rx.concatMap((s): SM.LayersStatus[] => (s.code === 'ok' ? [s.data] : [])),
@@ -794,7 +792,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		server.processEventsMtx,
 	)
 
-	const slice: C.ServerSlice = {
+	const managedServer: C.ManagedServer = {
 		...CS.init(),
 		serverId,
 		signal,
@@ -814,15 +812,15 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			squadRcon,
 			server,
 		}),
-		layerQueue: LayerQueue.initLayerQueueSlice({ ...ctx, cleanup, serverId }, serverState),
-		serverSettings: Settings.initServerSettingsSlice({ ...ctx, cleanup, serverId }, serverState),
+		layerQueue: LayerQueue.initPayload({ ...ctx, cleanup, serverId }, serverState),
+		serverSettings: Settings.initServerPayload({ ...ctx, cleanup, serverId }, serverState),
 		vote: Vote.initVoteContext(cleanup),
 
 		cleanup: cleanup,
 	}
 
-	globalState.slices.set(serverId, slice)
-	globalState.sliceLifecycleUpdate$.next(serverId)
+	globalState.managedServers.set(serverId, managedServer)
+	globalState.lifecycleUpdate$.next(serverId)
 
 	// -------- load saved events --------
 	await loadSavedEvents({ ...ctx, rcon, squadRcon, server, serverId })
@@ -849,7 +847,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				if (event.type !== 'PLAYER_DETAILS_CHANGED' || !event.newUsername) {
 					return
 				}
-				const ctx = eventSliceCtx(evtCtx, signal)
+				const ctx = eventCtx(evtCtx, signal)
 				await ctx.db().update(Schema.players).set({ username: event.newUsername }).where(E.eq(Schema.players.eosId, event.player))
 			}),
 		)
@@ -868,7 +866,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 							? (SE.eventRoster(event)?.players.map((p) => SM.PlayerIds.getPlayerId(p.ids)) ?? [])
 							: []
 				if (playerIds.length === 0) return
-				await Timeouts.enforceTimeouts(eventSliceCtx(evtCtx, signal), playerIds)
+				await Timeouts.enforceTimeouts(eventCtx(evtCtx, signal), playerIds)
 			}),
 		)
 		.subscribe() // -------- process log events --------
@@ -887,7 +885,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 				pollInterval: sftp.pollInterval,
 				reconnectInterval: sftp.reconnectInterval,
 				maxReconnectAttempts: sftp.maxReconnectAttempts,
-				// reconnection attempts exhausted: tear the slice down rather than letting the error crash the process
+				// reconnection attempts exhausted: tear the managed server down rather than letting the error crash the process
 				onFatalError: onResourceFatalError,
 				parentModule: module,
 			})
@@ -910,7 +908,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			chunk$ = ServerAgent.streamFor(serverId)
 		} else if (settings.connections.type === 'sandbox') {
 			// straight from the world, with no file in between. The instance outlives this subscription, so the
-			// unsubscribe has to detach the listener or a slice restart would leave the old one writing into a dead stream.
+			// unsubscribe has to detach the listener or a managed server restart would leave the old one writing into a dead stream.
 			chunk$ = new Rx.Observable<string>((subscriber) => {
 				const instance = Sandbox.getInstance(serverId)
 				if (!instance) {
@@ -950,7 +948,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			(rate) => server.tickRate$.next(rate),
 		)) {
 			if (logStreamAc.signal.aborted) break
-			const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+			const ctx = resolveCtx(getBaseCtx(), serverId)
 			for (const error of errors) log.error(error)
 			errors.splice(0, errors.length)
 
@@ -971,7 +969,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		rcon.connected$
 			.pipe(
 				Instr.durableSub('onRconConnectStatusChange', { module }, async (connected, signal) => {
-					const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
+					const ctx = resolveCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 					const time = Date.now()
 					let layerStatus: SM.LayersStatusResExt | undefined
 					let layersData: SM.LayersStatusExt | undefined
@@ -1005,7 +1003,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 					'onRconEvent',
 					{ module, taskScheduling: 'parallel', levels: { event: 'trace' } },
 					async ([_ctx, event], signal) => {
-						const ctx = CS.initDeferred(DB.addPooledDb(resolveSliceCtx(CS.addSignal({ ..._ctx }, signal), serverId)))
+						const ctx = CS.initDeferred(DB.addPooledDb(resolveCtx(CS.addSignal({ ..._ctx }, signal), serverId)))
 						try {
 							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
@@ -1046,12 +1044,12 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	cleanup.push(
 		squadRcon.teams
-			.observe({ ...slice, ...ctx })
+			.observe({ ...managedServer, ...ctx })
 			.pipe(
 				Instr.durableSub('onTeamsPolled', { module, numTaskRetries: 0, levels: { event: 'debug' } }, async (teamsRes, signal) => {
 					if (teamsRes.code !== 'ok') return teamsRes
 					const receivedAt = Date.now()
-					const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
+					const ctx = resolveCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 					await collectEvents(ctx, () => {
 						PendingEvents.onTeamsPolled(
 							server.eventState,
@@ -1065,21 +1063,21 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			.subscribe(),
 	)
 
-	void LayerQueue.setupInstance({ ...ctx, ...slice })
+	void LayerQueue.setupInstance({ ...ctx, ...managedServer })
 	// A sandbox's players are fabricated, so their eos ids belong to nobody. BattleMetrics is a real, org-wide
 	// outbound service: looking them up would spam it with garbage and any flag or note written while looking at
 	// the sandbox would land on the live org. It is left off entirely rather than stubbed.
-	if (!Sandbox.isSandbox(settings.connections)) Battlemetrics.setupSquadServerInstance({ ...ctx, ...slice })
+	if (!Sandbox.isSandbox(settings.connections)) Battlemetrics.setupSquadServerInstance({ ...ctx, ...managedServer })
 
 	server.cleanupId = CleanupSys.register(async () => {
-		await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+		await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 	})
 	log.info('Initialized server %s', serverId)
 	if (Settings.GLOBAL_SETTINGS.warnOnSlmStart) {
 		const restartedBy = AppEventsSys.restartInfo
 			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
 			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...slice }, Messages.WARNS.slmStarted(restartedBy))
+		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, Messages.WARNS.slmStarted(restartedBy))
 	}
 }
 
@@ -1540,19 +1538,19 @@ function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEve
 	return [...wrapped, ...serverEvents].sort((a, b) => timeOf(a) - timeOf(b))
 }
 
-// Must be called with the server's slice lock held (see withSliceLock) -- it is the unlocked primitive, and callers reach it
-// through destroySliceIfRunningLocked. Taking the lock here instead would self-deadlock the callers that already hold it.
-const destroyServer = Instr.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
+// Must be called with the server's lifecycle lock held (see withLifecycleLock) -- it is the unlocked primitive, and callers reach it
+// through destroyIfRunningLocked. Taking the lock here instead would self-deadlock the callers that already hold it.
+const destroyServer = Instr.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ManagedServer) => {
 	if (ctx.server.destroyed) return
-	log.info(`destroying server slice ${ctx.serverId}`)
+	log.info(`destroying managed server ${ctx.serverId}`)
 	ctx.server.destroyed = true
-	sliceAbortControllers.get(ctx.serverId)?.abort(new DOMException('server slice destroyed', 'AbortError'))
-	sliceAbortControllers.delete(ctx.serverId)
+	abortControllers.get(ctx.serverId)?.abort(new DOMException('managed server destroyed', 'AbortError'))
+	abortControllers.delete(ctx.serverId)
 	const cleanupId = ctx.server.cleanupId
 	if (cleanupId !== null) CleanupSys.unregister(cleanupId)
 	await Cleanup.runCleanup({ ...CS.init(), ...ctx, log }, ctx.cleanup)
-	globalState.slices.delete(ctx.serverId)
-	globalState.sliceLifecycleUpdate$.next(ctx.serverId)
+	globalState.managedServers.delete(ctx.serverId)
+	globalState.lifecycleUpdate$.next(ctx.serverId)
 })
 
 export async function getFullServerState(ctx: C.Db & LQ.Ctx) {
@@ -1592,7 +1590,7 @@ async function collectEvents(ctx: SQS.Ctx & C.Db & CS.AbortSignal, addEventsCb: 
 
 function getLayersStatusExt$(serverId: string) {
 	return new Rx.Observable<SM.LayersStatusResExt>((s) => {
-		const ctx = { ...getBaseCtx(), ...globalState.slices.get(serverId)! }
+		const ctx = { ...getBaseCtx(), ...globalState.managedServers.get(serverId)! }
 		const sub = new Rx.Subscription()
 		sub.add(
 			ctx.squadRcon.layersStatus.observe(ctx).subscribe({
@@ -1638,7 +1636,7 @@ function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.Matc
 // resolves a default server id for a request given the route and a previously stored default server id
 export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: Ctx) {
 	const servers = Settings.listServerEntries()
-		.filter((s) => s.enabled && globalState.slices.has(s.id))
+		.filter((s) => s.enabled && globalState.managedServers.has(s.id))
 		.toSorted((a, b) => {
 			if (a.defaultServer !== b.defaultServer) return a.defaultServer ? -1 : 1
 			return 0
@@ -1679,92 +1677,92 @@ export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: 
 	}
 }
 
-function withSliceSignal<T extends object>(ctx: T, slice: C.ServerSlice) {
-	// cancel when either the caller (e.g. the originating request) or the slice is done. the slice signal
+function withSignal<T extends object>(ctx: T, managedServer: C.ManagedServer) {
+	// cancel when either the caller (e.g. the originating request) or the managed server is done. the managed server signal
 	// already covers process shutdown, so don't allocate a composite for base ctxs on the hot event path
 	const callerSignal = (ctx as Partial<CS.AbortSignal>).signal
-	const signal = callerSignal === CleanupSys.shutdownSignal ? slice.signal : Prom.anySignal(callerSignal, slice.signal)!
+	const signal = callerSignal === CleanupSys.shutdownSignal ? managedServer.signal : Prom.anySignal(callerSignal, managedServer.signal)!
 	return {
 		...ctx,
-		...slice,
+		...managedServer,
 		signal,
 	}
 }
 
-// throws when the slice is missing. Only for callers running inside the slice's own lifecycle (setup loops, timers,
-// event handlers), where a missing slice is a bug rather than a state the caller has to render. oRPC handlers should
-// use trySliceCtx / sliceStream$ instead, so the client gets a code it can act on.
-/** the live slice, for the rare caller that needs one field off it rather than a ctx */
-export function requireSlice(serverId: string): C.ServerSlice {
-	const slice = globalState.slices.get(serverId)
-	if (!slice) throw new Error('Server slice not found: ' + serverId)
-	return slice
+// throws when the managed server is missing. Only for callers running inside the managed server's own lifecycle (setup loops, timers,
+// event handlers), where a missing managed server is a bug rather than a state the caller has to render. oRPC handlers should
+// use tryCtx / stream$ instead, so the client gets a code it can act on.
+/** the live managed server, for the rare caller that needs one field off it rather than a ctx */
+export function require(serverId: string): C.ManagedServer {
+	const managedServer = globalState.managedServers.get(serverId)
+	if (!managedServer) throw new Error('Managed server not found: ' + serverId)
+	return managedServer
 }
 
 /**
- * The slice ctx for an event handler, rebuilt at handle time from the serverId the event carries.
+ * The managed server ctx for an event handler, rebuilt at handle time from the serverId the event carries.
  * The emitter used to ship its whole ctx on the stream, which made the SQS.Ctx.Payload payload reference
- * C.ServerSlice and so pinned it to the server layer.
+ * C.ManagedServer and so pinned it to the server layer.
  */
-export function eventSliceCtx(evtCtx: CS.Otel & CS.ServerId, signal: AbortSignal) {
-	return { ...resolveSliceCtx({ ...getBaseCtx(), ...evtCtx }, evtCtx.serverId), signal }
+export function eventCtx(evtCtx: CS.Otel & CS.ServerId, signal: AbortSignal) {
+	return { ...resolveCtx({ ...getBaseCtx(), ...evtCtx }, evtCtx.serverId), signal }
 }
 
-export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
-	const slice = globalState.slices.get(serverId)
-	if (!slice) {
+export function resolveCtx<T extends object>(ctx: T, serverId: string) {
+	const managedServer = globalState.managedServers.get(serverId)
+	if (!managedServer) {
 		throw new Orpc.ORPCError('BAD_REQUEST', {
-			message: 'Server slice not found: ' + serverId,
+			message: 'Managed server not found: ' + serverId,
 		})
 	}
-	return withSliceSignal(ctx, slice)
+	return withSignal(ctx, managedServer)
 }
 
-// Resolving a slice for a request is also where the request is authorized to look at that server at all: every
+// Resolving a managed server for a request is also where the request is authorized to look at that server at all: every
 // per-server endpoint goes through here, so squad-server:view is enforced once rather than per handler. Action
 // permissions are still checked by the handler on top of this.
-export async function trySliceCtx<T extends C.Db & USR.Ctx.Id & CS.AbortSignal>(
+export async function tryCtx<T extends C.Db & USR.Ctx.Id & CS.AbortSignal>(
 	ctx: T,
 	serverId: string,
-): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {
-	const slice = globalState.slices.get(serverId)
-	if (!slice) return SM.serverNotLoaded(serverId)
+): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {
+	const managedServer = globalState.managedServers.get(serverId)
+	if (!managedServer) return SM.serverNotLoaded(serverId)
 	if (!(await Rbac.canViewServerForUser(ctx, serverId))) {
 		return RBAC.permissionDenied('all', [`squad-server:view on ${serverId}`])
 	}
-	return { code: 'ok', ctx: withSliceSignal(ctx, slice) }
+	return { code: 'ok', ctx: withSignal(ctx, managedServer) }
 }
 
 // like selectedServerCtx$, but keyed by an explicit serverId instead of a wsClientId's session selection
-// A server the session may not view resolves to null, exactly as one with no live slice does, so every per-server
+// A server the session may not view resolves to null, exactly as one with no live managed server does, so every per-server
 // stream reports it as not loaded. Deliberate: to a user without squad-server:view the server is indistinguishable
 // from one that isn't running, which is also what listLoadedServerIds tells them, so the two agree.
-export function sliceCtx$(wsClientId: string, serverId: string) {
-	return globalState.sliceLifecycleUpdate$.pipe(
+export function ctx$(wsClientId: string, serverId: string) {
+	return globalState.lifecycleUpdate$.pipe(
 		Rx.filter((id) => id === serverId),
 		Rx.startWith(serverId),
 		Rx.switchMap(async () => {
-			const slice = globalState.slices.get(serverId)
-			if (!slice) return null
+			const managedServer = globalState.managedServers.get(serverId)
+			if (!managedServer) return null
 			const session = WsSessionSys.wsSessions.get(wsClientId)!
-			const ctx = { ...getBaseCtx(), ...session, ...slice }
+			const ctx = { ...getBaseCtx(), ...session, ...managedServer }
 			if (!(await Rbac.canViewServerForUser(ctx, serverId))) return null
 			return ctx
 		}),
 	)
 }
 
-export type SliceCtx = NonNullable<Rx.ObservedValueOf<ReturnType<typeof sliceCtx$>>>
+export type ManagedServerCtx = NonNullable<Rx.ObservedValueOf<ReturnType<typeof ctx$>>>
 
-// the only way an oRPC stream should resolve a slice. While the slice is absent the stream emits err:server-not-loaded
+// the only way an oRPC stream should resolve a managed server. While the managed server is absent the stream emits err:server-not-loaded
 // rather than going silent (a silent stream leaves the client suspended forever), and it switches over to the real
-// source as soon as the slice appears -- so a server being enabled, or coming back after a crash, self-heals.
-export function sliceStream$<T>(
+// source as soon as the managed server appears -- so a server being enabled, or coming back after a crash, self-heals.
+export function stream$<T>(
 	wsClientId: string,
 	serverId: string,
-	project: (ctx: SliceCtx) => Rx.Observable<T>,
+	project: (ctx: ManagedServerCtx) => Rx.Observable<T>,
 ): Rx.Observable<T | SM.ServerNotLoaded> {
-	return sliceCtx$(wsClientId, serverId).pipe(
+	return ctx$(wsClientId, serverId).pipe(
 		Rx.switchMap((ctx): Rx.Observable<T | SM.ServerNotLoaded> => {
 			if (!ctx) return Rx.of(SM.serverNotLoaded(serverId))
 			return project(ctx)
@@ -1776,12 +1774,12 @@ function getBaseCtx() {
 	return DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 }
 
-// registry data (identity/enabled/default/broken) lives in settings.server.ts; this only orchestrates the live slice around it
+// registry data (identity/enabled/default/broken) lives in settings.server.ts; this only orchestrates the live managed server around it
 export async function enableServer(serverId: string) {
 	const ctx = getBaseCtx()
 	const res = await Settings.setServerEnabled(ctx, serverId, true)
 	if (res.code !== 'ok') return res
-	await ensureSliceRunning(serverId)
+	await ensureRunning(serverId)
 	log.info('Server %s enabled', serverId)
 	return { code: 'ok' as const }
 }
@@ -1791,8 +1789,8 @@ export async function disableServer(serverId: string) {
 	const res = await Settings.setServerEnabled(ctx, serverId, false)
 	if (res.code !== 'ok') return res
 
-	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
-	// the emulator deliberately outlives a slice restart, but not the server being switched off
+	await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
+	// the emulator deliberately outlives a managed server restart, but not the server being switched off
 	Sandbox.disposeInstance(serverId)
 	log.info('Server %s disabled', serverId)
 	return { code: 'ok' as const }
@@ -1800,7 +1798,7 @@ export async function disableServer(serverId: string) {
 
 export async function deleteServer(serverId: string) {
 	const ctx = getBaseCtx()
-	await withSliceLock(serverId, () => destroySliceIfRunningLocked(serverId))
+	await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 	Sandbox.disposeInstance(serverId)
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
@@ -2033,7 +2031,7 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 const createEvent =
 	(serverId: string): PendingEvents.State['hooks']['createEvent'] =>
 	async (newEvent) => {
-		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+		const ctx = resolveCtx(getBaseCtx(), serverId)
 		return Instr.spanOp(
 			'createEvent',
 			{ module },
@@ -2054,7 +2052,7 @@ const createEvent =
 const onNewGameDuringSync =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] =>
 	async (currentLayerId, _time) => {
-		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+		const ctx = resolveCtx(getBaseCtx(), serverId)
 		return Instr.spanOp(
 			'onNewGameDuringSync',
 			{
@@ -2072,7 +2070,7 @@ const onNewGameDuringSync =
 const onNewGameDuringRoll =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] =>
 	async (newLayerId, time) => {
-		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
+		const ctx = resolveCtx(getBaseCtx(), serverId)
 		return Instr.spanOp(
 			'onNewGameDuringRoll',
 			{

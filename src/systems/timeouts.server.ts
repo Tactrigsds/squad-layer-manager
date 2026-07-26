@@ -99,7 +99,7 @@ const DEFAULT_TIMEOUT_TEXT = 'You have been kicked by an admin.'
 // creates the timeout (app event + row) and kicks the player from the issuing server. `reason` carries the
 // unrendered template + vars (with the ORIGINAL duration); enforcement re-renders with the remaining one.
 export async function kickWithTimeout(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal,
+	ctx: C.Db & C.ManagedServer & CS.AbortSignal,
 	opts: { target: SM.Player; durationMs: number; actor: AppEvents.Actor; reason?: AAR.AppliedReason },
 ): Promise<{ code: 'ok'; timeoutId: string } | { code: 'err:already-timed-out'; msg: string }> {
 	const targetId = SM.PlayerIds.getPlayerId(opts.target.ids)
@@ -163,11 +163,11 @@ export async function kickWithTimeout(
 	return { code: 'ok', timeoutId }
 }
 
-// sets the cancelled flag and records the cancellation. sliceCtx (when the cancellation originates in-game)
+// sets the cancelled flag and records the cancellation. serverCtx (when the cancellation originates in-game)
 // routes the app event into that server's activity feed; otherwise it is audit-only.
 export async function cancelTimeout(
 	ctx: C.Db,
-	opts: { timeoutId: string; actor: AppEvents.Actor; sliceCtx?: C.Db & SQS.Ctx & MH.Ctx & CS.AbortSignal },
+	opts: { timeoutId: string; actor: AppEvents.Actor; serverCtx?: C.Db & SQS.Ctx & MH.Ctx & CS.AbortSignal },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found'; msg: string }> {
 	const [timeout] = await ctx
 		.db()
@@ -179,13 +179,13 @@ export async function cancelTimeout(
 	const appEvent = AppEvents.create<AppEvents.TimeoutCancelled>({
 		type: 'TIMEOUT_CANCELLED',
 		actor: opts.actor,
-		serverId: opts.sliceCtx?.serverId ?? null,
-		matchId: opts.sliceCtx ? (await MatchHistory.getCurrentMatch(opts.sliceCtx)).historyEntryId : null,
+		serverId: opts.serverCtx?.serverId ?? null,
+		matchId: opts.serverCtx ? (await MatchHistory.getCurrentMatch(opts.serverCtx)).historyEntryId : null,
 		causeId: null,
 		target: timeout.playerId,
 		timeoutId: timeout.id,
 	})
-	if (opts.sliceCtx) await SquadServer.emitAppEvent(opts.sliceCtx, appEvent)
+	if (opts.serverCtx) await SquadServer.emitAppEvent(opts.serverCtx, appEvent)
 	else await AppEventsSys.persistAppEvent(ctx, appEvent)
 	update$.next()
 	return { code: 'ok' }
@@ -195,7 +195,7 @@ export async function cancelTimeout(
 // attributing the PLAYER_KICKED server event to the timeout's original app event. the kick text is
 // re-rendered from the stored template + vars with the REMAINING time substituted for {{duration}}
 // (empty when none, so {{#duration}} sections drop out) so the player sees how much longer they're timed out.
-export async function enforceTimeouts(ctx: C.Db & C.ServerSlice & CS.AbortSignal, playerIds: SM.PlayerId[]) {
+export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSignal, playerIds: SM.PlayerId[]) {
 	const active = await getActiveTimeouts(ctx, playerIds)
 	for (const timeout of active) {
 		const applied = appliedReasonFromRow(timeout)
@@ -251,7 +251,7 @@ export const router = {
 				.refine((i) => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
 		)
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(ctx.serverId, input.durationMs))

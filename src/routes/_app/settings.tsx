@@ -463,7 +463,7 @@ function ServersSection({
 	const deleteMutation = useMutation(RPC.orpc.settings.admin.deleteServer.mutationOptions(onDenied))
 	const setDefaultMutation = useMutation(RPC.orpc.settings.admin.setDefaultServer.mutationOptions(onDenied))
 	const busy = enableMutation.isPending || disableMutation.isPending || deleteMutation.isPending || setDefaultMutation.isPending
-	// the start/stop RPCs only resolve once the server slice is fully spun up / torn down, so the mutation's in-flight
+	// the start/stop RPCs only resolve once the managed server is fully spun up / torn down, so the mutation's in-flight
 	// window is exactly the transitional period
 	const inflight = {
 		startingId: enableMutation.isPending ? enableMutation.variables?.serverId : undefined,

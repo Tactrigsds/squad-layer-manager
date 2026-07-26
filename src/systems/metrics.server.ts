@@ -3,7 +3,7 @@ import * as Otel from '@opentelemetry/api'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SquadServer from '@/systems/squad-server.server'
 
-// Domain gauges. Everything here is read synchronously out of in-memory slice state on the metric
+// Domain gauges. Everything here is read synchronously out of in-memory managed server state on the metric
 // reader's export interval, so nothing in a callback may do I/O: an rcon or db round trip here would
 // stall the export and generate load proportional to the scrape rate. The rcon/queue/vote state we
 // want is all already resident (BehaviorSubjects and ODSM sessions), so it never needs to.
@@ -17,10 +17,10 @@ const meter = Otel.metrics.getMeter('squad-layer-manager')
 export function setup() {
 	meter
 		.createObservableGauge(ATTRS.SquadServer.COUNT, {
-			description: 'Number of squad server slices currently initialized',
+			description: 'Number of managed servers currently initialized',
 		})
 		.addCallback((result) => {
-			result.observe(SquadServer.globalState.slices.size)
+			result.observe(SquadServer.globalState.managedServers.size)
 		})
 
 	meter
@@ -28,8 +28,8 @@ export function setup() {
 			description: 'Whether the rcon connection for this squad server is up (1) or down (0)',
 		})
 		.addCallback((result) => {
-			for (const [serverId, slice] of SquadServer.globalState.slices) {
-				result.observe(slice.rcon.connected ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				result.observe(managedServer.rcon.connected ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
 
@@ -38,8 +38,8 @@ export function setup() {
 			description: 'Number of items in the live (unsaved) layer queue',
 		})
 		.addCallback((result) => {
-			for (const [serverId, slice] of SquadServer.globalState.slices) {
-				result.observe(slice.layerQueue.session.state.list.length, { [ATTRS.SquadServer.ID]: serverId })
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				result.observe(managedServer.layerQueue.session.state.list.length, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
 
@@ -48,8 +48,8 @@ export function setup() {
 			description: 'Whether the layer queue has edits not yet written back (1) or is in sync (0)',
 		})
 		.addCallback((result) => {
-			for (const [serverId, slice] of SquadServer.globalState.slices) {
-				const state = slice.layerQueue.session.state
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				const state = managedServer.layerQueue.session.state
 				result.observe(state.list.length !== state.savedList.length ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
@@ -59,8 +59,8 @@ export function setup() {
 			description: 'Whether a layer vote is currently running on this squad server',
 		})
 		.addCallback((result) => {
-			for (const [serverId, slice] of SquadServer.globalState.slices) {
-				result.observe(slice.vote.state?.code === 'in-progress' ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				result.observe(managedServer.vote.state?.code === 'in-progress' ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
 
@@ -69,8 +69,8 @@ export function setup() {
 			description: 'Number of team swaps saved and waiting to be executed',
 		})
 		.addCallback((result) => {
-			for (const [serverId, slice] of SquadServer.globalState.slices) {
-				result.observe(slice.teamswaps.session.state.pendingSwaps.size, { [ATTRS.SquadServer.ID]: serverId })
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				result.observe(managedServer.teamswaps.session.state.pendingSwaps.size, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
 
@@ -79,8 +79,8 @@ export function setup() {
 			description: 'Whether a team swap execution is currently in flight',
 		})
 		.addCallback((result) => {
-			for (const [serverId, slice] of SquadServer.globalState.slices) {
-				result.observe(slice.teamswaps.session.state.swapping ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				result.observe(managedServer.teamswaps.session.state.swapping ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
 }

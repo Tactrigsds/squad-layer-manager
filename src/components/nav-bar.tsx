@@ -92,7 +92,7 @@ export default function NavBar() {
 	const selectedServer = settings?.servers.find((server) => server.id === selectedServerId)
 	// NavBar isn't a descendant of the servers/$serverId route, so it can't receive the frame via props --
 	// ensureSetup just dedupes onto the instance the route already created. Only set up a frame for a usable server;
-	// building one for a disabled/missing server would spam subscription errors against a slice that doesn't exist.
+	// building one for a disabled/missing server would spam subscription errors against a managed server that doesn't exist.
 	const squadServerKey = React.useMemo(
 		() =>
 			SettingsClient.isServerUsable(selectedServer)

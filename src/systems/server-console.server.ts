@@ -66,7 +66,7 @@ export function recordLogChunk(serverId: string, chunk: string, time: number): v
 	for (const line of lines) record(serverId, { type: 'log', line, time })
 }
 
-// A slice teardown drops the tail with it: the events describe a connection that no longer exists, and keeping
+// A managed server teardown drops the tail with it: the events describe a connection that no longer exists, and keeping
 // them would leave a restarted server showing the previous one's traffic.
 export function disposeFor(serverId: string): void {
 	const channel = channels.get(serverId)
