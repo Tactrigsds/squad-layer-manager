@@ -3,6 +3,7 @@ import type { MutexInterface } from 'async-mutex'
 import type * as CS from '@/models/context-shared'
 
 import * as Rx from './rxjs'
+import { assertNever } from './type-guards'
 
 type Value = Rx.Subscription | Rx.ObservableInput<unknown> | Rx.Subject<unknown> | MutexInterface | AbortController | null | undefined
 
@@ -10,44 +11,79 @@ export type Task = (() => Value | void) | Value | Tasks
 
 export type Tasks = Task[]
 
-// runs cleanuptasks in a FILO fashion
-export function runCleanup(ctx: CS.Log, tasks: Tasks) {
-	return Rx.lastValueFrom(Rx.concat(tasks.toReversed().map(to$)).pipe(Rx.endWith(0)))
+type Classified =
+	| { kind: 'noop' }
+	| { kind: 'nested'; tasks: Tasks }
+	| { kind: 'subject'; subject: Rx.Subject<unknown> }
+	| { kind: 'mutex'; mutex: MutexInterface }
+	| { kind: 'abortController'; controller: AbortController }
+	| { kind: 'subscription'; subscription: Rx.Subscription }
+	| { kind: 'awaitable'; source: Rx.ObservableInput<unknown> }
 
-	function to$(_task: Task, index: number) {
+// The order of these checks is load-bearing, so they live in one function rather than as separate predicates whose
+// correctness depends on the sequence a caller happens to apply them in. A Subject is a Subscription *and* an
+// ObservableInput; a mutex and an AbortController both carry cancel-shaped methods; a Subscription carries
+// `unsubscribe` and, unlike an Observable, no `subscribe`. Every branch is only right because the ones above it
+// have already been ruled out.
+function classify(value: Value | Tasks | void): Classified {
+	if (value === null || value === undefined) return { kind: 'noop' }
+	if (Array.isArray(value)) return { kind: 'nested', tasks: value }
+	if (value instanceof Rx.Subject) return { kind: 'subject', subject: value }
+	if (value instanceof AbortController) return { kind: 'abortController', controller: value }
+	if (isMutex(value)) return { kind: 'mutex', mutex: value }
+	if (isSubscription(value)) return { kind: 'subscription', subscription: value }
+	return { kind: 'awaitable', source: value }
+}
+
+// runs cleanup tasks in a FILO fashion, awaiting any that are async. A failing task is logged and the rest still run
+export function runCleanup(ctx: CS.Log, tasks: Tasks): Promise<unknown> {
+	// concat takes its sources variadically -- `concat(array)` emits the array's members as values and subscribes to
+	// none of them. Each task is also deferred, so the chain runs in sequence: mapping to$ directly would fire every
+	// task's side effect during the map, before the first async one had finished, which is not FILO at all.
+	const chain = tasks.toReversed().map((task, index) => Rx.defer(() => to$(task, index)))
+	return Rx.lastValueFrom(Rx.concat(...chain).pipe(Rx.endWith(0)))
+
+	function to$(task: Task, index: number): Rx.Observable<unknown> {
+		// the position the caller passed this task at, undoing the reverse above
+		const taskIndex = tasks.length - index - 1
 		try {
-			let task = typeof _task === 'function' ? _task() : _task
-			if (task == null || task == undefined) {
-				return Rx.EMPTY
+			const classified = classify(typeof task === 'function' ? task() : task)
+			switch (classified.kind) {
+				case 'noop':
+					return Rx.EMPTY
+				case 'nested':
+					return Rx.from(runCleanup(ctx, classified.tasks))
+				case 'subject':
+					classified.subject.complete()
+					return Rx.EMPTY
+				case 'mutex':
+					classified.mutex.cancel()
+					return Rx.EMPTY
+				case 'abortController':
+					classified.controller.abort()
+					return Rx.EMPTY
+				case 'subscription':
+					classified.subscription.unsubscribe()
+					return Rx.EMPTY
+				case 'awaitable':
+					// an async task that rejects must not take the remaining tasks with it
+					return Rx.from(classified.source).pipe(Rx.catchError((err) => onError(err, taskIndex)))
+				default:
+					assertNever(classified)
 			}
-			if (task instanceof Rx.Subject) {
-				task.complete()
-				return Rx.EMPTY
-			}
-			if (isMutex(task)) {
-				task.cancel()
-				return Rx.EMPTY
-			}
-			if (task instanceof AbortController) {
-				task.abort()
-				return Rx.EMPTY
-			}
-			if (isSubscription(task)) {
-				task.unsubscribe()
-				return Rx.EMPTY
-			}
-
-			return task
 		} catch (err) {
-			const unreversedIndex = tasks.length - index - 1
-			ctx.log.error(err, 'caught error during cleanup for task at index %d', unreversedIndex)
-			return Rx.EMPTY
+			return onError(err, taskIndex)
 		}
+	}
+
+	function onError(err: unknown, taskIndex: number) {
+		ctx.log.error(err, 'caught error during cleanup for task at index %d', taskIndex)
+		return Rx.EMPTY
 	}
 }
 
 function isSubscription(value: any): value is Rx.Subscription {
-	return typeof value === 'object' && 'subscribe' in value && 'unsubscribe' in value
+	return value instanceof Rx.Subscription || typeof value.unsubscribe === 'function'
 }
 
 function isMutex(value: any): value is MutexInterface {

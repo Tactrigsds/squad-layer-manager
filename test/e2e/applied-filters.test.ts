@@ -1,8 +1,35 @@
+import type { Locator } from '@playwright/test'
+
 import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
+
+// The pool filter is seeded asynchronously (the panel waits for filter entities over the websocket), so the count
+// readout first shows a real, larger number for the unconstrained query -- matching /\d+ matched layers/ does not
+// mean the baseline is the pool's. The query pipeline additionally throttles at 500ms, so the constrained result
+// can land a full throttle window later; the stability window here has to clear that comfortably.
+const STABLE_READS = 4
+const READ_INTERVAL_MS = 400
+
+async function settledText(locator: Locator) {
+	let previous: string | null = null
+	let agreements = 0
+	await expect
+		.poll(
+			async () => {
+				// the readout unmounts while a query is in flight, so a missing element counts as "not settled"
+				const current = (await locator.count()) === 1 ? await locator.textContent() : null
+				agreements = current !== null && current === previous ? agreements + 1 : 0
+				previous = current
+				return agreements
+			},
+			{ timeout: 30_000, intervals: [READ_INTERVAL_MS] },
+		)
+		.toBeGreaterThanOrEqual(STABLE_READS)
+	return previous!
+}
 
 // The applied-filters panel renders two kinds of control from one filter list: the ones the pool config
 // pins (its pool filter and its default-selectable filters) and the "extras" a user pulls in themselves.
@@ -68,11 +95,12 @@ test.describe('applied filters', () => {
 			await page.getByRole('button', { name: 'Add Layers' }).click()
 			const dialog = page.getByRole('dialog', { name: 'Add Layers' })
 
-			// wait for a settled non-empty count: the readout renders mid-query too, and capturing an
-			// intermediate value would make the "unchanged" assertion below meaningless
+			// the pinned control only renders once its filter entity has arrived, which is what gates the pool
+			// entering the query at all. Necessary but not sufficient -- the count it produces lands later still
+			await expect(dialog.getByRole('checkbox', { name: 'RAAS Only' })).toBeVisible()
 			const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-			await expect(matchedCount).toHaveText(/\d+ matched layers/)
-			const poolOnlyCount = await matchedCount.textContent()
+			const poolOnlyCount = await settledText(matchedCount)
+			expect(poolOnlyCount).toMatch(/\d+ matched layers/)
 
 			await dialog.getByRole('button', { name: 'Edit extra filters' }).click()
 			await page.getByRole('listbox').getByRole('option', { name: 'Narva Only' }).click()

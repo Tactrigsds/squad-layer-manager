@@ -48,7 +48,7 @@ export function initServerSettings(args: Args) {
 		validationErrors: null,
 	} satisfies SettingsPartial)
 
-	args.sub.add(
+	args.cleanup.push(
 		args.update$.subscribe(([storeState, storePrevState]) => {
 			const state = storeState.settings
 			const prevState = storePrevState.settings
@@ -67,7 +67,7 @@ export function initServerSettings(args: Args) {
 		}),
 	)
 
-	args.sub.add(
+	args.cleanup.push(
 		RPC.observe('settings.server.watchSettings', () => RPC.orpc.settings.server.watchSettings.call({ serverId }))
 			.pipe(RPC.dropServerNotLoaded())
 			.subscribe(([settings, source]) => {

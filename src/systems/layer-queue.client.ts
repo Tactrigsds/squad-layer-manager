@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
@@ -36,9 +37,9 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind('layerQueue.l
 	)
 })
 
-export function watchServer(serverId: string, sub: Rx.Subscription) {
-	sub.add(unexpectedNextLayer$(serverId).subscribe())
-	sub.add(layerItemsState$(serverId).pipe(ReactRx.retryHot()).subscribe())
+export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
+	cleanup.push(unexpectedNextLayer$(serverId).subscribe())
+	cleanup.push(layerItemsState$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }
 
 export function useToggleSquadServerUpdates(serverId: string) {

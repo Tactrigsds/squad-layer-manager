@@ -66,7 +66,7 @@ export function initTeamsPanel(args: Args) {
 		sorting: { teams: DEFAULT_TEAM_SORTING, combined: DEFAULT_COMBINED_SORTING },
 	} satisfies TeamsPanel)
 
-	args.sub.add(
+	args.cleanup.push(
 		args.update$.subscribe(([state, prev]) => {
 			// the toggle is disabled while nothing is selected, so an emptied selection has to switch it back off or the
 			// tables would keep filtering to a selection the user can no longer see

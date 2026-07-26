@@ -75,10 +75,10 @@ export const frame = frameManager.createFrame<Types>({
 
 		// keeps the read-only, per-server oRPC streams (serverInfo/serverRolling/layersStatus, vote state,
 		// match history, unexpected-next-layer) hot for the lifetime of this frame instance
-		SquadServerClient.watchServer(args.input.serverId, args.sub)
-		VoteClient.watchServer(args.input.serverId, args.sub)
-		MatchHistoryClient.watchServer(args.input.serverId, args.sub)
-		LayerQueueClient.watchServer(args.input.serverId, args.sub)
+		SquadServerClient.watchServer(args.input.serverId, args.cleanup)
+		VoteClient.watchServer(args.input.serverId, args.cleanup)
+		MatchHistoryClient.watchServer(args.input.serverId, args.cleanup)
+		LayerQueueClient.watchServer(args.input.serverId, args.cleanup)
 		args.set({
 			layerItemsState: LQY.initLayerItemsState(),
 			layerItemStatuses: null,
@@ -90,7 +90,7 @@ export const frame = frameManager.createFrame<Types>({
 		// after the set above: its sync reads playerSelection on the first update, and every init emits one
 		TeamsPanelPrt.initTeamsPanel(args)
 
-		args.sub.add(
+		args.cleanup.push(
 			Zus.toObservable(args.key, true)
 				.pipe(
 					Rx.map(([state]) => state.playerSelection),
@@ -116,7 +116,7 @@ export const frame = frameManager.createFrame<Types>({
 		})
 
 		const state$ = Zus.toObservable(args.key, true)
-		args.sub.add(
+		args.cleanup.push(
 			Rx.combineLatest([
 				state$.pipe(
 					Rx.map(([state]) => state.layerItemsState),
