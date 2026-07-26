@@ -11,11 +11,10 @@ import * as LQ from '@/models/layer-queue.models'
 import * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
 import * as SETTINGS from '@/models/settings.models'
-import * as SR from '@/models/squad-rcon.models'
+import * as SQS from '@/models/squad-server.models'
 import * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models.ts'
 import * as V from '@/models/vote.models'
-import type * as SquadServerSys from '@/systems/squad-server.server'
 
 import type * as DB from './db.ts'
 
@@ -98,15 +97,12 @@ export type AsyncResourceInvocation = CS.Ctx & {
 }
 export const AsyncResourceInvocationDef = CD.defCtx<AsyncResourceInvocation>()(['resOpts', 'refetch'], { name: 'asyncResourceInvocation' })
 
-export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & SR.Ctx
-export const SquadServerDef = CD.defCtx<SquadServer>()(['server'], { name: 'squadServer', extends: [SR.CtxDef] })
-
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
 }
 export const ServerSliceCleanupDef = CD.defCtx<ServerSliceCleanup>()(['cleanup'], { name: 'serverSliceCleanup' })
 export type ServerSlice = CS.Ctx &
-	SquadServer &
+	SQS.Ctx &
 	V.Ctx &
 	LQ.Ctx &
 	MH.Ctx &
@@ -118,6 +114,6 @@ export type ServerSlice = CS.Ctx &
 	CS.AbortSignal
 
 export const ServerSliceDef = CD.mergeDefs(
-	[SquadServerDef, V.CtxDef, LQ.CtxDef, MH.CtxDef, MEC.CtxDef, TSW.CtxDef, SETTINGS.CtxDef, ServerSliceCleanupDef, CS.AbortSignalDef],
+	[SQS.CtxDef, V.CtxDef, LQ.CtxDef, MH.CtxDef, MEC.CtxDef, TSW.CtxDef, SETTINGS.CtxDef, ServerSliceCleanupDef, CS.AbortSignalDef],
 	{ name: 'serverSlice' },
 )

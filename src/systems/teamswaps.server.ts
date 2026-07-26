@@ -18,6 +18,7 @@ import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import type * as SR from '@/models/squad-rcon.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as RBAC from '@/rbac.models'
@@ -92,7 +93,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
+export function initContext(ctx: SQS.Ctx & C.Db & C.ServerSliceCleanup) {
 	const context: TSW.Ctx.Payload = {
 		session: ODSM.Server.initSession(TSW.initState()),
 		op$: new IsolatedSubject<Dispatched>(),
@@ -109,8 +110,8 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 				Rx.filter(
 					([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
 				),
-				Instr.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
-					const ctx = { ..._ctx, signal }
+				Instr.durableSub('onTeamsModified', { module }, async ([evtCtx, e], signal) => {
+					const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
 					const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
 					if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
 					// the fast path for completing an execution: the teams poll usually observes the swapped players before
@@ -218,8 +219,8 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 		ctx.server.event$
 			.pipe(
 				Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
-				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([_ctx, e], signal) => {
-					const ctx = { ..._ctx, signal }
+				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([evtCtx, e], signal) => {
+					const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
 					await waitForQueuedPlayers(ctx, e.matchId)
 					await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
 				}),
@@ -243,7 +244,7 @@ const ROLL_ROSTER_POLL_MS = 2_000
 // than fire into the gap. Two things are needed to see out of it: the new match's roster event, which is what
 // establishes that the app is looking at the match the swaps are for, and then a live rcon read -- the roster the
 // app carries is a poll behind by construction, since the boundary snapshot holds only the players already sorted.
-async function waitForQueuedPlayers(ctx: TSW.Ctx & C.SquadServer & SR.Ctx.Rcon & CS.AbortSignal, matchId: number) {
+async function waitForQueuedPlayers(ctx: TSW.Ctx & SQS.Ctx & SR.Ctx.Rcon & CS.AbortSignal, matchId: number) {
 	const deadline = Date.now() + ROLL_ROSTER_TIMEOUT_MS
 	await Rx.firstValueFrom(
 		ctx.server.event$.pipe(
@@ -289,7 +290,7 @@ const EXECUTION_TIMEOUT_MS = 60_000
 // has no team yet, can't be swapped and isn't counted as outstanding -- same rule onTeamsModified applies.
 // null means the teams couldn't be read, which says nothing either way.
 async function unswappedPlayers(
-	ctx: C.SquadServer & SR.Ctx.Rcon & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	swaps: TSW.TeamswapCollection,
 	ordinal: number,
 ): Promise<SM.PlayerId[] | null> {

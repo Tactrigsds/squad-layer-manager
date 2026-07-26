@@ -14,7 +14,7 @@ import * as Cleanup from '@/lib/cleanup'
 import { superjsonify } from '@/lib/drizzle'
 import { FileTail } from '@/lib/file-tail'
 import * as Gen from '@/lib/generator-utils'
-import { IsolatedSubject } from '@/lib/isolated-subject'
+import { IsolatedSubject, TracedSubject } from '@/lib/isolated-subject'
 import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
 import Rcon, { DirectSocketTransport } from '@/lib/rcon/core-rcon'
@@ -39,6 +39,7 @@ import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SR from '@/models/squad-rcon.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -102,35 +103,6 @@ type State = {
 }
 
 export let globalState!: State
-
-export type SquadServer = {
-	layersStatusExt$: Rx.Observable<SM.LayersStatusResExt>
-
-	postRollEventsSub: Rx.Subscription | null
-
-	serverRolling$: Rx.BehaviorSubject<number | null>
-
-	// latest "Server Tick Rate" reported in the game logs; null until the first sample is seen
-	tickRate$: Rx.BehaviorSubject<number | null>
-
-	// events of the current match, kept in memory purely to serve the chat feed without a query. Every one of
-	// them is already persisted (see the createEvent hook); this is a cache, not a write buffer.
-	emittedEvents: SE.Event[]
-	// TODO we should slim down the context we provide here so that we're just transmitting span & logging info, and leave the listener to construct everything else
-	event$: Rx.Subject<[C.Db & C.ServerSlice, SE.Event]>
-	eventState: PendingEvents.State
-
-	// SLM app (audit) events for this server, and the live channel that feeds them into the activity panel
-	emittedAppEvents: AppEvents.AppEvent[]
-	appEvent$: Rx.Subject<[C.Db & C.ServerSlice, AppEvents.AppEvent]>
-
-	chatState: CHAT.ChatState
-
-	destroyed: boolean
-	cleanupId: number | null
-
-	processEventsMtx: MutexInterface
-}
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
@@ -201,10 +173,10 @@ export const orpcRouter = {
 								},
 							})
 							const event$ = sliceCtx.server.event$.pipe(Rx.Ext.withAbortSignal(ac.signal))
-							for await (const [ctx, event] of Rx.Ext.toAsyncGenerator(event$)) {
+							for await (const [, event] of Rx.Ext.toAsyncGenerator(event$)) {
 								if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
-								const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-								const nextLayerId = ctx.server.eventState.nextLayerId
+								const currentMatch = await MatchHistory.getCurrentMatch(sliceCtx)
+								const nextLayerId = sliceCtx.server.eventState.nextLayerId
 								subscriber.next({
 									code: 'ok',
 									data: {
@@ -730,7 +702,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(() => rcon.disconnect())
 	cleanup.push(() => ServerConsole.disposeFor(serverId))
 
-	const layersStatusExt$: SquadServer['layersStatusExt$'] = getLayersStatusExt$(serverId)
+	const layersStatusExt$: SQS.Ctx.Payload['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
 	// a resource that keeps failing after retries means the slice can't do its job -- tear the slice down instead of
 	// letting the error escalate to an unhandled rejection and crash the process.
@@ -787,7 +759,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 							: assertNever(settings.connections),
 	})
 
-	const server: SquadServer = {
+	const server: SQS.Ctx.Payload = {
 		layersStatusExt$,
 
 		postRollEventsSub: null,
@@ -795,8 +767,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
 		tickRate$: new Rx.BehaviorSubject(null as number | null),
 
-		event$: new IsolatedSubject(),
-		appEvent$: new IsolatedSubject(),
+		event$: new TracedSubject({ ...CS.init(), serverId }),
+		appEvent$: new TracedSubject({ ...CS.init(), serverId }),
 		processEventsMtx: new Mutex(),
 
 		eventState: eventState,
@@ -856,9 +828,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	await loadSavedEvents({ ...ctx, rcon, squadRcon, server, serverId })
 
 	// // -------- watch events --------
-	server.event$.subscribe(([ctx, event]) => {
+	server.event$.subscribe(([, event]) => {
 		try {
-			CHAT.handleEvent(ctx.server.chatState, event)
+			CHAT.handleEvent(server.chatState, event)
 		} catch (error) {
 			log.error(error, 'Error handling event: %s %d', event.type, event.id)
 		}
@@ -867,16 +839,17 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			event.type,
 			JSON.stringify(['NEW_GAME', 'RESET'].includes(event.type) ? Obj.omit(event as any, ['state']) : event),
 		)
-		ctx.server.emittedEvents.push(event)
+		server.emittedEvents.push(event)
 	})
 
 	server.event$
 		.pipe(
 			Rx.filter(([_, event]) => event.type === 'PLAYER_DETAILS_CHANGED' && !!event.newUsername),
-			Instr.durableSub('onPlayerNameChanged', { module }, async ([ctx, event]) => {
+			Instr.durableSub('onPlayerNameChanged', { module }, async ([evtCtx, event], signal) => {
 				if (event.type !== 'PLAYER_DETAILS_CHANGED' || !event.newUsername) {
 					return
 				}
+				const ctx = eventSliceCtx(evtCtx, signal)
 				await ctx.db().update(Schema.players).set({ username: event.newUsername }).where(E.eq(Schema.players.eosId, event.player))
 			}),
 		)
@@ -887,7 +860,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	server.event$
 		.pipe(
 			Rx.filter(([_, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'RESET'),
-			Instr.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([ctx, event], signal) => {
+			Instr.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([evtCtx, event], signal) => {
 				const playerIds =
 					event.type === 'PLAYER_CONNECTED'
 						? [SM.PlayerIds.getPlayerId(event.player.ids)]
@@ -895,7 +868,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 							? (SE.eventRoster(event)?.players.map((p) => SM.PlayerIds.getPlayerId(p.ids)) ?? [])
 							: []
 				if (playerIds.length === 0) return
-				await Timeouts.enforceTimeouts(CS.addSignal(ctx, signal), playerIds)
+				await Timeouts.enforceTimeouts(eventSliceCtx(evtCtx, signal), playerIds)
 			}),
 		)
 		.subscribe() // -------- process log events --------
@@ -1110,7 +1083,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	}
 }
 
-export async function pushAttribution(ctx: C.SquadServer & C.Db & CS.AbortSignal, attribution: Omit<PendingEvents.Attribution, 'time'>) {
+export async function pushAttribution(ctx: SQS.Ctx & C.Db & CS.AbortSignal, attribution: Omit<PendingEvents.Attribution, 'time'>) {
 	await collectEvents(ctx, () => {
 		PendingEvents.pushAttribution(ctx.server.eventState, attribution)
 	})
@@ -1118,10 +1091,10 @@ export async function pushAttribution(ctx: C.SquadServer & C.Db & CS.AbortSignal
 
 // persists an SLM app (audit) event and streams it into this server's activity feed. Persist happens before
 // the push (and before any server event that links to it via appEventId is later saved), satisfying the FK.
-export async function emitAppEvent(ctx: C.SquadServer & C.Db & CS.AbortSignal, appEvent: AppEvents.AppEvent) {
+export async function emitAppEvent(ctx: SQS.Ctx & C.Db & CS.AbortSignal, appEvent: AppEvents.AppEvent) {
 	await AppEventsSys.persistAppEvent(ctx, appEvent)
 	ctx.server.emittedAppEvents.push(appEvent)
-	ctx.server.appEvent$.next([resolveSliceCtx(ctx, ctx.serverId), appEvent])
+	ctx.server.appEvent$.emit(appEvent)
 }
 
 // resolves a preset admin-action reason against the current global settings. handlers call this before executing
@@ -1191,7 +1164,7 @@ export async function notifyAdminsOfWebAction(
 // PLAYER_WARNED server events to the originating action's app event (so they collapse under it in the feed
 // rather than emitting a separate PLAYER_WARNED app event).
 async function sendReasonFollowUpWarn(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	appEventId: AppEvents.AppEventId,
 	targets: SM.PlayerId[],
 	message: string,
@@ -1210,7 +1183,7 @@ async function sendReasonFollowUpWarn(
 // caused it: PLAYER_TIMED_OUT for timeout kicks and their later enforcement, PLAYER_KICKED for plain kicks).
 // The primitive both kick paths bottom out in; it emits no app event of its own.
 export async function kickPlayerAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	target: SM.PlayerId,
 	source: PendingEvents.ArmedActionSource,
 	reason?: string,
@@ -1227,7 +1200,7 @@ const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
 // a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
 // batch, and each kick's server event is attributed to it.
 export async function kickPlayersAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1252,7 +1225,7 @@ export async function kickPlayersAction(
 }
 
 export async function broadcastAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	message: string,
 	actor: AppEvents.Actor,
 	opts?: { presetLabel?: string },
@@ -1280,7 +1253,7 @@ export async function broadcastAction(
 // event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
 // any server event referencing it is saved.
 export async function warnPlayers(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
@@ -1362,7 +1335,7 @@ async function classifyWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.Pla
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
 // resulting SQUAD_DISBANDED server event to the acting user, then issues the disband.
 export async function disbandSquadAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1406,7 +1379,7 @@ export async function disbandSquadAction(
 
 // removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
 export async function removePlayersFromSquad(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1439,7 +1412,7 @@ export async function removePlayersFromSquad(
 // records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
 // events (which arrive via the next teams poll). The caller (teamswaps) still issues the actual switch.
 export async function forceTeamChangeAppEvent(
-	ctx: C.SquadServer & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 ) {
@@ -1466,7 +1439,7 @@ export async function forceTeamChangeAppEvent(
 // double switch nets zero, so a settled teams poll usually emits none; arming keeps parity with the forced-switch
 // path in case a poll observes an intermediate state.
 export async function killPlayersAppEvent(
-	ctx: C.SquadServer & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1495,7 +1468,7 @@ export async function killPlayersAppEvent(
 }
 
 export async function killPlayersAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1508,7 +1481,7 @@ export async function killPlayersAction(
 }
 
 export async function renameSquadAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1535,7 +1508,7 @@ export async function renameSquadAction(
 
 // demoting a commander has no attributable server event, so this is a pure audit-feed entry
 export async function demoteCommanderAction(
-	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1588,13 +1561,13 @@ export async function getFullServerState(ctx: C.Db & LQ.Ctx) {
 	return Settings.parseServerStateRow(serverRaw)
 }
 
-export function getCurrTeams(ctx: C.SquadServer) {
+export function getCurrTeams(ctx: SQS.Ctx) {
 	return ctx.server.eventState.currTeams
 }
 
 // maps a GUI/chat user id (or an automated marker) to an app-event actor, resolving in-game (steam) senders against
 // the current teams. Shared by the vote/teamswap attribution paths.
-export function actorFromUser(ctx: C.SquadServer, source: USR.GuiOrChatUserId | 'autostart' | undefined | null): AppEvents.Actor {
+export function actorFromUser(ctx: SQS.Ctx, source: USR.GuiOrChatUserId | 'autostart' | undefined | null): AppEvents.Actor {
 	if (!source || source === 'autostart') return { type: 'system' }
 	if (source.discordId) return { type: 'slm-user', userId: source.discordId }
 	if (source.steamId) {
@@ -1604,7 +1577,7 @@ export function actorFromUser(ctx: C.SquadServer, source: USR.GuiOrChatUserId | 
 	return { type: 'system' }
 }
 
-async function collectEvents(ctx: C.SquadServer & C.Db & CS.AbortSignal, addEventsCb: () => void) {
+async function collectEvents(ctx: SQS.Ctx & C.Db & CS.AbortSignal, addEventsCb: () => void) {
 	using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
 	addEventsCb()
 	for await (const event of PendingEvents.process(ctx.server.eventState, Date.now())) {
@@ -1613,7 +1586,7 @@ async function collectEvents(ctx: C.SquadServer & C.Db & CS.AbortSignal, addEven
 			[ATTRS.SquadServer.ID]: ctx.serverId,
 			[ATTRS.ServerEvent.TYPE]: event.type,
 		})
-		ctx.server.event$.next([resolveSliceCtx(ctx, ctx.serverId), event])
+		ctx.server.event$.emit(event)
 	}
 }
 
@@ -1645,7 +1618,7 @@ function getLayersStatusExt$(serverId: string) {
 	}).pipe(Rx.Ext.distinctDeepEquals(), Rx.share())
 }
 
-async function fetchLayersStatusExt(ctx: C.SquadServer & SR.Ctx.Rcon & MH.Ctx & CS.AbortSignal) {
+async function fetchLayersStatusExt(ctx: SQS.Ctx & SR.Ctx.Rcon & MH.Ctx & CS.AbortSignal) {
 	const statusRes = await ctx.squadRcon.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
 	return buildServerStatusRes(statusRes.data, await MatchHistory.getCurrentMatch(ctx))
@@ -1721,6 +1694,22 @@ function withSliceSignal<T extends object>(ctx: T, slice: C.ServerSlice) {
 // throws when the slice is missing. Only for callers running inside the slice's own lifecycle (setup loops, timers,
 // event handlers), where a missing slice is a bug rather than a state the caller has to render. oRPC handlers should
 // use trySliceCtx / sliceStream$ instead, so the client gets a code it can act on.
+/** the live slice, for the rare caller that needs one field off it rather than a ctx */
+export function requireSlice(serverId: string): C.ServerSlice {
+	const slice = globalState.slices.get(serverId)
+	if (!slice) throw new Error('Server slice not found: ' + serverId)
+	return slice
+}
+
+/**
+ * The slice ctx for an event handler, rebuilt at handle time from the serverId the event carries.
+ * The emitter used to ship its whole ctx on the stream, which made the SQS.Ctx.Payload payload reference
+ * C.ServerSlice and so pinned it to the server layer.
+ */
+export function eventSliceCtx(evtCtx: CS.Otel & CS.ServerId, signal: AbortSignal) {
+	return { ...resolveSliceCtx({ ...getBaseCtx(), ...evtCtx }, evtCtx.serverId), signal }
+}
+
 export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 	const slice = globalState.slices.get(serverId)
 	if (!slice) {
@@ -1833,11 +1822,11 @@ export async function updateServerState(
 	await ctx.db().update(Schema.servers).set(superjsonify(Schema.servers, changes)).where(E.eq(Schema.servers.id, ctx.serverId))
 	const update: SS.LQStateUpdate = { state: newServerState, source }
 
-	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next([update, { ...getBaseCtx(), serverId: ctx.serverId }]))
+	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next(update))
 	return newServerState
 }
 
-const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
+const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: SQS.Ctx & C.Db) => {
 	const server = ctx.server
 	const [lastMatch] = await ctx
 		.db()
@@ -2130,7 +2119,7 @@ const onNewGameDuringRoll =
 		)()
 	}
 
-export async function waitForSynced(ctx: C.SquadServer & CS.AbortSignal) {
+export async function waitForSynced(ctx: SQS.Ctx & CS.AbortSignal) {
 	if (ctx.server.eventState.syncState.type === 'synced') return
 	await Rx.Ext.firstValueFrom(
 		ctx.server.event$.pipe(Rx.filter(([ctx, event]) => event.type === 'NEW_GAME' || event.type === 'RESET')),
