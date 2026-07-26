@@ -157,27 +157,6 @@ export async function getListsForServer(
 	return lists
 }
 
-// The lists a server uses, flattened into one. For the many consumers that only ask "is this player an admin here"
-// or "what groups do they hold here" -- questions the merged view answers exactly. Each list has already applied its
-// own admin-identifying permissions by this point, so the admin sets union rather than being recomputed, and no list
-// can widen another's definition of admin.
-export async function getMergedForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string, opts?: { ttl?: number }): Promise<SM.AdminList> {
-	const lists = await getListsForServerId(ctx, serverId, opts)
-	const merged: SM.AdminList = {
-		groups: new Map(),
-		steam: { players: new Map(), admins: new Set() },
-		eos: { players: new Map(), admins: new Set() },
-	}
-	for (const list of lists.values()) {
-		for (const [group, perm] of OneToMany.iter(list.groups)) OneToMany.set(merged.groups, group, perm)
-		for (const side of ['steam', 'eos'] as const) {
-			for (const [id, group] of OneToMany.iter(list[side].players)) OneToMany.set(merged[side].players, id, group)
-			for (const id of list[side].admins) merged[side].admins.add(id as never)
-		}
-	}
-	return merged
-}
-
 export function setup() {
 	log = module.getLogger()
 	status$ = new IsolatedBehaviorSubject<AdminListStatus>({ code: 'init' })
