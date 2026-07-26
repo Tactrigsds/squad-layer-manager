@@ -112,6 +112,17 @@ auto-detection only runs in the settings UI, so `enabled: true` on its own silen
 Traces are kept **3 days**, logs **14 days**, metrics **90 days**, each a `-retentionPeriod` flag on its
 own store. Changing one is an edit and a restart, with no migration and nothing to apply after the fact.
 
+Traces and logs carry over the windows the otel-lgtm stack used (Tempo `block_retention: 72h`, Loki
+`retention_period: 336h`). **Metrics are the one deliberate change.** Nothing there ever configured
+Prometheus, so metrics ran on its built-in 15 day default, which quietly made the paragraph below untrue.
+90 days is the value that keeps the promise.
+
+Traces are also head-sampled. `OTEL_TRACE_SAMPLE_RATIO` unset means everything outside production and a
+quarter of root traces in it; set it to 1 there when you need full fidelity for a while. The ratio is
+worth having because most of the volume is not interesting: of ~4M spans over 14 days, the rcon execute,
+event-insert and roster-poll paths alone were about 40%, and they look the same every time. Sampling is
+`ParentBased`, so a trace is kept or dropped whole rather than arriving with holes in it.
+
 Traces are the highest-volume signal (one span per `C.spanOp`, plus auto-instrumented http/rcon/dns
 spans underneath each), so they get the shortest window. That's affordable because the RED metrics
 derived from them outlive them: you can still ask "when did `dispatchOp` start getting slow" a month
