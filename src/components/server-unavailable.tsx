@@ -35,11 +35,11 @@ function describe(status: Exclude<Status, 'starting'>, displayName: string) {
 	}
 }
 
-// how long a server may sit enabled-but-not-running before we stop calling it "starting". A slice that dies on a fatal
+// how long a server may sit enabled-but-not-running before we stop calling it "starting". A managed server that dies on a fatal
 // resource error is torn down and not retried, so it would otherwise spin here forever.
 const SLOW_START_MS = 20_000
 
-// the dashboard swaps itself back in as soon as the slice appears (see useServerAvailability), so this is a waiting
+// the dashboard swaps itself back in as soon as the managed server appears (see useServerAvailability), so this is a waiting
 // state, not a dead end: enabling the server upgrades this view into the dashboard without a reload.
 function ServerStarting(props: { displayName: string }) {
 	const [slow, setSlow] = React.useState(false)

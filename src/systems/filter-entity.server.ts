@@ -294,8 +294,8 @@ export const filtersRouter = {
 				return denyRes
 			}
 
-			for (const serverId of SquadServer.globalState.slices.keys()) {
-				const serverCtx = SquadServer.resolveSliceCtx(ctx, serverId)
+			for (const serverId of SquadServer.globalState.managedServers.keys()) {
+				const serverCtx = SquadServer.resolveCtx(ctx, serverId)
 				const serverState = await SquadServer.getServerState(serverCtx)
 				// TODO: right now we are not handling sub-filters here. we should do the following:
 				// 1. implement method to return the ids of all transient filters, while checking for cyclical dependencies

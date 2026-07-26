@@ -527,7 +527,7 @@ async function fetchPlayerDetail(ctx: CS.Ctx & CS.AbortSignal, eosId: string, bm
 const bulkFetchOnlinePlayers = Instr.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
-	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[] | undefined> => {
+	async (ctx: CS.Ctx & C.ManagedServer): Promise<string[] | undefined> => {
 		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return
 		const onlinePlayers = teamsRes.players
@@ -567,7 +567,7 @@ const bulkFetchOnlinePlayers = Instr.spanOp(
 )
 
 export async function invalidateAndRefetchPlayer(
-	ctx: CS.Ctx & C.ServerSlice & CS.AbortSignal,
+	ctx: CS.Ctx & C.ManagedServer & CS.AbortSignal,
 	eosId: string,
 ): Promise<BM.PlayerFlagsAndProfile | null> {
 	playerFlagsAndProfileCache.delete(eosId)
@@ -599,7 +599,7 @@ export const fetchSinglePlayerBmData = Instr.spanOp(
 
 // -------- interval-based bulk polling --------
 
-export function setupSquadServerInstance(ctx: C.ServerSlice) {
+export function setupSquadServerInstance(ctx: C.ManagedServer) {
 	const serverId = ctx.serverId
 
 	ctx.cleanup.push(
@@ -607,9 +607,9 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 			.pipe(
 				Rx.startWith(0),
 				Instr.durableSub('bm-bulk-poll', { module, root: true, taskScheduling: 'exhaust' }, async (_, signal) => {
-					const sliceCtx = SquadServer.resolveSliceCtx({ signal }, serverId)
+					const serverCtx = SquadServer.resolveCtx({ signal }, serverId)
 
-					const onlineEosIds = await bulkFetchOnlinePlayers(sliceCtx).catch((err) => {
+					const onlineEosIds = await bulkFetchOnlinePlayers(serverCtx).catch((err) => {
 						log.warn({ err }, 'bulk fetch online players failed')
 						return [] as string[]
 					})
@@ -634,8 +634,8 @@ export function setupSquadServerInstance(ctx: C.ServerSlice) {
 					async ([eventCtx, event], signal) => {
 						if (event.type !== 'PLAYER_CONNECTED' && event.type !== 'PLAYER_RECONCILED') return
 						const playerIds = event.player.ids
-						const sliceCtx = SquadServer.eventSliceCtx(eventCtx, signal)
-						await fetchSinglePlayerBmData(sliceCtx, playerIds).catch((err) => {
+						const serverCtx = SquadServer.eventCtx(eventCtx, signal)
+						await fetchSinglePlayerBmData(serverCtx, playerIds).catch((err) => {
 							log.warn({ err, playerIds }, 'failed to fetch bm data on player connect')
 						})
 					},

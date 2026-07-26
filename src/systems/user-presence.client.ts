@@ -42,7 +42,7 @@ export type LoaderCacheKey<Config extends ActivityLoaderConfig> = Lifecycle.Load
 function getCurrentServerKey() {
 	const serverId = SquadServerClient.SelectedServerStore.getState().selectedServerId
 	const serverConfig = SettingsClient.getSettings()?.servers.find((s) => s.id === serverId)
-	// don't build a frame for a server with no live slice -- it would just spam subscription errors
+	// don't build a frame for a server with no live managed server -- it would just spam subscription errors
 	if (!SettingsClient.isServerUsable(serverConfig)) return undefined
 	return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverConfig.id))
 }

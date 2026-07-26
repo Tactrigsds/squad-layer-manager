@@ -54,7 +54,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(V.StartVoteInputSchema)
 		.handler(async ({ input, context: _ctx }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
@@ -66,7 +66,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
@@ -81,7 +81,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
@@ -93,7 +93,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('vote:manage', { serverId: ctx.serverId }))
@@ -105,7 +105,7 @@ export const router = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) =>
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) =>
 				Rx.from(
 					(async function* () {
 						let initialState: (V.VoteState & Parts<USR.UserPart>) | null = null
@@ -209,7 +209,7 @@ export const syncVoteStateWithQueueState = Instr.spanOp(
 				vote.autostartVoteSub = Rx.of(1)
 					.pipe(Rx.delay(dateFns.differenceInMilliseconds(newVoteState.autostartTime, Date.now())))
 					.subscribe(() => {
-						startVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { initiator: 'autostart' }).catch((err) => {
+						startVote(SquadServer.resolveCtx(getBaseCtx(), serverId), { initiator: 'autostart' }).catch((err) => {
 							if (!Prom.isAbortError(err)) log.error(err)
 						})
 					})
@@ -507,7 +507,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 			.pipe(
 				Rx.takeUntil(Rx.timer(finalReminderBuffer)),
 				Instr.durableSub('regular-vote-reminders', { module }, async (_, signal) => {
-					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+					const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
 					const serverState = await SquadServer.getServerState(ctx)
@@ -532,7 +532,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 			Rx.timer(finalReminderWaitTime)
 				.pipe(
 					Instr.durableSub('final-vote-reminder', { module }, async (_, signal) => {
-						const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 						if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 						const serverState = await SquadServer.getServerState(ctx)
 						const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
@@ -555,7 +555,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 	ctx.vote.voteEndTask.add(
 		Rx.timer(Math.max(ctx.vote.state.deadline - currentTime, 0)).subscribe({
 			next: async () => {
-				await endVote(SquadServer.resolveSliceCtx(getBaseCtx(), serverId), { reason: 'vote-timeout' })
+				await endVote(SquadServer.resolveCtx(getBaseCtx(), serverId), { reason: 'vote-timeout' })
 			},
 			complete: () => {
 				log.info('vote deadline reached')

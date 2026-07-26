@@ -241,7 +241,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				const extraTextPart = extraText ? ` : ${extraText.trim()}` : ''
 				metricOutcome = Prom.isAbortError(error) ? 'aborted' : 'error'
 				if (Prom.isAbortError(error)) {
-					// expected cancellation (request dropped, slice destroyed, shutdown) -- not a failure
+					// expected cancellation (request dropped, managed server destroyed, shutdown) -- not a failure
 					log?.debug(`${name}${extraTextPart} : aborted: ${message}`)
 				} else if (error instanceof Error) {
 					log?.error(error, `${name}${extraTextPart} : error: ${message}`)
@@ -371,7 +371,7 @@ export function durableSub<T, O>(
 							return
 						} catch (error) {
 							// cancellation is expected, not a failure: stop quietly instead of feeding the retry pipeline.
-							// Prom.isAbortError also covers ctx signals the cb resolved itself (e.g. via resolveSliceCtx)
+							// Prom.isAbortError also covers ctx signals the cb resolved itself (e.g. via resolveCtx)
 							if (signal.aborted || Prom.isAbortError(error)) {
 								subscriber.complete()
 								return

@@ -19,7 +19,7 @@ export function useReasonRequired(action: AAR.RequirableAdminActionType): boolea
 	return Zus.useStore(PublicSettingsStore, (s) => s?.requireReasonFor.includes(action) ?? false)
 }
 
-// a server is only usable when the backend has a live slice for it, which happens exactly for enabled, non-broken servers.
+// a server is only usable when the backend has a live managed server for it, which happens exactly for enabled, non-broken servers.
 // disabled/broken servers still appear in the registry (e.g. for admin UI) but their dashboard can't be loaded.
 export function isServerUsable(entry: PublicSettings['servers'][number] | undefined): entry is PublicSettings['servers'][number] {
 	return !!entry && entry.enabled && !entry.broken

@@ -42,7 +42,7 @@ export function setup() {
 type HandlerResult = { code: string; msg?: string } | undefined
 
 type HandlerCtx = {
-	ctx: C.Db & C.ServerSlice & Partial<USR.Ctx> & SM.Ctx
+	ctx: C.Db & C.ManagedServer & Partial<USR.Ctx> & SM.Ctx
 	msg: SM.RconEvents.ChatMessage
 	// the resolved chat sender (steam id guaranteed)
 	sender: SM.Player
@@ -51,7 +51,7 @@ type HandlerCtx = {
 	error: <T extends string>(reason: T, msg: string) => Promise<{ code: `err:${T}`; msg: string }>
 }
 
-export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
+export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
 	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType).success) {
 		return {
 			code: 'err:invalid-chat-channel' as const,
@@ -209,7 +209,7 @@ function resolveSquadArg(
 // bare runs `/timeout` with only `2h`, whose honest complaint names <duration>, which that trigger pins and the
 // caller has no way to supply.
 async function resolveArgs<Id extends CMD.CommandId>(
-	ctx: C.Db & C.ServerSlice,
+	ctx: C.Db & C.ManagedServer,
 	cmd: Id,
 	cmdConfig: CMD.CommandConfig,
 	tokens: string[],
@@ -226,7 +226,7 @@ async function resolveArgs<Id extends CMD.CommandId>(
 }
 
 async function resolveArgDefs(
-	ctx: C.Db & C.ServerSlice,
+	ctx: C.Db & C.ManagedServer,
 	defs: readonly CMD.ArgDef[],
 	tokens: string[],
 	sender: SM.Player,
@@ -815,7 +815,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (matchedPlayerIds.size === 0) return await h.error('not-found', `No active timeout matches "${token}"`)
 		if (matchedPlayerIds.size > 1) return await h.error('multiple-matches', `${matchedPlayerIds.size} timed-out players match "${token}"`)
 		for (const timeout of matches) {
-			await Timeouts.cancelTimeout(h.ctx, { timeoutId: timeout.id, actor: ingameActor(h.sender), sliceCtx: h.ctx })
+			await Timeouts.cancelTimeout(h.ctx, { timeoutId: timeout.id, actor: ingameActor(h.sender), serverCtx: h.ctx })
 		}
 		await h.reply(`Cancelled ${matches.length === 1 ? 'the timeout' : `${matches.length} timeouts`} for ${matches[0].username ?? token}`)
 		return { code: 'ok' }
