@@ -4,6 +4,7 @@ import React from 'react'
 
 import { ServerActivityCharts } from '@/components/server-activity-charts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
@@ -14,7 +15,6 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 	const serverId = props.stores.squadServer!.serverId
 	const selectedMatchOrdinal = Zus.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
-	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	const maxPlayerCount = serverInfoRes.code === 'ok' ? serverInfoRes.data.maxPlayerCount : undefined
 
@@ -28,10 +28,12 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 		staleTime: Infinity,
 	})
 
-	const displayMatch = React.useMemo(() => {
-		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
-	}, [selectedMatchOrdinal, currentMatch, recentMatches])
+	const displayMatch = Zus.useStore_Susp(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ChatPrt.Sel.displayMatch,
+	)
 
 	return (
 		<Card className="w-full">
