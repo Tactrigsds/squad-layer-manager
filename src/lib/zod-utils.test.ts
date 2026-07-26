@@ -51,3 +51,39 @@ describe('ZodUtils.schemaAtPath', () => {
 		}
 	})
 })
+
+// The point of internedEnum/internedLiteral is memory, which `===` cannot observe: JS string equality is by value,
+// so a fresh copy and the canonical instance compare equal either way. What is testable is that the output is
+// unchanged and that the schema stays the class `z.discriminatedUnion` needs to read a discriminator out of.
+describe('ZodUtils.internedEnum / internedLiteral', () => {
+	it('parses and rejects exactly as the plain schemas do', () => {
+		const interned = ZodUtils.internedEnum(['Rifleman', 'Medic'])
+		expect(interned.parse('Medic')).toBe('Medic')
+		expect(interned.safeParse('Sniper').success).toBe(false)
+		expect(ZodUtils.internedLiteral('PLAYER_DIED').parse('PLAYER_DIED')).toBe('PLAYER_DIED')
+		expect(ZodUtils.internedLiteral('PLAYER_DIED').safeParse('OTHER').success).toBe(false)
+	})
+
+	it('keeps the enum an enum, so .options survives', () => {
+		expect(ZodUtils.internedEnum(['a', 'b']).options).toEqual(['a', 'b'])
+	})
+
+	// transform() would make this a ZodPipe and the union would no longer find its discriminator
+	it('stays usable as a discriminated union discriminator', () => {
+		const schema = z.discriminatedUnion('type', [
+			z.object({ type: ZodUtils.internedLiteral('PLAYER_DIED'), victim: z.string() }),
+			z.object({ type: ZodUtils.internedLiteral('PLAYER_WOUNDED'), victim: z.string() }),
+		])
+		expect(schema.parse({ type: 'PLAYER_WOUNDED', victim: 'x' })).toEqual({ type: 'PLAYER_WOUNDED', victim: 'x' })
+		expect(schema.safeParse({ type: 'NOT_AN_EVENT' }).success).toBe(false)
+	})
+
+	it('hands back one instance per value rather than one per parse', () => {
+		const interned = ZodUtils.internedEnum(['Rifleman', 'Medic'])
+		// the canonical instance is the schema's own option, which is what makes the table bounded by the value set
+		const parsed = [interned.parse(JSON.parse('"Medic"')), interned.parse(JSON.parse('"Medic"'))]
+		const distinct = new Set(parsed)
+		expect(distinct.size).toBe(1)
+		expect(parsed[0]).toBe(interned.options[1])
+	})
+})
