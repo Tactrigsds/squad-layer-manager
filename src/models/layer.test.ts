@@ -250,3 +250,46 @@ describe('getLayerCommand', () => {
 		})
 	})
 })
+
+describe('areLayersPartialMatch', () => {
+	// coalesceFraas used to write the coalesced gamemode back into whichever object it was handed, so a caller that
+	// passed its own layer had it rewritten underneath -- and toLayer now hands back a memoized instance, which would
+	// have spread that to every later reader of the same id
+	it('does not mutate either argument when coalescing FRAAS', () => {
+		const fraas = L.toLayer('GD-FRAAS-V1:USA-CA:RGF-CA')
+		const raas = { ...fraas, id: fraas.id.replace('FRAAS', 'RAAS'), Layer: fraas.Layer.replace('FRAAS', 'RAAS'), Gamemode: 'RAAS' }
+		const before = { Layer: fraas.Layer, Gamemode: fraas.Gamemode }
+
+		expect(L.areLayersPartialMatch(fraas, raas, true)).toBe(true)
+
+		expect(fraas.Layer).toBe(before.Layer)
+		expect(fraas.Gamemode).toBe(before.Gamemode)
+	})
+
+	it('still distinguishes FRAAS from RAAS when not coalescing', () => {
+		const fraas = L.toLayer('GD-FRAAS-V1:USA-CA:RGF-CA')
+		const raas = L.toLayer('GD-RAAS-V1:USA-CA:RGF-CA')
+		expect(L.areLayersPartialMatch(fraas, raas, true)).toBe(true)
+		expect(L.areLayersPartialMatch(fraas, raas, false)).toBe(false)
+	})
+})
+
+describe('toLayer', () => {
+	it('parses an id once and hands the same instance back', () => {
+		const id = 'GD-RAAS-V1:USA-CA:RGF-CA'
+		expect(L.toLayer(id)).toBe(L.toLayer(id))
+	})
+
+	it('passes an object straight through', () => {
+		const layer = L.toLayer('GD-RAAS-V1:USA-CA:RGF-CA')
+		expect(L.toLayer(layer)).toBe(layer)
+	})
+
+	it('resolves the same id it always did', () => {
+		const layer = L.toLayer('GD-RAAS-V1:USA-CA:RGF-CA')
+		expect(layer.Map).toBe('Gorodok')
+		expect(layer.Gamemode).toBe('RAAS')
+		expect(layer.Faction_1).toBe('USA')
+		expect(layer.Faction_2).toBe('RGF')
+	})
+})

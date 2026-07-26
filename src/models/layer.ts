@@ -1,5 +1,6 @@
 import * as z from 'zod'
 
+import { FixedSizeMap } from '@/lib/lru-map'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as LC from '@/models/layer-columns'
@@ -433,20 +434,20 @@ export function areLayersPartialMatch(
 
 	const layerRes = typeof toCompare === 'string' ? toLayer(toCompare, components) : toCompare
 	const targetLayerRes = typeof target === 'string' ? toLayer(target, components) : target
-	if (coalesceFraas) {
-		if (layerRes.Layer) {
-			layerRes.Layer = layerRes.Layer?.replace('FRAAS', 'RAAS')
-		}
-		if (targetLayerRes.Layer) {
-			targetLayerRes.Layer = targetLayerRes.Layer?.replace('FRAAS', 'RAAS')
-		}
-		if (layerRes.Gamemode === 'FRAAS') layerRes.Gamemode = 'RAAS'
-		if (targetLayerRes.Gamemode === 'FRAAS') {
-			targetLayerRes.Gamemode = 'RAAS'
-		}
-	}
+	if (!coalesceFraas) return Obj.isPartial(layerRes, targetLayerRes, ['id'])
 
-	return Obj.isPartial(layerRes, targetLayerRes, ['id'])
+	return Obj.isPartial(coalescedFraas(layerRes), coalescedFraas(targetLayerRes), ['id'])
+}
+
+// A copy, because both of this function's inputs can be a caller's own layer object, and `toLayer` hands back a
+// memoized one for an id. Writing the coalesced gamemode back into either would outlive the comparison.
+function coalescedFraas(layer: UnvalidatedLayer): UnvalidatedLayer {
+	if (layer.Gamemode !== 'FRAAS' && !layer.Layer?.includes('FRAAS')) return layer
+	return {
+		...layer,
+		Layer: layer.Layer ? layer.Layer.replace('FRAAS', 'RAAS') : layer.Layer,
+		Gamemode: layer.Gamemode === 'FRAAS' ? 'RAAS' : layer.Gamemode,
+	}
 }
 
 export function areLayersCompatible(
@@ -465,11 +466,29 @@ export function isSeedingOrTrainingLayer(layerOrId: UnvalidatedLayer | LayerId, 
 	return layer.Gamemode === 'Seed' || layer.Gamemode === 'Training'
 }
 
+// Parsing an id is a regex exec, four reverse lookups and a full isKnownLayer validation -- 2.1us measured -- and the
+// same handful of ids are asked for over and over, since a queue, a table page and a match history view all resolve
+// the layers they are already holding. The result is shared between callers, so treat it as read-only.
+//
+// Per components rather than global, because callers can pass their own set and an id resolves differently against a
+// different one. Bounded because RAW: ids are freeform text and so the key space is not.
+const PARSED_LAYER_CACHE_SIZE = 2_000
+const parsedLayers = new WeakMap<LC.LayerComponents, FixedSizeMap<string, UnvalidatedLayer>>()
+
 export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents): UnvalidatedLayer {
-	if (typeof unvalidatedLayerOrId === 'string') {
-		return fromPossibleRawId(unvalidatedLayerOrId, components)
+	if (typeof unvalidatedLayerOrId !== 'string') return unvalidatedLayerOrId
+
+	let cache = parsedLayers.get(components)
+	if (!cache) {
+		cache = new FixedSizeMap(PARSED_LAYER_CACHE_SIZE)
+		parsedLayers.set(components, cache)
 	}
-	return unvalidatedLayerOrId
+	const cached = cache.get(unvalidatedLayerOrId)
+	if (cached) return cached
+
+	const layer = fromPossibleRawId(unvalidatedLayerOrId, components)
+	cache.set(unvalidatedLayerOrId, layer)
+	return layer
 }
 
 export function fromPossibleRawId(id: string, components = StaticLayerComponents): UnvalidatedLayer {
