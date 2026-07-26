@@ -104,7 +104,7 @@ export function useTailingScroll() {
 		const markUserActive = () => {
 			userScrolling = true
 			clearTimeout(idleTimeout)
-			idleTimeout = setTimeout(() => userScrolling = false, SCROLL_IDLE_MS)
+			idleTimeout = setTimeout(() => (userScrolling = false), SCROLL_IDLE_MS)
 		}
 
 		const onScroll = () => {

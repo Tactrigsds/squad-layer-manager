@@ -1,14 +1,15 @@
+import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
+import * as React from 'react'
+
 import { LayerInfo } from '@/components/layer-info'
 import * as DH from '@/lib/display-helpers.ts'
 import * as L from '@/models/layer'
-import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
-import * as React from 'react'
 
 export const Route = createFileRoute('/layers/$layerId/$tab')({
 	component: RouteComponent,
 	beforeLoad: ({ params }) => {
 		if (L.parseLayerId(params.layerId).code === 'ok') {
-			throw redirect({ to: '.', params: prev => ({ ...prev, layerId: L.getLayerCommand(params.layerId, 'none') }) })
+			throw redirect({ to: '.', params: (prev) => ({ ...prev, layerId: L.getLayerCommand(params.layerId, 'none') }) })
 		}
 		const layer = L.parseRawLayerText(params.layerId)
 		if (!layer || L.isRawLayerId(layer.id)) throw notFound()
@@ -23,9 +24,7 @@ export const Route = createFileRoute('/layers/$layerId/$tab')({
 		return { layer, tab }
 	},
 	head: ({ match }) => ({
-		meta: [
-			{ title: 'SLM - ' + DH.displayLayer(match.context.layer) },
-		],
+		meta: [{ title: 'SLM - ' + DH.displayLayer(match.context.layer) }],
 	}),
 	caseSensitive: true,
 	shouldReload: true,

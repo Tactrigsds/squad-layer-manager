@@ -1,10 +1,11 @@
+import { describe, expect, it } from 'vitest'
+
 import type * as ODSM from '@/lib/odsm'
 import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as SLL from '@/models/shared-layer-list'
-import { describe, expect, it } from 'vitest'
 
 const USER = 5n
 const OTHER_USER = 6n
@@ -30,15 +31,15 @@ function apply(state: SLL.State, ...ops: SLL.Operation[]) {
 }
 
 function backburnerSaves(sideEffects: SLL.SideEffect[]) {
-	return sideEffects.filter(se => se.code === 'request-backburner-save')
+	return sideEffects.filter((se) => se.code === 'request-backburner-save')
 }
 
 function listSaves(sideEffects: SLL.SideEffect[]) {
-	return sideEffects.filter(se => se.code === 'request-list-save')
+	return sideEffects.filter((se) => se.code === 'request-list-save')
 }
 
 function ids(items: BB.BackburnerItem[]) {
-	return items.map(item => item.itemId)
+	return items.map((item) => item.itemId)
 }
 
 function queueItem() {
@@ -74,11 +75,11 @@ describe('backburner draft ops', () => {
 			filter: FB.and([FB.eq('Gamemode', 'RAAS')]),
 			...draftProps(),
 		}).state
-		expect(updated.backburner.find(i => i.itemId === 'a')?.filter).toEqual(FB.and([FB.eq('Gamemode', 'RAAS')]))
+		expect(updated.backburner.find((i) => i.itemId === 'a')?.filter).toEqual(FB.and([FB.eq('Gamemode', 'RAAS')]))
 
 		const combined = apply(updated, { op: 'backburner-combine', targetItemId: 'c', sourceItemId: 'b', ...draftProps() }).state
 		expect(ids(combined.backburner)).toEqual(['c', 'a'])
-		const target = combined.backburner.find(i => i.itemId === 'c')!
+		const target = combined.backburner.find((i) => i.itemId === 'c')!
 		// combining ORs element-wise: the two single-map templates union into one in-values condition
 		expect(BB.parseTemplateParts(target.filter).maps).toEqual(['Chora', 'Fallujah'])
 	})
@@ -92,8 +93,7 @@ describe('backburner draft ops', () => {
 
 	it('skips draft ops from a stale edit window', () => {
 		const initial = SLL.createNewState([queueItem()])
-		expect(() => apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 99 }))
-			.toThrowError()
+		expect(() => apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 99 })).toThrowError()
 	})
 
 	it('is exempt from the pending-generation gate', () => {
@@ -188,7 +188,7 @@ describe('queue saves reset mutation state', () => {
 	}
 
 	function editWindowClosures(sideEffects: SLL.SideEffect[]) {
-		return sideEffects.filter(se => se.code === 'edit-window-closed')
+		return sideEffects.filter((se) => se.code === 'edit-window-closed')
 	}
 
 	it('clears mutations when the save writes a changed list', () => {
@@ -226,7 +226,7 @@ describe('queue saves reset mutation state', () => {
 		const cleared = apply(initial, { op: 'clear', itemIds: [item.itemId], ...queueProps(initial) }).state
 
 		const { state, sideEffects } = apply(cleared, { op: 'save', ...queueProps(cleared) })
-		expect(sideEffects.some(se => se.code === 'request-queue-item-generation')).toBe(true)
+		expect(sideEffects.some((se) => se.code === 'request-queue-item-generation')).toBe(true)
 		expect(SLL.hasMutations(state)).toBe(false)
 
 		const generated = apply(state, { op: 'queue-item-generated', opId: 'gen', item: queueItem() }).state
@@ -269,7 +269,7 @@ describe('rejections', () => {
 	it('reports stale-window backburner ops as skipped', () => {
 		const initial = SLL.createNewState([queueItem()])
 		const rejection = rejectionOf(() =>
-			apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 42 })
+			apply(initial, { op: 'backburner-add', item: bbItem('a'), opId: 'x', userId: USER, editWindowSeqId: 42 }),
 		)
 		expect(rejection.code).toBe('op-skipped')
 	})

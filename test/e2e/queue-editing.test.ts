@@ -37,16 +37,19 @@ test.describe('editing the queue', () => {
 			expect(setNext.body).toContain('Sumari_Seed_v1')
 			await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible()
 
-			await app.waitFor(() => {
-				const db = app.readDb()
-				try {
-					const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
-					const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
-					return list.length === 2 && list[0].layerId === LAYERS.sumariSeed
-				} finally {
-					db.close()
-				}
-			}, { label: 'saved queue without the deleted head' })
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+						return list.length === 2 && list[0].layerId === LAYERS.sumariSeed
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'saved queue without the deleted head' },
+			)
 		} finally {
 			await app.dispose()
 		}
@@ -62,8 +65,7 @@ test.describe('editing the queue', () => {
 
 			const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
 			await page.getByRole('button', { name: 'Start Editing' }).click()
-			await queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' })
-				.getByRole('button', { name: 'Delete' }).click()
+			await queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
 			await expect(queuePanel.getByRole('listitem')).toHaveCount(2)
 
 			// the draft dies with the editing session, so navigating out asks before it does

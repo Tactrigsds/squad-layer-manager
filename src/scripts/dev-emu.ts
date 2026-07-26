@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as readline from 'node:readline'
 import { parseArgs } from 'node:util'
+
 import * as EmuControl from '../dev/emu-control.ts'
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
@@ -29,7 +30,10 @@ DevInstance.ensureLayerData()
 const slot = Slots.requireSlot()
 
 fs.mkdirSync(DevInstance.DEV_DIR, { recursive: true })
-const adminSteamIds = (args.values.admins ?? '').split(',').map((id) => id.trim()).filter(Boolean)
+const adminSteamIds = (args.values.admins ?? '')
+	.split(',')
+	.map((id) => id.trim())
+	.filter(Boolean)
 fs.writeFileSync(
 	DevInstance.ADMINS_CFG_PATH,
 	DevInstance.renderAdminsCfg(adminSteamIds, DevInstance.ADMIN_GROUP, ['canseeadminchat', 'balance', 'cameraman', 'teamchange']),

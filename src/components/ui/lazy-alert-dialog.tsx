@@ -1,7 +1,16 @@
 import { AlertTriangle } from 'lucide-react'
 import React, { useCallback, useContext } from 'react'
 
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -86,7 +95,7 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 			<AlertDialog open={open} onOpenChange={handleOpenChange}>
 				<AlertDialogContent
 					className={cn(isDestructive && 'border-destructive/50')}
-					onOpenAutoFocus={e => {
+					onOpenAutoFocus={(e) => {
 						// only steal focus for content that has a text input; otherwise let the default (confirm button) win
 						const input = options?.content ? (e.currentTarget as HTMLElement).querySelector('input') : null
 						if (!input) return
@@ -104,7 +113,7 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 					{options?.content && (
 						<form
 							className="contents"
-							onSubmit={e => {
+							onSubmit={(e) => {
 								e.preventDefault()
 								if (options.buttons?.[0]) handleButtonClick(options.buttons[0].id)
 							}}

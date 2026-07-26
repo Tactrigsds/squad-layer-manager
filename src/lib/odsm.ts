@@ -2,8 +2,8 @@
 // independently on the server and each client: clients apply ops optimistically and reconcile
 // against the server's authoritative replay, while the server is just one more replica whose
 // history is the one everyone else converges to.
-import * as Arr from '@/lib/array'
-import * as Obj from '@/lib/object'
+import * as Arr from '@/lib/array-utils'
+import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 
 export type OpId = string
@@ -28,10 +28,12 @@ export class RejectedError<T = unknown> extends Error {
 	}
 }
 
-type SideEffectBase = {
-	// this doesn't necessarily have to align with opcode
-	code: string
-} | undefined
+type SideEffectBase =
+	| {
+			// this doesn't necessarily have to align with opcode
+			code: string
+	  }
+	| undefined
 
 namespace OpHistory {
 	// once the history reaches this size, we will always retain the last MAX_GUARANTEED ops. the rest may be discarded
@@ -133,7 +135,7 @@ export namespace Server {
 	): Exclude<ClientUpdate<unknown, O, R['code']>, { code: 'init' }> | null {
 		const { ops, sourceWsClientId, echoToSource, rejection } = dispatched
 		const isOriginator = sourceWsClientId !== undefined && sourceWsClientId === wsClientId
-		const opIds = ops.map(op => op.opId)
+		const opIds = ops.map((op) => op.opId)
 		if (rejection) return isOriginator ? { code: 'rejected', opIds, reason: rejection.code } : null
 		if (isOriginator && !echoToSource) return { code: 'ack', opIds }
 		return { code: 'op', ops }
@@ -152,10 +154,10 @@ export namespace Server {
 		reducer: Reducer<O, S, SE>,
 	): Applied<Session<O, S>, SE> {
 		if (ops.length === 0) return { rejected: false, session, sideEffects: [] }
-		const incomingIds = ops.map(op => op.opId)
+		const incomingIds = ops.map((op) => op.opId)
 		const incomingIdSet = new Set(incomingIds)
 		if (incomingIdSet.size !== incomingIds.length) throw new Error('Duplicate opIds in ops')
-		const existingIds = new Set(session.ops.map(op => op.opId))
+		const existingIds = new Set(session.ops.map((op) => op.opId))
 		for (const id of incomingIds) {
 			if (existingIds.has(id)) throw new Error(`Duplicate opId already in session: ${id}`)
 		}
@@ -164,10 +166,7 @@ export namespace Server {
 		return tag({ state: reduced.state, ops: OpHistory.concat(session.ops, ops) }, reduced)
 	}
 
-	export function resetSession<O extends BaseOp, S>(
-		_session: Session<O, S>,
-		state: S,
-	): Session<O, S> {
+	export function resetSession<O extends BaseOp, S>(_session: Session<O, S>, state: S): Session<O, S> {
 		return { state, ops: [] }
 	}
 }
@@ -180,10 +179,7 @@ export namespace Client {
 		pendingOps: O[]
 	}
 
-	export function initSession<O extends BaseOp, S>(
-		state: S,
-		opts?: { ops?: O[] },
-	): Session<O, S> {
+	export function initSession<O extends BaseOp, S>(state: S, opts?: { ops?: O[] }): Session<O, S> {
 		return {
 			syncedOps: opts?.ops ?? [],
 			syncedState: state,
@@ -203,8 +199,8 @@ export namespace Client {
 		ops: O[],
 		reducer: Reducer<O, S, SE>,
 	): Session<O, S> {
-		const syncedIds = new Set(ops.map(op => op.opId))
-		const pendingOps = session.pendingOps.filter(op => !syncedIds.has(op.opId))
+		const syncedIds = new Set(ops.map((op) => op.opId))
+		const pendingOps = session.pendingOps.filter((op) => !syncedIds.has(op.opId))
 		const next = initSession<O, S>(state, { ops })
 		if (pendingOps.length === 0) return next
 		return rebasePendingOps(next, pendingOps, reducer)
@@ -216,10 +212,10 @@ export namespace Client {
 		reducer: Reducer<O, S, SE>,
 	): Applied<Session<O, S>, SE> {
 		if (ops.length === 0) throw new Error('No ops to process')
-		const incomingIds = ops.map(op => op.opId)
+		const incomingIds = ops.map((op) => op.opId)
 		const incomingIdSet = new Set(incomingIds)
 		if (incomingIdSet.size !== incomingIds.length) throw new Error('Duplicate opIds in incoming server ops')
-		const existingSyncedIds = new Set(session.syncedOps.map(op => op.opId))
+		const existingSyncedIds = new Set(session.syncedOps.map((op) => op.opId))
 		for (const id of incomingIds) {
 			if (existingSyncedIds.has(id)) throw new Error(`Duplicate opId already in syncedOps: ${id}`)
 		}
@@ -232,23 +228,23 @@ export namespace Client {
 		const newSyncedState = reduced.rejected ? session.syncedState : reduced.state
 		const newSyncedOps = [...prevSyncedOps, ...ops]
 
-		const newSyncedOpIds = newSyncedOps.map(op => op.opId)
-		const pendingOpIds = session.pendingOps.map(op => op.opId)
+		const newSyncedOpIds = newSyncedOps.map((op) => op.opId)
+		const pendingOpIds = session.pendingOps.map((op) => op.opId)
 		const truncatedNewSyncedOps = OpHistory.truncate(newSyncedOps)
 
 		// wait for client to be completely caught up before rolling back. In other words we don't try to reconcile diverging histories until the synced history is fully caught up to the local history
 		const newSession: Session<O, S> = Arr.isSubset(newSyncedOpIds, pendingOpIds)
 			? {
-				syncedState: newSyncedState,
-				syncedOps: truncatedNewSyncedOps,
-				localState: newSyncedState,
-				pendingOps: [],
-			}
+					syncedState: newSyncedState,
+					syncedOps: truncatedNewSyncedOps,
+					localState: newSyncedState,
+					pendingOps: [],
+				}
 			: {
-				...session,
-				syncedState: newSyncedState,
-				syncedOps: truncatedNewSyncedOps,
-			}
+					...session,
+					syncedState: newSyncedState,
+					syncedOps: truncatedNewSyncedOps,
+				}
 		return tag(newSession, reduced)
 	}
 
@@ -264,30 +260,31 @@ export namespace Client {
 		if (opIds.length === 0) throw new Error('No ops to process')
 		const ackedIdSet = new Set(opIds)
 		if (ackedIdSet.size !== opIds.length) throw new Error('Duplicate opIds in acked ops')
-		const ackedOps = session.pendingOps.filter(op => ackedIdSet.has(op.opId))
+		const ackedOps = session.pendingOps.filter((op) => ackedIdSet.has(op.opId))
 		if (ackedOps.length !== opIds.length) {
-			const missing = opIds.filter(id => !session.pendingOps.some(op => op.opId === id))
+			const missing = opIds.filter((id) => !session.pendingOps.some((op) => op.opId === id))
 			throw new Error(`Acked ops not in pendingOps: ${missing.join(', ')}`)
 		}
 
 		const reduced = runReducer(reducer, session.syncedState, ackedOps, session.syncedOps)
 		const newSyncedState = reduced.rejected ? session.syncedState : reduced.state
 		const newSyncedOps = OpHistory.concat(session.syncedOps, ackedOps)
-		const pendingOps = session.pendingOps.filter(op => !ackedIdSet.has(op.opId))
+		const pendingOps = session.pendingOps.filter((op) => !ackedIdSet.has(op.opId))
 
 		// same policy as processIncomingOps: don't reconcile diverging histories until the synced
 		// history has fully caught up to the local history
-		const newSession: Session<O, S> = pendingOps.length > 0
-			? { ...session, syncedState: newSyncedState, syncedOps: newSyncedOps, pendingOps }
-			: {
-				syncedState: newSyncedState,
-				syncedOps: newSyncedOps,
-				// deterministic replay means the canonical state normally equals the optimistic state we're
-				// already displaying -- keep the existing reference then, so downstream identity guards
-				// (derived store props, query dep keys) don't fire for a no-op update
-				localState: Obj.deepEqual(newSyncedState, session.localState) ? session.localState : newSyncedState,
-				pendingOps: [],
-			}
+		const newSession: Session<O, S> =
+			pendingOps.length > 0
+				? { ...session, syncedState: newSyncedState, syncedOps: newSyncedOps, pendingOps }
+				: {
+						syncedState: newSyncedState,
+						syncedOps: newSyncedOps,
+						// deterministic replay means the canonical state normally equals the optimistic state we're
+						// already displaying -- keep the existing reference then, so downstream identity guards
+						// (derived store props, query dep keys) don't fire for a no-op update
+						localState: Obj.deepEqual(newSyncedState, session.localState) ? session.localState : newSyncedState,
+						pendingOps: [],
+					}
 		return tag(newSession, reduced)
 	}
 
@@ -301,13 +298,13 @@ export namespace Client {
 		opIds: OpId[],
 		reducer: Reducer<O, S, SE>,
 	): Applied<Session<O, S>, SE> & { ackedOps: O[]; unknownOpIds: OpId[] } {
-		const pendingIds = new Set(session.pendingOps.map(op => op.opId))
-		const syncedIds = new Set(session.syncedOps.map(op => op.opId))
-		const unknownOpIds = opIds.filter(id => !pendingIds.has(id) && !syncedIds.has(id))
-		const pendingAckedIds = opIds.filter(id => pendingIds.has(id))
+		const pendingIds = new Set(session.pendingOps.map((op) => op.opId))
+		const syncedIds = new Set(session.syncedOps.map((op) => op.opId))
+		const unknownOpIds = opIds.filter((id) => !pendingIds.has(id) && !syncedIds.has(id))
+		const pendingAckedIds = opIds.filter((id) => pendingIds.has(id))
 		if (pendingAckedIds.length === 0) return { rejected: false, session, sideEffects: [], ackedOps: [], unknownOpIds }
 		const pendingAckedIdSet = new Set(pendingAckedIds)
-		const ackedOps = session.pendingOps.filter(op => pendingAckedIdSet.has(op.opId))
+		const ackedOps = session.pendingOps.filter((op) => pendingAckedIdSet.has(op.opId))
 		const applied = processAckedOps(session, pendingAckedIds, reducer)
 		if (applied.rejected) return { rejected: true, session: applied.session, error: applied.error, ackedOps, unknownOpIds }
 		return { rejected: false, session: applied.session, sideEffects: applied.sideEffects, ackedOps, unknownOpIds }
@@ -323,7 +320,7 @@ export namespace Client {
 		reducer: Reducer<O, S, SE>,
 	): Session<O, S> {
 		const droppedIds = new Set(opIds)
-		const pendingOps = session.pendingOps.filter(op => !droppedIds.has(op.opId))
+		const pendingOps = session.pendingOps.filter((op) => !droppedIds.has(op.opId))
 		if (pendingOps.length === session.pendingOps.length) return session
 		if (pendingOps.length === 0) return { ...session, localState: session.syncedState, pendingOps }
 		const reduced = runReducer(reducer, session.syncedState, pendingOps, session.syncedOps)
@@ -341,10 +338,10 @@ export namespace Client {
 	// shared validation for ops entering the local (client) timeline
 	function assertOutgoing<O extends BaseOp, S>(session: Session<O, S>, ops: O[]): void {
 		if (ops.length === 0) throw new Error('No ops to process')
-		const incomingIds = ops.map(op => op.opId)
+		const incomingIds = ops.map((op) => op.opId)
 		const incomingIdSet = new Set(incomingIds)
 		if (incomingIdSet.size !== incomingIds.length) throw new Error('Duplicate opIds in incoming client ops')
-		const existingPendingIds = new Set(session.pendingOps.map(op => op.opId))
+		const existingPendingIds = new Set(session.pendingOps.map((op) => op.opId))
 		for (const id of incomingIds) {
 			if (existingPendingIds.has(id)) throw new Error(`Duplicate opId already in pendingOps: ${id}`)
 		}

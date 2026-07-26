@@ -1,0 +1,10 @@
+# Commits that only move code around. `git blame` skips them once you run:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub picks this file up on its own.
+
+# style: reformat with oxfmt
+3a0105ddb3d35b1fa011b34a04e59f467300c6e6
+# style: sort imports with oxfmt
+abe1e5fe0e15e7df8606a515128b2795c4e5d715
+# style: set tabWidth to 3
+1ef2d7c0ca39fa9b8f1cf3498a7f1be490a7e94e

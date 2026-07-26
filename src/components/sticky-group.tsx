@@ -1,6 +1,7 @@
-import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { createContext, type ReactNode, type RefObject, useContext, useLayoutEffect, useRef } from 'react'
-import { createStore, type StoreApi } from 'zustand/vanilla'
+
+import * as Zus from '@/lib/zustand'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 
 /**
  * StickyGroup
@@ -95,16 +96,14 @@ interface StickyState {
 	depth: number
 }
 
-function createStickyStore(
-	initial: StickyState = { offset: 0, depth: 0 },
-): StoreApi<StickyState> {
-	return createStore<StickyState>(() => initial)
+function createStickyStore(initial: StickyState = { offset: 0, depth: 0 }): Zus.StoreApi<StickyState> {
+	return Zus.createStore<StickyState>(() => initial)
 }
 
 // Default store read by any <StickyGroup> with no <StickyGroup> ancestor.
 const rootStickyStore = createStickyStore()
 
-const StickyStoreContext = createContext<StoreApi<StickyState>>(rootStickyStore)
+const StickyStoreContext = createContext<Zus.StoreApi<StickyState>>(rootStickyStore)
 
 export interface StickyGroupProps<T extends HTMLElement = HTMLElement> {
 	/** Content to render. May include further nested <StickyGroup>s. */
@@ -117,10 +116,7 @@ export interface StickyGroupProps<T extends HTMLElement = HTMLElement> {
 	stickyRef: RefObject<T | null>
 }
 
-export function StickyGroup<T extends HTMLElement = HTMLElement>({
-	children,
-	stickyRef,
-}: StickyGroupProps<T>) {
+export function StickyGroup<T extends HTMLElement = HTMLElement>({ children, stickyRef }: StickyGroupProps<T>) {
 	const parentStore = useContext(StickyStoreContext)
 	const stickyCeiling = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 	const stickyFloor = useZIndex(ZI_OFFSETS.STICKYGROUP_FLOOR)
@@ -129,7 +125,7 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 	// object's identity is stable across re-renders. That stability is what
 	// lets it be handed down through context without causing descendant
 	// re-renders when its *contents* change later.
-	const ownStoreRef = useRef<StoreApi<StickyState> | null>(null)
+	const ownStoreRef = useRef<Zus.StoreApi<StickyState> | null>(null)
 	if (!ownStoreRef.current) {
 		ownStoreRef.current = createStickyStore()
 	}
@@ -189,9 +185,5 @@ export function StickyGroup<T extends HTMLElement = HTMLElement>({
 		}
 	}, [stickyRef, parentStore, ownStore, stickyCeiling, stickyFloor])
 
-	return (
-		<StickyStoreContext.Provider value={ownStore}>
-			{children}
-		</StickyStoreContext.Provider>
-	)
+	return <StickyStoreContext.Provider value={ownStore}>{children}</StickyStoreContext.Provider>
 }

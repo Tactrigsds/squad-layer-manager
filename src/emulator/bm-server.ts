@@ -115,12 +115,14 @@ export class BmServer {
 				const eosId = item.attributes?.identifier
 				const player = eosId ? this.findByEos(eosId) : undefined
 				if (!eosId || !player) return []
-				return [{
-					type: 'identifier' as const,
-					id: `ident-${i}`,
-					attributes: { type: 'eosID', identifier: eosId },
-					relationships: { player: { data: { type: 'player' as const, id: player.bmPlayerId } } },
-				}]
+				return [
+					{
+						type: 'identifier' as const,
+						id: `ident-${i}`,
+						attributes: { type: 'eosID', identifier: eosId },
+						relationships: { player: { data: { type: 'player' as const, id: player.bmPlayerId } } },
+					},
+				]
 			})
 			return send(200, { data })
 		}

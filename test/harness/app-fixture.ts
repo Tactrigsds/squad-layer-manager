@@ -1,3 +1,11 @@
+import Database, { type Database as SqliteDb } from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
+import * as childProcess from 'node:child_process'
+import * as fs from 'node:fs'
+import * as net from 'node:net'
+import * as os from 'node:os'
+import * as path from 'node:path'
+
 import * as Schema from '$root/drizzle/schema.ts'
 import * as DevInstance from '@/dev/instance'
 import { superjsonify } from '@/lib/drizzle'
@@ -10,13 +18,7 @@ import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
 import * as Migrate from '@/server/migrate'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
-import Database, { type Database as SqliteDb } from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import * as childProcess from 'node:child_process'
-import * as fs from 'node:fs'
-import * as net from 'node:net'
-import * as os from 'node:os'
-import * as path from 'node:path'
+
 import { Emulator, type EmulatorOptions } from '../../src/emulator'
 import { BmServer } from '../../src/emulator/bm-server'
 
@@ -26,16 +28,19 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// How to start the app under test. In the docker image (and so in CI) SLM_TEST_SERVER_ENTRY points at
-// the bundled server, so the tests drive the very artifact that gets deployed; locally we run the
-// source through tsx, so there's nothing to rebuild between edit and test.
+// How to start the app under test. SLM_TEST_SERVER_ENTRY points at a bundled server: the docker image sets it
+// to the artifact it ships, so CI drives the very thing that gets deployed, and locally the test scripts build
+// one first, because transpiling the module graph through tsx costs ~3.5s of every boot and there are dozens
+// of those in a run (see scripts/test-server-bundle.mjs). Without it, the tsx path below runs the sources
+// directly, which is what `test:integration:src` / `test:e2e:src` are for.
 function serverCommand(): [string, string[]] {
 	// main-instrumented is the entry production runs: it starts the otel sdk (when OTEL_ENABLED) and then
 	// hands off to main. Spawning it -- rather than main directly -- is what lets a test's telemetry exist
 	// at all. register-otel.mjs installs the loader hook the auto-instrumentations need.
 	const otelLoader = ['--import', path.join(REPO_ROOT, 'register-otel.mjs')]
 	const entry = process.env.SLM_TEST_SERVER_ENTRY
-	if (entry) return ['node', ['--enable-source-maps', ...otelLoader, entry]]
+	// the same two preloads, in the same order, that `pnpm run server:prod` passes
+	if (entry) return ['node', ['--import', path.join(REPO_ROOT, 'register-source-maps.mjs'), ...otelLoader, entry]]
 	return [
 		path.join(REPO_ROOT, 'node_modules/.bin/tsx'),
 		['--tsconfig', 'tsconfig.node.json', ...otelLoader, 'src/server/main-instrumented.ts'],
@@ -202,36 +207,45 @@ type ServerAgentController = {
 	dispose: () => void
 }
 
-function startServerAgent(
-	args: { appPort: number; serverId: string; logPath: string; agentLogPath: string; rconPort: number; rconPassword: string },
-): ServerAgentController {
+function startServerAgent(args: {
+	appPort: number
+	serverId: string
+	logPath: string
+	agentLogPath: string
+	rconPort: number
+	rconPassword: string
+}): ServerAgentController {
 	const binary = resolveAgentBinary()
 	let child: childProcess.ChildProcess | null = null
 	const start = () => {
 		if (child) return
 		const out = fs.openSync(args.agentLogPath, 'a')
-		child = childProcess.spawn(binary, [
-			'--url',
-			`ws://127.0.0.1:${args.appPort}/server-agent`,
-			'--server-id',
-			args.serverId,
-			'--token',
-			SERVER_AGENT_TOKEN,
-			'--file',
-			args.logPath,
-			// the agent holds the RCON creds and proxies them; the app never sees them for a server-agent server
-			'--rcon-host',
-			'127.0.0.1',
-			'--rcon-port',
-			String(args.rconPort),
-			'--rcon-password',
-			args.rconPassword,
-			// tests move fast; poll and reconnect quickly so assertions don't wait on the agent
-			'--poll-ms',
-			'100',
-			'--reconnect-ms',
-			'300',
-		], { stdio: ['ignore', out, out] })
+		child = childProcess.spawn(
+			binary,
+			[
+				'--url',
+				`ws://127.0.0.1:${args.appPort}/server-agent`,
+				'--server-id',
+				args.serverId,
+				'--token',
+				SERVER_AGENT_TOKEN,
+				'--file',
+				args.logPath,
+				// the agent holds the RCON creds and proxies them; the app never sees them for a server-agent server
+				'--rcon-host',
+				'127.0.0.1',
+				'--rcon-port',
+				String(args.rconPort),
+				'--rcon-password',
+				args.rconPassword,
+				// tests move fast; poll and reconnect quickly so assertions don't wait on the agent
+				'--poll-ms',
+				'100',
+				'--reconnect-ms',
+				'300',
+			],
+			{ stdio: ['ignore', out, out] },
+		)
 		child.once('exit', () => {
 			child = null
 		})
@@ -261,18 +275,18 @@ function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 }
 
 // The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
-// (which wants two polls) and dominates this suite's wall time. 2s roughly halves the suite against
-// the shipped 5s.
+// (which wants two polls) and dominates this suite's wall time.
 //
-// Do not lower these further without re-measuring: at 1s the suite got faster still but started
-// failing about one run in three, and at 500ms it got both slower *and* flakier -- RCON is
-// serialized, so polling faster than it drains queues commands until responses breach the 2s
-// timeout in core-rcon and back off. The failures only appear under full-suite load, never in a
-// single file, and they land on whichever test is unluckiest rather than a consistent one.
+// What these can be is a function of how loaded the box is, because the failure mode is core-rcon's 2s
+// response timeout: poll faster than a busy machine can drain RCON and commands queue until responses
+// breach it. At 2s each the suite ran 58s; 1s each ran 41s over three clean runs, which only became safe
+// once each app stopped booting through tsx and stopped seeding a sandbox server alongside the one under
+// test. 500ms measured clean here too (36s), and is deliberately not taken: CI runs this in a container
+// on fewer cores than the machine it was measured on, and a flaky integration suite is not worth 5s.
 function applyTestServerTimings(settings: SETTINGS.ServerSettings) {
-	settings.rconCacheTTL.layersStatus = 2_000
-	settings.rconCacheTTL.serverInfo = 4_000
-	settings.rconCacheTTL.teams = 2_000
+	settings.rconCacheTTL.layersStatus = 1_000
+	settings.rconCacheTTL.serverInfo = 2_000
+	settings.rconCacheTTL.teams = 1_000
 	settings.vote.voteDuration = 8_000
 	settings.vote.finalVoteReminder = 2_000
 	settings.vote.voteReminderInterval = 3_000
@@ -317,10 +331,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	globalSettings.adminLists = {
 		[TEST_ADMIN_LIST]: { source: { type: 'local', source: adminsCfgPath }, adminIdentifyingPermissions: [ADMIN_PERM] },
 	}
+	// A fresh install seeds a sandbox, which is a whole second squad server: its own in-process emulator, its own RCON
+	// connection and its own polling loops, all running for the life of every test app. Nothing here drives it, and the
+	// RCON traffic it adds is what the poll intervals above have to leave room for. A test that wants one turns it back on.
+	globalSettings.seedSandboxServer = false
 	opts.globalSettings?.(globalSettings)
-	await db.insert(Schema.globalSettings).values(
-		superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }),
-	)
+	await db
+		.insert(Schema.globalSettings)
+		.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }))
 
 	// -------- server --------
 	// the emulator writes its log to a file and the app tails it, the same `local` path a
@@ -329,13 +347,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const logSource = opts.logSource ?? 'local'
 	const serverSettings = SETTINGS.ServerSettingsSchema.parse({
 		// server-agent mode keeps no RCON creds in the app: the agent holds them and proxies RCON over its tunnel
-		connections: logSource === 'server-agent'
-			? { type: 'server-agent', token: SERVER_AGENT_TOKEN }
-			: {
-				type: 'local',
-				logFile: squadLogPath,
-				rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
-			},
+		connections:
+			logSource === 'server-agent'
+				? { type: 'server-agent', token: SERVER_AGENT_TOKEN }
+				: {
+						type: 'local',
+						logFile: squadLogPath,
+						rcon: { host: '127.0.0.1', port: emu.rconPort, password: emu.password },
+					},
 	})
 	const layerQueue = opts.layerQueue ?? []
 	applyTestServerTimings(serverSettings)
@@ -407,14 +426,14 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const otelEnabled = !!opts.otel || process.env.SLM_TEST_OTEL === '1' || process.env.SLM_TEST_OTEL === 'true'
 	const otelEnv: Record<string, string> = otelEnabled
 		? {
-			OTEL_ENABLED: 'true',
-			OTLP_COLLECTOR_ENDPOINT: opts.otel?.endpoint ?? process.env.OTLP_COLLECTOR_ENDPOINT ?? 'http://localhost:4318',
-			// a test is short and rare: sample everything, or the one trace you want won't be there
-			OTEL_TRACE_SAMPLE_RATIO: '1',
-			OTEL_RESOURCE_ATTRIBUTES: Object.entries(otelLabels)
-				.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-				.join(','),
-		}
+				OTEL_ENABLED: 'true',
+				OTLP_COLLECTOR_ENDPOINT: opts.otel?.endpoint ?? process.env.OTLP_COLLECTOR_ENDPOINT ?? 'http://localhost:4318',
+				// a test is short and rare: sample everything, or the one trace you want won't be there
+				OTEL_TRACE_SAMPLE_RATIO: '1',
+				OTEL_RESOURCE_ATTRIBUTES: Object.entries(otelLabels)
+					.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+					.join(','),
+			}
 		: { OTEL_ENABLED: 'false' }
 	if (otelEnabled) {
 		console.log(
@@ -425,7 +444,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	}
 
 	const env: Record<string, string> = {
-		...process.env as Record<string, string>,
+		...(process.env as Record<string, string>),
 		NODE_ENV: 'test',
 		...otelEnv,
 		DB_PATH: dbPath,
@@ -444,7 +463,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		// fixed 32-byte base64 key so encrypted settings survive across restarts within a test run
 		SETTINGS_ENCRYPTION_KEY: 'c2xtLXRlc3QtZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=',
-		SUPER_USERS: users.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId).map((u) => String(u.discordId)).join(','),
+		SUPER_USERS: users
+			.filter((u) => u.superUser ?? u.discordId === ADMIN_USER.discordId)
+			.map((u) => String(u.discordId))
+			.join(','),
 		...opts.env,
 	}
 
@@ -474,10 +496,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			? `\ntelemetry: slm.test.run_id="${TEST_RUN_ID}" slm.test.name="${otelLabels['slm.test.name']}"`
 			: ''
 		throw new Error(
-			`timed out waiting for ${waitOpts?.label ?? 'probe'} after ${timeoutMs}ms.`
-				+ (lastErr ? ` last error: ${lastErr.message}` : '')
-				+ telemetryHint
-				+ `\napp log tail:\n${tail}`,
+			`timed out waiting for ${waitOpts?.label ?? 'probe'} after ${timeoutMs}ms.` +
+				(lastErr ? ` last error: ${lastErr.message}` : '') +
+				telemetryHint +
+				`\napp log tail:\n${tail}`,
 		)
 	}
 
@@ -495,14 +517,17 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		child = childProcess.spawn(command, args, { cwd: REPO_ROOT, env, stdio: ['ignore', out, out] })
 		childExited = new Promise((resolve) => child!.once('exit', (code) => resolve(code)))
 
-		await waitFor(async () => {
-			if (child!.exitCode !== null) {
-				const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
-				throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
-			}
-			const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
-			return res !== null
-		}, { label: 'app readiness', timeoutMs: 60_000 })
+		await waitFor(
+			async () => {
+				if (child!.exitCode !== null) {
+					const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
+					throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
+				}
+				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
+				return res !== null
+			},
+			{ label: 'app readiness', timeoutMs: 60_000 },
+		)
 	}
 
 	if (opts.spawn !== false) await spawnApp()
@@ -541,10 +566,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			// two polls, not one: the roster resource fetches under a mutex, so the second ListPlayers
 			// can only have been issued after the first one's response was parsed and cached
 			const from = emu.rcon.commandLog.length
-			await waitFor(
-				() => emu.rcon.commandLog.slice(from).filter((c) => c.body === 'ListPlayers').length >= 2,
-				{ label: 'roster poll', timeoutMs: syncOpts?.timeoutMs ?? 25_000 },
-			)
+			await waitFor(() => emu.rcon.commandLog.slice(from).filter((c) => c.body === 'ListPlayers').length >= 2, {
+				label: 'roster poll',
+				timeoutMs: syncOpts?.timeoutMs ?? 25_000,
+			})
 		},
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,

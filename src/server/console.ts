@@ -1,10 +1,15 @@
-import * as Arr from '@/lib/array'
+import * as Im from 'immer'
+import * as superjson from 'superjson'
+import { z } from 'zod'
+
+import * as Arr from '@/lib/array-utils'
 import * as DH from '@/lib/display-helpers'
 import * as ItemMut from '@/lib/item-mutations'
-import * as MapUtils from '@/lib/map'
-import * as Obj from '@/lib/object'
+import * as MapUtils from '@/lib/map-utils'
+import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
-import * as SetUtils from '@/lib/set'
+import * as Rx from '@/lib/rxjs'
+import * as SetUtils from '@/lib/set-utils'
 import * as BAL from '@/models/balance-triggers.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
@@ -54,11 +59,6 @@ import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
-
-import * as Im from 'immer'
-import * as Rx from 'rxjs'
-import * as superjson from 'superjson'
-import { z } from 'zod'
 
 const namespaces = {
 	// server core

@@ -1,25 +1,30 @@
-import * as Arr from '@/lib/array'
-import { isAbortError, sleep, toAsyncGenerator, withAbortSignal } from '@/lib/async'
+import { Mutex } from 'async-mutex'
+import { z } from 'zod'
+
+import * as Arr from '@/lib/array-utils'
 import { withThrownAsync } from '@/lib/error'
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import * as MapUtils from '@/lib/map'
-import * as ATTRS from '@/models/otel-attrs'
-
+import * as MapUtils from '@/lib/map-utils'
 import * as ODSM from '@/lib/odsm'
+import * as Prom from '@/lib/promise-utils'
+import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { WARNS } from '@/messages'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
+import type * as SR from '@/models/squad-rcon.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
-
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
+import type * as C from '@/server/context'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -29,11 +34,6 @@ import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
-
-import { Mutex } from 'async-mutex'
-import type { MutexInterface } from 'async-mutex'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 export const module = initModule('teamswaps')
 
@@ -76,39 +76,25 @@ function sideEffectAttrs(se: TSW.SideEffect): Record<string, unknown> {
 	return attrs
 }
 
-async function resolveSourceName(
-	ctx: C.Db,
-	source: TSW.Teamswap['source'],
-	players?: { ids: SM.PlayerIds.Schema }[],
-): Promise<string> {
+async function resolveSourceName(ctx: C.Db, source: TSW.Teamswap['source'], players?: { ids: SM.PlayerIds.Schema }[]): Promise<string> {
 	if (source.discordId) {
 		return await Users.resolveDisplayName(ctx, source.discordId, 'Admin')
 	}
 	if (source.steamId && players) {
-		const player = players.find(p => p.ids.steam === source.steamId)
+		const player = players.find((p) => p.ids.steam === source.steamId)
 		return player?.ids.usernameNoTag ?? player?.ids.username ?? 'Admin'
 	}
 	return 'Admin'
 }
 
-type Session = ODSM.Server.Session<TSW.Op, TSW.State>
-
 type Dispatched = ODSM.Server.Dispatched<TSW.Op, TSW.Rejection>
 
-export type TeamswapContext = {
-	session: Session
-	// outgoing operations
-	op$: IsolatedSubject<Dispatched>
-	dispatchMtx: MutexInterface
-	teamswapExecutedAt: number | null
-	haveReadSavedSwapsFromDb: boolean
-}
 export function setup() {
 	log = module.getLogger()
 }
 
-export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
-	const context: TeamswapContext = {
+export function initContext(ctx: SQS.Ctx & C.Db & C.ManagedServerCleanup) {
+	const context: TSW.Ctx.Payload = {
 		session: ODSM.Server.initSession(TSW.initState()),
 		op$: new IsolatedSubject<Dispatched>(),
 		dispatchMtx: new Mutex(),
@@ -119,127 +105,177 @@ export function initContext(ctx: C.SquadServer & C.Db & C.ServerSliceCleanup) {
 
 	// sync with team updates
 	ctx.cleanup.push(
-		ctx.server.event$.pipe(
-			Rx.filter(([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE'),
-			C.durableSub('onTeamsModified', { module }, async ([_ctx, e], signal) => {
-				const ctx = { ..._ctx, signal }
-				const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
-				if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
-				// the fast path for completing an execution: the teams poll usually observes the swapped players before
-				// watchExecution's first check. it only ever completes -- a player who hasn't swapped yet may still be
-				// about to (or may be about to be re-fired at), so failing the execution is watchExecution's call alone.
-				function tryEndSwapping() {
-					const players = SquadServer.getCurrTeams(ctx)?.players
-					const state = getState(ctx)
-					const executedAt = ctx.teamswaps.teamswapExecutedAt
-					if (!players || !state.swapping || executedAt === null) return
-					// buffer event time to deal with potential latency
-					if (executedAt >= e.time) return
+		ctx.server.event$
+			.pipe(
+				Rx.filter(
+					([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
+				),
+				Instr.durableSub('onTeamsModified', { module }, async ([evtCtx, e], signal) => {
+					const ctx = SquadServer.eventCtx(evtCtx, signal)
+					const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
+					if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
+					// the fast path for completing an execution: the teams poll usually observes the swapped players before
+					// watchExecution's first check. it only ever completes -- a player who hasn't swapped yet may still be
+					// about to (or may be about to be re-fired at), so failing the execution is watchExecution's call alone.
+					function tryEndSwapping() {
+						const players = SquadServer.getCurrTeams(ctx)?.players
+						const state = getState(ctx)
+						const executedAt = ctx.teamswaps.teamswapExecutedAt
+						if (!players || !state.swapping || executedAt === null) return
+						// buffer event time to deal with potential latency
+						if (executedAt >= e.time) return
 
-					for (const [playerId, { toTeam }] of state.pendingSwaps.entries()) {
-						const player = SM.PlayerIds.find(players, p => p.ids, playerId)
-						if (!player || player.teamId === null) continue
-						if (MH.getNormedTeamId(player.teamId, match.ordinal) !== toTeam) return
-					}
-
-					ctx.teamswaps.teamswapExecutedAt = null
-					ops.push({
-						opId: TSW.createOpId(),
-						code: 'teamswap-execution-completed',
-					})
-				}
-				const ops: TSW.Op[] = []
-				// PLAYER_RECONCILED is a roster backfill but still means the player is present on a team, so it is
-				// tracked as a join here just like PLAYER_CONNECTED.
-				if (e.type === 'PLAYER_CONNECTED' || e.type === 'PLAYER_RECONCILED') {
-					if (e.player.teamId === null) return
-					const team = MH.getNormedTeamId(e.player.teamId, match.ordinal)
-					ops.push({
-						opId: TSW.createOpId(),
-						code: 'player-joined',
-						playerId: SM.PlayerIds.getPlayerId(e.player.ids),
-						team,
-					})
-				} else if (e.type === 'NEW_GAME' || e.type === 'RESET') {
-					// A roster-less NEW_GAME is just the match-boundary marker; the roster (and thus reset-players)
-					// arrives on the following RESET. Only act on the roster-bearing event.
-					const roster = SE.eventRoster(e)
-					if (roster) {
-						const players = new Map<string, MH.NormedTeamId>()
-						for (const p of roster.players) {
-							if (p.teamId == null) throw new Error(`Player ${SM.PlayerIds.getPlayerId(p.ids)} has no teamId`)
-							players.set(SM.PlayerIds.getPlayerId(p.ids), MH.getNormedTeamId(p.teamId, match.ordinal))
+						for (const [playerId, { toTeam }] of state.pendingSwaps.entries()) {
+							const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
+							if (!player || player.teamId === null) continue
+							if (MH.getNormedTeamId(player.teamId, match.ordinal) !== toTeam) return
 						}
+
+						ctx.teamswaps.teamswapExecutedAt = null
 						ops.push({
 							opId: TSW.createOpId(),
-							code: 'reset-players',
-							players,
+							code: 'teamswap-execution-completed',
 						})
-						tryEndSwapping()
-						restoreSavedBlock: if (!ctx.teamswaps.haveReadSavedSwapsFromDb) {
-							ctx.teamswaps.haveReadSavedSwapsFromDb = true
-							const serverState = await SquadServer.getServerState(ctx)
-							if (!serverState.teamswaps) break restoreSavedBlock
-							const { matchHistoryEntryId, swaps } = serverState.teamswaps
-							if (matchHistoryEntryId === match.historyEntryId) {
-								ops.push({
-									opId: TSW.createOpId(),
-									code: 'init-saved-teamswaps',
-									swaps,
-								})
+					}
+					const ops: TSW.Op[] = []
+					// PLAYER_RECONCILED is a roster backfill but still means the player is present on a team, so it is
+					// tracked as a join here just like PLAYER_CONNECTED.
+					if (e.type === 'PLAYER_CONNECTED' || e.type === 'PLAYER_RECONCILED') {
+						if (e.player.teamId === null) return
+						const team = MH.getNormedTeamId(e.player.teamId, match.ordinal)
+						ops.push({
+							opId: TSW.createOpId(),
+							code: 'player-joined',
+							playerId: SM.PlayerIds.getPlayerId(e.player.ids),
+							team,
+						})
+					} else if (e.type === 'NEW_GAME' || e.type === 'RESET') {
+						// A roster-less NEW_GAME is just the match-boundary marker; the roster (and thus reset-players)
+						// arrives on the following RESET. Only act on the roster-bearing event.
+						const roster = SE.eventRoster(e)
+						if (roster) {
+							const players = new Map<string, MH.NormedTeamId>()
+							for (const p of roster.players) {
+								if (p.teamId == null) throw new Error(`Player ${SM.PlayerIds.getPlayerId(p.ids)} has no teamId`)
+								players.set(SM.PlayerIds.getPlayerId(p.ids), MH.getNormedTeamId(p.teamId, match.ordinal))
+							}
+							ops.push({
+								opId: TSW.createOpId(),
+								code: 'reset-players',
+								players,
+							})
+							tryEndSwapping()
+							restoreSavedBlock: if (!ctx.teamswaps.haveReadSavedSwapsFromDb) {
+								ctx.teamswaps.haveReadSavedSwapsFromDb = true
+								const serverState = await SquadServer.getServerState(ctx)
+								if (!serverState.teamswaps) break restoreSavedBlock
+								const { matchHistoryEntryId, swaps } = serverState.teamswaps
+								if (matchHistoryEntryId === match.historyEntryId) {
+									ops.push({
+										opId: TSW.createOpId(),
+										code: 'init-saved-teamswaps',
+										swaps,
+									})
+								}
 							}
 						}
+					} else if (e.type === 'PLAYER_CHANGED_TEAM') {
+						if (e.newTeamId == null) return
+						const team = MH.getNormedTeamId(e.newTeamId, match.ordinal)
+
+						ops.push({
+							opId: TSW.createOpId(),
+							code: 'player-changed-team',
+							playerId: e.player,
+							toTeam: team,
+						})
+					} else if (e.type === 'PLAYER_DISCONNECTED') {
+						ops.push({
+							opId: TSW.createOpId(),
+							code: 'player-left',
+							playerId: e.player,
+						})
+					} else if (e.type === 'TEAMS_POLLED_UPDATE') {
+						tryEndSwapping()
+					} else {
+						assertNever(e.type)
 					}
-				} else if (e.type === 'PLAYER_CHANGED_TEAM') {
-					if (e.newTeamId == null) return
-					const team = MH.getNormedTeamId(e.newTeamId, match.ordinal)
 
-					ops.push({
-						opId: TSW.createOpId(),
-						code: 'player-changed-team',
-						playerId: e.player,
-						toTeam: team,
-					})
-				} else if (e.type === 'PLAYER_DISCONNECTED') {
-					ops.push({
-						opId: TSW.createOpId(),
-						code: 'player-left',
-						playerId: e.player,
-					})
-				} else if (e.type === 'TEAMS_POLLED_UPDATE') {
-					tryEndSwapping()
-				} else {
-					assertNever(e.type)
-				}
-
-				if (ops.length > 0) {
-					await dispatchOp(ctx, ops)
-				}
-			}),
-		).subscribe(),
+					if (ops.length > 0) {
+						await dispatchOp(ctx, ops)
+					}
+				}),
+			)
+			.subscribe(),
 	)
 
 	// Schedule teamswaps on map roll. NEW_GAME is a roster-less boundary that precedes the roster, so this waits
-	// before executing, to give the new match's teams a chance to land and the swaps to be applied against faithful
-	// team data. taskScheduling 'switch' aborts a pending wait if another match boundary arrives first.
+	// for the new match's teams to land before executing (see waitForQueuedPlayers). taskScheduling 'switch' aborts
+	// a pending wait if another match boundary arrives first.
 	//
-	// Only a NEW_GAME that is actually a roll may execute: a 'slm-started' one fires this delay on boot, which is
-	// long enough to swallow swaps saved moments later and execute them against the still-current match.
+	// Only a NEW_GAME that is actually a roll may execute: a 'slm-started' one fires this on boot, which would
+	// execute swaps saved moments later against the still-current match.
 	ctx.cleanup.push(
-		ctx.server.event$.pipe(
-			Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
-			Rx.delay(2000),
-			C.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([ctx], signal) => {
-				await dispatchOp({ ...ctx, signal }, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
-			}),
-		).subscribe(),
+		ctx.server.event$
+			.pipe(
+				Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
+				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([evtCtx, e], signal) => {
+					const ctx = SquadServer.eventCtx(evtCtx, signal)
+					await waitForQueuedPlayers(ctx, e.matchId)
+					await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
+				}),
+			)
+			.subscribe(),
 	)
 
 	return context
 }
 
-function getState(ctx: C.Teamswap) {
+function getState(ctx: TSW.Ctx) {
 	return ctx.teamswaps.session.state
+}
+
+// how long the roll may spend sorting players onto their new teams before the queue fires anyway
+const ROLL_ROSTER_TIMEOUT_MS = 30_000
+const ROLL_ROSTER_POLL_MS = 2_000
+
+// A roll travels every player at once, and the server places them on their new teams over the next few seconds. A
+// player with no team yet can't be swapped (the execution skips them), so the queue has to wait for them rather
+// than fire into the gap. Two things are needed to see out of it: the new match's roster event, which is what
+// establishes that the app is looking at the match the swaps are for, and then a live rcon read -- the roster the
+// app carries is a poll behind by construction, since the boundary snapshot holds only the players already sorted.
+async function waitForQueuedPlayers(ctx: TSW.Ctx & SQS.Ctx & SR.Ctx.Rcon & CS.AbortSignal, matchId: number) {
+	const deadline = Date.now() + ROLL_ROSTER_TIMEOUT_MS
+	await Rx.firstValueFrom(
+		ctx.server.event$.pipe(
+			Rx.filter(([, e]) => e.matchId === matchId && !!SE.eventRoster(e)),
+			Rx.timeout(ROLL_ROSTER_TIMEOUT_MS),
+			Rx.catchError(() => Rx.of(null)),
+			Rx.Ext.withAbortSignal(ctx.signal),
+		),
+		{ defaultValue: null },
+	)
+
+	while (true) {
+		const swaps = getState(ctx).savedSwaps
+		if (swaps.size === 0) return
+		const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
+		// only a player the server still lists is worth waiting on: mid-roll they are listed with no team yet,
+		// whereas one who left over the boundary is gone from the list entirely and would hold up everyone else
+		const unplaced =
+			teamsRes.code === 'err:rcon'
+				? swaps.size
+				: Array.from(swaps.keys()).filter((playerId) => {
+						const player = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, playerId)
+						return !!player && player.teamId == null
+					}).length
+		if (unplaced === 0) return
+		if (Date.now() >= deadline) {
+			log.warn('roll roster never settled: %d of %d queued player(s) still have no team, executing anyway', unplaced, swaps.size)
+			return
+		}
+		await Prom.sleep(ROLL_ROSTER_POLL_MS, ctx.signal)
+	}
 }
 
 // how long to wait for a fired swap to show up in the teams before checking (a swap lands within a poll cycle)
@@ -254,15 +290,15 @@ const EXECUTION_TIMEOUT_MS = 60_000
 // has no team yet, can't be swapped and isn't counted as outstanding -- same rule onTeamsModified applies.
 // null means the teams couldn't be read, which says nothing either way.
 async function unswappedPlayers(
-	ctx: C.SquadServer & C.Rcon & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	swaps: TSW.TeamswapCollection,
 	ordinal: number,
 ): Promise<SM.PlayerId[] | null> {
-	const teamsRes = await ctx.server.teams.get(ctx, { ttl: 0 })
+	const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
 	if (teamsRes.code === 'err:rcon') return null
 	const unswapped: SM.PlayerId[] = []
 	for (const [playerId, _swap] of swaps.entries()) {
-		const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
+		const player = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, playerId)
 		if (!player || player.teamId == null) continue
 		if (MH.getNormedTeamId(player.teamId, ordinal) === _swap.toTeam) continue
 		unswapped.push(playerId)
@@ -273,7 +309,7 @@ async function unswappedPlayers(
 // Runs outside the dispatch mutex (holding it here would block every teamswap op for the duration, and would
 // deadlock against the completion this is waiting for).
 async function watchExecution(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
+	ctx: TSW.Ctx & C.ManagedServer & C.Db,
 	execution: {
 		opId: string
 		swaps: TSW.TeamswapCollection
@@ -285,7 +321,7 @@ async function watchExecution(
 	const deadline = Date.now() + EXECUTION_TIMEOUT_MS
 	let attempts = 1
 	while (true) {
-		await sleep(EXECUTION_VERIFY_DELAY_MS, ctx.signal)
+		await Prom.sleep(EXECUTION_VERIFY_DELAY_MS, ctx.signal)
 		// the execution resolved while we waited (onTeamsModified saw the swaps land), or a later one replaced it
 		if (getState(ctx).swappingOpId !== execution.opId) return
 
@@ -317,12 +353,14 @@ async function watchExecution(
 		// hanging, and report which players are still on the wrong team
 		if (unswapped && (execution.retry || Date.now() >= deadline)) {
 			log.error('teamswap execution %s failed: %d player(s) never swapped', execution.opId, unswapped.length)
-			await dispatchOp(ctx, [{
-				opId: TSW.createOpId(),
-				code: 'teamswap-execution-failed',
-				reason: 'not-all-players-swapped',
-				playerIds: unswapped,
-			}])
+			await dispatchOp(ctx, [
+				{
+					opId: TSW.createOpId(),
+					code: 'teamswap-execution-failed',
+					reason: 'not-all-players-swapped',
+					playerIds: unswapped,
+				},
+			])
 			return
 		}
 
@@ -346,7 +384,7 @@ function buildFactionLines(
 	for (const playerId of playerIds) {
 		const toTeam = swaps.get(playerId)?.toTeam
 		if (!toTeam) continue
-		const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 		const playerName = player?.ids.usernameNoTag ?? player?.ids.username ?? playerId
 		if (!groups.has(toTeam)) {
 			const factionProp = MH.getTeamNormalizedFactionProp(ordinal, toTeam)
@@ -356,8 +394,8 @@ function buildFactionLines(
 	}
 	for (const group of groups.values()) group.names.sort((a, b) => a.localeCompare(b))
 	return (['A', 'B'] as MH.NormedTeamId[])
-		.filter(team => groups.has(team))
-		.map(team => {
+		.filter((team) => groups.has(team))
+		.map((team) => {
 			const { faction, names } = groups.get(team)!
 			return `to ${faction}: ${names.join(', ')}`
 		})
@@ -365,28 +403,31 @@ function buildFactionLines(
 
 const orpcBase = getOrpcBase(module)
 export const orpcRouter = {
-	watchUpdates: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function* watchOps(
-		{ context, signal, input },
-	) {
-		const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
-			const init: TSW.UpdateForClient = {
-				code: 'init',
-				state: ctx.teamswaps.session.state,
-				ops: ctx.teamswaps.session.ops,
-			}
-			return ctx.teamswaps.op$.pipe(
-				Rx.map(dispatched => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
-				Rx.filter((update): update is NonNullable<typeof update> => update !== null),
-				Rx.startWith(init),
-			)
-		}).pipe(withAbortSignal(signal!))
-		yield* toAsyncGenerator(obs)
-	}),
+	watchUpdates: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* watchOps({ context, signal, input }) {
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => {
+				const init: TSW.UpdateForClient = {
+					code: 'init',
+					state: ctx.teamswaps.session.state,
+					ops: ctx.teamswaps.session.ops,
+				}
+				return ctx.teamswaps.op$.pipe(
+					Rx.map((dispatched) => ODSM.Server.toClientUpdate(dispatched, context.wsClientId)),
+					Rx.filter((update): update is NonNullable<typeof update> => update !== null),
+					Rx.startWith(init),
+				)
+			}).pipe(Rx.Ext.withAbortSignal(signal!))
+			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
 
 	// TODO we need to filter errors back to the client that might have occured while handling side-effects
-	dispatchOp: orpcBase.meta({ type: 'mutation' }).input(z.object({ serverId: z.string(), op: TSW.OpSchema })).handler(
-		async ({ context, input: { serverId, op: input } }) => {
-			const ctxRes = await SquadServer.trySliceCtx(context, serverId)
+	dispatchOp: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string(), op: TSW.OpSchema }))
+		.handler(async ({ context, input: { serverId, op: input } }) => {
+			const ctxRes = await SquadServer.tryCtx(context, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const source = 'source' in input ? input.source : undefined
@@ -396,19 +437,18 @@ export const orpcRouter = {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
 			await dispatchOp(ctx, [input], { sourceWsClientId: context.wsClientId })
-		},
-	),
+		}),
 }
 
-const dispatchOp = C.spanOp(
+const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{
 		module,
 		mutexes: (ctx) => ctx.teamswaps.dispatchMtx,
-		attrs: (ctx, ops) => ({ [ATTRS.Teamswap.OP_CODES]: ops.map(o => o.code).join(',') }),
-		extraText: (ctx, ops) => ops.map(o => o.code).join(','),
+		attrs: (ctx, ops) => ({ [ATTRS.Teamswap.OP_CODES]: ops.map((o) => o.code).join(',') }),
+		extraText: (ctx, ops) => ops.map((o) => o.code).join(','),
 	},
-	async (ctx: C.Teamswap & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
+	async (ctx: TSW.Ctx & C.ManagedServer & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const applied = ODSM.Server.applyOps(ctx.teamswaps.session, ops, TSW.reducer)
 		ctx.teamswaps.session = applied.session
 
@@ -427,8 +467,8 @@ const dispatchOp = C.spanOp(
 			if (rejection.code !== 'noop') {
 				if (rejection.code === 'err:unexpected') {
 					log.error('op error while executing operation: %s op: %o', rejection.code, rejection.op)
-					C.recordGenericError(rejection)
-					C.setSpanStatus('error')
+					Instr.recordGenericError(rejection)
+					Instr.setSpanStatus('error')
 				} else {
 					log.warn('op was not succesful: %s op: %o', rejection.code, rejection.op)
 				}
@@ -450,12 +490,12 @@ const dispatchOp = C.spanOp(
 							// swap issued mid-staging), skip a team-less target rather than throwing: we can't faithfully
 							// place a player who has no team yet, and a later poll's PLAYER_CHANGED_TEAM will reconcile them.
 							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-							const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
+							const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 300 })
 							if (teamsRes.code === 'err:rcon') return teamsRes
 							log.info('players: %o', teamsRes.players)
 							const toSwap: SM.PlayerId[] = []
 							for (const [playerId, _swap] of se.swaps.entries()) {
-								const player = SM.PlayerIds.find(teamsRes.players, p => p.ids, playerId)
+								const player = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, playerId)
 								if (!player) continue
 								if (player.teamId == null) {
 									log.warn('skipping teamswap for team-less (unsettled) player %s', playerId)
@@ -465,7 +505,7 @@ const dispatchOp = C.spanOp(
 								if (playerNormedTeamId === _swap.toTeam) continue
 								toSwap.push(playerId)
 							}
-							const manualOp = ops.find(o => o.opId === se.opId && (o as any).source) as
+							const manualOp = ops.find((o) => o.opId === se.opId && (o as any).source) as
 								| (TSW.Op & { source: TSW.Teamswap['source'] })
 								| undefined
 							// every target may already be on its destination team, in which case there's nothing to
@@ -477,10 +517,10 @@ const dispatchOp = C.spanOp(
 							if (isManual) {
 								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal
 								const notifyCtx = { ...ctx, signal: CleanupSys.shutdownSignal }
-								sleep(500, notifyCtx.signal)
+								Prom.sleep(500, notifyCtx.signal)
 									.then(() => SquadRcon.warnAll(notifyCtx, toSwap, WARNS.teamswaps.notifyManualSwap))
 									.catch((error) => {
-										if (!isAbortError(error)) log.error(error)
+										if (!Prom.isAbortError(error)) log.error(error)
 									})
 							}
 							await swapped$
@@ -489,33 +529,35 @@ const dispatchOp = C.spanOp(
 							// team-modifying event lets onTeamsModified observe the players on their new teams, and a swap
 							// that silently did nothing (the roster wasn't settled yet, so the rcon call was a no-op)
 							// produces no such event. the watcher checks the live teams instead.
-							watchExecution({ ...ctx, signal: CleanupSys.shutdownSignal }, {
-								opId: se.opId,
-								swaps: se.swaps,
-								ordinal: currentMatch.ordinal,
-								// only the map roll fires early enough for a retry to be the right answer. a manual swap
-								// that didn't land is reported, not re-issued behind the admin's back
-								retry: !manualOp,
-								actor: SquadServer.actorFromUser(ctx, manualOp?.source),
-							}).catch((error) => {
-								if (!isAbortError(error)) log.error(error)
+							watchExecution(
+								{ ...ctx, signal: CleanupSys.shutdownSignal },
+								{
+									opId: se.opId,
+									swaps: se.swaps,
+									ordinal: currentMatch.ordinal,
+									// only the map roll fires early enough for a retry to be the right answer. a manual swap
+									// that didn't land is reported, not re-issued behind the admin's back
+									retry: !manualOp,
+									actor: SquadServer.actorFromUser(ctx, manualOp?.source),
+								},
+							).catch((error) => {
+								if (!Prom.isAbortError(error)) log.error(error)
 							})
 							if (isManual) {
 								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
-								const excludeSteamIds = isManual.source.steamId
-									? new Set([isManual.source.steamId])
-									: undefined
+								const excludeSteamIds = isManual.source.steamId ? new Set([isManual.source.steamId]) : undefined
 								const layerRes = L.parseLayerId(currentMatch.layerId)
 								const layer = 'layer' in layerRes ? layerRes.layer : null
-								const factionLines = toSwap.length <= 8
-									? buildFactionLines(toSwap, se.swaps, teamsRes.players, layer, currentMatch.ordinal)
-									: undefined
+								const factionLines =
+									toSwap.length <= 8
+										? buildFactionLines(toSwap, se.swaps, teamsRes.players, layer, currentMatch.ordinal)
+										: undefined
 								SquadRcon.warnAllAdmins(
 									{ ...ctx, signal: CleanupSys.shutdownSignal },
 									{ msg: WARNS.teamswaps.notifyAdminManualSwap(name, toSwap.length, factionLines) },
 									excludeSteamIds,
 								).catch((error) => {
-									if (!isAbortError(error)) log.error(error)
+									if (!Prom.isAbortError(error)) log.error(error)
 								})
 							}
 
@@ -555,9 +597,7 @@ const dispatchOp = C.spanOp(
 
 					case 'save': {
 						const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-						const saved = se.swaps.size > 0
-							? { swaps: se.swaps, matchHistoryEntryId: currentMatch.historyEntryId }
-							: null
+						const saved = se.swaps.size > 0 ? { swaps: se.swaps, matchHistoryEntryId: currentMatch.historyEntryId } : null
 						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 							await SquadServer.updateServerState(ctx, { teamswaps: saved }, { type: 'system', event: 'teamswaps-saved' })
 						})
@@ -583,15 +623,14 @@ const dispatchOp = C.spanOp(
 						// has its own admin warn (notifyAdminManualSwap) and would otherwise report itself as a clear
 						if (se.source && se.trigger === 'user-edit') {
 							const name = await resolveSourceName(ctx, se.source)
-							const excludeSteamIds = se.source.steamId
-								? new Set([se.source.steamId])
-								: undefined
+							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
 							const layerRes = L.parseLayerId(currentMatch.layerId)
 							const layer = 'layer' in layerRes ? layerRes.layer : null
 							const currPlayers = SquadServer.getCurrTeams(ctx)?.players ?? []
-							const factionLines = se.swaps.size <= 8
-								? buildFactionLines(Array.from(se.swaps.keys()), se.swaps, currPlayers, layer, currentMatch.ordinal)
-								: undefined
+							const factionLines =
+								se.swaps.size <= 8
+									? buildFactionLines(Array.from(se.swaps.keys()), se.swaps, currPlayers, layer, currentMatch.ordinal)
+									: undefined
 							const { added, removed } = TSW.getTeamswapChanges(se.swaps, se.prevSaved)
 							// notification should outlive this dispatch, so bind it to the shutdown signal rather than the task signal
 							SquadRcon.warnAllAdmins(
@@ -601,7 +640,7 @@ const dispatchOp = C.spanOp(
 								},
 								excludeSteamIds,
 							).catch((error) => {
-								if (!isAbortError(error)) log.error(error)
+								if (!Prom.isAbortError(error)) log.error(error)
 							})
 						}
 						break
@@ -623,7 +662,7 @@ const dispatchOp = C.spanOp(
 							se.reason,
 							se.message ?? (se.playerIds ? `${se.playerIds.length} player(s) never swapped` : ''),
 						)
-						C.setSpanStatus('error')
+						Instr.setSpanStatus('error')
 						break
 					}
 
@@ -642,7 +681,7 @@ const dispatchOp = C.spanOp(
 			} catch (_e) {
 				const e = _e as any
 				log.error('error processing side effects: %o', e?.message ?? e?.msg ?? e?.code ?? e)
-				C.recordGenericError(e, true)
+				Instr.recordGenericError(e, true)
 			}
 		}
 
@@ -655,17 +694,16 @@ const dispatchOp = C.spanOp(
 	},
 )
 
-export async function dispatchRevertToSaved(ctx: C.Teamswap & C.ServerSlice & C.Db) {
-}
+export async function dispatchRevertToSaved(ctx: TSW.Ctx & C.ManagedServer & C.Db) {}
 
-export async function dispatchClearSwaps(ctx: C.Teamswap & C.ServerSlice & C.Db, source?: TSW.Teamswap['source']) {
+export async function dispatchClearSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db, source?: TSW.Teamswap['source']) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'clear-teamswaps', save: true, source }])
 	return errors.get(opId) ?? []
 }
 
 export async function dispatchSwapNow(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
+	ctx: TSW.Ctx & C.ManagedServer & C.Db,
 	swaps: TSW.TeamswapCollection,
 	source: TSW.Teamswap['source'],
 ) {
@@ -674,22 +712,21 @@ export async function dispatchSwapNow(
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNext(
-	ctx: C.Teamswap & C.ServerSlice & C.Db,
-	swaps: TSW.TeamswapCollection,
-) {
+export async function dispatchSwapNext(ctx: TSW.Ctx & C.ManagedServer & C.Db, swaps: TSW.TeamswapCollection) {
 	// dispatch each add on its own -- a batch is all-or-nothing (a rejection discards the whole batch),
 	// so batching would let one already-marked player block swapping everyone else
 	const errors: unknown[] = []
 	for (const [playerId, { toTeam, source }] of swaps.entries()) {
-		const opErrors = await dispatchOp(ctx, [{
-			opId: TSW.createOpId(),
-			code: 'add-player-teamswap',
-			playerId,
-			toTeam,
-			source,
-			saved: true,
-		}])
+		const opErrors = await dispatchOp(ctx, [
+			{
+				opId: TSW.createOpId(),
+				code: 'add-player-teamswap',
+				playerId,
+				toTeam,
+				source,
+				saved: true,
+			},
+		])
 		for (const errs of opErrors.values()) errors.push(...errs)
 	}
 	return errors

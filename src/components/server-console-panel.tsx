@@ -1,11 +1,12 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type { ConsoleEvent } from '@/models/server-console.models'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
 // route around every other permission and leave no app event behind.
@@ -33,7 +34,7 @@ function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?
 }
 
 export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame.KeyProp; className?: string }) {
-	const [{ events, hidden }, tab, hideNoise, denied] = ZusUtils.useStore(
+	const [{ events, hidden }, tab, hideNoise, denied] = Zus.useStore(
 		stores.serverConsole,
 		(s) => [ConsoleFrame.Sel.view(s), s.tab, s.hideNoise, s.denied] as const,
 	)
@@ -68,10 +69,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					</Button>
 				))}
 				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-					<Checkbox
-						checked={hideNoise}
-						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)}
-					/>
+					<Checkbox checked={hideNoise} onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)} />
 					Hide noise
 					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
 				</label>
@@ -87,21 +85,21 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 				</Button>
 			</div>
 			<div ref={scrollRef} className="min-h-0 grow overflow-y-auto bg-muted/30 p-1.5">
-				{events.length === 0
-					? <p className="text-xs text-muted-foreground">Nothing yet.</p>
-					: (
-						<ol className="space-y-0.5">
-							{events.map((event) => {
-								const { prefix, body, tone } = formatEvent(event)
-								return (
-									<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
-										<span className={cn('shrink-0', tone)}>{prefix}</span>
-										<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
-									</li>
-								)
-							})}
-						</ol>
-					)}
+				{events.length === 0 ? (
+					<p className="text-xs text-muted-foreground">Nothing yet.</p>
+				) : (
+					<ol className="space-y-0.5">
+						{events.map((event) => {
+							const { prefix, body, tone } = formatEvent(event)
+							return (
+								<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
+									<span className={cn('shrink-0', tone)}>{prefix}</span>
+									<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
+								</li>
+							)
+						})}
+					</ol>
+				)}
 			</div>
 		</div>
 	)

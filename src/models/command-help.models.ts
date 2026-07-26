@@ -23,18 +23,21 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 	},
 	player: {
 		syntax: 'name | id',
-		description: 'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one '
-			+ 'player, so use enough of it to be unambiguous.',
+		description:
+			'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one ' +
+			'player, so use enough of it to be unambiguous.',
 	},
 	squad: {
 		syntax: '[team] squad',
-		description: 'A squad by its in-game number, or "cmd" for the command squad. Prefix it with a team (1, 2, A, B, or the team\'s '
-			+ 'faction) to target the other team; without one, your own team is used.',
+		description:
+			'A squad by its in-game number, or "cmd" for the command squad. Prefix it with a team (1, 2, A, B, or the team\'s ' +
+			'faction) to target the other team; without one, your own team is used.',
 	},
 	text: { syntax: 'free text', description: 'Everything you type after this point, as-is.' },
 	reason: {
 		syntax: 'preset | free text',
-		description: 'A single word picks a configured reason by one of its keywords. Two or more words are sent verbatim as a custom reason.',
+		description:
+			'A single word picks a configured reason by one of its keywords. Two or more words are sent verbatim as a custom reason.',
 	},
 	'preset-reason': {
 		syntax: 'preset',
@@ -156,12 +159,7 @@ function firstPresetToken(presets: { keywords: string[] }[]): string | undefined
 // cutoff plus whether the last filled arg takes its alternate form; anything past the cutoff is left off.
 type Variant = { note: string; upTo: number; useAlt?: true }
 
-function renderExample(
-	cmdString: string,
-	args: readonly CMD.ArgDef[],
-	seeds: ExampleSeeds,
-	variant: Variant,
-): string | undefined {
+function renderExample(cmdString: string, args: readonly CMD.ArgDef[], seeds: ExampleSeeds, variant: Variant): string | undefined {
 	const tokens: string[] = []
 	for (let i = 0; i < variant.upTo; i++) {
 		const sample = sampleTokens(args[i], seeds)
@@ -251,11 +249,9 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 
 // groups command ids into their declared sections, dropping empty ones. Section order follows COMMAND_SECTIONS.
 export function splitCommandsBySection(ids: CMD.CommandId[]): { section: CMD.CommandSection; label: string; ids: CMD.CommandId[] }[] {
-	return CMD.COMMAND_SECTION_IDS
-		.map((section) => ({
-			section,
-			label: CMD.COMMAND_SECTIONS[section].label,
-			ids: ids.filter((id) => CMD.COMMAND_DECLARATIONS[id].section === section),
-		}))
-		.filter((s) => s.ids.length > 0)
+	return CMD.COMMAND_SECTION_IDS.map((section) => ({
+		section,
+		label: CMD.COMMAND_SECTIONS[section].label,
+		ids: ids.filter((id) => CMD.COMMAND_DECLARATIONS[id].section === section),
+	})).filter((s) => s.ids.length > 0)
 }

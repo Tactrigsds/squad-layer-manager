@@ -1,12 +1,12 @@
-import * as ZusUtils from '@/lib/zustand'
+import { useMutation, useQuery } from '@tanstack/react-query'
+
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import * as BM from '@/models/battlemetrics.models'
 import * as PG from '@/models/player-groupings.models'
 import * as RPC from '@/orpc.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as ReactRx from '@react-rxjs/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 export const Store = Zus.createStore<BM.StoreState>(() => ({
 	selectedGroupingId: null,
@@ -19,7 +19,7 @@ export namespace Sel {
 	export const activeGroupingId = (groupingIds: string[]) => (state: BM.StoreState) =>
 		state.selectedGroupingId !== null && groupingIds.includes(state.selectedGroupingId)
 			? state.selectedGroupingId
-			: groupingIds[0] ?? null
+			: (groupingIds[0] ?? null)
 }
 
 export namespace Actions {
@@ -31,7 +31,7 @@ export namespace Actions {
 	}
 }
 
-export const [usePlayerBmData, playerBmData$] = ReactRx.bind<BM.PublicPlayerBmData>(
+export const [usePlayerBmData, playerBmData$] = ReactRx.bindWithDefault<BM.PublicPlayerBmData>(
 	RPC.observe('battlemetrics.watchPlayerBmData', () => RPC.orpc.battlemetrics.watchPlayerBmData.call()).pipe(
 		Rx.scan((acc, update) => ({ ...acc, [update.playerId]: update.data }), {} as BM.PublicPlayerBmData),
 	),
@@ -74,10 +74,10 @@ export function usePlayerProfile(playerId: string) {
 export function usePlayerGroupColor(playerId: string, adminGroups: string[]): string | null {
 	const flags = usePlayerFlags(playerId)
 	const orgFlags = useOrgFlags()
-	const config = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
+	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = playerGroupings ? PG.getGroupingIds(playerGroupings) : []
-	const activeGroupingId = ZusUtils.useStore(Store, Sel.activeGroupingId(groupingIds))
+	const activeGroupingId = Zus.useStore(Store, Sel.activeGroupingId(groupingIds))
 
 	if (!playerGroupings || activeGroupingId === null) return null
 	const grouping = playerGroupings[activeGroupingId]

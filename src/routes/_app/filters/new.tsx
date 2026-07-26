@@ -1,11 +1,12 @@
+import { createFileRoute } from '@tanstack/react-router'
+import React from 'react'
+
 import FilterNew from '@/components/filter-new'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { frameManager } from '@/frames/frame-manager'
 import * as EFB from '@/models/editable-filter-builders.ts'
 import type * as F from '@/models/filter.models'
 import * as ConfigClient from '@/systems/config.client'
-import { createFileRoute } from '@tanstack/react-router'
-import React from 'react'
 
 const DEFAULT_FILTER: F.EditableFilterNode = EFB.and()
 
@@ -33,9 +34,7 @@ export const Route = createFileRoute('/_app/filters/new')({
 		return { frameKey, frameInput }
 	},
 	head: () => ({
-		meta: [
-			{ title: `SLM - New Filter` },
-		],
+		meta: [{ title: `SLM - New Filter` }],
 	}),
 })
 

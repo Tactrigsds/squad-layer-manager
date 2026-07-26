@@ -52,5 +52,5 @@ recorded.
 
 Memory only, and short: a per-server ring buffer capped by both entry count and total bytes (see
 `src/models/server-console.models.ts`). Opening a window mid-match gets you that backlog and then the live tail. A
-slice restart drops it, because the traffic described a connection that no longer exists. Anything worth keeping
+managed server restart drops it, because the traffic described a connection that no longer exists. Anything worth keeping
 is already a server event or an app event.

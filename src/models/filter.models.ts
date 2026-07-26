@@ -1,13 +1,17 @@
+import { z } from 'zod'
+
+import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as CD from '@/lib/ctx-def'
+import { createId } from '@/lib/id'
+import * as Obj from '@/lib/object-utils'
+import * as Sparse from '@/lib/sparse-tree'
+import { assertNever } from '@/lib/type-guards'
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
 // (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
 // another filter entity.
-import type * as SchemaModels from '$root/drizzle/schema.models'
-import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
-import * as Sparse from '@/lib/sparse-tree'
-import { assertNever } from '@/lib/type-guards'
-import { z } from 'zod'
+import type * as CS from '@/models/context-shared'
+
 import * as LC from './layer-columns'
 
 // -------- values & argument terms --------
@@ -178,11 +182,7 @@ export type MatchupTeamSpec = Partial<Record<TeamColumn, Value[]>>
 
 export type MatchupNode = { type: MatchupType; locked: boolean; teams: [MatchupTeamSpec, MatchupTeamSpec] }
 
-export type FilterNode =
-	| { type: BlockType; children: FilterNode[] }
-	| CompNode
-	| ApplyFilterNode
-	| MatchupNode
+export type FilterNode = { type: BlockType; children: FilterNode[] } | CompNode | ApplyFilterNode | MatchupNode
 
 export type NodeType = FilterNode['type']
 
@@ -198,13 +198,7 @@ export const InRangeNodeSchema = z.object({
 	args: z.tuple([SubjectArgSchema, ScalarArgSchema, ScalarArgSchema]),
 })
 
-export const CompNodeSchema = z.discriminatedUnion('type', [
-	EqNodeSchema,
-	InNodeSchema,
-	LtNodeSchema,
-	GtNodeSchema,
-	InRangeNodeSchema,
-])
+export const CompNodeSchema = z.discriminatedUnion('type', [EqNodeSchema, InNodeSchema, LtNodeSchema, GtNodeSchema, InRangeNodeSchema])
 
 const applyFilterNodeSchema = <T extends ApplyFilterType>(type: T) =>
 	z.object({ type: z.literal(type), filterId: z.lazy(() => FilterEntityIdSchema) })
@@ -250,13 +244,10 @@ export const FilterNodeSchema: z.ZodType<FilterNode> = z.lazy(() =>
 		OrNodeSchema,
 		NorNodeSchema,
 		NandNodeSchema,
-	])
+	]),
 ) as z.ZodType<FilterNode>
 
-export const RootFilterNodeSchema = FilterNodeSchema.refine(
-	(root) => isBlockNode(root),
-	{ error: 'Root node must be a block type' },
-)
+export const RootFilterNodeSchema = FilterNodeSchema.refine((root) => isBlockNode(root), { error: 'Root node must be a block type' })
 
 // -------- editable (partial) nodes --------
 
@@ -288,15 +279,14 @@ export type EditableApplyFilterNode = { type: ApplyFilterType; filterId?: string
 // "any", so a half-filled node is already a valid one. The editable form is the strict form.
 export type EditableMatchupNode = MatchupNode
 
-export type EditableFilterNodeCommon =
-	| EditableCompNode
-	| EditableApplyFilterNode
-	| EditableMatchupNode
+export type EditableFilterNodeCommon = EditableCompNode | EditableApplyFilterNode | EditableMatchupNode
 
-export type EditableFilterNode = EditableFilterNodeCommon | {
-	type: BlockType
-	children: EditableFilterNode[]
-}
+export type EditableFilterNode =
+	| EditableFilterNodeCommon
+	| {
+			type: BlockType
+			children: EditableFilterNode[]
+	  }
 
 export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType }
 
@@ -309,14 +299,10 @@ export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
 export function isBlockType(type: string): type is BlockType {
 	return BLOCK_TYPES.includes(type as BlockType)
 }
-export function isBlockNode<T extends FilterNode>(
-	node: T,
-): node is Extract<T, { type: BlockType }> {
+export function isBlockNode<T extends FilterNode>(node: T): node is Extract<T, { type: BlockType }> {
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
-export function isEditableBlockNode<T extends { type: NodeType }>(
-	node: T,
-): node is Extract<T, { type: BlockType }> {
+export function isEditableBlockNode<T extends { type: NodeType }>(node: T): node is Extract<T, { type: BlockType }> {
 	return BLOCK_TYPES.includes(node.type as BlockType)
 }
 
@@ -484,14 +470,26 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 	if (!floatDomain && (!domain || domain.kind !== 'boolean')) {
 		options.push(
 			{ key: 'in', label: 'in', description: 'Matches layers whose value is any one of the listed values.', type: 'in', neg: false },
-			{ key: 'notin', label: 'not in', description: 'Matches layers whose value is none of the listed values.', type: 'in', neg: true },
+			{
+				key: 'notin',
+				label: 'not in',
+				description: 'Matches layers whose value is none of the listed values.',
+				type: 'in',
+				neg: true,
+			},
 		)
 	}
 	if (!domain || domain.kind === 'number') {
 		options.push(
 			{ key: 'lt', label: '<', description: 'Matches layers whose value is less than the one given.', type: 'lt', neg: false },
 			{ key: 'gt', label: '>', description: 'Matches layers whose value is greater than the one given.', type: 'gt', neg: false },
-			{ key: 'lte', label: '<=', description: 'Matches layers whose value is less than or equal to the one given.', type: 'gt', neg: true },
+			{
+				key: 'lte',
+				label: '<=',
+				description: 'Matches layers whose value is less than or equal to the one given.',
+				type: 'gt',
+				neg: true,
+			},
 			{
 				key: 'gte',
 				label: '>=',
@@ -675,15 +673,11 @@ export function isValidCompNode(node: EditableCompNode): node is CompNode {
 	return CompNodeSchema.safeParse(node).success
 }
 
-export function isValidApplyFilterNode(
-	node: EditableApplyFilterNode,
-): node is ApplyFilterNode {
+export function isValidApplyFilterNode(node: EditableApplyFilterNode): node is ApplyFilterNode {
 	return !!node.filterId
 }
 
-export function isValidFilterNode(
-	node: EditableFilterNode,
-): node is FilterNode {
+export function isValidFilterNode(node: EditableFilterNode): node is FilterNode {
 	return FilterNodeSchema.safeParse(node).success
 }
 
@@ -763,19 +757,19 @@ type ErrorBase = {
 }
 
 export type NodeValidationError =
-	| ErrorBase & { type: 'unmapped-column'; column: string }
-	| ErrorBase & {
-		type: 'unmapped-value'
-		column: string
-		value: LC.InputValue
-	}
-	| ErrorBase & {
-		type: 'recursive-filter' | 'unknown-filter'
-		filterId: string
-	}
+	| (ErrorBase & { type: 'unmapped-column'; column: string })
+	| (ErrorBase & {
+			type: 'unmapped-value'
+			column: string
+			value: LC.InputValue
+	  })
+	| (ErrorBase & {
+			type: 'recursive-filter' | 'unknown-filter'
+			filterId: string
+	  })
 	// semantic problems: incompatible arg domains, a comparison whose subject isn't a column, null on an
 	// ordered comparison, ...
-	| ErrorBase & { type: 'invalid-node' }
+	| (ErrorBase & { type: 'invalid-node' })
 
 export type NodeValidationErrorStore = {
 	errors?: NodeValidationError[]
@@ -848,11 +842,7 @@ export function toShallowNode(node: EditableFilterNode): ShallowEditableFilterNo
 	}
 	return node
 }
-function upsertTreeInPlaceFromSparse(
-	sparseTree: Sparse.SparseNode,
-	basePath: Sparse.NodePath = [],
-	tree?: Partial<FilterNodeTree>,
-) {
+function upsertTreeInPlaceFromSparse(sparseTree: Sparse.SparseNode, basePath: Sparse.NodePath = [], tree?: Partial<FilterNodeTree>) {
 	basePath ??= []
 	tree ??= {
 		nodes: new Map(),
@@ -955,9 +945,7 @@ export function treeToFilterNode(tree: FilterNodeTree, subtree: Sparse.NodePath 
 	for (const [id, path] of toBreadthFirstTreePathEntries(tree.paths)) {
 		if (!Sparse.isOwnedPath(subtree, path)) continue
 		const shallowNode = tree.nodes.get(id)!
-		const node: EditableFilterNode = isEditableBlockNode(shallowNode)
-			? { ...shallowNode, children: [] }
-			: { ...shallowNode }
+		const node: EditableFilterNode = isEditableBlockNode(shallowNode) ? { ...shallowNode, children: [] } : { ...shallowNode }
 		if (!root) {
 			root = node
 			continue
@@ -1005,3 +993,8 @@ export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 	sparseTree = Sparse.deleteNode(sparseTree, targetPath.slice(parentPath.length))
 	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
 }
+
+export type Ctx = CS.Ctx & {
+	filters: Map<string, FilterEntity>
+}
+export const CtxDef = CD.defCtx<Ctx>()(['filters'], { name: 'filters' })

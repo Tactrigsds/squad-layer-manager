@@ -1,7 +1,9 @@
+import React from 'react'
+
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
@@ -13,11 +15,18 @@ import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as WarnChat from '@/systems/warn-chat.client'
-import React from 'react'
+
 import { AddPlayerFlagsMenuItem } from './bm-flag-workflows'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import { type MenuSlots, TimeoutDialogContent } from './player-context-menu-options'
-import { ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
+import {
+	ContextMenuItem,
+	ContextMenuSeparator,
+	ContextMenuShortcut,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+} from './ui/context-menu'
 import { useAlertDialog, useCloseAlertDialog } from './ui/lazy-alert-dialog'
 import { ReasonPicker, WarnReasonsSub } from './warn-reasons-sub'
 
@@ -29,15 +38,18 @@ const contextMenuSlots: MenuSlots = {
 	SubContent: ContextMenuSubContent,
 }
 
-export function SquadMenuItems(
-	{ squad, slots, stores, omitWarn }: {
-		squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>
-		slots: MenuSlots
-		stores: SquadServerFrame.KeyProp
-		// hidden inside the squad details window, which has its own warn box at the bottom
-		omitWarn?: boolean
-	},
-) {
+export function SquadMenuItems({
+	squad,
+	slots,
+	stores,
+	omitWarn,
+}: {
+	squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>
+	slots: MenuSlots
+	stores: SquadServerFrame.KeyProp
+	// hidden inside the squad details window, which has its own warn box at the bottom
+	omitWarn?: boolean
+}) {
 	const { Item, Separator } = slots
 	const openDialog = useAlertDialog()
 	const closeDialog = useCloseAlertDialog()
@@ -63,28 +75,23 @@ export function SquadMenuItems(
 
 	// uniqueId isn't on the passed-in squad prop, so resolve it (and live membership) from chat state; it's
 	// null when the squad isn't currently live, in which case there's nothing to warn
-	const { squadPlayerIds, squadExists, uniqueId } = ZusUtils.useStore(
-		stores.squadServer,
-		(chatStore: ChatPrt.Store) => {
-			const state = ChatPrt.Sel.chatState(chatStore)
-			const liveSquad = state.squads.find(s => s.squadId === squad.squadId && s.teamId === squad.teamId)
-			const squadPlayerIds = state.players
-				.filter(p => p.squadId === squad.squadId && p.teamId === squad.teamId)
-				.map(p => SM.PlayerIds.getPlayerId(p.ids))
-			return { squadPlayerIds, squadExists: !!liveSquad, uniqueId: liveSquad?.uniqueId ?? null }
-		},
-	)
+	const { squadPlayerIds, squadExists, uniqueId } = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
+		const state = ChatPrt.Sel.chatState(chatStore)
+		const liveSquad = state.squads.find((s) => s.squadId === squad.squadId && s.teamId === squad.teamId)
+		const squadPlayerIds = state.players
+			.filter((p) => p.squadId === squad.squadId && p.teamId === squad.teamId)
+			.map((p) => SM.PlayerIds.getPlayerId(p.ids))
+		return { squadPlayerIds, squadExists: !!liveSquad, uniqueId: liveSquad?.uniqueId ?? null }
+	})
 
-	const canSwapNow = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(squadPlayerIds))
-	const canQueue = ZusUtils.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
+	const canSwapNow = Zus.useStore(stores.squadServer, TSWClient.Sel.canSwapNow(squadPlayerIds))
+	const canQueue = Zus.useStore(stores.squadServer, TSWClient.Sel.canQueue(squadPlayerIds))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:manage-players', { serverId: serverId }))
 	const warnDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:warn-players', { serverId: serverId }))
 	const kickDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:kick-players', { serverId: serverId }))
 	// timeout grants are comparator-matched (see useMaxTimeout), so the denial is synthesized rather than
 	// coming from usePermsCheck
-	const timeoutDenied = maxTimeout === undefined
-		? RBAC.permissionDenied('all', ['squad-server:timeout-players'])
-		: null
+	const timeoutDenied = maxTimeout === undefined ? RBAC.permissionDenied('all', ['squad-server:timeout-players']) : null
 
 	const squadLabel = `"${squad.squadName}"`
 	const teamId = squad.teamId as 1 | 2
@@ -94,11 +101,11 @@ export function SquadMenuItems(
 	async function swapNow() {
 		if (squadPlayerIds.length === 0) return
 		const initialTeams = new Map(
-			squadPlayerIds.map(id => [id, TSWClient.Sel.localState(ZusUtils.getState(stores.squadServer)).players.get(id)]),
+			squadPlayerIds.map((id) => [id, TSWClient.Sel.localState(Zus.getState(stores.squadServer)).players.get(id)]),
 		)
-		const unsubscribe = ZusUtils.resolveReadStore(stores.squadServer).subscribe(state => {
+		const unsubscribe = Zus.resolveReadStore(stores.squadServer).subscribe((state) => {
 			const current = TSWClient.Sel.localState(state)
-			if (squadPlayerIds.some(id => current.players.get(id) !== initialTeams.get(id))) closeDialog()
+			if (squadPlayerIds.some((id) => current.players.get(id) !== initialTeams.get(id))) closeDialog()
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
@@ -163,8 +170,7 @@ export function SquadMenuItems(
 			const result = await openDialog({
 				title: 'Kill Squad',
 				variant: 'destructive',
-				description:
-					`Kill the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
+				description: `Kill the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
 				content: (
 					<div className="grid gap-3 py-2">
 						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
@@ -232,8 +238,7 @@ export function SquadMenuItems(
 			const result = await openDialog({
 				title: 'Timeout Squad',
 				variant: 'destructive',
-				description:
-					`Kick the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				description: `Kick the ${squadPlayerIds.length} members of squad ${squadLabel}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
 				content: (
 					<TimeoutDialogContent
 						durationRef={timeoutDurationRef}
@@ -394,8 +399,12 @@ export function SquadMenuItems(
 	)
 }
 
-export default function SquadContextMenuOptions(
-	{ squad, stores }: { squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>; stores: SquadServerFrame.KeyProp },
-) {
+export default function SquadContextMenuOptions({
+	squad,
+	stores,
+}: {
+	squad: Pick<SM.Squad, 'squadId' | 'teamId' | 'squadName'>
+	stores: SquadServerFrame.KeyProp
+}) {
 	return <SquadMenuItems squad={squad} slots={contextMenuSlots} stores={stores} />
 }

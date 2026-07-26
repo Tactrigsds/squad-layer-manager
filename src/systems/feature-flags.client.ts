@@ -1,5 +1,4 @@
-import * as Zus from 'zustand'
-import { persist } from 'zustand/middleware'
+import * as Zus from '@/lib/zustand'
 
 const FEATURE_FLAGS = {
 	reactQueryDevtools: false,
@@ -14,7 +13,7 @@ interface FeatureFlagsState {
 }
 
 export const Store = Zus.create<FeatureFlagsState>()(
-	persist(
+	Zus.persist(
 		(set) => ({
 			flags: FEATURE_FLAGS,
 			setFeatureFlag: (flag, value) =>

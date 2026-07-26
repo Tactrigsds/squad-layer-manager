@@ -43,7 +43,10 @@ export async function up(db: MigrationDriver): Promise<void> {
 	for (const alias of aliases) {
 		const shortcut = typeof alias?.alias === 'string' ? alias.alias : ''
 		const command = typeof alias?.command === 'string' ? alias.command : ''
-		const words = command.trim().split(/\s+/).filter((w: string) => w !== '')
+		const words = command
+			.trim()
+			.split(/\s+/)
+			.filter((w: string) => w !== '')
 		const targetId = words.length > 0 ? ownerOf.get(words[0].toLowerCase()) : undefined
 		if (shortcut === '' || targetId === undefined) {
 			dropped.push(`${shortcut || '(blank)'} -> ${command || '(blank)'}`)
@@ -57,9 +60,9 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 	if (dropped.length > 0) {
 		console.warn(
-			`0093_command_triggers: dropping ${dropped.length} command alias(es) whose command string does not resolve: `
-				+ `${dropped.join(', ')}. They could not run before this migration either. Re-add them under `
-				+ `Settings > In-game Commands as triggers on the command they were meant to run.`,
+			`0093_command_triggers: dropping ${dropped.length} command alias(es) whose command string does not resolve: ` +
+				`${dropped.join(', ')}. They could not run before this migration either. Re-add them under ` +
+				`Settings > In-game Commands as triggers on the command they were meant to run.`,
 		)
 	}
 

@@ -1,5 +1,5 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
@@ -26,10 +26,7 @@ export namespace Sel {
 	// Enriched players across both teams. Shared by call sites that need the whole roster (e.g. the
 	// group/selection actions) so the enrichment logic lives in one place.
 	export const allEnrichedPlayers = RSel.createDeepSelector(
-		[
-			(...args: Inputs) => playersForTeam('A')(...args),
-			(...args: Inputs) => playersForTeam('B')(...args),
-		],
+		[(...args: Inputs) => playersForTeam('A')(...args), (...args: Inputs) => playersForTeam('B')(...args)],
 		(a, b) => [...a, ...b],
 	)
 
@@ -47,13 +44,12 @@ export namespace Sel {
 			(players, playerStats, adminCamPlayerIds, bmData, selectedGroupingId, orgFlags, settingsGroupings) => {
 				const playerGroupings = settingsGroupings ?? PG.EMPTY_PLAYER_GROUPINGS
 				const groupingIds = PG.getGroupingIds(playerGroupings)
-				const activeGroupingId = selectedGroupingId !== null && groupingIds.includes(selectedGroupingId)
-					? selectedGroupingId
-					: groupingIds[0] ?? null
+				const activeGroupingId =
+					selectedGroupingId !== null && groupingIds.includes(selectedGroupingId) ? selectedGroupingId : (groupingIds[0] ?? null)
 
 				const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = players
-					.filter(p => p.ids.eos != null)
-					.map(p => {
+					.filter((p) => p.ids.eos != null)
+					.map((p) => {
 						const eosId = p.ids.eos!
 						const flagIds = bmData[eosId]?.flagIds ?? []
 						return [eosId, { flags: BM.resolveFlags(flagIds, orgFlags), adminGroups: p.adminGroups ?? [] }]
@@ -72,6 +68,6 @@ export namespace Sel {
 					}
 				})
 			},
-		)
+		),
 	)
 }

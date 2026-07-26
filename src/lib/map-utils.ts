@@ -146,11 +146,7 @@ export function hasAny<K, V>(map: Map<K, V>, ...keys: K[]): boolean {
 	return false
 }
 
-export function defaultInsGet<K, V>(
-	map: Map<K, V>,
-	key: K,
-	defaultValue: V,
-) {
+export function defaultInsGet<K, V>(map: Map<K, V>, key: K, defaultValue: V) {
 	if (map.has(key)) {
 		return map.get(key)!
 	}

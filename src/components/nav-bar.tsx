@@ -1,3 +1,7 @@
+import * as TSR from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
@@ -7,41 +11,47 @@ import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
 import { Alert, AlertTitle } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
-
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
-
 import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser.ts'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
-
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeClient from '@/systems/theme.client'
 import { useLoggedInUser } from '@/systems/users.client'
-import * as TSR from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 
 export default function NavBar() {
 	const flags = FeatureFlags.useFeatureFlags()
 	const wsStatus = RPC.useConnectStatus()
-	const { simulate, setSimulate } = ZusUtils.useStore(RbacClient.RbacStore)
+	const { simulate, setSimulate } = Zus.useStore(RbacClient.RbacStore)
 	const user = useLoggedInUser()
 
 	const avatarUrl = user?.avatarUrl
@@ -51,7 +61,7 @@ export default function NavBar() {
 	const isDesktop = useIsDesktopSize()
 	// below sm the nav links + user-avatar options all collapse into a single hamburger menu
 	const isSmall = useIsSmallViewport()
-	const activeDashboardTab = ZusUtils.useStore(SquadServerClient.DashboardTabStore, s => s.activeTab)
+	const activeDashboardTab = Zus.useStore(SquadServerClient.DashboardTabStore, (s) => s.activeTab)
 	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
 	const showDashboardTabs = !!isOnServerDashboard && !isDesktop
 
@@ -76,13 +86,13 @@ export default function NavBar() {
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
-	const config = ZusUtils.useStore(ConfigClient.Store)
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const selectedServerId = ZusUtils.useStore(SquadServerClient.SelectedServerStore, s => s.selectedServerId)
-	const selectedServer = settings?.servers.find(server => server.id === selectedServerId)
+	const config = Zus.useStore(ConfigClient.Store)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const selectedServerId = Zus.useStore(SquadServerClient.SelectedServerStore, (s) => s.selectedServerId)
+	const selectedServer = settings?.servers.find((server) => server.id === selectedServerId)
 	// NavBar isn't a descendant of the servers/$serverId route, so it can't receive the frame via props --
 	// ensureSetup just dedupes onto the instance the route already created. Only set up a frame for a usable server;
-	// building one for a disabled/missing server would spam subscription errors against a slice that doesn't exist.
+	// building one for a disabled/missing server would spam subscription errors against a managed server that doesn't exist.
 	const squadServerKey = React.useMemo(
 		() =>
 			SettingsClient.isServerUsable(selectedServer)
@@ -96,9 +106,10 @@ export default function NavBar() {
 		permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers')],
 	})
 	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
-	const showSettingsLink = !registryDenied
-		|| RBAC.canReadGlobalSettings(loggedInPerms)
-		|| (settings?.servers ?? []).some((s) => RBAC.canReadServerSettings(loggedInPerms, s.id))
+	const showSettingsLink =
+		!registryDenied ||
+		RBAC.canReadGlobalSettings(loggedInPerms) ||
+		(settings?.servers ?? []).some((s) => RBAC.canReadServerSettings(loggedInPerms, s.id))
 	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
 
 	// the user-avatar menu items, shared between the avatar dropdown (>= sm) and the hamburger (< sm). Rendered in exactly one
@@ -212,15 +223,20 @@ export default function NavBar() {
 				{!isSmall && (
 					<div className="flex items-center space-x-3 sm:space-x-6">
 						{/* the tab switcher already covers "Server" in single-column mode, so only show the link when tabs aren't shown */}
-						{!showDashboardTabs && (
-							selectedServer
-								? <NavLink params={{ serverId: selectedServer.id }} to="/servers/$serverId">Server</NavLink>
-								: <NavLink to="/servers">Server</NavLink>
-						)}
+						{!showDashboardTabs &&
+							(selectedServer ? (
+								<NavLink params={{ serverId: selectedServer.id }} to="/servers/$serverId">
+									Server
+								</NavLink>
+							) : (
+								<NavLink to="/servers">Server</NavLink>
+							))}
 						<NavLink to="/commands">Commands</NavLink>
 						<NavLink to="/filters">Filters</NavLink>
 						{showSettingsLink && <NavLink to="/settings">Settings</NavLink>}
-						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>Explore Layers</Button>
+						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>
+							Explore Layers
+						</Button>
 					</div>
 				)}
 			</div>
@@ -249,20 +265,20 @@ export default function NavBar() {
 					</div>
 				)}
 				{flags.displayWsClientId && config && (
-					<span
-						className="text-xs cursor-pointer"
-						onClick={() => navigator.clipboard.writeText(config.wsClientId)}
-					>
+					<span className="text-xs cursor-pointer" onClick={() => navigator.clipboard.writeText(config.wsClientId)}>
 						{config.wsClientId}
 					</span>
 				)}
 				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
 				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
-				{isOnServerDashboard && selectedServer && settings && (() => {
-					const servers = settings.servers
-					return servers.length <= 1
-						? <div className="font-medium text-sm">{selectedServer.displayName}</div>
-						: (
+				{isOnServerDashboard &&
+					selectedServer &&
+					settings &&
+					(() => {
+						const servers = settings.servers
+						return servers.length <= 1 ? (
+							<div className="font-medium text-sm">{selectedServer.displayName}</div>
+						) : (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
 									<Button variant="outline">
@@ -271,46 +287,44 @@ export default function NavBar() {
 									</Button>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align="start" className="min-w-[--radix-dropdown-menu-trigger-width] ">
-									{servers.filter(server => server.id !== selectedServer.id).map((server) => (
-										<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
-											<TSR.Link disabled={!server.enabled || server.broken} to="/servers/$serverId" params={{ serverId: server.id }}>
-												{server.displayName} <Icons.Dot className={cn(server.enabled ? 'text-green-500' : 'text-red-500')} />
-											</TSR.Link>
-										</DropdownMenuItem>
-									))}
+									{servers
+										.filter((server) => server.id !== selectedServer.id)
+										.map((server) => (
+											<DropdownMenuItem className="cursor-pointer" asChild key={server.id}>
+												<TSR.Link
+													disabled={!server.enabled || server.broken}
+													to="/servers/$serverId"
+													params={{ serverId: server.id }}
+												>
+													{server.displayName} <Icons.Dot className={cn(server.enabled ? 'text-green-500' : 'text-red-500')} />
+												</TSR.Link>
+											</DropdownMenuItem>
+										))}
 								</DropdownMenuContent>
 							</DropdownMenu>
 						)
-				})()}
-				{user && (
+					})()}
+				{user &&
 					// below sm the avatar's options live in the hamburger, so the avatar is just a (non-interactive) identity marker
-					isSmall
-						? (
-							<Avatar
-								style={{ backgroundColor: user.displayHexColor ?? undefined }}
-								className="select-none h-8 w-8 shrink-0"
-							>
-								<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
-								<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-							</Avatar>
-						)
-						: (
-							<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
-								<DropdownMenuTrigger asChild>
-									<Avatar
-										style={{ backgroundColor: user.displayHexColor ?? undefined }}
-										className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
-									>
-										<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
-										<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-									</Avatar>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end">
-									{userMenuContent}
-								</DropdownMenuContent>
-							</DropdownMenu>
-						)
-				)}
+					(isSmall ? (
+						<Avatar style={{ backgroundColor: user.displayHexColor ?? undefined }} className="select-none h-8 w-8 shrink-0">
+							<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
+							<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+						</Avatar>
+					) : (
+						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
+							<DropdownMenuTrigger asChild>
+								<Avatar
+									style={{ backgroundColor: user.displayHexColor ?? undefined }}
+									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
+								>
+									<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
+									<AvatarFallback className="text-xs sm:text-sm">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+								</Avatar>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">{userMenuContent}</DropdownMenuContent>
+						</DropdownMenu>
+					))}
 			</div>
 		</nav>
 	)
@@ -319,14 +333,14 @@ export default function NavBar() {
 // The switch is presentational: the menu item owns the toggle so it also responds to keyboard selection, and
 // preventing the default select keeps the menu open across flips.
 function NormalizeTeamsToggle() {
-	const displayTeamsNormalized = ZusUtils.useStore(ClientOnlySettings.Store, s => s.displayTeamsNormalized)
+	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	return (
 		<DropdownMenuItem
 			role="menuitemcheckbox"
 			aria-checked={displayTeamsNormalized}
 			className="text-sm justify-between gap-4"
 			title="Show team A on the left and team B on the right, instead of team 1 and team 2"
-			onSelect={e => {
+			onSelect={(e) => {
 				e.preventDefault()
 				ClientOnlySettings.Actions.setDisplayTeamsNormalized(!displayTeamsNormalized)
 			}}
@@ -380,9 +394,13 @@ function MobileNavMenu(props: {
 			<DropdownMenuContent align="start">
 				{props.showServerLink && (
 					<DropdownMenuItem asChild className="cursor-pointer">
-						{props.selectedServerId
-							? <TSR.Link to="/servers/$serverId" params={{ serverId: props.selectedServerId }}>Server</TSR.Link>
-							: <TSR.Link to="/servers">Server</TSR.Link>}
+						{props.selectedServerId ? (
+							<TSR.Link to="/servers/$serverId" params={{ serverId: props.selectedServerId }}>
+								Server
+							</TSR.Link>
+						) : (
+							<TSR.Link to="/servers">Server</TSR.Link>
+						)}
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem asChild className="cursor-pointer">
@@ -410,9 +428,13 @@ function MobileNavMenu(props: {
 	)
 }
 
-function NavLinksDropdown(
-	{ globalLinks, serverLinks }: { globalLinks?: { label: string; url: string }[]; serverLinks?: { label: string; url: string }[] },
-) {
+function NavLinksDropdown({
+	globalLinks,
+	serverLinks,
+}: {
+	globalLinks?: { label: string; url: string }[]
+	serverLinks?: { label: string; url: string }[]
+}) {
 	const hasGlobal = globalLinks && globalLinks.length > 0
 	const hasServer = serverLinks && serverLinks.length > 0
 	if (!hasGlobal && !hasServer) return null
@@ -425,23 +447,25 @@ function NavLinksDropdown(
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				{hasGlobal && globalLinks.map((link) => (
-					<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
-						<a href={link.url} target="_blank" rel="noopener noreferrer">
-							<NavLinkFavicon url={link.url} />
-							{link.label}
-						</a>
-					</DropdownMenuItem>
-				))}
+				{hasGlobal &&
+					globalLinks.map((link) => (
+						<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
+							<a href={link.url} target="_blank" rel="noopener noreferrer">
+								<NavLinkFavicon url={link.url} />
+								{link.label}
+							</a>
+						</DropdownMenuItem>
+					))}
 				{hasGlobal && hasServer && <DropdownMenuSeparator />}
-				{hasServer && serverLinks.map((link) => (
-					<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
-						<a href={link.url} target="_blank" rel="noopener noreferrer">
-							<NavLinkFavicon url={link.url} />
-							{link.label}
-						</a>
-					</DropdownMenuItem>
-				))}
+				{hasServer &&
+					serverLinks.map((link) => (
+						<DropdownMenuItem key={link.url} asChild className="cursor-pointer">
+							<a href={link.url} target="_blank" rel="noopener noreferrer">
+								<NavLinkFavicon url={link.url} />
+								{link.label}
+							</a>
+						</DropdownMenuItem>
+					))}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)
@@ -462,14 +486,7 @@ function NavLinkFavicon({ url }: { url: string }) {
 		return <Icons.ExternalLink className="mr-2 h-4 w-4 shrink-0" />
 	}
 
-	return (
-		<img
-			src={faviconUrl}
-			alt=""
-			className="mr-2 h-4 w-4 shrink-0"
-			onError={() => setErrored(true)}
-		/>
-	)
+	return <img src={faviconUrl} alt="" className="mr-2 h-4 w-4 shrink-0" onError={() => setErrored(true)} />
 }
 
 const NavLink: typeof TSR.Link = (props) => {

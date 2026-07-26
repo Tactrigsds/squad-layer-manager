@@ -1,7 +1,8 @@
+import { z } from 'zod'
+
 import { assertNever } from '@/lib/type-guards'
 import type * as BM from '@/models/battlemetrics.models'
 import type * as SM from '@/models/squad.models'
-import { z } from 'zod'
 
 // A rule assigns players matching one source-specific attribute to a group. Sources are independent: rules from
 // different ones sit in the same priority order and a grouping may mix them freely.
@@ -26,7 +27,7 @@ export type GroupRuleSource = GroupRule['type']
 export const GROUP_RULE_SOURCES: GroupRuleSource[] = ['battlemetrics', 'admin-list']
 
 export const GROUP_RULE_SOURCE_LABELS: Record<GroupRuleSource, string> = {
-	'battlemetrics': 'BM flag',
+	battlemetrics: 'BM flag',
 	'admin-list': 'Admin group',
 }
 
@@ -105,7 +106,7 @@ export function resolveGroupColor(color: GroupColor | undefined, orgFlags: BM.Pl
 	if (!color) return DEFAULT_GROUP_COLOR
 	switch (color.type) {
 		case 'flag':
-			return orgFlags?.find(f => f.id === color.flag)?.color ?? DEFAULT_GROUP_COLOR
+			return orgFlags?.find((f) => f.id === color.flag)?.color ?? DEFAULT_GROUP_COLOR
 		case 'custom':
 			return color.color
 		default:
@@ -134,7 +135,7 @@ export function moveRule(rules: GroupRule[], from: number, to: number, position:
 // the color a group takes when nothing is configured for it: the first of its own flags that has one
 export function defaultGroupColor(grouping: Grouping, group: string, orgFlags: BM.PlayerFlag[] | undefined): GroupColor | undefined {
 	for (const flag of getGroupFlags(grouping, group)) {
-		if (orgFlags?.find(f => f.id === flag)?.color) return { type: 'flag', flag }
+		if (orgFlags?.find((f) => f.id === flag)?.color) return { type: 'flag', flag }
 	}
 	return undefined
 }
@@ -142,7 +143,7 @@ export function defaultGroupColor(grouping: Grouping, group: string, orgFlags: B
 function matchesRule(rule: GroupRule, facts: PlayerFacts): boolean {
 	switch (rule.type) {
 		case 'battlemetrics':
-			return facts.flags.some(f => f.id === rule.flag)
+			return facts.flags.some((f) => f.id === rule.flag)
 		case 'admin-list':
 			return facts.adminGroups.includes(rule.adminGroup)
 		default:

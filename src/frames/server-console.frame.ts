@@ -1,5 +1,5 @@
 import type * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
 import * as RPC from '@/orpc.client'
@@ -40,18 +40,17 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	args.set({ serverId, events: [], tab: 'unified', hideNoise: true, denied: false } satisfies Store)
 
 	args.sub.add(
-		RPC.observe(`serverConsole.watch:${serverId}`, () => RPC.orpc.serverConsole.watch.call({ serverId }))
-			.subscribe((res) => {
-				if (res.code !== 'ok') {
-					args.set({ denied: true })
-					return
-				}
-				const next = args.get().events.concat(res.events)
-				args.set({
-					denied: false,
-					events: next.length > SC.BUFFER_SIZE ? next.slice(next.length - SC.BUFFER_SIZE) : next,
-				})
-			}),
+		RPC.observe(`serverConsole.watch:${serverId}`, () => RPC.orpc.serverConsole.watch.call({ serverId })).subscribe((res) => {
+			if (res.code !== 'ok') {
+				args.set({ denied: true })
+				return
+			}
+			const next = args.get().events.concat(res.events)
+			args.set({
+				denied: false,
+				events: next.length > SC.BUFFER_SIZE ? next.slice(next.length - SC.BUFFER_SIZE) : next,
+			})
+		}),
 	)
 }
 
@@ -107,7 +106,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<Store>(stores.serverConsole)
+		return Zus.resolveStore<Store>(stores.serverConsole)
 	}
 
 	export function setTab(stores: KeyProp, tab: Tab) {

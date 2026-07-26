@@ -1,5 +1,5 @@
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -20,7 +20,7 @@ export type PoolConfigApi = {
 
 // api over the per-server settings partial (dashboard popover): edits are recorded as ops via Actions.set
 export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS.SettingsPath): PoolConfigApi {
-	const serverId = ZusUtils.useStore(key, (s) => s.settings.serverId)
+	const serverId = Zus.useStore(key, (s) => s.settings.serverId)
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	// loose overlap check: the panel stays editable if any path under its pool subtree is writable (individual
 	// out-of-grant edits are still rejected server-side)
@@ -31,8 +31,8 @@ export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS
 	return {
 		useValue: (path) =>
 			// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components
-			ZusUtils.useStore(key, (s) => SETTINGS.derefSettingsValue(s.settings.edited, [...base, ...path])),
-		getValue: (path) => SETTINGS.derefSettingsValue(ZusUtils.getState(key).settings.edited, [...base, ...path]),
+			Zus.useStore(key, (s) => SETTINGS.derefSettingsValue(s.settings.edited, [...base, ...path])),
+		getValue: (path) => SETTINGS.derefSettingsValue(Zus.getState(key).settings.edited, [...base, ...path]),
 		set: (path, value) => ServerSettingsPrt.Actions.set({ settings: key }, { path: [...base, ...path], value }),
 		writeDenied,
 		resetKey: 0,

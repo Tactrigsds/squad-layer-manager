@@ -1,5 +1,6 @@
-import * as LOGS from '@/models/logs'
 import pino from 'pino'
+
+import * as LOGS from '@/models/logs'
 export const baseLogger = pino({
 	level: 'debug',
 	browser: {

@@ -1,5 +1,7 @@
-import { makePlayer } from '@/emulator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { makePlayer } from '@/emulator'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 
@@ -56,16 +58,18 @@ describe('teamswaps', () => {
 		app.emu.world.chat(admin, 'ChatAdmin', '!swapnext swap_later')
 
 		// the app acknowledges the request to the admin, but leaves the player where they are
-		await app.waitFor(
-			() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)),
-			{ label: 'acknowledgement to the admin', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)), {
+			label: 'acknowledgement to the admin',
+			timeoutMs: 20_000,
+		})
 		expect(forceChangesFor(held.eos)).toHaveLength(0)
 		expect(held.teamId).toBe(2)
 
 		// and it survives to the other side of the roll, where it is finally applied. The roll itself
 		// moves every player to the other team index (see World.swapTeamsOnRoll), which is what keeps a
-		// player's *side* stable across matches -- so honouring the swap means moving them back.
+		// player's *side* stable across matches -- so honouring the swap means moving them back. It also
+		// leaves them unsorted for a poll (World.sortTeamsLateOnRoll): the queue has to live through a
+		// roster that lists neither their old team nor their new one.
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 		await app.waitForRosterSync()

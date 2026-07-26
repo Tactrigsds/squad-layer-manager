@@ -31,5 +31,5 @@ export interface DraggableWindowContextValue {
  */
 export function normalizeStackOrder<T extends { stackOrder: number }>(windows: readonly T[]): T[] {
 	const ordered = [...windows].sort((a, b) => a.stackOrder - b.stackOrder)
-	return ordered.map((w, i) => w.stackOrder === i ? w : { ...w, stackOrder: i })
+	return ordered.map((w, i) => (w.stackOrder === i ? w : { ...w, stackOrder: i }))
 }

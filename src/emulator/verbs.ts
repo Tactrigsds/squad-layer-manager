@@ -1,4 +1,5 @@
 import * as SB from '@/models/sandbox.models'
+
 import type { Emulator, EmuPlayer } from './index.ts'
 import { makePlayer } from './index.ts'
 
@@ -25,7 +26,7 @@ export type SandboxHost = {
 // The name the next bulk-joined (or unnamed) player gets. Sequential rather than random so a scenario written
 // against Player1 keeps meaning the same thing.
 export function nextDefaultName(host: SandboxHost): string {
-	for (let n = 1;; n++) {
+	for (let n = 1; ; n++) {
 		const candidate = `Player${n}`
 		if (!host.players.has(candidate)) return candidate
 	}

@@ -1,6 +1,8 @@
+import * as Icons from 'lucide-react'
+
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
-import * as Icons from 'lucide-react'
+
 import type { TeamswapsHelpWindowProps } from './teamswaps-help-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 
@@ -20,16 +22,14 @@ function TeamswapsHelpWindow() {
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="px-4 py-3 text-sm space-y-3 text-muted-foreground">
-				<p>
-					Queue players to be moved to the opposite team, either at the start of the next round or immediately.
-				</p>
+				<p>Queue players to be moved to the opposite team, either at the start of the next round or immediately.</p>
 				<ol className="list-decimal list-inside space-y-2">
 					<li>
 						Right-click a player and choose <strong className="text-foreground">Swap Next</strong> to queue them.
 					</li>
 					<li>
-						Click <strong className="text-foreground">Save</strong>{' '}
-						to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.
+						Click <strong className="text-foreground">Save</strong> to commit your queue. Players are notified in-game that they will
+						be swapped at the start of the next round.
 					</li>
 					<li>
 						Click <strong className="text-foreground">Swap Now</strong> to immediately execute all saved swaps.

@@ -13,7 +13,9 @@ process.stdin.on('data', (chunk) => {
 
 process.stdin.on('end', () => {
 	// <local ref> <local sha> <remote ref> <remote sha>, one per ref being pushed
-	const refs = input.trim().split('\n')
+	const refs = input
+		.trim()
+		.split('\n')
 		.map((line) => line.split(' '))
 		.filter((parts) => parts.length >= 4)
 

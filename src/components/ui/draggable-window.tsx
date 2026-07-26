@@ -1,13 +1,26 @@
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
+import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
-import { DraggableWindowContext, type DraggableWindowContextValue, DraggableWindowOutletContext, DraggableWindowStore, type InitialPosition, useDraggableWindow, useDraggableWindowContext, useOpenWindows, useOutletKey, useWindowDefinitions, type WindowDefinition, type WindowState } from '@/systems/draggable-window.client'
+import {
+	DraggableWindowContext,
+	type DraggableWindowContextValue,
+	DraggableWindowOutletContext,
+	DraggableWindowStore,
+	type InitialPosition,
+	useDraggableWindow,
+	useDraggableWindowContext,
+	useOpenWindows,
+	useOutletKey,
+	useWindowDefinitions,
+	type WindowDefinition,
+	type WindowState,
+} from '@/systems/draggable-window.client'
 
 export { useDraggableWindow, useDraggableWindowContext }
 import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import * as Zus from 'zustand'
 
 // ============================================================================
 // Position Calculation
@@ -157,14 +170,8 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			height: window.innerHeight,
 		}
 
-		const clampedX = Math.max(
-			collisionPadding,
-			Math.min(currentPos.x, viewport.width - contentRect.width - collisionPadding),
-		)
-		const clampedY = Math.max(
-			collisionPadding,
-			Math.min(currentPos.y, viewport.height - contentRect.height - collisionPadding),
-		)
+		const clampedX = Math.max(collisionPadding, Math.min(currentPos.x, viewport.width - contentRect.width - collisionPadding))
+		const clampedY = Math.max(collisionPadding, Math.min(currentPos.y, viewport.height - contentRect.height - collisionPadding))
 
 		if (clampedX !== currentPos.x || clampedY !== currentPos.y) {
 			applyPosition({ x: clampedX, y: clampedY })
@@ -333,12 +340,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			document.removeEventListener('mousemove', handleMouseMove)
 			document.removeEventListener('mouseup', handleMouseUp)
 		}
-	}, [
-		dragBarNode,
-		bringToFront,
-		applyPosition,
-		setIsPinned,
-	])
+	}, [dragBarNode, bringToFront, applyPosition, setIsPinned])
 
 	const handleMouseDown = React.useCallback(() => {
 		bringToFront()
@@ -431,8 +433,8 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				<BaseZIndexContext.Provider value={effectiveZIndex}>
 					<Component {...windowState.props} />
 				</BaseZIndexContext.Provider>
-				{definition.resizable
-					&& RESIZE_HANDLES.map((h) => (
+				{definition.resizable &&
+					RESIZE_HANDLES.map((h) => (
 						<div
 							key={h.dir}
 							onMouseDown={(e) => beginResize(e, h.dir)}
@@ -449,9 +451,11 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 // Window Outlet (renders all open windows)
 // ============================================================================
 
-export function DraggableWindowOutlet(
-	props: { outletKey: unknown; getElement?: () => HTMLElement | null | undefined; children: React.ReactNode },
-) {
+export function DraggableWindowOutlet(props: {
+	outletKey: unknown
+	getElement?: () => HTMLElement | null | undefined
+	children: React.ReactNode
+}) {
 	const openWindows = useOpenWindows()
 	const definitions = useWindowDefinitions()
 
@@ -603,19 +607,9 @@ interface OpenWindowInteractionProps<TProps> {
 	[extra: string]: unknown
 }
 
-export function OpenWindowInteraction<TProps>(
-	_props: OpenWindowInteractionProps<TProps>,
-) {
+export function OpenWindowInteraction<TProps>(_props: OpenWindowInteractionProps<TProps>) {
 	const eltRef = React.useRef<Element | null>(null)
-	const [props, otherEltProps] = Obj.partition(
-		_props,
-		'ref',
-		'windowId',
-		'windowProps',
-		'preload',
-		'intentDelay',
-		'render',
-	)
+	const [props, otherEltProps] = Obj.partition(_props, 'ref', 'windowId', 'windowProps', 'preload', 'intentDelay', 'render')
 
 	const isLoaded = Zus.useStore(DraggableWindowStore, (state) => {
 		const def = state.definitions.find((d) => d.type === props.windowId)
@@ -626,23 +620,17 @@ export function OpenWindowInteraction<TProps>(
 	})
 
 	const outletKey = useOutletKey()
-	const openWindow = React.useCallback((anchor?: Element | null) => {
-		DraggableWindowStore.getState().openWindow(props.windowId, props.windowProps, anchor as HTMLElement | null, outletKey)
-	}, [
-		props.windowId,
-		props.windowProps,
-		outletKey,
-	])
+	const openWindow = React.useCallback(
+		(anchor?: Element | null) => {
+			DraggableWindowStore.getState().openWindow(props.windowId, props.windowProps, anchor as HTMLElement | null, outletKey)
+		},
+		[props.windowId, props.windowProps, outletKey],
+	)
 
 	const preloadWindow = React.useCallback(() => {
 		if (isLoaded) return
 		DraggableWindowStore.getState().preloadWindow(props.windowId, props.windowProps, outletKey)
-	}, [
-		props.windowId,
-		props.windowProps,
-		isLoaded,
-		outletKey,
-	])
+	}, [props.windowId, props.windowProps, isLoaded, outletKey])
 
 	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
 

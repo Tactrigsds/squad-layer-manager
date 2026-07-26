@@ -1,5 +1,6 @@
-import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type React from 'react'
+
+import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 
 export type FilterTextEditorHandle = {
 	format: () => void

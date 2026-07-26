@@ -88,7 +88,10 @@ describe('rowsFromConfig', () => {
 	test('ids are deterministic across re-derivation of the same config', () => {
 		const cfg = {
 			permissions: ['queue:write'],
-			serverSettingsGrants: [{ access: 'write', serverIds: ['a'] }, { access: 'write', serverIds: ['b'] }],
+			serverSettingsGrants: [
+				{ access: 'write', serverIds: ['a'] },
+				{ access: 'write', serverIds: ['b'] },
+			],
 		}
 		expect(PermRows.rowsFromConfig(cfg).map((r) => r.id)).toEqual(PermRows.rowsFromConfig(cfg).map((r) => r.id))
 	})
@@ -185,9 +188,9 @@ describe('configFromRows', () => {
 
 describe('round trip', () => {
 	const cases: Record<string, PermRows.RoleConfig> = {
-		'empty': {},
+		empty: {},
 		'global perms': { permissions: ['queue:write', 'vote:manage'] },
-		'wildcard': { permissions: ['*'] },
+		wildcard: { permissions: ['*'] },
 		'allow + deny': { permissions: ['queue:write', '!admin:restart-slm'] },
 		'unrestricted settings': { permissions: ['global-settings:write', 'server-settings:write'] },
 		'restricted global settings': { globalSettingsGrants: ['vote', 'queue.mainPool'] },
@@ -199,7 +202,7 @@ describe('round trip', () => {
 			],
 		},
 		'server grant over all servers': { serverSettingsGrants: [{ access: 'write', serverIds: [], paths: ['vote'] }] },
-		'timeout': { maxTimeout: '2h' },
+		timeout: { maxTimeout: '2h' },
 		'everything at once': {
 			permissions: ['queue:write', 'vote:manage', '!admin:restart-slm'],
 			maxTimeout: '30m',

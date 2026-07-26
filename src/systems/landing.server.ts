@@ -1,12 +1,13 @@
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
 import * as Paths from '$root/paths'
 import { LandingDocument } from '@/components/landing-pages'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
 import * as Discord from '@/systems/discord.server'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 
 // Static, no-JS pages served outside the SPA: the login landing at '/' and the 403 shown to authenticated users
 // who lack site access. Authored as React components (landing-pages.tsx), rendered to a string once at setup()
@@ -66,9 +67,10 @@ function render(variant: 'landing' | 'forbidden', repoUrl: string, guildName: st
 
 function resolveHead(): Head {
 	// only the bundled prod server lacks the source tree, so it reads the built copy; dev/test run from source
-	const html = ENV.NODE_ENV === 'production'
-		? fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
-		: fs.readFileSync(path.join(Paths.PROJECT_ROOT, 'index.html'), 'utf8')
+	const html =
+		ENV.NODE_ENV === 'production'
+			? fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
+			: fs.readFileSync(path.join(Paths.PROJECT_ROOT, 'index.html'), 'utf8')
 	return { htmlAttrs: parseHtmlAttrs(html), metas: parseMetas(html), assetLinks: parseSharedLinks(html) }
 }
 

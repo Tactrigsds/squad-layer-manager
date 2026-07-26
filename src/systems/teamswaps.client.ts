@@ -1,9 +1,9 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TSWPrt from '@/frame-partials/teamswaps.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as ItemMutations from '@/lib/item-mutations'
-import * as Obj from '@/lib/object'
-import * as ZusUtils from '@/lib/zustand'
+import * as ItemMut from '@/lib/item-mutations'
+import * as Obj from '@/lib/object-utils'
+import * as Zus from '@/lib/zustand'
 import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -72,16 +72,13 @@ export namespace Sel {
 		return (store: Store) => TSW.isSwapPending(localState(store), playerId)
 	}
 
-	export function swapsToTeamEnriched(
-		store: Store & ChatPrt.Store,
-		team: MH.NormedTeamId,
-	): Map<SM.PlayerId, TSW.EnrichedTeamswap> {
+	export function swapsToTeamEnriched(store: Store & ChatPrt.Store, team: MH.NormedTeamId): Map<SM.PlayerId, TSW.EnrichedTeamswap> {
 		const swaps = localState(store).editedSwaps
 		const players = ChatPrt.Sel.chatState(store).players
 		const result: Map<SM.PlayerId, TSW.EnrichedTeamswap> = new Map()
 		for (const [playerId, swap_] of swaps.entries()) {
 			if (swap_.toTeam !== team) continue
-			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 			if (!player) continue
 			result.set(playerId, { ...swap_, player })
 		}
@@ -89,7 +86,7 @@ export namespace Sel {
 	}
 
 	export type EnrichedTeamswapWithMutation = TSW.EnrichedTeamswap & {
-		mutation: ItemMutations.ItemMutationState
+		mutation: ItemMut.ItemMutationState
 	}
 
 	export function swapsToTeamEnrichedWithMutations(
@@ -99,30 +96,30 @@ export namespace Sel {
 		const { editedSwaps: swaps, savedSwaps } = localState(store)
 		const players = ChatPrt.Sel.chatState(store).players
 
-		const mutations = ItemMutations.initMutations<SM.PlayerId>()
+		const mutations = ItemMut.initMutations<SM.PlayerId>()
 		const allPlayerIds = new Set<SM.PlayerId>()
 
 		for (const [playerId, swap_] of swaps.entries()) {
 			if (swap_.toTeam !== team) continue
 			allPlayerIds.add(playerId)
 			if (!savedSwaps.has(playerId)) {
-				ItemMutations.tryApplyMutation('added', playerId, mutations)
+				ItemMut.tryApplyMutation('added', playerId, mutations)
 			}
 		}
 		for (const [playerId, swap_] of savedSwaps.entries()) {
 			if (swap_.toTeam !== team) continue
 			allPlayerIds.add(playerId)
 			if (!swaps.has(playerId)) {
-				ItemMutations.tryApplyMutation('removed', playerId, mutations)
+				ItemMut.tryApplyMutation('removed', playerId, mutations)
 			}
 		}
 
 		const result = new Map<SM.PlayerId, EnrichedTeamswapWithMutation>()
 		for (const playerId of allPlayerIds) {
 			const swap_ = swaps.get(playerId) ?? savedSwaps.get(playerId)!
-			const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+			const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 			if (!player) continue
-			result.set(playerId, { ...swap_, player, mutation: ItemMutations.toItemMutationState(mutations, playerId) })
+			result.set(playerId, { ...swap_, player, mutation: ItemMut.toItemMutationState(mutations, playerId) })
 		}
 		return result
 	}
@@ -132,7 +129,7 @@ function getPlayerOppositeTeam(stores: SquadServerFrame.KeyProp, playerId: SM.Pl
 	const matchesResult = MatchHistoryClient.recentMatches$(stores.squadServer.serverId).getValue()
 	if (matchesResult instanceof Promise) return null
 	const currentMatch = matchesResult[matchesResult.length - 1] as MH.MatchDetails | undefined
-	const state = ZusUtils.getState(stores.squadServer)
+	const state = Zus.getState(stores.squadServer)
 	const players = ChatPrt.Sel.chatState(state).players
 	return TSWPrt.getPlayerOppositeTeam(playerId, currentMatch, players)
 }
@@ -151,18 +148,21 @@ export namespace Actions {
 
 	export function swapNext(stores: SquadServerFrame.KeyProp, playerIds: SM.PlayerId[]) {
 		const source = { discordId: UsersClient.loggedInUserId }
-		const state = Sel.localState(ZusUtils.getState(stores.squadServer))
+		const state = Sel.localState(Zus.getState(stores.squadServer))
 		for (const playerId of playerIds) {
 			if (!TSW.canQueue(state, playerId)) continue
 			const toTeam = getPlayerOppositeTeam(stores, playerId)
 			if (!toTeam) continue
-			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, {
-				code: 'add-player-teamswap',
-				playerId,
-				toTeam,
-				source,
-				saved: false,
-			})
+			TSWPrt.Actions.dispatch(
+				{ teamswaps: stores.squadServer },
+				{
+					code: 'add-player-teamswap',
+					playerId,
+					toTeam,
+					source,
+					saved: false,
+				},
+			)
 		}
 		setEditing(stores.squadServer.serverId)
 	}
@@ -191,7 +191,7 @@ export namespace Actions {
 
 	export function clearTeamSwaps(stores: SquadServerFrame.KeyProp, teamId: MH.NormedTeamId) {
 		const source = { discordId: UsersClient.loggedInUserId }
-		const state = Sel.localState(ZusUtils.getState(stores.squadServer))
+		const state = Sel.localState(Zus.getState(stores.squadServer))
 		for (const [playerId, swap_] of state.editedSwaps.entries()) {
 			if (swap_.toTeam !== teamId) continue
 			TSWPrt.Actions.dispatch({ teamswaps: stores.squadServer }, { code: 'remove-player-teamswaps', playerId, source, saved: false })

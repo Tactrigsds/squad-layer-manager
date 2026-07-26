@@ -1,8 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
+import React from 'react'
+
 import * as DM from '@/models/discord.models'
 import * as EMO from '@/models/emoji.models'
 import * as RPC from '@/orpc.client'
-import { useQuery } from '@tanstack/react-query'
-import React from 'react'
 
 export const getEmojisBaseQuery = (opts?: { enabled?: boolean }) => {
 	return RPC.orpc.discord.getGuildEmojis.queryOptions({

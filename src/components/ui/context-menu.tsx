@@ -54,9 +54,7 @@ const ContextMenuSubContent = React.forwardRef<
 			style={{ zIndex, ...style }}
 			{...props}
 		>
-			<BaseZIndexContext.Provider value={zIndex}>
-				{children}
-			</BaseZIndexContext.Provider>
+			<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
 		</ContextMenuPrimitive.SubContent>
 	)
 })
@@ -75,7 +73,7 @@ const ContextMenuContent = React.forwardRef<
 				// when a menu item just handed focus to a warn box: (1) don't let the closing menu restore focus
 				// to its trigger, and (2) re-fire the focus now that the menu's focus trap has been released,
 				// since focusing while the trap was still mounted (during the exit animation) doesn't stick.
-				onCloseAutoFocus={e => {
+				onCloseAutoFocus={(e) => {
 					if (WarnChat.warnFocusJustRequested()) {
 						e.preventDefault()
 						WarnChat.refireWarnFocus()
@@ -89,9 +87,7 @@ const ContextMenuContent = React.forwardRef<
 				style={{ zIndex, ...style }}
 				{...props}
 			>
-				<BaseZIndexContext.Provider value={zIndex}>
-					{children}
-				</BaseZIndexContext.Provider>
+				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
 			</ContextMenuPrimitive.Content>
 		</ContextMenuPrimitive.Portal>
 	)

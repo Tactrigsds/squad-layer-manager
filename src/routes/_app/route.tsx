@@ -1,16 +1,11 @@
-import NavBar from '@/components/nav-bar'
-
-import { orUndef } from '@/lib/types'
-
-import * as ConfigClient from '@/systems/config.client'
-
-import * as LayerQueriesClient from '@/systems/layer-queries.client'
-
-import * as SettingsClient from '@/systems/settings.client'
-
 import { createFileRoute, Outlet, useMatch } from '@tanstack/react-router'
-
 import React from 'react'
+
+import NavBar from '@/components/nav-bar'
+import { orUndef } from '@/lib/types'
+import * as ConfigClient from '@/systems/config.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import * as SettingsClient from '@/systems/settings.client'
 
 export const Route = createFileRoute('/_app')({
 	loader: async () => {

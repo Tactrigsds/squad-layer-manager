@@ -1,8 +1,9 @@
+import React from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import * as L from '@/models/layer'
-import React from 'react'
 
 export type MultiLayerSetDialogProps = {
 	onSubmit: (layers: L.UnvalidatedLayer[]) => void
@@ -22,8 +23,11 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 
 	function onTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
 		const text = e.target.value
-		const lines = text.trim().split('\n').filter(line => line.trim().length > 0)
-		const layers = lines.map(line => L.parseRawLayerText(line.trim())).filter(l => l !== null)
+		const lines = text
+			.trim()
+			.split('\n')
+			.filter((line) => line.trim().length > 0)
+		const layers = lines.map((line) => L.parseRawLayerText(line.trim())).filter((l) => l !== null)
 		setPossibleLayers(layers)
 	}
 
@@ -52,11 +56,10 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 					</div>
 					<div className="flex justify-end space-x-2">
 						{props.extraFooter}
-						<Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-						<Button
-							onClick={handleSubmit}
-							disabled={possibleLayers.length === 0}
-						>
+						<Button variant="outline" onClick={() => setOpen(false)}>
+							Cancel
+						</Button>
+						<Button onClick={handleSubmit} disabled={possibleLayers.length === 0}>
 							Add {possibleLayers.length > 0 ? `${possibleLayers.length} ` : ''}Layer{possibleLayers.length !== 1 ? 's' : ''}
 						</Button>
 					</div>

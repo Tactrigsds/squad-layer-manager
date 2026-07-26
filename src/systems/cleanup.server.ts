@@ -1,7 +1,6 @@
-import { isAbortError } from '@/lib/async'
 import * as Cleanup from '@/lib/cleanup'
+import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
-
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 
@@ -39,7 +38,7 @@ export function setup() {
 	// debug so a leaked one is still traceable without alarming; anything else is a real error. Either
 	// way the process keeps running. This is a net, not a substitute for observing promises at source.
 	process.on('unhandledRejection', (reason) => {
-		if (isAbortError(reason)) {
+		if (Prom.isAbortError(reason)) {
 			log.debug(reason, 'unhandledRejection: aborted')
 			return
 		}
@@ -48,16 +47,13 @@ export function setup() {
 
 	if (ENV.NODE_ENV === 'development') return
 	const ctx = { ...CS.init(), log }
-	process.on(
-		'SIGTERM',
-		async () => {
-			shutdownController.abort(new DOMException('process shutting down', 'AbortError'))
-			for (const tasksList of taskRegistry.toReversed()) {
-				if (!tasksList) continue
-				await Cleanup.runCleanup(ctx, tasksList)
-			}
-			log.info('Cleanup complete')
-			process.exit(0)
-		},
-	)
+	process.on('SIGTERM', async () => {
+		shutdownController.abort(new DOMException('process shutting down', 'AbortError'))
+		for (const tasksList of taskRegistry.toReversed()) {
+			if (!tasksList) continue
+			await Cleanup.runCleanup(ctx, tasksList)
+		}
+		log.info('Cleanup complete')
+		process.exit(0)
+	})
 }

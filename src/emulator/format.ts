@@ -49,9 +49,10 @@ function pad(n: number, w: number) {
 
 // e.g. [2026.07.12-20.56.48:296][931] -- timestamp is UTC, chainID is space-padded to width 3
 export function logHeader(time: Date, chainId: number): string {
-	const ts = `${time.getUTCFullYear()}.${pad(time.getUTCMonth() + 1, 2)}.${pad(time.getUTCDate(), 2)}`
-		+ `-${pad(time.getUTCHours(), 2)}.${pad(time.getUTCMinutes(), 2)}.${pad(time.getUTCSeconds(), 2)}`
-		+ `:${pad(time.getUTCMilliseconds(), 3)}`
+	const ts =
+		`${time.getUTCFullYear()}.${pad(time.getUTCMonth() + 1, 2)}.${pad(time.getUTCDate(), 2)}` +
+		`-${pad(time.getUTCHours(), 2)}.${pad(time.getUTCMinutes(), 2)}.${pad(time.getUTCSeconds(), 2)}` +
+		`:${pad(time.getUTCMilliseconds(), 3)}`
 	return `[${ts}][${String(chainId).padStart(3, ' ')}]`
 }
 
@@ -104,8 +105,8 @@ export function showServerInfo(info: {
 		TeamTwo_s: 'PLA_S_CombinedArms',
 		TeamOne_s: 'USA_S_CombinedArms',
 		NextLayer_s: info.nextLayer?.layer ?? '',
-		'CurrentModLoadedCount_I': '0',
-		'AllModsWhitelisted_b': false,
+		CurrentModLoadedCount_I: '0',
+		AllModsWhitelisted_b: false,
 	})
 }
 
@@ -237,9 +238,9 @@ export function logRoundDecided(kind: 'won' | 'lost', team: TeamLike, faction: s
 }
 
 export function logPlayerConnected(p: PlayerLike, l: LayerLike): string {
-	return `LogSquad: PostLogin: NewPlayer: BP_PlayerController_C ${l.mapDir}/${l.layer}.${l.layer}:PersistentLevel.${p.controllerId} (IP: ${p.ip} | Online IDs: ${
-		idsStr(p)
-	})`
+	return `LogSquad: PostLogin: NewPlayer: BP_PlayerController_C ${l.mapDir}/${l.layer}.${l.layer}:PersistentLevel.${p.controllerId} (IP: ${p.ip} | Online IDs: ${idsStr(
+		p,
+	)})`
 }
 
 export function logJoinSucceeded(p: PlayerLike): string {
@@ -251,10 +252,12 @@ export function logAddedToTeam(p: PlayerLike, teamId: number): string {
 }
 
 export function logPlayerDisconnected(p: PlayerLike): string {
-	return `LogNet: UNetDriver::RemoveClientConnection - Removed address ${p.ip}:${p.port} from MappedClientConnections for: `
-		+ `[UNetConnection] RemoteAddr: ${p.ip}:${p.port}, Name: RedpointEOSIpNetConnection_2147249600, `
-		+ `Driver: Name:GameNetDriver Def:GameNetDriver RedpointEOSNetDriver_2147482319, IsServer: YES, `
-		+ `PC: ${p.controllerId}, Owner: ${p.controllerId}, UniqueId: RedpointEOS:${p.eos}`
+	return (
+		`LogNet: UNetDriver::RemoveClientConnection - Removed address ${p.ip}:${p.port} from MappedClientConnections for: ` +
+		`[UNetConnection] RemoteAddr: ${p.ip}:${p.port}, Name: RedpointEOSIpNetConnection_2147249600, ` +
+		`Driver: Name:GameNetDriver Def:GameNetDriver RedpointEOSNetDriver_2147482319, IsServer: YES, ` +
+		`PC: ${p.controllerId}, Owner: ${p.controllerId}, UniqueId: RedpointEOS:${p.eos}`
+	)
 }
 
 export function logForcedTeamChange(p: PlayerLike, playerId: number, source?: string): string {
@@ -290,16 +293,16 @@ export function logPlayerRestarted(p: PlayerLike): string {
 }
 
 export function logWound(victim: PlayerLike, attacker: PlayerLike, damage: number, weapon: string): string {
-	return `LogSquadTrace: [DedicatedServer]Wound(): Player: ${victim.name.trim()} KillingDamage=${
-		damage.toFixed(6)
-	} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Controller ID: ${attacker.controllerId}) caused by ${weapon}`
+	return `LogSquadTrace: [DedicatedServer]Wound(): Player: ${victim.name.trim()} KillingDamage=${damage.toFixed(
+		6,
+	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Controller ID: ${attacker.controllerId}) caused by ${weapon}`
 }
 
 export function logDie(victim: PlayerLike, attacker: PlayerLike, damage: number, weapon: string): string {
 	// 'Contoller' [sic] -- the real Die() line carries this typo, and the app's regex expects it
-	return `LogSquadTrace: [DedicatedServer]Die(): Player: ${victim.name.trim()} KillingDamage=${
-		damage.toFixed(6)
-	} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Contoller ID: ${attacker.controllerId}) caused by ${weapon}`
+	return `LogSquadTrace: [DedicatedServer]Die(): Player: ${victim.name.trim()} KillingDamage=${damage.toFixed(
+		6,
+	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Contoller ID: ${attacker.controllerId}) caused by ${weapon}`
 }
 
 export function logTickRate(rate: number): string {

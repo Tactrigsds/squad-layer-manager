@@ -1,6 +1,7 @@
-import * as Cli from '@/systems/cli.server'
 import * as D from 'discord.js'
 import dotenv from 'dotenv'
+
+import * as Cli from '@/systems/cli.server'
 
 // Clears every application command registered for the SLM Discord app, both the home-guild-scoped
 // commands and any global ones. The app re-registers its guild commands on the next boot (see
@@ -32,9 +33,7 @@ try {
 	await rest.put(D.Routes.applicationGuildCommands(appId, guildId), { body: [] })
 } catch (err) {
 	if (err instanceof D.DiscordAPIError && NOT_INSTALLED_CODES.includes(err.code)) {
-		console.warn(
-			`  skipped: the app is not installed in guild ${guildId} (${err.message}), so it has no guild-scoped commands.`,
-		)
+		console.warn(`  skipped: the app is not installed in guild ${guildId} (${err.message}), so it has no guild-scoped commands.`)
 	} else {
 		throw err
 	}

@@ -1,6 +1,7 @@
-import * as SM from '@/models/squad.models'
 import * as fs from 'node:fs'
 import * as util from 'node:util'
+
+import * as SM from '@/models/squad.models'
 
 // Runs a log file through parseLogStream and dumps every parsed event with full
 // details, so we can eyeball whether everything parses cleanly and completely.
@@ -69,7 +70,7 @@ async function main() {
 	}
 	for (const f of paths) await run(f)
 }
-main().catch(e => {
+main().catch((e) => {
 	console.error(e)
 	process.exit(1)
 })

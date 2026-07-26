@@ -113,9 +113,7 @@ export function splitByGroups(
 ): { groups: { group: SettingsGroup; keys: string[] }[]; ungrouped: string[] } {
 	const grouped = new Set(groups.flatMap((g) => g.keys))
 	return {
-		groups: groups
-			.map((group) => ({ group, keys: group.keys.filter((k) => keys.includes(k)) }))
-			.filter((g) => g.keys.length > 0),
+		groups: groups.map((group) => ({ group, keys: group.keys.filter((k) => keys.includes(k)) })).filter((g) => g.keys.length > 0),
 		ungrouped: keys.filter((k) => !grouped.has(k)),
 	}
 }

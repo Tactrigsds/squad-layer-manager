@@ -1,5 +1,4 @@
-import * as ZusUtils from '@/lib/zustand'
-import type * as Zus from 'zustand'
+import * as Zus from '@/lib/zustand'
 export const DEFAULT_NODE_ID = Symbol('defaultNodeId')
 
 export type NodeId = string | symbol
@@ -8,7 +7,7 @@ export type NodeMapStore = {
 	setNode(id: NodeId, node: Element | undefined): void
 }
 
-export function initNodeMap(get: ZusUtils.Getter<NodeMapStore>, set: ZusUtils.Setter<NodeMapStore>): NodeMapStore {
+export function initNodeMap(get: Zus.Getter<NodeMapStore>, set: Zus.Setter<NodeMapStore>): NodeMapStore {
 	return {
 		nodeMap: new Map<NodeId, Element | undefined>(),
 		setNode: (id: NodeId, node: Element | undefined) => {
@@ -18,5 +17,5 @@ export function initNodeMap(get: ZusUtils.Getter<NodeMapStore>, set: ZusUtils.Se
 }
 
 export function useNode(id: NodeId, store: Zus.StoreApi<NodeMapStore>) {
-	return ZusUtils.useStore(store, (state) => state.nodeMap.get(id))
+	return Zus.useStore(store, (state) => state.nodeMap.get(id))
 }

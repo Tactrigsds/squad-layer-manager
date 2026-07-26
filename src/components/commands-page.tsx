@@ -1,10 +1,13 @@
+import * as Icons from 'lucide-react'
+import * as React from 'react'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
@@ -13,8 +16,6 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
-import * as Icons from 'lucide-react'
-import * as React from 'react'
 
 // a trigger that pins arguments, as listed under its command: what a caller types, and what it runs
 type Shortcut = { usage: string; expansion: string }
@@ -87,14 +88,17 @@ function PinButton({ cmdId, pinned }: { cmdId: CMD.CommandId; pinned: boolean })
 
 // the per-argument breakdown and worked examples, shown when a command is expanded. Both are derived from the
 // command's declaration plus the installation's configured reasons/broadcasts (see command-help.models).
-function CommandDetails(
-	{ cmdId, cmd, shortcuts, settings }: {
-		cmdId: CMD.CommandId
-		cmd: CMD.CommandConfig
-		shortcuts: Shortcut[]
-		settings: PublicSettings
-	},
-) {
+function CommandDetails({
+	cmdId,
+	cmd,
+	shortcuts,
+	settings,
+}: {
+	cmdId: CMD.CommandId
+	cmd: CMD.CommandConfig
+	shortcuts: Shortcut[]
+	settings: PublicSettings
+}) {
 	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
 	const args = CMDH.describeArgs(cmdId, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
@@ -118,7 +122,11 @@ function CommandDetails(
 								{arg.presets.length > 0 && (
 									<span className="flex flex-wrap items-center gap-1 pt-1">
 										<span>Configured:</span>
-										{arg.presets.map((preset) => <Badge key={preset} variant="secondary" className="text-xs">{preset}</Badge>)}
+										{arg.presets.map((preset) => (
+											<Badge key={preset} variant="secondary" className="text-xs">
+												{preset}
+											</Badge>
+										))}
 									</span>
 								)}
 							</dd>
@@ -150,18 +158,21 @@ function CommandDetails(
 	)
 }
 
-function CommandEntry(
-	{ entry, settings, pinned, onLink }: {
-		entry: Entry
-		settings: PublicSettings
-		pinned: boolean
-		onLink: (id: string) => void
-	},
-) {
+function CommandEntry({
+	entry,
+	settings,
+	pinned,
+	onLink,
+}: {
+	entry: Entry
+	settings: PublicSettings
+	pinned: boolean
+	onLink: (id: string) => void
+}) {
 	const { cmdId, cmd } = entry
 	const [open, setOpen] = React.useState(false)
 	const args = CMD.COMMAND_DECLARATIONS[cmdId].args as readonly CMD.ArgDef[]
-	const argObject = Object.fromEntries(args.map(arg => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
+	const argObject = Object.fromEntries(args.map((arg) => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2">
@@ -174,7 +185,11 @@ function CommandEntry(
 					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this command" />
 				</div>
 				<div className="flex-1" />
-				{!cmd.enabled && <Badge variant="destructive" className="text-xs">Disabled</Badge>}
+				{!cmd.enabled && (
+					<Badge variant="destructive" className="text-xs">
+						Disabled
+					</Badge>
+				)}
 				{cmd.allowedChats.map((group) => {
 					const { icon: GroupIcon, className } = CHAT_GROUP_BADGES[group]
 					return (
@@ -255,7 +270,9 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
-				<code className="truncate font-mono text-sm font-medium" title={string}>{string}</code>
+				<code className="truncate font-mono text-sm font-medium" title={string}>
+					{string}
+				</code>
 				<Button
 					variant="ghost"
 					size="sm"
@@ -282,18 +299,19 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 	)
 }
 
-function CompactGrid(
-	{ entries, onDetails, onUnpin }: { entries: Entry[]; onDetails: (id: string) => void; onUnpin?: (cmdId: CMD.CommandId) => void },
-) {
+function CompactGrid({
+	entries,
+	onDetails,
+	onUnpin,
+}: {
+	entries: Entry[]
+	onDetails: (id: string) => void
+	onUnpin?: (cmdId: CMD.CommandId) => void
+}) {
 	return (
 		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
 			{entries.map((entry) => (
-				<CompactEntry
-					key={entry.id}
-					entry={entry}
-					onDetails={onDetails}
-					onUnpin={onUnpin ? () => onUnpin(entry.cmdId) : undefined}
-				/>
+				<CompactEntry key={entry.id} entry={entry} onDetails={onDetails} onUnpin={onUnpin ? () => onUnpin(entry.cmdId) : undefined} />
 			))}
 		</div>
 	)
@@ -301,14 +319,17 @@ function CompactGrid(
 
 // A titled block of compact cards on a secondary background: the "Your Pinned Commands" and "Quick Reference"
 // scans that sit above the menu. Both are shortcuts into the sections below, so their cards' Details link jumps there.
-function CompactSection(
-	{ title, section, onDetails, onUnpin }: {
-		title: string
-		section: Section
-		onDetails: (id: string) => void
-		onUnpin?: (cmdId: CMD.CommandId) => void
-	},
-) {
+function CompactSection({
+	title,
+	section,
+	onDetails,
+	onUnpin,
+}: {
+	title: string
+	section: Section
+	onDetails: (id: string) => void
+	onUnpin?: (cmdId: CMD.CommandId) => void
+}) {
 	return (
 		<section className="rounded-lg bg-secondary/60 p-4">
 			<h2 className="mb-3 text-base font-semibold tracking-tight">{title}</h2>
@@ -383,7 +404,9 @@ function commandEntry(
 			sectionLabel,
 			...shortcuts.map((s) => s.expansion),
 			shortcuts.length > 0 ? 'alias shortcut' : '',
-		].join(' ').toLowerCase(),
+		]
+			.join(' ')
+			.toLowerCase(),
 		cmdId,
 		cmd,
 		shortcuts,
@@ -425,8 +448,8 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 }
 
 export default function CommandsPage() {
-	const settings = ZusUtils.useStore(SettingsClient.PublicSettingsStore)
-	const pinnedCommands = ZusUtils.useStore(ClientOnlySettings.Store, s => s.pinnedCommands)
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const pinnedCommands = Zus.useStore(ClientOnlySettings.Store, (s) => s.pinnedCommands)
 	const [query, setQuery] = React.useState('')
 	// Where the arrow keys are. Kept as state rather than read back off the scroll position: the highlight otherwise
 	// follows whatever sits at the top of the body, which only updates on a real user scroll -- so each press would
@@ -492,7 +515,7 @@ export default function CommandsPage() {
 		return () => window.removeEventListener('hashchange', onHash)
 	}, [landOnEntry])
 
-	const sections = React.useMemo(() => settings ? buildSections(settings, pinnedCommands) : [], [settings, pinnedCommands])
+	const sections = React.useMemo(() => (settings ? buildSections(settings, pinnedCommands) : []), [settings, pinnedCommands])
 	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
 
 	// Pinned and Quick Reference render as one block above the menu, never as body sections or table-of-contents rows --
@@ -506,15 +529,15 @@ export default function CommandsPage() {
 	// a section-label match keeps the whole section, so searching "moderation" lists everything under it
 	const tocSections = q
 		? contentSections
-			.map((s) => (s.label.toLowerCase().includes(q) ? s : { ...s, entries: s.entries.filter((e) => e.search.includes(q)) }))
-			.filter((s) => s.entries.length > 0)
+				.map((s) => (s.label.toLowerCase().includes(q) ? s : { ...s, entries: s.entries.filter((e) => e.search.includes(q)) }))
+				.filter((s) => s.entries.length > 0)
 		: contentSections
 	const tocEntryIds = tocSections.flatMap((s) => s.entries.map((e) => e.id))
 
 	const activeId = useActiveEntry(scrollRef, contentSections.map((s) => s.id).join(','))
 	// the table of contents highlights the entry the keyboard is on -- the one Enter jumps to -- or the first match
 	// while searching; with neither, it follows the section the page is scrolled to
-	const focusId = cursorId ?? (q ? tocEntryIds[0] ?? null : null)
+	const focusId = cursorId ?? (q ? (tocEntryIds[0] ?? null) : null)
 	const tocHighlightId = focusId ?? activeId
 
 	if (!settings) return null
@@ -552,9 +575,7 @@ export default function CommandsPage() {
 		e.preventDefault()
 		const delta = e.key === 'ArrowDown' ? 1 : -1
 		const from = tocEntryIds.indexOf(focusId ?? '')
-		const next = from === -1
-			? (delta === 1 ? 0 : tocEntryIds.length - 1)
-			: Math.min(Math.max(from + delta, 0), tocEntryIds.length - 1)
+		const next = from === -1 ? (delta === 1 ? 0 : tocEntryIds.length - 1) : Math.min(Math.max(from + delta, 0), tocEntryIds.length - 1)
 		const nextId = tocEntryIds[next]
 		setCursorId(nextId)
 		navRef.current?.querySelector(`[data-toc-id="${CSS.escape(nextId)}"]`)?.scrollIntoView({ block: 'nearest' })
@@ -592,11 +613,9 @@ export default function CommandsPage() {
 					</div>
 				)}
 				<div className="flex gap-4">
-					{
-						/* the table of contents is the one thing that stays put: it sticks once the header and quick reference
+					{/* the table of contents is the one thing that stays put: it sticks once the header and quick reference
 					    have scrolled off, capped to the viewport with its own scroll for a long list. bg so the everyday
-					    commands pass behind it as they scroll away. */
-					}
+					    commands pass behind it as they scroll away. */}
 					<aside
 						style={{ zIndex: stickyZIndex }}
 						className="sticky top-0 flex max-h-[calc(100dvh-6rem)] w-52 shrink-0 flex-col self-start border-r bg-background pr-2"
@@ -615,41 +634,43 @@ export default function CommandsPage() {
 							/>
 						</div>
 						<nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto">
-							{tocSections.length === 0
-								? <p className="px-1 text-sm text-muted-foreground">No matches.</p>
-								: (
-									<ul>
-										{tocSections.map((section) => (
-											<li key={section.id} className="pt-4 first:pt-0">
-												<button
-													type="button"
-													onClick={() => navigateToEntry(section.id)}
-													className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
-												>
-													{section.label}
-												</button>
-												<ul className="space-y-px pl-2 pt-1">
-													{section.entries.map((entry) => (
-														<li key={entry.id}>
-															<button
-																type="button"
-																data-toc-id={entry.id}
-																onClick={() => navigateToEntry(entry.id)}
-																className={cn(
-																	'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
-																	entry.id === tocHighlightId ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground',
-																)}
-																title={entry.label}
-															>
-																{entry.label}
-															</button>
-														</li>
-													))}
-												</ul>
-											</li>
-										))}
-									</ul>
-								)}
+							{tocSections.length === 0 ? (
+								<p className="px-1 text-sm text-muted-foreground">No matches.</p>
+							) : (
+								<ul>
+									{tocSections.map((section) => (
+										<li key={section.id} className="pt-4 first:pt-0">
+											<button
+												type="button"
+												onClick={() => navigateToEntry(section.id)}
+												className="block w-full border-b border-border px-1 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-foreground hover:text-foreground/70"
+											>
+												{section.label}
+											</button>
+											<ul className="space-y-px pl-2 pt-1">
+												{section.entries.map((entry) => (
+													<li key={entry.id}>
+														<button
+															type="button"
+															data-toc-id={entry.id}
+															onClick={() => navigateToEntry(entry.id)}
+															className={cn(
+																'block w-full truncate rounded px-1 py-0.5 text-left font-mono text-sm hover:text-foreground',
+																entry.id === tocHighlightId
+																	? 'bg-accent text-accent-foreground font-medium'
+																	: 'text-muted-foreground',
+															)}
+															title={entry.label}
+														>
+															{entry.label}
+														</button>
+													</li>
+												))}
+											</ul>
+										</li>
+									))}
+								</ul>
+							)}
 						</nav>
 					</aside>
 					<div className="min-w-0 flex-1">
