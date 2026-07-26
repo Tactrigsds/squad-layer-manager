@@ -120,6 +120,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY src ./src
 COPY test ./test
 COPY drizzle ./drizzle
+# the launcher both suites go through. It finds SLM_TEST_SERVER_ENTRY already set below and builds nothing,
+# which is what keeps this image testing the bundle it ships rather than a rebuild of it.
+COPY scripts/test-server-bundle.mjs ./scripts/
 COPY paths.ts tsconfig.json tsconfig.paths.json tsconfig.app.json tsconfig.node.json ./
 COPY vite.config.ts vitest.integration.config.ts playwright.config.ts index.html ./
 
