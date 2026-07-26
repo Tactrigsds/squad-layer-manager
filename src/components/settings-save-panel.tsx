@@ -85,7 +85,7 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 					? 'Global Settings'
 					: state.kind === 'server'
 						? (nameById.get(state.serverId!) ?? state.serverId!)
-						: state.newDisplayName.trim() || 'New Server'
+						: state.newDisplayName.trim() || 'New Managed Server'
 			// a new-server section always counts as one pending change while open; once created it no longer participates
 			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
 			const deniedIds = gui

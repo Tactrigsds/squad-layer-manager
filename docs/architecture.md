@@ -228,11 +228,11 @@ Two modules stay general rather than domain-owned:
   `AbortSignal`, `Log`, `Otel`, `Deferred`, and `ServerId`. It imports nothing but pino, promise-utils and
   ctx-def.
 - **`src/server/context.ts` (`C`)** holds server infrastructure with no domain models file (`Db`, `Tx`,
-  `Mutexes`, the fastify and session contexts) plus the composition root, `ServerSlice`. It is types-only apart
+  `Mutexes`, the fastify and session contexts) plus the composition root, `ManagedServer`. It is types-only apart
   from the defs, so it cannot pull anything into an import cycle.
 
 `C.SquadServer` is the one context still typed from a system rather than a models file. Its payload types
-`event$` with `C.ServerSlice`, so moving it would make the models layer depend on the type that composes it.
+`event$` with `C.ManagedServer`, so moving it would make the models layer depend on the type that composes it.
 
 #### Defs: contexts you can introspect
 
@@ -248,7 +248,7 @@ The key tuple is checked against the type: a missing property (including an opti
 the type, and a duplicate are each a compile error naming the offending key. The brand is auto-excluded.
 
 `extends` is what makes this usable rather than noisy. Contexts are built by composition, so without it every
-per-server def would claim `serverId` and `ServerSlice`'s nine-def merge would report nine false collisions.
+per-server def would claim `serverId` and `ManagedServer`'s nine-def merge would report nine false collisions.
 
 A duplicated _own_ key is accepted only when **every** def that owns it declares it in `collisions`; one-sided
 declaration would leave the other party able to be surprised. Its one real customer is the `user` width pun,
@@ -286,66 +286,73 @@ export const dispatchOp = C.spanOp('dispatchOp', {
 `durableSub` is the RxJS counterpart, wrapping a long-lived server pipeline with the same treatment plus error
 recovery. [Observability](#observability) covers what both emit.
 
-### ServerSlice: one live game server
+### ManagedServer: one live game server
 
-`ServerSlice` is the big intersection representing everything about one running Squad server:
+`ManagedServer` is the big intersection representing everything about one running Squad server:
 
 ```ts
-export type ServerSlice = CS.Ctx &
-	SquadRcon &
-	SquadServer &
-	Vote &
-	LayerQueue &
-	MatchHistory &
-	Teamswap &
-	ServerSettings &
-	ServerSliceCleanup &
-	AdminList &
+export type ManagedServer = CS.Ctx &
+	SQS.Ctx &
+	V.Ctx &
+	LQ.Ctx &
+	MH.Ctx &
+	MEC.Ctx &
+	TSW.Ctx &
+	SETTINGS.Ctx &
+	ManagedServerCleanup &
 	CS.AbortSignal
 ```
 
-Slices live in a module-level `Map<serverId, ServerSlice>` in `squad-server.server.ts`, guarded by a
-per-server mutex, with an `IsolatedSubject` firing on every add/remove. `setupSlice()` is one long imperative
-function that opens RCON, builds the admin list resource, constructs the event reconciliation state, calls
-each subsystem's `init*`, registers the slice, and wires up the event pipelines.
+SLM does not instantiate squad servers, it connects to and supervises them, so the entity is a server _under
+management_. That is also the user-facing name: the settings page calls the collection "Managed Servers".
+`SQS.Ctx` carries `SR.Ctx` transitively, so a `ManagedServer` is always usable where rcon is required.
+
+They live in a module-level `Map<serverId, ManagedServer>` in `squad-server.server.ts` (`globalState.managedServers`),
+guarded by a per-server mutex, with an `IsolatedSubject` firing on every add/remove. `setupManagedServer()` is
+one long imperative function that opens RCON, builds the admin list resource, constructs the event
+reconciliation state, calls each subsystem's `init*`, registers the server, and wires up the event pipelines.
+
+Everything else in the module is reached namespace-qualified, so the names drop the qualifier they would
+otherwise restate: `SquadServer.tryCtx`, `.resolveCtx`, `.eventCtx`, `.stream$`, `.ensureRunning`,
+`.restartIfRunning`, `.require`.
 
 Four details are load-bearing:
 
-**Cleanup tasks are part of the slice.** `ServerSliceCleanup` puts a `Cleanup.Tasks` array on the ctx itself,
-so every subsystem's `init*` pushes its own teardown on at the moment it creates the thing needing teardown.
-Nothing maintains a separate destructor that mirrors, and drifts from, `setupSlice`'s list of subsystems. A
-`Cleanup.Task` is heterogeneous by design (a function, an RxJS `Subscription` or `Subject`, a mutex, an
-`AbortController`, or a nested array of those), so a subsystem registers whatever it holds without wrapping it
-in a closure. Teardown runs the array **FILO**, catching per-task errors so one bad teardown cannot strand the
-rest. The same machinery runs at process level (see [Cleanup and shutdown](#cleanup-and-shutdown)); a slice is
-just a smaller scope.
+**Cleanup tasks are part of the managed server.** `ManagedServerCleanup` puts a `Cleanup.Tasks` array on the
+ctx itself, so every subsystem's `init*` pushes its own teardown on at the moment it creates the thing needing
+teardown. Nothing maintains a separate destructor that mirrors, and drifts from, `setupManagedServer`'s list of
+subsystems. A `Cleanup.Task` is heterogeneous by design (a function, an RxJS `Subscription` or `Subject`, a
+mutex, an `AbortController`, or a nested array of those), so a subsystem registers whatever it holds without
+wrapping it in a closure. Teardown runs the array **FILO**, catching per-task errors so one bad teardown cannot
+strand the rest. The same machinery runs at process level (see [Cleanup and
+shutdown](#cleanup-and-shutdown)); a managed server is just a smaller scope.
 
-**Every slice owns an AbortController**, combined with the caller's signal via `anySignal`. Destroying a slice
-cancels every RxJS task and in-flight fetch inside it and touches nothing else. This is the coarse half of
+**Every managed server owns an AbortController**, combined with the caller's signal via `anySignal`. Destroying
+one cancels every RxJS task and in-flight fetch inside it and touches nothing else. This is the coarse half of
 teardown, and it pairs with the cleanup array: the signal stops anything watching it, the array disposes what
 needs an explicit call.
 
 **Lifecycle transitions are serialized per server.** Setup, teardown and restart all run under one per-server
-mutex (`withSliceLock`), so no two can interleave and observe each other's half-applied state. The mutex is
+mutex (`withLifecycleLock`), so no two can interleave and observe each other's half-applied state. The mutex is
 `async-mutex`'s, which is **not** reentrant, so the codebase splits each operation into a locking entry point
-and an unlocked `*Locked` internal: compound operations like `restartSliceIfRunning` take the lock once and
+and an unlocked `*Locked` internal: compound operations like `restartIfRunning` take the lock once and
 call the internals. Acquiring it twice in one call stack self-deadlocks, which is the trap to watch for when
 adding a lifecycle operation.
 
-The subtle case is the teardown triggered by a resource's `onFatalError`, which can fire while `setupSlice`
-still holds the lock. It is safe only because `AsyncResource` discards the callback's return rather than
-awaiting it, so nothing holding the lock ever waits on the teardown: it queues behind setup and tears down the
-slice setup just finished building. Awaiting that callback would close the cycle and deadlock.
+The subtle case is the teardown triggered by a resource's `onFatalError`, which can fire while
+`setupManagedServer` still holds the lock. It is safe only because `AsyncResource` discards the callback's
+return rather than awaiting it, so nothing holding the lock ever waits on the teardown: it queues behind setup
+and tears down what setup just finished building. Awaiting that callback would close the cycle and deadlock.
 
-**Streams resolve the slice on every tick, not once.** `sliceStream$` re-subscribes to the lifecycle subject
-and switches to `err:server-not-loaded` whenever the slice vanishes, which is why a crashed and restarted
-game server heals itself instead of leaving every connected client's subscription silently dead. This is
-documented in-code as the only correct way for an oRPC stream to resolve a slice.
+**Streams resolve the managed server on every tick, not once.** `SquadServer.stream$` re-subscribes to the
+lifecycle subject and switches to `err:server-not-loaded` whenever the managed server vanishes, which is why a
+crashed and restarted game server heals itself instead of leaving every connected client's subscription
+silently dead. This is documented in-code as the only correct way for an oRPC stream to resolve one.
 
 ### Abort signals
 
 Async functions take cancellation via `ctx.signal` (`CS.AbortSignal`), not a separate parameter. Signals come
-from four sources: the oRPC middleware (per-call), the slice controller (per-server), fastify (per-request),
+from four sources: the oRPC middleware (per-call), the managed server (per-server), fastify (per-request),
 and `CleanupSys.shutdownSignal` (per-process). They compose with `anySignal`.
 
 There is one loudly-documented exception. `killPlayers` in `squad-rcon.server.ts` deliberately ignores its
@@ -386,8 +393,8 @@ value, so concurrent callers dedupe onto one fetch. Less obviously:
 - A callback can throw `ImmediateRefetchError` via `ctx.refetch(...)` to force a retry instead of serving
   known-incoherent data (used when RCON reports a squad with no leader).
 - `onFatalError` exists because the alternative is an unhandled rejection killing the process. Every
-  per-slice resource wires it to "tear down this slice", on the reasoning that a resource that will not
-  fetch means the slice cannot do its job.
+  per-server resource wires it to "tear down this managed server", on the reasoning that a resource that
+  will not fetch means the server cannot do its job.
 
 ### Reentrant mutexes via AsyncLocalStorage
 
@@ -422,8 +429,9 @@ mutable arrays shared by reference through ctx spreads:
 
 ### Cleanup and shutdown
 
-`Cleanup.runCleanup` is the shared primitive described under [ServerSlice](#serverslice-one-live-game-server):
-a heterogeneous task array, disposed FILO, errors caught per task. Slices use it for their own scope;
+`Cleanup.runCleanup` is the shared primitive described under
+[ManagedServer](#managedserver-one-live-game-server): a heterogeneous task array, disposed FILO, errors caught
+per task. Managed servers use it for their own scope;
 `cleanup.server.ts` is the process-level registry that drives SIGTERM and owns `shutdownSignal`.
 
 `using` / explicit resource management appears (via `acquireInBlock` returning a `Symbol.dispose`) but is a
@@ -620,7 +628,7 @@ Three state machines are built on it today, each as a model/server/client trio:
 | User presence                | `src/models/user-presence.ts`     | `src/systems/user-presence.server.ts` | `src/systems/user-presence.client.ts`       |
 
 The layer queue is the fullest example. `dispatchOp` on the server calls `ODSM.Server.applyOps`, assigns the
-returned session back onto the slice, broadcasts the op, and then awaits each returned side effect in turn
+returned session back onto the managed server, broadcasts the op, and then awaits each returned side effect in turn
 through a `spanOp`-wrapped `handleSideEffect`, all in one uninterrupted async context. Presence is the outlier
 in that its client half lives in a plain global store rather than a frame partial, because presence is
 genuinely app-global.

@@ -503,8 +503,8 @@ function ServersSection({
 
 	async function handleDelete(server: PublicServer) {
 		const result = await openDialog({
-			title: 'Delete Server',
-			description: `Delete server "${server.displayName}" (${server.id})? This cannot be undone.`,
+			title: 'Delete Managed Server',
+			description: `Delete managed server "${server.displayName}" (${server.id})? This cannot be undone.`,
 			buttons: [{ id: 'confirm', label: 'Delete', variant: 'destructive' }],
 		})
 		if (result === 'confirm') deleteMutation.mutate({ serverId: server.id })
@@ -634,7 +634,13 @@ function ServerList({
 									{server.enabled ? 'Disconnect' : 'Connect'}
 								</Button>
 								{canDelete && (
-									<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={() => onDelete(server)}>
+									<Button
+										size="icon"
+										variant="ghost"
+										disabled={busy}
+										title="Delete managed server"
+										onClick={() => onDelete(server)}
+									>
 										<Icons.Trash2 className="h-4 w-4" />
 									</Button>
 								)}
@@ -812,7 +818,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
 					<div className="flex items-center justify-between gap-2">
 						<div>
-							<CardTitle>New Server</CardTitle>
+							<CardTitle>New Managed Server</CardTitle>
 							<CardDescription>Configure a new server. Save from the panel below, or cancel.</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">

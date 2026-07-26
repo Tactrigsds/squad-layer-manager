@@ -331,7 +331,7 @@ export default function SettingsToc({
 		if (creatingServer) {
 			nodes.push({
 				id: 'section:server:__new__',
-				label: 'New Server',
+				label: 'New Managed Server',
 				path: '',
 				writable: true,
 				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:', WRITE_ALL),
@@ -345,7 +345,7 @@ export default function SettingsToc({
 		if (showServers) {
 			roots.push({
 				id: 'section:servers',
-				label: 'Servers',
+				label: 'Managed Servers',
 				path: '',
 				writable: serverNodes.some((n) => n.writable),
 				children: serverNodes,
