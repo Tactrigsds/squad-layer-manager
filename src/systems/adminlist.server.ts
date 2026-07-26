@@ -85,6 +85,7 @@ export function registerImplicitList(serverId: string, provider: () => SM.AdminL
 
 export function unregisterImplicitList(serverId: string) {
 	implicitLists.delete(serverId)
+	mergedByServer.delete(serverId)
 }
 
 export function hasImplicitList(serverId: string): boolean {
@@ -163,12 +164,32 @@ export async function getListsForServer(
 // can widen another's definition of admin.
 export async function getMergedForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string, opts?: { ttl?: number }): Promise<SM.AdminList> {
 	const lists = await getListsForServerId(ctx, serverId, opts)
+	const sources = [...lists.values()]
+	const cached = mergedByServer.get(serverId)
+	if (cached && cached.sources.length === sources.length && cached.sources.every((list, i) => list === sources[i])) {
+		return cached.merged
+	}
+	const merged = mergeLists(sources)
+	mergedByServer.set(serverId, { sources, merged })
+	return merged
+}
+
+// Keyed on the identity of the lists that went into it. A resource hands back the same object until it refetches, so
+// an unchanged TTL refresh compares equal, a refetch that produced new data does not, and a settings edit changing
+// which lists a server names changes the array. That is exact invalidation without wiring anything to changed$.
+//
+// Worth the bookkeeping because the merge is O(every entry in every list the server names) -- against the lists in
+// prod that is ~15k entries -- and it is asked on every roster poll and every in-game permission check. The result is
+// shared between callers, so treat it as read-only.
+const mergedByServer = new Map<string, { sources: readonly SM.AdminList[]; merged: SM.AdminList }>()
+
+function mergeLists(lists: readonly SM.AdminList[]): SM.AdminList {
 	const merged: SM.AdminList = {
 		groups: new Map(),
 		steam: { players: new Map(), admins: new Set() },
 		eos: { players: new Map(), admins: new Set() },
 	}
-	for (const list of lists.values()) {
+	for (const list of lists) {
 		for (const [group, perm] of OneToMany.iter(list.groups)) OneToMany.set(merged.groups, group, perm)
 		for (const side of ['steam', 'eos'] as const) {
 			for (const [id, group] of OneToMany.iter(list[side].players)) OneToMany.set(merged[side].players, id, group)
@@ -184,6 +205,7 @@ export function setup() {
 	CleanupSys.register(() => {
 		for (const resource of resources.values()) resource.dispose()
 		resources.clear()
+		mergedByServer.clear()
 	}, status$)
 }
 
