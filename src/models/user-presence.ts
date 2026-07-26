@@ -242,7 +242,7 @@ export type Rejection = { code: 'op-error'; op: Op; error: unknown } | { code: '
 
 export type ItemLocks = Map<LL.ItemId, string>
 
-// the set of servers that currently have a live slice (enabled + non-broken). a client can only be present on one of
+// the set of servers that currently have a live managed server (enabled + non-broken). a client can only be present on one of
 // these; presence for any other server is collapsed to null. kept in sync by the server via 'set-enabled-servers' ops.
 export type State = { presence: PresenceState; itemLocks: ItemLocks; enabledServers: Set<string> }
 export function initState(): State {
@@ -272,7 +272,7 @@ function applyActivityUpdateToClient(state: State, clientId: string, update: Act
 	state.presence.set(clientId, { ...clientState, activityState: newActivity })
 }
 
-// collapses an activity to null when its server isn't currently enabled -- users can't be present on a server with no live slice
+// collapses an activity to null when its server isn't currently enabled -- users can't be present on a server with no live managed server
 function gateActivityToEnabled(activity: RootActivity | null, enabledServers: Set<string>): RootActivity | null {
 	if (activity && !enabledServers.has(activity.opts.serverId)) return null
 	return activity
@@ -357,7 +357,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				success = true
 			} else if (op.code === 'set-enabled-servers') {
 				state.enabledServers = new Set(op.serverIds)
-				// any user sitting on a server that just lost its slice is no longer meaningfully present there
+				// any user sitting on a server that just lost its managed server is no longer meaningfully present there
 				for (const [clientId, clientState] of state.presence.entries()) {
 					const gated = gateActivityToEnabled(clientState.activityState, state.enabledServers)
 					if (gated === clientState.activityState) continue

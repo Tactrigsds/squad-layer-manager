@@ -18,11 +18,11 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 
 // A sandbox server is a squad server SLM runs itself: src/emulator, bound to a loopback RCON port, with its log
-// lines handed straight to the slice. Everything above the connection sees a normal server, which is the point --
+// lines handed straight to the managed server. Everything above the connection sees a normal server, which is the point --
 // the sandbox exercises the real RCON framing and the real log parser rather than a mock of them.
 //
-// The instance is owned here rather than by the slice because the slice is disposable: every settings edit calls
-// restartSliceIfRunning, and a world that died with it would reset the sandbox out from under whoever was using it.
+// The instance is owned here rather than by the managed server because the managed server is disposable: every settings edit calls
+// restartIfRunning, and a world that died with it would reset the sandbox out from under whoever was using it.
 
 const module = initModule('sandbox')
 const orpcBase = getOrpcBase(module)
@@ -102,7 +102,7 @@ export function getInstance(serverId: string): SandboxInstance | undefined {
 }
 
 // Started once per server and kept until the server is deleted or the process exits. The port is ephemeral and
-// therefore assigned here rather than configured, so the slice has to ask for it (connectionFor) after this resolves.
+// therefore assigned here rather than configured, so the managed server has to ask for it (connectionFor) after this resolves.
 export async function ensureInstance(serverId: string, conn: SettingsModels.SandboxConnection): Promise<SandboxInstance> {
 	const existing = instances.get(serverId)
 	if (existing) return existing

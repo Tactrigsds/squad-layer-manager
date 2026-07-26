@@ -64,9 +64,9 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & CS.ServerId, serverState: SS.ServerState) {
+export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
-	const slice: LQ.Ctx.Payload = {
+	const payload: LQ.Ctx.Payload = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
 		update$: new IsolatedReplaySubject(1),
 
@@ -75,15 +75,15 @@ export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & CS.ServerId, ser
 		updateLayerMtx: new Mutex(),
 	}
 
-	ctx.cleanup.push(slice.update$, slice.unexpectedNextLayerSet$, slice.op$, slice.updateLayerMtx)
+	ctx.cleanup.push(payload.update$, payload.unexpectedNextLayerSet$, payload.op$, payload.updateLayerMtx)
 
-	return slice
+	return payload
 }
 
 export const setupInstance = Instr.spanOp(
 	'setupInstance',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.vote.mtx },
-	async (ctx: C.Db & C.ServerSlice) => {
+	async (ctx: C.Db & C.ManagedServer) => {
 		const serverId = ctx.serverId
 
 		// populates list with generated queue item if the list is empty
@@ -99,7 +99,7 @@ export const setupInstance = Instr.spanOp(
 				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval)
 					.pipe(
 						Instr.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
-							const baseCtx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+							const baseCtx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 							const serverState = await SquadServer.getServerState(baseCtx)
 							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
 							const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
@@ -185,7 +185,7 @@ export const setupInstance = Instr.spanOp(
 					return Rx.EMPTY
 				}),
 				Instr.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
-					const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+					const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 					const expectedNextLayer = LL.getNextLayerId(getSavedQueue(ctx))!
 					if (!expectedNextLayer) return
 					const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
@@ -205,9 +205,9 @@ export const setupInstance = Instr.spanOp(
 					Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
 					Instr.durableSub(
 						'sync-server-map-set',
-						{ module, mutexes: ([evt]) => SquadServer.requireSlice(evt.serverId).layerQueue.updateLayerMtx },
+						{ module, mutexes: ([evt]) => SquadServer.require(evt.serverId).layerQueue.updateLayerMtx },
 						async ([evtCtx, event], signal) => {
-							const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
+							const ctx = SquadServer.eventCtx(evtCtx, signal)
 							// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
 							// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
 							// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
@@ -256,7 +256,7 @@ export const setupInstance = Instr.spanOp(
 				.pipe(
 					Rx.filter(([ctx, event]) => event.type === 'ROUND_ENDED' && event.action?.type === 'AdminChangeLayer'),
 					Instr.durableSub('syncAdminChangeLayer', { module }, async ([evtCtx, event], signal) => {
-						const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
+						const ctx = SquadServer.eventCtx(evtCtx, signal)
 						if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
 						const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
 							event.action.source.type === 'player'
@@ -282,7 +282,7 @@ export const setupInstance = Instr.spanOp(
 			UserPresenceSys.editingAbandoned$(serverId)
 				.pipe(
 					Instr.durableSub('discard-abandoned-edits', { module, levels: { event: 'info' } }, async (scope, signal) => {
-						const ctx = SquadServer.resolveSliceCtx({ ...getBaseCtx(), signal }, serverId)
+						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 						const state = ctx.layerQueue.session.state
 						if (scope === 'queue') {
 							if (!SLL.hasMutations(state)) return
@@ -311,7 +311,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 	if (currentLayer.Gamemode === 'FRAAS') {
 		ctx.server.postRollEventsSub.add(
 			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
-				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
 				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
 			}),
@@ -323,7 +323,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 		const announcementTasks: Rx.Observable<void>[] = []
 		announcementTasks.push(
 			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
 				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 				if (!currentMatch) return
@@ -338,14 +338,14 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 
 		announcementTasks.push(
 			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				await warnShowNext(ctx, 'all-admins')
 			}),
 		)
 
 		announcementTasks.push(
 			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveSliceCtx(getBaseCtx(), serverId)
+				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				const queue = getSavedQueue(ctx)
 				if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
 					await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
@@ -651,7 +651,7 @@ export const router = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
 				Rx.Ext.withAbortSignal(signal!),
 			)
 			yield* Rx.Ext.toAsyncGenerator(obs)
@@ -661,7 +661,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), disabled: z.boolean() }))
 		.handler(async ({ context: _ctx, input }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(
@@ -676,7 +676,7 @@ export const router = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, input, signal }) {
-			const updateForServer$ = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+			const updateForServer$ = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => {
 				const initial: SLL.Update = {
 					code: 'init',
 					state: ctx.layerQueue.session.state,
@@ -699,7 +699,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: SLL.OperationSchema }))
 		.handler(async ({ context: _ctx, input: { serverId, op } }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 
@@ -775,7 +775,7 @@ export async function isTemplateSatisfiable(ctx: C.Db & MH.Ctx & LQ.Ctx & CS.Abo
 
 // writing a note only needs queue:write, which the caller has already established. Rewording or dropping someone
 // else's is what the manage-all grant is for.
-async function tryDenyNoteOp(ctx: C.Db & C.ServerSlice & USR.Ctx.Id & CS.AbortSignal, op: SLL.Operation) {
+async function tryDenyNoteOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal, op: SLL.Operation) {
 	if (op.op !== 'edit-note' && op.op !== 'delete-note') return
 	const note = LL.findNote(ctx.layerQueue.session.state.list, op.itemId, op.noteId)
 	// a note that isn't there is left to the reducer, which no-ops on it
@@ -788,7 +788,7 @@ type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${stri
 // per-op authorization + validation for backburner draft ops arriving over the RPC. Own items need any
 // queue:request-layers grant; touching someone else's item needs queue:write. Adds/updates/combines are
 // probed for satisfiability so an impossible template can't enter the backburner.
-async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ServerSlice & USR.Ctx.Id & CS.AbortSignal, op: BackburnerDraftOp) {
+async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal, op: BackburnerDraftOp) {
 	const state = ctx.layerQueue.session.state
 	const owner: USR.GuiOrChatUserId = { discordId: ctx.user.discordId }
 	const targets: BB.BackburnerItem[] = []
@@ -872,7 +872,7 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ServerSlice & USR.Ctx.Id &
 // the GUI add path rejects at the caps rather than evicting (the panel offers an explicit "evict my oldest"
 // confirm); the per-user cap doesn't apply to queue:write holders, who curate the whole backburner anyway
 export async function checkBackburnerCaps(
-	ctx: C.Db & C.ServerSlice & USR.Ctx.Id & CS.AbortSignal,
+	ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal,
 	owner: USR.GuiOrChatUserId,
 	opts?: { list?: BB.BackburnerItem[] },
 ) {
@@ -901,7 +901,7 @@ export type AddRequestResult =
 // `source` carries their steam id plus their linked account when they have one, so ownership checks work from
 // either surface.
 export async function addBackburnerRequestFromChat(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal & SM.Ctx.Ids,
+	ctx: C.Db & C.ManagedServer & CS.AbortSignal & SM.Ctx.Ids,
 	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.anyLayerRequestGrant(ctx.serverId))
@@ -937,7 +937,7 @@ export async function addBackburnerRequestFromChat(
 }
 
 export async function removeBackburnerRequestsFromChat(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal,
+	ctx: C.Db & C.ManagedServer & CS.AbortSignal,
 	args: { itemIds: string[]; source: USR.GuiOrChatUserId },
 ) {
 	await dispatchOp(ctx, {

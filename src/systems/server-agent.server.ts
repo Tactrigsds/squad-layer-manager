@@ -42,7 +42,7 @@ const HANDSHAKE_TIMEOUT_MS = 10_000
 
 const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(.+)$/
 
-// Per-server log chunk streams. Kept in a registry so each squad server's slice only sees its own agent's
+// Per-server log chunk streams. Kept in a registry so each managed server only sees its own agent's
 // data. The subject outlives individual agent connections: an agent can drop and reconnect without the
 // consumer resubscribing.
 const streams = new Map<string, IsolatedSubject<string>>()
@@ -59,16 +59,16 @@ function getStream(serverId: string): IsolatedSubject<string> {
 	return stream
 }
 
-// Subscribed by each squad server slice (see squad-server.server.ts) when its connection mode is `server-agent`.
+// Subscribed by each managed server (see squad-server.server.ts) when its connection mode is `server-agent`.
 export function streamFor(serverId: string): IsolatedSubject<string> {
 	return getStream(serverId)
 }
 
-// The bidirectional bridge between the agent's RCON tunnel and the server slice's Rcon instance. Both ends
+// The bidirectional bridge between the agent's RCON tunnel and the managed server's Rcon instance. Both ends
 // outlive each other's connection lifecycle: the agent can drop and reconnect, and the Rcon can rebind on its
 // own reconnect loop, without either recreating the tunnel.
 class RconTunnel {
-	// the Rcon side, bound while a slice's Rcon is trying to stay connected
+	// the Rcon side, bound while a managed server's Rcon is trying to stay connected
 	private handlers: RconTransportHandlers | null = null
 	// the agent side, set while an agent is connected. Frames and sends a 0x01 rcon-data frame to the agent.
 	private sendToAgent: ((payload: Buffer) => void) | null = null
@@ -131,7 +131,7 @@ function getRconTunnel(serverId: string): RconTunnel {
 	return tunnel
 }
 
-// The RCON transport used by a `server-agent` server slice (see squad-server.server.ts). It has no auth
+// The RCON transport used by a `server-agent` managed server (see squad-server.server.ts). It has no auth
 // password of its own: the agent authenticates to local RCON and this transport just carries the resulting
 // byte stream, becoming ready when the agent signals `rcon-ready`.
 export function rconTransportFor(serverId: string): RconTransport {

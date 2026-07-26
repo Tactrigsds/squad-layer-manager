@@ -93,7 +93,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initContext(ctx: SQS.Ctx & C.Db & C.ServerSliceCleanup) {
+export function initContext(ctx: SQS.Ctx & C.Db & C.ManagedServerCleanup) {
 	const context: TSW.Ctx.Payload = {
 		session: ODSM.Server.initSession(TSW.initState()),
 		op$: new IsolatedSubject<Dispatched>(),
@@ -111,7 +111,7 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ServerSliceCleanup) {
 					([ctx, e]) => Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) || e.type === 'TEAMS_POLLED_UPDATE',
 				),
 				Instr.durableSub('onTeamsModified', { module }, async ([evtCtx, e], signal) => {
-					const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
+					const ctx = SquadServer.eventCtx(evtCtx, signal)
 					const match = (await MatchHistory.getMatchById(ctx, e.matchId))!
 					if (!Arr.includesEnum(PendingEvents.TeamModifyingEventTypes.options, e.type) && e.type !== 'TEAMS_POLLED_UPDATE') return
 					// the fast path for completing an execution: the teams poll usually observes the swapped players before
@@ -220,7 +220,7 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ServerSliceCleanup) {
 			.pipe(
 				Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
 				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([evtCtx, e], signal) => {
-					const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
+					const ctx = SquadServer.eventCtx(evtCtx, signal)
 					await waitForQueuedPlayers(ctx, e.matchId)
 					await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
 				}),
@@ -309,7 +309,7 @@ async function unswappedPlayers(
 // Runs outside the dispatch mutex (holding it here would block every teamswap op for the duration, and would
 // deadlock against the completion this is waiting for).
 async function watchExecution(
-	ctx: TSW.Ctx & C.ServerSlice & C.Db,
+	ctx: TSW.Ctx & C.ManagedServer & C.Db,
 	execution: {
 		opId: string
 		swaps: TSW.TeamswapCollection
@@ -407,7 +407,7 @@ export const orpcRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* watchOps({ context, signal, input }) {
-			const obs = SquadServer.sliceStream$(context.wsClientId, input.serverId, (ctx) => {
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => {
 				const init: TSW.UpdateForClient = {
 					code: 'init',
 					state: ctx.teamswaps.session.state,
@@ -427,7 +427,7 @@ export const orpcRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), op: TSW.OpSchema }))
 		.handler(async ({ context, input: { serverId, op: input } }) => {
-			const ctxRes = await SquadServer.trySliceCtx(context, serverId)
+			const ctxRes = await SquadServer.tryCtx(context, serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const source = 'source' in input ? input.source : undefined
@@ -448,7 +448,7 @@ const dispatchOp = Instr.spanOp(
 		attrs: (ctx, ops) => ({ [ATTRS.Teamswap.OP_CODES]: ops.map((o) => o.code).join(',') }),
 		extraText: (ctx, ops) => ops.map((o) => o.code).join(','),
 	},
-	async (ctx: TSW.Ctx & C.ServerSlice & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
+	async (ctx: TSW.Ctx & C.ManagedServer & C.Db, ops: TSW.Op[], opts?: { sourceWsClientId?: string }) => {
 		const applied = ODSM.Server.applyOps(ctx.teamswaps.session, ops, TSW.reducer)
 		ctx.teamswaps.session = applied.session
 
@@ -694,21 +694,25 @@ const dispatchOp = Instr.spanOp(
 	},
 )
 
-export async function dispatchRevertToSaved(ctx: TSW.Ctx & C.ServerSlice & C.Db) {}
+export async function dispatchRevertToSaved(ctx: TSW.Ctx & C.ManagedServer & C.Db) {}
 
-export async function dispatchClearSwaps(ctx: TSW.Ctx & C.ServerSlice & C.Db, source?: TSW.Teamswap['source']) {
+export async function dispatchClearSwaps(ctx: TSW.Ctx & C.ManagedServer & C.Db, source?: TSW.Teamswap['source']) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'clear-teamswaps', save: true, source }])
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNow(ctx: TSW.Ctx & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection, source: TSW.Teamswap['source']) {
+export async function dispatchSwapNow(
+	ctx: TSW.Ctx & C.ManagedServer & C.Db,
+	swaps: TSW.TeamswapCollection,
+	source: TSW.Teamswap['source'],
+) {
 	const opId = TSW.createOpId()
 	const errors = await dispatchOp(ctx, [{ opId, code: 'swap-now', swaps, source }])
 	return errors.get(opId) ?? []
 }
 
-export async function dispatchSwapNext(ctx: TSW.Ctx & C.ServerSlice & C.Db, swaps: TSW.TeamswapCollection) {
+export async function dispatchSwapNext(ctx: TSW.Ctx & C.ManagedServer & C.Db, swaps: TSW.TeamswapCollection) {
 	// dispatch each add on its own -- a batch is all-or-nothing (a rejection discards the whole batch),
 	// so batching would let one already-marked player block swapping everyone else
 	const errors: unknown[] = []

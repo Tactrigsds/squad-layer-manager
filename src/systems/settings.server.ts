@@ -97,7 +97,7 @@ export type ServerEntry = {
 	displayName: string
 	defaultServer: boolean
 	enabled: boolean
-	// true if the stored settings for this server failed schema validation (e.g. after a breaking change); it won't have a live slice until repaired
+	// true if the stored settings for this server failed schema validation (e.g. after a breaking change); it won't have a live managed server until repaired
 	broken: boolean
 	// mirrored out of this server's settings so that "which admin lists speak for this server" can be answered without a
 	// db read: it is asked on every roster poll and every in-game permission check
@@ -154,7 +154,7 @@ async function loadServerRegistry(ctx: C.Db) {
 		}
 		let enabled = row.enabled
 		if (broken) {
-			log.error(brokenReason, `Server ${row.id} has invalid settings, it won't have a live slice until it's repaired`)
+			log.error(brokenReason, `Server ${row.id} has invalid settings, it won't run until it's repaired`)
 			if (enabled) {
 				// force it disabled so that repairing the settings later doesn't silently bring it back online -- an admin has to
 				// explicitly re-enable it once they're confident the fix is correct
@@ -256,26 +256,26 @@ export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 
 export type SettingsUpdate = Readonly<[SETTINGS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>
 
-export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & CS.ServerId, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
-	const slice: SETTINGS.Ctx.Payload = {
+export function initServerPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
+	const payload: SETTINGS.Ctx.Payload = {
 		settings: SETTINGS.getPublicSettings(serverState.settings),
 		update$: new Rx.ReplaySubject<SettingsUpdate>(1),
 	}
-	slice.update$.next([slice.settings, null])
+	payload.update$.next([payload.settings, null])
 
 	ctx.cleanup.push(
-		slice.update$,
+		payload.update$,
 		settings$
 			.pipe(Rx.filter((e): e is Extract<SettingsEvent, { scope: 'server' }> => e.scope === 'server' && e.serverId === ctx.serverId))
 			.subscribe(({ settings, source }) => {
 				const publicSettings = SETTINGS.getPublicSettings(settings)
-				if (Obj.deepEqual(publicSettings, slice.settings)) return
-				slice.settings = publicSettings
-				slice.update$.next([publicSettings, source])
+				if (Obj.deepEqual(publicSettings, payload.settings)) return
+				payload.settings = publicSettings
+				payload.update$.next([publicSettings, source])
 			}),
 	)
 
-	return slice
+	return payload
 }
 
 // the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
@@ -329,7 +329,7 @@ export function parseServerStateRow(rawRow: unknown): SS.ServerState {
 	return { ...state, settings: openConnections(state.settings) }
 }
 
-// reads settings for a server that may not have a live slice (e.g. it's disabled), always going to the DB
+// reads settings for a server that may not have a live managed server (e.g. it's disabled), always going to the DB
 export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promise<SETTINGS.ServerSettings> {
 	const [row] = await ctx
 		.db()
@@ -362,7 +362,7 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 	return { code: 'ok' as const, settings: unsuperjsonify(Schema.servers, row).settings }
 }
 
-// settings fields that are baked into a running slice at setup time and never refreshed afterwards. `connections` requires a full
+// settings fields that are baked into a running managed server at setup time and never refreshed afterwards. `connections` requires a full
 // destroy+init restart to take effect; the admin-list fields only need the adminList resource invalidated (see
 // SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
@@ -557,15 +557,15 @@ const serverRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context: _ctx, signal, input }) {
-			const obs = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
+			const obs = SquadServer.stream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
 				Rx.Ext.withAbortSignal(signal!),
 			)
 
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
-	// deliberately doesn't resolve a slice: editing settings is how an admin repairs a broken server or prepares a
-	// disabled one, and neither has a slice. Everything below only needs the db + the serverId.
+	// deliberately doesn't resolve a managed server: editing settings is how an admin repairs a broken server or prepares a
+	// disabled one, and neither has a managed server. Everything below only needs the db + the serverId.
 	updateSettings: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), ops: z.array(SETTINGS.SettingMutationSchema) }))
@@ -776,9 +776,9 @@ const adminRouter = {
 			log.info(wasBroken ? 'Server %s settings repaired' : 'Server %s settings updated', serverId)
 
 			if (connectionsChanged) {
-				await SquadServer.restartSliceIfRunning(serverId)
+				await SquadServer.restartIfRunning(serverId)
 			} else {
-				await SquadServer.ensureSliceRunning(serverId)
+				await SquadServer.ensureRunning(serverId)
 			}
 
 			await AppEventsSys.persistAppEvent(

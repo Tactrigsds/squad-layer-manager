@@ -59,7 +59,7 @@ export function initMatchHistoryContext(event$: SQS.Ctx.Payload['event$'], clean
 		.pipe(
 			Rx.filter(([ctx, e]) => e.type === 'ROUND_ENDED'),
 			Instr.durableSub('onRoundEnded', { module }, async ([evtCtx, e], signal) => {
-				const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
+				const ctx = SquadServer.eventCtx(evtCtx, signal)
 				if (e.type !== 'ROUND_ENDED' || e.matchId !== (await getCurrentMatch(ctx)).historyEntryId) return
 				await finalizeCurrentMatch(ctx, e.outcome, new Date(e.time))
 			}),
@@ -241,7 +241,7 @@ export const matchHistoryRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ signal, context: _ctx, input }) {
-			const state$ = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) =>
+			const state$ = SquadServer.stream$(_ctx.wsClientId, input.serverId, (ctx) =>
 				Rx.from(
 					(async function* () {
 						yield getPublicMatchHistoryState(ctx)
@@ -258,7 +258,7 @@ export const matchHistoryRouter = {
 
 	getMatchEvents: orpcBase.input(z.object({ serverId: z.string(), ordinal: z.number() })).handler(async ({ input, context: _ctx }) => {
 		const ordinal = input.ordinal
-		const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+		const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
 
@@ -311,7 +311,7 @@ export const matchHistoryRouter = {
 			}),
 		)
 		.handler(async ({ input, context: _ctx }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const playerId = input.playerId
@@ -358,7 +358,7 @@ export const matchHistoryRouter = {
 			}),
 		)
 		.handler(async ({ input, context: _ctx }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 			const currentMatch = await getCurrentMatch(ctx)
@@ -420,7 +420,7 @@ export const matchHistoryRouter = {
 			}),
 		)
 		.handler(async ({ input, context: _ctx }) => {
-			const ctxRes = await SquadServer.trySliceCtx(_ctx, input.serverId)
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 

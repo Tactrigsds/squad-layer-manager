@@ -97,11 +97,11 @@ export type AsyncResourceInvocation = CS.Ctx & {
 }
 export const AsyncResourceInvocationDef = CD.defCtx<AsyncResourceInvocation>()(['resOpts', 'refetch'], { name: 'asyncResourceInvocation' })
 
-export type ServerSliceCleanup = CS.Ctx & {
+export type ManagedServerCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
 }
-export const ServerSliceCleanupDef = CD.defCtx<ServerSliceCleanup>()(['cleanup'], { name: 'serverSliceCleanup' })
-export type ServerSlice = CS.Ctx &
+export const ManagedServerCleanupDef = CD.defCtx<ManagedServerCleanup>()(['cleanup'], { name: 'managedServerCleanup' })
+export type ManagedServer = CS.Ctx &
 	SQS.Ctx &
 	V.Ctx &
 	LQ.Ctx &
@@ -109,11 +109,11 @@ export type ServerSlice = CS.Ctx &
 	MEC.Ctx &
 	TSW.Ctx &
 	SETTINGS.Ctx &
-	ServerSliceCleanup &
-	// aborts when the slice is destroyed or the process shuts down
+	ManagedServerCleanup &
+	// aborts when the managed server is destroyed or the process shuts down
 	CS.AbortSignal
 
-export const ServerSliceDef = CD.mergeDefs(
-	[SQS.CtxDef, V.CtxDef, LQ.CtxDef, MH.CtxDef, MEC.CtxDef, TSW.CtxDef, SETTINGS.CtxDef, ServerSliceCleanupDef, CS.AbortSignalDef],
-	{ name: 'serverSlice' },
+export const ManagedServerDef = CD.mergeDefs(
+	[SQS.CtxDef, V.CtxDef, LQ.CtxDef, MH.CtxDef, MEC.CtxDef, TSW.CtxDef, SETTINGS.CtxDef, ManagedServerCleanupDef, CS.AbortSignalDef],
+	{ name: 'managedServer' },
 )
