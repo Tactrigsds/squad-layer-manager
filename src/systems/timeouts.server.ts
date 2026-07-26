@@ -10,6 +10,7 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
+import type * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
@@ -165,7 +166,7 @@ export async function kickWithTimeout(
 // routes the app event into that server's activity feed; otherwise it is audit-only.
 export async function cancelTimeout(
 	ctx: C.Db,
-	opts: { timeoutId: string; actor: AppEvents.Actor; sliceCtx?: C.Db & C.SquadServer & C.MatchHistory & CS.AbortSignal },
+	opts: { timeoutId: string; actor: AppEvents.Actor; sliceCtx?: C.Db & C.SquadServer & MH.Ctx & CS.AbortSignal },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found'; msg: string }> {
 	const [timeout] = await ctx
 		.db()

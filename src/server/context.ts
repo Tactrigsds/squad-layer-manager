@@ -5,17 +5,15 @@ import type * as ws from 'ws'
 import type * as AR from '@/app-routes.ts'
 import type { AsyncResourceInvocationOpts, ImmediateRefetchError } from '@/lib/async-resource.ts'
 import type * as Cleanup from '@/lib/cleanup.ts'
-import type RconCore from '@/lib/rcon/core-rcon.ts'
 import type * as CS from '@/models/context-shared.ts'
+import type * as LQ from '@/models/layer-queue.models'
 import type * as MEC from '@/models/match-events-cache.models'
-import type * as SS from '@/models/server-state.models'
+import type * as MH from '@/models/match-history.models'
+import type * as SETTINGS from '@/models/settings.models'
+import type * as SR from '@/models/squad-rcon.models'
 import type * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models.ts'
 import type * as V from '@/models/vote.models'
-import type * as LayerQueueSys from '@/systems/layer-queue.server'
-import type * as MatchHistorySys from '@/systems/match-history.server'
-import type * as SettingsSys from '@/systems/settings.server'
-import type * as SquadRconSys from '@/systems/squad-rcon.server'
 import type * as SquadServerSys from '@/systems/squad-server.server'
 
 import type * as DB from './db.ts'
@@ -89,25 +87,7 @@ export type AsyncResourceInvocation = CS.Ctx & {
 	refetch: (...args: ConstructorParameters<typeof ImmediateRefetchError>) => ImmediateRefetchError
 }
 
-export type Rcon = CS.Ctx & {
-	rcon: RconCore
-}
-
-export type SquadRcon = CS.Ctx & { squadRcon: SquadRconSys.SquadRcon } & Rcon & SS.Ctx
-
-export type LayerQueue = CS.Ctx & {
-	layerQueue: LayerQueueSys.LayerQueueSlice
-} & SS.Ctx
-
-export type MatchHistory = CS.Ctx & {
-	matchHistory: MatchHistorySys.MatchHistoryContext
-} & SS.Ctx
-
-export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & SquadRcon
-
-export type ServerSettings = CS.Ctx & {
-	serverSettings: SettingsSys.ServerSettingsSlice
-} & SS.Ctx
+export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & SR.Ctx
 
 export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
@@ -115,11 +95,11 @@ export type ServerSliceCleanup = CS.Ctx & {
 export type ServerSlice = CS.Ctx &
 	SquadServer &
 	V.Ctx &
-	LayerQueue &
-	MatchHistory &
+	LQ.Ctx &
+	MH.Ctx &
 	MEC.Ctx &
 	TSW.Ctx &
-	ServerSettings &
+	SETTINGS.Ctx &
 	ServerSliceCleanup &
 	// aborts when the slice is destroyed or the process shuts down
 	CS.AbortSignal

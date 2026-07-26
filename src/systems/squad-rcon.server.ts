@@ -9,6 +9,7 @@ import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as SS from '@/models/server-state.models'
 import type * as SETTINGS from '@/models/settings.models'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
 import * as Instr from '@/server/instrumentation'
@@ -22,23 +23,14 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export type SquadRcon = {
-	rconEvent$: Rx.Observable<[CS.Otel, SM.RconEvents.Event]>
-
-	layersStatus: AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>
-	serverInfo: AsyncResource<SM.ServerInfoRes, C.Rcon & CS.AbortSignal>
-	// serverId: the roster is annotated with admin status, which is a per-server question (which admin lists apply)
-	teams: AsyncResource<SM.TeamsRes, C.Rcon & SS.Ctx & CS.AbortSignal>
-}
-
 export function initSquadRcon(
-	ctx: C.Rcon & SS.Ctx & CS.AbortSignal,
+	ctx: SR.Ctx.Rcon & SS.Ctx & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
 	opts: { cacheTTL: SETTINGS.ServerSettings['rconCacheTTL']; onFatalError?: (err: unknown) => void },
-): SquadRcon {
+): SR.Ctx.Payload {
 	const rcon = ctx.rcon
 	const cacheTTL = opts.cacheTTL
-	const layersStatus: SquadRcon['layersStatus'] = new AsyncResource<SM.LayerStatusRes, C.Rcon & CS.AbortSignal>(
+	const layersStatus: SR.Ctx.Payload['layersStatus'] = new AsyncResource<SM.LayerStatusRes, SR.Ctx.Rcon & CS.AbortSignal>(
 		`serverStatus`,
 		(ctx) => getLayerStatus(ctx),
 		module,
@@ -53,7 +45,7 @@ export function initSquadRcon(
 	)
 	cleanup.push(() => layersStatus.dispose())
 
-	const serverInfo: SquadRcon['serverInfo'] = new AsyncResource<SM.ServerInfoRes, C.Rcon & CS.AbortSignal>(
+	const serverInfo: SR.Ctx.Payload['serverInfo'] = new AsyncResource<SM.ServerInfoRes, SR.Ctx.Rcon & CS.AbortSignal>(
 		`serverInfo`,
 		(ctx) => getServerInfo(ctx),
 		module,
@@ -68,7 +60,7 @@ export function initSquadRcon(
 	)
 	cleanup.push(() => serverInfo.dispose())
 
-	const teams: SquadRcon['teams'] = new AsyncResource<SM.TeamsRes, C.Rcon & SS.Ctx & CS.AbortSignal>(
+	const teams: SR.Ctx.Payload['teams'] = new AsyncResource<SM.TeamsRes, SR.Ctx.Rcon & SS.Ctx & CS.AbortSignal>(
 		'teams',
 		(ctx) => fetchTeams(ctx),
 		module,
@@ -115,7 +107,7 @@ export function initSquadRcon(
 	}
 }
 
-export async function getCurrentLayer(ctx: C.Rcon & CS.AbortSignal) {
+export async function getCurrentLayer(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	const response = await ctx.rcon.execute('ShowCurrentMap', { signal: ctx.signal })
 	if (response.code !== 'ok') return response
 	const match = response.data.match(/^Current level is (.*), layer is (.*), factions (.*)/)
@@ -126,7 +118,7 @@ export async function getCurrentLayer(ctx: C.Rcon & CS.AbortSignal) {
 	return { code: 'ok' as const, layer: parsedLayer }
 }
 
-export async function getNextLayer(ctx: C.Rcon & CS.AbortSignal) {
+export async function getNextLayer(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	const response = await ctx.rcon.execute('ShowNextMap', { signal: ctx.signal })
 	if (response.code !== 'ok') return response
 	if (!response.data) return { code: 'ok' as const, layer: null }
@@ -138,7 +130,7 @@ export async function getNextLayer(ctx: C.Rcon & CS.AbortSignal) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-async function fetchPlayers(ctx: C.Rcon & SS.Ctx & CS.AbortSignal) {
+async function fetchPlayers(ctx: SR.Ctx.Rcon & SS.Ctx & CS.AbortSignal) {
 	const res = await ctx.rcon.execute('ListPlayers', { signal: ctx.signal })
 	if (res.code !== 'ok') return res
 
@@ -193,7 +185,7 @@ async function fetchPlayers(ctx: C.Rcon & SS.Ctx & CS.AbortSignal) {
 	return { code: 'ok' as const, players }
 }
 
-async function fetchSquads(ctx: C.Rcon & CS.AbortSignal) {
+async function fetchSquads(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	const resSquad = await ctx.rcon.execute('ListSquads', { signal: ctx.signal })
 	if (resSquad.code !== 'ok') return resSquad
 
@@ -244,7 +236,7 @@ async function fetchSquads(ctx: C.Rcon & CS.AbortSignal) {
 	}
 }
 
-async function fetchTeams(ctx: C.Rcon & SS.Ctx & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
+async function fetchTeams(ctx: SR.Ctx.Rcon & SS.Ctx & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
 	// stamped before the requests go out so it's a lower bound on the snapshot's validity; see TeamsRes.polledAt
 	const polledAt = Date.now()
 	const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])
@@ -310,7 +302,7 @@ async function fetchTeams(ctx: C.Rcon & SS.Ctx & C.AsyncResourceInvocation & CS.
 	}
 }
 
-export async function broadcast(ctx: C.Rcon & CS.AbortSignal, message: string) {
+export async function broadcast(ctx: SR.Ctx.Rcon & CS.AbortSignal, message: string) {
 	let messages = [message]
 	if (message.length > SM.RCON_MAX_BUF_LEN) {
 		messages = []
@@ -331,11 +323,7 @@ export async function broadcast(ctx: C.Rcon & CS.AbortSignal, message: string) {
 	}
 }
 
-export type WarnOptionsBase = { msg: string | string[] } | string | string[]
-// returning undefined indicates warning should be skipped
-export type WarnOptions = WarnOptionsBase | ((ctx: SM.Ctx) => WarnOptionsBase | undefined)
-
-export async function getPlayer(ctx: C.SquadRcon & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
+export async function getPlayer(ctx: SR.Ctx & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
 	const playersRes = await ctx.squadRcon.teams.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
@@ -344,8 +332,8 @@ export async function getPlayer(ctx: C.SquadRcon & CS.AbortSignal, query: SM.Pla
 	return { code: 'ok' as const, player }
 }
 
-export async function warn(ctx: C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, _opts: WarnOptions) {
-	let opts: WarnOptionsBase
+export async function warn(ctx: SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, _opts: SR.WarnOptions) {
+	let opts: SR.WarnOptionsBase
 	if (typeof _opts === 'function') {
 		const playerRes = await getPlayer(ctx, ids)
 		if (playerRes.code !== 'ok') return playerRes
@@ -374,7 +362,7 @@ export async function warn(ctx: C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.
 export const warnAll = Instr.spanOp(
 	'warnAll',
 	{ module, levels: { event: 'info' } },
-	async (ctx: C.SquadRcon & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[], options: WarnOptions) => {
+	async (ctx: SR.Ctx & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[], options: SR.WarnOptions) => {
 		const ops: Promise<unknown>[] = []
 		for (const player of players) {
 			ops.push(warn(ctx, player, options))
@@ -387,7 +375,7 @@ export const warnAll = Instr.spanOp(
 export const warnAllAdmins = Instr.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
-	async (ctx: C.SquadRcon & CS.AbortSignal, options: WarnOptions, excludeSteamIds?: Set<string>) => {
+	async (ctx: SR.Ctx & CS.AbortSignal, options: SR.WarnOptions, excludeSteamIds?: Set<string>) => {
 		const [currentAdminList, teamsRes] = await Promise.all([
 			AdminList.getMergedForServer(ctx, ctx.serverId),
 			ctx.squadRcon.teams.get(ctx),
@@ -407,7 +395,7 @@ export const warnAllAdmins = Instr.spanOp(
 	},
 )
 
-export async function getServerInfo(ctx: C.Rcon & CS.AbortSignal): Promise<SM.ServerInfoRes> {
+export async function getServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<SM.ServerInfoRes> {
 	const rawDataRes = await ctx.rcon.execute(`ShowServerInfo`, { signal: ctx.signal })
 	if (rawDataRes.code !== 'ok') return rawDataRes
 	const data = JSON.parse(rawDataRes.data)
@@ -435,7 +423,7 @@ export async function getServerInfo(ctx: C.Rcon & CS.AbortSignal): Promise<SM.Se
 export const getLayerStatus = Instr.spanOp(
 	'getLayerStatus',
 	{ module },
-	async (ctx: C.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {
+	async (ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<SM.LayerStatusRes> => {
 		const currentLayerTask = getCurrentLayer(ctx)
 		const nextLayerTask = getNextLayer(ctx)
 		const currentLayerRes = await currentLayerTask
@@ -458,7 +446,7 @@ export const getLayerStatus = Instr.spanOp(
 export const setNextLayer = Instr.spanOp(
 	'setNextLayer',
 	{ module },
-	async (ctx: C.SquadRcon & CS.AbortSignal, layer: L.LayerId | L.UnvalidatedLayer) => {
+	async (ctx: SR.Ctx & CS.AbortSignal, layer: L.LayerId | L.UnvalidatedLayer) => {
 		const cmd = L.getLayerCommand(layer, 'set-next')
 		log.info(`Setting next layer: %s, `, cmd)
 		await ctx.rcon.execute(cmd, { level: 'info', signal: ctx.signal })
@@ -484,17 +472,17 @@ export const setNextLayer = Instr.spanOp(
 	},
 )
 
-export function setFogOfWar(ctx: C.Rcon & CS.AbortSignal, mode: 'on' | 'off') {
+export function setFogOfWar(ctx: SR.Ctx.Rcon & CS.AbortSignal, mode: 'on' | 'off') {
 	log.info(`Setting fog of war to %s`, mode)
 	return ctx.rcon.execute(`AdminSetFogOfWar ${mode}`, { level: 'info', signal: ctx.signal })
 }
 
-export async function endMatch(ctx: C.Rcon) {
+export async function endMatch(ctx: SR.Ctx.Rcon) {
 	log.info(`Ending match`)
 	await ctx.rcon.execute('AdminEndMatch', { level: 'info' })
 }
 
-export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
+export async function switchPlayers(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[]) {
 	const ops: Promise<unknown>[] = []
 	for (const ids of players) {
 		const id = SM.PlayerIds.normalizeToPlayerId(ids)
@@ -509,7 +497,7 @@ export async function switchPlayers(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, 
 // this doesn't broadcast switch notifications to admins, only warns the killed player, and invalidates
 // teams once after both switches complete so the intermediate (swapped) team state is never surfaced.
 export async function killPlayers(
-	ctx: C.Rcon & C.SquadRcon & CS.AbortSignal,
+	ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal,
 	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
 	reason?: string,
 ) {
@@ -532,34 +520,34 @@ export async function killPlayers(
 	await warnAll(ctx, ids, WARNS.kill.notifyKilled(reason))
 }
 
-export async function demoteCommander(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
+export async function demoteCommander(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Demoting commander %s`, id)
 	await ctx.rcon.execute(`AdminDemoteCommander ${id}`, { level: 'info', signal: ctx.signal })
 	ctx.squadRcon.teams.invalidate(ctx)
 }
 
-export async function disbandSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
+export async function disbandSquad(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
 	log.info(`Disbanding squad %d on team %d`, squadId, teamId)
 	await ctx.rcon.execute(`AdminDisbandSquad ${teamId} ${squadId}`, { level: 'info', signal: ctx.signal })
 	ctx.squadRcon.teams.invalidate(ctx)
 }
 
-export async function kickPlayer(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, reason?: string) {
+export async function kickPlayer(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, reason?: string) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Kicking player %s`, id)
 	await ctx.rcon.execute(`AdminKick "${id}" ${reason ?? ''}`.trim(), { level: 'info', signal: ctx.signal })
 	ctx.squadRcon.teams.invalidate(ctx)
 }
 
-export async function removeFromSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
+export async function removeFromSquad(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
 	const id = SM.PlayerIds.normalizeToPlayerId(ids)
 	log.info(`Removing player %s from squad`, id)
 	await ctx.rcon.execute(`AdminRemovePlayerFromSquad ${id}`, { level: 'info', signal: ctx.signal })
 	ctx.squadRcon.teams.invalidate(ctx)
 }
 
-export async function adminRenameSquad(ctx: C.Rcon & C.SquadRcon & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
+export async function adminRenameSquad(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, teamId: SM.TeamId, squadId: SM.SquadId) {
 	await ctx.rcon.execute(`AdminRenameSquad ${teamId} ${squadId}`, { level: 'info', signal: ctx.signal })
 	ctx.squadRcon.teams.invalidate(ctx)
 }

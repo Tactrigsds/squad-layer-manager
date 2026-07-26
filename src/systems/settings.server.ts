@@ -256,13 +256,8 @@ export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 
 export type SettingsUpdate = Readonly<[SETTINGS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>
 
-export type ServerSettingsSlice = {
-	settings: SETTINGS.PublicServerSettings
-	update$: Rx.ReplaySubject<SettingsUpdate>
-}
-
-export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState): ServerSettingsSlice {
-	const slice: ServerSettingsSlice = {
+export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
+	const slice: SETTINGS.Ctx.Payload = {
 		settings: SETTINGS.getPublicSettings(serverState.settings),
 		update$: new Rx.ReplaySubject<SettingsUpdate>(1),
 	}

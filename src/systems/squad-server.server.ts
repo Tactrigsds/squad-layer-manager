@@ -31,12 +31,14 @@ import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as LQ from '@/models/layer-queue.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -1175,7 +1177,7 @@ export function resolveReasonInput(
 // the web feed. In-game commands already echo to the invoking admin via reply() (and warn the target), so this
 // fires only for slm-user (web) actors; ingame-user/system actions no-op.
 export async function notifyAdminsOfWebAction(
-	ctx: C.SquadRcon & C.Db & CS.AbortSignal,
+	ctx: SR.Ctx & C.Db & CS.AbortSignal,
 	appEvent: AppEvents.AppEvent,
 	// override the default describeAppEvent phrasing (e.g. squad warns name the squad + faction)
 	description?: string,
@@ -1189,7 +1191,7 @@ export async function notifyAdminsOfWebAction(
 // PLAYER_WARNED server events to the originating action's app event (so they collapse under it in the feed
 // rather than emitting a separate PLAYER_WARNED app event).
 async function sendReasonFollowUpWarn(
-	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	appEventId: AppEvents.AppEventId,
 	targets: SM.PlayerId[],
 	message: string,
@@ -1208,7 +1210,7 @@ async function sendReasonFollowUpWarn(
 // caused it: PLAYER_TIMED_OUT for timeout kicks and their later enforcement, PLAYER_KICKED for plain kicks).
 // The primitive both kick paths bottom out in; it emits no app event of its own.
 export async function kickPlayerAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	target: SM.PlayerId,
 	source: PendingEvents.ArmedActionSource,
 	reason?: string,
@@ -1225,7 +1227,7 @@ const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
 // a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
 // batch, and each kick's server event is attributed to it.
 export async function kickPlayersAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1250,7 +1252,7 @@ export async function kickPlayersAction(
 }
 
 export async function broadcastAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	message: string,
 	actor: AppEvents.Actor,
 	opts?: { presetLabel?: string },
@@ -1278,7 +1280,7 @@ export async function broadcastAction(
 // event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
 // any server event referencing it is saved.
 export async function warnPlayers(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
@@ -1321,7 +1323,7 @@ export async function warnPlayers(
 
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
 // whether they're all admins and whether they're the entire online admin roster
-async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+async function resolveWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.PlayerId[]) {
 	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
 
@@ -1334,7 +1336,7 @@ async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM
 // the "@..." tag prepended to a warn so recipients see who it's aimed at: an explicit squad warn keeps its squad
 // tag, a lone target is named, the whole online admin roster reads as "@admins", and any other set goes untagged.
 async function resolveWarnAudienceTag(
-	ctx: C.SquadRcon & CS.AbortSignal,
+	ctx: SR.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	taggedSquad?: { squadId: number; squadName: string; teamId: SM.TeamId },
 ) {
@@ -1349,7 +1351,7 @@ async function resolveWarnAudienceTag(
 
 // who a warn hit, phrased for the admin notification: the warnee by name for a single target, "all admins" when it
 // reached exactly the online admin roster, otherwise a plain count. allAdmins also drives the notification opt-out.
-async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+async function classifyWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.PlayerId[]) {
 	const count = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
 	const resolved = await resolveWarnTargets(ctx, targets)
 	if (resolved.isEntireAdminRoster) return { allAdmins: resolved.allAdmins, label: 'all admins' }
@@ -1360,7 +1362,7 @@ async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: S
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
 // resulting SQUAD_DISBANDED server event to the acting user, then issues the disband.
 export async function disbandSquadAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1404,7 +1406,7 @@ export async function disbandSquadAction(
 
 // removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
 export async function removePlayersFromSquad(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1437,7 +1439,7 @@ export async function removePlayersFromSquad(
 // records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
 // events (which arrive via the next teams poll). The caller (teamswaps) still issues the actual switch.
 export async function forceTeamChangeAppEvent(
-	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 ) {
@@ -1464,7 +1466,7 @@ export async function forceTeamChangeAppEvent(
 // double switch nets zero, so a settled teams poll usually emits none; arming keeps parity with the forced-switch
 // path in case a poll observes an intermediate state.
 export async function killPlayersAppEvent(
-	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1493,7 +1495,7 @@ export async function killPlayersAppEvent(
 }
 
 export async function killPlayersAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1506,7 +1508,7 @@ export async function killPlayersAction(
 }
 
 export async function renameSquadAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1533,7 +1535,7 @@ export async function renameSquadAction(
 
 // demoting a commander has no attributable server event, so this is a pure audit-feed entry
 export async function demoteCommanderAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1580,7 +1582,7 @@ const destroyServer = Instr.spanOp('destroyServer', { module, levels: { event: '
 	globalState.sliceLifecycleUpdate$.next(ctx.serverId)
 })
 
-export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
+export async function getFullServerState(ctx: C.Db & LQ.Ctx) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
 	return Settings.parseServerStateRow(serverRaw)
@@ -1643,7 +1645,7 @@ function getLayersStatusExt$(serverId: string) {
 	}).pipe(Rx.Ext.distinctDeepEquals(), Rx.share())
 }
 
-async function fetchLayersStatusExt(ctx: C.SquadServer & C.Rcon & C.MatchHistory & CS.AbortSignal) {
+async function fetchLayersStatusExt(ctx: C.SquadServer & SR.Ctx.Rcon & MH.Ctx & CS.AbortSignal) {
 	const statusRes = await ctx.squadRcon.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
 	return buildServerStatusRes(statusRes.data, await MatchHistory.getCurrentMatch(ctx))
@@ -1822,7 +1824,7 @@ export async function getServerState(ctx: C.Db & SS.Ctx) {
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings
 export async function updateServerState(
-	ctx: C.Db & C.Tx & C.LayerQueue,
+	ctx: C.Db & C.Tx & LQ.Ctx,
 	changes: Partial<Omit<SS.ServerState, 'settings'>>,
 	source: SS.LQStateUpdate['source'],
 ) {

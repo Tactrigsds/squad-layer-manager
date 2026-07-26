@@ -1,10 +1,15 @@
+import type { Mutex } from 'async-mutex'
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import type * as Rx from '@/lib/rxjs'
+import type { Parts } from '@/lib/types'
 import type * as BAL from '@/models/balance-triggers.models'
 import type * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
+import type * as SS from '@/models/server-state.models'
 import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 
 import { assertNever, isNullOrUndef } from '../lib/type-guards'
 import * as L from './layer'
@@ -364,4 +369,16 @@ export namespace Ctx {
 	export type Recent = CS.Ctx & {
 		recentMatches: MatchDetails[]
 	}
+}
+
+export type Ctx = CS.Ctx & { matchHistory: Ctx.Payload } & SS.Ctx
+
+export namespace Ctx {
+	export type Payload = {
+		mtx: Mutex
+		update$: Rx.Subject<void>
+		dispatchUpdate: () => void
+		recentMatches: MatchDetails[]
+		recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
+	} & Parts<USR.UserPart>
 }

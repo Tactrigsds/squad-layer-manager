@@ -12,6 +12,7 @@ import type * as CS from '@/models/context-shared'
 import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models'
@@ -46,7 +47,7 @@ type HandlerCtx = {
 	// the resolved chat sender (steam id guaranteed)
 	sender: SM.Player
 	user: USR.GuiOrChatUserId
-	reply: (opts: SquadRcon.WarnOptions) => Promise<void>
+	reply: (opts: SR.WarnOptions) => Promise<void>
 	error: <T extends string>(reason: T, msg: string) => Promise<{ code: `err:${T}`; msg: string }>
 }
 
@@ -58,7 +59,7 @@ export async function handleCommand(baseCtx: C.Db & C.ServerSlice & CS.AbortSign
 		}
 	}
 
-	async function reply(opts: SquadRcon.WarnOptions) {
+	async function reply(opts: SR.WarnOptions) {
 		await SquadRcon.warn(baseCtx, msg.playerIds, opts)
 	}
 	async function error<T extends string>(reason: T, errorMessage: string) {

@@ -42,17 +42,9 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export type MatchHistoryContext = {
-	mtx: Mutex
-	update$: Rx.Subject<void>
-	dispatchUpdate: () => void
-	recentMatches: MH.MatchDetails[]
-	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
-} & Parts<USR.UserPart>
-
-export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: Cleanup.Tasks): MatchHistoryContext {
+export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'], cleanup: Cleanup.Tasks): MH.Ctx.Payload {
 	const update$ = new IsolatedSubject<void>()
-	const ctx: MatchHistoryContext = {
+	const ctx: MH.Ctx.Payload = {
 		mtx: new Mutex(),
 		update$,
 		// we have to define this separately because we're passing it to withAcquired, which dedupes release tasks by reference equality. that means we have to define this once here and not reference update$ in a closure instead. Convoluted I know but what else is new :shrug:
@@ -78,7 +70,7 @@ export function initMatchHistoryContext(event$: SquadServer.SquadServer['event$'
 	return ctx
 }
 
-export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
+export function getPublicMatchHistoryState(ctx: MH.Ctx): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
 	const state = ctx.matchHistory
 	return {
 		recentMatches: state.recentMatches,
@@ -90,7 +82,7 @@ export function getPublicMatchHistoryState(ctx: C.MatchHistory): MH.PublicMatchH
 export const loadState = Instr.spanOp(
 	'loadState',
 	{ module },
-	async (ctx: C.Db & C.MatchHistory & MEC.Ctx & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
+	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
 		const state = ctx.matchHistory
 		const startAtOrdinal = opts?.startAtOrdinal ?? 0
 		const recentMatchesCte = ctx
@@ -195,7 +187,7 @@ export const getRecentMatches = Instr.spanOp(
 		levels: { event: 'trace' },
 		mutexes: (ctx) => ctx.matchHistory.mtx,
 	},
-	async (ctx: C.MatchHistory & CS.AbortSignal) => {
+	async (ctx: MH.Ctx & CS.AbortSignal) => {
 		return ctx.matchHistory.recentMatches
 	},
 )
@@ -207,7 +199,7 @@ export const getCurrentMatch = Instr.spanOp(
 		levels: { event: 'trace' },
 		mutexes: (ctx) => ctx.matchHistory.mtx,
 	},
-	async (ctx: C.MatchHistory & CS.AbortSignal) => {
+	async (ctx: MH.Ctx & CS.AbortSignal) => {
 		return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
 	},
 )
@@ -219,7 +211,7 @@ export const getMatchById = Instr.spanOp(
 		levels: { event: 'trace' },
 		mutexes: (ctx) => ctx.matchHistory.mtx,
 	},
-	async (ctx: C.MatchHistory & CS.AbortSignal, matchId: number) => {
+	async (ctx: MH.Ctx & CS.AbortSignal, matchId: number) => {
 		const match = ctx.matchHistory.recentMatches.find((m) => m.historyEntryId === matchId)
 		if (!match) return null
 		return match
@@ -229,7 +221,7 @@ export const getMatchById = Instr.spanOp(
 const loadCurrentMatch = Instr.spanOp(
 	'loadCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory & CS.AbortSignal, _opts?: { forUpdate?: boolean }) => {
+	async (ctx: C.Db & MH.Ctx & CS.AbortSignal, _opts?: { forUpdate?: boolean }) => {
 		const query = ctx
 			.db()
 			.select()
@@ -506,7 +498,7 @@ export const addNewCurrentMatch = Instr.spanOp(
 	'addNewCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (
-		ctx: C.Db & C.MatchHistory & MEC.Ctx & C.SquadServer & CS.AbortSignal,
+		ctx: C.Db & MH.Ctx & MEC.Ctx & C.SquadServer & CS.AbortSignal,
 		entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>,
 	) => {
 		await DB.runTransaction(ctx, async (ctx) => {
@@ -539,7 +531,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 			[ATTRS.MatchHistory.CURRENT_LAYER_ID]: currentLayerId,
 		}),
 	},
-	async (ctx: C.Db & C.MatchHistory & MEC.Ctx & CS.AbortSignal, outcome: MH.MatchOutcome, time: Date) => {
+	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal, outcome: MH.MatchOutcome, time: Date) => {
 		const res = await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
 			if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
@@ -613,7 +605,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 export const syncWithCurrentLayer = Instr.spanOp(
 	'syncWithCurrentLayer',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & C.MatchHistory & MEC.Ctx & C.SquadServer & CS.AbortSignal, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
+	async (ctx: C.Db & MH.Ctx & MEC.Ctx & C.SquadServer & CS.AbortSignal, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
 		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
 		return await DB.runTransaction(ctx, async (ctx) => {
 			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
