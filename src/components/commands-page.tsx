@@ -516,7 +516,7 @@ export default function CommandsPage() {
 	}, [landOnEntry])
 
 	const sections = React.useMemo(() => (settings ? buildSections(settings, pinnedCommands) : []), [settings, pinnedCommands])
-	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
+	const pinnedSet = new Set(pinnedCommands)
 
 	// Pinned and Quick Reference render as one block above the menu, never as body sections or table-of-contents rows --
 	// they're a scan of the everyday commands, and the body below is the full menu.

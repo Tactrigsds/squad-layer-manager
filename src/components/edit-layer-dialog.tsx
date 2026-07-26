@@ -114,9 +114,9 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 
 export default function EditLayerDialog(props: EditLayerDialogProps) {
 	const { onOpenChange } = props
-	const onClose = React.useCallback(() => {
+	const onClose = () => {
 		onOpenChange(false)
-	}, [onOpenChange])
+	}
 
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={props.onOpenChange} unmount={false}>

@@ -242,10 +242,7 @@ function WeightsSection({
 	reset$: Rx.Subject<void>
 }) {
 	const possibleValues = React.useMemo(() => LC.groupByColumnDefaultValues(column) as string[], [column])
-	const addOptions = React.useMemo(
-		() => possibleValues.filter((v) => !entries.some((e) => e.value === v)).map((v) => ({ value: v, label: v })),
-		[possibleValues, entries],
-	)
+	const addOptions = possibleValues.filter((v) => !entries.some((e) => e.value === v)).map((v) => ({ value: v, label: v }))
 
 	// weights are relative, so what an admin actually wants to see is the share a value would get. the true
 	// denominator depends on which values survive the filters at pick time, so this assumes every value is available:

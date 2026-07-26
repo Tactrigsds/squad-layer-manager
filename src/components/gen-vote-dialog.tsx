@@ -394,10 +394,10 @@ function ChoiceConstraintSelect(props: {
 
 export default function GenVoteDialog(props: GenVoteDialogProps) {
 	const onOpenChange = props.onOpenChange
-	const onClose = React.useCallback(() => {
+	const onClose = () => {
 		if (!onOpenChange) return
 		onOpenChange(false)
-	}, [onOpenChange])
+	}
 
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={onOpenChange} unmount={false}>
