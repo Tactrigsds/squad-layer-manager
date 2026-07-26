@@ -22,7 +22,7 @@ import { useLoggedInUser } from '@/systems/users.client'
 
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
-import LayerTable, { getFullTableWidth } from './layer-table.tsx'
+import LayerTable from './layer-table.tsx'
 import PoolCheckboxes from './pool-checkboxes.tsx'
 import TabsList from './ui/tabs-list.tsx'
 
@@ -101,7 +101,9 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 
 	// collapse the table to its essential columns when the full set can't fit in the viewport.
 	// the breakpoint is derived from the table's own column sizes rather than hardcoded
-	const fullTableWidth = Zus.useStore(frameKey, (s) => getFullTableWidth(s.layerTable.colConfig, s.layerTable.columnVisibility))
+	const fullTableWidth = Zus.useStore(frameKey, (s) =>
+		LayerTablePrt.getFullTableWidth(s.layerTable.colConfig, s.layerTable.columnVisibility),
+	)
 	const filterMenuRef = React.useRef<HTMLDivElement>(null)
 	const [compactTable, setCompactTable] = React.useState(false)
 	React.useLayoutEffect(() => {
