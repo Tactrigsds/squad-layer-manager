@@ -420,6 +420,10 @@ export namespace Sel {
 		return config ? state.presence.get(config.wsClientId) : undefined
 	}
 
+	// clients (not users) whose activity the caller cares about, so each of a user's tabs/devices is listed separately
+	export const matchingClientPresence = (matchActivity: UP.Resolver | undefined) => (state: Store) =>
+		MapUtils.filter(state.presence, (_clientId, presence) => (matchActivity ? matchActivity(presence.activityState) : true))
+
 	// count of the user's OTHER clients (excluding `exceptClientId`) that are actively present --
 	// connected and not away. drives the "reset my other sessions" toast, shown while this is > 0.
 	export const activeOtherClientCount = (userId: USR.UserId | undefined, exceptClientId: string | undefined) => (state: Store) => {
