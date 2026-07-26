@@ -4,20 +4,12 @@ services:
       # However, it's recommanded to use :latest, as SLM has regular updates and a smooth upgrade path.
       image: ghcr.io/tactrigsds/squad-layer-manager:latest
       depends_on:
-         - otel
+         - otel-collector
       environment:
-         # send OTLP traces and logs to the otel collector, which is a separate image configured below
-         - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
+         # send OTLP traces, metrics and logs to the collector, which routes each signal to its own store
+         - OTLP_COLLECTOR_ENDPOINT=http://otel-collector:4318
          # paired with mem_limit below
          - NODE_OPTIONS=--max-old-space-size=1024
-         # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
-         # Grafana's Pyroscope datasource. Off by default: measured against prod it costs about a third of a
-         # core while it runs, most of it heap sampling, whose sample tables are native allocations that sit in
-         # the main malloc arena for the life of the process. Uncomment the two lines below to turn it on when
-         # you have an allocation or CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the
-         # flatter-cost CPU profiles.
-         # - PYROSCOPE_ENABLED=true
-         # - PYROSCOPE_ENDPOINT=http://otel:4040
 
       ports:
          # the app. ORIGIN has to match how this ends up being reached, whether that's this port directly or a
@@ -42,25 +34,96 @@ services:
       command: ['pnpm', 'run', 'server:prod']
       # everything that is not a credential
       env_file: .env
-   otel:
-      # Pinned, and has to stay pinned: ./observability holds verbatim copies of this image's own Loki
-      # and Tempo config, so the tag and those files are one unit. On :latest a new image moves the
-      # binaries underneath them and they stop parsing. See observability/README.md#the-mount-contract.
-      image: grafana/otel-lgtm:0.29.0
+
+   # One store per signal, each a single zero-config binary. Retention is a flag on each rather than
+   # anything applied after the fact, and -memory.allowedBytes is what keeps them small: left alone they
+   # size their caches from the *host's* RAM, so on a large box they grow to fill it. See
+   # observability/README.md.
+   victoria-metrics:
+      image: victoriametrics/victoria-metrics:v1.111.0
+      command:
+         - -storageDataPath=/vm-data
+         - -httpListenAddr=:8428
+         - -retentionPeriod=90d
+         - -memory.allowedBytes=192MB
+         # otherwise OTLP metric names keep their dots and no PromQL in the dashboards matches
+         - -opentelemetry.usePrometheusNaming
+      ports:
+         # Loopback only. Grafana and the collector reach these over the compose network; they are
+         # published so you can query from the host and so a dev instance outside compose can too.
+         - 127.0.0.1:8428:8428
+      volumes:
+         - vm_data:/vm-data
       restart: unless-stopped
+
+   victoria-logs:
+      image: victoriametrics/victoria-logs:v1.9.1-victorialogs
+      command:
+         - -storageDataPath=/vl-data
+         - -httpListenAddr=:9428
+         - -retentionPeriod=14d
+         - -memory.allowedBytes=96MB
+      ports:
+         - 127.0.0.1:9428:9428
+      volumes:
+         - vl_data:/vl-data
+      restart: unless-stopped
+
+   victoria-traces:
+      image: victoriametrics/victoria-traces:v0.5.0
+      command:
+         - -storageDataPath=/vt-data
+         - -httpListenAddr=:10428
+         - -retentionPeriod=3d
+         - -memory.allowedBytes=96MB
+      ports:
+         - 127.0.0.1:10428:10428
+      volumes:
+         - vt_data:/vt-data
+      restart: unless-stopped
+
+   otel-collector:
+      # Kept although all three stores accept OTLP directly, because it is what lets the app keep a single
+      # OTLP_COLLECTOR_ENDPOINT: the fan-out to one store per signal happens here rather than in the app.
+      image: otel/opentelemetry-collector-contrib:0.157.0
+      command: ['--config=/etc/otelcol/config.yaml']
+      volumes:
+         - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      ports:
+         # Loopback only. The app reaches the collector over the compose network; these are published so a dev
+         # instance running outside compose can ship to the same stack.
+         - 127.0.0.1:4317:4317
+         - 127.0.0.1:4318:4318
+      depends_on:
+         - victoria-metrics
+         - victoria-logs
+         - victoria-traces
+      restart: unless-stopped
+
+   grafana:
+      image: grafana/grafana:13.1.1
+      environment:
+         - GF_AUTH_ANONYMOUS_ENABLED=true
+         - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+         - GF_SECURITY_ADMIN_PASSWORD=admin
+         # Metrics and traces need no plugin: VictoriaMetrics serves the Prometheus API and VictoriaTraces
+         # the Jaeger one, so those are Grafana's own datasources. Logs are the exception.
+         - GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
       ports:
          # the grafana portal
          - 3001:3000
       volumes:
-         - otel_data:/data
-         # Retention (3d traces, 14d logs) and the SLM dashboards. Each of these replaces a file the image
-         # ships, so the files under ./observability reproduce the image's own config in full rather than
-         # only the parts we change. See the header comment in each.
-         - ./observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
-         - ./observability/loki-config.yaml:/otel-lgtm/loki-config.yaml:ro
-         - ./observability/grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources:ro
-         - ./observability/grafana/provisioning/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards:ro
+         - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
          - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro
+         - grafana_data:/var/lib/grafana
+      depends_on:
+         - victoria-metrics
+         - victoria-logs
+         - victoria-traces
+      restart: unless-stopped
 
 volumes:
-   otel_data:
+   vm_data:
+   vl_data:
+   vt_data:
+   grafana_data:

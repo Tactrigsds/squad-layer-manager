@@ -36,7 +36,7 @@ Ready. Notes specific to running in here:
   - `pnpm client:dev --host`  the --host is needed: vite binds to localhost otherwise, which is not
                               reachable from your machine through the container's published ports.
   - `pnpm server:dev`         already binds 0.0.0.0 (HOST is set in devcontainer.json).
-  - otel / the CI-parity test image run on the HOST, not in here (this container has no docker).
-    `docker compose up -d otel` on the host and the app in here will export to it; grafana stays at
-    localhost:3001 on the host.
+  - the observability stack / the CI-parity test image run on the HOST, not in here (this container
+    has no docker). `docker compose up -d victoria-metrics victoria-logs victoria-traces otel-collector grafana` on the host and the app
+    in here will export to it; grafana stays at localhost:3001 on the host.
 EOF

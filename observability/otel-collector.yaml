@@ -1,0 +1,66 @@
+receivers:
+   otlp:
+      protocols:
+         grpc:
+            endpoint: 0.0.0.0:4317
+         http:
+            endpoint: 0.0.0.0:4318
+
+processors:
+   memory_limiter:
+      check_interval: 1s
+      limit_mib: 256
+      spike_limit_mib: 64
+   batch:
+      timeout: 5s
+      send_batch_size: 1024
+
+   # Metrics only. VictoriaMetrics promotes every resource attribute to a label, and the SDK sends a lot
+   # of them: process.command_args alone is ~1.3KB of JSON on every series, and process.pid changes on
+   # each restart, which orphans the whole series set. What survives is what a dashboard actually groups
+   # by. Logs and traces keep the full set, where an attribute is a cheap field rather than a label.
+   resource/trim-metric-labels:
+      attributes:
+         - pattern: ^(process|telemetry\.sdk|host)\..*
+           action: delete
+
+   # Logs only, and a shorter list than the metrics one because a log field is cheap where a label is
+   # not. This is about the 80% of every record that is the same static JSON: process.command_args
+   # alone is ~1.3KB per line. What stays is what you would actually filter or read a log by, including
+   # host.name for a multi-host install and the runtime version for a bug report.
+   resource/trim-log-fields:
+      attributes:
+         - pattern: ^(process\.(command|command_args|executable\.[a-z]+|owner|runtime\.(name|description))|telemetry\.sdk\..*|host\.(arch|id))$
+           action: delete
+
+exporters:
+   # Each store has its own OTLP path and the otlphttp exporter appends /v1/{metrics,logs,traces}, so the
+   # endpoints below stop one segment short of that. Retention is not set here: it is a flag on each
+   # store in docker-compose.yaml.
+   otlphttp/metrics:
+      endpoint: http://victoria-metrics:8428/opentelemetry
+
+   otlphttp/logs:
+      endpoint: http://victoria-logs:9428/insert/opentelemetry
+      headers:
+         # Without this every resource attribute becomes part of the stream key, including the app's
+         # multi-kilobyte process.command_args, which would be a new stream on every restart.
+         VL-Stream-Fields: service.name,service.instance.id
+
+   otlphttp/traces:
+      endpoint: http://victoria-traces:10428/insert/opentelemetry
+
+service:
+   pipelines:
+      metrics:
+         receivers: [otlp]
+         processors: [memory_limiter, resource/trim-metric-labels, batch]
+         exporters: [otlphttp/metrics]
+      logs:
+         receivers: [otlp]
+         processors: [memory_limiter, resource/trim-log-fields, batch]
+         exporters: [otlphttp/logs]
+      traces:
+         receivers: [otlp]
+         processors: [memory_limiter, batch]
+         exporters: [otlphttp/traces]
