@@ -211,6 +211,40 @@ describe('useStore', () => {
 		}
 	})
 
+	// spreading a dynamic list of stores changes the source count between renders, which a useCallback dep array
+	// rejects. The dropped store must also come unsubscribed, not merely fall out of the snapshot.
+	it('tracks a changing number of sync sources', () => {
+		const stores = [createStore(), createStore(), createStore()]
+		const sum = (...states: State[]) => states.reduce((total, s) => total + s.count, 0)
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			let renders = 0
+			const { result, rerender } = renderHook(
+				({ n }: { n: number }) => {
+					renders++
+					return (Zus.useStore as any)(...stores.slice(0, n), sum) as number
+				},
+				{ initialProps: { n: 2 } },
+			)
+			act(() => stores[0].setState({ count: 1 }))
+			expect(result.current).toBe(1)
+
+			rerender({ n: 3 })
+			act(() => stores[2].setState({ count: 4 }))
+			expect(result.current).toBe(5)
+
+			rerender({ n: 1 })
+			expect(result.current).toBe(1)
+			const rendersBefore = renders
+			act(() => stores[2].setState({ count: 100 }))
+			expect(renders).toBe(rendersBefore)
+
+			expect(spy.mock.calls.flat().join(' ')).not.toMatch(/changed size between renders/)
+		} finally {
+			spy.mockRestore()
+		}
+	})
+
 	it('unsubscribes on unmount', () => {
 		const store = createStore()
 		const { unmount } = renderHook(() => Zus.useStore(store, (s: State) => s.count))
