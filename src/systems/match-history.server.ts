@@ -578,7 +578,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 						.insert(Schema.balanceTriggerEvents)
 						.values(superjsonify(Schema.balanceTriggerEvents, event))
 						.returning({ id: Schema.balanceTriggerEvents.id })
-					log.info('Trigger %s fired: message: "%s"', trig.id, BAL_Msgs.GENERAL.showEvent({ ...event, id }, currentMatch, false))
+					log.info('Trigger %s fired: message: "%s"', trig.id, BAL_Msgs.showEvent({ ...event, id }, currentMatch).text())
 				} catch (err) {
 					log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
 				}

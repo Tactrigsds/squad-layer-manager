@@ -268,11 +268,11 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(), 200)
 					return await reply.redirect(AR.route('/'), 302)
 				} else {
-					return await reply.status(401).send(USR_Msgs.GENERAL.unAuthenticated)
+					return await reply.status(401).send(USR_Msgs.unAuthenticated().text())
 				}
 			case 'err:permission-denied':
 				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
-				return await reply.status(401).send(USR_Msgs.GENERAL.noApplicationAccess)
+				return await reply.status(401).send(USR_Msgs.noApplicationAccess().text())
 			default:
 				assertNever(authRes)
 		}
