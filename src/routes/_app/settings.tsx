@@ -115,30 +115,12 @@ function RouteComponent() {
 	}, [sectionKeys, teardownCtl])
 
 	const sectionStates = SettingsEditorFrame.useSectionStates(sectionKeys)
-	// per-section gui/json modes feed the TOC (JSON mode has no per-field anchors); `created` collapses the new-server
-	// form once its save lands (the created server then renders as a regular section via the public-settings watch)
-	const derived = React.useMemo(() => {
-		const serverModes: Record<string, 'gui' | 'json'> = {}
-		let globalMode: 'gui' | 'json' = 'gui'
-		let newServerMode: 'gui' | 'json' = 'gui'
-		let created = false
-		let anyDirty = false
-		for (const s of sectionStates) {
-			if (s.kind === 'server') serverModes[s.serverId!] = s.mode
-			else if (s.kind === 'global') globalMode = s.mode
-			else {
-				newServerMode = s.mode
-				created = s.created
-			}
-			if (SettingsEditorFrame.Sel.dirty(s)) anyDirty = true
-		}
-		return { serverModes, globalMode, newServerMode, created, anyDirty }
-	}, [sectionStates])
-	const creating = creatingNonce !== null && !derived.created
+	const { newServerCreated, anyDirty } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.pageStatus)
+	const creating = creatingNonce !== null && !newServerCreated
 
 	// block in-app navigation and tab close while any section holds unsaved edits (same pattern as filter-edit)
 	useBlocker({
-		enableBeforeUnload: derived.anyDirty,
+		enableBeforeUnload: anyDirty,
 		shouldBlockFn: () => {
 			const dirty = sectionKeys.some((k) => {
 				const s = frameManager.getState(k)
@@ -214,11 +196,8 @@ function RouteComponent() {
 					<SettingsToc
 						showServers={!manageServersDenied || servers.length > 0}
 						showGlobal={globalAccess.canRead}
-						globalMode={derived.globalMode}
 						servers={servers}
-						serverModes={derived.serverModes}
-						creatingServer={creating}
-						newServerMode={derived.newServerMode}
+						sectionKeys={sectionKeys}
 					/>
 				</aside>
 				{/* `main` spans the whole non-TOC width of the centred group (the content column is centred inside it in turn),
@@ -739,7 +718,7 @@ function ServerSettingsSection({
 								</p>
 							)}
 						</div>
-						<div className="flex items-center rounded-md border p-0.5">
+						<div role="group" aria-label="Server settings editor mode" className="flex items-center rounded-md border p-0.5">
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
@@ -822,7 +801,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 							<CardDescription>Configure a new server. Save from the panel below, or cancel.</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">
-							<div className="flex items-center rounded-md border p-0.5">
+							<div role="group" aria-label="New server editor mode" className="flex items-center rounded-md border p-0.5">
 								<Button
 									size="sm"
 									variant={mode === 'gui' ? 'secondary' : 'ghost'}
@@ -966,7 +945,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								</p>
 							)}
 						</div>
-						<div className="flex items-center rounded-md border p-0.5">
+						<div role="group" aria-label="Global settings editor mode" className="flex items-center rounded-md border p-0.5">
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>

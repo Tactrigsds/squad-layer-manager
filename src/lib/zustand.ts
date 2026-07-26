@@ -246,6 +246,7 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 
 	// an empty useQueries still allocates an observer and re-runs its setQueries effect every render, so it is
 	// skipped outright. legal only because the query count is fixed per component instance, which this guards.
+	// Only the query count is pinned: the number of sync sources may vary freely between renders.
 	const queryCount = React.useRef(querySources.length)
 	if (queryCount.current !== querySources.length) {
 		throw new Error(
@@ -301,15 +302,25 @@ function useStoreImpl(args: (MaybeInput | ((...states: any[]) => any))[], suspen
 		return value
 	}
 
-	const subscribeAll = React.useCallback(
-		(onChange: () => void) => {
-			const unsubs = regularSources.map((s) => subscribe(s as any, onChange))
-			return () => unsubs.forEach((unsub) => unsub())
-		},
-		// query data flows in through getSnapshot, so only the sources force a resubscribe
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		regularSources,
-	)
+	// useCallback with the sources as its dep array is the obvious spelling, and it is silently wrong for a caller
+	// spreading a dynamic list of stores: React compares only the shorter array's prefix, so appending a source counts
+	// as no change and the new source is never subscribed. Comparing by hand covers the length too. Query data flows
+	// in through getSnapshot, so only the sync sources force a resubscribe.
+	const subCache = React.useRef<{ sources: (SyncSource<any> | null)[]; fn: (onChange: () => void) => () => void } | null>(null)
+	if (
+		!subCache.current ||
+		subCache.current.sources.length !== regularSources.length ||
+		subCache.current.sources.some((s, i) => s !== regularSources[i])
+	) {
+		subCache.current = {
+			sources: regularSources,
+			fn: (onChange: () => void) => {
+				const unsubs = regularSources.map((s) => subscribe(s as any, onChange))
+				return () => unsubs.forEach((unsub) => unsub())
+			},
+		}
+	}
+	const subscribeAll = subCache.current.fn
 
 	const snapshot = React.useSyncExternalStore(subscribeAll, getSnapshot)
 	// thrown after every hook has run, so the hook order is the same on the render that suspends and the one that
