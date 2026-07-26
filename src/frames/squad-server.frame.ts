@@ -1,6 +1,7 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
@@ -29,7 +30,8 @@ export type Input = { serverId: string }
 export type State = ChatPrt.Store &
 	ServerSettingsPrt.Store &
 	LayerQueuePrt.Store &
-	TeamswapsPrt.Store & {
+	TeamswapsPrt.Store &
+	TeamsPanelPrt.Store & {
 		layerItemsState: LQY.LayerItemsState
 		layerItemStatuses: LQY.LayerItemStatuses | null
 		// the queue the statuses above were computed for. Statuses lag an edit by a debounce plus a query, so a caller that
@@ -85,6 +87,8 @@ export const frame = frameManager.createFrame<Types>({
 			visiblePlayersByTable: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
+		// after the set above: its sync reads playerSelection on the first update, and every init emits one
+		TeamsPanelPrt.initTeamsPanel(args)
 
 		args.sub.add(
 			Zus.toObservable(args.key, true)
@@ -252,6 +256,24 @@ export namespace Actions {
 		s.setState((state) => ({
 			playerSelection: { ...state.playerSelection, ...Object.fromEntries(constrained.map((id) => [id, true])) },
 		}))
+	}
+
+	// Enter in the teams-panel search box adds every match to the selection. Takes the query rather than reading it
+	// off the panel state, which the search input only writes debounced.
+	export function selectSearchMatches(stores: KeyProp, searchQuery: string) {
+		if (!searchQuery.trim()) return
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const matched = TeamsPanelPrt.matchPlayersBySearch(players, searchQuery)
+		selectPlayers(
+			stores,
+			players.filter((_, i) => matched.has(i)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
+		)
+	}
+
+	// the teams panel's reset button: the filters and sorting are the partial's, the selection is the frame's
+	export function resetTeamsPanel(stores: KeyProp) {
+		TeamsPanelPrt.Actions.reset({ teamsPanel: stores.squadServer! })
+		setSelection(stores, {})
 	}
 
 	export function selectSquad(stores: KeyProp, playerId: SM.PlayerId) {
