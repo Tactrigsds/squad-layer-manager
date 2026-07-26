@@ -409,11 +409,10 @@ export namespace Actions {
 	}
 }
 
-// the section's draft as a value observable, which is how SettingsForm's fields read the document. Emits the current
-// draft on subscribe, as Zus.ValueObservable requires.
+// the section's draft as a value observable, which is how SettingsForm's fields read the document
 export function draftValueState(key: Key): Zus.ValueObservable<any> {
 	const store = Zus.resolveStore<SettingsEditor>(key)
-	const obs = Zus.toObservable(store, true).pipe(
+	const obs = Zus.toObservable(store).pipe(
 		Rx.map(([s]) => s.draft),
 		Rx.distinctUntilChanged(),
 	)
