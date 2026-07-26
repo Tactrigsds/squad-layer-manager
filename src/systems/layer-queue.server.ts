@@ -1,5 +1,4 @@
 import { Mutex } from 'async-mutex'
-import type { MutexInterface } from 'async-mutex'
 import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -21,12 +20,14 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LQ from '@/models/layer-queue.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models.ts'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
@@ -50,26 +51,15 @@ import * as UserPresenceSys from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as VoteSys from '@/systems/vote.server'
 
-export type LayerQueueSlice = {
-	unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
-
-	// TODO we should fold this into the server events
-	update$: Rx.ReplaySubject<[SS.LQStateUpdate, C.Db & SS.Ctx]>
-
-	session: ODSM.Server.Session<SLL.Operation, SLL.State>
-	op$: Rx.Subject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>
-	updateLayerMtx: MutexInterface
-}
-
 // ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
 // roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
 type SideEffectCtx = C.Db &
-	C.LayerQueue &
+	LQ.Ctx &
 	C.SquadServer &
 	V.Ctx &
-	C.MatchHistory &
-	C.Rcon &
-	C.ServerSettings &
+	MH.Ctx &
+	SR.Ctx.Rcon &
+	SETTINGS.Ctx &
 	CS.AbortSignal &
 	Partial<Pick<C.Tx, 'tx'>>
 
@@ -83,7 +73,7 @@ export function setup() {
 
 export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
-	const slice: LayerQueueSlice = {
+	const slice: LQ.Ctx.Payload = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
 		update$: new IsolatedReplaySubject(1),
 
@@ -316,7 +306,7 @@ export const setupInstance = Instr.spanOp(
 	},
 )
 
-export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.ServerSettings, newLayerId: L.LayerId) {
+export function schedulePostRollTasks(ctx: C.SquadServer & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
 	// -------- schedule post-roll events --------
@@ -388,12 +378,12 @@ export function schedulePostRollTasks(ctx: C.SquadServer & C.LayerQueue & C.Serv
 }
 
 // get the queue which is synced to the squad server
-export function getSavedQueue(ctx: C.LayerQueue) {
+export function getSavedQueue(ctx: LQ.Ctx) {
 	return ctx.layerQueue.session.state.savedList
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & C.LayerQueue & C.SquadServer & V.Ctx & C.MatchHistory & C.Rcon & C.ServerSettings & CS.AbortSignal,
+	ctx: C.Db & LQ.Ctx & C.SquadServer & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
 	list: LL.List,
 	// the list this save replaces. Every next-layer change reaches the server through here -- an SLM edit, a roll, or
 	// adopting a layer someone set outside SLM -- so comparing the two heads is what tells admins the layer moved.
@@ -509,7 +499,7 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 )
 
 export async function warnShowNext(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
+	ctx: C.Db & C.SquadServer & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { updated?: boolean },
 ) {
@@ -549,7 +539,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 	'syncNextLayerToServer',
 	{ module, mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx] },
 	async (
-		ctx: C.SquadServer & C.Rcon & C.LayerQueue & C.Db & C.MatchHistory & CS.AbortSignal,
+		ctx: C.SquadServer & SR.Ctx.Rcon & LQ.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 		settings: SETTINGS.ServerSettings,
 		nextQueuedLayerId: L.LayerId,
 		itemId: string,
@@ -621,7 +611,7 @@ export async function toggleUpdatesToSquadServer({
 	ctx,
 	input,
 }: {
-	ctx: C.Db & C.SquadServer & SM.Ctx.UserOrPlayer & C.LayerQueue & C.Rcon & C.ServerSettings & CS.AbortSignal
+	ctx: C.Db & C.SquadServer & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
 	input: { disabled: boolean }
 }) {
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
@@ -637,13 +627,13 @@ export async function toggleUpdatesToSquadServer({
 	return { code: 'ok' as const }
 }
 
-export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & C.SquadServer & C.LayerQueue) {
+export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & C.SquadServer & LQ.Ctx) {
 	const serverState = await SquadServer.getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
 
 export async function requestFeedback(
-	ctx: C.Db & C.SquadServer & C.LayerQueue & C.Rcon & CS.AbortSignal,
+	ctx: C.Db & C.SquadServer & LQ.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
@@ -777,10 +767,7 @@ export const router = {
 // whether a template has any solutions. Pool membership rides in the template itself (see BB.withPoolFilter),
 // and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only
 // blocked until the next match shouldn't be rejected outright.
-export async function isTemplateSatisfiable(
-	ctx: C.Db & C.MatchHistory & C.LayerQueue & CS.AbortSignal,
-	filter: F.FilterNode,
-): Promise<boolean> {
+export async function isTemplateSatisfiable(ctx: C.Db & MH.Ctx & LQ.Ctx & CS.AbortSignal, filter: F.FilterNode): Promise<boolean> {
 	const layerCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
 	const res = await LayerQueries.checkBackburnerTemplates({
 		ctx: layerCtx,
@@ -968,7 +955,7 @@ export async function removeBackburnerRequestsFromChat(
 	})
 }
 
-export function getSavedBackburner(ctx: C.LayerQueue): BB.BackburnerItem[] {
+export function getSavedBackburner(ctx: LQ.Ctx): BB.BackburnerItem[] {
 	return ctx.layerQueue.session.state.savedBackburner
 }
 

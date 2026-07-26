@@ -17,6 +17,7 @@ import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as RBAC from '@/rbac.models'
@@ -244,7 +245,7 @@ const EXECUTION_TIMEOUT_MS = 60_000
 // has no team yet, can't be swapped and isn't counted as outstanding -- same rule onTeamsModified applies.
 // null means the teams couldn't be read, which says nothing either way.
 async function unswappedPlayers(
-	ctx: C.SquadServer & C.Rcon & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & CS.AbortSignal,
 	swaps: TSW.TeamswapCollection,
 	ordinal: number,
 ): Promise<SM.PlayerId[] | null> {

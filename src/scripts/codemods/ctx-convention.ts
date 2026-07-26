@@ -74,6 +74,11 @@ const MOVES: { from: string; to: string; imp: string }[] = [
 	{ from: 'C.MatchEventsCache', to: 'MEC.Ctx', imp: "import type * as MEC from '@/models/match-events-cache.models'" },
 	{ from: 'C.Teamswap', to: 'TSW.Ctx', imp: "import type * as TSW from '@/models/teamswaps.models'" },
 	{ from: 'C.UserPresence', to: 'UP.Ctx', imp: "import type * as UP from '@/models/user-presence'" },
+	{ from: 'C.SquadRcon', to: 'SR.Ctx', imp: "import type * as SR from '@/models/squad-rcon.models'" },
+	{ from: 'C.Rcon', to: 'SR.Ctx.Rcon', imp: "import type * as SR from '@/models/squad-rcon.models'" },
+	{ from: 'C.LayerQueue', to: 'LQ.Ctx', imp: "import type * as LQ from '@/models/layer-queue.models'" },
+	{ from: 'C.MatchHistory', to: 'MH.Ctx', imp: "import type * as MH from '@/models/match-history.models'" },
+	{ from: 'C.ServerSettings', to: 'SETTINGS.Ctx', imp: "import type * as SETTINGS from '@/models/settings.models'" },
 ]
 
 function moveContexts(src: string, file: string): string {

@@ -9,11 +9,11 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
+import type { WarnOptions } from '@/models/squad-rcon.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as V from '@/models/vote.models'
 import type * as RBAC from '@/rbac.models'
-import type { WarnOptions } from '@/systems/squad-rcon.server'
 
 import { assertNever, isNullOrUndef } from './lib/type-guards'
 
