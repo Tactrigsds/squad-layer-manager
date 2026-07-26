@@ -187,10 +187,7 @@ function ValidationWarningsDisplay(props: {
 
 function useQueueWarnings(stores: SquadServerFrame.KeyProp) {
 	const loggedInUser = UsersClient.useLoggedInUser()
-	return Zus.useStore(
-		stores.squadServer!,
-		Zus.useShallow((s) => SquadServerFrame.selectQueueWarnings(s, loggedInUser?.discordId)),
-	)
+	return Zus.useStore(stores.squadServer!, SquadServerFrame.Sel.queueWarnings(loggedInUser?.discordId))
 }
 
 // type QueueErrorWithDetails =
@@ -219,7 +216,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			// user has already edited away from. Gating on those both blocks a save that shouldn't be blocked and drops
 			// the acknowledgement when the real statuses land.
 			await SquadServerFrame.awaitCurrentStatuses(props.stores.squadServer!)
-			const currentWarnings = SquadServerFrame.selectQueueWarnings(Zus.getState(props.stores.squadServer!), loggedInUser?.discordId)
+			const currentWarnings = SquadServerFrame.Sel.queueWarnings(loggedInUser?.discordId)(Zus.getState(props.stores.squadServer!))
 			if (currentWarnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)
 				return
@@ -414,12 +411,13 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 }
 
 export function QueuePanelContent(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
-	const isModified = Zus.useStore(props.stores.squadServer!, (s) => s.queue.isModified)
+	const {
+		isModified,
+		queueLength,
+		maxQueueSize,
+		mutations: queueMutations,
+	} = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.queueHeader)
 	const headerRef = React.useRef<HTMLDivElement>(null)
-
-	const queueLength = Zus.useStore(props.stores.squadServer!, (s) => s.queue.layerList.length)
-	const maxQueueSize = Zus.useStore(props.stores.squadServer!, (s) => SquadServerFrame.Sel.settings(s).queue.maxQueueSize)
-	const queueMutations = Zus.useStore(props.stores.squadServer!, (s) => s.queue.mutations)
 
 	const warnings = useQueueWarnings(props.stores)
 	const [showWarnings, setShowWarnings] = React.useState(false)

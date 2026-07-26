@@ -13,10 +13,10 @@ import { TriStateCheckbox } from '@/components/ui/tri-state-checkbox'
 import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as RequestFrame from '@/frames/backburner-request.frame'
-import { frameManager } from '@/frames/frame-manager'
+import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { getDisplayedMutation } from '@/lib/item-mutations.ts'
+import { useRefConstructor } from '@/lib/react.ts'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
@@ -51,6 +51,8 @@ import { UserAvatar } from './user-avatar.tsx'
 
 type StoresProp = { stores: SquadServerFrame.KeyProp }
 
+type QueueDrop = { itemId: string; filter: F.FilterNode; index: LL.ItemIndex }
+
 // sentinel drop target covering the whole panel, so a queue item can be dropped anywhere on it (including the
 // empty state) to become a request. Only enabled while a layer-item is being dragged; the id is never read.
 const PANEL_DROP_ITEM: DND.DropItem = {
@@ -73,7 +75,7 @@ export default function BackburnerPanel(props: StoresProp) {
 	const [editorState, setEditorState] = React.useState<{ open: boolean; itemId: string | null }>({ open: false, itemId: null })
 	// a request dragged onto the queue whose template still has a choice to make: the Select Layers dialog opens
 	// seeded from it, and on commit the picked layer is added to the queue at `index` while the request is consumed
-	const [queueDrop, setQueueDrop] = React.useState<{ itemId: string; filter: F.FilterNode; index: LL.ItemIndex } | null>(null)
+	const [queueDrop, setQueueDrop] = React.useState<QueueDrop | null>(null)
 	const dragging = DndKit.useDragging()
 	const panelDrop = DndKit.useDroppable(PANEL_DROP_ITEM, { disabled: dragging?.type !== 'layer-item' || !canRequest })
 
@@ -283,30 +285,28 @@ export default function BackburnerPanel(props: StoresProp) {
 
 // the Select Layers dialog shown when a request is dragged into the queue: the menu is seeded from the request's
 // template (matchup left -> Team 1, right -> Team 2) so the user only has to narrow to a concrete layer
-function QueueDropDialog(
-	props: StoresProp & {
-		drop: { itemId: string; filter: F.FilterNode; index: LL.ItemIndex } | null
-		onCommit: (items: LL.NewItem[]) => void
-		onClose: () => void
-	},
-) {
-	const [frameKey, setFrameKey] = React.useState<SelectLayersFrame.Key | null>(null)
-	const filter = props.drop?.filter
-	React.useEffect(() => {
-		if (!filter) {
-			setFrameKey(null)
-			return
-		}
-		const input = SelectLayersFrame.createInput({ startingTemplate: filter, squadServer: props.stores.squadServer })
-		const key = frameManager.ensureSetup(SelectLayersFrame.frame, input)
-		setFrameKey(key)
-		return () => {
-			setFrameKey(null)
-			frameManager.dropKey(key)
-		}
-	}, [filter, props.stores.squadServer])
+function QueueDropDialog(props: StoresProp & { drop: QueueDrop | null; onCommit: (items: LL.NewItem[]) => void; onClose: () => void }) {
+	if (!props.drop) return null
+	// keyed on the request, so dropping a different one remounts and reseeds from its template
+	return (
+		<QueueDropDialogContent
+			key={props.drop.itemId}
+			stores={props.stores}
+			drop={props.drop}
+			onCommit={props.onCommit}
+			onClose={props.onClose}
+		/>
+	)
+}
 
-	if (!props.drop || !frameKey) return null
+function QueueDropDialogContent(props: StoresProp & { drop: QueueDrop; onCommit: (items: LL.NewItem[]) => void; onClose: () => void }) {
+	// createInput mints an instanceId, so it has to run once per mount rather than once per render
+	const frameInputRef = useRefConstructor(() =>
+		SelectLayersFrame.createInput({ startingTemplate: props.drop.filter, squadServer: props.stores.squadServer }),
+	)
+	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input: frameInputRef.current })
+	useFrameTeardownOnUnmount(frameKey)
+
 	return (
 		<SelectLayersDialog
 			title="Add requested layer"
@@ -414,9 +414,7 @@ function BackburnerRow(
 	},
 ) {
 	const item = Zus.useStore(props.stores.squadServer!, LayerQueuePrt.Sel.backburnerItem(props.itemId))
-	const displayedMutation = Zus.useStore(props.stores.squadServer!, (s) =>
-		getDisplayedMutation(LayerQueuePrt.Sel.backburnerItemMutation(props.itemId)(s)),
-	)
+	const displayedMutation = Zus.useStore(props.stores.squadServer!, LayerQueuePrt.Sel.backburnerItemDisplayedMutation(props.itemId))
 	const loggedInUserId = UsersClient.loggedInUserId
 	const dragging = DndKit.useDragging()
 
@@ -482,6 +480,7 @@ function BackburnerRow(
 									size="icon"
 									variant="ghost"
 									className="h-7 w-7"
+									aria-label="Clone request"
 									onClick={() => LayerQueuePrt.Actions.addBackburnerItem(queueKey, { filter: item.filter })}
 								>
 									<Icons.Copy className="h-3.5 w-3.5" />
@@ -492,7 +491,7 @@ function BackburnerRow(
 					)}
 					{canEdit && (
 						<>
-							<Button size="icon" variant="ghost" className="h-7 w-7" onClick={props.onEdit}>
+							<Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Edit request" onClick={props.onEdit}>
 								<Icons.Pencil className="h-3.5 w-3.5" />
 							</Button>
 							<Button
@@ -549,30 +548,29 @@ function TemplateDisplay(props: { filter: F.FilterNode; className?: string }) {
 }
 
 function BackburnerItemDialog(props: StoresProp & { open: boolean; itemId: string | null; onClose: () => void }) {
-	const item = Zus.useStore(
-		props.stores.squadServer!,
-		React.useCallback(
-			(s: SquadServerFrame.State) => (props.itemId ? s.queue.backburner.find((i) => i.itemId === props.itemId) : undefined),
-			[props.itemId],
-		),
+	return (
+		<Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
+			<DialogContent className="max-w-4xl">
+				{/* mounted only while the dialog is presented, so the request frame lives exactly that long. keyed so
+				    editing a different request reseeds the form */}
+				<BackburnerItemDialogBody key={props.itemId ?? '__new__'} stores={props.stores} itemId={props.itemId} onClose={props.onClose} />
+			</DialogContent>
+		</Dialog>
 	)
+}
 
-	const [frameKey, setFrameKey] = React.useState<RequestFrame.Key | null>(null)
-	React.useEffect(() => {
-		if (!props.open) return
-		const input = RequestFrame.createInput({ startingFilter: item?.filter, squadServer: props.stores.squadServer })
-		const key = frameManager.ensureSetup(RequestFrame.frame, input)
-		setFrameKey(key)
-		return () => {
-			setFrameKey(null)
-			frameManager.dropKey(key)
-		}
-		// the item is captured when the dialog opens; later live updates shouldn't reseed the form mid-edit
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [props.open, props.itemId])
+function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; onClose: () => void }) {
+	const frameInputRef = useRefConstructor(() => {
+		// the item is captured on open, so later live updates can't reseed the form mid-edit
+		const item = props.itemId
+			? Zus.getState(props.stores.squadServer!).queue.backburner.find((i) => i.itemId === props.itemId)
+			: undefined
+		return RequestFrame.createInput({ startingFilter: item?.filter, squadServer: props.stores.squadServer })
+	})
+	const frameKey = useFrameLifecycle(RequestFrame.frame, { input: frameInputRef.current })
+	useFrameTeardownOnUnmount(frameKey)
 
 	function save() {
-		if (!frameKey) return
 		const filter = RequestFrame.Sel.templateFilter(Zus.getState(frameKey))
 		if (filter.type === 'and' && filter.children.length === 0) {
 			toast.warning('Empty request', { description: 'Pick at least one of layer, map, gamemode, version, matchup or a filter' })
@@ -585,21 +583,19 @@ function BackburnerItemDialog(props: StoresProp & { open: boolean; itemId: strin
 	}
 
 	return (
-		<Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
-			<DialogContent className="max-w-4xl">
-				<DialogHeader>
-					<DialogTitle>{props.itemId ? 'Edit layer request' : 'Request a layer'}</DialogTitle>
-				</DialogHeader>
-				{frameKey && <RequestEditor stores={{ backburnerRequest: frameKey, squadServer: props.stores.squadServer }} />}
-				<DialogFooter className="items-center">
-					{frameKey && <MatchingCount stores={{ backburnerRequest: frameKey }} />}
-					<Button variant="outline" onClick={props.onClose}>
-						Cancel
-					</Button>
-					<Button onClick={save}>{props.itemId ? 'Apply' : 'Add request'}</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+		<>
+			<DialogHeader>
+				<DialogTitle>{props.itemId ? 'Edit layer request' : 'Request a layer'}</DialogTitle>
+			</DialogHeader>
+			<RequestEditor stores={{ backburnerRequest: frameKey, squadServer: props.stores.squadServer }} />
+			<DialogFooter className="items-center">
+				<MatchingCount stores={{ backburnerRequest: frameKey }} />
+				<Button variant="outline" onClick={props.onClose}>
+					Cancel
+				</Button>
+				<Button onClick={save}>{props.itemId ? 'Apply' : 'Add request'}</Button>
+			</DialogFooter>
+		</>
 	)
 }
 
