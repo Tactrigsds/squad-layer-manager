@@ -40,7 +40,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
-import * as Messages from '@/messages'
+import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
@@ -2867,7 +2867,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0 space-y-0.5">
 								<p className="text-sm font-medium">{BAL.TRIGGERS[id].name}</p>
-								<p className="text-xs text-muted-foreground">{Messages.GENERAL.balanceTrigger.descriptions[id]}</p>
+								<p className="text-xs text-muted-foreground">{BAL_Msgs.GENERAL.descriptions[id]}</p>
 							</div>
 							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
 								<SelectTrigger className={cn('h-8 w-36 shrink-0', display?.text)} aria-label={`${BAL.TRIGGERS[id].name} level`}>
@@ -2889,7 +2889,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 									<AlertIcon className="mr-2 h-4 w-4" />
 									{BAL.TRIGGERS[id].name}
 								</AlertTitle>
-								<AlertDescription>{Messages.GENERAL.balanceTrigger.sampleMessages[id]}</AlertDescription>
+								<AlertDescription>{BAL_Msgs.GENERAL.sampleMessages[id]}</AlertDescription>
 							</Alert>
 						)}
 					</div>

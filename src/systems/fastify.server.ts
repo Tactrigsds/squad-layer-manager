@@ -15,7 +15,7 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
-import * as Messages from '@/messages'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
@@ -268,11 +268,11 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(), 200)
 					return await reply.redirect(AR.route('/'), 302)
 				} else {
-					return await reply.status(401).send(Messages.GENERAL.auth.unAuthenticated)
+					return await reply.status(401).send(USR_Msgs.GENERAL.unAuthenticated)
 				}
 			case 'err:permission-denied':
 				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
-				return await reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
+				return await reply.status(401).send(USR_Msgs.GENERAL.noApplicationAccess)
 			default:
 				assertNever(authRes)
 		}

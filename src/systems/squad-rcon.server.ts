@@ -4,7 +4,7 @@ import { matchLog } from '@/lib/log-parsing'
 import * as Prom from '@/lib/promise-utils'
 import type { DecodedPacket } from '@/lib/rcon/core-rcon'
 import * as Rx from '@/lib/rxjs'
-import { WARNS } from '@/messages'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import type * as SETTINGS from '@/models/settings.models'
@@ -515,7 +515,7 @@ export async function killPlayers(
 		await forceSwitch()
 	})
 	ctx.squadRcon.teams.invalidate(ctx)
-	await warnAll(ctx, ids, WARNS.kill.notifyKilled(reason))
+	await warnAll(ctx, ids, SM_Msgs.WARNS.notifyKilled(reason))
 }
 
 export async function demoteCommander(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
