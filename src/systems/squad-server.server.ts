@@ -132,7 +132,7 @@ export type SquadServer = {
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
-	update$: Rx.Subject<Instr.OtelCtx>
+	update$: Rx.Subject<CS.Otel>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
@@ -1814,7 +1814,7 @@ export async function deleteServer(serverId: string) {
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
 
-export async function getServerState(ctx: C.Db & C.ServerId) {
+export async function getServerState(ctx: C.Db & SS.Ctx) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
 	return Settings.parseServerStateRow(serverRaw)

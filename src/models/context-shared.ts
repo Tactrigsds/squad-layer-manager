@@ -1,3 +1,4 @@
+import type * as OtelApi from '@opentelemetry/api'
 import type pino from 'pino'
 
 import * as Prom from '@/lib/promise-utils'
@@ -16,6 +17,14 @@ export function isCtx(ctx: any): ctx is Ctx {
 }
 
 export type AbortSignal = { signal: globalThis.AbortSignal }
+
+// carries links to spans that produced this ctx, flushed onto the next span the instrumentation opens.
+// A primitive rather than server-side because the rcon and match-history payloads type streams with it.
+export type Otel = Ctx & {
+	otel: {
+		links: OtelApi.Link[]
+	}
+}
 
 export type Logger = pino.Logger
 

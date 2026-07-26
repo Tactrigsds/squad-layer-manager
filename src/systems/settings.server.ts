@@ -261,7 +261,7 @@ export type ServerSettingsSlice = {
 	update$: Rx.ReplaySubject<SettingsUpdate>
 }
 
-export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState): ServerSettingsSlice {
+export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState): ServerSettingsSlice {
 	const slice: ServerSettingsSlice = {
 		settings: SETTINGS.getPublicSettings(serverState.settings),
 		update$: new Rx.ReplaySubject<SettingsUpdate>(1),
@@ -347,7 +347,7 @@ export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promi
 
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
 export async function updateServerSettings(
-	ctx: C.Db & C.Tx & C.ServerId,
+	ctx: C.Db & C.Tx & SS.Ctx,
 	newSettings: SETTINGS.ServerSettings,
 	source: SS.LQStateUpdate['source'],
 ) {

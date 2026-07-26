@@ -68,6 +68,8 @@ const MOVES: { from: string; to: string; imp: string }[] = [
 	{ from: 'C.User', to: 'USR.Ctx', imp: "import type * as USR from '@/models/users.models'" },
 	{ from: 'C.PlayerIds', to: 'SM.Ctx.Ids', imp: "import type * as SM from '@/models/squad.models'" },
 	{ from: 'C.Player', to: 'SM.Ctx', imp: "import type * as SM from '@/models/squad.models'" },
+	{ from: 'Instr.OtelCtx', to: 'CS.Otel', imp: "import type * as CS from '@/models/context-shared'" },
+	{ from: 'C.ServerId', to: 'SS.Ctx', imp: "import type * as SS from '@/models/server-state.models'" },
 ]
 
 function moveContexts(src: string, file: string): string {
