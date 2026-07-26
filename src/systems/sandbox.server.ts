@@ -15,6 +15,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Seed from '@/systems/seed.server'
 import * as Settings from '@/systems/settings.server'
 
 // A sandbox server is a squad server SLM runs itself: src/emulator, bound to a loopback RCON port, with its log
@@ -172,10 +173,10 @@ export async function seedServerIfEnabled(ctx: C.Db): Promise<void> {
 	const entries = Settings.listServerEntries()
 	if (entries.some((e) => e.id === SEEDED_SERVER_ID)) return
 
-	const settings: SettingsModels.ServerSettings = {
+	const settings = Seed.applyInitialPoolConfig({
 		...SettingsModels.PublicServerSettingsSchema.parse({}),
 		connections: SandboxConnectionSchema.parse({ type: 'sandbox' }),
-	}
+	})
 	const res = await Settings.createServerEntry(ctx, {
 		id: SEEDED_SERVER_ID,
 		displayName: 'Sandbox',
@@ -188,6 +189,37 @@ export async function seedServerIfEnabled(ctx: C.Db): Promise<void> {
 	await Settings.setServerEnabled(ctx, SEEDED_SERVER_ID, true)
 	if (entries.length === 0) await Settings.setDefaultServerEntry(ctx, SEEDED_SERVER_ID)
 	log.info('Seeded the sandbox server')
+}
+
+// A demo opening on an empty server shows nothing of what SLM does with a full one, and the world is in memory,
+// so it is populated on every boot rather than seeded once. Run after the managed servers are up: these arrive
+// as ordinary connects and are read back off the roster poll, exactly as a real player would be.
+//
+// Only the connects: anything they say lands before the roster poll has heard of them, and a message from a
+// player the server does not know yet is dropped. Sandbox Controls is there to say it once someone is looking.
+const DEMO_PLAYERS = [
+	'Ripley',
+	'Hicks',
+	'Vasquez',
+	'Hudson',
+	'Drake',
+	'Ferro',
+	'Apone',
+	'Bishop',
+	'Gorman',
+	'Frost',
+	'Spunkmeyer',
+	'Dietrich',
+]
+
+export function populateDemoWorlds() {
+	for (const [serverId, instance] of instances) {
+		for (const name of DEMO_PLAYERS) Verbs.joinPlayer(instance, name)
+		// so the in-game admin commands have someone allowed to run them
+		instance.adminList!.setPlayerGroups(DEMO_PLAYERS[0], [DEFAULT_ADMIN_GROUP])
+		instance.changed$.next()
+		log.info('Sandbox %s: connected %d demo players', serverId, DEMO_PLAYERS.length)
+	}
 }
 
 export function connectionFor(serverId: string): SettingsModels.RconConnection {

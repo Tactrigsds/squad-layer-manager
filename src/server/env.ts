@@ -58,6 +58,17 @@ const BigIntListSchema = z
 	)
 
 export const groups = {
+	demo: {
+		DEMO: z
+			.stringbool()
+			.default(false)
+			.meta({
+				description:
+					'runs the app as a throwaway demo: every other variable below gets a working default, the discord integration is off, anyone can sign in as any username from a form on the front page, and a fresh database is seeded with example data. Everything it holds is disposable.',
+				envExample: { include: 'commented' },
+			}),
+	},
+
 	general: {
 		NODE_ENV: z.enum(['development', 'production', 'test']).meta({
 			description: '`pnpm server:dev` sets this itself; it is only read from here by bare `pnpm script` / `pnpm preprocess` runs.',
@@ -94,7 +105,7 @@ export const groups = {
 			.optional()
 			.meta({
 				description:
-					'lets a request log in as an existing user with a `?login=<username>` query param, skipping discord oauth. Rejected when NODE_ENV=production.',
+					'turns discord auth off: a `?login=<username>` query param logs in as that existing user, and everyone else gets a form on the front page asking for a name. Rejected when NODE_ENV=production unless DEMO is set.',
 				envExample: { include: 'omit', dev: { include: 'commented' } },
 			}),
 
@@ -419,23 +430,37 @@ export const groups = {
 			description: 'the battlemetrics api.',
 		}),
 
-		BM_PAT: z.string().meta({
-			secret: true,
-			description: `battlemetrics API token. It needs these permissions:
+		BM_PAT: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				secret: true,
+				envExample: { include: 'set' },
+				description: `battlemetrics API token. It needs these permissions:
 - player flags (add/remove; it does not need to create new ones)
 - player notes (read & create)
 - rcon (read)
 Leave it empty if you have no battlemetrics org: the app boots without it, and the features that read it fail.`,
-		}),
+			}),
 
-		BM_ORG_ID: z.string().meta({
-			description: 'the battlemetrics organization BM_PAT belongs to. Player flags are filtered to this org.',
-		}),
+		BM_ORG_ID: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				envExample: { include: 'set' },
+				description: 'the battlemetrics organization BM_PAT belongs to. Player flags are filtered to this org.',
+			}),
 	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
 
 // section headers in the example env files. A group whose vars are all omitted never shows up.
 export const groupMeta: Record<keyof typeof groups, { title: string; description?: string }> = {
+	demo: {
+		title: 'Demo',
+		description: 'a demo instance needs no configuration at all: set DEMO and leave every other variable below unset.',
+	},
 	general: { title: 'General' },
 	squadcalc: { title: 'Squadcalc' },
 	otel: {
@@ -537,6 +562,22 @@ const buildForValidation = getEnvBuilder({
 	QUERY_PARAM_AUTH_BYPASS: groups.general.QUERY_PARAM_AUTH_BYPASS,
 })
 
+// What DEMO fills in for a variable left unset, so that it is the only one anybody has to set. Only the ones
+// that would otherwise stop the boot or reach for something that isn't there: everything else already has a
+// default that suits a demo. The encryption key is the public one, and QUERY_PARAM_AUTH_BYPASS is what turns
+// off discord auth (see the no-auth login portal in fastify.server.ts).
+const DEMO_DEFAULTS: Record<string, string> = {
+	NODE_ENV: 'production',
+	QUERY_PARAM_AUTH_BYPASS: 'true',
+	SETTINGS_ENCRYPTION_KEY: INSECURE_DEV_ENCRYPTION_KEY,
+	OTEL_ENABLED: 'false',
+	DISCORD_ENABLED: 'false',
+	DISCORD_CLIENT_ID: 'demo',
+	DISCORD_CLIENT_SECRET: 'demo',
+	DISCORD_BOT_TOKEN: 'demo',
+	DISCORD_HOME_GUILD_ID: '0',
+}
+
 // The default path is a convention rather than a requirement: a checkout and the test harness pass their
 // secrets in the environment and have no file. A path asked for explicitly does have to be there, since
 // booting without the secrets someone pointed us at is never what they meant.
@@ -571,11 +612,19 @@ export function ensureEnvSetup() {
 		if (value && isSecret(schema) && fromFile === undefined) secretsFromEnvironment.push(key)
 	}
 
+	const demo = groups.demo.DEMO.parse(rawEnv.DEMO)
+	if (demo) {
+		for (const [key, value] of Object.entries(DEMO_DEFAULTS)) {
+			rawEnv[key] ??= value
+		}
+	}
+
 	const toValidate = buildForValidation()
-	if (toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
+	// both of these are what DEMO deliberately does, so they only guard a real deployment
+	if (!demo && toValidate.NODE_ENV === 'production' && toValidate.QUERY_PARAM_AUTH_BYPASS) {
 		throw new Error('QUERY_PARAM_AUTH_BYPASS=true is not allowed in production')
 	}
-	if (toValidate.NODE_ENV === 'production' && rawEnv.SETTINGS_ENCRYPTION_KEY === INSECURE_DEV_ENCRYPTION_KEY) {
+	if (!demo && toValidate.NODE_ENV === 'production' && rawEnv.SETTINGS_ENCRYPTION_KEY === INSECURE_DEV_ENCRYPTION_KEY) {
 		throw new Error(
 			'SETTINGS_ENCRYPTION_KEY is the development key .env.example.dev ships, which is public. Generate a real one with `openssl rand -base64 32`.',
 		)

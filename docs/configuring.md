@@ -8,6 +8,21 @@ Most of these settings aren't relevant yet, but we need to set a few things up f
 
 All settings are optionally editable via a built-in JSON editor.
 
+## What a fresh install starts with
+
+A database with nothing in it is seeded once, on its first boot, so there is something to look at before anything
+is configured:
+
+- Three filters: **Main Pool** (a competitive pool, minus broken layers and same-nation matchups), **Seeding**,
+  and **No Mech on Hilly Maps**. They are owned by `SLM` rather than by a person, since nobody has signed in yet.
+- A [sandbox server](sandbox_servers.md), enabled and default, whose pool is configured from those filters: Main
+  Pool is the pool filter, Seeding indicates its matches, and No Mech on Hilly Maps is offered during layer
+  selection, starting unselected.
+
+None of it is reconciled on later boots: edit or delete any of it and it stays that way. A server you add
+yourself starts with an unconstrained pool, and you point it at whichever filters you want under its Queue
+settings.
+
 ## Squad Servers
 
 Multiple squad servers can be hooked up to a single SLM instance. Click the "Add Server" button to start setting up a new server.

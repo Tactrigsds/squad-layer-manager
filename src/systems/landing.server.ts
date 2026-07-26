@@ -32,17 +32,21 @@ const module = initModule('landing')
 
 let landingHtmlCache!: string
 let forbiddenHtmlCache!: string
+let renderInputs!: { repoUrl: string; guildName: string | null; head: Head; inlineCss: string }
 
 // must run after Discord.setup() so the home guild name is resolved
 export async function setup() {
 	ENV = envBuilder()
-	const repoUrl = ENV.PUBLIC_REPO_URL ?? DEFAULT_REPO_URL
-	const guildName = Discord.getHomeGuildName()
-	const head = resolveHead()
-	const inlineCss = await resolveInlineCss()
-	landingHtmlCache = render('landing', repoUrl, guildName, head, inlineCss)
-	forbiddenHtmlCache = render('forbidden', repoUrl, guildName, head, inlineCss)
-	module.getLogger().info('landing pages rendered (guild: %s)', guildName ?? '<none>')
+	renderInputs = {
+		repoUrl: ENV.PUBLIC_REPO_URL ?? DEFAULT_REPO_URL,
+		guildName: Discord.getHomeGuildName(),
+		head: resolveHead(),
+		inlineCss: await resolveInlineCss(),
+	}
+	// with discord auth off there is no oauth flow to send anyone into, so '/' offers the username form instead
+	landingHtmlCache = render(ENV.QUERY_PARAM_AUTH_BYPASS ? 'no-auth' : 'landing', null)
+	forbiddenHtmlCache = render('forbidden', null)
+	module.getLogger().info('landing pages rendered (guild: %s)', renderInputs.guildName ?? '<none>')
 }
 
 async function resolveInlineCss(): Promise<string> {
@@ -61,8 +65,14 @@ export function forbiddenHtml() {
 	return forbiddenHtmlCache
 }
 
-function render(variant: 'landing' | 'forbidden', repoUrl: string, guildName: string | null, head: Head, inlineCss: string) {
-	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, repoUrl, guildName, head, inlineCss }))
+// the only page rendered per request: a rejected username has to say why, and nobody is served this often
+// enough for a cache to matter
+export function noAuthHtml(error: string) {
+	return render('no-auth', error)
+}
+
+function render(variant: 'landing' | 'no-auth' | 'forbidden', error: string | null) {
+	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, error, ...renderInputs }))
 }
 
 function resolveHead(): Head {

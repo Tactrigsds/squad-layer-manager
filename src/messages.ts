@@ -353,6 +353,7 @@ export const GENERAL = {
 	auth: {
 		noApplicationAccess: `You have not been granted access to this application. Please contact an administrator.`,
 		unAuthenticated: `Not able to authenticate user`,
+		invalidUsername: `Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.`,
 	},
 	balanceTrigger: {
 		showEvent(event: BAL.BalanceTriggerEvent, referenceMatch: MH.MatchDetails, qualifyAsCurrent: boolean) {
