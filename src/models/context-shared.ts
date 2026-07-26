@@ -41,6 +41,15 @@ export function linkToActiveSpan(type: ATTR.SpanLink.SourceType): OtelApi.Link |
 	return { context: activeSpan.spanContext(), attributes: { [ATTR.SpanLink.SOURCE]: type } }
 }
 
+/**
+ * Drop any inherited span links. For work whose cause is a timer rather than an upstream span, and
+ * which outlives that span: a long-lived ctx keeps its links, so every op reusing it would link back
+ * to something that ended long ago.
+ */
+export function withoutOtelLinks<T extends Ctx>(ctx: T): T & Otel {
+	return { ...ctx, otel: { links: [] } }
+}
+
 export function storeLinkToActiveSpan<T extends Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & Otel {
 	const link = linkToActiveSpan(type)
 	return { ...ctx, otel: { links: link ? [link] : [] } }

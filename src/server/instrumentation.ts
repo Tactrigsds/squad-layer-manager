@@ -123,7 +123,7 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				for (const link of ctxLinks) {
 					const source = link.attributes?.[ATTR.SpanLink.SOURCE]
 					// explicitly included links take precedence
-					if (source && links.some((l) => link!.attributes?.[ATTR.SpanLink.SOURCE] == source)) {
+					if (source && links.some((l) => l.attributes?.[ATTR.SpanLink.SOURCE] === source)) {
 						continue
 					}
 					links.push(link)
