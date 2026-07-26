@@ -1,5 +1,6 @@
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+
 import { ServerConsolePanel } from './server-console-panel'
 import type { ServerConsoleWindowProps } from './server-console-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'

@@ -1,13 +1,13 @@
 import type * as FRM from '@/lib/frame'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
-import * as Rx from 'rxjs'
 
 export type ChatSlice = {
 	serverId: string
@@ -32,32 +32,30 @@ export type KeyProp = { chat: Key }
 export type Args = FRM.SetupArgs<{ serverId: string }, Store, Store>
 
 export function initChat(args: Args) {
-	const set = ZusUtils.toPartialSetter(args.set, 'chat')
-	const get = ZusUtils.toPartialGetter(args.get, 'chat')
+	const set = Zus.toPartialSetter(args.set, 'chat')
+	const get = Zus.toPartialGetter(args.get, 'chat')
 	const serverId = args.input.serverId
 
-	set(
-		{
-			serverId,
-			chatState: CHAT.getInitialChatState(),
-			secondaryFilterState: 'DEFAULT',
-			selectedOnly: false,
-			eventGeneration: 0,
-			selectedMatchOrdinal: null,
-			handleChatEvents(events) {
-				const config = SettingsClient.getSettings()
-				set(state => {
-					let chatState = state.chatState
-					// this is done to cache break the selectors
-					chatState.interpolatedState = CHAT.InterpolableState.clone(chatState.interpolatedState)
-					for (const event of events) {
-						CHAT.handleEvent(chatState, event, config?.chat)
-					}
-					return { chatState, eventGeneration: state.eventGeneration + 1 }
-				})
-			},
-		} satisfies ChatSlice,
-	)
+	set({
+		serverId,
+		chatState: CHAT.getInitialChatState(),
+		secondaryFilterState: 'DEFAULT',
+		selectedOnly: false,
+		eventGeneration: 0,
+		selectedMatchOrdinal: null,
+		handleChatEvents(events) {
+			const config = SettingsClient.getSettings()
+			set((state) => {
+				let chatState = state.chatState
+				// this is done to cache break the selectors
+				chatState.interpolatedState = CHAT.InterpolableState.clone(chatState.interpolatedState)
+				for (const event of events) {
+					CHAT.handleEvent(chatState, event, config?.chat)
+				}
+				return { chatState, eventGeneration: state.eventGeneration + 1 }
+			})
+		},
+	} satisfies ChatSlice)
 
 	let previouslyConnected = false
 	const chatDisconnected$ = new Rx.Subject<CHAT.ConnectionErrorEvent>()
@@ -83,7 +81,7 @@ export function initChat(args: Args) {
 	).pipe(RPC.dropServerNotLoaded(), Rx.tap({ next: () => (previouslyConnected = true) }))
 
 	args.sub.add(
-		Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map(e => [e]))).subscribe(events => {
+		Rx.merge(chatEvent$, chatDisconnected$.pipe(Rx.map((e) => [e]))).subscribe((events) => {
 			get().handleChatEvents(events as (CHAT.Event | CHAT.LifecycleEvent)[])
 		}),
 	)
@@ -105,22 +103,26 @@ export namespace Sel {
 	export function selectedMatchOrdinal(store: Store) {
 		return store.chat.selectedMatchOrdinal
 	}
+	// the match the dashboard is showing: the live one, or the historical one picked out of recent matches
+	export function displayMatch(store: Store, currentMatch: MH.MatchDetails | undefined, recentMatches: readonly MH.MatchDetails[]) {
+		const ordinal = selectedMatchOrdinal(store)
+		if (ordinal === null) return currentMatch
+		return recentMatches.find((m) => m.ordinal === ordinal)
+	}
+
 	const currentMatchArg = (_store: Store, currentMatch: MH.MatchDetails | undefined) => currentMatch
 	export const playersForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
-		RSel.createDeepSelector(
-			[(store: Store) => chatState(store).players, currentMatchArg],
-			(players, currentMatch): SM.Player[] => {
-				if (!currentMatch) return []
-				const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
-				return players.filter((p) => p.teamId === teamId)
-			},
-		)
+		RSel.createDeepSelector([(store: Store) => chatState(store).players, currentMatchArg], (players, currentMatch): SM.Player[] => {
+			if (!currentMatch) return []
+			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
+			return players.filter((p) => p.teamId === teamId)
+		}),
 	)
 
 	// the live roster entry, i.e. only resolves while the player is connected. Callers that just need to put a name or
 	// an id on screen want recentPlayer instead; this one's emptiness is also read as "is offline".
 	export function player(playerId: SM.PlayerId) {
-		return (store: Store) => SM.PlayerIds.find(chatState(store).players, p => p.ids, playerId)
+		return (store: Store) => SM.PlayerIds.find(chatState(store).players, (p) => p.ids, playerId)
 	}
 
 	export function recentPlayers(store: Store) {
@@ -143,28 +145,22 @@ export namespace Sel {
 	}
 
 	export const squadsForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
-		RSel.createDeepSelector(
-			[(store: Store) => chatState(store).squads, currentMatchArg],
-			(squads, currentMatch): SM.UniqueSquad[] => {
-				if (!currentMatch) return []
-				const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
-				return squads.filter((s) => s.teamId === teamId)
-			},
-		)
+		RSel.createDeepSelector([(store: Store) => chatState(store).squads, currentMatchArg], (squads, currentMatch): SM.UniqueSquad[] => {
+			if (!currentMatch) return []
+			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
+			return squads.filter((s) => s.teamId === teamId)
+		}),
 	)
 	export const teamPlayerCount = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
-		RSel.createSelector(
-			[(store: Store) => chatState(store).players, currentMatchArg],
-			(players, currentMatch) => {
-				if (!currentMatch) return 0
-				const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
-				let count = 0
-				for (const player of players) {
-					if (player.teamId === teamId) count++
-				}
-				return count
-			},
-		)
+		RSel.createSelector([(store: Store) => chatState(store).players, currentMatchArg], (players, currentMatch) => {
+			if (!currentMatch) return 0
+			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
+			let count = 0
+			for (const player of players) {
+				if (player.teamId === teamId) count++
+			}
+			return count
+		}),
 	)
 	// true when SLM (re)started mid-match: a fresh RCON connection (reconnected === false) within the current
 	// match means we missed the events preceding the restart, so per-player combat stats are incomplete.
@@ -206,12 +202,8 @@ export namespace Sel {
 			}
 		}
 
-		const team1Ratio = team1Deaths === 0
-			? (team1Kills > 0 ? 999 : 0)
-			: team1Kills / team1Deaths
-		const team2Ratio = team2Deaths === 0
-			? (team2Kills > 0 ? 999 : 0)
-			: team2Kills / team2Deaths
+		const team1Ratio = team1Deaths === 0 ? (team1Kills > 0 ? 999 : 0) : team1Kills / team1Deaths
+		const team2Ratio = team2Deaths === 0 ? (team2Kills > 0 ? 999 : 0) : team2Kills / team2Deaths
 
 		return { team1Ratio, team2Ratio }
 	}
@@ -219,15 +211,15 @@ export namespace Sel {
 
 export namespace Actions {
 	export function setSecondaryFilterState(stores: KeyProp, state: CHAT.SecondaryFilterState) {
-		ZusUtils.toPartialStore(stores.chat, 'chat').setState({ secondaryFilterState: state })
+		Zus.toPartialStore(stores.chat, 'chat').setState({ secondaryFilterState: state })
 	}
 
 	export function setSelectedOnly(stores: KeyProp, selectedOnly: boolean) {
-		ZusUtils.toPartialStore(stores.chat, 'chat').setState({ selectedOnly })
+		Zus.toPartialStore(stores.chat, 'chat').setState({ selectedOnly })
 	}
 
 	export async function setSelectedMatchOrdinal(stores: KeyProp, ordinal: number | null) {
-		const chat = ZusUtils.toPartialStore(stores.chat, 'chat')
+		const chat = Zus.toPartialStore(stores.chat, 'chat')
 		const currentMatch = await MatchHistoryClient.currentMatch$(chat.getState().serverId).getValue()
 		chat.setState({ selectedMatchOrdinal: currentMatch?.ordinal === ordinal ? null : ordinal })
 	}

@@ -1,19 +1,22 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
-import * as ZusUtils from '@/lib/zustand'
+import { cn } from '@/lib/utils'
+import * as Zus from '@/lib/zustand'
 import * as L from '@/models/layer'
-
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 import * as DH from '../lib/display-helpers'
 
 export function TeamIndicator(props: { team: MH.NormedTeamId | SM.TeamId }) {
-	return <span className="font-mono text" style={{ color: DH.TEAM_COLORS[`team${props.team}`] }}>({props.team})</span>
+	return (
+		<span className="font-mono text" style={{ color: DH.TEAM_COLORS[`team${props.team}`] }}>
+			({props.team})
+		</span>
+	)
 }
 
 export function getTeamsDisplay(
@@ -25,7 +28,7 @@ export function getTeamsDisplay(
 ) {
 	const teamParity = _teamParity ?? 0
 
-	return MH.getDisplayedTeamOrder(teamParity, displayLayersNormalized).map(normedTeam => {
+	return MH.getDisplayedTeamOrder(teamParity, displayLayersNormalized).map((normedTeam) => {
 		const team = MH.getDenormedTeamId(normedTeam, teamParity)
 		return (
 			<TeamFactionDisplay
@@ -41,28 +44,24 @@ export function getTeamsDisplay(
 	})
 }
 
-export function TeamFactionDisplay(
-	props: {
-		className?: string
-		parity: number
-		layer: L.UnvalidatedLayer | L.LayerId
-		team: SM.TeamId
-		includeUnits?: boolean
-		showAltTeamIndicator?: boolean
-		extraStyles?: Record<keyof L.KnownLayer, string | undefined>
-	},
-) {
-	const displayTeamsNormalized = ZusUtils.useStore(GlobalSettingsStore, s => s.displayTeamsNormalized)
-	const [partialLayer, error] = withThrown(() => typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer)
+export function TeamFactionDisplay(props: {
+	className?: string
+	parity: number
+	layer: L.UnvalidatedLayer | L.LayerId
+	team: SM.TeamId
+	includeUnits?: boolean
+	showAltTeamIndicator?: boolean
+	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
+}) {
+	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const [partialLayer, error] = withThrown(() => (typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer))
 
 	if (error || !partialLayer) {
 		const layerId = typeof props.layer === 'string' ? props.layer : props.layer.id
 		return (
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<span className="inline-block whitespace-nowrap text-destructive cursor-help">
-						{layerId}
-					</span>
+					<span className="inline-block whitespace-nowrap text-destructive cursor-help">{layerId}</span>
 				</TooltipTrigger>
 				<TooltipContent>
 					<div className="text-xs">
@@ -112,46 +111,36 @@ export function TeamFactionDisplay(
 	return (
 		<span className={cn('inline-block whitespace-nowrap', props.className)}>
 			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
-				<span className={cn(allianceStyles, factionStyles)}>
-					{faction}
-				</span>
-				{props.includeUnits && shortUnit && (
-					<span className={unitStyles}>
-						{` ${shortUnit}`}
-					</span>
-				)}
+				<span className={cn(allianceStyles, factionStyles)}>{faction}</span>
+				{props.includeUnits && shortUnit && <span className={unitStyles}>{` ${shortUnit}`}</span>}
 				{props.showAltTeamIndicator && <TeamIndicator team={attrs[1].id} />}
 			</span>
-			{
-				/*<span
+			{/*<span
 			 	title={attrs[1].title}
 			 	className="font-mono text-sm"
 			 	style={{ color: attrs[1].color }}
 			 >
 			 	{attrs[1].label}
-			// </span>*/
-			}
+			// </span>*/}
 		</span>
 	)
 }
 
-export function MatchTeamDisplay(
-	props: {
-		matchId?: number
-		teamId: SM.TeamId | MH.NormedTeamId
-		includeUnits?: boolean
-		showAltTeamIndicator?: boolean
-		className?: string
-		stores: SquadServerFrame.KeyProp
-	},
-) {
+export function MatchTeamDisplay(props: {
+	matchId?: number
+	teamId: SM.TeamId | MH.NormedTeamId
+	includeUnits?: boolean
+	showAltTeamIndicator?: boolean
+	className?: string
+	stores: SquadServerFrame.KeyProp
+}) {
 	const recentMatches = MatchHistoryClient.useRecentMatches(props.stores.squadServer.serverId)
 	let match: MH.MatchDetails | undefined
 	if (props.matchId === undefined) {
 		match = recentMatches[recentMatches.length - 1]
 		if (!match?.isCurrentMatch) return null
 	} else {
-		match = recentMatches.find(m => m.historyEntryId === props.matchId)
+		match = recentMatches.find((m) => m.historyEntryId === props.matchId)
 	}
 	if (!match) return null
 	const teamId = MH.getDenormedTeamId(props.teamId, match.ordinal)

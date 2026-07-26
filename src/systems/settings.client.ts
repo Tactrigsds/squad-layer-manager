@@ -1,11 +1,9 @@
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
-import * as ZusUtils from '@/lib/zustand'
+import * as ReactRx from '@/lib/react-rxjs'
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import type { PublicSettings } from '@/systems/settings.server'
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
-import { toStream } from 'zustand-rx'
 
 // ============================== public settings: safe global settings + server registry, for any connected client ==============================
 
@@ -18,21 +16,19 @@ export function getSettings() {
 // whether the given admin action is configured to require a reason (enforced server-side; used to gate web dialogs).
 // warns aren't configurable here: they always require one.
 export function useReasonRequired(action: AAR.RequirableAdminActionType): boolean {
-	return ZusUtils.useStore(PublicSettingsStore, s => s?.requireReasonFor.includes(action) ?? false)
+	return Zus.useStore(PublicSettingsStore, (s) => s?.requireReasonFor.includes(action) ?? false)
 }
 
-// a server is only usable when the backend has a live slice for it, which happens exactly for enabled, non-broken servers.
+// a server is only usable when the backend has a live managed server for it, which happens exactly for enabled, non-broken servers.
 // disabled/broken servers still appear in the registry (e.g. for admin UI) but their dashboard can't be loaded.
-export function isServerUsable(
-	entry: PublicSettings['servers'][number] | undefined,
-): entry is PublicSettings['servers'][number] {
+export function isServerUsable(entry: PublicSettings['servers'][number] | undefined): entry is PublicSettings['servers'][number] {
 	return !!entry && entry.enabled && !entry.broken
 }
 
 export async function fetchSettings() {
 	const settings = PublicSettingsStore.getState()
 	if (settings) return settings
-	return await Rx.firstValueFrom(toStream(PublicSettingsStore).pipe(Rx.filter(Boolean)))
+	return await Rx.firstValueFrom(Zus.toStream(PublicSettingsStore).pipe(Rx.filter(Boolean)))
 }
 
 // ============================== global settings: full object, needs global-settings read access ==============================
@@ -40,7 +36,7 @@ export async function fetchSettings() {
 // the encoded (pre-decode) form, e.g. HumanTime fields as '5m' strings rather than milliseconds -- meant for display/editing.
 // the deny response is kept in the stream (not filtered) so the Suspense boundary always resolves; a denied user (e.g. after an
 // rbac change left their session with stale perms) is handled by the consumer instead of hanging forever.
-export const [useGlobalSettings, globalSettings$] = RxHelpers.bind(
+export const [useGlobalSettings, globalSettings$] = ReactRx.bind(
 	'settings.globalSettings',
 	RPC.observe('settings.global.watchSettings', () => RPC.orpc.settings.global.watchSettings.call()),
 )
@@ -50,7 +46,7 @@ export const [useGlobalSettings, globalSettings$] = RxHelpers.bind(
 // ============================== setup ==============================
 
 export function setup() {
-	RPC.observe('settings.public.watchPublicSettings', () => RPC.orpc.settings.public.watchPublicSettings.call()).subscribe(settings => {
+	RPC.observe('settings.public.watchPublicSettings', () => RPC.orpc.settings.public.watchPublicSettings.call()).subscribe((settings) => {
 		PublicSettingsStore.setState(settings)
 	})
 }

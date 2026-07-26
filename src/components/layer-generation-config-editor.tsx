@@ -1,13 +1,14 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import ComboBox from '@/components/combo-box/combo-box'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useDebounced } from '@/hooks/use-debounce'
+import type * as Rx from '@/lib/rxjs'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as DndKit from '@/systems/dndkit.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import type * as Rx from 'rxjs'
 
 type Config = LC.LayerGenerationConfig
 type WeightEntry = { value: string; weight: number }
@@ -35,9 +36,15 @@ function formatSide(key: LC.MatchupKey, side: LC.MatchupSide) {
 // weighted-randomly and discarding the candidates that don't match, so the earlier a step is, the more it shapes the
 // result. A step is either a column (its groups are that column's values) or a matchup (its groups are the unordered
 // pairings of the two teams). Groups with no configured weight weigh DEFAULT_GENERATION_WEIGHT.
-export default function LayerGenerationConfigEditor(
-	{ value, onChange, reset$ }: { value: Config; onChange: (next: Config) => void; reset$: Rx.Subject<void> },
-) {
+export default function LayerGenerationConfigEditor({
+	value,
+	onChange,
+	reset$,
+}: {
+	value: Config
+	onChange: (next: Config) => void
+	reset$: Rx.Subject<void>
+}) {
 	const pickOrder = value.pickOrder ?? []
 
 	function setWeights(column: LC.WeightColumn, entries: WeightEntry[] | undefined) {
@@ -58,31 +65,31 @@ export default function LayerGenerationConfigEditor(
 	return (
 		<div className="space-y-5">
 			<PickOrderSection value={value} onChange={onChange} />
-			{pickOrder.length === 0
-				? <p className="text-xs text-muted-foreground">Add a column or matchup above to give its values weights.</p>
-				: pickOrder.map((key, idx) => (
-					LC.isMatchupKey(key)
-						? (
-							<MatchupWeightsSection
-								key={key}
-								matchup={key}
-								pickOrder={idx + 1}
-								entries={value.matchupWeights[key]}
-								onChange={(entries) => setMatchupWeights(key, entries)}
-								reset$={reset$}
-							/>
-						)
-						: (
-							<WeightsSection
-								key={key}
-								column={key}
-								pickOrder={idx + 1}
-								entries={value.weights?.[key] ?? []}
-								onChange={(entries) => setWeights(key, entries)}
-								reset$={reset$}
-							/>
-						)
-				))}
+			{pickOrder.length === 0 ? (
+				<p className="text-xs text-muted-foreground">Add a column or matchup above to give its values weights.</p>
+			) : (
+				pickOrder.map((key, idx) =>
+					LC.isMatchupKey(key) ? (
+						<MatchupWeightsSection
+							key={key}
+							matchup={key}
+							pickOrder={idx + 1}
+							entries={value.matchupWeights[key]}
+							onChange={(entries) => setMatchupWeights(key, entries)}
+							reset$={reset$}
+						/>
+					) : (
+						<WeightsSection
+							key={key}
+							column={key}
+							pickOrder={idx + 1}
+							entries={value.weights?.[key] ?? []}
+							onChange={(entries) => setWeights(key, entries)}
+							reset$={reset$}
+						/>
+					),
+				)
+			)}
 			{unpicked.length > 0 && (
 				<div className="space-y-1.5">
 					<SectionLabel hint="These have weights but aren't in the pick order, so they have no effect. Add them above to use them.">
@@ -97,7 +104,7 @@ export default function LayerGenerationConfigEditor(
 								size="sm"
 								variant="ghost"
 								className="h-6 text-destructive"
-								onClick={() => LC.isMatchupKey(key) ? setMatchupWeights(key, []) : setWeights(key, undefined)}
+								onClick={() => (LC.isMatchupKey(key) ? setMatchupWeights(key, []) : setWeights(key, undefined))}
 							>
 								Discard
 							</Button>
@@ -124,31 +131,31 @@ function SectionLabel({ children, hint }: { children: React.ReactNode; hint?: st
 
 function PickOrderSection({ value, onChange }: { value: Config; onChange: (next: Config) => void }) {
 	const pickOrder = value.pickOrder ?? []
-	const addOptions = LC.PICK_KEYS.options
-		.filter((key) => !pickOrder.includes(key))
-		.map((key) => ({ value: key, label: pickLabel(key) }))
+	const addOptions = LC.PICK_KEYS.options.filter((key) => !pickOrder.includes(key)).map((key) => ({ value: key, label: pickLabel(key) }))
 
 	// drag-to-reorder via the shared dnd-kit provider. the handler is registered once and reads the latest
 	// state off a ref, mirroring the layer-table config editor
 	const stateRef = React.useRef({ value, onChange })
 	stateRef.current = { value, onChange }
-	DndKit.useDragEnd(React.useCallback((evt) => {
-		const { active, over } = evt
-		if (active.type !== 'layer-generation-column' || !over) return
-		const slot = over.slots.find((s) => s.dragItem.type === 'layer-generation-column')
-		if (!slot) return
-		const targetName = String(slot.dragItem.id)
-		if (targetName === active.id) return
-		const { value, onChange } = stateRef.current
-		const order = value.pickOrder ?? []
-		const moved = order.find((c) => c === active.id)
-		if (!moved) return
-		const without = order.filter((c) => c !== active.id)
-		let insertAt = without.findIndex((c) => c === targetName)
-		if (insertAt < 0) return
-		if (slot.position === 'after') insertAt += 1
-		onChange({ ...value, pickOrder: [...without.slice(0, insertAt), moved, ...without.slice(insertAt)] })
-	}, []))
+	DndKit.useDragEnd(
+		React.useCallback((evt) => {
+			const { active, over } = evt
+			if (active.type !== 'layer-generation-column' || !over) return
+			const slot = over.slots.find((s) => s.dragItem.type === 'layer-generation-column')
+			if (!slot) return
+			const targetName = String(slot.dragItem.id)
+			if (targetName === active.id) return
+			const { value, onChange } = stateRef.current
+			const order = value.pickOrder ?? []
+			const moved = order.find((c) => c === active.id)
+			if (!moved) return
+			const without = order.filter((c) => c !== active.id)
+			let insertAt = without.findIndex((c) => c === targetName)
+			if (insertAt < 0) return
+			if (slot.position === 'after') insertAt += 1
+			onChange({ ...value, pickOrder: [...without.slice(0, insertAt), moved, ...without.slice(insertAt)] })
+		}, []),
+	)
 
 	// the step's weights are kept (see the "Unused weights" section) so dropping it isn't destructive
 	function remove(key: LC.PickKey) {
@@ -190,9 +197,17 @@ function PickDropSeparator({ position, pickKey }: { position: 'before' | 'after'
 	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
 }
 
-function PickRow(
-	{ pickKey, index, weightCount, onRemove }: { pickKey: LC.PickKey; index: number; weightCount: number; onRemove: () => void },
-) {
+function PickRow({
+	pickKey,
+	index,
+	weightCount,
+	onRemove,
+}: {
+	pickKey: LC.PickKey
+	index: number
+	weightCount: number
+	onRemove: () => void
+}) {
 	const drag = DndKit.useDraggable({ type: 'layer-generation-column', id: pickKey }, { feedback: 'default' })
 	return (
 		<li
@@ -205,9 +220,7 @@ function PickRow(
 			</button>
 			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
 			<span className="min-w-0 truncate font-mono text-sm">{pickLabel(pickKey)}</span>
-			<span className="text-xs text-muted-foreground">
-				{weightCount === 0 ? 'no weights' : `${weightCount} weighted`}
-			</span>
+			<span className="text-xs text-muted-foreground">{weightCount === 0 ? 'no weights' : `${weightCount} weighted`}</span>
 			<Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
 			</Button>
@@ -215,15 +228,19 @@ function PickRow(
 	)
 }
 
-function WeightsSection(
-	{ column, pickOrder, entries, onChange, reset$ }: {
-		column: LC.WeightColumn
-		pickOrder: number
-		entries: WeightEntry[]
-		onChange: (entries: WeightEntry[] | undefined) => void
-		reset$: Rx.Subject<void>
-	},
-) {
+function WeightsSection({
+	column,
+	pickOrder,
+	entries,
+	onChange,
+	reset$,
+}: {
+	column: LC.WeightColumn
+	pickOrder: number
+	entries: WeightEntry[]
+	onChange: (entries: WeightEntry[] | undefined) => void
+	reset$: Rx.Subject<void>
+}) {
 	const possibleValues = React.useMemo(() => LC.groupByColumnDefaultValues(column) as string[], [column])
 	const addOptions = React.useMemo(
 		() => possibleValues.filter((v) => !entries.some((e) => e.value === v)).map((v) => ({ value: v, label: v })),
@@ -235,8 +252,8 @@ function WeightsSection(
 	// the weights of the real values listed here, plus the default weight for each value that isn't listed. entries
 	// for unknown values are excluded -- nothing in the pool can match them
 	const knownEntries = entries.filter((e) => possibleValues.includes(e.value))
-	const totalWeight = knownEntries.reduce((sum, e) => sum + e.weight, 0)
-		+ LC.DEFAULT_GENERATION_WEIGHT * (possibleValues.length - knownEntries.length)
+	const totalWeight =
+		knownEntries.reduce((sum, e) => sum + e.weight, 0) + LC.DEFAULT_GENERATION_WEIGHT * (possibleValues.length - knownEntries.length)
 
 	function setWeight(value: string, weight: number) {
 		onChange(entries.map((e) => (e.value === value ? { ...e, weight } : e)))
@@ -257,10 +274,18 @@ function WeightsSection(
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
-							<th scope="col" className="text-left font-normal">Value</th>
-							<th scope="col" className="text-left font-normal">Weight</th>
-							<th scope="col" className="text-right font-normal">Share</th>
-							<th scope="col" className="sr-only">Remove</th>
+							<th scope="col" className="text-left font-normal">
+								Value
+							</th>
+							<th scope="col" className="text-left font-normal">
+								Weight
+							</th>
+							<th scope="col" className="text-right font-normal">
+								Share
+							</th>
+							<th scope="col" className="sr-only">
+								Remove
+							</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -270,7 +295,10 @@ function WeightsSection(
 									{entry.value}
 									{/* a value the current layer set doesn't have (e.g. a map dropped by a game update): it can never be picked */}
 									{!possibleValues.includes(entry.value) && (
-										<span className="ml-1.5 text-xs font-sans text-muted-foreground" title={`No layers have this ${column} value`}>
+										<span
+											className="ml-1.5 text-xs font-sans text-muted-foreground"
+											title={`No layers have this ${column} value`}
+										>
 											(unknown)
 										</span>
 									)}
@@ -279,7 +307,9 @@ function WeightsSection(
 									<WeightInput weight={entry.weight} onChange={(weight) => setWeight(entry.value, weight)} reset$={reset$} />
 								</td>
 								<td className="py-0.5 pr-2 text-right tabular-nums text-muted-foreground">
-									{totalWeight > 0 && possibleValues.includes(entry.value) ? `${(entry.weight / totalWeight * 100).toFixed(1)}%` : '-'}
+									{totalWeight > 0 && possibleValues.includes(entry.value)
+										? `${((entry.weight / totalWeight) * 100).toFixed(1)}%`
+										: '-'}
 								</td>
 								<td className="py-0.5">
 									<Button
@@ -315,19 +345,23 @@ function WeightsSection(
 // A matchup weighs the two teams as an unordered pair, so ADF vs PLA can be weighted apart from ADF and PLA on their
 // own. No share column here: unlike a column's values, most pairings of two sides never occur in the layer set (and
 // which do depends on the layer), so a share computed over every pairing would be fiction.
-function MatchupWeightsSection(
-	{ matchup, pickOrder, entries, onChange, reset$ }: {
-		matchup: LC.MatchupKey
-		pickOrder: number
-		entries: LC.MatchupWeightEntry[]
-		onChange: (entries: LC.MatchupWeightEntry[]) => void
-		reset$: Rx.Subject<void>
-	},
-) {
+function MatchupWeightsSection({
+	matchup,
+	pickOrder,
+	entries,
+	onChange,
+	reset$,
+}: {
+	matchup: LC.MatchupKey
+	pickOrder: number
+	entries: LC.MatchupWeightEntry[]
+	onChange: (entries: LC.MatchupWeightEntry[]) => void
+	reset$: Rx.Subject<void>
+}) {
 	const label = pickLabel(matchup).toLowerCase()
 
 	function setWeight(entryKey: string, weight: number) {
-		onChange(entries.map((e) => LC.matchupEntryKey(matchup, e.teams) === entryKey ? { ...e, weight } as LC.MatchupWeightEntry : e))
+		onChange(entries.map((e) => (LC.matchupEntryKey(matchup, e.teams) === entryKey ? ({ ...e, weight } as LC.MatchupWeightEntry) : e)))
 	}
 	function remove(entryKey: string) {
 		onChange(entries.filter((e) => LC.matchupEntryKey(matchup, e.teams) !== entryKey))
@@ -349,9 +383,15 @@ function MatchupWeightsSection(
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
-							<th scope="col" className="text-left font-normal">Matchup</th>
-							<th scope="col" className="text-left font-normal">Weight</th>
-							<th scope="col" className="sr-only">Remove</th>
+							<th scope="col" className="text-left font-normal">
+								Matchup
+							</th>
+							<th scope="col" className="text-left font-normal">
+								Weight
+							</th>
+							<th scope="col" className="sr-only">
+								Remove
+							</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -405,7 +445,7 @@ function isSideComplete(matchup: LC.MatchupKey, side: LC.MatchupSide | undefined
 
 function AddMatchupRow({ matchup, onAdd }: { matchup: LC.MatchupKey; onAdd: (teams: [LC.MatchupSide, LC.MatchupSide]) => void }) {
 	const [sides, setSides] = React.useState<[LC.MatchupSide | undefined, LC.MatchupSide | undefined]>([undefined, undefined])
-	const setSide = (team: 0 | 1, side: LC.MatchupSide | undefined) => setSides((prev) => team === 0 ? [side, prev[1]] : [prev[0], side])
+	const setSide = (team: 0 | 1, side: LC.MatchupSide | undefined) => setSides((prev) => (team === 0 ? [side, prev[1]] : [prev[0], side]))
 	const complete = isSideComplete(matchup, sides[0]) && isSideComplete(matchup, sides[1])
 
 	return (
@@ -431,18 +471,21 @@ function AddMatchupRow({ matchup, onAdd }: { matchup: LC.MatchupKey; onAdd: (tea
 	)
 }
 
-function MatchupSideInput(
-	{ matchup, team, side, onChange }: {
-		matchup: LC.MatchupKey
-		team: 1 | 2
-		side: LC.MatchupSide | undefined
-		onChange: (side: LC.MatchupSide | undefined) => void
-	},
-) {
+function MatchupSideInput({
+	matchup,
+	team,
+	side,
+	onChange,
+}: {
+	matchup: LC.MatchupKey
+	team: 1 | 2
+	side: LC.MatchupSide | undefined
+	onChange: (side: LC.MatchupSide | undefined) => void
+}) {
 	if (matchup === 'FactionUnitMatchup') {
 		const faction = (side as LC.FactionUnit | undefined)?.Faction
 		const unit = (side as LC.FactionUnit | undefined)?.Unit
-		const unitOptions = (faction ? L.StaticLayerComponents.factionToUnit[faction] ?? [] : []).map((u) => ({ value: u, label: u }))
+		const unitOptions = (faction ? (L.StaticLayerComponents.factionToUnit[faction] ?? []) : []).map((u) => ({ value: u, label: u }))
 		return (
 			<div className="flex items-center gap-1">
 				<ComboBox

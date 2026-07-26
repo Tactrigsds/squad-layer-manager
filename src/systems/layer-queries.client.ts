@@ -1,11 +1,13 @@
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { toAsyncGenerator } from '@/lib/async'
-import * as Gen from '@/lib/generator'
-import * as Obj from '@/lib/object'
+import { useQuery } from '@tanstack/react-query'
+import * as React from 'react'
 
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as Gen from '@/lib/generator-utils'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
@@ -20,14 +22,9 @@ import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
 import type * as WorkerTypes from '@/systems/layer-queries.worker'
-import * as React from 'react'
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-
-import * as Rx from 'rxjs'
-import * as Zus from 'zustand'
 
 export type Store = {
 	// bumped whenever mutable state the worker holds (filter entities, generation weights) changes, invalidating
@@ -42,7 +39,7 @@ export type Store = {
 
 // we don't want to use the entire query context as query state so instead we just increment these counters whenever one of them change and depend on that instead
 export const Store = Zus.createStore<Store>((set, get, store) => {
-	return ({
+	return {
 		backgroundStateEpoch: 0,
 		hoveredConstraintItemId: null,
 		incrementBackgroundStateEpoch() {
@@ -53,7 +50,7 @@ export const Store = Zus.createStore<Store>((set, get, store) => {
 		setStatus(status, errorMessage) {
 			set({ status, errorMessage: errorMessage ?? null })
 		},
-	})
+	}
 })
 
 export namespace Actions {
@@ -65,7 +62,7 @@ export namespace Actions {
 // only pool membership disables rows; constraint values are raw matches (pre-inversion), index-aligned to constraints
 function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
 	if (canForceSelect) return false
-	const index = constraints.findIndex(c => c.type === 'filter-entity' && c.poolFilterMode)
+	const index = constraints.findIndex((c) => c.type === 'filter-entity' && c.poolFilterMode)
 	if (index === -1) return false
 	const poolConstraint = constraints[index] as Extract<LQY.Constraint, { type: 'filter-entity' }>
 	const matched = layerData.constraints.values?.[index] ?? false
@@ -78,23 +75,15 @@ export type ConstraintRowDetails = {
 	queriedConstraints: LQY.Constraint[]
 	matchedConstraintDescriptors: LQY.MatchDescriptor[]
 }
-export type RowData = L.KnownLayer & Record<string, any> & { 'constraints': ConstraintRowDetails; 'isRowDisabled': boolean }
+export type RowData = L.KnownLayer & Record<string, any> & { constraints: ConstraintRowDetails; isRowDisabled: boolean }
 /**
  * Convert a layer to RowData format with constraints and isRowDisabled computed
  */
-function layerToRowData(
-	layer: any,
-	userCanForceSelect: boolean,
-	queriedConstraints: LQY.Constraint[],
-): RowData {
+function layerToRowData(layer: any, userCanForceSelect: boolean, queriedConstraints: LQY.Constraint[]): RowData {
 	// TODO  this is madness
-	const constraintValues = Array.isArray(layer.constraints)
-		? layer.constraints
-		: layer.constraints?.values ?? []
+	const constraintValues = Array.isArray(layer.constraints) ? layer.constraints : (layer.constraints?.values ?? [])
 
-	const matchDescriptors = Array.isArray(layer.matchDescriptors)
-		? layer.matchDescriptors
-		: layer.matchDescriptors ?? []
+	const matchDescriptors = Array.isArray(layer.matchDescriptors) ? layer.matchDescriptors : (layer.matchDescriptors ?? [])
 
 	const matchedConstraintDescriptors = matchDescriptors
 
@@ -130,7 +119,7 @@ export type QueryLayersInputOpts = {
 }
 
 export type QueryLayersPacket =
-	| { code: 'layers-page' } & QueryLayersPageData
+	| ({ code: 'layers-page' } & QueryLayersPageData)
 	| { code: 'menu-item-possible-values'; values: Record<string, string[]> }
 
 async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGenerator<QueryLayersPacket> {
@@ -155,10 +144,10 @@ async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGene
 		if (input.selectedLayers) {
 			const layerIdsForPage = input.selectedLayers.slice(
 				(input.pageIndex ?? 0) * input.pageSize,
-				((input.pageIndex ?? 0) * input.pageSize) + input.pageSize,
+				(input.pageIndex ?? 0) * input.pageSize + input.pageSize,
 			)
 			const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
-				const layer = page!.layers.find(l => l.id === id)
+				const layer = page!.layers.find((l) => l.id === id)
 				if (layer) {
 					return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
 				}
@@ -244,13 +233,13 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 	}
 
 	if (selectedLayers) {
-		const filter = FB.inValues('id', selectedLayers.filter(layer => LC.isKnownAndValidLayer(layer, opts.cfg)))
+		const filter = FB.inValues(
+			'id',
+			selectedLayers.filter((layer) => LC.isKnownAndValidLayer(layer, opts.cfg)),
+		)
 		baseInput = {
 			...baseInput,
-			constraints: [
-				...(baseInput.constraints?.filter(c => !c.filterApplState) ?? []),
-				CB.filterAnon('show-selected', filter),
-			],
+			constraints: [...(baseInput.constraints?.filter((c) => !c.filterApplState) ?? []), CB.filterAnon('show-selected', filter)],
 		}
 	}
 
@@ -263,16 +252,14 @@ export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: Query
 	}
 }
 
-export async function checkBackburnerTemplates(
-	input: LQY.BaseQueryInput & { templates: { itemId: string; filter: F.FilterNode }[] },
-) {
+export async function checkBackburnerTemplates(input: LQY.BaseQueryInput & { templates: { itemId: string; filter: F.FilterNode }[] }) {
 	return await sendWorkerRequest('checkBackburnerTemplates', input)
 }
 
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
-	const choiceRowData = res.chosenLayers.map(l => l ? layerToRowData(l, false, input.constraints ?? []) : undefined)
+	const choiceRowData = res.chosenLayers.map((l) => (l ? layerToRowData(l, false, input.constraints ?? []) : undefined))
 	return {
 		...res,
 		chosenLayers: choiceRowData,
@@ -308,9 +295,9 @@ const emptySettings = SETTINGS.PublicServerSettingsSchema.parse({})
 
 // squadServerFrameKey is optional so this can be used from contexts with no active squad-server (e.g. the filter editor)
 export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
-	return ZusUtils.useStore(
+	return Zus.useStore(
 		squadServerFrameKey ?? null,
-		ZusUtils.useDeep(
+		Zus.useDeep(
 			React.useCallback(
 				(state: SquadServerFrame.State | undefined) => SETTINGS.getSettingsConstraints(state?.settings.saved ?? emptySettings),
 				[],
@@ -319,15 +306,12 @@ export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerF
 	)
 }
 
-function filterAndReportInvalidDescriptors(
-	allConstraints: LQY.Constraint[],
-	matchDescriptors: LQY.MatchDescriptor[] | undefined,
-) {
+function filterAndReportInvalidDescriptors(allConstraints: LQY.Constraint[], matchDescriptors: LQY.MatchDescriptor[] | undefined) {
 	if (!matchDescriptors) return undefined
 
 	const validDescriptors: LQY.MatchDescriptor[] = []
 	for (let i = 0; i < matchDescriptors.length; i++) {
-		if (!allConstraints.some(c => c.id === matchDescriptors[i].constraintId)) {
+		if (!allConstraints.some((c) => c.id === matchDescriptors[i].constraintId)) {
 			console.error(`Matched constraint ${matchDescriptors[i].constraintId} is not present in the system`)
 		} else {
 			validDescriptors.push(matchDescriptors[i])
@@ -348,47 +332,47 @@ export function useLayerItemStatusData(
 	squadServerFrameKey?: SquadServerFrame.Key,
 ): LayerItemStatusData | null {
 	const queriedConstraints = useLayerItemStatusConstraints(squadServerFrameKey)
-	const statuses = ZusUtils.useStore(squadServerFrameKey, s => s?.layerItemStatuses)
+	const statuses = Zus.useStore(squadServerFrameKey, (s) => s?.layerItemStatuses)
 	const itemId = LQY.resolveId(layerItem)
 
 	const allMatchDescriptors = statuses?.matchDescriptors
 	const presentLayers = statuses?.present
 
-	const highlightedMatchDescriptors = ZusUtils.useStore(
+	const highlightedMatchDescriptors = Zus.useStore(
 		Store,
-		ZusUtils.useDeep(React.useCallback((store) => {
-			if (!allMatchDescriptors) return
-			const hoveredConstraintItemId = store.hoveredConstraintItemId ?? undefined
-			const hoveredMatchDescriptors = hoveredConstraintItemId && hoveredConstraintItemId !== itemId
-					&& filterAndReportInvalidDescriptors(
-						queriedConstraints,
-						allMatchDescriptors.get(hoveredConstraintItemId)?.filter(vd => vd.type === 'repeat-rule' && vd.sourceItemId === itemId),
-					)
-				|| undefined
+		Zus.useDeep(
+			React.useCallback(
+				(store) => {
+					if (!allMatchDescriptors) return
+					const hoveredConstraintItemId = store.hoveredConstraintItemId ?? undefined
+					const hoveredMatchDescriptors =
+						(hoveredConstraintItemId &&
+							hoveredConstraintItemId !== itemId &&
+							filterAndReportInvalidDescriptors(
+								queriedConstraints,
+								allMatchDescriptors
+									.get(hoveredConstraintItemId)
+									?.filter((vd) => vd.type === 'repeat-rule' && vd.sourceItemId === itemId),
+							)) ||
+						undefined
 
-			const localMatchDescriptors = hoveredConstraintItemId === itemId
-					&& filterAndReportInvalidDescriptors(
-						queriedConstraints,
-						allMatchDescriptors.get(itemId),
-					)
-				|| undefined
+					const localMatchDescriptors =
+						(hoveredConstraintItemId === itemId &&
+							filterAndReportInvalidDescriptors(queriedConstraints, allMatchDescriptors.get(itemId))) ||
+						undefined
 
-			return localMatchDescriptors ?? hoveredMatchDescriptors
-		}, [
-			allMatchDescriptors,
-			itemId,
-			queriedConstraints,
-		])),
+					return localMatchDescriptors ?? hoveredMatchDescriptors
+				},
+				[allMatchDescriptors, itemId, queriedConstraints],
+			),
+		),
 	)
 
 	return React.useMemo(() => {
 		if (!allMatchDescriptors || !presentLayers) return null
-		const matchingDescriptors = filterAndReportInvalidDescriptors(
-			queriedConstraints,
-			allMatchDescriptors.get(itemId),
-		) ?? []
+		const matchingDescriptors = filterAndReportInvalidDescriptors(queriedConstraints, allMatchDescriptors.get(itemId)) ?? []
 
-		const matchingConstraintIds = matchingDescriptors.map(c => c.constraintId)
+		const matchingConstraintIds = matchingDescriptors.map((c) => c.constraintId)
 
 		return {
 			present: presentLayers,
@@ -397,18 +381,10 @@ export function useLayerItemStatusData(
 			matchingDescriptors,
 			highlightedMatchDescriptors,
 		}
-	}, [
-		highlightedMatchDescriptors,
-		allMatchDescriptors,
-		itemId,
-		presentLayers,
-		queriedConstraints,
-	])
+	}, [highlightedMatchDescriptors, allMatchDescriptors, itemId, presentLayers, queriedConstraints])
 }
 
-export async function fetchLayersOutOfPool(
-	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] },
-): Promise<L.LayerId[] | null> {
+export async function fetchLayersOutOfPool(input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }): Promise<L.LayerId[] | null> {
 	const res = await sendWorkerRequest('getLayersOutOfPool', input)
 	if (res.code !== 'ok') {
 		console.error('getLayersOutOfPool:', res)
@@ -431,10 +407,7 @@ export async function fetchLayerItemStatuses(input: LQY.LayerItemStatusesInput):
 	return res.statuses
 }
 
-export function useLayerExists(
-	input?: LQY.LayerExistsInput,
-	options?: { enabled?: boolean; usePlaceholderData?: boolean },
-) {
+export function useLayerExists(input?: LQY.LayerExistsInput, options?: { enabled?: boolean; usePlaceholderData?: boolean }) {
 	options ??= {}
 	return useQuery({
 		enabled: input && options?.enabled !== false,
@@ -450,7 +423,10 @@ export function useLayerExists(
 }
 
 export function useDepKey(input?: unknown) {
-	const backgroundStateEpoch = ZusUtils.useStore(Store, ZusUtils.useShallow(s => s.backgroundStateEpoch))
+	const backgroundStateEpoch = Zus.useStore(
+		Store,
+		Zus.useShallow((s) => s.backgroundStateEpoch),
+	)
 	return getDepKey(input, backgroundStateEpoch)
 }
 
@@ -486,7 +462,7 @@ function getDepKey(input: unknown, backgroundStateEpoch: number) {
 export const QUERY_PRIORITIES: Record<WorkerTypes.RequestInner['type'], number> = {
 	'filter-update': 5,
 	'generation-update': 5,
-	'init': 5,
+	init: 5,
 	getLayerItemStatuses: 4,
 	getLayersOutOfPool: 4,
 	queryLayers: 3,
@@ -520,26 +496,28 @@ async function sendWorkerRequest<T extends WorkerTypes.ToWorker['type']>(
 
 	worker.postMessage(message)
 
-	const response$ = Rx.fromEvent(worker, 'message').pipe(Rx.concatMap((e: any) => {
-		const response = e.data as WorkerTypes.FromWorker
-		if (response.seqId !== seqId) {
-			return Rx.EMPTY
-		}
+	const response$ = Rx.fromEvent(worker, 'message').pipe(
+		Rx.concatMap((e: any) => {
+			const response = e.data as WorkerTypes.FromWorker
+			if (response.seqId !== seqId) {
+				return Rx.EMPTY
+			}
 
-		if (response.type === 'worker-error') {
-			const error = new Error('error from worker: ' + response.error)
-			toast.error(error.message)
-			throw error
-		}
+			if (response.type === 'worker-error') {
+				const error = new Error('error from worker: ' + response.error)
+				toast.error(error.message)
+				throw error
+			}
 
-		if (response.type !== type) {
-			const error = new Error(`Unexpected response type: ${response.type}`)
-			toast.error(error.message)
-			throw error
-		}
+			if (response.type !== type) {
+				const error = new Error(`Unexpected response type: ${response.type}`)
+				toast.error(error.message)
+				throw error
+			}
 
-		return Rx.of(response.payload)
-	}))
+			return Rx.of(response.payload)
+		}),
+	)
 
 	return (await Rx.firstValueFrom(response$)) as any
 }
@@ -579,10 +557,10 @@ async function* streamLayerQueriesResponse(input: LQY.LayersQueryInput) {
 
 			return Rx.of(response.payload)
 		}),
-		Rx.takeWhile(e => e.code !== 'end'),
+		Rx.takeWhile((e) => e.code !== 'end'),
 	)
 
-	yield* toAsyncGenerator(response$)
+	yield* Rx.Ext.toAsyncGenerator(response$)
 }
 
 let setup$: Promise<void> | null = null
@@ -617,16 +595,18 @@ async function setup() {
 	}
 
 	// set downloading-layers status when the worker signals that it has started a download
-	Rx.fromEvent(worker, 'message').pipe(
-		Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
-		Rx.tap((message) => {
-			if (message.type !== 'layer-download-started') return
-			const store = Store.getState()
-			if (store.status !== 'initializing') return
-			store.setStatus('downloading-layers')
-		}),
-		Rx.takeWhile(msg => msg.type !== 'init'),
-	).subscribe()
+	Rx.fromEvent(worker, 'message')
+		.pipe(
+			Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
+			Rx.tap((message) => {
+				if (message.type !== 'layer-download-started') return
+				const store = Store.getState()
+				if (store.status !== 'initializing') return
+				store.setStatus('downloading-layers')
+			}),
+			Rx.takeWhile((msg) => msg.type !== 'init'),
+		)
+		.subscribe()
 
 	const initPromise = sendWorkerRequest('init', ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
@@ -639,15 +619,17 @@ async function setup() {
 	// generation weights are a global setting: the config stream re-pushes on every settings change, so refresh the
 	// worker's copy instead of leaving it frozen at whatever was configured when the page loaded. the stream replays
 	// the config the worker was just initialized with, so skip that one and only forward actual changes
-	ConfigClient.config$.pipe(
-		Rx.map((config) => config.layerGeneration),
-		Rx.distinctUntilChanged(Obj.deepEqual),
-		Rx.skip(1),
-		Rx.observeOn(Rx.asyncScheduler),
-	).subscribe((generation) => {
-		void sendWorkerRequest('generation-update', generation)
-		Store.getState().incrementBackgroundStateEpoch()
-	})
+	ConfigClient.config$
+		.pipe(
+			Rx.map((config) => config.layerGeneration),
+			Rx.distinctUntilChanged(Obj.deepEqual),
+			Rx.skip(1),
+			Rx.observeOn(Rx.asyncScheduler),
+		)
+		.subscribe((generation) => {
+			void sendWorkerRequest('generation-update', generation)
+			Store.getState().incrementBackgroundStateEpoch()
+		})
 
 	await initPromise
 	// Set up window focus handlers after successful initialization

@@ -1,3 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
+import React from 'react'
+import { HexColorPicker } from 'react-colorful'
+import { z } from 'zod'
+
 import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
 import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
@@ -10,7 +16,6 @@ import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-pan
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
 import { StickyGroup } from '@/components/sticky-group'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -25,15 +30,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useDebounced } from '@/hooks/use-debounce'
 import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as Zod from '@/lib/zod'
-import * as ZusUtils from '@/lib/zustand'
+import * as ZodUtils from '@/lib/zod-utils'
+import * as Zus from '@/lib/zustand'
 import * as Messages from '@/messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BAL from '@/models/balance-triggers.models'
@@ -54,12 +60,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
-import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
-import React from 'react'
-import { HexColorPicker } from 'react-colorful'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
+
 import type SchemaJsonEditorComponent from './schema-json-editor'
 import { MessagePreviewBox } from './warn-reasons-sub'
 
@@ -80,7 +81,7 @@ type Path = (string | number)[]
 const TRIGGER_OFF = '__off__'
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
-type ValueState<T = any> = Rx.Observable<T> & { getValue: () => T }
+type ValueState<T = any> = Zus.ValueObservable<T>
 
 const DEBOUNCE_MS = 250
 
@@ -88,21 +89,27 @@ const DEBOUNCE_MS = 250
 
 // derive a child value-state scoped to `key` of the parent. distinctUntilChanged keeps copy-on-write siblings quiet.
 function scopeValue(parent$: ValueState, key: string | number): ValueState {
-	const child$ = parent$.pipe(Rx.map((v: any) => v?.[key]), Rx.distinctUntilChanged()) as ValueState
+	const child$ = parent$.pipe(
+		Rx.map((v: any) => v?.[key]),
+		Rx.distinctUntilChanged(),
+	) as ValueState
 	child$.getValue = () => (parent$.getValue() as any)?.[key]
 	return child$
 }
 
-// current value of a field, re-read on both emissions and reset$. For widgets that render controlled.
-function useFieldValue<T>(value$: ValueState<T>, reset$: Rx.Observable<void>): T {
-	const [v, setV] = React.useState<T>(() => value$.getValue())
-	React.useEffect(() => {
-		const sub = new Rx.Subscription()
-		sub.add(value$.subscribe(setV))
-		sub.add(reset$.subscribe(() => setV(value$.getValue())))
-		return () => sub.unsubscribe()
-	}, [value$, reset$])
-	return v
+// derive a child value-state through a projection rather than a key, for a child whose shape in the parent varies
+// (a union member). Same contract as scopeValue.
+function mapValue<T, U>(parent$: ValueState<T>, project: (v: T) => U): ValueState<U> {
+	const child$ = parent$.pipe(Rx.map(project), Rx.distinctUntilChanged()) as ValueState<U>
+	child$.getValue = () => project(parent$.getValue())
+	return child$
+}
+
+// current value of a field, for widgets that render controlled. Takes no reset$: a reset writes the draft, which
+// every value state is derived from, so the emission it already causes is the re-read. Uncontrolled inputs are the
+// ones the pulse exists for -- see useReset.
+function useFieldValue<T>(value$: ValueState<T>): T {
+	return Zus.useStore(value$)
 }
 
 // run `fn` whenever reset$ fires (used by uncontrolled inputs to re-read their DOM value)
@@ -184,23 +191,26 @@ function emptyValue(node: Node): unknown {
 // the draft's custom message variables (rbac-style sibling read), so the reason preview can render templates
 const MessageVarsContext = React.createContext<Record<string, string>>({})
 
+function readMessageVars(v: any): Record<string, string> {
+	return Object.fromEntries(
+		((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) => (mv.name ? [[mv.name, mv.value ?? '']] : [])),
+	)
+}
+
+// This one feeds a context at the form root, so it must hold its identity while the contents match: a fresh object
+// per draft change would re-render the whole form on every keystroke. The selector is memoized per form instance
+// rather than at module scope because the settings page mounts one form per section.
 function useMessageVars(value$: ValueState): Record<string, string> {
-	const read = (v: any): Record<string, string> =>
-		Object.fromEntries(
-			((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap(mv => mv.name ? [[mv.name, mv.value ?? '']] : []),
-		)
-	const [vars, setVars] = React.useState(() => read(value$.getValue()))
-	React.useEffect(() => {
-		const sub = value$.subscribe((v) =>
-			setVars((prev) => {
-				const next = read(v)
-				const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
-				return same ? prev : next
-			})
-		)
-		return () => sub.unsubscribe()
-	}, [value$])
-	return vars
+	const read = React.useMemo(() => {
+		let prev: Record<string, string> = {}
+		return (v: any) => {
+			const next = readMessageVars(v)
+			const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
+			if (!same) prev = next
+			return prev
+		}
+	}, [])
+	return Zus.useStore(value$, read)
 }
 
 // per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
@@ -295,8 +305,8 @@ function RbacSuperCallout() {
 				Super users & roles
 			</p>
 			<p className="text-xs text-muted-foreground">
-				Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including unlimited kick
-				timeouts) and cannot be modified from this page.
+				Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including unlimited
+				kick timeouts) and cannot be modified from this page.
 			</p>
 			{superUsers.length > 0 && (
 				<div className="flex flex-wrap items-center gap-1.5">
@@ -315,14 +325,17 @@ function RbacSuperCallout() {
 						const role = guildRoles.find((r) => r.id === id)
 						return (
 							<span key={id} className="flex items-center gap-1.5 rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
-								{role
-									? (
-										<>
-											<span className="h-2 w-2 shrink-0 rounded-full border" style={{ backgroundColor: role.color ?? 'transparent' }} />
-											{role.name}
-										</>
-									)
-									: <span className="font-mono">{id}</span>}
+								{role ? (
+									<>
+										<span
+											className="h-2 w-2 shrink-0 rounded-full border"
+											style={{ backgroundColor: role.color ?? 'transparent' }}
+										/>
+										{role.name}
+									</>
+								) : (
+									<span className="font-mono">{id}</span>
+								)}
 							</span>
 						)
 					})}
@@ -343,7 +356,7 @@ function sectionExtraFor(path: Path): React.FC | undefined {
 type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path }
 
 function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
 }
 
@@ -384,7 +397,7 @@ function syncedGroups(grouping: PG.Grouping, orgFlags: BM.PlayerFlag[] | undefin
 // bespoke editor for `playerGroupings`. Each grouping is an ordered rule list (first match wins), so priority is row
 // position rather than a number. Group colors are derived from the rules' flags and kept in a secondary section.
 function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as PlayerGroupingsValue) ?? {}
+	const value = (useFieldValue(value$) as PlayerGroupingsValue) ?? {}
 	const groupingIds = Object.keys(value)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	// the union across running servers -- fetched once here rather than per rule row
@@ -395,18 +408,24 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 
 	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the group name), where re-emitting would
 	// clobber an in-flight keystroke. Structural edits leave it off so inputs re-seed after re-indexing.
-	const update = React.useCallback((fn: (v: PlayerGroupingsValue) => PlayerGroupingsValue, quiet?: boolean) => {
-		onChange(fn((value$.getValue() as PlayerGroupingsValue) ?? {}))
-		if (!quiet) reset$.next()
-	}, [onChange, value$, reset$])
+	const update = React.useCallback(
+		(fn: (v: PlayerGroupingsValue) => PlayerGroupingsValue, quiet?: boolean) => {
+			onChange(fn((value$.getValue() as PlayerGroupingsValue) ?? {}))
+			if (!quiet) reset$.next()
+		},
+		[onChange, value$, reset$],
+	)
 
 	// every rule edit re-syncs the group map, so a group can never outlive the last rule naming it
-	const updateGrouping = React.useCallback((id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => {
-		update((v) => {
-			const next = fn(v[id] ?? PG.EMPTY_GROUPING)
-			return { ...v, [id]: { ...next, groups: syncedGroups(next, orgFlags) } }
-		}, quiet)
-	}, [update, orgFlags])
+	const updateGrouping = React.useCallback(
+		(id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => {
+			update((v) => {
+				const next = fn(v[id] ?? PG.EMPTY_GROUPING)
+				return { ...v, [id]: { ...next, groups: syncedGroups(next, orgFlags) } }
+			}, quiet)
+		},
+		[update, orgFlags],
+	)
 
 	const [newGrouping, setNewGrouping] = React.useState('')
 	const trimmedNew = newGrouping.trim()
@@ -428,8 +447,8 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 		<div className="space-y-4">
 			{groupingIds.length === 0 && (
 				<p className="text-xs text-muted-foreground">
-					No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick between
-					them by name.
+					No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick
+					between them by name.
 				</p>
 			)}
 			{groupingIds.map((id) => (
@@ -458,7 +477,8 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 					}}
 				/>
 				<Button type="button" variant="outline" size="sm" disabled={!canAdd} onClick={addGrouping}>
-					<Icons.Plus className="mr-1 h-4 w-4" />Add grouping
+					<Icons.Plus className="mr-1 h-4 w-4" />
+					Add grouping
 				</Button>
 			</div>
 		</div>
@@ -477,37 +497,35 @@ function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' |
 // sentinel option: leaves the list and lets a name be typed instead
 const ADD_NEW_GROUP = '__add-new-group__'
 
-function RuleRow(
-	{
-		rule,
-		idx,
-		groupingId,
-		groupNames,
-		groupColors,
-		usedFlags,
-		usedAdminGroups,
-		adminGroupOptions,
-		value$,
-		reset$,
-		onReplace,
-		onChange,
-		onRemove,
-	}: {
-		rule: PG.GroupRule
-		idx: number
-		groupingId: string
-		groupNames: string[]
-		groupColors: Record<string, string>
-		usedFlags: string[]
-		usedAdminGroups: string[]
-		adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onReplace: (idx: number, rule: PG.GroupRule) => void
-		onChange: (idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) => void
-		onRemove: () => void
-	},
-) {
+function RuleRow({
+	rule,
+	idx,
+	groupingId,
+	groupNames,
+	groupColors,
+	usedFlags,
+	usedAdminGroups,
+	adminGroupOptions,
+	value$,
+	reset$,
+	onReplace,
+	onChange,
+	onRemove,
+}: {
+	rule: PG.GroupRule
+	idx: number
+	groupingId: string
+	groupNames: string[]
+	groupColors: Record<string, string>
+	usedFlags: string[]
+	usedAdminGroups: string[]
+	adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onReplace: (idx: number, rule: PG.GroupRule) => void
+	onChange: (idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) => void
+	onRemove: () => void
+}) {
 	const drag = DndKit.useDraggable({ type: 'grouping-rule', id: ruleDragId(groupingId, idx) }, { feedback: 'default' })
 	// Several rules feeding one group is the norm, so once the grouping names any group, picking from the list is the
 	// common case and typing is the exception. Which mode a row is in has to be sticky, never derived from whether the
@@ -535,110 +553,109 @@ function RuleRow(
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					{PG.GROUP_RULE_SOURCES.map((source) => <SelectItem key={source} value={source}>{PG.GROUP_RULE_SOURCE_LABELS[source]}
-					</SelectItem>)}
+					{PG.GROUP_RULE_SOURCES.map((source) => (
+						<SelectItem key={source} value={source}>
+							{PG.GROUP_RULE_SOURCE_LABELS[source]}
+						</SelectItem>
+					))}
 				</SelectContent>
 			</Select>
-			{rule.type === 'battlemetrics'
-				? (
-					<BmFlagSelect
-						value={rule.flag || undefined}
-						exclude={usedFlags}
-						onChange={(flag) => onChange(idx, { flag })}
-					/>
-				)
-				: (
-					<ComboBox
-						title="Admin group"
-						value={rule.adminGroup || undefined}
-						options={adminGroupOptions === LOADING
+			{rule.type === 'battlemetrics' ? (
+				<BmFlagSelect value={rule.flag || undefined} exclude={usedFlags} onChange={(flag) => onChange(idx, { flag })} />
+			) : (
+				<ComboBox
+					title="Admin group"
+					value={rule.adminGroup || undefined}
+					options={
+						adminGroupOptions === LOADING
 							? LOADING
-							: adminGroupOptions.filter((o) => o.value === rule.adminGroup || !usedAdminGroups.includes(o.value))}
-						onSelect={(adminGroup) => {
-							if (adminGroup) onChange(idx, { adminGroup })
-						}}
-					/>
-				)}
+							: adminGroupOptions.filter((o) => o.value === rule.adminGroup || !usedAdminGroups.includes(o.value))
+					}
+					onSelect={(adminGroup) => {
+						if (adminGroup) onChange(idx, { adminGroup })
+					}}
+				/>
+			)}
 			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			{namingNewGroup
-				? (
-					<div className="flex min-w-0 items-center gap-1">
-						<TextInputField
-							value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
-							reset$={reset$}
-							onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
-							numeric={false}
-							placeholder="Group name"
-						/>
-						{groupNames.length > 0 && (
-							<Button
-								type="button"
-								size="icon"
-								variant="ghost"
-								className="h-6 w-6 shrink-0"
-								title="Pick an existing group instead"
-								aria-label="Pick an existing group instead"
-								onClick={() => setNamingNewGroup(false)}
-							>
-								<Icons.List className="h-4 w-4" />
-							</Button>
-						)}
-					</div>
-				)
-				: (
-					<ComboBox
-						title="Group"
-						value={rule.group || undefined}
-						options={[
-							...groupNames.map((name): ComboBoxOption<string> => ({
+			{namingNewGroup ? (
+				<div className="flex min-w-0 items-center gap-1">
+					<TextInputField
+						value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'group')}
+						reset$={reset$}
+						onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
+						numeric={false}
+						placeholder="Group name"
+					/>
+					{groupNames.length > 0 && (
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-6 w-6 shrink-0"
+							title="Pick an existing group instead"
+							aria-label="Pick an existing group instead"
+							onClick={() => setNamingNewGroup(false)}
+						>
+							<Icons.List className="h-4 w-4" />
+						</Button>
+					)}
+				</div>
+			) : (
+				<ComboBox
+					title="Group"
+					value={rule.group || undefined}
+					options={[
+						...groupNames.map(
+							(name): ComboBoxOption<string> => ({
 								value: name,
 								label: <span style={{ color: groupColors[name] }}>{name}</span>,
-							})),
-							{ value: ADD_NEW_GROUP, label: <span className="text-muted-foreground">Add new group...</span>, keywords: ['new'] },
-						]}
-						onSelect={(next) => {
-							if (!next) return
-							if (next === ADD_NEW_GROUP) setNamingNewGroup(true)
-							else onChange(idx, { group: next })
-						}}
-					/>
-				)}
-			<Button
-				type="button"
-				size="icon"
-				variant="ghost"
-				className="h-6 w-6 text-destructive"
-				aria-label="Remove rule"
-				onClick={onRemove}
-			>
+							}),
+						),
+						{ value: ADD_NEW_GROUP, label: <span className="text-muted-foreground">Add new group...</span>, keywords: ['new'] },
+					]}
+					onSelect={(next) => {
+						if (!next) return
+						if (next === ADD_NEW_GROUP) setNamingNewGroup(true)
+						else onChange(idx, { group: next })
+					}}
+				/>
+			)}
+			<Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" aria-label="Remove rule" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
 			</Button>
 		</li>
 	)
 }
 
-function GroupingCard(
-	{ groupingId, grouping, value$, reset$, orgFlags, adminGroupOptions, onUpdate, onRemove }: {
-		groupingId: string
-		grouping: PG.Grouping
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		orgFlags: BM.PlayerFlag[] | undefined
-		adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
-		onUpdate: (id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => void
-		onRemove: (id: string) => void
-	},
-) {
+function GroupingCard({
+	groupingId,
+	grouping,
+	value$,
+	reset$,
+	orgFlags,
+	adminGroupOptions,
+	onUpdate,
+	onRemove,
+}: {
+	groupingId: string
+	grouping: PG.Grouping
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	orgFlags: BM.PlayerFlag[] | undefined
+	adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
+	onUpdate: (id: string, fn: (g: PG.Grouping) => PG.Grouping, quiet?: boolean) => void
+	onRemove: (id: string) => void
+}) {
 	const rules = grouping.rules ?? []
 	// a rule the operator is still filling in names no group yet, and an unnamed color row is just noise
 	const groupNames = PG.getGroupNames(grouping).filter(Boolean)
 	const groupColors = Object.fromEntries(groupNames.map((name) => [name, PG.getGroupColor(grouping, name, orgFlags)]))
 
 	function changeRule(idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) {
-		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? { ...r, ...patch } as PG.GroupRule : r) }), quiet)
+		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => (i === idx ? ({ ...r, ...patch } as PG.GroupRule) : r)) }), quiet)
 	}
 	function replaceRule(idx: number, rule: PG.GroupRule) {
-		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => i === idx ? rule : r) }))
+		onUpdate(groupingId, (g) => ({ ...g, rules: g.rules.map((r, i) => (i === idx ? rule : r)) }))
 	}
 	function addRule() {
 		onUpdate(groupingId, (g) => ({ ...g, rules: [...g.rules, { type: 'battlemetrics', flag: '', group: '' }] }))
@@ -656,21 +673,23 @@ function GroupingCard(
 	// belonging to another card's list has to be ignored.
 	const stateRef = React.useRef({ groupingId, onUpdate })
 	stateRef.current = { groupingId, onUpdate }
-	DndKit.useDragEnd(React.useCallback((evt) => {
-		const { active, over } = evt
-		if (active.type !== 'grouping-rule' || !over) return
-		const slot = over.slots.find((s) => s.dragItem.type === 'grouping-rule')
-		if (!slot) return
-		// the separators only ever register before/after; 'on' would mean dropping onto a rule itself, which reorders nothing
-		const position = slot.position
-		if (position === 'on') return
-		const from = parseRuleDragId(active.id)
-		// find() can't narrow the element, so the id is still the union's string | number here
-		const to = parseRuleDragId(String(slot.dragItem.id))
-		const { groupingId, onUpdate } = stateRef.current
-		if (from.groupingId !== groupingId || to.groupingId !== groupingId) return
-		onUpdate(groupingId, (g) => ({ ...g, rules: PG.moveRule(g.rules, from.idx, to.idx, position) }))
-	}, []))
+	DndKit.useDragEnd(
+		React.useCallback((evt) => {
+			const { active, over } = evt
+			if (active.type !== 'grouping-rule' || !over) return
+			const slot = over.slots.find((s) => s.dragItem.type === 'grouping-rule')
+			if (!slot) return
+			// the separators only ever register before/after; 'on' would mean dropping onto a rule itself, which reorders nothing
+			const position = slot.position
+			if (position === 'on') return
+			const from = parseRuleDragId(active.id)
+			// find() can't narrow the element, so the id is still the union's string | number here
+			const to = parseRuleDragId(String(slot.dragItem.id))
+			const { groupingId, onUpdate } = stateRef.current
+			if (from.groupingId !== groupingId || to.groupingId !== groupingId) return
+			onUpdate(groupingId, (g) => ({ ...g, rules: PG.moveRule(g.rules, from.idx, to.idx, position) }))
+		}, []),
+	)
 
 	return (
 		<div className="space-y-3 rounded-md border p-3">
@@ -717,8 +736,8 @@ function GroupingCard(
 								groupingId={groupingId}
 								groupNames={groupNames}
 								groupColors={groupColors}
-								usedFlags={rules.flatMap((r) => r.type === 'battlemetrics' ? [r.flag] : [])}
-								usedAdminGroups={rules.flatMap((r) => r.type === 'admin-list' ? [r.adminGroup] : [])}
+								usedFlags={rules.flatMap((r) => (r.type === 'battlemetrics' ? [r.flag] : []))}
+								usedAdminGroups={rules.flatMap((r) => (r.type === 'admin-list' ? [r.adminGroup] : []))}
 								adminGroupOptions={adminGroupOptions}
 								value$={value$}
 								reset$={reset$}
@@ -731,16 +750,15 @@ function GroupingCard(
 					{rules.length > 0 && <RuleDropSeparator position="after" groupingId={groupingId} idx={rules.length - 1} />}
 				</ol>
 				<Button type="button" variant="outline" size="sm" onClick={addRule}>
-					<Icons.Plus className="mr-1 h-4 w-4" />Add rule
+					<Icons.Plus className="mr-1 h-4 w-4" />
+					Add rule
 				</Button>
 			</div>
 
 			{groupNames.length > 0 && (
 				<details>
 					<summary className="cursor-pointer text-xs text-muted-foreground">Colors ({groupNames.length})</summary>
-					<p className="mt-1 text-xs text-muted-foreground">
-						Following a flag keeps the color in step with battlemetrics.
-					</p>
+					<p className="mt-1 text-xs text-muted-foreground">Following a flag keeps the color in step with battlemetrics.</p>
 					<ul className="mt-1.5 space-y-1">
 						{groupNames.map((group) => {
 							const color = grouping.groups?.[group]?.color
@@ -748,7 +766,9 @@ function GroupingCard(
 							return (
 								<li key={group} className="grid grid-cols-[1.25rem_minmax(0,8rem)_minmax(0,1fr)_auto_7rem] items-center gap-2">
 									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: resolved }} />
-									<span className="min-w-0 truncate text-xs" title={group}>{group}</span>
+									<span className="min-w-0 truncate text-xs" title={group}>
+										{group}
+									</span>
 									<BmFlagSelect
 										title="Color from flag"
 										value={color?.type === 'flag' ? color.flag : undefined}
@@ -818,40 +838,36 @@ function repointPrefix(str: string, oldPrefix: string, newPrefix: string): strin
 	return newPrefix + str.slice(oldPrefix.length)
 }
 
-type CommandsMap = Record<string, { strings?: string[] } | undefined>
-type AliasList = { alias: string; command: string }[]
+type CommandsMap = Record<string, { triggers?: CMD.CommandTrigger[] } | undefined>
 
-function mapCommandStrings(commands: CommandsMap, fn: (s: string) => string): CommandsMap {
+// only a trigger's string carries a prefix; its args template is arguments, which never do
+function mapTriggerStrings(commands: CommandsMap, fn: (s: string) => string): CommandsMap {
 	const out: CommandsMap = {}
-	for (const [id, cmd] of Object.entries(commands)) out[id] = { ...cmd, strings: (cmd?.strings ?? []).map(fn) }
+	for (const [id, cmd] of Object.entries(commands)) {
+		out[id] = { ...cmd, triggers: (cmd?.triggers ?? []).map((t) => CMD.withTriggerString(t, fn(CMD.triggerString(t)))) }
+	}
 	return out
-}
-
-// the command string an alias's expansion starts with (its remaining words are arguments, which carry no prefix)
-function aliasCommandWord(command: string): string {
-	return command.trim().split(/\s+/)[0] ?? ''
-}
-
-// re-points the leading command string of an alias's expansion, leaving its arguments and spacing untouched
-function repointCommandText(command: string, oldPrefix: string, newPrefix: string, prefixes: string[]): string {
-	const match = /^(\s*)(\S+)([\s\S]*)$/.exec(command)
-	if (!match || prefixUsedBy(match[2], prefixes) !== oldPrefix) return command
-	return match[1] + repointPrefix(match[2], oldPrefix, newPrefix) + match[3]
 }
 
 // one editable prefix. The char input is committed on blur/Enter (not per keystroke) because committing propagates a
 // rewrite across every string using it; re-seeded by remounting (its key includes the committed value).
-function PrefixRow(
-	{ index, prefix, isDefault, usage, onCommit, onSetDefault, onRemove }: {
-		index: number
-		prefix: string
-		isDefault: boolean
-		usage: number
-		onCommit: (next: string) => void
-		onSetDefault: () => void
-		onRemove: () => void
-	},
-) {
+function PrefixRow({
+	index,
+	prefix,
+	isDefault,
+	usage,
+	onCommit,
+	onSetDefault,
+	onRemove,
+}: {
+	index: number
+	prefix: string
+	isDefault: boolean
+	usage: number
+	onCommit: (next: string) => void
+	onSetDefault: () => void
+	onRemove: () => void
+}) {
 	const [draft, setDraft] = React.useState(prefix)
 	const invalid = !CMD.isValidPrefix(draft.trim())
 	// discard an invalid edit on blur (reverting to the committed value) rather than propagating a bad prefix into every string
@@ -885,7 +901,9 @@ function PrefixRow(
 				<input type="radio" checked={isDefault} onChange={onSetDefault} aria-label={`Make prefix ${index + 1} the default`} />
 				Default
 			</label>
-			<span className="whitespace-nowrap text-xs text-muted-foreground">{usage} {usage === 1 ? 'use' : 'uses'}</span>
+			<span className="whitespace-nowrap text-xs text-muted-foreground">
+				{usage} {usage === 1 ? 'use' : 'uses'}
+			</span>
 			<Button
 				type="button"
 				size="icon"
@@ -908,12 +926,9 @@ function PrefixRow(
 function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	const rootOnChange = React.useContext(RootOnChangeContext)
-	const root = (useFieldValue(root$, reset$) as
-		| { defaultPrefix?: string; commands?: CommandsMap; commandAliases?: AliasList }
-		| undefined) ?? {}
-	const prefixes = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const root = (useFieldValue(root$) as { defaultPrefix?: string; commands?: CommandsMap } | undefined) ?? {}
+	const prefixes = (useFieldValue(value$) as string[] | undefined) ?? []
 	const commands = root.commands ?? {}
-	const aliases = root.commandAliases ?? []
 	const defaultPrefix = root.defaultPrefix ?? prefixes[0] ?? ''
 
 	const [newPrefix, setNewPrefix] = React.useState('')
@@ -924,13 +939,10 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 		reset$.next()
 	}
 
-	// an alias counts twice over: once for the shortcut, once for the command string it expands to
 	function usageOf(prefix: string): number {
 		let n = 0
-		for (const cmd of Object.values(commands)) for (const s of cmd?.strings ?? []) if (prefixUsedBy(s, prefixes) === prefix) n++
-		for (const a of aliases) {
-			if (prefixUsedBy(a.alias, prefixes) === prefix) n++
-			if (prefixUsedBy(aliasCommandWord(a.command), prefixes) === prefix) n++
+		for (const cmd of Object.values(commands)) {
+			for (const t of cmd?.triggers ?? []) if (prefixUsedBy(CMD.triggerString(t), prefixes) === prefix) n++
 		}
 		return n
 	}
@@ -940,19 +952,12 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 		if (!next || next === oldPrefix || !CMD.isValidPrefix(next)) return
 		const nextPrefixes = prefixes.map((p, i) => (i === idx ? next : p))
 		// target by the OLD prefix list so longest-match stays stable while rewriting
-		const nextCommands = mapCommandStrings(
-			commands,
-			(s) => (prefixUsedBy(s, prefixes) === oldPrefix ? repointPrefix(s, oldPrefix, next) : s),
+		const nextCommands = mapTriggerStrings(commands, (s) =>
+			prefixUsedBy(s, prefixes) === oldPrefix ? repointPrefix(s, oldPrefix, next) : s,
 		)
-		const nextAliases = aliases.map((a) => ({
-			...a,
-			alias: prefixUsedBy(a.alias, prefixes) === oldPrefix ? repointPrefix(a.alias, oldPrefix, next) : a.alias,
-			command: repointCommandText(a.command, oldPrefix, next, prefixes),
-		}))
 		writeRoot({
 			allowedPrefixes: nextPrefixes,
 			commands: nextCommands,
-			commandAliases: nextAliases,
 			defaultPrefix: defaultPrefix === oldPrefix ? next : defaultPrefix,
 		})
 	}
@@ -1010,13 +1015,7 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 							}
 						}}
 					/>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={!newTrimmed || newInvalid || newDuplicate}
-						onClick={addPrefix}
-					>
+					<Button type="button" variant="outline" size="sm" disabled={!newTrimmed || newInvalid || newDuplicate} onClick={addPrefix}>
 						Add prefix
 					</Button>
 				</div>
@@ -1025,77 +1024,165 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	)
 }
 
-// bespoke editor for a command's `strings` array (inline-prefixed, short): lays the inputs out horizontally so they
-// don't each hog a full row. Each string is an uncontrolled TextInputField scoped to its index (re-seeds on reset$).
-function CommandStringsField({ value$, reset$, onChange }: OverrideProps) {
-	const strings = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
-	function structural(next: string[]) {
+// The seed for a trigger being given pinned arguments. Correct as-is for a single-argument command; for anything else
+// it fails validation immediately, and the message names the arguments the command actually takes, which is the
+// fastest way to tell the admin what to write.
+const NEW_TRIGGER_ARGS = '{{rest}}'
+
+// bespoke editor for a command's `triggers` array (inline-prefixed, short). A plain trigger is one input; pinning
+// arguments to it grows a second one on the same row rather than moving it to a table of its own, since it is still
+// just a way of running this command.
+function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps & { cmdId: CMD.CommandId }) {
+	const triggers = (useFieldValue(value$) as CMD.CommandTrigger[] | undefined) ?? []
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
+	// document would re-render all of them on every keystroke anywhere in the form
+	const requireReasonFor$ = React.useMemo(() => scopeValue(root$, 'requireReasonFor'), [root$])
+	const requireReasonFor = useFieldValue(requireReasonFor$) as AAR.AdminActionType[] | undefined
+	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
+	const current = () => (value$.getValue() as CMD.CommandTrigger[]) ?? []
+	function structural(next: CMD.CommandTrigger[]) {
 		onChange(next)
 		reset$.next()
 	}
+	const setAt = (idx: number, next: CMD.CommandTrigger) => onChange(current().map((t, i) => (i === idx ? next : t)))
+
 	return (
-		<div className="flex flex-wrap items-center gap-2">
-			{strings.map((_, idx) => (
-				// oxlint-disable-next-line no-array-index-key
-				<div key={idx} className="flex items-center gap-1">
-					<div className="w-40">
-						<TextInputField
-							value$={scopeValue(value$, idx)}
-							reset$={reset$}
-							numeric={false}
-							placeholder="prefix + command"
-							onChange={(v) => onChange(((value$.getValue() as string[]) ?? []).map((s, i) => (i === idx ? (v ?? '') : s)))}
-						/>
+		<div className="space-y-1">
+			{triggers.map((trigger, idx) => {
+				const args = CMD.triggerArgs(trigger)
+				const trigger$ = scopeValue(value$, idx)
+				return (
+					// oxlint-disable-next-line no-array-index-key
+					<div key={idx} className="flex items-center gap-1">
+						<div className="w-40 shrink-0">
+							<TextInputField
+								value$={mapValue(trigger$, (t) => CMD.triggerString(t ?? ''))}
+								reset$={reset$}
+								numeric={false}
+								placeholder="prefix + command"
+								onChange={(v) => setAt(idx, CMD.withTriggerString(current()[idx] ?? '', v ?? ''))}
+							/>
+						</div>
+						{args === undefined ? (
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-6 px-2 text-xs text-muted-foreground"
+								title="Pin some of this command's arguments, so the trigger becomes a shortcut"
+								onClick={() =>
+									structural(current().map((t, i) => (i === idx ? { string: CMD.triggerString(t), args: NEW_TRIGGER_ARGS } : t)))
+								}
+							>
+								Pin args
+							</Button>
+						) : (
+							<>
+								<div className="min-w-0 flex-1">
+									<TextInputField
+										value$={mapValue(trigger$, (t) => CMD.triggerArgs(t) ?? '')}
+										reset$={reset$}
+										numeric={false}
+										placeholder="{{arg1}} 2h {{rest2}}"
+										onChange={(v) => {
+											const t = current()[idx] ?? ''
+											// Unpin's reset pulse reaches this input before it unmounts; taking that for an edit would re-pin the row
+											if (CMD.triggerArgs(t) === undefined) return
+											setAt(idx, { string: CMD.triggerString(t), args: v ?? '' })
+										}}
+									/>
+								</div>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									className="h-6 px-2 text-xs text-muted-foreground"
+									title="Take this command's arguments as typed instead"
+									onClick={() => structural(current().map((t, i) => (i === idx ? CMD.triggerString(t) : t)))}
+								>
+									Unpin
+								</Button>
+							</>
+						)}
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-6 w-6 shrink-0 text-destructive"
+							aria-label={`Remove trigger ${idx + 1}`}
+							onClick={() => structural(triggers.filter((_, i) => i !== idx))}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
 					</div>
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="h-6 w-6 shrink-0 text-destructive"
-						aria-label={`Remove string ${idx + 1}`}
-						onClick={() => structural(strings.filter((_, i) => i !== idx))}
-					>
-						<Icons.X className="h-4 w-4" />
-					</Button>
+				)
+			})}
+			<div className="flex items-center gap-2">
+				<Button type="button" variant="outline" size="sm" onClick={() => structural([...current(), ''])}>
+					<Icons.Plus className="mr-1 h-4 w-4" />
+					Add
+				</Button>
+			</div>
+			{/* only where a template is actually being edited: this field renders once per command, and the signature under
+			    every one of them buries the commands themselves */}
+			{triggers.some((t) => CMD.triggerArgs(t) !== undefined) && (
+				<div className="space-y-0.5 text-xs text-muted-foreground">
+					{signature.length === 0 ? (
+						<span>This command takes no arguments, so pinned args can only be fixed text.</span>
+					) : (
+						<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+							<span>Takes</span>
+							{signature.map(({ ref, arg }) => (
+								<span key={ref} className="whitespace-nowrap">
+									<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
+									<span className="ml-1 font-mono">{arg}</span>
+								</span>
+							))}
+						</div>
+					)}
+					<span>
+						A template over the words typed after the trigger. {'{{^arg2}}default{{/arg2}}'} fills one in when it is left out;{' '}
+						{'{{rest2}}'} takes everything from the second word on.
+					</span>
 				</div>
-			))}
-			<Button type="button" variant="outline" size="sm" onClick={() => structural([...strings, ''])}>
-				<Icons.Plus className="mr-1 h-4 w-4" />Add
-			</Button>
+			)}
 		</div>
 	)
 }
 
-// compact editor for a single command (`commands.<id>`): collapses the strings/scopes/enabled sub-sections into a
+// compact editor for a single command (`commands.<id>`): collapses the triggers/allowedChats/enabled sub-sections into a
 // couple of tight rows, moving their descriptions into `?` tooltips. The command name + reset come from the LeafField
-// shell. Schema issues (e.g. a string missing an allowed prefix) still surface under the card via the field's issues.
-function CommandCard({ value$, reset$, onChange }: OverrideProps) {
-	const cfg = (useFieldValue(value$, reset$) as { scopes?: CMD.CommandScope[]; enabled?: boolean; quickReference?: boolean }) ?? {}
-	const scopes = cfg.scopes ?? []
+// shell. Schema issues (e.g. a trigger missing an allowed prefix) still surface under the card via the field's issues.
+function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
+	const cmdId = path[1] as CMD.CommandId
+	const cfg = (useFieldValue(value$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
+	const allowedChats = cfg.allowedChats ?? []
 	const enabled = cfg.enabled ?? true
 	const quickReference = cfg.quickReference ?? false
-	const strings$ = React.useMemo(() => scopeValue(value$, 'strings'), [value$])
+	const triggers$ = React.useMemo(() => scopeValue(value$, 'triggers'), [value$])
 	function patch(p: Record<string, unknown>) {
 		onChange({ ...((value$.getValue() as Record<string, unknown>) ?? {}), ...p })
 	}
 	return (
 		<div className="space-y-2">
-			<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+			<div className="space-y-1">
 				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-					Strings <HelpTip text="Command strings that trigger this command. Each must start with one of the allowed prefixes." />
+					Triggers{' '}
+					<HelpTip text="Strings that run this command, each starting with one of the allowed prefixes. Pin arguments to one to make it a shortcut." />
 				</span>
-				<CommandStringsField value$={strings$} reset$={reset$} onChange={(v) => patch({ strings: v })} path={[]} />
+				<CommandTriggersField value$={triggers$} reset$={reset$} onChange={(v) => patch({ triggers: v })} path={[]} cmdId={cmdId} />
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="flex items-center gap-2">
 					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-						Scopes <HelpTip text="Chat scopes this command is available in (admin and/or public chats)." />
+						Allowed chats <HelpTip text="The in-game chats this command may be typed in." />
 					</span>
 					<ComboBoxMulti
-						title="Scope"
-						values={scopes}
-						options={CMD.COMMAND_SCOPES.options.map((scope) => ({ value: scope, label: CMD.COMMAND_SCOPE_LABELS[scope] }))}
-						onSelect={(next) => patch({ scopes: (typeof next === 'function' ? next(scopes) : next) })}
+						title="Allowed chats"
+						values={allowedChats}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: CMD.CHAT_GROUP_LABELS[group] }))}
+						onSelect={(next) => patch({ allowedChats: typeof next === 'function' ? next(allowedChats) : next })}
 					/>
 				</div>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -1114,88 +1201,6 @@ function CommandCard({ value$, reset$, onChange }: OverrideProps) {
 	)
 }
 
-// what an alias's command text points at, for the status column. `undefined` means there's nothing useful to say:
-// either the text is still empty, or its args are malformed, which surfaces as a schema issue under the field instead.
-type AliasStatus = { broken: boolean; label: string; title: string }
-function aliasStatus(command: string, commands: CMD.CommandConfigs | undefined): AliasStatus | undefined {
-	if (!commands || command.trim() === '') return undefined
-	const res = CMD.resolveAliasCommand(command, commands)
-	if (res.code === 'err:invalid-args') return undefined
-	if (res.code === 'err:unknown-command') return { broken: true, label: 'Unavailable', title: res.msg }
-	if (!commands[res.cmdId].enabled) {
-		return { broken: true, label: 'Disabled', title: `The "${res.cmdId}" command is disabled, so this alias does nothing.` }
-	}
-	return { broken: false, label: res.cmdId, title: `Runs the "${res.cmdId}" command.` }
-}
-
-// bespoke editor for `commandAliases`: an alias is just a shortcut string and the full command it runs, so the row is
-// two text fields plus a status showing which command it resolves to (and whether that command is usable).
-function CommandAliasesField({ value$, reset$, onChange }: OverrideProps) {
-	return (
-		<PresetTableField
-			value$={value$}
-			reset$={reset$}
-			onChange={onChange}
-			headers={
-				<>
-					<TableHead className="w-[12rem]">Alias</TableHead>
-					<TableHead>Full command</TableHead>
-					<TableHead className="w-[9rem]">Runs</TableHead>
-					<TableHead className="w-8" />
-				</>
-			}
-			newRow={() => ({ alias: '', command: '' })}
-			Row={CommandAliasRow}
-		/>
-	)
-}
-
-function CommandAliasRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
-	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const alias$ = React.useMemo(() => scopeValue(row$, 'alias'), [row$])
-	const command$ = React.useMemo(() => scopeValue(row$, 'command'), [row$])
-	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
-	// the command text is read reactively so the status follows the input (a debounce behind it, like every other field)
-	const command = (useFieldValue(command$, reset$) as string | undefined) ?? ''
-	const commands = ((useFieldValue(root$, reset$) as { commands?: CMD.CommandConfigs } | undefined) ?? {}).commands
-	const status = aliasStatus(command, commands)
-
-	const setField = (key: 'alias' | 'command') => (v: any) => {
-		const arr = [...((parent$.getValue() as CMD.CommandAlias[]) ?? [])]
-		arr[idx] = { ...arr[idx], [key]: v ?? '' }
-		parentOnChange(arr)
-	}
-
-	return (
-		<TableRow>
-			<TableCell className="align-top">
-				<TextInputField value$={alias$} reset$={reset$} onChange={setField('alias')} numeric={false} placeholder="/rules" />
-			</TableCell>
-			<TableCell className="align-top">
-				<TextInputField
-					value$={command$}
-					reset$={reset$}
-					onChange={setField('command')}
-					numeric={false}
-					placeholder="/broadcast Read the rules"
-				/>
-			</TableCell>
-			<TableCell className="align-top">
-				{status && (
-					<Badge variant={status.broken ? 'destructive' : 'outline'} className="font-mono text-xs" title={status.title}>
-						{status.label}
-					</Badge>
-				)}
-			</TableCell>
-			<TableCell className="align-top">
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
-					<Icons.X className="h-4 w-4" />
-				</Button>
-			</TableCell>
-		</TableRow>
-	)
-}
-
 function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 	return <TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric={false} secret placeholder="Password" />
 }
@@ -1208,9 +1213,9 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 	const [copied, setCopied] = React.useState(false)
 	const copiedTimeout = React.useRef<ReturnType<typeof setTimeout>>(null)
 	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
-	const repoUrl = ZusUtils.useStore(ConfigClient.Store, (s) => s?.repoUrl)
+	const repoUrl = Zus.useStore(ConfigClient.Store, (s) => s?.repoUrl)
 	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/configuring.md#server-agent` : undefined
-	const format = (v: any) => v === null || v === undefined ? '' : String(v)
+	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
 	useReset(reset$, () => {
 		const formatted = format(value$.getValue())
 		if (ref.current && ref.current.value !== formatted) ref.current.value = formatted
@@ -1230,9 +1235,12 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 		if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
 		copiedTimeout.current = setTimeout(() => setCopied(false), 1500)
 	}
-	React.useEffect(() => () => {
-		if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
-	}, [])
+	React.useEffect(
+		() => () => {
+			if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
+		},
+		[],
+	)
 
 	return (
 		<div className="space-y-1.5">
@@ -1250,18 +1258,15 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 					className="flex-1 min-w-0 bg-transparent px-3 py-1 font-mono text-sm outline-none placeholder:text-muted-foreground placeholder:font-sans"
 				/>
 				<InputGroupAddon align="inline-end">
-					<InputGroupButton
-						size="icon-xs"
-						aria-label={show ? 'Hide token' : 'Show token'}
-						onClick={() => setShow((s) => !s)}
-					>
+					<InputGroupButton size="icon-xs" aria-label={show ? 'Hide token' : 'Show token'} onClick={() => setShow((s) => !s)}>
 						{show ? <Icons.EyeOff /> : <Icons.Eye />}
 					</InputGroupButton>
 					<InputGroupButton size="icon-xs" aria-label="Copy token" onClick={copy}>
 						{copied ? <Icons.Check /> : <Icons.Copy />}
 					</InputGroupButton>
 					<InputGroupButton size="xs" onClick={generate}>
-						<Icons.RefreshCw />Generate
+						<Icons.RefreshCw />
+						Generate
 					</InputGroupButton>
 				</InputGroupAddon>
 			</InputGroup>
@@ -1278,7 +1283,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 }
 // bespoke editor for the layer-table config (column order/visibility, default sort, extra menu items, default filters)
 function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return (
 		<LayerTableConfigEditor
 			value={value ?? { orderedColumns: [], defaultSortBy: { type: 'random' } }}
@@ -1289,14 +1294,8 @@ function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
 }
 // bespoke editor for the weighted-random layer generation config (pick order + per-value / per-matchup weights)
 function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
-	return (
-		<LayerGenerationConfigEditor
-			value={value ?? LC.LayerGenerationConfigSchema.parse({})}
-			onChange={onChange}
-			reset$={reset$}
-		/>
-	)
+	const value = useFieldValue(value$)
+	return <LayerGenerationConfigEditor value={value ?? LC.LayerGenerationConfigSchema.parse({})} onChange={onChange} reset$={reset$} />
 }
 
 // shared table shell for the label/keywords preset lists (admin action reasons)
@@ -1308,17 +1307,22 @@ type PresetRowProps = {
 	onRemove: () => void
 }
 
-function PresetTableField(
-	{ value$, reset$, onChange, headers, newRow, Row }: {
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any[]) => void
-		headers: React.ReactNode
-		newRow: () => object
-		Row: React.ComponentType<PresetRowProps>
-	},
-) {
-	const value = (useFieldValue(value$, reset$) as object[] | undefined) ?? []
+function PresetTableField({
+	value$,
+	reset$,
+	onChange,
+	headers,
+	newRow,
+	Row,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any[]) => void
+	headers: React.ReactNode
+	newRow: () => object
+	Row: React.ComponentType<PresetRowProps>
+}) {
+	const value = (useFieldValue(value$) as object[] | undefined) ?? []
 
 	// structural edits emit reset$ so the rows' uncontrolled inputs re-read after re-indexing
 	function structural(next: object[]) {
@@ -1405,7 +1409,7 @@ function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
 function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
 	const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
-	const row = useFieldValue(row$, reset$) as LTag.Tag | undefined
+	const row = useFieldValue(row$) as LTag.Tag | undefined
 	const colorRef = React.useRef<HTMLInputElement>(null)
 
 	const setFields = (patch: Partial<LTag.Tag>) => {
@@ -1472,14 +1476,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 				</div>
 			</TableCell>
 			<TableCell className="align-top">
-				<Button
-					type="button"
-					size="icon"
-					variant="ghost"
-					className="h-8 w-8 text-destructive"
-					title="Delete tag"
-					onClick={onRemove}
-				>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" title="Delete tag" onClick={onRemove}>
 					<Icons.X className="h-4 w-4" />
 				</Button>
 			</TableCell>
@@ -1493,7 +1490,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 	const keywords$ = React.useMemo(() => scopeValue(row$, 'keywords'), [row$])
 	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
-	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
+	const actionTexts = (useFieldValue(actionTexts$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
 	const presentActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
 	const remainingActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
 
@@ -1568,7 +1565,11 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 								<SelectValue placeholder="Add action text…" />
 							</SelectTrigger>
 							<SelectContent>
-								{remainingActions.map((a) => <SelectItem key={a} value={a}>{AAR.ADMIN_ACTIONS[a].displayName}</SelectItem>)}
+								{remainingActions.map((a) => (
+									<SelectItem key={a} value={a}>
+										{AAR.ADMIN_ACTIONS[a].displayName}
+									</SelectItem>
+								))}
 							</SelectContent>
 						</Select>
 					)}
@@ -1629,13 +1630,14 @@ function TemplateSyntaxHint() {
 			Supports{' '}
 			<a href={TEMPLATE_SYNTAX_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
 				Mustache {'{{variable}}'} syntax
-			</a>.
+			</a>
+			.
 		</p>
 	)
 }
 
 function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
-	const raw = useFieldValue(row$, reset$) as Partial<AAR.AdminActionReason> | undefined
+	const raw = useFieldValue(row$) as Partial<AAR.AdminActionReason> | undefined
 	const customVars = React.useContext(MessageVarsContext)
 	// tolerate incomplete draft rows so the preview shows the message shape while it's being written
 	const actionTexts = Object.fromEntries(
@@ -1655,8 +1657,8 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 			</PopoverTrigger>
 			<PopoverContent className="w-96 space-y-2" align="end">
 				<p className="text-xs text-muted-foreground">
-					In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has run
-					out).
+					In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has
+					run out).
 				</p>
 				<TemplateSyntaxHint />
 				{reasonPreviewEntries(reason, customVars).map((entry) => (
@@ -1671,16 +1673,19 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 }
 
 // minimally-styled uncontrolled textarea cell: seeded from value$, edits debounced upward, re-read on reset$
-function TextAreaCell(
-	{ value$, reset$, onChange, placeholder }: {
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: string) => void
-		placeholder?: string
-	},
-) {
+function TextAreaCell({
+	value$,
+	reset$,
+	onChange,
+	placeholder,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: string) => void
+	placeholder?: string
+}) {
 	const ref = React.useRef<HTMLTextAreaElement>(null)
-	const format = (v: any) => v === null || v === undefined ? '' : String(v)
+	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
 	const push = useDebounced<string>({ delay: DEBOUNCE_MS, onChange })
 	useReset(reset$, () => {
 		const formatted = format(value$.getValue())
@@ -1706,14 +1711,17 @@ function TextAreaCell(
 // work, so the cell follows `seedFrom$` (the label) for as long as it still holds exactly what that seeded, or nothing
 // at all. The first keyword the operator writes themselves stops it -- no dirty flag to keep in sync, since the input's
 // own contents already say whether they've taken it over.
-function KeywordsCell(
-	{ value$, reset$, seedFrom$, onChange }: {
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		seedFrom$: ValueState
-		onChange: (v: string[]) => void
-	},
-) {
+function KeywordsCell({
+	value$,
+	reset$,
+	seedFrom$,
+	onChange,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	seedFrom$: ValueState
+	onChange: (v: string[]) => void
+}) {
 	const ref = React.useRef<HTMLInputElement>(null)
 	const format = (v: string[] | undefined) => (v ?? []).join(' ')
 	const parse = (text: string) => text.split(/[,\s]+/).filter(Boolean)
@@ -1726,7 +1734,7 @@ function KeywordsCell(
 		}
 	})
 
-	const seedSource = useFieldValue(seedFrom$, reset$) as string | undefined
+	const seedSource = useFieldValue(seedFrom$) as string | undefined
 	const lastSeed = React.useRef(LP.keywordFromLabel(seedSource ?? ''))
 	React.useEffect(() => {
 		const seed = LP.keywordFromLabel(seedSource ?? '')
@@ -1740,12 +1748,7 @@ function KeywordsCell(
 	}, [seedSource, push])
 
 	return (
-		<Input
-			ref={ref}
-			defaultValue={format(value$.getValue())}
-			placeholder="tk afk"
-			onChange={(e) => push(parse(e.currentTarget.value))}
-		/>
+		<Input ref={ref} defaultValue={format(value$.getValue())} placeholder="tk afk" onChange={(e) => push(parse(e.currentTarget.value))} />
 	)
 }
 
@@ -1759,18 +1762,12 @@ function setAtPath(root: any, path: Path, value: unknown): any {
 	return copy
 }
 
-// hook: current value at a nested path of value$, kept in sync on emissions and reset$
-function usePathValue(value$: ValueState, reset$: Rx.Observable<void>, path: Path): unknown {
+// current value at a nested path of value$. The selector is keyed on the path's contents rather than its identity,
+// since callers build the array inline.
+function usePathValue(value$: ValueState, path: Path): unknown {
 	const key = JSON.stringify(path)
-	const [v, setV] = React.useState<unknown>(() => getAtPath(value$.getValue(), path))
-	React.useEffect(() => {
-		const p = JSON.parse(key) as Path
-		const sub = new Rx.Subscription()
-		sub.add(value$.subscribe((root) => setV(getAtPath(root, p))))
-		sub.add(reset$.subscribe(() => setV(getAtPath(value$.getValue(), p))))
-		return () => sub.unsubscribe()
-	}, [value$, reset$, key])
-	return v
+	const select = React.useCallback((root: any) => getAtPath(root, JSON.parse(key) as Path), [key])
+	return Zus.useStore(value$, select)
 }
 
 // PoolConfigApi over the form's draft observable, so the settings page renders the same pool-configuration UI as the
@@ -1780,7 +1777,7 @@ function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConf
 	useReset(reset$, () => setResetKey((k) => k + 1))
 	return {
 		// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components
-		useValue: (path) => usePathValue(value$, reset$, path),
+		useValue: (path) => usePathValue(value$, path),
 		getValue: (path) => getAtPath(value$.getValue(), path),
 		set: (path, value) => onChange(setAtPath(value$.getValue(), path, value)),
 		// the settings page gates edit access via the server-settings:* perms; out-of-grant writes are rejected server-side
@@ -1820,10 +1817,10 @@ const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as V
 // listed here because there is no source to name -- so say so, rather than leaving the impression that an empty
 // selection means the emulated server has no admins.
 function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const value = (useFieldValue(value$) as string[] | undefined) ?? []
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	const connType$ = React.useMemo(() => scopeValue(scopeValue(root$, 'connections'), 'type'), [root$])
-	const isSandbox = useFieldValue(connType$, reset$) === 'sandbox'
+	const isSandbox = useFieldValue(connType$) === 'sandbox'
 	const definedLists = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
 	const available = definedLists.data?.code === 'ok' ? definedLists.data.lists.map((l) => l.listId) : []
 	const options = [...new Set([...available, ...value])].sort().map((listId) => ({
@@ -1849,8 +1846,8 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 					<AlertTitle>This sandbox has an emulated admin list of its own</AlertTitle>
 					<AlertDescription>
 						It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -&gt; Sandbox
-						Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, because it
-						only exists in memory.
+						Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure,
+						because it only exists in memory.
 					</AlertDescription>
 				</Alert>
 			)}
@@ -1859,14 +1856,17 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 }
 
 function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as Record<string, SM.AdminListDef> | undefined) ?? {}
+	const value = (useFieldValue(value$) as Record<string, SM.AdminListDef> | undefined) ?? {}
 	const names = Object.keys(value)
 	const [newName, setNewName] = React.useState('')
 
-	const update = React.useCallback((fn: (v: Record<string, SM.AdminListDef>) => Record<string, SM.AdminListDef>, quiet?: boolean) => {
-		onChange(fn((value$.getValue() as Record<string, SM.AdminListDef> | undefined) ?? {}))
-		if (!quiet) reset$.next()
-	}, [onChange, value$, reset$])
+	const update = React.useCallback(
+		(fn: (v: Record<string, SM.AdminListDef>) => Record<string, SM.AdminListDef>, quiet?: boolean) => {
+			onChange(fn((value$.getValue() as Record<string, SM.AdminListDef> | undefined) ?? {}))
+			if (!quiet) reset$.next()
+		},
+		[onChange, value$, reset$],
+	)
 
 	const patchSource = (name: string, p: Partial<SM.AdminListSource>, quiet?: boolean) =>
 		update((v) => ({ ...v, [name]: { ...v[name], source: { ...v[name].source, ...p } as SM.AdminListSource } }), quiet)
@@ -1891,13 +1891,21 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 							<Select
 								value={source.type}
 								onValueChange={(t) =>
-									update((v) => ({ ...v, [name]: { ...v[name], source: defaultAdminSource(t as SM.AdminListSourceType) } }))}
+									update((v) => ({
+										...v,
+										[name]: { ...v[name], source: defaultAdminSource(t as SM.AdminListSourceType) },
+									}))
+								}
 							>
 								<SelectTrigger className="h-8 w-[9rem]">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+									{ADMIN_SOURCE_TYPE_OPTIONS.map((o) => (
+										<SelectItem key={o.value} value={o.value}>
+											{o.label}
+										</SelectItem>
+									))}
 								</SelectContent>
 							</Select>
 							<Button
@@ -1911,57 +1919,56 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 										const next = { ...v }
 										delete next[name]
 										return next
-									})}
+									})
+								}
 							>
 								<Icons.Trash2 className="h-4 w-4" />
 							</Button>
 						</div>
 
-						{source.type === 'sftp'
-							? (
-								<div className="grid grid-cols-2 gap-2">
-									<Input
-										className="h-8"
-										placeholder="host"
-										defaultValue={source.host}
-										onChange={(e) => patchSource(name, { host: e.target.value }, true)}
-									/>
-									<Input
-										className="h-8"
-										type="number"
-										placeholder="22"
-										defaultValue={source.port}
-										onChange={(e) => patchSource(name, { port: Number(e.target.value) }, true)}
-									/>
-									<Input
-										className="h-8"
-										placeholder="username"
-										defaultValue={source.username}
-										onChange={(e) => patchSource(name, { username: e.target.value }, true)}
-									/>
-									<Input
-										className="h-8"
-										type="password"
-										placeholder="password"
-										defaultValue={source.password}
-										onChange={(e) => patchSource(name, { password: e.target.value }, true)}
-									/>
-									<Input
-										className="col-span-2 h-8"
-										placeholder="/path/to/Admins.cfg"
-										defaultValue={source.filePath}
-										onChange={(e) => patchSource(name, { filePath: e.target.value }, true)}
-									/>
-								</div>
-							)
-							: (
+						{source.type === 'sftp' ? (
+							<div className="grid grid-cols-2 gap-2">
 								<Input
 									className="h-8"
-									placeholder={ADMIN_SOURCE_STRING_PLACEHOLDER[source.type]}
-									defaultValue={source.source}
-									onChange={(e) => patchSource(name, { source: e.target.value }, true)}
+									placeholder="host"
+									defaultValue={source.host}
+									onChange={(e) => patchSource(name, { host: e.target.value }, true)}
 								/>
-							)}
+								<Input
+									className="h-8"
+									type="number"
+									placeholder="22"
+									defaultValue={source.port}
+									onChange={(e) => patchSource(name, { port: Number(e.target.value) }, true)}
+								/>
+								<Input
+									className="h-8"
+									placeholder="username"
+									defaultValue={source.username}
+									onChange={(e) => patchSource(name, { username: e.target.value }, true)}
+								/>
+								<Input
+									className="h-8"
+									type="password"
+									placeholder="password"
+									defaultValue={source.password}
+									onChange={(e) => patchSource(name, { password: e.target.value }, true)}
+								/>
+								<Input
+									className="col-span-2 h-8"
+									placeholder="/path/to/Admins.cfg"
+									defaultValue={source.filePath}
+									onChange={(e) => patchSource(name, { filePath: e.target.value }, true)}
+								/>
+							</div>
+						) : (
+							<Input
+								className="h-8"
+								placeholder={ADMIN_SOURCE_STRING_PLACEHOLDER[source.type]}
+								defaultValue={source.source}
+								onChange={(e) => patchSource(name, { source: e.target.value }, true)}
+							/>
+						)}
 
 						<div className="space-y-1">
 							<label className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1983,7 +1990,8 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 												? next(v[name].adminIdentifyingPermissions)
 												: next) as SM.PlayerPerm[],
 										},
-									}))}
+									}))
+								}
 							/>
 						</div>
 					</div>
@@ -2002,7 +2010,8 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 					}}
 				/>
 				<Button type="button" size="sm" variant="outline" className="h-8" disabled={!canAdd} onClick={addList}>
-					<Icons.Plus className="mr-1 h-4 w-4" />Add list
+					<Icons.Plus className="mr-1 h-4 w-4" />
+					Add list
 				</Button>
 			</div>
 		</div>
@@ -2045,8 +2054,9 @@ function globalGrantPathOptions(): string[] {
 // connections is excluded: it's gated by server-settings:write-sensitive, never by path grants
 let cachedServerGrantPaths: string[] | undefined
 function serverGrantPathOptions(): string[] {
-	cachedServerGrantPaths ??= enumerateGrantPaths(z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }))
-		.filter((p) => p !== 'connections' && !p.startsWith('connections.'))
+	cachedServerGrantPaths ??= enumerateGrantPaths(
+		z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }),
+	).filter((p) => p !== 'connections' && !p.startsWith('connections.'))
 	return cachedServerGrantPaths
 }
 
@@ -2088,11 +2098,13 @@ function withAssignments(cfg: RoleConfig, patch: Partial<RoleAssignmentsValue>):
 }
 
 function isAssignmentEmpty(a: RoleAssignmentsValue): boolean {
-	return (a.discordRoleIds?.length ?? 0) === 0
-		&& (a.discordUserIds?.length ?? 0) === 0
-		&& !a.everyMember
-		&& (a.ingameAdminLists?.length ?? 0) === 0
-		&& (a.adminListGroups?.length ?? 0) === 0
+	return (
+		(a.discordRoleIds?.length ?? 0) === 0 &&
+		(a.discordUserIds?.length ?? 0) === 0 &&
+		!a.everyMember &&
+		(a.ingameAdminLists?.length ?? 0) === 0 &&
+		(a.adminListGroups?.length ?? 0) === 0
+	)
 }
 
 // "list/group" for the multi-select, which deals in flat strings. Neither an admin list name nor a Squad group name
@@ -2125,7 +2137,7 @@ function withRoleRenamed(rbac: RbacValue, oldId: string, newId: string): RbacVal
 }
 
 function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
-	const rbac = (useFieldValue(value$, reset$) as RbacValue) ?? {}
+	const rbac = (useFieldValue(value$) as RbacValue) ?? {}
 	const roleIds = Object.keys(rbac.roles ?? {})
 	const issues = React.useContext(ValidationContext).filter((i) => i.path.startsWith('rbac.'))
 
@@ -2137,10 +2149,13 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 
 	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the timeout duration field), where re-emitting
 	// would clobber an in-flight keystroke. Structural edits (add/remove/rename/toggles) leave it off so inputs re-seed.
-	const update = React.useCallback<RbacUpdate>((fn, quiet) => {
-		onChange(fn((value$.getValue() as RbacValue) ?? {}))
-		if (!quiet) reset$.next()
-	}, [onChange, value$, reset$])
+	const update = React.useCallback<RbacUpdate>(
+		(fn, quiet) => {
+			onChange(fn((value$.getValue() as RbacValue) ?? {}))
+			if (!quiet) reset$.next()
+		},
+		[onChange, value$, reset$],
+	)
 
 	const [newRole, setNewRole] = React.useState('')
 	const canAdd = VALID_ROLE_ID.test(newRole) && !(newRole in (rbac.roles ?? {}))
@@ -2173,7 +2188,9 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 			)}
 			{roleIds.length > 0 && (
 				<div className="flex items-center justify-between">
-					<p className="text-xs text-muted-foreground">{roleIds.length} role{roleIds.length === 1 ? '' : 's'} defined</p>
+					<p className="text-xs text-muted-foreground">
+						{roleIds.length} role{roleIds.length === 1 ? '' : 's'} defined
+					</p>
 					<Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={clearAll}>
 						<Icons.Trash2 className="mr-1 h-4 w-4" />
 						Clear all
@@ -2222,19 +2239,19 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 						</Button>
 					</div>
 				</div>
-				{selected
-					? (
-						<RoleDetail
-							key={selected}
-							roleId={selected}
-							rbac={rbac}
-							value$={value$}
-							reset$={reset$}
-							update={update}
-							assigned={isRoleAssigned(rbac.roles?.[selected])}
-						/>
-					)
-					: <p className="text-sm text-muted-foreground">Select or add a role to configure it.</p>}
+				{selected ? (
+					<RoleDetail
+						key={selected}
+						roleId={selected}
+						rbac={rbac}
+						value$={value$}
+						reset$={reset$}
+						update={update}
+						assigned={isRoleAssigned(rbac.roles?.[selected])}
+					/>
+				) : (
+					<p className="text-sm text-muted-foreground">Select or add a role to configure it.</p>
+				)}
 			</div>
 		</div>
 	)
@@ -2250,16 +2267,21 @@ function RoleSubsection({ title, description, children }: { title: string; descr
 	)
 }
 
-function RoleDetail(
-	{ roleId, rbac, value$, reset$, update, assigned }: {
-		roleId: string
-		rbac: RbacValue
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		update: RbacUpdate
-		assigned: boolean
-	},
-) {
+function RoleDetail({
+	roleId,
+	rbac,
+	value$,
+	reset$,
+	update,
+	assigned,
+}: {
+	roleId: string
+	rbac: RbacValue
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	update: RbacUpdate
+	assigned: boolean
+}) {
 	const [renaming, setRenaming] = React.useState(false)
 	const cfg = rbac.roles?.[roleId] ?? {}
 	// scoped value-states for the timeout / layer-request cells so they can reuse the uncontrolled TextInputField
@@ -2272,33 +2294,31 @@ function RoleDetail(
 	return (
 		<div className="min-w-0 space-y-4 rounded-md border p-3">
 			<div className="flex items-center gap-2">
-				{renaming
-					? (
-						<Input
-							autoFocus
-							className="h-8 max-w-[16rem] font-mono"
-							defaultValue={roleId}
-							onBlur={(e) => {
-								const next = e.target.value.trim()
-								setRenaming(false)
-								if (next && next !== roleId && VALID_ROLE_ID.test(next) && !(next in (rbac.roles ?? {}))) {
-									update((r) => withRoleRenamed(r, roleId, next))
-								}
-							}}
-							onKeyDown={(e) => {
-								if (e.key === 'Enter') e.currentTarget.blur()
-								if (e.key === 'Escape') setRenaming(false)
-							}}
-						/>
-					)
-					: (
-						<>
-							<h3 className="font-mono text-base font-semibold">{roleId}</h3>
-							<Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => setRenaming(true)}>
-								<Icons.Pencil className="h-3.5 w-3.5" />
-							</Button>
-						</>
-					)}
+				{renaming ? (
+					<Input
+						autoFocus
+						className="h-8 max-w-[16rem] font-mono"
+						defaultValue={roleId}
+						onBlur={(e) => {
+							const next = e.target.value.trim()
+							setRenaming(false)
+							if (next && next !== roleId && VALID_ROLE_ID.test(next) && !(next in (rbac.roles ?? {}))) {
+								update((r) => withRoleRenamed(r, roleId, next))
+							}
+						}}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') e.currentTarget.blur()
+							if (e.key === 'Escape') setRenaming(false)
+						}}
+					/>
+				) : (
+					<>
+						<h3 className="font-mono text-base font-semibold">{roleId}</h3>
+						<Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => setRenaming(true)}>
+							<Icons.Pencil className="h-3.5 w-3.5" />
+						</Button>
+					</>
+				)}
 				<Button
 					type="button"
 					size="sm"
@@ -2337,16 +2357,21 @@ function RoleDetail(
 
 // one row = one permission the role holds. The five persisted fields are projected to rows on read and distributed back
 // on write by PermRows, so this component only ever deals in rows.
-function RolePermissionsTable(
-	{ roleId, cfg, timeout$, layerRequests$, reset$, update }: {
-		roleId: string
-		cfg: RoleConfig
-		timeout$: ValueState
-		layerRequests$: ValueState
-		reset$: Rx.Subject<void>
-		update: RbacUpdate
-	},
-) {
+function RolePermissionsTable({
+	roleId,
+	cfg,
+	timeout$,
+	layerRequests$,
+	reset$,
+	update,
+}: {
+	roleId: string
+	cfg: RoleConfig
+	timeout$: ValueState
+	layerRequests$: ValueState
+	reset$: Rx.Subject<void>
+	update: RbacUpdate
+}) {
 	const rows = PermRows.rowsFromConfig(cfg)
 
 	// `quiet` is threaded through for the timeout duration cell, whose uncontrolled input would be clobbered by a reset$
@@ -2354,7 +2379,10 @@ function RolePermissionsTable(
 		update((r) => withRoleConfig(r, roleId, (c) => PermRows.configFromRows(c, next)), quiet)
 	}
 	function patchRow(id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) {
-		setRows(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)), quiet)
+		setRows(
+			rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+			quiet,
+		)
 	}
 
 	const wildcarded = rows.some((r) => r.type === PermRows.ALL_PERMISSIONS && r.effect === 'allow')
@@ -2408,7 +2436,9 @@ function RolePermissionsTable(
 								</TableCell>
 								<TableCell className="align-top">
 									<div className="flex items-start gap-1">
-										<code className="text-xs leading-8">{row.type === PermRows.ALL_PERMISSIONS ? 'All permissions (*)' : row.type}</code>
+										<code className="text-xs leading-8">
+											{row.type === PermRows.ALL_PERMISSIONS ? 'All permissions (*)' : row.type}
+										</code>
 										{PermRows.permDescription(row.type) && <HelpTip text={PermRows.permDescription(row.type)!} />}
 										{subsumed && (
 											<Tooltip>
@@ -2421,13 +2451,17 @@ function RolePermissionsTable(
 									</div>
 								</TableCell>
 								<TableCell className="align-top">
-									<PermScopeCell row={row} timeout$={timeout$} layerRequests$={layerRequests$} reset$={reset$} onPatch={patchRow} />
+									<PermScopeCell
+										row={row}
+										timeout$={timeout$}
+										layerRequests$={layerRequests$}
+										reset$={reset$}
+										onPatch={patchRow}
+									/>
 								</TableCell>
 								<TableCell className="align-top">
-									{
-										/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
-									    enough that reusing the icon for "remove the whole permission" would be a trap */
-									}
+									{/* a trash can, not an X: the scope cell's own X drops a single scope value, and the two end up close
+									    enough that reusing the icon for "remove the whole permission" would be a trap */}
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<Button
@@ -2462,16 +2496,20 @@ function RolePermissionsTable(
 
 // the Scope cell is a switch over the permission's scope kind, so a new permission needs no new editor: it inherits the
 // cell for whichever scope it declares in PERMISSION_DEFINITION.
-function PermScopeCell(
-	{ row, timeout$, layerRequests$, reset$, onPatch }: {
-		row: PermRows.PermRow
-		timeout$: ValueState
-		layerRequests$: ValueState
-		reset$: Rx.Subject<void>
-		onPatch: (id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) => void
-	},
-) {
-	const servers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
+function PermScopeCell({
+	row,
+	timeout$,
+	layerRequests$,
+	reset$,
+	onPatch,
+}: {
+	row: PermRows.PermRow
+	timeout$: ValueState
+	layerRequests$: ValueState
+	reset$: Rx.Subject<void>
+	onPatch: (id: string, patch: Partial<PermRows.PermRow>, quiet?: boolean) => void
+}) {
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
 
 	// a denial is unrestricted by construction: the expression grammar carries no args
 	if (row.effect === 'deny') return <span className="text-xs leading-8 text-muted-foreground">Everything</span>
@@ -2507,11 +2545,17 @@ function PermScopeCell(
 							value$={layerRequests$}
 							reset$={reset$}
 							onChange={(v) =>
-								onPatch(row.id, {
-									maxLayerRequests: typeof v === 'number' && Number.isFinite(v) && v >= 1
-										? Math.floor(v)
-										: PermRows.DEFAULT_MAX_LAYER_REQUESTS,
-								}, true)}
+								onPatch(
+									row.id,
+									{
+										maxLayerRequests:
+											typeof v === 'number' && Number.isFinite(v) && v >= 1
+												? Math.floor(v)
+												: PermRows.DEFAULT_MAX_LAYER_REQUESTS,
+									},
+									true,
+								)
+							}
 							numeric={true}
 							placeholder={String(PermRows.DEFAULT_MAX_LAYER_REQUESTS)}
 						/>
@@ -2585,17 +2629,22 @@ function serverOptionsFor(servers: { id: string; displayName: string }[], select
 // One dropdown per selected value rather than a single multi-select: the values here are long (dotted setting paths,
 // `Display Name (server-id)`) and a combined trigger could only show them comma-joined and ellipsed, which truncated
 // exactly the tail that distinguishes them.
-function ScopeValueRows(
-	{ title, values, options, onChange, emptyLabel, mono }: {
-		title: string
-		values: string[]
-		options: (ComboBoxOption<string> | string)[]
-		onChange: (next: string[]) => void
-		// an empty scope means unrestricted, which reads as a bug unless it's spelled out
-		emptyLabel: string
-		mono?: boolean
-	},
-) {
+function ScopeValueRows({
+	title,
+	values,
+	options,
+	onChange,
+	emptyLabel,
+	mono,
+}: {
+	title: string
+	values: string[]
+	options: (ComboBoxOption<string> | string)[]
+	onChange: (next: string[]) => void
+	// an empty scope means unrestricted, which reads as a bug unless it's spelled out
+	emptyLabel: string
+	mono?: boolean
+}) {
 	const normalized: ComboBoxOption<string>[] = options.map((o) => (typeof o === 'string' ? { value: o } : o))
 	const selected = new Set(values)
 	const exhausted = normalized.every((o) => selected.has(o.value))
@@ -2641,9 +2690,17 @@ function ScopeValueRows(
 	)
 }
 
-function RoleAssignmentsEditor(
-	{ roleId, cfg, update, assigned }: { roleId: string; cfg: RoleConfig; update: RbacUpdate; assigned: boolean },
-) {
+function RoleAssignmentsEditor({
+	roleId,
+	cfg,
+	update,
+	assigned,
+}: {
+	roleId: string
+	cfg: RoleConfig
+	update: RbacUpdate
+	assigned: boolean
+}) {
 	const roleAssignIds = (cfg.assignments?.discordRoleIds ?? []).map(String)
 	const userAssignIds = (cfg.assignments?.discordUserIds ?? []).map(String)
 
@@ -2655,7 +2712,7 @@ function RoleAssignmentsEditor(
 				const cur = (c.assignments?.[bucket] ?? []).map(String).filter((id) => id !== oldId)
 				if (nextId && !cur.includes(nextId)) cur.push(nextId)
 				return withAssignments(c, { [bucket]: cur })
-			})
+			}),
 		)
 	}
 	const changeDiscordRole = (oldId: string, nextId: string) => changeAssignment('discordRoleIds', oldId, nextId)
@@ -2778,20 +2835,20 @@ function RoleAssignmentsEditor(
 						links={[{ label: 'Admin lists', anchor: 'setting:adminLists' }]}
 					/>
 				</label>
-				{groupOptions.length === 0
-					? <p className="text-xs text-muted-foreground">No admin-list groups are defined in the configured lists.</p>
-					: (
-						<div className="max-w-[28rem]">
-							<ComboBoxMulti
-								title="Group"
-								values={selectedPairs}
-								options={groupOptions}
-								emptyLabel="Select admin-list groups..."
-								chipDisplay
-								onSelect={(next) => setGroups(typeof next === 'function' ? next(selectedPairs) : next)}
-							/>
-						</div>
-					)}
+				{groupOptions.length === 0 ? (
+					<p className="text-xs text-muted-foreground">No admin-list groups are defined in the configured lists.</p>
+				) : (
+					<div className="max-w-[28rem]">
+						<ComboBoxMulti
+							title="Group"
+							values={selectedPairs}
+							options={groupOptions}
+							emptyLabel="Select admin-list groups..."
+							chipDisplay
+							onSelect={(next) => setGroups(typeof next === 'function' ? next(selectedPairs) : next)}
+						/>
+					</div>
+				)}
 			</div>
 		</div>
 	)
@@ -2800,7 +2857,7 @@ function RoleAssignmentsEditor(
 // bespoke editor for `balanceTriggerLevels`. A trigger is off unless it carries a level, and the level decides how
 // loudly it lands on the match history, so each row pairs the picker with a live preview of the alert it produces.
 function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
+	const value = (useFieldValue(value$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
 
 	function setLevel(id: BAL.TriggerId, level: BAL.TriggerWarnLevel | typeof TRIGGER_OFF) {
 		const next = { ...((value$.getValue() as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>>) ?? {}) }
@@ -2830,7 +2887,9 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 								<SelectContent>
 									<SelectItem value={TRIGGER_OFF}>Off</SelectItem>
 									{BAL.TRIGGER_LEVEL.options.map((opt) => (
-										<SelectItem key={opt} value={opt} className={TRIGGER_LEVEL_DISPLAY[opt].text}>{humanize(opt)}</SelectItem>
+										<SelectItem key={opt} value={opt} className={TRIGGER_LEVEL_DISPLAY[opt].text}>
+											{humanize(opt)}
+										</SelectItem>
 									))}
 								</SelectContent>
 							</Select>
@@ -2858,7 +2917,6 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
-	if (path.length === 1 && last === 'commandAliases') return CommandAliasesField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
@@ -2877,18 +2935,23 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 // -------- leaf controls --------
 
 // uncontrolled text/number input: seeded from value$, edits debounced upward, re-read on reset$
-function TextInputField(
-	{ value$, reset$, onChange, numeric, secret, placeholder }: {
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-		numeric: boolean
-		secret?: boolean
-		placeholder?: string
-	},
-) {
+function TextInputField({
+	value$,
+	reset$,
+	onChange,
+	numeric,
+	secret,
+	placeholder,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	numeric: boolean
+	secret?: boolean
+	placeholder?: string
+}) {
 	const ref = React.useRef<HTMLInputElement>(null)
-	const format = (v: any) => v === null || v === undefined ? '' : String(v)
+	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
 	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
 	useReset(reset$, () => {
 		const cur = value$.getValue()
@@ -2911,40 +2974,57 @@ function TextInputField(
 	)
 }
 
-function SelectField(
-	{ value$, reset$, onChange, options }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; options: string[] },
-) {
-	const value = useFieldValue(value$, reset$)
+function SelectField({
+	value$,
+	reset$,
+	onChange,
+	options,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	options: string[]
+}) {
+	const value = useFieldValue(value$)
 	return (
 		<Select value={value ?? ''} onValueChange={onChange}>
 			<SelectTrigger className="w-full">
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				{options.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+				{options.map((opt) => (
+					<SelectItem key={opt} value={opt}>
+						{opt}
+					</SelectItem>
+				))}
 			</SelectContent>
 		</Select>
 	)
 }
 
 function SwitchField({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return <Switch checked={!!value} onCheckedChange={onChange} />
 }
 
 // discriminated union: a variant picker keyed to the discriminator const, plus the active branch's object fields
 // (the discriminator field itself is chosen by the picker, so it isn't rendered as an editable property).
-function DiscriminatedUnionField(
-	{ path, value$, reset$, onChange, branches, discriminator }: {
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-		branches: Node[]
-		discriminator: string
-	},
-) {
-	const value = useFieldValue(value$, reset$) as any
+function DiscriminatedUnionField({
+	path,
+	value$,
+	reset$,
+	onChange,
+	branches,
+	discriminator,
+}: {
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	branches: Node[]
+	discriminator: string
+}) {
+	const value = useFieldValue(value$) as any
 	const branchFor = (constVal: string) => branches.find((b) => String(b.properties[discriminator].const) === constVal)
 	const active = value?.[discriminator]
 	const branch = branchFor(String(active)) ?? branches[0]
@@ -2969,7 +3049,11 @@ function DiscriminatedUnionField(
 				<SelectContent>
 					{branches.map((b) => {
 						const opt = String(b.properties[discriminator].const)
-						return <SelectItem key={opt} value={opt}>{settingLabel([...path, discriminator, opt], opt)}</SelectItem>
+						return (
+							<SelectItem key={opt} value={opt}>
+								{settingLabel([...path, discriminator, opt], opt)}
+							</SelectItem>
+						)
 					})}
 				</SelectContent>
 			</Select>
@@ -2978,10 +3062,18 @@ function DiscriminatedUnionField(
 	)
 }
 
-function EnumArrayField(
-	{ value$, reset$, onChange, options }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; options: string[] },
-) {
-	const value = useFieldValue(value$, reset$) as any[]
+function EnumArrayField({
+	value$,
+	reset$,
+	onChange,
+	options,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	options: string[]
+}) {
+	const value = useFieldValue(value$) as any[]
 	return (
 		<ComboBoxMulti
 			title="Value"
@@ -2993,16 +3085,20 @@ function EnumArrayField(
 }
 
 // nullable scalar: an "unset" checkbox toggles between null and the field's empty value; the inner control reads value$
-function NullableField(
-	{ inner, value$, reset$, onChange, children }: {
-		inner: Node
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-		children: React.ReactNode
-	},
-) {
-	const value = useFieldValue(value$, reset$)
+function NullableField({
+	inner,
+	value$,
+	reset$,
+	onChange,
+	children,
+}: {
+	inner: Node
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	children: React.ReactNode
+}) {
+	const value = useFieldValue(value$)
 	const isNull = value === null || value === undefined
 	return (
 		<div className="flex items-center gap-2">
@@ -3047,15 +3143,19 @@ function placeholderFor(node: Node, inner: Node, path: Path): string | undefined
 	return typeof last === 'string' ? humanize(last) : undefined
 }
 
-function FieldControl(
-	{ node, path, value$, reset$, onChange }: {
-		node: Node
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-	},
-) {
+function FieldControl({
+	node,
+	path,
+	value$,
+	reset$,
+	onChange,
+}: {
+	node: Node
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+}) {
 	const Override = overrideFor(path, node)
 	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
 
@@ -3157,19 +3257,23 @@ function FieldControl(
 	return <JsonFallback value$={value$} reset$={reset$} onChange={onChange} />
 }
 
-function ArrayField(
-	{ node, path, value$, reset$, onChange }: {
-		node: Node
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any[]) => void
-	},
-) {
+function ArrayField({
+	node,
+	path,
+	value$,
+	reset$,
+	onChange,
+}: {
+	node: Node
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any[]) => void
+}) {
 	const items: Node = node.items ?? {}
 	const { inner } = stripNullable(items)
 
-	const value = (useFieldValue(value$, reset$) as any[]) ?? []
+	const value = (useFieldValue(value$) as any[]) ?? []
 
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
@@ -3215,24 +3319,34 @@ function ArrayField(
 	)
 }
 
-function ArrayItem(
-	{ items, path, idx, parent$, reset$, parentOnChange, isPrimitive, onRemove }: {
-		items: Node
-		path: Path
-		idx: number
-		parent$: ValueState
-		reset$: Rx.Subject<void>
-		parentOnChange: (v: any[]) => void
-		isPrimitive: boolean
-		onRemove: () => void
-	},
-) {
+function ArrayItem({
+	items,
+	path,
+	idx,
+	parent$,
+	reset$,
+	parentOnChange,
+	isPrimitive,
+	onRemove,
+}: {
+	items: Node
+	path: Path
+	idx: number
+	parent$: ValueState
+	reset$: Rx.Subject<void>
+	parentOnChange: (v: any[]) => void
+	isPrimitive: boolean
+	onRemove: () => void
+}) {
 	const value$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
-	const onChange = React.useCallback((v: any) => {
-		const arr = [...((parent$.getValue() as any[]) ?? [])]
-		arr[idx] = v
-		parentOnChange(arr)
-	}, [parentOnChange, parent$, idx])
+	const onChange = React.useCallback(
+		(v: any) => {
+			const arr = [...((parent$.getValue() as any[]) ?? [])]
+			arr[idx] = v
+			parentOnChange(arr)
+		},
+		[parentOnChange, parent$, idx],
+	)
 	return (
 		<div className={cn('flex gap-2', isPrimitive ? 'items-center' : 'items-start')}>
 			<div className={cn('flex-1 min-w-0', !isPrimitive && 'border rounded-md p-2')}>
@@ -3245,21 +3359,25 @@ function ArrayItem(
 	)
 }
 
-function RecordField(
-	{ node, path, value$, reset$, onChange }: {
-		node: Node
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: Record<string, any>) => void
-	},
-) {
+function RecordField({
+	node,
+	path,
+	value$,
+	reset$,
+	onChange,
+}: {
+	node: Node
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: Record<string, any>) => void
+}) {
 	const valueNode: Node = node.additionalProperties
 	// when the schema constrains keys to a known set (z.partialRecord / propertyNames enum), the key becomes a fixed picker
 	// rather than free text, so only known keys can be added
 	const keyEnum: string[] | undefined = node.propertyNames?.enum
 	const [newKey, setNewKey] = React.useState('')
-	const value = (useFieldValue(value$, reset$) as Record<string, any>) ?? {}
+	const value = (useFieldValue(value$) as Record<string, any>) ?? {}
 	const entries = Object.entries(value)
 
 	// structural edits emit reset$ so uncontrolled entry inputs re-read
@@ -3308,54 +3426,66 @@ function RecordField(
 					onRemove={() => remove(key)}
 				/>
 			))}
-			{keyEnum
-				? (remainingKeys.length > 0 && (
+			{keyEnum ? (
+				remainingKeys.length > 0 && (
 					<Select value="" onValueChange={add}>
 						<SelectTrigger className="h-8 max-w-[16rem]">
 							<SelectValue placeholder="Add…" />
 						</SelectTrigger>
 						<SelectContent>
-							{remainingKeys.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+							{remainingKeys.map((k) => (
+								<SelectItem key={k} value={k}>
+									{k}
+								</SelectItem>
+							))}
 						</SelectContent>
 					</Select>
-				))
-				: (
-					<div className="flex items-center gap-2">
-						<Input
-							className="font-mono h-8 max-w-[16rem]"
-							placeholder="new key"
-							value={newKey}
-							onChange={(e) => setNewKey(e.target.value)}
-						/>
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							disabled={!newKey.trim() || newKey.trim() in value}
-							onClick={() => add(newKey.trim())}
-						>
-							<Icons.Plus className="h-4 w-4" />
-							Add
-						</Button>
-					</div>
-				)}
+				)
+			) : (
+				<div className="flex items-center gap-2">
+					<Input
+						className="font-mono h-8 max-w-[16rem]"
+						placeholder="new key"
+						value={newKey}
+						onChange={(e) => setNewKey(e.target.value)}
+					/>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						disabled={!newKey.trim() || newKey.trim() in value}
+						onClick={() => add(newKey.trim())}
+					>
+						<Icons.Plus className="h-4 w-4" />
+						Add
+					</Button>
+				</div>
+			)}
 		</div>
 	)
 }
 
-function RecordEntry(
-	{ valueNode, path, entryKey, fixedKey, parent$, reset$, parentOnChange, onRename, onRemove }: {
-		valueNode: Node
-		path: Path
-		entryKey: string
-		fixedKey: boolean
-		parent$: ValueState
-		reset$: Rx.Subject<void>
-		parentOnChange: (v: Record<string, any>) => void
-		onRename: (next: string) => void
-		onRemove: () => void
-	},
-) {
+function RecordEntry({
+	valueNode,
+	path,
+	entryKey,
+	fixedKey,
+	parent$,
+	reset$,
+	parentOnChange,
+	onRename,
+	onRemove,
+}: {
+	valueNode: Node
+	path: Path
+	entryKey: string
+	fixedKey: boolean
+	parent$: ValueState
+	reset$: Rx.Subject<void>
+	parentOnChange: (v: Record<string, any>) => void
+	onRename: (next: string) => void
+	onRemove: () => void
+}) {
 	const value$ = React.useMemo(() => scopeValue(parent$, entryKey), [parent$, entryKey])
 	const onChange = React.useCallback(
 		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [entryKey]: v }),
@@ -3364,15 +3494,11 @@ function RecordEntry(
 	return (
 		<div className="border rounded-md p-2 space-y-1.5">
 			<div className="flex items-center gap-2">
-				{fixedKey
-					? <span className="font-mono text-sm">{entryKey}</span>
-					: (
-						<Input
-							className="font-mono h-8 max-w-[16rem]"
-							defaultValue={entryKey}
-							onBlur={(e) => onRename(e.target.value.trim())}
-						/>
-					)}
+				{fixedKey ? (
+					<span className="font-mono text-sm">{entryKey}</span>
+				) : (
+					<Input className="font-mono h-8 max-w-[16rem]" defaultValue={entryKey} onBlur={(e) => onRename(e.target.value.trim())} />
+				)}
 				<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive ml-auto" onClick={onRemove}>
 					<Icons.X className="h-4 w-4" />
 				</Button>
@@ -3382,15 +3508,19 @@ function RecordEntry(
 	)
 }
 
-function ObjectField(
-	{ node, path, value$, reset$, onChange }: {
-		node: Node
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: Record<string, any>) => void
-	},
-) {
+function ObjectField({
+	node,
+	path,
+	value$,
+	reset$,
+	onChange,
+}: {
+	node: Node
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: Record<string, any>) => void
+}) {
 	const props: Record<string, Node> = node.properties ?? {}
 	const { normal, advanced } = splitAdvanced(Object.keys(props), path.join('.'), React.useContext(AdvancedPathsContext))
 	const field = (key: string) => (
@@ -3454,14 +3584,17 @@ function isScalarNode(inner: Node): boolean {
 
 // a ghost icon button with a tooltip that still shows when the button is disabled: the wrapping span keeps receiving
 // hover events even though the disabled button sets `pointer-events-none`.
-function TooltipButton(
-	{ disabled, tooltip, onClick, children }: {
-		disabled: boolean
-		tooltip: string
-		onClick: () => void
-		children: React.ReactNode
-	},
-) {
+function TooltipButton({
+	disabled,
+	tooltip,
+	onClick,
+	children,
+}: {
+	disabled: boolean
+	tooltip: string
+	onClick: () => void
+	children: React.ReactNode
+}) {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
@@ -3486,17 +3619,22 @@ function TooltipButton(
 // the per-field reset affordances: reset-to-saved (undo local edits back to the persisted baseline) and, when the field
 // has a schema default, a "default: <value>" hint plus reset-to-default. Both buttons stay mounted and disable when the
 // current value already matches their target, so the affordance is discoverable and its tooltip explains the state.
-function FieldResetControls(
-	{ value$, reset$, onChange, node, path, showDefaultLabel }: {
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-		node: Node
-		path: Path
-		showDefaultLabel: boolean
-	},
-) {
-	const value = useFieldValue(value$, reset$)
+function FieldResetControls({
+	value$,
+	reset$,
+	onChange,
+	node,
+	path,
+	showDefaultLabel,
+}: {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	node: Node
+	path: Path
+	showDefaultLabel: boolean
+}) {
+	const value = useFieldValue(value$)
 	const { saved } = React.useContext(SavedRootContext)
 	const def = effectiveDefault(node)
 	const savedValue = getAtPath(saved, path)
@@ -3563,12 +3701,15 @@ function AnchorLink({ domId }: { domId: string }) {
 function AdvancedDisclosure({ paths, children }: { paths: string[]; children: React.ReactNode }) {
 	const [expanded, setExpanded] = React.useState(false)
 	const { idPrefix } = React.useContext(FormOptionsContext)
-	const covers = React.useCallback((candidate: string, prefix: string) => {
-		return paths.some((p) => {
-			const full = `${prefix}${p}`
-			return candidate === full || candidate.startsWith(`${full}.`)
-		})
-	}, [paths])
+	const covers = React.useCallback(
+		(candidate: string, prefix: string) => {
+			return paths.some((p) => {
+				const full = `${prefix}${p}`
+				return candidate === full || candidate.startsWith(`${full}.`)
+			})
+		},
+		[paths],
+	)
 
 	React.useEffect(() => SettingsNav.onAnchorNavigate((id) => covers(id, idPrefix) && setExpanded(true)), [covers, idPrefix])
 
@@ -3609,7 +3750,7 @@ function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
 	return React.useMemo(
 		// splitting pathStr rather than taking the path array keeps this memo stable: the array is rebuilt every render.
 		// Only the declared paths are split, and those have no dots inside a segment.
-		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? Zod.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
+		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? ZodUtils.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
 		[rootSchema, pathStr],
 	)
 }
@@ -3651,23 +3792,31 @@ function toInputShape(schema: z.ZodType, decoded: unknown): unknown {
 // on reset$, which is exactly the programmatic-change signal the uncontrolled inputs re-read on. Re-seeding remounts it
 // rather than passing a new `value`, because the editor re-syncs only when `value` differs from what it last synced,
 // and a reset typically restores the very value it was seeded with (leaving the user's edits sitting in the buffer).
-function LocalJsonField(
-	{ schema, label, domId, value$, reset$, onChange }: {
-		schema: z.ZodType
-		label: string
-		// the field's own anchor, which the editor renders inside: the scroll target once the editor is up
-		domId: string
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-	},
-) {
+function LocalJsonField({
+	schema,
+	label,
+	domId,
+	value$,
+	reset$,
+	onChange,
+}: {
+	schema: z.ZodType
+	label: string
+	// the field's own anchor, which the editor renders inside: the scroll target once the editor is up
+	domId: string
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+}) {
 	const [seed, setSeed] = React.useState(() => ({ value: value$.getValue(), nonce: 0 }))
 	useReset(reset$, () => setSeed((prev) => ({ value: value$.getValue(), nonce: prev.nonce + 1 })))
-	const onValidChange = React.useCallback((v: unknown) => {
-		if (v === null) return
-		onChange(toInputShape(schema, v))
-	}, [schema, onChange])
+	const onValidChange = React.useCallback(
+		(v: unknown) => {
+			if (v === null) return
+			onChange(toInputShape(schema, v))
+		},
+		[schema, onChange],
+	)
 	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
 	// would be a surprise. This component only exists while the field is in JSON mode, so the ref resets on reopen.
 	const broughtIntoView = React.useRef(false)
@@ -3693,16 +3842,21 @@ function LocalJsonField(
 
 // a nested object section: titled fieldset. `useIsModified` keeps the reset affordance live without re-rendering
 // the whole subtree on every descendant edit.
-function SectionField(
-	{ name, node, path, value$, reset$, onChange }: {
-		name: string
-		node: Node
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-	},
-) {
+function SectionField({
+	name,
+	node,
+	path,
+	value$,
+	reset$,
+	onChange,
+}: {
+	name: string
+	node: Node
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+}) {
 	const { inner } = stripNullable(node)
 	const description: string | undefined = node.description ?? inner.description
 	const pathStr = path.join('.')
@@ -3730,7 +3884,14 @@ function SectionField(
 					<code className="text-[10px] text-muted-foreground">{pathStr}</code>
 					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
 					<span className="contents" inert={!writable}>
-						<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={false} />
+						<FieldResetControls
+							value$={value$}
+							reset$={reset$}
+							onChange={onChange}
+							node={node}
+							path={path}
+							showDefaultLabel={false}
+						/>
 					</span>
 					<AnchorLink domId={domId} />
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
@@ -3738,35 +3899,41 @@ function SectionField(
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{SectionExtra && <SectionExtra />}
 				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
-				{jsonSchema && mode === 'json'
-					? (
-						<LocalJsonField
-							schema={jsonSchema}
-							label={settingLabel(path, name)}
-							domId={domId}
-							value$={value$}
-							reset$={reset$}
-							onChange={onChange}
-						/>
-					)
-					: <FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />}
+				{jsonSchema && mode === 'json' ? (
+					<LocalJsonField
+						schema={jsonSchema}
+						label={settingLabel(path, name)}
+						domId={domId}
+						value$={value$}
+						reset$={reset$}
+						onChange={onChange}
+					/>
+				) : (
+					<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+				)}
 			</StickyGroup>
 		</fieldset>
 	)
 }
 
 // a single labeled leaf field (scalar, array, record, or override widget).
-function LeafField(
-	{ name, node, path, value$, reset$, onChange, hasOverride }: {
-		name: string
-		node: Node
-		path: Path
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: any) => void
-		hasOverride: boolean
-	},
-) {
+function LeafField({
+	name,
+	node,
+	path,
+	value$,
+	reset$,
+	onChange,
+	hasOverride,
+}: {
+	name: string
+	node: Node
+	path: Path
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	hasOverride: boolean
+}) {
 	const { inner } = stripNullable(node)
 	const description: string | undefined = node.description ?? inner.description
 	const pathStr = path.join('.')
@@ -3785,7 +3952,14 @@ function LeafField(
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
 	const controls = (
 		<span className="contents" inert={!writable}>
-			<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} showDefaultLabel={showDefaultLabel} />
+			<FieldResetControls
+				value$={value$}
+				reset$={reset$}
+				onChange={onChange}
+				node={node}
+				path={path}
+				showDefaultLabel={showDefaultLabel}
+			/>
 		</span>
 	)
 	return (
@@ -3822,34 +3996,39 @@ function LeafField(
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
 				{isBoolean && controls}
-				{jsonSchema && mode === 'json'
-					? (
-						<LocalJsonField
-							schema={jsonSchema}
-							label={settingLabel(path, name)}
-							domId={domId}
-							value$={value$}
-							reset$={reset$}
-							onChange={onChange}
-						/>
-					)
-					: <FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />}
+				{jsonSchema && mode === 'json' ? (
+					<LocalJsonField
+						schema={jsonSchema}
+						label={settingLabel(path, name)}
+						domId={domId}
+						value$={value$}
+						reset$={reset$}
+						onChange={onChange}
+					/>
+				) : (
+					<FieldControl node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
+				)}
 			</div>
 		</div>
 	)
 }
 
 // dispatches a schema property to a section or leaf renderer, deriving its scoped value$ + onChange.
-function Field(
-	{ name, node, path, parent$, parentOnChange, reset$ }: {
-		name: string
-		node: Node
-		path: Path
-		parent$: ValueState
-		parentOnChange: (v: Record<string, any>) => void
-		reset$: Rx.Subject<void>
-	},
-) {
+function Field({
+	name,
+	node,
+	path,
+	parent$,
+	parentOnChange,
+	reset$,
+}: {
+	name: string
+	node: Node
+	path: Path
+	parent$: ValueState
+	parentOnChange: (v: Record<string, any>) => void
+	reset$: Rx.Subject<void>
+}) {
 	const value$ = React.useMemo(() => scopeValue(parent$, name), [parent$, name])
 	const onChange = React.useCallback(
 		(v: any) => parentOnChange({ ...((parent$.getValue() as Record<string, any>) ?? {}), [name]: v }),
@@ -3860,10 +4039,11 @@ function Field(
 	if (path.length === 1 && HIDDEN_GLOBAL_SETTINGS_KEYS.has(name)) return null
 	const { inner } = stripNullable(node)
 	const hasOverride = !!overrideFor(path, node)
-	const isSection = !hasOverride
-		&& inner.type === 'object'
-		&& !!inner.properties
-		&& !(inner.additionalProperties && typeof inner.additionalProperties === 'object')
+	const isSection =
+		!hasOverride &&
+		inner.type === 'object' &&
+		!!inner.properties &&
+		!(inner.additionalProperties && typeof inner.additionalProperties === 'object')
 
 	if (isSection) return <SectionField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} />
 	return <LeafField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} hasOverride={hasOverride} />
@@ -3890,15 +4070,19 @@ function GroupSection({ slug, label, children }: { slug: string; label: string; 
 
 // root fields partitioned into the given groups (schema order within each group is the group's key order); keys not
 // covered by any group render ungrouped afterwards
-function GroupedRootFields(
-	{ node, groups, value$, reset$, onChange }: {
-		node: Node
-		groups: SettingsGroup[]
-		value$: ValueState
-		reset$: Rx.Subject<void>
-		onChange: (v: Record<string, any>) => void
-	},
-) {
+function GroupedRootFields({
+	node,
+	groups,
+	value$,
+	reset$,
+	onChange,
+}: {
+	node: Node
+	groups: SettingsGroup[]
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: Record<string, any>) => void
+}) {
 	const props: Record<string, Node> = node.properties ?? {}
 	const { groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups)
 	const advancedPaths = React.useContext(AdvancedPathsContext)
@@ -3918,13 +4102,13 @@ function GroupedRootFields(
 	return (
 		<div className="space-y-6">
 			{grouped.map(({ group, keys }) =>
-				group.passthrough
-					? <React.Fragment key={group.slug}>{renderKeys(keys)}</React.Fragment>
-					: (
-						<GroupSection key={group.slug} slug={group.slug} label={group.label}>
-							{renderKeys(keys)}
-						</GroupSection>
-					)
+				group.passthrough ? (
+					<React.Fragment key={group.slug}>{renderKeys(keys)}</React.Fragment>
+				) : (
+					<GroupSection key={group.slug} slug={group.slug} label={group.label}>
+						{renderKeys(keys)}
+					</GroupSection>
+				),
 			)}
 			{renderKeys(ungrouped)}
 		</div>
@@ -3958,42 +4142,40 @@ function JsonFallback({ value$, reset$, onChange }: { value$: ValueState; reset$
 	)
 }
 
-export default function SettingsForm(
-	{
-		schema,
-		value$,
-		reset$,
-		onChange,
-		saved,
-		idPrefix = 'setting:',
-		groups,
-		priorityKeys,
-		advancedPaths = NO_ADVANCED_PATHS,
-		issues,
-		writeAccess = WRITE_ACCESS_ALL,
-	}: {
-		schema: z.ZodType
-		value$: Rx.Observable<any> & { getValue: () => any }
-		reset$: Rx.Subject<void>
-		onChange: (next: any) => void
-		// the last-saved baseline the draft was seeded from; powers each field's "reset to saved" button. May be
-		// undefined while the settings are still loading.
-		saved?: any
-		// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
-		idPrefix?: string
-		// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
-		groups?: SettingsGroup[]
-		// presentation-level ordering (ungrouped forms only): these top-level keys float to the front, in the given order,
-		// with the rest following in schema order. Keeps the persisted shape untouched, same rationale as `groups`.
-		priorityKeys?: string[]
-		// dotted paths of the fields that render inside their section's collapsed "Advanced" disclosure (see settings-groups.ts)
-		advancedPaths?: ReadonlySet<string>
-		// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
-		issues?: readonly z.core.$ZodIssue[]
-		// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
-		writeAccess?: RBAC.SettingsWriteAccess
-	},
-) {
+export default function SettingsForm({
+	schema,
+	value$,
+	reset$,
+	onChange,
+	saved,
+	idPrefix = 'setting:',
+	groups,
+	priorityKeys,
+	advancedPaths = NO_ADVANCED_PATHS,
+	issues,
+	writeAccess = WRITE_ACCESS_ALL,
+}: {
+	schema: z.ZodType
+	value$: Rx.Observable<any> & { getValue: () => any }
+	reset$: Rx.Subject<void>
+	onChange: (next: any) => void
+	// the last-saved baseline the draft was seeded from; powers each field's "reset to saved" button. May be
+	// undefined while the settings are still loading.
+	saved?: any
+	// scopes field DOM ids / URL anchors; defaults to `setting:` (global settings). Server forms pass `setting:server:<id>:`
+	idPrefix?: string
+	// presentation-level grouping of the top-level keys (see settings-groups.ts); ungrouped keys render after the groups
+	groups?: SettingsGroup[]
+	// presentation-level ordering (ungrouped forms only): these top-level keys float to the front, in the given order,
+	// with the rest following in schema order. Keeps the persisted shape untouched, same rationale as `groups`.
+	priorityKeys?: string[]
+	// dotted paths of the fields that render inside their section's collapsed "Advanced" disclosure (see settings-groups.ts)
+	advancedPaths?: ReadonlySet<string>
+	// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
+	issues?: readonly z.core.$ZodIssue[]
+	// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
+	writeAccess?: RBAC.SettingsWriteAccess
+}) {
 	const rawJsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Node, [schema])
 	// float any priorityKeys to the front of the root object's properties (insertion order drives render + reset order)
 	const jsonSchema = React.useMemo(() => {
@@ -4022,9 +4204,17 @@ export default function SettingsForm(
 								<SavedRootContext.Provider value={savedCtx}>
 									<MessageVarsContext.Provider value={messageVars}>
 										<ValidationContext.Provider value={normIssues}>
-											{groups
-												? <GroupedRootFields node={jsonSchema} groups={groups} value$={value$} reset$={reset$} onChange={onChange} />
-												: <ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />}
+											{groups ? (
+												<GroupedRootFields
+													node={jsonSchema}
+													groups={groups}
+													value$={value$}
+													reset$={reset$}
+													onChange={onChange}
+												/>
+											) : (
+												<ObjectField node={jsonSchema} path={rootPath} value$={value$} reset$={reset$} onChange={onChange} />
+											)}
 										</ValidationContext.Provider>
 									</MessageVarsContext.Provider>
 								</SavedRootContext.Provider>

@@ -1,22 +1,22 @@
-import * as Schema from '$root/drizzle/schema.ts'
-import * as AR from '@/app-routes'
-import { sleep } from '@/lib/async'
-import { createId } from '@/lib/id'
-import * as CS from '@/models/context-shared'
-import * as ATTRS from '@/models/otel-attrs'
-import { initModule } from '@/server/logger'
-
-import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context'
-import * as DB from '@/server/db.ts'
-import * as Env from '@/server/env'
-
-import * as CleanupSys from '@/systems/cleanup.server'
-import * as Rbac from '@/systems/rbac.server'
-import * as Users from '@/systems/users.server'
 import * as Otel from '@opentelemetry/api'
 import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm'
+
+import * as Schema from '$root/drizzle/schema.ts'
+import * as AR from '@/app-routes'
+import { createId } from '@/lib/id'
+import * as Prom from '@/lib/promise-utils'
+import * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
+import * as RBAC from '@/rbac.models'
+import type * as C from '@/server/context'
+import * as DB from '@/server/db.ts'
+import * as Env from '@/server/env'
+import * as Instr from '@/server/instrumentation'
+import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
+import * as Rbac from '@/systems/rbac.server'
+import * as Users from '@/systems/users.server'
 
 export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 
@@ -64,11 +64,7 @@ async function loadValidSessionsIntoCache(ctx: C.Db) {
 }
 
 // Helper to update session in both cache and database
-async function updateSessionInCacheAndDb(
-	ctx: C.Db,
-	sessionId: string,
-	updates: Partial<Pick<CachedSession, 'expiresAt'>>,
-) {
+async function updateSessionInCacheAndDb(ctx: C.Db, sessionId: string, updates: Partial<Pick<CachedSession, 'expiresAt'>>) {
 	// Update database first
 	await ctx.db({ redactParams: true }).update(Schema.sessions).set(updates).where(E.eq(Schema.sessions.id, sessionId))
 
@@ -125,7 +121,7 @@ export async function setup() {
 	// --------  cleanup old sessions  --------
 	while (!ctx.signal.aborted) {
 		try {
-			await sleep(1000 * 60 * 60, ctx.signal)
+			await Prom.sleep(1000 * 60 * 60, ctx.signal)
 		} catch {
 			break
 		}
@@ -150,7 +146,7 @@ export async function setup() {
 	}
 }
 
-export const validateAndUpdate = C.spanOp(
+export const validateAndUpdate = Instr.spanOp(
 	'validateAndUpdate',
 	{ module, levels: { event: 'trace' } },
 	async (ctx: C.Db & C.FastifyRequestFull & Partial<C.FastifyReply>, allowRefresh = false) => {
@@ -228,20 +224,14 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	})
 
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		const [user] = await ctx.db()
-			.select()
-			.from(Schema.users)
-			.where(E.eq(Schema.users.discordId, discordUser.id))
+		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, discordUser.id))
 		if (!user) {
 			await ctx.db().insert(Schema.users).values({
 				discordId: discordUser.id,
 				username: discordUser.username,
 			})
 		} else {
-			await ctx.db()
-				.update(Schema.users)
-				.set({ username: discordUser.username })
-				.where(E.eq(Schema.users.discordId, discordUser.id))
+			await ctx.db().update(Schema.users).set({ username: discordUser.username }).where(E.eq(Schema.users.discordId, discordUser.id))
 		}
 		// Use the transaction-aware write-through cache for session creation
 		await createSessionTx(ctx, {
@@ -255,9 +245,9 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
-export const logout = C.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
+export const logout = Instr.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
 	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
-	C.setSpanStatus(Otel.SpanStatusCode.OK)
+	Instr.setSpanStatus(Otel.SpanStatusCode.OK)
 	// not awaited: clearInvalidSession returns the FastifyReply (for chaining), and a reply is a thenable that only
 	// settles once the response is sent. Awaiting it here deadlocks POST /logout -- the handler blocks waiting for a
 	// send that can't happen until it returns. Same trap as the errorOrBypass note above.
@@ -275,7 +265,7 @@ export function clearInvalidSession(ctx: C.FastifyReply) {
 	return ctx.res.cookie(AR.COOKIE_KEY.enum['session-id'], '', { ...AR.COOKIE_DEFAULTS, maxAge: 0 })
 }
 
-export const getUser = C.spanOp(
+export const getUser = Instr.spanOp(
 	'getUser',
 	{ module, levels: { event: 'trace' }, attrs: ({ lock }) => ({ [ATTRS.Session.LOCK]: lock ?? false }) },
 	async (opts: { lock?: boolean }, ctx: C.AuthedUser & C.HttpRequest & C.Db) => {
@@ -305,7 +295,7 @@ export const getUser = C.spanOp(
 				.select()
 				.from(Schema.sessions)
 				.where(E.eq(Schema.sessions.id, ctx.sessionId))
-				.then(rows => rows[0])
+				.then((rows) => rows[0])
 
 			if (session) {
 				sessionCache.set(ctx.sessionId, {

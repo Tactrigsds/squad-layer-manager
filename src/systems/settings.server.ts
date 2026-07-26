@@ -1,7 +1,10 @@
+import * as E from 'drizzle-orm'
+import { z } from 'zod'
+
 import * as Schema from '$root/drizzle/schema.ts'
-import { toAsyncGenerator, withAbortSignal } from '@/lib/async.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { diffSettings, type SettingChange } from '@/lib/settings-diff'
 import { assertNever } from '@/lib/type-guards'
 import * as AppEvents from '@/models/app-events.models'
@@ -21,9 +24,6 @@ import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
-import * as E from 'drizzle-orm'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 const module = initModule('settings')
 let log!: ReturnType<typeof module.getLogger>
@@ -46,9 +46,10 @@ async function loadGlobalSettings(ctx: C.Db) {
 		const defaultsRes = SETTINGS.parseGlobalSettings({})
 		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
 		const defaults = defaultsRes.data
-		await ctx.db().insert(Schema.globalSettings).values(
-			superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(defaults) }),
-		)
+		await ctx
+			.db()
+			.insert(Schema.globalSettings)
+			.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(defaults) }))
 		GLOBAL_SETTINGS = defaults
 		log.info('Created default global settings row')
 	} else {
@@ -96,7 +97,7 @@ export type ServerEntry = {
 	displayName: string
 	defaultServer: boolean
 	enabled: boolean
-	// true if the stored settings for this server failed schema validation (e.g. after a breaking change); it won't have a live slice until repaired
+	// true if the stored settings for this server failed schema validation (e.g. after a breaking change); it won't have a live managed server until repaired
 	broken: boolean
 	// mirrored out of this server's settings so that "which admin lists speak for this server" can be answered without a
 	// db read: it is asked on every roster poll and every in-game permission check
@@ -137,9 +138,11 @@ async function loadServerRegistry(ctx: C.Db) {
 			try {
 				if (connectionsNeedReseal(settingsRes.data)) {
 					const sealed = resealConnections(settingsRes.data)
-					await ctx.db({ redactParams: true }).update(Schema.servers).set(superjsonify(Schema.servers, { settings: sealed })).where(
-						E.eq(Schema.servers.id, row.id),
-					)
+					await ctx
+						.db({ redactParams: true })
+						.update(Schema.servers)
+						.set(superjsonify(Schema.servers, { settings: sealed }))
+						.where(E.eq(Schema.servers.id, row.id))
 					log.info(`Re-encrypted connection secrets at rest for server ${row.id}`)
 				}
 			} catch (err) {
@@ -151,7 +154,7 @@ async function loadServerRegistry(ctx: C.Db) {
 		}
 		let enabled = row.enabled
 		if (broken) {
-			log.error(brokenReason, `Server ${row.id} has invalid settings, it won't have a live slice until it's repaired`)
+			log.error(brokenReason, `Server ${row.id} has invalid settings, it won't run until it's repaired`)
 			if (enabled) {
 				// force it disabled so that repairing the settings later doesn't silently bring it back online -- an admin has to
 				// explicitly re-enable it once they're confident the fix is correct
@@ -172,11 +175,14 @@ async function loadServerRegistry(ctx: C.Db) {
 	settings$.next({ scope: 'registry' })
 }
 
-export async function createServerEntry(ctx: C.Db, input: {
-	id: SS.ServerId
-	displayName: string
-	settings: unknown
-}) {
+export async function createServerEntry(
+	ctx: C.Db,
+	input: {
+		id: SS.ServerId
+		displayName: string
+		settings: unknown
+	},
+) {
 	if (serverRegistry.has(input.id)) {
 		return { code: 'err:server-already-exists' as const }
 	}
@@ -195,9 +201,10 @@ export async function createServerEntry(ctx: C.Db, input: {
 		backburner: [],
 		settings: settingsRes.data,
 	}
-	await ctx.db({ redactParams: true }).insert(Schema.servers).values(
-		superjsonify(Schema.servers, { ...newServer, settings: sealConnections(newServer.settings) }),
-	)
+	await ctx
+		.db({ redactParams: true })
+		.insert(Schema.servers)
+		.values(superjsonify(Schema.servers, { ...newServer, settings: sealConnections(newServer.settings) }))
 	serverRegistry.set(newServer.id, {
 		id: newServer.id,
 		displayName: newServer.displayName,
@@ -249,43 +256,32 @@ export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 
 export type SettingsUpdate = Readonly<[SETTINGS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>
 
-export type ServerSettingsSlice = {
-	settings: SETTINGS.PublicServerSettings
-	update$: Rx.ReplaySubject<SettingsUpdate>
-}
-
-export function initServerSettingsSlice(
-	ctx: C.ServerSliceCleanup & C.ServerId,
-	serverState: SS.ServerState,
-): ServerSettingsSlice {
-	const slice: ServerSettingsSlice = {
+export function initServerPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
+	const payload: SETTINGS.Ctx.Payload = {
 		settings: SETTINGS.getPublicSettings(serverState.settings),
 		update$: new Rx.ReplaySubject<SettingsUpdate>(1),
 	}
-	slice.update$.next([slice.settings, null])
+	payload.update$.next([payload.settings, null])
 
 	ctx.cleanup.push(
-		slice.update$,
+		payload.update$,
 		settings$
 			.pipe(Rx.filter((e): e is Extract<SettingsEvent, { scope: 'server' }> => e.scope === 'server' && e.serverId === ctx.serverId))
 			.subscribe(({ settings, source }) => {
 				const publicSettings = SETTINGS.getPublicSettings(settings)
-				if (Obj.deepEqual(publicSettings, slice.settings)) return
-				slice.settings = publicSettings
-				slice.update$.next([publicSettings, source])
+				if (Obj.deepEqual(publicSettings, payload.settings)) return
+				payload.settings = publicSettings
+				payload.update$.next([publicSettings, source])
 			}),
 	)
 
-	return slice
+	return payload
 }
 
 // the connection secrets encrypted at rest: the RCON password (local/sftp), the SFTP log password, and the
 // server-agent token. In memory these are always plaintext; sealing happens only at a DB write, opening only
 // at a DB read.
-function transformConnectionSecretValues(
-	connections: SETTINGS.ServerConnection,
-	fn: (value: string) => string,
-): SETTINGS.ServerConnection {
+function transformConnectionSecretValues(connections: SETTINGS.ServerConnection, fn: (value: string) => string): SETTINGS.ServerConnection {
 	switch (connections.type) {
 		case 'local':
 			return { ...connections, rcon: { ...connections.rcon, password: fn(connections.rcon.password) } }
@@ -305,10 +301,7 @@ function transformConnectionSecretValues(
 	}
 }
 
-function transformConnectionSecrets(
-	settings: SETTINGS.ServerSettings,
-	fn: (value: string) => string,
-): SETTINGS.ServerSettings {
+function transformConnectionSecrets(settings: SETTINGS.ServerSettings, fn: (value: string) => string): SETTINGS.ServerSettings {
 	return { ...settings, connections: transformConnectionSecretValues(settings.connections, fn) }
 }
 
@@ -320,7 +313,7 @@ export const resealConnections = (settings: SETTINGS.ServerSettings) => transfor
 // longer produce, so the backfill knows to rewrite the row
 export function connectionsNeedReseal(settings: SETTINGS.ServerSettings): boolean {
 	let needed = false
-	transformConnectionSecrets(settings, value => {
+	transformConnectionSecrets(settings, (value) => {
 		needed ||= SecretBox.needsReseal(value)
 		return value
 	})
@@ -336,22 +329,25 @@ export function parseServerStateRow(rawRow: unknown): SS.ServerState {
 	return { ...state, settings: openConnections(state.settings) }
 }
 
-// reads settings for a server that may not have a live slice (e.g. it's disabled), always going to the DB
+// reads settings for a server that may not have a live managed server (e.g. it's disabled), always going to the DB
 export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promise<SETTINGS.ServerSettings> {
-	const [row] = await ctx.db().select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers).where(
-		E.eq(Schema.servers.id, serverId),
-	)
+	const [row] = await ctx
+		.db()
+		.select({ id: Schema.servers.id, settings: Schema.servers.settings })
+		.from(Schema.servers)
+		.where(E.eq(Schema.servers.id, serverId))
 	if (!row) throw new Error(`Server ${serverId} not found`)
 	return openConnections(SETTINGS.ServerSettingsSchema.parse(unsuperjsonify(Schema.servers, row).settings))
 }
 
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
 export async function updateServerSettings(
-	ctx: C.Db & C.Tx & C.ServerId,
+	ctx: C.Db & C.Tx & CS.ServerId,
 	newSettings: SETTINGS.ServerSettings,
 	source: SS.LQStateUpdate['source'],
 ) {
-	await ctx.db({ redactParams: true })
+	await ctx
+		.db({ redactParams: true })
 		.update(Schema.servers)
 		.set(superjsonify(Schema.servers, { settings: sealConnections(newSettings) }))
 		.where(E.eq(Schema.servers.id, ctx.serverId))
@@ -366,17 +362,12 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 	return { code: 'ok' as const, settings: unsuperjsonify(Schema.servers, row).settings }
 }
 
-// settings fields that are baked into a running slice at setup time and never refreshed afterwards. `connections` requires a full
+// settings fields that are baked into a running managed server at setup time and never refreshed afterwards. `connections` requires a full
 // destroy+init restart to take effect; the admin-list fields only need the adminList resource invalidated (see
 // SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
 
-export async function updateRawServerSettings(
-	ctx: C.Db & C.User & CS.AbortSignal,
-	serverId: SS.ServerId,
-	rawSettings: unknown,
-) {
-}
+export async function updateRawServerSettings(ctx: C.Db & USR.Ctx & CS.AbortSignal, serverId: SS.ServerId, rawSettings: unknown) {}
 
 // ============================== unified settings bus ==============================
 
@@ -396,7 +387,6 @@ export type PublicSettings = {
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
-	commandAliases: SETTINGS.GlobalSettings['commandAliases']
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
@@ -416,7 +406,6 @@ function buildPublicSettings(): PublicSettings {
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
-		commandAliases: GLOBAL_SETTINGS.commandAliases,
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
@@ -441,27 +430,27 @@ publicSettings$.subscribe()
 
 // safe for any connected client: no connection details, no per-server admin-only settings
 const publicRouter = {
-	watchPublicSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ signal }) {
-		yield* toAsyncGenerator(publicSettings$.pipe(withAbortSignal(signal!)))
+	watchPublicSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
+		yield* Rx.Ext.toAsyncGenerator(publicSettings$.pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 }
 
 // requires global-settings:read (or any global-settings:write grant): full global settings object, for editing
 const globalRouter = {
 	// streams the encoded (pre-decode) form, e.g. HumanTime fields as '5m' rather than milliseconds, since this is meant for display/editing
-	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function*({ context: ctx }) {
+	watchSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx }) {
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.globalSettingsRead())
 		if (denyRes) {
 			yield denyRes
 			return
 		}
-		yield* toAsyncGenerator(
+		yield* Rx.Ext.toAsyncGenerator(
 			settings$.pipe(
 				Rx.filter((e) => e.scope === 'global'),
 				Rx.map((e) => e.settings),
 				Rx.startWith(GLOBAL_SETTINGS),
 				Rx.map((settings) => SETTINGS.GlobalSettingsSchema.encode(settings)),
-				withAbortSignal(ctx.signal),
+				Rx.Ext.withAbortSignal(ctx.signal),
 			),
 		)
 	}),
@@ -478,7 +467,7 @@ const globalRouter = {
 
 			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
 
-			const changePaths = changes.map(c => [c.path])
+			const changePaths = changes.map((c) => [c.path])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths(changePaths))
 			if (denyRes) return denyRes
 			GLOBAL_SETTINGS = parseRes.data
@@ -493,7 +482,8 @@ const globalRouter = {
 				}
 			}
 
-			await ctx.db({ redactParams: true })
+			await ctx
+				.db({ redactParams: true })
 				.update(Schema.globalSettings)
 				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
 
@@ -530,8 +520,8 @@ const globalRouter = {
 			if (LTag.labelConflict(existing, input.label, input.id)) {
 				return { code: 'err:duplicate-label' as const, message: `Another tag is already labeled "${input.label}"` }
 			}
-			const idx = existing.findIndex(t => t.id === input.id)
-			const layerTags = idx === -1 ? [...existing, input] : existing.map(t => (t.id === input.id ? input : t))
+			const idx = existing.findIndex((t) => t.id === input.id)
+			const layerTags = idx === -1 ? [...existing, input] : existing.map((t) => (t.id === input.id ? input : t))
 
 			const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, layerTags })
 			if (!parseRes.success) {
@@ -540,7 +530,8 @@ const globalRouter = {
 			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
 			GLOBAL_SETTINGS = parseRes.data
 
-			await ctx.db({ redactParams: true })
+			await ctx
+				.db({ redactParams: true })
 				.update(Schema.globalSettings)
 				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
 
@@ -562,18 +553,19 @@ const globalRouter = {
 
 // requires server-settings:write for the given serverId; connections are always excluded
 const serverRouter = {
-	watchSettings: orpcBase.meta({ logLevel: 'trace' }).input(z.object({ serverId: z.string() })).handler(async function*(
-		{ context: _ctx, signal, input },
-	) {
-		const obs = SquadServer.sliceStream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
-			withAbortSignal(signal!),
-		)
+	watchSettings: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context: _ctx, signal, input }) {
+			const obs = SquadServer.stream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
+				Rx.Ext.withAbortSignal(signal!),
+			)
 
-		yield* toAsyncGenerator(obs)
-	}),
+			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
 
-	// deliberately doesn't resolve a slice: editing settings is how an admin repairs a broken server or prepares a
-	// disabled one, and neither has a slice. Everything below only needs the db + the serverId.
+	// deliberately doesn't resolve a managed server: editing settings is how an admin repairs a broken server or prepares a
+	// disabled one, and neither has a managed server. Everything below only needs the db + the serverId.
 	updateSettings: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string(), ops: z.array(SETTINGS.SettingMutationSchema) }))
@@ -620,7 +612,7 @@ const serverRouter = {
 }
 
 async function recordServerRegistry(
-	ctx: C.Db & C.UserId,
+	ctx: C.Db & USR.Ctx.Id,
 	action: AppEvents.ServerRegistryChanged['action'],
 	targetServerId: string,
 	// a deleted server is already out of the registry by the time this runs, so its name has to be passed in
@@ -668,11 +660,13 @@ const adminRouter = {
 
 	createServer: orpcBase
 		.meta({ type: 'mutation' })
-		.input(z.object({
-			id: SS.ServerIdSchema,
-			displayName: z.string().min(1).max(256),
-			settings: SETTINGS.ServerSettingsSchema,
-		}))
+		.input(
+			z.object({
+				id: SS.ServerIdSchema,
+				displayName: z.string().min(1).max(256),
+				settings: SETTINGS.ServerSettingsSchema,
+			}),
+		)
 		.handler(async ({ context: ctx, input }) => {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('admin:manage-servers'))
 			if (denyRes) return denyRes
@@ -712,29 +706,27 @@ const adminRouter = {
 
 	// requires server-settings:read for the server; the rcon/sftp connection details are redacted unless the
 	// caller holds server-settings:write-sensitive
-	getRawSettings: orpcBase
-		.input(z.object({ serverId: z.string() }))
-		.handler(async ({ context: ctx, input }) => {
-			const perms = await Rbac.getUserPermissions(ctx)
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('server-settings:read', { serverId: input.serverId }))
-			if (denyRes) return denyRes
-			const res = await getRawServerSettings(ctx, input.serverId)
-			if (res.code !== 'ok') return res
-			const settings = res.settings
-			if (!RBAC.canWriteSensitiveServerSettings(perms, input.serverId)) {
-				if (settings && typeof settings === 'object') delete (settings as Record<string, unknown>).connections
-				return { code: 'ok' as const, settings, sensitiveOmitted: true as const }
+	getRawSettings: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: ctx, input }) => {
+		const perms = await Rbac.getUserPermissions(ctx)
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('server-settings:read', { serverId: input.serverId }))
+		if (denyRes) return denyRes
+		const res = await getRawServerSettings(ctx, input.serverId)
+		if (res.code !== 'ok') return res
+		const settings = res.settings
+		if (!RBAC.canWriteSensitiveServerSettings(perms, input.serverId)) {
+			if (settings && typeof settings === 'object') delete (settings as Record<string, unknown>).connections
+			return { code: 'ok' as const, settings, sensitiveOmitted: true as const }
+		}
+		// connections are stored sealed at rest; open them so the editor shows/edits plaintext instead of the envelope.
+		// a settings blob that fails schema validation (repair flow) may not have valid connections to open, so leave it as-is
+		if (settings && typeof settings === 'object' && 'connections' in settings) {
+			const connRes = SETTINGS.ServerConnectionSchema.safeParse((settings as Record<string, unknown>).connections)
+			if (connRes.success) {
+				;(settings as Record<string, unknown>).connections = openConnectionValues(connRes.data)
 			}
-			// connections are stored sealed at rest; open them so the editor shows/edits plaintext instead of the envelope.
-			// a settings blob that fails schema validation (repair flow) may not have valid connections to open, so leave it as-is
-			if (settings && typeof settings === 'object' && 'connections' in settings) {
-				const connRes = SETTINGS.ServerConnectionSchema.safeParse((settings as Record<string, unknown>).connections)
-				if (connRes.success) {
-					;(settings as Record<string, unknown>).connections = openConnectionValues(connRes.data)
-				}
-			}
-			return { code: 'ok' as const, settings, sensitiveOmitted: false as const }
-		}),
+		}
+		return { code: 'ok' as const, settings, sensitiveOmitted: false as const }
+	}),
 
 	updateRawSettings: orpcBase
 		.meta({ type: 'mutation' })
@@ -754,14 +746,14 @@ const adminRouter = {
 			// plaintext (sealing again is deferred to updateServerSettings)
 			const priorSettings = priorParseRes?.success ? openConnections(priorParseRes.data) : undefined
 
-			const changePaths = diffSettings(priorSettings!, rawSettings).map(c => [c.path])
+			const changePaths = diffSettings(priorSettings!, rawSettings).map((c) => [c.path])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeServerSettingsPaths(serverId, changePaths))
 			if (denyRes) return denyRes
 
 			let patchedRawSettings = rawSettings
 			// non-sensitive writers get connections redacted on read, so whatever they send back is ignored: the stored
 			// connections are carried over (as plaintext, so the change comparison below sees no spurious diff) before validation
-			if (rawSettings && typeof rawSettings === 'object' && (!('connections' in rawSettings))) {
+			if (rawSettings && typeof rawSettings === 'object' && !('connections' in rawSettings)) {
 				patchedRawSettings = { ...rawSettings, connections: priorSettings?.connections }
 			}
 
@@ -784,9 +776,9 @@ const adminRouter = {
 			log.info(wasBroken ? 'Server %s settings repaired' : 'Server %s settings updated', serverId)
 
 			if (connectionsChanged) {
-				await SquadServer.restartSliceIfRunning(serverId)
+				await SquadServer.restartIfRunning(serverId)
 			} else {
-				await SquadServer.ensureSliceRunning(serverId)
+				await SquadServer.ensureRunning(serverId)
 			}
 
 			await AppEventsSys.persistAppEvent(

@@ -1,5 +1,6 @@
 import { onError } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/ws'
+
 import { initModule } from './logger.ts'
 import { orpcAppRouter } from './orpc-app-router.ts'
 

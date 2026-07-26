@@ -1,16 +1,18 @@
+import { Mutex } from 'async-mutex'
+
 import engineWasmUrl from '$root/assets/layer-engine.wasm?url'
 import * as AR from '@/app-routes'
-import { acquireInBlock } from '@/lib/async'
+import * as Prom from '@/lib/promise-utils'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import type * as LE from '@/models/layer-engine'
 import type * as LQY from '@/models/layer-queries.models'
 import * as ATTRS from '@/models/otel-attrs'
 import { LayerEngine } from '@/systems/layer-engine.shared'
 import { queries, type QueryLayersResponsePart, queryLayersStreamed } from '@/systems/layer-queries.shared'
 import { baseLogger } from '@/systems/logger.client'
-import { Mutex } from 'async-mutex'
 // must match the loader variant the bundler resolves for 'sql.js' (browser export condition)
 
 export type ToWorker = RequestInner & Sequenced & Prioritized
@@ -47,7 +49,7 @@ export type InitRequest = {
 	type: 'init'
 	// the worker doesn't share module state with the main thread, so layer data is passed along
 	// rather than fetched a second time. the column config is derived from it here.
-	input: CS.LayerGeneration & BackgroundQueryState & { layerData: L.LayerData }
+	input: LC.Ctx.Generation & BackgroundQueryState & { layerData: L.LayerData }
 }
 
 export type InitResponse = {
@@ -89,7 +91,7 @@ export type Prioritized = {
 }
 
 type State = {
-	ctx: CS.LayerEngine & CS.Log & CS.LayerGeneration
+	ctx: LE.Ctx & CS.Log & LC.Ctx.Generation
 	filters: Map<string, F.FilterEntity>
 }
 
@@ -99,7 +101,7 @@ const mutex = new Mutex()
 let state!: State
 
 onmessage = withErrorResponse(async (e) => {
-	using _lock = await acquireInBlock(mutex)
+	using _lock = await Prom.acquireInBlock(mutex)
 
 	const msg = e.data as RequestInner & Sequenced & Prioritized
 	function post(response: ResponseInner) {
@@ -139,10 +141,7 @@ onmessage = withErrorResponse(async (e) => {
 async function init(initRequest: InitRequest) {
 	L.setLayerData(initRequest.input.layerData)
 
-	const [wasm, artifact] = await Promise.all([
-		fetch(engineWasmUrl).then((res) => res.arrayBuffer()),
-		fetchLayerArtifact(),
-	])
+	const [wasm, artifact] = await Promise.all([fetch(engineWasmUrl).then((res) => res.arrayBuffer()), fetchLayerArtifact()])
 	const engine = await LayerEngine.create(wasm, new Uint8Array(artifact))
 	log.info('layer engine ready: %s layers', engine.rowCount)
 
@@ -192,15 +191,18 @@ async function fetchLayerArtifact() {
 		let storedHash: string | null = null
 
 		try {
-			const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then(handle => {
+			const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then((handle) => {
 				return handle
 			})
-			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then(handle => {
+			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then((handle) => {
 				return handle
 			})
-			const storedHashPromise = hashHandlePromise.then(hashHandle => hashHandle.getFile()).then(hashFile => hashFile.text()).then(text => {
-				return text
-			})
+			const storedHashPromise = hashHandlePromise
+				.then((hashHandle) => hashHandle.getFile())
+				.then((hashFile) => hashFile.text())
+				.then((text) => {
+					return text
+				})
 			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
 		} catch {
 			;[dbHandle, hashHandle] = await Promise.all([

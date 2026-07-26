@@ -1,5 +1,7 @@
-import { makePlayer } from '@/emulator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { makePlayer } from '@/emulator'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue, voteQueueItem } from '../harness/arrange'
 
@@ -15,10 +17,7 @@ const admin = makePlayer({ name: ' test_admin_player', steam: ADMIN_STEAM_ID })
 beforeAll(async () => {
 	app = await createAppFixture({
 		// a seeded queue is a known queue: nothing generates on top of it
-		layerQueue: [
-			voteQueueItem([LAYERS.gorodokRaas, LAYERS.harjuRaas]),
-			...queue(LAYERS.sumariSeed),
-		],
+		layerQueue: [voteQueueItem([LAYERS.gorodokRaas, LAYERS.harjuRaas]), ...queue(LAYERS.sumariSeed)],
 		// in game this player is an admin (Admins.cfg); out of game he is the seeded superuser
 		// (linkedSteamAccounts). Commands need both: the first to be an admin, the second to be allowed.
 		admins: [ADMIN_STEAM_ID],
@@ -79,10 +78,10 @@ describe('in-game admin commands', () => {
 		expect(broadcast.body).toMatch(/Harju/i)
 
 		// and the app records the vote against the queued item
-		await app.waitFor(
-			() => JSON.stringify(savedQueue()).includes('votes'),
-			{ label: 'vote recorded on the queue item', timeoutMs: 20_000 },
-		)
+		await app.waitFor(() => JSON.stringify(savedQueue()).includes('votes'), {
+			label: 'vote recorded on the queue item',
+			timeoutMs: 20_000,
+		})
 	})
 
 	it('warns admins (and only admins) about a low queue after a roll', async () => {
@@ -96,12 +95,12 @@ describe('in-game admin commands', () => {
 
 		// warnAllAdmins picks its targets by matching the roster against the Admins.cfg, so this only
 		// arrives if the local admin list source was read and matched to this player's steam id
-		await app.waitFor(
-			() => warnsToAdmin().some((w) => /queue/i.test(w)),
-			{ label: 'low-queue warning to the admin', timeoutMs: 25_000 },
-		)
-		const warnsToBystander = app.emu.rcon.commandLog.filter((c) =>
-			c.body.startsWith('AdminWarn') && c.body.includes(bystander.eos) && /queue/i.test(c.body)
+		await app.waitFor(() => warnsToAdmin().some((w) => /queue/i.test(w)), {
+			label: 'low-queue warning to the admin',
+			timeoutMs: 25_000,
+		})
+		const warnsToBystander = app.emu.rcon.commandLog.filter(
+			(c) => c.body.startsWith('AdminWarn') && c.body.includes(bystander.eos) && /queue/i.test(c.body),
 		)
 		expect(warnsToBystander).toHaveLength(0)
 	})

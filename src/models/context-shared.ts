@@ -1,51 +1,69 @@
-import { anySignal, isAbortError } from '@/lib/async'
-import type * as F from '@/models/filter.models'
-import type * as LC from '@/models/layer-columns'
-import type * as MH from '@/models/match-history.models'
+import * as OtelApi from '@opentelemetry/api'
 import type pino from 'pino'
-import type * as LE from './layer-engine'
 
-const CtxSymbol = Symbol('context')
-export type Ctx = {
-	[CtxSymbol]: true
+import * as CD from '@/lib/ctx-def'
+import * as Prom from '@/lib/promise-utils'
+import * as ATTR from '@/models/otel-attrs'
+
+export { CtxSymbol, init, isCtx } from '@/lib/ctx-def'
+export type Ctx = CD.Ctx
+
+// every per-server context composes with this, so it lives in the leaf: a domain models file taking
+// it from server-state would close a runtime cycle, since server-state imports several of them for
+// their schemas.
+export type ServerId = Ctx & {
+	serverId: string
 }
-export function init(): Ctx {
-	return {
-		[CtxSymbol]: true,
+export const ServerIdDef = CD.defCtx<ServerId>()(['serverId'], { name: 'serverId' })
+
+export type AbortSignal = { signal: globalThis.AbortSignal }
+export const AbortSignalDef = CD.defCtx<Ctx & AbortSignal>()(['signal'], { name: 'abortSignal' })
+
+// carries links to spans that produced this ctx, flushed onto the next span the instrumentation opens.
+// A primitive rather than server-side because the rcon and match-history payloads type streams with it.
+export type Otel = Ctx & {
+	otel: {
+		links: OtelApi.Link[]
 	}
 }
-export function isCtx(ctx: any): ctx is Ctx {
-	return ctx && ctx[CtxSymbol] === true
+export const OtelDef = CD.defCtx<Otel>()(['otel'], { name: 'otel' })
+
+/**
+ * Stamp a ctx with a LINK to the currently active span, overwriting any stored link.
+ *
+ * A link, deliberately, not a parent: the consumer opens its own root trace and points back at the
+ * cause. Restoring the emitter's context instead would make every downstream handler a child of
+ * whatever request triggered it, so one request's trace would grow without bound.
+ */
+export function linkToActiveSpan(type: ATTR.SpanLink.SourceType): OtelApi.Link | undefined {
+	const activeSpan = OtelApi.trace.getActiveSpan()
+	if (!activeSpan) return
+	return { context: activeSpan.spanContext(), attributes: { [ATTR.SpanLink.SOURCE]: type } }
 }
 
-export type EffectiveColumnConfig = Ctx & { effectiveColsConfig: LC.EffectiveColumnConfig }
+/**
+ * Drop any inherited span links. For work whose cause is a timer rather than an upstream span, and
+ * which outlives that span: a long-lived ctx keeps its links, so every op reusing it would link back
+ * to something that ended long ago.
+ */
+export function withoutOtelLinks<T extends Ctx>(ctx: T): T & Otel {
+	return { ...ctx, otel: { links: [] } }
+}
 
-// the weighted-random layer generation config. unlike effectiveColsConfig this is admin-editable at runtime
-// (globalSettings.layerGeneration), so holders must refresh it when settings change
-export type LayerGeneration = Ctx & { generationConfig: LC.LayerGenerationConfig }
-
-// the columnar query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its lifetime, so it
-// is shared by every request rather than opened per query.
-export type LayerEngine = Ctx & { engine: LE.EngineHandle } & EffectiveColumnConfig
-export type AbortSignal = { signal: globalThis.AbortSignal }
+export function storeLinkToActiveSpan<T extends Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & Otel {
+	const link = linkToActiveSpan(type)
+	return { ...ctx, otel: { links: link ? [link] : [] } }
+}
 
 export type Logger = pino.Logger
 
 export type Log = Ctx & {
 	log: Logger
 }
-
-export type Filters = Ctx & {
-	filters: Map<string, F.FilterEntity>
-}
-
-export type MatchHistory = Ctx & {
-	recentMatches: MH.MatchDetails[]
-}
-export type LayerQuery = Ctx & LayerEngine & Log & Filters & LayerGeneration
+export const LogDef = CD.defCtx<Log>()(['log'], { name: 'log' })
 
 export function addSignal<C extends Ctx & Partial<AbortSignal>>(ctx: C, signal: globalThis.AbortSignal): C & AbortSignal {
-	return { ...ctx, signal: ctx.signal ? anySignal(signal, ctx.signal)! : signal }
+	return { ...ctx, signal: ctx.signal ? Prom.anySignal(signal, ctx.signal)! : signal }
 }
 
 // A bucket of background promises a callee schedules for an ancestor to await (via awaitDeferred) before
@@ -75,7 +93,7 @@ export async function awaitDeferred(ctx: Deferred): Promise<unknown[]> {
 	const errors: unknown[] = []
 	while (ctx.deferred.length > 0) {
 		for (const res of await Promise.allSettled(ctx.deferred.splice(0))) {
-			if (res.status === 'rejected' && !isAbortError(res.reason)) errors.push(res.reason)
+			if (res.status === 'rejected' && !Prom.isAbortError(res.reason)) errors.push(res.reason)
 		}
 	}
 	return errors

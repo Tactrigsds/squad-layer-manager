@@ -1,5 +1,6 @@
-import { cn } from '@/lib/utils'
 import React from 'react'
+
+import { cn } from '@/lib/utils'
 
 // only an explicit scheme counts, so nothing a user writes can turn into a javascript: link
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/g

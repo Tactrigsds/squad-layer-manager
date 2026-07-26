@@ -1,5 +1,7 @@
-import { type EmuPlayer, makePlayer } from '@/emulator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { type EmuPlayer, makePlayer } from '@/emulator'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 
@@ -34,6 +36,12 @@ beforeAll(async () => {
 		adminSteamIds: [ADMIN_STEAM_ID],
 		globalSettings: (s) => {
 			s.adminActionReasons = REASONS as typeof s.adminActionReasons
+			// shortcuts onto !warn: one pins the reason outright, the other only supplies it when the caller
+			// leaves it out
+			s.commands.warn.triggers.push(
+				{ string: '!warntox', args: '{{arg1}} tox' },
+				{ string: '!warnsp', args: '{{arg1}} {{^rest2}}tox{{/rest2}}{{rest2}}' },
+			)
 		},
 	})
 	app.emu.world.connectPlayer(admin)
@@ -54,9 +62,7 @@ afterAll(async () => {
 })
 
 function warnsTo(player: EmuPlayer): string[] {
-	return app.emu.rcon.commandLog
-		.filter((c) => c.body.startsWith(`AdminWarn "${player.eos}"`))
-		.map((c) => c.body)
+	return app.emu.rcon.commandLog.filter((c) => c.body.startsWith(`AdminWarn "${player.eos}"`)).map((c) => c.body)
 }
 
 describe('admin actions from in-game chat', () => {
@@ -71,6 +77,32 @@ describe('admin actions from in-game chat', () => {
 		expect(warnsTo(leader)).toHaveLength(0)
 	})
 
+	// the templated-trigger path: the words typed after the trigger are rendered into its args template, and
+	// the result is dispatched as if the admin had typed the command out in full
+	it('warns through a trigger that pins the reason', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!warntox squad_member')
+
+		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn through the shortcut', timeoutMs: 20_000 })
+		// the pinned token went through reason resolution, not just into the message: `tox` is a keyword
+		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
+		expect(warnsTo(leader)).toHaveLength(0)
+	})
+
+	it('fills an omitted word from the template default, and yields to one that is typed', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!warnsp squad_member')
+
+		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn using the default reason', timeoutMs: 20_000 })
+		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!warnsp squad_member being rude')
+
+		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn with the reason the caller typed', timeoutMs: 20_000 })
+		expect(warnsTo(member)[0]).toContain('being rude')
+	})
+
 	it('warns every member of a squad', async () => {
 		app.emu.rcon.commandLog.length = 0
 		// no team token: the squad is resolved on the sender's own team
@@ -78,7 +110,8 @@ describe('admin actions from in-game chat', () => {
 
 		await app.waitFor(
 			() =>
-				warnsTo(leader).some((w) => w.includes('Cut out the toxicity')) && warnsTo(member).some((w) => w.includes('Cut out the toxicity')),
+				warnsTo(leader).some((w) => w.includes('Cut out the toxicity')) &&
+				warnsTo(member).some((w) => w.includes('Cut out the toxicity')),
 			{ label: 'a warn to each member of the squad', timeoutMs: 20_000 },
 		)
 		// ...and only them: a player on the same team but outside the squad is untouched. (The admin does
@@ -101,17 +134,20 @@ describe('admin actions from in-game chat', () => {
 	})
 
 	it('records what was done, and who did it', async () => {
-		await app.waitFor(() => {
-			const db = app.readDb()
-			try {
-				const rows = db
-					.prepare(`SELECT type, actorType, actorPlayerId FROM appEvents WHERE type LIKE '%ADMIN%' OR type LIKE '%PLAYER%'`)
-					.all() as { type: string; actorType: string; actorPlayerId: string | null }[]
-				// the admin acted from in game, so they are attributed as the in-game player they are
-				return rows.some((r) => r.actorType === 'ingame-user' && r.actorPlayerId === admin.eos)
-			} finally {
-				db.close()
-			}
-		}, { label: 'the actions attributed to the admin in the audit log', timeoutMs: 20_000 })
+		await app.waitFor(
+			() => {
+				const db = app.readDb()
+				try {
+					const rows = db
+						.prepare(`SELECT type, actorType, actorPlayerId FROM appEvents WHERE type LIKE '%ADMIN%' OR type LIKE '%PLAYER%'`)
+						.all() as { type: string; actorType: string; actorPlayerId: string | null }[]
+					// the admin acted from in game, so they are attributed as the in-game player they are
+					return rows.some((r) => r.actorType === 'ingame-user' && r.actorPlayerId === admin.eos)
+				} finally {
+					db.close()
+				}
+			},
+			{ label: 'the actions attributed to the admin in the audit log', timeoutMs: 20_000 },
+		)
 	})
 })

@@ -1,18 +1,19 @@
+import type { z } from 'zod'
+
 import type * as FRM from '@/lib/frame'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
 import { toast } from '@/lib/toast'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
-import React from 'react'
-import * as Rx from 'rxjs'
-import type { z } from 'zod'
+
 import { frameManager } from './frame-manager'
 
 // One frame instance per editable section of the settings page (global settings, each server, the new-server form).
@@ -26,10 +27,8 @@ const NO_PATHS: never[] = []
 export type Kind = 'global' | 'server' | 'new-server'
 
 // pageId is minted per settings-page mount so every visit gets fresh instances (and a fresh raw-settings fetch);
-// nonce distinguishes successive "Add Server" attempts within one visit
-export type Input =
-	& { pageId: string }
-	& ({ kind: 'global' } | { kind: 'server'; serverId: string } | { kind: 'new-server'; nonce: string })
+// nonce distinguishes successive "Add Managed Server" attempts within one visit
+export type Input = { pageId: string } & ({ kind: 'global' } | { kind: 'server'; serverId: string } | { kind: 'new-server'; nonce: string })
 
 export type SettingsEditor = {
 	sub: Rx.Subscription
@@ -76,16 +75,16 @@ export type Types = {
 
 export type Frame = FRM.Frame<Types>
 
-// minimal input-shape seed for a brand-new server: the required-without-default fields (connections + admin lists).
-// prefaulted fields (queue, public settings) are filled in by ServerSettingsSchema at save time.
-export const NEW_SERVER_DRAFT: SETTINGS.ServerSettings = {
+// minimal input-shape seed for a brand-new server. Typed as the schema's input so the seed is checked against it:
+// prefaulted fields (queue, the rest of the public settings) may be omitted and are filled in at save time.
+export const NEW_SERVER_DRAFT: z.input<typeof SETTINGS.ServerSettingsSchema> = {
 	connections: {
 		type: 'local',
 		logFile: '',
 		rcon: { host: '', port: 21114, password: '' },
 	},
-	adminLists: {},
-} as unknown as SETTINGS.ServerSettings
+	adminLists: [],
+}
 
 function editSchema(state: SettingsEditor): z.ZodType<any> {
 	if (state.kind === 'global') return SETTINGS.GlobalSettingsSchema
@@ -123,7 +122,7 @@ function validValue(state: SettingsEditor): any {
 function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' | 'issues' | 'valid'> {
 	const guiRes = state.mode === 'gui' && state.draft !== undefined ? editSchema(state).safeParse(state.draft) : undefined
 	const issues = guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
-	const value = state.mode === 'json' ? state.jsonValid : (guiRes?.success ? guiRes.data : null)
+	const value = state.mode === 'json' ? state.jsonValid : guiRes?.success ? guiRes.data : null
 	if (state.kind === 'new-server') {
 		return {
 			changes: diffSettings({}, { id: state.newId, displayName: state.newDisplayName, ...(value ?? {}) }),
@@ -142,57 +141,63 @@ function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' |
 const setup: Frame['setup'] = (args) => {
 	const input = args.input
 	const get = args.get
-	const set = args.set as ZusUtils.Setter<SettingsEditor>
+	const set = args.set as Zus.Setter<SettingsEditor>
 
 	const isNew = input.kind === 'new-server'
-	set(
-		{
-			sub: new Rx.Subscription(),
-			kind: input.kind,
-			serverId: input.kind === 'server' ? input.serverId : null,
-			mode: 'gui',
-			reset$: new Rx.Subject<void>(),
-			saved: isNew ? NEW_SERVER_DRAFT : undefined,
-			draft: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : undefined,
-			jsonValid: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : null,
-			loading: input.kind === 'server',
-			loadFailed: null,
-			denied: false,
-			sensitiveOmitted: false,
-			saving: false,
-			newId: '',
-			newDisplayName: '',
-			created: false,
-			changes: [],
-			issues: NO_ISSUES,
-			valid: false,
-		} satisfies SettingsEditor,
-	)
+	set({
+		sub: new Rx.Subscription(),
+		kind: input.kind,
+		serverId: input.kind === 'server' ? input.serverId : null,
+		mode: 'gui',
+		reset$: new Rx.Subject<void>(),
+		saved: isNew ? NEW_SERVER_DRAFT : undefined,
+		draft: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : undefined,
+		jsonValid: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : null,
+		loading: input.kind === 'server',
+		loadFailed: null,
+		denied: false,
+		sensitiveOmitted: false,
+		saving: false,
+		newId: '',
+		newDisplayName: '',
+		created: false,
+		changes: [],
+		issues: NO_ISSUES,
+		valid: false,
+	} satisfies SettingsEditor)
 
 	// keep the derived fields current; guarded on the source fields so writing them back doesn't loop
-	args.sub.add(args.update$.subscribe(([state, prev]) => {
-		if (
-			state.draft !== prev.draft || state.jsonValid !== prev.jsonValid || state.mode !== prev.mode
-			|| state.saved !== prev.saved || state.sensitiveOmitted !== prev.sensitiveOmitted
-			|| state.newId !== prev.newId || state.newDisplayName !== prev.newDisplayName
-		) {
-			set(deriveComputed(state))
-		}
-	}))
+	args.sub.add(
+		args.update$.subscribe(([state, prev]) => {
+			if (
+				state.draft !== prev.draft ||
+				state.jsonValid !== prev.jsonValid ||
+				state.mode !== prev.mode ||
+				state.saved !== prev.saved ||
+				state.sensitiveOmitted !== prev.sensitiveOmitted ||
+				state.newId !== prev.newId ||
+				state.newDisplayName !== prev.newDisplayName
+			) {
+				set(deriveComputed(state))
+			}
+		}),
+	)
 
 	if (input.kind === 'global') {
-		args.sub.add(SettingsClient.globalSettings$.subscribe((raw) => {
-			// the server denies the watch when the user lacks global-settings read access (e.g. stale perms after an
-			// rbac change); refetching the logged-in user makes the route re-gate correctly
-			if (raw && typeof raw === 'object' && 'code' in raw) {
-				set({ denied: true })
-				RbacClient.handlePermissionDenied(raw as RBAC.PermissionDeniedResponse)
-				return
-			}
-			const settings = raw as SETTINGS.GlobalSettingsInput
-			set({ denied: false, saved: settings })
-			if (get().draft === undefined) set({ draft: settings })
-		}))
+		args.sub.add(
+			SettingsClient.globalSettings$.subscribe((raw) => {
+				// the server denies the watch when the user lacks global-settings read access (e.g. stale perms after an
+				// rbac change); refetching the logged-in user makes the route re-gate correctly
+				if (raw && typeof raw === 'object' && 'code' in raw) {
+					set({ denied: true })
+					RbacClient.handlePermissionDenied(raw as RBAC.PermissionDeniedResponse)
+					return
+				}
+				const settings = raw as SETTINGS.GlobalSettingsInput
+				set({ denied: false, saved: settings })
+				if (get().draft === undefined) set({ draft: settings })
+			}),
+		)
 	}
 
 	if (input.kind === 'server') {
@@ -238,6 +243,36 @@ export namespace Sel {
 	// DOM anchor prefix matching what SettingsForm emits for this section
 	export const idPrefix = (s: SettingsEditor) =>
 		s.kind === 'global' ? 'setting:' : s.kind === 'server' ? `setting:server:${s.serverId}:` : 'setting:server:__new__:'
+
+	// what the page as a whole needs from its sections: `newServerCreated` collapses the new-server form once its save
+	// lands (the created server then renders as a regular section via the public-settings watch)
+	export function pageStatus(...states: SettingsEditor[]) {
+		let newServerCreated = false
+		let anyDirty = false
+		for (const s of states) {
+			if (s.kind === 'new-server' && s.created) newServerCreated = true
+			if (dirty(s)) anyDirty = true
+		}
+		return { newServerCreated, anyDirty }
+	}
+
+	// the per-section editor modes the table of contents keys off: a JSON-mode section renders no per-field anchors,
+	// so it collapses to a single leaf there
+	export function tocModes(...states: SettingsEditor[]) {
+		const serverModes: Record<string, 'gui' | 'json'> = {}
+		let globalMode: 'gui' | 'json' = 'gui'
+		let newServerMode: 'gui' | 'json' = 'gui'
+		let creatingServer = false
+		for (const s of states) {
+			if (s.kind === 'server') serverModes[s.serverId!] = s.mode
+			else if (s.kind === 'global') globalMode = s.mode
+			else {
+				newServerMode = s.mode
+				creatingServer = !s.created
+			}
+		}
+		return { serverModes, globalMode, newServerMode, creatingServer }
+	}
 }
 
 // changed paths outside the user's write grant: the client-side mirror of the server's enforcement (see
@@ -257,14 +292,12 @@ export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission
 	const isConnection = (p: string) => p === 'connections' || p.startsWith('connections.')
 	const paths = state.changes.map((c) => c.path).filter((p) => !(sensitive && isConnection(p)))
 	if (write.kind === 'none') return paths
-	return paths
-		.filter((p) => !isConnection(p))
-		.filter((p) => !RBAC.settingsPathAllowed(write, p))
+	return paths.filter((p) => !isConnection(p)).filter((p) => !RBAC.settingsPathAllowed(write, p))
 }
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<SettingsEditor>(stores.settingsEditor)
+		return Zus.resolveStore<SettingsEditor>(stores.settingsEditor)
 	}
 
 	export function setDraft(stores: KeyProp, draft: any) {
@@ -306,7 +339,12 @@ export namespace Actions {
 		const s = store(stores)
 		const state = s.getState()
 		if (state.kind === 'new-server') {
-			s.setState({ draft: Obj.deepClone(NEW_SERVER_DRAFT), jsonValid: Obj.deepClone(NEW_SERVER_DRAFT), newId: '', newDisplayName: '' })
+			s.setState({
+				draft: Obj.deepClone(NEW_SERVER_DRAFT),
+				jsonValid: Obj.deepClone(NEW_SERVER_DRAFT),
+				newId: '',
+				newDisplayName: '',
+			})
 			state.reset$.next()
 			return
 		}
@@ -356,7 +394,12 @@ export namespace Actions {
 					toast('Server settings saved')
 					// refresh the baseline with the server-normalized value; only re-seed the draft if no edits landed mid-save
 					const draftAtSave = state.draft
-					await loadServerSettings(() => s.getState(), (p) => s.setState(p), state.serverId!, { seedDraft: false })
+					await loadServerSettings(
+						() => s.getState(),
+						(p) => s.setState(p),
+						state.serverId!,
+						{ seedDraft: false },
+					)
 					const cur = s.getState()
 					if (cur.draft === draftAtSave && cur.saved !== undefined) {
 						s.setState({ draft: cur.saved })
@@ -395,39 +438,21 @@ export namespace Actions {
 	}
 }
 
-// a ValueState (Rx.Observable + getValue) over the section's draft, for SettingsForm's uncontrolled-input data flow
-export function draftValueState(key: Key): Rx.Observable<any> & { getValue: () => any } {
-	const store = ZusUtils.resolveStore<SettingsEditor>(key)
-	const obs = ZusUtils.toObservable(store).pipe(
+// the section's draft as a value observable, which is how SettingsForm's fields read the document
+export function draftValueState(key: Key): Zus.ValueObservable<any> {
+	const store = Zus.resolveStore<SettingsEditor>(key)
+	const obs = Zus.toObservable(store).pipe(
 		Rx.map(([s]) => s.draft),
 		Rx.distinctUntilChanged(),
 	)
 	return Object.assign(obs, { getValue: () => store.getState().draft })
 }
 
-// subscribe to a dynamic list of section instances and derive a combined value; the snapshot is cached on the
-// section states' identities so an unrelated render never produces a fresh (tearing) result
-export function useCombinedSections<R>(keys: Key[], combine: (states: SettingsEditor[]) => R): R {
-	const stores = React.useMemo(() => keys.map((k) => ZusUtils.resolveStore<SettingsEditor>(k)), [keys])
-	const combineRef = React.useRef(combine)
-	combineRef.current = combine
-	const cache = React.useRef<{ states: SettingsEditor[]; result: R } | null>(null)
-	const subscribe = React.useCallback((cb: () => void) => {
-		const unsubs = stores.map((s) => s.subscribe(cb))
-		return () => unsubs.forEach((u) => u())
-	}, [stores])
-	const getSnapshot = React.useCallback(() => {
-		const states = stores.map((s) => s.getState())
-		const c = cache.current
-		if (c && c.states.length === states.length && c.states.every((s, i) => s === states[i])) return c.result
-		const result = combineRef.current(states)
-		cache.current = { states, result }
-		return result
-	}, [stores])
-	return React.useSyncExternalStore(subscribe, getSnapshot)
-}
+// spelled as a selector rather than relying on the no-selector form, which hands back the bare state when a page
+// happens to hold exactly one section
+const asArray = (...states: SettingsEditor[]) => states
 
-// the section states in key order; identity-cached so it doubles as a stable render input
+// the section states in key order; identity-cached by useStore so it doubles as a stable render input
 export function useSectionStates(keys: Key[]): SettingsEditor[] {
-	return useCombinedSections(keys, (states) => states)
+	return Zus.useStore(...keys, asArray)
 }

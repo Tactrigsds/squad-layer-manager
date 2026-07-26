@@ -1,3 +1,11 @@
+import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import type { Table as CoreTable } from '@tanstack/table-core'
+import * as Icons from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
+import React from 'react'
+import { flushSync } from 'react-dom'
+
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button } from '@/components/ui/button'
@@ -10,10 +18,10 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
 import type { Focusable } from '@/lib/react'
-import * as SetUtils from '@/lib/set'
+import * as SetUtils from '@/lib/set-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -21,16 +29,8 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import * as GlobalSettings from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as RbacClient from '@/systems/rbac.client'
-import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 
-import type { Column, ColumnDef, Row, VisibilityState } from '@tanstack/react-table'
-import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
-import type { Table as CoreTable } from '@tanstack/table-core'
-import * as Icons from 'lucide-react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Dices, LoaderCircle } from 'lucide-react'
-import React from 'react'
-import { flushSync } from 'react-dom'
-import * as Zus from 'zustand'
+import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { MultiLayerSetDialog } from './multi-layer-set-dialog'
@@ -42,9 +42,10 @@ import { Separator } from './ui/separator'
 import { Switch } from './ui/switch'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
+import type { CheckedState } from '@radix-ui/react-checkbox'
+
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import type { CheckedState } from '@radix-ui/react-checkbox'
 
 const columnHelper = createColumnHelper<LayerQueriesClient.RowData>()
 
@@ -53,7 +54,7 @@ const SELECT_COLUMN_SIZE = 40
 const CONSTRAINTS_COLUMN_SIZE = 80
 
 function getColumnSize(name: string, isNumeric: boolean): number {
-	return ({ 'Size': 100, 'Faction_1': 40, 'Faction_2': 40 } as Record<string, number>)[name] ?? (isNumeric ? 50 : DEFAULT_COLUMN_SIZE)
+	return ({ Size: 100, Faction_1: 40, Faction_2: 40 } as Record<string, number>)[name] ?? (isNumeric ? 50 : DEFAULT_COLUMN_SIZE)
 }
 
 // columns that stay visible in compact mode. the select and constraints(flag) columns aren't part
@@ -63,7 +64,7 @@ export const COMPACT_VISIBLE_COLUMNS: string[] = ['Layer', 'Faction_1', 'Faction
 // width the table wants when rendered with the given column visibility, derived from the same
 // size hints the column defs use. lets callers compute a compact-mode breakpoint parametrically
 export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, columnVisibility: VisibilityState): number {
-	const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
+	const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
 	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
 	for (const name of Object.keys(cfg.defs)) {
 		if (!columnVisibility[name]) continue
@@ -84,13 +85,9 @@ const formatFloat = (value: number) => {
 type CellDisplayCtx = { teamParity: number; displayLayersNormalized: boolean }
 const LayerTableCellCtx = React.createContext<CellDisplayCtx>({ teamParity: 0, displayLayersNormalized: false })
 
-function buildColumn(
-	colDef: LC.ColumnDef,
-	isNumeric: boolean,
-	stores: LayerTablePrt.KeyProp,
-) {
+function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTablePrt.KeyProp) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(stores.layerTable, s => selector(s.layerTable))
+		Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
 
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
@@ -98,7 +95,7 @@ function buildColumn(
 		size: getColumnSize(colDef.name, isNumeric),
 		minSize: colDef.name === 'Layer' ? 150 : undefined,
 		header: function ValueColHeader() {
-			const sortingState = useTableFrame(table => table.sort)
+			const sortingState = useTableFrame((table) => table.sort)
 			const sort = sortingState?.type === 'column' && sortingState.sortBy === colDef.name ? sortingState : null
 
 			const handleClick = () => {
@@ -106,9 +103,7 @@ function buildColumn(
 					const existing = old
 
 					// Only numeric columns can be sorted by absolute value
-					const order = isNumeric
-						? (['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS'] as const)
-						: (['ASC', 'DESC'] as const)
+					const order = isNumeric ? (['ASC', 'DESC', 'ASC:ABS', 'DESC:ABS'] as const) : (['ASC', 'DESC'] as const)
 					let direction: LQY.LayersQuerySortDirection
 					if (!existing || existing.type !== 'column' || existing.sortBy !== colDef.name) {
 						direction = 'ASC'
@@ -188,17 +183,11 @@ function buildColumn(
 
 			let extraStyles: string | undefined = cn(
 				...columnsToInclude.map((col) =>
-					DH.getColumnExtraStyles(col as keyof L.KnownLayer, teamParity, displayLayersNormalized, matchDescriptors)
+					DH.getColumnExtraStyles(col as keyof L.KnownLayer, teamParity, displayLayersNormalized, matchDescriptors),
 				),
 			)
 
-			const valueElt = (value: React.ReactNode) => (
-				<div
-					className={`pl-4 ${extraStyles}`}
-				>
-					{value}
-				</div>
-			)
+			const valueElt = (value: React.ReactNode) => <div className={`pl-4 ${extraStyles}`}>{value}</div>
 			const value = info.getValue()
 			if (value === null || value === undefined) return emptyElt
 			let elt: React.ReactNode
@@ -228,47 +217,47 @@ function buildColumn(
 	})
 }
 
-function buildColDefs(
-	cfg: LQY.EffectiveColumnAndTableConfig,
-	stores: LayerTablePrt.KeyProp,
-) {
+function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTablePrt.KeyProp) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(stores.layerTable, s => selector(s.layerTable))
-	const getTableFrame = () => ZusUtils.getState(stores.layerTable).layerTable
+		Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
+	const getTableFrame = () => Zus.getState(stores.layerTable).layerTable
 
 	const tableColDefs: ColumnDef<LayerQueriesClient.RowData>[] = [
 		{
 			id: 'select',
 			size: SELECT_COLUMN_SIZE,
 			header: function SelectHeader() {
-				const [selectState, disabled] = useTableFrame(ZusUtils.useShallow(table => {
-					if (table.pageData === null) return [null, true] as const
-					const selected = new Set(table.selected)
-					const pageIds = new Set(table.pageData.layers.map(l => l.id))
-					const intersect = SetUtils.intersection(selected, pageIds)
-					const selectState: 'all' | 'some' | null = (() => {
-						if (intersect.size === pageIds.size) return 'all' as const
-						if (intersect.size > 0) return 'some' as const
-						return null
-					})()
+				const [selectState, disabled] = useTableFrame(
+					Zus.useShallow((table) => {
+						if (table.pageData === null) return [null, true] as const
+						const selected = new Set(table.selected)
+						const pageIds = new Set(table.pageData.layers.map((l) => l.id))
+						const intersect = SetUtils.intersection(selected, pageIds)
+						const selectState: 'all' | 'some' | null = (() => {
+							if (intersect.size === pageIds.size) return 'all' as const
+							if (intersect.size > 0) return 'some' as const
+							return null
+						})()
 
-					const ifAllSelected = SetUtils.union(selected, pageIds)
-					const ifAllUnselected = SetUtils.difference(selected, pageIds)
+						const ifAllSelected = SetUtils.union(selected, pageIds)
+						const ifAllUnselected = SetUtils.difference(selected, pageIds)
 
-					const disabled = (table.maxSelected ?? Infinity) < (ifAllSelected.size)
-						|| (table.minSelected ?? 0) > ifAllUnselected.size
-						|| (table.pageData.layers.some(t => t.isRowDisabled))
-					return [selectState, disabled] as const
-				}))
+						const disabled =
+							(table.maxSelected ?? Infinity) < ifAllSelected.size ||
+							(table.minSelected ?? 0) > ifAllUnselected.size ||
+							table.pageData.layers.some((t) => t.isRowDisabled)
+						return [selectState, disabled] as const
+					}),
+				)
 
 				const toggleAllSelected = (state: CheckedState) => {
 					const table = getTableFrame()
 					if (!table.pageData) return
-					const ids = table.pageData.layers.map(l => l.id)
+					const ids = table.pageData.layers.map((l) => l.id)
 					if (state === true) {
-						LayerTablePrt.Actions.setSelected(stores, selected => Array.from(new Set([...ids, ...selected])))
+						LayerTablePrt.Actions.setSelected(stores, (selected) => Array.from(new Set([...ids, ...selected])))
 					} else {
-						LayerTablePrt.Actions.setSelected(stores, selected => selected.filter(id => !ids.includes(id)))
+						LayerTablePrt.Actions.setSelected(stores, (selected) => selected.filter((id) => !ids.includes(id)))
 					}
 				}
 				let checkState: true | false | 'indeterminate'
@@ -282,20 +271,12 @@ function buildColDefs(
 
 				return (
 					<div className="pl-4">
-						<Checkbox
-							checked={checkState}
-							disabled={disabled}
-							onCheckedChange={toggleAllSelected}
-							aria-label="Select all"
-						/>
+						<Checkbox checked={checkState} disabled={disabled} onCheckedChange={toggleAllSelected} aria-label="Select all" />
 					</div>
 				)
 			},
 			cell: function SelectCell({ row }) {
-				const [isUnselectable, isSelected] = ZusUtils.useStore(
-					stores.layerTable,
-					LayerTablePrt.Sel.rowSelectionStatus(row.id),
-				)
+				const [isUnselectable, isSelected] = Zus.useStore(stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
 
 				return (
 					<Checkbox
@@ -314,14 +295,14 @@ function buildColDefs(
 
 	{
 		const sortedColKeys = [...cfg.orderedColumns].sort((a, b) => {
-			let aIndex = cfg.orderedColumns.findIndex(c => c.name === a.name)
+			let aIndex = cfg.orderedColumns.findIndex((c) => c.name === a.name)
 			if (aIndex === -1) aIndex = cfg.orderedColumns.length
-			let bIndex = cfg.orderedColumns.findIndex(c => c.name === b.name)
+			let bIndex = cfg.orderedColumns.findIndex((c) => c.name === b.name)
 			if (bIndex === -1) bIndex = cfg.orderedColumns.length
 			return aIndex - bIndex
 		})
 
-		const ctx: CS.EffectiveColumnConfig = { ...CS.init(), effectiveColsConfig: cfg }
+		const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
 
 		// add sorted first
 		for (const col of sortedColKeys) {
@@ -332,7 +313,7 @@ function buildColDefs(
 
 		// then add the rest
 		for (const key of Object.keys(cfg.defs)) {
-			if (sortedColKeys.some(c => c.name === key)) continue
+			if (sortedColKeys.some((c) => c.name === key)) continue
 			const colDef = LC.getColumnDef(key, cfg)!
 			const isNumeric = LC.isNumericColumn(key, ctx)
 			tableColDefs.push(buildColumn(colDef, isNumeric, stores))
@@ -387,10 +368,10 @@ export default function LayerTable(props: {
 	compact?: boolean
 }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(props.stores.layerTable, s => selector(s.layerTable))
+		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
 
 	const frameState = useTableFrame(
-		ZusUtils.useShallow(table => ({
+		Zus.useShallow((table) => ({
 			colConfig: table.colConfig,
 			showSelectedLayers: table.showSelectedLayers,
 			sort: table.sort,
@@ -410,30 +391,28 @@ export default function LayerTable(props: {
 	}, [props.compact, frameState.columnVisibility])
 
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const onColumnVisibilityChange = React.useCallback(
-		LayerTablePrt.Actions.onColumnVisibilityChange(props.stores),
-		[props.stores],
-	)
+	const onColumnVisibilityChange = React.useCallback(LayerTablePrt.Actions.onColumnVisibilityChange(props.stores), [props.stores])
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const onPaginationChange = React.useCallback(
-		LayerTablePrt.Actions.onPaginationChange(props.stores),
-		[props.stores],
-	)
+	const onPaginationChange = React.useCallback(LayerTablePrt.Actions.onPaginationChange(props.stores), [props.stores])
 
-	const page = useTableFrame(table => table.pageData)
+	const page = useTableFrame((table) => table.pageData)
 
 	// shared display state for all cells -- see LayerTableCellCtx
-	const displayLayersNormalized = ZusUtils.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
-	const cursor = useTableFrame(table => table.pageData?.input.cursor)
+	const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
+	const cursor = useTableFrame((table) => table.pageData?.input.cursor)
 	// read parity from the server frame store (safe getState) passed via props, rather than the layerItemsState$
 	// observable which throws when no frame is hot. omitted outside a server context (e.g. filter editor) -> parity 0
-	const teamParity = ZusUtils.useStore(
-		props.stores.squadServer,
-		React.useCallback((s: SquadServerFrame.State | undefined) => {
-			if (!s || !cursor) return 0
-			return LQY.resolveTeamParityForCursor(s.layerItemsState, LQY.fromLayerListCursor(s.layerItemsState, cursor))
-		}, [cursor]),
-	) ?? 0
+	const teamParity =
+		Zus.useStore(
+			props.stores.squadServer,
+			React.useCallback(
+				(s: SquadServerFrame.State | undefined) => {
+					if (!s || !cursor) return 0
+					return LQY.resolveTeamParityForCursor(s.layerItemsState, LQY.fromLayerListCursor(s.layerItemsState, cursor))
+				},
+				[cursor],
+			),
+		) ?? 0
 	const cellDisplayCtx = React.useMemo(
 		(): CellDisplayCtx => ({ teamParity, displayLayersNormalized }),
 		[teamParity, displayLayersNormalized],
@@ -465,29 +444,24 @@ export default function LayerTable(props: {
 	const rowElts: React.ReactNode[] = []
 	const rows = table.getRowModel().rows
 	const columns = table.getVisibleFlatColumns()
-	const placeholderBase = React.useMemo(() => (
-		<TableRow className="pointer-events-none">
-			{columns.map((column) => (
-				<TableCell
-					key={column.id}
-					className={column.id === 'select' ? 'pl-4' : undefined}
-					style={{ width: column.getSize() }}
-				>
-					<div style={{ height: '32px' }} />
-				</TableCell>
-			))}
-		</TableRow>
-	), [columns])
+	const placeholderBase = React.useMemo(
+		() => (
+			<TableRow className="pointer-events-none">
+				{columns.map((column) => (
+					<TableCell key={column.id} className={column.id === 'select' ? 'pl-4' : undefined} style={{ width: column.getSize() }}>
+						<div style={{ height: '32px' }} />
+					</TableCell>
+				))}
+			</TableRow>
+		),
+		[columns],
+	)
 
 	for (let i = 0; i < frameState.pageSize; i++) {
 		if (rows[i]) {
 			rowElts.push(<LayerTableRow key={rows[i].id} row={rows[i]} stores={props.stores} visibleColumns={columns} />)
 		} else {
-			rowElts.push(
-				<React.Fragment key={`placeholder-${i}`}>
-					{placeholderBase}
-				</React.Fragment>,
-			)
+			rowElts.push(<React.Fragment key={`placeholder-${i}`}>{placeholderBase}</React.Fragment>)
 		}
 	}
 
@@ -502,20 +476,14 @@ export default function LayerTable(props: {
 							{table.getHeaderGroups().map((headerGroup) => (
 								<TableRow key={headerGroup.id}>
 									{headerGroup.headers.map((header) => (
-										<TableHead
-											className="px-0"
-											key={header.id}
-											style={{ width: header.getSize() }}
-										>
+										<TableHead className="px-0" key={header.id} style={{ width: header.getSize() }}>
 											{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 										</TableHead>
 									))}
 								</TableRow>
 							))}
 						</TableHeader>
-						<TableBody>
-							{rowElts}
-						</TableBody>
+						<TableBody>{rowElts}</TableBody>
 					</Table>
 				</div>
 				<LayerTablePaginationControls stores={props.stores} table={table} />
@@ -528,7 +496,10 @@ export default function LayerTable(props: {
 const MouseDownRowIndexStoreMap = new WeakMap<LayerTablePrt.Key, Zus.StoreApi<{ index: number; originalSelected: boolean } | null>>()
 function getMouseDownRowIndexStore(layerTableKey: LayerTablePrt.Key) {
 	if (!MouseDownRowIndexStoreMap.has(layerTableKey)) {
-		MouseDownRowIndexStoreMap.set(layerTableKey, Zus.createStore<{ index: number; originalSelected: boolean } | null>(() => null))
+		MouseDownRowIndexStoreMap.set(
+			layerTableKey,
+			Zus.createStore<{ index: number; originalSelected: boolean } | null>(() => null),
+		)
 	}
 	return MouseDownRowIndexStoreMap.get(layerTableKey)!
 }
@@ -543,22 +514,19 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 }) {
 	const { row } = props
 	const allCells = row.getAllCells()
-	const visibleCells = props.visibleColumns.map(column => allCells.find(cell => cell.column.id === column.id)!)
+	const visibleCells = props.visibleColumns.map((column) => allCells.find((cell) => cell.column.id === column.id)!)
 	const id = row.original.id
-	const getStore = () => ZusUtils.getState(props.stores.layerTable)
-	const getTableFrame = () => ZusUtils.getState(props.stores.layerTable).layerTable
-	const canFocusLayers = ZusUtils.useStore(props.stores.layerTable, s => !!s.onLayerFocused)
+	const getStore = () => Zus.getState(props.stores.layerTable)
+	const getTableFrame = () => Zus.getState(props.stores.layerTable).layerTable
+	const canFocusLayers = Zus.useStore(props.stores.layerTable, (s) => !!s.onLayerFocused)
 
-	const [isUnselectable, isSelected] = ZusUtils.useStore(
-		props.stores.layerTable,
-		LayerTablePrt.Sel.rowSelectionStatus(row.id),
-	)
+	const [isUnselectable, isSelected] = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
 	function toggleRow() {
 		if (isUnselectable) return
 
-		LayerTablePrt.Actions.setSelected(props.stores, selected => {
+		LayerTablePrt.Actions.setSelected(props.stores, (selected) => {
 			if (selected.includes(id)) {
-				return selected.filter(s => s !== id)
+				return selected.filter((s) => s !== id)
 			} else {
 				return [...selected, id]
 			}
@@ -601,7 +569,7 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 						}
 						toggleRow()
 					}}
-					onMouseDown={e => {
+					onMouseDown={(e) => {
 						if (e.ctrlKey || e.button !== 0) return
 						const originalSelected = !getTableFrame().selected.includes(row.original.id)
 						getMouseDownRowIndexStore(props.stores.layerTable).setState({ index: row.index, originalSelected })
@@ -641,38 +609,37 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 	)
 })
 
-export function PlaceholderColumns() {
-}
+export function PlaceholderColumns() {}
 
 export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: LayerTablePrt.KeyProp }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(props.stores.layerTable, s => selector(s.layerTable))
-	const selectedForCopy = useTableFrame(ZusUtils.useShallow(table => {
-		if (!table.selected.includes(props.layerId)) {
-			return [props.layerId]
-		} else {
-			return table.selected
-		}
-	}))
+		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
+	const selectedForCopy = useTableFrame(
+		Zus.useShallow((table) => {
+			if (!table.selected.includes(props.layerId)) {
+				return [props.layerId]
+			} else {
+				return table.selected
+			}
+		}),
+	)
 
 	return <LayerContextMenuItems selectedLayerIds={selectedForCopy} />
 }
 
-export function LayerTableControlPanel(
-	props: {
-		stores: LayerTablePrt.KeyProp
-		canToggleColumns?: boolean
-		table: CoreTable<LayerQueriesClient.RowData>
-		enableForceSelect?: boolean
-		extraPanelItems?: React.ReactNode
-		compact?: boolean
-	},
-) {
-	const getTableFrame = () => ZusUtils.getState(props.stores.layerTable).layerTable
+export function LayerTableControlPanel(props: {
+	stores: LayerTablePrt.KeyProp
+	canToggleColumns?: boolean
+	table: CoreTable<LayerQueriesClient.RowData>
+	enableForceSelect?: boolean
+	extraPanelItems?: React.ReactNode
+	compact?: boolean
+}) {
+	const getTableFrame = () => Zus.getState(props.stores.layerTable).layerTable
 
-	const frameState = ZusUtils.useStore(
+	const frameState = Zus.useStore(
 		props.stores.layerTable,
-		ZusUtils.useShallow(s => ({
+		Zus.useShallow((s) => ({
 			colConfig: s.layerTable.colConfig,
 			showSelectedLayers: s.layerTable.showSelectedLayers,
 			sort: s.layerTable.sort,
@@ -690,9 +657,7 @@ export function LayerTableControlPanel(
 	// Compute default visible columns from config
 	const defaultVisibleColumns = React.useMemo(() => {
 		if (!frameState.colConfig) return []
-		return frameState.colConfig.orderedColumns
-			.filter(col => col.visible ?? true)
-			.map(col => col.name)
+		return frameState.colConfig.orderedColumns.filter((col) => col.visible ?? true).map((col) => col.name)
 	}, [frameState.colConfig])
 
 	const table = props.table
@@ -728,16 +693,25 @@ export function LayerTableControlPanel(
 					{canToggleColumns && (
 						<ComboBoxMulti
 							title="Column"
-							values={table.getAllLeafColumns().filter(col => col.getIsVisible()).map(col => col.id)}
-							options={table.getAllLeafColumns().map(col => ({
+							values={table
+								.getAllLeafColumns()
+								.filter((col) => col.getIsVisible())
+								.map((col) => col.id)}
+							options={table.getAllLeafColumns().map((col) => ({
 								value: col.id,
 								label: col.id,
 							}))}
 							onSelect={(updater) => {
-								const newSelectedIds = typeof updater === 'function'
-									? updater(table.getAllLeafColumns().filter(col => col.getIsVisible()).map(col => col.id))
-									: updater
-								table.getAllLeafColumns().forEach(column => {
+								const newSelectedIds =
+									typeof updater === 'function'
+										? updater(
+												table
+													.getAllLeafColumns()
+													.filter((col) => col.getIsVisible())
+													.map((col) => col.id),
+											)
+										: updater
+								table.getAllLeafColumns().forEach((column) => {
 									column.toggleVisibility(newSelectedIds.includes(column.id))
 								})
 							}}
@@ -757,7 +731,7 @@ export function LayerTableControlPanel(
 								title={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
 								aria-label={`${rawSetDialogOpen ? 'Hide' : 'Show'} Raw Input`}
 								pressed={rawSetDialogOpen}
-								onClick={() => setRawSetDialogOpen(prev => !prev)}
+								onClick={() => setRawSetDialogOpen((prev) => !prev)}
 								disabled={!!forceSelectDenied}
 							>
 								<Icons.TextCursorInput />
@@ -777,7 +751,8 @@ export function LayerTableControlPanel(
 								LayerTablePrt.Actions.setShowSelectedLayers(props.stores, (show: boolean) => {
 									if (getTableFrame().selected.length === 0) return false
 									return !show
-								})}
+								})
+							}
 						/>
 						<Label htmlFor={showSelectedId}>Show Selected</Label>
 					</div>
@@ -823,9 +798,7 @@ export function LayerTableControlPanel(
 								<Label htmlFor={toggleRandomizeId}>Randomize</Label>
 							</div>
 						</TooltipTrigger>
-						<TooltipContent>
-							Randomize layer selection (weighted to preferable layers)
-						</TooltipContent>
+						<TooltipContent>Randomize layer selection (weighted to preferable layers)</TooltipContent>
 					</Tooltip>
 				</span>
 			</div>
@@ -836,11 +809,13 @@ export function LayerTableControlPanel(
 					editingSingleValue={frameState.editingSingleValue}
 					open={rawSetDialogOpen}
 					setOpen={setRawSetDialogOpen}
-					defaultValue={frameState.editingSingleValue && frameState.selectedLayerIds.length === 1
-						? L.getLayerCommand(frameState.selectedLayerIds[0], 'set-next')
-						: undefined}
-					onSubmit={layers => {
-						LayerTablePrt.Actions.setSelected(props.stores, prev => [...prev, ...layers.map(l => l.id)])
+					defaultValue={
+						frameState.editingSingleValue && frameState.selectedLayerIds.length === 1
+							? L.getLayerCommand(frameState.selectedLayerIds[0], 'set-next')
+							: undefined
+					}
+					onSubmit={(layers) => {
+						LayerTablePrt.Actions.setSelected(props.stores, (prev) => [...prev, ...layers.map((l) => l.id)])
 						LayerTablePrt.Actions.setShowSelectedLayers(props.stores, true)
 					}}
 				/>
@@ -869,24 +844,31 @@ function SetRawLayerDialog(props: {
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
 	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
-	const setInputText = React.useCallback((value: string) => {
-		value = value.trim()
-		const layerRes = L.parseRawLayerText(value)
-		setValidLayer(layerRes)
-	}, [setValidLayer])
+	const setInputText = React.useCallback(
+		(value: string) => {
+			value = value.trim()
+			const layerRes = L.parseRawLayerText(value)
+			setValidLayer(layerRes)
+		},
+		[setValidLayer],
+	)
 
-	React.useImperativeHandle(props.ref, () => ({
-		get isFocused() {
-			return document.activeElement === inputRef.current
-		},
-		focus() {
-			inputRef.current?.focus()
-		},
-		setInput(value: string) {
-			setInputText(value)
-			if (inputRef.current) inputRef.current.value = value
-		},
-	}), [setInputText])
+	React.useImperativeHandle(
+		props.ref,
+		() => ({
+			get isFocused() {
+				return document.activeElement === inputRef.current
+			},
+			focus() {
+				inputRef.current?.focus()
+			},
+			setInput(value: string) {
+				setInputText(value)
+				if (inputRef.current) inputRef.current.value = value
+			},
+		}),
+		[setInputText],
+	)
 
 	React.useLayoutEffect(() => {
 		if (layersKnownRes.data) {
@@ -958,37 +940,39 @@ function SetRawLayerDialog(props: {
 
 function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; table: CoreTable<LayerQueriesClient.RowData> }) {
 	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		ZusUtils.useStore(props.stores.layerTable, s => selector(s.layerTable))
+		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
 
-	const initStatus = ZusUtils.useStore(
+	const initStatus = Zus.useStore(
 		LayerQueriesClient.Store,
-		ZusUtils.useShallow(s => ({ status: s.status, errorMessage: s.errorMessage })),
+		Zus.useShallow((s) => ({ status: s.status, errorMessage: s.errorMessage })),
 	)
-	const frameState = useTableFrame(ZusUtils.useShallow(table => ({
-		pageSize: table.pageSize,
-		pageIndex: table.pageIndex,
-		totalRowCount: table.pageData?.totalCount,
-		totalPageCount: table.pageData?.pageCount,
-		isFetching: table.isFetching,
-	})))
+	const frameState = useTableFrame(
+		Zus.useShallow((table) => ({
+			pageSize: table.pageSize,
+			pageIndex: table.pageIndex,
+			totalRowCount: table.pageData?.totalCount,
+			totalPageCount: table.pageData?.pageCount,
+			isFetching: table.isFetching,
+		})),
+	)
 
 	return (
 		<div className="flex items-center justify-between space-x-4 py-2">
 			<div className="flex items-center space-x-2">
 				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-muted-foreground">
-						{(frameState.totalRowCount ?? 0) > 0
-							? (
-								<>
-									<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched layers
-								</>
-							)
-							: <span className="font-semibold text-foreground">No layers matched</span>}
+						{(frameState.totalRowCount ?? 0) > 0 ? (
+							<>
+								<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched
+								layers
+							</>
+						) : (
+							<span className="font-semibold text-foreground">No layers matched</span>
+						)}
 					</div>
 				)}
 				<div
-					data-loading={frameState.isFetching || initStatus.status === 'initializing'
-						|| initStatus.status === 'downloading-layers'}
+					data-loading={frameState.isFetching || initStatus.status === 'initializing' || initStatus.status === 'downloading-layers'}
 					className="flex items-center space-x-2 invisible data-[loading=true]:visible "
 				>
 					<LoaderCircle className="h-4 w-4 animate-spin" />

@@ -15,10 +15,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"Armored",
-								"Mechanized"
-							]
+							"values": ["Armored", "Mechanized"]
 						}
 					]
 				},
@@ -91,14 +88,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"Skirmish",
-										"Insurgency",
-										"Invasion",
-										"Destruction",
-										"Seed",
-										"Training"
-									]
+									"values": ["Skirmish", "Insurgency", "Invasion", "Destruction", "Seed", "Training"]
 								}
 							]
 						},
@@ -158,14 +148,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"Fallujah",
-										"Kohat",
-										"Lashkar",
-										"Manicouagan",
-										"Sanxian",
-										"Skorpo"
-									]
+									"values": ["Fallujah", "Kohat", "Lashkar", "Manicouagan", "Sanxian", "Skorpo"]
 								}
 							]
 						},
@@ -250,13 +233,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"Lashkar_TC_v1",
-								"Tallil_TC_v1",
-								"Harju_TC_v1",
-								"Kohat_TC_v1",
-								"Mestia_TC_v1"
-							]
+							"values": ["Lashkar_TC_v1", "Tallil_TC_v1", "Harju_TC_v1", "Kohat_TC_v1", "Mestia_TC_v1"]
 						}
 					]
 				},
@@ -295,10 +272,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"Armored",
-										"Mechanized"
-									]
+									"values": ["Armored", "Mechanized"]
 								}
 							]
 						},
@@ -312,10 +286,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"Armored",
-										"Mechanized"
-									]
+									"values": ["Armored", "Mechanized"]
 								}
 							]
 						}
@@ -416,16 +387,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"Destruction",
-								"Insurgency",
-								"Invasion",
-								"Seed",
-								"Skirmish",
-								"Training",
-								"TC",
-								"RAAS"
-							]
+							"values": ["Destruction", "Insurgency", "Invasion", "Seed", "Skirmish", "Training", "TC", "RAAS"]
 						}
 					]
 				}
@@ -454,11 +416,7 @@
 										},
 										{
 											"type": "values",
-											"values": [
-												"AirAssault",
-												"Armored",
-												"Mechanized"
-											]
+											"values": ["AirAssault", "Armored", "Mechanized"]
 										}
 									]
 								}
@@ -493,9 +451,7 @@
 										},
 										{
 											"type": "values",
-											"values": [
-												"CombinedArms"
-											]
+											"values": ["CombinedArms"]
 										}
 									]
 								}
@@ -530,9 +486,7 @@
 										},
 										{
 											"type": "values",
-											"values": [
-												"CombinedArms"
-											]
+											"values": ["CombinedArms"]
 										}
 									]
 								}
@@ -554,13 +508,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"BAF",
-										"ADF",
-										"CAF",
-										"MEI",
-										"IMF"
-									]
+									"values": ["BAF", "ADF", "CAF", "MEI", "IMF"]
 								}
 							]
 						},
@@ -713,11 +661,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"AAS",
-								"FRAAS",
-								"TC"
-							]
+							"values": ["AAS", "FRAAS", "TC"]
 						}
 					]
 				}
@@ -776,10 +720,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored"
-													]
+													"values": ["Mechanized", "Armored"]
 												}
 											]
 										}
@@ -812,10 +753,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored"
-													]
+													"values": ["Mechanized", "Armored"]
 												}
 											]
 										}
@@ -1011,10 +949,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored"
-													]
+													"values": ["Mechanized", "Armored"]
 												}
 											]
 										}
@@ -1047,10 +982,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored"
-													]
+													"values": ["Mechanized", "Armored"]
 												}
 											]
 										}
@@ -1088,11 +1020,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored",
-														"AmphibiousAssault"
-													]
+													"values": ["Mechanized", "Armored", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1125,11 +1053,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored",
-														"AmphibiousAssault"
-													]
+													"values": ["Mechanized", "Armored", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1167,11 +1091,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"CombinedArms",
-														"AmphibiousAssault"
-													]
+													"values": ["Armored", "CombinedArms", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1204,11 +1124,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"CombinedArms",
-														"AmphibiousAssault"
-													]
+													"values": ["Armored", "CombinedArms", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1246,10 +1162,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"Mechanized"
-													]
+													"values": ["Armored", "Mechanized"]
 												}
 											]
 										}
@@ -1282,10 +1195,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"Mechanized"
-													]
+													"values": ["Armored", "Mechanized"]
 												}
 											]
 										}
@@ -1323,11 +1233,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"Mechanized",
-														"AmphibiousAssault"
-													]
+													"values": ["Armored", "Mechanized", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1360,11 +1266,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"Mechanized",
-														"AmphibiousAssault"
-													]
+													"values": ["Armored", "Mechanized", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1402,12 +1304,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"Support",
-														"CombinedArms",
-														"AmphibiousAssault"
-													]
+													"values": ["Armored", "Support", "CombinedArms", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1440,12 +1337,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Armored",
-														"Support",
-														"CombinedArms",
-														"AmphibiousAssault"
-													]
+													"values": ["Armored", "Support", "CombinedArms", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1483,12 +1375,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored",
-														"CombinedArms",
-														"AmphibiousAssault"
-													]
+													"values": ["Mechanized", "Armored", "CombinedArms", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1521,12 +1408,7 @@
 												},
 												{
 													"type": "values",
-													"values": [
-														"Mechanized",
-														"Armored",
-														"CombinedArms",
-														"AmphibiousAssault"
-													]
+													"values": ["Mechanized", "Armored", "CombinedArms", "AmphibiousAssault"]
 												}
 											]
 										}
@@ -1554,14 +1436,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"AAS",
-								"RAAS",
-								"FRAAS",
-								"Skirmish",
-								"TC",
-								"Invasion"
-							]
+							"values": ["AAS", "RAAS", "FRAAS", "Skirmish", "TC", "Invasion"]
 						}
 					]
 				},
@@ -1575,10 +1450,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"USA",
-								"MEI"
-							]
+							"values": ["USA", "MEI"]
 						}
 					]
 				},
@@ -1592,10 +1464,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"USA",
-								"MEI"
-							]
+							"values": ["USA", "MEI"]
 						}
 					]
 				},
@@ -1609,11 +1478,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"AlBasrah",
-								"Fallujah",
-								"Mutaha"
-							]
+							"values": ["AlBasrah", "Fallujah", "Mutaha"]
 						}
 					]
 				},
@@ -1647,12 +1512,7 @@
 										},
 										{
 											"type": "values",
-											"values": [
-												"Mechanized",
-												"Armored",
-												"Motorized",
-												"AmphibiousAssault"
-											]
+											"values": ["Mechanized", "Armored", "Motorized", "AmphibiousAssault"]
 										}
 									]
 								}
@@ -1685,12 +1545,7 @@
 										},
 										{
 											"type": "values",
-											"values": [
-												"Mechanized",
-												"Armored",
-												"Motorized",
-												"AmphibiousAssault"
-											]
+											"values": ["Mechanized", "Armored", "Motorized", "AmphibiousAssault"]
 										}
 									]
 								}
@@ -1864,11 +1719,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"Lashkar_AAS_v2",
-								"Lashkar_TC_v2",
-								"Lashkar_RAAS_v1"
-							]
+							"values": ["Lashkar_AAS_v2", "Lashkar_TC_v2", "Lashkar_RAAS_v1"]
 						}
 					]
 				}
@@ -1890,11 +1741,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"Harju_RAAS_v2",
-								"FoolsRoad_AAS_v2",
-								"AlBasrah_RAAS_v2"
-							]
+							"values": ["Harju_RAAS_v2", "FoolsRoad_AAS_v2", "AlBasrah_RAAS_v2"]
 						}
 					]
 				}
@@ -2067,11 +1914,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"RAAS",
-								"AAS",
-								"FRAAS"
-							]
+							"values": ["RAAS", "AAS", "FRAAS"]
 						}
 					]
 				},
@@ -2231,11 +2074,7 @@
 						},
 						{
 							"type": "values",
-							"values": [
-								"Manicouagan",
-								"Skorpo",
-								"Lashkar"
-							]
+							"values": ["Manicouagan", "Skorpo", "Lashkar"]
 						}
 					]
 				},
@@ -2252,10 +2091,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"Mechanized",
-										"Armored"
-									]
+									"values": ["Mechanized", "Armored"]
 								}
 							]
 						},
@@ -2269,10 +2105,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"Mechanized",
-										"Armored"
-									]
+									"values": ["Mechanized", "Armored"]
 								}
 							]
 						}
@@ -2416,10 +2249,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"PLANMC",
-										"PLAAGF"
-									]
+									"values": ["PLANMC", "PLAAGF"]
 								}
 							]
 						},
@@ -2433,10 +2263,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"PLANMC",
-										"PLAAGF"
-									]
+									"values": ["PLANMC", "PLAAGF"]
 								}
 							]
 						}
@@ -2463,10 +2290,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"USA",
-										"USMC"
-									]
+									"values": ["USA", "USMC"]
 								}
 							]
 						},
@@ -2480,10 +2304,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"USA",
-										"USMC"
-									]
+									"values": ["USA", "USMC"]
 								}
 							]
 						}
@@ -2502,11 +2323,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"PLANMC",
-										"PLAAGF",
-										"PLA"
-									]
+									"values": ["PLANMC", "PLAAGF", "PLA"]
 								}
 							]
 						},
@@ -2520,11 +2337,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"PLANMC",
-										"PLAAGF",
-										"PLA"
-									]
+									"values": ["PLANMC", "PLAAGF", "PLA"]
 								}
 							]
 						}
@@ -2543,10 +2356,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"VDV",
-										"RGF"
-									]
+									"values": ["VDV", "RGF"]
 								}
 							]
 						},
@@ -2560,10 +2370,7 @@
 								},
 								{
 									"type": "values",
-									"values": [
-										"VDV",
-										"RGF"
-									]
+									"values": ["VDV", "RGF"]
 								}
 							]
 						}

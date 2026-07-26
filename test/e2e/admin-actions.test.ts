@@ -1,4 +1,5 @@
 import { makePlayer } from '@/emulator'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 import { expect, test } from './fixtures'
@@ -83,10 +84,10 @@ test.describe('admin actions from the teams panel', () => {
 			// a kill is two force-switches ~1s apart (there is no kill command), so each selected player
 			// gets the pair -- and both of them do
 			for (const player of [member, loner]) {
-				await app.waitFor(
-					() => app.emu.rcon.commandLog.filter((c) => c.body === `AdminForceTeamChange ${player.eos}`).length >= 2,
-					{ label: `both force-switches for ${player.name.trim()}`, timeoutMs: 25_000 },
-				)
+				await app.waitFor(() => app.emu.rcon.commandLog.filter((c) => c.body === `AdminForceTeamChange ${player.eos}`).length >= 2, {
+					label: `both force-switches for ${player.name.trim()}`,
+					timeoutMs: 25_000,
+				})
 			}
 		} finally {
 			await app.dispose()

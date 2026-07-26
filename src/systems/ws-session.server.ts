@@ -1,11 +1,10 @@
-import type * as CS from '@/models/context-shared'
-import * as ATTRS from '@/models/otel-attrs'
-import { initModule } from '@/server/logger'
-
-import type * as C from '@/server/context'
+import { metrics } from '@opentelemetry/api'
 
 import { IsolatedSubject } from '@/lib/isolated-subject'
-import { metrics } from '@opentelemetry/api'
+import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
+import type * as C from '@/server/context'
+import { initModule } from '@/server/logger'
 export const wsSessions = new Map<string, C.OrpcSessionBase>()
 // `interrupted` is true when the socket closed without a clean handshake (the client never
 // communicated intent to leave), e.g. a network drop -- distinct from a normal/going-away close.
@@ -29,11 +28,13 @@ const PING_INTERVAL = 30_000
 const socketAlive = new WeakMap<C.OrpcSessionBase['ws'], boolean>()
 
 const meter = metrics.getMeter('ws-session')
-meter.createObservableGauge(ATTRS.WebSocket.CONNECTED_CLIENTS, {
-	description: 'Number of currently connected WebSocket clients',
-}).addCallback((result) => {
-	result.observe(wsSessions.size)
-})
+meter
+	.createObservableGauge(ATTRS.WebSocket.CONNECTED_CLIENTS, {
+		description: 'Number of currently connected WebSocket clients',
+	})
+	.addCallback((result) => {
+		result.observe(wsSessions.size)
+	})
 
 // Cumulative, unlike the gauge above: a client that connects and drops inside one collection interval
 // is invisible to the gauge but shows up here, which is what makes reconnect storms detectable.
@@ -94,7 +95,9 @@ export function setup() {
 			socketAlive.set(ctx.ws, false)
 			try {
 				ctx.ws.ping()
-			} catch { /* socket already closing */ }
+			} catch {
+				/* socket already closing */
+			}
 		}
 	}, PING_INTERVAL).unref()
 }
@@ -108,7 +111,9 @@ export function evictStaleSocket(wsClientId: string) {
 	wsSessions.delete(wsClientId)
 	try {
 		stale.ws.terminate()
-	} catch { /* already dead */ }
+	} catch {
+		/* already dead */
+	}
 }
 
 export function registerClient(ctx: C.OrpcSessionBase) {

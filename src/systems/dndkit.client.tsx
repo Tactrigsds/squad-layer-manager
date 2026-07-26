@@ -1,8 +1,9 @@
-import * as DND from '@/models/dndkit.models'
-import * as DndKit from '@/systems/dndkit.client'
 import { Cursor, defaultPreset, PreventSelection } from '@dnd-kit/dom'
 import * as DndKitReact from '@dnd-kit/react'
 import React from 'react'
+
+import * as DND from '@/models/dndkit.models'
+import * as DndKit from '@/systems/dndkit.client'
 
 // dnd-kit's Cursor and PreventSelection plugins each inject a global `* { ... !important }` stylesheet on
 // drag start and remove it on drop. A universal-selector rule forces a full-document style recalc (every
@@ -25,7 +26,7 @@ export function DragContextProvider(props: { children: React.ReactNode }) {
 	return (
 		<DndKitReact.DragDropProvider
 			plugins={DRAG_PLUGINS}
-			onDragEnd={event => {
+			onDragEnd={(event) => {
 				const { operation } = event
 				const { source, target } = operation
 				if (!target || !source) return
@@ -43,9 +44,7 @@ export function DragContextProvider(props: { children: React.ReactNode }) {
 				})
 			}}
 		>
-			<DndKit.DragEndContext.Provider value={dragEndContextValue}>
-				{props.children}
-			</DndKit.DragEndContext.Provider>
+			<DndKit.DragEndContext.Provider value={dragEndContextValue}>{props.children}</DndKit.DragEndContext.Provider>
 		</DndKitReact.DragDropProvider>
 	)
 }

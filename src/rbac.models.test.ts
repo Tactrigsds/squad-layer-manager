@@ -1,5 +1,6 @@
-import * as RBAC from '@/rbac.models'
 import { describe, expect, it } from 'vitest'
+
+import * as RBAC from '@/rbac.models'
 
 function timeoutPerm(maxDurationMs: number | null, serverId: string | null = null): RBAC.Permission {
 	return RBAC.perm('squad-server:timeout-players', { serverId, maxDurationMs })
@@ -62,8 +63,9 @@ describe('settings access aggregation', () => {
 		]
 		expect(RBAC.serverSettingsWriteAccess(perms, 's1')).toEqual({ kind: 'paths', paths: ['queue.mainPool', 'navLinks'] })
 		expect(RBAC.serverSettingsWriteAccess(perms, 's2')).toEqual({ kind: 'paths', paths: ['navLinks'] })
-		expect(RBAC.serverSettingsWriteAccess([RBAC.perm('server-settings:write', { serverId: null, paths: null })], 'anything'))
-			.toEqual({ kind: 'all' })
+		expect(RBAC.serverSettingsWriteAccess([RBAC.perm('server-settings:write', { serverId: null, paths: null })], 'anything')).toEqual({
+			kind: 'all',
+		})
 	})
 
 	it('server read is implied by write and write-sensitive grants for that server', () => {
@@ -120,7 +122,9 @@ describe('permSubsumedBy', () => {
 	})
 
 	it('filter-scoped perms match on their args', () => {
-		expect(RBAC.permSubsumedBy(RBAC.perm('filters:write', { filterId: 'f1' }), [RBAC.perm('filters:write', { filterId: 'f1' })])).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.perm('filters:write', { filterId: 'f1' }), [RBAC.perm('filters:write', { filterId: 'f1' })])).toBe(
+			true,
+		)
 		expect(RBAC.permSubsumedBy(RBAC.perm('filters:write', { filterId: 'f1' }), [RBAC.perm('filters:write', { filterId: 'f2' })])).toBe(
 			false,
 		)
@@ -161,10 +165,14 @@ describe('permSubsumedBy', () => {
 		// an all-servers grant needs an all-servers grant behind it, not a per-server one
 		expect(RBAC.permSubsumedBy(RBAC.perm('server-settings:write', { serverId: null, paths: ['queue'] }), perms)).toBe(false)
 		expect(
-			RBAC.permSubsumedBy(RBAC.perm('server-settings:read', { serverId: null }), [RBAC.perm('server-settings:read', { serverId: 's1' })]),
+			RBAC.permSubsumedBy(RBAC.perm('server-settings:read', { serverId: null }), [
+				RBAC.perm('server-settings:read', { serverId: 's1' }),
+			]),
 		).toBe(false)
 		expect(
-			RBAC.permSubsumedBy(RBAC.perm('server-settings:read', { serverId: 's1' }), [RBAC.perm('server-settings:read', { serverId: null })]),
+			RBAC.permSubsumedBy(RBAC.perm('server-settings:read', { serverId: 's1' }), [
+				RBAC.perm('server-settings:read', { serverId: null }),
+			]),
 		).toBe(true)
 	})
 })

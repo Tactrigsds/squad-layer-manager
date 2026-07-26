@@ -1,4 +1,5 @@
 import * as dateFns from 'date-fns'
+
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 interface EventTimeProps {
@@ -14,9 +15,7 @@ export function EventTime({ time }: EventTimeProps) {
 			<TooltipTrigger className="shrink-0">
 				<span className="text-muted-foreground font-mono text-xs">{formattedTime}</span>
 			</TooltipTrigger>
-			<TooltipContent>
-				{dateFns.format(time, 'yyyy-MM-dd HH:mm:ss zzz')}
-			</TooltipContent>
+			<TooltipContent>{dateFns.format(time, 'yyyy-MM-dd HH:mm:ss zzz')}</TooltipContent>
 		</Tooltip>
 	)
 }

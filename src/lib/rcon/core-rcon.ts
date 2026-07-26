@@ -1,16 +1,16 @@
+import * as Otel from '@opentelemetry/api'
+import { EventEmitter } from 'node:events'
+import net from 'node:net'
+
 import * as CS from '@/models/context-shared'
 import type * as Logs from '@/models/logs'
 import * as ATTRS from '@/models/otel-attrs'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
-import * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
-import * as Otel from '@opentelemetry/api'
 
-import { EventEmitter } from 'node:events'
-import net from 'node:net'
-import * as Rx from 'rxjs'
-import { filterTruthy, firstValueFrom } from '../async'
+import * as Rx from '../rxjs'
 
 export type DecodedPacket = {
 	type: number
@@ -103,7 +103,7 @@ function commandVerb(body: string): string {
 }
 
 type Events = {
-	server: [C.OtelCtx, DecodedPacket]
+	server: [CS.Otel, DecodedPacket]
 	auth: []
 	[key: `response${string}`]: [string]
 	RCON_ERROR: [Error]
@@ -137,14 +137,12 @@ export default class Rcon extends EventEmitter<Events> {
 	// position in the stream does not correlate them. Absent on a packet the server pushed unprompted.
 	private onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
 
-	constructor(
-		options: {
-			serverId: string
-			transport: RconTransport
-			autoReconnectDelay?: number
-			onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
-		},
-	) {
+	constructor(options: {
+		serverId: string
+		transport: RconTransport
+		autoReconnectDelay?: number
+		onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
+	}) {
 		super()
 		this.serverId = options.serverId
 		this.transport = options.transport
@@ -169,35 +167,37 @@ export default class Rcon extends EventEmitter<Events> {
 			}),
 		)
 		sub.add(
-			this.connected$.pipe(
-				Rx.distinctUntilChanged(),
-				// switchMap means a successful connection will cancel reconnect attempts
-				Rx.switchMap((connected) => {
-					if (connected) return Rx.EMPTY
-					// try to connect immediately, and then every `autoReconnectDelay` ms
-					return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
+			this.connected$
+				.pipe(
+					Rx.distinctUntilChanged(),
+					// switchMap means a successful connection will cancel reconnect attempts
+					Rx.switchMap((connected) => {
+						if (connected) return Rx.EMPTY
+						// try to connect immediately, and then every `autoReconnectDelay` ms
+						return Rx.concat(Rx.of(1), Rx.interval(this.autoReconnectDelay))
+					}),
+				)
+				.subscribe(() => {
+					log.info('Attempting to connect to RCON: %s', this.transport.label)
+					this.transport.destroy()
+					this.transport.connect({
+						// direct: TCP connected, send the Source auth packet. tunnel: no-op (the agent authenticates itself).
+						onConnect: () => {
+							if (this.transport.authPassword !== undefined) this.#sendAuth()
+						},
+						onData: (data) => this.#onData(data),
+						onClose: () => this.#onClose(),
+						onError: (error) => this.#onNetError(error),
+						// tunnel readiness: the agent authenticated to local RCON. Same signal as the direct auth echo.
+						onReady: () => this.emit('auth'),
+					})
 				}),
-			).subscribe(() => {
-				log.info('Attempting to connect to RCON: %s', this.transport.label)
-				this.transport.destroy()
-				this.transport.connect({
-					// direct: TCP connected, send the Source auth packet. tunnel: no-op (the agent authenticates itself).
-					onConnect: () => {
-						if (this.transport.authPassword !== undefined) this.#sendAuth()
-					},
-					onData: (data) => this.#onData(data),
-					onClose: () => this.#onClose(),
-					onError: (error) => this.#onNetError(error),
-					// tunnel readiness: the agent authenticated to local RCON. Same signal as the direct auth echo.
-					onReady: () => this.emit('auth'),
-				})
-			}),
 		)
 	}
 
 	connect() {
 		this.ensureConnected()
-		return Rx.firstValueFrom(this.connected$.pipe(filterTruthy()))
+		return Rx.firstValueFrom(this.connected$.pipe(Rx.Ext.filterTruthy()))
 	}
 
 	disconnect() {
@@ -210,7 +210,7 @@ export default class Rcon extends EventEmitter<Events> {
 		this.connected$.unsubscribe()
 	}
 
-	execute = C.spanOp(
+	execute = Instr.spanOp(
 		'execute',
 		{
 			module,
@@ -237,17 +237,14 @@ export default class Rcon extends EventEmitter<Events> {
 				})
 			_opts?.signal?.throwIfAborted()
 			if (!this.connected) {
-				const reconnected$ = this.connected$.pipe(Rx.filter(connected => connected), Rx.take(1))
-				const res = await firstValueFrom(
-					Rx.race([
-						reconnected$,
-						Rx.timer(2_000).pipe(Rx.map(() => false)),
-					]),
-					_opts?.signal,
+				const reconnected$ = this.connected$.pipe(
+					Rx.filter((connected) => connected),
+					Rx.take(1),
 				)
+				const res = await Rx.Ext.firstValueFrom(Rx.race([reconnected$, Rx.timer(2_000).pipe(Rx.map(() => false))]), _opts?.signal)
 				if (!res) {
 					recordOutcome('error')
-					return ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })
+					return { code: 'err:rcon' as const, msg: `Rcon response timed out` }
 				}
 			}
 			if (!this.connected) {
@@ -266,10 +263,13 @@ export default class Rcon extends EventEmitter<Events> {
 				if (this.msgId > 80) this.msgId = 20
 				const listenerId = `response${this.msgId}`
 				const timeout$ = Rx.timer(2_000).pipe(Rx.map(() => ({ code: 'err:rcon' as const, msg: `Rcon response timed out` })))
-				const response$ = Rx.fromEvent(this, listenerId).pipe(Rx.take(1), Rx.map(data => ({ code: 'ok' as const, data: data as string })))
+				const response$ = Rx.fromEvent(this, listenerId).pipe(
+					Rx.take(1),
+					Rx.map((data) => ({ code: 'ok' as const, data: data as string })),
+				)
 				this.#send(body, this.msgId)
 				this.msgId++
-				const result = await firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
+				const result = await Rx.Ext.firstValueFrom(Rx.race(timeout$, response$), _opts?.signal)
 				recordOutcome(result.code === 'ok' ? 'ok' : 'error')
 				return result
 			}
@@ -331,20 +331,20 @@ export default class Rcon extends EventEmitter<Events> {
 			if (packet.type === this.type.response) this.#onResponse(packet)
 			else if (packet.type === this.type.server) {
 				this.onTraffic?.('send', packet.body)
-				this.emit('server', C.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
+				this.emit('server', CS.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
 			} else if (packet.type === this.type.command) this.emit('auth')
 		}
 	}
 
 	#decode(): { size: number; id: number; type: number; body: string } | null {
 		if (
-			this.stream[0] === 0
-			&& this.stream[1] === 1
-			&& this.stream[2] === 0
-			&& this.stream[3] === 0
-			&& this.stream[4] === 0
-			&& this.stream[5] === 0
-			&& this.stream[6] === 0
+			this.stream[0] === 0 &&
+			this.stream[1] === 1 &&
+			this.stream[2] === 0 &&
+			this.stream[3] === 0 &&
+			this.stream[4] === 0 &&
+			this.stream[5] === 0 &&
+			this.stream[6] === 0
 		) {
 			this.stream = this.stream.subarray(7)
 			return this.soh

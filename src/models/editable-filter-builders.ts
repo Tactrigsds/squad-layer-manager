@@ -1,5 +1,6 @@
 // Builders for EditableFilterNodes (nodes with possibly-incomplete args), used by the editor UI.
 import { assertNever } from '@/lib/type-guards'
+
 import * as F from './filter.models'
 
 export const createBlock = <T extends F.BlockType>(type: T) => {

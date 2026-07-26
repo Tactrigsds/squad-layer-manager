@@ -1,13 +1,17 @@
+import * as Im from 'immer'
+import { z } from 'zod'
+
 import { frameManager } from '@/frames/frame-manager'
-import * as Arr from '@/lib/array'
+import * as Arr from '@/lib/array-utils'
 import * as DH from '@/lib/display-helpers'
 import * as ItemMut from '@/lib/item-mutations'
-import * as MapUtils from '@/lib/map'
-import * as Obj from '@/lib/object'
+import * as MapUtils from '@/lib/map-utils'
+import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
-import * as SetUtils from '@/lib/set'
-import * as ZusUtils from '@/lib/zustand'
+import * as Rx from '@/lib/rxjs'
+import * as SetUtils from '@/lib/set-utils'
+import * as Zus from '@/lib/zustand'
 import * as BAL from '@/models/balance-triggers.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
@@ -53,10 +57,6 @@ import * as ThemeClient from '@/systems/theme.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 import * as VoteClient from '@/systems/vote.client'
-
-import * as Im from 'immer'
-import * as Rx from 'rxjs'
-import { z } from 'zod'
 
 const namespaces = {
 	// systems
@@ -116,7 +116,7 @@ const namespaces = {
 	ODSM,
 	RSel,
 	SetUtils,
-	ZusUtils,
+	Zus,
 
 	// misc
 	Im,

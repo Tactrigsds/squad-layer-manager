@@ -3,8 +3,9 @@ import * as Crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
+
 import * as Paths from '../../paths.ts'
-import { HumanTime, NormedUrl, ParsedBigIntSchema, ParsedIntSchema, PathSegment } from '../lib/zod'
+import * as ZodUtils from '../lib/zod-utils'
 import * as Cli from '../systems/cli.server'
 
 // how a var is written into the example env files, which are regenerated from this file on every dev boot
@@ -45,7 +46,16 @@ declare module 'zod' {
 export const INSECURE_DEV_ENCRYPTION_KEY = 'A_VERY_INSECURE_ENCRYPTION_KEY'
 
 // comma-separated list of Discord snowflake ids parsed to bigints (e.g. SUPER_USERS="123,456")
-const BigIntListSchema = z.string().default('').transform((val) => val.split(',').map((s) => s.trim()).filter(Boolean).map(BigInt))
+const BigIntListSchema = z
+	.string()
+	.default('')
+	.transform((val) =>
+		val
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.map(BigInt),
+	)
 
 export const groups = {
 	general: {
@@ -53,50 +63,86 @@ export const groups = {
 			description: '`pnpm server:dev` sets this itself; it is only read from here by bare `pnpm script` / `pnpm preprocess` runs.',
 			envExample: { include: 'omit', dev: { include: 'set', value: 'development' } },
 		}),
-		LOG_LEVEL_OVERRIDE: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional().meta({
-			description: 'overrides the log level, which is otherwise info.',
-			envExample: {
-				dev: { description: 'overrides the log level, which is otherwise debug in development and test, info in production.' },
-			},
-		}),
-		PUBLIC_GIT_SHA: z.string().min(1).prefault('unknown').meta({
-			description: "baked into the image at build time from the Dockerfile's GIT_SHA/GIT_BRANCH build args, and reported on boot.",
-			envExample: { include: 'omit' },
-		}),
-		PUBLIC_GIT_BRANCH: z.string().min(1).prefault('unknown').meta({
-			description: 'see PUBLIC_GIT_SHA.',
-			envExample: { include: 'omit' },
-		}),
+		LOG_LEVEL_OVERRIDE: z
+			.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
+			.optional()
+			.meta({
+				description: 'overrides the log level, which is otherwise info.',
+				envExample: {
+					dev: { description: 'overrides the log level, which is otherwise debug in development and test, info in production.' },
+				},
+			}),
+		PUBLIC_GIT_SHA: z
+			.string()
+			.min(1)
+			.prefault('unknown')
+			.meta({
+				description: "baked into the image at build time from the Dockerfile's GIT_SHA/GIT_BRANCH build args, and reported on boot.",
+				envExample: { include: 'omit' },
+			}),
+		PUBLIC_GIT_BRANCH: z
+			.string()
+			.min(1)
+			.prefault('unknown')
+			.meta({
+				description: 'see PUBLIC_GIT_SHA.',
+				envExample: { include: 'omit' },
+			}),
 
-		QUERY_PARAM_AUTH_BYPASS: z.stringbool().optional().meta({
-			description:
-				'lets a request log in as an existing user with a `?login=<username>` query param, skipping discord oauth. Rejected when NODE_ENV=production.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
+		QUERY_PARAM_AUTH_BYPASS: z
+			.stringbool()
+			.optional()
+			.meta({
+				description:
+					'lets a request log in as an existing user with a `?login=<username>` query param, skipping discord oauth. Rejected when NODE_ENV=production.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
 
-		LOG_EXCLUDE_CONTEXT_PARAMS: z.string().default('').transform(val => new Set(val.split(',').map(s => s.trim()).filter(Boolean))).meta({
-			description: 'comma-separated context params to leave out of rendered log lines. Does not affect exported logs.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
+		LOG_EXCLUDE_CONTEXT_PARAMS: z
+			.string()
+			.default('')
+			.transform(
+				(val) =>
+					new Set(
+						val
+							.split(',')
+							.map((s) => s.trim())
+							.filter(Boolean),
+					),
+			)
+			.meta({
+				description: 'comma-separated context params to leave out of rendered log lines. Does not affect exported logs.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
 
-		SECRETS_FILE: z.string().min(1).optional().meta({
-			description:
-				'the file credentials are read from. Defaults to ./.env.secrets when it exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). A path that does not exist is an error.',
-			envExample: { include: 'commented' },
-		}),
+		SECRETS_FILE: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description:
+					'the file credentials are read from. Defaults to ./.env.secrets when it exists; set this to read them from somewhere else (e.g. /run/secrets/slm-secrets, where a docker secret is mounted). A path that does not exist is an error.',
+				envExample: { include: 'commented' },
+			}),
 
-		PUBLIC_REPO_URL: z.url().optional().meta({
-			description: 'shown to users in the app. Set these to your fork if you run one.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
-		PUBLIC_ISSUES_URL: z.url().optional().meta({
-			description: 'where the app points users who want to report a bug.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
+		PUBLIC_REPO_URL: z
+			.url()
+			.optional()
+			.meta({
+				description: 'shown to users in the app. Set these to your fork if you run one.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
+		PUBLIC_ISSUES_URL: z
+			.url()
+			.optional()
+			.meta({
+				description: 'where the app points users who want to report a bug.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
 	},
 
 	squadcalc: {
-		PUBLIC_SQUADCALC_URL: NormedUrl.default('https://squadcalc.app').meta({
+		PUBLIC_SQUADCALC_URL: ZodUtils.NormedUrl.default('https://squadcalc.app').meta({
 			description: 'the squadcalc instance the layer info popouts link out to. Only set it if you self-host squadcalc.',
 		}),
 	},
@@ -105,29 +151,46 @@ export const groups = {
 		OTEL_ENABLED: z.stringbool().default(true).meta({
 			description: 'turn it off if nothing is listening on the endpoint below.',
 		}),
-		OTLP_COLLECTOR_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4318').meta({
-			description: 'where the exporters send to. docker-compose points this at its own collector service.',
-		}),
-		OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(1).meta({
-			description: 'the fraction of traces sampled. 1 keeps everything.',
-		}),
+		OTLP_COLLECTOR_ENDPOINT: ZodUtils.NormedUrl.transform((url) => url.replace(/\/$/, ''))
+			.default('http://localhost:4318')
+			.meta({
+				description: 'where the exporters send to. docker-compose points this at its own collector service.',
+			}),
+		OTEL_TRACE_SAMPLE_RATIO: z.coerce
+			.number()
+			.min(0)
+			.max(1)
+			.optional()
+			.meta({
+				description:
+					'the fraction of traces sampled. 1 keeps everything, which is what unset means outside production; in production unset means 0.25, because most spans are high-frequency polling and Tempo pays to keep all of them. Set it to 1 there when you need full fidelity for a while.',
+				envExample: { include: 'commented' },
+			}),
 	},
 
 	pyroscope: {
-		PYROSCOPE_ENABLED: z.stringbool().default(false).meta({
-			description:
-				"push continuous profiles to a Pyroscope server (bundled in the otel-lgtm image). View them under Grafana's Pyroscope datasource. Adds a few percent of runtime overhead.",
-			envExample: { include: 'commented' },
-		}),
-		PYROSCOPE_ENDPOINT: NormedUrl.transform((url) => url.replace(/\/$/, '')).default('http://localhost:4040').meta({
-			description: 'where profiles are pushed. docker-compose points this at its own otel service (http://otel:4040).',
-			envExample: { include: 'commented' },
-		}),
-		PYROSCOPE_HEAP_ENABLED: z.stringbool().default(true).meta({
-			description:
-				'also sample allocations and in-use heap, not just CPU/wall. Its overhead scales with allocation rate; turn it off to keep only the flatter-cost CPU profiles.',
-			envExample: { include: 'commented' },
-		}),
+		PYROSCOPE_ENABLED: z
+			.stringbool()
+			.default(false)
+			.meta({
+				description:
+					"push continuous profiles to a Pyroscope server (bundled in the otel-lgtm image). View them under Grafana's Pyroscope datasource. Costs about a third of a core while it runs, so turn it on to chase a question and back off after; see observability/README.md.",
+				envExample: { include: 'commented' },
+			}),
+		PYROSCOPE_ENDPOINT: ZodUtils.NormedUrl.transform((url) => url.replace(/\/$/, ''))
+			.default('http://localhost:4040')
+			.meta({
+				description: 'where profiles are pushed. docker-compose points this at its own otel service (http://otel:4040).',
+				envExample: { include: 'commented' },
+			}),
+		PYROSCOPE_HEAP_ENABLED: z
+			.stringbool()
+			.default(true)
+			.meta({
+				description:
+					'also sample allocations and in-use heap, not just CPU/wall. Its overhead scales with allocation rate; turn it off to keep only the flatter-cost CPU profiles.',
+				envExample: { include: 'commented' },
+			}),
 	},
 
 	rbac: {
@@ -143,99 +206,139 @@ export const groups = {
 
 	encryption: {
 		// any string, hashed into the 32 bytes AES-256 needs
-		SETTINGS_ENCRYPTION_KEY: z.string().min(1).transform(val => Crypto.createHash('sha256').update(val).digest()).meta({
-			secret: true,
-			description:
-				"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Changing it makes already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
-			envExample: {
-				include: 'set',
-				dev: {
-					value: INSECURE_DEV_ENCRYPTION_KEY,
-					description:
-						'the key sensitive settings are encrypted at rest with. The value below is the public dev key; the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
+		SETTINGS_ENCRYPTION_KEY: z
+			.string()
+			.min(1)
+			.transform((val) => Crypto.createHash('sha256').update(val).digest())
+			.meta({
+				secret: true,
+				description:
+					"the key sensitive settings are encrypted at rest with (a server's RCON/SFTP passwords and server-agent token). Generate one with `openssl rand -base64 32`. Changing it makes already-encrypted connection secrets unreadable, so they have to be re-entered on the settings page.",
+				envExample: {
+					include: 'set',
+					dev: {
+						value: INSECURE_DEV_ENCRYPTION_KEY,
+						description:
+							'the key sensitive settings are encrypted at rest with. The value below is the public dev key; the app refuses to start with it when NODE_ENV=production. Generate a real one with `openssl rand -base64 32`.',
+					},
 				},
-			},
-		}),
+			}),
 	},
 
 	db: {
 		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3').meta({
 			description: 'the main sqlite database. -wal and -shm files are created alongside it, so mount the directory, not the file.',
 		}),
-		DB_AUTOMIGRATE: z.stringbool().default(true).meta({
-			description:
-				'applies pending migrations at boot. Turn it off to run them yourself (`pnpm db:migrate:prod`); the app then refuses to start against a database that is behind.',
-			envExample: {
-				dev: {
-					description:
-						'applies pending migrations at boot. Turn it off to run them yourself (`pnpm db:migrate`); the app then refuses to start against a database that is behind.',
+		DB_AUTOMIGRATE: z
+			.stringbool()
+			.default(true)
+			.meta({
+				description:
+					'applies pending migrations at boot. Turn it off to run them yourself (`pnpm db:migrate:prod`); the app then refuses to start against a database that is behind.',
+				envExample: {
+					dev: {
+						description:
+							'applies pending migrations at boot. Turn it off to run them yourself (`pnpm db:migrate`); the app then refuses to start against a database that is behind.',
+					},
 				},
-			},
-		}),
+			}),
 	},
 
 	// a checkout has nothing worth backing up, so none of this shows up in the dev example
 	backups: {
-		AUTOMATIC_BACKUPS_PERIODIC: HumanTime.optional().meta({
+		AUTOMATIC_BACKUPS_PERIODIC: ZodUtils.HumanTime.optional().meta({
 			description:
 				'how often to back up the main db, as a duration (e.g. 72h). Unset disables automatic backups, including the event-history prune that runs alongside them.',
 			envExample: { dev: { include: 'omit' } },
 		}),
-		BACKUPS_DIR: z.string().min(1).prefault('./data/backups').meta({
-			description: 'where backups are written locally.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-		BACKUPS_RETAIN_COUNT: ParsedIntSchema.pipe(z.number().min(0)).default(10).meta({
-			description:
-				'how many backups to keep, locally and on the sftp target. 0 keeps all of them. Periodic and pre-migration backups share this one window; the most recent pre-migration backup is always kept, however old.',
-			envExample: { dev: { include: 'omit' } },
-		}),
+		BACKUPS_DIR: z
+			.string()
+			.min(1)
+			.prefault('./data/backups')
+			.meta({
+				description: 'where backups are written locally.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+		BACKUPS_RETAIN_COUNT: ZodUtils.ParsedIntSchema.pipe(z.number().min(0))
+			.default(10)
+			.meta({
+				description:
+					'how many backups to keep, locally and on the sftp target. 0 keeps all of them. Periodic and pre-migration backups share this one window; the most recent pre-migration backup is always kept, however old.',
+				envExample: { dev: { include: 'omit' } },
+			}),
 
-		EVENT_HISTORY_RETENTION_PERIOD: HumanTime.optional().meta({
+		EVENT_HISTORY_RETENTION_PERIOD: ZodUtils.HumanTime.optional().meta({
 			description:
 				'server events from matches that ended longer ago than this duration (e.g. 90d) are deleted before each backup is taken. The most recent matches are always kept. Unset disables pruning.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 
-		BACKUP_SFTP_HOST: z.string().min(1).optional().meta({
-			description:
-				'an sftp target each backup is uploaded to after it is written locally. Setting this host enables the upload; a password or a private key is also required.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-		BACKUP_SFTP_PORT: ParsedIntSchema.default(22).meta({
+		BACKUP_SFTP_HOST: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description:
+					'an sftp target each backup is uploaded to after it is written locally. Setting this host enables the upload; a password or a private key is also required.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+		BACKUP_SFTP_PORT: ZodUtils.ParsedIntSchema.default(22).meta({
 			description: 'see BACKUP_SFTP_HOST.',
 			envExample: { dev: { include: 'omit' } },
 		}),
-		BACKUP_SFTP_USERNAME: z.string().min(1).optional().meta({
-			description: 'see BACKUP_SFTP_HOST.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-		BACKUP_SFTP_PASSWORD: z.string().min(1).optional().meta({
-			secret: true,
-			description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PRIVATE_KEY_PATH is required once a host is set.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-		BACKUP_SFTP_PRIVATE_KEY_PATH: z.string().min(1).optional().meta({
-			description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PASSWORD is required once a host is set.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-		BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE: z.string().min(1).optional().meta({
-			secret: true,
-			description: 'only needed if the key at BACKUP_SFTP_PRIVATE_KEY_PATH is encrypted.',
-			envExample: { dev: { include: 'omit' } },
-		}),
-		BACKUP_SFTP_DIR: z.string().min(1).prefault('.').meta({
-			description: 'the remote directory backups are written to. Created if it does not exist.',
-			envExample: { dev: { include: 'omit' } },
-		}),
+		BACKUP_SFTP_USERNAME: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description: 'see BACKUP_SFTP_HOST.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+		BACKUP_SFTP_PASSWORD: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				secret: true,
+				description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PRIVATE_KEY_PATH is required once a host is set.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+		BACKUP_SFTP_PRIVATE_KEY_PATH: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description: 'see BACKUP_SFTP_HOST. Either this or BACKUP_SFTP_PASSWORD is required once a host is set.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+		BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				secret: true,
+				description: 'only needed if the key at BACKUP_SFTP_PRIVATE_KEY_PATH is encrypted.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+		BACKUP_SFTP_DIR: z
+			.string()
+			.min(1)
+			.prefault('.')
+			.meta({
+				description: 'the remote directory backups are written to. Created if it does not exist.',
+				envExample: { dev: { include: 'omit' } },
+			}),
 	},
 
 	discord: {
-		DISCORD_ENABLED: z.stringbool().default(true).meta({
-			description:
-				'disables the discord integration entirely (no bot login, no guild fetches). The integration tests and the emulator run with it off; the other DISCORD_* vars still need dummy values.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
+		DISCORD_ENABLED: z
+			.stringbool()
+			.default(true)
+			.meta({
+				description:
+					'disables the discord integration entirely (no bot login, no guild fetches). The integration tests and the emulator run with it off; the other DISCORD_* vars still need dummy values.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
 		DISCORD_CLIENT_ID: z.string().min(1).meta({
 			description: 'from the discord app SLM logs users in with.',
 		}),
@@ -247,25 +350,31 @@ export const groups = {
 			secret: true,
 			description: 'the bot token of the same discord app. The bot has to be installed on the guild DISCORD_HOME_GUILD_ID names.',
 		}),
-		DISCORD_HOME_GUILD_ID: ParsedBigIntSchema.meta({
+		DISCORD_HOME_GUILD_ID: ZodUtils.ParsedBigIntSchema.meta({
 			description: "the guild SLM resolves users and roles against, i.e. your org's discord server.",
 		}),
 	},
 
 	httpServer: {
-		PORT: ParsedIntSchema.default(3000).meta({
+		PORT: ZodUtils.ParsedIntSchema.default(3000).meta({
 			description: 'the port the app listens on. Put your reverse proxy in front of it and point ORIGIN at that.',
-			envExample: { dev: { description: 'the port the app listens on. The client is served separately in development, see CLIENT_PORT.' } },
+			envExample: {
+				dev: { description: 'the port the app listens on. The client is served separately in development, see CLIENT_PORT.' },
+			},
 		}),
-		HOST: z.string().prefault('127.0.0.1').meta({
-			description: 'the interface the app binds to. The image already sets 0.0.0.0, since loopback inside a container is unreachable.',
-			envExample: { dev: { description: 'the interface the app binds to.' } },
-		}),
-		CLIENT_PORT: ParsedIntSchema.default(5173).meta({
+		HOST: z
+			.string()
+			.prefault('127.0.0.1')
+			.meta({
+				description:
+					'the interface the app binds to. The image already sets 0.0.0.0, since loopback inside a container is unreachable.',
+				envExample: { dev: { description: 'the interface the app binds to.' } },
+			}),
+		CLIENT_PORT: ZodUtils.ParsedIntSchema.default(5173).meta({
 			description: "the vite dev server's port. Move it to run a second instance beside a running one; ORIGIN has to move with it.",
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
-		ORIGIN: NormedUrl.default('http://localhost:3000').meta({
+		ORIGIN: ZodUtils.NormedUrl.default('http://localhost:3000').meta({
 			description:
 				"the publicly addressable url the app is reached at, from a browser's point of view. The default below only holds if the app is reached directly on PORT, with nothing in front of it. The discord oauth callback is built from this, so it also has to match a redirect uri registered on the discord app.",
 			// written out uncommented in both files, showing the url that environment is actually reached at, so
@@ -282,7 +391,7 @@ export const groups = {
 	},
 
 	layers: {
-		LAYERS_VERSION: PathSegment.default('@latest').meta({
+		LAYERS_VERSION: ZodUtils.PathSegment.default('@latest').meta({
 			description:
 				'@latest resolves to the highest version whose artifacts are present. Pinning a version no searched directory has is an error.',
 		}),
@@ -294,27 +403,40 @@ export const groups = {
 
 	// only `pnpm preprocess` reads these, so they stay out of the deployment example
 	preprocess: {
-		SPREADSHEET_ID: z.string().prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU').meta({
-			description: "OWI's layer spreadsheet. Only used for layer sizes at the moment.",
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
-		SPREADSHEET_MAP_LAYERS_GID: ParsedIntSchema.default(1212962563).meta({
+		SPREADSHEET_ID: z
+			.string()
+			.prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU')
+			.meta({
+				description: "OWI's layer spreadsheet. Only used for layer sizes at the moment.",
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
+		SPREADSHEET_MAP_LAYERS_GID: ZodUtils.ParsedIntSchema.default(1212962563).meta({
 			description: 'the sheet within SPREADSHEET_ID the layers are read from.',
 			envExample: { include: 'omit', dev: { include: 'commented' } },
 		}),
-		EXTRA_COLS_CSV_PATH: z.string().prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv')).meta({
-			description: 'the csv preprocess ingests, and where a build takes its version from. Too big to ship, so it stays in ./data.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
-		LAYERS_OUTPUT_DIR: z.string().min(1).prefault(Paths.LAYERS).meta({
-			description: 'where preprocess writes the pair it builds. Defaults to the directory that ships with the image.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
-		LAYER_DB_CONFIG_PATH: z.string().prefault('./layer-db.json').meta({
-			description:
-				'defines the extra columns to ingest into the layer table. Read only by preprocess, which bakes the definitions into layer-data.json.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
+		EXTRA_COLS_CSV_PATH: z
+			.string()
+			.prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv'))
+			.meta({
+				description: 'the csv preprocess ingests, and where a build takes its version from. Too big to ship, so it stays in ./data.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
+		LAYERS_OUTPUT_DIR: z
+			.string()
+			.min(1)
+			.prefault(Paths.LAYERS)
+			.meta({
+				description: 'where preprocess writes the pair it builds. Defaults to the directory that ships with the image.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
+		LAYER_DB_CONFIG_PATH: z
+			.string()
+			.prefault('./layer-db.json')
+			.meta({
+				description:
+					'defines the extra columns to ingest into the layer table. Read only by preprocess, which bakes the definitions into layer-data.json.',
+				envExample: { include: 'omit', dev: { include: 'commented' } },
+			}),
 	},
 
 	battlemetrics: {
@@ -376,7 +498,7 @@ export function isSecret(schema: z.ZodType): boolean {
 }
 
 export function entries(): [string, z.ZodType][] {
-	return Object.values(groups).flatMap(group => Object.entries(group as Record<string, z.ZodType>))
+	return Object.values(groups).flatMap((group) => Object.entries(group as Record<string, z.ZodType>))
 }
 
 export const DEFAULT_SECRETS_PATH = path.join(Paths.PROJECT_ROOT, '.env.secrets')

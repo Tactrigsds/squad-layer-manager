@@ -1,14 +1,16 @@
+import stringifyCompact from 'json-stringify-pretty-compact'
+import React from 'react'
+
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as CM from '@/lib/codemirror'
-import * as Obj from '@/lib/object'
+import * as Obj from '@/lib/object-utils'
+import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
-import * as Typography from '@/lib/typography.ts'
-import * as ZusUtils from '@/lib/zustand'
+import * as Typo from '@/lib/typography'
+import * as Zus from '@/lib/zustand'
 import * as F from '@/models/filter.models'
-import stringifyCompact from 'json-stringify-pretty-compact'
-import React from 'react'
-import * as Rx from 'rxjs'
+
 import type { FilterTextEditorProps } from './filter-text-editor.types'
 
 export default function FilterTextEditor(props: FilterTextEditorProps) {
@@ -16,7 +18,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const viewRef = React.useRef<CM.EditorView | null>(null)
 	const [errorText, setErrorText] = React.useState('')
 
-	const getState = () => ZusUtils.getState(props.stores.filterEditor)
+	const getState = () => Zus.getState(props.stores.filterEditor)
 
 	const onChange = React.useCallback(
 		(value: string) => {
@@ -72,7 +74,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		})
 
 		let first = true
-		const unsub = ZusUtils.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
+		const unsub = Zus.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
 			if (!first && frameState.tree === prevFrameState.tree) return
 			first = false
 			CM.setDoc(view, stringifyCompact(F.treeToFilterNode(frameState.tree)))
@@ -106,10 +108,12 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 	return (
 		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
-			<h3 className={Typography.Small + 'mb-2 ml-[45px]'}>Filter</h3>
-			<h3 className={Typography.Small + 'mb-2'}>Errors</h3>
+			<h3 className={Typo.Small + 'mb-2 ml-[45px]'}>Filter</h3>
+			<h3 className={Typo.Small + 'mb-2'}>Errors</h3>
 			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
-			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">{errorText}</pre>
+			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
+				{errorText}
+			</pre>
 		</div>
 	)
 }

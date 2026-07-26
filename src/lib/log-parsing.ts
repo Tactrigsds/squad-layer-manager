@@ -1,4 +1,5 @@
 import { z } from 'zod'
+
 import { withThrown } from './error'
 
 export type LogMatcher<S extends EventSchema = EventSchema> = {

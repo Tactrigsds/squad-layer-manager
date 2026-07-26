@@ -1,5 +1,5 @@
 import type * as FRM from '@/lib/frame'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as SB from '@/models/sandbox.models'
 import * as RPC from '@/orpc.client'
 import type { SandboxState } from '@/systems/sandbox.shared'
@@ -40,24 +40,21 @@ function createKey(frameId: symbol, input: Input): Types['key'] {
 
 function setup(args: FRM.SetupArgs<Input, Store>) {
 	const { serverId } = args.input
-	args.set(
-		{
-			serverId,
-			state: null,
-			unavailable: false,
-			playerSearch: '',
-			playerPage: 0,
-			speaker: null,
-			chatChannel: 'ChatAll',
-		} satisfies Store,
-	)
+	args.set({
+		serverId,
+		state: null,
+		unavailable: false,
+		playerSearch: '',
+		playerPage: 0,
+		speaker: null,
+		chatChannel: 'ChatAll',
+	} satisfies Store)
 
 	args.sub.add(
-		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId }))
-			.subscribe((res) => {
-				if (res.code === 'ok') args.set({ state: res, unavailable: false })
-				else args.set({ state: null, unavailable: true })
-			}),
+		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId })).subscribe((res) => {
+			if (res.code === 'ok') args.set({ state: res, unavailable: false })
+			else args.set({ state: null, unavailable: true })
+		}),
 	)
 }
 
@@ -135,7 +132,7 @@ export namespace Sel {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<Store>(stores.sandbox)
+		return Zus.resolveStore<Store>(stores.sandbox)
 	}
 
 	export function setSpeaker(stores: KeyProp, speaker: string) {

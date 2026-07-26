@@ -1,7 +1,9 @@
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import * as Icons from 'lucide-react'
 import React from 'react'
+
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
 import type { ComboBoxHandle } from './combo-box/combo-box.tsx'
 
 // A vertical add/remove list in the style of the settings scope editor: one row per item with a removal X,
@@ -53,34 +55,19 @@ export function ListEditor<Item>(props: {
 					</Button>
 				</div>
 			))}
-			{adding
-				? (
-					<div className="flex items-center gap-1">
-						{props.renderAddControl({ ref: pendingRef, done })}
-						<Button
-							type="button"
-							size="icon"
-							variant="ghost"
-							className="h-8 w-8 shrink-0 text-destructive"
-							onClick={done}
-						>
-							<Icons.X className="h-4 w-4" />
-						</Button>
-					</div>
-				)
-				: (
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						className="h-7"
-						disabled={props.addDisabled}
-						onClick={() => setAdding(true)}
-					>
-						<Icons.Plus className="mr-1 h-3.5 w-3.5" />
-						{props.addLabel}
+			{adding ? (
+				<div className="flex items-center gap-1">
+					{props.renderAddControl({ ref: pendingRef, done })}
+					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-destructive" onClick={done}>
+						<Icons.X className="h-4 w-4" />
 					</Button>
-				)}
+				</div>
+			) : (
+				<Button type="button" size="sm" variant="outline" className="h-7" disabled={props.addDisabled} onClick={() => setAdding(true)}>
+					<Icons.Plus className="mr-1 h-3.5 w-3.5" />
+					{props.addLabel}
+				</Button>
+			)}
 		</div>
 	)
 }

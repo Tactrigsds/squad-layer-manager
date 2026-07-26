@@ -3,6 +3,7 @@
 import fastDeepEqual from 'fast-deep-equal/es6/index.js'
 import { current, isDraft } from 'immer'
 import jp from 'jsonpath'
+
 import { isNullOrUndef } from './type-guards'
 
 export function reverseMapping<T extends { [key: string]: string }>(obj: T) {
@@ -324,8 +325,10 @@ export function isEmpty(obj: unknown): boolean {
 	return Object.keys(obj as object).length === 0
 }
 
-export type StrictUnion<A extends object, B extends object> = A | B extends object ? (keyof A & keyof B) extends never ? A | B
-	: never
+export type StrictUnion<A extends object, B extends object> = A | B extends object
+	? keyof A & keyof B extends never
+		? A | B
+		: never
 	: A | B
 
 export type OptionalKeys<T extends object, Keys extends keyof T> = Omit<T, Keys> & Partial<Pick<T, Keys>>
@@ -354,4 +357,35 @@ export function destrNullable<T extends object>(obj: T | undefined) {
 
 export function queryPath<T>(path: string, obj: any): T[] {
 	return jp.query(obj, path) as T[]
+}
+
+// Replaces every string in a JSON-derived structure with one canonical instance per distinct value, in place.
+// JSON.parse allocates a fresh string per occurrence, so a structure with a small vocabulary repeated across many
+// records (layer components: 14893 faction/unit entries drawn from 25 values) pays for each one separately.
+export function internStrings<T>(value: T): T {
+	const canonical = new Map<string, string>()
+	const canon = (s: string) => {
+		const hit = canonical.get(s)
+		if (hit !== undefined) return hit
+		canonical.set(s, s)
+		return s
+	}
+	const walk = (node: any): any => {
+		if (typeof node === 'string') return canon(node)
+		// Frozen means someone is sharing this deliberately -- the layer availability pool freezes its pooled
+		// entries and the per-layer lists of them (expandLayerFactionAvailability) precisely so that the sharing
+		// cannot be mutated out from under itself. Writing into one throws, and there is nothing here to win:
+		// pooling has already collapsed the duplicates interning would have caught.
+		if (Object.isFrozen(node)) return node
+		if (Array.isArray(node)) {
+			for (let i = 0; i < node.length; i++) node[i] = walk(node[i])
+			return node
+		}
+		if (node !== null && typeof node === 'object') {
+			for (const key of Object.keys(node)) node[key] = walk(node[key])
+			return node
+		}
+		return node
+	}
+	return walk(value)
 }

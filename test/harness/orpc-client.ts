@@ -1,9 +1,11 @@
-import * as AR from '@/app-routes'
-import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import type { RouterClient } from '@orpc/server'
 import { WebSocket } from 'ws'
+
+import * as AR from '@/app-routes'
+import type { OrpcAppRouter } from '@/server/orpc-app-router'
+
 import { ADMIN_USER, type AppFixture, type TestUser } from './app-fixture'
 
 // An oRPC client speaking the same protocol the browser does, for asserting what a procedure does for a given
@@ -22,7 +24,8 @@ async function sessionCookie(app: AppFixture, user: TestUser): Promise<string> {
 		redirect: 'manual',
 	})
 	if (!res.ok) throw new Error(`login for ${user.username} failed: ${res.status} ${await res.text()}`)
-	const cookie = res.headers.getSetCookie()
+	const cookie = res.headers
+		.getSetCookie()
 		.map((c) => c.split(';')[0])
 		.find((c) => c.startsWith('session-id=') && c.length > 'session-id='.length)
 	if (!cookie) throw new Error(`login for ${user.username} returned no session cookie`)

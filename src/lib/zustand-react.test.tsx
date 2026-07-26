@@ -3,13 +3,34 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { RenderHookOptions } from '@testing-library/react'
 import { act, cleanup, render as rtlRender, renderHook as rtlRenderHook, screen } from '@testing-library/react'
 import * as React from 'react'
-import * as Rx from 'rxjs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import * as Zus from 'zustand'
-import * as ZusUtils from './zustand'
+
+import * as Rx from './rxjs'
+import * as Zus from './zustand'
 
 type State = { count: number; name: string }
 const createStore = () => Zus.createStore<State>(() => ({ count: 0, name: 'a' }))
+
+// stands in for a react-rxjs StateObservable that something else keeps hot: getValue() returns the current value
+// once there is one, and until then a stable promise for the first
+function stateLike<T>() {
+	const subject = new Rx.Subject<T>()
+	let current: T | undefined
+	let settle!: (v: T) => void
+	const first = new Promise<T>((res) => {
+		settle = res
+	})
+	// subscribed before the hook is, so `current` is already updated when the hook's subscriber reads it
+	subject.subscribe((v) => {
+		const isFirst = current === undefined
+		current = v
+		if (isFirst) settle(v)
+	})
+	const source = Object.assign(subject.asObservable(), { getValue: () => (current === undefined ? first : current) })
+	// getValue's real return is `T | Promise<T>`, exactly as a StateObservable's is; the cast is what the consuming
+	// types already assume, and suspending is what makes the assumption true
+	return { source: source as unknown as Zus.ValueObservable<T>, emit: (v: T) => subject.next(v) }
+}
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
 	<QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
@@ -26,7 +47,7 @@ afterEach(cleanup)
 describe('useStore', () => {
 	it('reads a single store and re-renders on change', () => {
 		const store = createStore()
-		const { result } = renderHook(() => ZusUtils.useStore(store, (s: State) => s.count))
+		const { result } = renderHook(() => Zus.useStore(store, (s: State) => s.count))
 		expect(result.current).toBe(0)
 		act(() => store.setState({ count: 1 }))
 		expect(result.current).toBe(1)
@@ -35,7 +56,7 @@ describe('useStore', () => {
 	it('reads multiple sources through a selector', () => {
 		const a = createStore()
 		const b = Zus.createStore(() => ({ suffix: '!' }))
-		const { result } = renderHook(() => ZusUtils.useStore(a, b, (x: State, y: { suffix: string }) => x.name + y.suffix))
+		const { result } = renderHook(() => Zus.useStore(a, b, (x: State, y: { suffix: string }) => x.name + y.suffix))
 		expect(result.current).toBe('a!')
 		act(() => a.setState({ name: 'z' }))
 		expect(result.current).toBe('z!')
@@ -44,14 +65,14 @@ describe('useStore', () => {
 	it('packs multiple sources into a tuple without a selector', () => {
 		const a = createStore()
 		const b = Zus.createStore(() => ({ other: 1 }))
-		const { result } = renderHook(() => ZusUtils.useStore(a, b))
+		const { result } = renderHook(() => Zus.useStore(a, b))
 		expect(result.current).toEqual([{ count: 0, name: 'a' }, { other: 1 }])
 	})
 
 	it('keeps tuple identity stable when nothing changed', () => {
 		const a = createStore()
 		const b = Zus.createStore(() => ({ other: 1 }))
-		const { result, rerender } = renderHook(() => ZusUtils.useStore(a, b))
+		const { result, rerender } = renderHook(() => Zus.useStore(a, b))
 		const first = result.current
 		rerender()
 		expect(result.current).toBe(first)
@@ -59,23 +80,33 @@ describe('useStore', () => {
 
 	it('reads nullish inputs as undefined', () => {
 		const store = createStore()
-		const { result } = renderHook(() => ZusUtils.useStore(null, store, (x: undefined, y: State) => [x, y.count]))
+		const { result } = renderHook(() => Zus.useStore(null, store, (x: undefined, y: State) => [x, y.count]))
 		expect(result.current).toEqual([undefined, 0])
 	})
 
 	// the observable path is duck-typed on getValue/pipe, which BehaviorSubject satisfies
 	it('reads an observable source and re-renders on emission', () => {
 		const subject = new Rx.BehaviorSubject({ n: 1 })
-		const { result } = renderHook(() => ZusUtils.useStore(subject as any, (s: { n: number }) => s.n))
+		const { result } = renderHook(() => Zus.useStore(subject as any, (s: { n: number }) => s.n))
 		expect(result.current).toBe(1)
 		act(() => subject.next({ n: 2 }))
 		expect(result.current).toBe(2)
 	})
 
+	// a source with no value yet emits its first one asynchronously, and that emission is the one that matters.
+	// dropping a fixed first emission instead of a synchronous one would swallow it and leave this pending forever.
+	it('delivers the first emission of an observable that had no value when it subscribed', () => {
+		const { source, emit } = stateLike<{ n: number }>()
+		const { result } = renderHook(() => Zus.useStore(source, (s: any) => (typeof s?.then === 'function' ? 'pending' : s.n)))
+		expect(result.current).toBe('pending')
+		act(() => emit({ n: 1 }))
+		expect(result.current).toBe(1)
+	})
+
 	it('mixes an observable with a store', () => {
 		const store = createStore()
 		const subject = new Rx.BehaviorSubject({ n: 10 })
-		const { result } = renderHook(() => ZusUtils.useStore(store, subject as any, (s: State, o: { n: number }) => s.count + o.n))
+		const { result } = renderHook(() => Zus.useStore(store, subject as any, (s: State, o: { n: number }) => s.count + o.n))
 		expect(result.current).toBe(10)
 		act(() => subject.next({ n: 20 }))
 		expect(result.current).toBe(20)
@@ -87,7 +118,7 @@ describe('useStore', () => {
 	it('recomputes when the selector closes over a changed prop', () => {
 		const store = Zus.createStore<{ items: Record<string, string> }>(() => ({ items: { a: 'apple', b: 'banana' } }))
 		const { result, rerender } = renderHook(
-			({ id }: { id: string }) => ZusUtils.useStore(store, (s: { items: Record<string, string> }) => s.items[id]),
+			({ id }: { id: string }) => Zus.useStore(store, (s: { items: Record<string, string> }) => s.items[id]),
 			{ initialProps: { id: 'a' } },
 		)
 		expect(result.current).toBe('apple')
@@ -99,7 +130,7 @@ describe('useStore', () => {
 		const store = createStore()
 		// mutates the store during render, i.e. before effects run
 		function Probe() {
-			const count = ZusUtils.useStore(store, (s: State) => s.count)
+			const count = Zus.useStore(store, (s: State) => s.count)
 			const done = React.useRef(false)
 			if (!done.current) {
 				done.current = true
@@ -117,7 +148,7 @@ describe('useStore', () => {
 		let renders = 0
 		const { rerender } = renderHook(() => {
 			renders++
-			return ZusUtils.useStore(store, (s: State) => ({ count: s.count }))
+			return Zus.useStore(store, (s: State) => ({ count: s.count }))
 		})
 		expect(renders).toBe(1)
 		rerender()
@@ -131,7 +162,7 @@ describe('useStore', () => {
 		let renders = 0
 		renderHook(() => {
 			renders++
-			return ZusUtils.useStore(store, (s: State) => s.count)
+			return Zus.useStore(store, (s: State) => s.count)
 		})
 		expect(renders).toBe(1)
 		act(() => store.setState({ name: 'other' }))
@@ -145,7 +176,7 @@ describe('useStore', () => {
 				<QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 			</React.StrictMode>
 		)
-		const { result } = rtlRenderHook(() => ZusUtils.useStore(store, (s: State) => s.count), { wrapper: strictWrapper })
+		const { result } = rtlRenderHook(() => Zus.useStore(store, (s: State) => s.count), { wrapper: strictWrapper })
 		expect(result.current).toBe(0)
 		act(() => store.setState({ count: 3 }))
 		expect(result.current).toBe(3)
@@ -154,10 +185,10 @@ describe('useStore', () => {
 	it('reads query sources and re-renders when their data arrives', async () => {
 		const store = createStore()
 		const query = { queryKey: ['thing'], queryFn: async () => ({ n: 7 }) } as any
-		const { result } = renderHook(() => ZusUtils.useStore(store, query, (s: State, q: { n: number } | undefined) => s.count + (q?.n ?? 0)))
+		const { result } = renderHook(() => Zus.useStore(store, query, (s: State, q: { n: number } | undefined) => s.count + (q?.n ?? 0)))
 		expect(result.current).toBe(0)
 		await act(async () => {
-			await new Promise(r => setTimeout(r, 10))
+			await new Promise((r) => setTimeout(r, 10))
 		})
 		expect(result.current).toBe(7)
 	})
@@ -171,9 +202,7 @@ describe('useStore', () => {
 		try {
 			const { rerender } = renderHook(
 				({ withQuery }: { withQuery: boolean }) =>
-					withQuery
-						? ZusUtils.useStore(store, query, (s: State) => s.count)
-						: ZusUtils.useStore(store, (s: State) => s.count),
+					withQuery ? Zus.useStore(store, query, (s: State) => s.count) : Zus.useStore(store, (s: State) => s.count),
 				{ initialProps: { withQuery: false } },
 			)
 			expect(() => rerender({ withQuery: true })).toThrow(/number of query sources/)
@@ -182,9 +211,43 @@ describe('useStore', () => {
 		}
 	})
 
+	// spreading a dynamic list of stores changes the source count between renders, which a useCallback dep array
+	// rejects. The dropped store must also come unsubscribed, not merely fall out of the snapshot.
+	it('tracks a changing number of sync sources', () => {
+		const stores = [createStore(), createStore(), createStore()]
+		const sum = (...states: State[]) => states.reduce((total, s) => total + s.count, 0)
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			let renders = 0
+			const { result, rerender } = renderHook(
+				({ n }: { n: number }) => {
+					renders++
+					return (Zus.useStore as any)(...stores.slice(0, n), sum) as number
+				},
+				{ initialProps: { n: 2 } },
+			)
+			act(() => stores[0].setState({ count: 1 }))
+			expect(result.current).toBe(1)
+
+			rerender({ n: 3 })
+			act(() => stores[2].setState({ count: 4 }))
+			expect(result.current).toBe(5)
+
+			rerender({ n: 1 })
+			expect(result.current).toBe(1)
+			const rendersBefore = renders
+			act(() => stores[2].setState({ count: 100 }))
+			expect(renders).toBe(rendersBefore)
+
+			expect(spy.mock.calls.flat().join(' ')).not.toMatch(/changed size between renders/)
+		} finally {
+			spy.mockRestore()
+		}
+	})
+
 	it('unsubscribes on unmount', () => {
 		const store = createStore()
-		const { unmount } = renderHook(() => ZusUtils.useStore(store, (s: State) => s.count))
+		const { unmount } = renderHook(() => Zus.useStore(store, (s: State) => s.count))
 		expect((store as any).getState()).toBeDefined()
 		unmount()
 		act(() => store.setState({ count: 9 }))
@@ -192,9 +255,9 @@ describe('useStore', () => {
 })
 
 describe('useStore_Susp', () => {
-	type Query = ZusUtils.QuerySource<{ n: number }>
+	type Query = Zus.QuerySource<{ n: number }>
 	function Probe(props: { store: Zus.StoreApi<State>; query: Query }) {
-		const value = ZusUtils.useStore_Susp(props.store, props.query, (s, q) => s.count + q.n)
+		const value = Zus.useStore_Susp(props.store, props.query, (s, q) => s.count + q.n)
 		return <span data-testid="value">{value}</span>
 	}
 
@@ -208,16 +271,44 @@ describe('useStore_Susp', () => {
 		)
 		expect(screen.getByTestId('fallback')).toBeDefined()
 		await act(async () => {
-			await new Promise(r => setTimeout(r, 10))
+			await new Promise((r) => setTimeout(r, 10))
 		})
 		expect(screen.getByTestId('value').textContent).toBe('7')
 		act(() => store.setState({ count: 3 }))
 		expect(screen.getByTestId('value').textContent).toBe('10')
 	})
 
+	it('suspends until an observable produces its first value, and re-renders after it does', async () => {
+		const { source, emit } = stateLike<{ n: number }>()
+		const seen: unknown[] = []
+		function ObsProbe() {
+			const n = Zus.useStore_Susp(source, (s: { n: number }) => {
+				seen.push(s)
+				return s.n
+			})
+			return <span data-testid="value">{n}</span>
+		}
+		render(
+			<React.Suspense fallback={<span data-testid="fallback">loading</span>}>
+				<ObsProbe />
+			</React.Suspense>,
+		)
+		expect(screen.getByTestId('fallback')).toBeDefined()
+		await act(async () => {
+			emit({ n: 4 })
+			await new Promise((r) => setTimeout(r, 10))
+		})
+		expect(screen.getByTestId('value').textContent).toBe('4')
+		// the subscription only lands once the component commits, i.e. after it stopped suspending
+		act(() => emit({ n: 9 }))
+		expect(screen.getByTestId('value').textContent).toBe('9')
+		// the whole point: the selector is never handed the promise
+		expect(seen.some((s) => typeof (s as { then?: unknown })?.then === 'function')).toBe(false)
+	})
+
 	it('reads sync sources without suspending when no query source is passed', () => {
 		const store = createStore()
-		const { result } = renderHook(() => ZusUtils.useStore_Susp(store, (s: State) => s.count))
+		const { result } = renderHook(() => Zus.useStore_Susp(store, (s: State) => s.count))
 		expect(result.current).toBe(0)
 		act(() => store.setState({ count: 2 }))
 		expect(result.current).toBe(2)

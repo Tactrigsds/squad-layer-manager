@@ -1,14 +1,15 @@
-import * as Obj from '@/lib/object'
-import * as RxHelpers from '@/lib/react-rxjs-helpers'
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
+
+import * as Obj from '@/lib/object-utils'
+import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as PartSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
-import { skipToken, useMutation, useQuery } from '@tanstack/react-query'
 
 export let loggedInUserId: bigint | undefined
 export let loggedInUser: USR.User | undefined
@@ -62,12 +63,12 @@ export function useLoggedInUserBase() {
 
 // NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
 export function useLoggedInUser() {
-	return ZusUtils.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)
+	return Zus.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)
 }
 
 // suspends until the logged-in user is loaded instead of returning undefined
 export function useSuspendableLoggedInUser() {
-	return ZusUtils.useStore_Susp(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.loggedInUser)
+	return Zus.useStore_Susp(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.loggedInUser)
 }
 
 export type Simulation = {
@@ -79,9 +80,9 @@ export type Simulation = {
 // the perms a simulation leaves the user with, before negations are recalculated. Added roles contribute perms the user
 // already holds, so the only thing they change on their own is which roles a perm is attributed to.
 export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Simulation): RBAC.TracedPermission[] {
-	const isRoleDisabled = (role: RBAC.Role) => simulation.disabledRoles.some(disabled => Obj.deepEqual(role, disabled))
+	const isRoleDisabled = (role: RBAC.Role) => simulation.disabledRoles.some((disabled) => Obj.deepEqual(role, disabled))
 
-	const perms: RBAC.TracedPermission[] = basePerms.map(p => ({ ...p, allowedByRoles: [...p.allowedByRoles] }))
+	const perms: RBAC.TracedPermission[] = basePerms.map((p) => ({ ...p, allowedByRoles: [...p.allowedByRoles] }))
 	for (const added of simulation.addedRoles) {
 		if (isRoleDisabled(added.role)) continue
 		for (const perm of added.perms) {
@@ -89,9 +90,10 @@ export function simulatePerms(basePerms: RBAC.TracedPermission[], simulation: Si
 		}
 	}
 
-	return perms.filter(p =>
-		p.allowedByRoles.some(role => !isRoleDisabled(role))
-		&& !simulation.disabledPerms.some(disabled => RBAC.isSamePerm(disabled, p))
+	return perms.filter(
+		(p) =>
+			p.allowedByRoles.some((role) => !isRoleDisabled(role)) &&
+			!simulation.disabledPerms.some((disabled) => RBAC.isSamePerm(disabled, p)),
 	)
 }
 
@@ -119,7 +121,7 @@ export function invalidateUsers() {
 
 // an event feed, not state: it stays silent until something actually invalidates, so it must not be given a
 // first-emit guard (which would error the stream out of existence 15s after connecting)
-const [_, userInvalidation$] = RxHelpers.bind(
+const [_, userInvalidation$] = ReactRx.bind(
 	'users.userInvalidation',
 	RPC.observe('users.watchUserInvalidation', () => RPC.orpc.users.watchUserInvalidation.call()),
 	{ firstEmitTimeoutMs: false },
@@ -135,7 +137,7 @@ export function setup() {
 	// every suspending perms hook hangs on this one, so it starts before the first render rather than with it
 	void RPC.queryClient.prefetchQuery(loggedInUserQueryOptions)
 	void RPC.queryClient.prefetchQuery(RPC.orpc.users.getMyLinkedSteamAccounts.queryOptions())
-	FilterEntityClient.filterMutation$.subscribe(async s => {
+	FilterEntityClient.filterMutation$.subscribe(async (s) => {
 		const loggedInUser = await fetchLoggedInUser()
 		if (!loggedInUser) return
 		if (s.value.owner !== loggedInUser.discordId) return
@@ -148,11 +150,13 @@ export function useMyLinkedSteamAccounts() {
 }
 
 export function useUpdateLinkedSteamAccountsMutation() {
-	return useMutation(RPC.orpc.users.updateLinkedSteamAccounts.mutationOptions({
-		onSuccess: (res) => {
-			if (res.code === 'ok') void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.getMyLinkedSteamAccounts.key() })
-		},
-	}))
+	return useMutation(
+		RPC.orpc.users.updateLinkedSteamAccounts.mutationOptions({
+			onSuccess: (res) => {
+				if (res.code === 'ok') void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.getMyLinkedSteamAccounts.key() })
+			},
+		}),
+	)
 }
 
 export namespace Sel {

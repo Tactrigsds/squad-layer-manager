@@ -1,3 +1,8 @@
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
 import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
 import SettingsForm from '@/components/settings-form'
@@ -17,11 +22,17 @@ import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { useForwardWheelToScroller } from '@/lib/browser'
 import { createId } from '@/lib/id'
 import { useRefConstructor } from '@/lib/react'
-import { ADVANCED_GLOBAL_SETTINGS_PATHS, ADVANCED_SERVER_SETTINGS_PATHS, GLOBAL_SETTINGS_GROUPS, SERVER_SETTINGS_PRIORITY_KEYS } from '@/lib/settings-groups'
+import * as ReactRx from '@/lib/react-rxjs'
+import {
+	ADVANCED_GLOBAL_SETTINGS_PATHS,
+	ADVANCED_SERVER_SETTINGS_PATHS,
+	GLOBAL_SETTINGS_GROUPS,
+	SERVER_SETTINGS_PRIORITY_KEYS,
+} from '@/lib/settings-groups'
 import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
-import * as ZusUtils from '@/lib/zustand'
+import * as Zus from '@/lib/zustand'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -30,11 +41,6 @@ import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
-import * as ReactRx from '@react-rxjs/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { createFileRoute, useBlocker } from '@tanstack/react-router'
-import * as Icons from 'lucide-react'
-import React from 'react'
 
 // stable empty-servers reference while public settings haven't loaded, keeping the readable-servers memo stable
 const NO_SERVERS: never[] = []
@@ -61,11 +67,11 @@ function RouteComponent() {
 	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
 	const pageId = useRefConstructor(() => createId(4)).current
-	// non-null while the new-server form is open; a fresh nonce per "Add Server" click yields a clean frame instance
+	// non-null while the new-server form is open; a fresh nonce per "Add Managed Server" click yields a clean frame instance
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
 	// a server section renders for every server the user may at least read; registry management is gated separately
-	const allServers = ZusUtils.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
+	const allServers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
 	const servers = React.useMemo(
 		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id)),
 		[allServers, loggedInPerms],
@@ -109,30 +115,12 @@ function RouteComponent() {
 	}, [sectionKeys, teardownCtl])
 
 	const sectionStates = SettingsEditorFrame.useSectionStates(sectionKeys)
-	// per-section gui/json modes feed the TOC (JSON mode has no per-field anchors); `created` collapses the new-server
-	// form once its save lands (the created server then renders as a regular section via the public-settings watch)
-	const derived = React.useMemo(() => {
-		const serverModes: Record<string, 'gui' | 'json'> = {}
-		let globalMode: 'gui' | 'json' = 'gui'
-		let newServerMode: 'gui' | 'json' = 'gui'
-		let created = false
-		let anyDirty = false
-		for (const s of sectionStates) {
-			if (s.kind === 'server') serverModes[s.serverId!] = s.mode
-			else if (s.kind === 'global') globalMode = s.mode
-			else {
-				newServerMode = s.mode
-				created = s.created
-			}
-			if (SettingsEditorFrame.Sel.dirty(s)) anyDirty = true
-		}
-		return { serverModes, globalMode, newServerMode, created, anyDirty }
-	}, [sectionStates])
-	const creating = creatingNonce !== null && !derived.created
+	const { newServerCreated, anyDirty } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.pageStatus)
+	const creating = creatingNonce !== null && !newServerCreated
 
 	// block in-app navigation and tab close while any section holds unsaved edits (same pattern as filter-edit)
 	useBlocker({
-		enableBeforeUnload: derived.anyDirty,
+		enableBeforeUnload: anyDirty,
 		shouldBlockFn: () => {
 			const dirty = sectionKeys.some((k) => {
 				const s = frameManager.getState(k)
@@ -179,7 +167,7 @@ function RouteComponent() {
 		return () => window.removeEventListener('hashchange', onHash)
 	}, [])
 
-	// when the user clicks "Add Server", scroll the new-server config into view once it mounts (the section renders on
+	// when the user clicks "Add Managed Server", scroll the new-server config into view once it mounts (the section renders on
 	// the next frame). Existing servers scroll via the pencil/Fix buttons in the management card.
 	React.useEffect(() => {
 		if (!creating) return
@@ -202,28 +190,21 @@ function RouteComponent() {
 		// wrapper, which doesn't scroll.
 		<div ref={rootRef} className="flex w-full h-[calc(100dvh-6rem)] justify-center">
 			<div className="flex h-full w-full max-w-6xl">
-				{
-					/* Sized like the commands page's. The columns are capped and centred now, so growing the TOC with the viewport
-				    would only eat the content column, which needs the width more -- its server sections are master-detail. */
-				}
+				{/* Sized like the commands page's. The columns are capped and centred now, so growing the TOC with the viewport
+				    would only eat the content column, which needs the width more -- its server sections are master-detail. */}
 				<aside className="w-52 md:w-60 shrink-0 overflow-hidden border-r pr-2 py-2">
 					<SettingsToc
 						showServers={!manageServersDenied || servers.length > 0}
 						showGlobal={globalAccess.canRead}
-						globalMode={derived.globalMode}
 						servers={servers}
-						serverModes={derived.serverModes}
-						creatingServer={creating}
-						newServerMode={derived.newServerMode}
+						sectionKeys={sectionKeys}
 					/>
 				</aside>
-				{
-					/* `main` spans the whole non-TOC width of the centred group (the content column is centred inside it in turn),
+				{/* `main` spans the whole non-TOC width of the centred group (the content column is centred inside it in turn),
 			    so a wheel between the two still scrolls the settings; the margins outside the group are the hook's job.
 			    `relative` is load-bearing: sr-only elements in the form are position:absolute, and without a positioned
 			    scroll container they escape main's clipping and stretch the document's scroll height to the full unclipped
-			    content height, making the whole app (navbar included) scroll away. */
-				}
+			    content height, making the whole app (navbar included) scroll away. */}
 				<main ref={mainRef} className="relative flex-1 min-w-0 overflow-y-auto">
 					{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
 					<div className="mx-auto w-full max-w-[68rem] px-4 pb-2 space-y-6">
@@ -241,24 +222,25 @@ function RouteComponent() {
 								/>
 							</div>
 						)}
-						{globalAccess.canRead && (() => {
-							const key = sectionKeys.find((k) => k.kind === 'global')
-							if (!key) return null
-							// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
-							// catches the first-emit timeout if global settings never arrive
-							return (
-								<StateBoundary label="global settings">
-									<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
-										<div id="section:global" className="scroll-mt-2 rounded-xl">
-											<GlobalSettingsSection stores={{ settingsEditor: key }} />
-										</div>
-										<div id="section:audit" className="scroll-mt-2 rounded-xl">
-											<AuditLogSection />
-										</div>
-									</ReactRx.Subscribe>
-								</StateBoundary>
-							)
-						})()}
+						{globalAccess.canRead &&
+							(() => {
+								const key = sectionKeys.find((k) => k.kind === 'global')
+								if (!key) return null
+								// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
+								// catches the first-emit timeout if global settings never arrive
+								return (
+									<StateBoundary label="global settings">
+										<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
+											<div id="section:global" className="scroll-mt-2 rounded-xl">
+												<GlobalSettingsSection stores={{ settingsEditor: key }} />
+											</div>
+											<div id="section:audit" className="scroll-mt-2 rounded-xl">
+												<AuditLogSection />
+											</div>
+										</ReactRx.Subscribe>
+									</StateBoundary>
+								)
+							})()}
 					</div>
 				</main>
 			</div>
@@ -270,9 +252,9 @@ function RouteComponent() {
 function AuditLogSection() {
 	const { data } = useQuery(RPC.orpc.appEvents.list.queryOptions({ input: { limit: 100 } }))
 	const events: AppEvents.AppEvent[] = data?.code === 'ok' ? data.events : []
-	const userIds = [...new Set(events.flatMap(e => e.actor.type === 'slm-user' ? [e.actor.userId] : []))]
+	const userIds = [...new Set(events.flatMap((e) => (e.actor.type === 'slm-user' ? [e.actor.userId] : [])))]
 	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
-	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map(u => [u.discordId, u]))
+	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [u.discordId, u]))
 
 	function actorName(actor: AppEvents.Actor): string {
 		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? 'Admin'
@@ -290,13 +272,15 @@ function AuditLogSection() {
 					<CardDescription>Recent actions taken across SLM.</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{events.length === 0
-						? <p className="text-sm text-muted-foreground">No events yet.</p>
-						: (
-							<div className="max-h-[32rem] overflow-y-auto">
-								{events.map(e => <AuditLogEntry key={e.id} event={e} actorName={actorName(e.actor)} />)}
-							</div>
-						)}
+					{events.length === 0 ? (
+						<p className="text-sm text-muted-foreground">No events yet.</p>
+					) : (
+						<div className="max-h-[32rem] overflow-y-auto">
+							{events.map((e) => (
+								<AuditLogEntry key={e.id} event={e} actorName={actorName(e.actor)} />
+							))}
+						</div>
+					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>
@@ -310,15 +294,13 @@ function AuditLogEntry({ event, actorName }: { event: AppEvents.AppEvent; actorN
 		<details className="border-b py-1 last:border-0 group">
 			<summary className="flex gap-2 items-baseline text-sm cursor-pointer list-none">
 				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-					{new Date(event.time).toLocaleString()}
-				</span>
+				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(event.time).toLocaleString()}</span>
 				<span className="font-medium whitespace-nowrap">{actorName}</span>
 				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(event)}</span>
 				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
 			</summary>
 			<pre className="mt-1 ml-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
-				{JSON.stringify(event, (_key, value) => typeof value === 'bigint' ? value.toString() : value, 2)}
+				{JSON.stringify(event, (_key, value) => (typeof value === 'bigint' ? value.toString() : value), 2)}
 			</pre>
 		</details>
 	)
@@ -326,28 +308,41 @@ function AuditLogEntry({ event, actorName }: { event: AppEvents.AppEvent; actorN
 
 // Format/Reset/Save for a JSON-mode section. Lives in the editor's own header row (SchemaJsonEditor's `toolbar` slot)
 // rather than below it, so it stays reachable once the editor goes fullscreen and covers the page.
-function JsonEditorToolbar(
-	{ editorRef, deniedPaths, canSave, saving, onSave }: {
-		editorRef: React.RefObject<SchemaJsonEditorHandle | null>
-		deniedPaths: string[]
-		canSave: boolean
-		saving: boolean
-		onSave: () => void
-	},
-) {
+function JsonEditorToolbar({
+	editorRef,
+	deniedPaths,
+	canSave,
+	saving,
+	onSave,
+}: {
+	editorRef: React.RefObject<SchemaJsonEditorHandle | null>
+	deniedPaths: string[]
+	canSave: boolean
+	saving: boolean
+	onSave: () => void
+}) {
 	return (
 		<>
 			{deniedPaths.length > 0 && (
 				<p className="min-w-0 truncate text-xs text-amber-500">
-					Not permitted to modify: {deniedPaths.map((p) => <code key={p} className="mx-0.5">{p}</code>)}
+					Not permitted to modify:{' '}
+					{deniedPaths.map((p) => (
+						<code key={p} className="mx-0.5">
+							{p}
+						</code>
+					))}
 				</p>
 			)}
 			<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
 				<Icons.Braces className="h-4 w-4" />
 				Format
 			</Button>
-			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>Reset</Button>
-			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>{saving ? 'Saving…' : 'Save'}</Button>
+			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>
+				Reset
+			</Button>
+			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>
+				{saving ? 'Saving…' : 'Save'}
+			</Button>
 		</>
 	)
 }
@@ -405,10 +400,7 @@ type PublicServer = { id: string; displayName: string; enabled: boolean; broken:
 // the sentinel selection value for the (unsaved) new-server form
 const NEW_SERVER_SELECTION = '__new__'
 
-function lifecycleState(
-	server: PublicServer,
-	inflight: { startingId?: string; stoppingId?: string },
-): ServerLifecycleState {
+function lifecycleState(server: PublicServer, inflight: { startingId?: string; stoppingId?: string }): ServerLifecycleState {
 	if (server.broken) return 'broken'
 	if (inflight.startingId === server.id) return 'starting'
 	if (inflight.stoppingId === server.id) return 'stopping'
@@ -424,17 +416,23 @@ function pickDefaultSelection(servers: PublicServer[]): string | null {
 // start/stop, delete), above a "Server Settings" card holding the selected server's settings. All editing state lives
 // in per-server settings-editor frames (kept alive by the route regardless of which server is shown), so drafts
 // survive switching servers and the save panel aggregates them.
-function ServersSection(
-	{ servers, sectionKeys, canManage, canCreate, creating, onAddServer, onCancelCreate }: {
-		servers: PublicServer[]
-		sectionKeys: SettingsEditorFrame.Key[]
-		canManage: boolean
-		canCreate: boolean
-		creating: boolean
-		onAddServer: () => void
-		onCancelCreate: () => void
-	},
-) {
+function ServersSection({
+	servers,
+	sectionKeys,
+	canManage,
+	canCreate,
+	creating,
+	onAddServer,
+	onCancelCreate,
+}: {
+	servers: PublicServer[]
+	sectionKeys: SettingsEditorFrame.Key[]
+	canManage: boolean
+	canCreate: boolean
+	creating: boolean
+	onAddServer: () => void
+	onCancelCreate: () => void
+}) {
 	const deleteServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:delete-servers'))
 	const openDialog = useAlertDialog()
 
@@ -444,7 +442,7 @@ function ServersSection(
 	const deleteMutation = useMutation(RPC.orpc.settings.admin.deleteServer.mutationOptions(onDenied))
 	const setDefaultMutation = useMutation(RPC.orpc.settings.admin.setDefaultServer.mutationOptions(onDenied))
 	const busy = enableMutation.isPending || disableMutation.isPending || deleteMutation.isPending || setDefaultMutation.isPending
-	// the start/stop RPCs only resolve once the server slice is fully spun up / torn down, so the mutation's in-flight
+	// the start/stop RPCs only resolve once the managed server is fully spun up / torn down, so the mutation's in-flight
 	// window is exactly the transitional period
 	const inflight = {
 		startingId: enableMutation.isPending ? enableMutation.variables?.serverId : undefined,
@@ -484,8 +482,8 @@ function ServersSection(
 
 	async function handleDelete(server: PublicServer) {
 		const result = await openDialog({
-			title: 'Delete Server',
-			description: `Delete server "${server.displayName}" (${server.id})? This cannot be undone.`,
+			title: 'Delete Managed Server',
+			description: `Delete managed server "${server.displayName}" (${server.id})? This cannot be undone.`,
 			buttons: [{ id: 'confirm', label: 'Delete', variant: 'destructive' }],
 		})
 		if (result === 'confirm') deleteMutation.mutate({ serverId: server.id })
@@ -509,51 +507,61 @@ function ServersSection(
 				creating={creating}
 				onAddServer={onAddServer}
 				onToggle={(server) =>
-					server.enabled ? disableMutation.mutate({ serverId: server.id }) : enableMutation.mutate({ serverId: server.id })}
+					server.enabled ? disableMutation.mutate({ serverId: server.id }) : enableMutation.mutate({ serverId: server.id })
+				}
 				onSetDefault={(server) => setDefaultMutation.mutate({ serverId: server.id })}
 				onDelete={handleDelete}
 			/>
-			{creating && newServerKey
-				? (
-					<div id={`section:server:${NEW_SERVER_SELECTION}`} className="scroll-mt-2">
-						<CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
-					</div>
-				)
-				: selectedServer && serverKey
-				? (
-					// the anchor id lives on the list row, so navigating to a server scrolls to it in the list rather than past it;
-					// this card is highlighted along with the row so it's clear which settings the anchor opened
-					<div
-						id="section:server-settings"
-						data-anchor-companion={`section:server:${selectedServer.id}`}
-						className="scroll-mt-2 rounded-xl"
-					>
-						<ServerSettingsSection server={selectedServer} stores={{ settingsEditor: serverKey }} />
-					</div>
-				)
-				: <p className="text-sm text-muted-foreground">Select a server to configure it.</p>}
+			{creating && newServerKey ? (
+				<div id={`section:server:${NEW_SERVER_SELECTION}`} className="scroll-mt-2">
+					<CreateServerSection stores={{ settingsEditor: newServerKey }} onCancel={onCancelCreate} />
+				</div>
+			) : selectedServer && serverKey ? (
+				// the anchor id lives on the list row, so navigating to a server scrolls to it in the list rather than past it;
+				// this card is highlighted along with the row so it's clear which settings the anchor opened
+				<div
+					id="section:server-settings"
+					data-anchor-companion={`section:server:${selectedServer.id}`}
+					className="scroll-mt-2 rounded-xl"
+				>
+					<ServerSettingsSection server={selectedServer} stores={{ settingsEditor: serverKey }} />
+				</div>
+			) : (
+				<p className="text-sm text-muted-foreground">Select a server to configure it.</p>
+			)}
 		</div>
 	)
 }
 
-function ServerList(
-	{ servers, selected, onSelect, inflight, busy, canManage, canDelete, canCreate, creating, onAddServer, onToggle, onSetDefault, onDelete }:
-		{
-			servers: PublicServer[]
-			selected: string | null
-			onSelect: (id: string) => void
-			inflight: { startingId?: string; stoppingId?: string }
-			busy: boolean
-			canManage: boolean
-			canDelete: boolean
-			canCreate: boolean
-			creating: boolean
-			onAddServer: () => void
-			onToggle: (server: PublicServer) => void
-			onSetDefault: (server: PublicServer) => void
-			onDelete: (server: PublicServer) => void
-		},
-) {
+function ServerList({
+	servers,
+	selected,
+	onSelect,
+	inflight,
+	busy,
+	canManage,
+	canDelete,
+	canCreate,
+	creating,
+	onAddServer,
+	onToggle,
+	onSetDefault,
+	onDelete,
+}: {
+	servers: PublicServer[]
+	selected: string | null
+	onSelect: (id: string) => void
+	inflight: { startingId?: string; stoppingId?: string }
+	busy: boolean
+	canManage: boolean
+	canDelete: boolean
+	canCreate: boolean
+	creating: boolean
+	onAddServer: () => void
+	onToggle: (server: PublicServer) => void
+	onSetDefault: (server: PublicServer) => void
+	onDelete: (server: PublicServer) => void
+}) {
 	return (
 		<div className="space-y-2">
 			<div className="space-y-1">
@@ -586,22 +594,32 @@ function ServerList(
 										disabled={busy || server.defaultServer}
 										onCheckedChange={(checked) => checked && onSetDefault(server)}
 									/>
-									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">Default</Label>
+									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
+										Default
+									</Label>
 								</div>
 								<Button
 									size="sm"
 									variant={server.enabled ? 'destructive' : 'outline'}
 									className={cn('w-28', server.broken && 'invisible')}
 									disabled={busy || server.broken}
-									title={server.enabled
-										? 'Disconnect from the server. It stays disconnected across SLM restarts.'
-										: 'Connect to the server. It will also connect automatically with SLM.'}
+									title={
+										server.enabled
+											? 'Disconnect from the server. It stays disconnected across SLM restarts.'
+											: 'Connect to the server. It will also connect automatically with SLM.'
+									}
 									onClick={() => onToggle(server)}
 								>
 									{server.enabled ? 'Disconnect' : 'Connect'}
 								</Button>
 								{canDelete && (
-									<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={() => onDelete(server)}>
+									<Button
+										size="icon"
+										variant="ghost"
+										disabled={busy}
+										title="Delete managed server"
+										onClick={() => onDelete(server)}
+									>
 										<Icons.Trash2 className="h-4 w-4" />
 									</Button>
 								)}
@@ -613,7 +631,7 @@ function ServerList(
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					Add Server
+					Add Managed Server
 				</Button>
 			)}
 		</div>
@@ -624,16 +642,17 @@ function ServerList(
 // through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). Server settings
 // have no codec transforms, so the edit/input shape equals the stored shape (no encode step). All editing state lives
 // in the section's settings-editor frame; this component is a view over it.
-function ServerSettingsSection(
-	{ server, stores }: {
-		server: { id: string; displayName: string; broken: boolean }
-		stores: SettingsEditorFrame.KeyProp
-	},
-) {
+function ServerSettingsSection({
+	server,
+	stores,
+}: {
+	server: { id: string; displayName: string; broken: boolean }
+	stores: SettingsEditorFrame.KeyProp
+}) {
 	const key = stores.settingsEditor
 	const access = RbacClient.useServerSettingsAccess(server.id)
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, loadFailed, loading, draft, saved } = state
 	// without write-sensitive the server redacts connections, so edit/validate against the connections-free schema
 	const schema = SettingsEditorFrame.Sel.schema(state)
@@ -690,59 +709,66 @@ function ServerSettingsSection(
 							</CardDescription>
 							{access.write.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
-									You can only modify: {access.write.paths.map((p) => <code key={p} className="mx-0.5">{p}</code>)}
+									You can only modify:{' '}
+									{access.write.paths.map((p) => (
+										<code key={p} className="mx-0.5">
+											{p}
+										</code>
+									))}
 								</p>
 							)}
 						</div>
-						<div className="flex items-center rounded-md border p-0.5">
-							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
-							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+						<div role="group" aria-label="Server settings editor mode" className="flex items-center rounded-md border p-0.5">
+							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
+								GUI
+							</Button>
+							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>
+								JSON
+							</Button>
 						</div>
 					</div>
 				</CardHeader>
 				{/* pt-3 keeps the first group's anchor-highlight ring clear of the sticky header */}
 				<CardContent className="space-y-4 pt-3">
-					{loadFailed
-						? <p className="text-sm text-destructive">Failed to load settings: {loadFailed}</p>
-						: !ready
-						? <p className="text-sm text-muted-foreground">Loading…</p>
-						: mode === 'gui'
-						? (
-							<SettingsForm
+					{loadFailed ? (
+						<p className="text-sm text-destructive">Failed to load settings: {loadFailed}</p>
+					) : !ready ? (
+						<p className="text-sm text-muted-foreground">Loading…</p>
+					) : mode === 'gui' ? (
+						<SettingsForm
+							schema={schema}
+							value$={value$}
+							reset$={reset$}
+							onChange={onFormChange}
+							saved={saved}
+							idPrefix={`setting:server:${server.id}:`}
+							priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
+							advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
+							issues={issues}
+							writeAccess={formWriteAccess}
+						/>
+					) : (
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+							<SchemaJsonEditor
+								ref={editorRef}
 								schema={schema}
-								value$={value$}
-								reset$={reset$}
-								onChange={onFormChange}
-								saved={saved}
-								idPrefix={`setting:server:${server.id}:`}
-								priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
-								advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
-								issues={issues}
-								writeAccess={formWriteAccess}
+								value={draft}
+								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+								onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
+								minHeightPx={350}
+								label="Server Settings"
+								toolbar={
+									<JsonEditorToolbar
+										editorRef={editorRef}
+										deniedPaths={deniedPaths}
+										canSave={changes.length > 0 && valid && deniedPaths.length === 0}
+										saving={saving}
+										onSave={handleJsonSave}
+									/>
+								}
 							/>
-						)
-						: (
-							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-								<SchemaJsonEditor
-									ref={editorRef}
-									schema={schema}
-									value={draft}
-									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
-									onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
-									minHeightPx={350}
-									label="Server Settings"
-									toolbar={
-										<JsonEditorToolbar
-											editorRef={editorRef}
-											deniedPaths={deniedPaths}
-											canSave={changes.length > 0 && valid && deniedPaths.length === 0}
-											saving={saving}
-											onSave={handleJsonSave}
-										/>
-									}
-								/>
-							</React.Suspense>
-						)}
+						</React.Suspense>
+					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>
@@ -754,7 +780,7 @@ function ServerSettingsSection(
 // rather than path grants, so no denied-path mirror here.
 function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame.KeyProp; onCancel: () => void }) {
 	const key = stores.settingsEditor
-	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, draft, issues, newId, newDisplayName } = state
 
 	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])
@@ -771,11 +797,11 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
 					<div className="flex items-center justify-between gap-2">
 						<div>
-							<CardTitle>New Server</CardTitle>
+							<CardTitle>New Managed Server</CardTitle>
 							<CardDescription>Configure a new server. Save from the panel below, or cancel.</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">
-							<div className="flex items-center rounded-md border p-0.5">
+							<div role="group" aria-label="New server editor mode" className="flex items-center rounded-md border p-0.5">
 								<Button
 									size="sm"
 									variant={mode === 'gui' ? 'secondary' : 'ghost'}
@@ -791,7 +817,9 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 									JSON
 								</Button>
 							</div>
-							<Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+							<Button size="sm" variant="outline" onClick={onCancel}>
+								Cancel
+							</Button>
 						</div>
 					</div>
 				</CardHeader>
@@ -810,36 +838,36 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 							label="Display Name"
 							placeholder="My Squad Server"
 							defaultValue={newDisplayName}
-							onChange={(e) => SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { displayName: e.target.value })}
+							onChange={(e) =>
+								SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { displayName: e.target.value })
+							}
 						/>
 					</div>
-					{mode === 'gui'
-						? (
-							<SettingsForm
+					{mode === 'gui' ? (
+						<SettingsForm
+							schema={SETTINGS.ServerSettingsSchema}
+							value$={value$}
+							reset$={reset$}
+							onChange={onFormChange}
+							saved={SettingsEditorFrame.NEW_SERVER_DRAFT}
+							idPrefix="setting:server:__new__:"
+							priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
+							advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
+							issues={issues}
+						/>
+					) : (
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+							<SchemaJsonEditor
+								ref={editorRef}
 								schema={SETTINGS.ServerSettingsSchema}
-								value$={value$}
-								reset$={reset$}
-								onChange={onFormChange}
-								saved={SettingsEditorFrame.NEW_SERVER_DRAFT}
-								idPrefix="setting:server:__new__:"
-								priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
-								advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
-								issues={issues}
+								value={draft}
+								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+								onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
+								minHeightPx={350}
+								label="Server Settings"
 							/>
-						)
-						: (
-							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-								<SchemaJsonEditor
-									ref={editorRef}
-									schema={SETTINGS.ServerSettingsSchema}
-									value={draft}
-									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
-									onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
-									minHeightPx={350}
-									label="Server Settings"
-								/>
-							</React.Suspense>
-						)}
+						</React.Suspense>
+					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>
@@ -852,7 +880,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 	const key = stores.settingsEditor
 	const { write: writeAccess } = RbacClient.useGlobalSettingsAccess()
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const state = ZusUtils.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, draft, saved, denied } = state
 
 	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])
@@ -908,54 +936,61 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 							<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
 							{writeAccess.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
-									You can only modify: {writeAccess.paths.map((p) => <code key={p} className="mx-0.5">{p}</code>)}
+									You can only modify:{' '}
+									{writeAccess.paths.map((p) => (
+										<code key={p} className="mx-0.5">
+											{p}
+										</code>
+									))}
 								</p>
 							)}
 						</div>
-						<div className="flex items-center rounded-md border p-0.5">
-							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>GUI</Button>
-							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>JSON</Button>
+						<div role="group" aria-label="Global settings editor mode" className="flex items-center rounded-md border p-0.5">
+							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
+								GUI
+							</Button>
+							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>
+								JSON
+							</Button>
 						</div>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-4 pt-3">
-					{mode === 'gui'
-						? (
-							<SettingsForm
+					{mode === 'gui' ? (
+						<SettingsForm
+							schema={SETTINGS.GlobalSettingsSchema}
+							value$={value$}
+							reset$={reset$}
+							onChange={onFormChange}
+							saved={saved}
+							groups={GLOBAL_SETTINGS_GROUPS}
+							advancedPaths={ADVANCED_GLOBAL_SETTINGS_PATHS}
+							issues={issues}
+							writeAccess={writeAccess}
+						/>
+					) : (
+						// GUI mode uses the shared bottom control panel; JSON mode keeps its own toolbar, inside the editor
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+							<SchemaJsonEditor
+								ref={editorRef}
 								schema={SETTINGS.GlobalSettingsSchema}
-								value$={value$}
-								reset$={reset$}
-								onChange={onFormChange}
-								saved={saved}
-								groups={GLOBAL_SETTINGS_GROUPS}
-								advancedPaths={ADVANCED_GLOBAL_SETTINGS_PATHS}
-								issues={issues}
-								writeAccess={writeAccess}
+								value={draft}
+								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+								onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
+								minHeightPx={450}
+								label="Global Settings"
+								toolbar={
+									<JsonEditorToolbar
+										editorRef={editorRef}
+										deniedPaths={deniedPaths}
+										canSave={changes.length > 0 && valid && deniedPaths.length === 0}
+										saving={saving}
+										onSave={handleJsonSave}
+									/>
+								}
 							/>
-						)
-						: (
-							// GUI mode uses the shared bottom control panel; JSON mode keeps its own toolbar, inside the editor
-							<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
-								<SchemaJsonEditor
-									ref={editorRef}
-									schema={SETTINGS.GlobalSettingsSchema}
-									value={draft}
-									onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
-									onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
-									minHeightPx={450}
-									label="Global Settings"
-									toolbar={
-										<JsonEditorToolbar
-											editorRef={editorRef}
-											deniedPaths={deniedPaths}
-											canSave={changes.length > 0 && valid && deniedPaths.length === 0}
-											saving={saving}
-											onSave={handleJsonSave}
-										/>
-									}
-								/>
-							</React.Suspense>
-						)}
+						</React.Suspense>
+					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>

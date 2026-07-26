@@ -1,3 +1,6 @@
+import * as Icons from 'lucide-react'
+import React from 'react'
+
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import EmojiDisplay from '@/components/emoji-display.tsx'
@@ -5,8 +8,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
-import * as Icons from 'lucide-react'
-import React from 'react'
+
 import { Checkbox } from './ui/checkbox.tsx'
 
 export default function FilterEntitySelect(props: {

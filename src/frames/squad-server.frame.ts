@@ -1,12 +1,13 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
 import * as ODSM from '@/lib/odsm'
 import * as RSel from '@/lib/reselect'
-import * as ZusUtils from '@/lib/zustand'
-
+import * as Rx from '@/lib/rxjs'
+import * as Zus from '@/lib/zustand'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
@@ -21,30 +22,33 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as VoteClient from '@/systems/vote.client'
-import * as Rx from 'rxjs'
 
 import { frameManager } from './frame-manager'
 
 export type Input = { serverId: string }
 
-export type State = ChatPrt.Store & ServerSettingsPrt.Store & LayerQueuePrt.Store & TeamswapsPrt.Store & {
-	layerItemsState: LQY.LayerItemsState
-	layerItemStatuses: LQY.LayerItemStatuses | null
-	// the queue the statuses above were computed for. Statuses lag an edit by a debounce plus a query, so a caller that
-	// has to be right about them (the save flow gates on warnings) can tell current answers from stale ones. Display
-	// keeps using the stale ones meanwhile, which is what stops the indicators flickering on every edit.
-	layerItemStatusesFor: LQY.LayerItemsState | null
+export type State = ChatPrt.Store &
+	ServerSettingsPrt.Store &
+	LayerQueuePrt.Store &
+	TeamswapsPrt.Store &
+	TeamsPanelPrt.Store & {
+		layerItemsState: LQY.LayerItemsState
+		layerItemStatuses: LQY.LayerItemStatuses | null
+		// the queue the statuses above were computed for. Statuses lag an edit by a debounce plus a query, so a caller that
+		// has to be right about them (the save flow gates on warnings) can tell current answers from stale ones. Display
+		// keeps using the stale ones meanwhile, which is what stops the indicators flickering on every edit.
+		layerItemStatusesFor: LQY.LayerItemsState | null
 
-	// the teams-panel player selection every bulk admin action reads from
-	playerSelection: Record<SM.PlayerId, boolean>
-	// player ids currently on screen (after search/filters) in the teams-panel tables, keyed per table so each
-	// team/combined table publishes its own displayed rows independently. Selection-adding actions intersect against
-	// the union so "select all X" only ever draws on what's currently visible.
-	visiblePlayersByTable: Record<string, SM.PlayerId[]>
-	// the selection once it stops moving. drag-to-select writes playerSelection once per row the cursor crosses, and
-	// consumers that do real work per change (the activity feed re-filters its whole event buffer) read this instead.
-	settledSelectedPlayerIds: Set<SM.PlayerId>
-}
+		// the teams-panel player selection every bulk admin action reads from
+		playerSelection: Record<SM.PlayerId, boolean>
+		// player ids currently on screen (after search/filters) in the teams-panel tables, keyed per table so each
+		// team/combined table publishes its own displayed rows independently. Selection-adding actions intersect against
+		// the union so "select all X" only ever draws on what's currently visible.
+		visiblePlayersByTable: Record<string, SM.PlayerId[]>
+		// the selection once it stops moving. drag-to-select writes playerSelection once per row the cursor crosses, and
+		// consumers that do real work per change (the activity feed re-filters its whole event buffer) read this instead.
+		settledSelectedPlayerIds: Set<SM.PlayerId>
+	}
 export type Types = {
 	name: 'squadServer'
 	key: FRM.RawInstanceKey<{ serverId: string }>
@@ -83,66 +87,78 @@ export const frame = frameManager.createFrame<Types>({
 			visiblePlayersByTable: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
 		})
+		// after the set above: its sync reads playerSelection on the first update, and every init emits one
+		TeamsPanelPrt.initTeamsPanel(args)
 
 		args.sub.add(
-			ZusUtils.toObservable(args.key, true).pipe(
-				Rx.map(([state]) => state.playerSelection),
-				Rx.distinctUntilChanged(),
-				Rx.debounceTime(SELECTION_SETTLE_MS),
-				Rx.map(selection => toSelectedIds(selection)),
-				// consumers key their caches on the emitted set's identity, so compare by contents: a drag that ends
-				// where it started shouldn't invalidate anything
-				Rx.distinctUntilChanged(sameSelection),
-			).subscribe(settledSelectedPlayerIds => args.set({ settledSelectedPlayerIds })),
+			Zus.toObservable(args.key, true)
+				.pipe(
+					Rx.map(([state]) => state.playerSelection),
+					Rx.distinctUntilChanged(),
+					Rx.debounceTime(SELECTION_SETTLE_MS),
+					Rx.map((selection) => toSelectedIds(selection)),
+					// consumers key their caches on the emitted set's identity, so compare by contents: a drag that ends
+					// where it started shouldn't invalidate anything
+					Rx.distinctUntilChanged(sameSelection),
+				)
+				.subscribe((settledSelectedPlayerIds) => args.set({ settledSelectedPlayerIds })),
 		)
 
 		Rx.combineLatest([
 			args.update$.pipe(
-				Rx.concatMap(([state, prev]): LL.List[] =>
-					state.queue.layerList === prev.queue.layerList
-						? []
-						: [state.queue.layerList]
-				),
+				Rx.concatMap(([state, prev]): LL.List[] => (state.queue.layerList === prev.queue.layerList ? [] : [state.queue.layerList])),
 			),
 			MatchHistoryClient.recentMatches$(args.input.serverId),
-		])
-			.subscribe(([layerList, recentMatches]) => {
-				args.set({
-					layerItemsState: LQY.resolveLayerItemsState(layerList, recentMatches),
-				})
+		]).subscribe(([layerList, recentMatches]) => {
+			args.set({
+				layerItemsState: LQY.resolveLayerItemsState(layerList, recentMatches),
 			})
+		})
 
-		const state$ = ZusUtils.toObservable(args.key, true)
+		const state$ = Zus.toObservable(args.key, true)
 		args.sub.add(
 			Rx.combineLatest([
-				state$.pipe(Rx.map(([state]) => state.layerItemsState), Rx.distinctUntilChanged()),
-				state$.pipe(Rx.map(([state]) => state.settings.saved), Rx.distinctUntilChanged()),
+				state$.pipe(
+					Rx.map(([state]) => state.layerItemsState),
+					Rx.distinctUntilChanged(),
+				),
+				state$.pipe(
+					Rx.map(([state]) => state.settings.saved),
+					Rx.distinctUntilChanged(),
+				),
 				// filter edits invalidate previously computed statuses
-				ZusUtils.toObservable(LayerQueriesClient.Store, true).pipe(
+				Zus.toObservable(LayerQueriesClient.Store, true).pipe(
 					Rx.map(([state]) => state.backgroundStateEpoch),
 					Rx.distinctUntilChanged(),
 				),
-			]).pipe(
-				Rx.debounceTime(250),
-				Rx.switchMap(([list, settings]) =>
-					Rx.from(LayerQueriesClient.fetchLayerItemStatuses({
-						constraints: SETTINGS.getSettingsConstraints(settings),
-						skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
-						list,
-					})).pipe(
-						Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),
-						Rx.catchError(() => Rx.EMPTY),
-					)
-				),
-			).subscribe(([layerItemStatuses, list]) => {
-				if (layerItemStatuses) args.set({ layerItemStatuses, layerItemStatusesFor: list })
-			}),
+			])
+				.pipe(
+					Rx.debounceTime(250),
+					Rx.switchMap(([list, settings]) =>
+						Rx.from(
+							LayerQueriesClient.fetchLayerItemStatuses({
+								constraints: SETTINGS.getSettingsConstraints(settings),
+								skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
+								list,
+							}),
+						).pipe(
+							Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),
+							Rx.catchError(() => Rx.EMPTY),
+						),
+					),
+				)
+				.subscribe(([layerItemStatuses, list]) => {
+					if (layerItemStatuses) args.set({ layerItemStatuses, layerItemStatusesFor: list })
+				}),
 		)
 	},
 })
 
 export function getLayerItemState$(squadServer: Key) {
-	const list$ = ZusUtils.toObservable(squadServer, true).pipe(Rx.map(([state]) => state.queue.layerList), Rx.distinctUntilChanged())
+	const list$ = Zus.toObservable(squadServer, true).pipe(
+		Rx.map(([state]) => state.queue.layerList),
+		Rx.distinctUntilChanged(),
+	)
 	const history$ = MatchHistoryClient.recentMatches$(squadServer.serverId)
 	return Rx.combineLatest([list$, history$]).pipe(Rx.map(([list, history]) => LQY.resolveLayerItemsState(list, history)))
 }
@@ -177,7 +193,7 @@ export namespace Sel {
 			let any = false
 			for (const target of targets) {
 				any = true
-				if (!SM.PlayerIds.find(players, p => p.ids, target)?.isAdmin) return false
+				if (!SM.PlayerIds.find(players, (p) => p.ids, target)?.isAdmin) return false
 			}
 			return any
 		}
@@ -193,7 +209,7 @@ export namespace Sel {
 const SELECTION_SETTLE_MS = 200
 
 function toSelectedIds(selection: Record<SM.PlayerId, boolean>): Set<SM.PlayerId> {
-	return new Set(Object.keys(selection).filter(id => selection[id]))
+	return new Set(Object.keys(selection).filter((id) => selection[id]))
 }
 
 function sameSelection(a: Set<SM.PlayerId>, b: Set<SM.PlayerId>): boolean {
@@ -219,7 +235,7 @@ function visiblePlayerSet(state: State): Set<SM.PlayerId> | null {
 
 export namespace Actions {
 	function store(stores: KeyProp) {
-		return ZusUtils.resolveStore<State>(stores.squadServer!)
+		return Zus.resolveStore<State>(stores.squadServer!)
 	}
 
 	export function setSelection(
@@ -236,62 +252,80 @@ export namespace Actions {
 	export function selectPlayers(stores: KeyProp, playerIds: SM.PlayerId[]) {
 		const s = store(stores)
 		const visible = visiblePlayerSet(s.getState())
-		const constrained = visible ? playerIds.filter(id => visible.has(id)) : playerIds
-		s.setState(state => ({
-			playerSelection: { ...state.playerSelection, ...Object.fromEntries(constrained.map(id => [id, true])) },
+		const constrained = visible ? playerIds.filter((id) => visible.has(id)) : playerIds
+		s.setState((state) => ({
+			playerSelection: { ...state.playerSelection, ...Object.fromEntries(constrained.map((id) => [id, true])) },
 		}))
 	}
 
+	// Enter in the teams-panel search box adds every match to the selection. Takes the query rather than reading it
+	// off the panel state, which the search input only writes debounced.
+	export function selectSearchMatches(stores: KeyProp, searchQuery: string) {
+		if (!searchQuery.trim()) return
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const matched = TeamsPanelPrt.matchPlayersBySearch(players, searchQuery)
+		selectPlayers(
+			stores,
+			players.filter((_, i) => matched.has(i)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
+		)
+	}
+
+	// the teams panel's reset button: the filters and sorting are the partial's, the selection is the frame's
+	export function resetTeamsPanel(stores: KeyProp) {
+		TeamsPanelPrt.Actions.reset({ teamsPanel: stores.squadServer! })
+		setSelection(stores, {})
+	}
+
 	export function selectSquad(stores: KeyProp, playerId: SM.PlayerId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
-		const player = SM.PlayerIds.find(players, p => p.ids, playerId)
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 		if (!player?.squadId || !player.teamId) return
 		const squadIds = players
-			.filter(p => p.squadId === player.squadId && p.teamId === player.teamId)
-			.map(p => SM.PlayerIds.getPlayerId(p.ids))
+			.filter((p) => p.squadId === player.squadId && p.teamId === player.teamId)
+			.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		selectPlayers(stores, squadIds)
 	}
 
 	// teamId (raw): when given, only players on that team are selected
 	export function selectAllAdmins(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
-			players.filter(p => p.isAdmin && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+			players.filter((p) => p.isAdmin && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 
 	export function selectAllInAdminCam(stores: KeyProp, teamId?: SM.TeamId) {
-		const chatState = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!))
+		const chatState = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
 			chatState.players
-				.filter(p => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
-				.map(p => SM.PlayerIds.getPlayerId(p.ids)),
+				.filter((p) => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
+				.map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 
 	export function selectAllWithRole(stores: KeyProp, role: string, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
-			players.filter(p => p.role === role && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+			players.filter((p) => p.role === role && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 
 	export function selectAllSquadLeaders(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
-			players.filter(p => p.isLeader && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+			players.filter((p) => p.isLeader && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 
 	export function selectAllTeamPlayers(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(ZusUtils.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
 		selectPlayers(
 			stores,
-			players.filter(p => (teamId == null ? p.teamId !== null : p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+			players.filter((p) => (teamId == null ? p.teamId !== null : p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 
@@ -299,7 +333,7 @@ export namespace Actions {
 		const enriched = getEnrichedPlayers(stores)
 		selectPlayers(
 			stores,
-			enriched.filter(p => p.group === group && (teamId == null || p.teamId === teamId)).map(p => SM.PlayerIds.getPlayerId(p.ids)),
+			enriched.filter((p) => p.group === group && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
 	}
 
@@ -325,11 +359,11 @@ export namespace Actions {
 	}
 
 	export function setVisiblePlayers(stores: KeyProp, tableKey: string, playerIds: SM.PlayerId[]) {
-		store(stores).setState(state => ({ visiblePlayersByTable: { ...state.visiblePlayersByTable, [tableKey]: playerIds } }))
+		store(stores).setState((state) => ({ visiblePlayersByTable: { ...state.visiblePlayersByTable, [tableKey]: playerIds } }))
 	}
 
 	export function clearVisiblePlayers(stores: KeyProp, tableKey: string) {
-		store(stores).setState(state => {
+		store(stores).setState((state) => {
 			if (!(tableKey in state.visiblePlayersByTable)) return state
 			const visiblePlayersByTable = { ...state.visiblePlayersByTable }
 			delete visiblePlayersByTable[tableKey]
@@ -339,7 +373,7 @@ export namespace Actions {
 
 	function getEnrichedPlayers(stores: KeyProp): TeamsPanelModels.EnrichedPlayer[] {
 		const serverId = stores.squadServer!.serverId
-		const frameState = ZusUtils.getState(stores.squadServer!)
+		const frameState = Zus.getState(stores.squadServer!)
 		const currentMatch = MatchHistoryClient.currentMatch$(serverId).getValue() as MH.MatchDetails
 		const bmData = BattlemetricsClient.playerBmData$.getValue()
 		const bmStore = BattlemetricsClient.Store.getState()
@@ -360,8 +394,9 @@ export function statusesAreCurrent(state: State) {
 export function selectQueueWarnings(state: State, userDiscordId: bigint | undefined): LQY.QueueWarning[] | null {
 	const warns = state.layerItemStatuses?.warns
 	if (!warns || warns.length === 0 || !userDiscordId) return null
-	const modifiedByUser = state.queue.isModified
-		&& SLL.hasUserMutations(ODSM.Client.localOps(state.queue.rbSession), state.queue.rbSession.localState, userDiscordId)
+	const modifiedByUser =
+		state.queue.isModified &&
+		SLL.hasUserMutations(ODSM.Client.localOps(state.queue.rbSession), state.queue.rbSession.localState, userDiscordId)
 	if (!modifiedByUser) return null
 	return warns
 }
@@ -369,10 +404,10 @@ export function selectQueueWarnings(state: State, userDiscordId: bigint | undefi
 // Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings
 // computed for a list the user has already edited away from -- which is how a stale warning could both block a save
 // and then vanish, leaving the editor stuck. Wait for the statuses that belong to the queue as it is now.
-export async function awaitCurrentStatuses(key: ZusUtils.AnyStore<State>, timeoutMs = 5000): Promise<void> {
-	if (statusesAreCurrent(ZusUtils.getState(key))) return
+export async function awaitCurrentStatuses(key: Zus.AnyStore<State>, timeoutMs = 5000): Promise<void> {
+	if (statusesAreCurrent(Zus.getState(key))) return
 	await Rx.firstValueFrom(
-		ZusUtils.toObservable(key, true).pipe(
+		Zus.toObservable(key, true).pipe(
 			Rx.filter(([state]) => statusesAreCurrent(state)),
 			// a query that never lands must not strand the editor: fall through and gate on what we have
 			Rx.timeout({ first: timeoutMs, with: () => Rx.of(null) }),

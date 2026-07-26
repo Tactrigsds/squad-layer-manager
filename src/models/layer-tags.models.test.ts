@@ -1,6 +1,7 @@
+import { describe, expect, it } from 'vitest'
+
 import * as LL from '@/models/layer-list.models'
 import * as LTag from '@/models/layer-tags.models'
-import { describe, expect, it } from 'vitest'
 
 function tag(label: string, color = '#ff0000'): LTag.Tag {
 	return { id: LTag.createTagId(label), label, description: `${label} desc`, color }
@@ -92,13 +93,18 @@ describe('withTags', () => {
 	})
 
 	it('tags a vote item through its choices, never the vote itself', () => {
-		const [item] = LL.withTags([{
-			type: 'vote-list-item',
-			layerId: 'L1',
-			choices: [single('c1'), single('c2')],
-		}], [t1])
+		const [item] = LL.withTags(
+			[
+				{
+					type: 'vote-list-item',
+					layerId: 'L1',
+					choices: [single('c1'), single('c2')],
+				},
+			],
+			[t1],
+		)
 		expect(item).not.toHaveProperty('tags')
-		expect(item.type === 'vote-list-item' && item.choices.every(c => c.tags?.includes(t1))).toBe(true)
+		expect(item.type === 'vote-list-item' && item.choices.every((c) => c.tags?.includes(t1))).toBe(true)
 	})
 
 	it('merges with tags already present without duplicating', () => {
@@ -149,25 +155,29 @@ describe('addTag / removeTag', () => {
 
 	// tags belong to layer items; a vote item holds none of its own
 	it('is a no-op on a vote item', () => {
-		const list: LL.List = [{
-			type: 'vote-list-item',
-			itemId: 'v1',
-			layerId: 'L1',
-			source: { type: 'generated' },
-			choices: [single('c1')],
-		}]
+		const list: LL.List = [
+			{
+				type: 'vote-list-item',
+				itemId: 'v1',
+				layerId: 'L1',
+				source: { type: 'generated' },
+				choices: [single('c1')],
+			},
+		]
 		expect(LL.addTag(list, 'v1', t1)).toBe(false)
 		expect(list[0]).not.toHaveProperty('tags')
 	})
 
 	it('tags a vote choice addressed by its own id', () => {
-		const list: LL.List = [{
-			type: 'vote-list-item',
-			itemId: 'v1',
-			layerId: 'L1',
-			source: { type: 'generated' },
-			choices: [single('c1')],
-		}]
+		const list: LL.List = [
+			{
+				type: 'vote-list-item',
+				itemId: 'v1',
+				layerId: 'L1',
+				source: { type: 'generated' },
+				choices: [single('c1')],
+			},
+		]
 		expect(LL.addTag(list, 'c1', t1)).toBe(true)
 		expect(list[0].type === 'vote-list-item' && list[0].choices[0].tags).toEqual([t1])
 	})
@@ -215,26 +225,25 @@ describe('attribution', () => {
 	})
 
 	it('takes attribution from the op source, not from the client-supplied item', () => {
-		const items = LL.withTagAttribution(
-			[{ type: 'single-list-item', layerId: 'L1', tags: [t1], tagsSetBy: { [t1]: bob } }],
-			{ type: 'manual', userId: alice },
-		)
+		const items = LL.withTagAttribution([{ type: 'single-list-item', layerId: 'L1', tags: [t1], tagsSetBy: { [t1]: bob } }], {
+			type: 'manual',
+			userId: alice,
+		})
 		expect(items[0]).toMatchObject({ tagsSetBy: { [t1]: alice } })
 	})
 
 	it('strips forged attribution when the source is not a user', () => {
-		const items = LL.withTagAttribution(
-			[{ type: 'single-list-item', layerId: 'L1', tags: [t1], tagsSetBy: { [t1]: bob } }],
-			{ type: 'generated' },
-		)
+		const items = LL.withTagAttribution([{ type: 'single-list-item', layerId: 'L1', tags: [t1], tagsSetBy: { [t1]: bob } }], {
+			type: 'generated',
+		})
 		expect(items[0]).not.toHaveProperty('tagsSetBy')
 	})
 
 	it('attributes a vote item through its choices', () => {
-		const items = LL.withTagAttribution(
-			[{ type: 'vote-list-item', layerId: 'L1', choices: [single('c1', [t1])] }],
-			{ type: 'manual', userId: alice },
-		)
+		const items = LL.withTagAttribution([{ type: 'vote-list-item', layerId: 'L1', choices: [single('c1', [t1])] }], {
+			type: 'manual',
+			userId: alice,
+		})
 		expect(items[0].type === 'vote-list-item' && items[0].choices[0].tagsSetBy).toEqual({ [t1]: alice })
 	})
 })

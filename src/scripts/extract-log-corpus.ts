@@ -1,7 +1,9 @@
-import { matchLog } from '@/lib/log-parsing'
-import * as SM from '@/models/squad.models'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import { matchLog } from '@/lib/log-parsing'
+import * as SM from '@/models/squad.models'
+
 import { anonymizeIps } from './anonymize-ips'
 
 // Builds the emulator log corpus from real SquadGame.log files: representative raw samples per
@@ -162,7 +164,7 @@ async function main() {
 	}
 	const out = {
 		generatedAt: new Date().toISOString(),
-		sourceFiles: files.map(f => path.basename(f)),
+		sourceFiles: files.map((f) => path.basename(f)),
 		eventCounts: Object.fromEntries([...eventCounts.entries()].sort((a, b) => b[1] - a[1])),
 		eventSamples: Object.fromEntries(eventSamples),
 		chainExamples: Object.fromEntries(chainExamples),

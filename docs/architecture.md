@@ -90,11 +90,11 @@ Treat those as debts, not precedent.
   inside a browser Web Worker (`layer-queries.worker.ts`) for the layer table UI, both against the same wasm
   engine. The client is not calling a thin API over a server-side query layer, it is running the query layer.
 
-  That engine is the **columnar store**: the full table of Squad layers (every map/gamemode/faction
-  combination) held column-by-column in memory rather than row-by-row, so a filter scans one tightly packed
-  array per column it touches instead of walking whole rows. It is immutable for its lifetime and small enough
-  to ship to the browser, which is what makes running the same query layer on both sides practical in the
-  first place. It gets a full treatment in [The layer engine](#the-layer-engine-rustwasm).
+   That engine is the **columnar store**: the full table of Squad layers (every map/gamemode/faction
+   combination) held column-by-column in memory rather than row-by-row, so a filter scans one tightly packed
+   array per column it touches instead of walking whole rows. It is immutable for its lifetime and small enough
+   to ship to the browser, which is what makes running the same query layer on both sides practical in the
+   first place. It gets a full treatment in [The layer engine](#the-layer-engine-rustwasm).
 
 Systems pair up across the wire: `layer-queue.server.ts` / `layer-queue.client.ts`, `settings.server.ts` /
 `settings.client.ts`, and so on, sharing types through `src/models`.
@@ -106,10 +106,41 @@ Systems pair up across the wire: `layer-queue.server.ts` / `layer-queue.client.t
 Nontrivial modules are imported as namespaces, with a short abbreviation that is **globally consistent across
 the app**. `import * as F from '@/models/filter.models'` means `F` is the filter model in every file that uses
 it. Likewise `L` (layer), `LC` (layer-columns), `LQY` (layer-queries), `SM` (squad models), `CS`
-(context-shared), `C` (server context), `SLL` (shared-layer-list), `Obj`, `Arr`, `Rx`.
+(context-shared), `C` (server context), `SLL` (shared-layer-list).
 
-A reader who knows the abbreviations reads any file quickly. The cost is a vocabulary you have to learn that
-is written down nowhere but convention.
+A reader who knows the abbreviations reads any file quickly, so an alias is only worth anything if it is the
+_only_ one for its module. The lib vocabulary:
+
+| namespace                        | module                                                        |                                                    |
+| -------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| `Arr` `Obj` `Str` `Gen`          | `array-utils` `object-utils` `string-utils` `generator-utils` | free functions over a builtin                      |
+| `MapUtils` `SetUtils` `ZodUtils` | `map-utils` `set-utils` `zod-utils`                           | no good abbreviation, so none is invented          |
+| `Prom`                           | `promise-utils`                                               | promises, abort signals, mutex acquisition         |
+| `Rx`                             | `rxjs`                                                        | rxjs itself, plus our own operators under `Rx.Ext` |
+| `Zus`                            | `zustand`                                                     | zustand itself, plus our store helpers             |
+| `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
+| `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
+
+The file is always the full type name plus `-utils`; the namespace keeps an abbreviation only where a good one
+exists. Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside
+the convention.
+
+#### Third-party libraries are wrapped, not imported
+
+rxjs, zustand and react-rxjs are each reached through exactly one module in `src/lib`, which re-exports the
+package alongside our own additions. So `Rx.map` and `Rx.Ext.traceTag` come out of one namespace, and there is
+no per-file choice between two spellings of the same thing.
+
+The re-exports are enumerated rather than `export *` wherever we shadow a name the package also exports:
+`lib/zustand.ts` defines its own `useStore` and `Mutate`, and a star re-export would let ours win silently.
+Where the two things genuinely differ, they are named for the difference rather than for their origin, e.g.
+`ReactRx.bind` (guarded, can suspend) against `ReactRx.bindWithDefault` (the package's, cannot).
+
+`Rx.Ext` lives in its own module rather than as `export namespace Ext` inside the barrel: a TS namespace
+compiles to an IIFE with no pure annotation, which would pin the whole rxjs re-export in the client bundle.
+
+Wrapping is for libraries we extend. immer, date-fns, async-mutex and superjson are imported directly, because
+a barrel that adds nothing is just indirection.
 
 ### Result codes instead of exceptions
 
@@ -150,6 +181,28 @@ universally. Notable house conventions:
 - No `z.brand()` anywhere. Nominal-ish typing is done informally through type aliases.
 - Exactly one `z.codec`: `HumanTime` in `src/lib/zod.ts`, which round-trips `"5m"` <-> `300000`.
 
+### Interning at parse boundaries
+
+`JSON.parse` allocates a fresh string for every occurrence of a value, so a schema whose output is **kept**
+pays for one copy of `"PLAYER_WOUNDED"` per event rather than one in total. `ZodUtils.internedEnum` and
+`ZodUtils.internedLiteral` hand back the schema's own value instead. That is a no-op semantically, since a
+parsed enum or literal is by definition one of those values, and the lookup table is the value set itself, so
+it cannot grow on hostile input the way a general intern cache would.
+
+They use `overwrite` rather than `transform` deliberately: `transform` returns a `ZodPipe`, and
+`z.discriminatedUnion` can no longer read a discriminator out of one. `overwrite` returns the same schema
+class, so `.options` and discriminated unions keep working.
+
+**Reach for them only where the parsed value is retained**, which today means the server event union: the
+match-events cache holds three matches at a time, and 6,000 events measure 1669KB parsed plainly against
+1499KB interned. Validating a request body that is then discarded gains nothing, and `layer.ts` deliberately
+hand-rolls its shape checks because zod parsing showed up hot in the bulk layer paths -- neither is a place to
+add this.
+
+The same reasoning applies outside zod. `L.setLayerData` interns the loaded layer artifact for the same
+reason, and `layerFactionAvailability` goes further and shares whole objects (see
+[The layer engine](#the-layer-engine-rustwasm)).
+
 ## Server-side machinery
 
 ### Context as duck-typed dependency injection
@@ -162,11 +215,10 @@ const CtxSymbol = Symbol('context')
 export type Ctx = { [CtxSymbol]: true }
 ```
 
-Each capability is its own `Ctx &` type in `src/server/context.ts`: `Db`, `Rcon`, `ServerId`, `User`,
-`AbortSignal`, `Tx`, `Mutexes`, and so on. A function declares the **minimal** intersection it actually needs:
+Each capability is its own `Ctx &` type. A function declares the **minimal** intersection it actually needs:
 
 ```ts
-async function doThing(ctx: C.Db & C.User & CS.AbortSignal, ...) { ... }
+async function doThing(ctx: C.Db & USR.Ctx & CS.AbortSignal, ...) { ... }
 ```
 
 Callers build up context by spreading. The payoff is that a signature becomes a precise, checked statement of
@@ -174,6 +226,61 @@ what a function touches. The `CtxSymbol` brand exists so `CS.isCtx()` can recogn
 `spanOp` uses to find it among a function's arguments.
 
 For observables, the same rule applies with the ctx as the first element of the emitted tuple.
+
+#### A domain's contexts live in that domain's models file
+
+`V.Ctx` is the vote context, `MH.Ctx` the match-history one, and so on, reached under the same namespace as
+the rest of that domain. Where a domain has more than one, the primary stays `Ctx` and the rest go in a
+`namespace Ctx` beside it, named without a `Ctx` postfix since they are already read as `<domain>.Ctx.<name>`:
+
+```ts
+export type Ctx = CS.Ctx & { user: User }
+export namespace Ctx {
+	export type Id = CS.Ctx & { user: { discordId: bigint } }
+}
+```
+
+The runtime object a per-server context carries sits at `Ctx.Payload`, so `V.Ctx.Payload` is what lives at
+`ctx.vote`. That is a deliberate departure from naming them after the system that builds them: the old
+`LayerQueueSlice` was neither a redux slice nor the same thing as the client's frame slices.
+
+Two modules stay general rather than domain-owned:
+
+- **`src/models/context-shared.ts` (`CS`)** is the leaf every context composes on: the `Ctx` brand,
+  `AbortSignal`, `Log`, `Otel`, `Deferred`, and `ServerId`. It imports nothing but pino, promise-utils and
+  ctx-def.
+- **`src/server/context.ts` (`C`)** holds server infrastructure with no domain models file (`Db`, `Tx`,
+  `Mutexes`, the fastify and session contexts) plus the composition root, `ManagedServer`. It is types-only apart
+  from the defs, so it cannot pull anything into an import cycle.
+
+`C.SquadServer` is the one context still typed from a system rather than a models file. Its payload types
+`event$` with `C.ManagedServer`, so moving it would make the models layer depend on the type that composes it.
+
+#### Defs: contexts you can introspect
+
+Contexts are types and erase, which leaves nothing to merge, project or check at runtime. So each one has a
+**def** beside it, at the same scope level as the type it describes, carrying on the `XSchema` convention:
+
+```ts
+export type Ctx = CS.Ctx & { vote: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['vote'], { name: 'vote', extends: [CS.ServerIdDef] })
+```
+
+The key tuple is checked against the type: a missing property (including an optional one), a key that is not on
+the type, and a duplicate are each a compile error naming the offending key. The brand is auto-excluded.
+
+`extends` is what makes this usable rather than noisy. Contexts are built by composition, so without it every
+per-server def would claim `serverId` and `ManagedServer`'s nine-def merge would report nine false collisions.
+
+A duplicated _own_ key is accepted only when **every** def that owns it declares it in `collisions`; one-sided
+declaration would leave the other party able to be surprised. Its one real customer is the `user` width pun,
+where `USR.Ctx.Id` is the same key at a narrower width and a function needing only the id accepts either.
+
+`CD.select([DbDef, CS.LogDef])` returns a projector that copies exactly those keys out of a wider ctx. That
+replaces rebuilding a handler ctx field by field to avoid pollution: name the capabilities you want to carry by
+closure, and construct only the rest.
+
+Generic contexts get no def, since a def can describe only one instantiation.
 
 ### spanOp: the unit of server work
 
@@ -201,67 +308,73 @@ export const dispatchOp = C.spanOp('dispatchOp', {
 `durableSub` is the RxJS counterpart, wrapping a long-lived server pipeline with the same treatment plus error
 recovery. [Observability](#observability) covers what both emit.
 
-### ServerSlice: one live game server
+### ManagedServer: one live game server
 
-`ServerSlice` is the big intersection representing everything about one running Squad server:
+`ManagedServer` is the big intersection representing everything about one running Squad server:
 
 ```ts
-export type ServerSlice =
-	& CS.Ctx
-	& SquadRcon
-	& SquadServer
-	& Vote
-	& LayerQueue
-	& MatchHistory
-	& Teamswap
-	& ServerSettings
-	& ServerSliceCleanup
-	& AdminList
-	& CS.AbortSignal
+export type ManagedServer = CS.Ctx &
+	SQS.Ctx &
+	V.Ctx &
+	LQ.Ctx &
+	MH.Ctx &
+	MEC.Ctx &
+	TSW.Ctx &
+	SETTINGS.Ctx &
+	ManagedServerCleanup &
+	CS.AbortSignal
 ```
 
-Slices live in a module-level `Map<serverId, ServerSlice>` in `squad-server.server.ts`, guarded by a
-per-server mutex, with an `IsolatedSubject` firing on every add/remove. `setupSlice()` is one long imperative
-function that opens RCON, builds the admin list resource, constructs the event reconciliation state, calls
-each subsystem's `init*`, registers the slice, and wires up the event pipelines.
+SLM does not instantiate squad servers, it connects to and supervises them, so the entity is a server _under
+management_. That is also the user-facing name: the settings page calls the collection "Managed Servers".
+`SQS.Ctx` carries `SR.Ctx` transitively, so a `ManagedServer` is always usable where rcon is required.
+
+They live in a module-level `Map<serverId, ManagedServer>` in `squad-server.server.ts` (`globalState.managedServers`),
+guarded by a per-server mutex, with an `IsolatedSubject` firing on every add/remove. `setupManagedServer()` is
+one long imperative function that opens RCON, builds the admin list resource, constructs the event
+reconciliation state, calls each subsystem's `init*`, registers the server, and wires up the event pipelines.
+
+Everything else in the module is reached namespace-qualified, so the names drop the qualifier they would
+otherwise restate: `SquadServer.tryCtx`, `.resolveCtx`, `.eventCtx`, `.stream$`, `.ensureRunning`,
+`.restartIfRunning`, `.require`.
 
 Four details are load-bearing:
 
-**Cleanup tasks are part of the slice.** `ServerSliceCleanup` puts a `Cleanup.Tasks` array on the ctx itself,
-so every subsystem's `init*` pushes its own teardown on at the moment it creates the thing needing teardown.
-Nothing maintains a separate destructor that mirrors, and drifts from, `setupSlice`'s list of subsystems. A
-`Cleanup.Task` is heterogeneous by design (a function, an RxJS `Subscription` or `Subject`, a mutex, an
-`AbortController`, or a nested array of those), so a subsystem registers whatever it holds without wrapping it
-in a closure. Teardown runs the array **FILO**, catching per-task errors so one bad teardown cannot strand the
-rest. The same machinery runs at process level (see [Cleanup and shutdown](#cleanup-and-shutdown)); a slice is
-just a smaller scope.
+**Cleanup tasks are part of the managed server.** `ManagedServerCleanup` puts a `Cleanup.Tasks` array on the
+ctx itself, so every subsystem's `init*` pushes its own teardown on at the moment it creates the thing needing
+teardown. Nothing maintains a separate destructor that mirrors, and drifts from, `setupManagedServer`'s list of
+subsystems. A `Cleanup.Task` is heterogeneous by design (a function, an RxJS `Subscription` or `Subject`, a
+mutex, an `AbortController`, or a nested array of those), so a subsystem registers whatever it holds without
+wrapping it in a closure. Teardown runs the array **FILO**, catching per-task errors so one bad teardown cannot
+strand the rest. The same machinery runs at process level (see [Cleanup and
+shutdown](#cleanup-and-shutdown)); a managed server is just a smaller scope.
 
-**Every slice owns an AbortController**, combined with the caller's signal via `anySignal`. Destroying a slice
-cancels every RxJS task and in-flight fetch inside it and touches nothing else. This is the coarse half of
+**Every managed server owns an AbortController**, combined with the caller's signal via `anySignal`. Destroying
+one cancels every RxJS task and in-flight fetch inside it and touches nothing else. This is the coarse half of
 teardown, and it pairs with the cleanup array: the signal stops anything watching it, the array disposes what
 needs an explicit call.
 
 **Lifecycle transitions are serialized per server.** Setup, teardown and restart all run under one per-server
-mutex (`withSliceLock`), so no two can interleave and observe each other's half-applied state. The mutex is
+mutex (`withLifecycleLock`), so no two can interleave and observe each other's half-applied state. The mutex is
 `async-mutex`'s, which is **not** reentrant, so the codebase splits each operation into a locking entry point
-and an unlocked `*Locked` internal: compound operations like `restartSliceIfRunning` take the lock once and
+and an unlocked `*Locked` internal: compound operations like `restartIfRunning` take the lock once and
 call the internals. Acquiring it twice in one call stack self-deadlocks, which is the trap to watch for when
 adding a lifecycle operation.
 
-The subtle case is the teardown triggered by a resource's `onFatalError`, which can fire while `setupSlice`
-still holds the lock. It is safe only because `AsyncResource` discards the callback's return rather than
-awaiting it, so nothing holding the lock ever waits on the teardown: it queues behind setup and tears down the
-slice setup just finished building. Awaiting that callback would close the cycle and deadlock.
+The subtle case is the teardown triggered by a resource's `onFatalError`, which can fire while
+`setupManagedServer` still holds the lock. It is safe only because `AsyncResource` discards the callback's
+return rather than awaiting it, so nothing holding the lock ever waits on the teardown: it queues behind setup
+and tears down what setup just finished building. Awaiting that callback would close the cycle and deadlock.
 
-**Streams resolve the slice on every tick, not once.** `sliceStream$` re-subscribes to the lifecycle subject
-and switches to `err:server-not-loaded` whenever the slice vanishes, which is why a crashed and restarted
-game server heals itself instead of leaving every connected client's subscription silently dead. This is
-documented in-code as the only correct way for an oRPC stream to resolve a slice.
+**Streams resolve the managed server on every tick, not once.** `SquadServer.stream$` re-subscribes to the
+lifecycle subject and switches to `err:server-not-loaded` whenever the managed server vanishes, which is why a
+crashed and restarted game server heals itself instead of leaving every connected client's subscription
+silently dead. This is documented in-code as the only correct way for an oRPC stream to resolve one.
 
 ### Abort signals
 
 Async functions take cancellation via `ctx.signal` (`CS.AbortSignal`), not a separate parameter. Signals come
-from four sources: the oRPC middleware (per-call), the slice controller (per-server), fastify (per-request),
+from four sources: the oRPC middleware (per-call), the managed server (per-server), fastify (per-request),
 and `CleanupSys.shutdownSignal` (per-process). They compose with `anySignal`.
 
 There is one loudly-documented exception. `killPlayers` in `squad-rcon.server.ts` deliberately ignores its
@@ -302,8 +415,8 @@ value, so concurrent callers dedupe onto one fetch. Less obviously:
 - A callback can throw `ImmediateRefetchError` via `ctx.refetch(...)` to force a retry instead of serving
   known-incoherent data (used when RCON reports a squad with no leader).
 - `onFatalError` exists because the alternative is an unhandled rejection killing the process. Every
-  per-slice resource wires it to "tear down this slice", on the reasoning that a resource that will not
-  fetch means the slice cannot do its job.
+  per-server resource wires it to "tear down this managed server", on the reasoning that a resource that
+  will not fetch means the server cannot do its job.
 
 ### Reentrant mutexes via AsyncLocalStorage
 
@@ -338,8 +451,9 @@ mutable arrays shared by reference through ctx spreads:
 
 ### Cleanup and shutdown
 
-`Cleanup.runCleanup` is the shared primitive described under [ServerSlice](#serverslice-one-live-game-server):
-a heterogeneous task array, disposed FILO, errors caught per task. Slices use it for their own scope;
+`Cleanup.runCleanup` is the shared primitive described under
+[ManagedServer](#managedserver-one-live-game-server): a heterogeneous task array, disposed FILO, errors caught
+per task. Managed servers use it for their own scope;
 `cleanup.server.ts` is the process-level registry that drives SIGTERM and owns `shutdownSignal`.
 
 `using` / explicit resource management appears (via `acquireInBlock` returning a `Symbol.dispose`) but is a
@@ -384,10 +498,10 @@ return <ServerDashboard stores={FRM.toProp(frameKey)} />
 slice type, an `init*(args)`, and its own `Sel`/`Actions`, which a real frame composes into its state by
 intersecting the types and calling `init*` from `setup()`. `squad-server.frame.ts` composes four of them
 (chat, server settings, layer queue, teamswaps). Partials get a scoped view of the composite state via
-`ZusUtils.toPartialSetter`/`toPartialGetter`. This is how a large frame stays modular without every slice
+`Zus.toPartialSetter`/`toPartialGetter`. This is how a large frame stays modular without every slice
 needing its own FrameManager entry.
 
-### ZusUtils
+### Zus
 
 `src/lib/zustand.ts` is the client's central abstraction. Its key type:
 
@@ -399,7 +513,7 @@ which unifies a raw zustand store, a frame instance key, a react-query options o
 `StateObservable` behind one interface. Everything downstream accepts `AnyInput`, so a component neither knows
 nor cares which of the four it was handed.
 
-`ZusUtils.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
+`Zus.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
 returns its state;
 N inputs plus a trailing selector calls `selector(...states)`; N inputs alone returns a tuple. It reads through
 `useSyncExternalStore`, caching the snapshot on the states **and** the selector's identity: the states half is
@@ -412,7 +526,7 @@ observer and re-runs its `setQueries` effect on every render. That makes the hoo
 sound only because the count is fixed for a component instance; a guard throws if it ever changes. Pass a query
 unconditionally and use its `enabled` option if you need it inert.
 
-Outside render, the counterpart is **`ZusUtils.getState`**, which mirrors the same overloads without
+Outside render, the counterpart is **`Zus.getState`**, which mirrors the same overloads without
 subscribing: one input returns its state, N inputs plus a selector calls `selector(...states)`. Both resolve
 frame keys the same way and feed the same `Sel` selectors, so the choice is only whether you want to subscribe.
 If any input is a query source, `getState` returns a **promise** (it awaits via `ensureQueryData`); that is
@@ -422,7 +536,7 @@ Merging several sources into one selector is the intended way to derive state:
 
 ```ts
 // in a component: subscribes, and re-renders when the derived value changes
-ZusUtils.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+Zus.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 ```
 
 The same selectors are reusable verbatim off the render path, applied to a `getState` read instead. From
@@ -430,20 +544,20 @@ The same selectors are reusable verbatim off the render path, applied to a `getS
 
 ```ts
 // in an event handler: reads once, subscribes to nothing
-const current = Sel.tanstackSortingState(ZusUtils.getState(stores.layerTable))
+const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
 ```
 
 The two call shapes rhyme, so moving a selector between render and handler code is a mechanical edit -- the
 merged read above works off the render path too:
 
 ```ts
-const presence = ZusUtils.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
+const presence = Zus.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 ```
 
 Frame keys are recognized structurally and resolved through a resolver that `frame-manager.ts` injects at init
 (`registerFrameKeyResolver`), purely because `zustand.ts` cannot import `frame.ts` without a cycle.
 
-`ZusUtils.toObservable(store)` converts any store into an `Observable<[state, prev]>`, and is the bridge that
+`Zus.toObservable(store)` converts any store into an `Observable<[state, prev]>`, and is the bridge that
 lets frames drive RxJS pipelines from zustand state. It is also how side-effect handling works: per the
 `RbSync` rule, ops replay against several base states, so side effects never carry reduced state and instead
 react to prev/next diffs from a store subscription.
@@ -536,7 +650,7 @@ Three state machines are built on it today, each as a model/server/client trio:
 | User presence                | `src/models/user-presence.ts`     | `src/systems/user-presence.server.ts` | `src/systems/user-presence.client.ts`       |
 
 The layer queue is the fullest example. `dispatchOp` on the server calls `ODSM.Server.applyOps`, assigns the
-returned session back onto the slice, broadcasts the op, and then awaits each returned side effect in turn
+returned session back onto the managed server, broadcasts the op, and then awaits each returned side effect in turn
 through a `spanOp`-wrapped `handleSideEffect`, all in one uninterrupted async context. Presence is the outlier
 in that its client half lives in a plain global store rather than a frame partial, because presence is
 genuinely app-global.
@@ -689,19 +803,16 @@ the IR's JSON, which can never go stale because the layer table is immutable for
 The one place duplication _is_ accepted is generation key packing, which is implemented identically in
 `layer-columns.ts` and `gen.rs`, so a key computed from a weight entry matches the key computed from a row.
 
-**The server loads its copy lazily.** The browser runs the engine for everything the UI does (the layer table,
-the select dialog, gen-vote, filter evaluation), so the server's copy exists for four narrow jobs only: queue
-autogen, the force-write pool check, backburner template probes, and the `getLayerInfo` route. Holding the
-artifact costs ~64MB resident for as long as it is held against a ~120ms cold load, so `LayerEngine.getEngine()`
-defers it to the first actual query and memoizes from there.
+**The server loads its copy at boot and holds it.** The browser runs the engine for everything the UI does (the
+layer table, the select dialog, gen-vote, filter evaluation), so the server's copy exists for four narrow jobs
+only: queue autogen, the force-write pool check, backburner template probes, and the `getLayerInfo` route.
+`LayerEngine.setup()` loads it as part of boot and `getEngine()` hands out the one instance thereafter.
 
-That only pays off if nothing resolves a query context speculatively. `resolveLayerQueryCtx` is what triggers
-the load, so call it at the point of use rather than at the top of a handler. The admin queue reminder is the
-case to copy: it runs every 10 minutes and checks for a next layer first, because that check needs no engine
-and the status query it guards does.
+Holding it costs ~64MB resident and flat. Loading it costs 110-125MB of RSS while the load runs, because the
+artifact is held more than once over on the way into wasm memory, so the engine is never dropped and reloaded.
 
-**Nothing may query the engine inside a transaction.** The load awaits file reads and a wasm compile, and a
-`runTransaction` callback must never await anything but a query (see
+**Nothing may query the engine inside a transaction.** A `runTransaction` callback must never await anything
+but a query (see
 [Data and persistence](#data-and-persistence)). Queue autogen is the case that makes this concrete: it runs as
 a side effect of the op that empties the list, and during a map roll that op is dispatched inside the roll's
 transaction. So `handleSideEffect` pushes generation onto `ctx.tx.unlockTasks`, which `runTransaction` awaits
@@ -712,29 +823,38 @@ transaction, because the generated item does not exist until the unlock tasks ha
 the generated queue item are **no longer written atomically**: a crash between them leaves a committed match
 with an empty queue, which self-heals, since the `init` op regenerates on an empty saved list.
 
-**It is released again after `IDLE_RELEASE_MS` without a query**, which is what turns this from a faster boot
-into an actual memory saving: the server's queries come in short bursts minutes apart, so the artifact is
-resident for a few seconds out of every few minutes rather than permanently.
+The cost is ~120ms added to boot. Shipping the artifact uncompressed would cut that to ~95ms (the gunzip is
+most of it) at the cost of ~57MB of image size, which is not currently thought worth it. Decompressing straight
+into wasm memory would avoid the one remaining intermediate copy, but sizing the buffer up front means trusting
+gzip's 4-byte `ISIZE` trailer, which is modulo 2^32 and wrong for multi-member streams. Not worth it for a copy
+that now happens once per process.
 
-Releasing it takes two things, and only having one of them is a silent no-op:
+`hash` (the `/layers.bin` etag) is computed in the same pass, from the on-disk bytes rather than anything the
+engine derives from them, because that artifact is served to clients byte for byte. `layersVersion` still comes
+from resolving the artifact pair rather than from the loaded engine.
 
-- **Dropping the reference is not enough.** Wasm linear memory is external to the JS heap, so 64MB of it barely
-  moves V8's heap-limit heuristics, and ordinary request churn is absorbed by scavenges rather than provoking
-  the major GC that would clear it. Measured: with only a `WeakRef` holding the engine it survived 20s of
-  idling _and_ 20s of steady allocation, RSS unchanged. So `release()` asks for a GC explicitly. That costs
-  ~15ms against the ~60MB it returns.
-- **A `WeakRef` is still kept**, for a different reason than freeing: callers get the engine on their query
-  context, so one can outlive the idle timer. Handing that caller the engine it already holds is what stops a
-  second 64MB copy being loaded alongside the first.
+### Availability is pooled in the artifact
 
-The tradeoff is a ~120ms reload on the first query after an idle period. It is asynchronous, so it does not
-stall the event loop, and concurrent callers arriving mid-load share one in-flight load rather than each
-decompressing a copy. Shipping the artifact uncompressed would cut it to ~95ms (the gunzip is most of it) at
-the cost of ~57MB of image size, which is not currently thought worth it.
+`layerFactionAvailability` answers "which faction/unit pairs can play this layer, on which team". Written out
+per layer it is 14,893 entries across 254 layers, of which **273 entries and 55 per-layer lists are distinct**:
+a layer's availability is really a property of its map/gamemode family, and the RAAS/FRAAS pass duplicates it
+again on top of that.
 
-Two things kept deliberately off the engine load: the `/layers.bin` etag (hashed from the on-disk bytes at
-boot, since every client fetches that artifact on page load) and `layersVersion` (which comes from resolving
-the artifact pair, not from the loaded engine).
+So `layer-data.json` persists three things instead: the distinct `entries`, the distinct `lists` as arrays of
+entry indices, and `byLayer` mapping each layer to a list index. `LC.toBaseLayerComponents` pools on the way
+out and `LC.buildFullLayerComponents` expands on the way back in, which are the two functions that already
+convert between the persisted and in-memory shapes. Consumers see the same
+`Record<string, LayerFactionAvailabilityEntry[]>` they always did.
+
+It is worth 5.99MB -> 2.25MB on disk (which every client downloads) and 2.84MB -> 0.18MB in memory. The memory
+side comes from the sharing rather than the indices: expansion hands every layer in a family the same frozen
+array. They are frozen because they are shared, and nothing mutates them at runtime -- only `preprocess.ts`
+builds availability, and it builds rather than reads.
+
+`expandLayerFactionAvailability` passes an already-expanded map through untouched, which is not just for old
+files: `preprocess` builds the expanded form from the csv and hands it straight to
+`buildFullLayerComponents`. It also means a deployment can still mount an artifact written before the pool
+existed, which [the pair resolver](#the-layer-engine-rustwasm) explicitly supports.
 
 ## Out-of-process pieces
 
@@ -840,8 +960,27 @@ In practice the unit-tested modules are the ones that meet the bar: `pending-eve
 | `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright.                                      |
 
 Neither of the heavy suites needs an external service, which is the payoff for having written the emulator.
+The tests boot through `main-instrumented`, so a test's telemetry actually exists and a run id lets you scope a
+Grafana query to one test.
 
-Two nice touches in the harness: `SLM_TEST_SERVER_ENTRY` points at the bundled server inside the docker image
-so CI drives the exact artifact that gets deployed, while locally it runs source through tsx so there is
-nothing to rebuild between edit and test. And the tests boot through `main-instrumented`, so a test's telemetry
-actually exists and a run id lets you scope a Grafana query to one test.
+### What the heavy suites spend their time on
+
+Both suites are dominated by two costs, and everything that has been done to them addresses one or the other.
+
+**Booting apps.** A fixture is a whole server process, and a run makes dozens of them. Both suites therefore go
+through `scripts/test-server-bundle.mjs`, which bundles the server once with rolldown (~1.5s) and points
+`SLM_TEST_SERVER_ENTRY` at it; loading the server's module graph through tsx instead costs ~3.5s of _every_
+boot. An `SLM_TEST_SERVER_ENTRY` already in the environment wins and nothing is built, which is how the docker
+test image has CI drive the exact artifact that gets deployed. `test:integration:src` / `test:e2e:src` run the
+sources through tsx, for when the bundler is what you suspect. Two other things that were paid per boot: the
+harness turns `seedSandboxServer` off (a fresh install otherwise seeds a sandbox, which is a second whole squad
+server polling away next to the one under test), and the e2e `page` fixture no longer logs in to a shared app,
+so a test that builds its own no longer pays for one it never touches.
+
+**Waiting on polls.** The app learns the roster from a polled `ListPlayers`, so `waitForRosterSync` cannot
+resolve faster than two poll intervals, and a test that acts in-game and then asserts does that repeatedly.
+`applyTestServerTimings` shortens the intervals, but only so far: the failure mode is RCON responses breaching
+core-rcon's 2s timeout under load, so poll interval, worker count and per-boot cost all trade against each
+other and none of them should be changed without re-measuring the whole suite. This is also why
+`server-rolling` is two files: one file's worth of roster waits was long enough to set the suite's wall time on
+its own.

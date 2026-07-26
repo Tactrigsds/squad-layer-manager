@@ -23,7 +23,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		label: 'Warns & Broadcasts',
 		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
-	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands', 'commandAliases'] },
+	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
 	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote', 'balanceTriggerLevels'] },
 	{ slug: 'layers', label: 'Layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
@@ -73,7 +73,6 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'rbac',
 	'commands',
 	'adminActionReasons',
-	'commandAliases',
 	'messageVariables',
 	'playerGroupings',
 	'layerTags',
@@ -114,9 +113,7 @@ export function splitByGroups(
 ): { groups: { group: SettingsGroup; keys: string[] }[]; ungrouped: string[] } {
 	const grouped = new Set(groups.flatMap((g) => g.keys))
 	return {
-		groups: groups
-			.map((group) => ({ group, keys: group.keys.filter((k) => keys.includes(k)) }))
-			.filter((g) => g.keys.length > 0),
+		groups: groups.map((group) => ({ group, keys: group.keys.filter((k) => keys.includes(k)) })).filter((g) => g.keys.length > 0),
 		ungrouped: keys.filter((k) => !grouped.has(k)),
 	}
 }
