@@ -789,10 +789,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		() => server.postRollEventsSub,
 		server.serverRolling$,
 		server.tickRate$,
-		// TracedSubject is an Observable rather than a Subject, so cleanup would subscribe and wait on
-		// it forever instead of completing it
-		() => server.event$.complete(),
-		() => server.appEvent$.complete(),
+		server.event$,
+		server.appEvent$,
 		server.processEventsMtx,
 	)
 
