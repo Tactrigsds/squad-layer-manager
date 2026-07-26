@@ -103,6 +103,13 @@ export namespace Sel {
 	export function selectedMatchOrdinal(store: Store) {
 		return store.chat.selectedMatchOrdinal
 	}
+	// the match the dashboard is showing: the live one, or the historical one picked out of recent matches
+	export function displayMatch(store: Store, currentMatch: MH.MatchDetails | undefined, recentMatches: readonly MH.MatchDetails[]) {
+		const ordinal = selectedMatchOrdinal(store)
+		if (ordinal === null) return currentMatch
+		return recentMatches.find((m) => m.ordinal === ordinal)
+	}
+
 	const currentMatchArg = (_store: Store, currentMatch: MH.MatchDetails | undefined) => currentMatch
 	export const playersForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
 		RSel.createDeepSelector([(store: Store) => chatState(store).players, currentMatchArg], (players, currentMatch): SM.Player[] => {

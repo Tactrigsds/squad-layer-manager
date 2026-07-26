@@ -1,4 +1,3 @@
-import React from 'react'
 import type { z } from 'zod'
 
 import type * as FRM from '@/lib/frame'
@@ -76,16 +75,16 @@ export type Types = {
 
 export type Frame = FRM.Frame<Types>
 
-// minimal input-shape seed for a brand-new server: the required-without-default fields (connections + admin lists).
-// prefaulted fields (queue, public settings) are filled in by ServerSettingsSchema at save time.
-export const NEW_SERVER_DRAFT: SETTINGS.ServerSettings = {
+// minimal input-shape seed for a brand-new server. Typed as the schema's input so the seed is checked against it:
+// prefaulted fields (queue, the rest of the public settings) may be omitted and are filled in at save time.
+export const NEW_SERVER_DRAFT: z.input<typeof SETTINGS.ServerSettingsSchema> = {
 	connections: {
 		type: 'local',
 		logFile: '',
 		rcon: { host: '', port: 21114, password: '' },
 	},
-	adminLists: {},
-} as unknown as SETTINGS.ServerSettings
+	adminLists: [],
+}
 
 function editSchema(state: SettingsEditor): z.ZodType<any> {
 	if (state.kind === 'global') return SETTINGS.GlobalSettingsSchema
@@ -244,6 +243,36 @@ export namespace Sel {
 	// DOM anchor prefix matching what SettingsForm emits for this section
 	export const idPrefix = (s: SettingsEditor) =>
 		s.kind === 'global' ? 'setting:' : s.kind === 'server' ? `setting:server:${s.serverId}:` : 'setting:server:__new__:'
+
+	// what the page as a whole needs from its sections: `newServerCreated` collapses the new-server form once its save
+	// lands (the created server then renders as a regular section via the public-settings watch)
+	export function pageStatus(...states: SettingsEditor[]) {
+		let newServerCreated = false
+		let anyDirty = false
+		for (const s of states) {
+			if (s.kind === 'new-server' && s.created) newServerCreated = true
+			if (dirty(s)) anyDirty = true
+		}
+		return { newServerCreated, anyDirty }
+	}
+
+	// the per-section editor modes the table of contents keys off: a JSON-mode section renders no per-field anchors,
+	// so it collapses to a single leaf there
+	export function tocModes(...states: SettingsEditor[]) {
+		const serverModes: Record<string, 'gui' | 'json'> = {}
+		let globalMode: 'gui' | 'json' = 'gui'
+		let newServerMode: 'gui' | 'json' = 'gui'
+		let creatingServer = false
+		for (const s of states) {
+			if (s.kind === 'server') serverModes[s.serverId!] = s.mode
+			else if (s.kind === 'global') globalMode = s.mode
+			else {
+				newServerMode = s.mode
+				creatingServer = !s.created
+			}
+		}
+		return { serverModes, globalMode, newServerMode, creatingServer }
+	}
 }
 
 // changed paths outside the user's write grant: the client-side mirror of the server's enforcement (see
@@ -409,8 +438,8 @@ export namespace Actions {
 	}
 }
 
-// a ValueState (Rx.Observable + getValue) over the section's draft, for SettingsForm's uncontrolled-input data flow
-export function draftValueState(key: Key): Rx.Observable<any> & { getValue: () => any } {
+// the section's draft as a value observable, which is how SettingsForm's fields read the document
+export function draftValueState(key: Key): Zus.ValueObservable<any> {
 	const store = Zus.resolveStore<SettingsEditor>(key)
 	const obs = Zus.toObservable(store).pipe(
 		Rx.map(([s]) => s.draft),
@@ -419,32 +448,11 @@ export function draftValueState(key: Key): Rx.Observable<any> & { getValue: () =
 	return Object.assign(obs, { getValue: () => store.getState().draft })
 }
 
-// subscribe to a dynamic list of section instances and derive a combined value; the snapshot is cached on the
-// section states' identities so an unrelated render never produces a fresh (tearing) result
-export function useCombinedSections<R>(keys: Key[], combine: (states: SettingsEditor[]) => R): R {
-	const stores = React.useMemo(() => keys.map((k) => Zus.resolveStore<SettingsEditor>(k)), [keys])
-	const combineRef = React.useRef(combine)
-	combineRef.current = combine
-	const cache = React.useRef<{ states: SettingsEditor[]; result: R } | null>(null)
-	const subscribe = React.useCallback(
-		(cb: () => void) => {
-			const unsubs = stores.map((s) => s.subscribe(cb))
-			return () => unsubs.forEach((u) => u())
-		},
-		[stores],
-	)
-	const getSnapshot = React.useCallback(() => {
-		const states = stores.map((s) => s.getState())
-		const c = cache.current
-		if (c && c.states.length === states.length && c.states.every((s, i) => s === states[i])) return c.result
-		const result = combineRef.current(states)
-		cache.current = { states, result }
-		return result
-	}, [stores])
-	return React.useSyncExternalStore(subscribe, getSnapshot)
-}
+// spelled as a selector rather than relying on the no-selector form, which hands back the bare state when a page
+// happens to hold exactly one section
+const asArray = (...states: SettingsEditor[]) => states
 
-// the section states in key order; identity-cached so it doubles as a stable render input
+// the section states in key order; identity-cached by useStore so it doubles as a stable render input
 export function useSectionStates(keys: Key[]): SettingsEditor[] {
-	return useCombinedSections(keys, (states) => states)
+	return Zus.useStore(...keys, asArray)
 }

@@ -7,7 +7,6 @@ import * as CD from '@/lib/ctx-def'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
-import * as SetUtils from '@/lib/set-utils'
 import * as Str from '@/lib/string-utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
@@ -643,19 +642,10 @@ export namespace AdminList {
 	// we are enforcing that both eos and steam must be available to be checked against because adminlists can include either
 	export function getPlayerGroups(list: AdminList, ids: PlayerIds.IdQuery<'steam'>) {
 		const groups = new Set<string>()
-		if (ids.eos) {
-			const eosGroups = list.eos.players.get(ids.eos)
-			if (eosGroups) {
-				SetUtils.union(groups, eosGroups)
-			}
-		}
-
-		if (ids.steam) {
-			const steamGroups = list.steam.players.get(ids.steam)
-			if (steamGroups) {
-				SetUtils.union(groups, steamGroups)
-			}
-		}
+		const eosGroups = ids.eos ? list.eos.players.get(ids.eos) : undefined
+		if (eosGroups) for (const group of eosGroups) groups.add(group)
+		const steamGroups = ids.steam ? list.steam.players.get(ids.steam) : undefined
+		if (steamGroups) for (const group of steamGroups) groups.add(group)
 		return groups
 	}
 
