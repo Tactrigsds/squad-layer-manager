@@ -339,3 +339,65 @@ describe('reducer saved-set writes', () => {
 		})
 	})
 })
+
+// The roster on the other side of a roll carries only the players the server has already sorted onto a team; the
+// rest arrive a poll later. Reading absence from it as "they left" cancelled the whole queue on every map change,
+// seconds before it was due to fire.
+describe('reducer reset-players', () => {
+	function rollRoster(state: TSW.State, players: [SM.PlayerId, MH.NormedTeamId][]) {
+		return apply(state, op({ code: 'reset-players', players: new Map(players) }))
+	}
+
+	it('keeps queued swaps for players the new roster has not listed yet', () => {
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[
+				['a', 'B'],
+				['b', 'B'],
+			],
+		)
+		const { state: next } = rollRoster(state, [['a', 'A']])
+		expect([...next.savedSwaps.keys()].sort()).toEqual(['a', 'b'])
+	})
+
+	it('drops a queued swap for a player the roster already has on their target team', () => {
+		const state = stateWith(
+			[
+				['a', 'A'],
+				['b', 'A'],
+			],
+			[
+				['a', 'B'],
+				['b', 'B'],
+			],
+		)
+		const { state: next, sideEffects } = rollRoster(state, [['a', 'B']])
+		expect([...next.savedSwaps.keys()]).toEqual(['b'])
+		expect(sideEffects.find((se) => se.code === 'save')?.trigger).toBe('roster-change')
+	})
+
+	it('keeps a queued swap for a player the roster lists on some other team', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const { state: next } = rollRoster(state, [['a', 'A']])
+		expect(next.savedSwaps.has('a')).toBe(true)
+	})
+
+	it('leaves the queue alone while an execution is in flight', () => {
+		const state = stateWith([['a', 'A']], [['a', 'B']])
+		const { state: swapping } = apply(state, op({ code: 'execute-teamswaps' }))
+		const { state: next } = rollRoster(swapping, [['a', 'B']])
+		expect(next.pendingSwaps.has('a')).toBe(true)
+	})
+
+	it('replaces the tracked players with the new roster', () => {
+		const state = stateWith([
+			['a', 'A'],
+			['b', 'A'],
+		])
+		const { state: next } = rollRoster(state, [['a', 'B']])
+		expect([...next.players.entries()]).toEqual([['a', 'B']])
+	})
+})

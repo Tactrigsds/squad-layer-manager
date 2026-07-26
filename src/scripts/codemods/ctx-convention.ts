@@ -74,6 +74,7 @@ const MOVES: { from: string; to: string; imp: string }[] = [
 	{ from: 'C.MatchEventsCache', to: 'MEC.Ctx', imp: "import type * as MEC from '@/models/match-events-cache.models'" },
 	{ from: 'C.Teamswap', to: 'TSW.Ctx', imp: "import type * as TSW from '@/models/teamswaps.models'" },
 	{ from: 'C.UserPresence', to: 'UP.Ctx', imp: "import type * as UP from '@/models/user-presence'" },
+	{ from: 'C.SquadServer', to: 'SQS.Ctx', imp: "import type * as SQS from '@/models/squad-server.models'" },
 	{ from: 'C.SquadRcon', to: 'SR.Ctx', imp: "import type * as SR from '@/models/squad-rcon.models'" },
 	{ from: 'C.Rcon', to: 'SR.Ctx.Rcon', imp: "import type * as SR from '@/models/squad-rcon.models'" },
 	{ from: 'C.LayerQueue', to: 'LQ.Ctx', imp: "import type * as LQ from '@/models/layer-queue.models'" },
@@ -95,12 +96,17 @@ function moveContexts(src: string, file: string): string {
 	return src
 }
 
+/** rcon state moved off the punned `server` key onto its own */
+function unpunServer(src: string): string {
+	return src.replace(/\bctx\.server\.(teams|layersStatus|serverInfo|rconEvent\$)\b/g, 'ctx.squadRcon.$1')
+}
+
 async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = moveContexts(instrumentation(before, file), file)
+		const after = unpunServer(moveContexts(instrumentation(before, file), file))
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++

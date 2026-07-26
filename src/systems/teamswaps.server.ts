@@ -210,18 +210,19 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ServerSliceCleanup) {
 	)
 
 	// Schedule teamswaps on map roll. NEW_GAME is a roster-less boundary that precedes the roster, so this waits
-	// before executing, to give the new match's teams a chance to land and the swaps to be applied against faithful
-	// team data. taskScheduling 'switch' aborts a pending wait if another match boundary arrives first.
+	// for the new match's teams to land before executing (see waitForQueuedPlayers). taskScheduling 'switch' aborts
+	// a pending wait if another match boundary arrives first.
 	//
-	// Only a NEW_GAME that is actually a roll may execute: a 'slm-started' one fires this delay on boot, which is
-	// long enough to swallow swaps saved moments later and execute them against the still-current match.
+	// Only a NEW_GAME that is actually a roll may execute: a 'slm-started' one fires this on boot, which would
+	// execute swaps saved moments later against the still-current match.
 	ctx.cleanup.push(
 		ctx.server.event$
 			.pipe(
 				Rx.filter(([, e]) => e.type === 'NEW_GAME' && SE.newGameIsRoll(e.source)),
-				Rx.delay(2000),
-				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([evtCtx], signal) => {
-					await dispatchOp(SquadServer.eventSliceCtx(evtCtx, signal), [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
+				Instr.durableSub('performTeamswaps', { module, taskScheduling: 'switch' }, async ([evtCtx, e], signal) => {
+					const ctx = SquadServer.eventSliceCtx(evtCtx, signal)
+					await waitForQueuedPlayers(ctx, e.matchId)
+					await dispatchOp(ctx, [{ opId: TSW.createOpId(), code: 'execute-teamswaps' }])
 				}),
 			)
 			.subscribe(),
@@ -232,6 +233,49 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ServerSliceCleanup) {
 
 function getState(ctx: TSW.Ctx) {
 	return ctx.teamswaps.session.state
+}
+
+// how long the roll may spend sorting players onto their new teams before the queue fires anyway
+const ROLL_ROSTER_TIMEOUT_MS = 30_000
+const ROLL_ROSTER_POLL_MS = 2_000
+
+// A roll travels every player at once, and the server places them on their new teams over the next few seconds. A
+// player with no team yet can't be swapped (the execution skips them), so the queue has to wait for them rather
+// than fire into the gap. Two things are needed to see out of it: the new match's roster event, which is what
+// establishes that the app is looking at the match the swaps are for, and then a live rcon read -- the roster the
+// app carries is a poll behind by construction, since the boundary snapshot holds only the players already sorted.
+async function waitForQueuedPlayers(ctx: TSW.Ctx & SQS.Ctx & SR.Ctx.Rcon & CS.AbortSignal, matchId: number) {
+	const deadline = Date.now() + ROLL_ROSTER_TIMEOUT_MS
+	await Rx.firstValueFrom(
+		ctx.server.event$.pipe(
+			Rx.filter(([, e]) => e.matchId === matchId && !!SE.eventRoster(e)),
+			Rx.timeout(ROLL_ROSTER_TIMEOUT_MS),
+			Rx.catchError(() => Rx.of(null)),
+			Rx.Ext.withAbortSignal(ctx.signal),
+		),
+		{ defaultValue: null },
+	)
+
+	while (true) {
+		const swaps = getState(ctx).savedSwaps
+		if (swaps.size === 0) return
+		const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
+		// only a player the server still lists is worth waiting on: mid-roll they are listed with no team yet,
+		// whereas one who left over the boundary is gone from the list entirely and would hold up everyone else
+		const unplaced =
+			teamsRes.code === 'err:rcon'
+				? swaps.size
+				: Array.from(swaps.keys()).filter((playerId) => {
+						const player = SM.PlayerIds.find(teamsRes.players, (p) => p.ids, playerId)
+						return !!player && player.teamId == null
+					}).length
+		if (unplaced === 0) return
+		if (Date.now() >= deadline) {
+			log.warn('roll roster never settled: %d of %d queued player(s) still have no team, executing anyway', unplaced, swaps.size)
+			return
+		}
+		await Prom.sleep(ROLL_ROSTER_POLL_MS, ctx.signal)
+	}
 }
 
 // how long to wait for a fired swap to show up in the teams before checking (a swap lands within a poll cycle)
