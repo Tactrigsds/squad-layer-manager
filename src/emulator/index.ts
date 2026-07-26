@@ -53,6 +53,7 @@ export class Emulator {
 						this.world.startNewGame(layer)
 					}, this.#layerChangeDelayMs)
 				},
+				matchEnded: () => this.#scheduleTravelAfterMatch(),
 			},
 			opts,
 		)
@@ -77,9 +78,14 @@ export class Emulator {
 	// A round ending is not a layer change: the server drops into WaitingPostMatch and brings the next world up
 	// on its own a while later. world.endMatch only writes the round-end lines, so calling it alone leaves the
 	// server sitting in WaitingPostMatch forever and no NEW_GAME ever arrives.
+	#scheduleTravelAfterMatch() {
+		this.#schedule(() => this.world.startNewGame(), this.#postMatchDelayMs)
+	}
+
+	// the sandbox `end` verb; AdminEndMatch over rcon arrives through the matchEnded sink instead
 	endMatchAndRoll(opts?: { winnerTeamId?: number }) {
 		this.world.endMatch(opts)
-		this.#schedule(() => this.world.startNewGame(), this.#postMatchDelayMs)
+		this.#scheduleTravelAfterMatch()
 	}
 
 	async start(opts?: { rconPort?: number }): Promise<this> {
