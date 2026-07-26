@@ -4,20 +4,12 @@ services:
       # However, it's recommanded to use :latest, as SLM has regular updates and a smooth upgrade path.
       image: ghcr.io/tactrigsds/squad-layer-manager:latest
       depends_on:
-         - otel
+         - otel-collector
       environment:
-         # send OTLP traces and logs to the otel collector, which is a separate image configured below
-         - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
+         # send OTLP traces, metrics and logs to the collector, which routes each signal into GreptimeDB
+         - OTLP_COLLECTOR_ENDPOINT=http://otel-collector:4318
          # paired with mem_limit below
          - NODE_OPTIONS=--max-old-space-size=1024
-         # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
-         # Grafana's Pyroscope datasource. Off by default: measured against prod it costs about a third of a
-         # core while it runs, most of it heap sampling, whose sample tables are native allocations that sit in
-         # the main malloc arena for the life of the process. Uncomment the two lines below to turn it on when
-         # you have an allocation or CPU question to chase; add PYROSCOPE_HEAP_ENABLED=false to keep only the
-         # flatter-cost CPU profiles.
-         # - PYROSCOPE_ENABLED=true
-         # - PYROSCOPE_ENDPOINT=http://otel:4040
 
       ports:
          # the app. ORIGIN has to match how this ends up being reached, whether that's this port directly or a
@@ -42,25 +34,80 @@ services:
       command: ['pnpm', 'run', 'server:prod']
       # everything that is not a credential
       env_file: .env
-   otel:
-      # Pinned, and has to stay pinned: ./observability holds verbatim copies of this image's own Loki
-      # and Tempo config, so the tag and those files are one unit. On :latest a new image moves the
-      # binaries underneath them and they stop parsing. See observability/README.md#the-mount-contract.
-      image: grafana/otel-lgtm:0.29.0
+
+   greptimedb:
+      # Metrics, logs and traces in one engine, read back over PromQL, SQL and the Jaeger API respectively.
+      image: greptime/greptimedb:v1.1.4
+      command:
+         - standalone
+         - start
+         - --http-addr=0.0.0.0:4000
+         - --rpc-bind-addr=0.0.0.0:4001
+         - --mysql-addr=0.0.0.0:4002
+      ports:
+         # Loopback only. Grafana and the collector reach these over the compose network and do not need them
+         # published; they are here so you can run ad-hoc SQL from the host.
+         - 127.0.0.1:4000:4000
+         - 127.0.0.1:4002:4002
+      volumes:
+         - greptime_data:/greptimedb_data
+      healthcheck:
+         test: ['CMD', 'curl', '-f', 'http://localhost:4000/health']
+         interval: 5s
+         timeout: 3s
+         retries: 24
+         start_period: 10s
       restart: unless-stopped
+
+   greptime-init:
+      # Metric retention. The log and trace tables get theirs from an ingest hint, but metrics share one
+      # engine-created physical table that no hint reaches, so the database default is set here and the
+      # physical table inherits it when the first export creates it. Idempotent; runs to completion and exits.
+      image: greptime/greptimedb:v1.1.4
+      entrypoint: ['/bin/sh', '-c']
+      command:
+         - curl -sf -X POST 'http://greptimedb:4000/v1/sql?db=public' --data-urlencode "sql=ALTER DATABASE public SET 'ttl' = '90d'"
+      depends_on:
+         greptimedb:
+            condition: service_healthy
+      restart: 'no'
+
+   otel-collector:
+      image: otel/opentelemetry-collector-contrib:0.157.0
+      command: ['--config=/etc/otelcol/config.yaml']
+      volumes:
+         - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      ports:
+         # Loopback only. The app reaches the collector over the compose network; these are published so a dev
+         # instance running outside compose can ship to the same stack.
+         - 127.0.0.1:4317:4317
+         - 127.0.0.1:4318:4318
+      depends_on:
+         greptimedb:
+            condition: service_healthy
+         # so the database default is in place before the first export creates the metric tables
+         greptime-init:
+            condition: service_completed_successfully
+      restart: unless-stopped
+
+   grafana:
+      image: grafana/grafana:13.1.1
+      environment:
+         - GF_AUTH_ANONYMOUS_ENABLED=true
+         - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+         - GF_SECURITY_ADMIN_PASSWORD=admin
       ports:
          # the grafana portal
          - 3001:3000
       volumes:
-         - otel_data:/data
-         # Retention (3d traces, 14d logs) and the SLM dashboards. Each of these replaces a file the image
-         # ships, so the files under ./observability reproduce the image's own config in full rather than
-         # only the parts we change. See the header comment in each.
-         - ./observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
-         - ./observability/loki-config.yaml:/otel-lgtm/loki-config.yaml:ro
-         - ./observability/grafana/provisioning/datasources:/otel-lgtm/grafana/conf/provisioning/datasources:ro
-         - ./observability/grafana/provisioning/dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards:ro
+         - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
          - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro
+         - grafana_data:/var/lib/grafana
+      depends_on:
+         greptimedb:
+            condition: service_healthy
+      restart: unless-stopped
 
 volumes:
-   otel_data:
+   greptime_data:
+   grafana_data:

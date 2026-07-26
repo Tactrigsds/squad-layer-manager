@@ -1,0 +1,132 @@
+{
+	"uid": "slm-logs",
+	"title": "SLM / Logs",
+	"description": "Everything the app logged, read out of GreptimeDB's otel_logs table over SQL. Filter by severity and module; click a trace_id to open the trace the line was emitted inside.",
+	"tags": ["slm"],
+	"timezone": "browser",
+	"editable": true,
+	"schemaVersion": 39,
+	"refresh": "30s",
+	"time": { "from": "now-1h", "to": "now" },
+	"templating": {
+		"list": [
+			{
+				"name": "minSeverity",
+				"label": "Min severity",
+				"description": "OTel severity numbers: DEBUG 5, INFO 9, WARN 13, ERROR 17, FATAL 21.",
+				"type": "custom",
+				"query": "Debug and above : 5,Info and above : 9,Warnings and errors : 13,Errors only : 17",
+				"includeAll": false,
+				"multi": false,
+				"current": { "text": "Info and above", "value": "9" },
+				"options": []
+			},
+			{
+				"name": "module",
+				"label": "Module",
+				"type": "query",
+				"datasource": { "type": "mysql", "uid": "greptime-sql" },
+				"query": "SELECT DISTINCT json_get_string(log_attributes, '$.\"slm.module.name\"') AS module FROM otel_logs WHERE json_get_string(log_attributes, '$.\"slm.module.name\"') IS NOT NULL ORDER BY module",
+				"refresh": 2,
+				"includeAll": true,
+				"allValue": "%",
+				"multi": false,
+				"current": { "text": "All", "value": "$__all" }
+			}
+		]
+	},
+	"panels": [
+		{
+			"type": "timeseries",
+			"title": "Log volume by severity",
+			"description": "Every record, regardless of the filters below: a quiet app and a filter that matches nothing look the same in the table but not here.",
+			"datasource": { "type": "mysql", "uid": "greptime-sql" },
+			"gridPos": { "h": 7, "w": 24, "x": 0, "y": 0 },
+			"targets": [
+				{
+					"refId": "A",
+					"format": "time_series",
+					"rawQuery": true,
+					"rawSql": "SELECT date_trunc('minute', timestamp) AS time, severity_text AS metric, count(*) AS value FROM otel_logs WHERE $__timeFilter(timestamp) GROUP BY time, severity_text ORDER BY time"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "short",
+					"custom": { "drawStyle": "bars", "fillOpacity": 70, "lineWidth": 0, "stacking": { "mode": "normal" } }
+				},
+				"overrides": [
+					{
+						"matcher": { "id": "byName", "options": "FATAL" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "dark-red" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "ERROR" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "WARN" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "INFO" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "DEBUG" },
+						"properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }]
+					}
+				]
+			}
+		},
+		{
+			"type": "table",
+			"title": "Logs",
+			"datasource": { "type": "mysql", "uid": "greptime-sql" },
+			"gridPos": { "h": 20, "w": 24, "x": 0, "y": 7 },
+			"targets": [
+				{
+					"refId": "A",
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "SELECT timestamp AS \"time\", severity_text AS \"severity\", json_get_string(log_attributes, '$.\"slm.module.name\"') AS \"module\", body AS \"message\", trace_id FROM otel_logs WHERE $__timeFilter(timestamp) AND severity_number >= $minSeverity AND coalesce(json_get_string(log_attributes, '$.\"slm.module.name\"'), '') LIKE '$module' ORDER BY timestamp DESC LIMIT 1000"
+				}
+			],
+			"options": { "showHeader": true },
+			"fieldConfig": {
+				"defaults": { "custom": { "cellOptions": { "type": "auto", "wrapText": true } } },
+				"overrides": [
+					{
+						"matcher": { "id": "byName", "options": "severity" },
+						"properties": [{ "id": "custom.width", "value": 90 }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "module" },
+						"properties": [{ "id": "custom.width", "value": 150 }]
+					},
+					{
+						"matcher": { "id": "byName", "options": "trace_id" },
+						"properties": [
+							{ "id": "custom.width", "value": 150 },
+							{
+								"id": "links",
+								"value": [
+									{
+										"title": "View trace",
+										"url": "",
+										"internal": {
+											"datasourceUid": "tempo",
+											"datasourceName": "Traces",
+											"query": { "query": "${__value.raw}" }
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		}
+	]
+}

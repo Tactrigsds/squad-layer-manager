@@ -928,7 +928,8 @@ Both are checked into `assets/layers` and ship in the docker image; but any comp
 
 ## Observability
 
-OpenTelemetry (traces, metrics, logs) plus pino, with a local Grafana/Tempo/Loki stack in `observability/`.
+OpenTelemetry (traces, metrics, logs) plus pino, with a local GreptimeDB + Grafana stack in `observability/`.
+All three signals land in the one engine and are read back over PromQL, the Jaeger API and SQL respectively.
 
 Almost all of it arrives through **`spanOp`** ([above](#spanop-the-unit-of-server-work)), which is why there
 is very little manual instrumentation anywhere: one call produces a span, a structured log line, and an
@@ -939,7 +940,7 @@ torn-down task ever reaches the subscriber. These are always-on server pipelines
 `.subscribe()`, where RxJS's default of an uncaught error killing the subscription would take down the
 process. It retries per-task, then retries the source indefinitely.
 
-Span kind is set deliberately (CLIENT on egress, SERVER on ingress) because that is what Tempo's service graph
+Span kind is set deliberately (CLIENT on egress, SERVER on ingress) because that is what a service graph
 keys off.
 
 ## Testing

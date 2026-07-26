@@ -19,7 +19,7 @@ mkdir squad-layer-manager && cd squad-layer-manager
 curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash
 ```
 
-This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), a `.env.secrets` (copied from `.env.secrets.example`, and holding every credential SLM reads: see [3.3](#33-secrets)), the `edit-global-settings.sh` and `restore.sh` helpers, and an `observability/` directory of Grafana, Loki, and Tempo config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container.
+This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), a `.env.secrets` (copied from `.env.secrets.example`, and holding every credential SLM reads: see [3.3](#33-secrets)), the `edit-global-settings.sh` and `restore.sh` helpers, and an `observability/` directory of Grafana and OpenTelemetry collector config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container.
 
 #### 3.2. Discord app
 
@@ -239,9 +239,9 @@ that follow.
 
 #### 3.8. Telemetry
 
-Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. see [https://github.com/grafana/docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm) for more. There is a dashboard set up there preconfigured to assist with monitoring SLM.
+Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. Three dashboards come preconfigured to assist with monitoring SLM. Behind them, an OpenTelemetry collector writes metrics, logs and traces into a [GreptimeDB](https://greptime.com/) instance; see [observability/README.md](../observability/README.md) for how the pieces fit together and what the retention windows are.
 
-If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the otel service from `docker-compose.yaml` before starting the app.
+If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the `greptimedb`, `otel-collector` and `grafana` services from `docker-compose.yaml` before starting the app.
 
 #### 3.9. Starting SLM
 

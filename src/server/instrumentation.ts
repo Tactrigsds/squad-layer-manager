@@ -73,8 +73,8 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		module: OtelModule
 		links?: Otel.Link[]
 		// defaults to INTERNAL. Set CLIENT on egress (rcon, http, sftp) and SERVER on ingress: span kind
-		// is what Tempo's service graph and any spanmetrics connector key off, so leaving everything
-		// INTERNAL means we get neither out of spans we're already paying to export.
+		// is what a service graph and any spanmetrics connector key off, so leaving everything INTERNAL
+		// means we get neither out of spans we're already paying to export.
 		kind?: Otel.SpanKind
 		levels?: {
 			event?: Pino.Level | ((...args: Parameters<Cb>) => Pino.Level)
