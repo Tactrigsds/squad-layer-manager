@@ -1,50 +1,38 @@
+import type * as OtelApi from '@opentelemetry/api'
 import type pino from 'pino'
 
+import * as CD from '@/lib/ctx-def'
 import * as Prom from '@/lib/promise-utils'
-import type * as F from '@/models/filter.models'
-import type * as LC from '@/models/layer-columns'
-import type * as MH from '@/models/match-history.models'
 
-import type * as LE from './layer-engine'
+export { CtxSymbol, init, isCtx } from '@/lib/ctx-def'
+export type Ctx = CD.Ctx
 
-const CtxSymbol = Symbol('context')
-export type Ctx = {
-	[CtxSymbol]: true
+// every per-server context composes with this, so it lives in the leaf: a domain models file taking
+// it from server-state would close a runtime cycle, since server-state imports several of them for
+// their schemas.
+export type ServerId = Ctx & {
+	serverId: string
 }
-export function init(): Ctx {
-	return {
-		[CtxSymbol]: true,
+export const ServerIdDef = CD.defCtx<ServerId>()(['serverId'], { name: 'serverId' })
+
+export type AbortSignal = { signal: globalThis.AbortSignal }
+export const AbortSignalDef = CD.defCtx<Ctx & AbortSignal>()(['signal'], { name: 'abortSignal' })
+
+// carries links to spans that produced this ctx, flushed onto the next span the instrumentation opens.
+// A primitive rather than server-side because the rcon and match-history payloads type streams with it.
+export type Otel = Ctx & {
+	otel: {
+		links: OtelApi.Link[]
 	}
 }
-export function isCtx(ctx: any): ctx is Ctx {
-	return ctx && ctx[CtxSymbol] === true
-}
-
-export type EffectiveColumnConfig = Ctx & { effectiveColsConfig: LC.EffectiveColumnConfig }
-
-// the weighted-random layer generation config. unlike effectiveColsConfig this is admin-editable at runtime
-// (globalSettings.layerGeneration), so holders must refresh it when settings change
-export type LayerGeneration = Ctx & { generationConfig: LC.LayerGenerationConfig }
-
-// the columnar query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its lifetime, so it
-// is shared by every request rather than opened per query.
-export type LayerEngine = Ctx & { engine: LE.EngineHandle } & EffectiveColumnConfig
-export type AbortSignal = { signal: globalThis.AbortSignal }
+export const OtelDef = CD.defCtx<Otel>()(['otel'], { name: 'otel' })
 
 export type Logger = pino.Logger
 
 export type Log = Ctx & {
 	log: Logger
 }
-
-export type Filters = Ctx & {
-	filters: Map<string, F.FilterEntity>
-}
-
-export type MatchHistory = Ctx & {
-	recentMatches: MH.MatchDetails[]
-}
-export type LayerQuery = Ctx & LayerEngine & Log & Filters & LayerGeneration
+export const LogDef = CD.defCtx<Log>()(['log'], { name: 'log' })
 
 export function addSignal<C extends Ctx & Partial<AbortSignal>>(ctx: C, signal: globalThis.AbortSignal): C & AbortSignal {
 	return { ...ctx, signal: ctx.signal ? Prom.anySignal(signal, ctx.signal)! : signal }

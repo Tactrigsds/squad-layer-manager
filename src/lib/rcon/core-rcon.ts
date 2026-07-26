@@ -7,7 +7,7 @@ import type * as Logs from '@/models/logs'
 import * as ATTRS from '@/models/otel-attrs'
 import type * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
-import * as C from '@/server/context.ts'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 
 import * as Rx from '../rxjs'
@@ -103,7 +103,7 @@ function commandVerb(body: string): string {
 }
 
 type Events = {
-	server: [C.OtelCtx, DecodedPacket]
+	server: [CS.Otel, DecodedPacket]
 	auth: []
 	[key: `response${string}`]: [string]
 	RCON_ERROR: [Error]
@@ -210,7 +210,7 @@ export default class Rcon extends EventEmitter<Events> {
 		this.connected$.unsubscribe()
 	}
 
-	execute = C.spanOp(
+	execute = Instr.spanOp(
 		'execute',
 		{
 			module,
@@ -331,7 +331,7 @@ export default class Rcon extends EventEmitter<Events> {
 			if (packet.type === this.type.response) this.#onResponse(packet)
 			else if (packet.type === this.type.server) {
 				this.onTraffic?.('send', packet.body)
-				this.emit('server', C.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
+				this.emit('server', Instr.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
 			} else if (packet.type === this.type.command) this.emit('auth')
 		}
 	}

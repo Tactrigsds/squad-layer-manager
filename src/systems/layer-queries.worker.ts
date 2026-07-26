@@ -7,6 +7,7 @@ import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import type * as LE from '@/models/layer-engine'
 import type * as LQY from '@/models/layer-queries.models'
 import * as ATTRS from '@/models/otel-attrs'
 import { LayerEngine } from '@/systems/layer-engine.shared'
@@ -48,7 +49,7 @@ export type InitRequest = {
 	type: 'init'
 	// the worker doesn't share module state with the main thread, so layer data is passed along
 	// rather than fetched a second time. the column config is derived from it here.
-	input: CS.LayerGeneration & BackgroundQueryState & { layerData: L.LayerData }
+	input: LC.Ctx.Generation & BackgroundQueryState & { layerData: L.LayerData }
 }
 
 export type InitResponse = {
@@ -90,7 +91,7 @@ export type Prioritized = {
 }
 
 type State = {
-	ctx: CS.LayerEngine & CS.Log & CS.LayerGeneration
+	ctx: LE.Ctx & CS.Log & LC.Ctx.Generation
 	filters: Map<string, F.FilterEntity>
 }
 

@@ -31,17 +31,20 @@ import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import type * as LQ from '@/models/layer-queue.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list'
+import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
-import * as C from '@/server/context.ts'
+import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
@@ -127,11 +130,11 @@ export type SquadServer = {
 	cleanupId: number | null
 
 	processEventsMtx: MutexInterface
-} & SquadRcon.SquadRcon
+}
 
 export type MatchHistoryState = {
 	historyMtx: Mutex
-	update$: Rx.Subject<C.OtelCtx>
+	update$: Rx.Subject<CS.Otel>
 	recentMatches: MH.MatchDetails[]
 	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
@@ -244,7 +247,7 @@ export const orpcRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = sliceStream$(context.wsClientId, input.serverId, (ctx) =>
-				ctx.server.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
+				ctx.squadRcon.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
@@ -364,7 +367,7 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:turn-fog-off', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
-		const serverStatusRes = await ctx.server.layersStatus.get(ctx)
+		const serverStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
 		if (serverStatusRes.code !== 'ok') return serverStatusRes
 		await SquadRcon.setFogOfWar(ctx, input.disabled ? 'off' : 'on')
 		await emitAppEvent(
@@ -454,7 +457,7 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 		if (denyRes) return denyRes
-		const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
+		const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 		if (teamsRes.code !== 'ok') return teamsRes
 		const admins = teamsRes.players
 			.filter((p) => {
@@ -758,7 +761,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			fetchLayersStatus: async () => {
 				const ctx = resolveSliceCtx(getBaseCtx(), serverId)
 				const data = await Rx.firstValueFrom(
-					ctx.server.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
+					ctx.squadRcon.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
 						Rx.concatMap((s): SM.LayersStatus[] => (s.code === 'ok' ? [s.data] : [])),
 						Rx.takeUntil(Rx.timer(8_000)),
 					),
@@ -803,12 +806,12 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		emittedAppEvents: [],
 		destroyed: false,
 		cleanupId: null,
-
-		...SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
-			cacheTTL: settings.rconCacheTTL,
-			onFatalError: onResourceFatalError,
-		}),
 	}
+
+	const squadRcon = SquadRcon.initSquadRcon({ ...ctx, rcon, serverId }, cleanup, {
+		cacheTTL: settings.rconCacheTTL,
+		onFatalError: onResourceFatalError,
+	})
 
 	cleanup.push(
 		() => server.postRollEventsSub,
@@ -825,6 +828,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		signal,
 
 		rcon,
+		squadRcon,
 		server,
 
 		matchHistory: MatchHistory.initMatchHistoryContext(server.event$, cleanup),
@@ -834,6 +838,8 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 			...ctx,
 			serverId,
 			cleanup,
+			rcon,
+			squadRcon,
 			server,
 		}),
 		layerQueue: LayerQueue.initLayerQueueSlice({ ...ctx, cleanup, serverId }, serverState),
@@ -847,7 +853,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	globalState.sliceLifecycleUpdate$.next(serverId)
 
 	// -------- load saved events --------
-	await loadSavedEvents({ ...ctx, server, serverId })
+	await loadSavedEvents({ ...ctx, rcon, squadRcon, server, serverId })
 
 	// // -------- watch events --------
 	server.event$.subscribe(([ctx, event]) => {
@@ -867,7 +873,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	server.event$
 		.pipe(
 			Rx.filter(([_, event]) => event.type === 'PLAYER_DETAILS_CHANGED' && !!event.newUsername),
-			C.durableSub('onPlayerNameChanged', { module }, async ([ctx, event]) => {
+			Instr.durableSub('onPlayerNameChanged', { module }, async ([ctx, event]) => {
 				if (event.type !== 'PLAYER_DETAILS_CHANGED' || !event.newUsername) {
 					return
 				}
@@ -881,7 +887,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	server.event$
 		.pipe(
 			Rx.filter(([_, event]) => event.type === 'PLAYER_CONNECTED' || event.type === 'RESET'),
-			C.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([ctx, event], signal) => {
+			Instr.durableSub('onPlayerConnectedEnforceTimeouts', { module }, async ([ctx, event], signal) => {
 				const playerIds =
 					event.type === 'PLAYER_CONNECTED'
 						? [SM.PlayerIds.getPlayerId(event.player.ids)]
@@ -895,7 +901,7 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 		.subscribe() // -------- process log events --------
 	const logStreamAc = new AbortController()
 	cleanup.push(logStreamAc)
-	void C.spanOp('processLogEvents', { module }, async (_: unknown) => {
+	void Instr.spanOp('processLogEvents', { module }, async (_: unknown) => {
 		let chunk$: Rx.Observable<string>
 		if (settings.connections.type === 'sftp') {
 			const sftp = settings.connections.sftp
@@ -991,13 +997,13 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	cleanup.push(
 		rcon.connected$
 			.pipe(
-				C.durableSub('onRconConnectStatusChange', { module }, async (connected, signal) => {
+				Instr.durableSub('onRconConnectStatusChange', { module }, async (connected, signal) => {
 					const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
 					const time = Date.now()
 					let layerStatus: SM.LayersStatusResExt | undefined
 					let layersData: SM.LayersStatusExt | undefined
 					if (connected) {
-						layerStatus = await ctx.server.layersStatus.get({ ...ctx, rcon })
+						layerStatus = await ctx.squadRcon.layersStatus.get({ ...ctx, rcon })
 						if (layerStatus.code !== 'ok') return layerStatus
 						layersData = layerStatus.data
 					}
@@ -1020,9 +1026,9 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 
 	// -------- process rcon events --------
 	cleanup.push(
-		server.rconEvent$
+		squadRcon.rconEvent$
 			.pipe(
-				C.durableSub(
+				Instr.durableSub(
 					'onRconEvent',
 					{ module, taskScheduling: 'parallel', levels: { event: 'trace' } },
 					async ([_ctx, event], signal) => {
@@ -1066,10 +1072,10 @@ async function setupSlice(ctx: C.Db & CS.AbortSignal, serverState: SS.ServerStat
 	)
 
 	cleanup.push(
-		server.teams
+		squadRcon.teams
 			.observe({ ...slice, ...ctx })
 			.pipe(
-				C.durableSub('onTeamsPolled', { module, numTaskRetries: 0, levels: { event: 'debug' } }, async (teamsRes, signal) => {
+				Instr.durableSub('onTeamsPolled', { module, numTaskRetries: 0, levels: { event: 'debug' } }, async (teamsRes, signal) => {
 					if (teamsRes.code !== 'ok') return teamsRes
 					const receivedAt = Date.now()
 					const ctx = resolveSliceCtx(CS.addSignal(getBaseCtx(), signal), serverId)
@@ -1171,7 +1177,7 @@ export function resolveReasonInput(
 // the web feed. In-game commands already echo to the invoking admin via reply() (and warn the target), so this
 // fires only for slm-user (web) actors; ingame-user/system actions no-op.
 export async function notifyAdminsOfWebAction(
-	ctx: C.SquadRcon & C.Db & CS.AbortSignal,
+	ctx: SR.Ctx & C.Db & CS.AbortSignal,
 	appEvent: AppEvents.AppEvent,
 	// override the default describeAppEvent phrasing (e.g. squad warns name the squad + faction)
 	description?: string,
@@ -1185,7 +1191,7 @@ export async function notifyAdminsOfWebAction(
 // PLAYER_WARNED server events to the originating action's app event (so they collapse under it in the feed
 // rather than emitting a separate PLAYER_WARNED app event).
 async function sendReasonFollowUpWarn(
-	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	appEventId: AppEvents.AppEventId,
 	targets: SM.PlayerId[],
 	message: string,
@@ -1204,7 +1210,7 @@ async function sendReasonFollowUpWarn(
 // caused it: PLAYER_TIMED_OUT for timeout kicks and their later enforcement, PLAYER_KICKED for plain kicks).
 // The primitive both kick paths bottom out in; it emits no app event of its own.
 export async function kickPlayerAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	target: SM.PlayerId,
 	source: PendingEvents.ArmedActionSource,
 	reason?: string,
@@ -1221,7 +1227,7 @@ const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
 // a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
 // batch, and each kick's server event is attributed to it.
 export async function kickPlayersAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1246,7 +1252,7 @@ export async function kickPlayersAction(
 }
 
 export async function broadcastAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
 	message: string,
 	actor: AppEvents.Actor,
 	opts?: { presetLabel?: string },
@@ -1274,7 +1280,7 @@ export async function broadcastAction(
 // event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
 // any server event referencing it is saved.
 export async function warnPlayers(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
@@ -1317,8 +1323,8 @@ export async function warnPlayers(
 
 // resolves warn targets against the live roster: the matching players (undefined where a target isn't online) plus
 // whether they're all admins and whether they're the entire online admin roster
-async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
-	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.server.teams.get(ctx)])
+async function resolveWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.PlayerId[]) {
+	const [adminList, teamsRes] = await Promise.all([AdminList.getMergedForServer(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 	if (teamsRes.code !== 'ok') return { players: [], allAdmins: false, isEntireAdminRoster: false }
 
 	const isAdmin = (player: SM.Player) => SM.AdminList.getIsAdmin(adminList, player.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
@@ -1330,7 +1336,7 @@ async function resolveWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM
 // the "@..." tag prepended to a warn so recipients see who it's aimed at: an explicit squad warn keeps its squad
 // tag, a lone target is named, the whole online admin roster reads as "@admins", and any other set goes untagged.
 async function resolveWarnAudienceTag(
-	ctx: C.SquadRcon & CS.AbortSignal,
+	ctx: SR.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	taggedSquad?: { squadId: number; squadName: string; teamId: SM.TeamId },
 ) {
@@ -1345,7 +1351,7 @@ async function resolveWarnAudienceTag(
 
 // who a warn hit, phrased for the admin notification: the warnee by name for a single target, "all admins" when it
 // reached exactly the online admin roster, otherwise a plain count. allAdmins also drives the notification opt-out.
-async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: SM.PlayerId[]) {
+async function classifyWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.PlayerId[]) {
 	const count = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
 	const resolved = await resolveWarnTargets(ctx, targets)
 	if (resolved.isEntireAdminRoster) return { allAdmins: resolved.allAdmins, label: 'all admins' }
@@ -1356,7 +1362,7 @@ async function classifyWarnTargets(ctx: C.SquadRcon & CS.AbortSignal, targets: S
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
 // resulting SQUAD_DISBANDED server event to the acting user, then issues the disband.
 export async function disbandSquadAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1400,7 +1406,7 @@ export async function disbandSquadAction(
 
 // removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
 export async function removePlayersFromSquad(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1433,7 +1439,7 @@ export async function removePlayersFromSquad(
 // records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
 // events (which arrive via the next teams poll). The caller (teamswaps) still issues the actual switch.
 export async function forceTeamChangeAppEvent(
-	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 ) {
@@ -1460,7 +1466,7 @@ export async function forceTeamChangeAppEvent(
 // double switch nets zero, so a settled teams poll usually emits none; arming keeps parity with the forced-switch
 // path in case a poll observes an intermediate state.
 export async function killPlayersAppEvent(
-	ctx: C.SquadServer & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1489,7 +1495,7 @@ export async function killPlayersAppEvent(
 }
 
 export async function killPlayersAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1502,7 +1508,7 @@ export async function killPlayersAction(
 }
 
 export async function renameSquadAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1529,7 +1535,7 @@ export async function renameSquadAction(
 
 // demoting a commander has no attributable server event, so this is a pure audit-feed entry
 export async function demoteCommanderAction(
-	ctx: C.SquadServer & C.Rcon & C.Db & C.MatchHistory & CS.AbortSignal,
+	ctx: C.SquadServer & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1563,7 +1569,7 @@ function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEve
 
 // Must be called with the server's slice lock held (see withSliceLock) -- it is the unlocked primitive, and callers reach it
 // through destroySliceIfRunningLocked. Taking the lock here instead would self-deadlock the callers that already hold it.
-const destroyServer = C.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
+const destroyServer = Instr.spanOp('destroyServer', { module, levels: { event: 'info' } }, async (ctx: C.ServerSlice) => {
 	if (ctx.server.destroyed) return
 	log.info(`destroying server slice ${ctx.serverId}`)
 	ctx.server.destroyed = true
@@ -1576,7 +1582,7 @@ const destroyServer = C.spanOp('destroyServer', { module, levels: { event: 'info
 	globalState.sliceLifecycleUpdate$.next(ctx.serverId)
 })
 
-export async function getFullServerState(ctx: C.Db & C.LayerQueue) {
+export async function getFullServerState(ctx: C.Db & LQ.Ctx) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
 	return Settings.parseServerStateRow(serverRaw)
@@ -1616,7 +1622,7 @@ function getLayersStatusExt$(serverId: string) {
 		const ctx = { ...getBaseCtx(), ...globalState.slices.get(serverId)! }
 		const sub = new Rx.Subscription()
 		sub.add(
-			ctx.server.layersStatus.observe(ctx).subscribe({
+			ctx.squadRcon.layersStatus.observe(ctx).subscribe({
 				next: async () => {
 					s.next(await fetchLayersStatusExt(ctx))
 				},
@@ -1639,8 +1645,8 @@ function getLayersStatusExt$(serverId: string) {
 	}).pipe(Rx.Ext.distinctDeepEquals(), Rx.share())
 }
 
-async function fetchLayersStatusExt(ctx: C.SquadServer & C.Rcon & C.MatchHistory & CS.AbortSignal) {
-	const statusRes = await ctx.server.layersStatus.get(ctx)
+async function fetchLayersStatusExt(ctx: C.SquadServer & SR.Ctx.Rcon & MH.Ctx & CS.AbortSignal) {
+	const statusRes = await ctx.squadRcon.layersStatus.get(ctx)
 	if (statusRes.code !== 'ok') return statusRes
 	return buildServerStatusRes(statusRes.data, await MatchHistory.getCurrentMatch(ctx))
 }
@@ -1728,7 +1734,7 @@ export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 // Resolving a slice for a request is also where the request is authorized to look at that server at all: every
 // per-server endpoint goes through here, so squad-server:view is enforced once rather than per handler. Action
 // permissions are still checked by the handler on top of this.
-export async function trySliceCtx<T extends C.Db & C.UserId & CS.AbortSignal>(
+export async function trySliceCtx<T extends C.Db & USR.Ctx.Id & CS.AbortSignal>(
 	ctx: T,
 	serverId: string,
 ): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {
@@ -1810,7 +1816,7 @@ export async function deleteServer(serverId: string) {
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
 
-export async function getServerState(ctx: C.Db & C.ServerId) {
+export async function getServerState(ctx: C.Db & CS.ServerId) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
 	return Settings.parseServerStateRow(serverRaw)
@@ -1818,7 +1824,7 @@ export async function getServerState(ctx: C.Db & C.ServerId) {
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings
 export async function updateServerState(
-	ctx: C.Db & C.Tx & C.LayerQueue,
+	ctx: C.Db & C.Tx & LQ.Ctx,
 	changes: Partial<Omit<SS.ServerState, 'settings'>>,
 	source: SS.LQStateUpdate['source'],
 ) {
@@ -1831,7 +1837,7 @@ export async function updateServerState(
 	return newServerState
 }
 
-const loadSavedEvents = C.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
+const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: C.SquadServer & C.Db) => {
 	const server = ctx.server
 	const [lastMatch] = await ctx
 		.db()
@@ -2039,7 +2045,7 @@ const createEvent =
 	(serverId: string): PendingEvents.State['hooks']['createEvent'] =>
 	async (newEvent) => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		return C.spanOp(
+		return Instr.spanOp(
 			'createEvent',
 			{ module },
 			async () =>
@@ -2060,7 +2066,7 @@ const onNewGameDuringSync =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringSync'] =>
 	async (currentLayerId, _time) => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		return C.spanOp(
+		return Instr.spanOp(
 			'onNewGameDuringSync',
 			{
 				module,
@@ -2078,7 +2084,7 @@ const onNewGameDuringRoll =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] =>
 	async (newLayerId, time) => {
 		const ctx = resolveSliceCtx(getBaseCtx(), serverId)
-		return C.spanOp(
+		return Instr.spanOp(
 			'onNewGameDuringRoll',
 			{
 				module,

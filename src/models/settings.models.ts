@@ -1,18 +1,22 @@
 import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object-utils'
+import type * as Rx from '@/lib/rxjs'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
+import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
+import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 
@@ -1063,5 +1067,17 @@ export namespace Grants {
 					}
 				: undefined,
 		])
+	}
+}
+
+export type Ctx = CS.Ctx & { serverSettings: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['serverSettings'], { name: 'serverSettings', extends: [CS.ServerIdDef] })
+
+export namespace Ctx {
+	export type Update = Readonly<[PublicServerSettings, SS.LQStateUpdate['source'] | null]>
+
+	export type Payload = {
+		settings: PublicServerSettings
+		update$: Rx.ReplaySubject<Ctx.Update>
 	}
 }

@@ -256,13 +256,8 @@ export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 
 export type SettingsUpdate = Readonly<[SETTINGS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>
 
-export type ServerSettingsSlice = {
-	settings: SETTINGS.PublicServerSettings
-	update$: Rx.ReplaySubject<SettingsUpdate>
-}
-
-export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & C.ServerId, serverState: SS.ServerState): ServerSettingsSlice {
-	const slice: ServerSettingsSlice = {
+export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & CS.ServerId, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
+	const slice: SETTINGS.Ctx.Payload = {
 		settings: SETTINGS.getPublicSettings(serverState.settings),
 		update$: new Rx.ReplaySubject<SettingsUpdate>(1),
 	}
@@ -347,7 +342,7 @@ export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promi
 
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
 export async function updateServerSettings(
-	ctx: C.Db & C.Tx & C.ServerId,
+	ctx: C.Db & C.Tx & CS.ServerId,
 	newSettings: SETTINGS.ServerSettings,
 	source: SS.LQStateUpdate['source'],
 ) {
@@ -372,7 +367,7 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 // SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
 
-export async function updateRawServerSettings(ctx: C.Db & C.User & CS.AbortSignal, serverId: SS.ServerId, rawSettings: unknown) {}
+export async function updateRawServerSettings(ctx: C.Db & USR.Ctx & CS.AbortSignal, serverId: SS.ServerId, rawSettings: unknown) {}
 
 // ============================== unified settings bus ==============================
 
@@ -617,7 +612,7 @@ const serverRouter = {
 }
 
 async function recordServerRegistry(
-	ctx: C.Db & C.UserId,
+	ctx: C.Db & USR.Ctx.Id,
 	action: AppEvents.ServerRegistryChanged['action'],
 	targetServerId: string,
 	// a deleted server is already out of the registry by the time this runs, so its name has to be passed in
