@@ -95,7 +95,7 @@
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "histogram_quantile(0.95, sum by (le, slm_op_name) (rate(slm_op_duration_seconds_bucket[1h])))",
+					"expr": "topk(15, histogram_quantile(0.95, sum by (le, slm_op_name) (rate(slm_op_duration_seconds_bucket[1h]))))",
 					"format": "table",
 					"instant": true
 				}
@@ -156,44 +156,26 @@
 			}
 		},
 		{
-			"type": "table",
+			"type": "logs",
 			"title": "Op failures",
-			"description": "The log line each failing op emits. spanOp writes exactly one record per op, so this is 1:1 with the error rate above. Click a trace_id to open the trace it came from.",
-			"datasource": { "type": "mysql", "uid": "greptime-sql" },
+			"description": "The log line each failing op emits. spanOp writes exactly one record per op, so this is 1:1 with the error rate above. Each line's trace_id links through to its trace.",
+			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
 			"gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
 			"targets": [
 				{
 					"refId": "A",
-					"format": "table",
-					"rawQuery": true,
-					"rawSql": "SELECT timestamp AS \"time\", body AS \"message\", trace_id FROM otel_logs WHERE $__timeFilter(timestamp) AND body LIKE 'op : %' AND severity_number >= 13 ORDER BY timestamp DESC LIMIT 200"
+					"expr": "\"op : \" severity:in(WARN,ERROR,FATAL)",
+					"queryType": "instant"
 				}
 			],
-			"options": { "showHeader": true },
-			"fieldConfig": {
-				"defaults": { "custom": { "cellOptions": { "type": "auto", "wrapText": true } } },
-				"overrides": [
-					{
-						"matcher": { "id": "byName", "options": "trace_id" },
-						"properties": [
-							{ "id": "custom.width", "value": 150 },
-							{
-								"id": "links",
-								"value": [
-									{
-										"title": "View trace",
-										"url": "",
-										"internal": {
-											"datasourceUid": "tempo",
-											"datasourceName": "Traces",
-											"query": { "query": "${__value.raw}" }
-										}
-									}
-								]
-							}
-						]
-					}
-				]
+			"options": {
+				"showTime": true,
+				"showLabels": false,
+				"showCommonLabels": false,
+				"wrapLogMessage": true,
+				"enableLogDetails": true,
+				"dedupStrategy": "none",
+				"sortOrder": "Descending"
 			}
 		},
 		{

@@ -37,6 +37,6 @@ Ready. Notes specific to running in here:
                               reachable from your machine through the container's published ports.
   - `pnpm server:dev`         already binds 0.0.0.0 (HOST is set in devcontainer.json).
   - the observability stack / the CI-parity test image run on the HOST, not in here (this container
-    has no docker). `docker compose up -d greptimedb otel-collector grafana` on the host and the app
+    has no docker). `docker compose up -d victoria-metrics victoria-logs victoria-traces otel-collector grafana` on the host and the app
     in here will export to it; grafana stays at localhost:3001 on the host.
 EOF

@@ -6,7 +6,7 @@ services:
       depends_on:
          - otel-collector
       environment:
-         # send OTLP traces, metrics and logs to the collector, which routes each signal into GreptimeDB
+         # send OTLP traces, metrics and logs to the collector, which routes each signal to its own store
          - OTLP_COLLECTOR_ENDPOINT=http://otel-collector:4318
          # paired with mem_limit below
          - NODE_OPTIONS=--max-old-space-size=1024
@@ -35,44 +35,56 @@ services:
       # everything that is not a credential
       env_file: .env
 
-   greptimedb:
-      # Metrics, logs and traces in one engine, read back over PromQL, SQL and the Jaeger API respectively.
-      image: greptime/greptimedb:v1.1.4
+   # One store per signal, each a single zero-config binary. Retention is a flag on each rather than
+   # anything applied after the fact, and -memory.allowedBytes is what keeps them small: left alone they
+   # size their caches from the *host's* RAM, so on a large box they grow to fill it. See
+   # observability/README.md.
+   victoria-metrics:
+      image: victoriametrics/victoria-metrics:v1.111.0
       command:
-         - standalone
-         - start
-         - --http-addr=0.0.0.0:4000
-         - --rpc-bind-addr=0.0.0.0:4001
-         - --mysql-addr=0.0.0.0:4002
+         - -storageDataPath=/vm-data
+         - -httpListenAddr=:8428
+         - -retentionPeriod=90d
+         - -memory.allowedBytes=192MB
+         # otherwise OTLP metric names keep their dots and no PromQL in the dashboards matches
+         - -opentelemetry.usePrometheusNaming
       ports:
-         # Loopback only. Grafana and the collector reach these over the compose network and do not need them
-         # published; they are here so you can run ad-hoc SQL from the host.
-         - 127.0.0.1:4000:4000
-         - 127.0.0.1:4002:4002
+         # Loopback only. Grafana and the collector reach these over the compose network; they are
+         # published so you can query from the host and so a dev instance outside compose can too.
+         - 127.0.0.1:8428:8428
       volumes:
-         - greptime_data:/greptimedb_data
-      healthcheck:
-         test: ['CMD', 'curl', '-f', 'http://localhost:4000/health']
-         interval: 5s
-         timeout: 3s
-         retries: 24
-         start_period: 10s
+         - vm_data:/vm-data
       restart: unless-stopped
 
-   greptime-init:
-      # Metric retention. The log and trace tables get theirs from an ingest hint, but metrics share one
-      # engine-created physical table that no hint reaches, so the database default is set here and the
-      # physical table inherits it when the first export creates it. Idempotent; runs to completion and exits.
-      image: greptime/greptimedb:v1.1.4
-      entrypoint: ['/bin/sh', '-c']
+   victoria-logs:
+      image: victoriametrics/victoria-logs:v1.9.1-victorialogs
       command:
-         - curl -sf -X POST 'http://greptimedb:4000/v1/sql?db=public' --data-urlencode "sql=ALTER DATABASE public SET 'ttl' = '90d'"
-      depends_on:
-         greptimedb:
-            condition: service_healthy
-      restart: 'no'
+         - -storageDataPath=/vl-data
+         - -httpListenAddr=:9428
+         - -retentionPeriod=14d
+         - -memory.allowedBytes=96MB
+      ports:
+         - 127.0.0.1:9428:9428
+      volumes:
+         - vl_data:/vl-data
+      restart: unless-stopped
+
+   victoria-traces:
+      image: victoriametrics/victoria-traces:v0.5.0
+      command:
+         - -storageDataPath=/vt-data
+         - -httpListenAddr=:10428
+         - -retentionPeriod=3d
+         - -memory.allowedBytes=96MB
+      ports:
+         - 127.0.0.1:10428:10428
+      volumes:
+         - vt_data:/vt-data
+      restart: unless-stopped
 
    otel-collector:
+      # Kept although all three stores accept OTLP directly, because it is what lets the app keep a single
+      # OTLP_COLLECTOR_ENDPOINT: the fan-out to one store per signal happens here rather than in the app.
       image: otel/opentelemetry-collector-contrib:0.157.0
       command: ['--config=/etc/otelcol/config.yaml']
       volumes:
@@ -83,11 +95,9 @@ services:
          - 127.0.0.1:4317:4317
          - 127.0.0.1:4318:4318
       depends_on:
-         greptimedb:
-            condition: service_healthy
-         # so the database default is in place before the first export creates the metric tables
-         greptime-init:
-            condition: service_completed_successfully
+         - victoria-metrics
+         - victoria-logs
+         - victoria-traces
       restart: unless-stopped
 
    grafana:
@@ -96,6 +106,9 @@ services:
          - GF_AUTH_ANONYMOUS_ENABLED=true
          - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
          - GF_SECURITY_ADMIN_PASSWORD=admin
+         # Metrics and traces need no plugin: VictoriaMetrics serves the Prometheus API and VictoriaTraces
+         # the Jaeger one, so those are Grafana's own datasources. Logs are the exception.
+         - GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
       ports:
          # the grafana portal
          - 3001:3000
@@ -104,10 +117,13 @@ services:
          - ./observability/grafana/dashboards:/etc/grafana/slm-dashboards:ro
          - grafana_data:/var/lib/grafana
       depends_on:
-         greptimedb:
-            condition: service_healthy
+         - victoria-metrics
+         - victoria-logs
+         - victoria-traces
       restart: unless-stopped
 
 volumes:
-   greptime_data:
+   vm_data:
+   vl_data:
+   vt_data:
    grafana_data:

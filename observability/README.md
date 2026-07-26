@@ -1,136 +1,134 @@
 # Observability stack
 
-Three containers in `docker-compose.yaml`, configured from this directory. Nothing here is read by the
+Five containers in `docker-compose.yaml`, configured from this directory. Nothing here is read by the
 app itself.
 
-| Service          | Image                                          | What it does                                        |
-| ---------------- | ---------------------------------------------- | --------------------------------------------------- |
-| `greptimedb`     | `greptime/greptimedb:v1.1.4`                   | stores metrics, logs and traces in one engine       |
-| `otel-collector` | `otel/opentelemetry-collector-contrib:0.157.0` | receives OTLP from the app and routes it per signal |
-| `grafana`        | `grafana/grafana:13.1.1`                       | serves the dashboards                               |
+| Service            | Image                                          | What it does                                        |
+| ------------------ | ---------------------------------------------- | --------------------------------------------------- |
+| `victoria-metrics` | `victoriametrics/victoria-metrics:v1.111.0`    | metrics, served over the Prometheus API             |
+| `victoria-logs`    | `victoriametrics/victoria-logs:v1.9.1`         | logs, queried with LogsQL                           |
+| `victoria-traces`  | `victoriametrics/victoria-traces:v0.5.0`       | traces, served over the Jaeger query API            |
+| `otel-collector`   | `otel/opentelemetry-collector-contrib:0.157.0` | receives OTLP from the app and routes it per signal |
+| `grafana`          | `grafana/grafana:13.1.1`                       | serves the dashboards                               |
 
 The app ships OTLP over HTTP to the collector on `:4318` (`OTLP_COLLECTOR_ENDPOINT`). Grafana is on
-<http://localhost:3001>. GreptimeDB's HTTP and MySQL ports are published on loopback only, for ad-hoc
-queries:
+<http://localhost:3001>. Each store's HTTP port is published on loopback for ad-hoc queries:
 
 ```sh
-curl -s -X POST 'http://localhost:4000/v1/sql?db=public' --data-urlencode 'sql=select 1'
+curl -s 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=severity:ERROR' --data-urlencode 'limit=10'
+curl -s 'http://localhost:8428/api/v1/query' --data-urlencode 'query=slm_rcon_connected'
 ```
 
-`docker compose up -d greptimedb otel-collector grafana` brings the stack up without the app, which is
-what you want when pointing a dev instance at it.
+`docker compose up -d victoria-metrics victoria-logs victoria-traces otel-collector grafana` brings the
+stack up without the app, which is what you want when pointing a dev instance at it.
 
-## One engine, three query languages
+## One store per signal, and why that is not three problems
 
-GreptimeDB serves each signal through the protocol its tooling already speaks, so the datasources in
-`grafana/provisioning/datasources/` are ordinary Prometheus, Jaeger and MySQL datasources rather than
-anything GreptimeDB-specific. No plugin is installed.
+Each store is a single zero-config binary with no external dependencies, and each speaks the query API
+its tooling already expects. That is what keeps the Grafana side boring: **two of the three datasources
+are Grafana's own**, because VictoriaMetrics serves the Prometheus API and VictoriaTraces the Jaeger
+one. Only logs need a plugin.
 
-| Datasource     | uid            | Type       | Endpoint                               | Reads   |
-| -------------- | -------------- | ---------- | -------------------------------------- | ------- |
-| Prometheus     | `prometheus`   | prometheus | `/v1/prometheus`                       | metrics |
-| Traces         | `tempo`        | jaeger     | `/v1/jaeger`                           | traces  |
-| GreptimeDB SQL | `greptime-sql` | mysql      | MySQL protocol on `:4002`, db `public` | logs    |
+| Datasource   | uid            | Type                              | Reads   |
+| ------------ | -------------- | --------------------------------- | ------- |
+| Prometheus   | `prometheus`   | prometheus (built in)             | metrics |
+| Traces       | `tempo`        | jaeger (built in)                 | traces  |
+| VictoriaLogs | `victorialogs` | `victoriametrics-logs-datasource` | logs    |
 
 The `prometheus` and `tempo` uids are historical and deliberately kept: dashboards reference
-datasources by uid, and renaming them to match the engine would mean editing every panel for nothing.
+datasources by uid, and renaming them to match what is behind them would mean editing every panel for
+nothing.
 
-`timeInterval` on the Prometheus datasource must stay at `60s`, matching the app's
-`PeriodicExportingMetricReader` interval. It feeds `$__rate_interval`, and at a shorter value the
-window holds fewer than two samples, so every `rate()` panel renders No data while the gauges keep
-working. This fails silently, which is what makes it worth stating.
+The logs plugin is in the Grafana catalog and signed by Grafana Labs, so it installs with the single
+`GF_INSTALL_PLUGINS` line in `docker-compose.yaml`. No unsigned-plugin flag, no baked image.
 
-GreptimeDB's PromQL is close to complete but not identical, and where it differs it returns an empty
-vector rather than an error, so a panel written against it just goes blank. The one case hit so far:
-**`topk()` over `histogram_quantile()`** yields nothing, though `topk()` over a gauge or over
-`sum(rate(...))` is fine. Slowest ops (p95) ranks with a `sortBy` + `limit` transformation instead,
-which is why its query has no `topk`. If a panel you have just written is empty against data you can
-see in SQL, take the expression apart a layer at a time against `/api/v1/query` before assuming the
-data is missing.
+## Two flags that are load-bearing
+
+**`-memory.allowedBytes` on each store.** Left alone they size their caches from the _host's_ RAM, so on
+a large machine they grow to fill it and the stack looks far heavier than it is. The flag caps the
+caches, not total RSS: measured against a dev instance the three stores settle at about **435MB**
+together (VictoriaMetrics ~320, VictoriaTraces ~90, VictoriaLogs ~25), against 653MB for the single
+GreptimeDB process this replaced. Raise the caps on a busy install; they are a ceiling on caching, not a
+reservation, and lowering them trades query speed for footprint rather than capping ingest.
+
+**`-opentelemetry.usePrometheusNaming` on VictoriaMetrics.** Without it, OTLP metric names keep their
+dots (`slm.op.duration`) and every PromQL expression in the dashboards silently matches nothing.
+
+`timeInterval` on the Prometheus datasource must also stay at `60s`, matching the app's
+`PeriodicExportingMetricReader` interval. It feeds `$__rate_interval`, and at a shorter value the window
+holds fewer than two samples, so every `rate()` panel renders No data while the gauges keep working.
 
 ## Dashboards
 
 - **SLM / Overview** (`slm-overview`) is the domain view: rcon liveness, layer queue depth, votes in
-  progress, pending teamswaps, BattleMetrics rate-limit headroom, and a warn/error log table. It is
+  progress, pending teamswaps, BattleMetrics rate-limit headroom, and a warn/error log panel. It is
   backed by the observable gauges in `src/systems/metrics.server.ts`.
 - **SLM / Ops (RED)** (`slm-ops`) is rate/errors/duration for every `C.spanOp` in the app, plus Node
   runtime health (event loop, heap, GC). It is backed by the `slm.op.duration` histogram recorded in
   `spanOp`'s `finally` block (`src/server/instrumentation.ts`), so **a new `spanOp` appears here with
   no extra wiring**.
-- **SLM / Logs** (`slm-logs`) is the log view: volume by severity, and a filterable table with a link
-  from each `trace_id` to its trace.
+- **SLM / Logs** (`slm-logs`) is the log view: volume by severity, and a log panel filtered by severity
+  and module.
 
-## Logs are SQL
+## Logs are LogsQL
 
-`otel_logs` is a table, so the log panels are `SELECT`s rather than LogQL. Three things about writing
-them:
+Every attribute the app attaches is a first-class field, so filtering is direct rather than a JSON path
+dig. Fields whose names contain dots need quoting:
 
-`trace_id`, `span_id`, `severity_text`, `severity_number` and `body` are real columns. Everything else
-the app attaches is JSON: per-record fields in `log_attributes`, service identity in
-`resource_attributes`. Reading a key out of either needs the quoted-path form, because the keys
-themselves contain dots:
-
-```sql
-json_get_string(log_attributes, '$."slm.module.name"')
+```logsql
+severity:in(WARN,ERROR,FATAL) "slm.module.name":squad-server
 ```
 
-Filter severity on `severity_number`, not `severity_text`. The numbers are ordered (DEBUG 5, INFO 9,
-WARN 13, ERROR 17, FATAL 21), so `severity_number >= 13` is the whole warn-and-above set including
-levels nothing currently emits.
+Two things worth knowing when editing the log panels:
 
-Do not set `x-greptime-log-extract-keys` for `trace_id` or `span_id` in `otel-collector.yaml`. They are
-already columns in the OTLP log schema, and promoting them makes every export fail with a 400.
+The **Module** variable's values are whole filter terms (`"slm.module.name":db`), not bare names, which
+is what lets its All case be a bare `*`. A `*` matches every record; `"slm.module.name":*` would quietly
+drop the handful of boot lines written before the logger attaches a module.
+
+**`VL-Stream-Fields` on the logs exporter is not optional.** VictoriaLogs derives the stream key from
+resource attributes, and the app's include a multi-kilobyte `process.command_args`. Without pinning the
+stream fields to `service.name,service.instance.id`, every process restart creates a new stream.
 
 ## Retention
 
-Traces are kept **3 days**, logs **14 days**, metrics **90 days**.
+Traces are kept **3 days**, logs **14 days**, metrics **90 days**, each a `-retentionPeriod` flag on its
+own store. Changing one is an edit and a restart, with no migration and nothing to apply after the fact.
 
 Traces are the highest-volume signal (one span per `C.spanOp`, plus auto-instrumented http/rcon/dns
 spans underneath each), so they get the shortest window. That's affordable because the RED metrics
 derived from them outlive them: you can still ask "when did `dispatchOp` start getting slow" a month
-later, you just can't open an individual trace from back then. Logs outlive traces because they are
-what you go back to when someone asks what happened last week; the trace is gone by then, but the log
-line that carried its `trace_id` is not.
-
-It is set in two places, because the three signals do not create their tables the same way.
-
-Logs and traces each get one table, created by their first export, so their retention rides in as an
-`x-greptime-hints` header on the exporters in `otel-collector.yaml`. Metrics do not: every metric name
-becomes a logical table over one physical table that the metric engine creates, and no ingest hint
-reaches it. Their window is the **database** default, set by the one-shot `greptime-init` service in
-`docker-compose.yaml`, which the collector waits on so it is in place before the first export lands.
-
-**Either way the value is read once, when the table is created, and never again.** Editing a `ttl` in
-either file therefore changes nothing on a volume that already has data. To change retention on a
-running install, do it in SQL as well, so a rebuilt volume comes back the same:
-
-```sql
-ALTER TABLE otel_logs SET 'ttl' = '30d';           -- or opentelemetry_traces
-ALTER TABLE greptime_physical_table SET 'ttl' = '30d';  -- every metric at once
-```
+later, you just can't open an individual trace from back then. Logs outlive traces because they are what
+you go back to when someone asks what happened last week; the trace is gone by then, but the log line
+that carried its `trace_id` is not.
 
 ## Cross-linking
 
-A log line links to its trace: `trace_id` is a column on `otel_logs`, and each log table panel puts a
-data link on that column pointing at the `tempo` datasource. This works because `server/logger.ts`
-stamps `trace_id` and `span_id` onto every record (see `LOG.mapSpanAttrs`), so the message text does
-not need to carry the id, and it doesn't.
+Both directions work, and both are configured in `grafana/provisioning/datasources/datasources.yaml`.
 
-The reverse direction is not wired up. Grafana's trace-to-logs setting only accepts log-shaped
-datasources (Loki, Elasticsearch, Splunk), and the logs here are behind a SQL datasource. From a span,
-copy the trace id into SLM / Logs. A span does still link to its op's RED metrics, via `tracesToMetrics`
-on the Traces datasource.
+A **log line links to its trace** through a derived field on `trace_id`. This works because
+`server/logger.ts` stamps `trace_id` and `span_id` onto every record (see `LOG.mapSpanAttrs`), and
+VictoriaLogs stores them as real fields, so the matcher targets the field rather than regexing the body.
+The message text does not need to carry the id, and it doesn't.
+
+A **span links back to its logs** through `tracesToLogsV2` on the Traces datasource, which runs
+`trace_id:"<id>"` against VictoriaLogs. A span also links to its op's RED metrics via `tracesToMetrics`.
 
 ## Cardinality
 
-Metrics become one logical table per metric name over a shared physical table, with each attribute a
-TAG column, so cardinality behaves the way it does in Prometheus: the cost is in the number of distinct
-tag combinations. `slm_squad_server_id` is bounded by the number of servers; keep anything unbounded
-(player ids, layer ids, trace ids) off metric attributes.
+Metrics behave the way they do in Prometheus: the cost is the number of distinct label combinations.
+`slm_squad_server_id` is bounded by the number of servers; keep anything unbounded (player ids, layer
+ids, trace ids) off metric attributes.
 
-Logs have no equivalent concern. `slm_module_name` and friends sit in the `log_attributes` JSON column
-rather than in an index, so adding one costs nothing at write time and is queryable with
-`json_get_string`.
+The bigger trap is the one the `resource/trim-metric-labels` processor exists for. VictoriaMetrics
+promotes **every** OTLP resource attribute to a label, and the SDK sends far more than a dashboard ever
+groups by: measured before the trim, each series carried 25 labels including a 1.3KB
+`process.command_args` JSON blob, and `process.pid` changed on every restart so each restart orphaned
+the entire series set. After the trim it is 10 labels and nothing restart-scoped. If you add a resource
+attribute and it does not show up in PromQL, that processor is why.
+
+Logs are different, and the thing to watch is the **stream** rather than the field count. Fields are
+cheap and unindexed-until-queried, so adding one costs nothing. Stream fields are the expensive axis,
+which is why they are pinned to two (see `VL-Stream-Fields` above).
 
 ## Changing histogram bucket boundaries
 
@@ -138,19 +136,3 @@ If you change `explicitBucketBoundaries` on `slm.op.duration`, the old series st
 and `sum by (le)` across both boundary sets produces non-monotonic buckets and therefore garbage
 quantiles. It is transient, but if a quantile panel looks impossible right after such a change, this is
 why. Filter to a single `service_instance_id` to confirm.
-
-## What the otel-lgtm stack had and this one does not
-
-The stack this replaced was the `grafana/otel-lgtm` image (Grafana + Prometheus + Loki + Tempo +
-Pyroscope in one process tree). Three things did not survive the move:
-
-**Continuous profiling.** Pyroscope was bundled in that image and GreptimeDB has no equivalent, so the
-agent and the `PYROSCOPE_*` env vars were removed rather than left pointing at nothing. Reinstating it
-means running `grafana/pyroscope` as its own service.
-
-**The image's generated RED dashboards.** Those came from Tempo's `metrics_generator`, which derived
-rate/error/duration from span kind and status and so covered the auto-instrumented http/rcon spans.
-SLM / Ops is unaffected: it reads a histogram the app records itself.
-
-**Exemplars.** GreptimeDB's OTLP metric ingest has no exemplar column, so a spike in a RED panel can no
-longer be clicked through to a trace that produced it.

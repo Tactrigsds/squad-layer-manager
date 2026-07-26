@@ -239,9 +239,9 @@ that follow.
 
 #### 3.8. Telemetry
 
-Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. Three dashboards come preconfigured to assist with monitoring SLM. Behind them, an OpenTelemetry collector writes metrics, logs and traces into a [GreptimeDB](https://greptime.com/) instance; see [observability/README.md](../observability/README.md) for how the pieces fit together and what the retention windows are.
+Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. Three dashboards come preconfigured to assist with monitoring SLM. Behind them, an OpenTelemetry collector routes metrics, logs and traces into one [VictoriaMetrics](https://victoriametrics.com/) store per signal; see [observability/README.md](../observability/README.md) for how the pieces fit together and what the retention windows are.
 
-If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the `greptimedb`, `otel-collector` and `grafana` services from `docker-compose.yaml` before starting the app.
+If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the `victoria-metrics`, `victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before starting the app.
 
 #### 3.9. Starting SLM
 

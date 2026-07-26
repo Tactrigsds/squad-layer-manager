@@ -1,34 +1,40 @@
-# Three views onto the one GreptimeDB instance: PromQL for metrics, the Jaeger API for traces, and
-# MySQL-protocol SQL for logs.
+# One store per signal, each reached through the API its tooling already speaks: VictoriaMetrics serves
+# the Prometheus API and VictoriaTraces the Jaeger one, so those two are Grafana's own datasources with
+# no plugin. Logs use the VictoriaLogs plugin (installed via GF_INSTALL_PLUGINS in docker-compose.yaml).
 #
 # The uids are load-bearing. Dashboards reference datasources by uid, so `prometheus` and `tempo` are
-# kept as the names the panels already use rather than renamed to match the engine behind them.
+# kept as the names the panels already use rather than renamed to match what is behind them.
 apiVersion: 1
 
 datasources:
    - name: Prometheus
      type: prometheus
      uid: prometheus
-     url: http://greptimedb:4000/v1/prometheus
+     url: http://victoria-metrics:8428
      isDefault: true
      editable: true
      jsonData:
         httpMethod: POST
-        httpHeaderName1: x-greptime-db-name
         # Must match the app's PeriodicExportingMetricReader interval. It sets $__rate_interval, and
         # anything shorter puts fewer than two samples in the window, so every rate() panel renders No
         # data while the gauges keep working.
         timeInterval: 60s
-     secureJsonData:
-        httpHeaderValue1: public
+        exemplarTraceIdDestinations:
+           - name: trace_id
+             datasourceUid: tempo
+             urlDisplayLabel: 'Trace: $${__value.raw}'
 
    - name: Traces
      type: jaeger
      uid: tempo
-     url: http://greptimedb:4000/v1/jaeger
+     url: http://victoria-traces:10428/select/jaeger
      editable: true
      jsonData:
-        httpHeaderName1: x-greptime-db-name
+        # span -> the log lines emitted inside it
+        tracesToLogsV2:
+           customQuery: true
+           datasourceUid: 'victorialogs'
+           query: 'trace_id:"$${__trace.traceId}"'
         # span -> the op RED metrics for the same op name
         tracesToMetrics:
            datasourceUid: 'prometheus'
@@ -37,14 +43,19 @@ datasources:
                 query: 'histogram_quantile(0.95, sum by (le) (rate(slm_op_duration_seconds_bucket{slm_op_name="$${__span.name}"}[5m])))'
         nodeGraph:
            enabled: true
-     secureJsonData:
-        httpHeaderValue1: public
 
-   - name: GreptimeDB SQL
-     type: mysql
-     uid: greptime-sql
-     url: greptimedb:4002
-     database: public
+   - name: VictoriaLogs
+     type: victoriametrics-logs-datasource
+     uid: victorialogs
+     url: http://victoria-logs:9428
      editable: true
      jsonData:
-        timezone: UTC
+        # log line -> the trace it was emitted inside. trace_id is a first-class field rather than
+        # something parsed out of the message, which is why the regex matches the field and not the body.
+        derivedFields:
+           - name: 'trace_id'
+             matcherType: 'label'
+             matcherRegex: 'trace_id'
+             url: '$${__value.raw}'
+             datasourceUid: 'tempo'
+             urlDisplayLabel: 'Trace: $${__value.raw}'

@@ -928,8 +928,8 @@ Both are checked into `assets/layers` and ship in the docker image; but any comp
 
 ## Observability
 
-OpenTelemetry (traces, metrics, logs) plus pino, with a local GreptimeDB + Grafana stack in `observability/`.
-All three signals land in the one engine and are read back over PromQL, the Jaeger API and SQL respectively.
+OpenTelemetry (traces, metrics, logs) plus pino, with a local VictoriaMetrics + Grafana stack in `observability/`.
+One store per signal, read back over PromQL, the Jaeger API and LogsQL respectively.
 
 Almost all of it arrives through **`spanOp`** ([above](#spanop-the-unit-of-server-work)), which is why there
 is very little manual instrumentation anywhere: one call produces a span, a structured log line, and an

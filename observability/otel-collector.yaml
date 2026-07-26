@@ -15,41 +15,37 @@ processors:
       timeout: 5s
       send_batch_size: 1024
 
+   # Metrics only. VictoriaMetrics promotes every resource attribute to a label, and the SDK sends a lot
+   # of them: process.command_args alone is ~1.3KB of JSON on every series, and process.pid changes on
+   # each restart, which orphans the whole series set. What survives is what a dashboard actually groups
+   # by. Logs and traces keep the full set, where an attribute is a cheap field rather than a label.
+   resource/trim-metric-labels:
+      attributes:
+         - pattern: ^(process|telemetry\.sdk|host)\..*
+           action: delete
+
 exporters:
-   # The otlphttp exporter appends /v1/{metrics,logs,traces}, producing GreptimeDB's
-   # documented /v1/otlp/v1/* routes.
-   #
-   # x-greptime-hints is read when GreptimeDB creates the table and never again, which is why retention
-   # is set here rather than by SQL: the tables do not exist until the first export of that signal
-   # arrives. Editing a ttl below therefore only takes on a fresh volume; on a running one, ALTER TABLE.
-   #
-   # Metrics have no hint because no table here is theirs to create: they share the metric engine's
-   # physical table, whose retention comes from the database default that the greptime-init service sets.
+   # Each store has its own OTLP path and the otlphttp exporter appends /v1/{metrics,logs,traces}, so the
+   # endpoints below stop one segment short of that. Retention is not set here: it is a flag on each
+   # store in docker-compose.yaml.
    otlphttp/metrics:
-      endpoint: http://greptimedb:4000/v1/otlp
-      headers:
-         x-greptime-db-name: public
+      endpoint: http://victoria-metrics:8428/opentelemetry
 
    otlphttp/logs:
-      endpoint: http://greptimedb:4000/v1/otlp
+      endpoint: http://victoria-logs:9428/insert/opentelemetry
       headers:
-         x-greptime-db-name: public
-         x-greptime-log-table-name: otel_logs
-         x-greptime-hints: ttl=14d
+         # Without this every resource attribute becomes part of the stream key, including the app's
+         # multi-kilobyte process.command_args, which would be a new stream on every restart.
+         VL-Stream-Fields: service.name,service.instance.id
 
    otlphttp/traces:
-      endpoint: http://greptimedb:4000/v1/otlp
-      headers:
-         x-greptime-db-name: public
-         # Without this spans are stored unstructured and the Jaeger query API returns nothing.
-         x-greptime-pipeline-name: greptime_trace_v1
-         x-greptime-hints: ttl=3d
+      endpoint: http://victoria-traces:10428/insert/opentelemetry
 
 service:
    pipelines:
       metrics:
          receivers: [otlp]
-         processors: [memory_limiter, batch]
+         processors: [memory_limiter, resource/trim-metric-labels, batch]
          exporters: [otlphttp/metrics]
       logs:
          receivers: [otlp]
