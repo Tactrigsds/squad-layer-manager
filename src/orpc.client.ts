@@ -293,9 +293,9 @@ export function observe<T>(
 }
 
 /**
- * Drops the err:server-not-loaded value every per-server stream can emit (see SquadServer.sliceStream$), so consumers
- * keep their original payload type. Losing the slice isn't this layer's problem to report: the dashboard gates itself on
- * squadServer.watchLoadedServers and swaps in the unavailable view, and the stream resumes on its own once the slice is
+ * Drops the err:server-not-loaded value every per-server stream can emit (see SquadServer.stream$), so consumers
+ * keep their original payload type. Losing the managed server isn't this layer's problem to report: the dashboard gates itself on
+ * squadServer.watchLoadedServers and swaps in the unavailable view, and the stream resumes on its own once the managed server is
  * back. Holding rather than erroring is what makes that recovery automatic.
  */
 export function dropServerNotLoaded<T>(): Rx.OperatorFunction<T | SM.ServerNotLoaded, T> {

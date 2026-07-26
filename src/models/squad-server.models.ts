@@ -28,9 +28,9 @@ export namespace Ctx {
 		// them is already persisted (see the createEvent hook); this is a cache, not a write buffer.
 		emittedEvents: SE.Event[]
 		// Carries only what a listener cannot rebuild: the span links from whatever produced the event, and
-		// the server it belongs to. Listeners resolve the slice themselves (see eventSliceCtx).
+		// the server it belongs to. Listeners resolve the managed server themselves (see eventCtx).
 		// TracedSubject stamps each emission with a link to the span that produced it. Listeners
-		// resolve the slice themselves from the serverId (see SquadServer.eventSliceCtx).
+		// resolve the managed server themselves from the serverId (see SquadServer.eventCtx).
 		event$: TracedSubject<SE.Event, CS.ServerId>
 		eventState: PendingEvents.State
 

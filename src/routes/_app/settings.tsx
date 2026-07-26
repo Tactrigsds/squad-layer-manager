@@ -67,7 +67,7 @@ function RouteComponent() {
 	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
 	const pageId = useRefConstructor(() => createId(4)).current
-	// non-null while the new-server form is open; a fresh nonce per "Add Server" click yields a clean frame instance
+	// non-null while the new-server form is open; a fresh nonce per "Add Managed Server" click yields a clean frame instance
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
 	// a server section renders for every server the user may at least read; registry management is gated separately
@@ -185,7 +185,7 @@ function RouteComponent() {
 		return () => window.removeEventListener('hashchange', onHash)
 	}, [])
 
-	// when the user clicks "Add Server", scroll the new-server config into view once it mounts (the section renders on
+	// when the user clicks "Add Managed Server", scroll the new-server config into view once it mounts (the section renders on
 	// the next frame). Existing servers scroll via the pencil/Fix buttons in the management card.
 	React.useEffect(() => {
 		if (!creating) return
@@ -463,7 +463,7 @@ function ServersSection({
 	const deleteMutation = useMutation(RPC.orpc.settings.admin.deleteServer.mutationOptions(onDenied))
 	const setDefaultMutation = useMutation(RPC.orpc.settings.admin.setDefaultServer.mutationOptions(onDenied))
 	const busy = enableMutation.isPending || disableMutation.isPending || deleteMutation.isPending || setDefaultMutation.isPending
-	// the start/stop RPCs only resolve once the server slice is fully spun up / torn down, so the mutation's in-flight
+	// the start/stop RPCs only resolve once the managed server is fully spun up / torn down, so the mutation's in-flight
 	// window is exactly the transitional period
 	const inflight = {
 		startingId: enableMutation.isPending ? enableMutation.variables?.serverId : undefined,
@@ -503,8 +503,8 @@ function ServersSection({
 
 	async function handleDelete(server: PublicServer) {
 		const result = await openDialog({
-			title: 'Delete Server',
-			description: `Delete server "${server.displayName}" (${server.id})? This cannot be undone.`,
+			title: 'Delete Managed Server',
+			description: `Delete managed server "${server.displayName}" (${server.id})? This cannot be undone.`,
 			buttons: [{ id: 'confirm', label: 'Delete', variant: 'destructive' }],
 		})
 		if (result === 'confirm') deleteMutation.mutate({ serverId: server.id })
@@ -634,7 +634,13 @@ function ServerList({
 									{server.enabled ? 'Disconnect' : 'Connect'}
 								</Button>
 								{canDelete && (
-									<Button size="icon" variant="ghost" disabled={busy} title="Delete server" onClick={() => onDelete(server)}>
+									<Button
+										size="icon"
+										variant="ghost"
+										disabled={busy}
+										title="Delete managed server"
+										onClick={() => onDelete(server)}
+									>
 										<Icons.Trash2 className="h-4 w-4" />
 									</Button>
 								)}
@@ -646,7 +652,7 @@ function ServerList({
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					Add Server
+					Add Managed Server
 				</Button>
 			)}
 		</div>
@@ -812,7 +818,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
 					<div className="flex items-center justify-between gap-2">
 						<div>
-							<CardTitle>New Server</CardTitle>
+							<CardTitle>New Managed Server</CardTitle>
 							<CardDescription>Configure a new server. Save from the panel below, or cancel.</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">

@@ -10,8 +10,8 @@ import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
 import * as SettingsClient from '@/systems/settings.client'
 
-// ids of the servers the backend currently has a live slice for. Runtime state, not registry config: a server can be
-// enabled and non-broken yet have no slice (still booting, or torn down by a fatal resource error), and every per-server
+// ids of the servers the backend currently has a live managed server for. Runtime state, not registry config: a server can be
+// enabled and non-broken yet have no managed server (still booting, or torn down by a fatal resource error), and every per-server
 // stream and action needs one. Gating the dashboard on this is what keeps an unloaded server from silently hanging.
 export const [useLoadedServerIds, loadedServerIds$] = ReactRx.bind(
 	'squadServer.loadedServers',
@@ -19,12 +19,12 @@ export const [useLoadedServerIds, loadedServerIds$] = ReactRx.bind(
 )
 
 // why a server's dashboard can't be shown. `starting` is the runtime case the registry can't tell us about: the server is
-// configured to run and its settings are fine, but there's no live slice backing it yet.
+// configured to run and its settings are fine, but there's no live managed server backing it yet.
 export type ServerAvailability = 'ok' | 'not-found' | 'disabled' | 'broken' | 'starting'
 
 // combined reactively rather than read through a selector closure: the registry (enabled/broken) and the loaded set are
 // two independent sources, and both have to be able to move the result on their own. Enabling a server publishes the
-// registry change first and the slice seconds later, so the dashboard is only reachable if that second signal lands.
+// registry change first and the managed server seconds later, so the dashboard is only reachable if that second signal lands.
 export const [useServerAvailability, serverAvailability$] = ReactRx.bind('squadServer.serverAvailability', (serverId: string) =>
 	Rx.combineLatest([
 		// suspend rather than briefly claiming the server doesn't exist while settings are still in flight.

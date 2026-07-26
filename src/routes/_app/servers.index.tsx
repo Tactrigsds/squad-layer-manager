@@ -19,7 +19,7 @@ function RouteComponent() {
 		<div className="w-full max-w-lg mx-auto py-6">
 			<Card>
 				<CardHeader>
-					<CardTitle>Servers</CardTitle>
+					<CardTitle>Managed Servers</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-2">
 					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers available.</p>}
