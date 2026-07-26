@@ -28,9 +28,11 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// How to start the app under test. In the docker image (and so in CI) SLM_TEST_SERVER_ENTRY points at
-// the bundled server, so the tests drive the very artifact that gets deployed; locally we run the
-// source through tsx, so there's nothing to rebuild between edit and test.
+// How to start the app under test. SLM_TEST_SERVER_ENTRY points at a bundled server: the docker image sets it
+// to the artifact it ships, so CI drives the very thing that gets deployed, and locally the test scripts build
+// one first, because transpiling the module graph through tsx costs ~3.5s of every boot and there are dozens
+// of those in a run (see scripts/test-server-bundle.mjs). Without it, the tsx path below runs the sources
+// directly, which is what `test:integration:src` / `test:e2e:src` are for.
 function serverCommand(): [string, string[]] {
 	// main-instrumented is the entry production runs: it starts the otel sdk (when OTEL_ENABLED) and then
 	// hands off to main. Spawning it -- rather than main directly -- is what lets a test's telemetry exist
