@@ -167,7 +167,7 @@ const setup: Frame['setup'] = (args) => {
 	} satisfies SettingsEditor)
 
 	// keep the derived fields current; guarded on the source fields so writing them back doesn't loop
-	args.sub.add(
+	args.cleanup.push(
 		args.update$.subscribe(([state, prev]) => {
 			if (
 				state.draft !== prev.draft ||
@@ -184,7 +184,7 @@ const setup: Frame['setup'] = (args) => {
 	)
 
 	if (input.kind === 'global') {
-		args.sub.add(
+		args.cleanup.push(
 			SettingsClient.globalSettings$.subscribe((raw) => {
 				// the server denies the watch when the user lacks global-settings read access (e.g. stale perms after an
 				// rbac change); refetching the logged-in user makes the route re-gate correctly

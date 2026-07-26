@@ -166,7 +166,7 @@ export function initLayerTable(args: Args) {
 	Actions.setSelected({ layerTable: args.key }, input.selected)
 
 	// -------- schedule queries (poor man's useQuery) --------
-	args.sub.add(
+	args.cleanup.push(
 		args.update$
 			.pipe(
 				Rx.Ext.traceTag('QUERY_LAYERS'),
@@ -219,7 +219,7 @@ export function initLayerTable(args: Args) {
 	)
 
 	// -------- updates from query results --------
-	args.sub.add(
+	args.cleanup.push(
 		args.update$.subscribe(([state, prev]) => {
 			;(() => {
 				const table = state.layerTable

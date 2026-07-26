@@ -51,10 +51,11 @@ export function initAppliedFiltersStore(args: Args) {
 	} satisfies AppliedFiltersSlice)
 
 	// filter entities stream in over the websocket after boot, so a frame can be set up before they land (the
-	// explore-layers frame is built in the /_app loader). seeding synchronously would drop every configured pool filter
+	// explore-layers frame is built in the /_app loader). seeding synchronously would drop every configured pool filter.
+	// the signal is what bounds the wait: entities that never arrive would otherwise leave this promise pending for the
+	// life of the page, holding the frame state it captured
 	void (async () => {
-		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		if (args.sub.closed) return
+		await Rx.Ext.firstValueFrom(FilterEntityClient.initializedFilterEntities$(), args.signal)
 		const squadServer = args.get().squadServer
 		set(getInitialFilterStates(args.input.context, squadServer, localScope))
 
@@ -68,9 +69,10 @@ export function initAppliedFiltersStore(args: Args) {
 			layerIds: [args.input.editedLayerId],
 			constraints: membershipConstraints,
 		})
-		if (args.sub.closed) return
+		// the worker request itself has no cancellation protocol, so this discards a result that is already computed
+		if (args.signal.aborted) return
 		set({ poolApplyAs: outOfPool !== null && outOfPool.length === 0 ? 'regular' : 'disabled' })
-	})()
+	})().catch(Prom.rethrowUnlessAborted)
 
 	if (!localScope) {
 		const unsub = ExtraFiltersStore.subscribe((extraFiltersState) => {
@@ -83,7 +85,7 @@ export function initAppliedFiltersStore(args: Args) {
 			}))
 		})
 
-		args.sub.add(Zus.toRxSub(unsub))
+		args.cleanup.push(unsub)
 	}
 }
 

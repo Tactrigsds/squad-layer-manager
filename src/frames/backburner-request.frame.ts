@@ -143,10 +143,11 @@ const setup: Frame['setup'] = (args) => {
 	// run after it to (1) start every chip disabled -- a template should only carry filters the user actively
 	// picked -- and (2) apply the edited template's own filter states, pulling them in as extras when needed.
 	// the pool filter is special: it rides the pool toggle (on by default for new requests) rather than a row
+	// the signal bounds the wait: entities that never arrive would leave this pending for the life of the page
 	void (async () => {
-		await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
+		await Rx.Ext.firstValueFrom(FilterEntityClient.initializedFilterEntities$(), args.signal)
 		await Prom.sleep(0)
-		if (args.sub.closed) return
+		if (args.signal.aborted) return
 		const poolFilter = args.input.squadServer
 			? SquadServerFrame.Sel.settings(Zus.getState(args.input.squadServer)).queue.mainPool.poolFilter
 			: null
@@ -171,7 +172,7 @@ const setup: Frame['setup'] = (args) => {
 				Array.from(new Set([...prev, ...templateFilterIds])),
 			)
 		}
-	})()
+	})().catch(Prom.rethrowUnlessAborted)
 
 	// a query that fails to build (e.g. an applied filter referencing values the layer data no longer maps)
 	// degrades to no count and unfiltered options rather than killing the stream or looping
@@ -204,7 +205,7 @@ const setup: Frame['setup'] = (args) => {
 				Rx.map(([[state], [server]]) => [state, server] as const),
 			)
 		: args.update$.pipe(Rx.map(([state]) => [state, undefined] as const))
-	args.sub.add(
+	args.cleanup.push(
 		stateAndServer$
 			.pipe(
 				Rx.map(([state]) => Sel.queryPlan(state)),

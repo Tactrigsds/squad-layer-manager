@@ -1,3 +1,4 @@
+import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import type * as V from '@/models/vote.models'
@@ -29,7 +30,7 @@ export const [useVoteState, voteState$] = ReactRx.bindWithDefault(
 	null,
 )
 
-export function watchServer(serverId: string, sub: Rx.Subscription) {
-	sub.add(voteStateUpdate$(serverId).subscribe())
-	sub.add(voteState$(serverId).subscribe())
+export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
+	cleanup.push(voteStateUpdate$(serverId).subscribe())
+	cleanup.push(voteState$(serverId).subscribe())
 }

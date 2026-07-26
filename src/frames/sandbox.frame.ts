@@ -50,7 +50,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		chatChannel: 'ChatAll',
 	} satisfies Store)
 
-	args.sub.add(
+	args.cleanup.push(
 		RPC.observe(`sandbox.watchState:${serverId}`, () => RPC.orpc.sandbox.watchState.call({ serverId })).subscribe((res) => {
 			if (res.code === 'ok') args.set({ state: res, unavailable: false })
 			else args.set({ state: null, unavailable: true })

@@ -20,6 +20,14 @@ export function isAbortError(error: unknown): boolean {
 	return error instanceof Error && error.name === 'AbortError'
 }
 
+// for `void (async () => …)().catch(Prom.rethrowUnlessAborted)`: cancellation is the expected end of a
+// fire-and-forget task whose signal aborted, while any other rejection should surface exactly as it would
+// have without the catch
+export function rethrowUnlessAborted(error: unknown): void {
+	if (isAbortError(error)) return
+	throw error
+}
+
 /**
  * Combines signals into one that aborts when any of them do. Skips undefined entries and avoids
  * allocating a composite when zero or one signal is present.

@@ -39,7 +39,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	const { serverId } = args.input
 	args.set({ serverId, events: [], tab: 'unified', hideNoise: true, denied: false } satisfies Store)
 
-	args.sub.add(
+	args.cleanup.push(
 		RPC.observe(`serverConsole.watch:${serverId}`, () => RPC.orpc.serverConsole.watch.call({ serverId })).subscribe((res) => {
 			if (res.code !== 'ok') {
 				args.set({ denied: true })

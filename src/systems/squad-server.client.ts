@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import type * as React from 'react'
 
+import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
@@ -199,10 +200,10 @@ export function setup() {
 }
 
 // keeps serverInfo/serverRolling/layersStatus hot for the given server's lifetime; called from the squadServer frame's setup
-export function watchServer(serverId: string, sub: Rx.Subscription) {
-	sub.add(serverInfoRes$(serverId).pipe(ReactRx.retryHot()).subscribe())
-	sub.add(layersStatus$(serverId).pipe(ReactRx.retryHot()).subscribe())
-	sub.add(serverRolling$(serverId).pipe(ReactRx.retryHot()).subscribe())
-	sub.add(tickRate$(serverId).pipe(ReactRx.retryHot()).subscribe())
-	sub.add(serverInfo$(serverId).pipe(ReactRx.retryHot()).subscribe())
+export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
+	cleanup.push(serverInfoRes$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	cleanup.push(layersStatus$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	cleanup.push(serverRolling$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	cleanup.push(tickRate$(serverId).pipe(ReactRx.retryHot()).subscribe())
+	cleanup.push(serverInfo$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }
