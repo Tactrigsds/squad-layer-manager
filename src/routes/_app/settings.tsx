@@ -657,9 +657,9 @@ function ServerSettingsSection({
 	// without write-sensitive the server redacts connections, so edit/validate against the connections-free schema
 	const schema = SettingsEditorFrame.Sel.schema(state)
 
-	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])
+	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
-	const onFormChange = React.useCallback((v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v), [key])
+	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
 	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const openDialog = useAlertDialog()
@@ -783,9 +783,9 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, draft, issues, newId, newDisplayName } = state
 
-	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])
+	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
-	const onFormChange = React.useCallback((v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v), [key])
+	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
 	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
@@ -883,9 +883,9 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
 	const { mode, changes, issues, valid, saving, draft, saved, denied } = state
 
-	const value$ = React.useMemo(() => SettingsEditorFrame.draftValueState(key), [key])
+	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
-	const onFormChange = React.useCallback((v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v), [key])
+	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
 	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
 	// the card header pins to the top of the scroll column; the form's section headers stack beneath it
 	const cardHeaderRef = React.useRef<HTMLDivElement>(null)

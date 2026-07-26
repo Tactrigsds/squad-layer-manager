@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
-import * as Messages from '@/messages'
+import * as CMD_Msgs from '@/messages/command.messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
@@ -149,7 +149,7 @@ function CommandDetails({
 					{shortcuts.map(({ usage, expansion }) => (
 						<div key={usage} className="flex flex-wrap items-center gap-2">
 							<CopyableCommand cmdString={usage} chatCommand={chatCommand} />
-							<span className="text-xs text-muted-foreground">{Messages.GENERAL.command.aliasDescription(expansion)}</span>
+							<span className="text-xs text-muted-foreground">{CMD_Msgs.GENERAL.aliasDescription(expansion)}</span>
 						</div>
 					))}
 				</div>
@@ -206,7 +206,7 @@ function CommandEntry({
 					</Button>
 				</CollapsibleTrigger>
 			</div>
-			<p className="text-sm text-muted-foreground">{Messages.GENERAL.command.descriptions[cmdId]}</p>
+			<p className="text-sm text-muted-foreground">{CMD_Msgs.GENERAL.descriptions[cmdId]}</p>
 			<CollapsibleContent>
 				<CommandDetails cmdId={cmdId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
 			</CollapsibleContent>
@@ -266,7 +266,7 @@ function detailsAnchorId(entry: Entry): string {
 // `onUnpin` is set for the pinned cards, adding an unpin control at the bottom-left.
 function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
 	const string = entry.label
-	const description = Messages.GENERAL.command.descriptions[entry.cmdId]
+	const description = CMD_Msgs.GENERAL.descriptions[entry.cmdId]
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
@@ -400,7 +400,7 @@ function commandEntry(
 		search: [
 			cmdId,
 			...cmd.triggers.map(CMD.triggerString),
-			Messages.GENERAL.command.descriptions[cmdId],
+			CMD_Msgs.GENERAL.descriptions[cmdId],
 			sectionLabel,
 			...shortcuts.map((s) => s.expansion),
 			shortcuts.length > 0 ? 'alias shortcut' : '',
@@ -516,7 +516,7 @@ export default function CommandsPage() {
 	}, [landOnEntry])
 
 	const sections = React.useMemo(() => (settings ? buildSections(settings, pinnedCommands) : []), [settings, pinnedCommands])
-	const pinnedSet = React.useMemo(() => new Set(pinnedCommands), [pinnedCommands])
+	const pinnedSet = new Set(pinnedCommands)
 
 	// Pinned and Quick Reference render as one block above the menu, never as body sections or table-of-contents rows --
 	// they're a scan of the everyday commands, and the body below is the full menu.

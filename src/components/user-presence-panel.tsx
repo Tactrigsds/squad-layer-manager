@@ -310,10 +310,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	const clientOrdinalByClientId = Zus.useStore(visibleClientsStore, Zus.useDeep(selectVisibleClientOrdinalByClientId))
 
-	const badgeFor = React.useCallback(
-		(entry: { clientId: string }) => clientOrdinalByClientId.get(entry.clientId),
-		[clientOrdinalByClientId],
-	)
+	const badgeFor = (entry: { clientId: string }) => clientOrdinalByClientId.get(entry.clientId)
 	const isMyOtherClient = React.useCallback(
 		(entry: { clientId: string; user: USR.User }) => entry.user.discordId === loggedInUser?.discordId && entry.clientId !== myClientId,
 		[loggedInUser?.discordId, myClientId],

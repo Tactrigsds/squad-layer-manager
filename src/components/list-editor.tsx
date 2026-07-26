@@ -34,7 +34,7 @@ export function ListEditor<Item>(props: {
 	React.useEffect(() => {
 		if (adding) pendingRef.current?.focus()
 	}, [adding])
-	const done = React.useCallback(() => setAdding(false), [])
+	const done = () => setAdding(false)
 
 	return (
 		<div className={cn('space-y-1', props.className)}>

@@ -88,22 +88,19 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 	const isValidFilter = Zus.useStore(props.stores.filterEditor, (s) => s.valid)
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
-	const submitBtn = React.useMemo(
-		() => (
-			<form.Subscribe>
-				{(f) => (
-					<PermissionDeniedTooltip denied={createDenied}>
-						<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
-							Create
-						</Button>
-					</PermissionDeniedTooltip>
-				)}
-			</form.Subscribe>
-		),
-		[form, isValidFilter, createDenied],
+	const submitBtn = (
+		<form.Subscribe>
+			{(f) => (
+				<PermissionDeniedTooltip denied={createDenied}>
+					<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
+						Create
+					</Button>
+				</PermissionDeniedTooltip>
+			)}
+		</form.Subscribe>
 	)
 
-	const filterCard = React.useMemo(() => <FilterCard stores={props.stores}>{submitBtn}</FilterCard>, [props.stores, submitBtn])
+	const filterCard = <FilterCard stores={props.stores}>{submitBtn}</FilterCard>
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
