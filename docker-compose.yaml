@@ -8,6 +8,8 @@ services:
       environment:
          # send OTLP traces and logs to the otel collector, which is a separate image configured below
          - OTLP_COLLECTOR_ENDPOINT=http://otel:4318
+         # paired with mem_limit below
+         - NODE_OPTIONS=--max-old-space-size=1024
          # Continuous CPU + heap profiling pushed to the Pyroscope bundled in the otel image, viewable under
          # Grafana's Pyroscope datasource. Off by default: it costs a few percent of runtime overhead, most of
          # it heap sampling, whose sample tables are native allocations that sit in the main malloc arena for
@@ -30,6 +32,12 @@ services:
 
       # Will automatically restart SLM in the event of a crash.
       restart: unless-stopped
+      # Measured against a live install: V8 heap sits at ~220MB and RSS at ~500MB, with the peaks coming from the
+      # layer engine load rather than anything held steadily. 1g of old space is several times the working set, and
+      # it matters mostly as a ceiling: left alone, V8 sizes its heap from the *host's* memory, so on a large box it
+      # will happily grow to 4GB before it collects hard. The container limit sits above that with room for the
+      # engine's wasm memory, which is external to the heap.
+      mem_limit: 2g
       command: ['pnpm', 'run', 'server:prod']
       # everything that is not a credential
       env_file: .env
