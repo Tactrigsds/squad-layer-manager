@@ -107,6 +107,16 @@ export class World {
 	// stable across matches if their raw team flips with it. Teamswaps queued for the next map
 	// depend on it -- without the swap the app finds them already on the side they asked for.
 	swapTeamsOnRoll = true
+	// A roll travels everyone at once and the server sorts them onto their new teams over the next
+	// few seconds: the first ListPlayers across the boundary reports most of them team-less ("N/A")
+	// and the next one has them placed. Anything held across a roll has to survive that gap, so it is
+	// modelled here rather than assumed away. The first-listed player stays placed, as on a real
+	// server -- a snapshot with nobody on a team at all is purely transitional, and the app waits for
+	// the next poll rather than adopting it as the new match's roster.
+	sortTeamsLateOnRoll = true
+
+	// eos id -> the team the roll is about to place them on, applied on the poll after the boundary
+	#pendingRollSort: Map<string, number> | null = null
 
 	#sinks: WorldSinks
 	#now: () => Date
@@ -289,8 +299,26 @@ export class World {
 			p.isLeader = false
 			if (this.swapTeamsOnRoll && p.teamId !== null) p.teamId = p.teamId === 1 ? 2 : 1
 		}
+		if (this.sortTeamsLateOnRoll) {
+			const pending = new Map<string, number>()
+			for (const p of this.playerList().slice(1)) {
+				if (p.teamId === null) continue
+				pending.set(p.eos, p.teamId)
+				p.teamId = null
+			}
+			this.#pendingRollSort = pending.size > 0 ? pending : null
+		}
 		this.squads = []
 		this.#log(Fmt.logNewGame(this.currentLayer))
+	}
+
+	#applyPendingRollSort() {
+		if (!this.#pendingRollSort) return
+		for (const [eos, teamId] of this.#pendingRollSort) {
+			const p = this.players.get(eos)
+			if (p && p.teamId === null) p.teamId = teamId
+		}
+		this.#pendingRollSort = null
 	}
 
 	#dropFromSquad(p: EmuPlayer) {
@@ -329,8 +357,11 @@ export class World {
 				return Fmt.showCurrentMap(this.currentLayer)
 			case 'ShowNextMap':
 				return Fmt.showNextMap(this.nextLayer)
-			case 'ListPlayers':
-				return Fmt.listPlayers(this.playerList(), this.disconnected)
+			case 'ListPlayers': {
+				const body = Fmt.listPlayers(this.playerList(), this.disconnected)
+				this.#applyPendingRollSort()
+				return body
+			}
 			case 'ListSquads':
 				return Fmt.listSquads(
 					this.teams,
@@ -395,6 +426,9 @@ export class World {
 				const p = this.findPlayer(rest.replace(/^"|"$/g, ''))
 				if (!p) return `Could not find player ${rest}`
 				const playerId = this.playerIdOf(p)
+				// a player the roll has not sorted yet is still travelling: there is no team to move them off,
+				// so the command reports success and changes nothing
+				if (p.teamId === null) return `Forced team change for player ${playerId}. ${p.name}`
 				p.teamId = p.teamId === 1 ? 2 : 1
 				this.#dropFromSquad(p)
 				this.#log(Fmt.logForcedTeamChange(p, playerId))
