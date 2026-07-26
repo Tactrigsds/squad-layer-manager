@@ -80,6 +80,8 @@ Frames should be used instead of raw zustand stores where the state is non-globa
 
 Pass any `Zus.AnyInut` instances via the `stores` prop through components(conventionally they should have a KeyProp or a StoreProp defined to standardize what property they should be put on in `props.stores`), and avoid using react context to pass stores or other data sources.
 
+Only use React.Context when the base case of the context not being set yet is harmless. If you want to violate this rule, ask the user.
+
 In components, prefer modifying or adding selectors over computing intermediate state in the component body with useMemo. `Zus.useStore` is helpful here, as it allows you to merge multiple data sources together for use in a single selector.
 
 Use the established convention of `Sel` namespaces for selectors.

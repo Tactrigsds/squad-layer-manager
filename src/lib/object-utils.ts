@@ -372,6 +372,11 @@ export function internStrings<T>(value: T): T {
 	}
 	const walk = (node: any): any => {
 		if (typeof node === 'string') return canon(node)
+		// Frozen means someone is sharing this deliberately -- the layer availability pool freezes its pooled
+		// entries and the per-layer lists of them (expandLayerFactionAvailability) precisely so that the sharing
+		// cannot be mutated out from under itself. Writing into one throws, and there is nothing here to win:
+		// pooling has already collapsed the duplicates interning would have caught.
+		if (Object.isFrozen(node)) return node
 		if (Array.isArray(node)) {
 			for (let i = 0; i < node.length; i++) node[i] = walk(node[i])
 			return node
