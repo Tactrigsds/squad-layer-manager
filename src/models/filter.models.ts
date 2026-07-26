@@ -1,14 +1,15 @@
 import { z } from 'zod'
 
-// Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
-// (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
-// constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
-// another filter entity.
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards'
+// Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
+// (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
+// constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
+// another filter entity.
+import type * as CS from '@/models/context-shared'
 
 import * as LC from './layer-columns'
 
@@ -990,4 +991,8 @@ export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 	let sparseTree = treeToSparseTree(tree, parentPath)
 	sparseTree = Sparse.deleteNode(sparseTree, targetPath.slice(parentPath.length))
 	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
+}
+
+export type Ctx = CS.Ctx & {
+	filters: Map<string, FilterEntity>
 }
