@@ -233,7 +233,7 @@ async function resolveArgDefs(
 	let teamsState: TeamsState | undefined
 	let currentMatch: MH.MatchDetails | undefined
 	if (defs.some((d) => d.kind === 'player' || d.kind === 'squad')) {
-		const teamsRes = await ctx.server.teams.get(ctx)
+		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
 		teamsState = teamsRes
 		currentMatch = await MatchHistory.getCurrentMatch(ctx)
@@ -497,7 +497,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const header = `Swaps: ${parts.join(', ')}`
 
 		if (swaps.size <= 8) {
-			const teamsStateRes = await h.ctx.server.teams.get(h.ctx)
+			const teamsStateRes = await h.ctx.squadRcon.teams.get(h.ctx)
 			const players = teamsStateRes.code === 'ok' ? teamsStateRes.players : []
 			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, (p) => p.ids, playerId)?.ids.username ?? playerId
 			const lines = [header]

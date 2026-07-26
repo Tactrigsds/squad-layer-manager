@@ -527,7 +527,7 @@ const bulkFetchOnlinePlayers = Instr.spanOp(
 	'bulkFetchOnlinePlayers',
 	{ module },
 	async (ctx: CS.Ctx & C.ServerSlice): Promise<string[] | undefined> => {
-		const teamsRes = await ctx.server.teams.get(ctx)
+		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return
 		const onlinePlayers = teamsRes.players
 

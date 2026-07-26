@@ -124,7 +124,7 @@ export type ServerId = CS.Ctx & {
 	serverId: string
 }
 
-export type SquadRcon = CS.Ctx & { server: SquadRconSys.SquadRcon } & Rcon & ServerId
+export type SquadRcon = CS.Ctx & { squadRcon: SquadRconSys.SquadRcon } & Rcon & ServerId
 
 export type Vote = CS.Ctx & {
 	vote: VoteSys.VoteContext
@@ -142,7 +142,7 @@ export type MatchEventsCache = CS.Ctx & {
 	matchEventsCache: MatchEventsCacheSys.MatchEventsCacheContext
 } & ServerId
 
-export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & ServerId
+export type SquadServer = CS.Ctx & { server: SquadServerSys.SquadServer } & SquadRcon
 
 export type Teamswap = CS.Ctx & {
 	teamswaps: TeamswapSys.TeamswapContext
@@ -158,7 +158,6 @@ export type ServerSliceCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
 }
 export type ServerSlice = CS.Ctx &
-	SquadRcon &
 	SquadServer &
 	Vote &
 	LayerQueue &

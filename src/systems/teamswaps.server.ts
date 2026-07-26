@@ -259,7 +259,7 @@ async function unswappedPlayers(
 	swaps: TSW.TeamswapCollection,
 	ordinal: number,
 ): Promise<SM.PlayerId[] | null> {
-	const teamsRes = await ctx.server.teams.get(ctx, { ttl: 0 })
+	const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 0 })
 	if (teamsRes.code === 'err:rcon') return null
 	const unswapped: SM.PlayerId[] = []
 	for (const [playerId, _swap] of swaps.entries()) {
@@ -455,7 +455,7 @@ const dispatchOp = Instr.spanOp(
 							// swap issued mid-staging), skip a team-less target rather than throwing: we can't faithfully
 							// place a player who has no team yet, and a later poll's PLAYER_CHANGED_TEAM will reconcile them.
 							const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-							const teamsRes = await ctx.server.teams.get(ctx, { ttl: 300 })
+							const teamsRes = await ctx.squadRcon.teams.get(ctx, { ttl: 300 })
 							if (teamsRes.code === 'err:rcon') return teamsRes
 							log.info('players: %o', teamsRes.players)
 							const toSwap: SM.PlayerId[] = []
