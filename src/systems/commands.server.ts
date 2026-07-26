@@ -41,7 +41,7 @@ export function setup() {
 type HandlerResult = { code: string; msg?: string } | undefined
 
 type HandlerCtx = {
-	ctx: C.Db & C.ServerSlice & Partial<C.User> & C.Player
+	ctx: C.Db & C.ServerSlice & Partial<USR.Ctx> & SM.Ctx
 	msg: SM.RconEvents.ChatMessage
 	// the resolved chat sender (steam id guaranteed)
 	sender: SM.Player

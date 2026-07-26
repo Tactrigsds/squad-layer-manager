@@ -1732,7 +1732,7 @@ export function resolveSliceCtx<T extends object>(ctx: T, serverId: string) {
 // Resolving a slice for a request is also where the request is authorized to look at that server at all: every
 // per-server endpoint goes through here, so squad-server:view is enforced once rather than per handler. Action
 // permissions are still checked by the handler on top of this.
-export async function trySliceCtx<T extends C.Db & C.UserId & CS.AbortSignal>(
+export async function trySliceCtx<T extends C.Db & USR.Ctx.Id & CS.AbortSignal>(
 	ctx: T,
 	serverId: string,
 ): Promise<{ code: 'ok'; ctx: ReturnType<typeof withSliceSignal<T>> } | SM.ServerNotLoaded | RBAC.PermissionDeniedResponse> {

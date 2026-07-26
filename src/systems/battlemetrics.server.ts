@@ -10,6 +10,7 @@ import * as BM from '@/models/battlemetrics.models'
 import type * as CS from '@/models/context-shared'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
@@ -805,7 +806,7 @@ function resolveFlagChanges(flags: BM.FlagChange[], orgFlags: BM.PlayerFlag[]): 
 	}))
 }
 
-function actorLabel(ctx: C.User) {
+function actorLabel(ctx: USR.Ctx) {
 	return `${ctx.user.displayName} (Discord ${ctx.user.discordId})`
 }
 
@@ -840,7 +841,7 @@ async function refreshPlayerFlags(ctx: CS.Ctx & CS.AbortSignal, eosId: string, p
 	return updated
 }
 
-async function persistFlagsUpdatedEvent(ctx: C.User & C.Db, e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>) {
+async function persistFlagsUpdatedEvent(ctx: USR.Ctx & C.Db, e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>) {
 	await AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PlayerFlagsUpdated>({

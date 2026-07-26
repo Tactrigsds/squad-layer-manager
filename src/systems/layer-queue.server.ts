@@ -620,7 +620,7 @@ export async function toggleUpdatesToSquadServer({
 	ctx,
 	input,
 }: {
-	ctx: C.Db & C.SquadServer & C.UserOrPlayer & C.LayerQueue & C.Rcon & C.ServerSettings & CS.AbortSignal
+	ctx: C.Db & C.SquadServer & SM.Ctx.UserOrPlayer & C.LayerQueue & C.Rcon & C.ServerSettings & CS.AbortSignal
 	input: { disabled: boolean }
 }) {
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
@@ -636,7 +636,7 @@ export async function toggleUpdatesToSquadServer({
 	return { code: 'ok' as const }
 }
 
-export async function getSlmUpdatesEnabled(ctx: C.Db & C.UserOrPlayer & C.SquadServer & C.LayerQueue) {
+export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & C.SquadServer & C.LayerQueue) {
 	const serverState = await SquadServer.getServerState(ctx)
 	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
 }
@@ -794,7 +794,7 @@ export async function isTemplateSatisfiable(
 
 // writing a note only needs queue:write, which the caller has already established. Rewording or dropping someone
 // else's is what the manage-all grant is for.
-async function tryDenyNoteOp(ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal, op: SLL.Operation) {
+async function tryDenyNoteOp(ctx: C.Db & C.ServerSlice & USR.Ctx.Id & CS.AbortSignal, op: SLL.Operation) {
 	if (op.op !== 'edit-note' && op.op !== 'delete-note') return
 	const note = LL.findNote(ctx.layerQueue.session.state.list, op.itemId, op.noteId)
 	// a note that isn't there is left to the reducer, which no-ops on it
@@ -807,7 +807,7 @@ type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${stri
 // per-op authorization + validation for backburner draft ops arriving over the RPC. Own items need any
 // queue:request-layers grant; touching someone else's item needs queue:write. Adds/updates/combines are
 // probed for satisfiability so an impossible template can't enter the backburner.
-async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal, op: BackburnerDraftOp) {
+async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ServerSlice & USR.Ctx.Id & CS.AbortSignal, op: BackburnerDraftOp) {
 	const state = ctx.layerQueue.session.state
 	const owner: USR.GuiOrChatUserId = { discordId: ctx.user.discordId }
 	const targets: BB.BackburnerItem[] = []
@@ -891,7 +891,7 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ServerSlice & C.UserId & C
 // the GUI add path rejects at the caps rather than evicting (the panel offers an explicit "evict my oldest"
 // confirm); the per-user cap doesn't apply to queue:write holders, who curate the whole backburner anyway
 export async function checkBackburnerCaps(
-	ctx: C.Db & C.ServerSlice & C.UserId & CS.AbortSignal,
+	ctx: C.Db & C.ServerSlice & USR.Ctx.Id & CS.AbortSignal,
 	owner: USR.GuiOrChatUserId,
 	opts?: { list?: BB.BackburnerItem[] },
 ) {
@@ -920,7 +920,7 @@ export type AddRequestResult =
 // `source` carries their steam id plus their linked account when they have one, so ownership checks work from
 // either surface.
 export async function addBackburnerRequestFromChat(
-	ctx: C.Db & C.ServerSlice & CS.AbortSignal & C.PlayerIds,
+	ctx: C.Db & C.ServerSlice & CS.AbortSignal & SM.Ctx.Ids,
 	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.anyLayerRequestGrant(ctx.serverId))

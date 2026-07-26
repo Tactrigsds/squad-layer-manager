@@ -62,6 +62,12 @@ const MOVES: { from: string; to: string; imp: string }[] = [
 	{ from: 'CS.LayerQuery', to: 'LQY.Ctx', imp: "import type * as LQY from '@/models/layer-queries.models'" },
 	{ from: 'CS.Filters', to: 'F.Ctx', imp: "import type * as F from '@/models/filter.models'" },
 	{ from: 'CS.MatchHistory', to: 'MH.Ctx.Recent', imp: "import type * as MH from '@/models/match-history.models'" },
+	{ from: 'C.UserId', to: 'USR.Ctx.Id', imp: "import type * as USR from '@/models/users.models'" },
+	{ from: 'C.UserOrPlayer', to: 'SM.Ctx.UserOrPlayer', imp: "import type * as SM from '@/models/squad.models'" },
+	{ from: 'C.UserRbac', to: 'RBAC.Ctx', imp: "import type * as RBAC from '@/rbac.models'" },
+	{ from: 'C.User', to: 'USR.Ctx', imp: "import type * as USR from '@/models/users.models'" },
+	{ from: 'C.PlayerIds', to: 'SM.Ctx.Ids', imp: "import type * as SM from '@/models/squad.models'" },
+	{ from: 'C.Player', to: 'SM.Ctx', imp: "import type * as SM from '@/models/squad.models'" },
 ]
 
 function moveContexts(src: string, file: string): string {

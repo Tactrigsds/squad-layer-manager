@@ -9,8 +9,10 @@ import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as SetUtils from '@/lib/set-utils'
 import * as Str from '@/lib/string-utils'
 import * as ZodUtils from '@/lib/zod-utils'
+import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 
 export type SteamId = string
@@ -1693,4 +1695,19 @@ export namespace Grants {
 			},
 		])
 	}
+}
+
+export type Ctx = CS.Ctx & {
+	player: Player
+}
+
+export namespace Ctx {
+	// width pun on `player`, same shape as USR.Ctx / USR.Ctx.Id
+	export type Ids<T extends PlayerIds.Fields = 'eos'> = {
+		player: {
+			ids: PlayerIds.IdQuery<T>
+		}
+	}
+
+	export type UserOrPlayer = Partial<USR.Ctx> & Partial<Ctx>
 }
