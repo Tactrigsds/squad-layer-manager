@@ -57,6 +57,19 @@ describe('runCleanup', () => {
 		expect(controller.signal.aborted).toBe(true)
 	})
 
+	// zustand's unsubscribe is `() => listeners.delete(listener)`, so every store subscription registered as a
+	// cleanup task hands back Set.delete's `true`
+	it('ignores a value a thunk happens to return', async () => {
+		const { ctx, errors } = testCtx()
+		const listeners = new Set([() => {}])
+		const [listener] = listeners
+
+		await Cleanup.runCleanup(ctx, [() => listeners.delete(listener), () => 'done', () => 0])
+
+		expect(listeners.size).toBe(0)
+		expect(errors).toEqual([])
+	})
+
 	it('recurses into nested task lists', async () => {
 		const { ctx } = testCtx()
 		const order: string[] = []
