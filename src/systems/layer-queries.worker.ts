@@ -213,7 +213,7 @@ async function fetchLayerArtifact() {
 
 		const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
 
-		const res = await fetch(AR.link('/layers.bin'), { headers })
+		const res = await fetch(AR.link('/layers.bin.gz'), { headers })
 
 		let buffer: ArrayBuffer
 
@@ -222,15 +222,10 @@ async function fetchLayerArtifact() {
 			buffer = await cachedFile.arrayBuffer()
 		} else {
 			postMessage({ type: 'layer-download-started' })
-			const isGzipped = res.headers.get('Content-Type') === 'application/gzip'
-			// Decompress if gzipped
-			if (isGzipped && res.body) {
-				const decompressedStream = res.body.pipeThrough(new DecompressionStream('gzip'))
-				const decompressedResponse = new Response(decompressedStream)
-				buffer = await decompressedResponse.arrayBuffer()
-			} else {
-				buffer = await res.arrayBuffer()
-			}
+			if (!res.body) throw new Error('No body on the layer artifact response')
+			// the endpoint always serves gzip, and inflating it here rather than letting the browser decode a
+			// Content-Encoding is what leaves the decompressed artifact to store in OPFS
+			buffer = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
 
 			// Store in OPFS
 			const writable = await dbHandle.createWritable()
