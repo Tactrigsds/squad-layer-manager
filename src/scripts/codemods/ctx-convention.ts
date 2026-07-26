@@ -95,12 +95,17 @@ function moveContexts(src: string, file: string): string {
 	return src
 }
 
+/** rcon state moved off the punned `server` key onto its own */
+function unpunServer(src: string): string {
+	return src.replace(/\bctx\.server\.(teams|layersStatus|serverInfo|rconEvent\$)\b/g, 'ctx.squadRcon.$1')
+}
+
 async function main() {
 	const files = await sourceFiles()
 	let changed = 0
 	for (const file of files) {
 		const before = await Fsp.readFile(file, 'utf8')
-		const after = moveContexts(instrumentation(before, file), file)
+		const after = unpunServer(moveContexts(instrumentation(before, file), file))
 		if (after !== before) {
 			await Fsp.writeFile(file, after)
 			changed++
