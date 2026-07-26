@@ -28,7 +28,7 @@ const NO_PATHS: never[] = []
 export type Kind = 'global' | 'server' | 'new-server'
 
 // pageId is minted per settings-page mount so every visit gets fresh instances (and a fresh raw-settings fetch);
-// nonce distinguishes successive "Add Server" attempts within one visit
+// nonce distinguishes successive "Add Managed Server" attempts within one visit
 export type Input = { pageId: string } & ({ kind: 'global' } | { kind: 'server'; serverId: string } | { kind: 'new-server'; nonce: string })
 
 export type SettingsEditor = {

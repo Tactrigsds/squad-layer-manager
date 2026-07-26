@@ -67,7 +67,7 @@ function RouteComponent() {
 	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
 	const pageId = useRefConstructor(() => createId(4)).current
-	// non-null while the new-server form is open; a fresh nonce per "Add Server" click yields a clean frame instance
+	// non-null while the new-server form is open; a fresh nonce per "Add Managed Server" click yields a clean frame instance
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
 	// a server section renders for every server the user may at least read; registry management is gated separately
@@ -185,7 +185,7 @@ function RouteComponent() {
 		return () => window.removeEventListener('hashchange', onHash)
 	}, [])
 
-	// when the user clicks "Add Server", scroll the new-server config into view once it mounts (the section renders on
+	// when the user clicks "Add Managed Server", scroll the new-server config into view once it mounts (the section renders on
 	// the next frame). Existing servers scroll via the pencil/Fix buttons in the management card.
 	React.useEffect(() => {
 		if (!creating) return
@@ -652,7 +652,7 @@ function ServerList({
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					Add Server
+					Add Managed Server
 				</Button>
 			)}
 		</div>
