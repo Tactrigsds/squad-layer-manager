@@ -67,7 +67,9 @@ describe('teamswaps', () => {
 
 		// and it survives to the other side of the roll, where it is finally applied. The roll itself
 		// moves every player to the other team index (see World.swapTeamsOnRoll), which is what keeps a
-		// player's *side* stable across matches -- so honouring the swap means moving them back.
+		// player's *side* stable across matches -- so honouring the swap means moving them back. It also
+		// leaves them unsorted for a poll (World.sortTeamsLateOnRoll): the queue has to live through a
+		// roster that lists neither their old team nor their new one.
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 		await app.waitForRosterSync()
