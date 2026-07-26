@@ -806,21 +806,6 @@ async function* processPendingEvent(
 					processedEventIds.add(pendingEvent.id)
 					return
 				}
-				// `layerClassname` is the level the server is actually bringing up, so a poll that disagrees with it is
-				// stale rather than newer -- rcon keeps reporting the outgoing layer for a moment after the transition
-				// log. Taking it anyway is how the layer that just finished gets recorded as the one now starting.
-				if (
-					pendingEvent.layerClassname &&
-					!L.layerMatchesIngameLayerClassname(layersStatus.currentLayer.id, pendingEvent.layerClassname)
-				) {
-					log.warn(
-						'fetchLayersStatus returned %s but the server is loading %s; staying in rolling for the watchdog to recover',
-						layersStatus.currentLayer.id,
-						pendingEvent.layerClassname,
-					)
-					processedEventIds.add(pendingEvent.id)
-					return
-				}
 				log.debug({ layerId: layersStatus.currentLayer.id }, 'found new layer during roll')
 				newLayerId = layersStatus.currentLayer.id
 			}
