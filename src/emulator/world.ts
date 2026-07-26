@@ -279,6 +279,11 @@ export class World {
 		this.#log(...lines)
 	}
 
+	startIngameVote(kind: 'layer' | 'faction', choices: string[]) {
+		const container = kind === 'layer' ? 'Vote_NextLayer' : 'Vote_Faction_0'
+		this.#log(...Fmt.logVoteStarted(container, choices))
+	}
+
 	startNewGame(layer?: Fmt.LayerLike) {
 		if (layer) this.nextLayer = layer
 		const target = this.nextLayer ?? this.currentLayer

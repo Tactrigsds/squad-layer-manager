@@ -191,6 +191,19 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	vote: def({
+		usage: 'vote [layer|faction] [choice ...]',
+		summary: "open one of the Squad server's own votes, as AdminEnableVoting does",
+		input: z.object({
+			kind: z.enum(['layer', 'faction']).prefault('layer'),
+			choices: z.array(z.string()).prefault([]),
+		}),
+		tokens: ([kind, ...choices]) => {
+			if (kind && kind !== 'layer' && kind !== 'faction') throw new Error('usage: vote [layer|faction] [choice ...]')
+			return { kind: (kind as 'layer' | 'faction') ?? 'layer', choices }
+		},
+		mutatesWorld: true,
+	}),
 	rcon: def({
 		usage: 'rcon <command>',
 		summary: 'run a raw rcon command against the world',
