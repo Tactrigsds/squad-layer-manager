@@ -83,7 +83,9 @@ export class AsyncResource<T, Ctx extends CS.Ctx & Partial<CS.AbortSignal> = CS.
 		this.setupRefetches = (_ctx: Ctx) => {
 			const refetch$ = new Rx.Observable<void>(() => {
 				let refetching = true
-				const ctx = CS.storeLinkToActiveSpan(_ctx, 'event.setup')
+				// a refetch is driven by the ttl timer, not by whatever was being handled when the resource
+				// was first observed, and this loop outlives that by an unbounded amount
+				const ctx = CS.withoutOtelLinks(_ctx)
 				void (async () => {
 					while (refetching) {
 						const shouldBreak = await Instr.spanOp(
