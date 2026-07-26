@@ -409,8 +409,8 @@ export namespace Actions {
 	}
 }
 
-// a ValueState (Rx.Observable + getValue) over the section's draft, for SettingsForm's uncontrolled-input data flow
-export function draftValueState(key: Key): Rx.Observable<any> & { getValue: () => any } {
+// the section's draft as a value observable, which is how SettingsForm's fields read the document
+export function draftValueState(key: Key): Zus.ValueObservable<any> {
 	const store = Zus.resolveStore<SettingsEditor>(key)
 	const obs = Zus.toObservable(store).pipe(
 		Rx.map(([s]) => s.draft),
