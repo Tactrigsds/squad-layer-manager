@@ -18,6 +18,13 @@ processors:
 exporters:
    # The otlphttp exporter appends /v1/{metrics,logs,traces}, producing GreptimeDB's
    # documented /v1/otlp/v1/* routes.
+   #
+   # x-greptime-hints is read when GreptimeDB creates the table and never again, which is why retention
+   # is set here rather than by SQL: the tables do not exist until the first export of that signal
+   # arrives. Editing a ttl below therefore only takes on a fresh volume; on a running one, ALTER TABLE.
+   #
+   # Metrics have no hint because no table here is theirs to create: they share the metric engine's
+   # physical table, whose retention comes from the database default that the greptime-init service sets.
    otlphttp/metrics:
       endpoint: http://greptimedb:4000/v1/otlp
       headers:
@@ -28,6 +35,7 @@ exporters:
       headers:
          x-greptime-db-name: public
          x-greptime-log-table-name: otel_logs
+         x-greptime-hints: ttl=14d
 
    otlphttp/traces:
       endpoint: http://greptimedb:4000/v1/otlp
@@ -35,6 +43,7 @@ exporters:
          x-greptime-db-name: public
          # Without this spans are stored unstructured and the Jaeger query API returns nothing.
          x-greptime-pipeline-name: greptime_trace_v1
+         x-greptime-hints: ttl=3d
 
 service:
    pipelines:

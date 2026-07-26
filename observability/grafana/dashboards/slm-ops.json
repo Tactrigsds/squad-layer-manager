@@ -1,7 +1,7 @@
 {
 	"uid": "slm-ops",
 	"title": "SLM / Ops (RED)",
-	"description": "Rate, errors and duration for every C.spanOp in the app, plus Node runtime health and Pyroscope profiles. Backed by the slm.op.duration histogram recorded in spanOp's finally block (src/server/context.ts), so a new spanOp shows up here with no extra wiring. The Profiling section is empty unless PYROSCOPE_ENABLED is set.",
+	"description": "Rate, errors and duration for every C.spanOp in the app, plus Node runtime health. Backed by the slm.op.duration histogram recorded in spanOp's finally block (src/server/instrumentation.ts), so a new spanOp shows up here with no extra wiring.",
 	"tags": ["slm"],
 	"timezone": "browser",
 	"editable": true,
@@ -19,31 +19,6 @@
 				"refresh": 2,
 				"includeAll": true,
 				"multi": true,
-				"current": { "text": "All", "value": "$__all" }
-			},
-			{
-				"name": "profileType",
-				"label": "Profile type",
-				"description": "Read from what Pyroscope has actually received rather than hardcoded: which sample types exist depends on the agent's config (PYROSCOPE_HEAP_ENABLED, wall.collectCpuTime).",
-				"type": "query",
-				"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
-				"query": { "type": "profileType", "refId": "profileType" },
-				"refresh": 2,
-				"includeAll": false,
-				"multi": false,
-				"current": {}
-			},
-			{
-				"name": "instance",
-				"label": "Instance",
-				"description": "Profiles from two instances merge into a shape neither of them had, so pin this before reading a flame graph as one process's behaviour.",
-				"type": "query",
-				"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
-				"query": { "type": "labelValue", "labelName": "service_instance_id", "profileTypeId": "$profileType", "refId": "instance" },
-				"refresh": 2,
-				"includeAll": true,
-				"allValue": ".*",
-				"multi": false,
 				"current": { "text": "All", "value": "$__all" }
 			}
 		]
@@ -120,7 +95,7 @@
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "topk(15, histogram_quantile(0.95, sum by (le, slm_op_name) (rate(slm_op_duration_seconds_bucket[1h]))))",
+					"expr": "histogram_quantile(0.95, sum by (le, slm_op_name) (rate(slm_op_duration_seconds_bucket[1h])))",
 					"format": "table",
 					"instant": true
 				}
@@ -130,7 +105,8 @@
 					"id": "organize",
 					"options": { "excludeByName": { "Time": true }, "renameByName": { "slm_op_name": "Op", "Value": "p95 (s)" } }
 				},
-				{ "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "p95 (s)", "desc": true }] } }
+				{ "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "p95 (s)", "desc": true }] } },
+				{ "id": "limit", "options": { "limitField": 15 } }
 			],
 			"fieldConfig": {
 				"defaults": { "unit": "s" },
@@ -180,26 +156,44 @@
 			}
 		},
 		{
-			"type": "logs",
+			"type": "table",
 			"title": "Op failures",
-			"description": "The log line each failing op emits. spanOp writes exactly one record per op, so this is 1:1 with the error rate above.",
-			"datasource": { "type": "loki", "uid": "loki" },
+			"description": "The log line each failing op emits. spanOp writes exactly one record per op, so this is 1:1 with the error rate above. Click a trace_id to open the trace it came from.",
+			"datasource": { "type": "mysql", "uid": "greptime-sql" },
 			"gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "{service_name=\"squad-layer-manager\"} |= `op : ` | severity_text =~ `WARN|ERROR|FATAL`",
-					"queryType": "range"
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "SELECT timestamp AS \"time\", body AS \"message\", trace_id FROM otel_logs WHERE $__timeFilter(timestamp) AND body LIKE 'op : %' AND severity_number >= 13 ORDER BY timestamp DESC LIMIT 200"
 				}
 			],
-			"options": {
-				"showTime": true,
-				"showLabels": false,
-				"showCommonLabels": false,
-				"wrapLogMessage": true,
-				"enableLogDetails": true,
-				"dedupStrategy": "none",
-				"sortOrder": "Descending"
+			"options": { "showHeader": true },
+			"fieldConfig": {
+				"defaults": { "custom": { "cellOptions": { "type": "auto", "wrapText": true } } },
+				"overrides": [
+					{
+						"matcher": { "id": "byName", "options": "trace_id" },
+						"properties": [
+							{ "id": "custom.width", "value": 150 },
+							{
+								"id": "links",
+								"value": [
+									{
+										"title": "View trace",
+										"url": "",
+										"internal": {
+											"datasourceUid": "tempo",
+											"datasourceName": "Traces",
+											"query": { "query": "${__value.raw}" }
+										}
+									}
+								]
+							}
+						]
+					}
+				]
 			}
 		},
 		{
@@ -262,47 +256,6 @@
 				"defaults": { "min": 0, "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
 				"overrides": []
 			}
-		},
-		{
-			"type": "row",
-			"title": "Profiling",
-			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 }
-		},
-		{
-			"type": "timeseries",
-			"title": "Profile total over time",
-			"description": "The selected profile type summed across the whole process, which is what the flame graph below is a breakdown of. Use it to pick the window worth expanding: a flame graph over a flat period and over a spike look the same until you narrow the range to the spike.",
-			"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
-			"gridPos": { "h": 7, "w": 24, "x": 0, "y": 37 },
-			"targets": [
-				{
-					"refId": "A",
-					"queryType": "metrics",
-					"profileTypeId": "$profileType",
-					"labelSelector": "{service_name=\"squad-layer-manager\", service_instance_id=~\"$instance\"}",
-					"groupBy": []
-				}
-			],
-			"fieldConfig": {
-				"defaults": { "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
-				"overrides": []
-			}
-		},
-		{
-			"type": "flamegraph",
-			"title": "Flame graph",
-			"description": "Where the selected profile type is spent, over the dashboard's time range. CPU/wall answers 'what is running'; the memory types answer 'what is allocating' (alloc_*) and 'what is still held' (inuse_*), the latter being the one to watch climb across a leak. Sampled, so a frame missing here means it was cheap, not that it never ran.",
-			"datasource": { "type": "grafana-pyroscope-datasource", "uid": "pyroscope" },
-			"gridPos": { "h": 16, "w": 24, "x": 0, "y": 44 },
-			"targets": [
-				{
-					"refId": "A",
-					"queryType": "profile",
-					"profileTypeId": "$profileType",
-					"labelSelector": "{service_name=\"squad-layer-manager\", service_instance_id=~\"$instance\"}",
-					"groupBy": []
-				}
-			]
 		}
 	]
 }
