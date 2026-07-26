@@ -14,11 +14,12 @@ import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
+import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import { useDebounced } from '@/hooks/use-debounce'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map-utils'
-import * as Str from '@/lib/string-utils'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -26,7 +27,7 @@ import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
-import * as TeamsPanelModels from '@/models/teams-panel.models'
+import type * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RBAC from '@/rbac.models.ts'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -76,132 +77,37 @@ void import('@/components/squad-details-window')
 void import('@/components/teamswaps-help-window')
 void import('@/components/timeouts-window')
 
-const DEFAULT_TEAM_SORTING: SortingState = [{ id: 'squad', desc: false }]
-const DEFAULT_COMBINED_SORTING: SortingState = [
-	{ id: 'faction', desc: false },
-	{ id: 'squad', desc: false },
-]
-
-// Player search: incremental/substring match on usernames, strict (exact whole-value) match on every
-// other identifier (steam/eos/epic/playerController). Returns the set of matched indices in `players`.
-function matchPlayersBySearch<T extends { ids: SM.PlayerIds.Type }>(players: T[], searchQuery: string): Set<number> {
-	const names = players.map((p) => p.ids.usernameNoTag ?? p.ids.username ?? '')
-	const matched = new Set(Str.simpleStringMatch(names, searchQuery))
-	if (searchQuery.trim()) {
-		for (let i = 0; i < players.length; i++) {
-			if (!matched.has(i) && SM.PlayerIds.matchesStrictSearch(players[i].ids, searchQuery)) matched.add(i)
-		}
-	}
-	return matched
-}
+// filtering both rosters is the expensive part of a keystroke and does not need to keep up with typing
+const SEARCH_DEBOUNCE_MS = 150
 
 export default function TeamsPanel(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
 	const headerRef = React.useRef<HTMLDivElement>(null)
+	const searchRef = React.useRef<HTMLInputElement>(null)
 	const isDesktop = useIsDesktopSize()
-	const currentMatch = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
+	const squadServer = props.stores.squadServer!
+	const panelStores: TeamsPanelPrt.KeyProp = { teamsPanel: squadServer }
+	const currentMatch = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
-	// per-team state below stays keyed by normed team id, so a team keeps its filters and sorting when the
-	// displayed order flips
+	// the panel's state is keyed by normed team id, so a team keeps its filters and sorting when the displayed
+	// order flips
 	const [leftTeam, rightTeam] = MH.getDisplayedTeamOrder(currentMatch?.ordinal ?? 0, displayTeamsNormalized)
 	const showSwapsPanel = Zus.useStore(
-		props.stores.squadServer!,
+		squadServer,
 		UPClient.Store,
 		(tswStore, upStore) => TSWClient.Sel.hasSwaps(tswStore) || upStore.teamswapEditors.size > 0,
 	)
-	const [searchQuery, setSearchQuery] = React.useState('')
-	const [showSelected, setShowSelected] = React.useState(false)
-	const selectedCount = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.selectedPlayerCount)
+	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
+	const { showSelected, adminsOnly, hideSpoilers, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const showSelectedId = React.useId()
-	React.useEffect(() => {
-		if (selectedCount === 0 && showSelected) setShowSelected(false)
-	}, [selectedCount, showSelected])
-	const [adminsOnly, setAdminsOnly] = React.useState(false)
 	const adminsOnlyId = React.useId()
-	const [hideSpoilers, setHideSpoilers] = React.useState(true)
 	const hideSpoilersId = React.useId()
-	const secondaryFilterState = Zus.useStore(props.stores.squadServer!, ChatPrt.Sel.secondaryFilterState)
-	React.useEffect(() => {
-		if (secondaryFilterState === 'ADMIN') setAdminsOnly(true)
-	}, [secondaryFilterState])
-	const [roleFilter, setRoleFilter] = React.useState<string | null>(null)
-	const [groupFilter, setGroupFilter] = React.useState<string | null>(null)
-	const [squadFilterA, setSquadFilterA] = React.useState<string | null>(null)
-	const [squadFilterB, setSquadFilterB] = React.useState<string | null>(null)
-	const [squadFilterCombined, setSquadFilterCombined] = React.useState<string | null>(null)
-	// shared so sorting either team's table applies to both -- only squad filtering stays per-team
-	const [sortingTeams, setSortingTeams] = React.useState<SortingState>(DEFAULT_TEAM_SORTING)
-	const [sortingCombined, setSortingCombined] = React.useState<SortingState>(DEFAULT_COMBINED_SORTING)
-	const allPlayersA = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		TeamsPanelModels.Sel.playersForTeam('A'),
+	// read once: the input is uncontrolled, so the store only seeds it
+	const initialSearchQuery = React.useRef(Zus.getState(squadServer, TeamsPanelPrt.Sel.searchQuery)).current
+	const onSearchChange = React.useCallback(
+		(searchQuery: string) => TeamsPanelPrt.Actions.setSearchQuery({ teamsPanel: squadServer }, searchQuery),
+		[squadServer],
 	)
-	const allPlayersB = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		TeamsPanelModels.Sel.playersForTeam('B'),
-	)
-	// filter options are drawn from both teams so the shared role/group filters offer every value
-	const availableRoles = React.useMemo(
-		() => [...new Set([...allPlayersA, ...allPlayersB].map((p) => p.role).filter((r): r is string => r != null))].sort(),
-		[allPlayersA, allPlayersB],
-	)
-	const availableGroups = React.useMemo(
-		() => [...new Set([...allPlayersA, ...allPlayersB].map((p) => p.group).filter((g): g is string => g != null))].sort(),
-		[allPlayersA, allPlayersB],
-	)
-	const resetAll = () => {
-		SquadServerFrame.Actions.setSelection(props.stores, {})
-		setSearchQuery('')
-		setAdminsOnly(false)
-		setRoleFilter(null)
-		setGroupFilter(null)
-		setSquadFilterA(null)
-		setSquadFilterB(null)
-		setSquadFilterCombined(null)
-		setSortingTeams(DEFAULT_TEAM_SORTING)
-		setSortingCombined(DEFAULT_COMBINED_SORTING)
-	}
-	const teamPanes: Record<MH.NormedTeamId, { filters: PlayerFilters; sorting: SortingState; setSorting: SetSorting }> = {
-		A: {
-			filters: {
-				role: roleFilter,
-				setRole: setRoleFilter,
-				group: groupFilter,
-				setGroup: setGroupFilter,
-				squad: squadFilterA,
-				setSquad: setSquadFilterA,
-			},
-			sorting: sortingTeams,
-			setSorting: setSortingTeams,
-		},
-		B: {
-			filters: {
-				role: roleFilter,
-				setRole: setRoleFilter,
-				group: groupFilter,
-				setGroup: setGroupFilter,
-				squad: squadFilterB,
-				setSquad: setSquadFilterB,
-			},
-			sorting: sortingTeams,
-			setSorting: setSortingTeams,
-		},
-	}
-	const filtersC: PlayerFilters = {
-		role: roleFilter,
-		setRole: setRoleFilter,
-		group: groupFilter,
-		setGroup: setGroupFilter,
-		squad: squadFilterCombined,
-		setSquad: setSquadFilterCombined,
-	}
+	const setSearchQuery = useDebounced({ delay: SEARCH_DEBOUNCE_MS, onChange: onSearchChange })
 	return (
 		<div className={cn('flex w-full p-1 flex-col', props.className)}>
 			<div ref={headerRef} className="flex w-full p-1 flex-col bg-background">
@@ -225,16 +131,14 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				)}
 				<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 					<Input
+						ref={searchRef}
 						placeholder="Search Players..."
-						value={searchQuery}
+						defaultValue={initialSearchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
+						// additive, like every other selection action -- merge matches into the current selection. Reads the
+						// live input rather than the store, which the debounce may not have caught up to yet.
 						onKeyDown={(e) => {
-							if (e.key !== 'Enter' || !searchQuery.trim()) return
-							const { players } = ChatPrt.Sel.chatState(Zus.getState(props.stores.squadServer!))
-							const matched = matchPlayersBySearch(players, searchQuery)
-							const matchedIds = players.filter((_, i) => matched.has(i)).map((p) => SM.PlayerIds.getPlayerId(p.ids))
-							// additive, like every other selection action -- merge matches into the current selection
-							SquadServerFrame.Actions.selectPlayers(props.stores, matchedIds)
+							if (e.key === 'Enter') SquadServerFrame.Actions.selectSearchMatches(props.stores, e.currentTarget.value)
 						}}
 					/>
 					<div className="flex items-center gap-2 justify-center">
@@ -243,7 +147,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								id={showSelectedId}
 								checked={showSelected}
 								disabled={selectedCount === 0}
-								onCheckedChange={() => setShowSelected((v) => !v)}
+								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSelected(panelStores, checked)}
 							/>
 							<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">
 								Show Selected
@@ -259,21 +163,18 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							<Switch
 								id={adminsOnlyId}
 								checked={adminsOnly}
-								onCheckedChange={(checked) => {
-									setAdminsOnly(checked)
-									if (checked) {
-										ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'ADMIN')
-									} else if (secondaryFilterState === 'ADMIN') {
-										ChatPrt.Actions.setSecondaryFilterState({ chat: props.stores.squadServer! }, 'DEFAULT')
-									}
-								}}
+								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setAdminsOnly(panelStores, checked)}
 							/>
 							<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">
 								Admins Only
 							</Label>
 						</div>
 						<div className="flex items-center gap-2">
-							<Switch id={hideSpoilersId} checked={hideSpoilers} onCheckedChange={setHideSpoilers} />
+							<Switch
+								id={hideSpoilersId}
+								checked={hideSpoilers}
+								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setHideSpoilers(panelStores, checked)}
+							/>
 							<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">
 								Hide Spoilers
 							</Label>
@@ -285,7 +186,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 									type="button"
 									className="hover:text-destructive"
 									title="Clear role filter"
-									onClick={() => setRoleFilter(null)}
+									onClick={() => TeamsPanelPrt.Actions.setRoleFilter(panelStores, null)}
 								>
 									<Icons.X className="h-3 w-3" />
 								</button>
@@ -296,7 +197,10 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							size="icon"
 							className="h-7 w-7"
 							title="Reset selections, filters, sorting and search"
-							onClick={resetAll}
+							onClick={() => {
+								SquadServerFrame.Actions.resetTeamsPanel(props.stores)
+								if (searchRef.current) searchRef.current.value = ''
+							}}
 						>
 							<Icons.Trash className="h-4 w-4" />
 						</Button>
@@ -309,36 +213,11 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 					<div className="grid w-full grid-cols-[1fr_1fr] divide-x divide-border">
 						{([leftTeam, rightTeam] as const).map((teamId, i) => (
 							// keyed by team so a table's own state (stats metric, popovers) follows its team across a flip
-							<TeamPlayerTable
-								key={teamId}
-								teamId={teamId}
-								searchQuery={searchQuery}
-								filters={teamPanes[teamId].filters}
-								showSelected={showSelected}
-								adminsOnly={adminsOnly}
-								sorting={teamPanes[teamId].sorting}
-								setSorting={teamPanes[teamId].setSorting}
-								availableRoles={availableRoles}
-								availableGroups={availableGroups}
-								hideSpoilers={hideSpoilers}
-								className={i === 1 ? 'pl-1' : undefined}
-								stores={props.stores}
-							/>
+							<TeamPlayerTable key={teamId} teamId={teamId} className={i === 1 ? 'pl-1' : undefined} stores={props.stores} />
 						))}
 					</div>
 				) : (
-					<CombinedPlayerTable
-						searchQuery={searchQuery}
-						filters={filtersC}
-						showSelected={showSelected}
-						adminsOnly={adminsOnly}
-						sorting={sortingCombined}
-						setSorting={setSortingCombined}
-						availableRoles={availableRoles}
-						availableGroups={availableGroups}
-						hideSpoilers={hideSpoilers}
-						stores={props.stores}
-					/>
+					<CombinedPlayerTable stores={props.stores} />
 				)}
 			</StickyGroup>
 		</div>
@@ -495,22 +374,13 @@ function shiftClickCellProps(
 	return {}
 }
 
-type PlayerFilters = {
-	role: string | null
-	setRole: (v: string | null) => void
-	group: string | null
-	setGroup: (v: string | null) => void
-	squad: string | null
-	setSquad: (v: string | null) => void
-}
-
-type SetSorting = React.Dispatch<React.SetStateAction<SortingState>>
-
 // shared across both table variants; each variant extends it with its squad-lookup shape
 type BasePlayerTableMeta = {
 	matchId: number
 	groupColorByName: Map<string, string>
-	filters: PlayerFilters
+	filters: { role: string | null; group: string | null; squad: string | null }
+	// which of the panel's per-table squad filters this table's header writes
+	squadFilterTarget: TeamsPanelPrt.SquadFilterTarget
 	availableRoles: string[]
 	availableGroups: string[]
 	stores: SquadServerFrame.KeyProp
@@ -519,19 +389,20 @@ type BasePlayerTableMeta = {
 	statsMayBeInaccurate: boolean
 }
 
+// the column headers dispatch straight to the panel partial rather than being handed setters through meta
+function panelStoresOf(meta: BasePlayerTableMeta): TeamsPanelPrt.KeyProp {
+	return { teamsPanel: meta.stores.squadServer! }
+}
+
 type TeamPlayerTableMeta = BasePlayerTableMeta & {
 	teamId: SM.TeamId
 	squads: SM.UniqueSquad[]
 }
 
-// displayIndex is the team's left-to-right position, so the faction column sorts into the same order the
-// teams are laid out in (see MH.getDisplayedTeamOrder)
-type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId; displayIndex: number }
-
-type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
+type CombinedPlayer = TeamsPanelPrt.CombinedPlayer
 
 type CombinedTableMeta = BasePlayerTableMeta & {
-	squadsWithTeam: SquadWithTeam[]
+	squadsWithTeam: TeamsPanelPrt.SquadWithTeam[]
 	getFaction: (normedTeam: MH.NormedTeamId) => string
 	getTeamColor: (normedTeam: MH.NormedTeamId) => string
 }
@@ -552,7 +423,7 @@ const FILTERED_COLUMN_IDS = ['role', 'group', 'squad']
 // middle-click on a header resets that column's sort and filter
 function headerResetProps(
 	column: { id: string; getCanSort: () => boolean; clearSorting: () => void },
-	filters: PlayerFilters,
+	meta: BasePlayerTableMeta,
 ): Pick<React.ThHTMLAttributes<HTMLTableCellElement>, 'title' | 'onMouseDown' | 'onAuxClick'> {
 	const hasFilter = FILTERED_COLUMN_IDS.includes(column.id)
 	if (!column.getCanSort() && !hasFilter) return {}
@@ -569,16 +440,13 @@ function headerResetProps(
 		onAuxClick: (e) => {
 			if (e.button !== 1) return
 			column.clearSorting()
-			if (column.id === 'role') filters.setRole(null)
-			if (column.id === 'group') filters.setGroup(null)
-			if (column.id === 'squad') filters.setSquad(null)
+			TeamsPanelPrt.Actions.clearColumnFilter(panelStoresOf(meta), meta.squadFilterTarget, column.id)
 		},
 	}
 }
 
-const FILTER_ALL = '__all__'
-// sentinel filter value matching players with no group ("Other") or no squad ("Unassigned")
-const FILTER_NONE = '__none__'
+const FILTER_ALL = TeamsPanelPrt.FILTER_ALL
+const FILTER_NONE = TeamsPanelPrt.FILTER_NONE
 
 function ColumnFilterSelect({
 	value,
@@ -829,13 +697,14 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 	return helper.accessor((row) => row.group ?? '', {
 		id: 'group',
 		header: ({ table }) => {
-			const { filters, availableGroups } = table.options.meta as BasePlayerTableMeta
+			const meta = table.options.meta as BasePlayerTableMeta
+			const { filters, availableGroups } = meta
 			return (
 				<span className="flex flex-col items-start max-w-24">
 					Group
 					<ColumnFilterSelect
 						value={filters.group}
-						onChange={filters.setGroup}
+						onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStoresOf(meta), v)}
 						options={[...availableGroups.map((g) => ({ value: g, label: g })), { value: FILTER_NONE, label: PG.UNGROUPED_LABEL }]}
 						triggerClassName="max-w-24"
 					/>
@@ -863,13 +732,14 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 	return helper.accessor((row) => row.role ?? '', {
 		id: 'role',
 		header: ({ table }) => {
-			const { filters, availableRoles } = table.options.meta as BasePlayerTableMeta
+			const meta = table.options.meta as BasePlayerTableMeta
+			const { filters, availableRoles } = meta
 			return (
 				<span className="flex flex-col items-start">
 					Role
 					<ColumnFilterSelect
 						value={filters.role}
-						onChange={filters.setRole}
+						onChange={(v) => TeamsPanelPrt.Actions.setRoleFilter(panelStoresOf(meta), v)}
 						options={availableRoles.map((r) => ({ value: r, label: r }))}
 					/>
 				</span>
@@ -1023,7 +893,11 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 			return (
 				<span className="flex flex-col items-start">
 					Squad
-					<ColumnFilterSelect value={meta.filters.squad} onChange={meta.filters.setSquad} options={opts.filterOptions(meta)} />
+					<ColumnFilterSelect
+						value={meta.filters.squad}
+						onChange={(v) => TeamsPanelPrt.Actions.setSquadFilter(panelStoresOf(meta), meta.squadFilterTarget, v)}
+						options={opts.filterOptions(meta)}
+					/>
 				</span>
 			)
 		},
@@ -1155,12 +1029,6 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 	tksColumn(combinedColumnHelper),
 ]
 
-const matchesTeamSquadFilter = (player: TeamsPanelModels.EnrichedPlayer, squadFilter: string) =>
-	squadFilter === FILTER_NONE ? player.squadId === null : player.squadId === Number(squadFilter)
-
-const matchesCombinedSquadFilter = (player: CombinedPlayer, squadFilter: string) =>
-	squadFilter === FILTER_NONE ? player.squadId === null : squadFilter === `${player.normedTeam}:${player.squadId}`
-
 function useGroupColorByName(): Map<string, string> {
 	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
@@ -1176,38 +1044,6 @@ function useGroupColorByName(): Map<string, string> {
 		}
 		return result
 	}, [playerGroupings, activeGroupingId, orgFlags])
-}
-
-// Applies search + role/group/squad/admin filters, then the "show selected" toggle. squad matching
-// differs between variants, so the predicate is passed in (must be a stable module-level reference).
-function useDisplayedPlayers<T extends TeamsPanelModels.EnrichedPlayer>(
-	players: T[],
-	filters: PlayerFilters,
-	searchQuery: string,
-	adminsOnly: boolean,
-	showSelected: boolean,
-	rowSelection: Record<string, boolean>,
-	matchesSquadFilter: (player: T, squadFilter: string) => boolean,
-): T[] {
-	const filteredPlayers = React.useMemo(() => {
-		let result = players
-		if (searchQuery.trim()) {
-			const matched = matchPlayersBySearch(players, searchQuery)
-			result = players.filter((_, i) => matched.has(i))
-		}
-		if (filters.role !== null) result = result.filter((p) => p.role === filters.role)
-		if (filters.group !== null) {
-			result = result.filter((p) => (filters.group === FILTER_NONE ? p.group == null : p.group === filters.group))
-		}
-		if (filters.squad !== null) result = result.filter((p) => matchesSquadFilter(p, filters.squad!))
-		if (adminsOnly) result = result.filter((p) => p.isAdmin)
-		return result
-	}, [players, searchQuery, filters, adminsOnly, matchesSquadFilter])
-
-	return React.useMemo(() => {
-		if (!showSelected) return filteredPlayers
-		return filteredPlayers.filter((p) => rowSelection[SM.PlayerIds.getPlayerId(p.ids)])
-	}, [filteredPlayers, showSelected, rowSelection])
 }
 
 // Separator row rendered above each squad's players when the table is sorted by squad. Shows the squad
@@ -1299,30 +1135,30 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	data: T[]
 	baseColumns: ColumnDef<T, any>[]
 	meta: Omit<BasePlayerTableMeta, 'statsSort'>
-	sorting: SortingState
-	setSorting: React.Dispatch<React.SetStateAction<SortingState>>
-	hideSpoilers: boolean
+	// which of the panel's two sort states this table drives; squad-separator rows are gated on it too, because
+	// they are only coherent while the sort keeps same-squad rows contiguous
+	sortingTarget: TeamsPanelPrt.SortingTarget
+	label: string
 	stores: SquadServerFrame.KeyProp
-	// when provided and enableSquadGroups is set, players are grouped under squad-separator headers.
-	// enableSquadGroups is variant-specific: it must only be true when the sort keeps same-squad rows
-	// contiguous (squad-primary for per-team, faction-then-squad for the combined table).
+	// when provided, and when the sort permits it, players are grouped under squad-separator headers
 	getSquadGroup?: (player: T) => SquadGroupInfo | null
-	enableSquadGroups?: boolean
 	className?: string
 }) {
 	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const savedSwaps = Zus.useStore(props.stores.squadServer!, (s) => TSWClient.Sel.localState(s).savedSwaps)
+	const sorting = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.sorting(props.sortingTarget))
+	const hideSpoilers = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.hideSpoilers)
+	const squadGroupsEnabled = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadGroupsEnabled(props.sortingTarget))
 	const stores = props.stores
 	const setRowSelection: OnChangeFn<RowSelectionState> = React.useCallback(
 		(updater) => SquadServerFrame.Actions.setSelection(stores, updater),
 		[stores],
 	)
 	const mouseDownRef = React.useRef<{ index: number; originalSelected: boolean } | null>(null)
-	const { sorting, setSorting } = props
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(() => [...props.baseColumns, statsColumn<T>(statsMetric)], [props.baseColumns, statsMetric])
-	const columnVisibility = React.useMemo(() => ({ role: !props.hideSpoilers, stats: !props.hideSpoilers }), [props.hideSpoilers])
+	const columnVisibility = React.useMemo(() => ({ role: !hideSpoilers, stats: !hideSpoilers }), [hideSpoilers])
 
 	const table = useReactTable<T>({
 		data: props.data,
@@ -1332,7 +1168,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 		getRowId: (row) => SM.PlayerIds.getPlayerId(row.ids),
 		state: { rowSelection, sorting, columnVisibility },
 		onRowSelectionChange: setRowSelection,
-		onSortingChange: setSorting,
+		onSortingChange: TeamsPanelPrt.Actions.onSortingChange({ teamsPanel: props.stores.squadServer! }, props.sortingTarget),
 		meta: {
 			...props.meta,
 			statsSort: {
@@ -1422,7 +1258,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	// SquadGroupHeaderRow before each such run. `visibleIndex` passed to renderPlayerRow stays the row's
 	// index within `rows` so drag-select ranges remain correct across the injected header rows.
 	const bodyRows: React.ReactNode[] = []
-	const groupHeadersEnabled = !!props.getSquadGroup && !!props.enableSquadGroups
+	const groupHeadersEnabled = !!props.getSquadGroup && squadGroupsEnabled
 	if (groupHeadersEnabled) {
 		const colSpan = table.getVisibleLeafColumns().length
 		let i = 0
@@ -1453,7 +1289,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 
 	return (
 		<StickyGroup stickyRef={headersRef}>
-			<Table className={cn(props.className)}>
+			<Table aria-label={props.label} className={cn(props.className)}>
 				<TableHeader ref={headersRef} className="bg-background">
 					{table.getHeaderGroups().map((headerGroup) => (
 						<TableRow key={headerGroup.id}>
@@ -1468,7 +1304,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 												: undefined
 										}
 										className={cn('align-top pt-1.5', header.column.getCanSort() && 'cursor-pointer select-none')}
-										{...headerResetProps(header.column, props.meta.filters)}
+										{...headerResetProps(header.column, table.options.meta as BasePlayerTableMeta)}
 									>
 										{header.isPlaceholder ? null : (
 											<span className="inline-flex items-start gap-0.5">
@@ -1488,68 +1324,49 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	)
 }
 
-function TeamPlayerTable(props: {
-	teamId: MH.NormedTeamId
-	searchQuery: string
-	filters: PlayerFilters
-	showSelected: boolean
-	adminsOnly: boolean
-	sorting: SortingState
-	setSorting: React.Dispatch<React.SetStateAction<SortingState>>
-	availableRoles: string[]
-	availableGroups: string[]
-	hideSpoilers: boolean
-	className?: string
-	stores: SquadServerFrame.KeyProp
-}) {
-	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
-	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
+function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; stores: SquadServerFrame.KeyProp }) {
+	const squadServer = props.stores.squadServer!
+	const currentMatch$ = MatchHistoryClient.currentMatch$(squadServer.serverId)
+	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const matchId = match?.historyEntryId ?? 0
 	const groupColorByName = useGroupColorByName()
 
-	const players = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+	const displayedPlayers = Zus.useStore(
+		squadServer,
+		currentMatch$,
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		TeamsPanelModels.Sel.playersForTeam(props.teamId),
+		TeamsPanelPrt.Sel.displayedTeamPlayers(props.teamId),
 	)
-	const squads = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.squadsForTeam(props.teamId),
+	const creatorNames = Zus.useStore(
+		squadServer,
+		currentMatch$,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelPrt.Sel.playerNamesById,
 	)
-	const statsMayBeInaccurate = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.statsMayBeInaccurate,
+	const { roles, groups } = Zus.useStore(
+		squadServer,
+		currentMatch$,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelPrt.Sel.filterOptions,
 	)
+	const squads = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.squadsForTeam(props.teamId))
+	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
+	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters(props.teamId))
 
-	const displayedPlayers = useDisplayedPlayers(
-		players,
-		props.filters,
-		props.searchQuery,
-		props.adminsOnly,
-		props.showSelected,
-		rowSelection,
-		matchesTeamSquadFilter,
-	)
-
-	// resolve squad creator eos ids to display names for the group-header rows
-	const creatorNameByEosId = React.useMemo(() => {
-		const m = new Map<string, string>()
-		for (const p of players) m.set(SM.PlayerIds.getPlayerId(p.ids), p.ids.usernameNoTag ?? p.ids.username ?? '')
-		return m
-	}, [players])
 	const getSquadGroup = React.useCallback(
 		(player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
 			if (player.squadId === null) return { key: 'unassigned', squad: null, creatorName: null, faction: null }
 			const squad = squads.find((s) => s.squadId === player.squadId)
 			if (!squad) return null
-			return { key: String(squad.squadId), squad, creatorName: creatorNameByEosId.get(squad.creator) || null, faction: null }
+			return { key: String(squad.squadId), squad, creatorName: creatorNames.get(squad.creator) || null, faction: null }
 		},
-		[squads, creatorNameByEosId],
+		[squads, creatorNames],
 	)
 
 	const meta = {
@@ -1557,9 +1374,10 @@ function TeamPlayerTable(props: {
 		teamId: MH.getDenormedTeamId(props.teamId, match?.ordinal ?? 0),
 		squads,
 		groupColorByName,
-		filters: props.filters,
-		availableRoles: props.availableRoles,
-		availableGroups: props.availableGroups,
+		filters,
+		squadFilterTarget: props.teamId,
+		availableRoles: roles,
+		availableGroups: groups,
 		stores: props.stores,
 		statsMayBeInaccurate,
 	} satisfies Omit<TeamPlayerTableMeta, 'statsSort'>
@@ -1569,74 +1387,60 @@ function TeamPlayerTable(props: {
 			data={displayedPlayers}
 			baseColumns={teamPlayerColumns}
 			meta={meta}
-			sorting={props.sorting}
-			setSorting={props.setSorting}
-			hideSpoilers={props.hideSpoilers}
+			sortingTarget="teams"
+			label={`Team ${props.teamId} players`}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
-			enableSquadGroups={props.sorting[0]?.id === 'squad'}
 			className={props.className}
 		/>
 	)
 }
 
-function CombinedPlayerTable(props: {
-	searchQuery: string
-	filters: PlayerFilters
-	showSelected: boolean
-	adminsOnly: boolean
-	sorting: SortingState
-	setSorting: React.Dispatch<React.SetStateAction<SortingState>>
-	availableRoles: string[]
-	availableGroups: string[]
-	hideSpoilers: boolean
-	className?: string
-	stores: SquadServerFrame.KeyProp
-}) {
-	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
-	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
+function CombinedPlayerTable(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
+	const squadServer = props.stores.squadServer!
+	const currentMatch$ = MatchHistoryClient.currentMatch$(squadServer.serverId)
+	const match = MatchHistoryClient.useCurrentMatch(squadServer.serverId)
 	const matchId = match?.historyEntryId ?? 0
 	const groupColorByName = useGroupColorByName()
 
-	const playersA = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+	const displayedPlayers = Zus.useStore(
+		squadServer,
+		currentMatch$,
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		TeamsPanelModels.Sel.playersForTeam('A'),
+		ClientOnlySettings.Store,
+		TeamsPanelPrt.Sel.displayedCombinedPlayers,
 	)
-	const playersB = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+	const squadsWithTeam = Zus.useStore(
+		squadServer,
+		currentMatch$,
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		TeamsPanelModels.Sel.playersForTeam('B'),
+		ClientOnlySettings.Store,
+		TeamsPanelPrt.Sel.squadsWithTeam,
 	)
-	const squadsA = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.squadsForTeam('A'),
+	const creatorNames = Zus.useStore(
+		squadServer,
+		currentMatch$,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelPrt.Sel.playerNamesById,
 	)
-	const squadsB = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.squadsForTeam('B'),
+	const { roles, groups } = Zus.useStore(
+		squadServer,
+		currentMatch$,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		TeamsPanelPrt.Sel.filterOptions,
 	)
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	const ordinal = match?.ordinal ?? 0
-	const teamOrder = MH.getDisplayedTeamOrder(ordinal, displayTeamsNormalized)
-	const [leftTeam, rightTeam] = teamOrder
-	const squadsWithTeam = React.useMemo<SquadWithTeam[]>(
-		() => [leftTeam, rightTeam].flatMap((normedTeam) => (normedTeam === 'A' ? squadsA : squadsB).map((squad) => ({ squad, normedTeam }))),
-		[squadsA, squadsB, leftTeam, rightTeam],
-	)
-	const statsMayBeInaccurate = Zus.useStore(
-		props.stores.squadServer!,
-		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
-		ChatPrt.Sel.statsMayBeInaccurate,
-	)
+	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
+	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 
 	const layer = React.useMemo(() => {
 		if (!match?.layerId) return null
@@ -1661,31 +1465,6 @@ function CombinedPlayerTable(props: {
 		[ordinal, displayTeamsNormalized],
 	)
 
-	const players = React.useMemo<CombinedPlayer[]>(
-		() =>
-			[leftTeam, rightTeam].flatMap((normedTeam, displayIndex) =>
-				(normedTeam === 'A' ? playersA : playersB).map((p) => ({ ...p, normedTeam, displayIndex })),
-			),
-		[playersA, playersB, leftTeam, rightTeam],
-	)
-
-	const displayedPlayers = useDisplayedPlayers(
-		players,
-		props.filters,
-		props.searchQuery,
-		props.adminsOnly,
-		props.showSelected,
-		rowSelection,
-		matchesCombinedSquadFilter,
-	)
-
-	// resolve squad creator eos ids to display names for the group-header rows
-	const creatorNameByEosId = React.useMemo(() => {
-		const m = new Map<string, string>()
-		for (const p of players) m.set(SM.PlayerIds.getPlayerId(p.ids), p.ids.usernameNoTag ?? p.ids.username ?? '')
-		return m
-	}, [players])
-
 	const getSquadGroup = React.useCallback(
 		(player: CombinedPlayer): SquadGroupInfo | null => {
 			const faction = { label: getFaction(player.normedTeam), color: getTeamColor(player.normedTeam) }
@@ -1697,20 +1476,21 @@ function CombinedPlayerTable(props: {
 			return {
 				key: `${player.normedTeam}:${squad.squadId}`,
 				squad,
-				creatorName: creatorNameByEosId.get(squad.creator) || null,
+				creatorName: creatorNames.get(squad.creator) || null,
 				faction,
 			}
 		},
-		[squadsWithTeam, getFaction, getTeamColor, creatorNameByEosId],
+		[squadsWithTeam, getFaction, getTeamColor, creatorNames],
 	)
 
 	const meta = {
 		matchId,
 		squadsWithTeam,
 		groupColorByName,
-		filters: props.filters,
-		availableRoles: props.availableRoles,
-		availableGroups: props.availableGroups,
+		filters,
+		squadFilterTarget: 'combined',
+		availableRoles: roles,
+		availableGroups: groups,
 		getFaction,
 		getTeamColor,
 		stores: props.stores,
@@ -1722,12 +1502,10 @@ function CombinedPlayerTable(props: {
 			data={displayedPlayers}
 			baseColumns={combinedPlayerColumns}
 			meta={meta}
-			sorting={props.sorting}
-			setSorting={props.setSorting}
-			hideSpoilers={props.hideSpoilers}
+			sortingTarget="combined"
+			label="All players"
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
-			enableSquadGroups={props.sorting[0]?.id === 'faction' && props.sorting[1]?.id === 'squad'}
 			className={props.className}
 		/>
 	)
