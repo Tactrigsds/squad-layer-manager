@@ -331,7 +331,7 @@ export default class Rcon extends EventEmitter<Events> {
 			if (packet.type === this.type.response) this.#onResponse(packet)
 			else if (packet.type === this.type.server) {
 				this.onTraffic?.('send', packet.body)
-				this.emit('server', Instr.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
+				this.emit('server', CS.storeLinkToActiveSpan(CS.init(), 'event.emitter'), packet)
 			} else if (packet.type === this.type.command) this.emit('auth')
 		}
 	}

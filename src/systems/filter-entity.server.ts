@@ -18,7 +18,6 @@ import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
-import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -223,7 +222,7 @@ export const filtersRouter = {
 			const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(newFilterEntity))
 			if (res.code === 'ok') {
 				filterMutation$.next([
-					Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
+					CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
 					{
 						type: 'add',
 						key: newFilterEntity.id,
@@ -270,7 +269,7 @@ export const filtersRouter = {
 			log.info({ [ATTRS.Filter.ID]: id, [ATTRS.Filter.OUTCOME]: res.code }, 'Updated filter %s: %s', id, res.code)
 			if (res.code === 'ok') {
 				filterMutation$.next([
-					Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
+					CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
 					{
 						type: 'update',
 						key: id,
@@ -357,7 +356,7 @@ export const filtersRouter = {
 				for (const userId of res.userContributorIds) Rbac.invalidateUser(userId)
 			}
 			filterMutation$.next([
-				Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
+				CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
 				{
 					type: 'delete',
 					key: idToDelete,
@@ -400,7 +399,7 @@ export const filtersRouter = {
 			Rbac.invalidateUser(res.filter.owner)
 			Rbac.invalidateUser(input.newOwner)
 			filterMutation$.next([
-				Instr.storeLinkToActiveSpan(ctx, 'event.emitter'),
+				CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
 				{
 					type: 'update',
 					key: input.filterId,

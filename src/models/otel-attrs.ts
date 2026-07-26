@@ -165,7 +165,6 @@ export namespace SpanLink {
 	export const SOURCE_TYPES = [
 		// the span which invoked the event(or rx emission) that we're currently handling
 		'event.emitter',
-		'event.setup',
 	] as const
 	export type SourceType = (typeof SOURCE_TYPES)[number]
 }

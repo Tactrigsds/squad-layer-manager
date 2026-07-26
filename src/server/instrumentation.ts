@@ -1,4 +1,5 @@
 import * as Otel from '@opentelemetry/api'
+import type * as OtelApi from '@opentelemetry/api'
 import type { MutexInterface } from 'async-mutex'
 import type Pino from 'pino'
 
@@ -31,30 +32,16 @@ const CONTEXT_ATTR_MAPPING = [
 	},
 ] as const
 
-// overrwrites other stored links
-export function storeLinkToActiveSpan<T extends CS.Ctx>(ctx: T, type: ATTR.SpanLink.SourceType): T & CS.Otel {
-	const link = buildSourceLinkToActiveSpan(type)
-	return {
-		...ctx,
-		otel: {
-			links: link ? [link] : [],
-		},
-	}
-}
-
-function buildSourceLinkToActiveSpan(type: ATTR.SpanLink.SourceType): Otel.Link | undefined {
-	const activeSpan = Otel.trace.getActiveSpan()
-	if (!activeSpan) return
-	return {
-		context: activeSpan.spanContext(),
-		attributes: { [ATTR.SpanLink.SOURCE]: type },
-	}
-}
-
-function flushOtelLinksInPlace(ctx: CS.Otel) {
-	const links = ctx.otel.links
-	ctx.otel.links = []
-	return links
+/**
+ * Take the ctx's links, and hand the callback a shallow clone whose links are spent.
+ *
+ * Spent rather than left in place, so a ctx that outlives one op (async-resource holds one across
+ * an unbounded refetch loop) does not re-link on every use. A clone rather than clearing in place,
+ * because we do not own the object: a Subject hands one value to every subscriber, so blanking it
+ * would let whichever op ran first take the link away from all the others.
+ */
+function spendOtelLinks(ctx: CS.Otel): [links: OtelApi.Link[], spent: CS.Otel] {
+	return [ctx.otel.links, { ...ctx, otel: { links: [] } }]
 }
 
 // LRU map in case of leaks
@@ -129,10 +116,14 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 		// run regardless, or a spanOp whose callback doesn't take a ctx silently loses all its attributes.
 		if (ctx) {
 			if (ctx.otel) {
-				for (const link of flushOtelLinksInPlace(ctx as CS.Otel)) {
+				const [ctxLinks, spent] = spendOtelLinks(ctx as CS.Otel)
+				// substitute the spent clone so nested ops inside the callback do not re-link
+				if (args[0] === ctx) args[0] = spent
+				else if (Array.isArray(args[0])) args[0] = args[0].map((a: unknown) => (a === ctx ? spent : a))
+				for (const link of ctxLinks) {
 					const source = link.attributes?.[ATTR.SpanLink.SOURCE]
 					// explicitly included links take precedence
-					if (source && links.some((l) => link!.attributes?.[ATTR.SpanLink.SOURCE] == source)) {
+					if (source && links.some((l) => l.attributes?.[ATTR.SpanLink.SOURCE] === source)) {
 						continue
 					}
 					links.push(link)
