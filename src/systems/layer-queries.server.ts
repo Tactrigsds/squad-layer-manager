@@ -31,7 +31,6 @@ export const router = {
 	}),
 }
 
-// loads the engine on first call (see LayerEngine.getEngine), so resolve this only on paths that go on to query it.
 export async function resolveLayerQueryCtx<Ctx extends MH.Ctx & LQ.Ctx>(ctx: Ctx): Promise<Ctx & LQY.Ctx> {
 	return {
 		...ctx,
