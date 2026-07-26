@@ -135,6 +135,20 @@ describe('execute', () => {
 		expect(emu.world.currentLayer.layer).toBe('Sumari_Seed_v1')
 	})
 
+	// AdminEndMatch is what SLM's own End Match action sends, and it has to roll for the same reason: it is the
+	// server ending the round, not an admin asking for a particular layer.
+	it('rolls when the match is ended over rcon, not just through the verb', async () => {
+		const rolled = new Promise<void>((resolve) => {
+			emu.onLogLine((l) => {
+				if (l.includes('Sumari_Seed_v1') && l.includes('up for play')) resolve()
+			})
+		})
+		await Verbs.execute(host, 'rcon', { command: 'AdminSetNextLayer Sumari_Seed_v1 RGF+CombinedArms VDV+CombinedArms' })
+		await Verbs.execute(host, 'rcon', { command: 'AdminEndMatch' })
+		await rolled
+		expect(emu.world.currentLayer.layer).toBe('Sumari_Seed_v1')
+	})
+
 	it('runs raw rcon against the same world', async () => {
 		await Verbs.execute(host, 'join', { name: 'Alice' })
 		const out = await Verbs.execute(host, 'rcon', { command: 'ListPlayers' })
