@@ -32,12 +32,12 @@ FILES=(
 	edit-global-settings.sh
 	restore.sh
 	observability/README.md
-	observability/loki-config.yaml
-	observability/tempo-config.yaml
+	observability/otel-collector.yaml
 	observability/grafana/provisioning/datasources/datasources.yaml
 	observability/grafana/provisioning/dashboards/dashboards.yaml
 	observability/grafana/dashboards/slm-overview.json
 	observability/grafana/dashboards/slm-ops.json
+	observability/grafana/dashboards/slm-logs.json
 )
 
 say() { printf '%s\n' "$*"; }

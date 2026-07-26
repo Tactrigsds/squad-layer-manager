@@ -37,7 +37,7 @@
 	"containerEnv": {
 		// the app defaults to 127.0.0.1, which is unreachable from the host once it's inside a container
 		"HOST": "0.0.0.0",
-		// the otel stack (`docker compose up -d otel`) runs on the host, not in here
+		// the collector (`docker compose up -d victoria-metrics victoria-logs victoria-traces otel-collector grafana`) runs on the host, not in here
 		"OTLP_COLLECTOR_ENDPOINT": "http://host.docker.internal:4318",
 		// the repo's tools (oxfmt, oxlint, vitest, playwright, drizzle-kit) are devDependencies, and nothing
 		// puts them on PATH outside of `pnpm run`. The container has no global copy of any of them to fall
