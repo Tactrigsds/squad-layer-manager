@@ -39,10 +39,7 @@ export default function LayerTableConfigEditor({
 	reset$: Rx.Subject<void>
 }) {
 	const cfg = ConfigClient.useEffectiveColConfig()
-	const columnOptions = React.useMemo(() => {
-		if (!cfg) return []
-		return Object.values(cfg.defs).map((d) => ({ value: d.name, label: d.displayName ?? d.name }))
-	}, [cfg])
+	const columnOptions = cfg ? Object.values(cfg.defs).map((d) => ({ value: d.name, label: d.displayName ?? d.name })) : []
 
 	function patch(next: Partial<LayerTableConfig>) {
 		onChange({ ...value, ...next })
