@@ -1,16 +1,19 @@
-import type { OnChangeFn, PaginationState, RowSelectionState, VisibilityState } from '@tanstack/react-table'
+import type { OnChangeFn, PaginationState, VisibilityState } from '@tanstack/react-table'
 import type * as Im from 'immer'
 import React from 'react'
 
 import type * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial.ts'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Arr from '@/lib/array-utils'
 import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
+import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 
@@ -242,31 +245,31 @@ export type Types = FRM.FrameTypes & { state: Store & Predicates }
 export type Key = FRM.InstanceKey<Types>
 export type KeyProp = { layerTable: Key }
 
-type TanstackSortingStateCol = { id: string; desc: boolean }
-type TanstackSortingState = Array<TanstackSortingStateCol>
+const DEFAULT_COLUMN_SIZE = 150
+export const SELECT_COLUMN_SIZE = 40
+export const CONSTRAINTS_COLUMN_SIZE = 80
+
+export function getColumnSize(name: string, isNumeric: boolean): number {
+	return ({ Size: 100, Faction_1: 40, Faction_2: 40 } as Record<string, number>)[name] ?? (isNumeric ? 50 : DEFAULT_COLUMN_SIZE)
+}
+
+// columns that stay visible in compact mode. the select and constraints(flag) columns aren't part
+// of columnVisibility state and always render
+export const COMPACT_VISIBLE_COLUMNS: string[] = ['Layer', 'Faction_1', 'Faction_2', 'Unit_1', 'Unit_2']
+
+// width the table wants when rendered with the given column visibility, derived from the same
+// size hints the column defs use. lets callers compute a compact-mode breakpoint parametrically
+export function getFullTableWidth(cfg: LQY.EffectiveColumnAndTableConfig, columnVisibility: VisibilityState): number {
+	const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: cfg }
+	let width = SELECT_COLUMN_SIZE + CONSTRAINTS_COLUMN_SIZE
+	for (const name of Object.keys(cfg.defs)) {
+		if (!columnVisibility[name]) continue
+		width += getColumnSize(name, LC.isNumericColumn(name, ctx))
+	}
+	return width
+}
 
 export namespace Sel {
-	export function tanstackSortingState(store: Store): TanstackSortingState {
-		const table = store.layerTable
-		if (!table.sort) return []
-		if (table.sort.type === 'random') return []
-
-		return [
-			{
-				id: table.sort.sortBy,
-				desc: table.sort.direction === 'ASC' || table.sort.direction === 'ASC:ABS',
-			},
-		]
-	}
-
-	export function tanstackRowSelection(store: Store): RowSelectionState {
-		const state: RowSelectionState = {}
-		for (const id of store.layerTable.selected) {
-			state[id] = true
-		}
-		return state
-	}
-
 	export function editingSingleValue(store: Store) {
 		return store.layerTable.maxSelected === 1 && store.layerTable.minSelected === 1
 	}
@@ -295,6 +298,36 @@ export namespace Sel {
 				return [false, isSelected] as const
 			},
 		),
+	)
+
+	// compact mode hides all but COMPACT_VISIBLE_COLUMNS without touching the stored visibility prefs
+	export const columnVisibility = RSel.memoizeFactory((compact: boolean) =>
+		RSel.createSelector([(store: Store) => store.layerTable.columnVisibility], (visibility) => {
+			if (!compact) return visibility
+			const compacted: VisibilityState = { ...visibility }
+			for (const name of Object.keys(compacted)) {
+				if (!COMPACT_VISIBLE_COLUMNS.includes(name)) compacted[name] = false
+			}
+			return compacted
+		}),
+	)
+
+	export const defaultVisibleColumns = RSel.createSelector(
+		[(store: Store) => store.layerTable.colConfig],
+		(cfg) => cfg?.orderedColumns.filter((col) => col.visible ?? true).map((col) => col.name) ?? [],
+	)
+
+	// parity of the team the queried page sits at, for the display-normalization the cells apply. read off the server
+	// frame state passed in rather than layerItemsState$, which throws when no frame is hot; 0 outside a server context
+	export const teamParity = RSel.createSelector(
+		[
+			(store: Store) => store.layerTable.pageData?.input.cursor,
+			(_store: Store, squadServer: SquadServerFrame.State | undefined) => squadServer?.layerItemsState,
+		],
+		(cursor, layerItemsState) => {
+			if (!cursor || !layerItemsState) return 0
+			return LQY.resolveTeamParityForCursor(layerItemsState, LQY.fromLayerListCursor(layerItemsState, cursor))
+		},
 	)
 }
 
@@ -350,17 +383,6 @@ export namespace Actions {
 		table.setState({ selected: reset, showSelectedLayers: reset.length > 0, pageIndex: 0 })
 	}
 
-	export const onSetRowSelection =
-		(stores: KeyProp): OnChangeFn<RowSelectionState> =>
-		(rowSelectionUpdate) => {
-			const updated =
-				typeof rowSelectionUpdate === 'function'
-					? rowSelectionUpdate(Sel.tanstackRowSelection(Zus.getState(stores.layerTable)))
-					: rowSelectionUpdate
-			const selected: L.LayerId[] = Object.keys(updated).filter((id) => updated[id])
-			setSelected(stores, selected)
-		}
-
 	export const onPaginationChange =
 		(stores: KeyProp): OnChangeFn<PaginationState> =>
 		(update) => {
@@ -404,19 +426,5 @@ export namespace Actions {
 		const table = slice(stores)
 		const updated = typeof update === 'function' ? update(table.getState().showSelectedLayers) : update
 		table.setState({ showSelectedLayers: updated, sort: null, pageIndex: 0 })
-	}
-
-	export function getTanstackActions(stores: KeyProp) {
-		const setSorting: React.Dispatch<React.SetStateAction<TanstackSortingState>> = (sortingUpdate) => {
-			const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
-			const updated = typeof sortingUpdate === 'function' ? sortingUpdate(current) : current
-
-			if (updated.length === 0) {
-				setSort(stores, null)
-			}
-			setSort(stores, { type: 'column', sortBy: updated[0]?.id ?? '', direction: updated[0]?.desc ? 'ASC' : 'DESC' })
-		}
-
-		return { setSorting, setRowSelection: onSetRowSelection(stores) }
 	}
 }
