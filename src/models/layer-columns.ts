@@ -2,6 +2,7 @@ import * as E from 'drizzle-orm'
 import { index, int, numeric, sqliteTable, sqliteView, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
@@ -1049,9 +1050,11 @@ export function partitionScores(layer: any, cfg: EffectiveColumnConfig) {
 }
 
 export type Ctx = CS.Ctx & { effectiveColsConfig: EffectiveColumnConfig }
+export const CtxDef = CD.defCtx<Ctx>()(['effectiveColsConfig'], { name: 'effectiveColsConfig' })
 
 export namespace Ctx {
 	// the weighted-random layer generation config. unlike effectiveColsConfig this is admin-editable at
 	// runtime (globalSettings.layerGeneration), so holders must refresh it when settings change
 	export type Generation = CS.Ctx & { generationConfig: LayerGenerationConfig }
+	export const GenerationDef = CD.defCtx<Generation>()(['generationConfig'], { name: 'layerGeneration' })
 }

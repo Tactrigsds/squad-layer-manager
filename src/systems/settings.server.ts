@@ -256,7 +256,7 @@ export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 
 export type SettingsUpdate = Readonly<[SETTINGS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>
 
-export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
+export function initServerSettingsSlice(ctx: C.ServerSliceCleanup & CS.ServerId, serverState: SS.ServerState): SETTINGS.Ctx.Payload {
 	const slice: SETTINGS.Ctx.Payload = {
 		settings: SETTINGS.getPublicSettings(serverState.settings),
 		update$: new Rx.ReplaySubject<SettingsUpdate>(1),
@@ -342,7 +342,7 @@ export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promi
 
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
 export async function updateServerSettings(
-	ctx: C.Db & C.Tx & SS.Ctx,
+	ctx: C.Db & C.Tx & CS.ServerId,
 	newSettings: SETTINGS.ServerSettings,
 	source: SS.LQStateUpdate['source'],
 ) {

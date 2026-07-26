@@ -71,7 +71,7 @@ export function setup() {
 	log = module.getLogger()
 }
 
-export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & SS.Ctx, serverState: SS.ServerState) {
+export function initLayerQueueSlice(ctx: C.ServerSliceCleanup & CS.ServerId, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
 	const slice: LQ.Ctx.Payload = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),

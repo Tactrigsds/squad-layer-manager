@@ -1816,7 +1816,7 @@ export async function deleteServer(serverId: string) {
 	return await Settings.deleteServerEntry(ctx, serverId)
 }
 
-export async function getServerState(ctx: C.Db & SS.Ctx) {
+export async function getServerState(ctx: C.Db & CS.ServerId) {
 	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
 	const [serverRaw] = await query
 	return Settings.parseServerStateRow(serverRaw)

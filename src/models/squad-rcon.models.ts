@@ -1,17 +1,19 @@
 import type { AsyncResource } from '@/lib/async-resource'
+import * as CD from '@/lib/ctx-def'
 import type RconCore from '@/lib/rcon/core-rcon'
 import type * as Rx from '@/lib/rxjs'
-import type * as CS from '@/models/context-shared'
-import type * as SS from '@/models/server-state.models'
+import * as CS from '@/models/context-shared'
 import type * as SM from '@/models/squad.models'
 
-export type Ctx = CS.Ctx & { squadRcon: Ctx.Payload } & Ctx.Rcon & SS.Ctx
+export type Ctx = CS.Ctx & { squadRcon: Ctx.Payload } & Ctx.Rcon & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['squadRcon'], { name: 'squadRcon', extends: [Ctx.RconDef, CS.ServerIdDef] })
 
 export namespace Ctx {
 	// a live rcon connection, without any of the per-server resources built on top of it
 	export type Rcon = CS.Ctx & {
 		rcon: RconCore
 	}
+	export const RconDef = CD.defCtx<Rcon>()(['rcon'], { name: 'rcon' })
 
 	export type Payload = {
 		rconEvent$: Rx.Observable<[CS.Otel, SM.RconEvents.Event]>
@@ -19,7 +21,7 @@ export namespace Ctx {
 		layersStatus: AsyncResource<SM.LayerStatusRes, Ctx.Rcon & CS.AbortSignal>
 		serverInfo: AsyncResource<SM.ServerInfoRes, Ctx.Rcon & CS.AbortSignal>
 		// serverId: the roster is annotated with admin status, which is a per-server question (which admin lists apply)
-		teams: AsyncResource<SM.TeamsRes, Ctx.Rcon & SS.Ctx & CS.AbortSignal>
+		teams: AsyncResource<SM.TeamsRes, Ctx.Rcon & CS.ServerId & CS.AbortSignal>
 	}
 }
 

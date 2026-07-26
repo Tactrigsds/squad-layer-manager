@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array-utils'
+import * as CD from '@/lib/ctx-def'
 import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/log-parsing'
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
@@ -1700,6 +1701,7 @@ export namespace Grants {
 export type Ctx = CS.Ctx & {
 	player: Player
 }
+export const CtxDef = CD.defCtx<Ctx>()(['player'], { name: 'player' })
 
 export namespace Ctx {
 	// width pun on `player`, same shape as USR.Ctx / USR.Ctx.Id

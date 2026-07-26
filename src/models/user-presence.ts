@@ -1,6 +1,7 @@
 import * as Im from 'immer'
 import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
 import type { IsolatedSubject } from '@/lib/isolated-subject'
 import * as MapUtils from '@/lib/map-utils'
@@ -1084,6 +1085,8 @@ export type Ctx = CS.Ctx & {
 		abandoned$: IsolatedSubject<{ serverId: string; scope: Ctx.DraftScope }>
 	}
 }
+
+export const CtxDef = CD.defCtx<Ctx>()(['userPresence'], { name: 'userPresence' })
 
 export namespace Ctx {
 	export type DraftScope = 'queue' | 'layer-requests'

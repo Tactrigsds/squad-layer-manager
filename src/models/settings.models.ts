@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import * as CD from '@/lib/ctx-def'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
@@ -9,7 +10,7 @@ import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
-import type * as CS from '@/models/context-shared'
+import * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
@@ -1069,7 +1070,8 @@ export namespace Grants {
 	}
 }
 
-export type Ctx = CS.Ctx & { serverSettings: Ctx.Payload } & SS.Ctx
+export type Ctx = CS.Ctx & { serverSettings: Ctx.Payload } & CS.ServerId
+export const CtxDef = CD.defCtx<Ctx>()(['serverSettings'], { name: 'serverSettings', extends: [CS.ServerIdDef] })
 
 export namespace Ctx {
 	export type Update = Readonly<[PublicServerSettings, SS.LQStateUpdate['source'] | null]>

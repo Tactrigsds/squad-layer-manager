@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as CD from '@/lib/ctx-def'
 import type * as CS from '@/models/context-shared'
 import * as DM from '@/models/discord.models'
 
@@ -75,6 +76,7 @@ export const getUserInitials = (user: User) => {
 export type Ctx = CS.Ctx & {
 	user: User
 }
+export const CtxDef = CD.defCtx<Ctx>()(['user'], { name: 'user', collisions: ['user'] })
 
 export namespace Ctx {
 	// the same key at a narrower width: a function that only needs the id declares this and accepts
@@ -82,4 +84,5 @@ export namespace Ctx {
 	export type Id = CS.Ctx & {
 		user: { discordId: bigint }
 	}
+	export const IdDef = CD.defCtx<Id>()(['user'], { name: 'userId', collisions: ['user'] })
 }

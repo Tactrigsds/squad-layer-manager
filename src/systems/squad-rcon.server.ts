@@ -7,7 +7,6 @@ import * as Rx from '@/lib/rxjs'
 import { WARNS } from '@/messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import type * as SS from '@/models/server-state.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
@@ -24,7 +23,7 @@ export function setup() {
 }
 
 export function initSquadRcon(
-	ctx: SR.Ctx.Rcon & SS.Ctx & CS.AbortSignal,
+	ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal,
 	cleanup: Cleanup.Tasks,
 	opts: { cacheTTL: SETTINGS.ServerSettings['rconCacheTTL']; onFatalError?: (err: unknown) => void },
 ): SR.Ctx.Payload {
@@ -60,7 +59,7 @@ export function initSquadRcon(
 	)
 	cleanup.push(() => serverInfo.dispose())
 
-	const teams: SR.Ctx.Payload['teams'] = new AsyncResource<SM.TeamsRes, SR.Ctx.Rcon & SS.Ctx & CS.AbortSignal>(
+	const teams: SR.Ctx.Payload['teams'] = new AsyncResource<SM.TeamsRes, SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal>(
 		'teams',
 		(ctx) => fetchTeams(ctx),
 		module,
@@ -130,7 +129,7 @@ export async function getNextLayer(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	return { code: 'ok' as const, layer: L.parseRawLayerText(`${layer} ${factions}`) }
 }
 
-async function fetchPlayers(ctx: SR.Ctx.Rcon & SS.Ctx & CS.AbortSignal) {
+async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 	const res = await ctx.rcon.execute('ListPlayers', { signal: ctx.signal })
 	if (res.code !== 'ok') return res
 
@@ -236,7 +235,7 @@ async function fetchSquads(ctx: SR.Ctx.Rcon & CS.AbortSignal) {
 	}
 }
 
-async function fetchTeams(ctx: SR.Ctx.Rcon & SS.Ctx & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
+async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & C.AsyncResourceInvocation & CS.AbortSignal): Promise<SM.TeamsRes> {
 	// stamped before the requests go out so it's a lower bound on the snapshot's validity; see TeamsRes.polledAt
 	const polledAt = Date.now()
 	const [playersRes, squadsRes] = await Promise.all([fetchPlayers(ctx), fetchSquads(ctx)])

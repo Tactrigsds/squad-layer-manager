@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
+import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Sparse from '@/lib/sparse-tree'
@@ -996,3 +997,4 @@ export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 export type Ctx = CS.Ctx & {
 	filters: Map<string, FilterEntity>
 }
+export const CtxDef = CD.defCtx<Ctx>()(['filters'], { name: 'filters' })
