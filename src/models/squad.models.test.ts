@@ -732,3 +732,59 @@ describe('AdminList.getPlayerGroups', () => {
 		expect([...SM.AdminList.getPlayerGroups(list, { steam: '76561198000000009', eos: '0002zzz' } as any)]).toEqual([])
 	})
 })
+
+describe('AdminList lookups across several lists', () => {
+	const listA = {
+		groups: new Map([['Admins', new Set(['cheat'])]]),
+		steam: { players: new Map([['steam1', new Set(['Admins'])]]), admins: new Set(['steam1']) },
+		eos: { players: new Map(), admins: new Set<string>() },
+	} as unknown as SM.AdminList
+	const listB = {
+		groups: new Map([
+			['Whitelist', new Set(['reserve'])],
+			['Admins', new Set(['balance'])],
+		]),
+		steam: {
+			players: new Map([
+				['steam1', new Set(['Whitelist', 'Admins'])],
+				['steam2', new Set(['Whitelist'])],
+			]),
+			admins: new Set<string>(),
+		},
+		eos: { players: new Map([['eos1', new Set(['Moderator'])]]), admins: new Set<string>() },
+	} as unknown as SM.AdminList
+	const lists: SM.AdminLists = new Map([
+		['a', listA],
+		['b', listB],
+	])
+
+	it("unions a player's groups across every list, without duplicating", () => {
+		expect(SM.AdminList.collectPlayerGroups(lists, { steam: 'steam1', eos: 'eos1' } as any).sort()).toEqual([
+			'Admins',
+			'Moderator',
+			'Whitelist',
+		])
+	})
+
+	it('appends into the array it is given', () => {
+		const out: string[] = ['Existing']
+		expect(SM.AdminList.collectPlayerGroups(lists, { steam: 'steam2' } as any, out)).toBe(out)
+		expect(out).toEqual(['Existing', 'Whitelist'])
+	})
+
+	// one list may mark a player an admin without the other doing so; no list can un-admin another's
+	it('is an admin if any list says so', () => {
+		expect(SM.AdminList.isAdminInAny(lists, { steam: 'steam1' } as any)).toBe(true)
+		expect(SM.AdminList.isAdminInAny(lists, { steam: 'steam2' } as any)).toBe(false)
+		expect(SM.AdminList.isAdminInAny(new Map([['b', listB]]), { steam: 'steam1' } as any)).toBe(false)
+	})
+
+	it('collects every group name any list defines', () => {
+		expect([...SM.AdminList.collectGroupNames(lists)].sort()).toEqual(['Admins', 'Whitelist'])
+	})
+
+	it('is empty for a player on none of them', () => {
+		expect(SM.AdminList.collectPlayerGroups(lists, { steam: 'nobody' } as any)).toEqual([])
+		expect(SM.AdminList.isAdminInAny(lists, { steam: 'nobody' } as any)).toBe(false)
+	})
+})
