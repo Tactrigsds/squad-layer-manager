@@ -81,7 +81,7 @@ type Path = (string | number)[]
 const TRIGGER_OFF = '__off__'
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
-type ValueState<T = any> = Rx.Observable<T> & { getValue: () => T }
+type ValueState<T = any> = Zus.ValueObservable<T>
 
 const DEBOUNCE_MS = 250
 
@@ -105,16 +105,11 @@ function mapValue<T, U>(parent$: ValueState<T>, project: (v: T) => U): ValueStat
 	return child$
 }
 
-// current value of a field, re-read on both emissions and reset$. For widgets that render controlled.
-function useFieldValue<T>(value$: ValueState<T>, reset$: Rx.Observable<void>): T {
-	const [v, setV] = React.useState<T>(() => value$.getValue())
-	React.useEffect(() => {
-		const sub = new Rx.Subscription()
-		sub.add(value$.subscribe(setV))
-		sub.add(reset$.subscribe(() => setV(value$.getValue())))
-		return () => sub.unsubscribe()
-	}, [value$, reset$])
-	return v
+// current value of a field, for widgets that render controlled. Takes no reset$: a reset writes the draft, which
+// every value state is derived from, so the emission it already causes is the re-read. Uncontrolled inputs are the
+// ones the pulse exists for -- see useReset.
+function useFieldValue<T>(value$: ValueState<T>): T {
+	return Zus.useStore(value$)
 }
 
 // run `fn` whenever reset$ fires (used by uncontrolled inputs to re-read their DOM value)
@@ -196,23 +191,26 @@ function emptyValue(node: Node): unknown {
 // the draft's custom message variables (rbac-style sibling read), so the reason preview can render templates
 const MessageVarsContext = React.createContext<Record<string, string>>({})
 
+function readMessageVars(v: any): Record<string, string> {
+	return Object.fromEntries(
+		((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) => (mv.name ? [[mv.name, mv.value ?? '']] : [])),
+	)
+}
+
+// This one feeds a context at the form root, so it must hold its identity while the contents match: a fresh object
+// per draft change would re-render the whole form on every keystroke. The selector is memoized per form instance
+// rather than at module scope because the settings page mounts one form per section.
 function useMessageVars(value$: ValueState): Record<string, string> {
-	const read = (v: any): Record<string, string> =>
-		Object.fromEntries(
-			((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) => (mv.name ? [[mv.name, mv.value ?? '']] : [])),
-		)
-	const [vars, setVars] = React.useState(() => read(value$.getValue()))
-	React.useEffect(() => {
-		const sub = value$.subscribe((v) =>
-			setVars((prev) => {
-				const next = read(v)
-				const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
-				return same ? prev : next
-			}),
-		)
-		return () => sub.unsubscribe()
-	}, [value$])
-	return vars
+	const read = React.useMemo(() => {
+		let prev: Record<string, string> = {}
+		return (v: any) => {
+			const next = readMessageVars(v)
+			const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
+			if (!same) prev = next
+			return prev
+		}
+	}, [])
+	return Zus.useStore(value$, read)
 }
 
 // per-form options. `idPrefix` scopes the DOM ids / URL-fragment anchors so multiple forms on the settings page (global
@@ -358,7 +356,7 @@ function sectionExtraFor(path: Path): React.FC | undefined {
 type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path }
 
 function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
 }
 
@@ -399,7 +397,7 @@ function syncedGroups(grouping: PG.Grouping, orgFlags: BM.PlayerFlag[] | undefin
 // bespoke editor for `playerGroupings`. Each grouping is an ordered rule list (first match wins), so priority is row
 // position rather than a number. Group colors are derived from the rules' flags and kept in a secondary section.
 function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as PlayerGroupingsValue) ?? {}
+	const value = (useFieldValue(value$) as PlayerGroupingsValue) ?? {}
 	const groupingIds = Object.keys(value)
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	// the union across running servers -- fetched once here rather than per rule row
@@ -928,8 +926,8 @@ function PrefixRow({
 function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	const rootOnChange = React.useContext(RootOnChangeContext)
-	const root = (useFieldValue(root$, reset$) as { defaultPrefix?: string; commands?: CommandsMap } | undefined) ?? {}
-	const prefixes = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const root = (useFieldValue(root$) as { defaultPrefix?: string; commands?: CommandsMap } | undefined) ?? {}
+	const prefixes = (useFieldValue(value$) as string[] | undefined) ?? []
 	const commands = root.commands ?? {}
 	const defaultPrefix = root.defaultPrefix ?? prefixes[0] ?? ''
 
@@ -1035,12 +1033,12 @@ const NEW_TRIGGER_ARGS = '{{rest}}'
 // arguments to it grows a second one on the same row rather than moving it to a table of its own, since it is still
 // just a way of running this command.
 function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps & { cmdId: CMD.CommandId }) {
-	const triggers = (useFieldValue(value$, reset$) as CMD.CommandTrigger[] | undefined) ?? []
+	const triggers = (useFieldValue(value$) as CMD.CommandTrigger[] | undefined) ?? []
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	// scoped rather than read off the root: this field renders once per command, and subscribing each one to the whole
 	// document would re-render all of them on every keystroke anywhere in the form
 	const requireReasonFor$ = React.useMemo(() => scopeValue(root$, 'requireReasonFor'), [root$])
-	const requireReasonFor = useFieldValue(requireReasonFor$, reset$) as AAR.AdminActionType[] | undefined
+	const requireReasonFor = useFieldValue(requireReasonFor$) as AAR.AdminActionType[] | undefined
 	const signature = React.useMemo(() => CMD.argTemplateSignature(cmdId, requireReasonFor ?? []), [cmdId, requireReasonFor])
 	const current = () => (value$.getValue() as CMD.CommandTrigger[]) ?? []
 	function structural(next: CMD.CommandTrigger[]) {
@@ -1158,7 +1156,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 // shell. Schema issues (e.g. a trigger missing an allowed prefix) still surface under the card via the field's issues.
 function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
 	const cmdId = path[1] as CMD.CommandId
-	const cfg = (useFieldValue(value$, reset$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
+	const cfg = (useFieldValue(value$) as { allowedChats?: CMD.ChatGroup[]; enabled?: boolean; quickReference?: boolean }) ?? {}
 	const allowedChats = cfg.allowedChats ?? []
 	const enabled = cfg.enabled ?? true
 	const quickReference = cfg.quickReference ?? false
@@ -1285,7 +1283,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 }
 // bespoke editor for the layer-table config (column order/visibility, default sort, extra menu items, default filters)
 function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return (
 		<LayerTableConfigEditor
 			value={value ?? { orderedColumns: [], defaultSortBy: { type: 'random' } }}
@@ -1296,7 +1294,7 @@ function LayerTableField({ value$, reset$, onChange }: OverrideProps) {
 }
 // bespoke editor for the weighted-random layer generation config (pick order + per-value / per-matchup weights)
 function LayerGenerationField({ value$, reset$, onChange }: OverrideProps) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return <LayerGenerationConfigEditor value={value ?? LC.LayerGenerationConfigSchema.parse({})} onChange={onChange} reset$={reset$} />
 }
 
@@ -1324,7 +1322,7 @@ function PresetTableField({
 	newRow: () => object
 	Row: React.ComponentType<PresetRowProps>
 }) {
-	const value = (useFieldValue(value$, reset$) as object[] | undefined) ?? []
+	const value = (useFieldValue(value$) as object[] | undefined) ?? []
 
 	// structural edits emit reset$ so the rows' uncontrolled inputs re-read after re-indexing
 	function structural(next: object[]) {
@@ -1411,7 +1409,7 @@ function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
 function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetRowProps) {
 	const row$ = React.useMemo(() => scopeValue(parent$, idx), [parent$, idx])
 	const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
-	const row = useFieldValue(row$, reset$) as LTag.Tag | undefined
+	const row = useFieldValue(row$) as LTag.Tag | undefined
 	const colorRef = React.useRef<HTMLInputElement>(null)
 
 	const setFields = (patch: Partial<LTag.Tag>) => {
@@ -1492,7 +1490,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 	const keywords$ = React.useMemo(() => scopeValue(row$, 'keywords'), [row$])
 	const actionTexts$ = React.useMemo(() => scopeValue(row$, 'actionTexts'), [row$])
 	// the set of actions this reason carries text for; keys are added/removed structurally (emits reset$)
-	const actionTexts = (useFieldValue(actionTexts$, reset$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
+	const actionTexts = (useFieldValue(actionTexts$) as Partial<Record<AAR.AdminActionType, string>> | undefined) ?? {}
 	const presentActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] !== undefined)
 	const remainingActions = AAR.ADMIN_ACTION_TYPE.options.filter((a) => actionTexts[a] === undefined)
 
@@ -1639,7 +1637,7 @@ function TemplateSyntaxHint() {
 }
 
 function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
-	const raw = useFieldValue(row$, reset$) as Partial<AAR.AdminActionReason> | undefined
+	const raw = useFieldValue(row$) as Partial<AAR.AdminActionReason> | undefined
 	const customVars = React.useContext(MessageVarsContext)
 	// tolerate incomplete draft rows so the preview shows the message shape while it's being written
 	const actionTexts = Object.fromEntries(
@@ -1736,7 +1734,7 @@ function KeywordsCell({
 		}
 	})
 
-	const seedSource = useFieldValue(seedFrom$, reset$) as string | undefined
+	const seedSource = useFieldValue(seedFrom$) as string | undefined
 	const lastSeed = React.useRef(LP.keywordFromLabel(seedSource ?? ''))
 	React.useEffect(() => {
 		const seed = LP.keywordFromLabel(seedSource ?? '')
@@ -1764,18 +1762,12 @@ function setAtPath(root: any, path: Path, value: unknown): any {
 	return copy
 }
 
-// hook: current value at a nested path of value$, kept in sync on emissions and reset$
-function usePathValue(value$: ValueState, reset$: Rx.Observable<void>, path: Path): unknown {
+// current value at a nested path of value$. The selector is keyed on the path's contents rather than its identity,
+// since callers build the array inline.
+function usePathValue(value$: ValueState, path: Path): unknown {
 	const key = JSON.stringify(path)
-	const [v, setV] = React.useState<unknown>(() => getAtPath(value$.getValue(), path))
-	React.useEffect(() => {
-		const p = JSON.parse(key) as Path
-		const sub = new Rx.Subscription()
-		sub.add(value$.subscribe((root) => setV(getAtPath(root, p))))
-		sub.add(reset$.subscribe(() => setV(getAtPath(value$.getValue(), p))))
-		return () => sub.unsubscribe()
-	}, [value$, reset$, key])
-	return v
+	const select = React.useCallback((root: any) => getAtPath(root, JSON.parse(key) as Path), [key])
+	return Zus.useStore(value$, select)
 }
 
 // PoolConfigApi over the form's draft observable, so the settings page renders the same pool-configuration UI as the
@@ -1785,7 +1777,7 @@ function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConf
 	useReset(reset$, () => setResetKey((k) => k + 1))
 	return {
 		// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components
-		useValue: (path) => usePathValue(value$, reset$, path),
+		useValue: (path) => usePathValue(value$, path),
 		getValue: (path) => getAtPath(value$.getValue(), path),
 		set: (path, value) => onChange(setAtPath(value$.getValue(), path, value)),
 		// the settings page gates edit access via the server-settings:* perms; out-of-grant writes are rejected server-side
@@ -1825,10 +1817,10 @@ const EMPTY_ROOT_VALUE$ = new Rx.BehaviorSubject<any>(undefined) as unknown as V
 // listed here because there is no source to name -- so say so, rather than leaving the impression that an empty
 // selection means the emulated server has no admins.
 function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as string[] | undefined) ?? []
+	const value = (useFieldValue(value$) as string[] | undefined) ?? []
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	const connType$ = React.useMemo(() => scopeValue(scopeValue(root$, 'connections'), 'type'), [root$])
-	const isSandbox = useFieldValue(connType$, reset$) === 'sandbox'
+	const isSandbox = useFieldValue(connType$) === 'sandbox'
 	const definedLists = useQuery(RPC.orpc.rbac.listAdminListGroups.queryOptions({ staleTime: 60_000 }))
 	const available = definedLists.data?.code === 'ok' ? definedLists.data.lists.map((l) => l.listId) : []
 	const options = [...new Set([...available, ...value])].sort().map((listId) => ({
@@ -1864,7 +1856,7 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 }
 
 function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as Record<string, SM.AdminListDef> | undefined) ?? {}
+	const value = (useFieldValue(value$) as Record<string, SM.AdminListDef> | undefined) ?? {}
 	const names = Object.keys(value)
 	const [newName, setNewName] = React.useState('')
 
@@ -2145,7 +2137,7 @@ function withRoleRenamed(rbac: RbacValue, oldId: string, newId: string): RbacVal
 }
 
 function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
-	const rbac = (useFieldValue(value$, reset$) as RbacValue) ?? {}
+	const rbac = (useFieldValue(value$) as RbacValue) ?? {}
 	const roleIds = Object.keys(rbac.roles ?? {})
 	const issues = React.useContext(ValidationContext).filter((i) => i.path.startsWith('rbac.'))
 
@@ -2865,7 +2857,7 @@ function RoleAssignmentsEditor({
 // bespoke editor for `balanceTriggerLevels`. A trigger is off unless it carries a level, and the level decides how
 // loudly it lands on the match history, so each row pairs the picker with a live preview of the alert it produces.
 function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$, reset$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
+	const value = (useFieldValue(value$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
 
 	function setLevel(id: BAL.TriggerId, level: BAL.TriggerWarnLevel | typeof TRIGGER_OFF) {
 		const next = { ...((value$.getValue() as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>>) ?? {}) }
@@ -2993,7 +2985,7 @@ function SelectField({
 	onChange: (v: any) => void
 	options: string[]
 }) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return (
 		<Select value={value ?? ''} onValueChange={onChange}>
 			<SelectTrigger className="w-full">
@@ -3011,7 +3003,7 @@ function SelectField({
 }
 
 function SwitchField({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	return <Switch checked={!!value} onCheckedChange={onChange} />
 }
 
@@ -3032,7 +3024,7 @@ function DiscriminatedUnionField({
 	branches: Node[]
 	discriminator: string
 }) {
-	const value = useFieldValue(value$, reset$) as any
+	const value = useFieldValue(value$) as any
 	const branchFor = (constVal: string) => branches.find((b) => String(b.properties[discriminator].const) === constVal)
 	const active = value?.[discriminator]
 	const branch = branchFor(String(active)) ?? branches[0]
@@ -3081,7 +3073,7 @@ function EnumArrayField({
 	onChange: (v: any) => void
 	options: string[]
 }) {
-	const value = useFieldValue(value$, reset$) as any[]
+	const value = useFieldValue(value$) as any[]
 	return (
 		<ComboBoxMulti
 			title="Value"
@@ -3106,7 +3098,7 @@ function NullableField({
 	onChange: (v: any) => void
 	children: React.ReactNode
 }) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	const isNull = value === null || value === undefined
 	return (
 		<div className="flex items-center gap-2">
@@ -3281,7 +3273,7 @@ function ArrayField({
 	const items: Node = node.items ?? {}
 	const { inner } = stripNullable(items)
 
-	const value = (useFieldValue(value$, reset$) as any[]) ?? []
+	const value = (useFieldValue(value$) as any[]) ?? []
 
 	// array of enum -> multi-select
 	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
@@ -3385,7 +3377,7 @@ function RecordField({
 	// rather than free text, so only known keys can be added
 	const keyEnum: string[] | undefined = node.propertyNames?.enum
 	const [newKey, setNewKey] = React.useState('')
-	const value = (useFieldValue(value$, reset$) as Record<string, any>) ?? {}
+	const value = (useFieldValue(value$) as Record<string, any>) ?? {}
 	const entries = Object.entries(value)
 
 	// structural edits emit reset$ so uncontrolled entry inputs re-read
@@ -3642,7 +3634,7 @@ function FieldResetControls({
 	path: Path
 	showDefaultLabel: boolean
 }) {
-	const value = useFieldValue(value$, reset$)
+	const value = useFieldValue(value$)
 	const { saved } = React.useContext(SavedRootContext)
 	const def = effectiveDefault(node)
 	const savedValue = getAtPath(saved, path)
