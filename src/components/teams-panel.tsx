@@ -1359,15 +1359,12 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters(props.teamId))
 
-	const getSquadGroup = React.useCallback(
-		(player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
-			if (player.squadId === null) return { key: 'unassigned', squad: null, creatorName: null, faction: null }
-			const squad = squads.find((s) => s.squadId === player.squadId)
-			if (!squad) return null
-			return { key: String(squad.squadId), squad, creatorName: creatorNames.get(squad.creator) || null, faction: null }
-		},
-		[squads, creatorNames],
-	)
+	const getSquadGroup = (player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
+		if (player.squadId === null) return { key: 'unassigned', squad: null, creatorName: null, faction: null }
+		const squad = squads.find((s) => s.squadId === player.squadId)
+		if (!squad) return null
+		return { key: String(squad.squadId), squad, creatorName: creatorNames.get(squad.creator) || null, faction: null }
+	}
 
 	const meta = {
 		matchId,
@@ -1664,12 +1661,8 @@ function TeamSwapsDisplay(props: {
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
-	const swaps = Zus.useStore(
-		props.stores.squadServer!,
-		React.useCallback(
-			(frameState: TSWClient.Store & ChatPrt.Store) => TSWClient.Sel.swapsToTeamEnrichedWithMutations(frameState, props.teamId),
-			[props.teamId],
-		),
+	const swaps = Zus.useStore(props.stores.squadServer!, (frameState: TSWClient.Store & ChatPrt.Store) =>
+		TSWClient.Sel.swapsToTeamEnrichedWithMutations(frameState, props.teamId),
 	)
 
 	const hasLocal = [...swaps.values()].some((s) => !s.mutation.removed)
