@@ -358,3 +358,29 @@ export function destrNullable<T extends object>(obj: T | undefined) {
 export function queryPath<T>(path: string, obj: any): T[] {
 	return jp.query(obj, path) as T[]
 }
+
+// Replaces every string in a JSON-derived structure with one canonical instance per distinct value, in place.
+// JSON.parse allocates a fresh string per occurrence, so a structure with a small vocabulary repeated across many
+// records (layer components: 14893 faction/unit entries drawn from 25 values) pays for each one separately.
+export function internStrings<T>(value: T): T {
+	const canonical = new Map<string, string>()
+	const canon = (s: string) => {
+		const hit = canonical.get(s)
+		if (hit !== undefined) return hit
+		canonical.set(s, s)
+		return s
+	}
+	const walk = (node: any): any => {
+		if (typeof node === 'string') return canon(node)
+		if (Array.isArray(node)) {
+			for (let i = 0; i < node.length; i++) node[i] = walk(node[i])
+			return node
+		}
+		if (node !== null && typeof node === 'object') {
+			for (const key of Object.keys(node)) node[key] = walk(node[key])
+			return node
+		}
+		return node
+	}
+	return walk(value)
+}
