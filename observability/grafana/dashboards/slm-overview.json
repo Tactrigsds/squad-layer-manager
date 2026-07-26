@@ -441,52 +441,27 @@
 
 		{ "type": "row", "title": "Recent problems", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 } },
 		{
-			"type": "table",
+			"type": "logs",
 			"title": "Warnings and errors",
-			"description": "trace_id is a real column on otel_logs rather than structured metadata, so each line links straight through to the trace that produced it. SLM / Logs has the same view with a severity filter and a volume chart.",
-			"datasource": { "type": "mysql", "uid": "greptime-sql" },
+			"description": "trace_id is a first-class field on every record, so each line links straight through to the trace that produced it. SLM / Logs has the same view with severity and module filters.",
+			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
 			"gridPos": { "h": 11, "w": 24, "x": 0, "y": 59 },
 			"targets": [
 				{
 					"refId": "A",
-					"format": "table",
-					"rawQuery": true,
-					"rawSql": "SELECT timestamp AS \"time\", severity_text AS \"severity\", json_get_string(log_attributes, '$.\"slm.module.name\"') AS \"module\", body AS \"message\", trace_id FROM otel_logs WHERE $__timeFilter(timestamp) AND severity_number >= 13 ORDER BY timestamp DESC LIMIT 200"
+					"expr": "severity:in(WARN,ERROR,FATAL)",
+					"queryType": "instant"
 				}
 			],
-			"options": { "showHeader": true },
-			"fieldConfig": {
-				"defaults": { "custom": { "cellOptions": { "type": "auto", "wrapText": true } } },
-				"overrides": [
-					{
-						"matcher": { "id": "byName", "options": "severity" },
-						"properties": [{ "id": "custom.width", "value": 90 }]
-					},
-					{
-						"matcher": { "id": "byName", "options": "module" },
-						"properties": [{ "id": "custom.width", "value": 150 }]
-					},
-					{
-						"matcher": { "id": "byName", "options": "trace_id" },
-						"properties": [
-							{ "id": "custom.width", "value": 150 },
-							{
-								"id": "links",
-								"value": [
-									{
-										"title": "View trace",
-										"url": "",
-										"internal": {
-											"datasourceUid": "tempo",
-											"datasourceName": "Traces",
-											"query": { "query": "${__value.raw}" }
-										}
-									}
-								]
-							}
-						]
-					}
-				]
+			"options": {
+				"showTime": true,
+				"showLabels": false,
+				"showCommonLabels": false,
+				"wrapLogMessage": true,
+				"prettifyLogMessage": false,
+				"enableLogDetails": true,
+				"dedupStrategy": "none",
+				"sortOrder": "Descending"
 			}
 		}
 	]

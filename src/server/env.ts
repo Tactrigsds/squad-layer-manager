@@ -441,7 +441,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	otel: {
 		title: 'Telemetry',
 		description:
-			'the app exports traces, metrics and logs over OTLP. docker-compose runs an OpenTelemetry collector next to it, which writes into GreptimeDB, and a Grafana that serves the dashboards.',
+			'the app exports traces, metrics and logs over OTLP. docker-compose runs an OpenTelemetry collector next to it, which routes each signal to its own store, and a Grafana that serves the dashboards.',
 	},
 	rbac: { title: 'Permissions' },
 	encryption: { title: 'Encryption' },
