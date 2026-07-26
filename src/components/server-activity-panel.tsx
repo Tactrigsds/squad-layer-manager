@@ -37,12 +37,12 @@ function ServerChatEvents(props: {
 }) {
 	const selectedMatchOrdinal = Zus.useStore(props.stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
 	const serverId = props.stores.squadServer!.serverId
-	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
-	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
-	const displayMatch = React.useMemo(() => {
-		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
-	}, [selectedMatchOrdinal, currentMatch, recentMatches])
+	const displayMatch = Zus.useStore_Susp(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ChatPrt.Sel.displayMatch,
+	)
 
 	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const [newMessageCount, setNewMessageCount] = React.useState(0)
@@ -232,11 +232,12 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		}
 	}, [currentMatch?.historyEntryId, stores.squadServer])
 
-	// Determine which match to display - either selected or current
-	const displayMatch = React.useMemo(() => {
-		if (selectedMatchOrdinal === null) return currentMatch
-		return recentMatches.find((m) => m.ordinal === selectedMatchOrdinal)
-	}, [selectedMatchOrdinal, currentMatch, recentMatches])
+	const displayMatch = Zus.useStore_Susp(
+		stores.squadServer!,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ChatPrt.Sel.displayMatch,
+	)
 
 	// Event filtering logic
 	const prevState = React.useRef<{

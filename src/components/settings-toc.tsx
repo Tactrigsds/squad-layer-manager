@@ -5,11 +5,13 @@ import { z } from 'zod'
 import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type { SettingsGroup } from '@/lib/settings-groups'
 import { GLOBAL_SETTINGS_GROUPS, HIDDEN_GLOBAL_SETTINGS_KEYS, splitByGroups, TOC_LEAF_PATHS } from '@/lib/settings-groups'
 import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
+import * as Zus from '@/lib/zustand'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -25,6 +27,11 @@ type TocNode = { id: string; label: string; path: string; writable: boolean; chi
 
 const WRITE_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
 const WRITE_NONE: RBAC.SettingsWriteAccess = { kind: 'none' }
+
+// the trees are rebuilt whenever a mode or a write grant changes, but the schemas behind them never change, so both
+// conversions are done once for the module rather than inside those memos
+const serverJsonSchema = z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node
+const globalJsonSchema = z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node
 
 function stripNullable(node: Node): Node {
 	if (node?.anyOf) {
@@ -250,20 +257,15 @@ function buildParentMap(nodes: TocNode[], parentId: string | null, map: Map<stri
 export default function SettingsToc({
 	showServers,
 	showGlobal,
-	globalMode,
 	servers,
-	serverModes,
-	creatingServer,
-	newServerMode,
+	sectionKeys,
 }: {
 	showServers: boolean
 	showGlobal: boolean
-	globalMode: 'gui' | 'json'
 	servers: { id: string; displayName: string }[]
-	serverModes: Record<string, 'gui' | 'json'>
-	creatingServer: boolean
-	newServerMode: 'gui' | 'json'
+	sectionKeys: SettingsEditorFrame.Key[]
 }) {
+	const { globalMode, serverModes, newServerMode, creatingServer } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.tocModes)
 	const [query, setQuery] = React.useState('')
 	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
 	const [focusedId, setFocusedId] = React.useState<string | null>(null)
@@ -299,22 +301,8 @@ export default function SettingsToc({
 		() =>
 			globalMode === 'json'
 				? []
-				: groupTocNodes(
-						buildChildren(
-							z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
-							[],
-							'setting:',
-							globalWrite,
-						),
-						GLOBAL_SETTINGS_GROUPS,
-						'setting:',
-					),
+				: groupTocNodes(buildChildren(globalJsonSchema, [], 'setting:', globalWrite), GLOBAL_SETTINGS_GROUPS, 'setting:'),
 		[globalMode, globalWrite],
-	)
-
-	const serverJsonSchema = React.useMemo(
-		() => z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node,
-		[],
 	)
 
 	const serverNodes = React.useMemo(() => {
@@ -338,7 +326,7 @@ export default function SettingsToc({
 			})
 		}
 		return nodes
-	}, [servers, serverModes, creatingServer, newServerMode, serverJsonSchema, serverWriteById])
+	}, [servers, serverModes, creatingServer, newServerMode, serverWriteById])
 
 	const nodes = React.useMemo(() => {
 		const roots: TocNode[] = []
