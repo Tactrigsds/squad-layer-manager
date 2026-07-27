@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 import { invalidateLoggedInUser, useLoggedInUser } from '@/systems/users.client'
@@ -19,15 +20,15 @@ export default function NicknameDialog(props: { children: React.ReactNode; open?
 			onSuccess: (result) => {
 				if (result.code === 'ok') {
 					UsersClient.invalidateLoggedInUser()
-					toast('Nickname updated successfully!')
+					toast(...USR_Msgs.nicknameUpdated().toast())
 					invalidateLoggedInUser()
 					props.onOpenChange?.(false)
 				} else {
-					toast.error('Error updating nickname', { description: result.msg })
+					toast.error(...USR_Msgs.nicknameRejected(result.msg).toast())
 				}
 			},
 			onError: (error) => {
-				toast.error('Failed to update nickname', { description: 'An unexpected error occurred' })
+				toast.error(...USR_Msgs.nicknameUpdateFailed().toast())
 				console.error('Error updating nickname:', error)
 			},
 		}),

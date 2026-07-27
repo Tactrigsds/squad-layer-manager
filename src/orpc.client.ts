@@ -10,6 +10,7 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as RPC_Msgs from '@/messages/rpc.messages'
 import * as SM from '@/models/squad.models'
 import type * as RBAC from '@/rbac.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
@@ -49,9 +50,9 @@ const orpcLink = new RPCLink({
 			// reconnect toast isn't already saying. Only calls that failed while the transport was up are real news.
 			if (!transportOpen()) return
 			if (error instanceof Error) {
-				toast.error('Transport Error', { description: error.message })
+				toast.error(...RPC_Msgs.transportError(error.message).toast())
 			} else {
-				toast.error('Transport Error', { description: 'Unknown error' })
+				toast.error(...RPC_Msgs.transportError(RPC_Msgs.unknownError().text()).toast())
 			}
 		}),
 	],
@@ -147,7 +148,7 @@ shouldWarnDisconnected$.subscribe((warn) => {
 		reconnectToastShown = true
 		// the whole state is in the title: updating a toast by id merges into the existing one, so a description set
 		// here would survive into the success toast that replaces it
-		toast.loading('Lost connection to the server, reconnecting...', {
+		toast.loading(RPC_Msgs.reconnecting().text(), {
 			id: RECONNECT_TOAST_ID,
 			duration: Infinity,
 			dismissible: false,
@@ -157,7 +158,7 @@ shouldWarnDisconnected$.subscribe((warn) => {
 		// resolved because we reconnected -> tell the user; resolved because the tab went hidden while still down ->
 		// just drop the toast, there is nothing to celebrate and no one watching
 		if (transportOpen()) {
-			toast.success('Reconnected to the server', { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
+			toast.success(RPC_Msgs.reconnected().text(), { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
 		} else {
 			toast.dismiss(RECONNECT_TOAST_ID)
 		}
@@ -198,7 +199,7 @@ ConfigClient.Store.subscribe((config) => {
 		previousSha = config.PUBLIC_GIT_SHA
 		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 	} else if (previousSha !== config.PUBLIC_GIT_SHA) {
-		toast.info('SLM is being upgraded, window will refresh shortly...')
+		toast.info(...RPC_Msgs.upgrading().toast())
 		setTimeout(async () => {
 			console.warn(`Version skew detected (${previousSha} -> ${config.PUBLIC_GIT_SHA}), reloading window`)
 			window.location.reload()
@@ -282,7 +283,8 @@ export function observe<T>(
 				console.error(`[${tag}] subscription failed (attempt ${count})`, error)
 				if (count > 2) {
 					// keyed per subscription so a stuck one replaces its own toast rather than stacking a new one each attempt
-					toast.error('Remote Subscription Error', { id: `sub-error-${tag}`, description: `${tag}: ${error.message}` })
+					const [subErrorMsg, subErrorOpts] = RPC_Msgs.subscriptionError(tag, error.message).toast()
+					toast.error(subErrorMsg, { ...subErrorOpts, id: `sub-error-${tag}` })
 				}
 
 				// the socket can still drop during the backoff, so hold there too rather than retrying into a dead transport
