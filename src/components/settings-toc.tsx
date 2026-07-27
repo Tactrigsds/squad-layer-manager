@@ -12,6 +12,8 @@ import { settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
@@ -170,7 +172,7 @@ function TocItem({
 					<TooltipTrigger asChild>
 						<Icons.Pencil className="mr-1 h-3 w-3 shrink-0 text-muted-foreground" />
 					</TooltipTrigger>
-					<TooltipContent>Contains settings you can modify</TooltipContent>
+					<TooltipContent>{SETTINGS_Msgs.writableMarker().text()}</TooltipContent>
 				</Tooltip>
 			)}
 		</div>
@@ -319,7 +321,7 @@ export default function SettingsToc({
 		if (creatingServer) {
 			nodes.push({
 				id: 'section:server:__new__',
-				label: 'New Managed Server',
+				label: SETTINGS_Msgs.newManagedServer().text(),
 				path: '',
 				writable: true,
 				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:', WRITE_ALL),
@@ -333,7 +335,7 @@ export default function SettingsToc({
 		if (showServers) {
 			roots.push({
 				id: 'section:servers',
-				label: 'Managed Servers',
+				label: SETTINGS_Msgs.managedServers().text(),
 				path: '',
 				writable: serverNodes.some((n) => n.writable),
 				children: serverNodes,
@@ -342,12 +344,12 @@ export default function SettingsToc({
 		if (showGlobal) {
 			roots.push({
 				id: 'section:global',
-				label: 'Global Settings',
+				label: SETTINGS_Msgs.globalSettings().text(),
 				path: '',
 				writable: globalWrite.kind !== 'none',
 				children: globalChildren,
 			})
-			roots.push({ id: 'section:audit', label: 'Audit Log', path: '', writable: false, children: [] })
+			roots.push({ id: 'section:audit', label: AppEvents_Msgs.auditLog().text(), path: '', writable: false, children: [] })
 		}
 		return roots
 	}, [showServers, showGlobal, globalChildren, serverNodes, globalWrite])
@@ -439,7 +441,7 @@ export default function SettingsToc({
 					<Input
 						ref={searchRef}
 						className="h-8 pl-7"
-						placeholder="Search settings…"
+						placeholder={SETTINGS_Msgs.searchSettings().text()}
 						value={query}
 						onChange={(e) => {
 							setQuery(e.target.value)
@@ -451,7 +453,7 @@ export default function SettingsToc({
 			</div>
 			<nav className="flex-1 min-h-0 overflow-y-auto">
 				{visible.length === 0 ? (
-					<p className="text-sm text-muted-foreground px-1">No matches.</p>
+					<p className="text-sm text-muted-foreground px-1">{SETTINGS_Msgs.noMatches().text()}</p>
 				) : (
 					<ul>
 						{visible.map((n) => (
