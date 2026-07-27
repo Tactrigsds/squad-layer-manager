@@ -57,6 +57,9 @@ const BigIntListSchema = z
 			.map(BigInt),
 	)
 
+// named rather than inlined into BM_HOST because the DEMO conflict check asks whether that is where we point
+const BATTLEMETRICS_API = 'https://api.battlemetrics.com'
+
 export const groups = {
 	demo: {
 		DEMO: z
@@ -64,7 +67,7 @@ export const groups = {
 			.default(false)
 			.meta({
 				description:
-					'runs the app as a throwaway demo: every other variable below gets a working default, the discord integration is off, anyone can sign in as any username from a form on the front page, and a fresh database is seeded with example data. Everything it holds is disposable.',
+					'runs the app as a throwaway demo: every other variable below gets a working default, the discord integration is off, anyone can sign in as any username from a form on the front page, and a fresh database is seeded with example data. Everything it holds is disposable, and it refuses to boot alongside anything that is not.',
 				envExample: { include: 'commented' },
 			}),
 	},
@@ -426,7 +429,7 @@ export const groups = {
 	},
 
 	battlemetrics: {
-		BM_HOST: z.url().prefault('https://api.battlemetrics.com').meta({
+		BM_HOST: z.url().prefault(BATTLEMETRICS_API).meta({
 			description: 'the battlemetrics api.',
 		}),
 
@@ -578,6 +581,58 @@ const DEMO_DEFAULTS: Record<string, string> = {
 	DISCORD_HOME_GUILD_ID: '0',
 }
 
+// DEMO fills a gap but never wins an argument, so a variable it owns, set to something that contradicts it, is
+// refused rather than quietly overridden or quietly obeyed. Both ways that goes wrong are silent: credentials
+// DEMO cannot honour leave an instance that looks authenticated while the login portal signs anyone in as
+// anyone, and QUERY_PARAM_AUTH_BYPASS=false registers an oauth flow against the placeholder credentials DEMO
+// made up, which nobody can log in through. Neither trips the production guards below, since DEMO skips them.
+//
+// What is refused is a variable that still reaches something, not one that merely holds a value: a dev
+// instance and the test harness both hand over inert credentials alongside a stub to spend them on, and that
+// is a demo rather than a contradiction of one.
+const discordIsTurnedOff = () => groups.discord.DISCORD_ENABLED.safeParse(rawEnv.DISCORD_ENABLED).data === false
+const battlemetricsIsTheRealApi = () => (rawEnv.BM_HOST ?? BATTLEMETRICS_API) === BATTLEMETRICS_API
+
+const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; reason: string }[] = [
+	{
+		keys: ['QUERY_PARAM_AUTH_BYPASS'],
+		conflicts: (value) => groups.general.QUERY_PARAM_AUTH_BYPASS.safeParse(value).data === false,
+		reason: 'a demo has no discord app to authenticate against, so turning the no-auth login portal off leaves nobody able to log in',
+	},
+	{
+		keys: ['DISCORD_ENABLED'],
+		conflicts: (value) => groups.discord.DISCORD_ENABLED.safeParse(value).data === true,
+		reason: 'a demo runs with the discord integration off',
+	},
+	{
+		keys: ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN', 'DISCORD_HOME_GUILD_ID'],
+		conflicts: () => !discordIsTurnedOff(),
+		reason:
+			'a demo never registers the oauth flow, so credentials for an integration still switched on go unused while anyone can sign in as anyone. DISCORD_ENABLED=false says they are inert and is accepted',
+	},
+	{
+		keys: ['BM_PAT'],
+		conflicts: () => battlemetricsIsTheRealApi(),
+		reason:
+			'a demo would write player flags and notes to the real battlemetrics org the token belongs to. A BM_HOST pointed at a stub is accepted',
+	},
+]
+
+function assertDemoIsUncontradicted() {
+	const contradictions = DEMO_CONFLICTS.flatMap(({ keys, conflicts, reason }) => {
+		const set = keys.filter((key) => rawEnv[key] !== undefined && conflicts(rawEnv[key]!))
+		return set.length > 0 ? [`  ${set.join(', ')}: ${reason}`] : []
+	})
+	if (contradictions.length === 0) return
+	throw new Error(
+		[
+			'DEMO is set, but these variables contradict what it does:',
+			...contradictions,
+			'Unset them, or drop DEMO and configure the instance yourself.',
+		].join('\n'),
+	)
+}
+
 // The default path is a convention rather than a requirement: a checkout and the test harness pass their
 // secrets in the environment and have no file. A path asked for explicitly does have to be there, since
 // booting without the secrets someone pointed us at is never what they meant.
@@ -614,6 +669,7 @@ export function ensureEnvSetup() {
 
 	const demo = groups.demo.DEMO.parse(rawEnv.DEMO)
 	if (demo) {
+		assertDemoIsUncontradicted()
 		for (const [key, value] of Object.entries(DEMO_DEFAULTS)) {
 			rawEnv[key] ??= value
 		}
