@@ -185,15 +185,18 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 					: 'text-red-500'
 
 	return (
-		<div className="inline-flex text-muted-foreground gap-x-2 items-center text-sm tabular-nums">
-			<span className="inline-flex items-center gap-1" title="Players online" aria-label="Players online">
-				<Icons.Users className="h-3.5 w-3.5" />
-				{playerCount ?? '?'}/{serverInfo.maxPlayerCount}
-			</span>
-			<span className="inline-flex items-center gap-1" title="Players in queue" aria-label="Players in queue">
-				<Icons.Hourglass className="h-3.5 w-3.5" />
-				{serverInfo.queueLength}/{serverInfo.maxQueueLength}
-			</span>
+		<div className="inline-flex shrink-0 text-muted-foreground gap-x-2 items-center text-sm tabular-nums">
+			{/* online over queue while the panel is narrow, side by side once there is room */}
+			<div className="flex flex-col items-end leading-tight @[760px]:flex-row @[760px]:items-center @[760px]:gap-2">
+				<span className="inline-flex items-center gap-1" title="Players online" aria-label="Players online">
+					<Icons.Users className="h-3.5 w-3.5" />
+					{playerCount ?? '?'}/{serverInfo.maxPlayerCount}
+				</span>
+				<span className="inline-flex items-center gap-1" title="Players in queue" aria-label="Players in queue">
+					<Icons.Hourglass className="h-3.5 w-3.5" />
+					{serverInfo.queueLength}/{serverInfo.maxQueueLength}
+				</span>
+			</div>
 			{tickRate != null && (
 				<span className="inline-flex items-center gap-1" title="Server tick rate" aria-label="Server tick rate">
 					<Icons.Activity className="h-3.5 w-3.5" />
@@ -387,14 +390,15 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	}, [currentMatch, recentMatches, stores.squadServer])
 
 	return (
-		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an
-		// anonymous div that only reads as a pile of text
-		<Card role="region" aria-labelledby="server-activity-title" className="flex flex-col h-full min-h-0 w-full">
-			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center pb-3">
-				<div className="flex items-center gap-4">
-					<CardTitle id="server-activity-title" className="flex items-center gap-2">
+		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an anonymous div
+		// that only reads as a pile of text. Named directly rather than by its title, which is down to the icon
+		// alone once the panel is narrow.
+		<Card role="region" aria-label="Server Activity" className="flex flex-col h-full min-h-0 w-full @container">
+			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center gap-2 pb-3">
+				<div className="flex min-w-0 items-center gap-1.5 @[640px]:gap-4">
+					<CardTitle className="flex items-center gap-2 whitespace-nowrap">
 						<Icons.Server className="h-5 w-5" />
-						Server Activity
+						<span className="hidden @[640px]:inline">Server Activity</span>
 					</CardTitle>
 					<ButtonGroup>
 						<Button
@@ -415,11 +419,11 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 								variant="default"
 								size="sm"
 								onClick={() => ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)}
-								className="h-8 px-3 bg-green-500 hover:bg-green-600 text-white"
+								className="h-8 px-2 whitespace-nowrap @[640px]:px-3 bg-green-500 hover:bg-green-600 text-white"
 								title="Return to live events"
 							>
-								<Icons.Radio className="h-4 w-4 mr-1" />
-								Return to Live
+								<Icons.Radio className="h-4 w-4 @[640px]:mr-1" />
+								<span className="hidden @[640px]:inline">Return to Live</span>
 							</Button>
 						)}
 					</ButtonGroup>
