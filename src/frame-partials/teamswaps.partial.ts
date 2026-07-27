@@ -3,6 +3,7 @@ import * as ODSM from '@/lib/odsm'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -39,34 +40,9 @@ async function resolveDisplayName(source: TSW.Teamswap['source'] | undefined): P
 // surfaces a rejected teamswap op to the user. only ever reached on the originating client -- either from
 // its own optimistic dispatch or from the server's `rejected` message -- so there's no user to filter by
 function toastOpError(code: TSW.Rejection['code']) {
-	let title: string
-	let description: string | undefined
-	switch (code) {
-		case 'err:currently-swapping':
-			title = 'Swap in progress'
-			description = 'Cannot modify swaps while a team swap is being executed.'
-			break
-		case 'err:swaps-not-saved':
-			title = 'Swaps not saved'
-			description = 'Save your swaps before executing.'
-			break
-		case 'err:pending-swap':
-			title = 'Player swap pending'
-			description = `A swap for this player is already pending execution.`
-			break
-		case 'err:nothing-queued':
-			title = 'No teamswaps queued'
-			description = 'There is nothing to clear.'
-			break
-		case 'err:currently-not-swapping':
-		case 'err:unexpected':
-			title = 'Unexpected error'
-			description = 'An unexpected error occurred with the team swap system.'
-			break
-		default:
-			return
-	}
-	toast.error(title, { description })
+	const args = TSW_Msgs.rejectionTexts[code]
+	if (!args) return
+	toast.error(...args)
 }
 
 function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.PresenceEvent>) {
@@ -76,10 +52,7 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			const { source, swaps } = se
 			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'saved-teamswaps' })
 			void resolveDisplayName(source).then((name) => {
-				const count = swaps.size
-				const description =
-					count > 0 ? `${name} saved ${count} teamswap${count !== 1 ? 's' : ''}.` : `${name} cleared the saved teamswaps.`
-				toast('Teamswaps saved', { description })
+				toast(...TSW_Msgs.saved(name, swaps.size).toast())
 			})
 			break
 		}
@@ -115,28 +88,28 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 		}
 
 		case 'teamswap-execution-failed': {
-			const description =
-				se.reason === 'not-all-players-swapped'
-					? `${se.playerIds?.length ?? 0} player${se.playerIds?.length === 1 ? '' : 's'} could not be swapped to their assigned team.`
-					: se.reason === 'timeout'
-						? 'The swap never took effect on the server.'
-						: (se.message ?? 'An error occurred while executing the team swap.')
-			toast.error('Team swap failed', { description: `${description} The pending swaps have been cancelled.` })
+			toast.error(
+				...TSW_Msgs.executionFailed(
+					se.reason === 'not-all-players-swapped' || se.reason === 'timeout'
+						? se.reason
+						: (se.message ?? 'An error occurred while executing the team swap.'),
+					se.playerIds?.length,
+				).toast(),
+			)
 			break
 		}
 
 		case 'teamswaps-executed': {
 			const { source, swapCount } = se
-			const players = `${swapCount} player${swapCount !== 1 ? 's' : ''}`
 			// no source means the map roll executed the queue: it's nobody's action, so it isn't attributed to a
 			// user and doesn't put an event on anyone in the presence panel
 			if (!source) {
-				toast('Teamswaps executed', { description: `${players} swapped to their assigned teams on map change.` })
+				toast(...TSW_Msgs.executed(swapCount).toast())
 				break
 			}
 			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswaps' })
 			void resolveDisplayName(source).then((name) => {
-				toast('Teamswaps executed', { description: `${name} swapped ${players} to their assigned teams.` })
+				toast(...TSW_Msgs.executed(swapCount, name).toast())
 			})
 			break
 		}
