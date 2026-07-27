@@ -2072,9 +2072,12 @@ const onNewGameDuringSync =
 				// Only once SLM has history for this server, though. On the first match it records there is no roll it
 				// could have missed: the server is simply already running, and a head that happens to name the layer
 				// it is running is a request to play that layer next, not evidence it has been played.
+				//
+				// Exact equality rather than compatibility: dropping someone's queued item is not recoverable, so a
+				// head that merely could be what is playing stays put.
 				if (pushedNewMatch && currentMatch.ordinal > 0) {
 					const head = LayerQueue.getSavedQueue(ctx)[0]
-					if (head?.layerId && L.areLayersCompatible(head.layerId, currentLayerId)) {
+					if (head?.layerId && L.layersEqual(head.layerId, currentLayerId)) {
 						log.info('queue head %s is already playing; consuming it rather than queueing it again', head.layerId)
 						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
 					}
