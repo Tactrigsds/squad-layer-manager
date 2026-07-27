@@ -15,19 +15,29 @@ export const helpIntro = Msgs.def(() => ({
 	text: () => 'Queue players to be moved to the opposite team, either at the start of the next round or immediately.',
 }))
 
-export const helpSteps = Msgs.def(() => ({
-	react: (): React.ReactNode[] => [
+export const helpStepQueue = Msgs.def(() => ({
+	react: () => (
 		<>
 			Right-click a player and choose <strong>Swap Next</strong> to queue them.
-		</>,
+		</>
+	),
+}))
+
+export const helpStepSave = Msgs.def(() => ({
+	react: () => (
 		<>
 			Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next
 			round.
-		</>,
+		</>
+	),
+}))
+
+export const helpStepSwapNow = Msgs.def(() => ({
+	react: () => (
 		<>
 			Click <strong>Swap Now</strong> to immediately execute all saved swaps.
-		</>,
-	],
+		</>
+	),
 }))
 
 export const helpRevert = Msgs.def(() => ({
