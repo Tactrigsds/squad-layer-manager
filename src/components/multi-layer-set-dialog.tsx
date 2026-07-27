@@ -3,6 +3,8 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import * as L_Msgs from '@/messages/layer.messages'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as L from '@/models/layer'
 
 export type MultiLayerSetDialogProps = {
@@ -51,16 +53,16 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 							className="w-full min-h-75 pr-8 min-w overflow-x-auto text-sm font-mono"
 							style={{ lineHeight: '1.5rem' }}
 							wrap="off"
-							placeholder="Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)"
+							placeholder={L_Msgs.multiLayerPlaceholder().text()}
 						/>
 					</div>
 					<div className="flex justify-end space-x-2">
 						{props.extraFooter}
 						<Button variant="outline" onClick={() => setOpen(false)}>
-							Cancel
+							{UI_Msgs.cancel().text()}
 						</Button>
 						<Button onClick={handleSubmit} disabled={possibleLayers.length === 0}>
-							Add {possibleLayers.length > 0 ? `${possibleLayers.length} ` : ''}Layer{possibleLayers.length !== 1 ? 's' : ''}
+							{L_Msgs.addLayers(possibleLayers.length).text()}
 						</Button>
 					</div>
 				</div>

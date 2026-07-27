@@ -85,3 +85,72 @@ export const simulating = Msgs.def(() => ({ text: () => 'Simulating' }))
 export const disconnectedFromServer = Msgs.def(() => ({ text: () => 'Disconnected from server' }))
 
 export const connectingToServer = Msgs.def(() => ({ text: () => 'Connecting to server...' }))
+
+// -------- the primary panel's tabs --------
+
+export const queueTab = Msgs.def((count: number) => ({ text: () => `Queue (${count})` }))
+
+export const teamsTab = Msgs.def((count: number) => ({ text: () => `Teams (${count})` }))
+
+export const finishedEditing = Msgs.def(() => ({ text: () => 'Finished editing' }))
+
+// -------- the servers index --------
+
+export const managedServers = Msgs.def(() => ({ text: () => 'Managed Servers' }))
+
+export const noServersAvailable = Msgs.def(() => ({ text: () => 'No servers available.' }))
+
+export const somethingWentWrong = Msgs.def(() => ({ text: () => 'Something went wrong' }))
+
+// -------- what a suspended subtree says while it waits --------
+// There are only two things the app ever waits on, so each sentence is spelled out per subject rather than built
+// around an interpolated noun. The odd casing mid-sentence is inherited from the old interpolation, which
+// substituted a noun phrase written for one position into all five.
+
+export type BoundarySubject = 'global-settings' | 'page'
+
+const boundaryLoadingText: Record<BoundarySubject, string> = {
+	'global-settings': 'Loading global settings…',
+	page: 'Loading This page…',
+}
+
+const boundaryStillWaitingText: Record<BoundarySubject, string> = {
+	'global-settings': 'Still waiting on global settings…',
+	page: 'Still waiting on This page…',
+}
+
+const boundaryReconnectingText: Record<BoundarySubject, string> = {
+	'global-settings': "Reconnecting, global settings will load once we're back…",
+	page: "Reconnecting, This page will load once we're back…",
+}
+
+export const boundaryLoading = Msgs.def((subject: BoundarySubject, state: 'waiting' | 'slow' | 'reconnecting') => ({
+	text: () =>
+		state === 'waiting'
+			? boundaryLoadingText[subject]
+			: state === 'slow'
+				? boundaryStillWaitingText[subject]
+				: boundaryReconnectingText[subject],
+}))
+
+const boundaryTimedOutTitle: Record<BoundarySubject, string> = {
+	'global-settings': "global settings didn't load",
+	page: "This page didn't load",
+}
+
+const boundaryFailedTitle: Record<BoundarySubject, string> = {
+	'global-settings': 'global settings failed',
+	page: 'This page failed',
+}
+
+export const boundaryFailed = Msgs.def((subject: BoundarySubject, timedOut: boolean) => ({
+	text: () => (timedOut ? boundaryTimedOutTitle[subject] : boundaryFailedTitle[subject]),
+}))
+
+export const boundaryTimedOutBlurb = Msgs.def(() => ({
+	text: () => 'The server never sent this data. It may be busy or in a bad state.',
+}))
+
+export const retry = Msgs.def(() => ({ text: () => 'Retry' }))
+
+export const routeSuspended = Msgs.def(() => ({ text: () => 'Route suspended, waiting on state…' }))
