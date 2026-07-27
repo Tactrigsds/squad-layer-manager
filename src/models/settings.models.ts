@@ -341,9 +341,9 @@ export const GlobalSettingsSchema = z
 		allowedPrefixes: z
 			.array(CMD.PrefixSchema)
 			.min(1)
-			.prefault([CMD.FALLBACK_PREFIX])
+			.prefault([CMD.DEFAULT_PREFIX])
 			.describe('Prefixes an in-game command may start with. Every command trigger must begin with one of these.'),
-		defaultPrefix: CMD.PrefixSchema.prefault(CMD.FALLBACK_PREFIX).describe(
+		defaultPrefix: CMD.PrefixSchema.prefault(CMD.DEFAULT_PREFIX).describe(
 			'The allowed prefix that commands introduced by future SLM versions are seeded with',
 		),
 		commands: CMD.AllCommandConfigSchema,
@@ -399,7 +399,7 @@ export const GlobalSettingsSchema = z
 		),
 	})
 	.superRefine((val, ctx) => {
-		const allowedPrefixes = val.allowedPrefixes ?? [CMD.FALLBACK_PREFIX]
+		const allowedPrefixes = val.allowedPrefixes ?? [CMD.DEFAULT_PREFIX]
 		const seenPrefix = new Set<string>()
 		allowedPrefixes.forEach((p, i) => {
 			if (seenPrefix.has(p)) {
@@ -409,7 +409,7 @@ export const GlobalSettingsSchema = z
 		})
 		// commands seeded for future SLM versions take defaultPrefix, so it has to be one an admin actually accepts;
 		// otherwise the next release's new commands would fail this schema on load and refuse to boot
-		const defaultPrefix = val.defaultPrefix ?? CMD.FALLBACK_PREFIX
+		const defaultPrefix = val.defaultPrefix ?? CMD.DEFAULT_PREFIX
 		if (!allowedPrefixes.includes(defaultPrefix)) {
 			ctx.addIssue({
 				code: 'custom',
@@ -478,7 +478,7 @@ export type GlobalSettingsInput = z.input<typeof GlobalSettingsSchema>
 // depend on a sibling field). Call this instead of parsing raw global settings directly.
 export function parseGlobalSettings(raw: unknown) {
 	const input = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
-	const defaultPrefix = typeof input.defaultPrefix === 'string' ? input.defaultPrefix : CMD.FALLBACK_PREFIX
+	const defaultPrefix = typeof input.defaultPrefix === 'string' ? input.defaultPrefix : CMD.DEFAULT_PREFIX
 	return GlobalSettingsSchema.safeParse({ ...input, commands: CMD.seedCommandConfigs(input.commands, defaultPrefix) })
 }
 
@@ -533,6 +533,11 @@ export function defaultRbacSettings() {
 				permissions: adminPermissions,
 				maxTimeout: '2h',
 				maxLayerRequests: 5,
+				// Whoever the game already trusts to admin gets SLM's day-to-day access, so in-game commands work
+				// without anyone configuring RBAC first. Only the implicit list is named: it is the one list a fresh
+				// install has (the sandbox's emulated Admins.cfg), and an install with real servers points this at
+				// the lists it configures for them.
+				assignments: { ingameAdminLists: [SM.IMPLICIT_LIST_ID] },
 			},
 			managers: {
 				permissions: managerPermissions,

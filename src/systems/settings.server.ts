@@ -23,6 +23,7 @@ import * as SecretBox from '@/server/secret-box.server'
 import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Rbac from '@/systems/rbac.server'
+import * as Seed from '@/systems/seed.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 const module = initModule('settings')
@@ -45,7 +46,7 @@ async function loadGlobalSettings(ctx: C.Db) {
 		// fresh install: schema defaults include the tiered admins/managers/owners RBAC preset (see defaultRbacSettings)
 		const defaultsRes = SETTINGS.parseGlobalSettings({})
 		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
-		const defaults = defaultsRes.data
+		const defaults = Seed.applyInitialGlobalSettings(defaultsRes.data)
 		await ctx
 			.db()
 			.insert(Schema.globalSettings)
