@@ -7,7 +7,7 @@ import * as Rx from '@/lib/rxjs'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import type * as SETTINGS from '@/models/settings.models'
+import * as SETTINGS from '@/models/settings.models'
 import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
@@ -508,7 +508,7 @@ export async function switchPlayers(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, 
 // this doesn't broadcast switch notifications to admins, only warns the killed player, and invalidates
 // teams once after both switches complete so the intermediate (swapped) team state is never surfaced.
 export async function killPlayers(
-	ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal,
+	ctx: SR.Ctx.Rcon & SR.Ctx & SETTINGS.Ctx & CS.AbortSignal,
 	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
 	reason?: string,
 ) {
@@ -528,7 +528,7 @@ export async function killPlayers(
 		await forceSwitch()
 	})
 	ctx.squadRcon.teams.invalidate(ctx)
-	await warnAll(ctx, ids, SM_Msgs.notifyKilled(reason).warn())
+	await warnAll(ctx, ids, SM_Msgs.notifyKilled(reason).warn(SETTINGS.locale(ctx)))
 }
 
 export async function demoteCommander(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {
