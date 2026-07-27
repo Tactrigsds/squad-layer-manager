@@ -52,3 +52,10 @@ export const sampleMessages = {
 	RWS5: 'Team A(USA) has won five games in a row.',
 	'RAM3+': 'Team A(USA) has been winning for 4 games with an average of (125+)(163.50) tickets',
 } satisfies Record<BAL.TriggerId, string>
+
+// -------- the levels editor --------
+
+// a trigger with no level configured is not evaluated at all
+export const levelOff = Msgs.def(() => ({ text: () => 'Off' }))
+
+export const levelPickerLabel = Msgs.def((triggerName: string) => ({ text: () => `${triggerName} level` }))

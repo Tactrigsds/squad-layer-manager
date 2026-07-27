@@ -12,3 +12,17 @@ export const invalidTag = Msgs.def((reason: string) => ({
 export const saveFailed = Msgs.def(() => ({
 	toast: () => ['Failed to save tag'],
 }))
+
+// -------- the tag editor --------
+
+export const labelColumn = Msgs.def(() => ({ text: () => 'Label' }))
+
+export const descriptionColumn = Msgs.def(() => ({ text: () => 'Description' }))
+
+export const colorColumn = Msgs.def(() => ({ text: () => 'Color' }))
+
+export const descriptionPlaceholder = Msgs.def(() => ({ text: () => 'Shown when hovering the tag' }))
+
+export const pickColor = Msgs.def(() => ({ text: () => 'Pick color' }))
+
+export const deleteTag = Msgs.def(() => ({ text: () => 'Delete tag' }))

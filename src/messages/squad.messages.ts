@@ -1,4 +1,5 @@
 import * as Msgs from '@/messages/shared'
+import type * as SM from '@/models/squad.models'
 
 // a supplied reason is already the fully-rendered verbatim message; only the no-reason case gets a default
 export const notifyKilled = Msgs.def((reason?: string) => ({
@@ -154,4 +155,67 @@ export const copiedToClipboard = Msgs.def((what: string, count: number = 1) => (
 // actionName is the admin action's display name, so the prompt says which action is being blocked
 export const reasonRequired = Msgs.def((actionName: string) => ({
 	toast: () => ['Reason required', { description: `A reason is required for ${actionName}.` }],
+}))
+
+// -------- the admin lists editor --------
+// A list is a name, one source and the group permissions that mark an admin *in that list*. Its name is what
+// servers and role assignments refer to.
+
+export const noAdminLists = Msgs.def(() => ({ text: () => 'No admin lists defined.' }))
+
+export const newAdminListName = Msgs.def(() => ({ text: () => 'new list name' }))
+
+export const addAdminList = Msgs.def(() => ({ text: () => 'Add list' }))
+
+export const deleteAdminList = Msgs.def((name: string) => ({ text: () => `Delete ${name}` }))
+
+export const adminListPicker = Msgs.def(() => ({ text: () => 'Admin list' }))
+
+export const selectAdminLists = Msgs.def(() => ({ text: () => 'Select admin lists...' }))
+
+// a list the server still names but the global settings no longer define; kept selectable so opening the editor
+// cannot silently drop it
+export const adminListNotConfigured = Msgs.def((listId: string) => ({ text: () => `${listId} (not configured)` }))
+
+export const adminIdentifyingPermissions = Msgs.def(() => ({ text: () => 'Admin-identifying permissions' }))
+
+export const adminIdentifyingPermissionsHelp = Msgs.def(() => ({
+	text: () => 'Group permissions in this list that mark a player as an in-game admin on the servers using it.',
+}))
+
+export const permissionPicker = Msgs.def(() => ({ text: () => 'Permission' }))
+
+export const selectPermissions = Msgs.def(() => ({ text: () => 'Select permissions...' }))
+
+// how each source kind is named in the picker, and what its one string field looks like
+export const adminSourceTypeLabels: Record<SM.AdminListSourceType, string> = {
+	remote: 'Remote URL',
+	local: 'Local file',
+	ftp: 'FTP',
+	sftp: 'SFTP',
+}
+
+export const adminSourcePlaceholders: Record<Exclude<SM.AdminListSourceType, 'sftp'>, string> = {
+	remote: 'https://host/admins.cfg',
+	local: 'path/to/Admins.cfg',
+	ftp: 'ftp://user:password@host:21/admins.cfg',
+}
+
+export const sftpHost = Msgs.def(() => ({ text: () => 'host' }))
+
+export const sftpUsername = Msgs.def(() => ({ text: () => 'username' }))
+
+export const sftpPassword = Msgs.def(() => ({ text: () => 'password' }))
+
+export const sftpFilePath = Msgs.def(() => ({ text: () => '/path/to/Admins.cfg' }))
+
+// A sandbox additionally has one SLM synthesises, which is not in the list because there is no source to name --
+// so say so, rather than leaving the impression that an empty selection means the emulated server has no admins.
+export const sandboxAdminListTitle = Msgs.def(() => ({ text: () => 'This sandbox has an emulated admin list of its own' }))
+
+export const sandboxAdminListBlurb = Msgs.def(() => ({
+	text: () =>
+		'It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -> Sandbox ' +
+		'Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, ' +
+		'because it only exists in memory.',
 }))
