@@ -89,24 +89,42 @@ export const swapCancelled = Msgs.def((target: Msgs.Target) => ({
 	],
 }))
 
-// added/removed are the real per-player diff against the previously saved swaps, not the net change in
-// size: a save that adds 3 and removes 1 is not "added 2"
-export const notifyAdminSwapsSaved = Msgs.def((name: string, count: number, added: number, removed: number, factionLines?: string[]) => ({
-	warn: () => {
-		if (count === 0) return `${name} cleared all queued teamswaps for next map.`
-		const parts: string[] = []
-		if (added > 0) parts.push(`added ${added}`)
-		if (removed > 0) parts.push(`removed ${removed}`)
-		const changeSummary = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-		const base = `${name} queued ${count} teamswap${count !== 1 ? 's' : ''} for next map${changeSummary}`
-		return factionLines?.length ? `${base}:\n${factionLines.join('\n')}` : `${base}.`
-	},
-}))
+type SwapGroup = { faction: string; names: string[] }
 
-export const notifyAdminManualSwap = Msgs.def((name: string, count: number, factionLines?: string[]) => ({
+function headline(name: string, change: { added: number; removed: number }) {
+	const swaps = (count: number) => `${count} teamswap${count !== 1 ? 's' : ''}`
+	if (change.added > 0 && change.removed > 0) return `${name} queued ${swaps(change.added)} and cancelled ${change.removed}`
+	if (change.added > 0) return `${name} queued ${swaps(change.added)}`
+	return `${name} cancelled ${swaps(change.removed)}`
+}
+
+// what a save did, never what the queue happens to hold: added/removed are the real per-player diff against the
+// previously saved swaps (a save that adds 3 and removes 1 is not "added 2"), and the players named are only the
+// ones it changed. `queued` is the whole resulting queue, reported as counts at the end so that the standing
+// swaps of everyone else are not read as this admin's doing.
+export const notifyAdminSwapsSaved = Msgs.def(
+	(
+		name: string,
+		change: { added: number; removed: number; addedGroups?: SwapGroup[]; removedGroups?: SwapGroup[] },
+		queued: SwapGroup[],
+	) => ({
+		warn: () => {
+			const total = queued.reduce((count, group) => count + group.names.length, 0)
+			if (total === 0) return `${name} cleared all queued teamswaps for next map.`
+			const named: string[] = []
+			for (const group of change.addedGroups ?? []) named.push(`to ${group.faction}: ${group.names.join(', ')}`)
+			for (const group of change.removedGroups ?? []) named.push(`no longer to ${group.faction}: ${group.names.join(', ')}`)
+			const summary = `now queued for next map: ${queued.map((group) => `${group.names.length} to ${group.faction}`).join(', ')}`
+			return [headline(name, change) + (named.length > 0 ? ':' : ''), ...named, summary].join('\n')
+		},
+	}),
+)
+
+export const notifyAdminManualSwap = Msgs.def((name: string, count: number, swapped?: SwapGroup[]) => ({
 	warn: () =>
-		factionLines?.length
-			? `${name} swapped ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
+		swapped?.length
+			? `${name} swapped ${count} player${count !== 1 ? 's' : ''}:\n` +
+				swapped.map((group) => `to ${group.faction}: ${group.names.join(', ')}`).join('\n')
 			: `${name} swapped ${count} player${count !== 1 ? 's' : ''} to the other team.`,
 }))
 

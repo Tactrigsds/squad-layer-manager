@@ -373,13 +373,18 @@ async function watchExecution(
 	}
 }
 
-function buildFactionLines(
+// past this many players a warn lists counts only, rather than a wall of names
+const NAMED_PLAYER_LIMIT = 8
+
+// the players named, grouped by the team they are headed to. `swaps` is whichever collection those players are
+// described by, which for a set that a save removed is the previously saved one.
+function buildSwapGroups(
 	playerIds: SM.PlayerId[],
 	swaps: TSW.TeamswapCollection,
 	players: { ids: SM.PlayerIds.Schema }[],
 	layer: { Faction_1: string; Faction_2: string } | null | undefined,
 	ordinal: number,
-): string[] {
+): { faction: string; names: string[] }[] {
 	const groups = new Map<MH.NormedTeamId, { faction: string; names: string[] }>()
 	for (const playerId of playerIds) {
 		const toTeam = swaps.get(playerId)?.toTeam
@@ -393,12 +398,7 @@ function buildFactionLines(
 		groups.get(toTeam)!.names.push(playerName)
 	}
 	for (const group of groups.values()) group.names.sort((a, b) => a.localeCompare(b))
-	return (['A', 'B'] as MH.NormedTeamId[])
-		.filter((team) => groups.has(team))
-		.map((team) => {
-			const { faction, names } = groups.get(team)!
-			return `to ${faction}: ${names.join(', ')}`
-		})
+	return (['A', 'B'] as MH.NormedTeamId[]).filter((team) => groups.has(team)).map((team) => groups.get(team)!)
 }
 
 const orpcBase = getOrpcBase(module)
@@ -548,13 +548,13 @@ const dispatchOp = Instr.spanOp(
 								const excludeSteamIds = isManual.source.steamId ? new Set([isManual.source.steamId]) : undefined
 								const layerRes = L.parseLayerId(currentMatch.layerId)
 								const layer = 'layer' in layerRes ? layerRes.layer : null
-								const factionLines =
-									toSwap.length <= 8
-										? buildFactionLines(toSwap, se.swaps, teamsRes.players, layer, currentMatch.ordinal)
+								const swapped =
+									toSwap.length <= NAMED_PLAYER_LIMIT
+										? buildSwapGroups(toSwap, se.swaps, teamsRes.players, layer, currentMatch.ordinal)
 										: undefined
 								SquadRcon.warnAllAdmins(
 									{ ...ctx, signal: CleanupSys.shutdownSignal },
-									{ msg: TSW_Msgs.notifyAdminManualSwap(name, toSwap.length, factionLines).warn() },
+									{ msg: TSW_Msgs.notifyAdminManualSwap(name, toSwap.length, swapped).warn() },
 									excludeSteamIds,
 								).catch((error) => {
 									if (!Prom.isAbortError(error)) log.error(error)
@@ -621,22 +621,32 @@ const dispatchOp = Instr.spanOp(
 
 						// only an edit to the queue is announced as one. an execution empties the saved swaps too, but it
 						// has its own admin warn (notifyAdminManualSwap) and would otherwise report itself as a clear
-						if (se.source && se.trigger === 'user-edit') {
+						const { added, removed } = TSW.getTeamswapChanges(se.swaps, se.prevSaved)
+						if (se.source && se.trigger === 'user-edit' && added.length + removed.length > 0) {
 							const name = await resolveSourceName(ctx, se.source)
 							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
 							const layerRes = L.parseLayerId(currentMatch.layerId)
 							const layer = 'layer' in layerRes ? layerRes.layer : null
 							const currPlayers = SquadServer.getCurrTeams(ctx)?.players ?? []
-							const factionLines =
-								se.swaps.size <= 8
-									? buildFactionLines(Array.from(se.swaps.keys()), se.swaps, currPlayers, layer, currentMatch.ordinal)
-									: undefined
-							const { added, removed } = TSW.getTeamswapChanges(se.swaps, se.prevSaved)
+							const groups = (playerIds: SM.PlayerId[], swaps: TSW.TeamswapCollection) =>
+								buildSwapGroups(playerIds, swaps, currPlayers, layer, currentMatch.ordinal)
+							// the players this save changed are named; the queue it left behind is only counted, so a long
+							// standing queue does not read as this admin's doing
+							const named = added.length + removed.length <= NAMED_PLAYER_LIMIT
 							// notification should outlive this dispatch, so bind it to the shutdown signal rather than the task signal
 							SquadRcon.warnAllAdmins(
 								{ ...ctx, signal: CleanupSys.shutdownSignal },
 								{
-									msg: TSW_Msgs.notifyAdminSwapsSaved(name, se.swaps.size, added.length, removed.length, factionLines).warn(),
+									msg: TSW_Msgs.notifyAdminSwapsSaved(
+										name,
+										{
+											added: added.length,
+											removed: removed.length,
+											addedGroups: named ? groups(added, se.swaps) : undefined,
+											removedGroups: named ? groups(removed, se.prevSaved) : undefined,
+										},
+										groups(Array.from(se.swaps.keys()), se.swaps),
+									).warn(),
 								},
 								excludeSteamIds,
 							).catch((error) => {
