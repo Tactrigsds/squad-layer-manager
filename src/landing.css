@@ -1,6 +1,7 @@
 @import 'tailwindcss' source(none);
 @import './theme.css';
 @source './components/landing-pages.tsx';
+@source './components/logo-mark.tsx';
 
 @layer base {
 	* {

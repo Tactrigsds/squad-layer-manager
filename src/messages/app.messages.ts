@@ -6,22 +6,27 @@ import * as Msgs from '@/messages/shared'
 // message anyway because it is spelled out in five places and a rename should touch one.
 export const productName = Msgs.def('Squad Layer Manager')
 
+// Part of the brand voice (docs/brand.md): always the full sentence, "and other things also" included.
+export const tagline = Msgs.def('A tool to manage the upcoming layers of a squad server, and other things also.')
+
 // what was copied goes in the description, since the title is the same wherever the app copies something
 export const copiedToClipboard = Msgs.def((what: string) => ({
 	toast: () => [Msgs.t('Copied to clipboard'), { description: what }],
 }))
 
-// -------- the about dialog --------
+// -------- the debug info page --------
 
 export const about = Msgs.def('About')
 
-export const aboutBlurb = Msgs.def(
-	'Squad Layer Manager(SLM) is a tool for managing the upcoming layers of a squad server. and other things also.',
-)
+export const debugInfo = Msgs.def('Debug Info')
 
 export const repositoryHeading = Msgs.def('Repository:')
 
 export const reportIssuesHeading = Msgs.def('Report issues here, including the information below:')
+
+export const helpHeading = Msgs.def('Help:')
+
+export const discordHelpHeading = Msgs.def('Ask for help on Discord:')
 
 // The block the issue reporter is asked to paste. One message rather than four labels: which lines are present
 // depends on what the instance knows about itself, and the omissions only read correctly as a whole.
@@ -37,6 +42,20 @@ export const versionInfo = Msgs.def((info: { appVersion?: string; layersVersion?
 )
 
 export const versionInfoCopied = Msgs.def('Version information has been copied')
+
+// -------- acknowledgements --------
+
+export const acknowledgementsHeading = Msgs.def('Acknowledgements')
+
+// Prose rather than a list, so who is credited and what for reads as one sentence a translator can rearrange.
+// Edit the names here; they are the whole content of the section.
+export const acknowledgements = Msgs.def(() => ({
+	react: () =>
+		Msgs.node(
+			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong> community. Here are a number of people who made significant contributions to SLM in various ways: <acknowledgements here>',
+			Msgs.tags,
+		),
+}))
 
 // -------- the nav bar --------
 
