@@ -39,6 +39,7 @@ import { resToOptional } from '@/lib/types.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
+import * as V_Msgs from '@/messages/vote.messages'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
@@ -739,7 +740,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote started!')
+				toast(...V_Msgs.adminReceipt.started().toast())
 				break
 			default:
 				toast.error(res.msg)
@@ -754,7 +755,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote aborted!')
+				toast(...V_Msgs.adminReceipt.aborted().toast())
 				break
 			default:
 				toast.error(res.msg)
@@ -769,7 +770,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote ended early!')
+				toast(...V_Msgs.adminReceipt.endedEarly().toast())
 				break
 			default:
 				toast.error(res.msg)
@@ -784,13 +785,13 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote aborted!')
+				toast(...V_Msgs.adminReceipt.aborted().toast())
 				break
 			default:
 				toast.error(res.msg)
 		}
 
-		toast('Vote autostart cancelled!')
+		toast(...V_Msgs.adminReceipt.autostartCancelled().toast())
 	}
 
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)

@@ -23,3 +23,11 @@ export const removed = Msgs.def((description: string) => ({
 }))
 
 export const empty = Msgs.def(() => ({ warn: () => 'No layer requests queued.' }))
+
+export const cannotCombine = Msgs.def(() => ({
+	toast: () => ['Cannot combine these requests: a filter is applied normally on one and inverted on the other'],
+}))
+
+export const emptyRequest = Msgs.def(() => ({
+	toast: () => ['Empty request', { description: 'Pick at least one of layer, map, gamemode, version, matchup or a filter' }],
+}))
