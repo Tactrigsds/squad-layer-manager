@@ -854,6 +854,11 @@ export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnNextLayerChange'] as const
 export type NextLayerSettingKey = (typeof NEXT_LAYER_SETTING_KEYS)[number]
 
+// the mainPool lists that add behavior on top of the pool filter rather than deciding pool membership. The
+// pool-config panels render one editor per key, in this order.
+export const SECONDARY_LIST_KEYS = ['indicateMatches', 'indicateMisses', 'defaultSelectable', 'warnFor', 'constrainGeneration'] as const
+export type SecondaryListKey = (typeof SECONDARY_LIST_KEYS)[number]
+
 const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', mode: 'include' }
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })

@@ -83,10 +83,10 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 			const gui = state.mode === 'gui'
 			const label =
 				state.kind === 'global'
-					? 'Global Settings'
+					? SETTINGS_Msgs.globalSettings().text()
 					: state.kind === 'server'
 						? (nameById.get(state.serverId!) ?? state.serverId!)
-						: state.newDisplayName.trim() || 'New Managed Server'
+						: state.newDisplayName.trim() || SETTINGS_Msgs.newManagedServer().text()
 			// a new-server section always counts as one pending change while open; once created it no longer participates
 			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
 			const deniedIds = gui
@@ -178,12 +178,12 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 			{totalErrors > 0 && (
 				<span className="flex items-center gap-0.5 text-sm font-medium text-destructive">
 					<Icons.CircleAlert className="mr-1 h-4 w-4" />
-					{totalErrors} {totalErrors === 1 ? 'error' : 'errors'}
+					{SETTINGS_Msgs.errorCount(totalErrors).text()}
 					<Button
 						variant="ghost"
 						size="icon"
 						className="ml-1 h-6 w-6 text-destructive"
-						title="Previous error"
+						title={SETTINGS_Msgs.previousError().text()}
 						onClick={() => navigateErrors(-1)}
 					>
 						<Icons.ChevronUp className="h-4 w-4" />
@@ -192,7 +192,7 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 						variant="ghost"
 						size="icon"
 						className="h-6 w-6 text-destructive"
-						title="Next error"
+						title={SETTINGS_Msgs.nextError().text()}
 						onClick={() => navigateErrors(1)}
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
@@ -200,17 +200,14 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 				</span>
 			)}
 			{totalDenied > 0 && (
-				<span
-					className="flex items-center gap-0.5 text-sm font-medium text-amber-500"
-					title="These changes are outside the settings you're allowed to modify"
-				>
+				<span className="flex items-center gap-0.5 text-sm font-medium text-amber-500" title={SETTINGS_Msgs.deniedChangesHint().text()}>
 					<Icons.ShieldAlert className="mr-1 h-4 w-4" />
-					{totalDenied} not permitted
+					{SETTINGS_Msgs.deniedCount(totalDenied).text()}
 					<Button
 						variant="ghost"
 						size="icon"
 						className="ml-1 h-6 w-6 text-amber-500"
-						title="Previous denied change"
+						title={SETTINGS_Msgs.previousDeniedChange().text()}
 						onClick={() => navigateDenied(-1)}
 					>
 						<Icons.ChevronUp className="h-4 w-4" />
@@ -219,21 +216,19 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 						variant="ghost"
 						size="icon"
 						className="h-6 w-6 text-amber-500"
-						title="Next denied change"
+						title={SETTINGS_Msgs.nextDeniedChange().text()}
 						onClick={() => navigateDenied(1)}
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
 					</Button>
 				</span>
 			)}
-			<span className="text-sm">
-				<span className="font-medium">{totalChanges}</span> {totalChanges === 1 ? 'setting' : 'settings'} changed
-			</span>
+			<span className="text-sm [&_strong]:font-medium">{SETTINGS_Msgs.changedCount(totalChanges).react()}</span>
 			<Button variant="outline" size="sm" onClick={handleReset}>
-				Reset
+				{SETTINGS_Msgs.reset().text()}
 			</Button>
 			<Button size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
-				{anySaving ? 'Saving…' : 'Save'}
+				{anySaving ? SETTINGS_Msgs.saving().text() : SETTINGS_Msgs.save().text()}
 			</Button>
 		</div>
 	)
