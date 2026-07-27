@@ -3,7 +3,15 @@ import type * as SM from '@/models/squad.models'
 
 // a supplied reason is already the fully-rendered verbatim message; only the no-reason case gets a default
 export const notifyKilled = Msgs.def((reason?: string) => ({
-	warn: () => reason || 'You have been killed by an admin.',
+	warn: (locale?: string) =>
+		Msgs.t(
+			'{hasReason, select, yes {{reason}} other {You have been killed by an admin.}}',
+			{
+				reason,
+				hasReason: reason ? 'yes' : 'no',
+			},
+			locale,
+		),
 }))
 
 // Same shape, and it covers the plain kick and the timeout kick alike: the timeout's remaining duration is

@@ -1,14 +1,15 @@
 import * as Msgs from '@/messages/shared'
 
-export const added = Msgs.def((parts: string[], ownCount: number, evictedCount: number) => {
-	const base = `Layer request queued: ${parts.join(', ')}. You have ${ownCount} request${ownCount !== 1 ? 's' : ''} queued`
-	return {
-		warn: () =>
-			evictedCount > 0
-				? `${base} (your oldest ${evictedCount === 1 ? 'request was' : `${evictedCount} requests were`} dropped to make room).`
-				: `${base}.`,
-	}
-})
+export const added = Msgs.def((parts: string[], ownCount: number, evictedCount: number) => ({
+	warn: (locale?: string) =>
+		Msgs.t(
+			'Layer request queued: {parts}. You have {ownCount, plural, one {# request} other {# requests}} queued' +
+				'{evictedCount, plural, =0 {.} one { (your oldest request was dropped to make room).} ' +
+				'other { (your oldest # requests were dropped to make room).}}',
+			{ parts: parts.join(', '), ownCount, evictedCount },
+			locale,
+		),
+}))
 
 export const noSolutions = Msgs.def((request: string) => ({
 	warn: (locale?: string) => Msgs.t('No layers in the current pool match "{request}".', { request }, locale),
