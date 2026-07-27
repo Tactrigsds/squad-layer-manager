@@ -11,6 +11,7 @@ import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import * as ConfigClient from '@/systems/config.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -304,7 +305,9 @@ function useManageFlagsAction(playerId: string) {
 // the context-menu entry
 export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string; label?: string }) {
 	const { Item } = props.slots
+	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
 	const { manageFlags, denied, disabled } = useManageFlagsAction(props.playerId)
+	if (!bmEnabled) return null
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={manageFlags} disabled={disabled}>
@@ -359,7 +362,9 @@ function useAddFlagsAction(playerIds: string[], target: Msgs.Target) {
 // bulk-selection and squad menu entry: add-only flags across every target
 export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; target: Msgs.Target; label?: string }) {
 	const { Item } = props.slots
+	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
 	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.target)
+	if (!bmEnabled) return null
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={addFlags} disabled={disabled}>
@@ -371,7 +376,9 @@ export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: str
 
 // the player-details-window entry point: the same dialog, off the flag row's edit affordance
 export function PlayerFlagsButton(props: { playerId: string }) {
+	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
 	const { manageFlags, denied, disabled } = useManageFlagsAction(props.playerId)
+	if (!bmEnabled) return null
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<button

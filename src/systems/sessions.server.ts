@@ -232,7 +232,25 @@ export function noAuthUserId(username: string): bigint {
 	return (digest.readBigUInt64BE(0) >> 2n) | (1n << 61n)
 }
 
+// The name typed is the whole identity, so it has to resolve to the account already carrying it rather than mint a
+// second one beside it: a derived id never matches the real snowflake a seeded account has, and `?login=` looks
+// accounts up by name and cannot choose between two of them.
 export async function logInWithoutAuth(ctx: C.Db & C.FastifyRequest & C.FastifyReply, username: string) {
+	const existing = await ctx
+		.db()
+		.select({ discordId: Schema.discordAccounts.discordId, username: Schema.discordAccounts.username })
+		.from(Schema.discordAccounts)
+		.where(E.eq(E.sql`lower(${Schema.discordAccounts.username})`, username.toLowerCase()))
+		.orderBy(Schema.discordAccounts.discordId)
+
+	if (existing.length > 1) {
+		log.warn('%d accounts are named %s; signing in as the first', existing.length, username)
+	}
+	if (existing[0]) {
+		log.info('logging in %s without authentication, as the account already holding that name', username)
+		return await logInUser(ctx, { username: existing[0].username, id: existing[0].discordId })
+	}
+
 	log.info('logging in %s without authentication', username)
 	return await logInUser(ctx, { username, id: noAuthUserId(username) })
 }

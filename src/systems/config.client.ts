@@ -16,6 +16,12 @@ export const config$: Rx.Observable<PublicConfigForClient> = Zus.toStream(Store,
 	Rx.filter((config) => !!config),
 )
 
+// An integration reads as off until the config lands, so a control that will never work is never briefly offered.
+export const Sel = {
+	battlemetricsEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.battlemetrics ?? false,
+	discordEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.discord ?? false,
+}
+
 // just hope the config exists already (probably will)
 export function getConfig() {
 	return Store.getState()
