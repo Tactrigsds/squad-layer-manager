@@ -54,3 +54,37 @@ export const playersOnline = Msgs.def(() => ({ text: () => 'Players online' }))
 export const playersInQueue = Msgs.def(() => ({ text: () => 'Players in queue' }))
 
 export const serverTickRate = Msgs.def(() => ({ text: () => 'Server tick rate' }))
+
+// -------- the chat boxes --------
+
+export const notifyAdmins = Msgs.def(() => ({ text: () => 'Notify admins' }))
+
+export const notifyAdminsHint = Msgs.def(() => ({ text: () => 'Warn every online admin that this warn was sent' }))
+
+export const prefixNameHint = Msgs.def(() => ({ text: () => 'Prefix the message with your username' }))
+
+export const warnAdminsChannel = Msgs.def(() => ({ text: () => 'Admins' }))
+
+export const broadcastChannel = Msgs.def(() => ({ text: () => 'Broadcast' }))
+
+export const warnSelectedChannel = Msgs.def((count: number) => ({ text: () => (count > 0 ? `Selected (${count})` : 'Selected') }))
+
+export const sendHint = Msgs.def(() => ({ text: () => 'Send (Enter)' }))
+
+export const sendWarningHint = Msgs.def(() => ({ text: () => 'Send warning (Enter)' }))
+
+export const missingPermission = Msgs.def(() => ({ text: () => 'Missing permission' }))
+
+export const warnAdminsPlaceholder = Msgs.def(() => ({ text: () => 'Warn all online admins…' }))
+
+export const broadcastPlaceholder = Msgs.def(() => ({ text: () => 'Broadcast to the server…' }))
+
+export const nobodySelectedPlaceholder = Msgs.def(() => ({ text: () => 'No players selected in the teams panel' }))
+
+export const warnSelectedPlaceholder = Msgs.def((count: number) => ({
+	text: () => `Warn ${count} selected ${count === 1 ? 'player' : 'players'}…`,
+}))
+
+export const noOneToWarnPlaceholder = Msgs.def(() => ({ text: () => 'No one to warn' }))
+
+export const warnPlaceholder = Msgs.def(() => ({ text: () => 'Warn…' }))

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
+import * as V_Msgs from '@/messages/vote.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as V from '@/models/vote.models'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -23,7 +24,7 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 				id: itemId,
 				index,
 				percentage: tally.percentages.get(itemId),
-				name: choice ? DH.toShortLayerNameFromId(choice.layerId) : 'Unknown',
+				name: choice ? DH.toShortLayerNameFromId(choice.layerId) : V_Msgs.unknownChoice().text(),
 				votes: voteCount,
 				isWinner: voteState.code === 'ended:winner' && voteState.winnerId === itemId,
 			}
@@ -33,16 +34,15 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 	if (serverInfoRes?.code !== 'ok') return null
 	const serverInfo = serverInfoRes.data
-	const totalVoteDisplay = tally.turnoutPercentage !== null ? ` (${tally.turnoutPercentage.toFixed(1)}%)` : null
 	let statusDisplay: string
 	switch (voteState.code) {
 		case 'ended:winner':
 		case 'ended:aborted':
 		case 'ended:insufficient-votes':
-			statusDisplay = 'Vote has ended.'
+			statusDisplay = V_Msgs.voteEnded().text()
 			break
 		case 'in-progress':
-			statusDisplay = 'Vote in progress...'
+			statusDisplay = V_Msgs.voteInProgress().text()
 			break
 		default:
 			assertNever(voteState)
@@ -61,15 +61,13 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 								{option.index + 1}. {option.name}
 								{option.isWinner && ' ★'}
 							</span>
-							<span className="text-sm text-gray-500">
-								{option.votes} vote{option.votes !== 1 ? 's' : ''} ({option.percentage?.toFixed(1) ?? 0}%)
-							</span>
+							<span className="text-sm text-gray-500">{V_Msgs.choiceVotes(option.votes, option.percentage ?? 0).text()}</span>
 						</div>
 						<Progress value={option.percentage ?? 0} className="h-2 data-[winner]bg-green-100" data-winner={option.isWinner} />
 					</div>
 				))}
 				<div className="mt-4 text-center text-sm text-gray-500">
-					Received: {tally.totalVotes} of {serverInfo?.playerCount} votes{totalVoteDisplay}
+					{V_Msgs.turnout(tally.totalVotes, serverInfo?.playerCount ?? 0, tally.turnoutPercentage).text()}
 				</div>
 			</CardContent>
 		</Card>
