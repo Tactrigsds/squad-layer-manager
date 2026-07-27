@@ -389,7 +389,7 @@ export default function PlayerBulkContextMenuOptions({
 			<AddPlayerFlagsMenuItem
 				slots={contextMenuSlots}
 				playerIds={playerIds}
-				targetDescription={fullSquad ? `squad "${fullSquad.squadName}"` : `these ${playerIds.length} players`}
+				target={fullSquad ? { kind: 'squad', squadName: fullSquad.squadName, count: playerIds.length } : msgTarget}
 			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>

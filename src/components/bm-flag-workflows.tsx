@@ -5,6 +5,8 @@ import React from 'react'
 import { BmFlagSelect, FlagLabel } from '@/components/bm-flag-picker'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as BM_Msgs from '@/messages/battlemetrics.messages'
+import type * as Msgs from '@/messages/shared'
 import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -269,32 +271,30 @@ function useManageFlagsAction(playerId: string) {
 		reasonsRef.current = {}
 		// pull fresh flags in case they moved since this player's data was last polled; the dialog reads them live
 		void refresh.mutateAsync({ playerIds: [playerId] })
+		const msg = BM_Msgs.manageFlags().confirm()
 		const result = await openDialog({
-			title: 'Manage Flags',
-			description: "Add or remove BattleMetrics flags on this player's profile.",
+			title: msg.title,
+			description: msg.description,
 			content: <ManageFlagsDialogContent playerId={playerId} addRef={addRef} removeRef={removeRef} reasonsRef={reasonsRef} />,
-			buttons: [{ id: 'confirm', label: 'Apply' }],
+			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 		})
 		if (result !== 'confirm') return
 		const add = readFlagChanges(addRef.current, reasonsRef)
 		const remove = readFlagChanges(removeRef.current, reasonsRef)
 		if (add.length === 0 && remove.length === 0) {
-			toast.error('No changes to apply')
+			toast.error(...BM_Msgs.noChanges().toast())
 			return
 		}
 		const res = await mutation.mutateAsync({ playerId, add, remove })
 		if (res.code === 'err:reason-required') {
-			toast.error('Reason required', { description: `These flags require a reason: ${res.flags.join(', ')}` })
+			toast.error(...BM_Msgs.reasonRequired(res.flags).toast())
 			return
 		}
 		if (res.code !== 'ok') {
-			toast.error('Failed to update flags', { description: res.code })
+			toast.error(...BM_Msgs.updateFailed(res.code).toast())
 			return
 		}
-		const summary = [...res.added.map((f) => `+${f.name}`), ...res.removed.map((f) => `−${f.name}`)].join(', ')
-		toast(`Updated flags: ${summary}`, {
-			description: res.noteAdded ? undefined : 'The flags were updated, but a BattleMetrics note failed to post.',
-		})
+		toast(...BM_Msgs.flagsUpdated(res.added, res.removed, res.noteAdded).toast())
 	}
 
 	// null means BM data hasn't resolved for this player yet: there's nothing to edit
@@ -314,7 +314,7 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 	)
 }
 
-function useAddFlagsAction(playerIds: string[], targetDescription: string) {
+function useAddFlagsAction(playerIds: string[], target: Msgs.Target) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const openDialog = useAlertDialog()
 	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
@@ -328,39 +328,38 @@ function useAddFlagsAction(playerIds: string[], targetDescription: string) {
 		reasonsRef.current = {}
 		// the server re-diffs against live flags per player; refreshing keeps its skip-already-flagged decision current
 		void refresh.mutateAsync({ playerIds })
+		const msg = BM_Msgs.addFlags(target).confirm()
 		const result = await openDialog({
-			title: 'Add Flags',
-			description: `Add BattleMetrics flags to ${targetDescription}.`,
+			title: msg.title,
+			description: msg.description,
 			content: <AddFlagsDialogContent addRef={addRef} reasonsRef={reasonsRef} />,
-			buttons: [{ id: 'confirm', label: 'Apply' }],
+			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 		})
 		if (result !== 'confirm') return
 		const add = readFlagChanges(addRef.current, reasonsRef)
 		if (add.length === 0) {
-			toast.error('No flags to add')
+			toast.error(...BM_Msgs.noFlagsToAdd().toast())
 			return
 		}
 		const res = await mutation.mutateAsync({ playerIds, add })
 		if (res.code === 'err:reason-required') {
-			toast.error('Reason required', { description: `These flags require a reason: ${res.flags.join(', ')}` })
+			toast.error(...BM_Msgs.reasonRequired(res.flags).toast())
 			return
 		}
 		if (res.code !== 'ok') {
-			toast.error('Failed to add flags', { description: res.code })
+			toast.error(...BM_Msgs.addFailed(res.code).toast())
 			return
 		}
-		toast(`Flagged ${res.flaggedCount} of ${res.playerCount} players`, {
-			description: res.noteAdded ? undefined : 'The flags were added, but a BattleMetrics note failed to post.',
-		})
+		toast(...BM_Msgs.flagsAdded(res.flaggedCount, res.playerCount, res.noteAdded).toast())
 	}
 
 	return { addFlags, denied, disabled: !!denied || playerIds.length === 0 }
 }
 
 // bulk-selection and squad menu entry: add-only flags across every target
-export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; targetDescription: string; label?: string }) {
+export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; target: Msgs.Target; label?: string }) {
 	const { Item } = props.slots
-	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.targetDescription)
+	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.target)
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={addFlags} disabled={disabled}>
