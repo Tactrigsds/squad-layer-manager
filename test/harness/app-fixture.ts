@@ -273,13 +273,20 @@ function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string 
 	return cfg
 }
 
+const LOG_FILE_POLL_INTERVAL = 250
+
+// How long after the emulator logs something before the app is certain to have read it: one poll of the log tail
+// plus the parser's wait for the tick to go quiet (squad-server.server.ts derives both from the same interval),
+// with the same again for slack. A test that needs the app to have *seen* something has to wait this out.
+export const LOG_INGEST_SETTLE_MS = (LOG_FILE_POLL_INTERVAL + LOG_FILE_POLL_INTERVAL * 1.5) * 2
+
 // Durations that would make a test sit and wait. Every one is a setting, and settings are the only
 // lever we have: the app runs in its own process, so its timers can't be faked. Tests override any
 // of these through the globalSettings / serverSettings hooks.
 function applyTestTimings(settings: SETTINGS.GlobalSettings) {
 	// the log tail's poll interval is also the window the event pipeline waits for the log to catch
 	// up with rcon/poll events, so a short one keeps tests responsive
-	settings.logFilePollInterval = 250
+	settings.logFilePollInterval = LOG_FILE_POLL_INTERVAL
 }
 
 // The roster TTL doubles as the ListPlayers poll interval, so it sets the floor on waitForRosterSync
@@ -430,8 +437,18 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// the bypass login resolves users by username against this table; the admin additionally gets
 	// every permission via the SUPER_USERS env bootstrap below
 	const users = [{ ...ADMIN_USER, steamIds: opts.adminSteamIds }, ...(opts.users ?? [])]
-	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId, username: u.username })))
-	const steamLinks = users.flatMap((u) => (u.steamIds ?? []).map((steamId) => ({ steam64Id: BigInt(steamId), discordId: u.discordId })))
+	await db
+		.insert(Schema.discordAccounts)
+		.values(users.map((u) => ({ discordId: u.discordId, username: u.username, updatedAt: new Date() })))
+	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId })))
+	const steamLinks = users.flatMap((u) =>
+		(u.steamIds ?? []).map((steamId) => ({
+			steam64Id: BigInt(steamId),
+			discordId: u.discordId,
+			origin: 'self-serve' as const,
+			linkedBy: u.discordId,
+		})),
+	)
 	if (steamLinks.length > 0) await db.insert(Schema.linkedSteamAccounts).values(steamLinks)
 
 	// -------- filters --------

@@ -15,9 +15,14 @@ function adminRule(adminGroup: string, group: string): PG.GroupRule {
 	return { type: 'admin-list', adminGroup, group }
 }
 
+// matches nothing unless the test says otherwise, so each case names only the facts it is about
+function facts(over: Partial<PG.PlayerFacts> = {}): PG.PlayerFacts {
+	return { flags: [], adminGroups: [], isAdmin: false, username: '', discordRoles: [], ...over }
+}
+
 // a player carrying the given flags and no admin-list membership
 function withFlags(...ids: string[]): PG.PlayerFacts {
-	return { flags: ids.map((id) => flag(id)), adminGroups: [] }
+	return facts({ flags: ids.map((id) => flag(id)) })
 }
 
 const GROUPING: PG.Grouping = {
@@ -48,16 +53,16 @@ describe('resolveGroup', () => {
 
 	it('matches admin-list group membership', () => {
 		const g: PG.Grouping = { rules: [adminRule('Admins', 'Staff'), adminRule('Whitelist', 'Members')], groups: {} }
-		expect(PG.resolveGroup(g, { flags: [], adminGroups: ['Whitelist'] })).toBe('Members')
+		expect(PG.resolveGroup(g, facts({ adminGroups: ['Whitelist'] }))).toBe('Members')
 		// a player in several admin groups takes the higher rule, same as flags
-		expect(PG.resolveGroup(g, { flags: [], adminGroups: ['Whitelist', 'Admins'] })).toBe('Staff')
-		expect(PG.resolveGroup(g, { flags: [], adminGroups: ['Cameraman'] })).toBeUndefined()
+		expect(PG.resolveGroup(g, facts({ adminGroups: ['Whitelist', 'Admins'] }))).toBe('Staff')
+		expect(PG.resolveGroup(g, facts({ adminGroups: ['Cameraman'] }))).toBeUndefined()
 	})
 
 	// the whole point of the source discriminator: one grouping can mix them, and priority is still just rule order
 	it('mixes sources in one priority order', () => {
 		const g: PG.Grouping = { rules: [adminRule('Admins', 'Staff'), rule('f-regular', 'Regulars')], groups: {} }
-		const both: PG.PlayerFacts = { flags: [flag('f-regular')], adminGroups: ['Admins'] }
+		const both = facts({ flags: [flag('f-regular')], adminGroups: ['Admins'] })
 		expect(PG.resolveGroup(g, both)).toBe('Staff')
 		const flipped: PG.Grouping = { ...g, rules: [...g.rules].reverse() }
 		expect(PG.resolveGroup(flipped, both)).toBe('Regulars')
@@ -66,7 +71,50 @@ describe('resolveGroup', () => {
 	// a rule only ever reads its own source's facts
 	it('does not match an admin group against a flag of the same name', () => {
 		const g: PG.Grouping = { rules: [adminRule('Whitelist', 'Members')], groups: {} }
-		expect(PG.resolveGroup(g, { flags: [flag('Whitelist')], adminGroups: [] })).toBeUndefined()
+		expect(PG.resolveGroup(g, facts({ flags: [flag('Whitelist')] }))).toBeUndefined()
+	})
+
+	it('matches server admins whichever admin group made them one', () => {
+		const g: PG.Grouping = { rules: [{ type: 'server-admin', group: 'Staff' }], groups: {} }
+		expect(PG.resolveGroup(g, facts({ isAdmin: true, adminGroups: ['SomeGroupNoRuleNames'] }))).toBe('Staff')
+		// in an admin-list group, but not one that identifies an admin
+		expect(PG.resolveGroup(g, facts({ isAdmin: false, adminGroups: ['Whitelist'] }))).toBeUndefined()
+	})
+
+	describe('name-regex', () => {
+		const g: PG.Grouping = { rules: [{ type: 'name-regex', pattern: '^\\[TT\\]', group: 'Clan' }], groups: {} }
+
+		it('matches the in-game name', () => {
+			expect(PG.resolveGroup(g, facts({ username: '[TT] Pete' }))).toBe('Clan')
+			expect(PG.resolveGroup(g, facts({ username: 'Pete [TT]' }))).toBeUndefined()
+		})
+
+		it('is case-insensitive', () => {
+			expect(PG.resolveGroup(g, facts({ username: '[tt] pete' }))).toBe('Clan')
+		})
+
+		it('is unanchored, so it matches anywhere in the name', () => {
+			const anywhere: PG.Grouping = { rules: [{ type: 'name-regex', pattern: 'clan', group: 'Clan' }], groups: {} }
+			expect(PG.resolveGroup(anywhere, facts({ username: 'a clan member' }))).toBe('Clan')
+		})
+
+		// a pattern that doesn't compile is rejected at the edit; one that got in anyway must not throw per player
+		it('never matches on a pattern that does not compile', () => {
+			const broken: PG.Grouping = { rules: [{ type: 'name-regex', pattern: '([unclosed', group: 'Clan' }], groups: {} }
+			expect(PG.resolveGroup(broken, facts({ username: '([unclosed' }))).toBeUndefined()
+		})
+
+		it('rejects an uncompilable pattern at the schema', () => {
+			expect(PG.GroupRuleSchema.safeParse({ type: 'name-regex', pattern: '([unclosed', group: 'Clan' }).success).toBe(false)
+			expect(PG.GroupRuleSchema.safeParse({ type: 'name-regex', pattern: '^\\[TT\\]', group: 'Clan' }).success).toBe(true)
+		})
+	})
+
+	it('matches a role on the linked discord account', () => {
+		const g: PG.Grouping = { rules: [{ type: 'discord-role', roleId: '123', group: 'Members' }], groups: {} }
+		expect(PG.resolveGroup(g, facts({ discordRoles: ['999', '123'] }))).toBe('Members')
+		// nothing linked, so no roles: the same outcome as holding none of it
+		expect(PG.resolveGroup(g, facts())).toBeUndefined()
 	})
 })
 

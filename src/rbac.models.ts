@@ -213,6 +213,15 @@ export const PERMISSION_DEFINITION = {
 
 	...definePermission('battlemetrics:write-flags', { description: 'Add or remove BattleMetrics player flags', scope: 'global' }),
 
+	...definePermission('users:manage-steam-links', {
+		description:
+			"Link a player's steam account to a discord account on their behalf, and remove links made that way. Linking " +
+			'grants that discord identity whatever the linked player is entitled to in game, and grants the player whatever ' +
+			'that discord account holds through its roles, so it decides who both of them are. Nobody needs this to link ' +
+			'their own accounts.',
+		scope: 'global',
+	}),
+
 	...definePermission('admin:manage-servers', {
 		description: 'Manage the server registry: create servers, start/stop them and set the default server',
 		scope: 'global',

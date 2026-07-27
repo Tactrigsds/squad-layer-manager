@@ -279,6 +279,9 @@ export const UserAccountChangedSchema = event('USER_ACCOUNT_CHANGED', {
 	// for steam-linked / steam-unlinked: the accounts this action linked or unlinked (as strings; a steam64 id
 	// doesn't survive a trip through JSON as a number)
 	steamIds: z.array(z.string()).optional(),
+	// whose account was changed, when that is not the actor: an admin linking a steam account on somebody else's
+	// behalf. Absent means the actor changed their own. A discord id, as a string, for the same reason as above.
+	subjectDiscordId: z.string().optional(),
 	// for nickname-updated: null means the nickname was cleared, falling back to the discord username
 	prevNickname: z.string().nullable().optional(),
 	nickname: z.string().nullable().optional(),
