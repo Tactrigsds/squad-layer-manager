@@ -788,7 +788,8 @@ export const PublicServerSettingsSchema = z.object({
 		.prefault(null)
 		.describe(
 			'Why SLM is not writing the next layer to this server over RCON, or null when it is. The queue still runs and still tracks ' +
-				'what is played; SLM just never sets the map itself. For running SLM alongside something else that owns the rotation.',
+				'what is played; SLM just never sets the map itself, and stops sending the recurring in-game reminders and announcements ' +
+				'that describe the queue as the rotation. For running SLM alongside something else that owns the rotation.',
 		),
 	// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
 	// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs
@@ -897,6 +898,13 @@ export type Changed<T> = {
 }
 
 export type SettingsChanged = Changed<ServerSettings>
+
+// The recurring nudges all describe the queue as the rotation. While SLM is not writing the next layer the queue is
+// not what the server will play, so announcing it tells admins something untrue.
+export function remindersEnabled(settings: PublicServerSettings) {
+	return settings.remindersAndAnnouncementsEnabled && !settings.updatesToSquadServerDisabled
+}
+
 export function getRepeatRuleConstraintId(poolName: string, opts: { label: string }) {
 	return `layer-pool:${poolName}:${opts.label}`
 }

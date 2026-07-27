@@ -97,13 +97,14 @@ export const setupInstance = Instr.spanOp(
 		})
 
 		// -------- schedule generic admin reminders --------
-		if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
+		{
 			ctx.cleanup.push(
 				Rx.interval(ctx.serverSettings.settings.queue.adminQueueReminderInterval)
 					.pipe(
 						Instr.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 							const baseCtx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 							const serverState = await SquadServer.getServerState(baseCtx)
+							if (!SETTINGS.remindersEnabled(serverState.settings)) return
 							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
 							const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
 
@@ -419,7 +420,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 	}
 
 	// -------- schedule post-roll announcements --------
-	if (ctx.serverSettings.settings.remindersAndAnnouncementsEnabled) {
+	if (SETTINGS.remindersEnabled(ctx.serverSettings.settings)) {
 		const announcementTasks: Rx.Observable<void>[] = []
 		announcementTasks.push(
 			Rx.Ext.toCold(async () => {
@@ -527,7 +528,12 @@ export async function saveQueueAndUpdateServer(
 			}
 			// after the sync, so the warn names the layer now set rather than the one it replaced. A change SLM overrides
 			// never gets here: the override sets the layer back directly instead of saving, so it announces nothing.
-			if (deferredCtx.serverSettings.settings.warnOnNextLayerChange && nextLayerChanged) {
+			// gated on the same settings the sync read, so the warn fires only when the layer it names really was set.
+			if (
+				deferredCtx.serverSettings.settings.warnOnNextLayerChange &&
+				nextLayerChanged &&
+				!serverState.settings.updatesToSquadServerDisabled
+			) {
 				await warnShowNext(deferredCtx, 'all-admins', { updated: true })
 			}
 		})
@@ -741,6 +747,10 @@ export async function toggleUpdatesToSquadServer({
 	})
 
 	if (turnedIngameVotingOff) await SquadRcon.setIngameVotingEnabled(ctx, false)
+
+	// only syncNextLayerToServer clears this, and it returns before reaching that point while disabled, so an
+	// out-of-sync next layer already flagged would otherwise keep warning admins every 2 minutes forever.
+	if (input.disabled) ctx.layerQueue.unexpectedNextLayerSet$.next(null)
 
 	await SquadRcon.warnAllAdmins(
 		ctx,
