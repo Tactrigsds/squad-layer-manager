@@ -121,7 +121,7 @@ function TagChip(props: {
 				</HoverCardTrigger>
 				<button
 					type="button"
-					title={`Remove ${tag.label}`}
+					title={LTag_Msgs.removeTag(tag.label).text()}
 					disabled={props.disabled}
 					onClick={props.onRemove}
 					className="ml-0.5 opacity-60 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
@@ -131,26 +131,28 @@ function TagChip(props: {
 			</span>
 			<HoverCardContent className="w-64 space-y-2 p-3">
 				{tag.deleted ? (
-					<p className="text-xs text-muted-foreground">
-						This tag has been deleted, so only the id it was created with remains. It can still be removed from the layer.
-					</p>
+					<p className="text-xs text-muted-foreground">{LTag_Msgs.deletedTag().text()}</p>
 				) : (
 					<>
 						<p className="text-sm font-medium" style={{ color: tag.color }}>
 							{tag.label}
 						</p>
 						<p className="text-xs text-muted-foreground">
-							{tag.description ? <RichText text={tag.description} /> : <span className="italic">No description</span>}
+							{tag.description ? (
+								<RichText text={tag.description} />
+							) : (
+								<span className="italic">{LTag_Msgs.noDescription().text()}</span>
+							)}
 						</p>
 						{props.canManage && (
 							<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
 								<Icons.Pencil className="mr-1 h-3 w-3" />
-								Edit tag
+								{LTag_Msgs.editTag().text()}
 							</Button>
 						)}
 					</>
 				)}
-				{props.setBy !== undefined && <UserLabel userId={props.setBy} label="Tagged by" />}
+				{props.setBy !== undefined && <UserLabel userId={props.setBy} label={LTag_Msgs.taggedBy().text()} />}
 			</HoverCardContent>
 		</HoverCard>
 	)
@@ -173,7 +175,7 @@ function AddTagDropdown(props: {
 				<Button
 					variant="ghost"
 					size="sm"
-					title="Add tag"
+					title={LTag_Msgs.addTag().text()}
 					className={cn(
 						'h-4 shrink-0 px-1 text-xs text-muted-foreground font-normal',
 						props.labelled ? 'gap-0.5' : 'w-4 px-0',
@@ -185,7 +187,7 @@ function AddTagDropdown(props: {
 					)}
 				>
 					<TagPlus className="h-3 w-3" />
-					{props.labelled && <span>add tag</span>}
+					{props.labelled && <span>{LTag_Msgs.addTagInline().text()}</span>}
 				</Button>
 			</DropdownMenuTrigger>
 			{/* a description runs to note length, so the menu holds it to one clipped line and reads in full on the chip's hover card */}
@@ -199,13 +201,13 @@ function AddTagDropdown(props: {
 						</span>
 					</DropdownMenuItem>
 				))}
-				{available.length === 0 && <DropdownMenuItem disabled>No tags available</DropdownMenuItem>}
+				{available.length === 0 && <DropdownMenuItem disabled>{LTag_Msgs.noTagsAvailable().text()}</DropdownMenuItem>}
 				{props.canManage && (
 					<>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem onSelect={props.onCreate}>
 							<Icons.Plus className="mr-2 h-3 w-3" />
-							New tag...
+							{LTag_Msgs.newTagItem().text()}
 						</DropdownMenuItem>
 					</>
 				)}
@@ -274,39 +276,35 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle>{isNew ? 'New tag' : 'Edit tag'}</DialogTitle>
-				<DialogDescription>
-					{isNew
-						? 'Tags are shared by everyone and can be attached to any layer in the queue.'
-						: 'Renaming a tag keeps it attached to every layer already carrying it.'}
-				</DialogDescription>
+				<DialogTitle>{isNew ? LTag_Msgs.newTagTitle().text() : LTag_Msgs.editTag().text()}</DialogTitle>
+				<DialogDescription>{isNew ? LTag_Msgs.newTagBlurb().text() : LTag_Msgs.editTagBlurb().text()}</DialogDescription>
 			</DialogHeader>
 			<div className="space-y-3">
 				<div className="space-y-1">
-					<Label htmlFor="layer-tag-label">Label</Label>
+					<Label htmlFor="layer-tag-label">{LTag_Msgs.labelColumn().text()}</Label>
 					<Input
 						id="layer-tag-label"
 						autoFocus
 						defaultValue={existing?.label ?? ''}
 						maxLength={LTag.MAX_LABEL_LENGTH}
 						onChange={(e) => setLabel(e.target.value)}
-						placeholder="e.g. meta"
+						placeholder={LTag_Msgs.labelPlaceholder().text()}
 					/>
-					{duplicate && <p className="text-xs text-destructive">Another tag is already labeled "{trimmed}"</p>}
+					{duplicate && <p className="text-xs text-destructive">{LTag_Msgs.duplicateLabelInline(trimmed).text()}</p>}
 				</div>
 				<div className="space-y-1">
-					<Label htmlFor="layer-tag-description">Description</Label>
+					<Label htmlFor="layer-tag-description">{LTag_Msgs.descriptionColumn().text()}</Label>
 					<Textarea
 						id="layer-tag-description"
 						ref={descriptionRef}
 						defaultValue={existing?.description ?? ''}
 						maxLength={LTag.MAX_DESCRIPTION_LENGTH}
 						className="min-h-16 text-sm"
-						placeholder="Shown when hovering the tag"
+						placeholder={LTag_Msgs.descriptionPlaceholder().text()}
 					/>
 				</div>
 				<div className="space-y-1">
-					<Label htmlFor="layer-tag-color">Color</Label>
+					<Label htmlFor="layer-tag-color">{LTag_Msgs.colorColumn().text()}</Label>
 					<div className="flex items-start space-x-2">
 						<HexColorPicker color={color} onChange={setColorFromPicker} style={{ width: 140, height: 110 }} />
 						<div className="space-y-1">
@@ -322,7 +320,7 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 								className="inline-flex items-center rounded-sm border px-1 text-xs leading-4"
 								style={{ borderColor: `${color}80`, backgroundColor: `${color}1a`, color }}
 							>
-								{trimmed || 'preview'}
+								{trimmed || LTag_Msgs.previewLabel().text()}
 							</span>
 						</div>
 					</div>
@@ -330,10 +328,10 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 			</div>
 			<DialogFooter>
 				<Button variant="outline" onClick={props.onClose}>
-					Cancel
+					{LTag_Msgs.cancel().text()}
 				</Button>
 				<Button disabled={!canSave} onClick={submit}>
-					{isNew ? 'Create' : 'Save'}
+					{isNew ? LTag_Msgs.create().text() : LTag_Msgs.save().text()}
 				</Button>
 			</DialogFooter>
 		</>
