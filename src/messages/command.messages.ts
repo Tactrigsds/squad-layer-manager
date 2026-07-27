@@ -3,9 +3,15 @@ import * as Msgs from '@/messages/shared'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 
+// A bare "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
+export const chatGroupLabels: Record<CMD.ChatGroup, string> = {
+	admin: 'admin only',
+	public: 'public',
+}
+
 // Takes the chat groups rather than the channels they map to, so admin-only can be named as such: it's the
-// common case by far, and it matches how they're labelled on the commands page (CMD.CHAT_GROUP_LABELS),
-// where the raw ChatAdmin/ChatTeam enum names never appear.
+// common case by far, and it matches how they're labelled on the commands page (chatGroupLabels), where the
+// raw ChatAdmin/ChatTeam enum names never appear.
 export const wrongChat = Msgs.def((allowedChats: CMD.ChatGroup[]) => ({
 	warn: () => {
 		if (allowedChats.length === 1 && allowedChats[0] === 'admin') return 'Admin only commands must be used in admin chat'

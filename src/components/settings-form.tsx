@@ -41,6 +41,8 @@ import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as BAL_Msgs from '@/messages/balance-triggers.messages'
+import * as CMD_Msgs from '@/messages/command.messages'
+import * as PG_Msgs from '@/messages/player-groupings.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
@@ -549,7 +551,7 @@ function RuleRow({
 				<SelectContent>
 					{PG.GROUP_RULE_SOURCES.map((source) => (
 						<SelectItem key={source} value={source}>
-							{PG.GROUP_RULE_SOURCE_LABELS[source]}
+							{PG_Msgs.groupRuleSourceLabels[source]}
 						</SelectItem>
 					))}
 				</SelectContent>
@@ -1176,7 +1178,7 @@ function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
 					<ComboBoxMulti
 						title="Allowed chats"
 						values={allowedChats}
-						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: CMD.CHAT_GROUP_LABELS[group] }))}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: CMD_Msgs.chatGroupLabels[group] }))}
 						onSelect={(next) => patch({ allowedChats: typeof next === 'function' ? next(allowedChats) : next })}
 					/>
 				</div>

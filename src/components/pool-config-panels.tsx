@@ -7,6 +7,7 @@ import { useDebounced } from '@/hooks/use-debounce.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -232,12 +233,6 @@ const SECONDARY_LISTS: SecondaryListConfig[] = [
 	},
 ]
 
-const SELECTABLE_STATE_TITLES: Record<SETTINGS.SelectableFilterApplyAs, string> = {
-	disabled: 'Offered but not applied by default (Ctrl+Click to invert)',
-	regular: 'Applied by default (Ctrl+Click to invert)',
-	inverted: 'Applied inverted by default',
-}
-
 function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: SecondaryListConfig }) {
 	const path = [config.key]
 	const rawValue = (api.useValue(path) as (string | SETTINGS.AppliedFilterSetting | SETTINGS.SelectableFilterSetting)[] | null) ?? []
@@ -317,7 +312,11 @@ function SecondaryFilterList({ api, config }: { api: PoolConfigApi; config: Seco
 									variant="outline"
 									size="icon"
 									className="h-7 w-7 min-w-7"
-									title={SELECTABLE_STATE_TITLES[(entry.applyAs as SETTINGS.SelectableFilterApplyAs | undefined) ?? 'disabled']}
+									title={
+										SETTINGS_Msgs.selectableStateTitles[
+											(entry.applyAs as SETTINGS.SelectableFilterApplyAs | undefined) ?? 'disabled'
+										]
+									}
 								/>
 							)}
 							<FilterEntitySelect
@@ -417,17 +416,6 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 	)
 }
 
-// the settings deciding what SLM does about the next layer, each addressed by its own single-key api so its checkbox
-// is gated on write access to exactly that setting. Descriptions come from the schema so they can't drift from the
-// ones the settings page shows.
-export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnNextLayerChange'] as const
-export type NextLayerSettingKey = (typeof NEXT_LAYER_SETTING_KEYS)[number]
-
-const NEXT_LAYER_LABELS: Record<NextLayerSettingKey, string> = {
-	overrideAdminSetNextLayer: 'Override the next layer when it is set outside SLM',
-	warnOnNextLayerChange: 'Warn admins when the next layer changes',
-}
-
 function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; label: string; description: string }) {
 	const id = React.useId()
 	const checked = api.useValue([]) === true
@@ -452,16 +440,16 @@ function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; la
 	)
 }
 
-export function NextLayerPanel({ apis }: { apis: Record<NextLayerSettingKey, PoolConfigApi> }) {
+export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettingKey, PoolConfigApi> }) {
 	return (
 		<div className="space-y-3">
 			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>Next Layer</h4>
 			<div className="space-y-4">
-				{NEXT_LAYER_SETTING_KEYS.map((key) => (
+				{SETTINGS.NEXT_LAYER_SETTING_KEYS.map((key) => (
 					<BooleanSettingRow
 						key={key}
 						api={apis[key]}
-						label={NEXT_LAYER_LABELS[key]}
+						label={SETTINGS_Msgs.nextLayerLabels[key]}
 						description={SETTINGS.PublicServerSettingsSchema.shape[key].description ?? ''}
 					/>
 				))}

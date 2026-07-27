@@ -836,6 +836,11 @@ export const PublicServerSettingsSchema = z.object({
 
 export type PublicServerSettings = z.infer<typeof PublicServerSettingsSchema>
 
+// the settings deciding what SLM does about the next layer, each addressed by its own single-key api in the
+// pool-config panels so its checkbox is gated on write access to exactly that setting
+export const NEXT_LAYER_SETTING_KEYS = ['overrideAdminSetNextLayer', 'warnOnNextLayerChange'] as const
+export type NextLayerSettingKey = (typeof NEXT_LAYER_SETTING_KEYS)[number]
+
 const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', mode: 'include' }
 EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })

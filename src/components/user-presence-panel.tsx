@@ -7,6 +7,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as UP_Msgs from '@/messages/user-presence.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
@@ -221,7 +222,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	React.useEffect(() => {
 		if (!props.event$) return
 		const sub = props.event$.subscribe((event) => {
-			showEventText(event.userId, UP.PRESENCE_EVENT_TEXT[event.action])
+			showEventText(event.userId, UP_Msgs.presenceEventText[event.action])
 		})
 		return () => sub.unsubscribe()
 	}, [props.event$, showEventText])
