@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
+import { Route as AppAboutRouteImport } from './routes/_app/about'
 import { Route as AppCommandsRouteImport } from './routes/_app/commands'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as SandboxSandboxRouteImport } from './routes/_sandbox/sandbox'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAboutRoute = AppAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => AppRouteRoute,
 } as any)
 const AppCommandsRoute = AppCommandsRouteImport.update({
   id: '/commands',
@@ -78,6 +84,7 @@ const LayersLayerIdTabRoute = LayersLayerIdTabRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AppAboutRoute
   '/commands': typeof AppCommandsRoute
   '/settings': typeof AppSettingsRoute
   '/sandbox': typeof SandboxSandboxRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AppAboutRoute
   '/commands': typeof AppCommandsRoute
   '/settings': typeof AppSettingsRoute
   '/sandbox': typeof SandboxSandboxRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteRouteWithChildren
+  '/_app/about': typeof AppAboutRoute
   '/_app/commands': typeof AppCommandsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_sandbox/sandbox': typeof SandboxSandboxRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/commands'
     | '/settings'
     | '/sandbox'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/commands'
     | '/settings'
     | '/sandbox'
@@ -143,6 +154,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/_app/about'
     | '/_app/commands'
     | '/_app/settings'
     | '/_sandbox/sandbox'
@@ -176,6 +188,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/about': {
+      id: '/_app/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AppAboutRouteImport
+      parentRoute: typeof AppRouteRoute
     }
     '/_app/commands': {
       id: '/_app/commands'
@@ -244,6 +263,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
+  AppAboutRoute: typeof AppAboutRoute
   AppCommandsRoute: typeof AppCommandsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppFiltersFilterIdRoute: typeof AppFiltersFilterIdRoute
@@ -254,6 +274,7 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAboutRoute: AppAboutRoute,
   AppCommandsRoute: AppCommandsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppFiltersFilterIdRoute: AppFiltersFilterIdRoute,
