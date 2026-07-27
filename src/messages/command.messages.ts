@@ -173,3 +173,40 @@ export const argTemplateHelp = Msgs.def(() => ({
 		'{{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. ' +
 		'{{^arg2}}default{{/arg2}} fills a word in when it is left out.',
 }))
+
+// -------- the commands page --------
+
+export const pageHeading = Msgs.def(() => ({ text: () => 'Ingame Commands' }))
+
+export const pageBlurb = Msgs.def(() => ({
+	text: () => 'Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.',
+}))
+
+export const pinnedSection = Msgs.def(() => ({ text: () => 'Your Pinned Commands' }))
+
+export const quickReferenceSection = Msgs.def(() => ({ text: () => 'Quick Reference' }))
+
+export const searchCommands = Msgs.def(() => ({ text: () => 'Search commands…' }))
+
+export const noMatches = Msgs.def(() => ({ text: () => 'No matches.' }))
+
+export const optionalArg = Msgs.def(() => ({ text: () => 'optional' }))
+
+// introduces the preset values an argument accepts
+export const configuredPresets = Msgs.def(() => ({ text: () => 'Configured:' }))
+
+export const examplesHeading = Msgs.def(() => ({ text: () => 'Examples' }))
+
+export const shortcutsHeading = Msgs.def(() => ({ text: () => 'Shortcuts' }))
+
+export const linkToCommand = Msgs.def(() => ({ text: () => 'Link to this command' }))
+
+export const linkToSection = Msgs.def((section: string) => ({ text: () => `Link to ${section}` }))
+
+export const disabledBadge = Msgs.def(() => ({ text: () => 'Disabled' }))
+
+export const detailsToggle = Msgs.def(() => ({ text: () => 'Details' }))
+
+export const unpinCommand = Msgs.def(() => ({ text: () => 'Unpin' }))
+
+export const copyCommand = Msgs.def((command: string) => ({ text: () => `Copy ${command}` }))

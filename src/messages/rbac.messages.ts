@@ -147,3 +147,54 @@ export const superBlurb = Msgs.def(() => ({
 export const superUsersLabel = Msgs.def(() => ({ text: () => 'Users:' }))
 
 export const superRolesLabel = Msgs.def(() => ({ text: () => 'Discord roles:' }))
+
+// -------- the user permissions dialog --------
+
+export const userPermissionsTitle = Msgs.def(() => ({ text: () => 'User Permissions' }))
+
+export const userPermissionsBlurb = Msgs.def(() => ({ text: () => 'View your current permissions and roles' }))
+
+export const loadingUser = Msgs.def(() => ({ text: () => 'Loading user data...' }))
+
+export const simulate = Msgs.def(() => ({ text: () => 'Simulate' }))
+
+export const simulateBlurb = Msgs.def(() => ({
+	text: () =>
+		'Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never gaining it.',
+}))
+
+export const byRoleTab = Msgs.def(() => ({ text: () => 'By Role' }))
+
+export const allPermissionsTab = Msgs.def(() => ({ text: () => 'All Permissions' }))
+
+export const heldPermissionCount = Msgs.def((count: number) => ({
+	text: () => `You have ${count} permission${count !== 1 ? 's' : ''}`,
+}))
+
+export const rolePermissionCount = Msgs.def((count: number) => ({ text: () => `${count} permission${count !== 1 ? 's' : ''}` }))
+
+export const descriptionColumn = Msgs.def(() => ({ text: () => 'Description' }))
+
+export const grantedByColumn = Msgs.def(() => ({ text: () => 'Granted By' }))
+
+// a permission a role grants but a simulation has switched off, and the one doing the switching off
+export const negatedBadge = Msgs.def(() => ({ text: () => 'negated' }))
+
+export const negatingBadge = Msgs.def(() => ({ text: () => 'negating' }))
+
+export const roleDisabledBadge = Msgs.def(() => ({ text: () => 'Disabled' }))
+
+export const unheldPermissionsHeading = Msgs.def(() => ({ text: () => `Permissions you don't have` }))
+
+export const holdsEveryPermission = Msgs.def(() => ({ text: () => 'You have every permission.' }))
+
+export const unheldRolesHeading = Msgs.def(() => ({ text: () => `Roles you don't have` }))
+
+export const unheldRolesBlurb = Msgs.def(() => ({
+	text: () => 'A role can be simulated when everything it grants is already covered by your own permissions.',
+}))
+
+export const holdsEveryRole = Msgs.def(() => ({ text: () => 'You have every role.' }))
+
+// why a role cannot be simulated: simulation may only take access away
+export const roleGrantsMore = Msgs.def(() => ({ text: () => `Grants permissions you don't have` }))
