@@ -153,7 +153,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 				const reason = disabledReason(app)
 				return reason?.type === 'ingame-vote' && reason.inferred === true ? reason : undefined
 			},
-			{ label: 'updates disabled with an inferred in-game-vote reason', timeoutMs: 90_000 },
+			{ label: 'updates disabled with an inferred in-game-vote reason', timeoutMs: 60_000 },
 		)
 	})
 })
