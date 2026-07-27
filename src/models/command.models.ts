@@ -497,9 +497,10 @@ export const COMMAND_ID = z.enum(Object.keys(COMMAND_DECLARATIONS) as [CommandId
 export const COMMAND_IDS = Object.keys(COMMAND_DECLARATIONS) as CommandId[]
 export type CommandDeclaration<Id extends CommandId> = (typeof COMMAND_DECLARATIONS)[Id]
 
-// the prefix a fresh install seeds command strings with, when no settings exist yet to read `defaultPrefix` from.
-// matches the prefix migration 0074 falls back to, so a fresh install and a migrated one agree on what to type.
-export const FALLBACK_PREFIX = '!'
+// the prefix a fresh install seeds command strings with, and what `defaultPrefix` starts as. An install migrated
+// from before prefixes were configurable keeps the '!' migration 0074 gave it; this is only what a new one starts
+// with, so the two deliberately no longer agree.
+export const DEFAULT_PREFIX = '/'
 
 // a command prefix: one or more ASCII special (punctuation/symbol) characters. Letters, digits, whitespace and
 // non-ASCII are excluded so a prefix can't be mistaken for the command word itself. Exported so the settings editor

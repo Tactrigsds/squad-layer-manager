@@ -102,6 +102,73 @@ export function applyInitialPoolConfig(settings: SETTINGS.ServerSettings): SETTI
 	}
 }
 
+const DOCS_BASE = 'https://github.com/Tactrigsds/squad-layer-manager'
+
+// Enough of a starting set that the reason picker is not empty and `/warn <player> tk` works out of the box. The
+// text reaches the player verbatim, so it is addressed to them; keywords are what an admin types in chat, and are
+// matched as a single token (never whitespace).
+const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons'] = [
+	{
+		label: 'Teamkilling',
+		keywords: ['tk', 'teamkill'],
+		actionTexts: {
+			warn: 'Do not team kill.',
+			kill: 'Killed for team killing.',
+			kick: 'Kicked for team killing.',
+			timeout: 'Team killing. You can rejoin in {{duration}}.',
+		},
+	},
+	{
+		label: 'Abusive Behaviour',
+		keywords: ['abuse', 'toxicity'],
+		actionTexts: {
+			warn: 'Keep it civil.',
+			kick: 'Kicked for abusive behaviour.',
+			timeout: 'Abusive behaviour. You can rejoin in {{duration}}.',
+		},
+	},
+	{
+		label: 'Wasting Assets',
+		keywords: ['assetwaste'],
+		actionTexts: {
+			warn: 'Stop wasting assets.',
+			kick: 'Kicked for wasting assets.',
+		},
+	},
+	{
+		label: 'Not Leading',
+		keywords: ['notleading'],
+		actionTexts: {
+			warn: 'Lead your squad or hand it to someone who will.',
+			'remove-from-squad': 'Removed from your squad, which needs a leader who will lead it.',
+			'disband-squad': 'Squad disbanded: nobody was leading it.',
+			'demote-commander': 'Demoted: the commander slot needs someone actively leading.',
+		},
+	},
+	{
+		label: 'Seeding Rules',
+		keywords: ['seedrules'],
+		actionTexts: {
+			warn: 'Seeding rules are in effect. Fight for the middle flag only.',
+			broadcast: 'Seeding rules are in effect: middle flag only, and stay out of main bases.',
+		},
+	},
+]
+
+// Applied to the default global settings on their way into a fresh database (see settings.server
+// loadGlobalSettings). Anything here would otherwise have to be a schema prefault, which existing installs
+// missing the field would pick up on their next boot; this only ever reaches a database with no settings row.
+export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): SETTINGS.GlobalSettings {
+	return {
+		...defaults,
+		adminActionReasons: SEEDED_ADMIN_ACTION_REASONS,
+		navLinks: [
+			{ label: 'SLM on GitHub', url: DOCS_BASE },
+			{ label: 'Installing SLM', url: `${DOCS_BASE}/blob/main/docs/installing.md` },
+		],
+	}
+}
+
 // Runs before anything reads the filters table, and only against a database that has never been configured --
 // which is what an empty globalSettings table means (settings.server writes that row on the same boot).
 export async function setup(ctx: C.Db) {
