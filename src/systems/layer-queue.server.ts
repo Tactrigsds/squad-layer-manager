@@ -607,7 +607,7 @@ export async function warnShowNext(
 	let setByUser: USR.User | undefined
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
-		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, userId))
+		const [user] = await Users.selectUsers(ctx).where(E.eq(Schema.users.discordId, userId))
 		setByUser = await Users.buildUser(user)
 	}
 	let isAdmin: boolean = false

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as USR_Msgs from '@/messages/users.messages'
+import type * as USR from '@/models/users.models'
 import * as UsersClient from '@/systems/users.client'
 
 // keeps a trailing empty slot so the list auto-expands as the user fills the last input
@@ -28,14 +29,15 @@ export default function LinkSteamAccountDialog(props: {
 				<DialogHeader>
 					<DialogTitle>Linked Steam Accounts</DialogTitle>
 					<DialogDescription>
-						Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need.
+						Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need. Links an admin made
+						on your behalf are listed here too, and you can remove them.
 					</DialogDescription>
 				</DialogHeader>
 				{linkedQuery.data?.code === 'ok' ? (
 					// mounts once per dialog open (DialogContent unmounts on close), seeding the draft from the query in
 					// the state initializer: a background refetch (e.g. on window refocus, likely while the user tabs to
 					// Steam to copy their ID) must not clobber their in-progress edits
-					<LinkedSteamAccountsEditor initialIds={linkedQuery.data.steamIds} onClose={() => props.onOpenChange?.(false)} />
+					<LinkedSteamAccountsEditor links={linkedQuery.data.links} onClose={() => props.onOpenChange?.(false)} />
 				) : (
 					<p className="text-sm text-muted-foreground">Loading...</p>
 				)}
@@ -44,9 +46,11 @@ export default function LinkSteamAccountDialog(props: {
 	)
 }
 
-function LinkedSteamAccountsEditor({ initialIds, onClose }: { initialIds: readonly string[]; onClose: () => void }) {
+function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.SteamAccountLink[]; onClose: () => void }) {
 	const updateMutation = UsersClient.useUpdateLinkedSteamAccountsMutation()
-	const [ids, setIds] = React.useState<string[]>(() => withTrailingBlank([...initialIds]))
+	const [ids, setIds] = React.useState<string[]>(() => withTrailingBlank(links.map((l) => l.steamId)))
+	// who assigned each link, for the ones somebody else made. Keyed by the id rather than by row, since rows move.
+	const assignedBy = new Map(links.flatMap((l) => (l.origin === 'assigned' ? [[l.steamId, l.linkedBy?.displayName ?? 'an admin']] : [])))
 
 	function setId(idx: number, value: string) {
 		setIds((prev) => withTrailingBlank(prev.map((v, i) => (i === idx ? value : v))))
@@ -109,6 +113,9 @@ function LinkedSteamAccountsEditor({ initialIds, onClose }: { initialIds: readon
 								</Button>
 							</div>
 							{error && <p className="text-xs text-destructive pl-1">{error}</p>}
+							{!error && assignedBy.has(value.trim()) && (
+								<p className="pl-1 text-xs text-muted-foreground">Linked by {assignedBy.get(value.trim())}</p>
+							)}
 						</div>
 					)
 				})}

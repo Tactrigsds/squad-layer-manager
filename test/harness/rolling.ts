@@ -1,4 +1,4 @@
-import { type AppFixture, createAppFixture } from './app-fixture'
+import { type AppFixture, createAppFixture, LOG_INGEST_SETTLE_MS } from './app-fixture'
 import { LAYERS, queue } from './arrange'
 
 // The map roll is the trickiest window in the event pipeline: the app enters `syncState: 'rolling'` on the
@@ -76,6 +76,10 @@ export async function createRollingFixture(): Promise<RollingFixture> {
 			try {
 				return fn()
 			} finally {
+				// Hold the window open until the app has read what `fn` logged. Bringing RCON back sooner lets the poll
+				// that completes the roll beat those lines into the pipeline, which is a different scenario: the app
+				// would then see the connect/disconnect against the settled new match rather than mid-roll.
+				await new Promise((resolve) => setTimeout(resolve, LOG_INGEST_SETTLE_MS))
 				await app.emu.rcon.goOnline(port)
 			}
 		},

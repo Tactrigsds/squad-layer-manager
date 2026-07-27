@@ -33,6 +33,7 @@ import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
@@ -54,7 +55,7 @@ const SchemaJsonEditor = React.lazy(
 
 export const Route = createFileRoute('/_app/settings')({
 	head: () => ({
-		meta: [{ title: 'SLM - Settings' }],
+		meta: [{ title: SETTINGS_Msgs.pageTitle().text() }],
 	}),
 
 	component: RouteComponent,
@@ -178,7 +179,7 @@ function RouteComponent() {
 	if (manageServersDenied && !globalAccess.canRead && servers.length === 0) {
 		return (
 			<div className="w-full h-full grid place-items-center">
-				<p className="text-muted-foreground">You don't have permission to access settings.</p>
+				<p className="text-muted-foreground">{SETTINGS_Msgs.noAccess().text()}</p>
 			</div>
 		)
 	}
@@ -262,9 +263,9 @@ function AuditLogSection() {
 	const playerName = (id: string) => playerNames[id]
 
 	function actorName(actor: AppEvents.Actor): string {
-		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? 'Admin'
-		if (actor.type === 'ingame-user') return playerName(actor.playerId) ?? 'An in-game admin'
-		return 'System'
+		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? AppEvents_Msgs.unnamedActors['slm-user']
+		if (actor.type === 'ingame-user') return playerName(actor.playerId) ?? AppEvents_Msgs.unnamedActors['ingame-user']
+		return AppEvents_Msgs.unnamedActors.system
 	}
 
 	const headerRef = React.useRef<HTMLDivElement>(null)
@@ -273,12 +274,12 @@ function AuditLogSection() {
 		<Card>
 			<StickyGroup stickyRef={headerRef}>
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
-					<CardTitle>Audit Log</CardTitle>
-					<CardDescription>Recent actions taken across SLM.</CardDescription>
+					<CardTitle>{AppEvents_Msgs.auditLog().text()}</CardTitle>
+					<CardDescription>{AppEvents_Msgs.auditLogBlurb().text()}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{events.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No events yet.</p>
+						<p className="text-sm text-muted-foreground">{AppEvents_Msgs.noEvents().text()}</p>
 					) : (
 						<div className="max-h-[32rem] overflow-y-auto">
 							{events.map((e) => (
@@ -338,7 +339,7 @@ function JsonEditorToolbar({
 		<>
 			{deniedPaths.length > 0 && (
 				<p className="min-w-0 truncate text-xs text-amber-500">
-					Not permitted to modify:{' '}
+					{SETTINGS_Msgs.notPermittedToModify().text()}{' '}
 					{deniedPaths.map((p) => (
 						<code key={p} className="mx-0.5">
 							{p}
@@ -348,13 +349,13 @@ function JsonEditorToolbar({
 			)}
 			<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
 				<Icons.Braces className="h-4 w-4" />
-				Format
+				{SETTINGS_Msgs.format().text()}
 			</Button>
 			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>
-				Reset
+				{SETTINGS_Msgs.reset().text()}
 			</Button>
 			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>
-				{saving ? 'Saving…' : 'Save'}
+				{saving ? SETTINGS_Msgs.saving().text() : SETTINGS_Msgs.save().text()}
 			</Button>
 		</>
 	)
@@ -370,22 +371,21 @@ function LabeledInput({ label, ...props }: { label: string } & React.ComponentPr
 	)
 }
 
-type ServerLifecycleState = 'running' | 'stopped' | 'starting' | 'stopping' | 'broken'
-
-function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
+function ServerStatusBadge({ state }: { state: SETTINGS_Msgs.ServerLifecycleState }) {
+	const label = SETTINGS_Msgs.serverLifecycleLabels[state]
 	switch (state) {
 		case 'running':
 			return (
 				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
 					<span className="h-2 w-2 rounded-full bg-added" />
-					Connected
+					{label}
 				</span>
 			)
 		case 'stopped':
 			return (
 				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
 					<span className="h-2 w-2 rounded-full border border-muted-foreground/60" />
-					Disconnected
+					{label}
 				</span>
 			)
 		case 'starting':
@@ -393,14 +393,14 @@ function ServerStatusBadge({ state }: { state: ServerLifecycleState }) {
 			return (
 				<span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
 					<Spinner className="size-3" />
-					{state === 'starting' ? 'Connecting…' : 'Disconnecting…'}
+					{label}
 				</span>
 			)
 		case 'broken':
 			return (
 				<span className="flex items-center gap-1 text-xs font-normal text-destructive">
 					<Icons.TriangleAlert className="h-3 w-3" />
-					Broken
+					{label}
 				</span>
 			)
 		default:
@@ -413,7 +413,7 @@ type PublicServer = { id: string; displayName: string; enabled: boolean; broken:
 // the sentinel selection value for the (unsaved) new-server form
 const NEW_SERVER_SELECTION = '__new__'
 
-function lifecycleState(server: PublicServer, inflight: { startingId?: string; stoppingId?: string }): ServerLifecycleState {
+function lifecycleState(server: PublicServer, inflight: { startingId?: string; stoppingId?: string }): SETTINGS_Msgs.ServerLifecycleState {
 	if (server.broken) return 'broken'
 	if (inflight.startingId === server.id) return 'starting'
 	if (inflight.stoppingId === server.id) return 'stopping'
@@ -541,7 +541,7 @@ function ServersSection({
 					<ServerSettingsSection server={selectedServer} stores={{ settingsEditor: serverKey }} />
 				</div>
 			) : (
-				<p className="text-sm text-muted-foreground">Select a server to configure it.</p>
+				<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.selectServer().text()}</p>
 			)}
 		</div>
 	)
@@ -579,7 +579,7 @@ function ServerList({
 	return (
 		<div className="space-y-2">
 			<div className="space-y-1">
-				{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers configured.</p>}
+				{servers.length === 0 && <p className="text-sm text-muted-foreground">{SETTINGS_Msgs.noServersConfigured().text()}</p>}
 				{servers.map((server) => (
 					<div
 						key={server.id}
@@ -609,7 +609,7 @@ function ServerList({
 										onCheckedChange={(checked) => checked && onSetDefault(server)}
 									/>
 									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
-										Default
+										{SETTINGS_Msgs.defaultServer().text()}
 									</Label>
 								</div>
 								<Button
@@ -617,21 +617,17 @@ function ServerList({
 									variant={server.enabled ? 'destructive' : 'outline'}
 									className={cn('w-28', server.broken && 'invisible')}
 									disabled={busy || server.broken}
-									title={
-										server.enabled
-											? 'Disconnect from the server. It stays disconnected across SLM restarts.'
-											: 'Connect to the server. It will also connect automatically with SLM.'
-									}
+									title={server.enabled ? SETTINGS_Msgs.disconnectServerHint().text() : SETTINGS_Msgs.connectServerHint().text()}
 									onClick={() => onToggle(server)}
 								>
-									{server.enabled ? 'Disconnect' : 'Connect'}
+									{server.enabled ? SETTINGS_Msgs.disconnectServer().text() : SETTINGS_Msgs.connectServer().text()}
 								</Button>
 								{canDelete && (
 									<Button
 										size="icon"
 										variant="ghost"
 										disabled={busy}
-										title="Delete managed server"
+										title={SETTINGS_Msgs.deleteManagedServer().text()}
 										onClick={() => onDelete(server)}
 									>
 										<Icons.Trash2 className="h-4 w-4" />
@@ -645,7 +641,7 @@ function ServerList({
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					Add Managed Server
+					{SETTINGS_Msgs.addManagedServer().text()}
 				</Button>
 			)}
 		</div>
@@ -713,18 +709,20 @@ function ServerSettingsSection({
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
-								Server Settings
+								{SETTINGS_Msgs.serverSettings().text()}
 								{access.write.kind === 'none' && (
-									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
+									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+										{SETTINGS_Msgs.readOnly().text()}
+									</span>
 								)}
 							</CardTitle>
 							<CardDescription>
 								{server.displayName} <span className="font-mono">({server.id})</span>
-								{server.broken && <span className="ml-2 text-destructive">Settings failed validation and need repair</span>}
+								{server.broken && <span className="ml-2 text-destructive">{SETTINGS_Msgs.serverBroken().text()}</span>}
 							</CardDescription>
 							{access.write.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
-									You can only modify:{' '}
+									{SETTINGS_Msgs.onlyModifiable().text()}{' '}
 									{access.write.paths.map((p) => (
 										<code key={p} className="mx-0.5">
 											{p}
@@ -733,7 +731,11 @@ function ServerSettingsSection({
 								</p>
 							)}
 						</div>
-						<div role="group" aria-label="Server settings editor mode" className="flex items-center rounded-md border p-0.5">
+						<div
+							role="group"
+							aria-label={SETTINGS_Msgs.serverEditorModeLabel().text()}
+							className="flex items-center rounded-md border p-0.5"
+						>
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
@@ -746,9 +748,9 @@ function ServerSettingsSection({
 				{/* pt-3 keeps the first group's anchor-highlight ring clear of the sticky header */}
 				<CardContent className="space-y-4 pt-3">
 					{loadFailed ? (
-						<p className="text-sm text-destructive">Failed to load settings: {loadFailed}</p>
+						<p className="text-sm text-destructive">{SETTINGS_Msgs.loadFailed(loadFailed).text()}</p>
 					) : !ready ? (
-						<p className="text-sm text-muted-foreground">Loading…</p>
+						<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loading().text()}</p>
 					) : mode === 'gui' ? (
 						<SettingsForm
 							schema={schema}
@@ -763,7 +765,7 @@ function ServerSettingsSection({
 							writeAccess={formWriteAccess}
 						/>
 					) : (
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
 							<SchemaJsonEditor
 								ref={editorRef}
 								schema={schema}
@@ -771,7 +773,7 @@ function ServerSettingsSection({
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
 								minHeightPx={350}
-								label="Server Settings"
+								label={SETTINGS_Msgs.serverSettings().text()}
 								toolbar={
 									<JsonEditorToolbar
 										editorRef={editorRef}
@@ -812,11 +814,15 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
 					<div className="flex items-center justify-between gap-2">
 						<div>
-							<CardTitle>New Managed Server</CardTitle>
-							<CardDescription>Configure a new server. Save from the panel below, or cancel.</CardDescription>
+							<CardTitle>{SETTINGS_Msgs.newManagedServer().text()}</CardTitle>
+							<CardDescription>{SETTINGS_Msgs.newServerBlurb().text()}</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">
-							<div role="group" aria-label="New server editor mode" className="flex items-center rounded-md border p-0.5">
+							<div
+								role="group"
+								aria-label={SETTINGS_Msgs.newServerEditorModeLabel().text()}
+								className="flex items-center rounded-md border p-0.5"
+							>
 								<Button
 									size="sm"
 									variant={mode === 'gui' ? 'secondary' : 'ghost'}
@@ -833,7 +839,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								</Button>
 							</div>
 							<Button size="sm" variant="outline" onClick={onCancel}>
-								Cancel
+								{SETTINGS_Msgs.cancel().text()}
 							</Button>
 						</div>
 					</div>
@@ -842,16 +848,18 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 					<div className="grid grid-cols-2 gap-3">
 						<div className="space-y-1">
 							<LabeledInput
-								label="Server ID"
-								placeholder="my-server-1"
+								label={SETTINGS_Msgs.serverIdLabel().text()}
+								placeholder={SETTINGS_Msgs.serverIdPlaceholder().text()}
 								defaultValue={newId}
 								onChange={(e) => SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { id: e.target.value })}
 							/>
-							{newId.length > 0 && !idRes.success && <p className="text-xs text-destructive">Invalid server id</p>}
+							{newId.length > 0 && !idRes.success && (
+								<p className="text-xs text-destructive">{SETTINGS_Msgs.invalidServerId().text()}</p>
+							)}
 						</div>
 						<LabeledInput
-							label="Display Name"
-							placeholder="My Squad Server"
+							label={SETTINGS_Msgs.displayNameLabel().text()}
+							placeholder={SETTINGS_Msgs.displayNamePlaceholder().text()}
 							defaultValue={newDisplayName}
 							onChange={(e) =>
 								SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { displayName: e.target.value })
@@ -871,7 +879,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 							issues={issues}
 						/>
 					) : (
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
 							<SchemaJsonEditor
 								ref={editorRef}
 								schema={SETTINGS.ServerSettingsSchema}
@@ -879,7 +887,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
 								minHeightPx={350}
-								label="Server Settings"
+								label={SETTINGS_Msgs.serverSettings().text()}
 							/>
 						</React.Suspense>
 					)}
@@ -913,8 +921,8 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Global Settings</CardTitle>
-					<CardDescription>You don't have permission to view global settings.</CardDescription>
+					<CardTitle>{SETTINGS_Msgs.globalSettings().text()}</CardTitle>
+					<CardDescription>{SETTINGS_Msgs.noGlobalAccess().text()}</CardDescription>
 				</CardHeader>
 			</Card>
 		)
@@ -944,15 +952,17 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
-								Global Settings
+								{SETTINGS_Msgs.globalSettings().text()}
 								{writeAccess.kind === 'none' && (
-									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>
+									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+										{SETTINGS_Msgs.readOnly().text()}
+									</span>
 								)}
 							</CardTitle>
-							<CardDescription>Edit the global settings for this SLM instance.</CardDescription>
+							<CardDescription>{SETTINGS_Msgs.globalSettingsBlurb().text()}</CardDescription>
 							{writeAccess.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
-									You can only modify:{' '}
+									{SETTINGS_Msgs.onlyModifiable().text()}{' '}
 									{writeAccess.paths.map((p) => (
 										<code key={p} className="mx-0.5">
 											{p}
@@ -961,7 +971,11 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								</p>
 							)}
 						</div>
-						<div role="group" aria-label="Global settings editor mode" className="flex items-center rounded-md border p-0.5">
+						<div
+							role="group"
+							aria-label={SETTINGS_Msgs.globalEditorModeLabel().text()}
+							className="flex items-center rounded-md border p-0.5"
+						>
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
@@ -986,7 +1000,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 						/>
 					) : (
 						// GUI mode uses the shared bottom control panel; JSON mode keeps its own toolbar, inside the editor
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
 							<SchemaJsonEditor
 								ref={editorRef}
 								schema={SETTINGS.GlobalSettingsSchema}
@@ -994,7 +1008,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
 								minHeightPx={450}
-								label="Global Settings"
+								label={SETTINGS_Msgs.globalSettings().text()}
 								toolbar={
 									<JsonEditorToolbar
 										editorRef={editorRef}

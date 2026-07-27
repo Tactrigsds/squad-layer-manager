@@ -16,9 +16,9 @@ export type EmulatorOptions = WorldOptions & {
 	// ms spent in WaitingPostMatch before the next world is brought up, as a real server does. Defaults to the
 	// 30s a real one takes; the test harness turns it down, since a suite should never sit through it.
 	postMatchDelayMs?: number
-	// periodic tick-rate log line, like a real server's constant chatter. Also load-bearing for
-	// consumers: parseLogStream only completes an entry once the next one arrives, so a silent
-	// server would leave the last event stuck in the parser. 0 disables.
+	// periodic tick-rate log line, like a real server's constant chatter. 0 disables. A consumer reading the
+	// log without parseLogStream's idleFlushMs only completes an entry once the next one arrives, so it needs
+	// this (or a line of its own) to see the last thing that happened.
 	tickRateIntervalMs?: number
 }
 

@@ -33,7 +33,7 @@ type CachedSession = {
 	id: string
 	userId: bigint
 	expiresAt: Date
-	user: typeof Schema.users.$inferSelect
+	user: Users.DbUser
 }
 
 const sessionCache = new Map<string, CachedSession>()
@@ -45,10 +45,11 @@ async function loadValidSessionsIntoCache(ctx: C.Db) {
 
 	const sessions = await ctx
 		.db({ redactParams: true })
-		.select({ session: Schema.sessions, user: Schema.users })
+		.select({ session: Schema.sessions, user: Users.userColumns })
 		.from(Schema.sessions)
 		.where(E.gt(Schema.sessions.expiresAt, currentTime))
 		.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
 
 	let validCount = 0
 	for (const row of sessions) {
@@ -160,7 +161,12 @@ export const validateAndUpdate = Instr.spanOp(
 				if (!query.login) return res
 				const username = query['login']
 				log.info('bypassing with username %s', username)
-				const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.username, username))
+				const [user] = await ctx
+					.db()
+					.select(Users.userColumns)
+					.from(Schema.users)
+					.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+					.where(E.eq(Schema.discordAccounts.username, username))
 				log.info('resolved user: %o', user)
 				// falling through leaves the caller on the login portal, which is where an unknown name belongs:
 				// the portal creates the user, `?login=` only ever picks an existing one
@@ -243,14 +249,11 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	})
 
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+		// the account carries the username and must exist first: the user row references it
+		await Users.recordDiscordAccount(ctx, discordUser.id, discordUser.username)
 		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, discordUser.id))
 		if (!user) {
-			await ctx.db().insert(Schema.users).values({
-				discordId: discordUser.id,
-				username: discordUser.username,
-			})
-		} else {
-			await ctx.db().update(Schema.users).set({ username: discordUser.username }).where(E.eq(Schema.users.discordId, discordUser.id))
+			await ctx.db().insert(Schema.users).values({ discordId: discordUser.id })
 		}
 		// Use the transaction-aware write-through cache for session creation
 		await createSessionTx(ctx, {
@@ -300,10 +303,11 @@ export const getUser = Instr.spanOp(
 		log.warn({ sessionId: ctx.sessionId }, 'Session cache miss in getUser, falling back to database')
 		const q = ctx
 			.db({ redactParams: true })
-			.select({ user: Schema.users })
+			.select({ user: Users.userColumns })
 			.from(Schema.sessions)
 			.where(E.eq(Schema.sessions.id, ctx.sessionId))
-			.leftJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+			.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
 
 		const [row] = await q
 
