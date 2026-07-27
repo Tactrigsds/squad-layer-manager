@@ -52,8 +52,7 @@ export const acknowledgementsHeading = Msgs.def('Acknowledgements')
 export const acknowledgements = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			'SLM is built and maintained by <strong>grey275</strong>. It exists because the admins of <strong>Tactrigsds</strong>' +
-				' kept asking for it, ran every rough version against live servers, and said so when something was wrong.',
+			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong> community. Here are a number of people who made significant contributions to SLM in various ways: <acknowledgements here>',
 			Msgs.tags,
 		),
 }))
