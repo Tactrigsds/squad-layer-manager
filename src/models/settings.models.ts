@@ -6,6 +6,7 @@ import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
+import * as AppEvents from '@/models/app-events.models'
 import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
@@ -711,6 +712,16 @@ export const ServerConnectionSchema = z.discriminatedUnion('type', [
 export type ServerConnection = z.infer<typeof ServerConnectionSchema>
 export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 
+// Why SLM stopped writing the rotation. The reason is the state: there is no separate flag, so a disabled server
+// can never be missing one. 'ingame-vote' is set by SLM itself when it detects Squad's own vote and stands down --
+// no user-facing control offers it, though the raw JSON editor can express it like any other value.
+export const SlmUpdatesDisabledSchema = z.discriminatedUnion('type', [
+	// `by` is null for settings written before disabling recorded who did it
+	z.object({ type: z.literal('manual'), by: AppEvents.ActorSchema.nullable() }),
+	z.object({ type: z.literal('ingame-vote') }),
+])
+export type SlmUpdatesDisabled = z.infer<typeof SlmUpdatesDisabledSchema>
+
 export const QueueSettingsSchema = z.object({
 	maxQueueSize: z
 		.int()
@@ -751,12 +762,11 @@ export const PublicServerSettingsSchema = z.object({
 			'Which of the named admin lists (global settings) apply to this server. A player is only an admin here, and only picks up ' +
 				'roles assigned by admin-list group, through a list named here. Empty means this server recognises no in-game admins.',
 		),
-	updatesToSquadServerDisabled: z
-		.boolean()
-		.prefault(false)
+	updatesToSquadServerDisabled: SlmUpdatesDisabledSchema.nullable()
+		.prefault(null)
 		.describe(
-			'Stop SLM from writing the next layer to this server over RCON. The queue still runs and still tracks what is played; SLM just ' +
-				'never sets the map itself. For running SLM alongside something else that owns the rotation.',
+			'Why SLM is not writing the next layer to this server over RCON, or null when it is. The queue still runs and still tracks ' +
+				'what is played; SLM just never sets the map itself. For running SLM alongside something else that owns the rotation.',
 		),
 	// no defensive clone of the prefault: zod v4 builds a fresh default per parse, and the shared
 	// DEFAULT_REPEAT_RULE_CONFIGS array is never mutated. A transform here would also be one-way, which costs

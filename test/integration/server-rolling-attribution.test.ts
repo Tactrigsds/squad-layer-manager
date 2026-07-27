@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as L from '@/models/layer'
 
 import { createRollingFixture, ROLL_ADMIN_STEAM_ID, type RollingFixture } from '../harness/rolling'
 
@@ -96,4 +97,75 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		})
 		expect(target.teamId).toBe(2)
 	})
+
+	it('a layer squad picked by in-game vote is attributed to the vote and leaves the queue head alone', async () => {
+		const oldMatch = app.latestMatch()
+		const headBefore = savedQueue(app)[0]
+
+		// an admin had already stopped SLM writing the rotation, for their own reasons
+		const admin = makePlayer({ name: ' vote_reason_admin', steam: ROLL_ADMIN_STEAM_ID, teamId: 1 })
+		app.emu.world.connectPlayer(admin)
+		await app.waitForRosterSync()
+		app.emu.world.chat(admin, 'ChatAdmin', '!disableslm')
+		await app.waitFor(() => disabledReason(app)?.type === 'manual' || undefined, {
+			label: 'updates disabled manually',
+			timeoutMs: 30_000,
+		})
+
+		// the vote takes the next-layer slot itself and writes no map-set line doing it, so the app has no way to
+		// see the pick coming: the roll lands on a layer it never set and whose classname it does not expect
+		app.emu.world.startIngameVote('layer', ['Mutaha_Skirmish_v1'])
+
+		// the vote takes the reason over: it decides the next layer now, whoever turned SLM off
+		await app.waitFor(() => disabledReason(app)?.type === 'ingame-vote' || undefined, {
+			label: 'the manual reason replaced by the in-game vote',
+			timeoutMs: 30_000,
+		})
+
+		app.roll()
+
+		const newMatch = await app.waitForNewMatch(oldMatch.id)
+		expect(L.layerMatchesIngameLayerClassname(newMatch.layerId, 'Mutaha_Skirmish_v1')).toBe(true)
+		expect(setByTypeOf(app, newMatch.id)).toBe('ingame-vote')
+		// the head was never set as next, so a layer it had no part in choosing must not consume it
+		expect(savedQueue(app)[0]?.itemId).toBe(headBefore?.itemId)
+
+		// turning SLM back on has to turn the vote off with it, or the next match resumes the same fight
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', '!enableslm')
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === 'AdminEnableVoting 0') || undefined, {
+			label: 'in-game voting turned off alongside re-enabling updates',
+			timeoutMs: 30_000,
+		})
+		expect(disabledReason(app)).toBeNull()
+	})
 })
+
+function disabledReason(fixture: RollingFixture): { type: string } | null {
+	const db = fixture.readDb()
+	try {
+		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(fixture.serverId) as { settings: string }
+		return JSON.parse(row.settings).json.updatesToSquadServerDisabled ?? null
+	} finally {
+		db.close()
+	}
+}
+
+function savedQueue(fixture: RollingFixture): { itemId?: string; layerId?: string }[] {
+	const db = fixture.readDb()
+	try {
+		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(fixture.serverId) as { layerQueue: string }
+		return JSON.parse(row.layerQueue).json
+	} finally {
+		db.close()
+	}
+}
+
+function setByTypeOf(fixture: RollingFixture, matchId: number): string {
+	const db = fixture.readDb()
+	try {
+		return (db.prepare(`SELECT setByType FROM matchHistory WHERE id = ?`).get(matchId) as { setByType: string }).setByType
+	} finally {
+		db.close()
+	}
+}

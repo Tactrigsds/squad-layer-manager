@@ -26,6 +26,8 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 			return renderIcon('Unknown', '#64748b', <Icons.MessageCircleQuestion />)
 		case 'generated':
 			return renderIcon('Generated', '#059669', <Icons.Dices />)
+		case 'ingame-vote':
+			return renderIcon('In-Game Vote', '#d97706', <Icons.Vote />)
 		case 'manual':
 			return <UserAvatar userId={props.source.userId} label="Set By" />
 		default:

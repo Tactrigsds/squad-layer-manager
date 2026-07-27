@@ -4,12 +4,16 @@ export const fogOff = Msgs.def(() => ({
 	broadcast: () => 'Fog of War is disabled. All points are visible. Check your maps.',
 }))
 
-export const slmUpdatesSet = Msgs.def((enabled: boolean) => ({
-	warn: () => `Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.`,
+export const slmUpdatesSet = Msgs.def((enabled: boolean, ingameVotingTurnedOff?: boolean) => ({
+	warn: () =>
+		`Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.` +
+		(ingameVotingTurnedOff ? ' In-game voting has been turned off, so it no longer decides the next layer.' : ''),
 }))
 
-export const slmUpdatesStatus = Msgs.def((enabled: boolean) => ({
-	warn: () => `Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.`,
+export const slmUpdatesStatus = Msgs.def((enabled: boolean, disabledByIngameVote?: boolean) => ({
+	warn: () =>
+		`Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.` +
+		(disabledByIngameVote ? ' An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting off.' : ''),
 }))
 
 export const slmStarted = Msgs.def((restartedBy?: string) => ({

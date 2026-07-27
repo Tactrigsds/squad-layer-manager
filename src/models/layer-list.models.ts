@@ -23,6 +23,9 @@ export const SourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('gameserver') }),
 	z.object({ type: z.literal('unknown') }),
 	z.object({ type: z.literal('manual'), userId: USR.UserIdSchema }),
+	// Squad's own vote, which picks the next layer itself and ignores whatever SLM set. Only ever the source of a
+	// played match, never of a queue item.
+	z.object({ type: z.literal('ingame-vote') }),
 ])
 
 export type Source = z.infer<typeof SourceSchema>

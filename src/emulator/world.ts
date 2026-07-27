@@ -279,9 +279,13 @@ export class World {
 		this.#log(...lines)
 	}
 
-	startIngameVote(kind: 'layer' | 'faction', choices: string[]) {
-		const container = kind === 'layer' ? 'Vote_NextLayer' : 'Vote_Faction_0'
+	// One stage of a vote: the map and gamemode first, then each team's faction. The first choice wins, so a
+	// scenario knows what it is voting for. The map stage sets the next layer itself and writes no map-set line
+	// doing it, which is the whole reason SLM cannot see the pick coming.
+	startIngameVote(stage: 'layer' | 'faction', choices: string[]) {
+		const container = stage === 'layer' ? 'Vote_NextLayer' : 'Vote_Faction_0'
 		this.#log(...Fmt.logVoteStarted(container, choices))
+		if (stage === 'layer' && choices[0]) this.nextLayer = this.#toLayerLike(choices[0])
 	}
 
 	startNewGame(layer?: Fmt.LayerLike) {

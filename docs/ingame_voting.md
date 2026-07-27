@@ -20,18 +20,29 @@ LogSquad: Vote: Create new container: Vote_NextLayer
 LogSquad: Vote: Update vote for used container: Vote_NextLayer
 ```
 
-The container name gives the kind: `Vote_NextLayer` is a `next-layer` vote, `Vote_Faction_<n>` a `faction` vote.
-`RegenerateVote` is the server's re-roll option rather than something that can be played, so it is dropped from the
-choices.
+One vote runs through several containers in turn: `Vote_NextLayer` for the map and gamemode, then `Vote_Faction_<n>`
+for each team's faction. They are stages of the same vote, not different kinds of vote, and nothing branches on the
+name. `RegenerateVote` is the server's re-roll option rather than something that can be played, so it is dropped
+from the choices.
 
-On a `next-layer` vote SLM sets `updatesToSquadServerDisabled` and stops writing the rotation. Faction votes leave
-the layer alone, so they are recorded and shown but change nothing.
+Whether a vote is under way at all is the only question anything asks. If one is, it is what decides the next
+layer: SLM stops writing the rotation and records the match the roll produces with a layer source of `ingame-vote`
+rather than attributing it to (and consuming) the queue head, which it never got to set.
+
+`updatesToSquadServerDisabled` holds the reason rather than a bare flag -- `null` when SLM is writing the rotation,
+otherwise `{ type: 'manual', by }` or `{ type: 'ingame-vote' }` -- so a server that is not being written to always
+says why, and the queue panel shows it. SLM only claims the reason for itself when updates were on: a vote starting
+while an admin already has updates off leaves their reason, and theirs, in place.
+
+Re-enabling SLM's updates also runs `AdminEnableVoting 0`. Turning the vote off is the only way to stop it
+deciding the next layer, so without that SLM would go straight back to setting a layer the vote overwrites. The
+queue-panel button, the `enableslm` reply and the `slmstatus` reply all say so.
 
 Updates stay off after the map rolls, deliberately. Whoever turned voting on has taken over the rotation, and
-having SLM quietly start fighting the vote again on the next match is worse than leaving the flag where an admin
+having SLM quietly start fighting the vote again on the next match is worse than leaving the setting where an admin
 put it. The runtime vote state (`ctx.layerQueue.ingameVote$`) does clear at the match boundary, since a vote never
-outlives its match; the alert then goes back to the plain "SLM Updates Disabled" wording until someone re-enables
-them.
+outlives its match, but the reason is persisted and does not: the alert goes on naming the vote as why updates are
+off until someone re-enables them.
 
 ## Where it shows up
 

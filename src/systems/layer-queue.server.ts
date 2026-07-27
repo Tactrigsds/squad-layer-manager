@@ -271,9 +271,14 @@ export const setupInstance = Instr.spanOp(
 						if (event.type !== 'INGAME_VOTE_STARTED') return
 
 						const serverState = await SquadServer.getServerState(ctx)
-						const shouldDisable = event.kind === 'next-layer' && !serverState.settings.updatesToSquadServerDisabled
-						if (shouldDisable) {
-							await toggleUpdatesToSquadServer({ ctx, input: { disabled: true, cause: 'ingame-vote-detected' } })
+						// A vote takes over the reason even when an admin had already turned updates off: whoever stopped
+						// SLM writing the rotation, the vote is what decides the next layer now, and the alert has to say
+						// so. Only the first stage acts, though -- each team's faction round arrives as its own container,
+						// and re-claiming on those would override an admin who re-enabled updates mid-vote.
+						const existing = ctx.layerQueue.ingameVote$.getValue()
+						const from = serverState.settings.updatesToSquadServerDisabled
+						if (!existing && from?.type !== 'ingame-vote') {
+							await toggleUpdatesToSquadServer({ ctx, input: { disabled: { type: 'ingame-vote' } } })
 							// SLM turning itself off is an action in its own right, and the settings write alone leaves no
 							// trace of who did it or why
 							await AppEventsSys.persistAppEvent(
@@ -284,15 +289,13 @@ export const setupInstance = Instr.spanOp(
 									serverId: ctx.serverId,
 									matchId: event.matchId,
 									causeId: null,
-									changes: [{ path: 'updatesToSquadServerDisabled', from: false, to: true }],
+									changes: [{ path: 'updatesToSquadServerDisabled', from, to: { type: 'ingame-vote' } }],
 								}),
 							)
 						}
 						ctx.layerQueue.ingameVote$.next({
-							kind: event.kind,
 							choices: event.choices,
-							startedAt: event.time,
-							disabledUpdates: shouldDisable,
+							startedAt: existing?.startedAt ?? event.time,
 						})
 					}),
 				)
@@ -651,27 +654,36 @@ export async function toggleUpdatesToSquadServer({
 	input,
 }: {
 	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
-	input: { disabled: boolean; cause?: 'ingame-vote-detected' }
+	// null re-enables. The reason is the state, so a caller cannot disable updates without saying why.
+	input: { disabled: SETTINGS.SlmUpdatesDisabled | null }
 }) {
+	const byVote = input.disabled?.type === 'ingame-vote'
+	let turnedIngameVotingOff = false
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const serverState = await SquadServer.getServerState(ctx)
+		// Re-enabling while a vote is the reason has to turn the vote off too, or SLM goes straight back to setting a
+		// next layer the vote will overwrite -- the fight that standing down avoided in the first place.
+		turnedIngameVotingOff = !input.disabled && serverState.settings.updatesToSquadServerDisabled?.type === 'ingame-vote'
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
 		await Settings.updateServerSettings(ctx, serverState.settings, {
 			type: 'system',
-			event: input.cause ?? 'updates-to-squad-server-toggled',
+			event: byVote ? 'ingame-vote-detected' : 'updates-to-squad-server-toggled',
 		})
 	})
 
+	if (turnedIngameVotingOff) await SquadRcon.setIngameVotingEnabled(ctx, false)
+
 	await SquadRcon.warnAllAdmins(
 		ctx,
-		input.cause ? SS_Msgs.ingameVoteDisabledUpdates().warn() : SS_Msgs.slmUpdatesSet(!input.disabled).warn(),
+		byVote ? SS_Msgs.ingameVoteDisabledUpdates().warn() : SS_Msgs.slmUpdatesSet(!input.disabled, turnedIngameVotingOff).warn(),
 	)
 	return { code: 'ok' as const }
 }
 
 export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS.Ctx & LQ.Ctx) {
 	const serverState = await SquadServer.getServerState(ctx)
-	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
+	const disabled = serverState.settings.updatesToSquadServerDisabled
+	return { code: 'ok' as const, enabled: !disabled, disabledByIngameVote: disabled?.type === 'ingame-vote' }
 }
 
 export async function requestFeedback(
@@ -728,7 +740,9 @@ export const router = {
 				RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }),
 			)
 			if (denyRes) return denyRes
-			return await toggleUpdatesToSquadServer({ ctx, input })
+			// a user can only ever disable updates as themselves: the vote reason is SLM's alone
+			const disabled = input.disabled ? ({ type: 'manual', by: { type: 'slm-user', userId: ctx.user.discordId } } as const) : null
+			return await toggleUpdatesToSquadServer({ ctx, input: { disabled } })
 		}),
 
 	watchOps: orpcBase
