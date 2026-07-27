@@ -50,6 +50,8 @@ type FilterEditorBase = {
 	savedFilter: F.EditableFilterNode
 	tree: F.FilterNodeTree
 	createHints: Map<string, CreateHint>
+	// nodes whose comment is open for editing rather than displayed
+	editedComments: Set<string>
 
 	validatedFilter: F.FilterNode | null
 	modified: boolean
@@ -91,6 +93,7 @@ const setup: Frame['setup'] = (args) => {
 		savedFilter: savedFilter,
 		tree: F.upsertFilterNodeTreeInPlace(savedFilter),
 		createHints: new Map(),
+		editedComments: new Set(),
 
 		validatedFilter: null,
 		modified: false,
@@ -151,10 +154,19 @@ export namespace Sel {
 		(id: string) =>
 		(state: FilterEditor): CreateHint | undefined =>
 			state.createHints.get(id)
+
+	export const comment =
+		(id: string) =>
+		(state: FilterEditor): string | undefined =>
+			state.tree.nodes.get(id)?.comment
+
+	export const commentEdited = (id: string) => (state: FilterEditor) => state.editedComments.has(id)
 }
 
 export type CommonNodeActions = {
 	delete(): void
+	setComment(comment: string | null): void
+	setCommentEdited(edited: boolean): void
 }
 
 export type BlockNodeActions = {
@@ -203,7 +215,23 @@ export namespace Actions {
 	}
 
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
-		store(stores).setState({ tree: F.upsertFilterNodeTreeInPlace(filter), createHints: new Map() })
+		store(stores).setState({ tree: F.upsertFilterNodeTreeInPlace(filter), createHints: new Map(), editedComments: new Set() })
+	}
+
+	export function setNodeComment(stores: KeyProp, id: string, comment: string | null) {
+		const trimmed = comment?.trim()
+		updateNode(stores, id, (draft) => {
+			if (trimmed) draft.comment = trimmed
+			else delete draft.comment
+		})
+	}
+
+	export function setCommentEdited(stores: KeyProp, id: string, edited: boolean) {
+		const s = store(stores)
+		const editedComments = new Set(s.getState().editedComments)
+		if (edited) editedComments.add(id)
+		else editedComments.delete(id)
+		s.setState({ editedComments })
 	}
 
 	export function updateNode(stores: KeyProp, id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) {
@@ -217,11 +245,11 @@ export namespace Actions {
 
 	export function deleteNode(stores: KeyProp, id: string) {
 		const s = store(stores)
-		s.setState({
-			tree: Im.produce(s.getState().tree, (draft) => {
-				F.deleteTreeNode(draft, id)
-			}),
+		const tree = Im.produce(s.getState().tree, (draft) => {
+			F.deleteTreeNode(draft, id)
 		})
+		const editedComments = new Set([...s.getState().editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
+		s.setState({ tree, editedComments })
 	}
 
 	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType) {
@@ -255,6 +283,7 @@ export namespace Actions {
 			savedFilter: filter,
 			tree: F.upsertFilterNodeTreeInPlace(filter),
 			createHints: new Map(),
+			editedComments: new Set(),
 		})
 	}
 }
@@ -265,6 +294,8 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 	return {
 		common: {
 			delete: () => Actions.deleteNode(stores, id),
+			setComment: (comment) => Actions.setNodeComment(stores, id, comment),
+			setCommentEdited: (edited) => Actions.setCommentEdited(stores, id, edited),
 		},
 		block: {
 			setBlockType(type) {
@@ -284,9 +315,10 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 				updateNode((draft) => {
 					if (!F.isCompNode(draft)) return
 					const next = typeof update === 'function' ? update(draft as F.EditableCompNode) : update
-					// replace whole node contents (args count varies by operator), keeping only the new keys
+					// replace whole node contents (args count varies by operator), keeping only the new keys.
+					// the comment is node chrome rather than part of the comparison, so it outlives the swap
 					for (const key of Object.keys(draft)) {
-						if (!(key in next)) delete (draft as any)[key]
+						if (key !== 'comment' && !(key in next)) delete (draft as any)[key]
 					}
 					Object.assign(draft, next)
 				})

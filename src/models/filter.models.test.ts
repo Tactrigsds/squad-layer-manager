@@ -103,6 +103,22 @@ describe('value domains', () => {
 	})
 })
 
+describe('node comments', () => {
+	const commented = (comment: string) => ({ ...FB.inValues('Gamemode', ['RAAS']), comment })
+
+	it('survives the editor tree round trip', () => {
+		const filter = { ...FB.and([commented('why we exclude these')]), comment: 'top level note' }
+		const tree = F.upsertFilterNodeTreeInPlace(filter)
+		expect(F.treeToFilterNode(tree)).toEqual(filter)
+	})
+
+	it('rejects a blank or oversized comment', () => {
+		expect(F.FilterNodeSchema.safeParse(commented('   ')).success).toBe(false)
+		expect(F.FilterNodeSchema.safeParse(commented('x'.repeat(F.NODE_COMMENT_MAX_LENGTH + 1))).success).toBe(false)
+		expect(F.FilterNodeSchema.safeParse(commented('x'.repeat(F.NODE_COMMENT_MAX_LENGTH))).success).toBe(true)
+	})
+})
+
 // -------- compiler validation --------
 
 function testCtx(): LE.LowerCtx {
