@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { useDebounced } from '@/hooks/use-debounce'
 import type * as Rx from '@/lib/rxjs'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import { LAYERS_QUERY_SORT_DIRECTION } from '@/models/layer-queries.models'
@@ -107,10 +108,8 @@ function ColumnsSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint="Order and default visibility of columns in the layer table. Drag to reorder; order is top to bottom.">
-				Columns
-			</SectionLabel>
-			{columns.length === 0 && <p className="text-xs text-muted-foreground">No columns configured.</p>}
+			<SectionLabel hint={LC_Msgs.columnsHint().text()}>{LC_Msgs.columnsHeading().text()}</SectionLabel>
+			{columns.length === 0 && <p className="text-xs text-muted-foreground">{LC_Msgs.noColumnsConfigured().text()}</p>}
 			<ol>
 				{columns.map((col, idx) => (
 					<React.Fragment key={col.name}>
@@ -121,7 +120,7 @@ function ColumnsSection({
 				{columns.length > 0 && <ColumnDropSeparator position="after" columnName={columns[columns.length - 1].name} />}
 			</ol>
 			<ComboBox
-				title="Add column"
+				title={LC_Msgs.addColumn().text()}
 				value={undefined}
 				options={addOptions}
 				onSelect={(name) => {
@@ -159,14 +158,19 @@ function ColumnRow({
 			data-dragging={drag.isDragging}
 			className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-1 rounded-md bg-background data-[dragging=true]:opacity-40"
 		>
-			<button type="button" ref={drag.handleRef} className="cursor-grab rounded text-muted-foreground" aria-label="Drag to reorder">
+			<button
+				type="button"
+				ref={drag.handleRef}
+				className="cursor-grab rounded text-muted-foreground"
+				aria-label={LC_Msgs.dragToReorder().text()}
+			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
 			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
 			<span className="min-w-0 truncate font-mono text-sm">{col.name}</span>
 			<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
 				<Switch checked={col.visible ?? true} onCheckedChange={onToggleVisible} />
-				visible
+				{LC_Msgs.visibleByDefault().text()}
 			</label>
 			<Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
@@ -190,7 +194,7 @@ function SortSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint="How the layer table is sorted before any user-applied sort.">Default sort</SectionLabel>
+			<SectionLabel hint={LC_Msgs.defaultSortHint().text()}>{LC_Msgs.defaultSortHeading().text()}</SectionLabel>
 			<div className="flex flex-wrap items-center gap-2">
 				<Select
 					value={sort.type}
@@ -203,8 +207,8 @@ function SortSection({
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="random">Random</SelectItem>
-						<SelectItem value="column">Column</SelectItem>
+						<SelectItem value="random">{LC_Msgs.sortRandom().text()}</SelectItem>
+						<SelectItem value="column">{LC_Msgs.sortColumn().text()}</SelectItem>
 					</SelectContent>
 				</Select>
 
@@ -219,7 +223,7 @@ function SortSection({
 				{sort.type === 'column' && (
 					<>
 						<ComboBox
-							title="Column"
+							title={LC_Msgs.columnPicker().text()}
 							className="w-[200px]"
 							value={sort.sortBy || undefined}
 							options={columnOptions}
@@ -261,7 +265,7 @@ function SeedInput({ seed, onChange, reset$ }: { seed: string | undefined; onCha
 		<input
 			key={resetKey}
 			className="h-9 w-[160px] rounded-md border bg-background px-3 text-sm"
-			placeholder="seed (optional)"
+			placeholder={LC_Msgs.seedPlaceholder().text()}
 			defaultValue={seed ?? ''}
 			onChange={(e) => push(e.currentTarget.value)}
 		/>
@@ -281,8 +285,8 @@ function ExtraMenuItemsSection({ value, patch }: { value: LayerTableConfig; patc
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint="Extra comparison controls added to the layer table's filter menu.">Extra menu items</SectionLabel>
-			{items.length === 0 && <p className="text-xs text-muted-foreground">None.</p>}
+			<SectionLabel hint={LC_Msgs.extraMenuItemsHint().text()}>{LC_Msgs.extraMenuItemsHeading().text()}</SectionLabel>
+			{items.length === 0 && <p className="text-xs text-muted-foreground">{LC_Msgs.noExtraMenuItems().text()}</p>}
 			<div className="space-y-2">
 				{items.map((item, idx) => (
 					// menu items have no stable id, so index is the pragmatic key (add appends, remove filters)
@@ -308,7 +312,7 @@ function ExtraMenuItemsSection({ value, patch }: { value: LayerTableConfig; patc
 			</div>
 			<Button type="button" size="sm" variant="outline" onClick={() => patch({ extraLayerSelectMenuItems: [...items, blankComp()] })}>
 				<Icons.Plus className="h-4 w-4" />
-				Add menu item
+				{LC_Msgs.addMenuItem().text()}
 			</Button>
 		</div>
 	)
