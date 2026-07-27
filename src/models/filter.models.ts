@@ -136,41 +136,68 @@ export const MATCHUP_TYPE_NEGATED: Record<MatchupType, boolean> = {
 
 // -------- nodes --------
 
-export type CompNode =
-	| { type: 'eq' | 'lt' | 'gt'; neg: boolean; args: [SubjectArg, ScalarArg] }
-	| { type: 'in'; neg: boolean; args: [SubjectArg, ValuesArg] }
-	// [subject, min, max] (inclusive)
-	| { type: 'inrange'; neg: boolean; args: [SubjectArg, ScalarArg, ScalarArg] }
+// freeform prose attached to any node, carried through the tree and persisted with it. Absent rather
+// than empty when unset, so a comment that is cleared leaves no trace in the stored filter.
+export const NODE_COMMENT_MAX_LENGTH = 1200
+export const NodeCommentSchema = z.string().trim().min(1).max(NODE_COMMENT_MAX_LENGTH)
 
-export type ApplyFilterNode = { type: ApplyFilterType; filterId: string }
+export type CompNode =
+	| { type: 'eq' | 'lt' | 'gt'; neg: boolean; args: [SubjectArg, ScalarArg]; comment?: string }
+	| { type: 'in'; neg: boolean; args: [SubjectArg, ValuesArg]; comment?: string }
+	// [subject, min, max] (inclusive)
+	| { type: 'inrange'; neg: boolean; args: [SubjectArg, ScalarArg, ScalarArg]; comment?: string }
+
+export type ApplyFilterNode = { type: ApplyFilterType; filterId: string; comment?: string }
 
 // one side of a matchup. Dimensions are keyed by TeamColumn so resolveTeamColumn does the _1/_2
 // resolution. A dimension that is absent or empty is unconstrained ("any"), so a spec ANDs only the
 // dimensions that carry values -- this is what makes an alliance-only matchup expressible.
 export type MatchupTeamSpec = Partial<Record<TeamColumn, Value[]>>
 
-export type MatchupNode = { type: MatchupType; locked: boolean; teams: [MatchupTeamSpec, MatchupTeamSpec] }
+export type MatchupNode = { type: MatchupType; locked: boolean; teams: [MatchupTeamSpec, MatchupTeamSpec]; comment?: string }
 
-export type FilterNode = { type: BlockType; children: FilterNode[] } | CompNode | ApplyFilterNode | MatchupNode
+export type FilterNode = { type: BlockType; children: FilterNode[]; comment?: string } | CompNode | ApplyFilterNode | MatchupNode
 
 export type NodeType = FilterNode['type']
 
 const NegSchema = z.boolean().prefault(false)
+const CommentSchema = NodeCommentSchema.optional()
 
-export const EqNodeSchema = z.object({ type: z.literal('eq'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ScalarArgSchema]) })
-export const LtNodeSchema = z.object({ type: z.literal('lt'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ScalarArgSchema]) })
-export const GtNodeSchema = z.object({ type: z.literal('gt'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ScalarArgSchema]) })
-export const InNodeSchema = z.object({ type: z.literal('in'), neg: NegSchema, args: z.tuple([SubjectArgSchema, ValuesArgSchema]) })
+export const EqNodeSchema = z.object({
+	type: z.literal('eq'),
+	neg: NegSchema,
+	args: z.tuple([SubjectArgSchema, ScalarArgSchema]),
+	comment: CommentSchema,
+})
+export const LtNodeSchema = z.object({
+	type: z.literal('lt'),
+	neg: NegSchema,
+	args: z.tuple([SubjectArgSchema, ScalarArgSchema]),
+	comment: CommentSchema,
+})
+export const GtNodeSchema = z.object({
+	type: z.literal('gt'),
+	neg: NegSchema,
+	args: z.tuple([SubjectArgSchema, ScalarArgSchema]),
+	comment: CommentSchema,
+})
+export const InNodeSchema = z.object({
+	type: z.literal('in'),
+	neg: NegSchema,
+	args: z.tuple([SubjectArgSchema, ValuesArgSchema]),
+	comment: CommentSchema,
+})
 export const InRangeNodeSchema = z.object({
 	type: z.literal('inrange'),
 	neg: NegSchema,
 	args: z.tuple([SubjectArgSchema, ScalarArgSchema, ScalarArgSchema]),
+	comment: CommentSchema,
 })
 
 export const CompNodeSchema = z.discriminatedUnion('type', [EqNodeSchema, InNodeSchema, LtNodeSchema, GtNodeSchema, InRangeNodeSchema])
 
 const applyFilterNodeSchema = <T extends ApplyFilterType>(type: T) =>
-	z.object({ type: z.literal(type), filterId: z.lazy(() => FilterEntityIdSchema) })
+	z.object({ type: z.literal(type), filterId: z.lazy(() => FilterEntityIdSchema), comment: CommentSchema })
 export const IncludedInNodeSchema = applyFilterNodeSchema('included-in')
 export const ExcludedFromNodeSchema = applyFilterNodeSchema('excluded-from')
 
@@ -187,12 +214,14 @@ const matchupNodeSchema = <T extends MatchupType>(type: T) =>
 		type: z.literal(type),
 		locked: LockedSchema,
 		teams: z.tuple([MatchupTeamSpecSchema, MatchupTeamSpecSchema]),
+		comment: CommentSchema,
 	})
 export const AllowMatchupsNodeSchema = matchupNodeSchema('allow-matchups')
 export const DisallowMatchupsNodeSchema = matchupNodeSchema('disallow-matchups')
 
 const ChildrenSchema = z.lazy(() => z.array(FilterNodeSchema))
-const blockNodeSchema = <T extends BlockType>(type: T) => z.object({ type: z.literal(type), children: ChildrenSchema })
+const blockNodeSchema = <T extends BlockType>(type: T) =>
+	z.object({ type: z.literal(type), children: ChildrenSchema, comment: CommentSchema })
 export const AndNodeSchema = blockNodeSchema('and')
 export const OrNodeSchema = blockNodeSchema('or')
 export const NorNodeSchema = blockNodeSchema('nor')
@@ -234,15 +263,16 @@ export const EditableArgSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('values'), values: z.array(InListItemSchema).optional() }),
 ])
 
-export type EditableCompNode = { type: CompType; neg: boolean; args: EditableArg[] }
+export type EditableCompNode = { type: CompType; neg: boolean; args: EditableArg[]; comment?: string }
 
 export const EditableCompNodeSchema = z.object({
 	type: z.enum(COMP_TYPES),
 	neg: NegSchema,
 	args: z.array(EditableArgSchema),
+	comment: CommentSchema,
 }) satisfies z.ZodType<EditableCompNode, unknown>
 
-export type EditableApplyFilterNode = { type: ApplyFilterType; filterId?: string }
+export type EditableApplyFilterNode = { type: ApplyFilterType; filterId?: string; comment?: string }
 
 // a matchup node has no incomplete state to model: every dimension is optional and an empty one means
 // "any", so a half-filled node is already a valid one. The editable form is the strict form.
@@ -255,9 +285,10 @@ export type EditableFilterNode =
 	| {
 			type: BlockType
 			children: EditableFilterNode[]
+			comment?: string
 	  }
 
-export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType }
+export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType; comment?: string }
 
 export type ShallowEditableFilterNodeOfType<T extends NodeType> = Extract<ShallowEditableFilterNode, { type: T }>
 export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
