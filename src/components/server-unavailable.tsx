@@ -5,35 +5,12 @@ import React from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SettingsClient from '@/systems/settings.client'
 import type * as SquadServerClient from '@/systems/squad-server.client'
 
 type Status = Exclude<SquadServerClient.ServerAvailability, 'ok'>
-
-function describe(status: Exclude<Status, 'starting'>, displayName: string) {
-	switch (status) {
-		case 'not-found':
-			return {
-				title: `Server "${displayName}" Not Found`,
-				description: 'This server may have been removed from the configuration, or the server ID is incorrect.',
-			}
-		case 'disabled':
-			return {
-				title: `Server "${displayName}" Disabled`,
-				description: "This server is disabled, so it isn't running. If you have access, you can enable it on the settings page.",
-			}
-		case 'broken':
-			return {
-				title: `Server "${displayName}" Has Invalid Settings`,
-				description:
-					"This server's settings failed validation, so it can't be started. Repair them on the settings page, then enable the server.",
-			}
-		default:
-			assertNever(status)
-	}
-}
 
 // how long a server may sit enabled-but-not-running before we stop calling it "starting". A managed server that dies on a fatal
 // resource error is torn down and not retried, so it would otherwise spin here forever.
@@ -54,20 +31,16 @@ function ServerStarting(props: { displayName: string }) {
 				<CardHeader className="text-center pb-4">
 					<CardTitle className="flex items-center justify-center gap-2 text-2xl">
 						<Loader2 className="h-5 w-5 animate-spin" />
-						Starting "{props.displayName}"
+						{SS_Msgs.startingTitle(props.displayName).text()}
 					</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<p className="text-sm text-muted-foreground text-center">
-						Waiting for the server to come online. This page will switch to the dashboard on its own.
-					</p>
+					<p className="text-sm text-muted-foreground text-center">{SS_Msgs.startingBlurb().text()}</p>
 					{slow && (
 						<Alert variant="destructive">
 							<AlertCircle className="h-4 w-4" />
-							<AlertTitle>This is taking longer than expected</AlertTitle>
-							<AlertDescription>
-								The server still hasn't come online. It may have failed to start, in which case the logs will say why.
-							</AlertDescription>
+							<AlertTitle>{SS_Msgs.startingSlowTitle().text()}</AlertTitle>
+							<AlertDescription>{SS_Msgs.startingSlowBlurb().text()}</AlertDescription>
 						</Alert>
 					)}
 				</CardContent>
@@ -87,24 +60,23 @@ export default function ServerUnavailable(props: { serverId: string; status: Sta
 
 function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'starting'>; displayName: string }) {
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
-	const { title, description } = describe(props.status, props.displayName)
 	const otherServers = settings?.servers.filter((s) => SettingsClient.isServerUsable(s) && s.id !== props.serverId) ?? []
 
 	return (
 		<div className="flex items-center justify-center min-h-screen p-4 w-full">
 			<Card className="w-full max-w-lg">
 				<CardHeader className="text-center pb-4">
-					<CardTitle className="text-2xl">{title}</CardTitle>
+					<CardTitle className="text-2xl">{SS_Msgs.unavailableTitle(props.status, props.displayName).text()}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<Alert variant="destructive">
 						<AlertCircle className="h-4 w-4" />
-						<AlertTitle>What happened?</AlertTitle>
-						<AlertDescription>{description}</AlertDescription>
+						<AlertTitle>{SS_Msgs.unavailableHeading().text()}</AlertTitle>
+						<AlertDescription>{SS_Msgs.unavailableDescriptions[props.status]}</AlertDescription>
 					</Alert>
 					{otherServers.length > 0 ? (
 						<div className="space-y-3">
-							<div className="text-sm font-medium text-muted-foreground">Available servers:</div>
+							<div className="text-sm font-medium text-muted-foreground">{SS_Msgs.otherServersHeading().text()}</div>
 							<div className="space-y-2">
 								{otherServers.map((server) => (
 									<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
@@ -121,7 +93,7 @@ function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'sta
 							<Link to="/" className="block">
 								<Button className="w-full" size="lg">
 									<Home className="mr-2 h-4 w-4" />
-									Go Back to Servers List
+									{SS_Msgs.backToServersList().text()}
 								</Button>
 							</Link>
 						</div>

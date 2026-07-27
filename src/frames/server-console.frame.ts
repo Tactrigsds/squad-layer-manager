@@ -20,13 +20,10 @@ export type Types = {
 	state: Store
 }
 
-export type Tab = 'unified' | SC.ConsoleChannel
-export const TABS: Tab[] = ['unified', 'rcon', 'log', 'command']
-
 export type Store = {
 	serverId: string
 	events: ConsoleEvent[]
-	tab: Tab
+	tab: SC.Tab
 	hideNoise: boolean
 	denied: boolean
 }
@@ -109,7 +106,7 @@ export namespace Actions {
 		return Zus.resolveStore<Store>(stores.serverConsole)
 	}
 
-	export function setTab(stores: KeyProp, tab: Tab) {
+	export function setTab(stores: KeyProp, tab: SC.Tab) {
 		store(stores).setState({ tab })
 	}
 
