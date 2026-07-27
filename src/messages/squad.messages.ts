@@ -475,3 +475,33 @@ export const squadPlayersHeading = Msgs.def((count: number) => ({ text: () => `P
 export const noPlayersInSquad = Msgs.def(() => ({ text: () => 'No players' }))
 
 export const warnSquadPlaceholder = Msgs.def((squadName: string) => ({ text: () => `Warn ${squadName}…` }))
+
+// -------- the active-timeouts window --------
+
+export const activeTimeoutsTitle = Msgs.def(() => ({ text: () => 'Active Timeouts' }))
+
+export const activeTimeoutsBlurb = Msgs.def(() => ({
+	text: () => 'Players with an active kick timeout are re-kicked on join from any SLM-managed server until it expires.',
+}))
+
+export const noActiveTimeouts = Msgs.def(() => ({ text: () => 'No active timeouts.' }))
+
+export const timeoutPlayerColumn = Msgs.def(() => ({ text: () => 'Player' }))
+
+export const timeoutExpiresColumn = Msgs.def(() => ({ text: () => 'Expires' }))
+
+export const timeoutReasonColumn = Msgs.def(() => ({ text: () => 'Reason' }))
+
+export const timeoutIssuedColumn = Msgs.def(() => ({ text: () => 'Issued' }))
+
+export const noTimeoutReason = Msgs.def(() => ({ text: () => 'none' }))
+
+export const cancelTimeoutHint = Msgs.def(() => ({ text: () => 'Cancel this timeout' }))
+
+export const cancelTimeout = Msgs.def(() => ({ text: () => 'Cancel' }))
+
+// who issued a timeout, when their account or in-game name cannot be resolved
+export const timeoutActorFallbacks = { 'slm-user': 'Admin', 'ingame-user': 'In-game admin', system: 'System' }
+
+// the id kinds a player row offers to copy
+export const idKindLabels = { steam: 'steam', eos: 'eos' }
