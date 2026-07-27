@@ -2,6 +2,7 @@ import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema'
 import { LRUMap } from '@/lib/lru-map'
+import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import type * as MEC from '@/models/match-events-cache.models'
@@ -51,6 +52,16 @@ export const getEventsForMatches = Instr.spanOp(
 					.where(E.inArray(Schema.serverEvents.matchId, uncached))
 					.orderBy(E.asc(Schema.serverEvents.id))
 
+				// the same events the live feed holds for the current match, so a past match reads like the present one:
+				// SLM's own actions are entries in their own right, and the server events they caused collapse under them.
+				// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
+				const rawAppEvents = await ctx
+					.db()
+					.select()
+					.from(Schema.appEvents)
+					.where(E.inArray(Schema.appEvents.matchId, uncached))
+					.orderBy(E.asc(Schema.appEvents.time))
+
 				const rowsByMatch = new Map<number, typeof rawEvents>()
 				for (const rawEvent of rawEvents) {
 					let rows = rowsByMatch.get(rawEvent.matchId)
@@ -58,10 +69,26 @@ export const getEventsForMatches = Instr.spanOp(
 					rows.push(rawEvent)
 				}
 
+				const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
+				let dropped = 0
+				for (const row of rawAppEvents) {
+					const appEvent = AppEvents.fromRow(row)
+					if (!appEvent) {
+						dropped++
+						continue
+					}
+					if (!AppEvents.isFeedVisible(appEvent) || row.matchId === null) continue
+					let events = appEventsByMatch.get(row.matchId)
+					if (!events) appEventsByMatch.set(row.matchId, (events = []))
+					events.push(appEvent)
+				}
+				if (dropped > 0) log.warn('dropped %d unparseable app-event row(s) from the match feed', dropped)
+
 				const eventsByMatch = new Map<number, CHAT.EventEnriched[]>()
 				for (const matchId of uncached) {
 					const state = CHAT.getInitialChatState()
-					for (const event of SE.fromEventRows({ ...ctx, log }, rowsByMatch.get(matchId) ?? [])) {
+					const serverEvents = SE.fromEventRows({ ...ctx, log }, rowsByMatch.get(matchId) ?? [])
+					for (const event of CHAT.mergeAppEvents(serverEvents, appEventsByMatch.get(matchId) ?? [])) {
 						CHAT.handleEvent(state, event)
 					}
 					eventsByMatch.set(matchId, state.eventBuffer)

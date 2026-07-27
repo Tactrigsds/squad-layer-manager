@@ -73,6 +73,21 @@ export const router = {
 			if (events.length < rows.length) {
 				module.getLogger().warn('dropped %d unparseable app-event row(s) from audit list', rows.length - events.length)
 			}
-			return { code: 'ok' as const, events }
+			// the audit log has no roster to resolve against, so the players an event names (its actor, its targets)
+			// would otherwise read as eos ids
+			const playerIds = [
+				...new Set(
+					events.flatMap((e) => [...(e.actor.type === 'ingame-user' ? [e.actor.playerId] : []), ...AppEvents.involvedPlayerIds(e)]),
+				),
+			]
+			const playerRows =
+				playerIds.length > 0
+					? await ctx
+							.db()
+							.select({ eosId: Schema.players.eosId, username: Schema.players.username })
+							.from(Schema.players)
+							.where(E.inArray(Schema.players.eosId, playerIds))
+					: []
+			return { code: 'ok' as const, events, playerNames: Object.fromEntries(playerRows.map((p) => [p.eosId, p.username])) }
 		}),
 }

@@ -356,11 +356,13 @@ export type LayerRequestConsumed = z.infer<typeof LayerRequestConsumedSchema>
 export const MapSetSchema = event('MAP_SET', {
 	layerId: L.LayerIdSchema,
 	reason: z.enum(['queue-updated', 'override']),
-	// for reason 'override': the external actor whose set SLM overrode
+	// for reason 'override': the external actor whose set SLM overrode. 'unknown' is a layer SLM found already set
+	// rather than watched anyone set (the usual case on startup), where naming an actor would invent one.
 	overrode: z
 		.discriminatedUnion('type', [
 			z.object({ type: z.literal('player'), playerId: SM.PlayerIdSchema }),
 			z.object({ type: z.literal('rcon') }),
+			z.object({ type: z.literal('unknown') }),
 		])
 		.optional(),
 })
@@ -461,9 +463,42 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 	}
 }
 
+// What actually drove a QUEUE_UPDATED. A save the queue made for itself -- drawing the next layer, applying a vote
+// result -- is a `user-edit` save with a system actor, which otherwise reads as "SLM updated the queue" and says
+// nothing about what happened.
+export type QueueUpdateKind = 'roll' | 'external-layer-change' | 'generated' | 'vote-result' | 'force-save' | 'save'
+
+export function queueUpdateKind(e: QueueUpdated): QueueUpdateKind {
+	if (e.trigger === 'roll') return 'roll'
+	if (e.trigger === 'external-layer-change') return 'external-layer-change'
+	// the op that triggered the save is the last of the span (see request-list-save)
+	const triggerOp = e.ops[e.ops.length - 1]
+	if (triggerOp?.op === 'queue-item-generated') return 'generated'
+	if (triggerOp?.op === 'set-vote-result') return 'vote-result'
+	return e.save?.force ? 'force-save' : 'save'
+}
+
+// the actor a queue sync was reconciling against, for an 'external-layer-change' save. Carried by the op rather than
+// by the event's actor, which can only name a player (an rcon tool and a layer SLM merely found are both 'system').
+export function queueUpdateExternalSource(e: QueueUpdated) {
+	const triggerOp = e.ops[e.ops.length - 1]
+	return triggerOp?.op === 'unshift-first-saved-layer' ? triggerOp.externalSource : undefined
+}
+
+// verb phrases with the actor left off, for the audit log
+const QUEUE_UPDATE_VERBS: Record<QueueUpdateKind, string> = {
+	roll: 'advanced the queue on map change',
+	'external-layer-change': 'synced the queue to an external layer change',
+	generated: 'generated the next layer',
+	'vote-result': 'applied the vote result to the queue',
+	'force-save': 'force-saved the queue',
+	save: 'updated the queue',
+}
+
 // a short human-readable description of the action, WITHOUT the actor (the caller prepends the actor's name).
 // used by the audit log; the activity feed has its own richer per-type renderers.
-export function describeAppEvent(e: AppEvent): string {
+// `playerName` resolves an eos id for the types that name a player the caller can't otherwise identify.
+export function describeAppEvent(e: AppEvent, playerName?: (id: SM.PlayerId) => string | undefined): string {
 	const players = (n: number) => `${n} ${n === 1 ? 'player' : 'players'}`
 	const forReason = (reason: AppliedActionReason | undefined) => (reason?.label ? ` for ${reason.label}` : '')
 	switch (e.type) {
@@ -507,14 +542,7 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'VOTE_ABORTED':
 			return 'aborted a vote'
 		case 'QUEUE_UPDATED': {
-			const verb =
-				e.trigger === 'roll'
-					? 'advanced the queue on map change'
-					: e.trigger === 'external-layer-change'
-						? 'synced the queue to an external layer change'
-						: e.save?.force
-							? 'force-saved the queue'
-							: 'updated the queue'
+			const verb = QUEUE_UPDATE_VERBS[queueUpdateKind(e)]
 			// user-edit / roll saves have a companion MAP_SET row that states the next layer; external syncs don't
 			if (e.trigger !== 'external-layer-change') return verb
 			const nextBefore = LL.getNextLayerId(e.prevList)
@@ -549,7 +577,10 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
 			if (e.reason === 'override') {
-				const who = e.overrode?.type === 'player' ? ' by an in-game admin' : e.overrode?.type === 'rcon' ? ' by another RCON tool' : ''
+				// nothing was witnessed being overridden in the 'unknown' case: the layer was simply already set
+				if (!e.overrode || e.overrode.type === 'unknown') return `restored the queue's next layer, set to ${layer}`
+				const who =
+					e.overrode.type === 'player' ? ` by ${playerName?.(e.overrode.playerId) ?? 'an in-game admin'}` : ' by another RCON tool'
 				return `overrode an external layer set${who}, next layer set to ${layer}`
 			}
 			return `set next layer to ${layer}`
@@ -590,7 +621,7 @@ export function describeAppEvent(e: AppEvent): string {
 		case 'PLAYER_FLAGS_UPDATED': {
 			const describe = (sign: string) => (f: { name: string; reason?: string }) => `${sign}${f.name}${f.reason ? ` (${f.reason})` : ''}`
 			const changes = [...e.added.map(describe('+')), ...e.removed.map(describe('−'))].join(', ')
-			return `updated Battlemetrics flags for player ${e.playerId}${changes ? `: ${changes}` : ''}`
+			return `updated Battlemetrics flags for ${playerName?.(e.playerId) ?? `player ${e.playerId}`}${changes ? `: ${changes}` : ''}`
 		}
 		case 'APP_STARTED':
 			return `SLM started${e.version ? ` (${e.version})` : ''}`

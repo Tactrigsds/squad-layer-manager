@@ -1,4 +1,5 @@
 import * as E from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
@@ -48,6 +49,8 @@ export type ActiveTimeoutRow = SchemaModels.Timeout & {
 	username: string | null
 	steamId: bigint | null
 	actor: AppEvents.Actor | null
+	// the in-game admin who issued it, for an 'ingame-user' actor: this window has no roster to resolve one against
+	actorUsername: string | null
 	// the reason as originally delivered (rendered from the stored template + vars); null when kicked without one
 	reasonMessage: string | null
 }
@@ -63,6 +66,8 @@ function appliedReasonFromRow(t: SchemaModels.Timeout): AAR.AppliedReason | null
 }
 
 export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]> {
+	// the players table is joined twice: once for the player under timeout, once for the admin who issued it
+	const actorPlayer = alias(Schema.players, 'actorPlayer')
 	const rows = await ctx
 		.db()
 		.select({
@@ -72,10 +77,12 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 			actorType: Schema.appEvents.actorType,
 			actorUserId: Schema.appEvents.actorUserId,
 			actorPlayerId: Schema.appEvents.actorPlayerId,
+			actorUsername: actorPlayer.username,
 		})
 		.from(Schema.timeouts)
 		.leftJoin(Schema.players, E.eq(Schema.timeouts.playerId, Schema.players.eosId))
 		.leftJoin(Schema.appEvents, E.eq(Schema.timeouts.appEventId, Schema.appEvents.id))
+		.leftJoin(actorPlayer, E.eq(Schema.appEvents.actorPlayerId, actorPlayer.eosId))
 		.where(activeWhere())
 		.orderBy(E.asc(Schema.timeouts.expiresAt))
 	return rows.map((row): ActiveTimeoutRow => {
@@ -89,6 +96,7 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 			username: row.username,
 			steamId: row.steamId,
 			actor,
+			actorUsername: row.actorUsername,
 			reasonMessage: applied && AAR.renderAppliedReason(applied),
 		}
 	})

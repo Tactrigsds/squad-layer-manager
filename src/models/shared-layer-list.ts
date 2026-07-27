@@ -122,11 +122,12 @@ function buildOperationSchema<
 			itemSource: LL.SourceSchema,
 			itemId: LL.ItemIdSchema,
 			// the external actor whose layer change triggered this reconciliation (used to attribute the QUEUE_UPDATED);
-			// absent for internal/unattributed sources
+			// 'unknown' is a change SLM found rather than watched happen, absent for internal sources
 			externalSource: z
 				.discriminatedUnion('type', [
 					z.object({ type: z.literal('player'), playerId: z.string() }),
 					z.object({ type: z.literal('rcon') }),
+					z.object({ type: z.literal('unknown') }),
 				])
 				.optional(),
 		}),

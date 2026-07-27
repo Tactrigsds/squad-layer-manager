@@ -66,6 +66,11 @@ export type ExpectationMatch =
 	| { type: 'PLAYER_CHANGED_TEAM'; playerId: SM.PlayerId }
 	| { type: 'SQUAD_DISBANDED'; teamId: SM.TeamId; squadId: number }
 	| { type: 'SQUAD_RENAMED'; teamId: SM.TeamId; squadId: number }
+	// the round end SLM's own end-match command produces. It stamps the action's source rather than the event's:
+	// a round ends on its own too, and only the action within it has an actor.
+	| { type: 'ROUND_ENDED' }
+	// a broadcast SLM sent, matched on the exact text it sent (one per rcon call -- a long broadcast is split)
+	| { type: 'ADMIN_BROADCAST'; message: string }
 export type EventExpectation = {
 	match: ExpectationMatch
 	source: ArmedActionSource
@@ -265,6 +270,14 @@ function expectationMatches(state: State, match: ExpectationMatch, event: SE.New
 			const squad = state.currTeams?.squads.find((s) => s.uniqueId === event.uniqueId)
 			return !!squad && squad.teamId === match.teamId && squad.squadId === match.squadId
 		}
+		case 'ROUND_ENDED':
+			// SLM's end-match reaches the game over rcon like any other tool's, so the log can only report it as
+			// `rcon`; a round that ended on its own carries no action at all, and one an in-game admin ended names them
+			return event.type === 'ROUND_ENDED' && event.action?.type === 'AdminEndMatch' && event.action.source.type === 'rcon'
+		case 'ADMIN_BROADCAST':
+			// same reasoning: SLM's broadcasts are indistinguishable from any other tool's in the log, and one an
+			// in-game admin sent names them, so only an rcon-sourced broadcast is a candidate
+			return event.type === 'ADMIN_BROADCAST' && event.source?.type === 'rcon' && event.message === match.message
 	}
 }
 
@@ -280,7 +293,10 @@ function eventIsAdminCaused(event: SE.NewEvent): boolean {
 function applyExpectations(state: State, event: SE.NewEvent) {
 	const idx = state.expectations.findIndex((exp) => expectationMatches(state, exp.match, event))
 	if (idx === -1) return
-	;(event as { source?: ActionSource }).source = state.expectations[idx].source
+	const source = state.expectations[idx].source
+	// a round end's actor belongs to the action inside it, not to the round ending
+	if (event.type === 'ROUND_ENDED' && event.action) event.action.source = source
+	else (event as { source?: ActionSource }).source = source
 	state.expectations.splice(idx, 1)
 }
 
@@ -669,11 +685,13 @@ async function* processPendingEvent(
 			(state.nextLayerId === null || !L.layersEqual(state.nextLayerId, pendingEvent.nextLayerId))
 		) {
 			state.nextLayerId = pendingEvent.nextLayerId
+			// nobody set this layer as far as SLM is concerned -- it is what the server already had when we connected
 			yield await createEvent(state, {
 				type: 'MAP_SET',
 				layerId: state.nextLayerId,
 				matchId: state.currentMatch.historyEntryId,
 				time: Date.now(),
+				source: { type: 'observed' },
 			})
 		}
 

@@ -52,6 +52,7 @@ test.describe('server dashboard', () => {
 		// the app instance is shared across this file's tests, so the feed accumulates: assert an entry
 		// exists rather than that it's the only one
 		await expect(feed.getByText(/RCON connection established/i).first()).toBeVisible({ timeout: 20_000 })
-		await expect(feed.getByText(/Next layer set to/i).first()).toBeVisible()
+		// the layer already set when SLM connected is reported as an observation: nobody set it as far as SLM saw
+		await expect(feed.getByText(/Server's next layer is/i).first()).toBeVisible()
 	})
 })
