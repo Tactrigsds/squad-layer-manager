@@ -24,6 +24,8 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as BM_Msgs from '@/messages/battlemetrics.messages'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -296,7 +298,7 @@ function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
 			disabled={refresh.isPending}
 			onClick={async () => {
 				const res = await refresh.mutateAsync({ playerIds: [playerId] })
-				if (res.failed.length > 0) toast.error('Failed to refresh BattleMetrics data')
+				if (res.failed.length > 0) toast.error(...BM_Msgs.refreshFailed().toast())
 			}}
 			className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:pointer-events-none"
 			title="Refresh BattleMetrics data"
@@ -327,8 +329,8 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 					title="Cancel this timeout"
 					onClick={async () => {
 						const res = await cancelMutation.mutateAsync({ timeoutId: timeout.id })
-						if (res.code !== 'ok') toast.error('Cancel failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
-						else toast('Timeout cancelled')
+						if (res.code !== 'ok') toast.error(...SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+						else toast(...SM_Msgs.timeoutCancelled().toast())
 					}}
 				>
 					Cancel
