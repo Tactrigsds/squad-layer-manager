@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
@@ -55,9 +56,9 @@ export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string;
 		const consoleCommand = `${chatCommand} ${cmdString}`
 		try {
 			await navigator.clipboard.writeText(consoleCommand)
-			toast('Copied to clipboard', { description: consoleCommand })
+			toast(...APP_Msgs.copiedToClipboard(consoleCommand).toast())
 		} catch {
-			toast.error('Failed to copy', { description: 'Could not copy command to clipboard' })
+			toast.error(...CMD_Msgs.copyFailed().toast())
 		}
 	}
 	return (

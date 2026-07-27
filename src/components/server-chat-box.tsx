@@ -10,6 +10,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -133,14 +134,14 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				})
 			}
 			if (res.code !== 'ok') {
-				toast.error('Failed to send', { description: res.code })
+				toast.error(...CHAT_Msgs.sendFailed(res.code).toast())
 				return
 			}
 			setMessage('')
 			draft.reset()
 		} catch (e) {
 			console.error(e)
-			toast.error('Failed to send')
+			toast.error(...CHAT_Msgs.sendFailed().toast())
 		}
 	}
 
