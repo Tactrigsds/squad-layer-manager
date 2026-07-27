@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { assertNever } from '@/lib/type-guards'
+import * as LL_Msgs from '@/messages/layer-list.messages'
 import type * as LL from '@/models/layer-list.models'
 
 import { Avatar } from './ui/avatar'
@@ -21,15 +22,15 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 
 	switch (props.source.type) {
 		case 'gameserver':
-			return renderIcon('Game Server', '#6366f1', <Icons.Server />)
+			return renderIcon(LL_Msgs.sourceNames.gameserver, '#6366f1', <Icons.Server />)
 		case 'unknown':
-			return renderIcon('Unknown', '#64748b', <Icons.MessageCircleQuestion />)
+			return renderIcon(LL_Msgs.sourceNames.unknown, '#64748b', <Icons.MessageCircleQuestion />)
 		case 'generated':
-			return renderIcon('Generated', '#059669', <Icons.Dices />)
+			return renderIcon(LL_Msgs.sourceNames.generated, '#059669', <Icons.Dices />)
 		case 'ingame-vote':
-			return renderIcon('In-Game Vote', '#d97706', <Icons.Vote />)
+			return renderIcon(LL_Msgs.sourceNames['ingame-vote'], '#d97706', <Icons.Vote />)
 		case 'manual':
-			return <UserAvatar userId={props.source.userId} label="Set By" />
+			return <UserAvatar userId={props.source.userId} label={LL_Msgs.setByLabel().text()} />
 		default:
 			assertNever(props.source)
 	}

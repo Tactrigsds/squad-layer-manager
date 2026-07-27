@@ -38,9 +38,9 @@ function TimeoutsWindow() {
 	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [u.discordId, u]))
 
 	function actorName(actor: AppEvents.Actor | null, actorUsername: string | null): string {
-		if (actor?.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? 'Admin'
-		if (actor?.type === 'ingame-user') return actorUsername ?? 'In-game admin'
-		return 'System'
+		if (actor?.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? SM_Msgs.timeoutActorFallbacks['slm-user']
+		if (actor?.type === 'ingame-user') return actorUsername ?? SM_Msgs.timeoutActorFallbacks['ingame-user']
+		return SM_Msgs.timeoutActorFallbacks.system
 	}
 
 	async function cancel(timeoutId: string) {
@@ -52,23 +52,21 @@ function TimeoutsWindow() {
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>Active Timeouts</DraggableWindowTitle>
+				<DraggableWindowTitle>{SM_Msgs.activeTimeoutsTitle().text()}</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<p className="px-3 pt-2 text-xs text-muted-foreground">
-				Players with an active kick timeout are re-kicked on join from any SLM-managed server until it expires.
-			</p>
+			<p className="px-3 pt-2 text-xs text-muted-foreground">{SM_Msgs.activeTimeoutsBlurb().text()}</p>
 			<ScrollArea className="min-h-0 grow px-3 pb-2">
 				{timeouts.length === 0 ? (
-					<p className="py-2 text-sm text-muted-foreground">No active timeouts.</p>
+					<p className="py-2 text-sm text-muted-foreground">{SM_Msgs.noActiveTimeouts().text()}</p>
 				) : (
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Player</TableHead>
-								<TableHead>Expires</TableHead>
-								<TableHead>Reason</TableHead>
-								<TableHead>Issued</TableHead>
+								<TableHead>{SM_Msgs.timeoutPlayerColumn().text()}</TableHead>
+								<TableHead>{SM_Msgs.timeoutExpiresColumn().text()}</TableHead>
+								<TableHead>{SM_Msgs.timeoutReasonColumn().text()}</TableHead>
+								<TableHead>{SM_Msgs.timeoutIssuedColumn().text()}</TableHead>
 								{canCancel && <TableHead className="w-8" />}
 							</TableRow>
 						</TableHeader>
@@ -79,9 +77,9 @@ function TimeoutsWindow() {
 										{t.username !== null && <div className="font-medium">{t.username}</div>}
 										<div className="text-xs">
 											{t.steamId !== null ? (
-												<CopyIdButton label="steam" id={t.steamId.toString()} />
+												<CopyIdButton label={SM_Msgs.idKindLabels.steam} id={t.steamId.toString()} />
 											) : (
-												<CopyIdButton label="eos" id={t.playerId} />
+												<CopyIdButton label={SM_Msgs.idKindLabels.eos} id={t.playerId} />
 											)}
 										</div>
 									</TableCell>
@@ -100,7 +98,7 @@ function TimeoutsWindow() {
 												{t.reasonMessage}
 											</>
 										) : (
-											<span className="italic">none</span>
+											<span className="italic">{SM_Msgs.noTimeoutReason().text()}</span>
 										)}
 									</TableCell>
 									<TableCell
@@ -116,10 +114,10 @@ function TimeoutsWindow() {
 												size="sm"
 												variant="outline"
 												className="h-6 px-2"
-												title="Cancel this timeout"
+												title={SM_Msgs.cancelTimeoutHint().text()}
 												onClick={() => void cancel(t.id)}
 											>
-												Cancel
+												{SM_Msgs.cancelTimeout().text()}
 											</Button>
 										</TableCell>
 									)}

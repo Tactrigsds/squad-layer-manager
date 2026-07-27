@@ -109,8 +109,8 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 	return (
 		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
-			<h3 className={Typo.Small + 'mb-2 ml-[45px]'}>Filter</h3>
-			<h3 className={Typo.Small + 'mb-2'}>Errors</h3>
+			<h3 className={Typo.Small + 'mb-2 ml-[45px]'}>{F_Msgs.filterHeading().text()}</h3>
+			<h3 className={Typo.Small + 'mb-2'}>{F_Msgs.errorsHeading().text()}</h3>
 			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
 				{errorText}

@@ -168,3 +168,110 @@ export const leavingDiscardsEdits = Msgs.def(() => ({
 export const ownEditsDiscarded = Msgs.def(() => ({
 	toast: () => ['Your unsaved edits have been discarded'],
 }))
+
+// -------- where a queue item came from --------
+// Shown on the source avatar beside a queue item. A manual source names the user instead, so it has no entry here.
+
+export const sourceNames: Record<Exclude<LL.Source['type'], 'manual'>, string> = {
+	gameserver: 'Game Server',
+	unknown: 'Unknown',
+	generated: 'Generated',
+	'ingame-vote': 'In-Game Vote',
+}
+
+export const setByLabel = Msgs.def(() => ({ text: () => 'Set By' }))
+
+// -------- the queue item controls --------
+
+export const editItem = Msgs.def(() => ({ text: () => 'Edit' }))
+
+export const swapFactions = Msgs.def(() => ({ text: () => 'Swap Factions' }))
+
+export const deleteItem = Msgs.def(() => ({ text: () => 'Delete' }))
+
+export const cloneItem = Msgs.def(() => ({ text: () => 'Clone' }))
+
+export const addLayersBefore = Msgs.def(() => ({ text: () => 'Add Layers Before' }))
+
+export const addLayersAfter = Msgs.def(() => ({ text: () => 'Add Layers After' }))
+
+export const sendToFront = Msgs.def(() => ({ text: () => 'Send to Front' }))
+
+export const sendToBack = Msgs.def(() => ({ text: () => 'Send to Back' }))
+
+// the choice a vote falls back to, and the one it landed on
+export const defaultChoice = Msgs.def(() => ({ text: () => 'Default' }))
+
+export const selectedChoice = Msgs.def(() => ({ text: () => 'Selected' }))
+
+export const notCurrentNextLayer = Msgs.def(() => ({ text: () => 'Not current next layer on server' }))
+
+export const pasteRotationTitle = Msgs.def(() => ({ text: () => 'Paste Rotation' }))
+
+// -------- the queue panel --------
+
+export const repeatsDetected = Msgs.def(() => ({ text: () => 'Repeats Detected' }))
+
+export const repeatsBlurb = Msgs.def(() => ({
+	text: () => 'The following queued layers have repeated elements that violate our configured rules:',
+}))
+
+export const filterWarnings = Msgs.def(() => ({ text: () => 'Filter Warnings' }))
+
+export const filterWarningsBlurb = Msgs.def(() => ({ text: () => 'The following queued layers triggered filter warnings:' }))
+
+export const clearQueue = Msgs.def(() => ({ text: () => 'Clear Queue' }))
+
+export const addLayers = Msgs.def(() => ({ text: () => 'Add Layers' }))
+
+export const genVote = Msgs.def(() => ({ text: () => 'Gen Vote' }))
+
+export const reset = Msgs.def(() => ({ text: () => 'Reset' }))
+
+export const saving = Msgs.def(() => ({ text: () => 'Saving...' }))
+
+export const startEditing = Msgs.def(() => ({ text: () => 'Start Editing' }))
+
+export const toggleForceSave = Msgs.def(() => ({ text: () => 'Toggle force save' }))
+
+export const toggleForceSaveHint = Msgs.def(() => ({ text: () => 'Toggle Force save (Save even if others are still editing)' }))
+
+export const poolConfiguration = Msgs.def(() => ({ text: () => 'Pool Configuration' }))
+
+export const upNext = Msgs.def(() => ({ text: () => 'Up Next' }))
+
+// -------- what set the next layer --------
+// The heading names the mechanism; the attributions below finish the sentence "Disabled by ..." / "set by ...".
+
+export const inGameVoteRunning = Msgs.def(() => ({ text: () => 'In-Game Vote Running' }))
+
+export const inGameVoteBlurb = Msgs.def(() => ({ text: () => 'The Squad server is running its own vote, which decides the next layer.' }))
+
+export const currentlyVotingBetween = Msgs.def((choices: string) => ({ text: () => `Currently voting between ${choices}.` }))
+
+export const slmUpdatesDisabled = Msgs.def(() => ({ text: () => 'SLM Updates Disabled' }))
+
+export const slmUpdatesDisabledBy = Msgs.def(() => ({ text: () => 'SLM is not syncing the queue to the squad server. Disabled by' }))
+
+export const currentNextLayerIs = Msgs.def(() => ({ text: () => 'Current next layer on the server is' }))
+
+export const clickHere = Msgs.def(() => ({ text: () => 'Click Here' }))
+
+export const disabledByInferredVote = Msgs.def(() => ({
+	text: () => 'in-game voting, most likely: the server stopped having a next layer set',
+}))
+
+export const disabledByIngameVote = Msgs.def(() => ({ text: () => 'an in-game vote on the Squad server' }))
+
+export const disabledByIngameAdmin = Msgs.def(() => ({ text: () => 'an admin in game' }))
+
+export const disabledByUnrecorded = Msgs.def(() => ({ text: () => 'someone (not recorded)' }))
+
+export const disabledByUnnamedUser = Msgs.def(() => ({ text: () => 'a user' }))
+
+export const disabledBySlm = Msgs.def(() => ({ text: () => 'SLM' }))
+
+// what the enable button does, which differs when the server is mid-vote
+export const enableUpdatesCta = Msgs.def((alsoStopsIngameVote: boolean) => ({
+	text: () => (alsoStopsIngameVote ? 'to enable SLM Updates and turn off in-game voting on the server.' : 'to enable SLM Updates.'),
+}))

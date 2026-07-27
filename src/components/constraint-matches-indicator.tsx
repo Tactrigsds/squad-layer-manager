@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -129,7 +130,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		<Tooltip delayDuration={250}>
 			<TooltipTrigger
 				// the trigger is a row of emoji/icons, so it has no text of its own to be named by
-				aria-label="Layer indicators"
+				aria-label={F_Msgs.layerIndicators().text()}
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={itemId ? onMouseOver : undefined}
@@ -144,7 +145,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 			>
 				{renderedRepeats.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>Repeats Detected:</div>
+						<div className={cn(Typo.Label, 'text-foreground')}>{F_Msgs.repeatsDetectedLabel().text()}</div>
 						<ItemGroup>
 							{renderedRepeats.map((constraint, index) => (
 								<React.Fragment key={constraint.id}>
@@ -163,7 +164,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 				)}
 				{renderedFilters.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>Matching Filters:</div>
+						<div className={cn(Typo.Label, 'text-foreground')}>{F_Msgs.matchingFiltersLabel().text()}</div>
 						<ItemGroup>
 							{renderedFilters.flatMap(([constraintId, elt], index) => {
 								return (
@@ -224,14 +225,14 @@ export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
 						<>
 							{descriptors.map((d) => (
 								<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
-									{boldValue(d.fieldValue)} was played {boldValue(d.repeatOffset)} match{d.repeatOffset === 1 ? '' : 'es'} prior
+									{F_Msgs.repeatDescriptor(boldValue(d.fieldValue), boldValue(d.repeatOffset), d.repeatOffset).react()}
 								</span>
 							))}
-							<span>Should be &gt; {boldValue(constraint.rule.within)}</span>
+							<span>{F_Msgs.repeatShouldBeOver(boldValue(constraint.rule.within)).react()}</span>
 						</>
 					) : (
 						<span className="whitespace-nowrap">
-							within <span className="font-semibold">{constraint.rule.within}</span>
+							{F_Msgs.repeatWithin(<span className="font-semibold">{constraint.rule.within}</span>).react()}
 						</span>
 					)}
 				</ItemDescription>

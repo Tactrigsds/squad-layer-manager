@@ -360,3 +360,72 @@ export const confirmDeleteServer = Msgs.def((displayName: string, serverId: stri
 export const unsavedChanges = Msgs.def(() => ({
 	text: () => 'You have unsaved settings changes. Are you sure you want to leave?',
 }))
+
+// -------- the form shell --------
+
+export const notPermittedToModifySetting = Msgs.def(() => ({ text: () => 'You are not permitted to modify this setting' }))
+
+export const linkToSetting = Msgs.def(() => ({ text: () => 'Link to this setting' }))
+
+export const advanced = Msgs.def(() => ({ text: () => 'Advanced' }))
+
+// a longer explanation folded behind a `?`, so compact editors can drop their inline descriptions
+export const help = Msgs.def(() => ({ text: () => 'Help' }))
+
+// only the first few validation errors on a field are listed; the rest are counted
+export const moreIssues = Msgs.def((count: number) => ({ text: () => `+${count} more` }))
+
+// -------- the generic leaf controls --------
+
+export const addItem = Msgs.def(() => ({ text: () => 'Add' }))
+
+export const emptyList = Msgs.def(() => ({ text: () => 'Empty.' }))
+
+export const noEntries = Msgs.def(() => ({ text: () => 'No entries.' }))
+
+export const addEntry = Msgs.def(() => ({ text: () => 'Add…' }))
+
+export const newEntryKey = Msgs.def(() => ({ text: () => 'new key' }))
+
+// the checkbox that puts a nullable field back to null
+export const unsetField = Msgs.def(() => ({ text: () => 'unset' }))
+
+export const enumValuePicker = Msgs.def(() => ({ text: () => 'Value' }))
+
+// a duration field with no schema default of its own still wants a format hint
+export const durationExample = Msgs.def(() => ({ text: () => 'e.g. 30m' }))
+
+// -------- per-field reset --------
+
+export const defaultHint = Msgs.def((value: string) => ({ text: () => `default: ${value}` }))
+
+export const resetToSaved = Msgs.def(() => ({ text: () => 'Reset to saved value' }))
+
+export const alreadySaved = Msgs.def(() => ({ text: () => 'Already matches the saved value' }))
+
+export const resetToDefault = Msgs.def((value: string) => ({ text: () => `Reset to default (${value})` }))
+
+export const alreadyDefault = Msgs.def(() => ({ text: () => 'Already matches the default' }))
+
+// how a schema default is spelled in the hint and the reset tooltip, for the values that have no useful literal form
+export const defaultValueWords = { unset: 'unset', on: 'on', off: 'off', empty: '(empty)' }
+
+// -------- the server agent token --------
+
+export const passwordPlaceholder = Msgs.def(() => ({ text: () => 'Password' }))
+
+export const serverAgentTokenPlaceholder = Msgs.def(() => ({ text: () => 'Server agent token' }))
+
+export const showToken = Msgs.def(() => ({ text: () => 'Show token' }))
+
+export const hideToken = Msgs.def(() => ({ text: () => 'Hide token' }))
+
+export const copyToken = Msgs.def(() => ({ text: () => 'Copy token' }))
+
+export const generateToken = Msgs.def(() => ({ text: () => 'Generate' }))
+
+export const serverAgentTokenBlurb = Msgs.def(() => ({
+	text: () => 'The server agent authenticates with this token, so treat it like a password.',
+}))
+
+export const serverAgentSetupGuide = Msgs.def(() => ({ text: () => 'Server agent setup guide' }))

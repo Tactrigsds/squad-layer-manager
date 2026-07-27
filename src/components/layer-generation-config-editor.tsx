@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useDebounced } from '@/hooks/use-debounce'
 import type * as Rx from '@/lib/rxjs'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as DndKit from '@/systems/dndkit.client'
@@ -66,7 +67,7 @@ export default function LayerGenerationConfigEditor({
 		<div className="space-y-5">
 			<PickOrderSection value={value} onChange={onChange} />
 			{pickOrder.length === 0 ? (
-				<p className="text-xs text-muted-foreground">Add a column or matchup above to give its values weights.</p>
+				<p className="text-xs text-muted-foreground">{LC_Msgs.noPicksConfigured().text()}</p>
 			) : (
 				pickOrder.map((key, idx) =>
 					LC.isMatchupKey(key) ? (
@@ -92,13 +93,13 @@ export default function LayerGenerationConfigEditor({
 			)}
 			{unpicked.length > 0 && (
 				<div className="space-y-1.5">
-					<SectionLabel hint="These have weights but aren't in the pick order, so they have no effect. Add them above to use them.">
-						Unused weights
-					</SectionLabel>
+					<SectionLabel hint={LC_Msgs.unusedWeightsHint().text()}>{LC_Msgs.unusedWeightsHeading().text()}</SectionLabel>
 					{unpicked.map((key) => (
 						<div key={key} className="flex items-center gap-2 text-sm">
 							<span className="font-mono">{pickLabel(key)}</span>
-							<span className="text-xs text-muted-foreground">{weightCount(value, key)} weighted</span>
+							<span className="text-xs text-muted-foreground">
+								{weightCount(value, key)} {LC_Msgs.weightedCount().text()}
+							</span>
 							<Button
 								type="button"
 								size="sm"
@@ -106,7 +107,7 @@ export default function LayerGenerationConfigEditor({
 								className="h-6 text-destructive"
 								onClick={() => (LC.isMatchupKey(key) ? setMatchupWeights(key, []) : setWeights(key, undefined))}
 							>
-								Discard
+								{LC_Msgs.discardWeights().text()}
 							</Button>
 						</div>
 					))}
@@ -164,10 +165,8 @@ function PickOrderSection({ value, onChange }: { value: Config; onChange: (next:
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint="Columns and matchups picked weighted-randomly during generation, in pick order. Each pick narrows the candidates for the ones below it, so the first pick shapes the result the most.">
-				Pick order
-			</SectionLabel>
-			{pickOrder.length === 0 && <p className="text-xs text-muted-foreground">Nothing configured: generation picks layers uniformly.</p>}
+			<SectionLabel hint={LC_Msgs.pickOrderHint().text()}>{LC_Msgs.pickOrderHeading().text()}</SectionLabel>
+			{pickOrder.length === 0 && <p className="text-xs text-muted-foreground">{LC_Msgs.emptyPickOrder().text()}</p>}
 			<ol>
 				{pickOrder.map((key, idx) => (
 					<React.Fragment key={key}>
@@ -178,7 +177,7 @@ function PickOrderSection({ value, onChange }: { value: Config; onChange: (next:
 				{pickOrder.length > 0 && <PickDropSeparator position="after" pickKey={pickOrder[pickOrder.length - 1]} />}
 			</ol>
 			<ComboBox
-				title="Add pick"
+				title={LC_Msgs.addPick().text()}
 				value={undefined}
 				options={addOptions}
 				onSelect={(key) => {
@@ -215,7 +214,12 @@ function PickRow({
 			data-dragging={drag.isDragging}
 			className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-1 rounded-md bg-background data-[dragging=true]:opacity-40"
 		>
-			<button type="button" ref={drag.handleRef} className="cursor-grab rounded text-muted-foreground" aria-label="Drag to reorder">
+			<button
+				type="button"
+				ref={drag.handleRef}
+				className="cursor-grab rounded text-muted-foreground"
+				aria-label={LC_Msgs.dragToReorder().text()}
+			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
 			<span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
@@ -262,26 +266,24 @@ function WeightsSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel
-				hint={`Pick ${pickOrder}. Unlisted ${column} values weigh ${LC.DEFAULT_GENERATION_WEIGHT}. Shares assume every value is available in the pool.`}
-			>
-				{column} weights
+			<SectionLabel hint={LC_Msgs.columnWeightsHint(pickOrder, column, LC.DEFAULT_GENERATION_WEIGHT).text()}>
+				{column} {LC_Msgs.weightsHeading().text()}
 			</SectionLabel>
 			{entries.length > 0 && (
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
 							<th scope="col" className="text-left font-normal">
-								Value
+								{LC_Msgs.valueColumn().text()}
 							</th>
 							<th scope="col" className="text-left font-normal">
-								Weight
+								{LC_Msgs.weightColumn().text()}
 							</th>
 							<th scope="col" className="text-right font-normal">
-								Share
+								{LC_Msgs.shareColumn().text()}
 							</th>
 							<th scope="col" className="sr-only">
-								Remove
+								{LC_Msgs.removeColumn().text()}
 							</th>
 						</tr>
 					</thead>
@@ -294,9 +296,9 @@ function WeightsSection({
 									{!possibleValues.includes(entry.value) && (
 										<span
 											className="ml-1.5 text-xs font-sans text-muted-foreground"
-											title={`No layers have this ${column} value`}
+											title={LC_Msgs.noLayersWithValue(column).text()}
 										>
-											(unknown)
+											{LC_Msgs.unknownValue().text()}
 										</span>
 									)}
 								</td>
@@ -314,7 +316,7 @@ function WeightsSection({
 										size="icon"
 										variant="ghost"
 										className="h-6 w-6 text-destructive"
-										aria-label={`Remove ${entry.value}`}
+										aria-label={LC_Msgs.removeWeight(entry.value).text()}
 										onClick={() => remove(entry.value)}
 									>
 										<Icons.X className="h-4 w-4" />
@@ -326,7 +328,7 @@ function WeightsSection({
 				</table>
 			)}
 			<ComboBox
-				title={`Add ${column} value`}
+				title={LC_Msgs.addValue(column).text()}
 				value={undefined}
 				options={addOptions}
 				onSelect={(value) => {
@@ -371,30 +373,28 @@ function MatchupWeightsSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel
-				hint={`Pick ${pickOrder}. Unlisted pairings weigh ${LC.DEFAULT_GENERATION_WEIGHT}. Pairings are unordered: the weight applies whichever team fields which side.`}
-			>
-				{pickLabel(matchup)} weights
+			<SectionLabel hint={LC_Msgs.matchupWeightsHint(pickOrder, LC.DEFAULT_GENERATION_WEIGHT).text()}>
+				{pickLabel(matchup)} {LC_Msgs.weightsHeading().text()}
 			</SectionLabel>
 			{entries.length > 0 && (
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
 							<th scope="col" className="text-left font-normal">
-								Matchup
+								{LC_Msgs.matchupColumn().text()}
 							</th>
 							<th scope="col" className="text-left font-normal">
-								Weight
+								{LC_Msgs.weightColumn().text()}
 							</th>
 							<th scope="col" className="sr-only">
-								Remove
+								{LC_Msgs.removeColumn().text()}
 							</th>
 						</tr>
 					</thead>
 					<tbody>
 						{entries.map((entry) => {
 							const entryKey = LC.matchupEntryKey(matchup, entry.teams)
-							const text = `${formatSide(matchup, entry.teams[0])} vs ${formatSide(matchup, entry.teams[1])}`
+							const text = `${formatSide(matchup, entry.teams[0])} ${LC_Msgs.versus().text()} ${formatSide(matchup, entry.teams[1])}`
 							const unknown = entry.teams.some((side) => !LC.isMatchupSideKnown(matchup, side))
 							return (
 								<tr key={entryKey}>
@@ -402,8 +402,11 @@ function MatchupWeightsSection({
 										{text}
 										{/* a pairing the layer set doesn't have (e.g. a faction dropped by a game update): it can never be picked */}
 										{unknown && (
-											<span className="ml-1.5 text-xs font-sans text-muted-foreground" title={`No layers have this ${label}`}>
-												(unknown)
+											<span
+												className="ml-1.5 text-xs font-sans text-muted-foreground"
+												title={LC_Msgs.noLayersWithMatchup(label).text()}
+											>
+												{LC_Msgs.unknownValue().text()}
 											</span>
 										)}
 									</td>
@@ -416,7 +419,7 @@ function MatchupWeightsSection({
 											size="icon"
 											variant="ghost"
 											className="h-6 w-6 text-destructive"
-											aria-label={`Remove ${text}`}
+											aria-label={LC_Msgs.removeWeight(text).text()}
 											onClick={() => remove(entryKey)}
 										>
 											<Icons.X className="h-4 w-4" />
@@ -448,7 +451,7 @@ function AddMatchupRow({ matchup, onAdd }: { matchup: LC.MatchupKey; onAdd: (tea
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			<MatchupSideInput matchup={matchup} team={1} side={sides[0]} onChange={(side) => setSide(0, side)} />
-			<span className="text-xs text-muted-foreground">vs</span>
+			<span className="text-xs text-muted-foreground">{LC_Msgs.versus().text()}</span>
 			<MatchupSideInput matchup={matchup} team={2} side={sides[1]} onChange={(side) => setSide(1, side)} />
 			<Button
 				type="button"
@@ -462,7 +465,7 @@ function AddMatchupRow({ matchup, onAdd }: { matchup: LC.MatchupKey; onAdd: (tea
 					setSides([undefined, undefined])
 				}}
 			>
-				Add matchup
+				{LC_Msgs.addMatchup().text()}
 			</Button>
 		</div>
 	)
@@ -486,13 +489,13 @@ function MatchupSideInput({
 		return (
 			<div className="flex items-center gap-1">
 				<ComboBox
-					title={`Faction (team ${team})`}
+					title={LC_Msgs.factionForTeam(team).text()}
 					value={faction}
 					options={LC.groupByColumnDefaultValues('Faction_1').map((f) => ({ value: f, label: f }))}
 					onSelect={(next) => onChange(next ? { Faction: next, Unit: '' } : undefined)}
 				/>
 				<ComboBox
-					title={`Unit (team ${team})`}
+					title={LC_Msgs.unitForTeam(team).text()}
 					value={unit || undefined}
 					options={unitOptions}
 					disabled={!faction}
@@ -504,7 +507,7 @@ function MatchupSideInput({
 	const column = LC.MATCHUP_COLUMNS[matchup][0][0]
 	return (
 		<ComboBox
-			title={`${pickLabel(matchup).replace(' matchup', '')} (team ${team})`}
+			title={LC_Msgs.sideForTeam(pickLabel(matchup).replace(' matchup', ''), team).text()}
 			value={side as string | undefined}
 			options={(LC.groupByColumnDefaultValues(column) as string[]).map((v) => ({ value: v, label: v }))}
 			onSelect={(next) => onChange(next ?? undefined)}

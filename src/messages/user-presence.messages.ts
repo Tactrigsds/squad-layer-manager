@@ -1,3 +1,4 @@
+import * as Msgs from '@/messages/shared'
 import type * as UP from '@/models/user-presence'
 
 // Shown next to a user's avatar for a few seconds after one of their ops lands on the synced timeline, so it
@@ -27,3 +28,13 @@ export const presenceEventText: Record<UP.PresenceEventAction, string> = {
 	'saved-layer-requests': 'Saved layer requests',
 	'discarded-layer-request-edits': 'Discarded layer request edits',
 }
+
+// -------- the presence panel --------
+
+export const resetSession = Msgs.def(() => ({ text: () => 'Reset this session' }))
+
+// reads as "Last seen <relative time>"
+export const lastSeen = Msgs.def(() => ({ text: () => 'Last seen' }))
+
+// marks whichever avatar is the viewer's own
+export const youSuffix = Msgs.def(() => ({ text: () => ' (You)' }))

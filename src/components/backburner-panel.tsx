@@ -187,19 +187,18 @@ export default function BackburnerPanel(props: StoresProp) {
 			<Separator />
 			<CardHeader className="flex flex-row items-center justify-between space-y-0 py-3">
 				<CardTitle className="flex items-center gap-2 text-base">
-					Layer Requests ({items.length}){modified && <Badge variant="outline">unsaved</Badge>}
+					{BB_Msgs.heading(items.length).text()}
+					{modified && <Badge variant="outline">{BB_Msgs.unsavedBadge().text()}</Badge>}
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Icons.Info className="h-3.5 w-3.5 text-muted-foreground" />
 						</TooltipTrigger>
 						<TooltipContent className="max-w-72">
-							<p>
-								"Layer Requests" will be made part of the layer generation process if the layer queue runs out of explicitely set
-								layers.
-							</p>
+							<p>{BB_Msgs.panelHelp().text()}</p>
 							<br />
 							<p>
-								Ingame command example: <CopyableCommand cmdString={commandExample?.command} chatCommand="ChatToAdmin" />
+								{BB_Msgs.commandExampleLabel().text()}{' '}
+								<CopyableCommand cmdString={commandExample?.command} chatCommand="ChatToAdmin" />
 							</p>
 						</TooltipContent>
 					</Tooltip>
@@ -220,11 +219,11 @@ export default function BackburnerPanel(props: StoresProp) {
 											<Icons.Undo2 className="h-3.5 w-3.5" />
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent>Revert to saved</TooltipContent>
+									<TooltipContent>{BB_Msgs.revertToSaved().text()}</TooltipContent>
 								</Tooltip>
 								<Button size="sm" variant="secondary" onClick={() => setEditorState({ open: true, itemId: null })}>
 									<Icons.ListPlus className="mr-1 h-4 w-4" />
-									Request layer
+									{BB_Msgs.requestLayer().text()}
 								</Button>
 								<ButtonGroup>
 									<Tooltip>
@@ -238,7 +237,7 @@ export default function BackburnerPanel(props: StoresProp) {
 												<Icons.Sword className="h-3.5 w-3.5" />
 											</Button>
 										</TooltipTrigger>
-										<TooltipContent>Toggle force save (save even if others are still editing)</TooltipContent>
+										<TooltipContent>{BB_Msgs.toggleForceSaveHint().text()}</TooltipContent>
 									</Tooltip>
 									<Button size="sm" variant={forceSave ? 'destructive' : 'default'} onClick={handleFinishOrSave}>
 										{saveButtonLabel}
@@ -246,15 +245,15 @@ export default function BackburnerPanel(props: StoresProp) {
 								</ButtonGroup>
 							</>
 						) : (
-							<Button size="sm" variant="outline" aria-label="Edit layer requests" onClick={() => setIsEditing(true)}>
+							<Button size="sm" variant="outline" aria-label={BB_Msgs.editRequests().text()} onClick={() => setIsEditing(true)}>
 								<Icons.Edit className="mr-1 h-3.5 w-3.5" />
-								Start Editing
+								{BB_Msgs.startEditing().text()}
 							</Button>
 						))}
 				</span>
 			</CardHeader>
 			<CardContent className="pb-3">
-				{items.length === 0 && <span className="text-sm text-muted-foreground">No layer requests queued.</span>}
+				{items.length === 0 && <span className="text-sm text-muted-foreground">{BB_Msgs.noRequests().text()}</span>}
 				<ul>
 					{items.map((item, index) => (
 						<React.Fragment key={item.itemId}>
@@ -310,7 +309,7 @@ function QueueDropDialogContent(props: StoresProp & { drop: QueueDrop; onCommit:
 
 	return (
 		<SelectLayersDialog
-			title="Add requested layer"
+			title={BB_Msgs.addRequestedLayerTitle().text()}
 			open={true}
 			onOpenChange={(open) => !open && props.onClose()}
 			stores={{ selectLayers: frameKey, squadServer: props.stores.squadServer }}
@@ -481,25 +480,31 @@ function BackburnerRow(
 									size="icon"
 									variant="ghost"
 									className="h-7 w-7"
-									aria-label="Clone request"
+									aria-label={BB_Msgs.cloneRequest().text()}
 									onClick={() => LayerQueuePrt.Actions.addBackburnerItem(queueKey, { filter: item.filter })}
 								>
 									<Icons.Copy className="h-3.5 w-3.5" />
 								</Button>
 							</TooltipTrigger>
-							<TooltipContent>Clone this request as your own</TooltipContent>
+							<TooltipContent>{BB_Msgs.cloneRequestHint().text()}</TooltipContent>
 						</Tooltip>
 					)}
 					{canEdit && (
 						<>
-							<Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Edit request" onClick={props.onEdit}>
+							<Button
+								size="icon"
+								variant="ghost"
+								className="h-7 w-7"
+								aria-label={BB_Msgs.editRequest().text()}
+								onClick={props.onEdit}
+							>
 								<Icons.Pencil className="h-3.5 w-3.5" />
 							</Button>
 							<Button
 								size="icon"
 								variant="ghost"
 								className="h-7 w-7"
-								aria-label="Remove request"
+								aria-label={BB_Msgs.removeRequest().text()}
 								onClick={() => LayerQueuePrt.Actions.removeBackburnerItems(queueKey, [props.itemId])}
 							>
 								<Icons.X className="h-3.5 w-3.5" />
@@ -515,8 +520,8 @@ function BackburnerRow(
 // who asked for the layer. A request made in chat by a player with no linked discord account can only be
 // named by their steam id, so that falls back to text rather than an avatar.
 function RequestOwner(props: { source: BB.BackburnerItem['source'] }) {
-	if (props.source.discordId !== undefined) return <UserAvatar userId={props.source.discordId} label="Requested By" />
-	const name = props.source.steamId ? `steam:${props.source.steamId}` : 'unknown'
+	if (props.source.discordId !== undefined) return <UserAvatar userId={props.source.discordId} label={BB_Msgs.requestedBy().text()} />
+	const name = props.source.steamId ? `steam:${props.source.steamId}` : BB_Msgs.unknownRequester().text()
 	return (
 		<span className="max-w-32 truncate text-xs text-muted-foreground" title={name}>
 			{name}
@@ -586,15 +591,15 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle>{props.itemId ? 'Edit layer request' : 'Request a layer'}</DialogTitle>
+				<DialogTitle>{props.itemId ? BB_Msgs.editRequestTitle().text() : BB_Msgs.newRequestTitle().text()}</DialogTitle>
 			</DialogHeader>
 			<RequestEditor stores={{ backburnerRequest: frameKey, squadServer: props.stores.squadServer }} />
 			<DialogFooter className="items-center">
 				<MatchingCount stores={{ backburnerRequest: frameKey }} />
 				<Button variant="outline" onClick={props.onClose}>
-					Cancel
+					{BB_Msgs.cancel().text()}
 				</Button>
-				<Button onClick={save}>{props.itemId ? 'Apply' : 'Add request'}</Button>
+				<Button onClick={save}>{props.itemId ? BB_Msgs.applyRequest().text() : BB_Msgs.addRequest().text()}</Button>
 			</DialogFooter>
 		</>
 	)
@@ -642,8 +647,8 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 					onValueChange={(value) => RequestFrame.Actions.setActiveTab(props.stores, value as RequestFrame.IdentityTab)}
 				>
 					<TabsList className="grid w-full grid-cols-2">
-						<TabsTrigger value="components">Components</TabsTrigger>
-						<TabsTrigger value="layer">Specific layer</TabsTrigger>
+						<TabsTrigger value="components">{BB_Msgs.componentsTab().text()}</TabsTrigger>
+						<TabsTrigger value="layer">{BB_Msgs.specificLayerTab().text()}</TabsTrigger>
 					</TabsList>
 					<TabsContent value="components">
 						<div className={menuGridClass}>
@@ -659,10 +664,10 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 					</TabsContent>
 				</Tabs>
 				<div className="flex items-start gap-2">
-					<span className="w-20 shrink-0 pt-2 text-sm text-muted-foreground">Matchup</span>
+					<span className="w-20 shrink-0 pt-2 text-sm text-muted-foreground">{BB_Msgs.matchupLabel().text()}</span>
 					<MatchupConfig node={matchup} actions={matchupActions} allowedTeamValues={allowedTeamValues} showTypeSelect={false} />
 				</div>
-				{extras.length > 0 && <p className="text-xs text-muted-foreground">Also constrained by {extras.join(', ')} (kept as-is).</p>}
+				{extras.length > 0 && <p className="text-xs text-muted-foreground">{BB_Msgs.alsoConstrainedBy(extras.join(', ')).text()}</p>}
 			</div>
 			<RequestFiltersColumn stores={props.stores} />
 		</div>
@@ -717,7 +722,7 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 
 	return (
 		<div className="w-64 shrink-0 space-y-2 border-l pl-4">
-			<span className="text-sm font-medium">Filters</span>
+			<span className="text-sm font-medium">{BB_Msgs.filtersHeading().text()}</span>
 			{(poolFilterId !== null || selectableFilterIds.length > 0) && (
 				<div className="flex flex-col items-start gap-1">
 					<PoolFilterCheckbox stores={{ squadServer: props.stores.squadServer, appliedFilters: key }} />
@@ -729,13 +734,13 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 			<ListEditor
 				items={extraIds}
 				itemKey={(filterId) => filterId}
-				addLabel="Add filter"
+				addLabel={BB_Msgs.addFilter().text()}
 				addDisabled={exhausted}
 				onRemove={removeExtra}
 				renderItem={(filterId) => (
 					<>
 						<ComboBox
-							title="filter"
+							title={BB_Msgs.filterPicker().text()}
 							className="w-full min-w-0"
 							value={filterId}
 							options={optionsFor(filterId)}
@@ -750,9 +755,9 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 				renderAddControl={({ ref, done }) => (
 					<ComboBox
 						ref={ref}
-						title="filter"
+						title={BB_Msgs.filterPicker().text()}
 						className="w-full min-w-0"
-						placeholder="Select filter..."
+						placeholder={BB_Msgs.selectFilter().text()}
 						value={undefined}
 						options={optionsFor()}
 						onSelect={(next) => {
@@ -786,7 +791,7 @@ function RequestMenuField(props: { field: string; stores: RequestFrame.KeyProp }
 				lockOnSingleOption
 				highlight={F.editableCompHasValue(comp)}
 				onSetAllValuesAllowed={() => Zus.getState(key).resetAllConstraints()}
-				onSetAllValuesAllowedLabel="Remove all other constraints and select this one"
+				onSetAllValuesAllowedLabel={BB_Msgs.clearOtherConstraints().text()}
 				setNode={(update) => RequestFrame.Actions.setMenuComparison(props.stores, props.field, update)}
 			/>
 			<Button

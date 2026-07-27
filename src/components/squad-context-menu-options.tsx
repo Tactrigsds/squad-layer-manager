@@ -325,7 +325,7 @@ export function SquadMenuItems({
 					onClick={() => TSWClient.Actions.swapNext(stores, squadPlayerIds)}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canQueue}
 				>
-					Swap Squad Next
+					{SM_Msgs.swapSquadNextLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -334,7 +334,7 @@ export function SquadMenuItems({
 					onClick={swapNow}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
-					Swap Squad Now
+					{SM_Msgs.swapSquadNowLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -343,7 +343,7 @@ export function SquadMenuItems({
 					onClick={killSquad}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
-					Kill Squad
+					{SM_Msgs.killSquadLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
@@ -352,7 +352,7 @@ export function SquadMenuItems({
 					onClick={kickSquad}
 					disabled={!!kickDenied || squadPlayerIds.length === 0}
 				>
-					Kick Squad
+					{SM_Msgs.kickSquadLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
@@ -361,7 +361,7 @@ export function SquadMenuItems({
 					onClick={timeoutSquad}
 					disabled={!!timeoutDenied || squadPlayerIds.length === 0}
 				>
-					Timeout Squad
+					{SM_Msgs.timeoutSquadLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
@@ -373,8 +373,8 @@ export function SquadMenuItems({
 					SquadServerFrame.Actions.selectSquad(stores, squadPlayerIds[0])
 				}}
 			>
-				<span title="Shortcut: shift+click the Squad cell in the teams panel">Select Squad</span>
-				<ContextMenuShortcut>⇧+click squad cell</ContextMenuShortcut>
+				<span title={SM_Msgs.selectSquadShortcutHint().text()}>{SM_Msgs.selectSquadItem().text()}</span>
+				<ContextMenuShortcut>{SM_Msgs.shortcuts.squadCell.team}</ContextMenuShortcut>
 			</Item>
 			{!omitWarn && (
 				<>
@@ -383,22 +383,22 @@ export function SquadMenuItems({
 						slots={slots}
 						denied={warnDenied}
 						disabled={uniqueId === null || squadPlayerIds.length === 0}
-						label="Warn Squad"
+						label={SM_Msgs.warnSquadLabel().text()}
 						onCustom={warn}
 						onPreset={warnSquadPreset}
 					/>
 				</>
 			)}
-			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label="Add Flags to Squad..." />
+			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label={SM_Msgs.addFlagsToSquad().text()} />
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>
-					Disband Squad
+					{SM_Msgs.disbandSquadLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={resetSquadName} disabled={!!manageDenied || !squadExists}>
-					Reset Squad Name
+					{SM_Msgs.resetSquadNameLabel().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 		</>

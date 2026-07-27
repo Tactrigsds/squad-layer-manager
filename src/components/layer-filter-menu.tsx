@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as Zus from '@/lib/zustand.ts'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
 
@@ -32,7 +33,8 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 					LayerFilterMenuPrt.Actions.resetAllFilters(props.stores)
 				}}
 			>
-				<Icons.Trash /> Clear All
+				<Icons.Trash />
+				{F_Msgs.clearAll().text()}
 			</Button>
 		</div>
 	)
@@ -71,7 +73,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 			{props.field === 'Alliance_2' && (
 				<div className="col-span-full gap-1 flex items-center">
 					<Button
-						title="Swap Factions"
+						title={F_Msgs.swapFactions().text()}
 						disabled={swapFactionsDisabled}
 						onClick={() => {
 							return LayerFilterMenuPrt.Actions.swapTeams(props.stores)
@@ -92,7 +94,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 				node={comp}
 				allowedEnumValues={possibleValues}
 				onSetAllValuesAllowed={unlockAllValues}
-				onSetAllValuesAllowedLabel="Remove all other filters and select this one"
+				onSetAllValuesAllowedLabel={F_Msgs.clearOtherFilters().text()}
 				setNode={(update) => {
 					return LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)
 				}}
