@@ -107,7 +107,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		const admin = makePlayer({ name: ' vote_reason_admin', steam: ROLL_ADMIN_STEAM_ID, teamId: 1 })
 		app.emu.world.connectPlayer(admin)
 		await app.waitForRosterSync()
-		app.emu.world.chat(admin, 'ChatAdmin', '!disableslm')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('disableslm'))
 		await app.waitFor(() => disabledReason(app)?.type === 'manual' || undefined, {
 			label: 'updates disabled manually',
 			timeoutMs: 30_000,
@@ -133,7 +133,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 
 		// turning SLM back on has to turn the vote off with it, or the next match resumes the same fight
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!enableslm')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('enableslm'))
 		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === 'AdminEnableVoting 0') || undefined, {
 			label: 'in-game voting turned off alongside re-enabling updates',
 			timeoutMs: 30_000,
