@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { LAYERS, queue, voteQueueItem } from '../harness/arrange'
+import { cmd, LAYERS, queue, voteQueueItem } from '../harness/arrange'
 
 // In-game admin commands: the emulator sends chat as a player, the app parses it, authorizes the
 // sender, and acts back over RCON. This is the path the fixture's arrangement API exists for
@@ -60,18 +60,18 @@ describe('in-game admin commands', () => {
 		expect(queued[1].layerId).toBe(LAYERS.sumariSeed)
 	})
 
-	it('answers !shownext in admin chat, over rcon, to the sender', async () => {
+	it('answers shownext in admin chat, over rcon, to the sender', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!shownext')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('shownext'))
 
-		await app.waitFor(() => warnsToAdmin().length > 0, { label: 'a reply to !shownext', timeoutMs: 20_000 })
+		await app.waitFor(() => warnsToAdmin().length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
 		// the queue head is the seeded vote, so the preview names its choices
 		expect(warnsToAdmin().join('\n')).toMatch(/Gorodok/i)
 	})
 
 	it('starts a vote from admin chat, broadcasting the choices in game', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!startvote')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('startvote'))
 
 		const broadcast = await app.emu.expectCommand(/^AdminBroadcast /, { timeoutMs: 20_000 })
 		expect(broadcast.body).toMatch(/Gorodok/i)
