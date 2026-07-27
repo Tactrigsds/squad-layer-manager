@@ -246,7 +246,7 @@ function RouteComponent() {
 					</div>
 				</main>
 			</div>
-			<SettingsSavePanel sectionKeys={sectionKeys} />
+			<SettingsSavePanel sectionKeys={sectionKeys} onDiscardNewServer={() => setCreatingNonce(null)} />
 		</div>
 	)
 }
