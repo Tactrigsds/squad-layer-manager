@@ -16,7 +16,6 @@ import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
-import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -1314,7 +1313,7 @@ function IngameVoteStartedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-yellow-500 shrink-0" />}>
-			<span>In-game {SM.LogEvents.ingameVoteKindLabel(event.kind)} vote started on the Squad server</span>
+			<span>In-game vote started on the Squad server</span>
 			{event.choices.length > 0 && <span className="text-muted-foreground"> ({event.choices.join(', ')})</span>}
 		</EventLine>
 	)

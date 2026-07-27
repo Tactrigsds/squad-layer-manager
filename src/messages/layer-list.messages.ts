@@ -129,6 +129,9 @@ export const showNext = Msgs.def(
 						case 'gameserver':
 							setByDisplay = `Game Server`
 							break
+						case 'ingame-vote':
+							setByDisplay = `In-game vote`
+							break
 						case 'manual':
 							{
 								const userId = item.source.userId

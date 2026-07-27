@@ -37,21 +37,29 @@ export const fogOff = Msgs.def(() => ({
 	broadcast: () => 'Fog of War is disabled. All points are visible. Check your maps.',
 }))
 
-export const slmUpdatesSet = Msgs.def((enabled: boolean) => ({
-	warn: () => `Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.`,
+export const slmUpdatesSet = Msgs.def((enabled: boolean, ingameVotingTurnedOff?: boolean) => ({
+	warn: () =>
+		`Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.` +
+		(ingameVotingTurnedOff ? ' In-game voting has been turned off, so it no longer decides the next layer.' : ''),
 }))
 
-export const slmUpdatesStatus = Msgs.def((enabled: boolean) => ({
-	warn: () => `Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.`,
+export const slmUpdatesStatus = Msgs.def((enabled: boolean, disabledByIngameVote?: boolean) => ({
+	warn: () =>
+		`Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.` +
+		(disabledByIngameVote ? ' An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting off.' : ''),
 }))
 
 export const slmStarted = Msgs.def((restartedBy?: string) => ({
 	warn: () => (restartedBy ? `SLM has been restarted by ${restartedBy}.` : `SLM has been started.`),
 }))
 
-export const ingameVoteDisabledUpdates = Msgs.def(() => ({
+export const ingameVoteDisabledUpdates = Msgs.def((inferred?: boolean) => ({
 	warn: () =>
-		'An in-game next layer vote is running. The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. Re-enable them once voting is turned off.',
+		(inferred
+			? 'The server no longer has a next layer set, which most likely means in-game voting was enabled. '
+			: 'An in-game vote is running. ') +
+		'The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. ' +
+		'Re-enabling them will turn in-game voting off.',
 }))
 
 // The server actions an admin can take from the dashboard. Each toast.promise leg is a bare value rather than

@@ -40,7 +40,7 @@ export const matchHistory = sqliteTable(
 		team1Tickets: integer('team1Tickets'),
 		team2Tickets: integer('team2Tickets'),
 		setByType: text('setByType', {
-			enum: ['manual', 'gameserver', 'generated', 'unknown'],
+			enum: ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote'],
 		}).notNull(),
 		setByUserId: bigintText('setByUserId'),
 	},

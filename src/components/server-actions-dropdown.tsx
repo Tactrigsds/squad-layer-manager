@@ -81,6 +81,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 
 	const updatesToSquadServerDisabled = Zus.useStore(stores.squadServer!, (s) => s.settings.saved?.updatesToSquadServerDisabled)
 	const { disableUpdates, enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
+	const enableIngameVoting = LayerQueueClient.useEnableIngameVoting(serverId)
 	const disableFogOfWarMutation = SquadServerClient.useDisableFogOfWarMutation()
 	const endMatchMutation = useMutation(RPC.orpc.squadServer.endMatch.mutationOptions({}))
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
@@ -163,6 +164,13 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					{!hasPlayers && <small>(disabled: Cannot end match when server is empty.)</small>}
 				</Item>
 			</PermissionDeniedTooltip>
+			{updatesToSquadServerDisabled?.type !== 'ingame-vote' && (
+				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
+					<Item disabled={!!disableUpdatesDenied} onClick={enableIngameVoting}>
+						Enable In-Game Voting
+					</Item>
+				</PermissionDeniedTooltip>
+			)}
 			{updatesToSquadServerDisabled ? (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={enableUpdates}>

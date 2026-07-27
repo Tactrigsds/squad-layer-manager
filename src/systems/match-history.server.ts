@@ -181,6 +181,18 @@ export const loadState = Instr.spanOp(
 	},
 )
 
+// Otherwise nothing populates match history until rcon connects and syncs, and a server whose rcon never connects
+// has none for its whole life -- while the managed server is live from initialization and every reader of
+// getCurrentMatch assumes a current match exists.
+export const initState = Instr.spanOp(
+	'initState',
+	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
+	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) => {
+		await loadState(ctx)
+		addReleaseTask(ctx.matchHistory.dispatchUpdate)
+	},
+)
+
 export const getRecentMatches = Instr.spanOp(
 	'getRecentMatches',
 	{

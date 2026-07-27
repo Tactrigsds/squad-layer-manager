@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-import * as SM from '@/models/squad.models'
+import type * as SETTINGS from '@/models/settings.models'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -491,60 +491,83 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	)
 }
 
+// Why SLM stopped writing the rotation, always shown alongside the fact that it did. `by` is null on settings
+// written before the reason recorded who acted.
+function DisabledReason(props: { reason: SETTINGS.SlmUpdatesDisabled }) {
+	const by = props.reason.type === 'manual' ? props.reason.by : null
+	const user = UsersClient.useResolvedUser(by?.type === 'slm-user' ? by.userId : undefined)
+	if (props.reason.type === 'ingame-vote') {
+		// never state the deduction as fact: SLM saw the next layer go missing, not the vote itself
+		return props.reason.inferred ? (
+			<>in-game voting, most likely: the server stopped having a next layer set</>
+		) : (
+			<>an in-game vote on the Squad server</>
+		)
+	}
+	switch (by?.type) {
+		case 'slm-user':
+			return <span>{user?.displayName ?? 'a user'}</span>
+		case 'ingame-user':
+			return <>an admin in game</>
+		case 'system':
+			return <>SLM</>
+		case undefined:
+			return <>someone (not recorded)</>
+		default:
+			assertNever(by)
+	}
+}
+
+// What the Squad server's own vote is doing. Purely informational: it says nothing about SLM's own state, which
+// SlmUpdatesDisabledAlert owns. `choices` is whichever stage of the vote is open now, so it is layers during the
+// map stage and factions during the faction stages.
+export function IngameVoteAlert(props: { stores: SquadServerFrame.KeyProp }) {
+	const ingameVote = LayerQueueClient.useIngameVote(props.stores.squadServer!.serverId)
+	if (!ingameVote) return null
+
+	return (
+		<Alert variant="warning">
+			<AlertTitle>In-Game Vote Running</AlertTitle>
+			<AlertDescription>
+				The Squad server is running its own vote, which decides the next layer.
+				{ingameVote.choices.length > 0 && <> Currently voting between {ingameVote.choices.join(', ')}.</>}
+			</AlertDescription>
+		</Alert>
+	)
+}
+
 export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer!.serverId
 	const statusRes = SquadServerClient.useLayersStatus(serverId)
 	const nextLayer = statusRes.code === 'ok' ? statusRes.data.nextLayer : null
 	const updatesDisabled = Zus.useStore(props.stores.squadServer!, (s) => s.settings.saved.updatesToSquadServerDisabled)
-	const ingameVote = LayerQueueClient.useIngameVote(serverId)
 	const { enableUpdates } = LayerQueueClient.useToggleSquadServerUpdates(serverId)
 	const enableUpdatesDenied = RbacClient.usePermsCheck(
 		RBAC.perm('squad-server:disable-slm-updates', { serverId: props.stores.squadServer!.serverId }),
 	)
-	if (!updatesDisabled && !ingameVote) return null
-
-	// a faction vote leaves the rotation alone, so it is worth knowing about but never the reason updates are off
-	const disabledByVote = ingameVote?.kind === 'next-layer' && updatesDisabled
+	if (!updatesDisabled) return null
 
 	return (
-		<Alert variant={updatesDisabled ? 'destructive' : 'warning'}>
-			<AlertTitle>
-				{disabledByVote
-					? 'In-Game Vote Running: SLM Updates Disabled'
-					: updatesDisabled
-						? 'SLM Updates Disabled'
-						: 'In-Game Vote Running'}
-			</AlertTitle>
+		<Alert variant="destructive">
+			<AlertTitle>SLM Updates Disabled</AlertTitle>
 			<AlertDescription>
-				{ingameVote && (
+				SLM is not syncing the queue to the squad server. Disabled by <DisabledReason reason={updatesDisabled} />.{' '}
+				{/* during a vote the server's next layer is whatever the vote last wrote, so reporting it as the next layer
+				    would be stating something that is still being decided */}
+				{nextLayer && updatesDisabled.type !== 'ingame-vote' && (
 					<>
-						The Squad server is running its own {SM.LogEvents.ingameVoteKindLabel(ingameVote.kind)} vote
-						{ingameVote.choices.length > 0 && <> between {ingameVote.choices.join(', ')}</>}.{' '}
-						{disabledByVote
-							? 'The vote decides the next layer, so SLM stopped setting it to avoid fighting the vote. Turn off in-game voting on the server before re-enabling.'
-							: ingameVote.kind === 'next-layer'
-								? 'Its result will overwrite whatever SLM sets as the next layer.'
-								: 'It does not affect the next layer.'}{' '}
-						<br />
+						Current next layer on the server is <ShortLayerName layerId={nextLayer.id} />.
 					</>
-				)}
-				{updatesDisabled && (
-					<>
-						{!disabledByVote && <>SLM is not currently syncing the queue to the squad server. </>}
-						{nextLayer && (
-							<>
-								Current next layer on the server is <ShortLayerName layerId={nextLayer.id} />.
-							</>
-						)}{' '}
-						<br />{' '}
-						<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
-							<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>
-								Click Here
-							</Button>
-						</PermissionDeniedTooltip>
-						to enable SLM Updates.
-					</>
-				)}
+				)}{' '}
+				<br />{' '}
+				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
+					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>
+						Click Here
+					</Button>
+				</PermissionDeniedTooltip>
+				{updatesDisabled.type === 'ingame-vote'
+					? 'to enable SLM Updates and turn off in-game voting on the server.'
+					: 'to enable SLM Updates.'}
 			</AlertDescription>
 		</Alert>
 	)

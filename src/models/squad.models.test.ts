@@ -547,12 +547,12 @@ describe('LogEvents.parse', () => {
 	})
 
 	describe('INGAME_VOTE_CHAIN', () => {
-		it('parses a next-layer vote with its choices', async () => {
+		it('parses the map stage of a vote with its choices', async () => {
 			const events = await collect([INGAME_LAYER_VOTE, NEXT_TICK_EVENT].join('\n'))
 			expect(events.find((e) => e.type === 'INGAME_VOTE_CHAIN')).toMatchObject({
 				type: 'INGAME_VOTE_CHAIN',
 				events: {
-					INGAME_VOTE_STARTED: { container: 'Vote_NextLayer', kind: 'next-layer' },
+					INGAME_VOTE_STARTED: { container: 'Vote_NextLayer' },
 					INGAME_VOTE_CHOICES: {
 						choices: [
 							'Fallujah_Skirmish_v2',
@@ -567,12 +567,12 @@ describe('LogEvents.parse', () => {
 			})
 		})
 
-		it('parses a faction vote', async () => {
+		it('parses the faction stage that follows it', async () => {
 			const events = await collect([INGAME_FACTION_VOTE, NEXT_TICK_EVENT].join('\n'))
 			expect(events.find((e) => e.type === 'INGAME_VOTE_CHAIN')).toMatchObject({
 				type: 'INGAME_VOTE_CHAIN',
 				events: {
-					INGAME_VOTE_STARTED: { container: 'Vote_Faction_0', kind: 'faction' },
+					INGAME_VOTE_STARTED: { container: 'Vote_Faction_0' },
 					INGAME_VOTE_CHOICES: { choices: ['BAF', 'MEI', 'VDV', 'TLF', 'PLAAGF', 'WPMC'] },
 				},
 			})
@@ -582,7 +582,7 @@ describe('LogEvents.parse', () => {
 			const events = await collect([VOTE_CREATE_CONTAINER, NEXT_TICK_EVENT].join('\n'))
 			expect(events.find((e) => e.type === 'INGAME_VOTE_CHAIN')).toMatchObject({
 				type: 'INGAME_VOTE_CHAIN',
-				events: { INGAME_VOTE_STARTED: { kind: 'next-layer' } },
+				events: { INGAME_VOTE_STARTED: { container: 'Vote_NextLayer' } },
 			})
 		})
 	})

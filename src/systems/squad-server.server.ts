@@ -729,18 +729,13 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			onNewGameDuringRoll: onNewGameDuringRoll(serverId),
 			onNewGameDuringSync: onNewGameDuringSync(serverId),
 			createEvent: createEvent(serverId),
+			// Every caller resolves what the server is doing right now, at a moment the cached value is still the
+			// outgoing match's. observe() replays whatever is cached as its first emission whatever ttl it is asked
+			// for, so this has to be a get that refuses the cache outright.
 			fetchLayersStatus: async () => {
 				const ctx = resolveCtx(getBaseCtx(), serverId)
-				const data = await Rx.firstValueFrom(
-					ctx.squadRcon.layersStatus.observe(ctx, { ttl: 2_000 }).pipe(
-						Rx.concatMap((s): SM.LayersStatus[] => (s.code === 'ok' ? [s.data] : [])),
-						Rx.takeUntil(Rx.timer(8_000)),
-					),
-					{ defaultValue: null },
-				)
-
-				if (data) return data
-				return null
+				const res = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 0 })
+				return res.code === 'ok' ? res.data : null
 			},
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up.
@@ -824,6 +819,13 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	globalState.lifecycleUpdate$.next(serverId)
 
 	// -------- load saved events --------
+	await MatchHistory.initState({
+		...ctx,
+		serverId,
+		signal,
+		matchHistory: managedServer.matchHistory,
+		matchEventsCache: managedServer.matchEventsCache,
+	})
 	await loadSavedEvents({ ...ctx, rcon, squadRcon, server, serverId })
 
 	// // -------- watch events --------
@@ -2102,8 +2104,13 @@ const onNewGameDuringRoll =
 					const { match } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 						const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
 
+						// A vote was running, so it picked this layer and the queue did not: SLM stood down when the vote
+						// started and never set the head as next. Attributing the match to the head would also consume it
+						// for a layer it had no part in choosing.
+						const pickedByIngameVote = ctx.layerQueue.ingameVote$.getValue() !== null
+
 						let currentMatchLqItem: LL.Item | undefined
-						if (nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+						if (!pickedByIngameVote && nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
 							currentMatchLqItem = nextLqItem
 						}
 						// the new match must be recorded before the queue shift: emptying the queue triggers generation,
@@ -2115,6 +2122,7 @@ const onNewGameDuringRoll =
 								serverId: ctx.serverId,
 								startTime: new Date(time),
 								lqItem: currentMatchLqItem,
+								source: pickedByIngameVote ? { type: 'ingame-vote' } : undefined,
 							}),
 						)
 						if (currentMatchLqItem) {
