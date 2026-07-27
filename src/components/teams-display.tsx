@@ -3,6 +3,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -65,7 +66,7 @@ export function TeamFactionDisplay(props: {
 				</TooltipTrigger>
 				<TooltipContent>
 					<div className="text-xs">
-						<div className="font-semibold">Failed to parse layer</div>
+						<div className="font-semibold">{SM_Msgs.failedToParseLayer().text()}</div>
 						<div className="text-muted-foreground mt-1">{error instanceof Error ? error.message : 'Unknown error'}</div>
 					</div>
 				</TooltipContent>

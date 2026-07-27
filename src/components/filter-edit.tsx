@@ -168,7 +168,7 @@ export function FilterEdit(props: {
 							onClick={() => form.handleSubmit()}
 							disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
 						>
-							Save
+							{F_Msgs.save().text()}
 						</Button>
 					)
 				}}
@@ -181,7 +181,7 @@ export function FilterEdit(props: {
 		() => (
 			<DeleteFilterDialog onDelete={onDelete}>
 				<Button variant="destructive" disabled={!permitEdit}>
-					Delete
+					{F_Msgs.deleteAction().text()}
 				</Button>
 			</DeleteFilterDialog>
 		),
@@ -215,10 +215,10 @@ export function FilterEdit(props: {
 								)}
 								<h3 className={Typo.H3}>{props.entity.name}</h3>
 								<Icons.Dot />
-								<small className="font-light">Owner: {props.owner.displayName}</small>
+								<small className="font-light">{F_Msgs.ownerLine(props.owner.displayName).text()}</small>
 								<Icons.Dot />
 								<Button
-									aria-label="Edit Details"
+									aria-label={F_Msgs.editDetails().text()}
 									disabled={!permitEdit}
 									onClick={() => setEditingDetails(true)}
 									variant="ghost"
@@ -230,22 +230,22 @@ export function FilterEdit(props: {
 							<span className="flex h-min items-center space-x-2 self-end">
 								{loggedInUserRole === 'owner' && permitEdit && (
 									<Badge variant="outline" className="text-nowrap border-2 border-primary">
-										You are the owner of this filter
+										{F_Msgs.accessOwner().text()}
 									</Badge>
 								)}
 								{loggedInUserRole === 'contributor' && (
 									<Badge variant="outline" className="text-nowrap border-2 border-info">
-										You are a contributor
+										{F_Msgs.accessContributor().text()}
 									</Badge>
 								)}
 								{!permitEdit && (
 									<Badge variant="outline" className="text-nowrap border-2 border-destructive">
-										You don't have permission to modify this filter
+										{F_Msgs.accessNone().text()}
 									</Badge>
 								)}
 								{permitWriteAll && (
 									<Badge variant="outline" className="border-success text-nowrap border-2">
-										You have write access to all filters
+										{F_Msgs.accessAllFilters().text()}
 									</Badge>
 								)}
 								<FilterContributors
@@ -253,7 +253,7 @@ export function FilterEdit(props: {
 									contributors={props.contributors}
 									canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
 								>
-									<Button variant="outline">Show Contributors</Button>
+									<Button variant="outline">{F_Msgs.showContributors().text()}</Button>
 								</FilterContributors>
 							</span>
 						</div>
@@ -296,7 +296,7 @@ export function FilterEdit(props: {
 
 								{/* Match Indicator Section */}
 								<div className="border rounded-lg p-4 space-y-4">
-									<h3 className="font-semibold text-sm">Match Indicator</h3>
+									<h3 className="font-semibold text-sm">{F_Msgs.matchIndicator().text()}</h3>
 									<div className="flex gap-4">
 										<form.Field name="emoji">
 											{(field) => {
@@ -354,7 +354,7 @@ export function FilterEdit(props: {
 
 								{/* Miss Indicator Section */}
 								<div className="border rounded-lg p-4 space-y-4">
-									<h3 className="font-semibold text-sm">Miss Indicator</h3>
+									<h3 className="font-semibold text-sm">{F_Msgs.missIndicator().text()}</h3>
 									<div className="flex gap-4">
 										<form.Field name="invertedEmoji">
 											{(field) => {
@@ -439,7 +439,7 @@ export function FilterEdit(props: {
 									}}
 								</form.Field>
 								<Button
-									aria-label="Cancel Editing Details"
+									aria-label={F_Msgs.cancelEditingDetails().text()}
 									className="self-start"
 									variant="ghost"
 									size="icon"
@@ -515,13 +515,13 @@ function FilterContributors(props: {
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent className="p-0">
 				<CardHeader>
-					<CardTitle>Contributors</CardTitle>
-					<CardDescription>Users and Roles that can edit this filter</CardDescription>
+					<CardTitle>{F_Msgs.contributorsHeading().text()}</CardTitle>
+					<CardDescription>{F_Msgs.contributorsBlurb().text()}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div>
 						<div className="flex items-center space-x-2">
-							<h4 className="leading-none">Users</h4>
+							<h4 className="leading-none">{F_Msgs.usersHeading().text()}</h4>
 							{props.canManage && (
 								<SelectUserPopover selectUser={addUser}>
 									<Button variant="outline" size="icon">
@@ -546,7 +546,7 @@ function FilterContributors(props: {
 					</div>
 					<div id="roles">
 						<div>
-							<Label htmlFor="roles">Roles</Label>
+							<Label htmlFor="roles">{F_Msgs.rolesHeading().text()}</Label>
 							{props.canManage && (
 								<SelectUserDefinedRolePopover
 									selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}
@@ -593,13 +593,13 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 			<AlertDialogTrigger asChild>{props.children}</AlertDialogTrigger>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Delete Filter</AlertDialogTitle>
-					<AlertDialogDescription>Are you sure you want to delete this filter?</AlertDialogDescription>
+					<AlertDialogTitle>{F_Msgs.confirmDeleteTitle().text()}</AlertDialogTitle>
+					<AlertDialogDescription>{F_Msgs.confirmDeleteBlurb().text()}</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
+					<AlertDialogCancel onClick={onCancel}>{F_Msgs.cancel().text()}</AlertDialogCancel>
 					<Button variant="destructive" onClick={onDelete}>
-						Delete
+						{F_Msgs.deleteAction().text()}
 					</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -619,7 +619,7 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder="Search for a user..." />
+					<CommandInput placeholder={F_Msgs.searchUsers().text()} />
 					<CommandList>
 						{usersRes.data?.code === 'ok' &&
 							usersRes.data.users.map((user) => (
@@ -646,7 +646,7 @@ export function SelectUserDefinedRolePopover(props: { children: React.ReactNode;
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder="Search for a role..." />
+					<CommandInput placeholder={F_Msgs.searchRoles().text()} />
 					<CommandList>
 						{rolesRes.data?.map((role) => (
 							<CommandItem key={role.type} onSelect={() => onSelect(role)}>

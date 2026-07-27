@@ -124,7 +124,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
-					<React.Suspense fallback={<p className="text-sm text-muted-foreground">Loading editor…</p>}>
+					<React.Suspense fallback={<p className="text-sm text-muted-foreground">{F_Msgs.loadingEditor().text()}</p>}>
 						<FilterTextEditor ref={editorRef} stores={props.stores} />
 					</React.Suspense>
 				</div>
@@ -145,7 +145,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>Reformat</p>
+							<p>{F_Msgs.reformat().text()}</p>
 						</TooltipContent>
 					</Tooltip>
 
@@ -157,7 +157,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>Reset Filter</p>
+							<p>{F_Msgs.resetFilter().text()}</p>
 						</TooltipContent>
 					</Tooltip>
 				</div>
@@ -172,7 +172,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						}}
 						className={triggerClass}
 					>
-						Text
+						{F_Msgs.textTab().text()}
 					</button>
 					<button
 						type="button"
@@ -180,7 +180,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						onClick={() => setActiveTab('builder')}
 						className={triggerClass}
 					>
-						Builder
+						{F_Msgs.builderTab().text()}
 					</button>
 				</div>
 			</div>
@@ -296,7 +296,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 		<div className="flex items-center space-x-1">
 			<ComboBox
 				className="w-min"
-				title="Operator"
+				title={F_Msgs.operatorPicker().text()}
 				value={node.type}
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
@@ -435,11 +435,11 @@ function NodeComment(props: NodeProps) {
 	if (edited) {
 		return (
 			<Textarea
-				aria-label="Node comment"
+				aria-label={F_Msgs.nodeComment().text()}
 				autoFocus
 				rows={3}
 				maxLength={F.NODE_COMMENT_MAX_LENGTH}
-				placeholder="Comment. Links are clickable."
+				placeholder={F_Msgs.nodeCommentPlaceholder().text()}
 				defaultValue={comment ?? ''}
 				className="my-1 text-xs"
 				onChange={(e) => setCommentDebounced(e.target.value)}
@@ -552,7 +552,7 @@ export function LeafFilterNode(props: NodeProps) {
 			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<ComboBox
 					allowEmpty={false}
-					title="mode"
+					title={F_Msgs.modePicker().text()}
 					value={node.type}
 					options={F.APPLY_FILTER_TYPES.map((t) => ({
 						value: t,
@@ -630,11 +630,11 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 			<ComboBox
 				allowEmpty={false}
 				className={operatorSelectClass}
-				title="mode"
+				title={F_Msgs.modePicker().text()}
 				value={props.node.neg ? 'notin' : 'in'}
 				options={[
-					{ value: 'in', label: 'in', description: 'Matches the listed layers.' },
-					{ value: 'notin', label: 'not in', description: 'Matches every layer except the listed ones.' },
+					{ value: 'in', label: F_Msgs.inSetNames.in, description: F_Msgs.inSetDescriptions.in },
+					{ value: 'notin', label: F_Msgs.inSetNames.notin, description: F_Msgs.inSetDescriptions.notin },
 				]}
 				onSelect={(v) => actions.comp.setNode(Im.produce((c) => void (c.neg = v === 'notin')))}
 			/>
@@ -832,7 +832,7 @@ export function Comparison(props: {
 		<ComboBox
 			allowEmpty={false}
 			className={cn(operatorSelectClass, componentStyles)}
-			title="Operator"
+			title={F_Msgs.operatorPicker().text()}
 			value={F.compOpSelectionKey(node)}
 			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
 			ref={codeBoxRef}
@@ -916,7 +916,7 @@ export function Comparison(props: {
 				<Button
 					size="icon"
 					variant={!isColumn ? 'secondary' : 'ghost'}
-					title="Compare to a constant value"
+					title={F_Msgs.compareToValue().text()}
 					onClick={() => setKind('value')}
 				>
 					<TextCursorInput className="h-4 w-4" />
@@ -924,7 +924,7 @@ export function Comparison(props: {
 				<Button
 					size="icon"
 					variant={isColumn ? 'secondary' : 'ghost'}
-					title="Compare to another column"
+					title={F_Msgs.compareToColumn().text()}
 					onClick={() => setKind('column')}
 				>
 					<Columns3 className="h-4 w-4" />
@@ -968,7 +968,7 @@ export function Comparison(props: {
 					<ComboBox
 						allowEmpty
 						className={componentStyles}
-						title="Column"
+						title={F_Msgs.columnPicker().text()}
 						value={arg.column}
 						options={comparableColumnOptions()}
 						onSelect={(v) =>
@@ -987,19 +987,17 @@ export function Comparison(props: {
 		if (F.isFloatEqNullOnly(domain, node.type)) {
 			return (
 				<div className="flex items-center space-x-1">
-					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>null</span>
+					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>
+						{F_Msgs.nullValue().text()}
+					</span>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Why only null?">
+							<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={F_Msgs.whyOnlyNull().text()}>
 								<Icons.CircleHelp className="h-4 w-4" />
 							</button>
 						</TooltipTrigger>
 						<TooltipContent className="max-w-xs">
-							<p>
-								This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding
-								differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>&lt;</code>/
-								<code>&gt;</code> to compare magnitudes; <code>=</code> only checks whether the value is null.
-							</p>
+							<p>{F_Msgs.floatEqNullOnly().react()}</p>
 						</TooltipContent>
 					</Tooltip>
 				</div>
@@ -1010,7 +1008,9 @@ export function Comparison(props: {
 			return (
 				<div className="flex items-center space-x-1">
 					{operandKindSelector(index, false)}
-					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>null</span>
+					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>
+						{F_Msgs.nullValue().text()}
+					</span>
 					{nullToggle(index, true)}
 				</div>
 			)
@@ -1043,7 +1043,7 @@ export function Comparison(props: {
 				<ComboBox
 					allowEmpty
 					className={componentStyles}
-					title="value"
+					title={F_Msgs.valuePicker().text()}
 					value={value === undefined || value === null ? undefined : String(value)}
 					options={[
 						{ value: 'true', label: 'true' },
@@ -1113,7 +1113,7 @@ export function Comparison(props: {
 			valueBox = (
 				<div className="flex items-center space-x-2">
 					{scalarSlot(1, valueBoxRef)}
-					<span>to</span>
+					<span>{F_Msgs.rangeTo().text()}</span>
 					{scalarSlot(2)}
 				</div>
 			)
@@ -1162,7 +1162,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 	return (
 		<ComboBox
 			ref={boxRef}
-			title="Filter"
+			title={F_Msgs.filterPicker().text()}
 			options={options}
 			allowEmpty
 			value={props.filterId}
@@ -1298,7 +1298,7 @@ function TeamSpecConfig(props: {
 				<StringInConfig
 					key={teamColumn}
 					title={teamColumn}
-					emptyLabel={`any ${teamColumn.toLowerCase()}`}
+					emptyLabel={F_Msgs.anyTeamColumn(teamColumn).text()}
 					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
 					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
@@ -1342,14 +1342,16 @@ export function MatchupConfig(props: {
 	// the normalized teams that persist across the team1/team2 swap (see MH.NormedTeamId and the
 	// displayTeamsNormalized setting), which is a different idea entirely -- and that setting toggles
 	// between those very labels, so reusing them here would read as driving it.
-	const [leftLabel, rightLabel] = node.locked ? ['Team 1', 'Team 2'] : ['One side', 'Other side']
+	const [leftLabel, rightLabel] = node.locked
+		? [F_Msgs.matchupSideLabels.lockedLeft, F_Msgs.matchupSideLabels.lockedRight]
+		: [F_Msgs.matchupSideLabels.left, F_Msgs.matchupSideLabels.right]
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			{(props.showTypeSelect ?? true) && (
 				<ComboBox
 					allowEmpty={false}
 					className="w-min"
-					title="Operator"
+					title={F_Msgs.operatorPicker().text()}
 					value={node.type}
 					options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F_Msgs.matchupTypeNames[t] }))}
 					onSelect={(v) => actions.setType(v as F.MatchupType)}
@@ -1368,7 +1370,7 @@ export function MatchupConfig(props: {
 							<Icons.ArrowLeftRight />
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Swap the two sides</TooltipContent>
+					<TooltipContent>{F_Msgs.swapSides().text()}</TooltipContent>
 				</Tooltip>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -1456,8 +1458,8 @@ function InListConfig(props: {
 			{props.allowColumns && addableColumns.length > 0 && (
 				<ComboBox
 					allowEmpty
-					title="Column"
-					placeholder="+ column"
+					title={F_Msgs.columnPicker().text()}
+					placeholder={F_Msgs.addColumnPlaceholder().text()}
 					value={undefined}
 					options={addableColumns}
 					onSelect={(v) => v && addColumn(v)}
@@ -1512,12 +1514,12 @@ function LayersInConfig(props: {
 			<div className="w-max">
 				<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
 					<Icons.Edit className="h-4 w-4 mr-2" />
-					{filteredValues.length === 0 ? 'Select Layers' : 'Edit Layers'}
+					{filteredValues.length === 0 ? F_Msgs.selectLayers().text() : F_Msgs.editLayers().text()}
 				</Button>
 				<SelectLayersDialog
 					open={open}
 					onOpenChange={setOpen}
-					title="Select Layers"
+					title={F_Msgs.selectLayers().text()}
 					pinMode="layers"
 					defaultSelected={filteredValues}
 					selectQueueItems={(items) =>

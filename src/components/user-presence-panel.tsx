@@ -125,7 +125,7 @@ function ResetSessionButton({ clientId }: { clientId: string }) {
 			onClick={() => UPClient.Actions.resetClient(clientId)}
 			className="mt-1.5 w-full rounded border border-border px-2 py-0.5 text-xs font-medium hover:bg-accent"
 		>
-			Reset this session
+			{UP_Msgs.resetSession().text()}
 		</button>
 	)
 }
@@ -424,12 +424,13 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											<div className="flex flex-col leading-none gap-0.5">
 												<span className="text-xs font-medium">
 													{user.displayName}
-													{loggedInUser?.discordId === user.discordId ? ' (You)' : ''}
+													{loggedInUser?.discordId === user.discordId ? UP_Msgs.youSuffix().text() : ''}
 												</span>
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
-														Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+														{UP_Msgs.lastSeen().text()}{' '}
+														{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 													</span>
 												)}
 												{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}
@@ -483,7 +484,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 																</div>
 																{presence.away && presence.lastSeen && (
 																	<div className="text-xs mt-1">
-																		Last seen{' '}
+																		{UP_Msgs.lastSeen().text()}{' '}
 																		{DateFns.formatDistanceToNow(new Date(presence.lastSeen), {
 																			addSuffix: true,
 																		})}
@@ -542,7 +543,8 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											</div>
 											{presence.away && presence.lastSeen && (
 												<div className="text-xs mt-1">
-													Last seen {DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
+													{UP_Msgs.lastSeen().text()}{' '}
+													{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 												</div>
 											)}
 											{isMyOtherClient(entry) && <ResetSessionButton clientId={clientId} />}

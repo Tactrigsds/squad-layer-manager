@@ -64,7 +64,7 @@ export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string;
 	return (
 		<div className="flex items-center gap-1">
 			<code className="px-2 py-1 bg-muted rounded text-sm font-mono">{cmdString}</code>
-			<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={copy} aria-label={`Copy ${cmdString}`}>
+			<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={copy} aria-label={CMD_Msgs.copyCommand(cmdString).text()}>
 				<Icons.Copy className="h-3 w-3" />
 			</Button>
 		</div>
@@ -116,13 +116,13 @@ function CommandDetails({
 									{arg.optional ? `[${arg.name}]` : `<${arg.name}>`}
 								</code>
 								<span className="text-xs text-muted-foreground font-mono">{arg.syntax}</span>
-								{arg.optional && <span className="text-xs text-muted-foreground">optional</span>}
+								{arg.optional && <span className="text-xs text-muted-foreground">{CMD_Msgs.optionalArg().text()}</span>}
 							</dt>
 							<dd className="text-xs text-muted-foreground pt-0.5">
 								{arg.description}
 								{arg.presets.length > 0 && (
 									<span className="flex flex-wrap items-center gap-1 pt-1">
-										<span>Configured:</span>
+										<span>{CMD_Msgs.configuredPresets().text()}</span>
 										{arg.presets.map((preset) => (
 											<Badge key={preset} variant="secondary" className="text-xs">
 												{preset}
@@ -136,7 +136,7 @@ function CommandDetails({
 				</dl>
 			)}
 			<div className="space-y-1">
-				<p className="text-xs font-medium text-muted-foreground">Examples</p>
+				<p className="text-xs font-medium text-muted-foreground">{CMD_Msgs.examplesHeading().text()}</p>
 				{examples.map((example) => (
 					<div key={example.command} className="flex flex-wrap items-center gap-2">
 						<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
@@ -146,7 +146,7 @@ function CommandDetails({
 			</div>
 			{shortcuts.length > 0 && (
 				<div className="space-y-1">
-					<p className="text-xs font-medium text-muted-foreground">Shortcuts</p>
+					<p className="text-xs font-medium text-muted-foreground">{CMD_Msgs.shortcutsHeading().text()}</p>
 					{shortcuts.map(({ usage, expansion }) => (
 						<div key={usage} className="flex flex-wrap items-center gap-2">
 							<CopyableCommand cmdString={usage} chatCommand={chatCommand} />
@@ -183,12 +183,12 @@ function CommandEntry({
 					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
 						<CopyableCommand key={cmdString} cmdString={cmdString} chatCommand={chatCommand} />
 					))}
-					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label="Link to this command" />
+					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label={CMD_Msgs.linkToCommand().text()} />
 				</div>
 				<div className="flex-1" />
 				{!cmd.enabled && (
 					<Badge variant="destructive" className="text-xs">
-						Disabled
+						{CMD_Msgs.disabledBadge().text()}
 					</Badge>
 				)}
 				{cmd.allowedChats.map((group) => {
@@ -203,7 +203,7 @@ function CommandEntry({
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground">
 						{open ? <Icons.ChevronDown className="h-3 w-3" /> : <Icons.ChevronRight className="h-3 w-3" />}
-						Details
+						{CMD_Msgs.detailsToggle().text()}
 					</Button>
 				</CollapsibleTrigger>
 			</div>
@@ -280,7 +280,7 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 					className="h-5 shrink-0 gap-0.5 px-1 text-xs text-muted-foreground"
 					onClick={() => onDetails(detailsAnchorId(entry))}
 				>
-					Details <Icons.ArrowRight className="h-3 w-3" />
+					{CMD_Msgs.detailsToggle().text()} <Icons.ArrowRight className="h-3 w-3" />
 				</Button>
 			</div>
 			<p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
@@ -293,7 +293,7 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 					className="mt-auto h-5 shrink-0 gap-0.5 self-end px-1 text-xs text-muted-foreground hover:text-foreground"
 					onClick={onUnpin}
 				>
-					<Icons.PinOff className="h-3 w-3" /> Unpin
+					<Icons.PinOff className="h-3 w-3" /> {CMD_Msgs.unpinCommand().text()}
 				</Button>
 			)}
 		</div>
@@ -595,22 +595,26 @@ export default function CommandsPage() {
 		>
 			<div className="mx-auto w-full max-w-6xl px-1">
 				<header className="pt-1 pb-3">
-					<h1 className="text-xl font-semibold">Ingame Commands</h1>
-					<p className="pt-1 text-sm text-muted-foreground">
-						Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.
-					</p>
+					<h1 className="text-xl font-semibold">{CMD_Msgs.pageHeading().text()}</h1>
+					<p className="pt-1 text-sm text-muted-foreground">{CMD_Msgs.pageBlurb().text()}</p>
 				</header>
 				{(pinnedShortcut || quickRefShortcut) && (
 					<div className="space-y-4 pb-6">
 						{pinnedShortcut && (
 							<CompactSection
-								title="Your Pinned Commands"
+								title={CMD_Msgs.pinnedSection().text()}
 								section={pinnedShortcut}
 								onDetails={navigateToEntry}
 								onUnpin={ClientOnlySettings.Actions.toggleCommandPinned}
 							/>
 						)}
-						{quickRefShortcut && <CompactSection title="Quick Reference" section={quickRefShortcut} onDetails={navigateToEntry} />}
+						{quickRefShortcut && (
+							<CompactSection
+								title={CMD_Msgs.quickReferenceSection().text()}
+								section={quickRefShortcut}
+								onDetails={navigateToEntry}
+							/>
+						)}
 					</div>
 				)}
 				<div className="flex gap-4">
@@ -626,7 +630,7 @@ export default function CommandsPage() {
 							<Input
 								ref={searchRef}
 								className="h-8 pl-7"
-								placeholder="Search commands…"
+								placeholder={CMD_Msgs.searchCommands().text()}
 								onChange={(e) => {
 									setQuery(e.target.value)
 									setCursorId(null)
@@ -636,7 +640,7 @@ export default function CommandsPage() {
 						</div>
 						<nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto">
 							{tocSections.length === 0 ? (
-								<p className="px-1 text-sm text-muted-foreground">No matches.</p>
+								<p className="px-1 text-sm text-muted-foreground">{CMD_Msgs.noMatches().text()}</p>
 							) : (
 								<ul>
 									{tocSections.map((section) => (
@@ -686,7 +690,7 @@ export default function CommandsPage() {
 									<AnchorLinkIcon
 										id={section.id}
 										onNavigate={(id) => navigateToEntry(id, { scroll: false })}
-										label={`Link to ${section.label}`}
+										label={CMD_Msgs.linkToSection(section.label).text()}
 									/>
 								</h2>
 								{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}

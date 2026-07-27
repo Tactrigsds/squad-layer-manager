@@ -5,6 +5,7 @@ import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as RBAC from '@/rbac.models'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
@@ -54,12 +55,12 @@ function NegationBadges(props: { perm: RBAC.TracedPermission }) {
 		<>
 			{props.perm.negated && (
 				<Badge variant="destructive" className="text-xs">
-					negated
+					{RBAC_Msgs.negatedBadge().text()}
 				</Badge>
 			)}
 			{props.perm.negating && (
 				<Badge variant="outline" className="text-xs border-orange-500 text-orange-700">
-					negating
+					{RBAC_Msgs.negatingBadge().text()}
 				</Badge>
 			)}
 		</>
@@ -114,12 +115,10 @@ function RoleSection(props: {
 						<Label htmlFor={props.checkboxId} className="font-semibold">
 							{formatRoleName(props.role)}
 						</Label>
-						<p className="text-sm text-muted-foreground">
-							{props.perms.length} permission{props.perms.length !== 1 ? 's' : ''}
-						</p>
+						<p className="text-sm text-muted-foreground">{RBAC_Msgs.rolePermissionCount(props.perms.length).text()}</p>
 					</div>
 				</div>
-				{props.simulate && !props.enabled && <Badge variant="secondary">Disabled</Badge>}
+				{props.simulate && !props.enabled && <Badge variant="secondary">{RBAC_Msgs.roleDisabledBadge().text()}</Badge>}
 			</div>
 
 			{props.enabled && (
@@ -189,11 +188,11 @@ export default function UserPermissionsDialog(props: {
 				<DialogTrigger asChild>{props.children}</DialogTrigger>
 				<DialogContent className="max-w-4xl">
 					<DialogHeader>
-						<DialogTitle>User Permissions</DialogTitle>
-						<DialogDescription>View your current permissions and roles</DialogDescription>
+						<DialogTitle>{RBAC_Msgs.userPermissionsTitle().text()}</DialogTitle>
+						<DialogDescription>{RBAC_Msgs.userPermissionsBlurb().text()}</DialogDescription>
 					</DialogHeader>
 					<div className="flex items-center justify-center p-8">
-						<p className="text-muted-foreground">Loading user data...</p>
+						<p className="text-muted-foreground">{RBAC_Msgs.loadingUser().text()}</p>
 					</div>
 				</DialogContent>
 			</Dialog>
@@ -218,41 +217,36 @@ export default function UserPermissionsDialog(props: {
 			{props.children}
 			<DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
 				<DialogHeader>
-					<DialogTitle>User Permissions</DialogTitle>
-					<DialogDescription>View your current permissions and roles</DialogDescription>
+					<DialogTitle>{RBAC_Msgs.userPermissionsTitle().text()}</DialogTitle>
+					<DialogDescription>{RBAC_Msgs.userPermissionsBlurb().text()}</DialogDescription>
 				</DialogHeader>
 
 				<div className="flex items-center space-x-3 p-4 border rounded-lg bg-muted/50">
 					<Switch checked={simulate} onCheckedChange={setSimulate} id={simulateId} />
 					<Label htmlFor={simulateId} className="text-sm font-medium shrink-0">
-						Simulate
+						{RBAC_Msgs.simulate().text()}
 					</Label>
-					<span className="text-xs text-muted-foreground text-balance leading-relaxed">
-						Toggle roles and permissions to see how the site behaves without them. You can only simulate losing access, never gaining
-						it.
-					</span>
+					<span className="text-xs text-muted-foreground text-balance leading-relaxed">{RBAC_Msgs.simulateBlurb().text()}</span>
 				</div>
 
 				<Tabs defaultValue="roles" className="flex-1 overflow-hidden flex flex-col">
 					<TabsList className="grid w-full grid-cols-2">
-						<TabsTrigger value="roles">By Role</TabsTrigger>
-						<TabsTrigger value="permissions">All Permissions</TabsTrigger>
+						<TabsTrigger value="roles">{RBAC_Msgs.byRoleTab().text()}</TabsTrigger>
+						<TabsTrigger value="permissions">{RBAC_Msgs.allPermissionsTab().text()}</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="permissions" className="flex-1 overflow-auto">
 						<div className="space-y-4">
-							<div className="text-sm text-muted-foreground">
-								You have {activePermCount} permission{activePermCount !== 1 ? 's' : ''}
-							</div>
+							<div className="text-sm text-muted-foreground">{RBAC_Msgs.heldPermissionCount(activePermCount).text()}</div>
 
 							<Table>
 								<TableHeader>
 									<TableRow>
 										{simulate && <TableHead className="w-8" />}
-										<TableHead>Permission</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead>Scope</TableHead>
-										<TableHead>Granted By</TableHead>
+										<TableHead>{RBAC_Msgs.permissionColumn().text()}</TableHead>
+										<TableHead>{RBAC_Msgs.descriptionColumn().text()}</TableHead>
+										<TableHead>{RBAC_Msgs.scopeColumn().text()}</TableHead>
+										<TableHead>{RBAC_Msgs.grantedByColumn().text()}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -304,9 +298,9 @@ export default function UserPermissionsDialog(props: {
 							</Table>
 
 							<section className="space-y-2">
-								<h3 className="text-sm font-semibold">Permissions you don't have</h3>
+								<h3 className="text-sm font-semibold">{RBAC_Msgs.unheldPermissionsHeading().text()}</h3>
 								{unheldPermTypes.length === 0 ? (
-									<p className="text-sm text-muted-foreground">You have every permission.</p>
+									<p className="text-sm text-muted-foreground">{RBAC_Msgs.holdsEveryPermission().text()}</p>
 								) : (
 									<div className="space-y-1">
 										{unheldPermTypes.map((permType) => (
@@ -346,12 +340,10 @@ export default function UserPermissionsDialog(props: {
 
 							<section className="space-y-3">
 								<div>
-									<h3 className="text-sm font-semibold">Roles you don't have</h3>
-									<p className="text-xs text-muted-foreground">
-										A role can be simulated when everything it grants is already covered by your own permissions.
-									</p>
+									<h3 className="text-sm font-semibold">{RBAC_Msgs.unheldRolesHeading().text()}</h3>
+									<p className="text-xs text-muted-foreground">{RBAC_Msgs.unheldRolesBlurb().text()}</p>
 								</div>
-								{unheldRoles.length === 0 && <p className="text-sm text-muted-foreground">You have every role.</p>}
+								{unheldRoles.length === 0 && <p className="text-sm text-muted-foreground">{RBAC_Msgs.holdsEveryRole().text()}</p>}
 								{unheldRoles.map((role) => {
 									const simulatable = getSimulatableRole(role)
 									const added = !!simulatable && addedRoles.some((a) => Obj.deepEqual(a.role, role))
@@ -385,7 +377,7 @@ export default function UserPermissionsDialog(props: {
 											</div>
 											{!simulatable && (
 												<Badge variant="outline" className="text-xs">
-													Grants permissions you don't have
+													{RBAC_Msgs.roleGrantsMore().text()}
 												</Badge>
 											)}
 										</div>
