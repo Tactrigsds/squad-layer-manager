@@ -17,6 +17,60 @@ export const copiedHistoryEntryIds = Msgs.def((count: number) => ({
 	toast: () => [`Copied History Entry ID${count > 1 ? 's' : ''}`],
 }))
 
+// -------- the layer table --------
+
+export const showLayerInfo = Msgs.def(() => ({ text: () => 'Show layer info' }))
+
+export const copyLayerId = Msgs.def(() => ({ text: () => 'Copy layer id' }))
+
+export const copyHistoryEntryId = Msgs.def(() => ({ text: () => 'Copy history entry id' }))
+
+// the sort direction badge on a numeric column header, where the sort is by magnitude
+export const sortByMagnitude = Msgs.def(() => ({ text: () => '|x|' }))
+
+export const layerIndicatorsColumn = Msgs.def(() => ({ text: () => 'Layer Indicators' }))
+
+export const focusLayer = Msgs.def(() => ({ text: () => 'Focus Layer' }))
+
+export const focusLayerShortcut = Msgs.def(() => ({ text: () => 'Ctrl+Click' }))
+
+export const columnPicker = Msgs.def(() => ({ text: () => 'Column' }))
+
+export const toggleColumns = Msgs.def(() => ({ text: () => 'Toggle Columns' }))
+
+export const showSelected = Msgs.def(() => ({ text: () => 'Show Selected' }))
+
+export const resetSelectedLayers = Msgs.def(() => ({ text: () => 'Reset Selected Layers' }))
+
+export const selectedCount = Msgs.def((count: number) => ({ text: () => `${count} selected` }))
+
+export const randomize = Msgs.def(() => ({ text: () => 'Randomize' }))
+
+export const randomizeHint = Msgs.def(() => ({ text: () => 'Randomize layer selection (weighted to preferable layers)' }))
+
+export const rawLayerPlaceholder = Msgs.def(() => ({ text: () => 'Ex: Narva_RAAS_v1 RGF USMC or a layer id' }))
+
+export const layerFound = Msgs.def(() => ({ text: () => 'Layer exists in the database' }))
+
+// the count is emphasised, which is part of the sentence; the readout styles `strong` itself
+export const matchedLayers = Msgs.def((count: string) => ({
+	react: () => (
+		<>
+			<strong>{count}</strong> matched layers
+		</>
+	),
+}))
+
+export const noLayersMatched = Msgs.def(() => ({ text: () => 'No layers matched' }))
+
+export const initializingDatabase = Msgs.def(() => ({ text: () => 'Initializing layer database...' }))
+
+export const downloadingLayers = Msgs.def(() => ({ text: () => 'Downloading layers from server, this may take a few minutes...' }))
+
+export const loadFailed = Msgs.def(() => ({ text: () => 'Error loading layers:' }))
+
+export const loadFailedUnknown = Msgs.def(() => ({ text: () => 'Unknown error' }))
+
 // -------- the layer info panel --------
 
 export const copySetNextCommand = Msgs.def(() => ({ text: () => 'Copy AdminSetNextLayer command' }))

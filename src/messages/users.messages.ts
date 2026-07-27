@@ -109,3 +109,13 @@ export const otherSessionsActive = Msgs.def((count: number) => ({
 }))
 
 export const resetOtherSessions = Msgs.def(() => ({ text: () => 'Reset them' }))
+
+// -------- a player's discord link --------
+
+export const discordLabel = Msgs.def(() => ({ text: () => 'Discord' }))
+
+export const linkedBy = Msgs.def((admin?: string) => ({ text: () => `linked by ${admin ?? 'an admin'}` }))
+
+export const selfLinked = Msgs.def(() => ({ text: () => 'self-linked' }))
+
+export const unlink = Msgs.def(() => ({ text: () => 'Unlink' }))

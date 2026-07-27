@@ -54,3 +54,13 @@ export const flagsAdded = Msgs.def((flaggedCount: number, playerCount: number, n
 }))
 
 export const refreshFailed = Msgs.def(() => ({ toast: () => ['Failed to refresh BattleMetrics data'] }))
+
+// -------- a player's BM sidebar --------
+
+export const hoursPlayedHint = Msgs.def(() => ({ text: () => "Hours played on this org's servers" }))
+
+export const hoursPlayed = Msgs.def((hours: number) => ({ text: () => `${hours}h` }))
+
+export const refreshHint = Msgs.def(() => ({ text: () => 'Refresh BattleMetrics data' }))
+
+export const showAllFlags = Msgs.def(() => ({ text: () => 'Show all tags' }))

@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import * as Zus from '@/lib/zustand'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -226,10 +227,10 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 								variant="secondary"
 								style={{ zIndex: aboveChatZIndex }}
 								className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
-								title={SM_Msgs.scrollToBottom().text()}
+								title={CHAT_Msgs.scrollToBottom().text()}
 							>
 								<Icons.ChevronDown className="h-3 w-3" />
-								<span className="text-xs">{SM_Msgs.scrollToBottom().text()}</span>
+								<span className="text-xs">{CHAT_Msgs.scrollToBottom().text()}</span>
 							</Button>
 						)}
 					</div>
