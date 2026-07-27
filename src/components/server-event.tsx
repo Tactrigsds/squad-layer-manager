@@ -497,7 +497,7 @@ function QueueUpdatedEvent({
 }: {
 	event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
 	appEvent: AppEvents.QueueUpdated
-	actorLabel: string
+	actorLabel: React.ReactNode
 	stores: SquadServerFrame.KeyProp
 }) {
 	const changes = AppEvents.summarizeQueueChanges(appEvent)
@@ -519,26 +519,40 @@ function QueueUpdatedEvent({
 	].filter(Boolean)
 
 	const overrode = appEvent.save?.overrodeEditors ?? []
-	const headline: React.ReactNode =
-		appEvent.trigger === 'roll' ? (
-			'Queue advanced on map change'
-		) : appEvent.trigger === 'external-layer-change' ? (
-			<>
-				Queue synced to an external layer change by{' '}
-				{appEvent.actor.type === 'ingame-user' && event.actorPlayer && matchId !== null ? (
-					<PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
-				) : appEvent.actor.type === 'ingame-user' ? (
-					'an in-game admin'
-				) : (
-					'another RCON tool'
-				)}
-			</>
-		) : (
-			<>
-				{actorLabel} {appEvent.save?.force ? 'force-saved' : 'saved'} the queue
-				{overrode.length > 0 && `, overriding ${joinNames(overrode.map(labelFor))}`}
-			</>
-		)
+	const kind = AppEvents.queueUpdateKind(appEvent)
+	const headline: React.ReactNode = ((): React.ReactNode => {
+		switch (kind) {
+			case 'roll':
+				return 'Queue advanced on map change'
+			case 'external-layer-change': {
+				const external = AppEvents.queueUpdateExternalSource(appEvent)
+				const who =
+					external?.type === 'player' && event.actorPlayer && matchId !== null ? (
+						<PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
+					) : external?.type === 'player' ? (
+						'an in-game admin'
+					) : external?.type === 'rcon' ? (
+						'another RCON tool'
+					) : null
+				// a layer SLM found already set has no actor to name (see externalActor)
+				return who ? <>Queue synced to a layer change by {who}</> : 'Queue synced to a layer change made outside SLM'
+			}
+			case 'generated':
+				return 'SLM generated the next layer'
+			case 'vote-result':
+				return 'Vote result applied to the queue'
+			case 'force-save':
+			case 'save':
+				return (
+					<>
+						{actorLabel} {appEvent.save?.force ? 'force-saved' : 'saved'} the queue
+						{overrode.length > 0 && `, overriding ${joinNames(overrode.map(labelFor))}`}
+					</>
+				)
+			default:
+				assertNever(kind)
+		}
+	})()
 
 	const nextBefore = LL.getNextLayerId(appEvent.prevList)
 	const nextAfter = LL.getNextLayerId(appEvent.list)
@@ -589,7 +603,7 @@ function TeamswapsUpdatedEvent({
 }: {
 	event: Extract<CHAT.EventEnriched, { type: 'APP_EVENT' }>
 	appEvent: AppEvents.TeamswapsUpdated
-	actorLabel: string
+	actorLabel: React.ReactNode
 	stores: SquadServerFrame.KeyProp
 }) {
 	const changes = AppEvents.summarizeTeamswapChanges(appEvent)
@@ -682,10 +696,20 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	const isMe = !!actorUserId && actorUserId === loggedInUser?.discordId
 	const userRes = UsersClient.useUser(actorUserId, { enabled: !!actorUserId && !userPartial && !isMe })
 	const actorUser = (userRes.data?.code === 'ok' ? userRes.data.user : undefined) ?? userPartial ?? (isMe ? loggedInUser : undefined)
-
-	const actorLabel =
-		appEvent.actor.type === 'slm-user' ? (actorUser?.displayName ?? 'An admin') : appEvent.actor.type === 'system' ? 'SLM' : 'A player'
 	const matchId = event.matchId
+
+	// an in-game admin is named like anyone else in the feed: enrichment resolved them from the roster (see
+	// enrichAppEvent), and the fallback only applies to someone who left before the roster last reset
+	const actorLabel: React.ReactNode =
+		appEvent.actor.type === 'slm-user' ? (
+			(actorUser?.displayName ?? 'An admin')
+		) : appEvent.actor.type === 'system' ? (
+			'SLM'
+		) : event.actorPlayer && matchId !== null ? (
+			<PlayerDisplay player={event.actorPlayer} matchId={matchId} stores={stores} />
+		) : (
+			'An in-game admin'
+		)
 
 	// expandable list of the players involved (targets, or a disbanded squad's members)
 	const targetList =
@@ -740,7 +764,8 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			</EventLine>
 		)
 	}
-	// audit-only today (matchId is null so it never enters the feed), but the branch keeps the union narrowing sound
+	// the ADMIN_BROADCAST server event this produced is attributed to it and collapses under this entry, so the
+	// broadcast is shown once, with its sender
 	if (appEvent.type === 'BROADCAST_SENT') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Megaphone className="h-4 w-4 text-amber-500 shrink-0" />}>
@@ -786,7 +811,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	if (appEvent.type === 'VOTE_ENDED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
-				{appEvent.reason === 'ended-early' ? `${actorLabel} ended the vote early` : 'The vote ended'}
+				{appEvent.reason === 'ended-early' ? <>{actorLabel} ended the vote early</> : 'The vote ended'}
 				{appEvent.winnerLayerId ? (
 					<>
 						: <ShortLayerName layerId={appEvent.winnerLayerId} /> won
@@ -814,18 +839,27 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		// audit-only (see AppEvents.isFeedVisible): its QUEUE_UPDATED already names the layer, so drawing this too
 		// would just repeat it. Only override sets are worth a line of their own.
 		if (appEvent.reason === 'queue-updated') return null
+		const icon = <Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />
+		// nobody was seen setting the layer SLM is replacing -- it was already set when SLM connected
+		if (!appEvent.overrode || appEvent.overrode.type === 'unknown') {
+			return (
+				<EventLine time={event.time} icon={icon}>
+					SLM restored the queue's next layer, set to <ShortLayerName layerId={appEvent.layerId} />
+				</EventLine>
+			)
+		}
 		// the overridden player (if any) is resolved into targetPlayers via involvedPlayerIds
 		const overrodePlayer = event.targetPlayers[0]
 		const who =
-			appEvent.overrode?.type === 'player' && overrodePlayer && matchId !== null ? (
+			appEvent.overrode.type === 'player' && overrodePlayer && matchId !== null ? (
 				<PlayerDisplay showTeam player={overrodePlayer} matchId={matchId} stores={stores} />
-			) : appEvent.overrode?.type === 'player' ? (
+			) : appEvent.overrode.type === 'player' ? (
 				'an in-game admin'
 			) : (
 				'another RCON tool'
 			)
 		return (
-			<EventLine time={event.time} icon={<Icons.RefreshCw className="h-4 w-4 text-amber-500 shrink-0" />}>
+			<EventLine time={event.time} icon={icon}>
 				SLM overrode a layer set by {who}, next layer set to <ShortLayerName layerId={appEvent.layerId} />
 			</EventLine>
 		)
@@ -1051,7 +1085,12 @@ function RoundEndedEvent({
 		if (source.type === 'player') {
 			sourceName = (
 				<span>
-					by <b>{source.playerIds.username}</b>
+					by{' '}
+					{event.actorPlayer ? (
+						<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
+					) : (
+						<b>{source.playerIds.username}</b>
+					)}
 				</span>
 			)
 		} else if (source.type === 'rcon') {
@@ -1061,8 +1100,7 @@ function RoundEndedEvent({
 				</span>
 			)
 		} else {
-			// SLM-originated (application-event link or system fallback) -- MVP renders a generic label;
-			// richer actor display arrives with the audit UI
+			// an SLM action: the app event it links to is its own entry in the feed and names the admin
 			sourceName = (
 				<span>
 					via <b>SLM</b>
@@ -1296,10 +1334,31 @@ function PlayerWoundedOrDiedEvent({
 	)
 }
 
+// A layer set on the server. The SLM-originated ones normally collapse into the app event that caused them (see
+// handleEvent), so what reaches here is somebody else's set -- or, on connect, no set at all: `observed` is the layer
+// the server already had, which reads as an anonymous set unless it says so.
 function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }>; stores: SquadServerFrame.KeyProp }) {
+	const layer = <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
+	const icon = <Icons.Map className="h-4 w-4 text-blue-400 shrink-0" />
+	if (event.source?.type === 'observed') {
+		return (
+			<EventLine time={event.time} icon={icon} className="py-0.5">
+				Server's next layer is {layer}
+			</EventLine>
+		)
+	}
+	const who: React.ReactNode =
+		event.source?.type === 'player' && event.actorPlayer ? (
+			<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
+		) : event.source?.type === 'player' ? (
+			(event.source.playerIds.username ?? 'an in-game admin')
+		) : event.source?.type === 'rcon' ? (
+			'another RCON tool'
+		) : null
 	return (
-		<EventLine time={event.time} icon={<Icons.Map className="h-4 w-4 text-blue-400 shrink-0" />} className="py-0.5">
-			Next layer set to <ShortLayerName layerId={event.layerId} teamParity={0} className="text-xs" />
+		<EventLine time={event.time} icon={icon} className="py-0.5">
+			{who ? <>{who} set the next layer to </> : <>Next layer set to </>}
+			{layer}
 		</EventLine>
 	)
 }

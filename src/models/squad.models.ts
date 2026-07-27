@@ -447,6 +447,13 @@ export function toRecentPlayer(player: RecentPlayer): RecentPlayer {
 	return { ids: { ...player.ids }, isAdmin: player.isAdmin, adminGroups: [...(player.adminGroups ?? [])] }
 }
 
+// A departed player in roster shape, for the displays that need a `Player` to name someone who is no longer on the
+// roster (an admin action's target who has since left). Their identity is known; their position in the match is not,
+// so the live fields read as absent rather than stale.
+export function fromRecentPlayer(player: RecentPlayer): Player {
+	return { ...toRecentPlayer(player), teamId: null, squadId: null, isLeader: false, role: '' }
+}
+
 // A roster is "settled" when every player has been assigned to a team -- i.e. no one is still loading / unassigned.
 // Canonical gate for operations that need faithful team data (e.g. executing configured team swaps): acting on a
 // roster with team-less players would compute moves / balance against an incomplete picture.

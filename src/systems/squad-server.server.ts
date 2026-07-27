@@ -236,17 +236,20 @@ export const orpcRouter = {
 		)
 		const result$ = Rx.Ext.firstValueFrom(Rx.race(matchEnded$, Rx.timer(20_000).pipe(Rx.map(() => 'timeout' as const))), ctx.signal)
 
+		// recorded and armed before the command goes out, so the round end it produces is attributed to the admin who
+		// asked for it rather than reported as an anonymous RCON tool's doing (the log can't tell them apart)
+		const matchEnded = AppEvents.create<AppEvents.MatchEnded>({
+			type: 'MATCH_ENDED',
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: ctx.serverId,
+			matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+			causeId: null,
+		})
+		await emitAppEvent(ctx, matchEnded)
+		await collectEvents(ctx, () => {
+			PendingEvents.armExpectation(ctx.server.eventState, { type: 'ROUND_ENDED' }, { type: 'event', id: matchEnded.id })
+		})
 		await SquadRcon.endMatch(ctx)
-		await emitAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.MatchEnded>({
-				type: 'MATCH_ENDED',
-				actor: { type: 'slm-user', userId: ctx.user.discordId },
-				serverId: ctx.serverId,
-				matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
-				causeId: null,
-			}),
-		)
 
 		const result = await result$
 		if (result === 'timeout') {
@@ -288,7 +291,7 @@ export const orpcRouter = {
 							time: Date.now(),
 							serverId: ctx.serverId,
 						})
-						events.push(...mergeEventsByTime(allEvents, ctx.server.emittedAppEvents))
+						events.push(...CHAT.mergeAppEvents(allEvents, ctx.server.emittedAppEvents))
 						events.push(sync)
 					} else {
 						let lastEventIndex = allEvents.findIndex((e) => e.id === input!.lastEventId!)
@@ -300,7 +303,7 @@ export const orpcRouter = {
 						})
 						// if last event was not found it'll be -1, which works nicely here because we just need to resend all events
 						events.push(
-							...mergeEventsByTime(
+							...CHAT.mergeAppEvents(
 								allEvents.slice(lastEventIndex + 1),
 								ctx.server.emittedAppEvents.filter((a) => lastEventIndex === -1 || a.time >= allEvents[lastEventIndex].time),
 							),
@@ -1223,7 +1226,7 @@ export async function kickPlayersAction(
 }
 
 export async function broadcastAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
 	message: string,
 	actor: AppEvents.Actor,
 	opts?: { presetLabel?: string },
@@ -1234,15 +1237,21 @@ export async function broadcastAction(
 		type: 'BROADCAST_SENT',
 		actor,
 		serverId: ctx.serverId,
-		// audit-log only (matchId null): the ADMIN_BROADCAST server event already renders the broadcast in the
-		// activity feed, and pending-events has no broadcast expectation to collapse the two, so a feed-visible
-		// app event would duplicate every broadcast line
-		matchId: null,
+		// feed-visible: the landing ADMIN_BROADCAST server event is attributed to this and collapses under it, which
+		// is what makes the broadcast read as the admin who sent it rather than as an anonymous RCON line
+		matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
 		causeId: null,
 		message: rendered,
 		presetLabel: opts?.presetLabel,
 	})
 	await emitAppEvent(ctx, appEvent)
+	const source = { type: 'event' as const, id: appEvent.id }
+	await collectEvents(ctx, () => {
+		// a long broadcast reaches the game as several rcon calls, and the game logs each one
+		for (const message of SquadRcon.splitBroadcast(rendered)) {
+			PendingEvents.armExpectation(ctx.server.eventState, { type: 'ADMIN_BROADCAST', message }, source)
+		}
+	})
 	await SquadRcon.broadcast(ctx, rendered)
 }
 
@@ -1527,15 +1536,6 @@ export async function demoteCommanderAction(
 		await sendReasonFollowUpWarn(ctx, appEvent.id, [playerId], AAR.renderAppliedReason(reason))
 	}
 	await notifyAdminsOfWebAction(ctx, appEvent)
-}
-
-// interleaves server events and app events by time for the activity feed. app events sort before server events on
-// ties (placed first + stable sort) so a warn's aggregating app event is already in the client buffer when its
-// collapsed server events arrive. app events are wrapped for the wire (see CHAT.AppFeedEvent).
-function mergeEventsByTime(serverEvents: SE.Event[], appEvents: AppEvents.AppEvent[]): (SE.Event | CHAT.AppFeedEvent)[] {
-	const wrapped: CHAT.AppFeedEvent[] = appEvents.map((appEvent) => ({ type: 'APP_EVENT', appEvent }))
-	const timeOf = (e: SE.Event | CHAT.AppFeedEvent) => (e.type === 'APP_EVENT' ? e.appEvent.time : e.time)
-	return [...wrapped, ...serverEvents].sort((a, b) => timeOf(a) - timeOf(b))
 }
 
 // Must be called with the server's lifecycle lock held (see withLifecycleLock) -- it is the unlocked primitive, and callers reach it

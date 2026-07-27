@@ -303,24 +303,28 @@ async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & C.AsyncResourceInvoca
 	}
 }
 
-export async function broadcast(ctx: SR.Ctx.Rcon & CS.AbortSignal, message: string) {
-	let messages = [message]
-	if (message.length > SM.RCON_MAX_BUF_LEN) {
-		messages = []
-		for (const msg of message.split('\n\n')) {
-			if (msg.length > SM.RCON_MAX_BUF_LEN) {
-				for (const line of msg.split('\n')) {
-					if (line.length > SM.RCON_MAX_BUF_LEN) {
-						messages.push(line.slice(0, SM.RCON_MAX_BUF_LEN))
-					}
+// the rcon calls a broadcast takes: one per message, each of which the game logs separately. Exposed so a caller
+// attributing the broadcast can arm an expectation per line (see broadcastAction).
+export function splitBroadcast(message: string): string[] {
+	if (message.length <= SM.RCON_MAX_BUF_LEN) return [message]
+	const messages: string[] = []
+	for (const msg of message.split('\n\n')) {
+		if (msg.length > SM.RCON_MAX_BUF_LEN) {
+			for (const line of msg.split('\n')) {
+				if (line.length > SM.RCON_MAX_BUF_LEN) {
+					messages.push(line.slice(0, SM.RCON_MAX_BUF_LEN))
 				}
-			} else {
-				messages.push(msg)
 			}
+		} else {
+			messages.push(msg)
 		}
 	}
-	for (const message of messages) {
-		await ctx.rcon.execute(`AdminBroadcast ${message}`, { level: 'debug', signal: ctx.signal })
+	return messages
+}
+
+export async function broadcast(ctx: SR.Ctx.Rcon & CS.AbortSignal, message: string) {
+	for (const line of splitBroadcast(message)) {
+		await ctx.rcon.execute(`AdminBroadcast ${line}`, { level: 'debug', signal: ctx.signal })
 	}
 }
 

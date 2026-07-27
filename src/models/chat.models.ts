@@ -152,17 +152,23 @@ export type EnrichedChatMessage = SE.ChatMessage<SM.Player> & { authorSquadId?: 
 // a warn enriched with the resolved player and, when that player was in a squad at warn time, that squad's unique id.
 export type EnrichedWarn = SE.PlayerWarned<SM.Player> & { targetSquadId?: number }
 
+// a map set enriched with the in-game admin who performed it, when the log named one and they're still on the roster
+export type EnrichedMapSet = SE.MapSet & { actorPlayer?: SM.Player }
+
+// a round end enriched with the in-game admin who ended it, when one did
+export type EnrichedRoundEnded = SE.RoundEnded & { actorPlayer?: SM.Player }
+
 // event enriched with relevant data
 export type EventEnriched =
 	| EnrichedAppEvent
 	| NoopEvent
-	| SE.MapSet
+	| EnrichedMapSet
 	| SE.IngameVoteStarted
 	| SE.NewGame
 	| SE.Reset
 	| SE.RconConnected
 	| SE.RconDisconnected
-	| SE.RoundEnded
+	| EnrichedRoundEnded
 	| SE.PlayerConnected<SM.Player>
 	| SE.PlayerReconciled<SM.Player>
 	| SE.PlayerDisconnected<SM.Player>
@@ -345,6 +351,31 @@ function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Playe
 	buffer.push(warn)
 }
 
+// Interleaves app events into a stream of server events for replay through handleEvent. The server events keep the
+// order they were given in (their id order, which is the order they were interpolated in -- their recorded times are
+// log timestamps and are not monotonic, so sorting the whole lot by time desynchronizes the roster interpolation).
+// An app event is placed before the first server event it precedes in time, and always before any server event
+// attributed to it, since handleEvent can only collapse an attributed server event onto an entry already in the buffer.
+export function mergeAppEvents(serverEvents: SE.Event[], appEvents: AppEvents.AppEvent[]): (SE.Event | AppFeedEvent)[] {
+	const pending = [...appEvents].sort((a, b) => a.time - b.time)
+	const merged: (SE.Event | AppFeedEvent)[] = []
+	let next = 0
+	for (const event of serverEvents) {
+		const source = (event as { source?: { type: string; id?: AppEvents.AppEventId } }).source
+		const attributedTo = source?.type === 'event' ? source.id : undefined
+		let until = next
+		while (until < pending.length && pending[until].time <= event.time) until++
+		if (attributedTo !== undefined) {
+			const attributionIndex = pending.findIndex((a, i) => i >= next && a.id === attributedTo)
+			if (attributionIndex >= until) until = attributionIndex + 1
+		}
+		for (; next < until; next++) merged.push({ type: 'APP_EVENT', appEvent: pending[next] })
+		merged.push(event)
+	}
+	for (; next < pending.length; next++) merged.push({ type: 'APP_EVENT', appEvent: pending[next] })
+	return merged
+}
+
 // the id of the most recent server event in the buffer (skips app events, which have string ids and no
 // numeric resume cursor). used to resume the chat stream on reconnect.
 export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
@@ -361,14 +392,20 @@ function playerSquadUniqueId(state: InterpolableState, player: SM.Player): numbe
 	return state.squads.find((s) => s.squadId === player.squadId && s.teamId === player.teamId)?.uniqueId
 }
 
+// resolves an eos id against the live roster, falling back to everyone who has taken part in this match. The fallback
+// is what names the target of an action that removed them (a kick, a dropped teamswap) instead of printing their id.
+function resolvePlayer(state: InterpolableState, playerId: SM.PlayerId): SM.Player | undefined {
+	const live = SM.PlayerIds.find(state.players, (p) => p.ids, { eos: playerId })
+	if (live) return live
+	const recent = InterpolableState.findRecentPlayer(state, { eos: playerId })
+	return recent ? SM.fromRecentPlayer(recent) : undefined
+}
+
 function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent): EnrichedAppEvent {
 	const targetPlayers = AppEvents.involvedPlayerIds(appEvent)
-		.map((id) => SM.PlayerIds.find(state.players, (p) => p.ids, { eos: id }))
+		.map((id) => resolvePlayer(state, id))
 		.filter((p): p is SM.Player => !!p)
-	const actorPlayer =
-		appEvent.actor.type === 'ingame-user'
-			? (SM.PlayerIds.find(state.players, (p) => p.ids, { eos: appEvent.actor.playerId }) ?? undefined)
-			: undefined
+	const actorPlayer = appEvent.actor.type === 'ingame-user' ? resolvePlayer(state, appEvent.actor.playerId) : undefined
 
 	const targetSquadIds = new Set<number>()
 	// squad-typed actions name an in-game squad + team directly; resolve to the live instance (it still exists when the
@@ -495,6 +532,13 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		case 'NEW_GAME':
 		case 'RESET': {
 			applyEventTeamMutations(chatLog, state, event)
+			if (event.type === 'MAP_SET') {
+				const source = event.source
+				return {
+					...event,
+					actorPlayer: source?.type === 'player' ? SM.PlayerIds.find(state.players, (p) => p.ids, source.playerIds) : undefined,
+				}
+			}
 			if (event.type === 'NEW_GAME') {
 				// a match boundary restarts participation: only whoever is on the roster right now counts as recent,
 				// and last match's scores go with it. NEW_GAME is the only boundary -- a RESET reseeds the roster for
@@ -516,10 +560,17 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 
 		case 'RCON_CONNECTED':
 		case 'RCON_DISCONNECTED':
-		case 'ROUND_ENDED':
 		case 'TEAMS_POLLED_UPDATE':
 		case 'INGAME_VOTE_STARTED':
 			return { ...event }
+
+		case 'ROUND_ENDED': {
+			const source = event.action?.source
+			return {
+				...event,
+				actorPlayer: source?.type === 'player' ? SM.PlayerIds.find(state.players, (p) => p.ids, source.playerIds) : undefined,
+			}
+		}
 
 		case 'PLAYER_CONNECTED': {
 			if (SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)) {
@@ -767,11 +818,10 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 						)
 					}
 					return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
-				} else if (event.source.type === 'rcon') {
-					return { ...event } as SE.AdminBroadcast
-				} else {
-					assertNever(event.source)
 				}
+				// nobody in-game sent it: an external rcon tool, or SLM itself. An SLM broadcast carries the app
+				// event that sent it and collapses under that entry rather than rendering here (see handleEvent).
+				return { ...event } as SE.AdminBroadcast
 			} else {
 				throw new Error(`AdminBroadcast event must have either from or source property`)
 			}
