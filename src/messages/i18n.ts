@@ -15,7 +15,7 @@ import type React from 'react'
 
 export const DEFAULT_LOCALE = 'en'
 
-export type MessageValues = Record<string, React.ReactNode | Date>
+export type MessageValues = Record<string, React.ReactNode | Date | ((chunks: React.ReactNode[]) => React.ReactNode)>
 
 // The catalogues a build carries. English is absent on purpose: a message IS its English, so resolving en means
 // handing the key straight back, with no ICU parse and no allocation.

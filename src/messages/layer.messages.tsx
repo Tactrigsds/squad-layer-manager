@@ -54,11 +54,7 @@ export const layerFound = Msgs.def('Layer exists in the database')
 
 // the count is emphasised, which is part of the sentence; the readout styles `strong` itself
 export const matchedLayers = Msgs.def((count: string) => ({
-	react: () => (
-		<>
-			<strong>{count}</strong> matched layers
-		</>
-	),
+	react: () => Msgs.node('<strong>{count}</strong> matched layers', { count, ...Msgs.tags }),
 }))
 
 export const noLayersMatched = Msgs.def('No layers matched')
@@ -112,28 +108,28 @@ export const startingTickets = Msgs.def('Starting Tickets:')
 
 // the faction line under a team heading: `<team> (<role>) - <faction> (<unit type>)`
 export const teamFactionLine = Msgs.def((team: string, role: string | undefined, faction: string, unitType: string) => ({
-	react: () => (
-		<>
-			<strong>
-				{team}
-				{role && ` (${role})`}
-			</strong>{' '}
-			- {faction} ({unitType})
-		</>
-	),
+	react: () =>
+		Msgs.node('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} ({unitType})', {
+			team,
+			role,
+			hasRole: role ? 'yes' : 'no',
+			faction,
+			unitType,
+			...Msgs.tags,
+		}),
 }))
 
 // the same heading in the score grid, where the unit is named rather than typed
 export const teamScoreHeading = Msgs.def((team: string, role: string | undefined, faction: string, unit: string) => ({
-	react: () => (
-		<>
-			<strong>
-				{team}
-				{role && ` (${role})`}
-			</strong>{' '}
-			- {faction} {unit}
-		</>
-	),
+	react: () =>
+		Msgs.node('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} {unit}', {
+			team,
+			role,
+			hasRole: role ? 'yes' : 'no',
+			faction,
+			unit,
+			...Msgs.tags,
+		}),
 }))
 
 export const unknownUnit = Msgs.def('Unknown')
@@ -156,7 +152,7 @@ export const poolCutoff = Msgs.def('Pool Cutoff ({value})', (value: string) => (
 // The number is coloured by which team the difference favours, which no single class on the container can
 // express, so the caller renders it and the message positions it.
 export const scoreDiff = Msgs.def((value: React.ReactNode) => ({
-	react: () => <>(diff: {value})</>,
+	react: () => Msgs.node('(diff: {value})', { value }),
 }))
 
 export const scoreUnavailable = Msgs.def('N/A')
