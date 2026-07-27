@@ -10,7 +10,9 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as Messages from '@/messages.ts'
+import * as BAL_Msgs from '@/messages/balance-triggers.messages'
+import * as LL_Msgs from '@/messages/layer-list.messages'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
 import * as BAL from '@/models/balance-triggers.models.ts'
@@ -68,6 +70,7 @@ export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverSta
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
 	const payload: LQ.Ctx.Payload = {
 		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
+		ingameVote$: new IsolatedBehaviorSubject<LQ.IngameVote | null>(null),
 		update$: new IsolatedReplaySubject(1),
 
 		session: ODSM.Server.initSession<SLL.Operation, SLL.State>(sllState),
@@ -75,7 +78,7 @@ export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverSta
 		updateLayerMtx: new Mutex(),
 	}
 
-	ctx.cleanup.push(payload.update$, payload.unexpectedNextLayerSet$, payload.op$, payload.updateLayerMtx)
+	ctx.cleanup.push(payload.update$, payload.unexpectedNextLayerSet$, payload.ingameVote$, payload.op$, payload.updateLayerMtx)
 
 	return payload
 }
@@ -140,7 +143,7 @@ export const setupInstance = Instr.spanOp(
 									})
 								await SquadRcon.warnAllAdmins(
 									ctx,
-									Messages.WARNS.queue.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
+									LL_Msgs.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }).warn(),
 								)
 								return
 							}
@@ -156,15 +159,15 @@ export const setupInstance = Instr.spanOp(
 							) {
 								await SquadRcon.warnAllAdmins(
 									baseCtx,
-									Messages.WARNS.queue.votePending(
+									LL_Msgs.votePending(
 										currentMatch.startTime,
 										serverState.settings.vote.startVoteReminderThreshold,
 										serverState.settings.vote.autoStartVoteDelay !== null,
 										Settings.GLOBAL_SETTINGS.commands,
-									),
+									).warn(),
 								)
 							} else if (serverState.layerQueue.length === 0) {
-								await SquadRcon.warnAllAdmins(baseCtx, Messages.WARNS.queue.empty)
+								await SquadRcon.warnAllAdmins(baseCtx, LL_Msgs.empty().warn())
 							}
 						}),
 					)
@@ -250,6 +253,52 @@ export const setupInstance = Instr.spanOp(
 				.subscribe()
 		}
 
+		// -------- stand down while the Squad server runs its own vote --------
+		// A next-layer vote resolves after SLM has already set the next layer and overwrites it, so anything SLM
+		// writes from here until the roll is discarded. Rather than fight it, stop writing and say so. The flag is
+		// left on across the roll deliberately: whoever turned voting on owns the rotation until an admin says
+		// otherwise. Faction votes don't touch the layer, so they only get recorded and shown.
+		{
+			ctx.server.event$
+				.pipe(
+					Rx.filter(([, event]) => event.type === 'INGAME_VOTE_STARTED' || event.type === 'NEW_GAME'),
+					Instr.durableSub('handle-ingame-vote', { module }, async ([evtCtx, event], signal) => {
+						const ctx = SquadServer.eventCtx(evtCtx, signal)
+						if (event.type === 'NEW_GAME') {
+							ctx.layerQueue.ingameVote$.next(null)
+							return
+						}
+						if (event.type !== 'INGAME_VOTE_STARTED') return
+
+						const serverState = await SquadServer.getServerState(ctx)
+						const shouldDisable = event.kind === 'next-layer' && !serverState.settings.updatesToSquadServerDisabled
+						if (shouldDisable) {
+							await toggleUpdatesToSquadServer({ ctx, input: { disabled: true, cause: 'ingame-vote-detected' } })
+							// SLM turning itself off is an action in its own right, and the settings write alone leaves no
+							// trace of who did it or why
+							await AppEventsSys.persistAppEvent(
+								ctx,
+								AppEvents.create<AppEvents.SettingsUpdated>({
+									type: 'SETTINGS_UPDATED',
+									actor: { type: 'system' },
+									serverId: ctx.serverId,
+									matchId: event.matchId,
+									causeId: null,
+									changes: [{ path: 'updatesToSquadServerDisabled', from: false, to: true }],
+								}),
+							)
+						}
+						ctx.layerQueue.ingameVote$.next({
+							kind: event.kind,
+							choices: event.choices,
+							startedAt: event.time,
+							disabledUpdates: shouldDisable,
+						})
+					}),
+				)
+				.subscribe()
+		}
+
 		// -------- handle AdminChangeLayer --------
 		{
 			ctx.server.event$
@@ -313,7 +362,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
-				await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+				await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast())
 			}),
 		)
 	}
@@ -329,10 +378,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				if (!currentMatch) return
 				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
 				if (!mostRelevantEvent) return
-				await SquadRcon.warnAllAdmins(
-					ctx,
-					Messages.WARNS.balanceTrigger.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }),
-				)
+				await SquadRcon.warnAllAdmins(ctx, BAL_Msgs.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }).warn())
 			}),
 		)
 
@@ -348,7 +394,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				const queue = getSavedQueue(ctx)
 				if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
-					await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.lowQueueItemCount(queue.length))
+					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length).warn())
 				}
 			}),
 		)
@@ -514,7 +560,7 @@ export async function warnShowNext(
 	const nextLayerRes = await ctx.squadRcon.layersStatus.get(ctx)
 	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
 	const commands = Settings.GLOBAL_SETTINGS.commands
-	const showNextMsg = Messages.WARNS.queue.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin })
+	const showNextMsg = LL_Msgs.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin }).warn()
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, showNextMsg)
 	} else {
@@ -605,18 +651,21 @@ export async function toggleUpdatesToSquadServer({
 	input,
 }: {
 	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
-	input: { disabled: boolean }
+	input: { disabled: boolean; cause?: 'ingame-vote-detected' }
 }) {
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const serverState = await SquadServer.getServerState(ctx)
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
 		await Settings.updateServerSettings(ctx, serverState.settings, {
 			type: 'system',
-			event: 'updates-to-squad-server-toggled',
+			event: input.cause ?? 'updates-to-squad-server-toggled',
 		})
 	})
 
-	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.slmUpdatesSet(!input.disabled))
+	await SquadRcon.warnAllAdmins(
+		ctx,
+		input.cause ? SS_Msgs.ingameVoteDisabledUpdates().warn() : SS_Msgs.slmUpdatesSet(!input.disabled).warn(),
+	)
 	return { code: 'ok' as const }
 }
 
@@ -637,7 +686,7 @@ export async function requestFeedback(
 	else index = LL.resolveLayerQueueItemIndexForNumber(layerQueueNumber) ?? undefined
 	if (!index) return { code: 'err:not-found' as const }
 	const item = LL.resolveItemForIndex(layerQueue, index)!
-	await SquadRcon.warnAllAdmins(ctx, Messages.WARNS.queue.requestFeedback(index, playerName, item))
+	await SquadRcon.warnAllAdmins(ctx, LL_Msgs.requestFeedback(index, playerName, item).warn())
 	return { code: 'ok' as const }
 }
 
@@ -652,6 +701,16 @@ export const router = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
+				Rx.Ext.withAbortSignal(signal!),
+			)
+			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
+
+	watchIngameVote: orpcBase
+		.meta({ logLevel: 'trace' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async function* ({ context, signal, input }) {
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.ingameVote$).pipe(
 				Rx.Ext.withAbortSignal(signal!),
 			)
 			yield* Rx.Ext.toAsyncGenerator(obs)

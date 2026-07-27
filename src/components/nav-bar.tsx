@@ -36,7 +36,6 @@ import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
@@ -44,15 +43,15 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeClient from '@/systems/theme.client'
-import { useLoggedInUser } from '@/systems/users.client'
+import * as UsersClient from '@/systems/users.client'
 
 const EXPLORE_LAYERS_FRAME_INSTANCE_ID = 'explore-layers'
 
 export default function NavBar() {
 	const flags = FeatureFlags.useFeatureFlags()
 	const wsStatus = RPC.useConnectStatus()
-	const { simulate, setSimulate } = Zus.useStore(RbacClient.RbacStore)
-	const user = useLoggedInUser()
+	const { simulate, setSimulate } = Zus.useStore(RbacClient.RbacStore, RbacClient.Sel.simulateControls)
+	const user = UsersClient.useLoggedInUser()
 
 	const avatarUrl = user?.avatarUrl
 
@@ -101,15 +100,12 @@ export default function NavBar() {
 		[selectedServer],
 	)
 
-	const registryDenied = RbacClient.usePermsCheck({
-		check: 'any',
-		permits: [RBAC.perm('admin:manage-servers'), RBAC.perm('admin:delete-servers')],
-	})
-	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
-	const showSettingsLink =
-		!registryDenied ||
-		RBAC.canReadGlobalSettings(loggedInPerms) ||
-		(settings?.servers ?? []).some((s) => RBAC.canReadServerSettings(loggedInPerms, s.id))
+	const showSettingsLink = Zus.useStore_Susp(
+		UsersClient.loggedInUserQueryOptions,
+		RbacClient.RbacStore,
+		SettingsClient.PublicSettingsStore,
+		RbacClient.Sel.settingsLinkVisible,
+	)
 	const [exploreLayersOpen, setExploreLayersOpen] = React.useState(false)
 
 	// the user-avatar menu items, shared between the avatar dropdown (>= sm) and the hamburger (< sm). Rendered in exactly one
@@ -315,6 +311,7 @@ export default function NavBar() {
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
 								<Avatar
+									aria-label="User menu"
 									style={{ backgroundColor: user.displayHexColor ?? undefined }}
 									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
 								>
@@ -358,7 +355,7 @@ function NormalizeTeamsToggle() {
 // server's settings. Switching servers therefore builds a fresh instance and drops the previous one, rather than leaving
 // the dialog constrained by the server the page happened to load with
 function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
-	const input = React.useMemo(() => SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID }), [])
+	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID })
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
 	useFrameTeardownOnUnmount(frameKey)
 

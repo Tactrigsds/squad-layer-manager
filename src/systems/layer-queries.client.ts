@@ -297,12 +297,7 @@ const emptySettings = SETTINGS.PublicServerSettingsSchema.parse({})
 export function useLayerItemStatusConstraints(squadServerFrameKey?: SquadServerFrame.Key) {
 	return Zus.useStore(
 		squadServerFrameKey ?? null,
-		Zus.useDeep(
-			React.useCallback(
-				(state: SquadServerFrame.State | undefined) => SETTINGS.getSettingsConstraints(state?.settings.saved ?? emptySettings),
-				[],
-			),
-		),
+		Zus.useDeep((state: SquadServerFrame.State | undefined) => SETTINGS.getSettingsConstraints(state?.settings.saved ?? emptySettings)),
 	)
 }
 
@@ -340,32 +335,25 @@ export function useLayerItemStatusData(
 
 	const highlightedMatchDescriptors = Zus.useStore(
 		Store,
-		Zus.useDeep(
-			React.useCallback(
-				(store) => {
-					if (!allMatchDescriptors) return
-					const hoveredConstraintItemId = store.hoveredConstraintItemId ?? undefined
-					const hoveredMatchDescriptors =
-						(hoveredConstraintItemId &&
-							hoveredConstraintItemId !== itemId &&
-							filterAndReportInvalidDescriptors(
-								queriedConstraints,
-								allMatchDescriptors
-									.get(hoveredConstraintItemId)
-									?.filter((vd) => vd.type === 'repeat-rule' && vd.sourceItemId === itemId),
-							)) ||
-						undefined
+		Zus.useDeep((store) => {
+			if (!allMatchDescriptors) return
+			const hoveredConstraintItemId = store.hoveredConstraintItemId ?? undefined
+			const hoveredMatchDescriptors =
+				(hoveredConstraintItemId &&
+					hoveredConstraintItemId !== itemId &&
+					filterAndReportInvalidDescriptors(
+						queriedConstraints,
+						allMatchDescriptors.get(hoveredConstraintItemId)?.filter((vd) => vd.type === 'repeat-rule' && vd.sourceItemId === itemId),
+					)) ||
+				undefined
 
-					const localMatchDescriptors =
-						(hoveredConstraintItemId === itemId &&
-							filterAndReportInvalidDescriptors(queriedConstraints, allMatchDescriptors.get(itemId))) ||
-						undefined
+			const localMatchDescriptors =
+				(hoveredConstraintItemId === itemId &&
+					filterAndReportInvalidDescriptors(queriedConstraints, allMatchDescriptors.get(itemId))) ||
+				undefined
 
-					return localMatchDescriptors ?? hoveredMatchDescriptors
-				},
-				[allMatchDescriptors, itemId, queriedConstraints],
-			),
-		),
+			return localMatchDescriptors ?? hoveredMatchDescriptors
+		}),
 	)
 
 	return React.useMemo(() => {

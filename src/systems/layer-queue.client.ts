@@ -8,6 +8,7 @@ import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
+import type * as LQ from '@/models/layer-queue.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
@@ -17,6 +18,14 @@ export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bindWithDe
 			RPC.dropServerNotLoaded(),
 		),
 	null as L.LayerId | null,
+)
+
+export const [useIngameVote, ingameVote$] = ReactRx.bindWithDefault(
+	(serverId: string) =>
+		RPC.observe('layerQueue.watchIngameVote', () => RPC.orpc.layerQueue.watchIngameVote.call({ serverId })).pipe(
+			RPC.dropServerNotLoaded(),
+		),
+	null as LQ.IngameVote | null,
 )
 
 // serverId === '' is used as a sentinel by consumers (e.g. LayerDisplay) rendered outside any squadServer frame context
@@ -39,6 +48,7 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind('layerQueue.l
 
 export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
 	cleanup.push(unexpectedNextLayer$(serverId).subscribe())
+	cleanup.push(ingameVote$(serverId).subscribe())
 	cleanup.push(layerItemsState$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }
 

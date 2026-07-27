@@ -60,43 +60,38 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 
-	DndKit.useDragEnd(
-		React.useCallback(
-			(event) => {
-				if (!event.over) return
-				if (event.active.type !== 'filter-node') return
-				const editor = Zus.getState(props.stores.filterEditor)
-				const sourcePath = editor.tree.paths.get(event.active.id)!
-				const slot = event.over.slots.find((s) => s.dragItem.type === 'filter-node')
-				if (!slot) return
-				const slotPath = editor.tree.paths.get(slot.dragItem.id.toString())!
+	DndKit.useDragEnd((event) => {
+		if (!event.over) return
+		if (event.active.type !== 'filter-node') return
+		const editor = Zus.getState(props.stores.filterEditor)
+		const sourcePath = editor.tree.paths.get(event.active.id)!
+		const slot = event.over.slots.find((s) => s.dragItem.type === 'filter-node')
+		if (!slot) return
+		const slotPath = editor.tree.paths.get(slot.dragItem.id.toString())!
 
-				let targetPath: Sparse.NodePath
+		let targetPath: Sparse.NodePath
 
-				switch (slot.position) {
-					case 'after':
-						targetPath = [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
-						break
-					case 'before':
-						targetPath = slotPath
-						break
-					case 'on': {
-						targetPath = [...slotPath, F.nextChildIndex(editor.tree, slotPath)]
-						break
-					}
-					default:
-						assertNever(slot.position)
-				}
+		switch (slot.position) {
+			case 'after':
+				targetPath = [...slotPath.slice(0, -1), slotPath[slotPath.length - 1] + 1]
+				break
+			case 'before':
+				targetPath = slotPath
+				break
+			case 'on': {
+				targetPath = [...slotPath, F.nextChildIndex(editor.tree, slotPath)]
+				break
+			}
+			default:
+				assertNever(slot.position)
+		}
 
-				if (Sparse.isOwnedPath(sourcePath, targetPath)) {
-					console.warn('Cannot move node to its own child')
-					return
-				}
-				EditFrame.Actions.moveNode(props.stores, sourcePath, targetPath)
-			},
-			[props.stores],
-		),
-	)
+		if (Sparse.isOwnedPath(sourcePath, targetPath)) {
+			console.warn('Cannot move node to its own child')
+			return
+		}
+		EditFrame.Actions.moveNode(props.stores, sourcePath, targetPath)
+	})
 
 	const [nodeStore, modified] = Zus.useStore(
 		props.stores.filterEditor,

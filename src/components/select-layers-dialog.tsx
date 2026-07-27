@@ -209,13 +209,13 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 })
 
 export default function SelectLayersDialog(props: SelectLayersDialogProps) {
-	const defaultSelected: L.LayerId[] = React.useMemo(() => props.defaultSelected ?? [], [props.defaultSelected])
+	const defaultSelected: L.LayerId[] = props.defaultSelected ?? []
 
 	const onOpenChange = props.onOpenChange
-	const onClose = React.useCallback(() => {
+	const onClose = () => {
 		if (!onOpenChange) return
 		onOpenChange(false)
-	}, [onOpenChange])
+	}
 
 	return (
 		<HeadlessDialog open={props.open} onOpenChange={onOpenChange} unmount={false}>

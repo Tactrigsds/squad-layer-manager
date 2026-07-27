@@ -39,6 +39,7 @@ import { resToOptional } from '@/lib/types.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
+import * as V_Msgs from '@/messages/vote.messages'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
@@ -71,58 +72,53 @@ export function LayerList(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer.serverId
 
 	// -------- dispatch move events --------
-	DndKit.useDragEnd(
-		React.useCallback(
-			async (event) => {
-				const user = UsersClient.loggedInUser
-				const upState = Zus.getState(UPClient.Store)
-				if (!user || !event.over) return
-				if (!UPClient.Sel.isEditing(user.discordId)(upState)) return
-				const target = event.over.slots[0]
-				if (target.dragItem.type !== 'layer-item') return
-				const cursors = LL.dropItemToLLItemCursors(event.over)
-				if (cursors.length === 0) return
-				const voteState = VotesClient.voteState$(serverId).getValue()
-				const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer))
-				if (voteState?.code === 'in-progress') {
-					for (const cursor of cursors) {
-						if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
-					}
-				}
+	DndKit.useDragEnd(async (event) => {
+		const user = UsersClient.loggedInUser
+		const upState = Zus.getState(UPClient.Store)
+		if (!user || !event.over) return
+		if (!UPClient.Sel.isEditing(user.discordId)(upState)) return
+		const target = event.over.slots[0]
+		if (target.dragItem.type !== 'layer-item') return
+		const cursors = LL.dropItemToLLItemCursors(event.over)
+		if (cursors.length === 0) return
+		const voteState = VotesClient.voteState$(serverId).getValue()
+		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(props.stores.squadServer))
+		if (voteState?.code === 'in-progress') {
+			for (const cursor of cursors) {
+				if (LL.isChildItem(cursor.itemId, voteState.itemId, layerList)) return
+			}
+		}
 
-				const cursor = cursors[0]
+		const cursor = cursors[0]
 
-				if (event.active.type === 'history-entry') {
-					const history = await MatchHistoryClient.recentMatches$(serverId).getValue()
-					const activeId = event.active.id
-					const entry = history.find((entry) => entry.historyEntryId === activeId)
-					if (!entry) return
-					const index = LL.resolveCursorIndex(layerList, cursor)!
-					void LayerQueuePrt.Actions.dispatch(
-						{ queue: props.stores.squadServer },
-						{
-							op: 'add',
-							items: [{ type: 'single-list-item', layerId: entry.layerId }],
-							index,
-						},
-					)
-				}
+		if (event.active.type === 'history-entry') {
+			const history = await MatchHistoryClient.recentMatches$(serverId).getValue()
+			const activeId = event.active.id
+			const entry = history.find((entry) => entry.historyEntryId === activeId)
+			if (!entry) return
+			const index = LL.resolveCursorIndex(layerList, cursor)!
+			void LayerQueuePrt.Actions.dispatch(
+				{ queue: props.stores.squadServer },
+				{
+					op: 'add',
+					items: [{ type: 'single-list-item', layerId: entry.layerId }],
+					index,
+				},
+			)
+		}
 
-				if (event.active.type === 'layer-item') {
-					void LayerQueuePrt.Actions.dispatch(
-						{ queue: props.stores.squadServer },
-						{
-							op: 'move',
-							cursor: cursor,
-							itemId: event.active.id,
-							newFirstItemId: LL.createItemId(),
-						},
-					)
-				}
-			},
-			[props.stores.squadServer, serverId],
-		),
-	)
+		if (event.active.type === 'layer-item') {
+			void LayerQueuePrt.Actions.dispatch(
+				{ queue: props.stores.squadServer },
+				{
+					op: 'move',
+					cursor: cursor,
+					itemId: event.active.id,
+					newFirstItemId: LL.createItemId(),
+				},
+			)
+		}
+	})
 
 	DndKit.useDraggingCallback((item) => {
 		if (!item) {
@@ -190,12 +186,9 @@ function LoadedSelectLayersView({
 }) {
 	const entry = useStableValue((e) => e, [_entry])
 
-	const setPosition = React.useCallback(
-		(newPosition: AddLayersPosition) => {
-			SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, ADD_LAYERS_CURSORS[newPosition])
-		},
-		[entry.data.selectLayersFrame],
-	)
+	const setPosition = (newPosition: AddLayersPosition) => {
+		SelectLayersFrame.Actions.setCursor({ selectLayers: entry.data.selectLayersFrame }, ADD_LAYERS_CURSORS[newPosition])
+	}
 
 	const addLayersAtPosition = Zus.useStore(entry.data.selectLayersFrame, selectAddLayersPosition)
 
@@ -204,65 +197,56 @@ function LoadedSelectLayersView({
 
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 
-	const onAddItems = React.useCallback(
-		(items: LL.NewItem[]) => {
-			if (activity.id !== 'ADDING_ITEM') return
-			const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
-			let cursor = Zus.getState(entry.data.selectLayersFrame).cursor
-			let index: LL.ItemIndex
-			const defaultIndex = { outerIndex: 0, innerIndex: null }
-			if (cursor) index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
-			else index = defaultIndex
-			void LayerQueuePrt.Actions.dispatch(
-				{ queue: stores.squadServer },
-				{
-					op: 'add',
-					items: LL.withTags(items, pendingTags),
-					index,
-				},
-			)
-		},
-		[activity.id, stores.squadServer, entry.data.selectLayersFrame, pendingTags],
-	)
+	const onAddItems = (items: LL.NewItem[]) => {
+		if (activity.id !== 'ADDING_ITEM') return
+		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
+		let cursor = Zus.getState(entry.data.selectLayersFrame).cursor
+		let index: LL.ItemIndex
+		const defaultIndex = { outerIndex: 0, innerIndex: null }
+		if (cursor) index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
+		else index = defaultIndex
+		void LayerQueuePrt.Actions.dispatch(
+			{ queue: stores.squadServer },
+			{
+				op: 'add',
+				items: LL.withTags(items, pendingTags),
+				index,
+			},
+		)
+	}
 
-	const onEditedLayer = React.useCallback(
-		(layerId: L.LayerId) => {
-			if (activity.id !== 'EDITING_ITEM') return
-			const itemId = activity.opts.itemId
-			void LayerQueuePrt.Actions.dispatch(
-				{ queue: stores.squadServer },
-				{
-					op: 'edit-layer',
-					itemId,
-					newLayerId: layerId,
-				},
-			)
-		},
-		[activity.id, activity.opts, stores.squadServer],
-	)
+	const onEditedLayer = (layerId: L.LayerId) => {
+		if (activity.id !== 'EDITING_ITEM') return
+		const itemId = activity.opts.itemId
+		void LayerQueuePrt.Actions.dispatch(
+			{ queue: stores.squadServer },
+			{
+				op: 'edit-layer',
+				itemId,
+				newLayerId: layerId,
+			},
+		)
+	}
 
-	const onSelectLayersChange = React.useCallback((open: boolean) => {
+	const onSelectLayersChange = (open: boolean) => {
 		if (open) return
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [])
+	}
 
 	const dialogStores = {
 		selectLayers: data.selectLayersFrame,
 		squadServer: stores.squadServer,
 	}
 
-	const addLayersTabsList = React.useMemo(
-		() => (
-			<TabsList
-				options={[
-					{ label: 'Play Next', value: 'next' },
-					{ label: 'Play After', value: 'after' },
-				]}
-				active={addLayersAtPosition}
-				setActive={setPosition}
-			/>
-		),
-		[addLayersAtPosition, setPosition],
+	const addLayersTabsList = (
+		<TabsList
+			options={[
+				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play After', value: 'after' },
+			]}
+			active={addLayersAtPosition}
+			setActive={setPosition}
+		/>
 	)
 
 	if (activity.id === 'EDITING_ITEM') {
@@ -299,49 +283,43 @@ function LoadedGenVoteView({
 	const entry = useStableValue((e) => e, [_entry])
 	const data = entry.data
 
-	const onOpenChange = React.useCallback((open: boolean) => {
+	const onOpenChange = (open: boolean) => {
 		if (open) return
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [])
+	}
 
-	const dialogStores = React.useMemo(
-		() => ({
-			genVote: data.genVoteFrame,
-			squadServer: stores.squadServer,
-		}),
-		[data.genVoteFrame, stores.squadServer],
-	)
+	const dialogStores = {
+		genVote: data.genVoteFrame,
+		squadServer: stores.squadServer,
+	}
 
-	const onSubmit = React.useCallback(
-		(result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
-			const source: LL.Source = {
-				type: 'manual',
-				userId: UsersClient.loggedInUserId!,
-			}
+	const onSubmit = (result: GenVoteFrame.Result, cursor?: LL.Cursor) => {
+		const source: LL.Source = {
+			type: 'manual',
+			userId: UsersClient.loggedInUserId!,
+		}
 
-			const item = LL.createVoteItem(result.choices, source, result.voteConfig)
+		const item = LL.createVoteItem(result.choices, source, result.voteConfig)
 
-			const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
-			let index: LL.ItemIndex
-			const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
-			if (cursor) {
-				index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
-			} else {
-				index = defaultIndex
-			}
+		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
+		let index: LL.ItemIndex
+		const defaultIndex: LL.ItemIndex = { outerIndex: 0, innerIndex: null }
+		if (cursor) {
+			index = LL.resolveCursorIndex(layerList, cursor) ?? defaultIndex
+		} else {
+			index = defaultIndex
+		}
 
-			void LayerQueuePrt.Actions.dispatch(
-				{ queue: stores.squadServer },
-				{
-					op: 'add',
-					index: index ?? { outerIndex: 0, innerIndex: null },
-					items: [item],
-				},
-			)
-			UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-		},
-		[stores.squadServer],
-	)
+		void LayerQueuePrt.Actions.dispatch(
+			{ queue: stores.squadServer },
+			{
+				op: 'add',
+				index: index ?? { outerIndex: 0, innerIndex: null },
+				items: [item],
+			},
+		)
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+	}
 
 	return <GenVoteDialog title="Generate Vote" stores={dialogStores} open={entry.active} onOpenChange={onOpenChange} onSubmit={onSubmit} />
 }
@@ -357,45 +335,39 @@ function LoadedPasteRotation({
 	const [pastePosition, setPastePosition] = React.useState<'next' | 'after'>('next')
 	const [pendingTags, setPendingTags] = React.useState<LTag.TagId[]>([])
 
-	const onOpenChange = React.useCallback((open: boolean) => {
+	const onOpenChange = (open: boolean) => {
 		if (open) return
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-	}, [])
+	}
 
-	const onSubmit = React.useCallback(
-		(layers: L.UnvalidatedLayer[]) => {
-			const layerIds = layers.map((l) => l.id)
-			const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
-			const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
-			const index: LL.ItemIndex = LL.resolveCursorIndex(layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
-			void LayerQueuePrt.Actions.dispatch(
-				{ queue: stores.squadServer },
-				{
-					op: 'add',
-					index,
-					items: LL.withTags(
-						layerIds.map((layerId) => ({ type: 'single-list-item', layerId })),
-						pendingTags,
-					),
-				},
-			)
-			UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
-		},
-		[stores.squadServer, pastePosition, pendingTags],
-	)
+	const onSubmit = (layers: L.UnvalidatedLayer[]) => {
+		const layerIds = layers.map((l) => l.id)
+		const cursor: LL.Cursor = pastePosition === 'next' ? { type: 'start' } : { type: 'end' }
+		const layerList = LayerQueuePrt.Sel.layerList(Zus.getState(stores.squadServer))
+		const index: LL.ItemIndex = LL.resolveCursorIndex(layerList, cursor) ?? { outerIndex: 0, innerIndex: null }
+		void LayerQueuePrt.Actions.dispatch(
+			{ queue: stores.squadServer },
+			{
+				op: 'add',
+				index,
+				items: LL.withTags(
+					layerIds.map((layerId) => ({ type: 'single-list-item', layerId })),
+					pendingTags,
+				),
+			},
+		)
+		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+	}
 
-	const positionTabsList = React.useMemo(
-		() => (
-			<TabsList
-				options={[
-					{ label: 'Play Next', value: 'next' },
-					{ label: 'Play After', value: 'after' },
-				]}
-				active={pastePosition}
-				setActive={setPastePosition}
-			/>
-		),
-		[pastePosition],
+	const positionTabsList = (
+		<TabsList
+			options={[
+				{ label: 'Play Next', value: 'next' },
+				{ label: 'Play After', value: 'after' },
+			]}
+			active={pastePosition}
+			setActive={setPastePosition}
+		/>
 	)
 
 	return (
@@ -768,7 +740,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote started!')
+				toast(...V_Msgs.adminReceipt.started().toast())
 				break
 			default:
 				toast.error(res.msg)
@@ -783,7 +755,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote aborted!')
+				toast(...V_Msgs.adminReceipt.aborted().toast())
 				break
 			default:
 				toast.error(res.msg)
@@ -798,7 +770,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote ended early!')
+				toast(...V_Msgs.adminReceipt.endedEarly().toast())
 				break
 			default:
 				toast.error(res.msg)
@@ -813,13 +785,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast('Vote aborted!')
+				toast(...V_Msgs.adminReceipt.autostartCancelled().toast())
 				break
 			default:
 				toast.error(res.msg)
 		}
-
-		toast('Vote autostart cancelled!')
 	}
 
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)

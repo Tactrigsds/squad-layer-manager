@@ -7,7 +7,7 @@ import { assertNever } from './type-guards'
 
 type Value = Rx.Subscription | Rx.ObservableInput<unknown> | Rx.Subject<unknown> | MutexInterface | AbortController | null | undefined
 
-export type Task = (() => Value | void) | Value | Tasks
+export type Task = (() => unknown) | Value | Tasks
 
 export type Tasks = Task[]
 
@@ -24,15 +24,17 @@ type Classified =
 // correctness depends on the sequence a caller happens to apply them in. A Subject is a Subscription *and* an
 // ObservableInput; a mutex and an AbortController both carry cancel-shaped methods; a Subscription carries
 // `unsubscribe` and, unlike an Observable, no `subscribe`. Every branch is only right because the ones above it
-// have already been ruled out.
-function classify(value: Value | Tasks | void): Classified {
+// have already been ruled out. Anything left unrecognized is ignored rather than awaited: a thunk's return value is
+// incidental, and zustand's unsubscribe -- `() => listeners.delete(listener)` -- hands back Set.delete's `true`.
+function classify(value: unknown): Classified {
 	if (value === null || value === undefined) return { kind: 'noop' }
 	if (Array.isArray(value)) return { kind: 'nested', tasks: value }
 	if (value instanceof Rx.Subject) return { kind: 'subject', subject: value }
 	if (value instanceof AbortController) return { kind: 'abortController', controller: value }
 	if (isMutex(value)) return { kind: 'mutex', mutex: value }
 	if (isSubscription(value)) return { kind: 'subscription', subscription: value }
-	return { kind: 'awaitable', source: value }
+	if (isObservableInput(value)) return { kind: 'awaitable', source: value }
+	return { kind: 'noop' }
 }
 
 // runs cleanup tasks in a FILO fashion, awaiting any that are async. A failing task is logged and the rest still run
@@ -84,6 +86,10 @@ export function runCleanup(ctx: CS.Log, tasks: Tasks): Promise<unknown> {
 
 function isSubscription(value: any): value is Rx.Subscription {
 	return value instanceof Rx.Subscription || typeof value.unsubscribe === 'function'
+}
+
+function isObservableInput(value: any): value is Rx.ObservableInput<unknown> {
+	return typeof value.subscribe === 'function' || typeof value.then === 'function' || typeof value[Symbol.asyncIterator] === 'function'
 }
 
 function isMutex(value: any): value is MutexInterface {

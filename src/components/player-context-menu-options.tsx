@@ -5,6 +5,9 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
+import type * as Msgs from '@/messages/shared'
+import * as SM_Msgs from '@/messages/squad.messages'
+import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as MH from '@/models/match-history.models'
@@ -150,9 +153,7 @@ export function PlayerCopyIdsSub({
 	]
 	const copyAll = (label: string, values: string[]) => {
 		void navigator.clipboard.writeText(values.join('\n'))
-		toast('Copied', {
-			description: values.length > 1 ? `${values.length} ${label}s copied to clipboard` : `${label} copied to clipboard`,
-		})
+		toast(...SM_Msgs.copiedToClipboard(label, values.length).toast())
 	}
 	return (
 		<Sub>
@@ -305,6 +306,8 @@ export function PlayerMenuItems({
 		},
 	)
 
+	const msgTarget: Msgs.Target = { kind: 'player', username: playerInfo?.username }
+
 	const existingSwap = Zus.useStore(stores.squadServer, (s) => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null)
 
 	const canSwapNow = Zus.useStore(stores.squadServer, TSWClient.Sel.canSwapNow([playerId]))
@@ -323,14 +326,15 @@ export function PlayerMenuItems({
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+				const msg = TSW_Msgs.swapNow(msgTarget, otherTeam).confirm()
 				const result = await openDialog({
-					title: 'Swap Player Now',
+					title: msg.title,
 					variant: 'destructive',
-					description: `Move ${playerInfo?.username ?? 'this player'} to Team ${otherTeam} immediately?`,
-					buttons: [{ id: 'confirm', label: 'Swap Now' }],
+					description: msg.description,
+					buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 				})
 				if (result === 'dismissed') {
-					toast.warning('Swap cancelled', { description: 'Player changed teams' })
+					toast.warning(...TSW_Msgs.swapCancelled(msgTarget).toast())
 					return
 				}
 				if (result !== 'confirm') return
@@ -346,18 +350,17 @@ export function PlayerMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const msg = SM_Msgs.kill(msgTarget).confirm()
 			const result = await openDialog({
-				title: 'Kill Player',
+				title: msg.title,
 				variant: 'destructive',
-				description: `Kill ${
-					playerInfo?.username ?? 'this player'
-				}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.`,
+				description: msg.description,
 				content: (
 					<div className="grid gap-3 py-2">
 						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
 					</div>
 				),
-				buttons: [{ id: 'confirm', label: 'Kill' }],
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			const input = SquadServerClient.readReasonInput({
@@ -369,10 +372,10 @@ export function PlayerMenuItems({
 			if (!input) return
 			const res = await killMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 			if (res.code !== 'ok') {
-				toast.error('Kill failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				toast.error(...SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code).toast())
 				return
 			}
-			toast(`Killed ${playerInfo?.username ?? 'player'}`)
+			toast(...SM_Msgs.kill(msgTarget).toast())
 		})
 	}
 
@@ -380,16 +383,17 @@ export function PlayerMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const msg = SM_Msgs.kick(msgTarget).confirm()
 			const result = await openDialog({
-				title: 'Kick Player',
+				title: msg.title,
 				variant: 'destructive',
-				description: `Kick ${playerInfo?.username ?? 'this player'} from the server? They may rejoin immediately.`,
+				description: msg.description,
 				content: (
 					<div className="grid gap-3 py-2">
 						<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={kickReasonRequired} />
 					</div>
 				),
-				buttons: [{ id: 'confirm', label: 'Kick' }],
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			const input = SquadServerClient.readReasonInput({
@@ -401,10 +405,10 @@ export function PlayerMenuItems({
 			if (!input) return
 			const res = await kickMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 			if (res.code !== 'ok') {
-				toast.error('Kick failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				toast.error(...SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code).toast())
 				return
 			}
-			toast(`Kicked ${playerInfo?.username ?? 'player'}`)
+			toast(...SM_Msgs.kick(msgTarget).toast())
 		})
 	}
 
@@ -413,12 +417,11 @@ export function PlayerMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
+			const msg = SM_Msgs.timeout(msgTarget).confirm()
 			const result = await openDialog({
-				title: 'Timeout Player',
+				title: msg.title,
 				variant: 'destructive',
-				description: `Kick ${
-					playerInfo?.username ?? 'this player'
-				}? They will be re-kicked on join from any SLM-managed server until the timeout expires.`,
+				description: msg.description,
 				content: (
 					<TimeoutDialogContent
 						durationRef={timeoutDurationRef}
@@ -428,16 +431,16 @@ export function PlayerMenuItems({
 						required={timeoutReasonRequired}
 					/>
 				),
-				buttons: [{ id: 'confirm', label: 'Timeout' }],
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			const durationMs = ZodUtils.tryParseHumanTimeToken(timeoutDurationRef.current.trim())
 			if (durationMs === undefined) {
-				toast.error('Invalid duration', { description: 'Use a duration like 30m, 2h or 1d' })
+				toast.error(...SM_Msgs.invalidTimeoutDuration().toast())
 				return
 			}
 			if (typeof maxTimeout === 'number' && durationMs > maxTimeout) {
-				toast.error('Duration too long', { description: `Your maximum timeout is ${ZodUtils.formatHumanTime(maxTimeout)}` })
+				toast.error(...SM_Msgs.timeoutTooLong(ZodUtils.formatHumanTime(maxTimeout)).toast())
 				return
 			}
 			const input = SquadServerClient.readReasonInput({
@@ -449,10 +452,10 @@ export function PlayerMenuItems({
 			if (!input) return
 			const res = await timeoutMutation.mutateAsync({ serverId, playerId, durationMs, ...input })
 			if (res.code !== 'ok') {
-				toast.error('Timeout failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
+				toast.error(...SM_Msgs.timeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
 				return
 			}
-			toast(`Timed out ${playerInfo?.username ?? 'player'} for ${ZodUtils.formatHumanTime(durationMs)}`)
+			toast(...SM_Msgs.timedOut(msgTarget, ZodUtils.formatHumanTime(durationMs)).toast())
 		})
 	}
 
@@ -464,42 +467,43 @@ export function PlayerMenuItems({
 
 	async function warnPreset() {
 		presetReasonRef.current = ''
+		const msg = SM_Msgs.warnPreset(msgTarget).confirm()
 		const result = await openDialog({
-			title: 'Warn Player',
-			description: `Warn ${playerInfo?.username ?? 'this player'} with a preset reason?`,
+			title: msg.title,
+			description: msg.description,
 			content: (
 				<div className="grid gap-3 py-2">
 					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
 				</div>
 			),
-			buttons: [{ id: 'confirm', label: 'Warn' }],
+			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 		})
 		if (result !== 'confirm') return
 		const input = SquadServerClient.readReasonInput({ action: 'warn', required: true, presetRef: presetReasonRef })
 		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 		if (res.code !== 'ok') {
-			toast.error('Warn failed', { description: 'msg' in res ? res.msg : res.code })
+			toast.error(...SM_Msgs.warnFailed('msg' in res ? res.msg : res.code).toast())
 			return
 		}
-		toast(`Warned ${playerInfo?.username ?? 'player'} for ${input.presetReasonLabel}`)
+		toast(...SM_Msgs.warned(msgTarget, presetReasonRef.current).toast())
 	}
 
 	function copyTeleportCommand() {
 		void navigator.clipboard.writeText(`AdminTeleportToPlayer ${playerId}`)
-		toast('Copied', { description: 'Teleport command copied to clipboard' })
+		toast(...SM_Msgs.copiedToClipboard('Teleport command').toast())
 	}
 
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('REMOVING_FROM_SQUAD', async () => {
-			const squadLabel = playerInfo?.squadName ? `"${playerInfo.squadName}"` : 'their squad'
+			const msg = SM_Msgs.removeFromSquad(msgTarget, playerInfo?.squadName ? `"${playerInfo.squadName}"` : undefined).confirm()
 			const result = await openDialog({
-				title: 'Remove from Squad',
-				description: `Remove this player from ${squadLabel}?`,
+				title: msg.title,
+				description: msg.description,
 				content: <ReasonPicker action="remove-from-squad" presetRef={presetReasonRef} required={removeReasonRequired} />,
-				buttons: [{ id: 'confirm', label: 'Remove' }],
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			const input = SquadServerClient.readReasonInput({
@@ -518,12 +522,12 @@ export function PlayerMenuItems({
 		const { squadId, teamId, squadName } = playerInfo
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DISBANDING_SQUAD', async () => {
-			const squadLabel = squadName ? `"${squadName}"` : `squad ${squadId}`
+			const msg = SM_Msgs.disbandSquad(squadName ? `"${squadName}"` : `squad ${squadId}`, teamId).confirm()
 			const result = await openDialog({
-				title: 'Disband Squad',
-				description: `Disband ${squadLabel} on team ${teamId}?`,
+				title: msg.title,
+				description: msg.description,
 				content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
-				buttons: [{ id: 'confirm', label: 'Disband' }],
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			const input = SquadServerClient.readReasonInput({
@@ -546,11 +550,11 @@ export function PlayerMenuItems({
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
 		const { squadId, teamId, squadName } = playerInfo
 		await UPClient.Actions.withPlayerDialogue('RESETTING_SQUAD_NAME', async () => {
-			const squadLabel = squadName ? `"${squadName}"` : `squad ${squadId}`
+			const msg = SM_Msgs.resetSquadName(squadName ? `"${squadName}"` : `squad ${squadId}`).confirm()
 			const result = await openDialog({
-				title: 'Reset Squad Name',
-				description: `Reset the name of ${squadLabel} to default?`,
-				buttons: [{ id: 'confirm', label: 'Reset' }],
+				title: msg.title,
+				description: msg.description,
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			await resetSquadNameMutation.mutateAsync({ serverId, teamId: teamId as 1 | 2, squadId })
@@ -561,11 +565,12 @@ export function PlayerMenuItems({
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DEMOTING_COMMANDER', async () => {
+			const msg = SM_Msgs.demoteCommander().confirm()
 			const result = await openDialog({
-				title: 'Demote Commander',
-				description: 'Demote this player from commander?',
+				title: msg.title,
+				description: msg.description,
 				content: <ReasonPicker action="demote-commander" presetRef={presetReasonRef} required={demoteReasonRequired} />,
-				buttons: [{ id: 'confirm', label: 'Demote' }],
+				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return
 			const input = SquadServerClient.readReasonInput({

@@ -16,6 +16,7 @@ import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -1304,6 +1305,21 @@ function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { t
 	)
 }
 
+function IngameVoteStartedEvent({
+	event,
+	stores,
+}: {
+	event: Extract<CHAT.EventEnriched, { type: 'INGAME_VOTE_STARTED' }>
+	stores: SquadServerFrame.KeyProp
+}) {
+	return (
+		<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-yellow-500 shrink-0" />}>
+			<span>In-game {SM.LogEvents.ingameVoteKindLabel(event.kind)} vote started on the Squad server</span>
+			{event.choices.length > 0 && <span className="text-muted-foreground"> ({event.choices.join(', ')})</span>}
+		</EventLine>
+	)
+}
+
 function RconConnectedEvent({
 	event,
 	stores,
@@ -1389,6 +1405,8 @@ export function ServerEvent({ event, stores }: { event: CHAT.EventEnriched; stor
 			return <PlayerWoundedOrDiedEvent event={event} stores={stores} />
 		case 'MAP_SET':
 			return <MapSetEvent event={event} stores={stores} />
+		case 'INGAME_VOTE_STARTED':
+			return <IngameVoteStartedEvent event={event} stores={stores} />
 		case 'RCON_CONNECTED':
 			return <RconConnectedEvent event={event} stores={stores} />
 		case 'RCON_DISCONNECTED':

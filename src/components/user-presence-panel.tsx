@@ -4,10 +4,10 @@ import React from 'react'
 
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import * as MapUtils from '@/lib/map-utils'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import type * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as ConfigClient from '@/systems/config.client'
@@ -62,6 +62,15 @@ function selectVisibleClientOrdinalByClientId(state: { panels: Map<string, Panel
 		;[...clientIds].sort().forEach((clientId, i) => ordinals.set(clientId, i + 1))
 	}
 	return ordinals
+}
+
+const EMPTY_LAYER_LIST: LL.List = []
+// the panel renders without a server in scope too (activity text just has no layer numbers to name)
+function selectLayerList(state: SquadServerFrame.State | undefined) {
+	return state ? LayerQueuePrt.Sel.layerList(state) : EMPTY_LAYER_LIST
+}
+function selectMyClientId(config: ReturnType<typeof ConfigClient.getConfig>) {
+	return config?.wsClientId
 }
 
 export type SortPresenceFn = (
@@ -182,18 +191,9 @@ export type UserPresencePanelProps = {
 }
 
 export default function UserPresencePanel(props: UserPresencePanelProps) {
-	const layerList = Zus.useStore(props.stores?.squadServer ?? null, (state) => (state ? LayerQueuePrt.Sel.layerList(state) : []))
-
-	// per-client (not deduped by user): each of a user's tabs/devices shows separately
-	const matchingClientPresence = Zus.useStore(
-		UPClient.Store,
-		Zus.useDeep((state) =>
-			MapUtils.filter(state.presence, (_clientId, presence) =>
-				props.matchActivity ? props.matchActivity(presence.activityState) : true,
-			),
-		),
-	)
-	const myClientId = Zus.useStore(ConfigClient.Store, (config) => config?.wsClientId)
+	const layerList = Zus.useStore(props.stores?.squadServer ?? null, selectLayerList)
+	const matchingClientPresence = Zus.useStore(UPClient.Store, Zus.useDeep(UPClient.Sel.matchingClientPresence(props.matchActivity)))
+	const myClientId = Zus.useStore(ConfigClient.Store, selectMyClientId)
 
 	const allUserIds = new Set(Array.from(matchingClientPresence.values(), (p) => p.userId))
 
@@ -271,21 +271,12 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	const usersRes = UsersClient.useUsers(allUserIds, { enabled: allUserIds.size > 0 })
 	const loggedInUser = UsersClient.useLoggedInUser()
-	const users = React.useMemo(() => {
-		return usersRes.data?.code === 'ok' ? usersRes.data.users : []
-	}, [usersRes.data])
-
-	// Loading state when data isn't ready yet
 	const isLoading = usersRes.isLoading
 
-	// Create a map of users by their discordId for quick lookup
 	const userMap = React.useMemo(() => {
-		const map = new Map<bigint, USR.User>()
-		users.forEach((user) => {
-			map.set(user.discordId, user)
-		})
-		return map
-	}, [users])
+		const users = usersRes.data?.code === 'ok' ? usersRes.data.users : []
+		return new Map<bigint, USR.User>(users.map((user) => [user.discordId, user]))
+	}, [usersRes.data])
 
 	// Sort clients based on presence priority
 	const sortedClientPresence = React.useMemo(() => {
@@ -319,21 +310,18 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 
 	const clientOrdinalByClientId = Zus.useStore(visibleClientsStore, Zus.useDeep(selectVisibleClientOrdinalByClientId))
 
-	const badgeFor = React.useCallback(
-		(entry: { clientId: string }) => clientOrdinalByClientId.get(entry.clientId),
-		[clientOrdinalByClientId],
-	)
+	const badgeFor = (entry: { clientId: string }) => clientOrdinalByClientId.get(entry.clientId)
 	const isMyOtherClient = React.useCallback(
 		(entry: { clientId: string; user: USR.User }) => entry.user.discordId === loggedInUser?.discordId && entry.clientId !== myClientId,
 		[loggedInUser?.discordId, myClientId],
 	)
 
+	const matchActivityForStatusText = props.matchActivityForStatusText
 	const groupedPresence = React.useMemo((): PresenceGroup[] => {
 		const entries: PresenceEntry[] = sortedClientPresence.map(({ clientId, user, presence }) => {
 			let activityText: string | null = null
 			const eventText = userEventText.get(user.discordId)
-			const activityForText = props.matchActivityForStatusText?.(presence.activityState)
-			// const
+			const activityForText = matchActivityForStatusText?.(presence.activityState)
 			if (eventText) activityText = eventText
 			else if (activityForText) {
 				activityText = UP.getHumanReadableActivity(activityForText, layerList)
@@ -362,7 +350,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			}
 		}
 		return result
-	}, [sortedClientPresence, userEventText, layerList, props])
+	}, [sortedClientPresence, userEventText, layerList, matchActivityForStatusText])
 
 	const actionCount = React.useMemo(() => {
 		return groupedPresence.reduce((count, group) => count + group.entries.filter((e) => e.activityText !== null).length, 0)

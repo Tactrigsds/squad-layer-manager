@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Zus from '@/lib/zustand'
-import { BROADCASTS } from '@/messages.ts'
+import * as V_Msgs from '@/messages/vote.messages'
 import type * as L from '@/models/layer'
 import * as V from '@/models/vote.models.ts'
 
@@ -31,7 +31,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 
 	const preview =
 		props.choices.length > 0
-			? BROADCASTS.vote.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps)
+			? V_Msgs.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps).react()
 			: (props.previewPlaceholder ?? 'No layers selected for preview')
 	const valid = props.choices.length > 0 ? V.validateChoicesWithDisplayProps(props.choices, displayProps) : true
 
