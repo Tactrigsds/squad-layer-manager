@@ -3,6 +3,7 @@ import React from 'react'
 import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import type * as SETTINGS from '@/models/settings.models.ts'
 
 import { TriStateCheckbox } from './ui/tri-state-checkbox'
@@ -13,7 +14,7 @@ export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyPro
 	return (
 		<div className="flex items-center flex-nowrap whitespace-nowrap space-x-1">
 			<TriStateCheckbox
-				title="Hide layers which violate Repeat rules"
+				title={F_Msgs.hideRepeatsHint().text()}
 				size="sm"
 				variant="ghost"
 				onCheckedChange={(v) => {
@@ -21,7 +22,7 @@ export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyPro
 				}}
 				checked={invertApplyAs(checkboxes.dnr)}
 			>
-				Hide Repeats
+				{F_Msgs.hideRepeats().text()}
 			</TriStateCheckbox>
 		</div>
 	)
