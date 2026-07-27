@@ -428,6 +428,10 @@ export const PlayerSchema = z.object({
 	// a prefault here would apply on read and let this be required -- see the note on fromEventRow before doing it,
 	// since the live (unparsed) event path would then be the only thing guaranteeing the field.
 	adminGroups: z.array(z.string()).optional(),
+	// Role ids on the discord account this player's steam account is linked to, for grouping players by discord
+	// role. Optional and absent on persisted events for the same reason as `adminGroups`, and additionally absent
+	// for a player with no steam id or no link.
+	discordRoles: z.array(z.string()).optional(),
 	role: z.string(),
 })
 
@@ -440,11 +444,16 @@ export type PlayerId = EosId
 // Everything tied to participation in a match rather than to the live roster (combat stats, resolving the author of
 // an event that has since scrolled past their disconnect) hangs off a list of these instead of `Player`, so it
 // survives a player dropping and rejoining mid-match. `Player` is assignable to it.
-export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true, adminGroups: true })
+export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true, adminGroups: true, discordRoles: true })
 export type RecentPlayer = z.infer<typeof RecentPlayerSchema>
 
 export function toRecentPlayer(player: RecentPlayer): RecentPlayer {
-	return { ids: { ...player.ids }, isAdmin: player.isAdmin, adminGroups: [...(player.adminGroups ?? [])] }
+	return {
+		ids: { ...player.ids },
+		isAdmin: player.isAdmin,
+		adminGroups: [...(player.adminGroups ?? [])],
+		discordRoles: [...(player.discordRoles ?? [])],
+	}
 }
 
 // A departed player in roster shape, for the displays that need a `Player` to name someone who is no longer on the
