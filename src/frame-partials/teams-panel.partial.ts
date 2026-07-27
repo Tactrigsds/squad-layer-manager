@@ -32,7 +32,7 @@ export type TeamsPanel = {
 	searchQuery: string
 	showSelected: boolean
 	adminsOnly: boolean
-	hideSpoilers: boolean
+	showSpoilers: boolean
 	// role and group are deliberately shared across the tables so a filter set on one applies to both
 	roleFilter: string | null
 	groupFilter: string | null
@@ -59,7 +59,7 @@ export function initTeamsPanel(args: Args) {
 		searchQuery: '',
 		showSelected: false,
 		adminsOnly: false,
-		hideSpoilers: true,
+		showSpoilers: false,
 		roleFilter: null,
 		groupFilter: null,
 		squadFilters: { A: null, B: null, combined: null },
@@ -71,8 +71,10 @@ export function initTeamsPanel(args: Args) {
 			// the toggle is disabled while nothing is selected, so an emptied selection has to switch it back off or the
 			// tables would keep filtering to a selection the user can no longer see
 			if (state.teamsPanel.showSelected && !hasSelection(state)) set({ showSelected: false })
-			// the chat feed's ADMIN filter turns the roster filter on with it. Only the transition matters: this state
-			// lives on the frame now, so there is no remount to catch up on the way a mount effect had to.
+			// the chat feed's ADMIN filter turns the roster filter on with it, and never back off: the two are one
+			// intent on the way in, but clearing one is not a request to clear the other. Only the transition
+			// matters: this state lives on the frame now, so there is no remount to catch up on the way a mount
+			// effect had to.
 			if (ChatPrt.Sel.secondaryFilterState(state) === 'ADMIN' && ChatPrt.Sel.secondaryFilterState(prev) !== 'ADMIN') {
 				set({ adminsOnly: true })
 			}
@@ -105,6 +107,14 @@ export function matchPlayersBySearch<T extends { ids: SM.PlayerIds.Type }>(playe
 export type CombinedPlayer = TeamsPanelModels.EnrichedPlayer & { normedTeam: MH.NormedTeamId; displayIndex: number }
 
 export type SquadWithTeam = { squad: SM.UniqueSquad; normedTeam: MH.NormedTeamId }
+
+// identifies a squad-group header row, and the entry holding that squad's real size in Sel.squadSizes
+export function squadGroupKey(normedTeam: MH.NormedTeamId, squadId: number | null) {
+	return `${normedTeam}:${squadId ?? 'unassigned'}`
+}
+
+// enough for anything reading the raw roster rather than the enriched players
+type RosterInputs = [store: Store & Deps, currentMatch: MH.MatchDetails | undefined]
 
 type Inputs = [
 	store: Store & Deps,
@@ -170,8 +180,8 @@ export namespace Sel {
 	export function adminsOnly(store: Store) {
 		return store.teamsPanel.adminsOnly
 	}
-	export function hideSpoilers(store: Store) {
-		return store.teamsPanel.hideSpoilers
+	export function showSpoilers(store: Store) {
+		return store.teamsPanel.showSpoilers
 	}
 	export function roleFilter(store: Store) {
 		return store.teamsPanel.roleFilter
@@ -201,8 +211,8 @@ export namespace Sel {
 
 	// what the panel header reads, likewise as one subscription
 	export const headerState = RSel.createSelector(
-		[showSelected, adminsOnly, hideSpoilers, roleFilter],
-		(showSelected, adminsOnly, hideSpoilers, roleFilter) => ({ showSelected, adminsOnly, hideSpoilers, roleFilter }),
+		[showSelected, adminsOnly, showSpoilers, roleFilter],
+		(showSelected, adminsOnly, showSpoilers, roleFilter) => ({ showSelected, adminsOnly, showSpoilers, roleFilter }),
 	)
 
 	// filter options are drawn from both teams so the shared role/group filters offer every value
@@ -220,6 +230,28 @@ export namespace Sel {
 	export const playerNamesById = RSel.createSelector(
 		[(...args: Inputs) => TeamsPanelModels.Sel.allEnrichedPlayers(...args)],
 		(players) => new Map(players.map((p) => [SM.PlayerIds.getPlayerId(p.ids), p.ids.usernameNoTag ?? p.ids.username ?? ''])),
+	)
+
+	// Squad sizes off the unfiltered roster: counting the rows a squad-group header covers would report what the
+	// active filters left of the squad rather than the squad.
+	export const squadSizes = RSel.createSelector(
+		[
+			(...[store, currentMatch]: RosterInputs) => ChatPrt.Sel.playersForTeam('A')(store, currentMatch),
+			(...[store, currentMatch]: RosterInputs) => ChatPrt.Sel.playersForTeam('B')(store, currentMatch),
+		],
+		(playersA, playersB) => {
+			const sizes = new Map<string, number>()
+			for (const [normedTeam, players] of [
+				['A', playersA],
+				['B', playersB],
+			] as const) {
+				for (const player of players) {
+					const key = squadGroupKey(normedTeam, player.squadId)
+					sizes.set(key, (sizes.get(key) ?? 0) + 1)
+				}
+			}
+			return sizes
+		},
 	)
 
 	export const squadsWithTeam = RSel.createDeepSelector(
@@ -304,18 +336,15 @@ export namespace Actions {
 		slice(stores).setState({ showSelected })
 	}
 
-	export function setHideSpoilers(stores: KeyProp, hideSpoilers: boolean) {
-		slice(stores).setState({ hideSpoilers })
+	export function setShowSpoilers(stores: KeyProp, showSpoilers: boolean) {
+		slice(stores).setState({ showSpoilers })
 	}
 
-	// the roster filter and the chat feed's ADMIN filter are two views of one intent, so the toggle drives both
+	// turning the roster filter on turns the chat feed's ADMIN filter on with it; turning it off leaves the feed
+	// alone, so narrowing both then widening one keeps the other where the user put it
 	export function setAdminsOnly(stores: KeyProp, adminsOnly: boolean) {
 		slice(stores).setState({ adminsOnly })
-		const chat: ChatPrt.KeyProp = { chat: stores.teamsPanel }
-		if (adminsOnly) ChatPrt.Actions.setSecondaryFilterState(chat, 'ADMIN')
-		else if (ChatPrt.Sel.secondaryFilterState(Zus.getState(stores.teamsPanel)) === 'ADMIN') {
-			ChatPrt.Actions.setSecondaryFilterState(chat, 'DEFAULT')
-		}
+		if (adminsOnly) ChatPrt.Actions.setSecondaryFilterState({ chat: stores.teamsPanel }, 'ADMIN')
 	}
 
 	export function setRoleFilter(stores: KeyProp, roleFilter: string | null) {
@@ -347,7 +376,7 @@ export namespace Actions {
 		if (columnId === 'squad') setSquadFilter(stores, target, null)
 	}
 
-	// deliberately leaves hideSpoilers and showSelected alone (both are view preferences rather than filters), and
+	// deliberately leaves showSpoilers and showSelected alone (both are view preferences rather than filters), and
 	// writes adminsOnly without touching the chat feed's own filter
 	export function reset(stores: KeyProp) {
 		slice(stores).setState({
