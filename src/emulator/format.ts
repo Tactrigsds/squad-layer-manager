@@ -233,6 +233,16 @@ export function logRoundEnded(): string {
 	return 'LogGameState: Match State Changed from InProgress to WaitingPostMatch'
 }
 
+// the lines Squad emits when AdminEnableVoting is on and a vote opens. All one tick, and the choices precede the
+// container they belong to, which is how the real server orders them.
+export function logVoteStarted(container: string, choices: string[]): string[] {
+	return [
+		`LogSquad: Vote Possible choices: ${[...choices, 'RegenerateVote'].join(' ')}`,
+		`LogSquad: Vote: Create new container: ${container}`,
+		`LogSquad: Vote: Update vote for used container: ${container}`,
+	]
+}
+
 export function logRoundDecided(kind: 'won' | 'lost', team: TeamLike, faction: string, tickets: number, l: LayerLike): string {
 	return `LogSquadGameEvents: Display: Team ${team.id}, ${team.name} ( ${faction} ) has ${kind} the match with ${tickets} Tickets on layer ${l.layer} (level ${l.level})!`
 }

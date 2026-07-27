@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as L from '@/models/layer'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
@@ -80,3 +81,44 @@ describe('recovering from a broken squad server', () => {
 		expect(setNext.body).toContain('Sumari_Seed_v1')
 	})
 })
+
+// A roll the app was not running for still consumes the queue item the app set as next. Nothing tells it that on
+// the way back up -- it reads the current layer off rcon, not the roll it missed -- so the head has to be
+// reconciled against what is actually playing, or the layer gets set as next a second time and played twice.
+describe('a map roll that happened while the app was down', () => {
+	let downApp: AppFixture
+
+	beforeAll(async () => {
+		downApp = await createAppFixture({ layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed) })
+	}, 120_000)
+
+	afterAll(async () => {
+		await downApp?.dispose()
+	})
+
+	it('consumes the queue head the server already played', async () => {
+		// the head is the item the server is about to play in the roll below
+		expect(savedQueueOf(downApp)[0]?.layerId).toBe(LAYERS.gorodokRaas)
+
+		await downApp.restart(() => {
+			downApp.emu.world.handleCommand(L.getLayerCommand(LAYERS.gorodokRaas, 'set-next'))
+			downApp.emu.world.startNewGame()
+		})
+
+		// the head is the layer now playing, so it has been played already: the next item is what is next
+		await downApp.waitFor(() => savedQueueOf(downApp)[0]?.layerId === LAYERS.sumariSeed, {
+			label: 'the played head consumed rather than queued again',
+			timeoutMs: 45_000,
+		})
+	})
+})
+
+function savedQueueOf(fixture: AppFixture): { layerId?: string }[] {
+	const db = fixture.readDb()
+	try {
+		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(fixture.serverId) as { layerQueue: string }
+		return JSON.parse(row.layerQueue).json
+	} finally {
+		db.close()
+	}
+}

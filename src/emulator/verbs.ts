@@ -6,6 +6,9 @@ import { makePlayer } from './index.ts'
 // Runs the verbs defined in @/models/sandbox.models against a live emulator. Everything that drives a sandbox
 // world goes through here: the dev repl, `pnpm emuctl`, and the app's sandbox router.
 
+const DEFAULT_VOTE_LAYERS = ['Fallujah_Skirmish_v2', 'Mutaha_Skirmish_v1', 'Chora_Skirmish_v1']
+const DEFAULT_VOTE_FACTIONS = ['BAF', 'MEI', 'VDV', 'TLF']
+
 export type SandboxHost = {
 	emu: Emulator
 	// GUI/CLI-facing name -> player. The world keys players by eos id; a scenario names them.
@@ -148,6 +151,12 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			const { winnerTeamId } = input as SB.SandboxVerbInput<'end'>
 			world.endMatch(winnerTeamId ? { winnerTeamId } : undefined)
 			return winnerTeamId ? `match ended, team ${winnerTeamId} won` : 'match ended'
+		}
+		case 'vote': {
+			const { kind, choices } = input as SB.SandboxVerbInput<'vote'>
+			const resolved = choices.length > 0 ? choices : kind === 'layer' ? DEFAULT_VOTE_LAYERS : DEFAULT_VOTE_FACTIONS
+			world.startIngameVote(kind, resolved)
+			return `${kind} vote opened between ${resolved.join(', ')}`
 		}
 		case 'rcon': {
 			const { command } = input as SB.SandboxVerbInput<'rcon'>

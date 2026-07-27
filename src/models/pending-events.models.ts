@@ -880,6 +880,18 @@ async function* processPendingEvent(
 			break
 		}
 
+		case 'INGAME_VOTE_CHAIN': {
+			const started = pendingEvent.events.INGAME_VOTE_STARTED
+			yield await createEvent(state, {
+				type: 'INGAME_VOTE_STARTED',
+				...base,
+				kind: started.kind,
+				container: started.container,
+				choices: pendingEvent.events.INGAME_VOTE_CHOICES?.choices ?? [],
+			})
+			break
+		}
+
 		case 'ROUND_ENDED_CHAIN': {
 			let loser: SM.SquadOutcomeTeam | null
 			let winner: SM.SquadOutcomeTeam | null
