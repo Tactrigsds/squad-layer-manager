@@ -827,7 +827,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			)
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{AppEvents_Msgs.genericLine(actorLabel, AppEvents.describeAppEvent(appEvent)).react()}
+				{AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)).react()}
 			</EventLine>
 		)
 	}
@@ -846,7 +846,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).
 		return (
 			<EventLine time={event.time} icon={<Icons.ScrollText className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{AppEvents_Msgs.genericLine(actorLabel, AppEvents.describeAppEvent(appEvent)).react()}
+				{AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)).react()}
 			</EventLine>
 		)
 	}
