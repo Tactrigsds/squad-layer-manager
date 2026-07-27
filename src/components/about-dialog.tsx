@@ -22,15 +22,13 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 	const user = UsersClient.useLoggedInUser()
 	if (!config || !user) return null
 
-	const versionText = [
-		(config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA) &&
-			`App Version: ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`,
-		config.layersVersion && `Layer Pool Version: ${config.layersVersion}`,
-		user.username && `Logged in as: ${user.username}`,
-		config.wsClientId && `WebSocket Client ID: ${config.wsClientId}`,
-	]
-		.filter(Boolean)
-		.join('\n')
+	const versionText = APP_Msgs.versionInfo({
+		appVersion:
+			config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA ? formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA) : undefined,
+		layersVersion: config.layersVersion ?? undefined,
+		username: user.username,
+		wsClientId: config.wsClientId,
+	}).text()
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -38,23 +36,21 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 				{children || (
 					<Button variant="outline" size="sm">
 						<Info className="h-4 w-4 mr-2" />
-						About
+						{APP_Msgs.about().text()}
 					</Button>
 				)}
 			</DialogTrigger>
 			<DialogContent className="max-w-max">
 				<DialogHeader>
-					<DialogTitle>About</DialogTitle>
+					<DialogTitle>{APP_Msgs.about().text()}</DialogTitle>
 					<DialogDescription></DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
-					<p className="text-sm">
-						Squad Layer Manager(SLM) is a tool for managing the upcoming layers of a squad server. and other things also.
-					</p>
+					<p className="text-sm">{APP_Msgs.aboutBlurb().text()}</p>
 					<div className="text-sm space-y-2">
 						{config.repoUrl && (
 							<div className="flex flex-col space-y-1">
-								<span className="font-semibold">Repository:</span>
+								<span className="font-semibold">{APP_Msgs.repositoryHeading().text()}</span>
 								<a href={config.repoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
 									{config.repoUrl}
 								</a>
@@ -62,7 +58,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 						)}
 						{config.issuesUrl && (
 							<div className="flex flex-col space-y-1">
-								<span className="font-semibold">Report issues here, including the information below:</span>
+								<span className="font-semibold">{APP_Msgs.reportIssuesHeading().text()}</span>
 								<a href={config.issuesUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
 									{config.issuesUrl}
 								</a>
@@ -82,7 +78,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 								className="absolute top-1 right-1 h-6 w-6"
 								onClick={async () => {
 									await navigator.clipboard.writeText(versionText)
-									toast(...APP_Msgs.copiedToClipboard('Version information has been copied').toast())
+									toast(...APP_Msgs.copiedToClipboard(APP_Msgs.versionInfoCopied().text()).toast())
 								}}
 							>
 								<Copy className="h-3 w-3" />
