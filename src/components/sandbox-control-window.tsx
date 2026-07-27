@@ -206,12 +206,88 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 
 type RunFn = <V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) => Promise<boolean>
 
+type PlayerRow = ReturnType<typeof SandboxFrame.Sel.players>[number]
+type SquadRow = ReturnType<typeof SandboxFrame.Sel.squads>[number]
+
+const TEAM_IDS = [1, 2] as const
+
+// Sentinels for the two entries that are not a squad. Squads are keyed by their numeric id, so neither can collide.
+const NO_SQUAD = 'none'
+const NEW_SQUAD = 'new'
+
+function TeamCell({ player, run }: { player: PlayerRow; run: RunFn }) {
+	return (
+		<Select
+			value={player.teamId ? String(player.teamId) : undefined}
+			onValueChange={(value) => void run('set-team', { name: player.name, teamId: Number(value) as 1 | 2 })}
+		>
+			<SelectTrigger className="h-7 w-[6rem]" aria-label={SB_Msgs.teamPicker(player.name).text()}>
+				<SelectValue placeholder={SB_Msgs.noTeam().text()} />
+			</SelectTrigger>
+			<SelectContent>
+				{TEAM_IDS.map((teamId) => (
+					<SelectItem key={teamId} value={String(teamId)}>
+						{SB_Msgs.teamOption(teamId).text()}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	)
+}
+
+// A player can only be in a squad on their own team, so the picker offers that team's squads and nothing else.
+// Creating one takes the name the server itself would give an unnamed squad, rather than asking for one.
+function SquadCell({ player, squads, run }: { player: PlayerRow; squads: SquadRow[]; run: RunFn }) {
+	const onTeam = squads.filter((s) => s.teamId === player.teamId)
+
+	function onValueChange(value: string) {
+		if (value === NO_SQUAD) {
+			void run('leave-squad', { name: player.name })
+			return
+		}
+		if (value === NEW_SQUAD) {
+			// creating disbands the squad they are leaving when they were its only member, and the server hands the
+			// new one that id, so it cannot count towards the name
+			const taken = onTeam.filter((s) => !(s.squadId === player.squadId && s.size === 1)).map((s) => s.squadId)
+			void run('squad', { name: player.name, squadName: `Squad ${Math.max(0, ...taken) + 1}` })
+			return
+		}
+		void run('join-squad', { name: player.name, squad: value })
+	}
+
+	return (
+		<div className="flex items-center gap-1">
+			<Select
+				value={player.squadId !== null ? String(player.squadId) : NO_SQUAD}
+				onValueChange={onValueChange}
+				disabled={player.teamId === null}
+			>
+				<SelectTrigger className="h-7 w-[10rem]" aria-label={SB_Msgs.squadPicker(player.name).text()}>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value={NO_SQUAD}>{SB_Msgs.noSquad().text()}</SelectItem>
+					{onTeam.map((s) => (
+						<SelectItem key={s.squadId} value={String(s.squadId)}>
+							{SB_Msgs.squadOption(s.squadId, s.name, s.size).text()}
+						</SelectItem>
+					))}
+					<SelectItem value={NEW_SQUAD}>{SB_Msgs.createSquad().text()}</SelectItem>
+				</SelectContent>
+			</Select>
+			{player.isLeader && (
+				<Icons.Crown className="h-3.5 w-3.5 text-muted-foreground" aria-label={SB_Msgs.squadLeader(player.name).text()} />
+			)}
+		</div>
+	)
+}
+
 // The admin checkbox and the group picker are two views of one membership: checking the box puts the player in the
 // default admin group, and clearing it drops every group that would make them an admin. Nothing is stored twice.
 function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyProp; groupNames: string[]; run: RunFn }) {
-	const [{ players, page, pageCount, matched, total }, adminGroups] = Zus.useStore(
+	const [{ players, page, pageCount, matched, total }, adminGroups, squads] = Zus.useStore(
 		stores.sandbox,
-		(s) => [SandboxFrame.Sel.playersView(s), s.state?.groups ?? []] as const,
+		(s) => [SandboxFrame.Sel.playersView(s), s.state?.groups ?? [], SandboxFrame.Sel.squads(s)] as const,
 	)
 	const identifying = new Set(adminGroups.filter((g) => g.permissions.includes('canseeadminchat')).map((g) => g.name))
 	const defaultAdminGroup = [...identifying][0] ?? 'Admin'
@@ -248,8 +324,8 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 							<TableHeader>
 								<TableRow>
 									<TableHead>{SB_Msgs.playerColumn().text()}</TableHead>
-									<TableHead className="w-14">{SB_Msgs.teamColumn().text()}</TableHead>
-									<TableHead className="w-16">{SB_Msgs.squadColumn().text()}</TableHead>
+									<TableHead className="w-24">{SB_Msgs.teamColumn().text()}</TableHead>
+									<TableHead className="w-48">{SB_Msgs.squadColumn().text()}</TableHead>
 									<TableHead className="w-16">{SB_Msgs.adminColumn().text()}</TableHead>
 									<TableHead className="min-w-[12rem]">{SB_Msgs.groupsColumn().text()}</TableHead>
 									<TableHead className="w-10" />
@@ -259,8 +335,12 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								{players.map((p) => (
 									<TableRow key={p.eosId}>
 										<TableCell className="font-medium">{p.name}</TableCell>
-										<TableCell className="text-muted-foreground">{p.teamId ?? '-'}</TableCell>
-										<TableCell className="text-muted-foreground">{p.squadId ?? '-'}</TableCell>
+										<TableCell>
+											<TeamCell player={p} run={run} />
+										</TableCell>
+										<TableCell>
+											<SquadCell player={p} squads={squads} run={run} />
+										</TableCell>
 										<TableCell>
 											<Checkbox
 												checked={p.isAdmin}

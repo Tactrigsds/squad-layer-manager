@@ -8,17 +8,21 @@ export type SandboxPlayer = {
 	steamId: string
 	teamId: number | null
 	squadId: number | null
+	isLeader: boolean
 	groups: string[]
 	isAdmin: boolean
 }
 
 export type SandboxGroup = { name: string; permissions: string[] }
 
+export type SandboxSquad = { teamId: number; squadId: number; name: string; size: number }
+
 export type SandboxState = {
 	code: 'ok'
 	groups: SandboxGroup[]
 	adminsCfg: string
 	nextDefaultName: string
+	squads: SandboxSquad[]
 	players: SandboxPlayer[]
 }
 
