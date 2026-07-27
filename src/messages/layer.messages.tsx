@@ -94,13 +94,11 @@ export const noScores = Msgs.def('No scores available')
 // A team named for a reader rather than for a slot. Which scheme applies is the caller's: 'A'/'B' are normalized
 // across the swap, 1/2 are the raw slot (see docs/architecture.md). The faction rides in parentheses where the
 // layer is known.
-const normalizedTeamNames: Record<'A' | 'B', string> = { A: 'Team A', B: 'Team B' }
-const rawTeamNames: Record<1 | 2, string> = { 1: 'Team 1', 2: 'Team 2' }
 
-export const teamName = Msgs.def((team: 'A' | 'B' | 1 | 2, faction?: string | null) => {
-	const name = typeof team === 'number' ? rawTeamNames[team] : normalizedTeamNames[team]
-	return faction ? `${name} (${faction})` : name
-})
+export const teamName = Msgs.def(
+	'{team, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes { ({faction})} other {}}',
+	(team: 'A' | 'B' | 1 | 2, faction?: string | null) => ({ team: String(team), faction, hasFaction: faction ? 'yes' : 'no' }),
+)
 
 export const team1 = Msgs.def('Team 1')
 

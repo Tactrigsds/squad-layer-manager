@@ -8,7 +8,10 @@ export const notifyKilled = Msgs.def((reason?: string) => ({
 
 // Same shape, and it covers the plain kick and the timeout kick alike: the timeout's remaining duration is
 // already substituted into the reason by the time it gets here.
-export const notifyKicked = Msgs.def((reason?: string) => reason || 'You have been kicked by an admin.')
+export const notifyKicked = Msgs.def(
+	'{hasReason, select, yes {{reason}} other {You have been kicked by an admin.}}',
+	(reason?: string) => ({ reason, hasReason: reason ? 'yes' : 'no' }),
+)
 
 export const kill = Msgs.def((target: Msgs.Target) => ({
 	confirm: () => ({
@@ -208,10 +211,7 @@ export const sftpFilePath = Msgs.def('/path/to/Admins.cfg')
 export const sandboxAdminListTitle = Msgs.def('This sandbox has an emulated admin list of its own')
 
 export const sandboxAdminListBlurb = Msgs.def(
-	() =>
-		'It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -> Sandbox ' +
-		'Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, ' +
-		'because it only exists in memory.',
+	'It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -> Sandbox Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, because it only exists in memory.',
 )
 
 // -------- the player and squad context menus --------
@@ -280,11 +280,20 @@ export const selectFromTeam = Msgs.def('Select from Team')
 
 export const selectAll = Msgs.def('Select All')
 
-export const selectSquad = Msgs.def((squadName?: string) => (squadName ? `Squad (${squadName})` : 'Squad'))
+export const selectSquad = Msgs.def('Squad{named, select, yes { ({squadName})} other {}}', (squadName?: string) => ({
+	squadName,
+	named: squadName ? 'yes' : 'no',
+}))
 
-export const selectRole = Msgs.def((role?: string) => (role ? `Role (${role})` : 'Role'))
+export const selectRole = Msgs.def('Role{named, select, yes { ({role})} other {}}', (role?: string) => ({
+	role,
+	named: role ? 'yes' : 'no',
+}))
 
-export const selectGroup = Msgs.def((group?: string) => (group ? `Group (${group})` : 'Group'))
+export const selectGroup = Msgs.def('Group{named, select, yes { ({group})} other {}}', (group?: string) => ({
+	group,
+	named: group ? 'yes' : 'no',
+}))
 
 export const selectSquadLeaders = Msgs.def('Squad Leaders')
 
@@ -316,7 +325,10 @@ export const selectSquadShortcutHint = Msgs.def('Shortcut: shift+click the Squad
 
 export const timeoutDurationLabel = Msgs.def('Timeout duration')
 
-export const timeoutDurationPlaceholder = Msgs.def((max?: string) => (max === undefined ? 'e.g. 30m, 2h, 1d' : `e.g. 30m, 2h (max ${max})`))
+export const timeoutDurationPlaceholder = Msgs.def(
+	'{capped, select, yes {e.g. 30m, 2h (max {max})} other {e.g. 30m, 2h, 1d}}',
+	(max?: string) => ({ max, capped: max === undefined ? 'no' : 'yes' }),
+)
 
 // -------- the roster --------
 
@@ -401,9 +413,7 @@ export const adminCamHint = Msgs.def(
 export const squadLeaderColumnHint = Msgs.def('Shift+click: select squad leaders on this team. Shift+Ctrl+click: both teams')
 
 export const selectAllTeamHint = Msgs.def(
-	() =>
-		'Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams. Alt+click: invert selection on this team. ' +
-		'Alt+Ctrl+click: invert on both teams',
+	'Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams. Alt+click: invert selection on this team. Alt+Ctrl+click: invert on both teams',
 )
 
 export const selectAllCombinedHint = Msgs.def(
@@ -448,7 +458,10 @@ export const playerDetailsTitle = Msgs.def('Player Details')
 
 export const squadWithId = Msgs.def('Squad {squadId}', (squadId: number) => ({ squadId }))
 
-export const onlineFor = Msgs.def((elapsed?: string | null) => (elapsed ? `Online for ${elapsed}` : 'Online'))
+export const onlineFor = Msgs.def('Online{known, select, yes { for {elapsed}} other {}}', (elapsed?: string | null) => ({
+	elapsed,
+	known: elapsed ? 'yes' : 'no',
+}))
 
 export const lastSeen = Msgs.def('Last seen {when}', (when: string) => ({ when }))
 
@@ -463,7 +476,8 @@ export const warnPlayerPlaceholder = Msgs.def('Warn {playerName}…', (playerNam
 export const unnamedPlayer = Msgs.def('player')
 
 export const timedOutUntil = Msgs.def(
-	(expiresAt: string, reasonLabel?: string) => `Timed out until ${expiresAt}` + (reasonLabel ? ` (${reasonLabel})` : ''),
+	'Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}',
+	(expiresAt: string, reasonLabel?: string) => ({ expiresAt, reasonLabel, hasReason: reasonLabel ? 'yes' : 'no' }),
 )
 
 // the divider the feed draws where it skipped a stretch of quiet: how long the gap ran, and where it picks up
@@ -525,8 +539,6 @@ export type IdKind = 'steam' | 'eos' | 'epic'
 
 export const idKindLabels: Record<IdKind, string> = { steam: 'steam', eos: 'eos', epic: 'epic' }
 
-const copyIdHints: Record<IdKind, string> = { steam: 'Copy steam ID', eos: 'Copy eos ID', epic: 'Copy epic ID' }
-
-export const copyIdHint = Msgs.def((kind: IdKind) => copyIdHints[kind])
+export const copyIdHint = Msgs.def('Copy {kind} ID', (kind: IdKind) => ({ kind: idKindLabels[kind] }))
 
 export const copiedFeedback = Msgs.def('Copied!')

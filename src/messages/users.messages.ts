@@ -6,10 +6,10 @@ export const noApplicationAccess = Msgs.def(
 	() => ({}),
 )
 
-export const unAuthenticated = Msgs.def('Not able to authenticate user', () => ({}))
+export const unAuthenticated = Msgs.def('Not able to authenticate user')
 
 // what the no-auth login portal says back when the name posted to it is not one (see fastify.server)
-export const invalidUsername = Msgs.def('Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.', () => ({}))
+export const invalidUsername = Msgs.def('Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.')
 
 // -------- the landing pages --------
 // The unauthenticated entry to the app, rendered to static HTML at boot (see landing.server.ts). guildName is
@@ -29,8 +29,9 @@ export const landingTitles: Record<LandingVariant, string> = {
 	forbidden: 'Access denied - Squad Layer Manager',
 }
 
-export const landingHeading = Msgs.def((guildName: string | null) =>
-	guildName ? `You have reached the SLM instance for ${guildName}.` : 'You have reached this Squad Layer Manager instance.',
+export const landingHeading = Msgs.def(
+	'{named, select, yes {You have reached the SLM instance for {guildName}.} other {You have reached this Squad Layer Manager instance.}}',
+	(guildName: string | null) => ({ guildName, named: guildName ? 'yes' : 'no' }),
 )
 
 export const landingBlurb = Msgs.def(

@@ -9,9 +9,7 @@ export const noPicksConfigured = Msgs.def('Add a column or matchup above to give
 export const pickOrderHeading = Msgs.def('Pick order')
 
 export const pickOrderHint = Msgs.def(
-	() =>
-		'Columns and matchups picked weighted-randomly during generation, in pick order. Each pick narrows the candidates for the ones ' +
-		'below it, so the first pick shapes the result the most.',
+	'Columns and matchups picked weighted-randomly during generation, in pick order. Each pick narrows the candidates for the ones below it, so the first pick shapes the result the most.',
 )
 
 export const emptyPickOrder = Msgs.def('Nothing configured: generation picks layers uniformly.')
@@ -41,9 +39,8 @@ export const columnWeightsHint = Msgs.def(
 )
 
 export const matchupWeightsHint = Msgs.def(
-	(pickOrder: number, defaultWeight: number) =>
-		`Pick ${pickOrder}. Unlisted pairings weigh ${defaultWeight}. Pairings are unordered: the weight applies whichever team fields ` +
-		'which side.',
+	'Pick {pickOrder}. Unlisted pairings weigh {defaultWeight}. Pairings are unordered: the weight applies whichever team fields which side.',
+	(pickOrder: number, defaultWeight: number) => ({ pickOrder, defaultWeight }),
 )
 
 export const valueColumn = Msgs.def('Value')
@@ -106,7 +103,7 @@ export const seedPlaceholder = Msgs.def('seed (optional)')
 
 export const extraMenuItemsHeading = Msgs.def('Extra menu items')
 
-export const extraMenuItemsHint = Msgs.def("Extra comparison controls added to the layer table's filter menu.", () => ({}))
+export const extraMenuItemsHint = Msgs.def("Extra comparison controls added to the layer table's filter menu.")
 
 export const noExtraMenuItems = Msgs.def('None.')
 

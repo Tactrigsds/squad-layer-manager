@@ -35,9 +35,7 @@ export const keywordsPlaceholder = Msgs.def('tk afk')
 export const previewTitle = Msgs.def('Preview the delivered in-game messages')
 
 export const previewBlurb = Msgs.def(
-	() =>
-		'In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has ' +
-		'run out).',
+	'In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has run out).',
 )
 
 // what each preview entry is labelled with. The plain actions are named by the action itself; these are the

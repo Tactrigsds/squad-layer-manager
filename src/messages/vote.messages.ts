@@ -209,6 +209,11 @@ export const choiceVotes = Msgs.def(
 )
 
 export const turnout = Msgs.def(
-	(received: number, players: number, percentage: number | null) =>
-		`Received: ${received} of ${players} votes` + (percentage !== null ? ` (${percentage.toFixed(1)}%)` : ''),
+	'Received: {received} of {players} votes{hasPercentage, select, yes { ({percentage}%)} other {}}',
+	(received: number, players: number, percentage: number | null) => ({
+		received,
+		players,
+		percentage: percentage?.toFixed(1),
+		hasPercentage: percentage != null ? 'yes' : 'no',
+	}),
 )

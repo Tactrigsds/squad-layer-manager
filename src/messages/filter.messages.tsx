@@ -40,7 +40,7 @@ export const matchupTypeNames: Record<F.MatchupType, string> = {
 // Why a filter tree would not compile. Each one is attached to the node that caused it and rendered against that
 // node in the editor, so they are `text` rather than `toast`.
 
-export const recursiveFilter = Msgs.def((filterId: string) => 'Filter is mutually recursive via filter: ' + filterId)
+export const recursiveFilter = Msgs.def('Filter is mutually recursive via filter: {filterId}', (filterId: string) => ({ filterId }))
 
 export const unknownFilter = Msgs.def("Filter {filterId} doesn't exist", (filterId: string) => ({ filterId }))
 
@@ -240,7 +240,7 @@ export const accessOwner = Msgs.def('You are the owner of this filter')
 
 export const accessContributor = Msgs.def('You are a contributor')
 
-export const accessNone = Msgs.def("You don't have permission to modify this filter", () => ({}))
+export const accessNone = Msgs.def("You don't have permission to modify this filter")
 
 export const accessAllFilters = Msgs.def('You have write access to all filters')
 

@@ -329,8 +329,9 @@ export const warnDescriptorWithCount = Msgs.def('{descriptor} ({players})', (des
 
 // -------- the shared "{actor} {verb} {targets}{suffix}" entries --------
 
-export const removedFromSquadSuffix = Msgs.def((reasonLabel?: string) =>
-	reasonLabel ? ` from their squad for ${reasonLabel}` : ' from their squad',
+export const removedFromSquadSuffix = Msgs.def(
+	' from their squad{hasReason, select, yes { for {reasonLabel}} other {}}',
+	(reasonLabel?: string) => ({ reasonLabel, hasReason: reasonLabel ? 'yes' : 'no' }),
 )
 
 export const forReasonSuffix = Msgs.def(' for {reasonLabel}', (reasonLabel: string) => ({ reasonLabel }))

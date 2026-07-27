@@ -23,9 +23,7 @@ export const groupRuleSourceHints: Record<PG.GroupRuleSource, string> = {
 // -------- the groupings editor --------
 
 export const noGroupings = Msgs.def(
-	() =>
-		'No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick ' +
-		'between them by name.',
+	'No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick between them by name.',
 )
 
 export const newGroupingName = Msgs.def('New grouping name')

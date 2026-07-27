@@ -149,13 +149,13 @@ export const triggerStringPlaceholder = Msgs.def('prefix + command')
 
 export const pinArgs = Msgs.def('Pin args')
 
-export const pinArgsHint = Msgs.def("Pin some of this command's arguments, so the trigger becomes a shortcut", () => ({}))
+export const pinArgsHint = Msgs.def("Pin some of this command's arguments, so the trigger becomes a shortcut")
 
 export const pinnedArgsPlaceholder = Msgs.def('{{arg1}} 2h {{rest2}}')
 
 export const unpinArgs = Msgs.def('Unpin')
 
-export const unpinArgsHint = Msgs.def("Take this command's arguments as typed instead", () => ({}))
+export const unpinArgsHint = Msgs.def("Take this command's arguments as typed instead")
 
 export const removeTrigger = Msgs.def('Remove trigger {position}', (position: number) => ({ position }))
 
