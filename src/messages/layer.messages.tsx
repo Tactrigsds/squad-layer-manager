@@ -42,7 +42,7 @@ export const showSelected = Msgs.def('Show Selected')
 
 export const resetSelectedLayers = Msgs.def('Reset Selected Layers')
 
-export const selectedCount = Msgs.def((count: number) => `${count} selected`)
+export const selectedCount = Msgs.def('{count} selected', (count: number) => ({ count }))
 
 export const randomize = Msgs.def('Randomize')
 
@@ -153,7 +153,7 @@ export const logarithmicScale = Msgs.def('(logarithmic scale)')
 export const balanceDifferential = Msgs.def('Balance Differential')
 
 // value carries its own sign where the bar has one cutoff per side
-export const poolCutoff = Msgs.def((value: string) => `Pool Cutoff (${value})`)
+export const poolCutoff = Msgs.def('Pool Cutoff ({value})', (value: string) => ({ value }))
 
 // The number is coloured by which team the difference favours, which no single class on the container can
 // express, so the caller renders it and the message positions it.
@@ -186,7 +186,7 @@ export const setByLabel = Msgs.def('Set By')
 
 export const multiLayerPlaceholder = Msgs.def('Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)')
 
-export const addLayers = Msgs.def((count: number) => `Add ${count > 0 ? `${count} ` : ''}Layer${count !== 1 ? 's' : ''}`)
+export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
 
 export const editLayerTitle = Msgs.def('Edit Layer')
 

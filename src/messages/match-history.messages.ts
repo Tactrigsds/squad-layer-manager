@@ -19,7 +19,7 @@ export const layerIndicatorsColumn = Msgs.def('Layer Indicators')
 
 export const setByColumn = Msgs.def('Set By')
 
-export const winStreak = Msgs.def((length: number) => `(${length} wins)`)
+export const winStreak = Msgs.def('({length} wins)', (length: number) => ({ length }))
 
 export const noMatches = Msgs.def('No matches found')
 

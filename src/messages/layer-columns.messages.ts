@@ -21,7 +21,8 @@ export const addPick = Msgs.def('Add pick')
 export const unusedWeightsHeading = Msgs.def('Unused weights')
 
 export const unusedWeightsHint = Msgs.def(
-	() => `These have weights but aren't in the pick order, so they have no effect. Add them above to use them.`,
+	"These have weights but aren't in the pick order, so they have no effect. Add them above to use them.",
+	() => ({}),
 )
 
 // reads as "<n> weighted"
@@ -35,8 +36,8 @@ export const discardWeights = Msgs.def('Discard')
 export const weightsHeading = Msgs.def('weights')
 
 export const columnWeightsHint = Msgs.def(
-	(pickOrder: number, column: string, defaultWeight: number) =>
-		`Pick ${pickOrder}. Unlisted ${column} values weigh ${defaultWeight}. Shares assume every value is available in the pool.`,
+	'Pick {pickOrder}. Unlisted {column} values weigh {defaultWeight}. Shares assume every value is available in the pool.',
+	(pickOrder: number, column: string, defaultWeight: number) => ({ pickOrder, column, defaultWeight }),
 )
 
 export const matchupWeightsHint = Msgs.def(
@@ -58,24 +59,24 @@ export const removeColumn = Msgs.def('Remove')
 // a value the current layer set has no layers for, so it can never be picked
 export const unknownValue = Msgs.def('(unknown)')
 
-export const noLayersWithValue = Msgs.def((column: string) => `No layers have this ${column} value`)
+export const noLayersWithValue = Msgs.def('No layers have this {column} value', (column: string) => ({ column }))
 
-export const noLayersWithMatchup = Msgs.def((matchup: string) => `No layers have this ${matchup}`)
+export const noLayersWithMatchup = Msgs.def('No layers have this {matchup}', (matchup: string) => ({ matchup }))
 
-export const removeWeight = Msgs.def((value: string) => `Remove ${value}`)
+export const removeWeight = Msgs.def('Remove {value}', (value: string) => ({ value }))
 
-export const addValue = Msgs.def((column: string) => `Add ${column} value`)
+export const addValue = Msgs.def('Add {column} value', (column: string) => ({ column }))
 
 export const addMatchup = Msgs.def('Add matchup')
 
 // between the two sides of a matchup
 export const versus = Msgs.def('vs')
 
-export const factionForTeam = Msgs.def((team: number) => `Faction (team ${team})`)
+export const factionForTeam = Msgs.def('Faction (team {team})', (team: number) => ({ team }))
 
-export const unitForTeam = Msgs.def((team: number) => `Unit (team ${team})`)
+export const unitForTeam = Msgs.def('Unit (team {team})', (team: number) => ({ team }))
 
-export const sideForTeam = Msgs.def((side: string, team: number) => `${side} (team ${team})`)
+export const sideForTeam = Msgs.def('{side} (team {team})', (side: string, team: number) => ({ side, team }))
 
 // -------- the layer-table config --------
 
@@ -105,7 +106,7 @@ export const seedPlaceholder = Msgs.def('seed (optional)')
 
 export const extraMenuItemsHeading = Msgs.def('Extra menu items')
 
-export const extraMenuItemsHint = Msgs.def(() => `Extra comparison controls added to the layer table's filter menu.`)
+export const extraMenuItemsHint = Msgs.def("Extra comparison controls added to the layer table's filter menu.", () => ({}))
 
 export const noExtraMenuItems = Msgs.def('None.')
 

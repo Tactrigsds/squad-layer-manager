@@ -13,7 +13,7 @@ export const permissionDenied = Msgs.def((res: RBAC.PermissionDeniedResponse) =>
 
 // -------- the roles editor --------
 
-export const roleCount = Msgs.def((count: number) => `${count} role${count === 1 ? '' : 's'} defined`)
+export const roleCount = Msgs.def('{count, plural, one {# role defined} other {# roles defined}}', (count: number) => ({ count }))
 
 export const clearAllRoles = Msgs.def('Clear all')
 
@@ -132,7 +132,7 @@ export const groupPicker = Msgs.def('Group')
 export const selectAdminListGroups = Msgs.def('Select admin-list groups...')
 
 // a pair whose list or group has since gone; kept selectable so opening the editor never silently drops a grant
-export const groupNotInAnyList = Msgs.def((pair: string) => `${pair} (not in any current list)`)
+export const groupNotInAnyList = Msgs.def('{pair} (not in any current list)', (pair: string) => ({ pair }))
 
 // -------- the env-configured bootstrap --------
 
@@ -166,9 +166,11 @@ export const byRoleTab = Msgs.def('By Role')
 
 export const allPermissionsTab = Msgs.def('All Permissions')
 
-export const heldPermissionCount = Msgs.def((count: number) => `You have ${count} permission${count !== 1 ? 's' : ''}`)
+export const heldPermissionCount = Msgs.def('You have {count, plural, one {# permission} other {# permissions}}', (count: number) => ({
+	count,
+}))
 
-export const rolePermissionCount = Msgs.def((count: number) => `${count} permission${count !== 1 ? 's' : ''}`)
+export const rolePermissionCount = Msgs.def('{count, plural, one {# permission} other {# permissions}}', (count: number) => ({ count }))
 
 export const descriptionColumn = Msgs.def('Description')
 
@@ -181,18 +183,18 @@ export const negatingBadge = Msgs.def('negating')
 
 export const roleDisabledBadge = Msgs.def('Disabled')
 
-export const unheldPermissionsHeading = Msgs.def(() => `Permissions you don't have`)
+export const unheldPermissionsHeading = Msgs.def("Permissions you don't have", () => ({}))
 
 export const holdsEveryPermission = Msgs.def('You have every permission.')
 
-export const unheldRolesHeading = Msgs.def(() => `Roles you don't have`)
+export const unheldRolesHeading = Msgs.def("Roles you don't have", () => ({}))
 
 export const unheldRolesBlurb = Msgs.def('A role can be simulated when everything it grants is already covered by your own permissions.')
 
 export const holdsEveryRole = Msgs.def('You have every role.')
 
 // why a role cannot be simulated: simulation may only take access away
-export const roleGrantsMore = Msgs.def(() => `Grants permissions you don't have`)
+export const roleGrantsMore = Msgs.def("Grants permissions you don't have", () => ({}))
 
 // -------- the denied-action tooltip --------
 

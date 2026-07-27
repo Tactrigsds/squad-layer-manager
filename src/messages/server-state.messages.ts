@@ -79,7 +79,7 @@ export const confirmEndMatch = Msgs.def((serverName: string) => ({
 	}),
 }))
 
-export const endingMatch = Msgs.def((serverName: string) => `Ending match on ${serverName}...`)
+export const endingMatch = Msgs.def('Ending match on {serverName}...', (serverName: string) => ({ serverName }))
 
 export const matchEnded = Msgs.def('Match ended!')
 
@@ -132,7 +132,7 @@ export const otherServersHeading = Msgs.def('Available servers:')
 
 export const backToServersList = Msgs.def('Go Back to Servers List')
 
-export const startingTitle = Msgs.def((displayName: string) => `Starting "${displayName}"`)
+export const startingTitle = Msgs.def('Starting "{displayName}"', (displayName: string) => ({ displayName }))
 
 export const startingBlurb = Msgs.def('Waiting for the server to come online. This page will switch to the dashboard on its own.')
 

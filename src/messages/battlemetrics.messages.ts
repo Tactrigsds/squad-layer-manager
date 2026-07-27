@@ -59,7 +59,7 @@ export const refreshFailed = Msgs.def(() => ({ toast: () => ['Failed to refresh 
 
 export const hoursPlayedHint = Msgs.def("Hours played on this org's servers")
 
-export const hoursPlayed = Msgs.def((hours: number) => `${hours}h`)
+export const hoursPlayed = Msgs.def('{hours}h', (hours: number) => ({ hours }))
 
 export const refreshHint = Msgs.def('Refresh BattleMetrics data')
 
@@ -101,6 +101,6 @@ export const manageFlagsHint = Msgs.def('Manage flags')
 
 export const unknownFlag = Msgs.def('Unknown flag')
 
-export const unknownFlagHint = Msgs.def((id: string) => `Unknown flag: ${id}`)
+export const unknownFlagHint = Msgs.def('Unknown flag: {id}', (id: string) => ({ id }))
 
 export const flagPicker = Msgs.def('Flag')

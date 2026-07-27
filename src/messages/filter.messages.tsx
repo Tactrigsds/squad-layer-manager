@@ -42,7 +42,7 @@ export const matchupTypeNames: Record<F.MatchupType, string> = {
 
 export const recursiveFilter = Msgs.def((filterId: string) => 'Filter is mutually recursive via filter: ' + filterId)
 
-export const unknownFilter = Msgs.def((filterId: string) => `Filter ${filterId} doesn't exist`)
+export const unknownFilter = Msgs.def("Filter {filterId} doesn't exist", (filterId: string) => ({ filterId }))
 
 export const unhandledNodeType = Msgs.def('Unhandled filter node type')
 
@@ -51,18 +51,22 @@ export const firstOperandMustBeColumn = Msgs.def("A comparison's first operand m
 export const needsColumnOperand = Msgs.def('Comparison requires at least one column operand')
 
 export const columnsNotComparable = Msgs.def(
-	(left: string, right: string) => `Columns ${left} and ${right} are not comparable (different data types)`,
+	'Columns {left} and {right} are not comparable (different data types)',
+	(left: string, right: string) => ({ left, right }),
 )
 
 export const orderedComparisonNull = Msgs.def('Ordered comparison cannot use null')
 
 export const rangeComparisonNull = Msgs.def('Range comparison cannot use null')
 
-export const unresolvedTeamColumn = Msgs.def((column: string) => `Team column "${column}" could not be resolved to a team`)
+export const unresolvedTeamColumn = Msgs.def('Team column "{column}" could not be resolved to a team', (column: string) => ({ column }))
 
-export const unmappedColumn = Msgs.def((column: string) => `Column ${column} is not mapped`)
+export const unmappedColumn = Msgs.def('Column {column} is not mapped', (column: string) => ({ column }))
 
-export const unmappedValue = Msgs.def((column: string, value: NonNullable<F.Value>) => `Value ${value} is not mapped for column ${column}`)
+export const unmappedValue = Msgs.def('Value {value} is not mapped for column {column}', (column: string, value: NonNullable<F.Value>) => ({
+	value,
+	column,
+}))
 
 // Editing a filter entity.
 
@@ -208,7 +212,7 @@ export const matchupSideLabels = { lockedLeft: 'Team 1', lockedRight: 'Team 2', 
 export const swapSides = Msgs.def('Swap the two sides')
 
 // the placeholder on a team-spec dimension, e.g. "any faction"
-export const anyTeamColumn = Msgs.def((column: string) => `any ${column.toLowerCase()}`)
+export const anyTeamColumn = Msgs.def('any {column}', (column: string) => ({ column: column.toLowerCase() }))
 
 // -------- the filter editor page --------
 
@@ -223,7 +227,7 @@ export const create = Msgs.def('Create')
 // on the editor page the owner's name follows inline; in the index it labels a badge beside it
 export const ownerLabel = Msgs.def('Owner:')
 
-export const ownerLine = Msgs.def((owner: string) => `Owner: ${owner}`)
+export const ownerLine = Msgs.def('Owner: {owner}', (owner: string) => ({ owner }))
 
 export const contributorsLabel = Msgs.def('Contributors:')
 
@@ -236,7 +240,7 @@ export const accessOwner = Msgs.def('You are the owner of this filter')
 
 export const accessContributor = Msgs.def('You are a contributor')
 
-export const accessNone = Msgs.def(() => `You don't have permission to modify this filter`)
+export const accessNone = Msgs.def("You don't have permission to modify this filter", () => ({}))
 
 export const accessAllFilters = Msgs.def('You have write access to all filters')
 

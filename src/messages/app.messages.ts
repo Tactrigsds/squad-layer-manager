@@ -85,9 +85,9 @@ export const connectingToServer = Msgs.def('Connecting to server...')
 
 // -------- the primary panel's tabs --------
 
-export const queueTab = Msgs.def((count: number) => `Queue (${count})`)
+export const queueTab = Msgs.def('Queue ({count})', (count: number) => ({ count }))
 
-export const teamsTab = Msgs.def((count: number) => `Teams (${count})`)
+export const teamsTab = Msgs.def('Teams ({count})', (count: number) => ({ count }))
 
 export const finishedEditing = Msgs.def('Finished editing')
 
