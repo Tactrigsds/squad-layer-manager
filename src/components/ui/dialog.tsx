@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
+import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 
 import { DraggableWindowOutlet } from './draggable-window'
@@ -74,7 +75,7 @@ const DialogContent = React.forwardRef<
 					</DraggableWindowOutlet>
 					<DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
 						<Cross2Icon className="h-4 w-4" />
-						<span className="sr-only">Close</span>
+						<span className="sr-only">{UI_Msgs.close().text()}</span>
 					</DialogPrimitive.Close>
 				</BaseZIndexContext.Provider>
 			</DialogPrimitive.Content>

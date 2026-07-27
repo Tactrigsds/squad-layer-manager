@@ -9,74 +9,58 @@ import type * as TSW from '@/models/teamswaps.models'
 // The emphasised words name controls the reader has to find on screen, so which words they are is part of the
 // prose. How a highlighted word looks is not: the window styles `strong` itself.
 
-export const helpTitle = Msgs.def(() => ({ text: () => 'Team Swaps Help' }))
+export const helpTitle = Msgs.def('Team Swaps Help')
 
-export const helpIntro = Msgs.def(() => ({
-	text: () => 'Queue players to be moved to the opposite team, either at the start of the next round or immediately.',
-}))
+export const helpIntro = Msgs.def('Queue players to be moved to the opposite team, either at the start of the next round or immediately.')
 
 export const helpStepQueue = Msgs.def(() => ({
-	react: () => (
-		<>
-			Right-click a player and choose <strong>Swap Next</strong> to queue them.
-		</>
-	),
+	react: () => Msgs.node('Right-click a player and choose <strong>Swap Next</strong> to queue them.', { ...Msgs.tags }),
 }))
 
 export const helpStepSave = Msgs.def(() => ({
-	react: () => (
-		<>
-			Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next
-			round.
-		</>
-	),
+	react: () =>
+		Msgs.node(
+			'Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.',
+			{ ...Msgs.tags },
+		),
 }))
 
 export const helpStepSwapNow = Msgs.def(() => ({
-	react: () => (
-		<>
-			Click <strong>Swap Now</strong> to immediately execute all saved swaps.
-		</>
-	),
+	react: () => Msgs.node('Click <strong>Swap Now</strong> to immediately execute all saved swaps.', { ...Msgs.tags }),
 }))
 
 export const helpRevert = Msgs.def(() => ({
-	react: () => (
-		<>
-			<strong>Revert</strong> discards unsaved edits back to the last saved state.
-		</>
-	),
+	react: () => Msgs.node('<strong>Revert</strong> discards unsaved edits back to the last saved state.', { ...Msgs.tags }),
 }))
 
 export const helpClearTeam = Msgs.def(() => ({
-	react: () => (
-		<>
-			The <strong>trash icon</strong> on a team column clears all for that team.
-		</>
-	),
+	react: () => Msgs.node('The <strong>trash icon</strong> on a team column clears all for that team.', { ...Msgs.tags }),
 }))
 
 export const notifyPlayerOfUpcomingTeamswap = Msgs.def(() => ({
-	warn: () =>
-		'You have been marked for a team swap on mapchange. ' +
-		'Thank you for helping with team balance and contact admins if you have issues.',
+	warn: (locale?: string) =>
+		Msgs.t(
+			'You have been marked for a team swap on mapchange. Thank you for helping with team balance and contact admins if you have issues.',
+			undefined,
+			locale,
+		),
 }))
 
 export const notifyTeamswapCancelled = Msgs.def(() => ({
-	warn: () => 'You will no longer be swapped to the other team on map roll.',
+	warn: (locale?: string) => Msgs.t('You will no longer be swapped to the other team on map roll.', undefined, locale),
 }))
 
 export const notifyManualSwap = Msgs.def(() => ({
-	warn: () => 'You have been swapped to the other team by an admin.',
+	warn: (locale?: string) => Msgs.t('You have been swapped to the other team by an admin.', undefined, locale),
 }))
 
 // otherTeam is named only when swapping a single player, where the destination is unambiguous; a selection or a
 // squad can span both teams, so each member goes to whichever team they are not on
 export const swapNow = Msgs.def((target: Msgs.Target, otherTeam?: string) => ({
 	confirm: () => ({
-		title: `Swap ${Msgs.targetNoun(target)} Now`,
+		title: Msgs.t('Swap {targetNoun} Now', { targetNoun: Msgs.targetNoun(target) }),
 		description: `Move ${Msgs.targetSubject(target)} to ${otherTeam === undefined ? 'the opposite team' : `Team ${otherTeam}`} immediately?`,
-		confirmLabel: 'Swap Now',
+		confirmLabel: Msgs.t('Swap Now'),
 	}),
 }))
 
@@ -84,7 +68,7 @@ export const swapNow = Msgs.def((target: Msgs.Target, otherTeam?: string) => ({
 // what the admin asked for
 export const swapCancelled = Msgs.def((target: Msgs.Target) => ({
 	toast: () => [
-		'Swap cancelled',
+		Msgs.t('Swap cancelled'),
 		{ description: target.kind === 'player' ? 'Player changed teams' : 'One or more players changed teams' },
 	],
 }))
@@ -124,7 +108,7 @@ export const rejectionTexts: Partial<Record<TSW.Rejection['code'], Msgs.ToastArg
 
 export const saved = Msgs.def((name: string, count: number) => ({
 	toast: () => [
-		'Teamswaps saved',
+		Msgs.t('Teamswaps saved'),
 		{ description: count > 0 ? `${name} saved ${count} teamswap${count !== 1 ? 's' : ''}.` : `${name} cleared the saved teamswaps.` },
 	],
 }))
@@ -137,7 +121,7 @@ export const executionFailed = Msgs.def((reason: 'not-all-players-swapped' | 'ti
 			: reason === 'timeout'
 				? 'The swap never took effect on the server.'
 				: reason
-	return { toast: () => ['Team swap failed', { description: `${why} The pending swaps have been cancelled.` }] }
+	return { toast: () => [Msgs.t('Team swap failed'), { description: Msgs.t('{why} The pending swaps have been cancelled.', { why }) }] }
 })
 
 // no name means the map roll executed the queue: nobody's action, so nobody is named
@@ -145,7 +129,7 @@ export const executed = Msgs.def((swapCount: number, name?: string) => {
 	const players = `${swapCount} player${swapCount !== 1 ? 's' : ''}`
 	return {
 		toast: () => [
-			'Teamswaps executed',
+			Msgs.t('Teamswaps executed'),
 			{
 				description:
 					name === undefined

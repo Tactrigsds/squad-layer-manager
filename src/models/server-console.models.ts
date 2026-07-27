@@ -22,6 +22,10 @@ export type ConsoleEvent = ConsoleEventInput & { seq: number }
 export const CONSOLE_CHANNEL = z.enum(['rcon', 'log', 'command'])
 export type ConsoleChannel = z.infer<typeof CONSOLE_CHANNEL>
 
+// what a console can be filtered down to: one channel, or all of them interleaved
+export type Tab = 'unified' | ConsoleChannel
+export const TABS: Tab[] = ['unified', ...CONSOLE_CHANNEL.options]
+
 // A console is a tail, not a transcript: a busy server produces log lines indefinitely and none of this is
 // persisted, so old entries are dropped rather than growing the buffer forever. This is also the backlog a window
 // opened mid-match starts from.

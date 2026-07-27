@@ -33,15 +33,17 @@ export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; se
 		<>
 			{props.selectedLayerIds.length === 1 && L.isKnownLayer(props.selectedLayerIds[0]) && (
 				<LayerInfoDialog layerId={props.selectedLayerIds[0]}>
-					<ContextMenuItem>Show layer info</ContextMenuItem>
+					<ContextMenuItem>{L_Msgs.showLayerInfo().text()}</ContextMenuItem>
 				</LayerInfoDialog>
 			)}
 			<ContextMenuItem onClick={() => copyAdminSetNextLayerCommand(props.selectedLayerIds)}>
-				Copy AdminSetNextLayer command
+				{L_Msgs.copySetNextCommand().text()}
 			</ContextMenuItem>
-			<ContextMenuItem onClick={() => copyLayerId(props.selectedLayerIds)}>Copy layer id</ContextMenuItem>
+			<ContextMenuItem onClick={() => copyLayerId(props.selectedLayerIds)}>{L_Msgs.copyLayerId().text()}</ContextMenuItem>
 			{props.selectedHistoryEntryIds && (
-				<ContextMenuItem onClick={() => copyHistoryEntryId(props.selectedHistoryEntryIds!)}>Copy history entry id</ContextMenuItem>
+				<ContextMenuItem onClick={() => copyHistoryEntryId(props.selectedHistoryEntryIds!)}>
+					{L_Msgs.copyHistoryEntryId().text()}
+				</ContextMenuItem>
 			)}
 		</>
 	)

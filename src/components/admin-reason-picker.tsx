@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 
 // Drops a configured preset into a free-text chat box: unlike a select it holds no state of its own, so the
@@ -35,17 +36,17 @@ export function AdminReasonPicker({
 					variant="outline"
 					className={cn('h-auto self-stretch w-7 p-0 shrink-0', className)}
 					disabled={disabled}
-					title={title ?? 'Fill the box with a preset reason'}
-					aria-label="Preset reason"
+					title={title ?? AAR_Msgs.fillWithPresetReason().text()}
+					aria-label={AAR_Msgs.presetReasonPicker().text()}
 				>
 					<Icons.ListPlus className="h-3.5 w-3.5" />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-56 p-0">
 				<Command>
-					<CommandInput placeholder="Search reasons..." />
+					<CommandInput placeholder={AAR_Msgs.searchReasons().text()} />
 					<CommandList>
-						<CommandEmpty>No reasons found.</CommandEmpty>
+						<CommandEmpty>{AAR_Msgs.noReasonsFound().text()}</CommandEmpty>
 						<CommandGroup>
 							{reasons.map((reason) => (
 								<CommandItem

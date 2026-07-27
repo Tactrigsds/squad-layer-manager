@@ -7,6 +7,7 @@ import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import type * as BM from '@/models/battlemetrics.models'
 import { useOrgFlags } from '@/systems/battlemetrics.client'
 
@@ -33,8 +34,8 @@ export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?
 // The entry stays present and removable either way -- a reference is never silently dropped.
 export function UnknownFlagLabel({ id }: { id: string }) {
 	return (
-		<span className="text-xs italic text-muted-foreground" title={`Unknown flag: ${id}`}>
-			Unknown flag
+		<span className="text-xs italic text-muted-foreground" title={BM_Msgs.unknownFlagHint(id).text()}>
+			{BM_Msgs.unknownFlag().text()}
 		</span>
 	)
 }
@@ -92,7 +93,7 @@ export function BmFlagMultiSelect({
 	}
 	return (
 		<ComboBoxMulti
-			title="Flag"
+			title={BM_Msgs.flagPicker().text()}
 			values={value}
 			options={selectable}
 			disabled={disabled}

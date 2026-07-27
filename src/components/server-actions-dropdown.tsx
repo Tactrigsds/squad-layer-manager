@@ -57,7 +57,7 @@ export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp 
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button variant="secondary" size="sm">
-					Server Actions
+					{SS_Msgs.serverActions().text()}
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent>
@@ -160,42 +160,42 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					onClick={() => void endMatch()}
 					className={cn('bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600', !hasPlayers && 'flex flex-col')}
 				>
-					<span>End Match</span>
-					{!hasPlayers && <small>(disabled: Cannot end match when server is empty.)</small>}
+					<span>{SS_Msgs.endMatchLabel().text()}</span>
+					{!hasPlayers && <small>{SS_Msgs.endMatchNeedsPlayers().text()}</small>}
 				</Item>
 			</PermissionDeniedTooltip>
 			{updatesToSquadServerDisabled?.type !== 'ingame-vote' && (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={enableIngameVoting}>
-						Enable In-Game Voting
+						{SS_Msgs.enableIngameVoting().text()}
 					</Item>
 				</PermissionDeniedTooltip>
 			)}
 			{updatesToSquadServerDisabled ? (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={enableUpdates}>
-						Re-enable SLM Updates
+						{SS_Msgs.reenableSlmUpdates().text()}
 					</Item>
 				</PermissionDeniedTooltip>
 			) : (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={disableUpdates}>
-						Disable SLM Updates
+						{SS_Msgs.disableSlmUpdates().text()}
 					</Item>
 				</PermissionDeniedTooltip>
 			)}
 			<PermissionDeniedTooltip denied={disableFogOfWarDenied}>
 				<Item disabled={!!disableFogOfWarDenied} onClick={disableFogOfWar}>
-					Disable Fog Of War
+					{SS_Msgs.disableFogOfWar().text()}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={consoleDenied}>
 				<Item disabled={!!consoleDenied} onClick={() => openConsoleWindow()}>
-					Server Console
+					{SS_Msgs.serverConsole().text()}
 				</Item>
 			</PermissionDeniedTooltip>
-			{isSandbox && <Item onClick={() => openSandboxWindow()}>Sandbox Controls</Item>}
+			{isSandbox && <Item onClick={() => openSandboxWindow()}>{SS_Msgs.sandboxControls().text()}</Item>}
 		</>
 	)
 }
