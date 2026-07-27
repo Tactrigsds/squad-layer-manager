@@ -5,6 +5,7 @@ import React from 'react'
 import * as AR from '@/app-routes.ts'
 import AboutDialog from '@/components/about-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
+import LogoMark from '@/components/logo-mark'
 import NicknameDialog from '@/components/nickname-dialog'
 import SelectLayersDialog from '@/components/select-layers-dialog'
 import { ServerActionsDropdown } from '@/components/server-actions-dropdown'
@@ -210,9 +211,10 @@ export default function NavBar() {
 	return (
 		<nav
 			className="flex h-16 shrink-0 items-center justify-between border-b px-2 sm:px-4"
-			style={{ backgroundColor: settings?.topBarColor ?? undefined }}
+			style={settings?.topBarColor ? { borderBottom: `2px solid ${settings.topBarColor}` } : undefined}
 		>
 			<div className="flex items-center space-x-3 sm:space-x-6">
+				<LogoMark accent={settings?.topBarColor ?? null} className="h-9 w-9" />
 				{/* below sm the nav links (and the avatar menu) don't fit, so collapse them into one hamburger; tabs stay beside it */}
 				{isSmall && (
 					<MobileNavMenu

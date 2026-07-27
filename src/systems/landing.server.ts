@@ -5,10 +5,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import * as Paths from '$root/paths'
 import { LandingDocument } from '@/components/landing-pages'
+import * as Rx from '@/lib/rxjs'
 import type * as USR_Msgs from '@/messages/users.messages'
+import * as CS from '@/models/context-shared'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
 import * as Discord from '@/systems/discord.server'
+import * as LogoSys from '@/systems/logo.server'
+import * as Settings from '@/systems/settings.server'
 
 // Static, no-JS pages served outside the SPA: the login landing at '/' and the 403 shown to authenticated users
 // who lack site access. Authored as React components (landing-pages.tsx), rendered to a string once at setup()
@@ -25,7 +29,7 @@ type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: str
 type Head = { htmlAttrs: Record<string, string>; metas: Meta[]; assetLinks: Link[] }
 
 // links we reuse from the SPA's <head>; modulepreload/script entries are SPA-only and dropped
-const SHARED_RELS = new Set(['preconnect', 'dns-prefetch', 'stylesheet', 'icon'])
+const SHARED_RELS = new Set(['preconnect', 'dns-prefetch', 'stylesheet', 'icon', 'apple-touch-icon'])
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
@@ -33,9 +37,9 @@ const module = initModule('landing')
 
 let landingHtmlCache!: string
 let forbiddenHtmlCache!: string
-let renderInputs!: { repoUrl: string; guildName: string | null; head: Head; inlineCss: string }
+let renderInputs!: { repoUrl: string; guildName: string | null; head: Head; inlineCss: string; accent: string | null }
 
-// must run after Discord.setup() so the home guild name is resolved
+// must run after Discord.setup() so the home guild name is resolved, and after Settings.setup() for the accent
 export async function setup() {
 	ENV = envBuilder()
 	renderInputs = {
@@ -43,11 +47,21 @@ export async function setup() {
 		guildName: Discord.getHomeGuildName(),
 		head: resolveHead(),
 		inlineCss: await resolveInlineCss(),
+		accent: LogoSys.accent({ ...CS.init(), log: module.getLogger() }),
 	}
+	renderCaches()
+	module.getLogger().info('landing pages rendered (guild: %s)', renderInputs.guildName ?? '<none>')
+
+	Settings.settings$.pipe(Rx.filter((event) => event.scope === 'global')).subscribe(() => {
+		renderInputs = { ...renderInputs, accent: LogoSys.accent({ ...CS.init(), log: module.getLogger() }) }
+		renderCaches()
+	})
+}
+
+function renderCaches() {
 	// with discord auth off there is no oauth flow to send anyone into, so '/' offers the username form instead
 	landingHtmlCache = render(ENV.QUERY_PARAM_AUTH_BYPASS ? 'no-auth' : 'landing', null)
 	forbiddenHtmlCache = render('forbidden', null)
-	module.getLogger().info('landing pages rendered (guild: %s)', renderInputs.guildName ?? '<none>')
 }
 
 async function resolveInlineCss(): Promise<string> {
