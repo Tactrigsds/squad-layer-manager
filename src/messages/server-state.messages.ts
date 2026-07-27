@@ -65,11 +65,11 @@ export const ingameVoteDisabledUpdates = Msgs.def((inferred?: boolean) => ({
 
 // The server actions an admin can take from the dashboard. Each toast.promise leg is a bare value rather than
 // toast args, so these are `text`.
-export const disablingFogOfWar = Msgs.def(() => ({ text: () => 'Disabling Fog of War...' }))
+export const disablingFogOfWar = Msgs.def('Disabling Fog of War...')
 
-export const fogOfWarDisabled = Msgs.def(() => ({ text: () => 'Fog of War disabled for current match' }))
+export const fogOfWarDisabled = Msgs.def('Fog of War disabled for current match')
 
-export const disableFogOfWarFailed = Msgs.def(() => ({ text: () => 'Failed to disable Fog of War (RCON error)' }))
+export const disableFogOfWarFailed = Msgs.def('Failed to disable Fog of War (RCON error)')
 
 export const confirmEndMatch = Msgs.def((serverName: string) => ({
 	confirm: () => ({
@@ -79,48 +79,46 @@ export const confirmEndMatch = Msgs.def((serverName: string) => ({
 	}),
 }))
 
-export const endingMatch = Msgs.def((serverName: string) => ({ text: () => `Ending match on ${serverName}...` }))
+export const endingMatch = Msgs.def((serverName: string) => `Ending match on ${serverName}...`)
 
-export const matchEnded = Msgs.def(() => ({ text: () => 'Match ended!' }))
+export const matchEnded = Msgs.def('Match ended!')
 
-export const serverActions = Msgs.def(() => ({ text: () => 'Server Actions' }))
+export const serverActions = Msgs.def('Server Actions')
 
-export const endMatchLabel = Msgs.def(() => ({ text: () => 'End Match' }))
+export const endMatchLabel = Msgs.def('End Match')
 
-export const endMatchNeedsPlayers = Msgs.def(() => ({ text: () => '(disabled: Cannot end match when server is empty.)' }))
+export const endMatchNeedsPlayers = Msgs.def('(disabled: Cannot end match when server is empty.)')
 
-export const enableIngameVoting = Msgs.def(() => ({ text: () => 'Enable In-Game Voting' }))
+export const enableIngameVoting = Msgs.def('Enable In-Game Voting')
 
-export const reenableSlmUpdates = Msgs.def(() => ({ text: () => 'Re-enable SLM Updates' }))
+export const reenableSlmUpdates = Msgs.def('Re-enable SLM Updates')
 
-export const disableSlmUpdates = Msgs.def(() => ({ text: () => 'Disable SLM Updates' }))
+export const disableSlmUpdates = Msgs.def('Disable SLM Updates')
 
-export const disableFogOfWar = Msgs.def(() => ({ text: () => 'Disable Fog Of War' }))
+export const disableFogOfWar = Msgs.def('Disable Fog Of War')
 
-export const serverConsole = Msgs.def(() => ({ text: () => 'Server Console' }))
+export const serverConsole = Msgs.def('Server Console')
 
-export const sandboxControls = Msgs.def(() => ({ text: () => 'Sandbox Controls' }))
+export const sandboxControls = Msgs.def('Sandbox Controls')
 
-export const rconUnreachable = Msgs.def(() => ({ text: () => 'Unable To connect to RCON server' }))
+export const rconUnreachable = Msgs.def('Unable To connect to RCON server')
 
 // Why a server the user navigated to has no dashboard. `starting` is a waiting state and says so; the other three
 // are settled conditions with a repair for each.
 export type UnavailableStatus = 'not-found' | 'disabled' | 'broken'
 
-export const unavailableTitle = Msgs.def((status: UnavailableStatus, displayName: string) => ({
-	text: () => {
-		switch (status) {
-			case 'not-found':
-				return `Server "${displayName}" Not Found`
-			case 'disabled':
-				return `Server "${displayName}" Disabled`
-			case 'broken':
-				return `Server "${displayName}" Has Invalid Settings`
-			default:
-				assertNever(status)
-		}
-	},
-}))
+export const unavailableTitle = Msgs.def((status: UnavailableStatus, displayName: string) => {
+	switch (status) {
+		case 'not-found':
+			return `Server "${displayName}" Not Found`
+		case 'disabled':
+			return `Server "${displayName}" Disabled`
+		case 'broken':
+			return `Server "${displayName}" Has Invalid Settings`
+		default:
+			assertNever(status)
+	}
+})
 
 export const unavailableDescriptions: Record<UnavailableStatus, string> = {
 	'not-found': 'This server may have been removed from the configuration, or the server ID is incorrect.',
@@ -128,20 +126,18 @@ export const unavailableDescriptions: Record<UnavailableStatus, string> = {
 	broken: "This server's settings failed validation, so it can't be started. Repair them on the settings page, then enable the server.",
 }
 
-export const unavailableHeading = Msgs.def(() => ({ text: () => 'What happened?' }))
+export const unavailableHeading = Msgs.def('What happened?')
 
-export const otherServersHeading = Msgs.def(() => ({ text: () => 'Available servers:' }))
+export const otherServersHeading = Msgs.def('Available servers:')
 
-export const backToServersList = Msgs.def(() => ({ text: () => 'Go Back to Servers List' }))
+export const backToServersList = Msgs.def('Go Back to Servers List')
 
-export const startingTitle = Msgs.def((displayName: string) => ({ text: () => `Starting "${displayName}"` }))
+export const startingTitle = Msgs.def((displayName: string) => `Starting "${displayName}"`)
 
-export const startingBlurb = Msgs.def(() => ({
-	text: () => 'Waiting for the server to come online. This page will switch to the dashboard on its own.',
-}))
+export const startingBlurb = Msgs.def('Waiting for the server to come online. This page will switch to the dashboard on its own.')
 
-export const startingSlowTitle = Msgs.def(() => ({ text: () => 'This is taking longer than expected' }))
+export const startingSlowTitle = Msgs.def('This is taking longer than expected')
 
-export const startingSlowBlurb = Msgs.def(() => ({
-	text: () => "The server still hasn't come online. It may have failed to start, in which case the logs will say why.",
-}))
+export const startingSlowBlurb = Msgs.def(
+	"The server still hasn't come online. It may have failed to start, in which case the logs will say why.",
+)

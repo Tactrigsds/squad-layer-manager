@@ -9,11 +9,9 @@ import type * as TSW from '@/models/teamswaps.models'
 // The emphasised words name controls the reader has to find on screen, so which words they are is part of the
 // prose. How a highlighted word looks is not: the window styles `strong` itself.
 
-export const helpTitle = Msgs.def(() => ({ text: () => 'Team Swaps Help' }))
+export const helpTitle = Msgs.def('Team Swaps Help')
 
-export const helpIntro = Msgs.def(() => ({
-	text: () => 'Queue players to be moved to the opposite team, either at the start of the next round or immediately.',
-}))
+export const helpIntro = Msgs.def('Queue players to be moved to the opposite team, either at the start of the next round or immediately.')
 
 export const helpStepQueue = Msgs.def(() => ({
 	react: () => (

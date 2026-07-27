@@ -1,18 +1,12 @@
 import * as Msgs from '@/messages/shared'
 
 // Delivered as HTTP response bodies, which is the `text` surface rather than any player-facing one.
-export const noApplicationAccess = Msgs.def(() => ({
-	text: () => `You have not been granted access to this application. Please contact an administrator.`,
-}))
+export const noApplicationAccess = Msgs.def(() => `You have not been granted access to this application. Please contact an administrator.`)
 
-export const unAuthenticated = Msgs.def(() => ({
-	text: () => `Not able to authenticate user`,
-}))
+export const unAuthenticated = Msgs.def(() => `Not able to authenticate user`)
 
 // what the no-auth login portal says back when the name posted to it is not one (see fastify.server)
-export const invalidUsername = Msgs.def(() => ({
-	text: () => `Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.`,
-}))
+export const invalidUsername = Msgs.def(() => `Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.`)
 
 // -------- the landing pages --------
 // The unauthenticated entry to the app, rendered to static HTML at boot (see landing.server.ts). guildName is
@@ -32,39 +26,40 @@ export const landingTitles: Record<LandingVariant, string> = {
 	forbidden: 'Access denied - Squad Layer Manager',
 }
 
-export const landingHeading = Msgs.def((guildName: string | null) => ({
-	text: () => (guildName ? `You have reached the SLM instance for ${guildName}.` : 'You have reached this Squad Layer Manager instance.'),
-}))
+export const landingHeading = Msgs.def((guildName: string | null) =>
+	guildName ? `You have reached the SLM instance for ${guildName}.` : 'You have reached this Squad Layer Manager instance.',
+)
 
-export const landingBlurb = Msgs.def((guildName: string | null) => ({
-	text: () => `To access this site you must sign in with a Discord account that has sufficient privileges${where(guildName)}.`,
-}))
+export const landingBlurb = Msgs.def(
+	(guildName: string | null) =>
+		`To access this site you must sign in with a Discord account that has sufficient privileges${where(guildName)}.`,
+)
 
-export const logInWithDiscord = Msgs.def(() => ({ text: () => 'Log in with Discord' }))
+export const logInWithDiscord = Msgs.def('Log in with Discord')
 
-export const viewOnGithub = Msgs.def(() => ({ text: () => 'View on GitHub' }))
+export const viewOnGithub = Msgs.def('View on GitHub')
 
-export const pickANameHeading = Msgs.def(() => ({ text: () => 'Pick a name' }))
+export const pickANameHeading = Msgs.def('Pick a name')
 
-export const pickANameBlurb = Msgs.def(() => ({
-	text: () => 'This instance runs without authentication. Whatever you type here is who you are, and anyone else can be them too.',
-}))
+export const pickANameBlurb = Msgs.def(
+	'This instance runs without authentication. Whatever you type here is who you are, and anyone else can be them too.',
+)
 
-export const usernameLabel = Msgs.def(() => ({ text: () => 'Username' }))
+export const usernameLabel = Msgs.def('Username')
 
-export const continueLabel = Msgs.def(() => ({ text: () => 'Continue' }))
+export const continueLabel = Msgs.def('Continue')
 
-export const accessDeniedHeading = Msgs.def(() => ({ text: () => 'Access denied' }))
+export const accessDeniedHeading = Msgs.def('Access denied')
 
-export const accessDeniedBlurb = Msgs.def((guildName: string | null) => ({
-	text: () => `Your Discord account does not have sufficient privileges${where(guildName)} to access this site.`,
-}))
+export const accessDeniedBlurb = Msgs.def(
+	(guildName: string | null) => `Your Discord account does not have sufficient privileges${where(guildName)} to access this site.`,
+)
 
-export const backToHome = Msgs.def(() => ({ text: () => 'Back to home' }))
+export const backToHome = Msgs.def('Back to home')
 
-export const logOutAndSwitch = Msgs.def(() => ({ text: () => 'Log out and switch account' }))
+export const logOutAndSwitch = Msgs.def('Log out and switch account')
 
-export const accessDeniedContact = Msgs.def(() => ({ text: () => 'If you believe this is a mistake, contact an administrator.' }))
+export const accessDeniedContact = Msgs.def('If you believe this is a mistake, contact an administrator.')
 
 // Editing your own profile.
 
@@ -108,73 +103,70 @@ export const otherSessionsActive = Msgs.def((count: number) => ({
 	toast: () => ['Other sessions active', { description: `You're active in ${count} other session${count > 1 ? 's' : ''}.` }],
 }))
 
-export const resetOtherSessions = Msgs.def(() => ({ text: () => 'Reset them' }))
+export const resetOtherSessions = Msgs.def('Reset them')
 
 // -------- a player's discord link --------
 
-export const discordLabel = Msgs.def(() => ({ text: () => 'Discord' }))
+export const discordLabel = Msgs.def('Discord')
 
-export const linkedBy = Msgs.def((admin?: string) => ({ text: () => `linked by ${admin ?? 'an admin'}` }))
+export const linkedBy = Msgs.def((admin?: string) => `linked by ${admin ?? 'an admin'}`)
 
-export const selfLinked = Msgs.def(() => ({ text: () => 'self-linked' }))
+export const selfLinked = Msgs.def('self-linked')
 
-export const unlink = Msgs.def(() => ({ text: () => 'Unlink' }))
+export const unlink = Msgs.def('Unlink')
 
 // -------- the nickname dialog --------
 
-export const nicknameDialogTitle = Msgs.def(() => ({ text: () => 'Set Custom Nickname' }))
+export const nicknameDialogTitle = Msgs.def('Set Custom Nickname')
 
-export const nicknameDialogBlurb = Msgs.def(() => ({
-	text: () =>
-		'Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display name.',
-}))
+export const nicknameDialogBlurb = Msgs.def(
+	'Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display name.',
+)
 
-export const nicknameFieldLabel = Msgs.def(() => ({ text: () => 'Nickname' }))
+export const nicknameFieldLabel = Msgs.def('Nickname')
 
-export const nicknamePlaceholder = Msgs.def(() => ({ text: () => 'Enter a custom nickname...' }))
+export const nicknamePlaceholder = Msgs.def('Enter a custom nickname...')
 
-export const nicknamePreview = Msgs.def((nickname: string) => ({ text: () => `Will display as: "${nickname}"` }))
+export const nicknamePreview = Msgs.def((nickname: string) => `Will display as: "${nickname}"`)
 
-export const nicknameFallsBackToDiscord = Msgs.def(() => ({ text: () => 'Will use Discord display name' }))
+export const nicknameFallsBackToDiscord = Msgs.def('Will use Discord display name')
 
-export const nicknameTooLong = Msgs.def(() => ({ text: () => 'Nickname must be 64 characters or less' }))
+export const nicknameTooLong = Msgs.def('Nickname must be 64 characters or less')
 
-export const save = Msgs.def(() => ({ text: () => 'Save' }))
+export const save = Msgs.def('Save')
 
-export const saving = Msgs.def(() => ({ text: () => 'Saving...' }))
+export const saving = Msgs.def('Saving...')
 
 // -------- the linked steam accounts dialog --------
 
-export const steamDialogTitle = Msgs.def(() => ({ text: () => 'Linked Steam Accounts' }))
+export const steamDialogTitle = Msgs.def('Linked Steam Accounts')
 
-export const steamDialogBlurb = Msgs.def(() => ({
-	text: () =>
-		'Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need. Links an admin made on your behalf are listed here too, and you can remove them.',
-}))
+export const steamDialogBlurb = Msgs.def(
+	'Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need. Links an admin made on your behalf are listed here too, and you can remove them.',
+)
 
-export const steamIdPlaceholder = Msgs.def(() => ({ text: () => '17-digit Steam64 ID' }))
+export const steamIdPlaceholder = Msgs.def('17-digit Steam64 ID')
 
-export const steamLinkedByAdmin = Msgs.def((admin: string) => ({ text: () => `Linked by ${admin}` }))
+export const steamLinkedByAdmin = Msgs.def((admin: string) => `Linked by ${admin}`)
 
 // -------- the discord role and member pickers --------
 
-export const discordRolePicker = Msgs.def(() => ({ text: () => 'role' }))
+export const discordRolePicker = Msgs.def('role')
 
-export const discordRoleUnresolved = Msgs.def(() => ({
-	text: () => 'This Discord role no longer exists in the server (its id is shown). Pick another role or remove this assignment.',
-}))
+export const discordRoleUnresolved = Msgs.def(
+	'This Discord role no longer exists in the server (its id is shown). Pick another role or remove this assignment.',
+)
 
-export const discordMemberPicker = Msgs.def(() => ({ text: () => 'member' }))
+export const discordMemberPicker = Msgs.def('member')
 
-export const discordMemberPlaceholder = Msgs.def(() => ({ text: () => 'Search members…' }))
+export const discordMemberPlaceholder = Msgs.def('Search members…')
 
-export const discordMemberSearchPlaceholder = Msgs.def(() => ({ text: () => 'Search by name or id…' }))
+export const discordMemberSearchPlaceholder = Msgs.def('Search by name or id…')
 
-export const noDiscordMembersFound = Msgs.def(() => ({ text: () => 'No members found.' }))
+export const noDiscordMembersFound = Msgs.def('No members found.')
 
-export const searchDiscordMembers = Msgs.def(() => ({ text: () => 'Type a name or id to search members.' }))
+export const searchDiscordMembers = Msgs.def('Type a name or id to search members.')
 
-export const discordMemberUnresolved = Msgs.def(() => ({
-	text: () =>
-		"This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise unknown.",
-}))
+export const discordMemberUnresolved = Msgs.def(
+	"This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise unknown.",
+)

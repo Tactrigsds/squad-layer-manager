@@ -5,59 +5,59 @@ import * as Msgs from '@/messages/shared'
 
 // -------- combo boxes --------
 
-export const searchOptions = Msgs.def(() => ({ text: () => 'Search options...' }))
+export const searchOptions = Msgs.def('Search options...')
 
 // The picker names what it holds, which the caller supplies as a bare noun and this pluralizes. The rule is at
 // least in the messages tree now; a locale that cannot pluralize by suffix still needs the noun itself, so this
 // stays i18n debt rather than a finished message.
-export const selectedCount = Msgs.def((noun: string | undefined, count: number, limit?: number) => ({
-	text: () => `Selected ${noun ? noun + 's ' : ''}(${count}${limit ? `/${limit}` : ''})`,
-}))
+export const selectedCount = Msgs.def(
+	(noun: string | undefined, count: number, limit?: number) => `Selected ${noun ? noun + 's ' : ''}(${count}${limit ? `/${limit}` : ''})`,
+)
 
-export const resetToInitial = Msgs.def(() => ({ text: () => 'Reset to Initial' }))
+export const resetToInitial = Msgs.def('Reset to Initial')
 
-export const selectAll = Msgs.def(() => ({ text: () => 'Select All' }))
+export const selectAll = Msgs.def('Select All')
 
-export const clearAll = Msgs.def(() => ({ text: () => 'Clear All' }))
+export const clearAll = Msgs.def('Clear All')
 
-export const noResults = Msgs.def(() => ({ text: () => 'No results found.' }))
+export const noResults = Msgs.def('No results found.')
 
-export const nothingSelected = Msgs.def(() => ({ text: () => 'No items selected' }))
+export const nothingSelected = Msgs.def('No items selected')
 
 // -------- pagination --------
 
-export const pagination = Msgs.def(() => ({ text: () => 'pagination' }))
+export const pagination = Msgs.def('pagination')
 
-export const previousPage = Msgs.def(() => ({ text: () => 'Previous' }))
+export const previousPage = Msgs.def('Previous')
 
-export const previousPageHint = Msgs.def(() => ({ text: () => 'Go to previous page' }))
+export const previousPageHint = Msgs.def('Go to previous page')
 
-export const nextPage = Msgs.def(() => ({ text: () => 'Next' }))
+export const nextPage = Msgs.def('Next')
 
-export const nextPageHint = Msgs.def(() => ({ text: () => 'Go to next page' }))
+export const nextPageHint = Msgs.def('Go to next page')
 
-export const morePages = Msgs.def(() => ({ text: () => 'More pages' }))
+export const morePages = Msgs.def('More pages')
 
-export const firstPageHint = Msgs.def(() => ({ text: () => 'First page' }))
+export const firstPageHint = Msgs.def('First page')
 
-export const lastPageHint = Msgs.def(() => ({ text: () => 'Last page' }))
+export const lastPageHint = Msgs.def('Last page')
 
-export const previousPageShortHint = Msgs.def(() => ({ text: () => 'Previous page' }))
+export const previousPageShortHint = Msgs.def('Previous page')
 
-export const nextPageShortHint = Msgs.def(() => ({ text: () => 'Next page' }))
+export const nextPageShortHint = Msgs.def('Next page')
 
-export const pageNumber = Msgs.def(() => ({ text: () => 'Page number' }))
+export const pageNumber = Msgs.def('Page number')
 
 // -------- dialogs, windows and the rest --------
 
-export const close = Msgs.def(() => ({ text: () => 'Close' }))
+export const close = Msgs.def('Close')
 
-export const closeWindow = Msgs.def(() => ({ text: () => 'Close window' }))
+export const closeWindow = Msgs.def('Close window')
 
-export const cancel = Msgs.def(() => ({ text: () => 'Cancel' }))
+export const cancel = Msgs.def('Cancel')
 
-export const loading = Msgs.def(() => ({ text: () => 'Loading' }))
+export const loading = Msgs.def('Loading')
 
-export const loadingEllipsis = Msgs.def(() => ({ text: () => 'Loading...' }))
+export const loadingEllipsis = Msgs.def('Loading...')
 
-export const invertHint = Msgs.def(() => ({ text: () => 'Ctrl+Click to invert' }))
+export const invertHint = Msgs.def('Ctrl+Click to invert')

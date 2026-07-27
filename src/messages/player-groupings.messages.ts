@@ -22,68 +22,66 @@ export const groupRuleSourceHints: Record<PG.GroupRuleSource, string> = {
 
 // -------- the groupings editor --------
 
-export const noGroupings = Msgs.def(() => ({
-	text: () =>
+export const noGroupings = Msgs.def(
+	() =>
 		'No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick ' +
 		'between them by name.',
-}))
+)
 
-export const newGroupingName = Msgs.def(() => ({ text: () => 'New grouping name' }))
+export const newGroupingName = Msgs.def('New grouping name')
 
-export const addGrouping = Msgs.def(() => ({ text: () => 'Add grouping' }))
+export const addGrouping = Msgs.def('Add grouping')
 
-export const removeGrouping = Msgs.def((groupingId: string) => ({ text: () => `Remove grouping ${groupingId}` }))
+export const removeGrouping = Msgs.def((groupingId: string) => `Remove grouping ${groupingId}`)
 
 // -------- one grouping's rules --------
 
-export const rules = Msgs.def(() => ({ text: () => 'Rules' }))
+export const rules = Msgs.def('Rules')
 
-export const rulesBlurb = Msgs.def(() => ({
-	text: () => 'A player joins the group of the first rule they match. Drag to reorder; priority is top to bottom.',
-}))
+export const rulesBlurb = Msgs.def('A player joins the group of the first rule they match. Drag to reorder; priority is top to bottom.')
 
-export const noRules = Msgs.def(() => ({ text: () => 'No rules yet.' }))
+export const noRules = Msgs.def('No rules yet.')
 
-export const matchesColumn = Msgs.def(() => ({ text: () => 'Matches' }))
+export const matchesColumn = Msgs.def('Matches')
 
-export const mappedGroupingColumn = Msgs.def(() => ({ text: () => 'Mapped grouping' }))
+export const mappedGroupingColumn = Msgs.def('Mapped grouping')
 
-export const addRule = Msgs.def(() => ({ text: () => 'Add rule' }))
+export const addRule = Msgs.def('Add rule')
 
-export const dragToReorder = Msgs.def(() => ({ text: () => 'Drag to reorder' }))
+export const dragToReorder = Msgs.def('Drag to reorder')
 
-export const ruleSource = Msgs.def(() => ({ text: () => 'Rule source' }))
+export const ruleSource = Msgs.def('Rule source')
 
-export const removeRule = Msgs.def(() => ({ text: () => 'Remove rule' }))
+export const removeRule = Msgs.def('Remove rule')
 
 // the admin-list group a rule matches on, as opposed to the SLM group it maps into
-export const adminGroupPicker = Msgs.def(() => ({ text: () => 'Admin group' }))
+export const adminGroupPicker = Msgs.def('Admin group')
 
-export const groupPicker = Msgs.def(() => ({ text: () => 'Group' }))
+export const groupPicker = Msgs.def('Group')
 
 // a server-admin rule has nothing to pick, so its value cell says what it matches instead
-export const serverAdminRuleValue = Msgs.def(() => ({ text: () => 'Any admin-list group that makes them an admin' }))
+export const serverAdminRuleValue = Msgs.def('Any admin-list group that makes them an admin')
 
 // the example is a clan tag, which is what a name pattern is almost always for
-export const namePatternPlaceholder = Msgs.def(() => ({ text: () => 'Name pattern, e.g. ^\\[TT\\]' }))
+export const namePatternPlaceholder = Msgs.def('Name pattern, e.g. ^\\[TT\\]')
 
-export const invalidNamePattern = Msgs.def(() => ({ text: () => 'Not a valid regular expression' }))
+export const invalidNamePattern = Msgs.def('Not a valid regular expression')
 
-export const groupNamePlaceholder = Msgs.def(() => ({ text: () => 'Group name' }))
+export const groupNamePlaceholder = Msgs.def('Group name')
 
-export const pickExistingGroup = Msgs.def(() => ({ text: () => 'Pick an existing group instead' }))
+export const pickExistingGroup = Msgs.def('Pick an existing group instead')
 
-export const addNewGroup = Msgs.def(() => ({ text: () => 'Add new group...' }))
+export const addNewGroup = Msgs.def('Add new group...')
 
 // -------- group colors --------
 
-export const colorsSummary = Msgs.def((count: number) => ({ text: () => `Colors (${count})` }))
+export const colorsSummary = Msgs.def((count: number) => `Colors (${count})`)
 
-export const colorsBlurb = Msgs.def(() => ({ text: () => 'Following a flag keeps the color in step with battlemetrics.' }))
+export const colorsBlurb = Msgs.def('Following a flag keeps the color in step with battlemetrics.')
 
-export const colorFromFlag = Msgs.def(() => ({ text: () => 'Color from flag' }))
+export const colorFromFlag = Msgs.def('Color from flag')
 
 // between the flag-derived color and the custom one, which are alternatives
-export const orCustomColor = Msgs.def(() => ({ text: () => 'or' }))
+export const orCustomColor = Msgs.def('or')
 
-export const hexColorPlaceholder = Msgs.def(() => ({ text: () => '#rrggbb' }))
+export const hexColorPlaceholder = Msgs.def('#rrggbb')

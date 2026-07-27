@@ -96,117 +96,117 @@ export const copyFailed = Msgs.def(() => ({
 
 // -------- the prefixes editor --------
 
-export const prefixesBlurb = Msgs.def(() => ({
-	text: () => 'Editing a prefix updates every command string and alias that uses it. The default prefix seeds new commands.',
-}))
+export const prefixesBlurb = Msgs.def(
+	'Editing a prefix updates every command string and alias that uses it. The default prefix seeds new commands.',
+)
 
 // prefixes have no identity of their own, so every affordance addresses one by its position in the list
-export const prefixLabel = Msgs.def((position: number) => ({ text: () => `Prefix ${position}` }))
+export const prefixLabel = Msgs.def((position: number) => `Prefix ${position}`)
 
-export const makePrefixDefault = Msgs.def((position: number) => ({ text: () => `Make prefix ${position} the default` }))
+export const makePrefixDefault = Msgs.def((position: number) => `Make prefix ${position} the default`)
 
-export const removePrefix = Msgs.def((position: number) => ({ text: () => `Remove prefix ${position}` }))
+export const removePrefix = Msgs.def((position: number) => `Remove prefix ${position}`)
 
-export const defaultPrefix = Msgs.def(() => ({ text: () => 'Default' }))
+export const defaultPrefix = Msgs.def('Default')
 
-export const prefixUses = Msgs.def((count: number) => ({ text: () => `${count} ${count === 1 ? 'use' : 'uses'}` }))
+export const prefixUses = Msgs.def((count: number) => `${count} ${count === 1 ? 'use' : 'uses'}`)
 
 // why the remove button is disabled, in the two ways it can be
-export const defaultPrefixNotRemovable = Msgs.def(() => ({ text: () => 'The default prefix cannot be removed' }))
+export const defaultPrefixNotRemovable = Msgs.def('The default prefix cannot be removed')
 
-export const prefixStillUsed = Msgs.def((count: number) => ({ text: () => `${count} strings still use this prefix` }))
+export const prefixStillUsed = Msgs.def((count: number) => `${count} strings still use this prefix`)
 
-export const duplicatePrefix = Msgs.def(() => ({ text: () => 'That prefix already exists' }))
+export const duplicatePrefix = Msgs.def('That prefix already exists')
 
-export const newPrefix = Msgs.def(() => ({ text: () => 'New prefix' }))
+export const newPrefix = Msgs.def('New prefix')
 
-export const addPrefix = Msgs.def(() => ({ text: () => 'Add prefix' }))
+export const addPrefix = Msgs.def('Add prefix')
 
 // -------- one command's card --------
 
-export const triggers = Msgs.def(() => ({ text: () => 'Triggers' }))
+export const triggers = Msgs.def('Triggers')
 
-export const triggersHelp = Msgs.def(() => ({
-	text: () => 'Strings that run this command, each starting with one of the allowed prefixes. Pin arguments to one to make it a shortcut.',
-}))
+export const triggersHelp = Msgs.def(
+	'Strings that run this command, each starting with one of the allowed prefixes. Pin arguments to one to make it a shortcut.',
+)
 
-export const allowedChats = Msgs.def(() => ({ text: () => 'Allowed chats' }))
+export const allowedChats = Msgs.def('Allowed chats')
 
-export const allowedChatsHelp = Msgs.def(() => ({ text: () => 'The in-game chats this command may be typed in.' }))
+export const allowedChatsHelp = Msgs.def('The in-game chats this command may be typed in.')
 
-export const enabled = Msgs.def(() => ({ text: () => 'Enabled' }))
+export const enabled = Msgs.def('Enabled')
 
-export const quickReference = Msgs.def(() => ({ text: () => 'Quick Reference' }))
+export const quickReference = Msgs.def('Quick Reference')
 
-export const quickReferenceHelp = Msgs.def(() => ({
-	text: () => `Show this command on the commands page's quick reference, and in the in-game help command's default listing.`,
-}))
+export const quickReferenceHelp = Msgs.def(
+	() => `Show this command on the commands page's quick reference, and in the in-game help command's default listing.`,
+)
 
 // -------- one command's triggers --------
 
-export const triggerStringPlaceholder = Msgs.def(() => ({ text: () => 'prefix + command' }))
+export const triggerStringPlaceholder = Msgs.def('prefix + command')
 
-export const pinArgs = Msgs.def(() => ({ text: () => 'Pin args' }))
+export const pinArgs = Msgs.def('Pin args')
 
-export const pinArgsHint = Msgs.def(() => ({ text: () => `Pin some of this command's arguments, so the trigger becomes a shortcut` }))
+export const pinArgsHint = Msgs.def(() => `Pin some of this command's arguments, so the trigger becomes a shortcut`)
 
-export const pinnedArgsPlaceholder = Msgs.def(() => ({ text: () => '{{arg1}} 2h {{rest2}}' }))
+export const pinnedArgsPlaceholder = Msgs.def('{{arg1}} 2h {{rest2}}')
 
-export const unpinArgs = Msgs.def(() => ({ text: () => 'Unpin' }))
+export const unpinArgs = Msgs.def('Unpin')
 
-export const unpinArgsHint = Msgs.def(() => ({ text: () => `Take this command's arguments as typed instead` }))
+export const unpinArgsHint = Msgs.def(() => `Take this command's arguments as typed instead`)
 
-export const removeTrigger = Msgs.def((position: number) => ({ text: () => `Remove trigger ${position}` }))
+export const removeTrigger = Msgs.def((position: number) => `Remove trigger ${position}`)
 
-export const addTrigger = Msgs.def(() => ({ text: () => 'Add' }))
+export const addTrigger = Msgs.def('Add')
 
-export const takesNoArguments = Msgs.def(() => ({ text: () => 'This command takes no arguments, so pinned args can only be fixed text.' }))
+export const takesNoArguments = Msgs.def('This command takes no arguments, so pinned args can only be fixed text.')
 
 // introduces the list of {{ref}} arg pairs that follows
-export const takesArguments = Msgs.def(() => ({ text: () => 'Takes' }))
+export const takesArguments = Msgs.def('Takes')
 
 // The placeholders are the syntax being explained, so they are part of the prose rather than examples the caller
 // substitutes in.
-export const argTemplateHelp = Msgs.def(() => ({
-	text: () =>
+export const argTemplateHelp = Msgs.def(
+	() =>
 		'A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, ' +
 		'{{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. ' +
 		'{{^arg2}}default{{/arg2}} fills a word in when it is left out.',
-}))
+)
 
 // -------- the commands page --------
 
-export const pageHeading = Msgs.def(() => ({ text: () => 'Ingame Commands' }))
+export const pageHeading = Msgs.def('Ingame Commands')
 
-export const pageBlurb = Msgs.def(() => ({
-	text: () => 'Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.',
-}))
+export const pageBlurb = Msgs.def(
+	'Everything you type is case-insensitive. Player, squad and flag names match on any part of the name, ignoring spaces.',
+)
 
-export const pinnedSection = Msgs.def(() => ({ text: () => 'Your Pinned Commands' }))
+export const pinnedSection = Msgs.def('Your Pinned Commands')
 
-export const quickReferenceSection = Msgs.def(() => ({ text: () => 'Quick Reference' }))
+export const quickReferenceSection = Msgs.def('Quick Reference')
 
-export const searchCommands = Msgs.def(() => ({ text: () => 'Search commands…' }))
+export const searchCommands = Msgs.def('Search commands…')
 
-export const noMatches = Msgs.def(() => ({ text: () => 'No matches.' }))
+export const noMatches = Msgs.def('No matches.')
 
-export const optionalArg = Msgs.def(() => ({ text: () => 'optional' }))
+export const optionalArg = Msgs.def('optional')
 
 // introduces the preset values an argument accepts
-export const configuredPresets = Msgs.def(() => ({ text: () => 'Configured:' }))
+export const configuredPresets = Msgs.def('Configured:')
 
-export const examplesHeading = Msgs.def(() => ({ text: () => 'Examples' }))
+export const examplesHeading = Msgs.def('Examples')
 
-export const shortcutsHeading = Msgs.def(() => ({ text: () => 'Shortcuts' }))
+export const shortcutsHeading = Msgs.def('Shortcuts')
 
-export const linkToCommand = Msgs.def(() => ({ text: () => 'Link to this command' }))
+export const linkToCommand = Msgs.def('Link to this command')
 
-export const linkToSection = Msgs.def((section: string) => ({ text: () => `Link to ${section}` }))
+export const linkToSection = Msgs.def((section: string) => `Link to ${section}`)
 
-export const disabledBadge = Msgs.def(() => ({ text: () => 'Disabled' }))
+export const disabledBadge = Msgs.def('Disabled')
 
-export const detailsToggle = Msgs.def(() => ({ text: () => 'Details' }))
+export const detailsToggle = Msgs.def('Details')
 
-export const unpinCommand = Msgs.def(() => ({ text: () => 'Unpin' }))
+export const unpinCommand = Msgs.def('Unpin')
 
-export const copyCommand = Msgs.def((command: string) => ({ text: () => `Copy ${command}` }))
+export const copyCommand = Msgs.def((command: string) => `Copy ${command}`)
