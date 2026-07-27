@@ -508,6 +508,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
 					const serverState = await SquadServer.getServerState(ctx)
+					if (!SETTINGS.remindersEnabled(serverState.settings)) return
 					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 					if (!voteItem || !LL.isVoteItem(voteItem)) return
 					const msg = V_Msgs.voteReminder(
@@ -532,6 +533,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 						if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 						const serverState = await SquadServer.getServerState(ctx)
+						if (!SETTINGS.remindersEnabled(serverState.settings)) return
 						const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 						if (!voteItem || !LL.isVoteItem(voteItem)) return
 						const msg = V_Msgs.voteReminder(
