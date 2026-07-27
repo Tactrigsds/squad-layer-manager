@@ -921,6 +921,37 @@ describe('PendingEvents', () => {
 			expect(state.currTeams?.players[0].teamId).toBe(2)
 		})
 
+		// prod: four players named exactly "Dan". The roster diff paired each poll row with the wrong same-named
+		// player, so every poll re-emitted PLAYER_CHANGED_TEAM to the team the player was already on. The fold
+		// applies the mutation by eos, so it was a no-op and the flood never converged.
+		describe('players sharing a username', () => {
+			const dan = (eos: string, teamId: SM.TeamId) =>
+				makePlayer(eos, teamId, { ids: { eos, playerController: `ctrl_${eos}`, username: 'Dan' } })
+
+			it('emits nothing when an unchanged roster is polled repeatedly', async () => {
+				const state = makeSyncedState([dan('eos-dan-a', 1), dan('eos-dan-b', 2)], [])
+
+				for (const time of [200, 300, 400]) {
+					PendingEvents.onTeamsPolled(state, makeTeams([dan('eos-dan-a', 1), dan('eos-dan-b', 2)]), time)
+					PendingEvents.onLogEvent(state, makeUnknownLogEvent(time + 1))
+					const events = await collect(state)
+					expect(events.filter((e) => e.type === 'PLAYER_CHANGED_TEAM')).toEqual([])
+				}
+			})
+
+			it('still attributes a real team change to the player who actually moved', async () => {
+				const state = makeSyncedState([dan('eos-dan-a', 1), dan('eos-dan-b', 2)], [])
+
+				PendingEvents.onTeamsPolled(state, makeTeams([dan('eos-dan-a', 2), dan('eos-dan-b', 2)]), 200)
+				PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+				const events = await collect(state)
+
+				const changed = events.filter((e) => e.type === 'PLAYER_CHANGED_TEAM') as SE.PlayerChangedTeam[]
+				expect(changed).toHaveLength(1)
+				expect(changed[0]).toMatchObject({ player: 'eos-dan-a', newTeamId: 2 })
+			})
+		})
+
 		it('yields PLAYER_LEFT_SQUAD + SQUAD_DISBANDED when a player leaves a squad and was the only member', async () => {
 			const p1 = makePlayer('eos-001', 1, { squadId: 1 })
 			const squad = makeSquad(1, 1, 'eos-001', 100)
