@@ -33,6 +33,7 @@ import * as SettingsNav from '@/lib/settings-nav'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -127,7 +128,7 @@ function RouteComponent() {
 				return !!s && SettingsEditorFrame.Sel.dirty(s)
 			})
 			if (!dirty) return false
-			const shouldLeave = confirm('You have unsaved settings changes. Are you sure you want to leave?')
+			const shouldLeave = confirm(SETTINGS_Msgs.unsavedChanges().text())
 			return !shouldLeave
 		},
 	})
@@ -481,10 +482,11 @@ function ServersSection({
 	}, [servers])
 
 	async function handleDelete(server: PublicServer) {
+		const msg = SETTINGS_Msgs.confirmDeleteServer(server.displayName, server.id).confirm()
 		const result = await openDialog({
-			title: 'Delete Managed Server',
-			description: `Delete managed server "${server.displayName}" (${server.id})? This cannot be undone.`,
-			buttons: [{ id: 'confirm', label: 'Delete', variant: 'destructive' }],
+			title: msg.title,
+			description: msg.description,
+			buttons: [{ id: 'confirm', label: msg.confirmLabel, variant: 'destructive' }],
 		})
 		if (result === 'confirm') deleteMutation.mutate({ serverId: server.id })
 	}
@@ -677,10 +679,11 @@ function ServerSettingsSection({
 
 	async function handleJsonSave() {
 		if (!valid) return
+		const msg = SETTINGS_Msgs.confirmSave(server.displayName).confirm()
 		const result = await openDialog({
-			title: `Save ${server.displayName} settings?`,
+			title: msg.title,
 			content: <SettingsChangeList changes={changes} />,
-			buttons: [{ id: 'save', label: 'Save' }],
+			buttons: [{ id: 'save', label: msg.confirmLabel }],
 		})
 		if (result === 'save') void SettingsEditorFrame.Actions.save({ settingsEditor: key })
 	}
@@ -909,10 +912,11 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 
 	async function handleJsonSave() {
 		if (!valid) return
+		const msg = SETTINGS_Msgs.confirmSave().confirm()
 		const result = await openDialog({
-			title: 'Save global settings?',
+			title: msg.title,
 			content: <SettingsChangeList changes={changes} />,
-			buttons: [{ id: 'save', label: 'Save' }],
+			buttons: [{ id: 'save', label: msg.confirmLabel }],
 		})
 		if (result === 'save') void SettingsEditorFrame.Actions.save({ settingsEditor: key })
 	}
