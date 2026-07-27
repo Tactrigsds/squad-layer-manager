@@ -98,12 +98,6 @@ export function initSquadRcon(
 		}),
 	)
 
-	cleanup.push(
-		layersStatus.observe(ctx).subscribe((status) => {
-			log.info('next layer %s', status.code === 'ok' ? (status.data.nextLayer?.id ?? null) : status.msg)
-		}),
-	)
-
 	return {
 		layersStatus,
 		serverInfo,
@@ -479,7 +473,6 @@ export const setNextLayer = Instr.spanOp(
 // AdminEnableVoting is what turns Squad's own end-of-match vote on and off. Turning it off is the only way to stop
 // the vote deciding the next layer, so re-enabling SLM's updates without it would just leave the two fighting.
 export function setIngameVotingEnabled(ctx: SR.Ctx.Rcon & CS.AbortSignal, enabled: boolean) {
-	log.info(`Setting in-game voting to %s`, enabled ? 'enabled' : 'disabled')
 	return ctx.rcon.execute(`AdminEnableVoting ${enabled ? 1 : 0}`, { level: 'info', signal: ctx.signal })
 }
 
