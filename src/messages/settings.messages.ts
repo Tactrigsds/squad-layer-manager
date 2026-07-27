@@ -11,10 +11,6 @@ export const invalid = Msgs.def((reason: string) => ({
 	toast: () => ['Invalid settings', { description: reason }],
 }))
 
-export const saveFailed = Msgs.def((reason: string) => ({
-	toast: () => ['Error while saving settings:', { description: reason }],
-}))
-
 export const serverNotFound = Msgs.def(() => ({ toast: () => ['Server not found'] }))
 
 export const serverIdTaken = Msgs.def(() => ({ toast: () => ['A server with that ID already exists'] }))
