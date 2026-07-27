@@ -6,11 +6,11 @@ import * as Msgs from '@/messages/shared'
 // The layer table's clipboard receipts. Unlike SM_Msgs.copiedToClipboard these put what was copied in the
 // toast itself rather than in a description, and only the history-entry one pluralizes.
 export const copiedSetNextCommand = Msgs.def(() => ({
-	toast: () => ['Copied AdminSetNextLayer Command'],
+	toast: () => [Msgs.t('Copied AdminSetNextLayer Command')],
 }))
 
 export const copiedLayerIds = Msgs.def(() => ({
-	toast: () => ['Copied Layer ID'],
+	toast: () => [Msgs.t('Copied Layer ID')],
 }))
 
 export const copiedHistoryEntryIds = Msgs.def((count: number) => ({
@@ -42,7 +42,7 @@ export const showSelected = Msgs.def('Show Selected')
 
 export const resetSelectedLayers = Msgs.def('Reset Selected Layers')
 
-export const selectedCount = Msgs.def((count: number) => `${count} selected`)
+export const selectedCount = Msgs.def('{count} selected', (count: number) => ({ count }))
 
 export const randomize = Msgs.def('Randomize')
 
@@ -54,11 +54,7 @@ export const layerFound = Msgs.def('Layer exists in the database')
 
 // the count is emphasised, which is part of the sentence; the readout styles `strong` itself
 export const matchedLayers = Msgs.def((count: string) => ({
-	react: () => (
-		<>
-			<strong>{count}</strong> matched layers
-		</>
-	),
+	react: () => Msgs.node('<strong>{count}</strong> matched layers', { count, ...Msgs.tags }),
 }))
 
 export const noLayersMatched = Msgs.def('No layers matched')
@@ -94,13 +90,11 @@ export const noScores = Msgs.def('No scores available')
 // A team named for a reader rather than for a slot. Which scheme applies is the caller's: 'A'/'B' are normalized
 // across the swap, 1/2 are the raw slot (see docs/architecture.md). The faction rides in parentheses where the
 // layer is known.
-const normalizedTeamNames: Record<'A' | 'B', string> = { A: 'Team A', B: 'Team B' }
-const rawTeamNames: Record<1 | 2, string> = { 1: 'Team 1', 2: 'Team 2' }
 
-export const teamName = Msgs.def((team: 'A' | 'B' | 1 | 2, faction?: string | null) => {
-	const name = typeof team === 'number' ? rawTeamNames[team] : normalizedTeamNames[team]
-	return faction ? `${name} (${faction})` : name
-})
+export const teamName = Msgs.def(
+	'{team, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes { ({faction})} other {}}',
+	(team: 'A' | 'B' | 1 | 2, faction?: string | null) => ({ team: String(team), faction, hasFaction: faction ? 'yes' : 'no' }),
+)
 
 export const team1 = Msgs.def('Team 1')
 
@@ -114,28 +108,28 @@ export const startingTickets = Msgs.def('Starting Tickets:')
 
 // the faction line under a team heading: `<team> (<role>) - <faction> (<unit type>)`
 export const teamFactionLine = Msgs.def((team: string, role: string | undefined, faction: string, unitType: string) => ({
-	react: () => (
-		<>
-			<strong>
-				{team}
-				{role && ` (${role})`}
-			</strong>{' '}
-			- {faction} ({unitType})
-		</>
-	),
+	react: () =>
+		Msgs.node('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} ({unitType})', {
+			team,
+			role,
+			hasRole: role ? 'yes' : 'no',
+			faction,
+			unitType,
+			...Msgs.tags,
+		}),
 }))
 
 // the same heading in the score grid, where the unit is named rather than typed
 export const teamScoreHeading = Msgs.def((team: string, role: string | undefined, faction: string, unit: string) => ({
-	react: () => (
-		<>
-			<strong>
-				{team}
-				{role && ` (${role})`}
-			</strong>{' '}
-			- {faction} {unit}
-		</>
-	),
+	react: () =>
+		Msgs.node('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} {unit}', {
+			team,
+			role,
+			hasRole: role ? 'yes' : 'no',
+			faction,
+			unit,
+			...Msgs.tags,
+		}),
 }))
 
 export const unknownUnit = Msgs.def('Unknown')
@@ -153,12 +147,12 @@ export const logarithmicScale = Msgs.def('(logarithmic scale)')
 export const balanceDifferential = Msgs.def('Balance Differential')
 
 // value carries its own sign where the bar has one cutoff per side
-export const poolCutoff = Msgs.def((value: string) => `Pool Cutoff (${value})`)
+export const poolCutoff = Msgs.def('Pool Cutoff ({value})', (value: string) => ({ value }))
 
 // The number is coloured by which team the difference favours, which no single class on the container can
 // express, so the caller renders it and the message positions it.
 export const scoreDiff = Msgs.def((value: React.ReactNode) => ({
-	react: () => <>(diff: {value})</>,
+	react: () => Msgs.node('(diff: {value})', { value }),
 }))
 
 export const scoreUnavailable = Msgs.def('N/A')
@@ -186,7 +180,7 @@ export const setByLabel = Msgs.def('Set By')
 
 export const multiLayerPlaceholder = Msgs.def('Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)')
 
-export const addLayers = Msgs.def((count: number) => `Add ${count > 0 ? `${count} ` : ''}Layer${count !== 1 ? 's' : ''}`)
+export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
 
 export const editLayerTitle = Msgs.def('Edit Layer')
 

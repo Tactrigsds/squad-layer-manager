@@ -8,7 +8,7 @@ export const productName = Msgs.def('Squad Layer Manager')
 
 // what was copied goes in the description, since the title is the same wherever the app copies something
 export const copiedToClipboard = Msgs.def((what: string) => ({
-	toast: () => ['Copied to clipboard', { description: what }],
+	toast: () => [Msgs.t('Copied to clipboard'), { description: what }],
 }))
 
 // -------- the about dialog --------
@@ -85,9 +85,9 @@ export const connectingToServer = Msgs.def('Connecting to server...')
 
 // -------- the primary panel's tabs --------
 
-export const queueTab = Msgs.def((count: number) => `Queue (${count})`)
+export const queueTab = Msgs.def('Queue ({count})', (count: number) => ({ count }))
 
-export const teamsTab = Msgs.def((count: number) => `Teams (${count})`)
+export const teamsTab = Msgs.def('Teams ({count})', (count: number) => ({ count }))
 
 export const finishedEditing = Msgs.def('Finished editing')
 
@@ -100,47 +100,24 @@ export const noServersAvailable = Msgs.def('No servers available.')
 export const somethingWentWrong = Msgs.def('Something went wrong')
 
 // -------- what a suspended subtree says while it waits --------
-// There are only two things the app ever waits on, so each sentence is spelled out per subject rather than built
-// around an interpolated noun. The odd casing mid-sentence is inherited from the old interpolation, which
-// substituted a noun phrase written for one position into all five.
+// The odd casing of "This page" mid-sentence is inherited from the noun phrase this was built around before the
+// sentences were spelled out, and is preserved here rather than quietly corrected.
 
 export type BoundarySubject = 'global-settings' | 'page'
 
-const boundaryLoadingText: Record<BoundarySubject, string> = {
-	'global-settings': 'Loading global settings…',
-	page: 'Loading This page…',
+const subjectNames: Record<BoundarySubject, string> = {
+	'global-settings': 'global settings',
+	page: 'This page',
 }
 
-const boundaryStillWaitingText: Record<BoundarySubject, string> = {
-	'global-settings': 'Still waiting on global settings…',
-	page: 'Still waiting on This page…',
-}
-
-const boundaryReconnectingText: Record<BoundarySubject, string> = {
-	'global-settings': "Reconnecting, global settings will load once we're back…",
-	page: "Reconnecting, This page will load once we're back…",
-}
-
-export const boundaryLoading = Msgs.def((subject: BoundarySubject, state: 'waiting' | 'slow' | 'reconnecting') =>
-	state === 'waiting'
-		? boundaryLoadingText[subject]
-		: state === 'slow'
-			? boundaryStillWaitingText[subject]
-			: boundaryReconnectingText[subject],
+export const boundaryLoading = Msgs.def(
+	"{state, select, waiting {Loading {subject}…} slow {Still waiting on {subject}…} other {Reconnecting, {subject} will load once we're back…}}",
+	(subject: BoundarySubject, state: 'waiting' | 'slow' | 'reconnecting') => ({ subject: subjectNames[subject], state }),
 )
 
-const boundaryTimedOutTitle: Record<BoundarySubject, string> = {
-	'global-settings': "global settings didn't load",
-	page: "This page didn't load",
-}
-
-const boundaryFailedTitle: Record<BoundarySubject, string> = {
-	'global-settings': 'global settings failed',
-	page: 'This page failed',
-}
-
-export const boundaryFailed = Msgs.def((subject: BoundarySubject, timedOut: boolean) =>
-	timedOut ? boundaryTimedOutTitle[subject] : boundaryFailedTitle[subject],
+export const boundaryFailed = Msgs.def(
+	"{timedOut, select, yes {{subject} didn't load} other {{subject} failed}}",
+	(subject: BoundarySubject, timedOut: boolean) => ({ subject: subjectNames[subject], timedOut: timedOut ? 'yes' : 'no' }),
 )
 
 export const boundaryTimedOutBlurb = Msgs.def('The server never sent this data. It may be busy or in a bad state.')

@@ -1,19 +1,22 @@
 import * as Msgs from '@/messages/shared'
 
 // Delivered as HTTP response bodies, which is the `text` surface rather than any player-facing one.
-export const noApplicationAccess = Msgs.def(() => `You have not been granted access to this application. Please contact an administrator.`)
+export const noApplicationAccess = Msgs.def(
+	'You have not been granted access to this application. Please contact an administrator.',
+	() => ({}),
+)
 
-export const unAuthenticated = Msgs.def(() => `Not able to authenticate user`)
+export const unAuthenticated = Msgs.def('Not able to authenticate user')
 
 // what the no-auth login portal says back when the name posted to it is not one (see fastify.server)
-export const invalidUsername = Msgs.def(() => `Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.`)
+export const invalidUsername = Msgs.def('Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.')
 
 // -------- the landing pages --------
 // The unauthenticated entry to the app, rendered to static HTML at boot (see landing.server.ts). guildName is
 // null when the instance does not know which Discord it belongs to, which is what the vaguer wording is for.
 
 function where(guildName: string | null) {
-	return guildName ? ` in ${guildName}` : ' in the configured Discord'
+	return guildName ?? 'the configured Discord'
 }
 
 // which of the three pages is being rendered. Declared here because the titles are the only thing keyed by it and
@@ -26,13 +29,14 @@ export const landingTitles: Record<LandingVariant, string> = {
 	forbidden: 'Access denied - Squad Layer Manager',
 }
 
-export const landingHeading = Msgs.def((guildName: string | null) =>
-	guildName ? `You have reached the SLM instance for ${guildName}.` : 'You have reached this Squad Layer Manager instance.',
+export const landingHeading = Msgs.def(
+	'{named, select, yes {You have reached the SLM instance for {guildName}.} other {You have reached this Squad Layer Manager instance.}}',
+	(guildName: string | null) => ({ guildName, named: guildName ? 'yes' : 'no' }),
 )
 
 export const landingBlurb = Msgs.def(
-	(guildName: string | null) =>
-		`To access this site you must sign in with a Discord account that has sufficient privileges${where(guildName)}.`,
+	'To access this site you must sign in with a Discord account that has sufficient privileges in {where}.',
+	(guildName: string | null) => ({ where: where(guildName) }),
 )
 
 export const logInWithDiscord = Msgs.def('Log in with Discord')
@@ -52,7 +56,8 @@ export const continueLabel = Msgs.def('Continue')
 export const accessDeniedHeading = Msgs.def('Access denied')
 
 export const accessDeniedBlurb = Msgs.def(
-	(guildName: string | null) => `Your Discord account does not have sufficient privileges${where(guildName)} to access this site.`,
+	'Your Discord account does not have sufficient privileges in {where} to access this site.',
+	(guildName: string | null) => ({ where: where(guildName) }),
 )
 
 export const backToHome = Msgs.def('Back to home')
@@ -63,44 +68,47 @@ export const accessDeniedContact = Msgs.def('If you believe this is a mistake, c
 
 // Editing your own profile.
 
-export const nicknameUpdated = Msgs.def(() => ({ toast: () => ['Nickname updated successfully!'] }))
+export const nicknameUpdated = Msgs.def(() => ({ toast: () => [Msgs.t('Nickname updated successfully!')] }))
 
 export const nicknameRejected = Msgs.def((reason: string) => ({
-	toast: () => ['Error updating nickname', { description: reason }],
+	toast: () => [Msgs.t('Error updating nickname'), { description: reason }],
 }))
 
 // the request threw rather than answering, so there is nothing of the server's to quote
 export const nicknameUpdateFailed = Msgs.def(() => ({
-	toast: () => ['Failed to update nickname', { description: 'An unexpected error occurred' }],
+	toast: () => [Msgs.t('Failed to update nickname'), { description: Msgs.t('An unexpected error occurred') }],
 }))
 
-export const steamAccountsUpdated = Msgs.def(() => ({ toast: () => ['Linked Steam accounts updated'] }))
+export const steamAccountsUpdated = Msgs.def(() => ({ toast: () => [Msgs.t('Linked Steam accounts updated')] }))
 
 export const steamIdAlreadyLinked = Msgs.def((steamId: string) => ({
-	toast: () => ['Steam ID already linked', { description: `${steamId} is linked to another account.` }],
+	toast: () => [Msgs.t('Steam ID already linked'), { description: Msgs.t('{steamId} is linked to another account.', { steamId }) }],
 }))
 
 export const steamUpdateFailed = Msgs.def((reason: string) => ({
-	toast: () => ['Failed to update', { description: reason }],
+	toast: () => [Msgs.t('Failed to update'), { description: reason }],
 }))
 
 export const steamLinkAssigned = Msgs.def((discordName: string) => ({
-	toast: () => ['Steam account linked', { description: `Linked to ${discordName}.` }],
+	toast: () => [Msgs.t('Steam account linked'), { description: Msgs.t('Linked to {discordName}.', { discordName }) }],
 }))
 
-export const steamLinkRemoved = Msgs.def(() => ({ toast: () => ['Steam link removed'] }))
+export const steamLinkRemoved = Msgs.def(() => ({ toast: () => [Msgs.t('Steam link removed')] }))
 
 // the picker only searches the home guild, so an id typed in by hand is the way to reach this
 export const steamLinkNotAGuildMember = Msgs.def((discordId: string) => ({
-	toast: () => ['Not a member of this Discord', { description: `${discordId} could not be resolved in the home guild.` }],
+	toast: () => [
+		Msgs.t('Not a member of this Discord'),
+		{ description: Msgs.t('{discordId} could not be resolved in the home guild.', { discordId }) },
+	],
 }))
 
-export const steamLinkFailed = Msgs.def(() => ({ toast: () => ['Failed to update the link'] }))
+export const steamLinkFailed = Msgs.def(() => ({ toast: () => [Msgs.t('Failed to update the link')] }))
 
 // One toast for the whole condition, kept alive and updated in place while it holds, so its id, its infinite
 // duration and its action handler stay at the call site.
 export const otherSessionsActive = Msgs.def((count: number) => ({
-	toast: () => ['Other sessions active', { description: `You're active in ${count} other session${count > 1 ? 's' : ''}.` }],
+	toast: () => [Msgs.t('Other sessions active'), { description: `You're active in ${count} other session${count > 1 ? 's' : ''}.` }],
 }))
 
 export const resetOtherSessions = Msgs.def('Reset them')
@@ -109,7 +117,7 @@ export const resetOtherSessions = Msgs.def('Reset them')
 
 export const discordLabel = Msgs.def('Discord')
 
-export const linkedBy = Msgs.def((admin?: string) => `linked by ${admin ?? 'an admin'}`)
+export const linkedBy = Msgs.def('linked by {admin}', (admin?: string) => ({ admin: admin ?? 'an admin' }))
 
 export const selfLinked = Msgs.def('self-linked')
 
@@ -127,7 +135,7 @@ export const nicknameFieldLabel = Msgs.def('Nickname')
 
 export const nicknamePlaceholder = Msgs.def('Enter a custom nickname...')
 
-export const nicknamePreview = Msgs.def((nickname: string) => `Will display as: "${nickname}"`)
+export const nicknamePreview = Msgs.def('Will display as: "{nickname}"', (nickname: string) => ({ nickname }))
 
 export const nicknameFallsBackToDiscord = Msgs.def('Will use Discord display name')
 
@@ -147,7 +155,7 @@ export const steamDialogBlurb = Msgs.def(
 
 export const steamIdPlaceholder = Msgs.def('17-digit Steam64 ID')
 
-export const steamLinkedByAdmin = Msgs.def((admin: string) => `Linked by ${admin}`)
+export const steamLinkedByAdmin = Msgs.def('Linked by {admin}', (admin: string) => ({ admin }))
 
 // -------- the discord role and member pickers --------
 

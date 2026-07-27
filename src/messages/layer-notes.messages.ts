@@ -9,7 +9,7 @@ export const addNoteInline = Msgs.def('add note')
 
 export const editNote = Msgs.def('Edit note')
 
-export const viewNotes = Msgs.def((count: number) => `View ${count} notes`)
+export const viewNotes = Msgs.def('View {count} notes', (count: number) => ({ count }))
 
 // on the popover holding one note, so a screen reader can tell them apart
 export const noteGroup = Msgs.def('Note')

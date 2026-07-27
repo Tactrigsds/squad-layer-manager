@@ -20,7 +20,7 @@ export const started = Msgs.def(
 					return []
 				})
 		const lines = MsgFmt.voteChoicesLines(layerIds, undefined, displayProps).join('\n')
-		const formattedInterval = MsgFmt.formatInterval(duration, { terse: false, round: 'second' })
+		const formattedInterval = MsgFmt.formatInterval(duration, { round: 'second' })
 		const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
 		const text = `Vote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.\n`
 
@@ -54,17 +54,17 @@ export const winnerSelected = Msgs.def(
 export const insufficientVotes = Msgs.def((voteItem: LL.VoteItem, displayProps: DH.LayerDisplayProp[]) => {
 	const defaultChoice = voteItem.choices[0]
 	return {
-		broadcast: () =>
-			`\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(
-				defaultChoice.layerId,
-				undefined,
-				displayProps,
-			)}`,
+		broadcast: (locale?: string) =>
+			Msgs.t(
+				'\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to {toShortLayerNameFromId}',
+				{ toShortLayerNameFromId: DH.toShortLayerNameFromId(defaultChoice.layerId, undefined, displayProps) },
+				locale,
+			),
 	}
 })
 
 export const aborted = Msgs.def(() => ({
-	broadcast: () => `\nThe vote has been aborted.`,
+	broadcast: (locale?: string) => Msgs.t('\nThe vote has been aborted.', undefined, locale),
 }))
 
 export const voteReminder = Msgs.def(
@@ -75,7 +75,7 @@ export const voteReminder = Msgs.def(
 		finalReminder = false,
 		displayProps: DH.LayerDisplayProp[],
 	) => {
-		const durationStr = MsgFmt.formatInterval(timeLeft, { terse: false, round: 'second' })
+		const durationStr = MsgFmt.formatInterval(timeLeft, { round: 'second' })
 		const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
 		const lines = MsgFmt.voteChoicesLines(
 			state.choiceIds.flatMap((id) => {
@@ -91,34 +91,41 @@ export const voteReminder = Msgs.def(
 	},
 )
 
-export const noVoteInProgress = Msgs.def(() => ({ warn: () => `No vote in progress` }))
-export const invalidChoice = Msgs.def(() => ({ warn: () => `Invalid vote choice` }))
+export const noVoteInProgress = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No vote in progress', undefined, locale) }))
+export const invalidChoice = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Invalid vote choice', undefined, locale) }))
 
 export const voteCast = Msgs.def((choice: L.LayerId, displayProps: DH.LayerDisplayProp[]) => ({
-	warn: () => `Vote cast for ${DH.toShortLayerNameFromId(choice, undefined, displayProps)}.`,
+	warn: (locale?: string) =>
+		Msgs.t(
+			'Vote cast for {toShortLayerNameFromId}.',
+			{ toShortLayerNameFromId: DH.toShortLayerNameFromId(choice, undefined, displayProps) },
+			locale,
+		),
 }))
 
 export const wrongChat = Msgs.def((correctChannel: string) => ({
-	warn: () => `Vote must be cast in ${correctChannel}`,
+	warn: (locale?: string) => Msgs.t('Vote must be cast in {correctChannel}', { correctChannel }, locale),
 }))
 
 // What the web client tells the admin once a vote mutation comes back ok. Distinct from the broadcasts above,
 // which announce the same events to players in game and are worded for that audience.
 export const adminReceipt = {
-	started: Msgs.def(() => ({ toast: () => ['Vote started!'] })),
-	aborted: Msgs.def(() => ({ toast: () => ['Vote aborted!'] })),
-	endedEarly: Msgs.def(() => ({ toast: () => ['Vote ended early!'] })),
-	autostartCancelled: Msgs.def(() => ({ toast: () => ['Vote autostart cancelled!'] })),
+	started: Msgs.def(() => ({ toast: () => [Msgs.t('Vote started!')] })),
+	aborted: Msgs.def(() => ({ toast: () => [Msgs.t('Vote aborted!')] })),
+	endedEarly: Msgs.def(() => ({ toast: () => [Msgs.t('Vote ended early!')] })),
+	autostartCancelled: Msgs.def(() => ({ toast: () => [Msgs.t('Vote autostart cancelled!')] })),
 }
 
 export const start = {
-	noVoteConfigured: Msgs.def(() => ({ warn: () => `No vote is currently configured` })),
-	voteAlreadyInProgress: Msgs.def(() => ({ warn: () => `A vote is already in progress` })),
-	itemNotFound: Msgs.def(() => ({ warn: () => `Item not found` })),
-	invalidItemType: Msgs.def(() => ({ warn: () => `Referenced item must be a vote` })),
-	editingInProgress: Msgs.def(() => ({ warn: () => `Vote is currently being edited` })),
-	publicVoteNotFirst: Msgs.def(() => ({ warn: () => `Public vote must be the first item in the queue when initiated` })),
-	noVoteInPostGame: Msgs.def(() => ({ warn: () => 'Not votes allowed in post-game' })),
+	noVoteConfigured: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No vote is currently configured', undefined, locale) })),
+	voteAlreadyInProgress: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('A vote is already in progress', undefined, locale) })),
+	itemNotFound: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Item not found', undefined, locale) })),
+	invalidItemType: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Referenced item must be a vote', undefined, locale) })),
+	editingInProgress: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Vote is currently being edited', undefined, locale) })),
+	publicVoteNotFirst: Msgs.def(() => ({
+		warn: (locale?: string) => Msgs.t('Public vote must be the first item in the queue when initiated', undefined, locale),
+	})),
+	noVoteInPostGame: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Not votes allowed in post-game', undefined, locale) })),
 }
 
 // -------- the vote row on the queue --------
@@ -130,7 +137,7 @@ export const startsIn = Msgs.def('starts in')
 
 export const cancelAutostart = Msgs.def('Cancel Autostart')
 
-export const tally = Msgs.def((received: number, players: number) => `${received} of ${players} votes received`)
+export const tally = Msgs.def('{received} of {players} votes received', (received: number, players: number) => ({ received, players }))
 
 export const endVoteEarly = Msgs.def('End Vote Early')
 
@@ -204,10 +211,16 @@ export const voteInProgress = Msgs.def('Vote in progress...')
 export const unknownChoice = Msgs.def('Unknown')
 
 export const choiceVotes = Msgs.def(
-	(votes: number, percentage: number) => `${votes} vote${votes !== 1 ? 's' : ''} (${percentage.toFixed(1)}%)`,
+	'{votes, plural, one {# vote} other {# votes}} ({percentage}%)',
+	(votes: number, percentage: number) => ({ votes, percentage: percentage.toFixed(1) }),
 )
 
 export const turnout = Msgs.def(
-	(received: number, players: number, percentage: number | null) =>
-		`Received: ${received} of ${players} votes` + (percentage !== null ? ` (${percentage.toFixed(1)}%)` : ''),
+	'Received: {received} of {players} votes{hasPercentage, select, yes { ({percentage}%)} other {}}',
+	(received: number, players: number, percentage: number | null) => ({
+		received,
+		players,
+		percentage: percentage?.toFixed(1),
+		hasPercentage: percentage != null ? 'yes' : 'no',
+	}),
 )

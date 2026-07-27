@@ -91,7 +91,7 @@ export const descriptions = {
 export const aliasDescription = (command: string) => `Shortcut for "${command}"`
 
 export const copyFailed = Msgs.def(() => ({
-	toast: () => ['Failed to copy', { description: 'Could not copy command to clipboard' }],
+	toast: () => [Msgs.t('Failed to copy'), { description: Msgs.t('Could not copy command to clipboard') }],
 }))
 
 // -------- the prefixes editor --------
@@ -101,20 +101,20 @@ export const prefixesBlurb = Msgs.def(
 )
 
 // prefixes have no identity of their own, so every affordance addresses one by its position in the list
-export const prefixLabel = Msgs.def((position: number) => `Prefix ${position}`)
+export const prefixLabel = Msgs.def('Prefix {position}', (position: number) => ({ position }))
 
-export const makePrefixDefault = Msgs.def((position: number) => `Make prefix ${position} the default`)
+export const makePrefixDefault = Msgs.def('Make prefix {position} the default', (position: number) => ({ position }))
 
-export const removePrefix = Msgs.def((position: number) => `Remove prefix ${position}`)
+export const removePrefix = Msgs.def('Remove prefix {position}', (position: number) => ({ position }))
 
 export const defaultPrefix = Msgs.def('Default')
 
-export const prefixUses = Msgs.def((count: number) => `${count} ${count === 1 ? 'use' : 'uses'}`)
+export const prefixUses = Msgs.def('{count, plural, one {# use} other {# uses}}', (count: number) => ({ count }))
 
 // why the remove button is disabled, in the two ways it can be
 export const defaultPrefixNotRemovable = Msgs.def('The default prefix cannot be removed')
 
-export const prefixStillUsed = Msgs.def((count: number) => `${count} strings still use this prefix`)
+export const prefixStillUsed = Msgs.def('{count} strings still use this prefix', (count: number) => ({ count }))
 
 export const duplicatePrefix = Msgs.def('That prefix already exists')
 
@@ -139,7 +139,8 @@ export const enabled = Msgs.def('Enabled')
 export const quickReference = Msgs.def('Quick Reference')
 
 export const quickReferenceHelp = Msgs.def(
-	() => `Show this command on the commands page's quick reference, and in the in-game help command's default listing.`,
+	"Show this command on the commands page's quick reference, and in the in-game help command's default listing.",
+	() => ({}),
 )
 
 // -------- one command's triggers --------
@@ -148,15 +149,15 @@ export const triggerStringPlaceholder = Msgs.def('prefix + command')
 
 export const pinArgs = Msgs.def('Pin args')
 
-export const pinArgsHint = Msgs.def(() => `Pin some of this command's arguments, so the trigger becomes a shortcut`)
+export const pinArgsHint = Msgs.def("Pin some of this command's arguments, so the trigger becomes a shortcut")
 
 export const pinnedArgsPlaceholder = Msgs.def('{{arg1}} 2h {{rest2}}')
 
 export const unpinArgs = Msgs.def('Unpin')
 
-export const unpinArgsHint = Msgs.def(() => `Take this command's arguments as typed instead`)
+export const unpinArgsHint = Msgs.def("Take this command's arguments as typed instead")
 
-export const removeTrigger = Msgs.def((position: number) => `Remove trigger ${position}`)
+export const removeTrigger = Msgs.def('Remove trigger {position}', (position: number) => ({ position }))
 
 export const addTrigger = Msgs.def('Add')
 
@@ -201,7 +202,7 @@ export const shortcutsHeading = Msgs.def('Shortcuts')
 
 export const linkToCommand = Msgs.def('Link to this command')
 
-export const linkToSection = Msgs.def((section: string) => `Link to ${section}`)
+export const linkToSection = Msgs.def('Link to {section}', (section: string) => ({ section }))
 
 export const disabledBadge = Msgs.def('Disabled')
 
@@ -209,4 +210,4 @@ export const detailsToggle = Msgs.def('Details')
 
 export const unpinCommand = Msgs.def('Unpin')
 
-export const copyCommand = Msgs.def((command: string) => `Copy ${command}`)
+export const copyCommand = Msgs.def('Copy {command}', (command: string) => ({ command }))

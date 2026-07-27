@@ -19,10 +19,11 @@ export const labelPlaceholder = Msgs.def('Label')
 export const noActionTexts = Msgs.def('Add text for at least one action, otherwise this reason can never be used.')
 
 export const removeActionText = Msgs.def(
-	(action: string) => `Remove ${action} text (this reason will no longer be available for that action)`,
+	'Remove {action} text (this reason will no longer be available for that action)',
+	(action: string) => ({ action }),
 )
 
-export const actionTextPlaceholder = Msgs.def((action: string) => `Sent when performing ${action}`)
+export const actionTextPlaceholder = Msgs.def('Sent when performing {action}', (action: string) => ({ action }))
 
 export const addActionText = Msgs.def('Add action text…')
 
@@ -34,9 +35,7 @@ export const keywordsPlaceholder = Msgs.def('tk afk')
 export const previewTitle = Msgs.def('Preview the delivered in-game messages')
 
 export const previewBlurb = Msgs.def(
-	() =>
-		'In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has ' +
-		'run out).',
+	'In-game text delivered for each applicable action (timeouts shown with a 2h sample duration, and as re-delivered once it has run out).',
 )
 
 // what each preview entry is labelled with. The plain actions are named by the action itself; these are the
@@ -58,15 +57,15 @@ export const previewMissingActionText = Msgs.def('<action text>')
 // helpers are not available here. Which words are the link is part of the prose; how it looks is not, so the
 // caller styles `a`.
 export const templateSyntaxHint = Msgs.def((docUrl: string) => ({
-	react: () => (
-		<>
-			Supports{' '}
-			<a href={docUrl} target="_blank" rel="noopener noreferrer">
-				Mustache {'{{variable}}'} syntax
-			</a>
-			.
-		</>
-	),
+	react: () =>
+		Msgs.node('Supports <link>Mustache {syntax} syntax</link>.', {
+			syntax: '{{variable}}',
+			link: (chunks) => (
+				<a href={docUrl} target="_blank" rel="noopener noreferrer">
+					{chunks}
+				</a>
+			),
+		}),
 }))
 
 // -------- the reason field, wherever an action or a flag asks for one --------
@@ -74,7 +73,7 @@ export const templateSyntaxHint = Msgs.def((docUrl: string) => ({
 // Whether a reason is required is coloured differently in each case, which no single class on the container can
 // express, so the caller renders the qualifier and the message positions it.
 export const reasonLabel = Msgs.def((qualifier: React.ReactNode) => ({
-	react: () => <>Reason {qualifier}</>,
+	react: () => Msgs.node('Reason {qualifier}', { qualifier }),
 }))
 
 export const reasonRequired = Msgs.def('(required)')
@@ -94,8 +93,8 @@ export const enterReason = Msgs.def('Enter a reason')
 export const messagePreview = Msgs.def('Message preview')
 
 export const noReasonsConfigured = Msgs.def(
-	(actionName: string) =>
-		`A reason is required for ${actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).`,
+	'A reason is required for {actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).',
+	(actionName: string) => ({ actionName }),
 )
 
 export const presetReasonPicker = Msgs.def('Preset reason')

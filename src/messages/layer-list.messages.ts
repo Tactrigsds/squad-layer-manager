@@ -39,20 +39,22 @@ export const nextLayerWarning = Msgs.def(
 export const votePending = Msgs.def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
 	warn: () => {
 		const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
-		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { terse: false, round: 'second' })
+		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { round: 'second' })
 		const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
 		return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 	},
 }))
 
-export const empty = Msgs.def(() => ({ warn: () => `WARNING: Queue is empty. Please populate it` }))
+export const empty = Msgs.def(() => ({
+	warn: (locale?: string) => Msgs.t('WARNING: Queue is empty. Please populate it', undefined, locale),
+}))
 
 export const abandonedEditsDiscarded = Msgs.def((draft: 'queue' | 'request') => ({
 	toast: () => [`Unsaved ${draft === 'queue' ? 'queue' : 'layer request'} edits were discarded: nobody was left editing them`],
 }))
 
 export const opFailed = Msgs.def(() => ({
-	toast: () => ['Failed to apply queue operation'],
+	toast: () => [Msgs.t('Failed to apply queue operation')],
 }))
 
 export const showNext = Msgs.def(
@@ -166,7 +168,7 @@ export const leavingDiscardsEdits = Msgs.def(
 )
 
 export const ownEditsDiscarded = Msgs.def(() => ({
-	toast: () => ['Your unsaved edits have been discarded'],
+	toast: () => [Msgs.t('Your unsaved edits have been discarded')],
 }))
 
 // -------- where a queue item came from --------
@@ -245,7 +247,7 @@ export const inGameVoteRunning = Msgs.def('In-Game Vote Running')
 
 export const inGameVoteBlurb = Msgs.def('The Squad server is running its own vote, which decides the next layer.')
 
-export const currentlyVotingBetween = Msgs.def((choices: string) => `Currently voting between ${choices}.`)
+export const currentlyVotingBetween = Msgs.def('Currently voting between {choices}.', (choices: string) => ({ choices }))
 
 export const slmUpdatesDisabled = Msgs.def('SLM Updates Disabled')
 
@@ -268,6 +270,7 @@ export const disabledByUnnamedUser = Msgs.def('a user')
 export const disabledBySlm = Msgs.def('SLM')
 
 // what the enable button does, which differs when the server is mid-vote
-export const enableUpdatesCta = Msgs.def((alsoStopsIngameVote: boolean) =>
-	alsoStopsIngameVote ? 'to enable SLM Updates and turn off in-game voting on the server.' : 'to enable SLM Updates.',
+export const enableUpdatesCta = Msgs.def(
+	'to enable SLM Updates{alsoStopsIngameVote, select, yes { and turn off in-game voting on the server} other {}}.',
+	(alsoStopsIngameVote: boolean) => ({ alsoStopsIngameVote: alsoStopsIngameVote ? 'yes' : 'no' }),
 )

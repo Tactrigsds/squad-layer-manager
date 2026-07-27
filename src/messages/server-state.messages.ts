@@ -35,7 +35,7 @@ export const stateUpdateSource = Msgs.def((source: SS.LQStateUpdate['source']) =
 })
 
 export const fogOff = Msgs.def(() => ({
-	broadcast: () => 'Fog of War is disabled. All points are visible. Check your maps.',
+	broadcast: (locale?: string) => Msgs.t('Fog of War is disabled. All points are visible. Check your maps.', undefined, locale),
 }))
 
 export const slmUpdatesSet = Msgs.def((enabled: boolean, ingameVotingTurnedOff?: boolean) => ({
@@ -73,13 +73,13 @@ export const disableFogOfWarFailed = Msgs.def('Failed to disable Fog of War (RCO
 
 export const confirmEndMatch = Msgs.def((serverName: string) => ({
 	confirm: () => ({
-		title: 'End Match',
-		description: `Are you sure you want to end the match for ${serverName}?`,
-		confirmLabel: 'End Match',
+		title: Msgs.t('End Match'),
+		description: Msgs.t('Are you sure you want to end the match for {serverName}?', { serverName }),
+		confirmLabel: Msgs.t('End Match'),
 	}),
 }))
 
-export const endingMatch = Msgs.def((serverName: string) => `Ending match on ${serverName}...`)
+export const endingMatch = Msgs.def('Ending match on {serverName}...', (serverName: string) => ({ serverName }))
 
 export const matchEnded = Msgs.def('Match ended!')
 
@@ -132,7 +132,7 @@ export const otherServersHeading = Msgs.def('Available servers:')
 
 export const backToServersList = Msgs.def('Go Back to Servers List')
 
-export const startingTitle = Msgs.def((displayName: string) => `Starting "${displayName}"`)
+export const startingTitle = Msgs.def('Starting "{displayName}"', (displayName: string) => ({ displayName }))
 
 export const startingBlurb = Msgs.def('Waiting for the server to come online. This page will switch to the dashboard on its own.')
 
