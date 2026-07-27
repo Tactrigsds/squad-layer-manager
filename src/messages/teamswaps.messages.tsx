@@ -73,30 +73,74 @@ export const swapCancelled = Msgs.def((target: Msgs.Target) => ({
 	],
 }))
 
-// added/removed are the real per-player diff against the previously saved swaps, not the net change in
-// size: a save that adds 3 and removes 1 is not "added 2"
-export const notifyAdminSwapsSaved = Msgs.def((name: string, count: number, added: number, removed: number, factionLines?: string[]) => ({
-	warn: (locale?: string) => {
-		if (count === 0) return Msgs.t('{name} cleared all queued teamswaps for next map.', { name }, locale)
-		const parts: string[] = []
-		if (added > 0) parts.push(Msgs.t('added {added}', { added }, locale))
-		if (removed > 0) parts.push(Msgs.t('removed {removed}', { removed }, locale))
-		const base = Msgs.t(
-			'{name} queued {count, plural, one {# teamswap} other {# teamswaps}} for next map' +
-				'{hasChanges, select, yes { ({changeSummary})} other {}}',
-			{ name, count, changeSummary: parts.join(', '), hasChanges: parts.length > 0 ? 'yes' : 'no' },
-			locale,
-		)
-		return factionLines?.length ? `${base}:\n${factionLines.join('\n')}` : `${base}.`
-	},
-}))
+// the players a swap sends to one team. Named by faction rather than by team id, since that is what the reader
+// sees in game.
+type SwapGroup = { faction: string; names: string[] }
 
-export const notifyAdminManualSwap = Msgs.def((name: string, count: number, factionLines?: string[]) => ({
+const swapGroupLine = (group: SwapGroup, locale?: string) =>
+	Msgs.t('to {faction}: {names}', { faction: group.faction, names: group.names.join(', ') }, locale)
+
+// what a save did, never what the queue happens to hold: added/removed are the real per-player diff against the
+// previously saved swaps (a save that adds 3 and removes 1 is not "added 2"), and the players named are only the
+// ones it changed. `queued` is the whole resulting queue, reported as counts at the end so that the standing
+// swaps of everyone else are not read as this admin's doing.
+export const notifyAdminSwapsSaved = Msgs.def(
+	(
+		name: string,
+		change: { added: number; removed: number; addedGroups?: SwapGroup[]; removedGroups?: SwapGroup[] },
+		queued: SwapGroup[],
+	) => {
+		// a sentence per case rather than one pattern branching three ways, so a translator is handed sentences.
+		// the colon is the pattern's because it belongs to the reading, and only the cases that list names take one
+		const headline = (listsNames: boolean, locale?: string) => {
+			const colon = listsNames ? 'yes' : 'no'
+			if (change.added > 0 && change.removed > 0) {
+				return Msgs.t(
+					'{name} queued {added, plural, one {# teamswap} other {# teamswaps}} and cancelled {removed}{colon, select, yes {:} other {}}',
+					{ name, added: change.added, removed: change.removed, colon },
+					locale,
+				)
+			}
+			if (change.added > 0) {
+				return Msgs.t(
+					'{name} queued {added, plural, one {# teamswap} other {# teamswaps}}{colon, select, yes {:} other {}}',
+					{ name, added: change.added, colon },
+					locale,
+				)
+			}
+			return Msgs.t(
+				'{name} cancelled {removed, plural, one {# teamswap} other {# teamswaps}}{colon, select, yes {:} other {}}',
+				{ name, removed: change.removed, colon },
+				locale,
+			)
+		}
+		return {
+			warn: (locale?: string) => {
+				const total = queued.reduce((count, group) => count + group.names.length, 0)
+				if (total === 0) return Msgs.t('{name} cleared all queued teamswaps for next map.', { name }, locale)
+				const named = [
+					...(change.addedGroups ?? []).map((group) => swapGroupLine(group, locale)),
+					...(change.removedGroups ?? []).map((group) =>
+						Msgs.t('no longer to {faction}: {names}', { faction: group.faction, names: group.names.join(', ') }, locale),
+					),
+				]
+				const totals = queued
+					.map((group) => Msgs.t('{count} to {faction}', { count: group.names.length, faction: group.faction }, locale))
+					.join(', ')
+				return [headline(named.length > 0, locale), ...named, Msgs.t('now queued for next map: {totals}', { totals }, locale)].join(
+					'\n',
+				)
+			},
+		}
+	},
+)
+
+export const notifyAdminManualSwap = Msgs.def((name: string, count: number, swapped?: SwapGroup[]) => ({
 	warn: (locale?: string) =>
-		factionLines?.length
+		swapped?.length
 			? Msgs.t('{name} swapped {count, plural, one {# player} other {# players}}:', { name, count }, locale) +
 				'\n' +
-				factionLines.join('\n')
+				swapped.map((group) => swapGroupLine(group, locale)).join('\n')
 			: Msgs.t('{name} swapped {count, plural, one {# player} other {# players}} to the other team.', { name, count }, locale),
 }))
 
