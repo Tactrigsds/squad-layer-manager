@@ -37,9 +37,9 @@ function TimeoutsWindow() {
 	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
 	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [u.discordId, u]))
 
-	function actorName(actor: AppEvents.Actor | null): string {
+	function actorName(actor: AppEvents.Actor | null, actorUsername: string | null): string {
 		if (actor?.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? 'Admin'
-		if (actor?.type === 'ingame-user') return 'In-game admin'
+		if (actor?.type === 'ingame-user') return actorUsername ?? 'In-game admin'
 		return 'System'
 	}
 
@@ -107,7 +107,7 @@ function TimeoutsWindow() {
 										className="align-top whitespace-nowrap text-xs text-muted-foreground"
 										title={dateFns.format(t.createdAt, 'PPp')}
 									>
-										<div>{actorName(t.actor)}</div>
+										<div>{actorName(t.actor, t.actorUsername)}</div>
 										<div>{dateFns.formatDistanceToNow(t.createdAt, { addSuffix: true })}</div>
 									</TableCell>
 									{canCancel && (

@@ -215,6 +215,73 @@ describe('chat.models application-event collapse', () => {
 		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
 		expect(entry.actorPlayer?.ids.eos).toBe('eos-1')
 	})
+
+	it('names a target who has left the server, rather than dropping them', () => {
+		const state = seededState([])
+		// the player took part in the match and has since disconnected -- which is what a kick does to its own target
+		state.interpolatedState.recentPlayers = [{ ids: { eos: 'eos-gone', username: 'Gone' }, isAdmin: false }]
+		const appEvent: CHAT.AppFeedEvent = {
+			type: 'APP_EVENT',
+			appEvent: {
+				type: 'PLAYER_KICKED',
+				id: 'app-k',
+				time: 100,
+				actor: { type: 'ingame-user', playerId: 'eos-gone' },
+				serverId: 's1',
+				matchId: 1,
+				causeId: null,
+				instanceId: null,
+				targets: ['eos-gone'],
+			} satisfies AppEvents.PlayerKicked,
+		}
+		CHAT.handleEvent(state, appEvent)
+		const entry = state.eventBuffer[0]
+		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
+		expect(entry.targetPlayers.map((p) => p.ids.username)).toEqual(['Gone'])
+		expect(entry.actorPlayer?.ids.username).toBe('Gone')
+	})
+})
+
+describe('mergeAppEvents', () => {
+	const appEvent = (id: string, time: number): AppEvents.AppEvent =>
+		({
+			type: 'MATCH_ENDED',
+			id,
+			time,
+			actor: { type: 'system' },
+			serverId: 's1',
+			matchId: 1,
+			causeId: null,
+			instanceId: null,
+		}) satisfies AppEvents.MatchEnded
+
+	const idsOf = (events: (SE.Event | CHAT.AppFeedEvent)[]) => events.map((e) => (e.type === 'APP_EVENT' ? e.appEvent.id : e.id))
+
+	it('places each app event before the first server event it precedes in time', () => {
+		const merged = CHAT.mergeAppEvents(
+			[warnServerEvent('eos-1', 'a', 1), warnServerEvent('eos-1', 'b', 2)],
+			[appEvent('app-1', 100), appEvent('app-2', 102)],
+		)
+		// warns are at time 101 and 102; app events sort before a server event of the same time
+		expect(idsOf(merged)).toEqual(['app-1', 1, 'app-2', 2])
+	})
+
+	it('keeps server events in the order given, not in time order', () => {
+		// recorded times are log timestamps and can run backwards relative to insertion order
+		const out = warnServerEvent('eos-1', 'a', 1)
+		const first = { ...warnServerEvent('eos-1', 'b', 2), time: 1 }
+		expect(idsOf(CHAT.mergeAppEvents([out, first], []))).toEqual([1, 2])
+	})
+
+	it('places an app event before a server event attributed to it even when it is timestamped later', () => {
+		const attributed = { ...warnServerEvent('eos-1', 'a', 1, { type: 'event', id: 'app-late' }), time: 1 }
+		const merged = CHAT.mergeAppEvents([attributed], [appEvent('app-late', 500)])
+		expect(idsOf(merged)).toEqual(['app-late', 1])
+	})
+
+	it('appends app events with no server event left to precede', () => {
+		expect(idsOf(CHAT.mergeAppEvents([warnServerEvent('eos-1', 'a', 1)], [appEvent('app-1', 900)]))).toEqual([1, 'app-1'])
+	})
 })
 
 describe('standalone warn burst aggregation', () => {

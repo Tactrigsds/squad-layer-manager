@@ -221,11 +221,7 @@ export const setupInstance = Instr.spanOp(
 							const savedNextLayerId = LL.getNextLayerId(queue)
 							const savedNextItemId = queue[0]?.itemId || null
 							if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
-							// the external actor whose set we're reacting to (post-guard, source is player / rcon / unattributed)
-							const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
-								event.source?.type === 'player'
-									? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.source.playerIds) }
-									: { type: 'rcon' }
+							const external = externalActor(event.source)
 							if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
 								const serverState = await SquadServer.getServerState(ctx)
 								if (savedNextLayerId === null) {
@@ -365,10 +361,7 @@ export const setupInstance = Instr.spanOp(
 					Instr.durableSub('syncAdminChangeLayer', { module }, async ([evtCtx, event], signal) => {
 						const ctx = SquadServer.eventCtx(evtCtx, signal)
 						if (event.type !== 'ROUND_ENDED' || event.action?.type !== 'AdminChangeLayer') return
-						const external: { type: 'player'; playerId: string } | { type: 'rcon' } =
-							event.action.source.type === 'player'
-								? { type: 'player', playerId: SM.PlayerIds.getPlayerId(event.action.source.playerIds) }
-								: { type: 'rcon' }
+						const external = externalActor(event.action.source)
 						const op: SLL.Operation = {
 							opId: SLL.createOpId(),
 							op: 'unshift-first-saved-layer',
@@ -472,6 +465,15 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 		// silently skipped
 		ctx.server.postRollEventsSub.add(Rx.concat(...withWaits).subscribe())
 	}
+}
+
+// Who made a layer change SLM is reconciling against. `unknown` is the honest answer for a change SLM found rather
+// than watched happen -- notably the layer already set when SLM connects, which used to be reported as another RCON
+// tool's doing on every startup.
+export function externalActor(source: SE.MapSet['source']): { type: 'player'; playerId: string } | { type: 'rcon' } | { type: 'unknown' } {
+	if (source?.type === 'player') return { type: 'player', playerId: SM.PlayerIds.getPlayerId(source.playerIds) }
+	if (source?.type === 'rcon') return { type: 'rcon' }
+	return { type: 'unknown' }
 }
 
 // get the queue which is synced to the squad server
@@ -642,9 +644,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 		itemId: string,
 		// why SLM is setting the layer. queue-driven sets fold into their QUEUE_UPDATED (audit-only MAP_SET); override sets
 		// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
-		mapSetCause?:
-			| { reason: 'queue-updated'; causeId: string }
-			| { reason: 'override'; overrode?: { type: 'player'; playerId: string } | { type: 'rcon' } },
+		mapSetCause?: { reason: 'queue-updated'; causeId: string } | { reason: 'override'; overrode?: AppEvents.MapSet['overrode'] },
 	) => {
 		if (settings.updatesToSquadServerDisabled) return
 		const currentStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
