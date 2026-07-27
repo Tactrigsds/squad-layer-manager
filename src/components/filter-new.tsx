@@ -10,6 +10,7 @@ import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as ValidationErrors from '@/lib/validation-errors'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
@@ -53,7 +54,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			const state = Zus.getState(props.stores.filterEditor)
 
 			if (!state.validatedFilter) {
-				toast.warning('Invalid filter', { description: 'Please check filter configuration' })
+				toast.warning(...F_Msgs.invalid().toast())
 				return
 			}
 
@@ -71,7 +72,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			switch (res.code) {
 				case 'ok':
 					invalidateLoggedInUser()
-					toast('Filter created')
+					toast(...F_Msgs.created().toast())
 					void navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
 					break
 

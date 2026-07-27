@@ -9,6 +9,7 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Typo from '@/lib/typography'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 
 import type { FilterTextEditorProps } from './filter-text-editor.types'
@@ -97,7 +98,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 				obj = JSON.parse(view.state.doc.toString())
 			} catch (err) {
 				if (err instanceof SyntaxError) {
-					toast.error('Unable to format: invalid json', { description: err.message })
+					toast.error(...F_Msgs.formatFailed(err.message).toast())
 				}
 				return
 			}
