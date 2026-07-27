@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import * as Paths from '$root/paths'
 import { LandingDocument } from '@/components/landing-pages'
+import type * as USR_Msgs from '@/messages/users.messages'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
 import * as Discord from '@/systems/discord.server'
@@ -71,7 +72,7 @@ export function noAuthHtml(error: string) {
 	return render('no-auth', error)
 }
 
-function render(variant: 'landing' | 'no-auth' | 'forbidden', error: string | null) {
+function render(variant: USR_Msgs.LandingVariant, error: string | null) {
 	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, error, ...renderInputs }))
 }
 

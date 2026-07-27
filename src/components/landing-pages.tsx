@@ -2,6 +2,9 @@
 // keep this import even though the client-side automatic runtime would not require it.
 import * as React from 'react'
 
+import * as APP_Msgs from '@/messages/app.messages'
+import * as USR_Msgs from '@/messages/users.messages'
+
 // Presentational components for the static, no-hydration login landing page and the 403 page. Rendered to a
 // cached HTML string at boot by landing.server.ts (renderToStaticMarkup); never mounted on the client. Styled
 // with the app's Tailwind classes; their scoped compiled sheet (src/landing.css @sources this file) is inlined
@@ -38,17 +41,9 @@ function RepoLink({ repoUrl }: { repoUrl: string }) {
 			className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
 		>
 			<GithubIcon />
-			<span>View on GitHub</span>
+			<span>{USR_Msgs.viewOnGithub().text()}</span>
 		</a>
 	)
-}
-
-function instanceLine(guildName: string | null) {
-	return guildName ? `You have reached the SLM instance for ${guildName}.` : 'You have reached this Squad Layer Manager instance.'
-}
-
-function whereText(guildName: string | null) {
-	return guildName ? ` in ${guildName}` : ' in the configured Discord'
 }
 
 function Document({
@@ -88,17 +83,15 @@ function Document({
 function LandingPage({ repoUrl, guildName }: { repoUrl: string; guildName: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
-			<p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Squad Layer Manager</p>
-			<h1 className="mt-2 text-2xl font-bold tracking-tight">{instanceLine(guildName)}</h1>
-			<p className="mt-3 text-muted-foreground">
-				To access this site you must sign in with a Discord account that has sufficient privileges{whereText(guildName)}.
-			</p>
+			<p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{APP_Msgs.productName().text()}</p>
+			<h1 className="mt-2 text-2xl font-bold tracking-tight">{USR_Msgs.landingHeading(guildName).text()}</h1>
+			<p className="mt-3 text-muted-foreground">{USR_Msgs.landingBlurb(guildName).text()}</p>
 			<a
 				href="/login"
 				className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#5865f2] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#4752c4]"
 			>
 				<DiscordIcon />
-				<span>Log in with Discord</span>
+				<span>{USR_Msgs.logInWithDiscord().text()}</span>
 			</a>
 			<RepoLink repoUrl={repoUrl} />
 		</main>
@@ -108,14 +101,12 @@ function LandingPage({ repoUrl, guildName }: { repoUrl: string; guildName: strin
 function NoAuthPage({ repoUrl, error }: { repoUrl: string; error: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 shadow-lg">
-			<p className="text-center text-sm font-medium uppercase tracking-wide text-muted-foreground">Squad Layer Manager</p>
-			<h1 className="mt-2 text-center text-2xl font-bold tracking-tight">Pick a name</h1>
-			<p className="mt-3 text-center text-muted-foreground">
-				This instance runs without authentication. Whatever you type here is who you are, and anyone else can be them too.
-			</p>
+			<p className="text-center text-sm font-medium uppercase tracking-wide text-muted-foreground">{APP_Msgs.productName().text()}</p>
+			<h1 className="mt-2 text-center text-2xl font-bold tracking-tight">{USR_Msgs.pickANameHeading().text()}</h1>
+			<p className="mt-3 text-center text-muted-foreground">{USR_Msgs.pickANameBlurb().text()}</p>
 			<form action="/login/no-auth" method="POST" className="mt-6 flex flex-col gap-3">
 				<label htmlFor="username" className="sr-only">
-					Username
+					{USR_Msgs.usernameLabel().text()}
 				</label>
 				<input
 					id="username"
@@ -126,7 +117,7 @@ function NoAuthPage({ repoUrl, error }: { repoUrl: string; error: string | null 
 					maxLength={32}
 					autoComplete="off"
 					spellCheck={false}
-					placeholder="Username"
+					placeholder={USR_Msgs.usernameLabel().text()}
 					className="w-full rounded-md border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 				/>
 				{error && <p className="text-sm text-destructive-foreground">{error}</p>}
@@ -134,7 +125,7 @@ function NoAuthPage({ repoUrl, error }: { repoUrl: string; error: string | null 
 					type="submit"
 					className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
 				>
-					Continue
+					{USR_Msgs.continueLabel().text()}
 				</button>
 			</form>
 			<div className="text-center">
@@ -150,36 +141,28 @@ function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: str
 			<div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/20 text-destructive-foreground">
 				<DiscordIcon />
 			</div>
-			<h1 className="text-2xl font-bold tracking-tight">Access denied</h1>
-			<p className="mt-2 text-muted-foreground">
-				Your Discord account does not have sufficient privileges{whereText(guildName)} to access this site.
-			</p>
+			<h1 className="text-2xl font-bold tracking-tight">{USR_Msgs.accessDeniedHeading().text()}</h1>
+			<p className="mt-2 text-muted-foreground">{USR_Msgs.accessDeniedBlurb(guildName).text()}</p>
 			<div className="mt-6 flex flex-col gap-3">
 				<a
 					href="/"
 					className="inline-flex w-full items-center justify-center rounded-md border bg-secondary px-5 py-3 text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
 				>
-					Back to home
+					{USR_Msgs.backToHome().text()}
 				</a>
 				<form action="/logout" method="POST">
 					<button
 						type="submit"
 						className="inline-flex w-full items-center justify-center rounded-md border bg-secondary px-5 py-3 text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
 					>
-						Log out and switch account
+						{USR_Msgs.logOutAndSwitch().text()}
 					</button>
 				</form>
 			</div>
-			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">If you believe this is a mistake, contact an administrator.</p>
+			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">{USR_Msgs.accessDeniedContact().text()}</p>
 			<RepoLink repoUrl={repoUrl} />
 		</main>
 	)
-}
-
-const TITLES: Record<LandingVariant, string> = {
-	landing: 'Squad Layer Manager',
-	'no-auth': 'Sign in - Squad Layer Manager',
-	forbidden: 'Access denied - Squad Layer Manager',
 }
 
 export function LandingDocument({
@@ -190,7 +173,7 @@ export function LandingDocument({
 	head,
 	inlineCss,
 }: {
-	variant: LandingVariant
+	variant: USR_Msgs.LandingVariant
 	repoUrl: string
 	guildName: string | null
 	error: string | null
@@ -198,7 +181,13 @@ export function LandingDocument({
 	inlineCss: string
 }) {
 	return (
-		<Document title={TITLES[variant]} htmlAttrs={head.htmlAttrs} metas={head.metas} assetLinks={head.assetLinks} inlineCss={inlineCss}>
+		<Document
+			title={USR_Msgs.landingTitles[variant]}
+			htmlAttrs={head.htmlAttrs}
+			metas={head.metas}
+			assetLinks={head.assetLinks}
+			inlineCss={inlineCss}
+		>
 			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} />}
 			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} />}
 			{variant === 'forbidden' && <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
@@ -206,7 +195,6 @@ export function LandingDocument({
 	)
 }
 
-type LandingVariant = 'landing' | 'no-auth' | 'forbidden'
 type HtmlAttrs = Record<string, string>
 type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: string }
 type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }

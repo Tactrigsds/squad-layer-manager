@@ -1,5 +1,50 @@
+// The server imports this module, and its build transpiles JSX with the classic runtime, so React has to be in
+// scope here even though the client's automatic runtime would not need it (same bargain as landing-pages.tsx).
+import * as React from 'react'
+
 import * as Msgs from '@/messages/shared'
 import type * as TSW from '@/models/teamswaps.models'
+
+// -------- the help window --------
+// The emphasised words name controls the reader has to find on screen, so which words they are is part of the
+// prose. How a highlighted word looks is not: the window styles `strong` itself.
+
+export const helpTitle = Msgs.def(() => ({ text: () => 'Team Swaps Help' }))
+
+export const helpIntro = Msgs.def(() => ({
+	text: () => 'Queue players to be moved to the opposite team, either at the start of the next round or immediately.',
+}))
+
+export const helpSteps = Msgs.def(() => ({
+	react: (): React.ReactNode[] => [
+		<>
+			Right-click a player and choose <strong>Swap Next</strong> to queue them.
+		</>,
+		<>
+			Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next
+			round.
+		</>,
+		<>
+			Click <strong>Swap Now</strong> to immediately execute all saved swaps.
+		</>,
+	],
+}))
+
+export const helpRevert = Msgs.def(() => ({
+	react: () => (
+		<>
+			<strong>Revert</strong> discards unsaved edits back to the last saved state.
+		</>
+	),
+}))
+
+export const helpClearTeam = Msgs.def(() => ({
+	react: () => (
+		<>
+			The <strong>trash icon</strong> on a team column clears all for that team.
+		</>
+	),
+}))
 
 export const notifyPlayerOfUpcomingTeamswap = Msgs.def(() => ({
 	warn: () =>
