@@ -99,22 +99,6 @@ export const COMP_TYPE_DEFS: Record<CompType, CompTypeDef> = {
 export const BLOCK_TYPES = ['and', 'or', 'nor', 'nand'] as const
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
-// the colloquial reading is what the editor leads with; the operation it names follows in parens,
-// since the two together are what make the negated pair (nor/nand) legible
-export const BLOCK_TYPE_DISPLAY_NAMES: Record<BlockType, string> = {
-	and: 'all of (and)',
-	or: 'any of (or)',
-	nor: 'none of (nor)',
-	nand: 'not all of (nand)',
-}
-
-export const BLOCK_TYPE_DESCRIPTIONS: Record<BlockType, string> = {
-	and: 'Matches layers where every condition in this block matches.',
-	or: 'Matches layers where at least one condition in this block matches.',
-	nor: 'Matches layers where not a single condition in this block matches.',
-	nand: 'Matches layers where at least one condition in this block fails.',
-}
-
 // how each block operator compiles: `conjunction` picks AND (true) vs OR (false) over the child
 // conditions, `negated` wraps the combined result in NOT.
 export const BLOCK_TYPE_SEMANTICS: Record<BlockType, { conjunction: boolean; negated: boolean }> = {
@@ -128,16 +112,6 @@ export const BLOCK_TYPE_SEMANTICS: Record<BlockType, { conjunction: boolean; neg
 // the operator: included-in = the layer matches the referenced filter, excluded-from = it does not.
 export const APPLY_FILTER_TYPES = ['included-in', 'excluded-from'] as const
 export type ApplyFilterType = (typeof APPLY_FILTER_TYPES)[number]
-
-export const APPLY_FILTER_TYPE_DISPLAY_NAMES: Record<ApplyFilterType, string> = {
-	'included-in': 'included in',
-	'excluded-from': 'excluded from',
-}
-
-export const APPLY_FILTER_TYPE_DESCRIPTIONS: Record<ApplyFilterType, string> = {
-	'included-in': 'Matches layers that the referenced filter matches.',
-	'excluded-from': 'Matches layers that the referenced filter does not match.',
-}
 
 // 'excluded-from' compiles as the negation of the referenced filter's condition
 export const APPLY_FILTER_TYPE_NEGATED: Record<ApplyFilterType, boolean> = {
@@ -153,11 +127,6 @@ export const APPLY_FILTER_TYPE_NEGATED: Record<ApplyFilterType, boolean> = {
 // default either orientation matches; `locked` pins spec 0 to team 1 and spec 1 to team 2.
 export const MATCHUP_TYPES = ['allow-matchups', 'disallow-matchups'] as const
 export type MatchupType = (typeof MATCHUP_TYPES)[number]
-
-export const MATCHUP_TYPE_DISPLAY_NAMES: Record<MatchupType, string> = {
-	'allow-matchups': 'allow matchups',
-	'disallow-matchups': 'disallow matchups',
-}
 
 // 'disallow-matchups' compiles as the negation of the allow condition
 export const MATCHUP_TYPE_NEGATED: Record<MatchupType, boolean> = {
