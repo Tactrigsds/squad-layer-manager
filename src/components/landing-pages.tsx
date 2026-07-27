@@ -85,7 +85,10 @@ function Lockup({ accent }: { accent: string | null }) {
 	return (
 		<div className="flex flex-col items-center gap-3">
 			<LogoMark accent={accent} className="h-14 w-14" />
-			<p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{APP_Msgs.productName().text()}</p>
+			<div className="flex flex-col items-center gap-1.5">
+				<p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{APP_Msgs.productName().text()}</p>
+				<p className="text-center text-sm text-muted-foreground">{APP_Msgs.tagline().text()}</p>
+			</div>
 		</div>
 	)
 }

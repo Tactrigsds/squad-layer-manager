@@ -3,7 +3,6 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import * as AR from '@/app-routes.ts'
-import AboutDialog from '@/components/about-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
 import LogoMark from '@/components/logo-mark'
 import NicknameDialog from '@/components/nickname-dialog'
@@ -67,7 +66,7 @@ export default function NavBar() {
 	// in single-column mode the dashboard has no room for its own tab cluster, so the switcher takes over the "Server" nav slot
 	const showDashboardTabs = !!isOnServerDashboard && !isDesktop
 
-	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'steam-link' | 'nickname' | 'about' | null>(null)
+	const [openState, setDropdownState] = React.useState<'primary' | 'permissions' | 'steam-link' | 'nickname' | null>(null)
 	const onPrimaryDropdownOpenChange = (newState: boolean) => {
 		if (openState !== 'primary' && openState !== null) return
 		setDropdownState(newState ? 'primary' : null)
@@ -81,10 +80,6 @@ export default function NavBar() {
 
 	const onSteamLinkOpenChange = (newState: boolean) => {
 		setDropdownState(newState ? 'steam-link' : null)
-	}
-
-	const onAboutOpenChange = (newState: boolean) => {
-		setDropdownState(newState ? 'about' : null)
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
@@ -190,12 +185,12 @@ export default function NavBar() {
 					{APP_Msgs.permissions().text()}
 				</DropdownMenuItem>
 			</UserPermissionsDialog>
-			<AboutDialog onOpenChange={onAboutOpenChange} open={openState === 'about'}>
-				<DropdownMenuItem onClick={() => setDropdownState('about')} className="text-sm">
+			<DropdownMenuItem asChild className="text-sm">
+				<TSR.Link to="/about">
 					<Icons.Info className="mr-2 h-4 w-4" />
 					{APP_Msgs.about().text()}
-				</DropdownMenuItem>
-			</AboutDialog>
+				</TSR.Link>
+			</DropdownMenuItem>
 			<DropdownMenuSeparator />
 			<form action={AR.route('/logout')} method="POST">
 				<DropdownMenuItem asChild>
@@ -214,7 +209,9 @@ export default function NavBar() {
 			style={settings?.topBarColor ? { borderBottom: `2px solid ${settings.topBarColor}` } : undefined}
 		>
 			<div className="flex items-center space-x-3 sm:space-x-6">
-				<LogoMark accent={settings?.topBarColor ?? null} className="h-9 w-9" />
+				<TSR.Link to="/about" aria-label={APP_Msgs.about().text()} className="shrink-0">
+					<LogoMark accent={settings?.topBarColor ?? null} className="h-9 w-9" />
+				</TSR.Link>
 				{/* below sm the nav links (and the avatar menu) don't fit, so collapse them into one hamburger; tabs stay beside it */}
 				{isSmall && (
 					<MobileNavMenu

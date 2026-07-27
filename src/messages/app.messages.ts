@@ -6,12 +6,15 @@ import * as Msgs from '@/messages/shared'
 // message anyway because it is spelled out in five places and a rename should touch one.
 export const productName = Msgs.def('Squad Layer Manager')
 
+// Part of the brand voice (docs/brand.md): always the full sentence, "and other things also" included.
+export const tagline = Msgs.def('A tool to manage the upcoming layers of a squad server, and other things also.')
+
 // what was copied goes in the description, since the title is the same wherever the app copies something
 export const copiedToClipboard = Msgs.def((what: string) => ({
 	toast: () => [Msgs.t('Copied to clipboard'), { description: what }],
 }))
 
-// -------- the about dialog --------
+// -------- the about page --------
 
 export const about = Msgs.def('About')
 
