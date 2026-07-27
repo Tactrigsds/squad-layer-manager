@@ -14,6 +14,25 @@ export const notifyManualSwap = Msgs.def(() => ({
 	warn: () => 'You have been swapped to the other team by an admin.',
 }))
 
+// otherTeam is named only when swapping a single player, where the destination is unambiguous; a selection or a
+// squad can span both teams, so each member goes to whichever team they are not on
+export const swapNow = Msgs.def((target: Msgs.Target, otherTeam?: string) => ({
+	confirm: () => ({
+		title: `Swap ${Msgs.targetNoun(target)} Now`,
+		description: `Move ${Msgs.targetSubject(target)} to ${otherTeam === undefined ? 'the opposite team' : `Team ${otherTeam}`} immediately?`,
+		confirmLabel: 'Swap Now',
+	}),
+}))
+
+// the confirmation auto-dismisses when a target changes teams while it is open, since the swap would no longer do
+// what the admin asked for
+export const swapCancelled = Msgs.def((target: Msgs.Target) => ({
+	toast: () => [
+		'Swap cancelled',
+		{ description: target.kind === 'player' ? 'Player changed teams' : 'One or more players changed teams' },
+	],
+}))
+
 // added/removed are the real per-player diff against the previously saved swaps, not the net change in
 // size: a save that adds 3 and removes 1 is not "added 2"
 export const notifyAdminSwapsSaved = Msgs.def((name: string, count: number, added: number, removed: number, factionLines?: string[]) => ({
