@@ -5,6 +5,8 @@ import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as BB_Msgs from '@/messages/backburner.messages'
+import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
@@ -56,8 +58,8 @@ export function initLayerQueue(args: Args) {
 		if (se.code !== 'op-outcome' || !se.success) return
 		const op = se.op
 		if (op.op === 'discard-abandoned-queue-edits' || op.op === 'discard-abandoned-request-edits') {
-			const draft = op.op === 'discard-abandoned-queue-edits' ? 'queue' : 'layer request'
-			toast.info(`Unsaved ${draft} edits were discarded: nobody was left editing them`)
+			const draft = op.op === 'discard-abandoned-queue-edits' ? 'queue' : 'request'
+			toast.info(...LL_Msgs.abandonedEditsDiscarded(draft).toast())
 			return
 		}
 		if (!('userId' in op)) return
@@ -388,7 +390,7 @@ export namespace Actions {
 			// the op will never be acked, so it must leave the pending set -- see dropPendingOps
 			rollbackOp(slice, op.opId)
 			console.error('layer queue op dispatch failed:', error)
-			toast.error('Failed to apply queue operation')
+			toast.error(...LL_Msgs.opFailed().toast())
 			return
 		}
 		if (res.code === 'ok') return
@@ -451,7 +453,7 @@ export namespace Actions {
 		if (target && source) {
 			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
 			if (merged.code !== 'ok') {
-				toast.error('Cannot combine these requests: a filter is applied normally on one and inverted on the other')
+				toast.error(...BB_Msgs.cannotCombine().toast())
 				return
 			}
 		}
