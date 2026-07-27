@@ -5,6 +5,7 @@ import { enableMapSet } from 'immer'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 
+import * as I18n from '@/messages/i18n'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
@@ -27,6 +28,8 @@ enableMapSet()
 await LayerDataClient.setup()
 ;(function setupClientSystems() {
 	console.debug('running system initialization')
+	// one viewer per tab, so the locale their browser asks for is the one every message renders in
+	I18n.setAmbientLocale(I18n.negotiateLocale(navigator.languages))
 	ThemeSys.setup()
 	ConfigClient.setup()
 	SquadServerClient.setup()

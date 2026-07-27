@@ -39,7 +39,7 @@ export const nextLayerWarning = Msgs.def(
 export const votePending = Msgs.def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
 	warn: () => {
 		const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
-		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { terse: false, round: 'second' })
+		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { round: 'second' })
 		const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
 		return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 	},
