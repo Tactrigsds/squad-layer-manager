@@ -53,7 +53,11 @@ export const slmStarted = Msgs.def((restartedBy?: string) => ({
 	warn: () => (restartedBy ? `SLM has been restarted by ${restartedBy}.` : `SLM has been started.`),
 }))
 
-export const ingameVoteDisabledUpdates = Msgs.def(() => ({
+export const ingameVoteDisabledUpdates = Msgs.def((inferred?: boolean) => ({
 	warn: () =>
-		'An in-game vote is running. The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. Re-enabling them will turn in-game voting off.',
+		(inferred
+			? 'The server no longer has a next layer set, which most likely means in-game voting was enabled. '
+			: 'An in-game vote is running. ') +
+		'The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. ' +
+		'Re-enabling them will turn in-game voting off.',
 }))

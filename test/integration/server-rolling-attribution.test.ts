@@ -140,9 +140,25 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		})
 		expect(disabledReason(app)).toBeNull()
 	})
+
+	it('reads the server losing its next layer as voting having been enabled, and marks that reason a guess', async () => {
+		expect(disabledReason(app)).toBeNull()
+		expect(savedQueue(app)[0]?.layerId).toBeTruthy()
+
+		// enabling voting clears the next layer and logs nothing doing it, so this is all SLM ever gets to see
+		app.emu.world.nextLayer = null
+
+		await app.waitFor(
+			() => {
+				const reason = disabledReason(app)
+				return reason?.type === 'ingame-vote' && reason.inferred === true ? reason : undefined
+			},
+			{ label: 'updates disabled with an inferred in-game-vote reason', timeoutMs: 90_000 },
+		)
+	})
 })
 
-function disabledReason(fixture: RollingFixture): { type: string } | null {
+function disabledReason(fixture: RollingFixture): { type: string; inferred?: boolean } | null {
 	const db = fixture.readDb()
 	try {
 		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(fixture.serverId) as { settings: string }

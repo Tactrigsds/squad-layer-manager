@@ -723,7 +723,10 @@ export type SandboxConnection = z.infer<typeof SandboxConnectionSchema>
 export const SlmUpdatesDisabledSchema = z.discriminatedUnion('type', [
 	// `by` is null for settings written before disabling recorded who did it
 	z.object({ type: z.literal('manual'), by: AppEvents.ActorSchema.nullable() }),
-	z.object({ type: z.literal('ingame-vote') }),
+	// `inferred` marks the reason as deduced rather than observed: SLM never saw the vote's log lines, it saw the
+	// server stop having a next layer, which is what enabling voting does. Everything treats the two the same; only
+	// what is shown to an admin differs, since a guess should not be stated as fact.
+	z.object({ type: z.literal('ingame-vote'), inferred: z.boolean().prefault(false) }),
 ])
 export type SlmUpdatesDisabled = z.infer<typeof SlmUpdatesDisabledSchema>
 
