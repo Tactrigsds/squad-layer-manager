@@ -25,11 +25,9 @@ function TeamswapsHelpWindow() {
 			<div className="px-4 py-3 text-sm space-y-3 text-muted-foreground [&_strong]:text-foreground">
 				<p>{TSW_Msgs.helpIntro().text()}</p>
 				<ol className="list-decimal list-inside space-y-2">
-					{TSW_Msgs.helpSteps()
-						.react()
-						.map((step, i) => (
-							<li key={i}>{step}</li>
-						))}
+					<li>{TSW_Msgs.helpStepQueue().react()}</li>
+					<li>{TSW_Msgs.helpStepSave().react()}</li>
+					<li>{TSW_Msgs.helpStepSwapNow().react()}</li>
 				</ol>
 				<ul className="space-y-2">
 					<li className="flex items-start gap-2">
