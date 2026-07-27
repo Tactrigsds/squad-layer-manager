@@ -16,7 +16,9 @@ import { type ActionSource, ActionSourceSchema, type Base, BaseSchema, type Even
 export type MapSet = {
 	type: 'MAP_SET'
 	layerId: L.LayerId
-	source?: ActionSource | { type: 'layer-queue'; itemId: string }
+	// `observed` is SLM reading the server's next layer on connect rather than anyone setting it -- see the
+	// RCON_CONNECTED branch of processPendingEvent. It is not an action, and nobody is its actor.
+	source?: ActionSource | { type: 'layer-queue'; itemId: string } | { type: 'observed' }
 } & Base
 export const MAP_SET_META = meta()
 
@@ -30,9 +32,10 @@ export type IngameVoteStarted = {
 export const INGAME_VOTE_STARTED_META = meta()
 
 // True when SLM itself caused this map set: a queue save (`layer-queue`), an app-event-attributed
-// set-next (`event`, e.g. a QUEUE_UPDATED), or another internal set-next (`system`). Organic sets --
-// an in-game admin (`player`), an external RCON tool (`rcon`), or an unattributed one (undefined) --
-// return false. Used to avoid reacting to our own layer changes (e.g. unshifting a duplicate queue item).
+// set-next (`event`, e.g. a QUEUE_UPDATED), or another internal set-next (`system`). Everything SLM did not
+// set returns false -- an in-game admin (`player`), an external RCON tool (`rcon`), a layer SLM merely read off
+// the server on connect (`observed`), or an unattributed one (undefined). Used to avoid reacting to our own layer
+// changes (e.g. unshifting a duplicate queue item); an `observed` layer still has to be reconciled against.
 export function mapSetIsSlmOriginated(source: MapSet['source']): boolean {
 	if (!source) return false
 	return source.type === 'layer-queue' || source.type === 'event' || source.type === 'system'
@@ -371,6 +374,7 @@ const event = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
 const MapSetSourceSchema = z.discriminatedUnion('type', [
 	...ActionSourceSchema.options,
 	z.object({ type: ZodUtils.internedLiteral('layer-queue'), itemId: z.string() }),
+	z.object({ type: ZodUtils.internedLiteral('observed') }),
 ])
 
 export const MapSetSchema = event('MAP_SET', { layerId: z.string(), source: MapSetSourceSchema.optional() })

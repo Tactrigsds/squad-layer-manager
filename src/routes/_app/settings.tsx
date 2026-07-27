@@ -257,9 +257,13 @@ function AuditLogSection() {
 	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
 	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [u.discordId, u]))
 
+	// resolved server-side from the players table, since the audit log has no roster to look anyone up in
+	const playerNames: Record<string, string> = data?.code === 'ok' ? data.playerNames : {}
+	const playerName = (id: string) => playerNames[id]
+
 	function actorName(actor: AppEvents.Actor): string {
 		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? 'Admin'
-		if (actor.type === 'ingame-user') return 'A player'
+		if (actor.type === 'ingame-user') return playerName(actor.playerId) ?? 'An in-game admin'
 		return 'System'
 	}
 
@@ -278,7 +282,7 @@ function AuditLogSection() {
 					) : (
 						<div className="max-h-[32rem] overflow-y-auto">
 							{events.map((e) => (
-								<AuditLogEntry key={e.id} event={e} actorName={actorName(e.actor)} />
+								<AuditLogEntry key={e.id} event={e} actorName={actorName(e.actor)} playerName={playerName} />
 							))}
 						</div>
 					)}
@@ -290,14 +294,22 @@ function AuditLogSection() {
 
 // one audit row: a summary line, expandable to the event's full payload. bigints (user ids) aren't JSON-serializable,
 // so they're stringified rather than dropped.
-function AuditLogEntry({ event, actorName }: { event: AppEvents.AppEvent; actorName: string }) {
+function AuditLogEntry({
+	event,
+	actorName,
+	playerName,
+}: {
+	event: AppEvents.AppEvent
+	actorName: string
+	playerName: (id: string) => string | undefined
+}) {
 	return (
 		<details className="border-b py-1 last:border-0 group">
 			<summary className="flex gap-2 items-baseline text-sm cursor-pointer list-none">
 				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
 				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(event.time).toLocaleString()}</span>
 				<span className="font-medium whitespace-nowrap">{actorName}</span>
-				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(event)}</span>
+				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(event, playerName)}</span>
 				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
 			</summary>
 			<pre className="mt-1 ml-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
