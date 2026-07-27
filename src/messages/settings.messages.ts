@@ -15,6 +15,12 @@ export const serverNotFound = Msgs.def(() => ({ toast: () => ['Server not found'
 
 export const serverIdTaken = Msgs.def(() => ({ toast: () => ['A server with that ID already exists'] }))
 
+// the save panel saves every dirty section at once, so it names none of them in the title; the change list
+// below it is what says which sections are involved
+export const confirmSaveAll = Msgs.def(() => ({
+	confirm: () => ({ title: 'Save settings?', confirmLabel: 'Save' }),
+}))
+
 // displayName is absent for the global settings, which belong to no server
 export const confirmSave = Msgs.def((displayName?: string) => ({
 	confirm: () => ({
