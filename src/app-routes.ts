@@ -42,6 +42,12 @@ export const routes = [
 	defRoute('/login/no-auth', [], 'custom', { authed: false }),
 	// authed:false so a signed-in but unauthorized user (shown the 403 page) can still log out to switch accounts
 	defRoute('/logout', [], 'custom', { authed: false }),
+	// the mark is rendered from the instance's topBarColor rather than served out of dist/, and is unauthed so it
+	// also loads on the landing and 403 pages (see logo.server.ts)
+	defRoute('/favicon.ico', [], 'custom', { authed: false }),
+	defRoute('/favicon.svg', [], 'custom', { authed: false }),
+	defRoute('/apple-touch-icon.png', [], 'custom', { authed: false }),
+
 	defRoute('/layers.bin.gz', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),

@@ -30,6 +30,7 @@ import * as Discord from '@/systems/discord.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
+import * as LogoSys from '@/systems/logo.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
@@ -213,6 +214,20 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		else Sessions.clearInvalidSession(ctx)
 		return res.redirect(AR.route('/'), 302)
 	})
+
+	for (const kind of ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'] as const) {
+		instance.get(AR.route(`/${kind}`), async (req, res) => {
+			for (const [key, value] of Object.entries(BASE_HEADERS)) {
+				res = res.header(key, value)
+			}
+			const logo = LogoSys.artifact({ ...CS.init(), log }, kind)
+			res.header('ETag', logo.etag)
+			// the accent follows a setting an admin can change at any time, so the cache always revalidates
+			res.header('Cache-Control', 'no-cache')
+			if (req.headers['if-none-match'] === logo.etag) return res.code(304).send()
+			return res.type(logo.contentType).send(logo.body)
+		})
+	}
 
 	instance.get(AR.route('/layers.bin.gz'), async (req, res) => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {

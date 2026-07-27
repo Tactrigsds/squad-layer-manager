@@ -2,6 +2,7 @@
 // keep this import even though the client-side automatic runtime would not require it.
 import * as React from 'react'
 
+import LogoMark from '@/components/logo-mark'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 
@@ -80,11 +81,20 @@ function Document({
 	)
 }
 
-function LandingPage({ repoUrl, guildName }: { repoUrl: string; guildName: string | null }) {
+function Lockup({ accent }: { accent: string | null }) {
+	return (
+		<div className="flex flex-col items-center gap-3">
+			<LogoMark accent={accent} className="h-14 w-14" />
+			<p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{APP_Msgs.productName().text()}</p>
+		</div>
+	)
+}
+
+function LandingPage({ repoUrl, guildName, accent }: { repoUrl: string; guildName: string | null; accent: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
-			<p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">{APP_Msgs.productName().text()}</p>
-			<h1 className="mt-2 text-2xl font-bold tracking-tight">{USR_Msgs.landingHeading(guildName).text()}</h1>
+			<Lockup accent={accent} />
+			<h1 className="mt-4 text-2xl font-bold tracking-tight">{USR_Msgs.landingHeading(guildName).text()}</h1>
 			<p className="mt-3 text-muted-foreground">{USR_Msgs.landingBlurb(guildName).text()}</p>
 			<a
 				href="/login"
@@ -98,11 +108,11 @@ function LandingPage({ repoUrl, guildName }: { repoUrl: string; guildName: strin
 	)
 }
 
-function NoAuthPage({ repoUrl, error }: { repoUrl: string; error: string | null }) {
+function NoAuthPage({ repoUrl, error, accent }: { repoUrl: string; error: string | null; accent: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 shadow-lg">
-			<p className="text-center text-sm font-medium uppercase tracking-wide text-muted-foreground">{APP_Msgs.productName().text()}</p>
-			<h1 className="mt-2 text-center text-2xl font-bold tracking-tight">{USR_Msgs.pickANameHeading().text()}</h1>
+			<Lockup accent={accent} />
+			<h1 className="mt-4 text-center text-2xl font-bold tracking-tight">{USR_Msgs.pickANameHeading().text()}</h1>
 			<p className="mt-3 text-center text-muted-foreground">{USR_Msgs.pickANameBlurb().text()}</p>
 			<form action="/login/no-auth" method="POST" className="mt-6 flex flex-col gap-3">
 				<label htmlFor="username" className="sr-only">
@@ -172,6 +182,7 @@ export function LandingDocument({
 	error,
 	head,
 	inlineCss,
+	accent,
 }: {
 	variant: USR_Msgs.LandingVariant
 	repoUrl: string
@@ -179,6 +190,7 @@ export function LandingDocument({
 	error: string | null
 	head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
 	inlineCss: string
+	accent: string | null
 }) {
 	return (
 		<Document
@@ -188,8 +200,8 @@ export function LandingDocument({
 			assetLinks={head.assetLinks}
 			inlineCss={inlineCss}
 		>
-			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} />}
-			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} />}
+			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} accent={accent} />}
+			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} accent={accent} />}
 			{variant === 'forbidden' && <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
 		</Document>
 	)

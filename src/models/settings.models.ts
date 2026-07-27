@@ -265,7 +265,8 @@ export const GlobalSettingsSchema = z
 			.prefault('green')
 			.nullable()
 			.describe(
-				'Tints the top navigation bar so non-production environments are visually distinct. Set to null in production to disable the tint.',
+				"Any CSS colour. Draws the top navigation bar's bottom border, and the accent under the letters of the logo and the favicon, " +
+					'so instances are distinguishable at a glance and in the browser tab. Set to null for the plain mark and a default border.',
 			),
 		adminActionReasons: AAR.AdminActionReasonsSchema.describe(
 			'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that ' +
