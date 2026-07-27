@@ -1,4 +1,27 @@
 import * as Msgs from '@/messages/shared'
+import type * as SETTINGS from '@/models/settings.models'
+
+// The pool-config panels. Tooltips on the tri-state checkbox for a default-selectable filter, which is offered
+// during layer selection in whichever state it names.
+export const selectableStateTitles: Record<SETTINGS.SelectableFilterApplyAs, string> = {
+	disabled: 'Offered but not applied by default (Ctrl+Click to invert)',
+	regular: 'Applied by default (Ctrl+Click to invert)',
+	inverted: 'Applied inverted by default',
+}
+
+// Tooltip on the applied-filters panel's pool checkbox, which is the same tri-state read against the live query
+// rather than against the saved config.
+export const poolStateTitles: Record<SETTINGS.SelectableFilterApplyAs, string> = {
+	regular: 'Only pool layers are shown (Ctrl+Click to show only layers outside the pool)',
+	inverted: 'Only layers outside the pool are shown; they cannot be selected without the queue:force-write permission',
+	disabled: 'The pool does not constrain the query: all layers are shown (Ctrl+Click to invert)',
+}
+
+// Descriptions for these come from the schema, so only the labels live here.
+export const nextLayerLabels: Record<SETTINGS.NextLayerSettingKey, string> = {
+	overrideAdminSetNextLayer: 'Override the next layer when it is set outside SLM',
+	warnOnNextLayerChange: 'Warn admins when the next layer changes',
+}
 
 export const saved = Msgs.def(() => ({ toast: () => ['Settings saved'] }))
 

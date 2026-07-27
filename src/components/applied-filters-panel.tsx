@@ -6,6 +6,7 @@ import * as AppliedFiltersPrt from '@/frame-partials/applied-filters.partial.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand.ts'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
@@ -162,12 +163,6 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 	)
 }
 
-const POOL_STATE_TITLES: Record<AppliedFiltersPrt.ApplyAs, string> = {
-	regular: 'Only pool layers are shown (Ctrl+Click to show only layers outside the pool)',
-	inverted: 'Only layers outside the pool are shown; they cannot be selected without the queue:force-write permission',
-	disabled: 'The pool does not constrain the query: all layers are shown (Ctrl+Click to invert)',
-}
-
 // the pool filter is pinned; out-of-pool layers surfaced by the inverted/disabled states stay unselectable for
 // users without queue:force-write, so no state needs to be locked away
 export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFrame.KeyProp> & AppliedFiltersPrt.KeyProp }) {
@@ -182,7 +177,7 @@ export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFram
 			variant="outline"
 			checked={poolApplyAs}
 			onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setPoolApplyAs(stores, applyAs)}
-			title={POOL_STATE_TITLES[poolApplyAs]}
+			title={SETTINGS_Msgs.poolStateTitles[poolApplyAs]}
 		>
 			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
 			<span>{filter.name}</span>
