@@ -12,6 +12,7 @@ import * as SandboxFrame from '@/frames/sandbox.frame'
 import { useDebounced } from '@/hooks/use-debounce'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as SB_Msgs from '@/messages/sandbox.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SB from '@/models/sandbox.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -67,7 +68,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	async function run<V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) {
 		const res = await SandboxFrame.Actions.run(stores, verb, args)
 		if (res.code === 'ok') return true
-		toast.error('Sandbox', { description: 'message' in res && res.message ? res.message : res.code })
+		toast.error(...SB_Msgs.verbFailed('message' in res && res.message ? res.message : res.code).toast())
 		return false
 	}
 
@@ -81,7 +82,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	async function bulkJoin() {
 		const count = Number(bulkRef.current?.value ?? '')
 		if (!Number.isInteger(count) || count < 1) {
-			toast.error('Sandbox', { description: 'Enter how many players should connect' })
+			toast.error(...SB_Msgs.bulkJoinNeedsCount().toast())
 			return
 		}
 		await run('bulk-join', { count })

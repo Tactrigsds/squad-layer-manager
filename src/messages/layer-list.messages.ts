@@ -158,3 +158,13 @@ export const showNext = Msgs.def(
 export const requestFeedback = Msgs.def((index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
 	warn: () => ({ msg: [`${playerName} has requested feedback for`, LL.displayLayerListItem(item, index)].join('\n') }),
 }))
+
+// You are the last one editing, so leaving drops the draft rather than handing it on. The browser's own confirm()
+// takes a bare string, hence `text`.
+export const leavingDiscardsEdits = Msgs.def(() => ({
+	text: () => 'Leaving discards your unsaved edits, since nobody else is editing. Are you sure you want to leave?',
+}))
+
+export const ownEditsDiscarded = Msgs.def(() => ({
+	toast: () => ['Your unsaved edits have been discarded'],
+}))

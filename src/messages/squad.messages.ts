@@ -144,3 +144,8 @@ export const demoteCommander = Msgs.def(() => ({
 export const copiedToClipboard = Msgs.def((what: string, count: number = 1) => ({
 	toast: () => ['Copied', { description: count > 1 ? `${count} ${what}s copied to clipboard` : `${what} copied to clipboard` }],
 }))
+
+// actionName is the admin action's display name, so the prompt says which action is being blocked
+export const reasonRequired = Msgs.def((actionName: string) => ({
+	toast: () => ['Reason required', { description: `A reason is required for ${actionName}.` }],
+}))

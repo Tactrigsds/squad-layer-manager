@@ -20,6 +20,7 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
@@ -102,7 +103,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					case 'err:permission-denied':
 						throw permissionDeniedError(res)
 					case 'err:rcon':
-						throw new Error('Failed to disable Fog of War (RCON error)')
+						throw new Error(SS_Msgs.disableFogOfWarFailed().text())
 					case 'err:server-not-loaded':
 						throw new Error(res.msg)
 					default:
@@ -110,8 +111,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				}
 			})(),
 			{
-				loading: 'Disabling Fog of War...',
-				success: 'Fog of War disabled for current match',
+				loading: SS_Msgs.disablingFogOfWar().text(),
+				success: SS_Msgs.fogOfWarDisabled().text(),
 				error: (e: Error) => ({ message: e.message, richColors: true }),
 			},
 		)
@@ -119,10 +120,11 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 
 	async function endMatch() {
 		const serverName = serverInfoRes?.code === 'ok' ? serverInfoRes.data.name : serverId
+		const msg = SS_Msgs.confirmEndMatch(serverName).confirm()
 		const result = await openDialog({
-			title: 'End Match',
-			description: `Are you sure you want to end the match for ${serverName}?`,
-			buttons: [{ id: 'confirm', label: 'End Match', variant: 'destructive' }],
+			title: msg.title,
+			description: msg.description,
+			buttons: [{ id: 'confirm', label: msg.confirmLabel, variant: 'destructive' }],
 		})
 		if (result !== 'confirm') return
 		toast.promise(
@@ -143,8 +145,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				}
 			})(),
 			{
-				loading: `Ending match on ${serverName}...`,
-				success: 'Match ended!',
+				loading: SS_Msgs.endingMatch(serverName).text(),
+				success: SS_Msgs.matchEnded().text(),
 				error: (e: Error) => ({ message: e.message, richColors: true }),
 			},
 		)
