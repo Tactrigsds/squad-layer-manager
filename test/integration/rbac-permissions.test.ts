@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type EmuPlayer, makePlayer } from '@/emulator'
 
 import { type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
-import { LAYERS, queue } from '../harness/arrange'
+import { cmd, LAYERS, queue } from '../harness/arrange'
 
 // The in-game timeout command is gated by SM.Grants.satisfyingTimeout: an admin may only issue a timeout up to the
 // maximum duration their roles grant. "up to N" is a comparator, not an equality match, and an unlimited (super user)
@@ -102,7 +102,7 @@ function warnsTo(player: EmuPlayer): string[] {
 describe('in-game timeout duration cap', () => {
 	it('allows a capped admin to issue a timeout within their cap', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(capped, 'ChatAdmin', '!timeout target_onehr 1h')
+		app.emu.world.chat(capped, 'ChatAdmin', cmd('timeout target_onehr 1h'))
 
 		await app.waitFor(() => warnsTo(capped).some((w) => w.includes('Timed out')), {
 			label: 'the timeout confirmation to the capped admin',
@@ -113,7 +113,7 @@ describe('in-game timeout duration cap', () => {
 
 	it('denies a capped admin a timeout beyond their cap', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(capped, 'ChatAdmin', '!timeout target_capped 6h')
+		app.emu.world.chat(capped, 'ChatAdmin', cmd('timeout target_capped 6h'))
 
 		await app.waitFor(() => warnsTo(capped).some((w) => w.includes('Permission denied')), {
 			label: 'the permission-denied warn to the capped admin',
@@ -128,7 +128,7 @@ describe('in-game timeout duration cap', () => {
 	// the null case would deny this.
 	it('allows a super user to exceed a finite cap', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(superAdmin, 'ChatAdmin', '!timeout target_super 6h')
+		app.emu.world.chat(superAdmin, 'ChatAdmin', cmd('timeout target_super 6h'))
 
 		await app.waitFor(() => warnsTo(superAdmin).some((w) => w.includes('Timed out')), {
 			label: 'the timeout confirmation to the super user',
@@ -143,7 +143,7 @@ describe('role assignment via in-game admin status', () => {
 	// role), so being able to issue a timeout proves the admin-list-derived assignment actually grants its permissions
 	it('grants an includeIngameAdmins role its permissions', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(ingameAdmin, 'ChatAdmin', '!timeout target_kick 30m')
+		app.emu.world.chat(ingameAdmin, 'ChatAdmin', cmd('timeout target_kick 30m'))
 
 		await app.waitFor(() => warnsTo(ingameAdmin).some((w) => w.includes('Timed out')), {
 			label: 'the timeout confirmation to the ingame admin',
@@ -158,7 +158,7 @@ describe('role assignment via in-game admin status', () => {
 	// under the pre-fix behavior their steam id counted as an admin and the 30m timeout would have gone through.
 	it('withholds an includeIngameAdmins role from a non-identifying-group admin', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(reserveAdmin, 'ChatAdmin', '!timeout target_reserve 30m')
+		app.emu.world.chat(reserveAdmin, 'ChatAdmin', cmd('timeout target_reserve 30m'))
 
 		await app.waitFor(() => warnsTo(reserveAdmin).some((w) => w.includes('Permission denied')), {
 			label: 'the permission-denied warn to the reserve admin',

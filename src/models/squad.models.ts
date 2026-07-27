@@ -597,6 +597,11 @@ export type AdminListSourceType = AdminListSource['type']
 // Admin lists are named so that everything else can refer to one: a server picks which lists apply to it, and a role
 // assignment says which list's groups (or which list's admins) grant the role. Without names all of that could only
 // ever say "the admin list", which is exactly the ambiguity that made per-server admins impossible to express.
+// The name of the list a server provides for itself rather than being pointed at one: a sandbox server's emulated
+// Admins.cfg (see adminlist.server registerImplicitList). Named here rather than beside that code so the seeded
+// role assignments can refer to it -- it is the only list a fresh install has.
+export const IMPLICIT_LIST_ID = 'Emulated'
+
 export const AdminListIdSchema = z
 	.string()
 	.trim()

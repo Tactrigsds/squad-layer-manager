@@ -22,7 +22,8 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
-	emu = new Emulator({ tickRateIntervalMs: 0 })
+	// postMatchDelayMs: the real 30s wait is the point of the default, not something a test should sit through
+	emu = new Emulator({ tickRateIntervalMs: 0, postMatchDelayMs: 20 })
 	await emu.start()
 	host = { emu, players: new Map() }
 })
@@ -111,6 +112,42 @@ describe('execute', () => {
 	it('rejects args that do not fit the verb, rather than acting on a coerced value', async () => {
 		await Verbs.execute(host, 'join', { name: 'Alice' })
 		await expect(Verbs.execute(host, 'end', { winnerTeamId: 3 })).rejects.toThrow()
+	})
+
+	// Ending a match used to write only the round-end lines, leaving the server in WaitingPostMatch with no
+	// NEW_GAME ever following, so the map never rolled and the queue never advanced.
+	it('ends into WaitingPostMatch and then brings the next world up', async () => {
+		const rolled = new Promise<string[]>((resolve) => {
+			const lines: string[] = []
+			emu.onLogLine((l) => {
+				lines.push(l)
+				if (l.includes('up for play') && l.includes('Sumari_Seed_v1')) resolve(lines)
+			})
+		})
+		await Verbs.execute(host, 'rcon', { command: 'AdminSetNextLayer Sumari_Seed_v1 RGF+CombinedArms VDV+CombinedArms' })
+		const out = await Verbs.execute(host, 'end', {})
+		expect(out).toBe('match ended')
+
+		const lines = await rolled
+		const postMatch = lines.findIndex((l) => l.includes('Match State Changed from InProgress to WaitingPostMatch'))
+		const newGame = lines.findIndex((l) => l.includes('Sumari_Seed_v1') && l.includes('up for play'))
+		expect(postMatch).toBeGreaterThanOrEqual(0)
+		expect(newGame).toBeGreaterThan(postMatch)
+		expect(emu.world.currentLayer.layer).toBe('Sumari_Seed_v1')
+	})
+
+	// AdminEndMatch is what SLM's own End Match action sends, and it has to roll for the same reason: it is the
+	// server ending the round, not an admin asking for a particular layer.
+	it('rolls when the match is ended over rcon, not just through the verb', async () => {
+		const rolled = new Promise<void>((resolve) => {
+			emu.onLogLine((l) => {
+				if (l.includes('Sumari_Seed_v1') && l.includes('up for play')) resolve()
+			})
+		})
+		await Verbs.execute(host, 'rcon', { command: 'AdminSetNextLayer Sumari_Seed_v1 RGF+CombinedArms VDV+CombinedArms' })
+		await Verbs.execute(host, 'rcon', { command: 'AdminEndMatch' })
+		await rolled
+		expect(emu.world.currentLayer.layer).toBe('Sumari_Seed_v1')
 	})
 
 	it('runs raw rcon against the same world', async () => {
