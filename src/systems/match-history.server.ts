@@ -13,7 +13,7 @@ import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
-import * as Messages from '@/messages'
+import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared'
@@ -578,11 +578,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 						.insert(Schema.balanceTriggerEvents)
 						.values(superjsonify(Schema.balanceTriggerEvents, event))
 						.returning({ id: Schema.balanceTriggerEvents.id })
-					log.info(
-						'Trigger %s fired: message: "%s"',
-						trig.id,
-						Messages.GENERAL.balanceTrigger.showEvent({ ...event, id }, currentMatch, false),
-					)
+					log.info('Trigger %s fired: message: "%s"', trig.id, BAL_Msgs.showEvent({ ...event, id }, currentMatch).text())
 				} catch (err) {
 					log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
 				}

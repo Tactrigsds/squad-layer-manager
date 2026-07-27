@@ -8,6 +8,7 @@ import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/lo
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as Str from '@/lib/string-utils'
+import { assertNever } from '@/lib/type-guards'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
@@ -1344,6 +1345,73 @@ export namespace LogEvents {
 		},
 	})
 
+	// Squad's own in-game vote (enabled with AdminEnableVoting). Its outcome overwrites whatever SLM set as the
+	// next layer, so SLM has to stand down while one is running. See docs/ingame_voting.md.
+	export const INGAME_VOTE_KIND = z.enum(['next-layer', 'faction', 'other'])
+	export type IngameVoteKind = z.infer<typeof INGAME_VOTE_KIND>
+
+	export function ingameVoteKindLabel(kind: IngameVoteKind): string {
+		switch (kind) {
+			case 'next-layer':
+				return 'next layer'
+			case 'faction':
+				return 'faction'
+			case 'other':
+				return 'server'
+			default:
+				assertNever(kind)
+		}
+	}
+
+	function voteKindForContainer(container: string): IngameVoteKind {
+		if (container === 'Vote_NextLayer') return 'next-layer'
+		if (container.startsWith('Vote_Faction')) return 'faction'
+		return 'other'
+	}
+
+	export const IngameVoteStartedDef = eventDef('INGAME_VOTE_STARTED', {
+		...BaseEventProperties,
+		container: z.string().trim(),
+		kind: INGAME_VOTE_KIND,
+	})
+	export type IngameVoteStarted = z.infer<(typeof IngameVoteStartedDef)['schema']>
+	export const IngameVoteStartedMatcher = createLogMatcher({
+		event: IngameVoteStartedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: Vote: Create new container: (\S+)/,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				container: args[3],
+				kind: voteKindForContainer(args[3]),
+			}
+		},
+	})
+
+	// `RegenerateVote` is the server's re-roll option rather than something players can end up playing, so it is
+	// dropped: everything left is a layer (or faction) the vote may actually resolve to.
+	export const IngameVoteChoicesDef = eventDef('INGAME_VOTE_CHOICES', {
+		...BaseEventProperties,
+		choices: z.array(z.string()),
+	})
+	export type IngameVoteChoices = z.infer<(typeof IngameVoteChoicesDef)['schema']>
+	export const IngameVoteChoicesMatcher = createLogMatcher({
+		event: IngameVoteChoicesDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: Vote Possible choices: (.+)/s,
+		onMatch: (args) => {
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				choices: args[3]
+					.trim()
+					.split(/\s+/)
+					.filter((choice) => choice !== 'RegenerateVote'),
+			}
+		},
+	})
+
 	export const KickingPlayerDef = eventDef('KICKING_PLAYER', {
 		...BaseEventProperties,
 		reason: z.string().trim(),
@@ -1532,6 +1600,8 @@ export namespace LogEvents {
 		AdminBroadcastMatcher,
 		LayerChangedMatcher,
 		MapSetMatcher,
+		IngameVoteStartedMatcher,
+		IngameVoteChoicesMatcher,
 		KickingPlayerMatcher,
 		PlayerKickedMatcher,
 		PlayerAddedToTeamMatcher,
@@ -1564,6 +1634,8 @@ export namespace LogEvents {
 		| AdminBroadcast
 		| MapSet
 		| LayerChanged
+		| IngameVoteStarted
+		| IngameVoteChoices
 		| KickingPlayer
 		| PlayerKicked
 		| PlayerAddedToTeam
@@ -1605,6 +1677,11 @@ export namespace LogEvents {
 			{ event: LayerChangedDef, optional: true },
 		],
 		PLAYER_KICKED_CHAIN: [{ event: KickingPlayerDef, primary: true }, PlayerKickedDef],
+		// the choices line precedes the container it belongs to within the tick, which partitionTick allows for
+		INGAME_VOTE_CHAIN: [
+			{ event: IngameVoteStartedDef, primary: true },
+			{ event: IngameVoteChoicesDef, optional: true },
+		],
 	}
 
 	type GetEventSchema<T> = T extends EventSchema ? T : T extends { event: infer E extends EventSchema } ? E : never

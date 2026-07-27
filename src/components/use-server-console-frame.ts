@@ -1,5 +1,3 @@
-import React from 'react'
-
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 
@@ -7,8 +5,8 @@ import * as ConsoleFrame from '@/frames/server-console.frame'
 // console window opened beside it do not depend on each other's lifetime. Frames are keyed by server, so both read
 // the same tail.
 export function useServerConsoleFrame(serverId: string): ConsoleFrame.KeyProp {
-	const input = React.useMemo(() => ({ serverId }), [serverId])
+	const input = { serverId }
 	const frameKey = useFrameLifecycle(ConsoleFrame.frame, { input })
 	useFrameTeardownOnUnmount(frameKey, true)
-	return React.useMemo(() => ({ serverConsole: frameKey }), [frameKey])
+	return { serverConsole: frameKey }
 }

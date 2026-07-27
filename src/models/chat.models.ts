@@ -157,6 +157,7 @@ export type EventEnriched =
 	| EnrichedAppEvent
 	| NoopEvent
 	| SE.MapSet
+	| SE.IngameVoteStarted
 	| SE.NewGame
 	| SE.Reset
 	| SE.RconConnected
@@ -517,6 +518,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		case 'RCON_DISCONNECTED':
 		case 'ROUND_ENDED':
 		case 'TEAMS_POLLED_UPDATE':
+		case 'INGAME_VOTE_STARTED':
 			return { ...event }
 
 		case 'PLAYER_CONNECTED': {

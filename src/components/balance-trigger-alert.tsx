@@ -1,6 +1,6 @@
 import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { cn } from '@/lib/utils'
-import * as Messages from '@/messages'
+import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as MH from '@/models/match-history.models'
 
@@ -22,7 +22,7 @@ export default function BalanceTriggerAlert(props: {
 				<AlertIcon className="h-4 w-4 mr-2" />
 				{trigger.name}
 			</AlertTitle>
-			<AlertDescription>{Messages.GENERAL.balanceTrigger.showEvent(props.event, props.referenceMatch, false)}</AlertDescription>
+			<AlertDescription>{BAL_Msgs.showEvent(props.event, props.referenceMatch).react()}</AlertDescription>
 		</Alert>
 	)
 }

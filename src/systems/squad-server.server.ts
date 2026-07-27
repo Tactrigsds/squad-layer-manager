@@ -23,7 +23,7 @@ import { SftpTail } from '@/lib/sftp-tail'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
-import * as Messages from '@/messages.ts'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
@@ -352,7 +352,7 @@ export const orpcRouter = {
 			}),
 		)
 		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, Messages.BROADCASTS.fogOff)
+			await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast())
 		}
 		return { code: 'ok' as const }
 	}),
@@ -560,7 +560,7 @@ export const orpcRouter = {
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
 			if (reasonRes.code !== 'ok') return reasonRes
-			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / WARNS.kill.notifyKilled)
+			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.notifyKilled().warn())
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
 			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
@@ -1077,7 +1077,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		const restartedBy = AppEventsSys.restartInfo
 			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
 			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, Messages.WARNS.slmStarted(restartedBy))
+		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy).warn())
 	}
 }
 
@@ -2057,11 +2057,31 @@ const onNewGameDuringSync =
 			'onNewGameDuringSync',
 			{
 				module,
-				mutexes: () => [ctx.matchHistory.mtx],
+				// both, in the same order onNewGameDuringRoll takes them: the queue reconciliation below dispatches an
+				// op, and taking updateLayerMtx after matchHistory.mtx in one place and before it in another deadlocks
+				mutexes: () => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
 				levels: { event: 'info' },
 			},
 			async () => {
 				const { currentMatch, pushedNewMatch } = await MatchHistory.syncWithCurrentLayer(ctx, currentLayerId)
+				// We've just found the server on a layer we had no record of, so a roll happened while SLM wasn't
+				// watching, and it consumed whatever SLM had set as next. The roll path shifts the queue when the head
+				// is what started playing; this path never did, so a head that was already played stayed at the head
+				// and went up as next a second time.
+				//
+				// Only once SLM has history for this server, though. On the first match it records there is no roll it
+				// could have missed: the server is simply already running, and a head that happens to name the layer
+				// it is running is a request to play that layer next, not evidence it has been played.
+				//
+				// Exact equality rather than compatibility: dropping someone's queued item is not recoverable, so a
+				// head that merely could be what is playing stays put.
+				if (pushedNewMatch && currentMatch.ordinal > 0) {
+					const head = LayerQueue.getSavedQueue(ctx)[0]
+					if (head?.layerId && L.layersEqual(head.layerId, currentLayerId)) {
+						log.info('queue head %s is already playing; consuming it rather than queueing it again', head.layerId)
+						await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
+					}
+				}
 				return { match: currentMatch, isNewMatch: pushedNewMatch }
 			},
 		)()

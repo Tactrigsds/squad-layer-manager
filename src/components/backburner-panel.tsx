@@ -21,6 +21,7 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as BB_Msgs from '@/messages/backburner.messages'
 import * as BB from '@/models/backburner.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CB from '@/models/constraint-builders'
@@ -344,7 +345,7 @@ async function onlyMatchingLayer(filter: F.FilterNode): Promise<L.LayerId | null
 // matching the server's request-time validation.
 function useBackburnerSatisfiability(items: BB.BackburnerItem[]) {
 	// items carry bigint owner ids, which dep keys can't stringify; the templates are the queried part anyway
-	const templates = React.useMemo(() => items.map((item) => ({ itemId: item.itemId, filter: item.filter })), [items])
+	const templates = items.map((item) => ({ itemId: item.itemId, filter: item.filter }))
 	const depKey = LayerQueriesClient.useDepKey({ templates })
 	return useQuery({
 		queryKey: ['backburner-satisfiable', depKey],
@@ -573,7 +574,7 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 	function save() {
 		const filter = RequestFrame.Sel.templateFilter(Zus.getState(frameKey))
 		if (filter.type === 'and' && filter.children.length === 0) {
-			toast.warning('Empty request', { description: 'Pick at least one of layer, map, gamemode, version, matchup or a filter' })
+			toast.warning(...BB_Msgs.emptyRequest().toast())
 			return
 		}
 		const queueKey: LayerQueuePrt.KeyProp = { queue: props.stores.squadServer! }
@@ -610,26 +611,20 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 		Zus.useDeep((s) => s.matchupSideOptions),
 	)
 	// per side and dimension: only values that keep at least one layer possible, given everything else picked
-	const allowedTeamValues = React.useCallback(
-		(side: 0 | 1, column: F.TeamColumn): string[] | undefined => matchupSideOptions?.[side]?.[column],
-		[matchupSideOptions],
-	)
+	const allowedTeamValues = (side: 0 | 1, column: F.TeamColumn): string[] | undefined => matchupSideOptions?.[side]?.[column]
 
-	const matchupActions: MatchupActions = React.useMemo(
-		() => ({
-			// the operator select is hidden: a layer request is always allow-matchups
-			setType: () => {},
-			setLocked: (locked) => RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, locked })),
-			swapTeams: () => RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, teams: [node.teams[1], node.teams[0]] })),
-			setTeamValues: (teamIndex, column, values) =>
-				RequestFrame.Actions.updateMatchup(props.stores, (node) => {
-					const teams: [F.MatchupTeamSpec, F.MatchupTeamSpec] = [...node.teams]
-					teams[teamIndex] = { ...teams[teamIndex], [column]: values.length > 0 ? values : undefined }
-					return { ...node, teams }
-				}),
-		}),
-		[props.stores],
-	)
+	const matchupActions: MatchupActions = {
+		// the operator select is hidden: a layer request is always allow-matchups
+		setType: () => {},
+		setLocked: (locked) => RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, locked })),
+		swapTeams: () => RequestFrame.Actions.updateMatchup(props.stores, (node) => ({ ...node, teams: [node.teams[1], node.teams[0]] })),
+		setTeamValues: (teamIndex, column, values) =>
+			RequestFrame.Actions.updateMatchup(props.stores, (node) => {
+				const teams: [F.MatchupTeamSpec, F.MatchupTeamSpec] = [...node.teams]
+				teams[teamIndex] = { ...teams[teamIndex], [column]: values.length > 0 ? values : undefined }
+				return { ...node, teams }
+			}),
+	}
 
 	// parts the form doesn't edit but a chat request may carry; preserved on save
 	const extras = [

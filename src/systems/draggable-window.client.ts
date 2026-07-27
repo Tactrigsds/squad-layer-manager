@@ -330,10 +330,7 @@ export function openOrFocusWindow(type: string, props: unknown, outletKey?: unkn
 // Hook variant that resolves the current outlet so the window opens in the right panel.
 export function useOpenOrFocusWindow() {
 	const outletKey = useOutletKey()
-	return React.useCallback(
-		(type: string, props: unknown, anchor?: HTMLElement | null) => openOrFocusWindow(type, props, outletKey, anchor),
-		[outletKey],
-	)
+	return (type: string, props: unknown, anchor?: HTMLElement | null) => openOrFocusWindow(type, props, outletKey, anchor)
 }
 
 export function useCloseWindow() {

@@ -15,7 +15,7 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
-import * as Messages from '@/messages'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -153,7 +153,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		instance.post(AR.route('/login/no-auth'), async (req, reply) => {
 			const parsed = USR.NoAuthLoginSchema.safeParse(req.body)
 			if (!parsed.success) {
-				return sendHtmlPage(reply, Landing.noAuthHtml(Messages.GENERAL.auth.invalidUsername), 400)
+				return sendHtmlPage(reply, Landing.noAuthHtml(USR_Msgs.invalidUsername().text()), 400)
 			}
 			await Sessions.logInWithoutAuth(buildHttpRequestContext(req, reply), parsed.data.username)
 			return reply.redirect(AR.route('/'), 302)
@@ -297,11 +297,11 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(), 200)
 					return await reply.redirect(AR.route('/'), 302)
 				} else {
-					return await reply.status(401).send(Messages.GENERAL.auth.unAuthenticated)
+					return await reply.status(401).send(USR_Msgs.unAuthenticated().text())
 				}
 			case 'err:permission-denied':
 				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
-				return await reply.status(401).send(Messages.GENERAL.auth.noApplicationAccess)
+				return await reply.status(401).send(USR_Msgs.noApplicationAccess().text())
 			default:
 				assertNever(authRes)
 		}

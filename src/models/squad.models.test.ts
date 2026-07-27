@@ -60,6 +60,22 @@ const RCON_MATCH_ENDED = '[2026.04.17-19.29.13:108][427]LogSquad: ADMIN COMMAND:
 // A subsequent event with a different chainID forces the chain to complete
 const NEXT_TICK_EVENT =
 	'[2026.04.17-19.29.15:000][428]LogWorld: Bringing World /Kohat/Maps/Gameplay_Layers/Kohat_RAAS_v1.Kohat_RAAS_v1 up for play'
+const VOTE_REGEN_LAYER = '[2026.07.26-19.55.39:329][957]LogSquad: Vote Regeneration Layer possible: 1/1'
+const VOTE_CHOICES_LAYER =
+	'[2026.07.26-19.55.39:329][957]LogSquad: Vote Possible choices: Fallujah_Skirmish_v2 Mutaha_Skirmish_v1 AlBasrah_Seed_v1 BlackCoast_Seed_v1 Chora_Skirmish_v1 Manicouagan_Skirmish_v1 RegenerateVote'
+const VOTE_PLAYER_ADDED = '[2026.07.26-19.55.39:329][957]LogSquad: Player 000249a430574933aefd9bbc9a8f2f37 was added to vote Vote_NextLayer'
+const VOTE_CREATE_CONTAINER = '[2026.07.26-19.55.39:329][957]LogSquad: Vote: Create new container: Vote_NextLayer'
+const VOTE_UPDATE_CONTAINER = '[2026.07.26-19.55.39:329][957]LogSquad: Vote: Update vote for used container: Vote_NextLayer'
+const INGAME_LAYER_VOTE = [VOTE_REGEN_LAYER, VOTE_CHOICES_LAYER, VOTE_PLAYER_ADDED, VOTE_CREATE_CONTAINER, VOTE_UPDATE_CONTAINER].join('\n')
+
+const INGAME_FACTION_VOTE = [
+	'[2026.07.26-19.55.52:329][786]LogSquad: Vote Regeneration possible: 1 Teams: 1/1',
+	'[2026.07.26-19.55.52:329][786]LogSquad: Vote Possible choices: BAF MEI VDV TLF PLAAGF WPMC RegenerateVote',
+	'[2026.07.26-19.55.52:329][786]LogSquad: Player 000249a430574933aefd9bbc9a8f2f37 was added to vote Vote_Faction_0',
+	'[2026.07.26-19.55.52:329][786]LogSquad: Vote: Create new container: Vote_Faction_0',
+	'[2026.07.26-19.55.52:329][786]LogSquad: Vote: Update vote for used container: Vote_Faction_0',
+].join('\n')
+
 const ROUND_ADMIN_CHAIN = [
 	DETERMINE_MATCH_WINNER_ADMIN,
 	DETERMINE_MATCH_WINNER_DRAW_ADMIN,
@@ -527,6 +543,47 @@ describe('LogEvents.parse', () => {
 		it('yields two different chain types sequentially', async () => {
 			const events = await collect([JOIN_CHAIN, ROUND_CHAIN, NEXT_TICK_EVENT].join('\n'))
 			expect(events.map((e) => e.type)).toEqual(['PLAYER_CONNECTED_CHAIN', 'PLAYER_RESTARTED', 'ROUND_ENDED_CHAIN'])
+		})
+	})
+
+	describe('INGAME_VOTE_CHAIN', () => {
+		it('parses a next-layer vote with its choices', async () => {
+			const events = await collect([INGAME_LAYER_VOTE, NEXT_TICK_EVENT].join('\n'))
+			expect(events.find((e) => e.type === 'INGAME_VOTE_CHAIN')).toMatchObject({
+				type: 'INGAME_VOTE_CHAIN',
+				events: {
+					INGAME_VOTE_STARTED: { container: 'Vote_NextLayer', kind: 'next-layer' },
+					INGAME_VOTE_CHOICES: {
+						choices: [
+							'Fallujah_Skirmish_v2',
+							'Mutaha_Skirmish_v1',
+							'AlBasrah_Seed_v1',
+							'BlackCoast_Seed_v1',
+							'Chora_Skirmish_v1',
+							'Manicouagan_Skirmish_v1',
+						],
+					},
+				},
+			})
+		})
+
+		it('parses a faction vote', async () => {
+			const events = await collect([INGAME_FACTION_VOTE, NEXT_TICK_EVENT].join('\n'))
+			expect(events.find((e) => e.type === 'INGAME_VOTE_CHAIN')).toMatchObject({
+				type: 'INGAME_VOTE_CHAIN',
+				events: {
+					INGAME_VOTE_STARTED: { container: 'Vote_Faction_0', kind: 'faction' },
+					INGAME_VOTE_CHOICES: { choices: ['BAF', 'MEI', 'VDV', 'TLF', 'PLAAGF', 'WPMC'] },
+				},
+			})
+		})
+
+		it('emits the vote even when the choices line is missing', async () => {
+			const events = await collect([VOTE_CREATE_CONTAINER, NEXT_TICK_EVENT].join('\n'))
+			expect(events.find((e) => e.type === 'INGAME_VOTE_CHAIN')).toMatchObject({
+				type: 'INGAME_VOTE_CHAIN',
+				events: { INGAME_VOTE_STARTED: { kind: 'next-layer' } },
+			})
 		})
 	})
 })
