@@ -53,3 +53,23 @@ export const ingameVoteDisabledUpdates = Msgs.def(() => ({
 	warn: () =>
 		'An in-game next layer vote is running. The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. Re-enable them once voting is turned off.',
 }))
+
+// The server actions an admin can take from the dashboard. Each toast.promise leg is a bare value rather than
+// toast args, so these are `text`.
+export const disablingFogOfWar = Msgs.def(() => ({ text: () => 'Disabling Fog of War...' }))
+
+export const fogOfWarDisabled = Msgs.def(() => ({ text: () => 'Fog of War disabled for current match' }))
+
+export const disableFogOfWarFailed = Msgs.def(() => ({ text: () => 'Failed to disable Fog of War (RCON error)' }))
+
+export const confirmEndMatch = Msgs.def((serverName: string) => ({
+	confirm: () => ({
+		title: 'End Match',
+		description: `Are you sure you want to end the match for ${serverName}?`,
+		confirmLabel: 'End Match',
+	}),
+}))
+
+export const endingMatch = Msgs.def((serverName: string) => ({ text: () => `Ending match on ${serverName}...` }))
+
+export const matchEnded = Msgs.def(() => ({ text: () => 'Match ended!' }))

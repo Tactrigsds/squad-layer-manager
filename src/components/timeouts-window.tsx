@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from '@/lib/toast'
+import * as SM_Msgs from '@/messages/squad.messages'
 import type * as AppEvents from '@/models/app-events.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -44,8 +45,8 @@ function TimeoutsWindow() {
 
 	async function cancel(timeoutId: string) {
 		const res = await cancelMutation.mutateAsync({ timeoutId })
-		if (res.code !== 'ok') toast.error('Cancel failed', { description: 'msg' in res && res.msg ? res.msg : res.code })
-		else toast('Timeout cancelled')
+		if (res.code !== 'ok') toast.error(...SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+		else toast(...SM_Msgs.timeoutCancelled().toast())
 	}
 
 	return (

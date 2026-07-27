@@ -83,3 +83,7 @@ export const descriptions = {
 
 // configurable fixed-duration timeout aliases; shared by the in-game help and the web help dialog
 export const aliasDescription = (command: string) => `Shortcut for "${command}"`
+
+export const copyFailed = Msgs.def(() => ({
+	toast: () => ['Failed to copy', { description: 'Could not copy command to clipboard' }],
+}))
