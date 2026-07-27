@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as UsersClient from '@/systems/users.client'
 
 // keeps a trailing empty slot so the list auto-expands as the user fills the last input
@@ -68,12 +69,12 @@ function LinkedSteamAccountsEditor({ initialIds, onClose }: { initialIds: readon
 		if (hasErrors) return
 		const res = await updateMutation.mutateAsync([...new Set(nonEmpty)])
 		if (res.code === 'ok') {
-			toast('Linked Steam accounts updated')
+			toast(...USR_Msgs.steamAccountsUpdated().toast())
 			onClose()
 		} else if (res.code === 'err:steam-already-linked') {
-			toast.error('Steam ID already linked', { description: `${res.steamId} is linked to another account.` })
+			toast.error(...USR_Msgs.steamIdAlreadyLinked(res.steamId).toast())
 		} else {
-			toast.error('Failed to update', { description: res.msg })
+			toast.error(...USR_Msgs.steamUpdateFailed(res.msg).toast())
 		}
 	}
 
