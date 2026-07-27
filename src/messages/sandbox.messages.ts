@@ -58,6 +58,26 @@ export const squadColumn = Msgs.def('Squad')
 
 export const adminColumn = Msgs.def('Admin')
 
+export const teamPicker = Msgs.def("{playerName}'s team", (playerName: string) => ({ playerName }))
+
+export const teamOption = Msgs.def('Team {teamId}', (teamId: number) => ({ teamId }))
+
+export const noTeam = Msgs.def('No team')
+
+export const squadPicker = Msgs.def("{playerName}'s squad", (playerName: string) => ({ playerName }))
+
+export const squadOption = Msgs.def('{squadId}. {squadName} ({size})', (squadId: number, squadName: string, size: number) => ({
+	squadId,
+	squadName,
+	size,
+}))
+
+export const noSquad = Msgs.def('No squad')
+
+export const createSquad = Msgs.def('Create squad')
+
+export const squadLeader = Msgs.def('{playerName} leads this squad', (playerName: string) => ({ playerName }))
+
 export const groupsColumn = Msgs.def('Groups')
 
 export const isAdminCheckbox = Msgs.def('{playerName} is an admin', (playerName: string) => ({ playerName }))

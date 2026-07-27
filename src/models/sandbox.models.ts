@@ -155,6 +155,43 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	squads: def({
+		usage: 'squads',
+		summary: 'the squads on each team, and who is in them',
+		input: NoArgs,
+		tokens: () => ({}),
+	}),
+	'join-squad': def({
+		usage: 'join-squad <name> <squad id|squad name>',
+		summary: 'a player joins an existing squad on their team',
+		input: z.object({ name: PlayerNameSchema, squad: z.string().min(1) }),
+		tokens: ([name, ...rest]) => {
+			requireTokens([name, rest.join(' ')], 2, 'join-squad <name> <squad id|squad name>')
+			return { name, squad: rest.join(' ') }
+		},
+		mutatesWorld: true,
+	}),
+	'leave-squad': def({
+		usage: 'leave-squad <name>',
+		summary: 'a player leaves their squad',
+		input: z.object({ name: PlayerNameSchema }),
+		tokens: ([name]) => {
+			requireTokens([name], 1, 'leave-squad <name>')
+			return { name }
+		},
+		mutatesWorld: true,
+	}),
+	'set-team': def({
+		usage: 'set-team <name> <1|2>',
+		summary: 'move a player onto a team, leaving their squad behind',
+		input: z.object({ name: PlayerNameSchema, teamId: z.union([z.literal(1), z.literal(2)]) }),
+		tokens: ([name, team]) => {
+			requireTokens([name, team], 2, 'set-team <name> <1|2>')
+			if (team !== '1' && team !== '2') throw new Error('usage: set-team <name> <1|2>')
+			return { name, teamId: Number(team) as 1 | 2 }
+		},
+		mutatesWorld: true,
+	}),
 	cam: def({
 		usage: 'cam <name> [off]',
 		summary: 'a player enters admin camera, or leaves it with `off`',

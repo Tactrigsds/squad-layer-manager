@@ -15,6 +15,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
+import type { SandboxState } from '@/systems/sandbox.shared'
 import * as Seed from '@/systems/seed.server'
 import * as Settings from '@/systems/settings.server'
 
@@ -82,6 +83,9 @@ function onListChanged(changed$: Rx.Subject<void>) {
 }
 
 const instances = new Map<string, SandboxInstance>()
+
+// how often watchState re-reads the world for changes no verb caused
+const WORLD_POLL_MS = 2000
 
 export function setup() {
 	log = module.getLogger()
@@ -239,25 +243,30 @@ export function disposeInstance(serverId: string) {
 
 // The shape the control window renders. Admin status is derived rather than stored: the checkbox and the group
 // picker are two views of the same membership, so there is nothing to keep in sync.
-function sandboxState(instance: SandboxInstance) {
+function sandboxState(instance: SandboxInstance): SandboxState {
 	return {
 		code: 'ok' as const,
 		groups: [...instance.list.groups.entries()].map(([name, permissions]) => ({ name, permissions: [...permissions] })),
 		adminsCfg: renderAdminsCfg(instance),
 		nextDefaultName: Verbs.nextDefaultName(instance),
+		squads: instance.emu.world.squads.map((s) => ({
+			teamId: s.teamId,
+			squadId: s.squadId,
+			name: s.name,
+			size: instance.emu.world.squadMembers(s).length,
+		})),
 		players: [...instance.players.entries()].map(([name, p]) => ({
 			name,
 			eosId: p.eos,
 			steamId: p.steam,
 			teamId: p.teamId ?? null,
 			squadId: p.squadId ?? null,
+			isLeader: p.isLeader,
 			groups: [...(instance.list.memberships.get(name) ?? [])],
 			isAdmin: instance.adminList!.isAdmin(name),
 		})),
 	}
 }
-
-export type SandboxState = Extract<ReturnType<typeof sandboxState>, { code: 'ok' }>
 
 export const orpcRouter = {
 	// Which of the servers this session can see are sandboxes, so the client knows where to offer the control
@@ -289,7 +298,10 @@ export const orpcRouter = {
 				yield { code: 'err:not-a-sandbox' as const, serverId: input.serverId }
 				return
 			}
-			const obs = instance.changed$.pipe(
+			// Verbs are not the only thing that moves this: a roll swaps teams and clears every squad, and SLM's own
+			// admin commands move players around too. The poll costs nothing to send, since distinctDeepEquals
+			// drops it unless the world actually changed.
+			const obs = Rx.merge(instance.changed$, Rx.interval(WORLD_POLL_MS)).pipe(
 				Rx.startWith(undefined),
 				Rx.map(() => sandboxState(instance)),
 				Rx.Ext.distinctDeepEquals(),
