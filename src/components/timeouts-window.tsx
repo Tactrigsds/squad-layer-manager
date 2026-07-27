@@ -77,9 +77,9 @@ function TimeoutsWindow() {
 										{t.username !== null && <div className="font-medium">{t.username}</div>}
 										<div className="text-xs">
 											{t.steamId !== null ? (
-												<CopyIdButton label={SM_Msgs.idKindLabels.steam} id={t.steamId.toString()} />
+												<CopyIdButton kind="steam" id={t.steamId.toString()} />
 											) : (
-												<CopyIdButton label={SM_Msgs.idKindLabels.eos} id={t.playerId} />
+												<CopyIdButton kind="eos" id={t.playerId} />
 											)}
 										</div>
 									</TableCell>

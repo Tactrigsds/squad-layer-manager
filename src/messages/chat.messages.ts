@@ -37,6 +37,8 @@ export const reconnectionFailed = Msgs.def(() => ({
 
 export const scrollToBottom = Msgs.def(() => ({ text: () => 'Scroll to bottom' }))
 
+export const loadOlderEvents = Msgs.def(() => ({ text: () => 'Load older events' }))
+
 export const newEvents = Msgs.def((count: number) => ({ text: () => `${count} new event${count === 1 ? '' : 's'}` }))
 
 export const previousMatch = Msgs.def(() => ({ text: () => 'Previous match' }))
