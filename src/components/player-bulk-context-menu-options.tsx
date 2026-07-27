@@ -322,15 +322,17 @@ export default function PlayerBulkContextMenuOptions({
 
 	return (
 		<>
-			<ContextMenuLabel>{playerIds.length} players selected</ContextMenuLabel>
+			<ContextMenuLabel>
+				{playerIds.length} {SM_Msgs.playersSelected().text()}
+			</ContextMenuLabel>
 			<ContextMenuItem onClick={() => SquadServerFrame.Actions.invertSelection(stores)}>
-				Invert Selection
-				<ContextMenuShortcut>Alt+Ctrl+click select-all box</ContextMenuShortcut>
+				{SM_Msgs.invertSelection().text()}
+				<ContextMenuShortcut>{SM_Msgs.shortcuts.invertBox.all}</ContextMenuShortcut>
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.swapNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
-					Swap Next
+					{SM_Msgs.swapNextLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
@@ -340,7 +342,7 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={swapNow}
 					disabled={!!manageDenied || !canSwapNow}
 				>
-					Swap Now
+					{SM_Msgs.swapNowLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -349,7 +351,7 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={kill}
 					disabled={!!manageDenied || !canSwapNow}
 				>
-					Kill
+					{SM_Msgs.killLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
@@ -358,7 +360,7 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={kick}
 					disabled={!!kickDenied || playerIds.length === 0}
 				>
-					Kick
+					{SM_Msgs.kickLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
@@ -367,12 +369,12 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={timeout}
 					disabled={!!timeoutDenied || playerIds.length === 0}
 				>
-					Timeout
+					{SM_Msgs.timeoutLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwap(stores, playerIds)} disabled={!!manageDenied}>
-					Delete Swaps
+					{SM_Msgs.deleteSwapsLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
@@ -382,7 +384,7 @@ export default function PlayerBulkContextMenuOptions({
 			<WarnReasonsSub
 				slots={contextMenuSlots}
 				denied={warnDenied}
-				label={fullSquad ? 'Warn Squad' : 'Warn'}
+				label={fullSquad ? SM_Msgs.warnSquadLabel().text() : SM_Msgs.warnLabel().text()}
 				onCustom={warn}
 				onPreset={warnPreset}
 			/>
@@ -393,7 +395,7 @@ export default function PlayerBulkContextMenuOptions({
 			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>
-					Remove from Squad
+					{SM_Msgs.removeFromSquadLabel().text()}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 		</>

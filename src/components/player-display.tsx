@@ -5,6 +5,7 @@ import React from 'react'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
+import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { usePlayerGroupColor } from '@/systems/battlemetrics.client'
@@ -77,7 +78,7 @@ export function PlayerDisplay({
 		<span className={cn('inline-flex items-baseline', className)}>
 			{player.isAdmin && (
 				<span
-					title="This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams"
+					title={SM_Msgs.adminBadgeHint().text()}
 					className="inline-block"
 					onClickCapture={(e) => {
 						if (!e.shiftKey) return
@@ -90,7 +91,7 @@ export function PlayerDisplay({
 				</span>
 			)}
 			{player.isLeader && (
-				<span title="Squad Leader">
+				<span title={SM_Msgs.squadLeaderBadge().text()}>
 					<Icons.Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
 				</span>
 			)}

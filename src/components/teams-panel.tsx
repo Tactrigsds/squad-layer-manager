@@ -22,6 +22,7 @@ import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map-utils'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
+import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -132,7 +133,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 				<div className="grid w-full grid-cols-[1fr_auto_1fr] gap-1">
 					<Input
 						ref={searchRef}
-						placeholder="Search Players..."
+						placeholder={SM_Msgs.searchPlayers().text()}
 						defaultValue={initialSearchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 						// additive, like every other selection action -- merge matches into the current selection. Reads the
@@ -150,7 +151,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSelected(panelStores, checked)}
 							/>
 							<Label htmlFor={showSelectedId} className="text-sm whitespace-nowrap">
-								Show Selected
+								{SM_Msgs.showSelected().text()}
 							</Label>
 							<span
 								className="min-w-[3ch] text-xs text-muted-foreground tabular-nums data-[hide=true]:invisible"
@@ -162,7 +163,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7"
-								title="Reset selections, filters, sorting and search"
+								title={SM_Msgs.resetPanel().text()}
 								onClick={() => {
 									SquadServerFrame.Actions.resetTeamsPanel(props.stores)
 									if (searchRef.current) searchRef.current.value = ''
@@ -178,7 +179,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setAdminsOnly(panelStores, checked)}
 							/>
 							<Label htmlFor={adminsOnlyId} className="text-sm whitespace-nowrap">
-								Admins Only
+								{SM_Msgs.adminsOnly().text()}
 							</Label>
 						</div>
 						<div className="flex items-center gap-2">
@@ -187,17 +188,17 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								checked={showSpoilers}
 								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)}
 							/>
-							<Label htmlFor={showSpoilersId} className="text-sm whitespace-nowrap" title="Show K/W/D and role columns">
-								Show Spoilers
+							<Label htmlFor={showSpoilersId} className="text-sm whitespace-nowrap" title={SM_Msgs.showSpoilersHint().text()}>
+								{SM_Msgs.showSpoilers().text()}
 							</Label>
 						</div>
 						{!showSpoilers && roleFilter !== null && (
-							<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
-								Role: {roleFilter}
+							<Badge variant="secondary" className="gap-1" title={SM_Msgs.hiddenRoleFilter().text()}>
+								{SM_Msgs.roleFilterLabel().text()} {roleFilter}
 								<button
 									type="button"
 									className="hover:text-destructive"
-									title="Clear role filter"
+									title={SM_Msgs.clearRoleFilter().text()}
 									onClick={() => TeamsPanelPrt.Actions.setRoleFilter(panelStores, null)}
 								>
 									<Icons.X className="h-3 w-3" />
@@ -246,7 +247,7 @@ function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Norm
 	)
 	return (
 		<div className="flex items-center justify-center whitespace-nowrap">
-			{leftCount} vs {rightCount}
+			{leftCount} {SM_Msgs.versus().text()} {rightCount}
 		</div>
 	)
 }
@@ -270,9 +271,9 @@ function ControlPanel() {
 				windowProps={{} satisfies TimeoutsWindowProps}
 				preload="intent"
 				render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-					<Button ref={ref} variant="ghost" size="sm" className="h-7" title="Show active kick timeouts" {...props}>
+					<Button ref={ref} variant="ghost" size="sm" className="h-7" title={SM_Msgs.timeoutsTabHint().text()} {...props}>
 						<Icons.UserX className="h-3.5 w-3.5" />
-						Timeouts
+						{SM_Msgs.timeoutsTab().text()}
 						{timedOutCount > 0 && (
 							<Badge variant="destructive" className="ml-0.5 h-4 min-w-4 justify-center px-1 text-[10px] leading-none">
 								{timedOutCount}
@@ -283,7 +284,7 @@ function ControlPanel() {
 			/>
 			{groupingIds.length > 0 && (
 				<>
-					<span className="text-sm text-muted-foreground">Grouping</span>
+					<span className="text-sm text-muted-foreground">{SM_Msgs.groupingLabel().text()}</span>
 					<Select
 						value={activeGroupingId ?? ''}
 						onValueChange={(value) => BattlemetricsClient.Actions.setSelectedGroupingId(value || null)}
@@ -322,7 +323,7 @@ function SelectOrSpinner({
 			{isPending ? (
 				<Icons.LoaderCircle className="h-3 w-3 animate-spin text-muted-foreground" />
 			) : (
-				<Checkbox checked={checked} onCheckedChange={onCheckedChange} aria-label="Select row" />
+				<Checkbox checked={checked} onCheckedChange={onCheckedChange} aria-label={SM_Msgs.selectRow().text()} />
 			)}
 		</div>
 	)
@@ -475,7 +476,7 @@ function ColumnFilterSelect({
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				<SelectItem value={FILTER_ALL}>All</SelectItem>
+				<SelectItem value={FILTER_ALL}>{SM_Msgs.allGroupings().text()}</SelectItem>
 				{options.map((o) => (
 					<SelectItem key={o.value} value={o.value}>
 						{o.label}
@@ -535,10 +536,7 @@ function StatsColumnHeader({
 					<TooltipTrigger asChild>
 						<Icons.AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
 					</TooltipTrigger>
-					<TooltipContent className="max-w-[220px]">
-						Stats may be inaccurate: SLM was not active at some points during this match, so events during those periods were not
-						counted.
-					</TooltipContent>
+					<TooltipContent className="max-w-[220px]">{SM_Msgs.statsMayBeInaccurate().text()}</TooltipContent>
 				</Tooltip>
 			)}
 			<Popover open={open} onOpenChange={setOpen}>
@@ -602,7 +600,7 @@ function StatsColumnHeader({
 									setOpen(false)
 								}}
 							>
-								Clear
+								{SM_Msgs.clearFilter().text()}
 							</button>
 						</div>
 					</div>
@@ -675,7 +673,7 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
 					{row.original.inAdminCam && (
 						<span
-							title="In admin camera. Shift+click: select this team's players in admin cam. Shift+Ctrl+click: both teams"
+							title={SM_Msgs.adminCamHint().text()}
 							onClickCapture={(e) => {
 								if (!e.shiftKey) return
 								e.preventDefault()
@@ -703,7 +701,7 @@ function groupColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHe
 			const { filters, availableGroups } = meta
 			return (
 				<span className="flex flex-col items-start max-w-24">
-					Group
+					{SM_Msgs.groupColumn().text()}
 					<ColumnFilterSelect
 						value={filters.group}
 						onChange={(v) => TeamsPanelPrt.Actions.setGroupFilter(panelStoresOf(meta), v)}
@@ -738,7 +736,7 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			const { filters, availableRoles } = meta
 			return (
 				<span className="flex flex-col items-start">
-					Role
+					{SM_Msgs.roleColumn().text()}
 					<ColumnFilterSelect
 						value={filters.role}
 						onChange={(v) => TeamsPanelPrt.Actions.setRoleFilter(panelStoresOf(meta), v)}
@@ -755,7 +753,7 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 function tksColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
 	return helper.accessor((row) => row.stats?.teamkills ?? 0, {
 		id: 'tks',
-		header: () => <span title="Team kills">TKs</span>,
+		header: () => <span title={SM_Msgs.teamKillsHint().text()}>{SM_Msgs.teamKillsColumn().text()}</span>,
 		sortDescFirst: true,
 		cell: ({ row }) => {
 			const tks = row.original.stats?.teamkills ?? 0
@@ -831,7 +829,7 @@ function SquadCell({
 				<span
 					data-select-squad-leaders
 					className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer"
-					title="Shift+click: select squad leaders on this team. Shift+Ctrl+click: both teams"
+					title={SM_Msgs.squadLeaderColumnHint().text()}
 					onClickCapture={(e) => {
 						if (!e.shiftKey) return
 						e.preventDefault()
@@ -894,7 +892,7 @@ function squadColumn<T extends TeamsPanelModels.EnrichedPlayer, M extends BasePl
 			const meta = table.options.meta as M
 			return (
 				<span className="flex flex-col items-start">
-					Squad
+					{SM_Msgs.squadColumn().text()}
 					<ColumnFilterSelect
 						value={meta.filters.squad}
 						onChange={(v) => TeamsPanelPrt.Actions.setSquadFilter(panelStoresOf(meta), meta.squadFilterTarget, v)}
@@ -941,8 +939,8 @@ const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
 						e.preventDefault()
 						SquadServerFrame.Actions.selectAllTeamPlayers(stores, e.ctrlKey ? undefined : teamId)
 					}}
-					title="Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams. Alt+click: invert selection on this team. Alt+Ctrl+click: invert on both teams"
-					aria-label="Select all"
+					title={SM_Msgs.selectAllTeamHint().text()}
+					aria-label={SM_Msgs.selectAllRows().text()}
 				/>
 			)
 		},
@@ -959,7 +957,7 @@ const teamPlayerColumns: ColumnDef<TeamsPanelModels.EnrichedPlayer, any>[] = [
 				value: String(s.squadId),
 				label: s.squadName === 'Command Squad' ? `CMD(${s.squadId})` : `${s.squadId} ${s.squadName}`,
 			})),
-			{ value: FILTER_NONE, label: 'Unassigned' },
+			{ value: FILTER_NONE, label: SM_Msgs.unassignedSquad().text() },
 		],
 	}),
 	roleColumn(playerColumnHelper),
@@ -985,8 +983,8 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 						e.preventDefault()
 						SquadServerFrame.Actions.selectAllTeamPlayers(stores)
 					}}
-					title="Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection"
-					aria-label="Select all"
+					title={SM_Msgs.selectAllCombinedHint().text()}
+					aria-label={SM_Msgs.selectAllRows().text()}
 				/>
 			)
 		},
@@ -1024,7 +1022,7 @@ const combinedPlayerColumns: ColumnDef<CombinedPlayer, any>[] = [
 					label: isCmd ? `${faction}:CMD` : `${faction}:${s.squadId} ${s.squadName}`,
 				}
 			}),
-			{ value: FILTER_NONE, label: 'Unassigned' },
+			{ value: FILTER_NONE, label: SM_Msgs.unassignedSquad().text() },
 		],
 	}),
 	roleColumn(combinedColumnHelper),
@@ -1089,13 +1087,10 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 					<SquadDisplay stores={props.stores} squad={squad} matchId={0} showMenu={false} />
 				</span>
 			) : (
-				<span className="font-semibold">Unassigned</span>
+				<span className="font-semibold">{SM_Msgs.unassignedSquad().text()}</span>
 			)}
-			<span className="text-muted-foreground">
-				{shownCount < totalSize && `${shownCount} of `}
-				{totalSize} {totalSize === 1 ? 'player' : 'players'}
-			</span>
-			{creatorName && <span className="text-muted-foreground">· created by {creatorName}</span>}
+			<span className="text-muted-foreground">{SM_Msgs.squadRowCount(shownCount, totalSize).text()}</span>
+			{creatorName && <span className="text-muted-foreground">{SM_Msgs.createdBy(creatorName).text()}</span>}
 		</>
 	)
 	// combined table: keep the faction in its own cell so it lines up under the faction column
@@ -1392,7 +1387,7 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 			baseColumns={teamPlayerColumns}
 			meta={meta}
 			sortingTarget="teams"
-			label={`Team ${props.teamId} players`}
+			label={SM_Msgs.teamTableLabel(props.teamId).text()}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
 			className={props.className}
@@ -1505,7 +1500,7 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 			baseColumns={combinedPlayerColumns}
 			meta={meta}
 			sortingTarget="combined"
-			label="All players"
+			label={SM_Msgs.combinedTableLabel().text()}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
 			className={props.className}
@@ -1534,7 +1529,7 @@ function TeamsAfterSwap(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Normed
 	)
 	return (
 		<div className="flex flex-col items-center">
-			<span className="text-xs text-muted-foreground">Teams After Swap</span>
+			<span className="text-xs text-muted-foreground">{SM_Msgs.teamsAfterSwap().text()}</span>
 			<span className="text-sm font-mono">
 				{counts[props.leftTeam]}v{counts[props.rightTeam]}
 			</span>
@@ -1589,7 +1584,7 @@ function SwapsPanel({
 								<Icons.Undo2 className="h-3.5 w-3.5" />
 							</Button>
 						</TooltipTrigger>
-						<TooltipContent>Revert to saved</TooltipContent>
+						<TooltipContent>{SM_Msgs.revertToSaved().text()}</TooltipContent>
 					</Tooltip>
 					{isEditing ? (
 						<ButtonGroup>
@@ -1604,7 +1599,7 @@ function SwapsPanel({
 										<Icons.Sword className="h-3.5 w-3.5" />
 									</Button>
 								</TooltipTrigger>
-								<TooltipContent>Toggle force save (save even if others are still editing)</TooltipContent>
+								<TooltipContent>{SM_Msgs.toggleForceSaveHint().text()}</TooltipContent>
 							</Tooltip>
 							<Button size="sm" variant={forceSave ? 'destructive' : 'default'} onClick={handleFinishOrSave}>
 								{saveButtonLabel}
@@ -1614,30 +1609,28 @@ function SwapsPanel({
 						<PermissionDeniedTooltip denied={startEditingDenied}>
 							<Button size="sm" variant="outline" disabled={!!startEditingDenied} onClick={() => setIsEditing(true)}>
 								<Icons.Edit className="h-3.5 w-3.5" />
-								Start Editing
+								{SM_Msgs.startEditing().text()}
 							</Button>
 						</PermissionDeniedTooltip>
 					)}
 					<AlertDialog>
 						<AlertDialogTrigger asChild>
 							<Button variant="destructive" size="sm" disabled={!canExecute || numEditors > 0}>
-								Swap Now
+								{SM_Msgs.swapNowLabel().text()}
 							</Button>
 						</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Execute team swaps?</AlertDialogTitle>
-								<AlertDialogDescription>
-									This will immediately move all queued players to their assigned teams.
-								</AlertDialogDescription>
+								<AlertDialogTitle>{SM_Msgs.executeSwapsTitle().text()}</AlertDialogTitle>
+								<AlertDialogDescription>{SM_Msgs.executeSwapsBlurb().text()}</AlertDialogDescription>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
-								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogCancel>{SM_Msgs.cancel().text()}</AlertDialogCancel>
 								<AlertDialogAction
 									className={buttonVariants({ variant: 'destructive' })}
 									onClick={() => TSWClient.Actions.executeTeamswaps(stores)}
 								>
-									Swap Now
+									{SM_Msgs.swapNowLabel().text()}
 								</AlertDialogAction>
 							</AlertDialogFooter>
 						</AlertDialogContent>
@@ -1647,7 +1640,7 @@ function SwapsPanel({
 						windowProps={{} satisfies TeamswapsHelpWindowProps}
 						preload="intent"
 						render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-							<Button ref={ref} variant="ghost" size="icon" className="h-7 w-7" title="Help" {...props}>
+							<Button ref={ref} variant="ghost" size="icon" className="h-7 w-7" title={SM_Msgs.help().text()} {...props}>
 								<Icons.CircleHelp className="h-3.5 w-3.5" />
 							</Button>
 						)}
@@ -1676,11 +1669,11 @@ function TeamSwapsDisplay(props: {
 	return (
 		<div className={cn('flex flex-col gap-0.5', isRight && 'items-end', props.className)}>
 			<h3 className="text-sm">
-				Swaps to current <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} stores={props.stores} />
+				{SM_Msgs.swapsToCurrent().text()} <MatchTeamDisplay teamId={props.teamId} showAltTeamIndicator={true} stores={props.stores} />
 			</h3>
 			<div className={cn('flex flex-wrap items-center gap-1', isRight && 'justify-end')}>
 				{swaps.size > 0 && <span className="text-xs text-muted-foreground shrink-0">({swaps.size})</span>}
-				{swaps.size === 0 && <span className="text-muted-foreground text-sm">No swaps yet</span>}
+				{swaps.size === 0 && <span className="text-muted-foreground text-sm">{SM_Msgs.noSwapsYet().text()}</span>}
 				{MapUtils.mapToArray(swaps, (playerId, s) => (
 					<SwapBadge swap={s} key={playerId} stores={props.stores} />
 				))}
@@ -1690,7 +1683,7 @@ function TeamSwapsDisplay(props: {
 						size="icon"
 						className="h-6 w-6 shrink-0"
 						onClick={() => TSWClient.Actions.clearTeamSwaps(props.stores, props.teamId)}
-						title="Clear all"
+						title={SM_Msgs.clearAllSwaps().text()}
 					>
 						<Icons.Trash2 className="h-3 w-3" />
 					</Button>
@@ -1709,7 +1702,7 @@ function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; st
 		<Badge
 			variant={variant}
 			className="flex items-center gap-1"
-			title={mutation.removed ? undefined : 'Middle-click: delete swap'}
+			title={mutation.removed ? undefined : SM_Msgs.middleClickDeleteSwap().text()}
 			onMouseDown={(e) => {
 				// prevent middle-click autoscroll
 				if (e.button === 1) e.preventDefault()
@@ -1725,7 +1718,7 @@ function SwapBadge(props: { swap: TSWClient.Sel.EnrichedTeamswapWithMutation; st
 					type="button"
 					onClick={() => TSWClient.Actions.removeSwap(props.stores, [playerId])}
 					className="ml-1 hover:text-destructive"
-					title="Delete swap"
+					title={SM_Msgs.deleteSwapAction().text()}
 				>
 					<Icons.X className="h-3 w-3" />
 				</button>
