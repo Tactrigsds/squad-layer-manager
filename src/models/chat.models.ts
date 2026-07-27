@@ -843,16 +843,6 @@ export type PrimaryFilterState =
 export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED'])
 export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
 
-// iteration order doubles as the order the filters are offered in the UI
-export const SECONDARY_FILTER_LABELS: Record<SecondaryFilterState, string> = {
-	ALL: 'All',
-	DEFAULT: 'Default',
-	CHAT: 'Chat',
-	SLM_EVENTS: 'SLM Events',
-	ADMIN: 'Admin',
-	KILLFEED: 'Killfeed',
-}
-
 export type ChatViewOptionsStore = {
 	primaryFilter: PrimaryFilterState
 	setPrimaryFilter(primary: PrimaryFilterState): void

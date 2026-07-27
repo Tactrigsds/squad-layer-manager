@@ -5,6 +5,12 @@ export const notifyKilled = Msgs.def((reason?: string) => ({
 	warn: () => reason || 'You have been killed by an admin.',
 }))
 
+// Same shape, and it covers the plain kick and the timeout kick alike: the timeout's remaining duration is
+// already substituted into the reason by the time it gets here.
+export const notifyKicked = Msgs.def((reason?: string) => ({
+	text: () => reason || 'You have been kicked by an admin.',
+}))
+
 export const kill = Msgs.def((target: Msgs.Target) => ({
 	confirm: () => ({
 		title: `Kill ${Msgs.targetNoun(target)}`,

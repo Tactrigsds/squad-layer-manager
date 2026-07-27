@@ -10,6 +10,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as CHAT from '@/models/chat.models'
 
 export default function EventFilterSelect(props: {
@@ -24,8 +25,8 @@ export default function EventFilterSelect(props: {
 	open?: boolean
 	onOpenChange?: (open: boolean) => void
 }) {
-	const labels = CHAT.SECONDARY_FILTER_LABELS
-	const options = props.options ?? (Object.keys(labels) as CHAT.SecondaryFilterState[])
+	const labels = CHAT_Msgs.secondaryFilterLabels
+	const options = props.options ?? CHAT.SECONDARY_FILTER_STATE.options
 	return (
 		<DropdownMenu open={props.open} onOpenChange={props.onOpenChange}>
 			<DropdownMenuTrigger asChild>

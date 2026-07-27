@@ -196,7 +196,7 @@ function CommandEntry({
 					return (
 						<Badge key={group} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
 							<GroupIcon className="h-3 w-3" />
-							{CMD.CHAT_GROUP_LABELS[group]}
+							{CMD_Msgs.chatGroupLabels[group]}
 						</Badge>
 					)
 				})}
