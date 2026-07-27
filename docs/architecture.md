@@ -14,6 +14,7 @@ Companion reading: [CLAUDE.md](../CLAUDE.md) states the rules this document expl
 - [Client machinery](#client-machinery)
 - [ODSM: optimistic distributed state](#odsm-optimistic-distributed-state)
 - [The domain layer](#the-domain-layer)
+- [Messages and locales](#messages-and-locales)
 - [The layer engine (rust/wasm)](#the-layer-engine-rustwasm)
 - [Out-of-process pieces](#out-of-process-pieces)
 - [Data and persistence](#data-and-persistence)
@@ -761,6 +762,76 @@ locked out), admin-editable roles, and per-filter contributor grants.
 
 A server whose stored settings fail validation is marked `broken` and force-disabled, so that fixing an
 unrelated thing does not silently reactivate it. An admin must re-enable it explicitly.
+
+## Messages and locales
+
+Every string a person reads lives in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs`
+namespace that mirrors the domain's models alias. The tree is isomorphic: the same message feeds an in-game
+RCON broadcast and the web app's preview of that broadcast, so it must not import anything node-only.
+
+### Declaring a message
+
+`Msgs.def` takes the shape that fits. Most messages are a string and say so:
+
+```ts
+export const close = Msgs.def('Close')
+```
+
+One that takes arguments declares an ICU pattern plus a mapping from its own parameters to that pattern's
+values. The mapping lives in the message so the call site keeps an ordinary typed signature:
+
+```ts
+export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
+```
+
+Read either as `L_Msgs.addLayers(3).text()`.
+
+A message with more than a string to say returns a **target map** instead, and its shared logic lives in the
+factory's closure, reachable by every target of that message and by nothing else:
+
+```ts
+export const kill = Msgs.def((target: Msgs.Target) => ({
+  confirm: () => ({ title: Msgs.t('Kill {noun}', { noun: Msgs.targetNoun(target) }), ... }),
+  toast: () => [Msgs.t('Killed {who}', { who: Msgs.targetAffected(target) })],
+}))
+```
+
+The targets are `text`, `toast`, `react`, `confirm`, `warn` and `broadcast`. A message offers whichever it has
+something sensible to say on, and the compiler rejects the others: `.toast()` on a warn-only message does not
+type. `react` and `toast` are siblings of `warn`, never wrappers around it, because warn's return type is a
+union React cannot render and a React node handed to RCON would broadcast `[object Object]`.
+
+Strings inside a target body go through `Msgs.t` (or `Msgs.node`, for one positioning rendered nodes inside its
+sentence). Inline emphasis belongs to the sentence, so `<strong>` is written in the pattern and rendered through
+`Msgs.tags`; how it _looks_ stays with the container, through the `[&_strong]:` classes.
+
+### Locales
+
+Messages are keyed by their own English. A translator receives that string and returns another one, so no
+message declares an id. Two messages whose English is identical but whose translations differ are told apart by
+a `context`, which is part of the key and never rendered:
+
+```ts
+export const cancel = Msgs.def('Cancel')
+export const cancelTimeout = Msgs.def('Cancel', { context: 'lift a timeout' })
+```
+
+Catalogues live in `src/messages/locales/`. `pnpm script src/scripts/extract-messages.ts` regenerates `en.json`,
+which is the translator's template, and reports for every other locale what is untranslated and what no longer
+exists in the source. English is never looked up: a message _is_ its English, so resolving `en` hands the key
+straight back with no parse.
+
+**Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale
+is ambient: `main.tsx` negotiates it once from `navigator.languages` against the catalogues the build carries.
+A preference with no catalogue is ignored rather than adopted, because adopting it would leave the text English
+while the plural rules became that language's, and a language with no `one` category renders "1 players".
+
+`warn` and `broadcast` render for a game server and for one of its players rather than for whoever is looking at
+the web app, so they are handed a locale explicitly. `warn`'s per-recipient form, the function `warnAll`
+re-invokes for each player, is where a per-player locale would go.
+
+Durations are named by `Intl` through `MsgFmt.formatInterval`, so "1 minute, 30 seconds" comes out in the
+reader's language with the reader's separator.
 
 ## The layer engine (rust/wasm)
 
