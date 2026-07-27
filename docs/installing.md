@@ -119,6 +119,8 @@ SLM has a battlemetrics integration. Among other things, it lets users update pl
 Set `BM_PAT` (in `.env.secrets`, it is a credential) to a battlemetrics personal access token, and `BM_ORG_ID` (in `.env`) to your org's battlemetrics id.
 Check the environment variable's description of BM_PAT for the required scopes.
 
+The integration is optional. Leave `BM_PAT` unset and it turns itself off: nothing is polled, no player flags or profiles are read, and the parts of the app that show them are hidden rather than failing. Set `BM_ENABLED=false` to turn it off while keeping the token configured.
+
 #### 3.6. Backups
 
 Backups happen for two reasons. One of them is not optional.

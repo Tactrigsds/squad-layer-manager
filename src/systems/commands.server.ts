@@ -318,6 +318,8 @@ function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): M
 	return MH.getNormedTeamId(teamId, currentMatch.ordinal) === 'A' ? 'B' : 'A'
 }
 
+const BM_DISABLED_MSG = 'Player flags are unavailable: this instance has no battlemetrics integration configured'
+
 // exhaustive by construction: a new CommandId without a handler is a compile error
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
 	help: async (h, args) => {
@@ -541,6 +543,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	flag: async (h, args) => {
+		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', BM_DISABLED_MSG)
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
 		const matchedFlagRes = Str.simpleUniqueStringMatch(
@@ -597,6 +600,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	removeFlag: async (h, args) => {
+		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', BM_DISABLED_MSG)
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
 		const matchedFlagRes = Str.simpleUniqueStringMatch(
@@ -644,6 +648,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	listFlags: async (h, args) => {
+		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', BM_DISABLED_MSG)
 		function formatFlagList(flags: BM.PlayerFlag[]) {
 			if (flags.length === 0) {
 				return 'none'

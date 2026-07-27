@@ -186,4 +186,38 @@ describe('DEMO', () => {
 		})
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
 	})
+
+	it('refuses to boot with battlemetrics switched on against the real api', async () => {
+		const Env = await loadEnv('', { DEMO: '1', BM_ENABLED: 'true' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/BM_ENABLED/)
+	})
+})
+
+// there is no BM_ENABLED an install would already be setting, so an install that never configured battlemetrics
+// says so by omission -- and reaching for the api anyway is a 401 per player, against a third party, forever
+describe('BM_ENABLED', () => {
+	it('is off when there is no token and only the real api to spend one on', async () => {
+		const Env = await loadEnv('', { DEMO: '1' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('BM_ENABLED')).toBe('false')
+	})
+
+	it('is on for an install that configured a token', async () => {
+		const Env = await loadEnv('BM_PAT=real-token\n', { SETTINGS_ENCRYPTION_KEY: KEY })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('BM_ENABLED')).toBe('true')
+	})
+
+	// a dev instance and the test harness both run a stub with no token, which is a battlemetrics to talk to
+	it('is on for a stub, token or no token', async () => {
+		const Env = await loadEnv('', { DEMO: '1', BM_HOST: 'http://127.0.0.1:3123' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('BM_ENABLED')).toBe('true')
+	})
+
+	it('leaves an explicit answer alone', async () => {
+		const Env = await loadEnv('BM_PAT=real-token\n', { SETTINGS_ENCRYPTION_KEY: KEY, BM_ENABLED: 'false' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('BM_ENABLED')).toBe('false')
+	})
 })
