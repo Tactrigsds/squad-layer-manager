@@ -53,6 +53,7 @@ export type LQStateUpdate = {
 					| 'filter-delete'
 					| 'next-layer-generated'
 					| 'updates-to-squad-server-toggled'
+					| 'ingame-vote-detected'
 					| 'teamswaps-saved'
 					| 'teamswap-execution-completed'
 					| 'backburner-updated'
@@ -79,6 +80,7 @@ export function printSource(source: LQStateUpdate['source']) {
 			'filter-delete': 'Filter deleted',
 			'next-layer-generated': 'Next layer generated',
 			'updates-to-squad-server-toggled': 'Updates to Squad server toggled',
+			'ingame-vote-detected': 'In-game vote detected, SLM updates disabled',
 			'ended-early': 'Vote ended early',
 			'teamswap-execution-completed': 'Teamswaps Executed',
 			'teamswaps-saved': 'Teamswaps Saved',

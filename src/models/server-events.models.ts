@@ -20,6 +20,16 @@ export type MapSet = {
 } & Base
 export const MAP_SET_META = meta()
 
+// Squad's own vote (AdminEnableVoting), not SLM's. Whatever it resolves to overwrites the next layer SLM set, so
+// SLM stops writing the rotation for the rest of the match. See docs/ingame_voting.md.
+export type IngameVoteStarted = {
+	type: 'INGAME_VOTE_STARTED'
+	kind: SM.LogEvents.IngameVoteKind
+	container: string
+	choices: string[]
+} & Base
+export const INGAME_VOTE_STARTED_META = meta()
+
 // True when SLM itself caused this map set: a queue save (`layer-queue`), an app-event-attributed
 // set-next (`event`, e.g. a QUEUE_UPDATED), or another internal set-next (`system`). Organic sets --
 // an in-game admin (`player`), an external RCON tool (`rcon`), or an unattributed one (undefined) --
@@ -308,6 +318,7 @@ export type SyntheticEvent<P = SM.PlayerId> =
 
 export type Event<P = SM.PlayerId> =
 	| MapSet
+	| IngameVoteStarted
 	| NewGame
 	| Reset
 	| RconConnected
@@ -364,6 +375,11 @@ const MapSetSourceSchema = z.discriminatedUnion('type', [
 ])
 
 export const MapSetSchema = event('MAP_SET', { layerId: z.string(), source: MapSetSourceSchema.optional() })
+export const IngameVoteStartedSchema = event('INGAME_VOTE_STARTED', {
+	kind: SM.LogEvents.INGAME_VOTE_KIND,
+	container: z.string(),
+	choices: z.array(z.string()),
+})
 export const NewGameSchema = event('NEW_GAME', {
 	source: ZodUtils.internedEnum(['slm-started', 'rcon-reconnected', 'server-roll', 'new-game-detected']),
 	layerId: z.string(),
@@ -453,6 +469,7 @@ export const TeamsPolledUpdateSchema = event('TEAMS_POLLED_UPDATE', {})
 
 export const EventSchema = z.discriminatedUnion('type', [
 	MapSetSchema,
+	IngameVoteStartedSchema,
 	NewGameSchema,
 	ResetSchema,
 	RconConnectedSchema,
@@ -491,6 +508,7 @@ type _TypeSatisfiesSchema = Assignable<Event, z.infer<typeof EventSchema>>
 
 export const EVENT_META = {
 	MAP_SET: MAP_SET_META,
+	INGAME_VOTE_STARTED: INGAME_VOTE_STARTED_META,
 	NEW_GAME: NEW_GAME_META,
 	RESET: RESET_META,
 	RCON_CONNECTED: RCON_CONNECTED_META,
