@@ -95,6 +95,10 @@ export namespace Sel {
 		}
 	}
 
+	export function squads(state: Store) {
+		return state.state?.squads ?? EMPTY
+	}
+
 	export function groupNames(state: Store): string[] {
 		return state.state?.groups.map((g: SandboxState['groups'][number]) => g.name) ?? EMPTY
 	}
