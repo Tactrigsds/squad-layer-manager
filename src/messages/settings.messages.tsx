@@ -22,9 +22,9 @@ export const serverSettings = Msgs.def('Server Settings')
 
 export const pageTitle = Msgs.def('SLM - Settings')
 
-export const noAccess = Msgs.def(() => `You don't have permission to access settings.`)
+export const noAccess = Msgs.def("You don't have permission to access settings.", () => ({}))
 
-export const noGlobalAccess = Msgs.def(() => `You don't have permission to view global settings.`)
+export const noGlobalAccess = Msgs.def("You don't have permission to view global settings.", () => ({}))
 
 export const globalSettingsBlurb = Msgs.def('Edit the global settings for this SLM instance.')
 
@@ -37,7 +37,7 @@ export const loading = Msgs.def('Loading…')
 
 export const loadingEditor = Msgs.def('Loading editor…')
 
-export const loadFailed = Msgs.def((reason: string) => `Failed to load settings: ${reason}`)
+export const loadFailed = Msgs.def('Failed to load settings: {reason}', (reason: string) => ({ reason }))
 
 // the GUI/JSON switch, one per section, each named so a screen reader (or a test) can tell them apart
 export const serverEditorModeLabel = Msgs.def('Server settings editor mode')
@@ -128,11 +128,11 @@ export const previousDeniedChange = Msgs.def('Previous denied change')
 
 export const nextDeniedChange = Msgs.def('Next denied change')
 
-export const deniedChangesHint = Msgs.def(() => `These changes are outside the settings you're allowed to modify`)
+export const deniedChangesHint = Msgs.def("These changes are outside the settings you're allowed to modify", () => ({}))
 
-export const errorCount = Msgs.def((count: number) => `${count} ${count === 1 ? 'error' : 'errors'}`)
+export const errorCount = Msgs.def('{count, plural, one {# error} other {# errors}}', (count: number) => ({ count }))
 
-export const deniedCount = Msgs.def((count: number) => `${count} not permitted`)
+export const deniedCount = Msgs.def('{count} not permitted', (count: number) => ({ count }))
 
 // the count is emphasised, which is part of the sentence; the panel styles `strong` itself
 export const changedCount = Msgs.def((count: number) => ({
@@ -147,7 +147,7 @@ export const changedCount = Msgs.def((count: number) => ({
 
 export const poolFilter = Msgs.def('Pool Filter')
 
-export const poolFilterBlurb = Msgs.def(() => `The single filter deciding which layers are in the server's layer pool`)
+export const poolFilterBlurb = Msgs.def("The single filter deciding which layers are in the server's layer pool", () => ({}))
 
 export const noPoolFilter = Msgs.def('No pool filter configured: every layer is in the pool.')
 
@@ -193,8 +193,8 @@ export const missingIndicator = Msgs.def(
 )
 
 export const poolFilterMissingIndicators = Msgs.def(
-	(missing: readonly IndicatorField[]) =>
-		`The pool filter must have match and miss indicators configured. Missing: ${missing.map((f) => indicatorFieldNames[f]).join(', ')}.`,
+	'The pool filter must have match and miss indicators configured. Missing: {missing}.',
+	(missing: readonly IndicatorField[]) => ({ missing: missing.map((f) => indicatorFieldNames[f]).join(', ') }),
 )
 
 // -------- the secondary filter lists --------
@@ -369,7 +369,7 @@ export const advanced = Msgs.def('Advanced')
 export const help = Msgs.def('Help')
 
 // only the first few validation errors on a field are listed; the rest are counted
-export const moreIssues = Msgs.def((count: number) => `+${count} more`)
+export const moreIssues = Msgs.def('+{count} more', (count: number) => ({ count }))
 
 // -------- the generic leaf controls --------
 
@@ -393,13 +393,13 @@ export const durationExample = Msgs.def('e.g. 30m')
 
 // -------- per-field reset --------
 
-export const defaultHint = Msgs.def((value: string) => `default: ${value}`)
+export const defaultHint = Msgs.def('default: {value}', (value: string) => ({ value }))
 
 export const resetToSaved = Msgs.def('Reset to saved value')
 
 export const alreadySaved = Msgs.def('Already matches the saved value')
 
-export const resetToDefault = Msgs.def((value: string) => `Reset to default (${value})`)
+export const resetToDefault = Msgs.def('Reset to default ({value})', (value: string) => ({ value }))
 
 export const alreadyDefault = Msgs.def('Already matches the default')
 

@@ -202,9 +202,9 @@ export const queueNextLayer = Msgs.def((external: boolean, layer: React.ReactNod
 	),
 }))
 
-export const queueAndMore = Msgs.def((count: number) => `and ${count} more`)
+export const queueAndMore = Msgs.def('and {count} more', (count: number) => ({ count }))
 
-export const queueVoteChoices = Msgs.def((count: number) => `a vote (${count} ${count === 1 ? 'choice' : 'choices'}): `)
+export const queueVoteChoices = Msgs.def('a vote ({count, plural, one {# choice} other {# choices}}): ', (count: number) => ({ count }))
 
 export const queueItemAdded = Msgs.def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
 	react: () => (
@@ -243,7 +243,8 @@ export const queueItemMoved = Msgs.def((who: string, layers: React.ReactNode, fr
 // -------- teamswaps --------
 
 export const teamswapsExecutedOnRoll = Msgs.def(
-	(playerCount: number) => `Queued teamswaps executed on map change (${playerCount} ${playerCount === 1 ? 'player' : 'players'})`,
+	'Queued teamswaps executed on map change ({playerCount, plural, one {# player} other {# players}})',
+	(playerCount: number) => ({ playerCount }),
 )
 
 export const teamswapsExecuted = Msgs.def((actor: React.ReactNode, playerCount: number) => ({
@@ -255,8 +256,8 @@ export const teamswapsExecuted = Msgs.def((actor: React.ReactNode, playerCount: 
 }))
 
 export const teamswapsDropped = Msgs.def(
-	(count: number) =>
-		`${count} queued teamswap${count === 1 ? '' : 's'} dropped, ${count === 1 ? 'the player' : 'those players'} left or changed teams`,
+	'{count, plural, one {# queued teamswap dropped, the player} other {# queued teamswaps dropped, those players}} left or changed teams',
+	(count: number) => ({ count }),
 )
 
 export const teamswapsCleared = Msgs.def((actor: React.ReactNode) => ({
@@ -318,10 +319,13 @@ export function warnTargetDescriptor(summary: CHAT.WarnSummary): string | null {
 	}
 }
 
-export const warnPlayerCount = Msgs.def((count: number) => `${count} ${count === 1 ? 'player' : 'players'}`)
+export const warnPlayerCount = Msgs.def('{count, plural, one {# player} other {# players}}', (count: number) => ({ count }))
 
 // a grouping plus the count it covers, where naming the group alone would hide how many it reached
-export const warnDescriptorWithCount = Msgs.def((descriptor: string, players: string) => `${descriptor} (${players})`)
+export const warnDescriptorWithCount = Msgs.def('{descriptor} ({players})', (descriptor: string, players: string) => ({
+	descriptor,
+	players,
+}))
 
 // -------- the shared "{actor} {verb} {targets}{suffix}" entries --------
 
@@ -329,9 +333,9 @@ export const removedFromSquadSuffix = Msgs.def((reasonLabel?: string) =>
 	reasonLabel ? ` from their squad for ${reasonLabel}` : ' from their squad',
 )
 
-export const forReasonSuffix = Msgs.def((reasonLabel: string) => ` for ${reasonLabel}`)
+export const forReasonSuffix = Msgs.def(' for {reasonLabel}', (reasonLabel: string) => ({ reasonLabel }))
 
-export const killReasonSuffix = Msgs.def((reason: string) => `: "${reason}"`)
+export const killReasonSuffix = Msgs.def(': "{reason}"', (reason: string) => ({ reason }))
 
 export const swappedTeamsSuffix = Msgs.def(' to the other team')
 

@@ -108,9 +108,9 @@ export const removeFromSquad = Msgs.def((target: Msgs.Target, squadLabel?: strin
 
 // the three below are the loading/success/error legs of one toast.promise, which takes bare values rather than
 // toast args, so they are `text` rather than `toast`
-export const removingFromSquad = Msgs.def((count: number) => `Removing ${count} players from their squads...`)
+export const removingFromSquad = Msgs.def('Removing {count} players from their squads...', (count: number) => ({ count }))
 
-export const removedFromSquad = Msgs.def((count: number) => `Removed ${count} players from their squads`)
+export const removedFromSquad = Msgs.def('Removed {count} players from their squads', (count: number) => ({ count }))
 
 export const removeFromSquadFailed = Msgs.def((count: number) => ({
 	toast: () => ['Remove from squad failed', { description: `Failed to remove ${count} players` }],
@@ -161,7 +161,7 @@ export const newAdminListName = Msgs.def('new list name')
 
 export const addAdminList = Msgs.def('Add list')
 
-export const deleteAdminList = Msgs.def((name: string) => `Delete ${name}`)
+export const deleteAdminList = Msgs.def('Delete {name}', (name: string) => ({ name }))
 
 export const adminListPicker = Msgs.def('Admin list')
 
@@ -169,7 +169,7 @@ export const selectAdminLists = Msgs.def('Select admin lists...')
 
 // a list the server still names but the global settings no longer define; kept selectable so opening the editor
 // cannot silently drop it
-export const adminListNotConfigured = Msgs.def((listId: string) => `${listId} (not configured)`)
+export const adminListNotConfigured = Msgs.def('{listId} (not configured)', (listId: string) => ({ listId }))
 
 export const adminIdentifyingPermissions = Msgs.def('Admin-identifying permissions')
 
@@ -321,7 +321,8 @@ export const timeoutDurationPlaceholder = Msgs.def((max?: string) => (max === un
 // -------- the roster --------
 
 export const adminBadgeHint = Msgs.def(
-	() => `This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams`,
+	"This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams",
+	() => ({}),
 )
 
 export const squadLeaderBadge = Msgs.def('Squad Leader')
@@ -384,15 +385,17 @@ export const teamKillsHint = Msgs.def('Team kills')
 export const unassignedSquad = Msgs.def('Unassigned')
 
 // follows the squad name in the separator row
-export const createdBy = Msgs.def((creator: string) => `· created by ${creator}`)
+export const createdBy = Msgs.def('· created by {creator}', (creator: string) => ({ creator }))
 
 // how many of a squad's players the current filters leave visible
 export const squadRowCount = Msgs.def(
-	(shown: number, total: number) => `${shown < total ? `${shown} of ` : ''}${total} ${total === 1 ? 'player' : 'players'}`,
+	'{partial, select, yes {{shown} of } other {}}{total, plural, one {# player} other {# players}}',
+	(shown: number, total: number) => ({ shown, total, partial: shown < total ? 'yes' : 'no' }),
 )
 
 export const adminCamHint = Msgs.def(
-	() => `In admin camera. Shift+click: select this team's players in admin cam. Shift+Ctrl+click: both teams`,
+	"In admin camera. Shift+click: select this team's players in admin cam. Shift+Ctrl+click: both teams",
+	() => ({}),
 )
 
 export const squadLeaderColumnHint = Msgs.def('Shift+click: select squad leaders on this team. Shift+Ctrl+click: both teams')
@@ -407,7 +410,7 @@ export const selectAllCombinedHint = Msgs.def(
 	'Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection',
 )
 
-export const teamTableLabel = Msgs.def((team: string | number) => `Team ${team} players`)
+export const teamTableLabel = Msgs.def('Team {team} players', (team: string | number) => ({ team }))
 
 export const combinedTableLabel = Msgs.def('All players')
 
@@ -443,11 +446,11 @@ export const middleClickDeleteSwap = Msgs.def('Middle-click: delete swap')
 
 export const playerDetailsTitle = Msgs.def('Player Details')
 
-export const squadWithId = Msgs.def((squadId: number) => `Squad ${squadId}`)
+export const squadWithId = Msgs.def('Squad {squadId}', (squadId: number) => ({ squadId }))
 
 export const onlineFor = Msgs.def((elapsed?: string | null) => (elapsed ? `Online for ${elapsed}` : 'Online'))
 
-export const lastSeen = Msgs.def((when: string) => `Last seen ${when}`)
+export const lastSeen = Msgs.def('Last seen {when}', (when: string) => ({ when }))
 
 export const offline = Msgs.def('Offline')
 
@@ -455,7 +458,7 @@ export const playerActions = Msgs.def('Player actions')
 
 export const noSteamId = Msgs.def('(no steam id)')
 
-export const warnPlayerPlaceholder = Msgs.def((playerName: string) => `Warn ${playerName}…`)
+export const warnPlayerPlaceholder = Msgs.def('Warn {playerName}…', (playerName: string) => ({ playerName }))
 
 export const unnamedPlayer = Msgs.def('player')
 
@@ -464,7 +467,7 @@ export const timedOutUntil = Msgs.def(
 )
 
 // the divider the feed draws where it skipped a stretch of quiet: how long the gap ran, and where it picks up
-export const feedGap = Msgs.def((gap: string, resumesAt: string) => `${gap} later, resuming ${resumesAt}`)
+export const feedGap = Msgs.def('{gap} later, resuming {resumesAt}', (gap: string, resumesAt: string) => ({ gap, resumesAt }))
 
 export const squadDetailsTitle = Msgs.def('Squad Details')
 
@@ -482,11 +485,11 @@ export const squadEvents = Msgs.def('Squad Events')
 
 export const hideTeamChat = Msgs.def('Hide team/allchat')
 
-export const squadPlayersHeading = Msgs.def((count: number) => `Players (${count})`)
+export const squadPlayersHeading = Msgs.def('Players ({count})', (count: number) => ({ count }))
 
 export const noPlayersInSquad = Msgs.def('No players')
 
-export const warnSquadPlaceholder = Msgs.def((squadName: string) => `Warn ${squadName}…`)
+export const warnSquadPlaceholder = Msgs.def('Warn {squadName}…', (squadName: string) => ({ squadName }))
 
 // -------- the active-timeouts window --------
 

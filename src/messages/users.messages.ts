@@ -1,19 +1,22 @@
 import * as Msgs from '@/messages/shared'
 
 // Delivered as HTTP response bodies, which is the `text` surface rather than any player-facing one.
-export const noApplicationAccess = Msgs.def(() => `You have not been granted access to this application. Please contact an administrator.`)
+export const noApplicationAccess = Msgs.def(
+	'You have not been granted access to this application. Please contact an administrator.',
+	() => ({}),
+)
 
-export const unAuthenticated = Msgs.def(() => `Not able to authenticate user`)
+export const unAuthenticated = Msgs.def('Not able to authenticate user', () => ({}))
 
 // what the no-auth login portal says back when the name posted to it is not one (see fastify.server)
-export const invalidUsername = Msgs.def(() => `Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.`)
+export const invalidUsername = Msgs.def('Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.', () => ({}))
 
 // -------- the landing pages --------
 // The unauthenticated entry to the app, rendered to static HTML at boot (see landing.server.ts). guildName is
 // null when the instance does not know which Discord it belongs to, which is what the vaguer wording is for.
 
 function where(guildName: string | null) {
-	return guildName ? ` in ${guildName}` : ' in the configured Discord'
+	return guildName ?? 'the configured Discord'
 }
 
 // which of the three pages is being rendered. Declared here because the titles are the only thing keyed by it and
@@ -31,8 +34,8 @@ export const landingHeading = Msgs.def((guildName: string | null) =>
 )
 
 export const landingBlurb = Msgs.def(
-	(guildName: string | null) =>
-		`To access this site you must sign in with a Discord account that has sufficient privileges${where(guildName)}.`,
+	'To access this site you must sign in with a Discord account that has sufficient privileges in {where}.',
+	(guildName: string | null) => ({ where: where(guildName) }),
 )
 
 export const logInWithDiscord = Msgs.def('Log in with Discord')
@@ -52,7 +55,8 @@ export const continueLabel = Msgs.def('Continue')
 export const accessDeniedHeading = Msgs.def('Access denied')
 
 export const accessDeniedBlurb = Msgs.def(
-	(guildName: string | null) => `Your Discord account does not have sufficient privileges${where(guildName)} to access this site.`,
+	'Your Discord account does not have sufficient privileges in {where} to access this site.',
+	(guildName: string | null) => ({ where: where(guildName) }),
 )
 
 export const backToHome = Msgs.def('Back to home')
@@ -109,7 +113,7 @@ export const resetOtherSessions = Msgs.def('Reset them')
 
 export const discordLabel = Msgs.def('Discord')
 
-export const linkedBy = Msgs.def((admin?: string) => `linked by ${admin ?? 'an admin'}`)
+export const linkedBy = Msgs.def('linked by {admin}', (admin?: string) => ({ admin: admin ?? 'an admin' }))
 
 export const selfLinked = Msgs.def('self-linked')
 
@@ -127,7 +131,7 @@ export const nicknameFieldLabel = Msgs.def('Nickname')
 
 export const nicknamePlaceholder = Msgs.def('Enter a custom nickname...')
 
-export const nicknamePreview = Msgs.def((nickname: string) => `Will display as: "${nickname}"`)
+export const nicknamePreview = Msgs.def('Will display as: "{nickname}"', (nickname: string) => ({ nickname }))
 
 export const nicknameFallsBackToDiscord = Msgs.def('Will use Discord display name')
 
@@ -147,7 +151,7 @@ export const steamDialogBlurb = Msgs.def(
 
 export const steamIdPlaceholder = Msgs.def('17-digit Steam64 ID')
 
-export const steamLinkedByAdmin = Msgs.def((admin: string) => `Linked by ${admin}`)
+export const steamLinkedByAdmin = Msgs.def('Linked by {admin}', (admin: string) => ({ admin }))
 
 // -------- the discord role and member pickers --------
 

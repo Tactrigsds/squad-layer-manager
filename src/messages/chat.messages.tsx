@@ -38,7 +38,7 @@ export const scrollToBottom = Msgs.def('Scroll to bottom')
 
 export const loadOlderEvents = Msgs.def('Load older events')
 
-export const newEvents = Msgs.def((count: number) => `${count} new event${count === 1 ? '' : 's'}`)
+export const newEvents = Msgs.def('{count, plural, one {# new event} other {# new events}}', (count: number) => ({ count }))
 
 export const previousMatch = Msgs.def('Previous match')
 
@@ -80,7 +80,10 @@ export const broadcastPlaceholder = Msgs.def('Broadcast to the server…')
 
 export const nobodySelectedPlaceholder = Msgs.def('No players selected in the teams panel')
 
-export const warnSelectedPlaceholder = Msgs.def((count: number) => `Warn ${count} selected ${count === 1 ? 'player' : 'players'}…`)
+export const warnSelectedPlaceholder = Msgs.def(
+	'Warn {count, plural, one {# selected player} other {# selected players}}…',
+	(count: number) => ({ count }),
+)
 
 export const noOneToWarnPlaceholder = Msgs.def('No one to warn')
 
@@ -256,7 +259,7 @@ export const playerDowned = Msgs.def((victim: React.ReactNode, wounded: boolean,
 	),
 }))
 
-export const withWeapon = Msgs.def((weapon: string) => ` with ${weapon}`)
+export const withWeapon = Msgs.def(' with {weapon}', (weapon: string) => ({ weapon }))
 
 // -------- match boundaries --------
 
@@ -355,7 +358,7 @@ export const anotherRconTool = Msgs.def('another RCON tool')
 
 export const ingameVoteStarted = Msgs.def('In-game vote started on the Squad server')
 
-export const ingameVoteChoices = Msgs.def((choices: readonly string[]) => ` (${choices.join(', ')})`)
+export const ingameVoteChoices = Msgs.def(' ({choices})', (choices: readonly string[]) => ({ choices: choices.join(', ') }))
 
 export const rconReconnected = Msgs.def('RCON reconnected')
 

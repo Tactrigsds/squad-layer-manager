@@ -130,7 +130,7 @@ export const startsIn = Msgs.def('starts in')
 
 export const cancelAutostart = Msgs.def('Cancel Autostart')
 
-export const tally = Msgs.def((received: number, players: number) => `${received} of ${players} votes received`)
+export const tally = Msgs.def('{received} of {players} votes received', (received: number, players: number) => ({ received, players }))
 
 export const endVoteEarly = Msgs.def('End Vote Early')
 
@@ -204,7 +204,8 @@ export const voteInProgress = Msgs.def('Vote in progress...')
 export const unknownChoice = Msgs.def('Unknown')
 
 export const choiceVotes = Msgs.def(
-	(votes: number, percentage: number) => `${votes} vote${votes !== 1 ? 's' : ''} (${percentage.toFixed(1)}%)`,
+	'{votes, plural, one {# vote} other {# votes}} ({percentage}%)',
+	(votes: number, percentage: number) => ({ votes, percentage: percentage.toFixed(1) }),
 )
 
 export const turnout = Msgs.def(

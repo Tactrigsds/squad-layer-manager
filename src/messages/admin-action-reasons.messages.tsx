@@ -19,10 +19,11 @@ export const labelPlaceholder = Msgs.def('Label')
 export const noActionTexts = Msgs.def('Add text for at least one action, otherwise this reason can never be used.')
 
 export const removeActionText = Msgs.def(
-	(action: string) => `Remove ${action} text (this reason will no longer be available for that action)`,
+	'Remove {action} text (this reason will no longer be available for that action)',
+	(action: string) => ({ action }),
 )
 
-export const actionTextPlaceholder = Msgs.def((action: string) => `Sent when performing ${action}`)
+export const actionTextPlaceholder = Msgs.def('Sent when performing {action}', (action: string) => ({ action }))
 
 export const addActionText = Msgs.def('Add action text…')
 
@@ -94,8 +95,8 @@ export const enterReason = Msgs.def('Enter a reason')
 export const messagePreview = Msgs.def('Message preview')
 
 export const noReasonsConfigured = Msgs.def(
-	(actionName: string) =>
-		`A reason is required for ${actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).`,
+	'A reason is required for {actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).',
+	(actionName: string) => ({ actionName }),
 )
 
 export const presetReasonPicker = Msgs.def('Preset reason')

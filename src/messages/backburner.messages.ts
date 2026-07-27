@@ -34,7 +34,7 @@ export const emptyRequest = Msgs.def(() => ({
 
 // -------- the layer requests panel --------
 
-export const heading = Msgs.def((count: number) => `Layer Requests (${count})`)
+export const heading = Msgs.def('Layer Requests ({count})', (count: number) => ({ count }))
 
 export const unsavedBadge = Msgs.def('unsaved')
 
@@ -92,7 +92,7 @@ export const specificLayerTab = Msgs.def('Specific layer')
 export const matchupLabel = Msgs.def('Matchup')
 
 // names the parts of an existing request the components editor does not surface, so an edit cannot silently drop them
-export const alsoConstrainedBy = Msgs.def((extras: string) => `Also constrained by ${extras} (kept as-is).`)
+export const alsoConstrainedBy = Msgs.def('Also constrained by {extras} (kept as-is).', (extras: string) => ({ extras }))
 
 export const filtersHeading = Msgs.def('Filters')
 

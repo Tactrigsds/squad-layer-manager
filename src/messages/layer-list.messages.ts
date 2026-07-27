@@ -245,7 +245,7 @@ export const inGameVoteRunning = Msgs.def('In-Game Vote Running')
 
 export const inGameVoteBlurb = Msgs.def('The Squad server is running its own vote, which decides the next layer.')
 
-export const currentlyVotingBetween = Msgs.def((choices: string) => `Currently voting between ${choices}.`)
+export const currentlyVotingBetween = Msgs.def('Currently voting between {choices}.', (choices: string) => ({ choices }))
 
 export const slmUpdatesDisabled = Msgs.def('SLM Updates Disabled')
 

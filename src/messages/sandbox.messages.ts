@@ -12,7 +12,7 @@ export const bulkJoinNeedsCount = Msgs.def(() => ({
 
 export const windowTitle = Msgs.def('Sandbox')
 
-export const windowTitleFor = Msgs.def((serverId: string) => `Sandbox: ${serverId}`)
+export const windowTitleFor = Msgs.def('Sandbox: {serverId}', (serverId: string) => ({ serverId }))
 
 export const unavailable = Msgs.def('This server is no longer an available sandbox.')
 
@@ -24,7 +24,7 @@ export const bulkJoinCountPlaceholder = Msgs.def('10')
 
 export const bulkJoin = Msgs.def('Bulk join')
 
-export const serverFull = Msgs.def((maxPlayers: number) => `Full (${maxPlayers} players)`)
+export const serverFull = Msgs.def('Full ({maxPlayers} players)', (maxPlayers: number) => ({ maxPlayers }))
 
 export const join = Msgs.def('Join')
 
@@ -32,7 +32,7 @@ export const matchSection = Msgs.def('Match')
 
 export const endMatch = Msgs.def('End match')
 
-export const teamWins = Msgs.def((teamId: 1 | 2) => `Team ${teamId} wins`)
+export const teamWins = Msgs.def('Team {teamId} wins', (teamId: 1 | 2) => ({ teamId }))
 
 export const dropRcon = Msgs.def('Drop RCON')
 
@@ -60,13 +60,13 @@ export const adminColumn = Msgs.def('Admin')
 
 export const groupsColumn = Msgs.def('Groups')
 
-export const isAdminCheckbox = Msgs.def((playerName: string) => `${playerName} is an admin`)
+export const isAdminCheckbox = Msgs.def('{playerName} is an admin', (playerName: string) => ({ playerName }))
 
 export const groupPicker = Msgs.def('Group')
 
 export const noGroups = Msgs.def('None')
 
-export const disconnectPlayer = Msgs.def((playerName: string) => `Disconnect ${playerName}`)
+export const disconnectPlayer = Msgs.def('Disconnect {playerName}', (playerName: string) => ({ playerName }))
 
 export const previousPage = Msgs.def('Previous page')
 
@@ -82,6 +82,6 @@ export const send = Msgs.def('Send')
 
 export const adminChatNeedsAdmin = Msgs.def('Admin chat needs an admin. Tick Admin next to a player above.')
 
-export const adminsCfgTitle = Msgs.def((serverId: string) => `Admins.cfg: ${serverId}`)
+export const adminsCfgTitle = Msgs.def('Admins.cfg: {serverId}', (serverId: string) => ({ serverId }))
 
 export const adminListEmpty = Msgs.def('The emulated admin list is empty.')
