@@ -8,7 +8,6 @@ import { createLogMatcher, eventDef, type EventSchema, matchLog } from '@/lib/lo
 import * as Obj from '@/lib/object-utils'
 import type { OneToManyMap } from '@/lib/one-to-many-map'
 import * as Str from '@/lib/string-utils'
-import { assertNever } from '@/lib/type-guards'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
@@ -1342,32 +1341,13 @@ export namespace LogEvents {
 
 	// Squad's own in-game vote (enabled with AdminEnableVoting). Its outcome overwrites whatever SLM set as the
 	// next layer, so SLM has to stand down while one is running. See docs/ingame_voting.md.
-	export const INGAME_VOTE_KIND = z.enum(['next-layer', 'faction', 'other'])
-	export type IngameVoteKind = z.infer<typeof INGAME_VOTE_KIND>
-
-	export function ingameVoteKindLabel(kind: IngameVoteKind): string {
-		switch (kind) {
-			case 'next-layer':
-				return 'next layer'
-			case 'faction':
-				return 'faction'
-			case 'other':
-				return 'server'
-			default:
-				assertNever(kind)
-		}
-	}
-
-	function voteKindForContainer(container: string): IngameVoteKind {
-		if (container === 'Vote_NextLayer') return 'next-layer'
-		if (container.startsWith('Vote_Faction')) return 'faction'
-		return 'other'
-	}
-
+	//
+	// One vote runs through several containers in turn -- the map and gamemode first, then each team's faction --
+	// so `container` names the stage, not a kind of vote. Nothing branches on it: a vote being under way at all is
+	// what decides the next layer, and that is the only question anything here asks.
 	export const IngameVoteStartedDef = eventDef('INGAME_VOTE_STARTED', {
 		...BaseEventProperties,
 		container: z.string().trim(),
-		kind: INGAME_VOTE_KIND,
 	})
 	export type IngameVoteStarted = z.infer<(typeof IngameVoteStartedDef)['schema']>
 	export const IngameVoteStartedMatcher = createLogMatcher({
@@ -1379,7 +1359,6 @@ export namespace LogEvents {
 				time: parseTimestamp(args[1]),
 				chainID: args[2],
 				container: args[3],
-				kind: voteKindForContainer(args[3]),
 			}
 		},
 	})

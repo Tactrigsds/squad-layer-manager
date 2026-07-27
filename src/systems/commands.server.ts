@@ -380,7 +380,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 	getSlmUpdatesEnabled: async (h) => {
 		const res = await LayerQueue.getSlmUpdatesEnabled(h.ctx)
-		await h.reply(SS_Msgs.slmUpdatesStatus(res.enabled).warn())
+		await h.reply(SS_Msgs.slmUpdatesStatus(res.enabled, res.disabledByIngameVote).warn())
 		return { code: 'ok' }
 	},
 
@@ -963,6 +963,7 @@ async function executeTimeout(
 }
 
 async function toggleSlmUpdates(h: HandlerCtx, disabled: boolean): Promise<HandlerResult> {
-	await LayerQueue.toggleUpdatesToSquadServer({ ctx: h.ctx, input: { disabled } })
+	const reason = disabled ? ({ type: 'manual', by: SquadServer.actorFromUser(h.ctx, h.user) } as const) : null
+	await LayerQueue.toggleUpdatesToSquadServer({ ctx: h.ctx, input: { disabled: reason } })
 	return { code: 'ok' }
 }

@@ -11,7 +11,7 @@ import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 
 import BackburnerPanel from './backburner-panel.tsx'
-import { QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
+import { IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
@@ -159,6 +159,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							inert={tab !== 'queue'}
 							className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}
 						>
+							<IngameVoteAlert stores={props.stores} />
 							<SlmUpdatesDisabledAlert stores={props.stores} />
 							<QueuePanelContent stores={props.stores} />
 							<BackburnerPanel stores={props.stores} />

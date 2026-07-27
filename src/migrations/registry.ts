@@ -49,6 +49,7 @@ import * as m0091 from './0091_per_server_permission_grants'
 import * as m0092 from './0092_named_admin_lists'
 import * as m0093 from './0093_command_triggers'
 import * as m0094 from './0094_command_allowed_chats'
+import * as m0095 from './0095_slm_updates_disabled_reason'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -82,4 +83,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0092_named_admin_lists', up: m0092.up },
 	{ name: '0093_command_triggers', up: m0093.up },
 	{ name: '0094_command_allowed_chats', up: m0094.up },
+	{ name: '0095_slm_updates_disabled_reason', up: m0095.up },
 ]
