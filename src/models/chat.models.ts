@@ -90,7 +90,7 @@ export namespace InterpolableState {
 		else state.recentPlayers[index] = SM.toRecentPlayer(player)
 	}
 
-	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.IdQueryOrPlayerId) {
+	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.Ref) {
 		return SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, id)
 	}
 
@@ -842,16 +842,6 @@ export type PrimaryFilterState =
 
 export const SECONDARY_FILTER_STATE = z.enum(['ALL', 'DEFAULT', 'CHAT', 'SLM_EVENTS', 'ADMIN', 'KILLFEED'])
 export type SecondaryFilterState = z.infer<typeof SECONDARY_FILTER_STATE>
-
-// iteration order doubles as the order the filters are offered in the UI
-export const SECONDARY_FILTER_LABELS: Record<SecondaryFilterState, string> = {
-	ALL: 'All',
-	DEFAULT: 'Default',
-	CHAT: 'Chat',
-	SLM_EVENTS: 'SLM Events',
-	ADMIN: 'Admin',
-	KILLFEED: 'Killfeed',
-}
 
 export type ChatViewOptionsStore = {
 	primaryFilter: PrimaryFilterState

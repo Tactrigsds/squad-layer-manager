@@ -26,11 +26,6 @@ export type GroupRuleSource = GroupRule['type']
 
 export const GROUP_RULE_SOURCES: GroupRuleSource[] = ['battlemetrics', 'admin-list']
 
-export const GROUP_RULE_SOURCE_LABELS: Record<GroupRuleSource, string> = {
-	battlemetrics: 'BM flag',
-	'admin-list': 'Admin group',
-}
-
 // What a rule matches against. Sourced per player and per server: the admin list is the server's own, so the same
 // grouping can put a player in different groups on different servers, which is the point of it being server config.
 export type PlayerFacts = {

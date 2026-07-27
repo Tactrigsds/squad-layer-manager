@@ -16,7 +16,7 @@ import * as SETTINGS from '@/models/settings.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 
-export type ApplyAs = 'regular' | 'inverted' | 'disabled'
+export type ApplyAs = SETTINGS.SelectableFilterApplyAs
 
 export type AppliedFiltersSlice = {
 	// how the pool constrains the query: 'regular' = pool layers only, 'inverted' = out-of-pool layers only,
