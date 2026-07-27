@@ -4,7 +4,7 @@ import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
 
 import { ADMIN_USER, createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, queue } from '../harness/arrange'
+import { cmd, filter, LAYERS, queue } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // The backburner panel below the queue: requests arriving from chat show up live, and GUI edits are
@@ -40,7 +40,7 @@ test.describe('layer requests panel', () => {
 			await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
 
 			// a request arriving from chat shows up in the panel without a reload
-			app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer fallu')
+			app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
 			const panel = page.getByRole('tabpanel', { name: /^Queue/ })
 			await expect(panel.getByText('Layer Requests (1)')).toBeVisible({ timeout: 20_000 })
 			const row = panel.getByRole('listitem').filter({ hasText: 'Fallujah' })

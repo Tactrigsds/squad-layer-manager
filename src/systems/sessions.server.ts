@@ -1,6 +1,7 @@
 import * as Otel from '@opentelemetry/api'
 import * as DateFns from 'date-fns'
 import * as E from 'drizzle-orm'
+import * as Crypto from 'node:crypto'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as AR from '@/app-routes'
@@ -161,7 +162,12 @@ export const validateAndUpdate = Instr.spanOp(
 				log.info('bypassing with username %s', username)
 				const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.username, username))
 				log.info('resolved user: %o', user)
-				if (!user) throw new Error(`User ${username} not found during bypass`)
+				// falling through leaves the caller on the login portal, which is where an unknown name belongs:
+				// the portal creates the user, `?login=` only ever picks an existing one
+				if (!user) {
+					log.warn('no user named %s to bypass as', username)
+					return res
+				}
 				const loginRes = await logInUser({ ...ctx, res: reply }, { username, id: user.discordId })
 
 				return { code: 'ok' as const, ...loginRes, user: await Users.buildUser(user) }
@@ -211,6 +217,19 @@ export const validateAndUpdate = Instr.spanOp(
 		return { code: 'ok' as const, sessionId, expiresAt, user: await Users.buildUser(cachedSession.user) }
 	},
 )
+
+// No-auth mode has no identity provider, so the name someone types is the whole identity and their user id is
+// derived from it: the same name is the same person across restarts, without a registry to keep. The high bit
+// keeps these clear of real discord snowflakes, which are timestamps and so far smaller.
+export function noAuthUserId(username: string): bigint {
+	const digest = Crypto.createHash('sha256').update(username.toLowerCase()).digest()
+	return (digest.readBigUInt64BE(0) >> 2n) | (1n << 61n)
+}
+
+export async function logInWithoutAuth(ctx: C.Db & C.FastifyRequest & C.FastifyReply, username: string) {
+	log.info('logging in %s without authentication', username)
+	return await logInUser(ctx, { username, id: noAuthUserId(username) })
+}
 
 export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, discordUser: { username: string; id: bigint }) {
 	const sessionId = createId(64)

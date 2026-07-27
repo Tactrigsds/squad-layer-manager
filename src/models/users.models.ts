@@ -57,6 +57,18 @@ export type UserEntityMutation<K extends string | number, V> = {
 	type: 'add' | 'update' | 'delete'
 }
 
+// What the no-auth login portal posts. There is no identity provider behind it, so the name typed into the
+// form is the whole identity; it is bounded and kept to printable characters only because it is displayed
+// everywhere a discord username would be.
+export const NoAuthLoginSchema = z.object({
+	username: z
+		.string()
+		.trim()
+		.min(1)
+		.max(32)
+		.regex(/^[\p{L}\p{N} ._-]+$/u),
+})
+
 // should eventually replace all user id validation with this
 export const UserIdSchema = z.bigint().positive()
 

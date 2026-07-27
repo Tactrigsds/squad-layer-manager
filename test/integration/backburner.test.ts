@@ -5,7 +5,7 @@ import * as BB from '@/models/backburner.models'
 import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
-import { filter, LAYERS, queue } from '../harness/arrange'
+import { cmd, filter, LAYERS, queue } from '../harness/arrange'
 
 // The layer backburner's in-game surface: /reqlayer requests are validated against the pool, queued,
 // listed, evicted at the per-user cap, and consumed by autogeneration when the map rolls.
@@ -92,23 +92,23 @@ function warnsTo(player: { eos: string }): string[] {
 describe('layer backburner via chat', () => {
 	it('queues a request, lists it, and removes it again', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer fallu')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
 		await app.waitFor(() => savedBackburner().length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
 		expect(savedBackburner()[0].description).toBe('Fallujah')
 		expect(warnsTo(admin).join('\n')).toContain('Layer request queued: Fallujah')
 
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!reqs')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqs'))
 		await app.waitFor(() => warnsTo(admin).length > 0 || null, { label: 'the request listing', timeoutMs: 20_000 })
 		expect(warnsTo(admin).join('\n')).toContain('1. Fallujah (yours)')
 
-		app.emu.world.chat(admin, 'ChatAdmin', '!unreqlayer')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('unreqlayer'))
 		await app.waitFor(() => savedBackburner().length === 0 || null, { label: 'the request being removed', timeoutMs: 20_000 })
 	})
 
 	it('rejects a request with no solutions in the pool', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer impossible')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer impossible'))
 		await app.waitFor(() => warnsTo(admin).some((w) => w.includes('No layers in the current pool match')) || null, {
 			label: 'the rejection reply',
 			timeoutMs: 20_000,
@@ -118,7 +118,7 @@ describe('layer backburner via chat', () => {
 
 	it('suggests a correction for an unknown token', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer gorodokk')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer gorodokk'))
 		await app.waitFor(() => warnsTo(admin).some((w) => w.includes('Unknown request')) || null, {
 			label: 'the unknown-token reply',
 			timeoutMs: 20_000,
@@ -127,10 +127,10 @@ describe('layer backburner via chat', () => {
 
 	it('evicts the oldest request when a capped user exceeds their limit', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(requester, 'ChatAll', '!reqlayer goro')
+		app.emu.world.chat(requester, 'ChatAll', cmd('reqlayer goro'))
 		await app.waitFor(() => savedBackburner().length === 1 || null, { label: 'the first capped request', timeoutMs: 20_000 })
 
-		app.emu.world.chat(requester, 'ChatAll', '!reqlayer harju')
+		app.emu.world.chat(requester, 'ChatAll', cmd('reqlayer harju'))
 		await app.waitFor(() => (savedBackburner().length === 1 && savedBackburner()[0].description === 'Harju') || null, {
 			label: 'the oldest request being evicted',
 			timeoutMs: 20_000,
@@ -138,12 +138,12 @@ describe('layer backburner via chat', () => {
 		expect(warnsTo(requester).join('\n')).toContain('dropped')
 
 		// leave a clean slate for the generation test
-		app.emu.world.chat(requester, 'ChatAll', '!unreqlayer')
+		app.emu.world.chat(requester, 'ChatAll', cmd('unreqlayer'))
 		await app.waitFor(() => savedBackburner().length === 0 || null, { label: 'cleanup', timeoutMs: 20_000 })
 	})
 
 	it('folds queued requests into the next generated layer and consumes them', async () => {
-		app.emu.world.chat(admin, 'ChatAdmin', '!reqlayer fallu')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
 		await app.waitFor(() => savedBackburner().length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
 
 		// rolling consumes the only queued layer, which forces generation of the next one

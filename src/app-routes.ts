@@ -38,6 +38,8 @@ type GetLink<Params extends ParamsBase> = (...args: ToGenericStrings<Params>) =>
 export const routes = [
 	defRoute('/login', [], 'custom', { authed: false }),
 	defRoute('/login/callback', [], 'custom', { authed: false }),
+	// the username form the no-auth login portal posts to; only registered when discord auth is off
+	defRoute('/login/no-auth', [], 'custom', { authed: false }),
 	// authed:false so a signed-in but unauthorized user (shown the 403 page) can still log out to switch accounts
 	defRoute('/logout', [], 'custom', { authed: false }),
 	defRoute('/layers.bin.gz', [], 'custom'),

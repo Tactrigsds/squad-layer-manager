@@ -2,6 +2,7 @@ import React from 'react'
 
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as ConfigClient from '@/systems/config.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -22,14 +23,14 @@ export function ResetOtherSessionsManager() {
 			toastIdRef.current = null
 			return
 		}
-		const description = `You're active in ${activeOtherCount} other session${activeOtherCount > 1 ? 's' : ''}.`
-		toastIdRef.current = toast.warning('Other sessions active', {
+		const [message, opts] = USR_Msgs.otherSessionsActive(activeOtherCount).toast()
+		toastIdRef.current = toast.warning(message, {
+			...opts,
 			id: toastIdRef.current ?? undefined,
-			description,
 			// infinite duration -- it stays until dismissed or the other sessions become inactive
 			duration: Infinity,
 			action: {
-				label: 'Reset them',
+				label: USR_Msgs.resetOtherSessions().text(),
 				onClick: () => UPClient.Actions.resetOtherClients(),
 			},
 		})

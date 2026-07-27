@@ -116,3 +116,74 @@ describe('the development encryption key', () => {
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
 	})
 })
+
+describe('DEMO', () => {
+	it('needs nothing else set', async () => {
+		const Env = await loadEnv('', { DEMO: '1' })
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+
+		expect(Env.rawVar('QUERY_PARAM_AUTH_BYPASS')).toBe('true')
+		expect(Env.rawVar('DISCORD_ENABLED')).toBe('false')
+	})
+
+	// the credentials would sit unused while the login portal signs anyone in as anyone
+	it('refuses to boot alongside credentials for an integration still switched on', async () => {
+		const Env = await loadEnv('DISCORD_CLIENT_SECRET=real-secret\n', { DEMO: '1', DISCORD_CLIENT_ID: 'real-id' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET/)
+	})
+
+	// DISCORD_ENABLED=false is an install saying the credentials are already inert, which is what a demo wants
+	it('accepts credentials the install has already turned off', async () => {
+		const Env = await loadEnv('DISCORD_CLIENT_SECRET=inert\n', { DEMO: '1', DISCORD_ENABLED: 'false', DISCORD_CLIENT_ID: 'inert' })
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
+
+	// there is no oauth app behind the flow this would register, so nobody could log in
+	it('refuses to boot with the no-auth login portal turned off', async () => {
+		const Env = await loadEnv('', { DEMO: '1', QUERY_PARAM_AUTH_BYPASS: 'false' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/QUERY_PARAM_AUTH_BYPASS/)
+	})
+
+	it('refuses to boot with a battlemetrics token, which belongs to a real org', async () => {
+		const Env = await loadEnv('BM_PAT=real-token\n', { DEMO: '1' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/BM_PAT/)
+	})
+
+	it('accepts a battlemetrics token there is only a stub to spend on', async () => {
+		const Env = await loadEnv('BM_PAT=stub-token\n', { DEMO: '1', BM_HOST: 'http://127.0.0.1:3123' })
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
+
+	it('reports every contradiction at once', async () => {
+		const Env = await loadEnv('', { DEMO: '1', DISCORD_ENABLED: 'true', QUERY_PARAM_AUTH_BYPASS: 'false' })
+		expect(() => Env.ensureEnvSetup()).toThrow(
+			/DISCORD_ENABLED[\s\S]*QUERY_PARAM_AUTH_BYPASS|QUERY_PARAM_AUTH_BYPASS[\s\S]*DISCORD_ENABLED/,
+		)
+	})
+
+	// the shape a dev instance and the test harness both run: inert credentials, and a stub to spend them on
+	it('accepts an environment that hands over dummies alongside the stubs they belong to', async () => {
+		const Env = await loadEnv('DISCORD_CLIENT_SECRET=disabled\nBM_PAT=stub-token\n', {
+			DEMO: '1',
+			NODE_ENV: 'development',
+			DISCORD_ENABLED: 'false',
+			QUERY_PARAM_AUTH_BYPASS: 'true',
+			DISCORD_CLIENT_ID: 'disabled',
+			DISCORD_BOT_TOKEN: 'disabled',
+			DISCORD_HOME_GUILD_ID: '1',
+			BM_HOST: 'http://127.0.0.1:3123',
+		})
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
+
+	// none of this is a rule about the variables themselves: without DEMO they are an ordinary deployment
+	it('leaves an install that never asked for it alone', async () => {
+		const Env = await loadEnv('DISCORD_CLIENT_SECRET=real-secret\nBM_PAT=real-token\n', {
+			DISCORD_CLIENT_ID: 'real-id',
+			DISCORD_BOT_TOKEN: 'real-token',
+			DISCORD_HOME_GUILD_ID: '1',
+			SETTINGS_ENCRYPTION_KEY: KEY,
+		})
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
+})

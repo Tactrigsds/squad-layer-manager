@@ -26,6 +26,7 @@ import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as ValidationErrors from '@/lib/validation-errors'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -96,11 +97,11 @@ export function FilterEdit(props: {
 					break
 
 				case 'err:not-found':
-					toast('Unable to save: Filter Not Found')
+					toast(...F_Msgs.notFound().toast())
 					break
 
 				case 'ok':
-					toast('Filter saved')
+					toast(...F_Msgs.saved().toast())
 					EditFrame.Actions.reset(stores, res.filter.filter)
 					void router.invalidate()
 					formApi.reset({
@@ -129,28 +130,10 @@ export function FilterEdit(props: {
 		}
 		const res = await deleteFilterMutation.mutateAsync(props.entity.id)
 		if (res.code === 'ok') {
-			toast(`Filter "${props.entity.name}" deleted`)
+			toast(...F_Msgs.deleted(props.entity.name).toast())
 			void navigate({ to: '/filters' })
 		} else {
-			let blurb: string
-			switch (res.code) {
-				case 'err:permission-denied':
-					blurb = 'You do not have permission to delete this filter'
-					break
-				case 'err:cannot-delete-pool-filter':
-					blurb = 'Cannot delete a filter that is currently in use by the layer pool'
-					break
-				case 'err:filter-in-use':
-					blurb = 'Filter is in use by ' + res.referencingFilters.join(', ')
-					break
-				case 'err:filter-not-found':
-					blurb = 'Filter not found'
-					break
-				default:
-					assertNever(res)
-			}
-
-			toast.error(`Failed to delete filter "${props.entity.name} : ${blurb}"`)
+			toast.error(...F_Msgs.deleteFailed(props.entity.name, res).toast())
 		}
 	}, [deleteFilterMutation, navigate, props.entity])
 
@@ -493,7 +476,7 @@ function FilterContributors(props: {
 					case 'err:permission-denied':
 						return RbacClient.handlePermissionDenied(res)
 					case 'err:already-exists':
-						return toast('Contributor already added')
+						return toast(...F_Msgs.contributorAlreadyAdded().toast())
 					case 'ok':
 						break
 					default:
@@ -502,7 +485,7 @@ function FilterContributors(props: {
 				FilterEntityClient.invalidateQueriesForFilter(props.filterId)
 			},
 			onError: (err) => {
-				toast.error('Failed to add contributor', { description: err.message })
+				toast.error(...F_Msgs.addContributorFailed(err.message).toast())
 			},
 		}),
 	)
@@ -513,7 +496,7 @@ function FilterContributors(props: {
 					case 'err:permission-denied':
 						return RbacClient.handlePermissionDenied(res)
 					case 'err:not-found':
-						return toast('Contributor not found')
+						return toast(...F_Msgs.contributorNotFound().toast())
 					case 'ok':
 						break
 					default:

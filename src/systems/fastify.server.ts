@@ -17,6 +17,7 @@ import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
@@ -135,22 +136,50 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 	await instance.register(fastifyFormBody)
 
 	await instance.register(fastifyCookie)
-	await instance.register(oauthPlugin, {
-		name: 'discordOauth2',
-		credentials: {
-			client: {
-				id: ENV.DISCORD_CLIENT_ID,
-				secret: ENV.DISCORD_CLIENT_SECRET,
+
+	// QUERY_PARAM_AUTH_BYPASS is what turns discord auth off entirely: a username is the whole identity, taken
+	// either from `?login=` or from the form on '/'. There is no oauth app to talk to, so the flow isn't
+	// registered at all rather than left to fail against whatever credentials happen to be configured.
+	if (ENV.QUERY_PARAM_AUTH_BYPASS) {
+		await registerNoAuthLogin()
+	} else {
+		await registerDiscordOauth()
+	}
+
+	async function registerNoAuthLogin() {
+		log.warn('authentication is disabled: anyone reaching this instance can sign in as anyone')
+		instance.get(AR.route('/login'), async (_req, reply) => reply.redirect(AR.route('/'), 302))
+
+		instance.post(AR.route('/login/no-auth'), async (req, reply) => {
+			const parsed = USR.NoAuthLoginSchema.safeParse(req.body)
+			if (!parsed.success) {
+				return sendHtmlPage(reply, Landing.noAuthHtml(USR_Msgs.invalidUsername().text()), 400)
+			}
+			await Sessions.logInWithoutAuth(buildHttpRequestContext(req, reply), parsed.data.username)
+			return reply.redirect(AR.route('/'), 302)
+		})
+	}
+
+	async function registerDiscordOauth() {
+		await instance.register(oauthPlugin, {
+			name: 'discordOauth2',
+			credentials: {
+				client: {
+					id: ENV.DISCORD_CLIENT_ID,
+					secret: ENV.DISCORD_CLIENT_SECRET,
+				},
+				auth: oauthPlugin.DISCORD_CONFIGURATION,
 			},
-			auth: oauthPlugin.DISCORD_CONFIGURATION,
-		},
-		startRedirectPath: AR.route('/login'),
+			startRedirectPath: AR.route('/login'),
 
-		callbackUri: `${ENV.ORIGIN}${AR.route('/login/callback')}`,
-		scope: ['identify'],
-	})
+			callbackUri: `${ENV.ORIGIN}${AR.route('/login/callback')}`,
+			scope: ['identify'],
+		})
 
-	instance.get(AR.route('/login/callback'), async function (req, reply) {
+		instance.get(AR.route('/login/callback'), loginCallback)
+	}
+
+	async function loginCallback(this: unknown, req: FastifyRequest, reply: FastifyReply) {
 		const tokenResult = await (this as any).discordOauth2.getAccessTokenFromAuthorizationCodeFlow(req)
 		const token = tokenResult.token as {
 			access_token: string
@@ -174,7 +203,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const requestCtx = buildHttpRequestContext(req, reply)
 		await Sessions.logInUser(requestCtx, discordUser)
 		reply.redirect(AR.route('/'), 302)
-	})
+	}
 
 	instance.post(AR.route('/logout'), async function (req, res) {
 		// authed:false: only the session cookie is needed, so a signed-in-but-unauthorized user can still sign out

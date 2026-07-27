@@ -389,12 +389,7 @@ export function SquadMenuItems({
 					/>
 				</>
 			)}
-			<AddPlayerFlagsMenuItem
-				slots={slots}
-				playerIds={squadPlayerIds}
-				targetDescription={`squad ${squadLabel}`}
-				label="Add Flags to Squad..."
-			/>
+			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label="Add Flags to Squad..." />
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>

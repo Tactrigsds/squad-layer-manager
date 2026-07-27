@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 import * as L from '@/models/layer'
 
+import { cmd } from '../harness/arrange'
 import { createRollingFixture, ROLL_ADMIN_STEAM_ID, type RollingFixture } from '../harness/rolling'
 
 // Which match an event across the roll belongs to, and whether it is read as something a player did or as
@@ -65,7 +66,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		})
 	})
 
-	it('a queued !swapnext survives connects and disconnects happening during the same roll it is waiting on', async () => {
+	it('a queued swapnext survives connects and disconnects happening during the same roll it is waiting on', async () => {
 		const admin = makePlayer({ name: ' roll_swap_admin', steam: ROLL_ADMIN_STEAM_ID, teamId: 1 })
 		const target = app.emu.world.connectPlayer(makePlayer({ name: ' roll_swap_target', teamId: 2 }))
 		const noiseLeaver = app.emu.world.connectPlayer(makePlayer({ name: ' roll_noise_leaver', teamId: 1 }))
@@ -73,7 +74,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		await app.waitForRosterSync()
 		app.emu.rcon.commandLog.length = 0
 
-		app.emu.world.chat(admin, 'ChatAdmin', '!swapnext roll_swap_target')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnext roll_swap_target'))
 		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)), {
 			label: 'acknowledgement to the admin',
 			timeoutMs: 20_000,

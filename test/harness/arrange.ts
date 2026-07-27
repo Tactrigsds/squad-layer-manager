@@ -1,3 +1,4 @@
+import * as CMD from '@/models/command.models'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -22,6 +23,13 @@ export const LAYERS = {
 	sumariRaas: 'SM-RAAS-V1:ADF-CA:USA-CA',
 	skorpoRaas: 'SK-RAAS-V1:USA-CA:RGF-CA',
 } satisfies Record<string, L.LayerId>
+
+// An in-game command as an admin types it. The prefix is not restated, so these follow whatever a fresh install
+// seeds -- a trigger that does not start with an allowed prefix is refused by the settings schema, so a literal
+// would fail the whole fixture rather than the assertion it belongs to.
+export function cmd(command: string): string {
+	return `${CMD.DEFAULT_PREFIX}${command}`
+}
 
 export function queueItem(layerId: L.LayerId, opts?: { itemId?: string; tags?: LTag.TagId[] }): LL.Item {
 	return LL.createItem(
