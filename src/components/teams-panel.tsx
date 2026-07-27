@@ -97,10 +97,10 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 		(tswStore, upStore) => TSWClient.Sel.hasSwaps(tswStore) || upStore.teamswapEditors.size > 0,
 	)
 	const selectedCount = Zus.useStore(squadServer, SquadServerFrame.Sel.selectedPlayerCount)
-	const { showSelected, adminsOnly, hideSpoilers, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
+	const { showSelected, adminsOnly, showSpoilers, roleFilter } = Zus.useStore(squadServer, TeamsPanelPrt.Sel.headerState)
 	const showSelectedId = React.useId()
 	const adminsOnlyId = React.useId()
-	const hideSpoilersId = React.useId()
+	const showSpoilersId = React.useId()
 	// read once: the input is uncontrolled, so the store only seeds it
 	const initialSearchQuery = React.useRef(Zus.getState(squadServer, TeamsPanelPrt.Sel.searchQuery)).current
 	const onSearchChange = React.useCallback(
@@ -158,6 +158,18 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							>
 								({selectedCount})
 							</span>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="h-7 w-7"
+								title="Reset selections, filters, sorting and search"
+								onClick={() => {
+									SquadServerFrame.Actions.resetTeamsPanel(props.stores)
+									if (searchRef.current) searchRef.current.value = ''
+								}}
+							>
+								<Icons.Trash className="h-4 w-4" />
+							</Button>
 						</div>
 						<div className="flex items-center gap-2">
 							<Switch
@@ -171,15 +183,15 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 						</div>
 						<div className="flex items-center gap-2">
 							<Switch
-								id={hideSpoilersId}
-								checked={hideSpoilers}
-								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setHideSpoilers(panelStores, checked)}
+								id={showSpoilersId}
+								checked={showSpoilers}
+								onCheckedChange={(checked) => TeamsPanelPrt.Actions.setShowSpoilers(panelStores, checked)}
 							/>
-							<Label htmlFor={hideSpoilersId} className="text-sm whitespace-nowrap" title="Hide K/W/D and role columns">
-								Hide Spoilers
+							<Label htmlFor={showSpoilersId} className="text-sm whitespace-nowrap" title="Show K/W/D and role columns">
+								Show Spoilers
 							</Label>
 						</div>
-						{hideSpoilers && roleFilter !== null && (
+						{!showSpoilers && roleFilter !== null && (
 							<Badge variant="secondary" className="gap-1" title="Role filter is active but hidden with spoilers">
 								Role: {roleFilter}
 								<button
@@ -192,18 +204,6 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 								</button>
 							</Badge>
 						)}
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-7 w-7"
-							title="Reset selections, filters, sorting and search"
-							onClick={() => {
-								SquadServerFrame.Actions.resetTeamsPanel(props.stores)
-								if (searchRef.current) searchRef.current.value = ''
-							}}
-						>
-							<Icons.Trash className="h-4 w-4" />
-						</Button>
 					</div>
 					<ControlPanel />
 				</div>
@@ -410,12 +410,14 @@ type CombinedTableMeta = BasePlayerTableMeta & {
 // Describes the squad-group a player belongs to, used to render the group-separator header rows when
 // the table is sorted by squad. `key` identifies a contiguous group of same-squad rows. A null `squad`
 // is the catch-all group for players not in any squad ("Unassigned"). `faction`, when set (combined
-// table only), renders in its own cell aligned with the faction column.
+// table only), renders in its own cell aligned with the faction column. `totalSize` is the squad's size
+// on the unfiltered roster, which is what the header reports.
 type SquadGroupInfo = {
 	key: string
 	squad: SM.UniqueSquad | null
 	creatorName: string | null
 	faction: { label: string; color: string } | null
+	totalSize: number
 }
 
 const FILTERED_COLUMN_IDS = ['role', 'group', 'squad']
@@ -749,7 +751,7 @@ function roleColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 	})
 }
 
-// team kills. Not gated behind hideSpoilers -- teamkills are always shown so admins can act on them.
+// team kills. Not gated behind showSpoilers -- teamkills are always shown so admins can act on them.
 function tksColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHelper<T>) {
 	return helper.accessor((row) => row.stats?.teamkills ?? 0, {
 		id: 'tks',
@@ -1069,7 +1071,8 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 	// clicking anywhere on the header row toggles the whole squad's selection (interactive children like
 	// the squad-details button and checkbox stop propagation so they keep their own behavior)
 	const toggleAll = () => toggle(!allSelected)
-	const { squad, creatorName, faction } = props.info
+	const { squad, creatorName, faction, totalSize } = props.info
+	const shownCount = props.playerIds.length
 	const checkbox = (
 		<div onClick={(e) => e.stopPropagation()}>
 			<Checkbox
@@ -1089,7 +1092,8 @@ function SquadGroupHeaderRow(props: { info: SquadGroupInfo; playerIds: string[];
 				<span className="font-semibold">Unassigned</span>
 			)}
 			<span className="text-muted-foreground">
-				{props.playerIds.length} {props.playerIds.length === 1 ? 'player' : 'players'}
+				{shownCount < totalSize && `${shownCount} of `}
+				{totalSize} {totalSize === 1 ? 'player' : 'players'}
 			</span>
 			{creatorName && <span className="text-muted-foreground">· created by {creatorName}</span>}
 		</>
@@ -1147,7 +1151,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const rowSelection = Zus.useStore(props.stores.squadServer!, SquadServerFrame.Sel.playerSelection)
 	const savedSwaps = Zus.useStore(props.stores.squadServer!, (s) => TSWClient.Sel.localState(s).savedSwaps)
 	const sorting = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.sorting(props.sortingTarget))
-	const hideSpoilers = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.hideSpoilers)
+	const showSpoilers = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.showSpoilers)
 	const squadGroupsEnabled = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.squadGroupsEnabled(props.sortingTarget))
 	const stores = props.stores
 	const setRowSelection: OnChangeFn<RowSelectionState> = React.useCallback(
@@ -1158,7 +1162,7 @@ function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer>(props: {
 	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
 	const columns = React.useMemo(() => [...props.baseColumns, statsColumn<T>(statsMetric)], [props.baseColumns, statsMetric])
-	const columnVisibility = React.useMemo(() => ({ role: !hideSpoilers, stats: !hideSpoilers }), [hideSpoilers])
+	const columnVisibility = React.useMemo(() => ({ role: showSpoilers, stats: showSpoilers }), [showSpoilers])
 
 	const table = useReactTable<T>({
 		data: props.data,
@@ -1356,14 +1360,17 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 		TeamsPanelPrt.Sel.filterOptions,
 	)
 	const squads = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.squadsForTeam(props.teamId))
+	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters(props.teamId))
 
 	const getSquadGroup = (player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
-		if (player.squadId === null) return { key: 'unassigned', squad: null, creatorName: null, faction: null }
+		const key = TeamsPanelPrt.squadGroupKey(props.teamId, player.squadId)
+		const totalSize = squadSizes.get(key) ?? 0
+		if (player.squadId === null) return { key, squad: null, creatorName: null, faction: null, totalSize }
 		const squad = squads.find((s) => s.squadId === player.squadId)
 		if (!squad) return null
-		return { key: String(squad.squadId), squad, creatorName: creatorNames.get(squad.creator) || null, faction: null }
+		return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction: null, totalSize }
 	}
 
 	const meta = {
@@ -1436,6 +1443,7 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 	)
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	const ordinal = match?.ordinal ?? 0
+	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 
@@ -1465,19 +1473,16 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 	const getSquadGroup = React.useCallback(
 		(player: CombinedPlayer): SquadGroupInfo | null => {
 			const faction = { label: getFaction(player.normedTeam), color: getTeamColor(player.normedTeam) }
-			if (player.squadId === null) return { key: `${player.normedTeam}:unassigned`, squad: null, creatorName: null, faction }
+			const key = TeamsPanelPrt.squadGroupKey(player.normedTeam, player.squadId)
+			const totalSize = squadSizes.get(key) ?? 0
+			if (player.squadId === null) return { key, squad: null, creatorName: null, faction, totalSize }
 			const squad = squadsWithTeam.find(
 				({ squad: s, normedTeam }) => s.squadId === player.squadId && normedTeam === player.normedTeam,
 			)?.squad
 			if (!squad) return null
-			return {
-				key: `${player.normedTeam}:${squad.squadId}`,
-				squad,
-				creatorName: creatorNames.get(squad.creator) || null,
-				faction,
-			}
+			return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction, totalSize }
 		},
-		[squadsWithTeam, getFaction, getTeamColor, creatorNames],
+		[squadsWithTeam, getFaction, getTeamColor, creatorNames, squadSizes],
 	)
 
 	const meta = {
