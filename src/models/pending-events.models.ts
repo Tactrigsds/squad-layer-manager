@@ -1290,18 +1290,15 @@ async function* processPendingEvent(
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
 			// the log identifies the victim by display name only, which can carry a clan tag the RCON roster name
-			// lacks; fall back to a loose unique match rather than dropping the event
-			let victim = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds)
-			if (!victim && pendingEvent.victimIds.username) {
-				victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds.username)
-				if (victim) {
-					log.debug(
-						'resolved %s victim "%s" via loose username match -> %s',
-						pendingEvent.type,
-						pendingEvent.victimIds.username,
-						SM.PlayerIds.prettyPrint(victim.ids),
-					)
-				}
+			// lacks, so a loose unique match is the only way to resolve them
+			const victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds.username)
+			if (victim) {
+				log.debug(
+					'resolved %s victim "%s" -> %s',
+					pendingEvent.type,
+					pendingEvent.victimIds.username,
+					SM.PlayerIds.prettyPrint(victim.ids),
+				)
 			}
 			const attacker = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.attackerIds)
 			if (!victim || !attacker) {

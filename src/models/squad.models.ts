@@ -131,7 +131,14 @@ export namespace PlayerIds {
 	// expected to be unique in a collection of PlayerIds. maybe playerController is unique too, not sure
 	const UNIQUE_PROPS = ['steam', 'eos', 'epic'] as const
 
-	export type MatchOpts = { inexact?: boolean }
+	// A query the default lookup can actually resolve: it carries at least one of EXACT_PROPS. A query holding
+	// only a username is not one, so the compiler makes such a caller pass MatchOpts and face the consequences
+	// rather than silently resolving to nothing.
+	export type HardIdQuery = IdQuery<'eos'> | IdQuery<'steam'> | IdQuery<'epic'> | IdQuery<'playerController'>
+	export type HardIdQueryOrPlayerId = HardIdQuery | PlayerId
+
+	// `inexact: true` is the only setting worth naming -- omit the argument for an exact lookup.
+	export type MatchOpts = { inexact: true }
 
 	// old signature
 	// export function parsePlayerIds(username: string, idsStr?: string): Type {
@@ -166,12 +173,12 @@ export namespace PlayerIds {
 	// than to whichever player happens to sit earliest in the list.
 	function lookup<T>(elts: T[], idsOf: (item: T) => Type, searchId: IdQuery, opts?: MatchOpts): number {
 		for (let i = 0; i < elts.length; i++) {
-			if (match(idsOf(elts[i]), searchId)) return i
+			if (matchIds(idsOf(elts[i]), searchId)) return i
 		}
 		if (!opts?.inexact) return -1
 		let matched = -1
 		for (let i = 0; i < elts.length; i++) {
-			if (!match(idsOf(elts[i]), searchId, opts)) continue
+			if (!matchIds(idsOf(elts[i]), searchId, opts)) continue
 			if (matched !== -1) return -1
 			matched = i
 		}
@@ -191,8 +198,10 @@ export namespace PlayerIds {
 		return { idsOf: selfIds<T>, searchId: normalizeIdQuery(cbOrId!), opts: idOrOpts as MatchOpts | undefined }
 	}
 
-	export function find(idList: Type[], id: IdQueryOrPlayerId, opts?: MatchOpts): Type | undefined
-	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts?: MatchOpts): T | undefined
+	export function find(idList: Type[], id: HardIdQueryOrPlayerId): Type | undefined
+	export function find(idList: Type[], id: IdQueryOrPlayerId, opts: MatchOpts): Type | undefined
+	export function find<T>(idList: T[], cb: (item: T) => Type, id: HardIdQueryOrPlayerId): T | undefined
+	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts: MatchOpts): T | undefined
 	export function find<T>(
 		elts: T[] | Type[],
 		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
@@ -204,8 +213,10 @@ export namespace PlayerIds {
 		return index === -1 ? undefined : (elts as T[])[index]
 	}
 
-	export function indexOf(idList: Type[], id: IdQueryOrPlayerId, opts?: MatchOpts): number
-	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts?: MatchOpts): number
+	export function indexOf(idList: Type[], id: HardIdQueryOrPlayerId): number
+	export function indexOf(idList: Type[], id: IdQueryOrPlayerId, opts: MatchOpts): number
+	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: HardIdQueryOrPlayerId): number
+	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts: MatchOpts): number
 	export function indexOf<T>(
 		elts: T[] | Type[],
 		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
@@ -260,8 +271,10 @@ export namespace PlayerIds {
 		return searchId
 	}
 
-	export function remove(idList: Type[], id: IdQueryOrPlayerId, opts?: MatchOpts): boolean
-	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts?: MatchOpts): boolean
+	export function remove(idList: Type[], id: HardIdQueryOrPlayerId): boolean
+	export function remove(idList: Type[], id: IdQueryOrPlayerId, opts: MatchOpts): boolean
+	export function remove<T>(idList: T[], cb: (item: T) => Type, id: HardIdQueryOrPlayerId): boolean
+	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts: MatchOpts): boolean
 	export function remove<T>(
 		elts: T[] | Type[],
 		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
@@ -275,9 +288,15 @@ export namespace PlayerIds {
 		return true
 	}
 
+	// Both sides must carry a hard id for an exact match to be possible at all, so the compiler asks for one
+	// unless the caller opts in to matching on names.
+	export function match(a: HardIdQueryOrPlayerId, b: HardIdQueryOrPlayerId): boolean
+	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId, opts: MatchOpts): boolean
 	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId, opts?: MatchOpts): boolean {
-		const aNorm = normalizeIdQuery(a)
-		const bNorm = normalizeIdQuery(b)
+		return matchIds(normalizeIdQuery(a), normalizeIdQuery(b), opts)
+	}
+
+	function matchIds(aNorm: IdQuery, bNorm: IdQuery, opts?: MatchOpts): boolean {
 		for (const prop of EXACT_PROPS) {
 			if (aNorm[prop] && bNorm[prop] && aNorm[prop] === bNorm[prop]) return true
 		}
