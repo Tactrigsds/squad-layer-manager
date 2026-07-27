@@ -1,48 +1,46 @@
 import * as Msgs from '@/messages/shared'
 
-export const title = Msgs.def(() => ({ text: () => 'Match History' }))
+export const title = Msgs.def('Match History')
 
 // the page indicator over the table, which names a day rather than a page number
-export const noMatchesOnAnyDay = Msgs.def(() => ({ text: () => 'No matches' }))
+export const noMatchesOnAnyDay = Msgs.def('No matches')
 
-export const today = Msgs.def(() => ({ text: () => 'Today' }))
+export const today = Msgs.def('Today')
 
-export const yesterday = Msgs.def(() => ({ text: () => 'Yesterday' }))
+export const yesterday = Msgs.def('Yesterday')
 
-export const timeColumn = Msgs.def(() => ({ text: () => 'Time' }))
+export const timeColumn = Msgs.def('Time')
 
-export const layerColumn = Msgs.def(() => ({ text: () => 'Layer' }))
+export const layerColumn = Msgs.def('Layer')
 
-export const outcomeColumn = Msgs.def(() => ({ text: () => 'Outcome' }))
+export const outcomeColumn = Msgs.def('Outcome')
 
-export const layerIndicatorsColumn = Msgs.def(() => ({ text: () => 'Layer Indicators' }))
+export const layerIndicatorsColumn = Msgs.def('Layer Indicators')
 
-export const setByColumn = Msgs.def(() => ({ text: () => 'Set By' }))
+export const setByColumn = Msgs.def('Set By')
 
-export const winStreak = Msgs.def((length: number) => ({ text: () => `(${length} wins)` }))
+export const winStreak = Msgs.def((length: number) => `(${length} wins)`)
 
-export const noMatches = Msgs.def(() => ({ text: () => 'No matches found' }))
+export const noMatches = Msgs.def('No matches found')
 
-export const switchingLayer = Msgs.def(() => ({ text: () => 'Switching to New Layer...' }))
+export const switchingLayer = Msgs.def('Switching to New Layer...')
 
-export const postGame = Msgs.def(() => ({ text: () => 'Post-Game' }))
+export const postGame = Msgs.def('Post-Game')
 
-export const inProgress = Msgs.def(() => ({ text: () => 'In progress' }))
+export const inProgress = Msgs.def('In progress')
 
-export const draw = Msgs.def(() => ({ text: () => 'Draw' }))
+export const draw = Msgs.def('Draw')
 
-export const rowActions = Msgs.def(() => ({
-	text: () => 'Left click to view events, Right click for Context Menu, Click+drag to requeue',
-}))
+export const rowActions = Msgs.def('Left click to view events, Right click for Context Menu, Click+drag to requeue')
 
 // -------- the stats panel and its charts --------
 
-export const statsTitle = Msgs.def(() => ({ text: () => 'Stats' }))
+export const statsTitle = Msgs.def('Stats')
 
-export const noChartData = Msgs.def(() => ({ text: () => 'No data available for charts' }))
+export const noChartData = Msgs.def('No data available for charts')
 
-export const kdRatio = Msgs.def(() => ({ text: () => 'K/D Ratio:' }))
+export const kdRatio = Msgs.def('K/D Ratio:')
 
-export const woundRatio = Msgs.def(() => ({ text: () => 'Wound Ratio:' }))
+export const woundRatio = Msgs.def('Wound Ratio:')
 
-export const teamBreakdowns = Msgs.def(() => ({ text: () => 'Team Breakdowns' }))
+export const teamBreakdowns = Msgs.def('Team Breakdowns')

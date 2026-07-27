@@ -8,9 +8,7 @@ export const notifyKilled = Msgs.def((reason?: string) => ({
 
 // Same shape, and it covers the plain kick and the timeout kick alike: the timeout's remaining duration is
 // already substituted into the reason by the time it gets here.
-export const notifyKicked = Msgs.def((reason?: string) => ({
-	text: () => reason || 'You have been kicked by an admin.',
-}))
+export const notifyKicked = Msgs.def((reason?: string) => reason || 'You have been kicked by an admin.')
 
 export const kill = Msgs.def((target: Msgs.Target) => ({
 	confirm: () => ({
@@ -110,13 +108,9 @@ export const removeFromSquad = Msgs.def((target: Msgs.Target, squadLabel?: strin
 
 // the three below are the loading/success/error legs of one toast.promise, which takes bare values rather than
 // toast args, so they are `text` rather than `toast`
-export const removingFromSquad = Msgs.def((count: number) => ({
-	text: () => `Removing ${count} players from their squads...`,
-}))
+export const removingFromSquad = Msgs.def((count: number) => `Removing ${count} players from their squads...`)
 
-export const removedFromSquad = Msgs.def((count: number) => ({
-	text: () => `Removed ${count} players from their squads`,
-}))
+export const removedFromSquad = Msgs.def((count: number) => `Removed ${count} players from their squads`)
 
 export const removeFromSquadFailed = Msgs.def((count: number) => ({
 	toast: () => ['Remove from squad failed', { description: `Failed to remove ${count} players` }],
@@ -161,31 +155,31 @@ export const reasonRequired = Msgs.def((actionName: string) => ({
 // A list is a name, one source and the group permissions that mark an admin *in that list*. Its name is what
 // servers and role assignments refer to.
 
-export const noAdminLists = Msgs.def(() => ({ text: () => 'No admin lists defined.' }))
+export const noAdminLists = Msgs.def('No admin lists defined.')
 
-export const newAdminListName = Msgs.def(() => ({ text: () => 'new list name' }))
+export const newAdminListName = Msgs.def('new list name')
 
-export const addAdminList = Msgs.def(() => ({ text: () => 'Add list' }))
+export const addAdminList = Msgs.def('Add list')
 
-export const deleteAdminList = Msgs.def((name: string) => ({ text: () => `Delete ${name}` }))
+export const deleteAdminList = Msgs.def((name: string) => `Delete ${name}`)
 
-export const adminListPicker = Msgs.def(() => ({ text: () => 'Admin list' }))
+export const adminListPicker = Msgs.def('Admin list')
 
-export const selectAdminLists = Msgs.def(() => ({ text: () => 'Select admin lists...' }))
+export const selectAdminLists = Msgs.def('Select admin lists...')
 
 // a list the server still names but the global settings no longer define; kept selectable so opening the editor
 // cannot silently drop it
-export const adminListNotConfigured = Msgs.def((listId: string) => ({ text: () => `${listId} (not configured)` }))
+export const adminListNotConfigured = Msgs.def((listId: string) => `${listId} (not configured)`)
 
-export const adminIdentifyingPermissions = Msgs.def(() => ({ text: () => 'Admin-identifying permissions' }))
+export const adminIdentifyingPermissions = Msgs.def('Admin-identifying permissions')
 
-export const adminIdentifyingPermissionsHelp = Msgs.def(() => ({
-	text: () => 'Group permissions in this list that mark a player as an in-game admin on the servers using it.',
-}))
+export const adminIdentifyingPermissionsHelp = Msgs.def(
+	'Group permissions in this list that mark a player as an in-game admin on the servers using it.',
+)
 
-export const permissionPicker = Msgs.def(() => ({ text: () => 'Permission' }))
+export const permissionPicker = Msgs.def('Permission')
 
-export const selectPermissions = Msgs.def(() => ({ text: () => 'Select permissions...' }))
+export const selectPermissions = Msgs.def('Select permissions...')
 
 // how each source kind is named in the picker, and what its one string field looks like
 export const adminSourceTypeLabels: Record<SM.AdminListSourceType, string> = {
@@ -201,79 +195,79 @@ export const adminSourcePlaceholders: Record<Exclude<SM.AdminListSourceType, 'sf
 	ftp: 'ftp://user:password@host:21/admins.cfg',
 }
 
-export const sftpHost = Msgs.def(() => ({ text: () => 'host' }))
+export const sftpHost = Msgs.def('host')
 
-export const sftpUsername = Msgs.def(() => ({ text: () => 'username' }))
+export const sftpUsername = Msgs.def('username')
 
-export const sftpPassword = Msgs.def(() => ({ text: () => 'password' }))
+export const sftpPassword = Msgs.def('password')
 
-export const sftpFilePath = Msgs.def(() => ({ text: () => '/path/to/Admins.cfg' }))
+export const sftpFilePath = Msgs.def('/path/to/Admins.cfg')
 
 // A sandbox additionally has one SLM synthesises, which is not in the list because there is no source to name --
 // so say so, rather than leaving the impression that an empty selection means the emulated server has no admins.
-export const sandboxAdminListTitle = Msgs.def(() => ({ text: () => 'This sandbox has an emulated admin list of its own' }))
+export const sandboxAdminListTitle = Msgs.def('This sandbox has an emulated admin list of its own')
 
-export const sandboxAdminListBlurb = Msgs.def(() => ({
-	text: () =>
+export const sandboxAdminListBlurb = Msgs.def(
+	() =>
 		'It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -> Sandbox ' +
 		'Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, ' +
 		'because it only exists in memory.',
-}))
+)
 
 // -------- the player and squad context menus --------
 // The same actions appear at three scopes (one player, a selection, a squad), so the labels that differ only by
 // subject are named for the scope they belong to rather than shared.
 
-export const swapNextLabel = Msgs.def(() => ({ text: () => 'Swap Next' }))
+export const swapNextLabel = Msgs.def('Swap Next')
 
-export const swapNowLabel = Msgs.def(() => ({ text: () => 'Swap Now' }))
+export const swapNowLabel = Msgs.def('Swap Now')
 
-export const killLabel = Msgs.def(() => ({ text: () => 'Kill' }))
+export const killLabel = Msgs.def('Kill')
 
-export const kickLabel = Msgs.def(() => ({ text: () => 'Kick' }))
+export const kickLabel = Msgs.def('Kick')
 
-export const timeoutLabel = Msgs.def(() => ({ text: () => 'Timeout' }))
+export const timeoutLabel = Msgs.def('Timeout')
 
-export const deleteSwapLabel = Msgs.def(() => ({ text: () => 'Delete Swap' }))
+export const deleteSwapLabel = Msgs.def('Delete Swap')
 
-export const deleteSwapsLabel = Msgs.def(() => ({ text: () => 'Delete Swaps' }))
+export const deleteSwapsLabel = Msgs.def('Delete Swaps')
 
-export const copyTeleportCommand = Msgs.def(() => ({ text: () => 'Copy Teleport Command' }))
+export const copyTeleportCommand = Msgs.def('Copy Teleport Command')
 
-export const removeFromSquadLabel = Msgs.def(() => ({ text: () => 'Remove from Squad' }))
+export const removeFromSquadLabel = Msgs.def('Remove from Squad')
 
-export const disbandSquadLabel = Msgs.def(() => ({ text: () => 'Disband Squad' }))
+export const disbandSquadLabel = Msgs.def('Disband Squad')
 
-export const resetSquadNameLabel = Msgs.def(() => ({ text: () => 'Reset Squad Name' }))
+export const resetSquadNameLabel = Msgs.def('Reset Squad Name')
 
-export const demoteCommanderLabel = Msgs.def(() => ({ text: () => 'Demote Commander' }))
+export const demoteCommanderLabel = Msgs.def('Demote Commander')
 
-export const swapSquadNextLabel = Msgs.def(() => ({ text: () => 'Swap Squad Next' }))
+export const swapSquadNextLabel = Msgs.def('Swap Squad Next')
 
-export const swapSquadNowLabel = Msgs.def(() => ({ text: () => 'Swap Squad Now' }))
+export const swapSquadNowLabel = Msgs.def('Swap Squad Now')
 
-export const killSquadLabel = Msgs.def(() => ({ text: () => 'Kill Squad' }))
+export const killSquadLabel = Msgs.def('Kill Squad')
 
-export const kickSquadLabel = Msgs.def(() => ({ text: () => 'Kick Squad' }))
+export const kickSquadLabel = Msgs.def('Kick Squad')
 
-export const timeoutSquadLabel = Msgs.def(() => ({ text: () => 'Timeout Squad' }))
+export const timeoutSquadLabel = Msgs.def('Timeout Squad')
 
-export const warnSquadLabel = Msgs.def(() => ({ text: () => 'Warn Squad' }))
+export const warnSquadLabel = Msgs.def('Warn Squad')
 
-export const warnLabel = Msgs.def(() => ({ text: () => 'Warn' }))
+export const warnLabel = Msgs.def('Warn')
 
-export const addFlagsToSquad = Msgs.def(() => ({ text: () => 'Add Flags to Squad...' }))
+export const addFlagsToSquad = Msgs.def('Add Flags to Squad...')
 
-export const invertSelection = Msgs.def(() => ({ text: () => 'Invert Selection' }))
+export const invertSelection = Msgs.def('Invert Selection')
 
 // reads as "<n> players selected"
-export const playersSelected = Msgs.def(() => ({ text: () => 'players selected' }))
+export const playersSelected = Msgs.def('players selected')
 
 // -------- opening and copying a player's ids --------
 
-export const openLinks = Msgs.def(() => ({ text: () => 'Open' }))
+export const openLinks = Msgs.def('Open')
 
-export const copyIds = Msgs.def(() => ({ text: () => 'Copy' }))
+export const copyIds = Msgs.def('Copy')
 
 export const linkNames = { steam: 'Steam', cbl: 'CBL', mySquadStats: 'MySquadStats', battlemetrics: 'BattleMetrics' }
 
@@ -282,27 +276,27 @@ export const idNames = { username: 'Username', eos: 'EOS ID', steam: 'Steam ID',
 // -------- the selection submenus --------
 // The parenthesised value is what the row would select, so it belongs with the label rather than beside it.
 
-export const selectFromTeam = Msgs.def(() => ({ text: () => 'Select from Team' }))
+export const selectFromTeam = Msgs.def('Select from Team')
 
-export const selectAll = Msgs.def(() => ({ text: () => 'Select All' }))
+export const selectAll = Msgs.def('Select All')
 
-export const selectSquad = Msgs.def((squadName?: string) => ({ text: () => (squadName ? `Squad (${squadName})` : 'Squad') }))
+export const selectSquad = Msgs.def((squadName?: string) => (squadName ? `Squad (${squadName})` : 'Squad'))
 
-export const selectRole = Msgs.def((role?: string) => ({ text: () => (role ? `Role (${role})` : 'Role') }))
+export const selectRole = Msgs.def((role?: string) => (role ? `Role (${role})` : 'Role'))
 
-export const selectGroup = Msgs.def((group?: string) => ({ text: () => (group ? `Group (${group})` : 'Group') }))
+export const selectGroup = Msgs.def((group?: string) => (group ? `Group (${group})` : 'Group'))
 
-export const selectSquadLeaders = Msgs.def(() => ({ text: () => 'Squad Leaders' }))
+export const selectSquadLeaders = Msgs.def('Squad Leaders')
 
-export const selectAdmins = Msgs.def(() => ({ text: () => 'Admins' }))
+export const selectAdmins = Msgs.def('Admins')
 
-export const selectInAdminCam = Msgs.def(() => ({ text: () => 'In Admin Cam' }))
+export const selectInAdminCam = Msgs.def('In Admin Cam')
 
-export const selectAllPlayers = Msgs.def(() => ({ text: () => 'All Players' }))
+export const selectAllPlayers = Msgs.def('All Players')
 
-export const invert = Msgs.def(() => ({ text: () => 'Invert' }))
+export const invert = Msgs.def('Invert')
 
-export const selectSquadItem = Msgs.def(() => ({ text: () => 'Select Squad' }))
+export const selectSquadItem = Msgs.def('Select Squad')
 
 // The keyboard shortcut each selection row answers to. Ctrl widens it from one team to both, so every row has a
 // pair; only the modifiers are fixed, the thing clicked is named.
@@ -316,212 +310,207 @@ export const shortcuts = {
 	invertBox: { team: 'Alt+click select-all box', all: 'Alt+Ctrl+click select-all box' },
 }
 
-export const selectSquadShortcutHint = Msgs.def(() => ({ text: () => 'Shortcut: shift+click the Squad cell in the teams panel' }))
+export const selectSquadShortcutHint = Msgs.def('Shortcut: shift+click the Squad cell in the teams panel')
 
 // -------- the timeout dialog --------
 
-export const timeoutDurationLabel = Msgs.def(() => ({ text: () => 'Timeout duration' }))
+export const timeoutDurationLabel = Msgs.def('Timeout duration')
 
-export const timeoutDurationPlaceholder = Msgs.def((max?: string) => ({
-	text: () => (max === undefined ? 'e.g. 30m, 2h, 1d' : `e.g. 30m, 2h (max ${max})`),
-}))
+export const timeoutDurationPlaceholder = Msgs.def((max?: string) => (max === undefined ? 'e.g. 30m, 2h, 1d' : `e.g. 30m, 2h (max ${max})`))
 
 // -------- the roster --------
 
-export const adminBadgeHint = Msgs.def(() => ({
-	text: () => `This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams`,
-}))
+export const adminBadgeHint = Msgs.def(
+	() => `This player is an Admin. Shift+click: select this team's admins. Shift+Ctrl+click: both teams`,
+)
 
-export const squadLeaderBadge = Msgs.def(() => ({ text: () => 'Squad Leader' }))
+export const squadLeaderBadge = Msgs.def('Squad Leader')
 
-export const failedToParseLayer = Msgs.def(() => ({ text: () => 'Failed to parse layer' }))
+export const failedToParseLayer = Msgs.def('Failed to parse layer')
 
 // -------- the teams panel --------
 
-export const searchPlayers = Msgs.def(() => ({ text: () => 'Search Players...' }))
+export const searchPlayers = Msgs.def('Search Players...')
 
-export const showSelected = Msgs.def(() => ({ text: () => 'Show Selected' }))
+export const showSelected = Msgs.def('Show Selected')
 
-export const resetPanel = Msgs.def(() => ({ text: () => 'Reset selections, filters, sorting and search' }))
+export const resetPanel = Msgs.def('Reset selections, filters, sorting and search')
 
-export const adminsOnly = Msgs.def(() => ({ text: () => 'Admins Only' }))
+export const adminsOnly = Msgs.def('Admins Only')
 
-export const showSpoilers = Msgs.def(() => ({ text: () => 'Show Spoilers' }))
+export const showSpoilers = Msgs.def('Show Spoilers')
 
-export const showSpoilersHint = Msgs.def(() => ({ text: () => 'Show K/W/D and role columns' }))
+export const showSpoilersHint = Msgs.def('Show K/W/D and role columns')
 
 // the role filter survives spoilers being hidden, so it says so rather than silently narrowing the roster
-export const hiddenRoleFilter = Msgs.def(() => ({ text: () => 'Role filter is active but hidden with spoilers' }))
+export const hiddenRoleFilter = Msgs.def('Role filter is active but hidden with spoilers')
 
-export const roleFilterLabel = Msgs.def(() => ({ text: () => 'Role:' }))
+export const roleFilterLabel = Msgs.def('Role:')
 
-export const clearRoleFilter = Msgs.def(() => ({ text: () => 'Clear role filter' }))
+export const clearRoleFilter = Msgs.def('Clear role filter')
 
-export const versus = Msgs.def(() => ({ text: () => 'vs' }))
+export const versus = Msgs.def('vs')
 
-export const timeoutsTab = Msgs.def(() => ({ text: () => 'Timeouts' }))
+export const timeoutsTab = Msgs.def('Timeouts')
 
-export const timeoutsTabHint = Msgs.def(() => ({ text: () => 'Show active kick timeouts' }))
+export const timeoutsTabHint = Msgs.def('Show active kick timeouts')
 
-export const groupingLabel = Msgs.def(() => ({ text: () => 'Grouping' }))
+export const groupingLabel = Msgs.def('Grouping')
 
-export const allGroupings = Msgs.def(() => ({ text: () => 'All' }))
+export const allGroupings = Msgs.def('All')
 
-export const clearFilter = Msgs.def(() => ({ text: () => 'Clear' }))
+export const clearFilter = Msgs.def('Clear')
 
-export const statsMayBeInaccurate = Msgs.def(() => ({
-	text: () =>
-		'Stats may be inaccurate: SLM was not active at some points during this match, so events during those periods were not counted.',
-}))
+export const statsMayBeInaccurate = Msgs.def(
+	'Stats may be inaccurate: SLM was not active at some points during this match, so events during those periods were not counted.',
+)
 
 // -------- the roster columns --------
 
-export const selectRow = Msgs.def(() => ({ text: () => 'Select row' }))
+export const selectRow = Msgs.def('Select row')
 
-export const selectAllRows = Msgs.def(() => ({ text: () => 'Select all' }))
+export const selectAllRows = Msgs.def('Select all')
 
-export const groupColumn = Msgs.def(() => ({ text: () => 'Group' }))
+export const groupColumn = Msgs.def('Group')
 
-export const roleColumn = Msgs.def(() => ({ text: () => 'Role' }))
+export const roleColumn = Msgs.def('Role')
 
-export const squadColumn = Msgs.def(() => ({ text: () => 'Squad' }))
+export const squadColumn = Msgs.def('Squad')
 
-export const teamKillsColumn = Msgs.def(() => ({ text: () => 'TKs' }))
+export const teamKillsColumn = Msgs.def('TKs')
 
-export const teamKillsHint = Msgs.def(() => ({ text: () => 'Team kills' }))
+export const teamKillsHint = Msgs.def('Team kills')
 
-export const unassignedSquad = Msgs.def(() => ({ text: () => 'Unassigned' }))
+export const unassignedSquad = Msgs.def('Unassigned')
 
 // follows the squad name in the separator row
-export const createdBy = Msgs.def((creator: string) => ({ text: () => `· created by ${creator}` }))
+export const createdBy = Msgs.def((creator: string) => `· created by ${creator}`)
 
 // how many of a squad's players the current filters leave visible
-export const squadRowCount = Msgs.def((shown: number, total: number) => ({
-	text: () => `${shown < total ? `${shown} of ` : ''}${total} ${total === 1 ? 'player' : 'players'}`,
-}))
+export const squadRowCount = Msgs.def(
+	(shown: number, total: number) => `${shown < total ? `${shown} of ` : ''}${total} ${total === 1 ? 'player' : 'players'}`,
+)
 
-export const adminCamHint = Msgs.def(() => ({
-	text: () => `In admin camera. Shift+click: select this team's players in admin cam. Shift+Ctrl+click: both teams`,
-}))
+export const adminCamHint = Msgs.def(
+	() => `In admin camera. Shift+click: select this team's players in admin cam. Shift+Ctrl+click: both teams`,
+)
 
-export const squadLeaderColumnHint = Msgs.def(() => ({
-	text: () => 'Shift+click: select squad leaders on this team. Shift+Ctrl+click: both teams',
-}))
+export const squadLeaderColumnHint = Msgs.def('Shift+click: select squad leaders on this team. Shift+Ctrl+click: both teams')
 
-export const selectAllTeamHint = Msgs.def(() => ({
-	text: () =>
+export const selectAllTeamHint = Msgs.def(
+	() =>
 		'Select all shown. Shift+click: select all on this team. Shift+Ctrl+click: both teams. Alt+click: invert selection on this team. ' +
 		'Alt+Ctrl+click: invert on both teams',
-}))
+)
 
-export const selectAllCombinedHint = Msgs.def(() => ({
-	text: () => 'Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection',
-}))
+export const selectAllCombinedHint = Msgs.def(
+	'Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection',
+)
 
-export const teamTableLabel = Msgs.def((team: string | number) => ({ text: () => `Team ${team} players` }))
+export const teamTableLabel = Msgs.def((team: string | number) => `Team ${team} players`)
 
-export const combinedTableLabel = Msgs.def(() => ({ text: () => 'All players' }))
+export const combinedTableLabel = Msgs.def('All players')
 
 // -------- the teamswap panel --------
 
-export const teamsAfterSwap = Msgs.def(() => ({ text: () => 'Teams After Swap' }))
+export const teamsAfterSwap = Msgs.def('Teams After Swap')
 
-export const revertToSaved = Msgs.def(() => ({ text: () => 'Revert to saved' }))
+export const revertToSaved = Msgs.def('Revert to saved')
 
-export const toggleForceSaveHint = Msgs.def(() => ({ text: () => 'Toggle force save (save even if others are still editing)' }))
+export const toggleForceSaveHint = Msgs.def('Toggle force save (save even if others are still editing)')
 
-export const startEditing = Msgs.def(() => ({ text: () => 'Start Editing' }))
+export const startEditing = Msgs.def('Start Editing')
 
-export const executeSwapsTitle = Msgs.def(() => ({ text: () => 'Execute team swaps?' }))
+export const executeSwapsTitle = Msgs.def('Execute team swaps?')
 
-export const executeSwapsBlurb = Msgs.def(() => ({ text: () => 'This will immediately move all queued players to their assigned teams.' }))
+export const executeSwapsBlurb = Msgs.def('This will immediately move all queued players to their assigned teams.')
 
-export const cancel = Msgs.def(() => ({ text: () => 'Cancel' }))
+export const cancel = Msgs.def('Cancel')
 
-export const help = Msgs.def(() => ({ text: () => 'Help' }))
+export const help = Msgs.def('Help')
 
-export const swapsToCurrent = Msgs.def(() => ({ text: () => 'Swaps to current' }))
+export const swapsToCurrent = Msgs.def('Swaps to current')
 
-export const noSwapsYet = Msgs.def(() => ({ text: () => 'No swaps yet' }))
+export const noSwapsYet = Msgs.def('No swaps yet')
 
-export const clearAllSwaps = Msgs.def(() => ({ text: () => 'Clear all' }))
+export const clearAllSwaps = Msgs.def('Clear all')
 
-export const deleteSwapAction = Msgs.def(() => ({ text: () => 'Delete swap' }))
+export const deleteSwapAction = Msgs.def('Delete swap')
 
-export const middleClickDeleteSwap = Msgs.def(() => ({ text: () => 'Middle-click: delete swap' }))
+export const middleClickDeleteSwap = Msgs.def('Middle-click: delete swap')
 
 // -------- the squad details window --------
 
-export const playerDetailsTitle = Msgs.def(() => ({ text: () => 'Player Details' }))
+export const playerDetailsTitle = Msgs.def('Player Details')
 
-export const squadWithId = Msgs.def((squadId: number) => ({ text: () => `Squad ${squadId}` }))
+export const squadWithId = Msgs.def((squadId: number) => `Squad ${squadId}`)
 
-export const onlineFor = Msgs.def((elapsed?: string | null) => ({ text: () => (elapsed ? `Online for ${elapsed}` : 'Online') }))
+export const onlineFor = Msgs.def((elapsed?: string | null) => (elapsed ? `Online for ${elapsed}` : 'Online'))
 
-export const lastSeen = Msgs.def((when: string) => ({ text: () => `Last seen ${when}` }))
+export const lastSeen = Msgs.def((when: string) => `Last seen ${when}`)
 
-export const offline = Msgs.def(() => ({ text: () => 'Offline' }))
+export const offline = Msgs.def('Offline')
 
-export const playerActions = Msgs.def(() => ({ text: () => 'Player actions' }))
+export const playerActions = Msgs.def('Player actions')
 
-export const noSteamId = Msgs.def(() => ({ text: () => '(no steam id)' }))
+export const noSteamId = Msgs.def('(no steam id)')
 
-export const warnPlayerPlaceholder = Msgs.def((playerName: string) => ({ text: () => `Warn ${playerName}…` }))
+export const warnPlayerPlaceholder = Msgs.def((playerName: string) => `Warn ${playerName}…`)
 
-export const unnamedPlayer = Msgs.def(() => ({ text: () => 'player' }))
+export const unnamedPlayer = Msgs.def('player')
 
-export const timedOutUntil = Msgs.def((expiresAt: string, reasonLabel?: string) => ({
-	text: () => `Timed out until ${expiresAt}` + (reasonLabel ? ` (${reasonLabel})` : ''),
-}))
+export const timedOutUntil = Msgs.def(
+	(expiresAt: string, reasonLabel?: string) => `Timed out until ${expiresAt}` + (reasonLabel ? ` (${reasonLabel})` : ''),
+)
 
 // the divider the feed draws where it skipped a stretch of quiet: how long the gap ran, and where it picks up
-export const feedGap = Msgs.def((gap: string, resumesAt: string) => ({ text: () => `${gap} later, resuming ${resumesAt}` }))
+export const feedGap = Msgs.def((gap: string, resumesAt: string) => `${gap} later, resuming ${resumesAt}`)
 
-export const squadDetailsTitle = Msgs.def(() => ({ text: () => 'Squad Details' }))
+export const squadDetailsTitle = Msgs.def('Squad Details')
 
-export const squadLocked = Msgs.def(() => ({ text: () => 'Squad is locked' }))
+export const squadLocked = Msgs.def('Squad is locked')
 
-export const squadActions = Msgs.def(() => ({ text: () => 'Squad actions' }))
+export const squadActions = Msgs.def('Squad actions')
 
-export const squadCreator = Msgs.def(() => ({ text: () => 'Creator:' }))
+export const squadCreator = Msgs.def('Creator:')
 
-export const squadTeam = Msgs.def(() => ({ text: () => 'Team' }))
+export const squadTeam = Msgs.def('Team')
 
-export const squadInGameId = Msgs.def(() => ({ text: () => 'In-game ID:' }))
+export const squadInGameId = Msgs.def('In-game ID:')
 
-export const squadEvents = Msgs.def(() => ({ text: () => 'Squad Events' }))
+export const squadEvents = Msgs.def('Squad Events')
 
-export const hideTeamChat = Msgs.def(() => ({ text: () => 'Hide team/allchat' }))
+export const hideTeamChat = Msgs.def('Hide team/allchat')
 
-export const squadPlayersHeading = Msgs.def((count: number) => ({ text: () => `Players (${count})` }))
+export const squadPlayersHeading = Msgs.def((count: number) => `Players (${count})`)
 
-export const noPlayersInSquad = Msgs.def(() => ({ text: () => 'No players' }))
+export const noPlayersInSquad = Msgs.def('No players')
 
-export const warnSquadPlaceholder = Msgs.def((squadName: string) => ({ text: () => `Warn ${squadName}…` }))
+export const warnSquadPlaceholder = Msgs.def((squadName: string) => `Warn ${squadName}…`)
 
 // -------- the active-timeouts window --------
 
-export const activeTimeoutsTitle = Msgs.def(() => ({ text: () => 'Active Timeouts' }))
+export const activeTimeoutsTitle = Msgs.def('Active Timeouts')
 
-export const activeTimeoutsBlurb = Msgs.def(() => ({
-	text: () => 'Players with an active kick timeout are re-kicked on join from any SLM-managed server until it expires.',
-}))
+export const activeTimeoutsBlurb = Msgs.def(
+	'Players with an active kick timeout are re-kicked on join from any SLM-managed server until it expires.',
+)
 
-export const noActiveTimeouts = Msgs.def(() => ({ text: () => 'No active timeouts.' }))
+export const noActiveTimeouts = Msgs.def('No active timeouts.')
 
-export const timeoutPlayerColumn = Msgs.def(() => ({ text: () => 'Player' }))
+export const timeoutPlayerColumn = Msgs.def('Player')
 
-export const timeoutExpiresColumn = Msgs.def(() => ({ text: () => 'Expires' }))
+export const timeoutExpiresColumn = Msgs.def('Expires')
 
-export const timeoutReasonColumn = Msgs.def(() => ({ text: () => 'Reason' }))
+export const timeoutReasonColumn = Msgs.def('Reason')
 
-export const timeoutIssuedColumn = Msgs.def(() => ({ text: () => 'Issued' }))
+export const timeoutIssuedColumn = Msgs.def('Issued')
 
-export const noTimeoutReason = Msgs.def(() => ({ text: () => 'none' }))
+export const noTimeoutReason = Msgs.def('none')
 
-export const cancelTimeoutHint = Msgs.def(() => ({ text: () => 'Cancel this timeout' }))
+export const cancelTimeoutHint = Msgs.def('Cancel this timeout')
 
-export const cancelTimeout = Msgs.def(() => ({ text: () => 'Cancel' }))
+export const cancelTimeout = Msgs.def('Cancel')
 
 // who issued a timeout, when their account or in-game name cannot be resolved
 export const timeoutActorFallbacks = { 'slm-user': 'Admin', 'ingame-user': 'In-game admin', system: 'System' }
@@ -535,6 +524,6 @@ export const idKindLabels: Record<IdKind, string> = { steam: 'steam', eos: 'eos'
 
 const copyIdHints: Record<IdKind, string> = { steam: 'Copy steam ID', eos: 'Copy eos ID', epic: 'Copy epic ID' }
 
-export const copyIdHint = Msgs.def((kind: IdKind) => ({ text: () => copyIdHints[kind] }))
+export const copyIdHint = Msgs.def((kind: IdKind) => copyIdHints[kind])
 
-export const copiedFeedback = Msgs.def(() => ({ text: () => 'Copied!' }))
+export const copiedFeedback = Msgs.def('Copied!')

@@ -20,79 +20,73 @@ export const sendFailed = Msgs.def((code?: string) => ({
 
 // -------- the activity feed --------
 
-export const activityTitle = Msgs.def(() => ({ text: () => 'Server Activity' }))
+export const activityTitle = Msgs.def('Server Activity')
 
-export const viewingHistoricalMatch = Msgs.def(() => ({ text: () => 'Viewing historical match' }))
+export const viewingHistoricalMatch = Msgs.def('Viewing historical match')
 
-export const noPlayersSelected = Msgs.def(() => ({
-	text: () => 'No players selected. Select players in the teams panel to filter the feed.',
-}))
+export const noPlayersSelected = Msgs.def('No players selected. Select players in the teams panel to filter the feed.')
 
-export const noEventsYet = Msgs.def((match: 'current' | 'historical') => ({
-	text: () => (match === 'current' ? 'No events yet for current match' : 'No events yet for this match'),
-}))
+export const noEventsYet = Msgs.def((match: 'current' | 'historical') =>
+	match === 'current' ? 'No events yet for current match' : 'No events yet for this match',
+)
 
-export const connectionLost = Msgs.def(() => ({ text: () => 'Connection lost - attempting to reconnect...' }))
+export const connectionLost = Msgs.def('Connection lost - attempting to reconnect...')
 
-export const reconnectionFailed = Msgs.def(() => ({
-	text: () => 'Reconnection failed - unable to reconnect to the server. Please refresh the page.',
-}))
+export const reconnectionFailed = Msgs.def('Reconnection failed - unable to reconnect to the server. Please refresh the page.')
 
-export const scrollToBottom = Msgs.def(() => ({ text: () => 'Scroll to bottom' }))
+export const scrollToBottom = Msgs.def('Scroll to bottom')
 
-export const loadOlderEvents = Msgs.def(() => ({ text: () => 'Load older events' }))
+export const loadOlderEvents = Msgs.def('Load older events')
 
-export const newEvents = Msgs.def((count: number) => ({ text: () => `${count} new event${count === 1 ? '' : 's'}` }))
+export const newEvents = Msgs.def((count: number) => `${count} new event${count === 1 ? '' : 's'}`)
 
-export const previousMatch = Msgs.def(() => ({ text: () => 'Previous match' }))
+export const previousMatch = Msgs.def('Previous match')
 
-export const nextMatch = Msgs.def(() => ({ text: () => 'Next match' }))
+export const nextMatch = Msgs.def('Next match')
 
-export const returnToLive = Msgs.def(() => ({ text: () => 'Return to Live' }))
+export const returnToLive = Msgs.def('Return to Live')
 
-export const returnToLiveTooltip = Msgs.def(() => ({ text: () => 'Return to live events' }))
+export const returnToLiveTooltip = Msgs.def('Return to live events')
 
-export const playersOnline = Msgs.def(() => ({ text: () => 'Players online' }))
+export const playersOnline = Msgs.def('Players online')
 
-export const playersInQueue = Msgs.def(() => ({ text: () => 'Players in queue' }))
+export const playersInQueue = Msgs.def('Players in queue')
 
-export const serverTickRate = Msgs.def(() => ({ text: () => 'Server tick rate' }))
+export const serverTickRate = Msgs.def('Server tick rate')
 
 // -------- the chat boxes --------
 
-export const notifyAdmins = Msgs.def(() => ({ text: () => 'Notify admins' }))
+export const notifyAdmins = Msgs.def('Notify admins')
 
-export const notifyAdminsHint = Msgs.def(() => ({ text: () => 'Warn every online admin that this warn was sent' }))
+export const notifyAdminsHint = Msgs.def('Warn every online admin that this warn was sent')
 
-export const prefixNameHint = Msgs.def(() => ({ text: () => 'Prefix the message with your username' }))
+export const prefixNameHint = Msgs.def('Prefix the message with your username')
 
-export const warnAdminsChannel = Msgs.def(() => ({ text: () => 'Admins' }))
+export const warnAdminsChannel = Msgs.def('Admins')
 
-export const broadcastChannel = Msgs.def(() => ({ text: () => 'Broadcast' }))
+export const broadcastChannel = Msgs.def('Broadcast')
 
-export const warnSelectedChannel = Msgs.def((count: number) => ({ text: () => (count > 0 ? `Selected (${count})` : 'Selected') }))
+export const warnSelectedChannel = Msgs.def((count: number) => (count > 0 ? `Selected (${count})` : 'Selected'))
 
-export const sendHint = Msgs.def(() => ({ text: () => 'Send (Enter)' }))
+export const sendHint = Msgs.def('Send (Enter)')
 
-export const sendWarningHint = Msgs.def(() => ({ text: () => 'Send warning (Enter)' }))
+export const sendWarningHint = Msgs.def('Send warning (Enter)')
 
-export const missingPermission = Msgs.def(() => ({ text: () => 'Missing permission' }))
+export const missingPermission = Msgs.def('Missing permission')
 
-export const warnAdminsPlaceholder = Msgs.def(() => ({ text: () => 'Warn all online admins…' }))
+export const warnAdminsPlaceholder = Msgs.def('Warn all online admins…')
 
-export const broadcastPlaceholder = Msgs.def(() => ({ text: () => 'Broadcast to the server…' }))
+export const broadcastPlaceholder = Msgs.def('Broadcast to the server…')
 
-export const nobodySelectedPlaceholder = Msgs.def(() => ({ text: () => 'No players selected in the teams panel' }))
+export const nobodySelectedPlaceholder = Msgs.def('No players selected in the teams panel')
 
-export const warnSelectedPlaceholder = Msgs.def((count: number) => ({
-	text: () => `Warn ${count} selected ${count === 1 ? 'player' : 'players'}…`,
-}))
+export const warnSelectedPlaceholder = Msgs.def((count: number) => `Warn ${count} selected ${count === 1 ? 'player' : 'players'}…`)
 
-export const noOneToWarnPlaceholder = Msgs.def(() => ({ text: () => 'No one to warn' }))
+export const noOneToWarnPlaceholder = Msgs.def('No one to warn')
 
-export const warnPlaceholder = Msgs.def(() => ({ text: () => 'Warn…' }))
+export const warnPlaceholder = Msgs.def('Warn…')
 
-export const selectedOnly = Msgs.def(() => ({ text: () => 'Selected Only' }))
+export const selectedOnly = Msgs.def('Selected Only')
 
 // -------- the activity feed's event lines --------
 //
@@ -100,21 +94,21 @@ export const selectedOnly = Msgs.def(() => ({ text: () => 'Selected Only' }))
 // The whole sentence lives here with its slots named, which is what a locale needs: word order, the connectives
 // and the punctuation are all the message's, and only what the slots look like belongs to the caller.
 
-export const chatChannelBroadcast = Msgs.def(() => ({ text: () => '(broadcast)' }))
+export const chatChannelBroadcast = Msgs.def('(broadcast)')
 
-export const chatChannelBroadcastHint = Msgs.def(() => ({ text: () => 'admin broadcast message' }))
+export const chatChannelBroadcastHint = Msgs.def('admin broadcast message')
 
-export const chatChannelAll = Msgs.def(() => ({ text: () => '(all)' }))
+export const chatChannelAll = Msgs.def('(all)')
 
-export const chatChannelAllHint = Msgs.def(() => ({ text: () => 'this message was sent in all chat' }))
+export const chatChannelAllHint = Msgs.def('this message was sent in all chat')
 
-export const chatChannelAdmin = Msgs.def(() => ({ text: () => '(admin)' }))
+export const chatChannelAdmin = Msgs.def('(admin)')
 
-export const chatChannelAdminHint = Msgs.def(() => ({ text: () => 'this message was sent in admin chat' }))
+export const chatChannelAdminHint = Msgs.def('this message was sent in admin chat')
 
-export const broadcastFromRcon = Msgs.def(() => ({ text: () => 'RCON' }))
+export const broadcastFromRcon = Msgs.def('RCON')
 
-export const broadcastFromUnknown = Msgs.def(() => ({ text: () => 'unknown' }))
+export const broadcastFromUnknown = Msgs.def('unknown')
 
 export const playerConnected = Msgs.def((player: React.ReactNode, team?: React.ReactNode) => ({
 	react: () => (
@@ -262,17 +256,17 @@ export const playerDowned = Msgs.def((victim: React.ReactNode, wounded: boolean,
 	),
 }))
 
-export const withWeapon = Msgs.def((weapon: string) => ({ text: () => ` with ${weapon}` }))
+export const withWeapon = Msgs.def((weapon: string) => ` with ${weapon}`)
 
 // -------- match boundaries --------
 
-export const newGameStarted = Msgs.def(() => ({ text: () => 'New game started' }))
+export const newGameStarted = Msgs.def('New game started')
 
-export const newGameOnAppStart = Msgs.def(() => ({ text: () => 'New game detected on Application Start' }))
+export const newGameOnAppStart = Msgs.def('New game detected on Application Start')
 
-export const newGameOnRconReconnect = Msgs.def(() => ({ text: () => 'New game detected on RCON Reconnect' }))
+export const newGameOnRconReconnect = Msgs.def('New game detected on RCON Reconnect')
 
-export const currentMatch = Msgs.def(() => ({ text: () => 'Current Match' }))
+export const currentMatch = Msgs.def('Current Match')
 
 // `{label} ({which}): {layer}` -- which is either "Current Match" or how many matches back this one is
 export const newGameLine = Msgs.def((label: string, which: React.ReactNode, layer: React.ReactNode) => ({
@@ -284,7 +278,7 @@ export const newGameLine = Msgs.def((label: string, which: React.ReactNode, laye
 }))
 
 // the draw readout is coloured on its own rather than by the container, which the winner line also uses
-export const draw = Msgs.def(() => ({ text: () => 'Draw' }))
+export const draw = Msgs.def('Draw')
 
 export const roundEndedDraw = Msgs.def((layer: React.ReactNode, outcome: React.ReactNode) => ({
 	react: () => (
@@ -331,9 +325,9 @@ export const roundEndSwitchingTo = Msgs.def((layer: React.ReactNode) => ({
 	react: () => <>, switching to {layer}</>,
 }))
 
-export const rconTool = Msgs.def(() => ({ text: () => 'RCON' }))
+export const rconTool = Msgs.def('RCON')
 
-export const slmTool = Msgs.def(() => ({ text: () => 'SLM' }))
+export const slmTool = Msgs.def('SLM')
 
 // -------- the layer the server is about to play --------
 
@@ -353,18 +347,18 @@ export const nextLayerSet = Msgs.def((layer: React.ReactNode) => ({
 	react: () => <>Next layer set to {layer}</>,
 }))
 
-export const ingameAdmin = Msgs.def(() => ({ text: () => 'an in-game admin' }))
+export const ingameAdmin = Msgs.def('an in-game admin')
 
-export const anotherRconTool = Msgs.def(() => ({ text: () => 'another RCON tool' }))
+export const anotherRconTool = Msgs.def('another RCON tool')
 
 // -------- connection and in-game voting --------
 
-export const ingameVoteStarted = Msgs.def(() => ({ text: () => 'In-game vote started on the Squad server' }))
+export const ingameVoteStarted = Msgs.def('In-game vote started on the Squad server')
 
-export const ingameVoteChoices = Msgs.def((choices: readonly string[]) => ({ text: () => ` (${choices.join(', ')})` }))
+export const ingameVoteChoices = Msgs.def((choices: readonly string[]) => ` (${choices.join(', ')})`)
 
-export const rconReconnected = Msgs.def(() => ({ text: () => 'RCON reconnected' }))
+export const rconReconnected = Msgs.def('RCON reconnected')
 
-export const rconFirstConnected = Msgs.def(() => ({ text: () => 'Application started, RCON connection established' }))
+export const rconFirstConnected = Msgs.def('Application started, RCON connection established')
 
-export const rconDisconnected = Msgs.def(() => ({ text: () => 'RCON disconnected' }))
+export const rconDisconnected = Msgs.def('RCON disconnected')
