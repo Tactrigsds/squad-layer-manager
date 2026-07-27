@@ -23,6 +23,7 @@ import { SftpTail } from '@/lib/sftp-tail'
 import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
+import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -1172,7 +1173,7 @@ export async function notifyAdminsOfWebAction(
 ) {
 	if (appEvent.actor.type !== 'slm-user') return
 	const name = await Users.resolveDisplayName(ctx, appEvent.actor.userId)
-	await SquadRcon.warnAllAdmins(ctx, `${name} ${description ?? AppEvents.describeAppEvent(appEvent)}`)
+	await SquadRcon.warnAllAdmins(ctx, `${name} ${description ?? AppEvents_Msgs.describeAppEvent(appEvent)}`)
 }
 
 // delivers a preset reason's message to the affected players as an in-game warn, attributing the landing

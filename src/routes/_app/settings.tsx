@@ -35,7 +35,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
-import * as AppEvents from '@/models/app-events.models'
+import type * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
@@ -310,7 +310,7 @@ function AuditLogEntry({
 				<Icons.ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
 				<span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(event.time).toLocaleString()}</span>
 				<span className="font-medium whitespace-nowrap">{actorName}</span>
-				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents.describeAppEvent(event, playerName)}</span>
+				<span className="text-muted-foreground grow min-w-0 wrap-break-word">{AppEvents_Msgs.describeAppEvent(event, playerName)}</span>
 				{event.serverId && <span className="text-xs text-muted-foreground whitespace-nowrap">{event.serverId}</span>}
 			</summary>
 			<pre className="mt-1 ml-5 max-h-96 overflow-auto rounded-md bg-muted p-2 text-xs">
