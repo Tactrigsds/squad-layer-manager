@@ -30,6 +30,7 @@ import ComboBox from './combo-box/combo-box.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor.types'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
+import { RichText } from './rich-text.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 import { Button, buttonVariants } from './ui/button'
@@ -438,7 +439,7 @@ function NodeComment(props: NodeProps) {
 				autoFocus
 				rows={3}
 				maxLength={F.NODE_COMMENT_MAX_LENGTH}
-				placeholder="Comment"
+				placeholder="Comment. Links are clickable."
 				defaultValue={comment ?? ''}
 				className="my-1 text-xs"
 				onChange={(e) => setCommentDebounced(e.target.value)}
@@ -457,11 +458,15 @@ function NodeComment(props: NodeProps) {
 
 	const flattened = comment.replace(/\s+/g, ' ')
 	const truncated = flattened.length > COMMENT_PREVIEW_LENGTH
-	const shown = !truncated || expanded ? comment : flattened.slice(0, COMMENT_PREVIEW_LENGTH).trimEnd() + '…'
+	const collapsed = truncated && !expanded
 
 	return (
 		<div className="my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground">
-			<p className="min-w-0 break-words whitespace-pre-wrap">{shown}</p>
+			<RichText
+				text={collapsed ? flattened : comment}
+				maxLength={collapsed ? COMMENT_PREVIEW_LENGTH : undefined}
+				className={cn('min-w-0', collapsed && 'whitespace-normal')}
+			/>
 			{truncated && (
 				<button type="button" className="shrink-0 underline" onClick={() => setExpanded((v) => !v)}>
 					{expanded ? 'less' : 'more'}
