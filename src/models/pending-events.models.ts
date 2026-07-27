@@ -885,7 +885,6 @@ async function* processPendingEvent(
 			yield await createEvent(state, {
 				type: 'INGAME_VOTE_STARTED',
 				...base,
-				kind: started.kind,
 				container: started.container,
 				choices: pendingEvent.events.INGAME_VOTE_CHOICES?.choices ?? [],
 			})

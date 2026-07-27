@@ -24,7 +24,6 @@ export const MAP_SET_META = meta()
 // SLM stops writing the rotation for the rest of the match. See docs/ingame_voting.md.
 export type IngameVoteStarted = {
 	type: 'INGAME_VOTE_STARTED'
-	kind: SM.LogEvents.IngameVoteKind
 	container: string
 	choices: string[]
 } & Base
@@ -376,7 +375,6 @@ const MapSetSourceSchema = z.discriminatedUnion('type', [
 
 export const MapSetSchema = event('MAP_SET', { layerId: z.string(), source: MapSetSourceSchema.optional() })
 export const IngameVoteStartedSchema = event('INGAME_VOTE_STARTED', {
-	kind: SM.LogEvents.INGAME_VOTE_KIND,
 	container: z.string(),
 	choices: z.array(z.string()),
 })

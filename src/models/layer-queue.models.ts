@@ -7,7 +7,6 @@ import * as CS from '@/models/context-shared'
 import type * as L from '@/models/layer'
 import type * as SS from '@/models/server-state.models'
 import type * as SLL from '@/models/shared-layer-list'
-import type * as SM from '@/models/squad.models'
 
 export type Ctx = CS.Ctx & { layerQueue: Ctx.Payload } & CS.ServerId
 export const CtxDef = CD.defCtx<Ctx>()(['layerQueue'], { name: 'layerQueue', extends: [CS.ServerIdDef] })
@@ -16,12 +15,8 @@ export const CtxDef = CD.defCtx<Ctx>()(['layerQueue'], { name: 'layerQueue', ext
 // stands down for the rest of the match while one is live. Runtime-only: it is rebuilt from the log stream, and a
 // vote never outlives the match it was called in. See docs/ingame_voting.md.
 export type IngameVote = {
-	kind: SM.LogEvents.IngameVoteKind
 	choices: string[]
 	startedAt: number
-	// whether SLM turned updatesToSquadServerDisabled on itself in response, i.e. whether the alert should offer to
-	// undo it as part of the same story
-	disabledUpdates: boolean
 }
 
 export namespace Ctx {

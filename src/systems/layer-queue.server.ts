@@ -271,9 +271,14 @@ export const setupInstance = Instr.spanOp(
 						if (event.type !== 'INGAME_VOTE_STARTED') return
 
 						const serverState = await SquadServer.getServerState(ctx)
-						const shouldDisable = event.kind === 'next-layer' && !serverState.settings.updatesToSquadServerDisabled
-						if (shouldDisable) {
-							await toggleUpdatesToSquadServer({ ctx, input: { disabled: true, cause: 'ingame-vote-detected' } })
+						// A vote takes over the reason even when an admin had already turned updates off: whoever stopped
+						// SLM writing the rotation, the vote is what decides the next layer now, and the alert has to say
+						// so. Only the first stage acts, though -- each team's faction round arrives as its own container,
+						// and re-claiming on those would override an admin who re-enabled updates mid-vote.
+						const existing = ctx.layerQueue.ingameVote$.getValue()
+						const from = serverState.settings.updatesToSquadServerDisabled
+						if (!existing && from?.type !== 'ingame-vote') {
+							await toggleUpdatesToSquadServer({ ctx, input: { disabled: { type: 'ingame-vote', inferred: false } } })
 							// SLM turning itself off is an action in its own right, and the settings write alone leaves no
 							// trace of who did it or why
 							await AppEventsSys.persistAppEvent(
@@ -284,19 +289,72 @@ export const setupInstance = Instr.spanOp(
 									serverId: ctx.serverId,
 									matchId: event.matchId,
 									causeId: null,
-									changes: [{ path: 'updatesToSquadServerDisabled', from: false, to: true }],
+									changes: [{ path: 'updatesToSquadServerDisabled', from, to: { type: 'ingame-vote', inferred: false } }],
 								}),
 							)
 						}
 						ctx.layerQueue.ingameVote$.next({
-							kind: event.kind,
 							choices: event.choices,
-							startedAt: event.time,
-							disabledUpdates: shouldDisable,
+							startedAt: existing?.startedAt ?? event.time,
 						})
 					}),
 				)
 				.subscribe()
+		}
+
+		// -------- infer a vote from the server losing its next layer --------
+		// Enabling voting clears the server's next layer, and nothing is logged when an admin enables it, so the
+		// cleared next layer is the only thing SLM can see. This reads the status the existing poll already produces
+		// and issues no rcon of its own: an extra round trip on the shared connection delays the roster poll across
+		// a roll, which is enough to change what the roll looks like to everything downstream.
+		{
+			// a roll clears the next layer too, and SLM's write lands just after, so one sighting proves nothing --
+			// every roll produces one. Only a gap that outlasts the grace period is somebody else's doing.
+			let missingSince: number | null = null
+			ctx.cleanup.push(
+				ctx.squadRcon.layersStatus
+					.observe(ctx)
+					.pipe(
+						Instr.durableSub('infer-ingame-vote', { module, levels: { event: 'trace' } }, async (status, signal) => {
+							const rolling = !!ctx.server.serverRolling$.value
+							if (status.code !== 'ok' || status.data.nextLayer || rolling) {
+								missingSince = null
+								return
+							}
+							if (missingSince === null) {
+								missingSince = Date.now()
+								return
+							}
+							if (Date.now() - missingSince < INFER_INGAME_VOTE_GRACE_MS) return
+
+							// only now is it worth reading anything: until here this has cost one comparison per poll
+							const ctxWithSignal = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
+							if (!(await nextLayerMissingWithNothingToBlame(ctxWithSignal))) {
+								missingSince = null
+								return
+							}
+							missingSince = null
+
+							const from = (await SquadServer.getServerState(ctxWithSignal)).settings.updatesToSquadServerDisabled
+							await toggleUpdatesToSquadServer({
+								ctx: ctxWithSignal,
+								input: { disabled: { type: 'ingame-vote', inferred: true } },
+							})
+							await AppEventsSys.persistAppEvent(
+								ctxWithSignal,
+								AppEvents.create<AppEvents.SettingsUpdated>({
+									type: 'SETTINGS_UPDATED',
+									actor: { type: 'system' },
+									serverId: ctxWithSignal.serverId,
+									matchId: (await MatchHistory.getCurrentMatch(ctxWithSignal))?.historyEntryId ?? null,
+									causeId: null,
+									changes: [{ path: 'updatesToSquadServerDisabled', from, to: { type: 'ingame-vote', inferred: true } }],
+								}),
+							)
+						}),
+					)
+					.subscribe(),
+			)
 		}
 
 		// -------- handle AdminChangeLayer --------
@@ -646,32 +704,57 @@ export const syncNextLayerToServer = Instr.spanOp(
 	},
 )
 
+// How long the server is allowed to have no next layer before SLM reads it as voting having been enabled. A roll
+// clears it and SLM's own write lands shortly after -- a second or two -- so anything near that gap reads every roll
+// as a vote. The gap must also be seen on more than one poll, so this is a floor on the wait, not the whole of it.
+const INFER_INGAME_VOTE_GRACE_MS = 10_000
+
+// The conditions under which an empty next layer is somebody else's doing rather than SLM's own: SLM is writing the
+// rotation, it has a head it would have written, and no roll is in flight to explain the gap.
+async function nextLayerMissingWithNothingToBlame(ctx: C.Db & SQS.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal) {
+	if (ctx.server.serverRolling$.value) return false
+	const serverState = await SquadServer.getServerState(ctx)
+	if (serverState.settings.updatesToSquadServerDisabled) return false
+	return !!getSavedQueue(ctx)[0]?.layerId
+}
+
 export async function toggleUpdatesToSquadServer({
 	ctx,
 	input,
 }: {
 	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
-	input: { disabled: boolean; cause?: 'ingame-vote-detected' }
+	// null re-enables. The reason is the state, so a caller cannot disable updates without saying why.
+	input: { disabled: SETTINGS.SlmUpdatesDisabled | null }
 }) {
+	const byVote = input.disabled?.type === 'ingame-vote'
+	let turnedIngameVotingOff = false
 	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const serverState = await SquadServer.getServerState(ctx)
+		// Re-enabling while a vote is the reason has to turn the vote off too, or SLM goes straight back to setting a
+		// next layer the vote will overwrite -- the fight that standing down avoided in the first place.
+		turnedIngameVotingOff = !input.disabled && serverState.settings.updatesToSquadServerDisabled?.type === 'ingame-vote'
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
 		await Settings.updateServerSettings(ctx, serverState.settings, {
 			type: 'system',
-			event: input.cause ?? 'updates-to-squad-server-toggled',
+			event: byVote ? 'ingame-vote-detected' : 'updates-to-squad-server-toggled',
 		})
 	})
 
+	if (turnedIngameVotingOff) await SquadRcon.setIngameVotingEnabled(ctx, false)
+
 	await SquadRcon.warnAllAdmins(
 		ctx,
-		input.cause ? SS_Msgs.ingameVoteDisabledUpdates().warn() : SS_Msgs.slmUpdatesSet(!input.disabled).warn(),
+		byVote
+			? SS_Msgs.ingameVoteDisabledUpdates(input.disabled?.type === 'ingame-vote' && input.disabled.inferred).warn()
+			: SS_Msgs.slmUpdatesSet(!input.disabled, turnedIngameVotingOff).warn(),
 	)
 	return { code: 'ok' as const }
 }
 
 export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS.Ctx & LQ.Ctx) {
 	const serverState = await SquadServer.getServerState(ctx)
-	return { code: 'ok' as const, enabled: !serverState.settings.updatesToSquadServerDisabled }
+	const disabled = serverState.settings.updatesToSquadServerDisabled
+	return { code: 'ok' as const, enabled: !disabled, disabledByIngameVote: disabled?.type === 'ingame-vote' }
 }
 
 export async function requestFeedback(
@@ -728,7 +811,28 @@ export const router = {
 				RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }),
 			)
 			if (denyRes) return denyRes
-			return await toggleUpdatesToSquadServer({ ctx, input })
+			// a user can only ever disable updates as themselves: the vote reason is SLM's alone
+			const disabled = input.disabled ? ({ type: 'manual', by: { type: 'slm-user', userId: ctx.user.discordId } } as const) : null
+			return await toggleUpdatesToSquadServer({ ctx, input: { disabled } })
+		}),
+
+	// Turning voting on hands the rotation to the players, so SLM has to stand down with it -- doing one without the
+	// other just puts the two back to overwriting each other. Gated on disable-slm-updates because that is what it
+	// does to SLM, and there is no narrower permission for handing the rotation away.
+	enableIngameVoting: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ serverId: z.string() }))
+		.handler(async ({ context: _ctx, input }) => {
+			const ctxRes = await SquadServer.tryCtx(_ctx, input.serverId)
+			if (ctxRes.code !== 'ok') return ctxRes
+			const ctx = ctxRes.ctx
+			const denyRes = await Rbac.tryDenyPermissionsForUser(
+				ctx,
+				RBAC.perm('squad-server:disable-slm-updates', { serverId: ctx.serverId }),
+			)
+			if (denyRes) return denyRes
+			await SquadRcon.setIngameVotingEnabled(ctx, true)
+			return await toggleUpdatesToSquadServer({ ctx, input: { disabled: { type: 'ingame-vote', inferred: false } } })
 		}),
 
 	watchOps: orpcBase

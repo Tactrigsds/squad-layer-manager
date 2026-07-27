@@ -84,6 +84,7 @@ export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'queue',
 	'rconCacheTTL',
 	'adminLists',
+	'updatesToSquadServerDisabled',
 ])
 
 // paths the TOC must treat as leaves even though their schema node is an object with properties: they render via

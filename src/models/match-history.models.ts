@@ -158,6 +158,7 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 	switch (entry.setByType) {
 		case 'gameserver':
 		case 'unknown':
+		case 'ingame-vote':
 		case 'generated': {
 			layerSource = { type: entry.setByType }
 			break
@@ -342,23 +343,23 @@ export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
 	return Array.from(active)
 }
 
-export function getNewMatchHistoryEntry(opts: { layerId: L.LayerId; serverId: string; startTime: Date; lqItem?: LL.Item }) {
+// `source` attributes a match no queue item accounts for -- the server picked the layer itself.
+export function getNewMatchHistoryEntry(opts: {
+	layerId: L.LayerId
+	serverId: string
+	startTime: Date
+	lqItem?: LL.Item
+	source?: LL.Source
+}) {
+	const source = opts.lqItem?.source ?? opts.source
 	const newEntry: Omit<SchemaModels.NewMatchHistory, 'ordinal'> = {
-		layerId: opts.layerId,
+		layerId: opts.lqItem?.layerId ?? opts.layerId,
 		serverId: opts.serverId,
 		rawLayerCommandText: L.getLayerCommand(opts.layerId, 'set-next'),
 		startTime: opts.startTime,
-		setByType: 'unknown',
-	}
-
-	if (opts.lqItem) {
-		newEntry.layerId = opts.lqItem.layerId ?? newEntry.layerId
-		newEntry.lqItemId = opts.lqItem.itemId
-		newEntry.setByType = opts.lqItem.source.type
-
-		const setByUserId = opts.lqItem.source.type === 'manual' ? opts.lqItem.source.userId : undefined
-		newEntry.setByType = opts.lqItem.source.type
-		newEntry.setByUserId = setByUserId
+		setByType: source?.type ?? 'unknown',
+		setByUserId: source?.type === 'manual' ? source.userId : undefined,
+		lqItemId: opts.lqItem?.itemId,
 	}
 	return newEntry
 }
