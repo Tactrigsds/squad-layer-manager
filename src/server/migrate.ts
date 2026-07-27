@@ -43,6 +43,26 @@ export async function runMigrations(
 ): Promise<{ applied: string[] }> {
 	const log = opts.log ?? (() => {})
 
+	// A migration that rebuilds a table drops the original, and enforcement turns every inbound FK's cascade into
+	// data loss on rows that were never meant to be touched (an `on delete set null` owner column silently nulling).
+	// Both drizzle-kit's generated rebuilds and our hand-written ones depend on this being off. better-sqlite3 turns
+	// it on per connection, unlike bare sqlite, so it has to be turned back off explicitly rather than left alone.
+	// Set outside the per-migration transaction: the pragma is a no-op inside one.
+	const foreignKeysWereOn = driver.pragma('foreign_keys', { simple: true }) === 1
+	if (foreignKeysWereOn) driver.pragma('foreign_keys = OFF')
+
+	try {
+		return await applyMigrations(driver, opts, log)
+	} finally {
+		if (foreignKeysWereOn) driver.pragma('foreign_keys = ON')
+	}
+}
+
+async function applyMigrations(
+	driver: MigrationDriver,
+	opts: { sqlDir: string; tsMigrations: TsMigration[] },
+	log: (msg: string) => void,
+): Promise<{ applied: string[] }> {
 	driver.exec(`CREATE TABLE IF NOT EXISTS "${TABLE}" (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`)
 
 	// One-time transition: adopt migrations already applied by `drizzle-kit migrate`
