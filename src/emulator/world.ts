@@ -84,7 +84,7 @@ export function makePlayer(opts: Partial<EmuPlayer> & { name: string }): EmuPlay
 	}
 }
 
-type EmuSquad = {
+export type EmuSquad = {
 	teamId: number
 	squadId: number
 	name: string
@@ -232,6 +232,17 @@ export class World {
 		this.#chat(Fmt.squadCreatedBody(p, squadId, name, factionName))
 		this.#log(`LogSquad: ${Fmt.squadCreatedBody(p, squadId, name, factionName)}`)
 		return squad
+	}
+
+	// A squad belongs to a team, so crossing takes the player out of theirs, exactly as the server does when an
+	// admin forces the change.
+	setTeam(p: EmuPlayer, teamId: number) {
+		if (p.teamId === teamId) return
+		// before the move: a squad is found by the team its member is on, so reassigning first would leave the old
+		// one registered with nobody in it -- a pair ListPlayers and ListSquads disagree about, which the app rejects
+		this.#dropFromSquad(p)
+		p.teamId = teamId
+		this.#log(Fmt.logForcedTeamChange(p, this.playerIdOf(p)))
 	}
 
 	// another player joins an existing squad. The creator is already in it (createSquad puts them there).
@@ -442,9 +453,7 @@ export class World {
 				// a player the roll has not sorted yet is still travelling: there is no team to move them off,
 				// so the command reports success and changes nothing
 				if (p.teamId === null) return `Forced team change for player ${playerId}. ${p.name}`
-				p.teamId = p.teamId === 1 ? 2 : 1
-				this.#dropFromSquad(p)
-				this.#log(Fmt.logForcedTeamChange(p, playerId))
+				this.setTeam(p, p.teamId === 1 ? 2 : 1)
 				return `Forced team change for player ${playerId}. ${p.name}`
 			}
 			case 'AdminKick': {

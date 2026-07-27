@@ -109,6 +109,41 @@ describe('execute', () => {
 		expect(lines.join('\n')).toContain('Able')
 	})
 
+	it('moves a player between teams, and takes them out of the squad they are leaving behind', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Able' })
+		await Verbs.execute(host, 'set-team', { name: 'Alice', teamId: 2 })
+		const alice = host.players.get('Alice')!
+		expect(alice.teamId).toBe(2)
+		expect(alice.squadId).toBe(null)
+		expect(emu.world.squads).toEqual([])
+	})
+
+	it('joins a squad by id or by name, and leaves it again', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await Verbs.execute(host, 'join', { name: 'Bob' })
+		await Verbs.execute(host, 'set-team', { name: 'Bob', teamId: 1 })
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Able' })
+		const able = emu.world.squads[0]
+
+		await Verbs.execute(host, 'join-squad', { name: 'Bob', squad: 'Able' })
+		expect(host.players.get('Bob')!.squadId).toBe(able.squadId)
+		await Verbs.execute(host, 'leave-squad', { name: 'Bob' })
+		expect(host.players.get('Bob')!.squadId).toBe(null)
+
+		await Verbs.execute(host, 'join-squad', { name: 'Bob', squad: String(able.squadId) })
+		expect(host.players.get('Bob')!.squadId).toBe(able.squadId)
+	})
+
+	// squads are identified by (team, id), so the other team's squad 1 is not one this player could join
+	it('refuses a squad that belongs to the other team', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await Verbs.execute(host, 'join', { name: 'Bob' })
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Able' })
+		expect(host.players.get('Bob')!.teamId).toBe(2)
+		await expect(Verbs.execute(host, 'join-squad', { name: 'Bob', squad: 'Able' })).rejects.toThrow(/no squad/)
+	})
+
 	it('rejects args that do not fit the verb, rather than acting on a coerced value', async () => {
 		await Verbs.execute(host, 'join', { name: 'Alice' })
 		await expect(Verbs.execute(host, 'end', { winnerTeamId: 3 })).rejects.toThrow()

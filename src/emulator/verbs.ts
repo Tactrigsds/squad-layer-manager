@@ -2,6 +2,7 @@ import * as SB from '@/models/sandbox.models'
 
 import type { Emulator, EmuPlayer } from './index.ts'
 import { makePlayer } from './index.ts'
+import type { EmuSquad } from './world.ts'
 
 // Runs the verbs defined in @/models/sandbox.models against a live emulator. Everything that drives a sandbox
 // world goes through here: the dev repl, `pnpm emuctl`, and the app's sandbox router.
@@ -53,6 +54,20 @@ function requirePlayer(host: SandboxHost, name: string): EmuPlayer {
 	const player = host.players.get(name)
 	if (!player) throw new Error(`no player named '${name}' -- 'players' lists them, 'join ${name}' connects them`)
 	return player
+}
+
+// A squad is addressed by id or by name, and only among its player's own team: (team, id) is what identifies one,
+// and a squad on the other team is not one they could join.
+function requireSquad(host: SandboxHost, player: EmuPlayer, ref: string): EmuSquad {
+	const teamId = player.teamId
+	if (teamId === null) throw new Error(`${player.name} is not on a team yet, so has no squads to join`)
+	const onTeam = host.emu.world.squads.filter((s) => s.teamId === teamId)
+	const squad = onTeam.find((s) => String(s.squadId) === ref.trim() || s.name === ref.trim())
+	if (!squad) {
+		const known = onTeam.map((s) => `${s.squadId} '${s.name}'`).join(', ')
+		throw new Error(`no squad '${ref}' on team ${teamId}${known ? ` -- there is ${known}` : ' -- it has no squads'}`)
+	}
+	return squad
 }
 
 export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb: V, args: unknown): Promise<string> {
@@ -131,6 +146,40 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			const { name, squadName } = input as SB.SandboxVerbInput<'squad'>
 			const squad = world.createSquad(requirePlayer(host, name), squadName)
 			return `${name} created squad ${squad.squadId} '${squadName}' on team ${squad.teamId}`
+		}
+		case 'squads': {
+			const squads = world.squads
+			if (squads.length === 0) return '(no squads)'
+			return squads
+				.map(
+					(s) =>
+						`  team ${s.teamId}\t${s.squadId}\t${s.name}\t${world
+							.squadMembers(s)
+							.map((p) => p.name)
+							.join(', ')}`,
+				)
+				.join('\n')
+		}
+		case 'join-squad': {
+			const { name, squad } = input as SB.SandboxVerbInput<'join-squad'>
+			const player = requirePlayer(host, name)
+			const target = requireSquad(host, player, squad)
+			world.joinSquad(player, target)
+			return `${name} joined squad ${target.squadId} '${target.name}' on team ${target.teamId}`
+		}
+		case 'leave-squad': {
+			const { name } = input as SB.SandboxVerbInput<'leave-squad'>
+			const player = requirePlayer(host, name)
+			if (player.squadId === null) throw new Error(`${name} is not in a squad`)
+			world.leaveSquad(player)
+			return `${name} left their squad`
+		}
+		case 'set-team': {
+			const { name, teamId } = input as SB.SandboxVerbInput<'set-team'>
+			const player = requirePlayer(host, name)
+			if (player.teamId === teamId) return `${name} is already on team ${teamId}`
+			world.setTeam(player, teamId)
+			return `${name} moved to team ${teamId}`
 		}
 		case 'cam': {
 			const { name, off } = input as SB.SandboxVerbInput<'cam'>
