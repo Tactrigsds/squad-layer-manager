@@ -21,6 +21,7 @@ import { UserLabel } from '@/components/user-avatar'
 import { toast } from '@/lib/toast'
 import { cn, REVEAL_ON_ITEM_HOVER } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as LTag from '@/models/layer-tags.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
@@ -248,11 +249,11 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 					props.onClose()
 					return
 				}
-				if (res.code === 'err:duplicate-label') toast.error('Duplicate label', { description: res.message })
-				else if (res.code === 'err:invalid-settings') toast.error('Invalid tag', { description: res.message })
+				if (res.code === 'err:duplicate-label') toast.error(...LTag_Msgs.duplicateLabel(res.message).toast())
+				else if (res.code === 'err:invalid-settings') toast.error(...LTag_Msgs.invalidTag(res.message).toast())
 				else RbacClient.handlePermissionDenied(res)
 			},
-			onError: () => toast.error('Failed to save tag'),
+			onError: () => toast.error(...LTag_Msgs.saveFailed().toast()),
 		}),
 	)
 

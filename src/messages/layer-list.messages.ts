@@ -46,6 +46,14 @@ export const votePending = Msgs.def((matchStartTime: Date, threshold: number, au
 
 export const empty = Msgs.def(() => ({ warn: () => `WARNING: Queue is empty. Please populate it` }))
 
+export const abandonedEditsDiscarded = Msgs.def((draft: 'queue' | 'request') => ({
+	toast: () => [`Unsaved ${draft === 'queue' ? 'queue' : 'layer request'} edits were discarded: nobody was left editing them`],
+}))
+
+export const opFailed = Msgs.def(() => ({
+	toast: () => ['Failed to apply queue operation'],
+}))
+
 export const showNext = Msgs.def(
 	(
 		layerQueue: LL.List,
