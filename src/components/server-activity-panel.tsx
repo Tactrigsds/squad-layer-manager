@@ -185,14 +185,19 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 					: 'text-red-500'
 
 	return (
-		<div className="inline-flex text-muted-foreground space-x-2 items-baseline text-sm tabular-nums">
-			<span>
-				{playerCount ?? '<unknown>'} / {serverInfo.maxPlayerCount} online, {serverInfo.queueLength} / {serverInfo.maxQueueLength} in
-				queue
+		<div className="inline-flex text-muted-foreground gap-x-2 items-center text-sm tabular-nums">
+			<span className="inline-flex items-center gap-1" title="Players online" aria-label="Players online">
+				<Icons.Users className="h-3.5 w-3.5" />
+				{playerCount ?? '?'}/{serverInfo.maxPlayerCount}
+			</span>
+			<span className="inline-flex items-center gap-1" title="Players in queue" aria-label="Players in queue">
+				<Icons.Hourglass className="h-3.5 w-3.5" />
+				{serverInfo.queueLength}/{serverInfo.maxQueueLength}
 			</span>
 			{tickRate != null && (
-				<span title="Server tick rate">
-					· <span className={tickRateColor}>{tickRate.toFixed(1)}</span> tick
+				<span className="inline-flex items-center gap-1" title="Server tick rate" aria-label="Server tick rate">
+					<Icons.Activity className="h-3.5 w-3.5" />
+					<span className={tickRateColor}>{tickRate.toFixed(1)}</span>
 				</span>
 			)}
 		</div>
