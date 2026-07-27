@@ -268,6 +268,7 @@ export const disabledByUnnamedUser = Msgs.def('a user')
 export const disabledBySlm = Msgs.def('SLM')
 
 // what the enable button does, which differs when the server is mid-vote
-export const enableUpdatesCta = Msgs.def((alsoStopsIngameVote: boolean) =>
-	alsoStopsIngameVote ? 'to enable SLM Updates and turn off in-game voting on the server.' : 'to enable SLM Updates.',
+export const enableUpdatesCta = Msgs.def(
+	'to enable SLM Updates{alsoStopsIngameVote, select, yes { and turn off in-game voting on the server} other {}}.',
+	(alsoStopsIngameVote: boolean) => ({ alsoStopsIngameVote: alsoStopsIngameVote ? 'yes' : 'no' }),
 )

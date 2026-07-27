@@ -26,8 +26,9 @@ export const viewingHistoricalMatch = Msgs.def('Viewing historical match')
 
 export const noPlayersSelected = Msgs.def('No players selected. Select players in the teams panel to filter the feed.')
 
-export const noEventsYet = Msgs.def((match: 'current' | 'historical') =>
-	match === 'current' ? 'No events yet for current match' : 'No events yet for this match',
+export const noEventsYet = Msgs.def(
+	'No events yet for {match, select, current {current match} other {this match}}',
+	(match: 'current' | 'historical') => ({ match }),
 )
 
 export const connectionLost = Msgs.def('Connection lost - attempting to reconnect...')
@@ -66,7 +67,10 @@ export const warnAdminsChannel = Msgs.def('Admins')
 
 export const broadcastChannel = Msgs.def('Broadcast')
 
-export const warnSelectedChannel = Msgs.def((count: number) => (count > 0 ? `Selected (${count})` : 'Selected'))
+export const warnSelectedChannel = Msgs.def('Selected{any, select, yes { ({count})} other {}}', (count: number) => ({
+	count,
+	any: count > 0 ? 'yes' : 'no',
+}))
 
 export const sendHint = Msgs.def('Send (Enter)')
 

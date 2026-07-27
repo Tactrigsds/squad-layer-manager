@@ -35,9 +35,7 @@ export const roleUnassigned = Msgs.def('This role has no assignments, so it is n
 export const permissions = Msgs.def('Permissions')
 
 export const permissionsBlurb = Msgs.def(
-	() =>
-		'Everything this role may do. Each row is one permission; its Scope narrows the permission to specific servers, settings ' +
-		'or a duration cap. Leave a scope empty to grant it unrestricted.',
+	'Everything this role may do. Each row is one permission; its Scope narrows the permission to specific servers, settings or a duration cap. Leave a scope empty to grant it unrestricted.',
 )
 
 export const effectColumn = Msgs.def('Effect')
@@ -106,9 +104,7 @@ export const everyMember = Msgs.def('Granted to every server member')
 export const ingameAdminsOfLists = Msgs.def('In-game admins of these lists')
 
 export const ingameAdminsHelp = Msgs.def(
-	() =>
-		`A player is an in-game admin of a list when that list puts them in a group holding one of the list's own ` +
-		'admin-identifying permissions. The role only applies on servers that use the list.',
+	"A player is an in-game admin of a list when that list puts them in a group holding one of the list's own admin-identifying permissions. The role only applies on servers that use the list.",
 )
 
 export const adminListsLink = Msgs.def('Admin lists')
@@ -120,9 +116,7 @@ export const discordUsers = Msgs.def('Discord users')
 export const adminListGroups = Msgs.def('Admin-list groups')
 
 export const adminListGroupsHelp = Msgs.def(
-	() =>
-		'Grant this role by admin-list group membership. A player gets it while the admin list places them in any selected group, ' +
-		'admin-identifying or not (e.g. a Whitelist reserve-slot group).',
+	'Grant this role by admin-list group membership. A player gets it while the admin list places them in any selected group, admin-identifying or not (e.g. a Whitelist reserve-slot group).',
 )
 
 export const noAdminListGroups = Msgs.def('No admin-list groups are defined in the configured lists.')
@@ -139,9 +133,7 @@ export const groupNotInAnyList = Msgs.def('{pair} (not in any current list)', (p
 export const superUsersAndRoles = Msgs.def('Super users & roles')
 
 export const superBlurb = Msgs.def(
-	() =>
-		'Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including ' +
-		'unlimited kick timeouts) and cannot be modified from this page.',
+	'Configured through the SUPER_USERS / SUPER_ROLES environment variables. They always hold every permission (including unlimited kick timeouts) and cannot be modified from this page.',
 )
 
 export const superUsersLabel = Msgs.def('Users:')
@@ -183,27 +175,26 @@ export const negatingBadge = Msgs.def('negating')
 
 export const roleDisabledBadge = Msgs.def('Disabled')
 
-export const unheldPermissionsHeading = Msgs.def("Permissions you don't have", () => ({}))
+export const unheldPermissionsHeading = Msgs.def("Permissions you don't have")
 
 export const holdsEveryPermission = Msgs.def('You have every permission.')
 
-export const unheldRolesHeading = Msgs.def("Roles you don't have", () => ({}))
+export const unheldRolesHeading = Msgs.def("Roles you don't have")
 
 export const unheldRolesBlurb = Msgs.def('A role can be simulated when everything it grants is already covered by your own permissions.')
 
 export const holdsEveryRole = Msgs.def('You have every role.')
 
 // why a role cannot be simulated: simulation may only take access away
-export const roleGrantsMore = Msgs.def("Grants permissions you don't have", () => ({}))
+export const roleGrantsMore = Msgs.def("Grants permissions you don't have")
 
 // -------- the denied-action tooltip --------
 
 export const permissionDeniedHeading = Msgs.def('Permission denied')
 
-export const permissionsNeeded = Msgs.def((checkType: RBAC.PermissionDeniedResponse['checkType'], count: number) =>
-	count === 1
-		? 'You need the following permission:'
-		: checkType === 'all'
-			? 'You need all of the following permissions:'
-			: 'You need one of the following permissions:',
+export const permissionsNeeded = Msgs.def(
+	'{shape, select, single {You need the following permission:} all {You need all of the following permissions:} other {You need one of the following permissions:}}',
+	(checkType: RBAC.PermissionDeniedResponse['checkType'], count: number) => ({
+		shape: count === 1 ? 'single' : checkType === 'all' ? 'all' : 'any',
+	}),
 )

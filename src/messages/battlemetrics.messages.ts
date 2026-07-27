@@ -91,10 +91,9 @@ export const addFlag = Msgs.def('Add flag')
 
 export const hasEveryFlag = Msgs.def('This player already has every flag in the organization')
 
-export const reasonsBecomeNotes = Msgs.def((scope: 'player' | 'selection') =>
-	scope === 'player'
-		? "Each reason is posted to the player's BattleMetrics profile as its own note."
-		: "Each reason is posted to every selected player's BattleMetrics profile as its own note.",
+export const reasonsBecomeNotes = Msgs.def(
+	"Each reason is posted to {scope, select, player {the player's} other {every selected player's}} BattleMetrics profile as its own note.",
+	(scope: 'player' | 'selection') => ({ scope }),
 )
 
 export const manageFlagsHint = Msgs.def('Manage flags')
