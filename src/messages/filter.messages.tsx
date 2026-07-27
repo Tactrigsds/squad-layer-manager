@@ -40,9 +40,9 @@ export const matchupTypeNames: Record<F.MatchupType, string> = {
 // Why a filter tree would not compile. Each one is attached to the node that caused it and rendered against that
 // node in the editor, so they are `text` rather than `toast`.
 
-export const recursiveFilter = Msgs.def((filterId: string) => 'Filter is mutually recursive via filter: ' + filterId)
+export const recursiveFilter = Msgs.def('Filter is mutually recursive via filter: {filterId}', (filterId: string) => ({ filterId }))
 
-export const unknownFilter = Msgs.def((filterId: string) => `Filter ${filterId} doesn't exist`)
+export const unknownFilter = Msgs.def("Filter {filterId} doesn't exist", (filterId: string) => ({ filterId }))
 
 export const unhandledNodeType = Msgs.def('Unhandled filter node type')
 
@@ -51,33 +51,37 @@ export const firstOperandMustBeColumn = Msgs.def("A comparison's first operand m
 export const needsColumnOperand = Msgs.def('Comparison requires at least one column operand')
 
 export const columnsNotComparable = Msgs.def(
-	(left: string, right: string) => `Columns ${left} and ${right} are not comparable (different data types)`,
+	'Columns {left} and {right} are not comparable (different data types)',
+	(left: string, right: string) => ({ left, right }),
 )
 
 export const orderedComparisonNull = Msgs.def('Ordered comparison cannot use null')
 
 export const rangeComparisonNull = Msgs.def('Range comparison cannot use null')
 
-export const unresolvedTeamColumn = Msgs.def((column: string) => `Team column "${column}" could not be resolved to a team`)
+export const unresolvedTeamColumn = Msgs.def('Team column "{column}" could not be resolved to a team', (column: string) => ({ column }))
 
-export const unmappedColumn = Msgs.def((column: string) => `Column ${column} is not mapped`)
+export const unmappedColumn = Msgs.def('Column {column} is not mapped', (column: string) => ({ column }))
 
-export const unmappedValue = Msgs.def((column: string, value: NonNullable<F.Value>) => `Value ${value} is not mapped for column ${column}`)
+export const unmappedValue = Msgs.def('Value {value} is not mapped for column {column}', (column: string, value: NonNullable<F.Value>) => ({
+	value,
+	column,
+}))
 
 // Editing a filter entity.
 
-export const saved = Msgs.def(() => ({ toast: () => ['Filter saved'] }))
+export const saved = Msgs.def(() => ({ toast: () => [Msgs.t('Filter saved')] }))
 
-export const notFound = Msgs.def(() => ({ toast: () => ['Unable to save: Filter Not Found'] }))
+export const notFound = Msgs.def(() => ({ toast: () => [Msgs.t('Unable to save: Filter Not Found')] }))
 
-export const created = Msgs.def(() => ({ toast: () => ['Filter created'] }))
+export const created = Msgs.def(() => ({ toast: () => [Msgs.t('Filter created')] }))
 
 export const invalid = Msgs.def(() => ({
-	toast: () => ['Invalid filter', { description: 'Please check filter configuration' }],
+	toast: () => [Msgs.t('Invalid filter'), { description: Msgs.t('Please check filter configuration') }],
 }))
 
 export const deleted = Msgs.def((name: string) => ({
-	toast: () => [`Filter "${name}" deleted`],
+	toast: () => [Msgs.t('Filter "{name}" deleted', { name })],
 }))
 
 // Declared here rather than imported from the filter-entity system, which is server-only. Widening it is what makes
@@ -104,31 +108,31 @@ export const deleteFailed = Msgs.def((name: string, failure: DeleteFailure) => {
 		}
 	}
 
-	return { toast: () => [`Failed to delete filter "${name}"`, { description: blurb() }] }
+	return { toast: () => [Msgs.t('Failed to delete filter "{name}"', { name }), { description: blurb() }] }
 })
 
 export const formatFailed = Msgs.def((reason: string) => ({
-	toast: () => ['Unable to format: invalid json', { description: reason }],
+	toast: () => [Msgs.t('Unable to format: invalid json'), { description: reason }],
 }))
 
 // Someone else's edit landing on a filter you have open.
 
 export const updatedBy = Msgs.def((name: string, editor: string) => ({
-	toast: () => [`Filter ${name} was updated by ${editor}`],
+	toast: () => [Msgs.t('Filter {name} was updated by {editor}', { name, editor })],
 }))
 
 export const deletedBy = Msgs.def((name: string, editor: string) => ({
-	toast: () => [`Filter ${name} was deleted by ${editor}`],
+	toast: () => [Msgs.t('Filter {name} was deleted by {editor}', { name, editor })],
 }))
 
 // Contributors.
 
-export const contributorAlreadyAdded = Msgs.def(() => ({ toast: () => ['Contributor already added'] }))
+export const contributorAlreadyAdded = Msgs.def(() => ({ toast: () => [Msgs.t('Contributor already added')] }))
 
-export const contributorNotFound = Msgs.def(() => ({ toast: () => ['Contributor not found'] }))
+export const contributorNotFound = Msgs.def(() => ({ toast: () => [Msgs.t('Contributor not found')] }))
 
 export const addContributorFailed = Msgs.def((reason: string) => ({
-	toast: () => ['Failed to add contributor', { description: reason }],
+	toast: () => [Msgs.t('Failed to add contributor'), { description: reason }],
 }))
 
 // -------- the filter card --------
@@ -177,13 +181,13 @@ export const whyOnlyNull = Msgs.def('Why only null?')
 // The operators named in it are the syntax being explained, so they are part of the prose; the caller renders
 // them as code.
 export const floatEqNullOnly = Msgs.def(() => ({
-	react: () => (
-		<>
-			This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make{' '}
-			<code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>&lt;</code>/<code>&gt;</code> to compare magnitudes;{' '}
-			<code>=</code> only checks whether the value is null.
-		</>
-	),
+	react: () =>
+		Msgs.node(
+			"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make " +
+				'<code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>{lt}</code>/<code>{gt}</code> to compare magnitudes; ' +
+				'<code>=</code> only checks whether the value is null.',
+			{ lt: '<', gt: '>', ...Msgs.tags },
+		),
 }))
 
 // between the two bounds of an inrange comparison
@@ -208,7 +212,7 @@ export const matchupSideLabels = { lockedLeft: 'Team 1', lockedRight: 'Team 2', 
 export const swapSides = Msgs.def('Swap the two sides')
 
 // the placeholder on a team-spec dimension, e.g. "any faction"
-export const anyTeamColumn = Msgs.def((column: string) => `any ${column.toLowerCase()}`)
+export const anyTeamColumn = Msgs.def('any {column}', (column: string) => ({ column: column.toLowerCase() }))
 
 // -------- the filter editor page --------
 
@@ -223,7 +227,7 @@ export const create = Msgs.def('Create')
 // on the editor page the owner's name follows inline; in the index it labels a badge beside it
 export const ownerLabel = Msgs.def('Owner:')
 
-export const ownerLine = Msgs.def((owner: string) => `Owner: ${owner}`)
+export const ownerLine = Msgs.def('Owner: {owner}', (owner: string) => ({ owner }))
 
 export const contributorsLabel = Msgs.def('Contributors:')
 
@@ -236,7 +240,7 @@ export const accessOwner = Msgs.def('You are the owner of this filter')
 
 export const accessContributor = Msgs.def('You are a contributor')
 
-export const accessNone = Msgs.def(() => `You don't have permission to modify this filter`)
+export const accessNone = Msgs.def("You don't have permission to modify this filter")
 
 export const accessAllFilters = Msgs.def('You have write access to all filters')
 
@@ -303,17 +307,14 @@ export const matchingFiltersLabel = Msgs.def('Matching Filters:')
 // Why a layer violates a repeat rule. `value` and `offset` are already rendered (the panel bolds them), so the
 // message positions them rather than formatting them.
 export const repeatDescriptor = Msgs.def((value: React.ReactNode, offset: React.ReactNode, matchCount: number) => ({
-	react: () => (
-		<>
-			{value} was played {offset} match{matchCount === 1 ? '' : 'es'} prior
-		</>
-	),
+	react: () =>
+		Msgs.node('{value} was played {offset} {matchCount, plural, one {match} other {matches}} prior', { value, offset, matchCount }),
 }))
 
 export const repeatShouldBeOver = Msgs.def((within: React.ReactNode) => ({
-	react: () => <>Should be &gt; {within}</>,
+	react: () => Msgs.node('Should be > {within}', { within }),
 }))
 
 export const repeatWithin = Msgs.def((within: React.ReactNode) => ({
-	react: () => <>within {within}</>,
+	react: () => Msgs.node('within {within}', { within }),
 }))

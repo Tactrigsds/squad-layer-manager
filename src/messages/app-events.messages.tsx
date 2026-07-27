@@ -45,30 +45,27 @@ export const joinNames = Msgs.def((names: readonly string[]) =>
 
 export const squadDisbanded = Msgs.def(
 	(actor: React.ReactNode, squadName: string, teamId: number, reasonLabel: string | undefined, memberCount: number) => ({
-		react: () => (
-			<>
-				{actor} disbanded {squadName} (Team {teamId}){reasonLabel ? ` for ${reasonLabel}` : ''}
-				{memberCount > 0 ? `, ${memberCount} ${memberCount === 1 ? 'player' : 'players'}` : ''}
-			</>
-		),
+		react: () =>
+			Msgs.node(
+				'{actor} disbanded {squadName} (Team {teamId}){hasReason, select, yes { for {reasonLabel}} other {}}' +
+					'{memberCount, plural, =0 {} one {, # player} other {, # players}}',
+				{ actor, squadName, teamId, reasonLabel, hasReason: reasonLabel ? 'yes' : 'no', memberCount },
+			),
 	}),
 )
 
 export const squadRenamed = Msgs.def((actor: React.ReactNode, squadName: string, teamId: number) => ({
-	react: () => (
-		<>
-			{actor} renamed {squadName} (Team {teamId})
-		</>
-	),
+	react: () => Msgs.node('{actor} renamed {squadName} (Team {teamId})', { actor, squadName, teamId }),
 }))
 
 export const commanderDemoted = Msgs.def((actor: React.ReactNode, target: React.ReactNode, reasonLabel?: string) => ({
-	react: () => (
-		<>
-			{actor} demoted {target}
-			{reasonLabel ? ` for ${reasonLabel}` : ''}
-		</>
-	),
+	react: () =>
+		Msgs.node('{actor} demoted {target}{hasReason, select, yes { for {reasonLabel}} other {}}', {
+			actor,
+			target,
+			reasonLabel,
+			hasReason: reasonLabel ? 'yes' : 'no',
+		}),
 }))
 
 export const theCommander = Msgs.def('the commander')
@@ -76,64 +73,50 @@ export const theCommander = Msgs.def('the commander')
 export const aPlayer = Msgs.def('a player')
 
 export const fogOfWarToggled = Msgs.def((actor: React.ReactNode, enabled: boolean) => ({
-	react: () => (
-		<>
-			{actor} turned fog of war {enabled ? 'on' : 'off'}
-		</>
-	),
+	react: () => Msgs.node('{actor} turned fog of war {enabled, select, yes {on} other {off}}', { actor, enabled: enabled ? 'yes' : 'no' }),
 }))
 
 export const broadcastSent = Msgs.def((actor: React.ReactNode, message: string) => ({
-	react: () => (
-		<>
-			{actor} broadcast "{message}"
-		</>
-	),
+	react: () => Msgs.node('{actor} broadcast "{message}"', { actor, message }),
 }))
 
 export const playerTimedOut = Msgs.def((actor: React.ReactNode, target: React.ReactNode, duration: string, reasonLabel?: string) => ({
-	react: () => (
-		<>
-			{actor} timed out {target} for {duration}
-			{reasonLabel ? ` for ${reasonLabel}` : ''}
-		</>
-	),
+	react: () =>
+		Msgs.node('{actor} timed out {target} for {duration}{hasReason, select, yes { for {reasonLabel}} other {}}', {
+			actor,
+			target,
+			duration,
+			reasonLabel,
+			hasReason: reasonLabel ? 'yes' : 'no',
+		}),
 }))
 
 export const timeoutCancelled = Msgs.def((actor: React.ReactNode, target: React.ReactNode) => ({
-	react: () => (
-		<>
-			{actor} cancelled {target}'s timeout
-		</>
-	),
+	react: () => Msgs.node("{actor} cancelled {target}'s timeout", { actor, target }),
 }))
 
 export const matchEnded = Msgs.def((actor: React.ReactNode) => ({
-	react: () => <>{actor} ended the match</>,
+	react: () => Msgs.node('{actor} ended the match', { actor }),
 }))
 
 export const voteStarted = Msgs.def((actor: React.ReactNode, choiceCount: number) => ({
-	react: () => (
-		<>
-			{actor} started a vote ({choiceCount} {choiceCount === 1 ? 'option' : 'options'})
-		</>
-	),
+	react: () => Msgs.node('{actor} started a vote ({choiceCount, plural, one {# option} other {# options}})', { actor, choiceCount }),
 }))
 
 export const voteEndedEarly = Msgs.def((actor: React.ReactNode) => ({
-	react: () => <>{actor} ended the vote early</>,
+	react: () => Msgs.node('{actor} ended the vote early', { actor }),
 }))
 
 export const voteEnded = Msgs.def('The vote ended')
 
 export const voteWinner = Msgs.def((layer: React.ReactNode) => ({
-	react: () => <>: {layer} won</>,
+	react: () => Msgs.node(': {layer} won', { layer }),
 }))
 
 export const voteNoWinner = Msgs.def(' (no winner)')
 
 export const voteAborted = Msgs.def((actor: React.ReactNode) => ({
-	react: () => <>{actor} aborted the vote</>,
+	react: () => Msgs.node('{actor} aborted the vote', { actor }),
 }))
 
 // a generic line for the types the feed has no renderer of its own for; the description comes from the models
@@ -148,15 +131,11 @@ export const genericLine = Msgs.def((actor: React.ReactNode, description: string
 // -------- MAP_SET --------
 
 export const nextLayerRestored = Msgs.def((layer: React.ReactNode) => ({
-	react: () => <>SLM restored the queue's next layer, set to {layer}</>,
+	react: () => Msgs.node("SLM restored the queue's next layer, set to {layer}", { layer }),
 }))
 
 export const nextLayerOverrode = Msgs.def((who: React.ReactNode, layer: React.ReactNode) => ({
-	react: () => (
-		<>
-			SLM overrode a layer set by {who}, next layer set to {layer}
-		</>
-	),
+	react: () => Msgs.node('SLM overrode a layer set by {who}, next layer set to {layer}', { who, layer }),
 }))
 
 // -------- the queue --------
@@ -164,7 +143,7 @@ export const nextLayerOverrode = Msgs.def((who: React.ReactNode, layer: React.Re
 export const queueAdvancedOnRoll = Msgs.def('Queue advanced on map change')
 
 export const queueSyncedTo = Msgs.def((who: React.ReactNode) => ({
-	react: () => <>Queue synced to a layer change by {who}</>,
+	react: () => Msgs.node('Queue synced to a layer change by {who}', { who }),
 }))
 
 export const queueSyncedOutsideSlm = Msgs.def('Queue synced to a layer change made outside SLM')
@@ -174,12 +153,11 @@ export const queueGenerated = Msgs.def('SLM generated the next layer')
 export const queueVoteApplied = Msgs.def('Vote result applied to the queue')
 
 export const queueSaved = Msgs.def((actor: React.ReactNode, force: boolean, overrode?: string) => ({
-	react: () => (
-		<>
-			{actor} {force ? 'force-saved' : 'saved'} the queue
-			{overrode !== undefined && `, overriding ${overrode}`}
-		</>
-	),
+	react: () =>
+		Msgs.node(
+			'{actor} {force, select, yes {force-saved} other {saved}} the queue{hasOverride, select, yes {, overriding {overrode}} other {}}',
+			{ actor, force: force ? 'yes' : 'no', overrode, hasOverride: overrode !== undefined ? 'yes' : 'no' },
+		),
 }))
 
 // the net effect of a save, as a parenthetical after the headline
@@ -195,100 +173,74 @@ export const queueChangeCounts = Msgs.def((counts: { added: number; removed: num
 
 // "now" where the server moved first and SLM followed, "set to" where SLM decided it
 export const queueNextLayer = Msgs.def((external: boolean, layer: React.ReactNode) => ({
-	react: () => (
-		<>
-			, next layer {external ? 'now' : 'set to'} {layer}
-		</>
-	),
+	react: () =>
+		Msgs.node(', next layer {external, select, yes {now} other {set to}} {layer}', { external: external ? 'yes' : 'no', layer }),
 }))
 
-export const queueAndMore = Msgs.def((count: number) => `and ${count} more`)
+export const queueAndMore = Msgs.def('and {count} more', (count: number) => ({ count }))
 
-export const queueVoteChoices = Msgs.def((count: number) => `a vote (${count} ${count === 1 ? 'choice' : 'choices'}): `)
+export const queueVoteChoices = Msgs.def('a vote ({count, plural, one {# choice} other {# choices}}): ', (count: number) => ({ count }))
 
 export const queueItemAdded = Msgs.def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
-	react: () => (
-		<>
-			{who} added {vote}
-			{layers}
-		</>
-	),
+	react: () => Msgs.node('{who} added {vote}{layers}', { who, vote, layers }),
 }))
 
 export const queueItemRemoved = Msgs.def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
-	react: () => (
-		<>
-			{who} removed {vote}
-			{layers}
-		</>
-	),
+	react: () => Msgs.node('{who} removed {vote}{layers}', { who, vote, layers }),
 }))
 
 export const queueItemEdited = Msgs.def((who: string, from: React.ReactNode, to: React.ReactNode) => ({
-	react: () => (
-		<>
-			{who} changed {from} to {to}
-		</>
-	),
+	react: () => Msgs.node('{who} changed {from} to {to}', { who, from, to }),
 }))
 
 export const queueItemMoved = Msgs.def((who: string, layers: React.ReactNode, fromIndex: number, toIndex: number) => ({
-	react: () => (
-		<>
-			{who} moved {layers} from #{fromIndex} to #{toIndex}
-		</>
-	),
+	react: () => Msgs.node('{who} moved {layers} from #{fromIndex} to #{toIndex}', { who, layers, fromIndex, toIndex }),
 }))
 
 // -------- teamswaps --------
 
 export const teamswapsExecutedOnRoll = Msgs.def(
-	(playerCount: number) => `Queued teamswaps executed on map change (${playerCount} ${playerCount === 1 ? 'player' : 'players'})`,
+	'Queued teamswaps executed on map change ({playerCount, plural, one {# player} other {# players}})',
+	(playerCount: number) => ({ playerCount }),
 )
 
 export const teamswapsExecuted = Msgs.def((actor: React.ReactNode, playerCount: number) => ({
-	react: () => (
-		<>
-			{actor} executed the queued teamswaps ({playerCount} {playerCount === 1 ? 'player' : 'players'})
-		</>
-	),
+	react: () =>
+		Msgs.node('{actor} executed the queued teamswaps ({playerCount, plural, one {# player} other {# players}})', { actor, playerCount }),
 }))
 
 export const teamswapsDropped = Msgs.def(
-	(count: number) =>
-		`${count} queued teamswap${count === 1 ? '' : 's'} dropped, ${count === 1 ? 'the player' : 'those players'} left or changed teams`,
+	'{count, plural, one {# queued teamswap dropped, the player} other {# queued teamswaps dropped, those players}} left or changed teams',
+	(count: number) => ({ count }),
 )
 
 export const teamswapsCleared = Msgs.def((actor: React.ReactNode) => ({
-	react: () => <>{actor} cleared the queued teamswaps</>,
+	react: () => Msgs.node('{actor} cleared the queued teamswaps', { actor }),
 }))
 
 export const teamswapsUpdated = Msgs.def((actor: React.ReactNode, added: number, removed: number, queued: number) => ({
-	react: () => (
-		<>
-			{actor} updated the queued teamswaps (
-			{[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')}), {queued} queued for next map
-		</>
-	),
+	react: () =>
+		Msgs.node('{actor} updated the queued teamswaps ({delta}), {queued} queued for next map', {
+			actor,
+			delta: [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', '),
+			queued,
+		}),
 }))
 
 export const teamswapLine = Msgs.def((player: React.ReactNode, team: React.ReactNode, queuedBy?: string) => ({
-	react: () => (
-		<>
-			{player} to {team}
-			{queuedBy !== undefined && ` (queued by ${queuedBy})`}
-		</>
-	),
+	react: () =>
+		Msgs.node('{player} to {team}{hasQueuedBy, select, yes { (queued by {queuedBy})} other {}}', {
+			player,
+			team,
+			queuedBy,
+			hasQueuedBy: queuedBy !== undefined ? 'yes' : 'no',
+		}),
 }))
 
 // -------- warns --------
 
 export const warnChannel = Msgs.def((actor: React.ReactNode, warnee: React.ReactNode) => ({
-	react: () => (
-		<>
-			({actor} warned {warnee})
-		</>
-	),
+	react: () => Msgs.node('({actor} warned {warnee})', { actor, warnee }),
 }))
 
 export const warnChannelHint = Msgs.def('who sent this warning and who received it')
@@ -318,20 +270,24 @@ export function warnTargetDescriptor(summary: CHAT.WarnSummary): string | null {
 	}
 }
 
-export const warnPlayerCount = Msgs.def((count: number) => `${count} ${count === 1 ? 'player' : 'players'}`)
+export const warnPlayerCount = Msgs.def('{count, plural, one {# player} other {# players}}', (count: number) => ({ count }))
 
 // a grouping plus the count it covers, where naming the group alone would hide how many it reached
-export const warnDescriptorWithCount = Msgs.def((descriptor: string, players: string) => `${descriptor} (${players})`)
+export const warnDescriptorWithCount = Msgs.def('{descriptor} ({players})', (descriptor: string, players: string) => ({
+	descriptor,
+	players,
+}))
 
 // -------- the shared "{actor} {verb} {targets}{suffix}" entries --------
 
-export const removedFromSquadSuffix = Msgs.def((reasonLabel?: string) =>
-	reasonLabel ? ` from their squad for ${reasonLabel}` : ' from their squad',
+export const removedFromSquadSuffix = Msgs.def(
+	' from their squad{hasReason, select, yes { for {reasonLabel}} other {}}',
+	(reasonLabel?: string) => ({ reasonLabel, hasReason: reasonLabel ? 'yes' : 'no' }),
 )
 
-export const forReasonSuffix = Msgs.def((reasonLabel: string) => ` for ${reasonLabel}`)
+export const forReasonSuffix = Msgs.def(' for {reasonLabel}', (reasonLabel: string) => ({ reasonLabel }))
 
-export const killReasonSuffix = Msgs.def((reason: string) => `: "${reason}"`)
+export const killReasonSuffix = Msgs.def(': "{reason}"', (reason: string) => ({ reason }))
 
 export const swappedTeamsSuffix = Msgs.def(' to the other team')
 
@@ -341,28 +297,26 @@ export type TargetVerb = keyof typeof targetVerbs
 
 export const actionOnNamedTargets = Msgs.def(
 	(actor: React.ReactNode, verb: TargetVerb, targets: React.ReactNode, count: number, suffix: React.ReactNode) => ({
-		react: () => (
-			<>
-				{actor} {targetVerbs[verb]} {targets}
-				{count > 1 && (
-					<>
-						{' '}
-						({count} {count === 1 ? 'player' : 'players'})
-					</>
-				)}
-				{suffix}
-			</>
-		),
+		react: () =>
+			Msgs.node('{actor} {verb} {targets}{many, select, yes { ({count, plural, one {# player} other {# players}})} other {}}{suffix}', {
+				actor,
+				verb: targetVerbs[verb],
+				targets,
+				count,
+				many: count > 1 ? 'yes' : 'no',
+				suffix,
+			}),
 	}),
 )
 
 export const actionOnCountedTargets = Msgs.def((actor: React.ReactNode, verb: TargetVerb, count: number, suffix: React.ReactNode) => ({
-	react: () => (
-		<>
-			{actor} {targetVerbs[verb]} {count === 1 ? 'a player' : `${count} players`}
-			{suffix}
-		</>
-	),
+	react: () =>
+		Msgs.node('{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}', {
+			actor,
+			verb: targetVerbs[verb],
+			count,
+			suffix,
+		}),
 }))
 
 // ---- the audit log's summary line ----

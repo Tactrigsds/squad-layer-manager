@@ -1,7 +1,7 @@
 import * as Msgs from '@/messages/shared'
 import type * as SC from '@/models/server-console.models'
 
-export const windowTitle = Msgs.def((serverId: string) => `Server console: ${serverId}`)
+export const windowTitle = Msgs.def('Server console: {serverId}', (serverId: string) => ({ serverId }))
 
 export const tabNames: Record<SC.Tab, string> = {
 	unified: 'All',
@@ -12,7 +12,7 @@ export const tabNames: Record<SC.Tab, string> = {
 
 export const channelTablist = Msgs.def('Console channel')
 
-export const tabOutput = Msgs.def((tab: SC.Tab) => `${tabNames[tab]} console output`)
+export const tabOutput = Msgs.def('{tab} console output', (tab: SC.Tab) => ({ tab: tabNames[tab] }))
 
 export const hideNoise = Msgs.def('Hide noise')
 

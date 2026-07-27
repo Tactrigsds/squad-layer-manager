@@ -423,8 +423,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											/>
 											<div className="flex flex-col leading-none gap-0.5">
 												<span className="text-xs font-medium">
-													{user.displayName}
-													{loggedInUser?.discordId === user.discordId ? UP_Msgs.youSuffix().text() : ''}
+													{UP_Msgs.displayNameWithYou(user.displayName, loggedInUser?.discordId === user.discordId).text()}
 												</span>
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (

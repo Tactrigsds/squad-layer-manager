@@ -23,16 +23,14 @@ export const groupRuleSourceHints: Record<PG.GroupRuleSource, string> = {
 // -------- the groupings editor --------
 
 export const noGroupings = Msgs.def(
-	() =>
-		'No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick ' +
-		'between them by name.',
+	'No groupings defined. A grouping is one way of sorting players into groups; the players panel and activity charts pick between them by name.',
 )
 
 export const newGroupingName = Msgs.def('New grouping name')
 
 export const addGrouping = Msgs.def('Add grouping')
 
-export const removeGrouping = Msgs.def((groupingId: string) => `Remove grouping ${groupingId}`)
+export const removeGrouping = Msgs.def('Remove grouping {groupingId}', (groupingId: string) => ({ groupingId }))
 
 // -------- one grouping's rules --------
 
@@ -75,7 +73,7 @@ export const addNewGroup = Msgs.def('Add new group...')
 
 // -------- group colors --------
 
-export const colorsSummary = Msgs.def((count: number) => `Colors (${count})`)
+export const colorsSummary = Msgs.def('Colors ({count})', (count: number) => ({ count }))
 
 export const colorsBlurb = Msgs.def('Following a flag keeps the color in step with battlemetrics.')
 

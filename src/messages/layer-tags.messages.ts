@@ -2,15 +2,15 @@ import * as Msgs from '@/messages/shared'
 
 // reason is the server's own explanation of which tag conflicts, so it is passed through verbatim
 export const duplicateLabel = Msgs.def((reason: string) => ({
-	toast: () => ['Duplicate label', { description: reason }],
+	toast: () => [Msgs.t('Duplicate label'), { description: reason }],
 }))
 
 export const invalidTag = Msgs.def((reason: string) => ({
-	toast: () => ['Invalid tag', { description: reason }],
+	toast: () => [Msgs.t('Invalid tag'), { description: reason }],
 }))
 
 export const saveFailed = Msgs.def(() => ({
-	toast: () => ['Failed to save tag'],
+	toast: () => [Msgs.t('Failed to save tag')],
 }))
 
 // -------- the tag editor --------
@@ -29,7 +29,7 @@ export const deleteTag = Msgs.def('Delete tag')
 
 // -------- a tag on a queue item --------
 
-export const removeTag = Msgs.def((label: string) => `Remove ${label}`)
+export const removeTag = Msgs.def('Remove {label}', (label: string) => ({ label }))
 
 // a tag id that no configured tag claims any more: the label is gone, but the id stays on every layer carrying it
 export const deletedTag = Msgs.def(
@@ -61,7 +61,7 @@ export const editTagBlurb = Msgs.def('Renaming a tag keeps it attached to every 
 
 export const labelPlaceholder = Msgs.def('e.g. meta')
 
-export const duplicateLabelInline = Msgs.def((label: string) => `Another tag is already labeled "${label}"`)
+export const duplicateLabelInline = Msgs.def('Another tag is already labeled "{label}"', (label: string) => ({ label }))
 
 // stands in for the label in the live chip preview while the field is empty
 export const previewLabel = Msgs.def('preview')

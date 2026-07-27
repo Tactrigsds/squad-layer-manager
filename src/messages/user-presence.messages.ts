@@ -37,4 +37,8 @@ export const resetSession = Msgs.def('Reset this session')
 export const lastSeen = Msgs.def('Last seen')
 
 // marks whichever avatar is the viewer's own
-export const youSuffix = Msgs.def(' (You)')
+// the reader's own row is marked in the name itself, so a locale can put the marker where its language wants it
+export const displayNameWithYou = Msgs.def('{name}{isYou, select, yes { (You)} other {}}', (name: string, isYou: boolean) => ({
+	name,
+	isYou: isYou ? 'yes' : 'no',
+}))
