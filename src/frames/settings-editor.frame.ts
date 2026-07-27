@@ -92,11 +92,18 @@ function editSchema(state: SettingsEditor): z.ZodType<any> {
 	return state.sensitiveOmitted ? SETTINGS.ServerSettingsNoConnectionsSchema : SETTINGS.ServerSettingsSchema
 }
 
-// the pending value in the encoded/input shape (same shape as `saved`), for diffing against the baseline
-function nextEncoded(state: SettingsEditor): any {
-	if (state.mode === 'gui') return state.draft
-	if (state.jsonValid === null) return undefined
-	return editSchema(state).encode(state.jsonValid)
+// The pending value in the encoded/input shape (same shape as `saved`), for diffing against the baseline. `saved` is
+// always `encode(parse(...))`, so the draft has to be normalized the same way: a field the GUI omits because it is empty
+// (a role with no assignments, a settings grant with no paths) comes back prefaulted from the server and would otherwise
+// read as a change no save can ever clear. A draft that doesn't parse has nothing to normalize through, so it diffs raw.
+function nextEncoded(state: SettingsEditor, value: any): any {
+	const raw = state.mode === 'gui' ? state.draft : undefined
+	if (value === null || value === undefined) return raw
+	try {
+		return editSchema(state).encode(value)
+	} catch {
+		return raw
+	}
 }
 
 // A form always edits the encoded/input shape, so a HumanTime reads "5s" rather than 5000 whichever settings scope it
@@ -120,7 +127,7 @@ function validValue(state: SettingsEditor): any {
 	return res.success ? res.data : null
 }
 
-function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' | 'issues' | 'valid'> {
+export function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' | 'issues' | 'valid'> {
 	const guiRes = state.mode === 'gui' && state.draft !== undefined ? editSchema(state).safeParse(state.draft) : undefined
 	const issues = guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
 	const value = state.mode === 'json' ? state.jsonValid : guiRes?.success ? guiRes.data : null
@@ -131,7 +138,7 @@ function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' |
 			valid: SS.ServerIdSchema.safeParse(state.newId).success && state.newDisplayName.trim().length > 0 && value !== null,
 		}
 	}
-	const nextEnc = nextEncoded(state)
+	const nextEnc = nextEncoded(state, value)
 	return {
 		changes: state.saved !== undefined && nextEnc !== undefined ? diffSettings(state.saved, nextEnc) : [],
 		issues,
