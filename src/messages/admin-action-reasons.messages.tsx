@@ -70,3 +70,41 @@ export const templateSyntaxHint = Msgs.def((docUrl: string) => ({
 		</>
 	),
 }))
+
+// -------- the reason field, wherever an action or a flag asks for one --------
+
+// Whether a reason is required is coloured differently in each case, which no single class on the container can
+// express, so the caller renders the qualifier and the message positions it.
+export const reasonLabel = Msgs.def((qualifier: React.ReactNode) => ({
+	react: () => <>Reason {qualifier}</>,
+}))
+
+export const reasonRequired = Msgs.def(() => ({ text: () => '(required)' }))
+
+export const reasonOptional = Msgs.def(() => ({ text: () => '(optional)' }))
+
+export const customReason = Msgs.def(() => ({ text: () => 'Custom' }))
+
+export const noReason = Msgs.def(() => ({ text: () => 'None' }))
+
+export const presetReasonItem = Msgs.def(() => ({ text: () => 'Preset Reason' }))
+
+export const reasonPicker = Msgs.def(() => ({ text: () => 'Reason' }))
+
+export const enterReason = Msgs.def(() => ({ text: () => 'Enter a reason' }))
+
+export const messagePreview = Msgs.def(() => ({ text: () => 'Message preview' }))
+
+export const noReasonsConfigured = Msgs.def((actionName: string) => ({
+	text: () => `A reason is required for ${actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).`,
+}))
+
+export const presetReasonPicker = Msgs.def(() => ({ text: () => 'Preset reason' }))
+
+export const searchReasons = Msgs.def(() => ({ text: () => 'Search reasons...' }))
+
+export const noReasonsFound = Msgs.def(() => ({ text: () => 'No reasons found.' }))
+
+export const fillWithPresetReason = Msgs.def(() => ({ text: () => 'Fill the box with a preset reason' }))
+
+export const fillWithPresetBroadcast = Msgs.def(() => ({ text: () => 'Fill the box with a preset broadcast' }))

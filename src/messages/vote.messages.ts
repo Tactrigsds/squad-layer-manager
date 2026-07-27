@@ -148,3 +148,65 @@ export const configureVote = Msgs.def(() => ({ text: () => 'Configure vote' }))
 export const generateVoteTitle = Msgs.def(() => ({ text: () => 'Generate Vote' }))
 
 export const saveVoteConfig = Msgs.def(() => ({ text: () => 'Save' }))
+
+// -------- the vote display config editor --------
+
+export const displayOptionsHeading = Msgs.def(() => ({ text: () => 'Vote Display Options' }))
+
+export const displayOptionsBlurb = Msgs.def(() => ({ text: () => 'Choose what info to show to voters' }))
+
+export const displayLayer = Msgs.def(() => ({ text: () => 'Layer' }))
+
+export const displayMap = Msgs.def(() => ({ text: () => 'Map' }))
+
+export const displayGamemode = Msgs.def(() => ({ text: () => 'Gamemode' }))
+
+export const displayFactions = Msgs.def(() => ({ text: () => 'Factions' }))
+
+export const displayUnits = Msgs.def(() => ({ text: () => 'Units' }))
+
+export const choicesIndistinguishable = Msgs.def(() => ({ text: () => "Warning: Can't distinguish between vote choices." }))
+
+export const previewLabel = Msgs.def(() => ({ text: () => 'Preview' }))
+
+export const durationLabel = Msgs.def(() => ({ text: () => 'Vote Duration (seconds)' }))
+
+export const resetToDefault = Msgs.def(() => ({ text: () => 'Reset to Default' }))
+
+// -------- the generate-vote dialog --------
+
+export const noLayerSelected = Msgs.def(() => ({ text: () => 'No layer selected' }))
+
+export const editChoice = Msgs.def(() => ({ text: () => 'Edit this choice' }))
+
+export const regenerateChoice = Msgs.def(() => ({ text: () => 'Regenerate this choice' }))
+
+export const generateChoice = Msgs.def(() => ({ text: () => 'Generate this choice' }))
+
+export const removeChoice = Msgs.def(() => ({ text: () => 'Remove this choice (minimum 2 required)' }))
+
+export const addChoiceHint = Msgs.def(() => ({ text: () => 'Add choice' }))
+
+export const addChoice = Msgs.def(() => ({ text: () => 'Add Choice' }))
+
+export const playNext = Msgs.def(() => ({ text: () => 'Play Next' }))
+
+export const playAfter = Msgs.def(() => ({ text: () => 'Play After' }))
+
+export const submit = Msgs.def(() => ({ text: () => 'Submit' }))
+
+// -------- the tally readout --------
+
+export const voteEnded = Msgs.def(() => ({ text: () => 'Vote has ended.' }))
+
+export const voteInProgress = Msgs.def(() => ({ text: () => 'Vote in progress...' }))
+
+export const unknownChoice = Msgs.def(() => ({ text: () => 'Unknown' }))
+
+export const choiceVotes = Msgs.def((votes: number, percentage: number) => ({
+	text: () => `${votes} vote${votes !== 1 ? 's' : ''} (${percentage.toFixed(1)}%)`,
+}))
+
+export const turnout = Msgs.def((received: number, players: number, percentage: number | null) => ({
+	text: () => `Received: ${received} of ${players} votes` + (percentage !== null ? ` (${percentage.toFixed(1)}%)` : ''),
+}))
