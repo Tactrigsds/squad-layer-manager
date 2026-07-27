@@ -39,6 +39,7 @@ import { resToOptional } from '@/lib/types.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand.ts'
+import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
@@ -321,7 +322,15 @@ function LoadedGenVoteView({
 		UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
 	}
 
-	return <GenVoteDialog title="Generate Vote" stores={dialogStores} open={entry.active} onOpenChange={onOpenChange} onSubmit={onSubmit} />
+	return (
+		<GenVoteDialog
+			title={V_Msgs.generateVoteTitle().text()}
+			stores={dialogStores}
+			open={entry.active}
+			onOpenChange={onOpenChange}
+			onSubmit={onSubmit}
+		/>
+	)
 }
 
 function LoadedPasteRotation({
@@ -372,7 +381,7 @@ function LoadedPasteRotation({
 
 	return (
 		<MultiLayerSetDialog
-			title="Paste Rotation"
+			title={LL_Msgs.pasteRotationTitle().text()}
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
@@ -497,14 +506,14 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
 			<Badge key="default-choice" variant="secondary">
-				Default
+				{LL_Msgs.defaultChoice().text()}
 			</Badge>,
 		)
 	}
 	if (isVoteWinner) {
 		badges.unshift(
 			<Badge key="winner" variant="added">
-				Selected
+				{LL_Msgs.selectedChoice().text()}
 			</Badge>,
 		)
 	}
@@ -521,7 +530,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 				<TooltipTrigger>
 					<Badge variant="destructive">?</Badge>
 				</TooltipTrigger>
-				<TooltipContent>Not current next layer on server</TooltipContent>
+				<TooltipContent>{LL_Msgs.notCurrentNextLayer().text()}</TooltipContent>
 			</Tooltip>,
 		)
 	}
@@ -625,7 +634,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						render={Button}
 						variant="ghost"
 						size="icon"
-						title="Edit"
+						title={LL_Msgs.editItem().text()}
 						disabled={!canEdit}
 					>
 						<Icons.Pencil />
@@ -633,7 +642,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
-						title="Swap Factions"
+						title={LL_Msgs.swapFactions().text()}
 						disabled={!canEdit || !L.swapFactions(item.layerId)}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 					>
@@ -642,7 +651,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
-						title="Delete"
+						title={LL_Msgs.deleteItem().text()}
 						disabled={!canEdit}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
 					>
@@ -832,17 +841,17 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									>
 										<Icons.GripHorizontal />
 									</Button>
-									<h3 className={cn(Typo.Label, 'bold')}>Vote</h3>
+									<h3 className={cn(Typo.Label, 'bold')}>{V_Msgs.heading().text()}</h3>
 									{voteAutostartTime && (
 										<>
 											<span>:</span>
 											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-												<span>starts in</span> <Timer deadline={voteAutostartTime.getTime()} />
+												<span>{V_Msgs.startsIn().text()}</span> <Timer deadline={voteAutostartTime.getTime()} />
 												<PermissionDeniedTooltip denied={manageVoteDenied}>
 													<Button
 														variant="ghost"
 														size="icon"
-														title="Cancel Autostart"
+														title={V_Msgs.cancelAutostart().text()}
 														onClick={cancelAutostart}
 														{...manageVoteButtonProps()}
 													>
@@ -859,9 +868,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											<Icons.Dot width={20} height={20} />
 											<span>
 												{voteTally && serverInfo && (
-													<span>
-														{voteTally.totalVotes} of {serverInfo.playerCount} votes received
-													</span>
+													<span>{V_Msgs.tally(voteTally.totalVotes, serverInfo.playerCount).text()}</span>
 												)}
 											</span>
 											{voteState.code === 'in-progress' && (
@@ -880,7 +887,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											{voteState.code === 'in-progress' && (
 												<PermissionDeniedTooltip denied={manageVoteDenied}>
 													<Button
-														title="End Vote Early"
+														title={V_Msgs.endVoteEarly().text()}
 														variant="ghost"
 														size="icon"
 														onClick={endVoteEarly}
@@ -893,7 +900,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											{voteState.code === 'in-progress' && (
 												<PermissionDeniedTooltip denied={manageVoteDenied}>
 													<Button
-														title="Abort Vote"
+														title={V_Msgs.abortVote().text()}
 														variant="ghost"
 														size="icon"
 														onClick={abortVote}
@@ -920,7 +927,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 												htmlFor={internalVoteCheckboxId}
 												className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 											>
-												Internal
+												{V_Msgs.internalVote().text()}
 											</Label>
 										</div>
 									</PermissionDeniedTooltip>
@@ -931,7 +938,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											size="icon"
 											onClick={() => startVote()}
 											disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
-											title="Start Vote"
+											title={V_Msgs.startVote().text()}
 										>
 											<Icons.Play />
 										</Button>
@@ -939,7 +946,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 									{/* -------- add vote choices -------- */}
 									{inline(() => {
-										const activityTitle = 'Add Vote Choices'
+										const activityTitle = V_Msgs.addVoteChoices().text()
 										return (
 											<StartActivityInteraction
 												loaderName="selectLayers"
@@ -960,7 +967,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 												render={Button}
 												variant="ghost"
 												size="icon"
-												title="Add Vote Choices"
+												title={activityTitle}
 												{...editButtonProps()}
 											>
 												<Icons.Plus />
@@ -975,14 +982,14 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										itemId={props.itemId}
 										readonly={!canEdit || !!manageVoteDenied}
 									>
-										<Button variant="ghost" size="icon" aria-label="Configure vote">
+										<Button variant="ghost" size="icon" aria-label={V_Msgs.configureVote().text()}>
 											<Icons.Settings2 />
 										</Button>
 									</VoteDisplayPropsPopover>
 									<Button
 										variant="ghost"
 										size="icon"
-										title="Swap Factions"
+										title={LL_Msgs.swapFactions().text()}
 										disabled={!canEdit || !L.swapFactions(item.layerId)}
 										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 									>
@@ -991,7 +998,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									<Button
 										variant="ghost"
 										size="icon"
-										title="Delete"
+										title={LL_Msgs.deleteItem().text()}
 										disabled={!canEdit}
 										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
 									>
@@ -1065,7 +1072,7 @@ function VoteDisplayPropsForm(props: {
 			/>
 			{!props.readonly && (
 				<Button className="w-full mt-4" size="sm" onClick={handleSave}>
-					Save
+					{V_Msgs.saveVoteConfig().text()}
 				</Button>
 			)}
 		</>
@@ -1202,7 +1209,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 					onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
 				>
 					<Icons.Copy />
-					Clone
+					{LL_Msgs.cloneItem().text()}
 				</Menu.Item>
 			</Menu.Group>
 			<Menu.Separator />
@@ -1215,7 +1222,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 					render={Menu.Item}
 					disabled={!canEdit}
 				>
-					Add Layers Before
+					{LL_Msgs.addLayersBefore().text()}
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="selectLayers"
@@ -1225,17 +1232,17 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 					render={Menu.Item}
 					disabled={!canEdit}
 				>
-					Add Layers After
+					{LL_Msgs.addLayersAfter().text()}
 				</StartActivityInteraction>
 			</Menu.Group>
 
 			<Menu.Separator />
 			<Menu.Group>
 				<Menu.Item disabled={!canEdit || (index.innerIndex ?? index.outerIndex) === 0} onClick={sendToFront}>
-					Send to Front
+					{LL_Msgs.sendToFront().text()}
 				</Menu.Item>
 				<Menu.Item disabled={!canEdit || (!!lastLocalIndex && LL.indexesEqual(index, lastLocalIndex))} onClick={sendToBack}>
-					Send to Back
+					{LL_Msgs.sendToBack().text()}
 				</Menu.Item>
 			</Menu.Group>
 		</>

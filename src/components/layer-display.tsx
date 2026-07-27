@@ -6,6 +6,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -74,7 +75,7 @@ export default function LayerDisplay(props: {
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
-						This layer is unknown and was not able to be fully parsed: (<b>{DH.displayLayer(layer)}</b>)
+						{L_Msgs.unparsedLayer().text()} (<b>{DH.displayLayer(layer)}</b>)
 					</p>
 				</TooltipContent>
 			</Tooltip>,
@@ -86,7 +87,7 @@ export default function LayerDisplay(props: {
 					<Icons.ShieldOff className="text-red-500" />
 				</TooltipTrigger>
 				<TooltipContent>
-					<b>Layer Was parsed, but is unknown</b>
+					<b>{L_Msgs.unknownLayer().text()}</b>
 				</TooltipContent>
 			</Tooltip>,
 		)

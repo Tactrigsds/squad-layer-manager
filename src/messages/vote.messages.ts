@@ -120,3 +120,31 @@ export const start = {
 	publicVoteNotFirst: Msgs.def(() => ({ warn: () => `Public vote must be the first item in the queue when initiated` })),
 	noVoteInPostGame: Msgs.def(() => ({ warn: () => 'Not votes allowed in post-game' })),
 }
+
+// -------- the vote row on the queue --------
+
+export const heading = Msgs.def(() => ({ text: () => 'Vote' }))
+
+// reads as "starts in <countdown>"
+export const startsIn = Msgs.def(() => ({ text: () => 'starts in' }))
+
+export const cancelAutostart = Msgs.def(() => ({ text: () => 'Cancel Autostart' }))
+
+export const tally = Msgs.def((received: number, players: number) => ({ text: () => `${received} of ${players} votes received` }))
+
+export const endVoteEarly = Msgs.def(() => ({ text: () => 'End Vote Early' }))
+
+export const abortVote = Msgs.def(() => ({ text: () => 'Abort Vote' }))
+
+// an internal vote polls the admins in SLM rather than the players in game
+export const internalVote = Msgs.def(() => ({ text: () => 'Internal' }))
+
+export const startVote = Msgs.def(() => ({ text: () => 'Start Vote' }))
+
+export const addVoteChoices = Msgs.def(() => ({ text: () => 'Add Vote Choices' }))
+
+export const configureVote = Msgs.def(() => ({ text: () => 'Configure vote' }))
+
+export const generateVoteTitle = Msgs.def(() => ({ text: () => 'Generate Vote' }))
+
+export const saveVoteConfig = Msgs.def(() => ({ text: () => 'Save' }))
