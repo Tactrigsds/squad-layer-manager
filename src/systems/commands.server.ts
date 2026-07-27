@@ -16,6 +16,7 @@ import type * as CS from '@/models/context-shared'
 import * as LP from '@/models/labeled-presets.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import * as SETTINGS from '@/models/settings.models'
 import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as TSW from '@/models/teamswaps.models'
@@ -112,7 +113,7 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 			// non-admin is trying to use admin command, just ignore them
 			return
 		}
-		return await error('wrong-chat', CMD_Msgs.wrongChat(cmdConfig.allowedChats).warn())
+		return await error('wrong-chat', CMD_Msgs.wrongChat(cmdConfig.allowedChats).warn(SETTINGS.locale(ctx)))
 	}
 
 	if (!cmdConfig.enabled) {
@@ -129,7 +130,7 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 				? RBAC.perm('battlemetrics:write-flags')
 				: RBAC.perm(permission, { serverId: ctx.serverId })
 		const denyRes = await Rbac.tryDenyPermissionsForPlayer(ctx, required)
-		if (denyRes) return await error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn())
+		if (denyRes) return await error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn(SETTINGS.locale(ctx)))
 	}
 
 	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender, trigger)
@@ -350,7 +351,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			case 'ok':
 				return { code: 'ok' }
 			case 'err:no-vote-in-progress':
-				return await h.error('no-vote-in-progress', V_Msgs.noVoteInProgress().warn())
+				return await h.error('no-vote-in-progress', V_Msgs.noVoteInProgress().warn(SETTINGS.locale(h.ctx)))
 			default:
 				assertNever(res)
 		}
@@ -362,7 +363,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			case 'ok':
 				return { code: 'ok' }
 			case 'err:no-vote-in-progress':
-				return await h.error('no-vote-in-progress', V_Msgs.noVoteInProgress().warn())
+				return await h.error('no-vote-in-progress', V_Msgs.noVoteInProgress().warn(SETTINGS.locale(h.ctx)))
 			case 'err:rcon':
 				return await h.error('rcon', res.msg)
 			default:
@@ -380,7 +381,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 	getSlmUpdatesEnabled: async (h) => {
 		const res = await LayerQueue.getSlmUpdatesEnabled(h.ctx)
-		await h.reply(SS_Msgs.slmUpdatesStatus(res.enabled, res.disabledByIngameVote).warn())
+		await h.reply(SS_Msgs.slmUpdatesStatus(res.enabled, res.disabledByIngameVote).warn(SETTINGS.locale(h.ctx)))
 		return { code: 'ok' }
 	},
 
@@ -721,7 +722,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (g) return g
 		const target = args.player
 		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars())
-		// the kill notify delivers the rendered reason verbatim (see SM_Msgs.notifyKilled().warn())
+		// the kill notify delivers the rendered reason verbatim (see SM_Msgs.notifyKilled().warn(SETTINGS.locale(ctx)))
 		const reason = applied && AAR.renderAppliedReason(applied)
 		await SquadServer.killPlayersAction(h.ctx, [SM.PlayerIds.getPlayerId(target.ids)], ingameActor(h.sender), reason, applied?.label)
 		await h.reply(applied?.label ? `Killed ${target.ids.username} for ${applied.label}` : `Killed ${target.ids.username}`)
@@ -805,7 +806,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 
 	clearTimeout: async (h, args) => {
 		const denyRes = await Rbac.tryDenyPermissionsForPlayer({ ...h.ctx }, SM.Grants.anyTimeout(h.ctx.serverId))
-		if (denyRes) return await h.error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn())
+		if (denyRes) return await h.error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn(SETTINGS.locale(h.ctx)))
 
 		// the target may be offline, so match against players holding active timeouts rather than the roster
 		const active = await Timeouts.listActiveTimeouts(h.ctx)
@@ -837,14 +838,14 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		})
 		switch (res.code) {
 			case 'err:permission-denied':
-				return await h.error('permission-denied', RBAC_Msgs.permissionDenied(res).warn())
+				return await h.error('permission-denied', RBAC_Msgs.permissionDenied(res).warn(SETTINGS.locale(h.ctx)))
 			case 'err:no-solutions':
-				return await h.error('no-solutions', BB_Msgs.noSolutions(args.request.trim()).warn())
+				return await h.error('no-solutions', BB_Msgs.noSolutions(args.request.trim()).warn(SETTINGS.locale(h.ctx)))
 			case 'err:backburner-full':
-				return await h.error('backburner-full', BB_Msgs.backburnerFull(res.max).warn())
+				return await h.error('backburner-full', BB_Msgs.backburnerFull(res.max).warn(SETTINGS.locale(h.ctx)))
 			case 'ok': {
 				const ownCount = BB.ownedItems(LayerQueue.getSavedBackburner(h.ctx), source).length
-				await h.reply(BB_Msgs.added(resolveRes.value.parts, ownCount, res.evicted.length).warn())
+				await h.reply(BB_Msgs.added(resolveRes.value.parts, ownCount, res.evicted.length).warn(SETTINGS.locale(h.ctx)))
 				return { code: 'ok' }
 			}
 			default:
@@ -855,7 +856,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	listLayerRequests: async (h) => {
 		const items = LayerQueue.getSavedBackburner(h.ctx)
 		if (items.length === 0) {
-			await h.reply(BB_Msgs.empty().warn())
+			await h.reply(BB_Msgs.empty().warn(SETTINGS.locale(h.ctx)))
 			return { code: 'ok' }
 		}
 		const owner = await resolveChatOwner(h)
@@ -879,10 +880,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (!BB.sameOwner(target.source, owner)) {
 			// removing someone else's request needs queue:write
 			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write', { serverId: h.ctx.serverId }))
-			if (denyRes) return await h.error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn())
+			if (denyRes) return await h.error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn(SETTINGS.locale(h.ctx)))
 		}
 		await LayerQueue.removeBackburnerRequestsFromChat(h.ctx, { itemIds: [target.itemId], source: owner })
-		await h.reply(BB_Msgs.removed(BB.describeTemplate(target.filter, LayerQueue.backburnerFilterName)).warn())
+		await h.reply(BB_Msgs.removed(BB.describeTemplate(target.filter, LayerQueue.backburnerFilterName)).warn(SETTINGS.locale(h.ctx)))
 		return { code: 'ok' }
 	},
 }
@@ -935,7 +936,7 @@ async function executeTimeout(
 	const g = await requireReasonGuard(h, 'timeout', !!resolvedReason)
 	if (g) return g
 	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(h.ctx.serverId, durationMs))
-	if (denyRes) return await h.error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn())
+	if (denyRes) return await h.error('permission-denied', RBAC_Msgs.permissionDenied(denyRes).warn(SETTINGS.locale(h.ctx)))
 	const vars = SquadServer.messageVars({ duration: ZodUtils.formatHumanTime(durationMs) })
 	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)
 	const skipped: string[] = []

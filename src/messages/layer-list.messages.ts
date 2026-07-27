@@ -10,38 +10,48 @@ import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 
 export const lowQueueItemCount = Msgs.def((count: number) => ({
-	warn: () => `WARNING: only ${count} item${count === 1 ? '' : 's'} in the queue. Consider adding some more`,
+	warn: (locale?: string) =>
+		Msgs.t('WARNING: only {count, plural, one {# item} other {# items}} in the queue. Consider adding some more', { count }, locale),
 }))
 
 export const nextLayerWarning = Msgs.def(
 	(layerId: L.LayerId, _opts: { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) => ({
-		warn: () => {
-			const opts = {
-				repeatViolations: _opts.repeatViolations.length > 0 ? _opts.repeatViolations : undefined,
-				poolViolations: _opts.poolViolations.length > 0 ? _opts.poolViolations : undefined,
-			}
-			const repeatedList = opts.repeatViolations ? [...new Set(opts.repeatViolations?.map((r) => r.field))].join(', ') : undefined
-			const poolList = opts.poolViolations?.join(', ')
-			let str = ''
-			if (repeatedList && poolList) {
-				str = `Repeat violations(${repeatedList}) and pool violations (${poolList})`
-			} else if (repeatedList) {
-				str = `Repeat violations(${repeatedList})`
-			} else if (poolList) {
-				str = `Pool violations (${poolList})`
-			}
-
-			return `WARNING: The next layer (${DH.displayLayer(layerId)}) has ${str}. Check SLM for more details.`
+		warn: (locale?: string) => {
+			const repeatedList =
+				_opts.repeatViolations.length > 0 ? [...new Set(_opts.repeatViolations.map((r) => r.field))].join(', ') : undefined
+			const poolList = _opts.poolViolations.length > 0 ? _opts.poolViolations.join(', ') : undefined
+			const violations = Msgs.t(
+				'{which, select, both {Repeat violations({repeatedList}) and pool violations ({poolList})} ' +
+					'repeat {Repeat violations({repeatedList})} pool {Pool violations ({poolList})} other {}}',
+				{
+					repeatedList,
+					poolList,
+					which: repeatedList && poolList ? 'both' : repeatedList ? 'repeat' : poolList ? 'pool' : 'none',
+				},
+				locale,
+			)
+			return Msgs.t(
+				'WARNING: The next layer ({layer}) has {violations}. Check SLM for more details.',
+				{ layer: DH.displayLayer(layerId), violations },
+				locale,
+			)
 		},
 	}),
 )
 
 export const votePending = Msgs.def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
-	warn: () => {
+	warn: (locale?: string) => {
 		const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
-		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { round: 'second' })
 		const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
-		return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
+		return Msgs.t(
+			'A Vote is pending{autostart, select, yes { and will be run in {formattedTime}} other {}}. Run {showNextCmd} to preview the vote',
+			{
+				autostart: autostart ? 'yes' : 'no',
+				formattedTime: MsgFmt.formatInterval(timeUntilVote, { round: 'second', locale }),
+				showNextCmd,
+			},
+			locale,
+		)
 	},
 }))
 
@@ -57,6 +67,8 @@ export const opFailed = Msgs.def(() => ({
 	toast: () => [Msgs.t('Failed to apply queue operation')],
 }))
 
+// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
+// src/scripts/extract-messages.ts` counts what is left.
 export const showNext = Msgs.def(
 	(
 		layerQueue: LL.List,
@@ -158,7 +170,9 @@ export const showNext = Msgs.def(
 )
 
 export const requestFeedback = Msgs.def((index: LL.ItemIndex, playerName: string, item: LL.Item) => ({
-	warn: () => ({ msg: [`${playerName} has requested feedback for`, LL.displayLayerListItem(item, index)].join('\n') }),
+	warn: (locale?: string) => ({
+		msg: [Msgs.t('{playerName} has requested feedback for', { playerName }, locale), LL.displayLayerListItem(item, index)].join('\n'),
+	}),
 }))
 
 // You are the last one editing, so leaving drops the draft rather than handing it on. The browser's own confirm()

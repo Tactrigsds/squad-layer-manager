@@ -5,6 +5,8 @@ import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import type * as V from '@/models/vote.models'
 
+// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
+// src/scripts/extract-messages.ts` counts what is left.
 export const started = Msgs.def(
 	(
 		state: Pick<V.VoteState, 'choiceIds' | 'voterType'>,
@@ -32,6 +34,8 @@ export const started = Msgs.def(
 	},
 )
 
+// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
+// src/scripts/extract-messages.ts` counts what is left.
 export const winnerSelected = Msgs.def(
 	(tally: V.Tally, voteItem: LL.VoteItem, winnerId: LL.ItemId, displayProps: DH.LayerDisplayProp[], early: boolean = false) => {
 		const resultsText = Array.from(tally.totals.entries())
@@ -67,6 +71,8 @@ export const aborted = Msgs.def(() => ({
 	broadcast: (locale?: string) => Msgs.t('\nThe vote has been aborted.', undefined, locale),
 }))
 
+// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
+// src/scripts/extract-messages.ts` counts what is left.
 export const voteReminder = Msgs.def(
 	(
 		state: Extract<V.VoteState, { code: 'in-progress' }>,

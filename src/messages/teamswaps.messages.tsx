@@ -76,22 +76,28 @@ export const swapCancelled = Msgs.def((target: Msgs.Target) => ({
 // added/removed are the real per-player diff against the previously saved swaps, not the net change in
 // size: a save that adds 3 and removes 1 is not "added 2"
 export const notifyAdminSwapsSaved = Msgs.def((name: string, count: number, added: number, removed: number, factionLines?: string[]) => ({
-	warn: () => {
-		if (count === 0) return `${name} cleared all queued teamswaps for next map.`
+	warn: (locale?: string) => {
+		if (count === 0) return Msgs.t('{name} cleared all queued teamswaps for next map.', { name }, locale)
 		const parts: string[] = []
-		if (added > 0) parts.push(`added ${added}`)
-		if (removed > 0) parts.push(`removed ${removed}`)
-		const changeSummary = parts.length > 0 ? ` (${parts.join(', ')})` : ''
-		const base = `${name} queued ${count} teamswap${count !== 1 ? 's' : ''} for next map${changeSummary}`
+		if (added > 0) parts.push(Msgs.t('added {added}', { added }, locale))
+		if (removed > 0) parts.push(Msgs.t('removed {removed}', { removed }, locale))
+		const base = Msgs.t(
+			'{name} queued {count, plural, one {# teamswap} other {# teamswaps}} for next map' +
+				'{hasChanges, select, yes { ({changeSummary})} other {}}',
+			{ name, count, changeSummary: parts.join(', '), hasChanges: parts.length > 0 ? 'yes' : 'no' },
+			locale,
+		)
 		return factionLines?.length ? `${base}:\n${factionLines.join('\n')}` : `${base}.`
 	},
 }))
 
 export const notifyAdminManualSwap = Msgs.def((name: string, count: number, factionLines?: string[]) => ({
-	warn: () =>
+	warn: (locale?: string) =>
 		factionLines?.length
-			? `${name} swapped ${count} player${count !== 1 ? 's' : ''}:\n${factionLines.join('\n')}`
-			: `${name} swapped ${count} player${count !== 1 ? 's' : ''} to the other team.`,
+			? Msgs.t('{name} swapped {count, plural, one {# player} other {# players}}:', { name, count }, locale) +
+				'\n' +
+				factionLines.join('\n')
+			: Msgs.t('{name} swapped {count, plural, one {# player} other {# players}} to the other team.', { name, count }, locale),
 }))
 
 // Why a teamswap op was rejected, keyed by code. A lookup rather than a message: it has no target axis, and it
