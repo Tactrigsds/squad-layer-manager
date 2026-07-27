@@ -1037,34 +1037,34 @@ export const getHumanReadableActivity = (activity: AnyActivityNode, listOrIndex:
 }
 
 // -------- transient presence events --------
-// fed to the presence panel by the SLL/teamswap onSideEffect handlers when an op lands on the
-// synced timeline; displayed briefly as event text next to the user's avatar
-export const PRESENCE_EVENT_TEXT = {
-	'added-layers': 'Added layers',
-	'swapped-factions': 'Swapped factions',
-	'deleted-item': 'Deleted an item',
-	'cloned-item': 'Cloned an item',
-	'moved-item': 'Moved an item',
-	'added-tag': 'Added a tag',
-	'added-note': 'Added a note',
-	'saved-queue': 'Saved the queue',
-	'discarded-queue-edits': 'Discarded queue edits',
-	'saved-teamswaps': 'Saved teamswaps',
-	'executed-teamswaps': 'Executed teamswaps',
-	'added-teamswap': 'Added a teamswap',
-	'removed-teamswap': 'Removed a teamswap',
-	'cleared-teamswaps': 'Cleared teamswaps',
-	'discarded-teamswap-edits': 'Discarded teamswap edits',
-	'swapped-players-now': 'Swapped players',
-	'added-layer-request': 'Added a layer request',
-	'edited-layer-request': 'Edited a layer request',
-	'removed-layer-request': 'Removed a layer request',
-	'moved-layer-request': 'Moved a layer request',
-	'combined-layer-requests': 'Combined layer requests',
-	'saved-layer-requests': 'Saved layer requests',
-	'discarded-layer-request-edits': 'Discarded layer request edits',
-} as const satisfies Record<string, string>
-export type PresenceEventAction = keyof typeof PRESENCE_EVENT_TEXT
+// emitted by the SLL/teamswap onSideEffect handlers when an op lands on the synced timeline; the presence
+// panel displays UP_Msgs.presenceEventText briefly next to the user's avatar
+export const PRESENCE_EVENT_ACTIONS = [
+	'added-layers',
+	'swapped-factions',
+	'deleted-item',
+	'cloned-item',
+	'moved-item',
+	'added-tag',
+	'added-note',
+	'saved-queue',
+	'discarded-queue-edits',
+	'saved-teamswaps',
+	'executed-teamswaps',
+	'added-teamswap',
+	'removed-teamswap',
+	'cleared-teamswaps',
+	'discarded-teamswap-edits',
+	'swapped-players-now',
+	'added-layer-request',
+	'edited-layer-request',
+	'removed-layer-request',
+	'moved-layer-request',
+	'combined-layer-requests',
+	'saved-layer-requests',
+	'discarded-layer-request-edits',
+] as const
+export type PresenceEventAction = (typeof PRESENCE_EVENT_ACTIONS)[number]
 export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }
 
 export const getAttributedHumanReadableActivity = (

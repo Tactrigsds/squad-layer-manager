@@ -17,11 +17,6 @@ export const CHAT_GROUP_CHANNELS = {
 	[CHAT_GROUPS.enum.public]: ['ChatTeam', 'ChatSquad', 'ChatAll'],
 }
 
-// A bare "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
-export const CHAT_GROUP_LABELS: Record<ChatGroup, string> = {
-	admin: 'admin only',
-	public: 'public',
-}
 // A string that runs a command. A bare string passes whatever follows it straight through as the command's arguments
 // (`/timeout Alice 2h spam`). An object pins some of them with a template over the words typed after it, which is what
 // used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }`. See docs/configuring.md.
