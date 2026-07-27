@@ -951,13 +951,29 @@ export namespace LogEvents {
 		return Number.isFinite(rate) ? rate : null
 	}
 
-	export async function* parseLogStream(
-		chunk$: AsyncGenerator<string>,
-		errors: Error[],
+	export type ParseLogStreamOpts = {
 		// Tick rate is a periodic gauge rather than a discrete event, so it's surfaced via this callback instead of
 		// being routed through the event pipeline. We should follow this pattern for other other gauge-style logs in future
-		onTickRate?: (rate: number) => void,
-	) {
+		onTickRate?: (rate: number) => void
+		// How long the stream may go quiet before the tick we are still accumulating is closed anyway. A tick is
+		// otherwise only closed by a line from the next one, so on a quiet server the last thing that happened stays
+		// invisible until something else is logged -- a roll can complete in that gap. Must exceed the source's
+		// delivery interval, or a tick split across two deliveries is mistaken for a finished one. Unset (a script
+		// reading a file, where the next line is already in hand) never closes a tick early.
+		idleFlushMs?: number
+	}
+
+	const IDLE = Symbol('idle')
+	function raceIdle<T>(next: Promise<T>, ms: number): Promise<T | typeof IDLE> {
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const idle = new Promise<typeof IDLE>((resolve) => {
+			timer = setTimeout(() => resolve(IDLE), ms)
+		})
+		return Promise.race([next, idle]).finally(() => clearTimeout(timer))
+	}
+
+	export async function* parseLogStream(chunk$: AsyncGenerator<string>, errors: Error[], opts: ParseLogStreamOpts = {}) {
+		const { onTickRate, idleFlushMs } = opts
 		let foundLogStart: boolean = false
 		let lineBuffer: string[] = []
 		let chainState: { chainID: number; events: Event[] } | null = null
@@ -980,40 +996,79 @@ export namespace LogEvents {
 			return results
 		}
 
+		// Closes the tick without waiting for a line from the next one: the entry still in lineBuffer belongs to it,
+		// and nothing else will push either of them out.
+		function* closeTick(): Generator<ParseOutputEvent | null> {
+			if (foundLogStart && lineBuffer.length > 0) {
+				const bufferContent = lineBuffer.join('\n')
+				lineBuffer = []
+				const [event, err] = matchLog(bufferContent, EventMatchers)
+				if (err !== null) {
+					errors.push(err)
+					yield null
+				} else if (event !== null) {
+					;(event as any).raw = bufferContent.trim()
+					yield* handleEvent(event)
+				}
+			}
+			if (!chainState || chainState.events.length === 0) return
+			// A chain still missing a required member means we are mid-delivery, not finished: partitionTick drops
+			// such a chain, so keep waiting for the rest of it rather than closing on a partial tick.
+			const tickErrors: Error[] = []
+			const results = partitionTick(chainState.events, tickErrors)
+			if (tickErrors.length > 0) return
+			chainState = null
+			yield* results
+		}
+
 		const MAX_CONTINUATION_LINES = 100
 		let carry = ''
-		for await (const chunk of chunk$) {
-			const lines = chunk.split(/\r?\n/)
-			lines[0] = carry + lines[0]
-			carry = lines.pop() ?? ''
-			if (lines.length === 0) continue
-			for (const line of lines) {
-				if (onTickRate) {
-					const rate = parseTickRate(line)
-					if (rate !== null) onTickRate(rate)
-				}
-				const match = line.match(logStartRegex)
-				if (!match) {
-					if (foundLogStart && lineBuffer.length <= MAX_CONTINUATION_LINES) lineBuffer.push(line)
+		const source = chunk$[Symbol.asyncIterator]()
+		let delivery: Promise<IteratorResult<string>> | null = null
+		try {
+			for (;;) {
+				delivery ??= source.next()
+				const received = idleFlushMs === undefined ? await delivery : await raceIdle(delivery, idleFlushMs)
+				if (received === IDLE) {
+					yield* closeTick()
 					continue
 				}
-				if (foundLogStart) {
-					const bufferContent = lineBuffer.join('\n')
-					lineBuffer = [line]
-					const [event, err] = matchLog(bufferContent, EventMatchers)
-					if (event === null && err == null) continue
-					if (err !== null) {
-						errors.push(err)
-						yield null
+				delivery = null
+				if (received.done) break
+				const lines = received.value.split(/\r?\n/)
+				lines[0] = carry + lines[0]
+				carry = lines.pop() ?? ''
+				if (lines.length === 0) continue
+				for (const line of lines) {
+					if (onTickRate) {
+						const rate = parseTickRate(line)
+						if (rate !== null) onTickRate(rate)
+					}
+					const match = line.match(logStartRegex)
+					if (!match) {
+						if (foundLogStart && lineBuffer.length <= MAX_CONTINUATION_LINES) lineBuffer.push(line)
 						continue
 					}
-					;(event as any).raw = bufferContent.trim()
-					yield* handleEvent(event!)
-					continue
+					if (foundLogStart && lineBuffer.length > 0) {
+						const bufferContent = lineBuffer.join('\n')
+						lineBuffer = [line]
+						const [event, err] = matchLog(bufferContent, EventMatchers)
+						if (event === null && err == null) continue
+						if (err !== null) {
+							errors.push(err)
+							yield null
+							continue
+						}
+						;(event as any).raw = bufferContent.trim()
+						yield* handleEvent(event!)
+						continue
+					}
+					foundLogStart = true
+					lineBuffer = [line]
 				}
-				foundLogStart = true
-				lineBuffer = [line]
 			}
+		} finally {
+			await source.return?.(undefined)
 		}
 
 		if (foundLogStart && lineBuffer.length > 0) {

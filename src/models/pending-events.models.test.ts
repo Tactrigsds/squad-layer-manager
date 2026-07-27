@@ -791,7 +791,7 @@ describe('PendingEvents', () => {
 		})
 
 		it('marks player as admin if their eos id is in admins set', async () => {
-			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+			const state = makeSyncedState([makePlayer('eos-002', 1)], [])
 
 			state.admins.add('eos-001')
 
@@ -800,6 +800,18 @@ describe('PendingEvents', () => {
 
 			const connected = events.find((e) => e.type === 'PLAYER_CONNECTED') as SE.PlayerConnected
 			expect(connected.player.isAdmin).toBe(true)
+		})
+
+		// The log stream can be delayed past the poll that already carried the player -- across a roll the RESET
+		// absorbs everyone who connected during the loading screen, and the connect line can land after it.
+		it('yields nothing for a player the roster already holds', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
+
+			PendingEvents.onLogEvent(state, makePlayerConnectedChain(300, 'eos-001', 'ctrl-001', 1))
+			const events = await collect(state)
+
+			expect(events.filter((e) => e.type === 'PLAYER_CONNECTED')).toEqual([])
+			expect(state.currTeams?.players.filter((p) => p.ids.eos === 'eos-001')).toHaveLength(1)
 		})
 	})
 

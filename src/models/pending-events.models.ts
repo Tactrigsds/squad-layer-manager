@@ -1088,6 +1088,15 @@ async function* processPendingEvent(
 				role: 'unknown',
 			}
 
+			// A roster we already hold them in owns the join: this is the log catching up on something a snapshot
+			// took in first, not a second arrival. Happens whenever the log stream is delayed past the poll that
+			// carried them -- most visibly across a roll, where the RESET absorbs everyone who connected during
+			// the loading screen and the connect line can land after it.
+			if (SM.PlayerIds.indexOf(state.currTeams.players, (p) => p.ids, player.ids) !== -1) {
+				log.debug('Dropping PLAYER_CONNECTED for %s: already in the roster', SM.PlayerIds.prettyPrint(player.ids))
+				break
+			}
+
 			yield await createEvent(state, {
 				type: 'PLAYER_CONNECTED',
 				...base,
