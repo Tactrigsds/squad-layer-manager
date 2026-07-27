@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as SettingsClient from '@/systems/settings.client'
 
 export const Route = createFileRoute('/_app/servers/')({
@@ -19,10 +20,10 @@ function RouteComponent() {
 		<div className="w-full max-w-lg mx-auto py-6">
 			<Card>
 				<CardHeader>
-					<CardTitle>Managed Servers</CardTitle>
+					<CardTitle>{APP_Msgs.managedServers().text()}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-2">
-					{servers.length === 0 && <p className="text-sm text-muted-foreground">No servers available.</p>}
+					{servers.length === 0 && <p className="text-sm text-muted-foreground">{APP_Msgs.noServersAvailable().text()}</p>}
 					{servers.map((server) => {
 						const serverId = server.id
 						const usable = SettingsClient.isServerUsable(server)

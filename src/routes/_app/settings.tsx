@@ -231,7 +231,7 @@ function RouteComponent() {
 								// Subscribe has no fallback of its own: the suspension is handed to StateBoundary, which also
 								// catches the first-emit timeout if global settings never arrive
 								return (
-									<StateBoundary label="global settings">
+									<StateBoundary subject="global-settings">
 										<ReactRx.Subscribe source$={SettingsClient.globalSettings$}>
 											<div id="section:global" className="scroll-mt-2 rounded-xl">
 												<GlobalSettingsSection stores={{ settingsEditor: key }} />

@@ -183,3 +183,17 @@ export const unknownLayer = Msgs.def(() => ({ text: () => 'Layer Was parsed, but
 export const versus = Msgs.def(() => ({ text: () => 'vs' }))
 
 export const setByLabel = Msgs.def(() => ({ text: () => 'Set By' }))
+
+// -------- the layer set dialogs --------
+
+export const multiLayerPlaceholder = Msgs.def(() => ({
+	text: () => 'Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)',
+}))
+
+export const addLayers = Msgs.def((count: number) => ({
+	text: () => `Add ${count > 0 ? `${count} ` : ''}Layer${count !== 1 ? 's' : ''}`,
+}))
+
+export const editLayerTitle = Msgs.def(() => ({ text: () => 'Edit Layer' }))
+
+export const submit = Msgs.def(() => ({ text: () => 'Submit' }))

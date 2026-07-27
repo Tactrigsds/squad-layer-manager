@@ -52,7 +52,7 @@ export default function EventFilterSelect(props: {
 							onSelect={(e) => e.preventDefault()}
 							onCheckedChange={props.onSelectedOnlyChange}
 						>
-							Selected Only
+							{CHAT_Msgs.selectedOnly().text()}
 						</DropdownMenuCheckboxItem>
 					</>
 				)}

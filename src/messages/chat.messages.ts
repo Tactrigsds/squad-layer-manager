@@ -88,3 +88,5 @@ export const warnSelectedPlaceholder = Msgs.def((count: number) => ({
 export const noOneToWarnPlaceholder = Msgs.def(() => ({ text: () => 'No one to warn' }))
 
 export const warnPlaceholder = Msgs.def(() => ({ text: () => 'Warn…' }))
+
+export const selectedOnly = Msgs.def(() => ({ text: () => 'Selected Only' }))
