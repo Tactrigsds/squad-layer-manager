@@ -36,6 +36,8 @@ export function rolesForSteamId(steamId: bigint | undefined | null): string[] {
 
 export function setup() {
 	log = module.getLogger()
+	// with no guild to read, every rebuild resolves the same empty map; the `discord-role` rule matches nobody
+	if (!Discord.isEnabled()) return
 
 	const rebuild$ = Rx.merge(
 		Rx.of(undefined),

@@ -11,7 +11,14 @@ import * as Env from './env.ts'
 // the former deploy constants live in env vars (env.ts) and the admin-tunable `layerTable` lives in global
 // settings (settings.server.ts). This module just assembles and broadcasts the derived public view.
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.squadcalc })
+// the integration flags are read from the env rather than asked of the systems that own them: this module is set
+// up before they are, and their answer is a deploy-time constant either way
+const envBuilder = Env.getEnvBuilder({
+	...Env.groups.general,
+	...Env.groups.squadcalc,
+	DISCORD_ENABLED: Env.groups.discord.DISCORD_ENABLED,
+	BM_ENABLED: Env.groups.battlemetrics.BM_ENABLED,
+})
 export let ENV!: ReturnType<typeof envBuilder>
 
 // ============================== public, static config (never changes for the lifetime of the process) ==============================
@@ -26,6 +33,8 @@ export type PublicConfig = {
 	layerTable: SETTINGS.GlobalSettings['layerTable']
 	layerGeneration: SETTINGS.GlobalSettings['layerGeneration']
 	layersVersion: string
+	// what this deployment is wired up to, so the client hides the affordances that would resolve to nothing
+	integrations: { battlemetrics: boolean; discord: boolean }
 }
 
 export type PublicConfigForClient = PublicConfig & { wsClientId: string }
@@ -43,6 +52,7 @@ export function pushPublicConfig() {
 		layerTable: Settings.GLOBAL_SETTINGS.layerTable,
 		layerGeneration: Settings.GLOBAL_SETTINGS.layerGeneration,
 		layersVersion: LayerEngine.layersVersion,
+		integrations: { battlemetrics: ENV.BM_ENABLED, discord: ENV.DISCORD_ENABLED },
 	})
 }
 

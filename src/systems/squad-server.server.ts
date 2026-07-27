@@ -39,6 +39,7 @@ import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
@@ -357,7 +358,7 @@ export const orpcRouter = {
 			}),
 		)
 		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast())
+			await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast(SETTINGS.locale(ctx)))
 		}
 		return { code: 'ok' as const }
 	}),
@@ -565,7 +566,7 @@ export const orpcRouter = {
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
 			if (reasonRes.code !== 'ok') return reasonRes
-			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.notifyKilled().warn())
+			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.notifyKilled().warn(SETTINGS.locale(ctx)))
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
 			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
@@ -1095,7 +1096,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		const restartedBy = AppEventsSys.restartInfo
 			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
 			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy).warn())
+		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy).warn(SETTINGS.locale(managedServer)))
 	}
 }
 
@@ -1487,7 +1488,7 @@ export async function killPlayersAppEvent(
 }
 
 export async function killPlayersAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,

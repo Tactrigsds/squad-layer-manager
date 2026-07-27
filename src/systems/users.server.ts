@@ -418,7 +418,11 @@ export type DbUser = Schema.User & { username: string }
 export async function buildUser(dbUser: DbUser): Promise<USR.User> {
 	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, dbUser.discordId)
 	if (memberRes.code !== 'ok') {
-		log.warn(`Failed to fetch member for Discord ID ${dbUser.discordId}: ${memberRes.errCode} : ${memberRes.err}`)
+		// falling back to the db is what an install without discord does for every user it ever builds, which is
+		// a line at boot rather than one per lookup
+		if (memberRes.code !== 'err:disabled') {
+			log.warn(`Failed to fetch member for Discord ID ${dbUser.discordId}: ${memberRes.errCode} : ${memberRes.err}`)
+		}
 		return {
 			...dbUser,
 			displayName: dbUser.nickname || dbUser.username,
