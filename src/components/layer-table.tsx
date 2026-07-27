@@ -22,6 +22,8 @@ import * as SetUtils from '@/lib/set-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
@@ -113,13 +115,13 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 					{sort?.direction === 'ASC:ABS' && (
 						<span className="ml-2 flex items-center">
 							<ArrowUp className="h-4 w-4" />
-							<span className="text-xs">|x|</span>
+							<span className="text-xs">{L_Msgs.sortByMagnitude().text()}</span>
 						</span>
 					)}
 					{sort?.direction === 'DESC:ABS' && (
 						<span className="ml-2 flex items-center">
 							<ArrowDown className="h-4 w-4" />
-							<span className="text-xs">|x|</span>
+							<span className="text-xs">{L_Msgs.sortByMagnitude().text()}</span>
 						</span>
 					)}
 				</Button>
@@ -247,7 +249,12 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 
 				return (
 					<div className="pl-4">
-						<Checkbox checked={checkState} disabled={disabled} onCheckedChange={toggleAllSelected} aria-label="Select all" />
+						<Checkbox
+							checked={checkState}
+							disabled={disabled}
+							onCheckedChange={toggleAllSelected}
+							aria-label={SM_Msgs.selectAllRows().text()}
+						/>
 					</div>
 				)
 			},
@@ -260,7 +267,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 						disabled={isUnselectable}
 						// no handler here because we're already handling onClick on the row
 						className={row.original.isRowDisabled ? 'invisible' : ''}
-						aria-label="Select row"
+						aria-label={SM_Msgs.selectRow().text()}
 					/>
 				)
 			},
@@ -299,7 +306,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 	// Always include constraints column
 	const constraintsCol = columnHelper.accessor('constraints', {
 		header: () => (
-			<span title="Layer Indicators">
+			<span title={L_Msgs.layerIndicatorsColumn().text()}>
 				<Icons.Flag />
 			</span>
 		),
@@ -551,12 +558,8 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 				<LayerTableContextMenuItems layerId={row.original.id} stores={props.stores} />
 				{canFocusLayers && (
 					<ContextMenuItem onClick={() => getStore().onLayerFocused?.(row.id)}>
-						<span>Focus Layer</span>
-						<ContextMenuShortcut>
-							Ctrl
-							<span>+</span>
-							Click
-						</ContextMenuShortcut>
+						<span>{L_Msgs.focusLayer().text()}</span>
+						<ContextMenuShortcut>{L_Msgs.focusLayerShortcut().text()}</ContextMenuShortcut>
 					</ContextMenuItem>
 				)}
 			</ContextMenuContent>
@@ -640,7 +643,7 @@ export function LayerTableControlPanel(props: {
 					{/*--------- toggle columns ---------*/}
 					{canToggleColumns && (
 						<ComboBoxMulti
-							title="Column"
+							title={L_Msgs.columnPicker().text()}
 							values={table
 								.getAllLeafColumns()
 								.filter((col) => col.getIsVisible())
@@ -666,7 +669,7 @@ export function LayerTableControlPanel(props: {
 							restrictValueSize={false}
 							reset={defaultVisibleColumns}
 						>
-							<Button variant="ghost" size="icon" title="Toggle Columns">
+							<Button variant="ghost" size="icon" title={L_Msgs.toggleColumns().text()}>
 								<Icons.Columns3 />
 							</Button>
 						</ComboBoxMulti>
@@ -702,7 +705,7 @@ export function LayerTableControlPanel(props: {
 								})
 							}
 						/>
-						<Label htmlFor={showSelectedId}>Show Selected</Label>
+						<Label htmlFor={showSelectedId}>{L_Msgs.showSelected().text()}</Label>
 					</div>
 					<Button
 						variant="ghost"
@@ -711,7 +714,7 @@ export function LayerTableControlPanel(props: {
 						onClick={() => {
 							LayerTablePrt.Actions.resetSelected(props.stores)
 						}}
-						title="Reset Selected Layers"
+						title={L_Msgs.resetSelectedLayers().text()}
 					>
 						<Icons.Trash className="h-4 w-4" />
 					</Button>
@@ -719,7 +722,7 @@ export function LayerTableControlPanel(props: {
 						className="whitespace-nowrap text-muted-foreground data-[hide=true]:invisible"
 						data-hide={frameState.selectedLayerIds.length === 0}
 					>
-						{frameState.selectedLayerIds.length} selected
+						{L_Msgs.selectedCount(frameState.selectedLayerIds.length).text()}
 					</p>
 				</span>
 				<span className="flex h-10 items-center space-x-2 ">
@@ -743,10 +746,10 @@ export function LayerTableControlPanel(props: {
 									onCheckedChange={() => toggleRandomize()}
 									id={toggleRandomizeId}
 								/>
-								<Label htmlFor={toggleRandomizeId}>Randomize</Label>
+								<Label htmlFor={toggleRandomizeId}>{L_Msgs.randomize().text()}</Label>
 							</div>
 						</TooltipTrigger>
-						<TooltipContent>Randomize layer selection (weighted to preferable layers)</TooltipContent>
+						<TooltipContent>{L_Msgs.randomizeHint().text()}</TooltipContent>
 					</Tooltip>
 				</span>
 			</div>
@@ -844,12 +847,12 @@ function SetRawLayerDialog(props: {
 					ref={inputRef}
 					defaultValue={props.defaultValue}
 					className="flex-1"
-					placeholder="Ex: Narva_RAAS_v1 RGF USMC or a layer id"
+					placeholder={L_Msgs.rawLayerPlaceholder().text()}
 					onChange={(e) => setInputText(e.target.value)}
 					rightElement={
 						<div className="flex space-x-1 items-center">
 							<Label
-								title="Layer exists in the database"
+								title={L_Msgs.layerFound().text()}
 								data-layerFound={validLayerDebounced && layerFound}
 								className="invisible data-[layerFound=true]:visible"
 							>
@@ -908,14 +911,11 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 		<div className="flex items-center justify-between space-x-4 py-2">
 			<div className="flex items-center space-x-2">
 				{initStatus.status === 'ready' && !frameState.isFetching && (
-					<div className="text-sm text-muted-foreground">
+					<div className="text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
 						{(frameState.totalRowCount ?? 0) > 0 ? (
-							<>
-								<span className="font-semibold text-foreground">{(frameState.totalRowCount ?? 0).toLocaleString()}</span> matched
-								layers
-							</>
+							L_Msgs.matchedLayers((frameState.totalRowCount ?? 0).toLocaleString()).react()
 						) : (
-							<span className="font-semibold text-foreground">No layers matched</span>
+							<span className="font-semibold text-foreground">{L_Msgs.noLayersMatched().text()}</span>
 						)}
 					</div>
 				)}
@@ -924,15 +924,13 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 					className="flex items-center space-x-2 invisible data-[loading=true]:visible "
 				>
 					<LoaderCircle className="h-4 w-4 animate-spin" />
-					{initStatus.status === 'initializing' && <p className={Typo.Muted}>Initializing layer database...</p>}
-					{initStatus.status === 'downloading-layers' && (
-						<p className={Typo.Muted}>Downloading layers from server, this may take a few minutes...</p>
-					)}
+					{initStatus.status === 'initializing' && <p className={Typo.Muted}>{L_Msgs.initializingDatabase().text()}</p>}
+					{initStatus.status === 'downloading-layers' && <p className={Typo.Muted}>{L_Msgs.downloadingLayers().text()}</p>}
 				</div>
 				{initStatus.status === 'error' && (
 					<div className="flex items-center space-x-2 text-destructive">
-						<span className="font-semibold">Error loading layers:</span>
-						<span className="text-sm">{initStatus.errorMessage ?? 'Unknown error'}</span>
+						<span className="font-semibold">{L_Msgs.loadFailed().text()}</span>
+						<span className="text-sm">{initStatus.errorMessage ?? L_Msgs.loadFailedUnknown().text()}</span>
 					</div>
 				)}
 			</div>

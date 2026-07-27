@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import * as UI_Msgs from '@/messages/ui.messages'
 
 type AlertDialogButton = {
 	id: string
@@ -122,7 +123,7 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 						</form>
 					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>Cancel</AlertDialogCancel>
+						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>{UI_Msgs.cancel().text()}</AlertDialogCancel>
 						{options?.buttons?.map((button) => {
 							const variant = button.variant ?? (isDestructive ? 'destructive' : undefined)
 							return (

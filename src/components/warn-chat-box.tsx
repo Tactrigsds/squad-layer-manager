@@ -93,26 +93,30 @@ export default function WarnChatBox({
 
 	// orange "targeted warn" accent, matching ServerChatBox's warn-selected channel
 	const accent = 'border-orange-500/60 focus-visible:ring-orange-500/50'
-	const resolvedPlaceholder = warnDenied ? 'Missing permission' : noTargets ? 'No one to warn' : (placeholder ?? 'Warn…')
+	const resolvedPlaceholder = warnDenied
+		? CHAT_Msgs.missingPermission().text()
+		: noTargets
+			? CHAT_Msgs.noOneToWarnPlaceholder().text()
+			: (placeholder ?? CHAT_Msgs.warnPlaceholder().text())
 
 	return (
 		<div className={cn('flex flex-col gap-1', className)}>
 			<div className="flex items-center self-end gap-2">
 				<label
 					className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-					title="Warn every online admin that this warn was sent"
+					title={CHAT_Msgs.notifyAdminsHint().text()}
 				>
 					<Checkbox
 						checked={notifyAdminsChecked}
 						onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
 						className="h-3.5 w-3.5"
 					/>
-					Notify admins
+					{CHAT_Msgs.notifyAdmins().text()}
 				</label>
 				{username && (
 					<label
 						className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-						title="Prefix the message with your username"
+						title={CHAT_Msgs.prefixNameHint().text()}
 					>
 						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
 						{username}:
@@ -151,7 +155,7 @@ export default function WarnChatBox({
 					className={cn('h-auto self-stretch w-7 p-0 shrink-0 text-orange-400', accent)}
 					onClick={() => void send()}
 					disabled={sendDisabled}
-					title="Send warning (Enter)"
+					title={CHAT_Msgs.sendWarningHint().text()}
 				>
 					{pending ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Send className="h-3.5 w-3.5" />}
 				</Button>

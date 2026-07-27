@@ -109,3 +109,72 @@ export const otherSessionsActive = Msgs.def((count: number) => ({
 }))
 
 export const resetOtherSessions = Msgs.def(() => ({ text: () => 'Reset them' }))
+
+// -------- a player's discord link --------
+
+export const discordLabel = Msgs.def(() => ({ text: () => 'Discord' }))
+
+export const linkedBy = Msgs.def((admin?: string) => ({ text: () => `linked by ${admin ?? 'an admin'}` }))
+
+export const selfLinked = Msgs.def(() => ({ text: () => 'self-linked' }))
+
+export const unlink = Msgs.def(() => ({ text: () => 'Unlink' }))
+
+// -------- the nickname dialog --------
+
+export const nicknameDialogTitle = Msgs.def(() => ({ text: () => 'Set Custom Nickname' }))
+
+export const nicknameDialogBlurb = Msgs.def(() => ({
+	text: () =>
+		'Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display name.',
+}))
+
+export const nicknameFieldLabel = Msgs.def(() => ({ text: () => 'Nickname' }))
+
+export const nicknamePlaceholder = Msgs.def(() => ({ text: () => 'Enter a custom nickname...' }))
+
+export const nicknamePreview = Msgs.def((nickname: string) => ({ text: () => `Will display as: "${nickname}"` }))
+
+export const nicknameFallsBackToDiscord = Msgs.def(() => ({ text: () => 'Will use Discord display name' }))
+
+export const nicknameTooLong = Msgs.def(() => ({ text: () => 'Nickname must be 64 characters or less' }))
+
+export const save = Msgs.def(() => ({ text: () => 'Save' }))
+
+export const saving = Msgs.def(() => ({ text: () => 'Saving...' }))
+
+// -------- the linked steam accounts dialog --------
+
+export const steamDialogTitle = Msgs.def(() => ({ text: () => 'Linked Steam Accounts' }))
+
+export const steamDialogBlurb = Msgs.def(() => ({
+	text: () =>
+		'Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need. Links an admin made on your behalf are listed here too, and you can remove them.',
+}))
+
+export const steamIdPlaceholder = Msgs.def(() => ({ text: () => '17-digit Steam64 ID' }))
+
+export const steamLinkedByAdmin = Msgs.def((admin: string) => ({ text: () => `Linked by ${admin}` }))
+
+// -------- the discord role and member pickers --------
+
+export const discordRolePicker = Msgs.def(() => ({ text: () => 'role' }))
+
+export const discordRoleUnresolved = Msgs.def(() => ({
+	text: () => 'This Discord role no longer exists in the server (its id is shown). Pick another role or remove this assignment.',
+}))
+
+export const discordMemberPicker = Msgs.def(() => ({ text: () => 'member' }))
+
+export const discordMemberPlaceholder = Msgs.def(() => ({ text: () => 'Search members…' }))
+
+export const discordMemberSearchPlaceholder = Msgs.def(() => ({ text: () => 'Search by name or id…' }))
+
+export const noDiscordMembersFound = Msgs.def(() => ({ text: () => 'No members found.' }))
+
+export const searchDiscordMembers = Msgs.def(() => ({ text: () => 'Type a name or id to search members.' }))
+
+export const discordMemberUnresolved = Msgs.def(() => ({
+	text: () =>
+		"This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise unknown.",
+}))

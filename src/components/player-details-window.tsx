@@ -26,6 +26,7 @@ import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as BM from '@/models/battlemetrics.models'
@@ -137,7 +138,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
-					{ids?.username ?? 'Player Details'}
+					{ids?.username ?? SM_Msgs.playerDetailsTitle().text()}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
 						<span className="text-muted-foreground font-normal ml-1">
 							(
@@ -147,20 +148,20 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 									{livePlayer.squadId !== null && ', '}
 								</>
 							) : null}
-							{livePlayer.squadId !== null && <>Squad {livePlayer.squadId}</>})
+							{livePlayer.squadId !== null && SM_Msgs.squadWithId(livePlayer.squadId).text()})
 						</span>
 					)}
 				</DraggableWindowTitle>
 				{connectionStatus &&
 					(connectionStatus.status === 'online' ? (
-						<span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={`Online${elapsed ? ` for ${elapsed}` : ''}`} />
+						<span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={SM_Msgs.onlineFor(elapsed).text()} />
 					) : (
 						<span
 							className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
 							title={
 								connectionStatus.lastSeen
-									? `Last seen ${dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })}`
-									: 'Offline'
+									? SM_Msgs.lastSeen(dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })).text()
+									: SM_Msgs.offline().text()
 							}
 						/>
 					))}
@@ -172,7 +173,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						<button
 							type="button"
 							className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-							title="Player actions"
+							title={SM_Msgs.playerActions().text()}
 						>
 							<Icons.Ellipsis className="h-3.5 w-3.5" />
 						</button>
@@ -188,21 +189,25 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<PlayerTimeoutStatus playerId={playerId} />
 				<div className="inline-flex gap-1 items-baseline">
 					{livePlayer?.role && <div className="text-muted-foreground">{livePlayer.role}</div>}
-					<CopyIdButton label="eos" id={playerId} />
-					{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton label="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
-					{ids?.epic && <CopyIdButton label="epic" id={ids.epic} />}
+					<CopyIdButton kind="eos" id={playerId} />
+					{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton kind="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
+					{ids?.epic && <CopyIdButton kind="epic" id={ids.epic} />}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
 					{(ids?.steam ?? profile?.playerIds.steam) ? (
 						<>
-							<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>Steam</ExtLink>
-							<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>CBL</ExtLink>
+							<ExtLink href={`https://steamcommunity.com/profiles/${ids?.steam ?? profile?.playerIds.steam}`}>
+								{SM_Msgs.linkNames.steam}
+							</ExtLink>
+							<ExtLink href={`https://communitybanlist.com/search/${ids?.steam ?? profile?.playerIds.steam}`}>
+								{SM_Msgs.linkNames.cbl}
+							</ExtLink>
 							<ExtLink href={`https://mysquadstats.com/search/${ids?.steam ?? profile?.playerIds.steam}#vanillaStats`}>
-								MySquadStats
+								{SM_Msgs.linkNames.mySquadStats}
 							</ExtLink>
 						</>
 					) : (
-						<span className="italic">(no steam id)</span>
+						<span className="italic">{SM_Msgs.noSteamId().text()}</span>
 					)}
 					<ExtLink
 						href={
@@ -211,16 +216,18 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
 						}
 					>
-						BattleMetrics
+						{SM_Msgs.linkNames.battlemetrics}
 					</ExtLink>
-					{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
+					{!!profile?.hoursPlayed && (
+						<span title={BM_Msgs.hoursPlayedHint().text()}>{BM_Msgs.hoursPlayed(profile.hoursPlayed).text()}</span>
+					)}
 				</div>
 				<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
 			</div>
 			<Separator />
 			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
-					<h3 className="inline">Server Activity</h3>
+					<h3 className="inline">{CHAT_Msgs.activityTitle().text()}</h3>
 					<EventFilterSelect
 						variant="ghost"
 						value={filterState}
@@ -260,10 +267,10 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
-							title="Load older events"
+							title={CHAT_Msgs.loadOlderEvents().text()}
 						>
 							{eventsQuery.isFetchingNextPage ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
-							<span className="text-xs">Load older events</span>
+							<span className="text-xs">{CHAT_Msgs.loadOlderEvents().text()}</span>
 						</Button>
 					)}
 					{showScrollButton && (
@@ -272,10 +279,10 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
-							title="Scroll to bottom"
+							title={CHAT_Msgs.scrollToBottom().text()}
 						>
 							<Icons.ChevronDown className="h-3 w-3" />
-							<span className="text-xs">Scroll to bottom</span>
+							<span className="text-xs">{CHAT_Msgs.scrollToBottom().text()}</span>
 						</Button>
 					)}
 				</div>
@@ -286,7 +293,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						serverId={serverId}
 						playerIds={[playerId]}
 						focusTarget={{ kind: 'player', playerId }}
-						placeholder={`Warn ${ids?.username ?? 'player'}…`}
+						placeholder={SM_Msgs.warnPlayerPlaceholder(ids?.username ?? SM_Msgs.unnamedPlayer().text()).text()}
 						stores={stores}
 					/>
 				</div>
@@ -337,17 +344,17 @@ function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
 
 	return (
 		<div className="flex items-center gap-2">
-			<span className="text-muted-foreground shrink-0">Discord</span>
+			<span className="text-muted-foreground shrink-0">{USR_Msgs.discordLabel().text()}</span>
 			{link ? (
 				<>
 					<span className="truncate" title={link.discordId}>
 						{link.discordUsername}
 					</span>
 					<span className="text-muted-foreground shrink-0">
-						{link.origin === 'assigned' ? `linked by ${link.linkedBy?.displayName ?? 'an admin'}` : 'self-linked'}
+						{link.origin === 'assigned' ? USR_Msgs.linkedBy(link.linkedBy?.displayName).text() : USR_Msgs.selfLinked().text()}
 					</span>
 					<Button type="button" size="sm" variant="ghost" className="h-6 px-1 text-destructive" disabled={pending} onClick={onRemove}>
-						Unlink
+						{USR_Msgs.unlink().text()}
 					</Button>
 				</>
 			) : (
@@ -371,7 +378,7 @@ function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
 				if (res.failed.length > 0) toast.error(...BM_Msgs.refreshFailed().toast())
 			}}
 			className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:pointer-events-none"
-			title="Refresh BattleMetrics data"
+			title={BM_Msgs.refreshHint().text()}
 		>
 			<Icons.RefreshCw className={`h-3 w-3 ${refresh.isPending ? 'animate-spin' : ''}`} />
 		</button>
@@ -388,22 +395,21 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 		<div className="flex items-center gap-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1">
 			<Icons.UserX className="h-3.5 w-3.5 text-red-500 shrink-0" />
 			<span className="min-w-0 truncate">
-				Timed out until {dateFns.format(timeout.expiresAt, 'PPp')}
-				{timeout.reasonLabel ? ` (${timeout.reasonLabel})` : ''}
+				{SM_Msgs.timedOutUntil(dateFns.format(timeout.expiresAt, 'PPp'), timeout.reasonLabel ?? undefined).text()}
 			</span>
 			{canCancel && (
 				<Button
 					size="sm"
 					variant="ghost"
 					className="h-6 px-2 ml-auto shrink-0"
-					title="Cancel this timeout"
+					title={SM_Msgs.cancelTimeoutHint().text()}
 					onClick={async () => {
 						const res = await cancelMutation.mutateAsync({ timeoutId: timeout.id })
 						if (res.code !== 'ok') toast.error(...SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
 						else toast(...SM_Msgs.timeoutCancelled().toast())
 					}}
 				>
-					Cancel
+					{SM_Msgs.cancelTimeout().text()}
 				</Button>
 			)}
 		</div>
@@ -485,9 +491,7 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 		return (
 			<div className="flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground italic">
 				<Icons.ChevronsDown className="h-3 w-3 shrink-0" />
-				<span>
-					{formatGap(time - prevTime)} later, resuming {dateFns.format(time, 'h:mm a')}
-				</span>
+				<span>{SM_Msgs.feedGap(formatGap(time - prevTime), dateFns.format(time, 'h:mm a')).text()}</span>
 			</div>
 		)
 	}
@@ -556,7 +560,7 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 						<button
 							type="button"
 							className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0 bg-muted hover:bg-muted/80 transition-colors"
-							title="Show all tags"
+							title={BM_Msgs.showAllFlags().text()}
 						>
 							<Icons.MoreHorizontal className="h-3 w-3" />
 						</button>

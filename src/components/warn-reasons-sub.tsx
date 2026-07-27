@@ -3,6 +3,7 @@ import React from 'react'
 import { renderTemplate } from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
@@ -46,9 +47,9 @@ export function WarnReasonsSub(props: {
 			<Sub>
 				<SubTrigger disabled={disabled}>{label}</SubTrigger>
 				<SubContent>
-					<Item onClick={props.onCustom}>Custom</Item>
+					<Item onClick={props.onCustom}>{AAR_Msgs.customReason().text()}</Item>
 					<Separator />
-					<Item onClick={props.onPreset}>Preset Reason</Item>
+					<Item onClick={props.onPreset}>{AAR_Msgs.presetReasonItem().text()}</Item>
 				</SubContent>
 			</Sub>
 		</PermissionDeniedTooltip>
@@ -83,10 +84,7 @@ export function ReasonPicker(props: {
 		// why instead of silently rendering nothing
 		if (props.required) {
 			return (
-				<p className="text-xs text-destructive">
-					A reason is required for {AAR.ADMIN_ACTIONS[props.action].displayName}, but no reasons are configured for it (see Admin
-					Action Reasons in settings).
-				</p>
+				<p className="text-xs text-destructive">{AAR_Msgs.noReasonsConfigured(AAR.ADMIN_ACTIONS[props.action].displayName).text()}</p>
 			)
 		}
 		return null
@@ -97,22 +95,23 @@ export function ReasonPicker(props: {
 	return (
 		<div className="grid gap-2">
 			<Label>
-				Reason
-				{props.required ? (
-					<span className="text-destructive"> (required)</span>
-				) : (
-					<span className="text-muted-foreground"> (optional)</span>
-				)}
+				{AAR_Msgs.reasonLabel(
+					props.required ? (
+						<span className="text-destructive">{AAR_Msgs.reasonRequired().text()}</span>
+					) : (
+						<span className="text-muted-foreground">{AAR_Msgs.reasonOptional().text()}</span>
+					),
+				).react()}
 			</Label>
 			{reasons.length > 0 && (
 				<ComboBox
-					title="Reason"
+					title={AAR_Msgs.reasonPicker().text()}
 					className="w-full"
 					value={selected}
 					// configured order, with Custom/None pinned first
 					sort={false}
 					options={[
-						{ value: CUSTOM, label: allowCustom ? 'Custom' : 'None' },
+						{ value: CUSTOM, label: allowCustom ? AAR_Msgs.customReason().text() : AAR_Msgs.noReason().text() },
 						...reasons.map((reason) => ({
 							value: reason.label,
 							keywords: reason.keywords,
@@ -129,7 +128,7 @@ export function ReasonPicker(props: {
 			{customVisible && (
 				<Input
 					autoComplete="off"
-					placeholder="Enter a reason"
+					placeholder={AAR_Msgs.enterReason().text()}
 					defaultValue={props.customRef!.current}
 					onChange={(e) => {
 						props.customRef!.current = e.target.value
@@ -171,7 +170,7 @@ export function ReasonMessagePreview(props: {
 
 	return (
 		<div className="grid gap-1">
-			<span className="text-xs text-muted-foreground">Message preview</span>
+			<span className="text-xs text-muted-foreground">{AAR_Msgs.messagePreview().text()}</span>
 			<MessagePreviewBox>{text}</MessagePreviewBox>
 		</div>
 	)

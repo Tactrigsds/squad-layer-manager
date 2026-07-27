@@ -452,6 +452,31 @@ export const middleClickDeleteSwap = Msgs.def(() => ({ text: () => 'Middle-click
 
 // -------- the squad details window --------
 
+export const playerDetailsTitle = Msgs.def(() => ({ text: () => 'Player Details' }))
+
+export const squadWithId = Msgs.def((squadId: number) => ({ text: () => `Squad ${squadId}` }))
+
+export const onlineFor = Msgs.def((elapsed?: string | null) => ({ text: () => (elapsed ? `Online for ${elapsed}` : 'Online') }))
+
+export const lastSeen = Msgs.def((when: string) => ({ text: () => `Last seen ${when}` }))
+
+export const offline = Msgs.def(() => ({ text: () => 'Offline' }))
+
+export const playerActions = Msgs.def(() => ({ text: () => 'Player actions' }))
+
+export const noSteamId = Msgs.def(() => ({ text: () => '(no steam id)' }))
+
+export const warnPlayerPlaceholder = Msgs.def((playerName: string) => ({ text: () => `Warn ${playerName}…` }))
+
+export const unnamedPlayer = Msgs.def(() => ({ text: () => 'player' }))
+
+export const timedOutUntil = Msgs.def((expiresAt: string, reasonLabel?: string) => ({
+	text: () => `Timed out until ${expiresAt}` + (reasonLabel ? ` (${reasonLabel})` : ''),
+}))
+
+// the divider the feed draws where it skipped a stretch of quiet: how long the gap ran, and where it picks up
+export const feedGap = Msgs.def((gap: string, resumesAt: string) => ({ text: () => `${gap} later, resuming ${resumesAt}` }))
+
 export const squadDetailsTitle = Msgs.def(() => ({ text: () => 'Squad Details' }))
 
 export const squadLocked = Msgs.def(() => ({ text: () => 'Squad is locked' }))
@@ -467,8 +492,6 @@ export const squadInGameId = Msgs.def(() => ({ text: () => 'In-game ID:' }))
 export const squadEvents = Msgs.def(() => ({ text: () => 'Squad Events' }))
 
 export const hideTeamChat = Msgs.def(() => ({ text: () => 'Hide team/allchat' }))
-
-export const scrollToBottom = Msgs.def(() => ({ text: () => 'Scroll to bottom' }))
 
 export const squadPlayersHeading = Msgs.def((count: number) => ({ text: () => `Players (${count})` }))
 
@@ -504,4 +527,14 @@ export const cancelTimeout = Msgs.def(() => ({ text: () => 'Cancel' }))
 export const timeoutActorFallbacks = { 'slm-user': 'Admin', 'ingame-user': 'In-game admin', system: 'System' }
 
 // the id kinds a player row offers to copy
-export const idKindLabels = { steam: 'steam', eos: 'eos' }
+// A player id names its own kind, inline and in the copy button's tooltip. The button takes the kind rather than
+// the label so the tooltip is a whole phrase rather than one built around a noun the caller passed in.
+export type IdKind = 'steam' | 'eos' | 'epic'
+
+export const idKindLabels: Record<IdKind, string> = { steam: 'steam', eos: 'eos', epic: 'epic' }
+
+const copyIdHints: Record<IdKind, string> = { steam: 'Copy steam ID', eos: 'Copy eos ID', epic: 'Copy epic ID' }
+
+export const copyIdHint = Msgs.def((kind: IdKind) => ({ text: () => copyIdHints[kind] }))
+
+export const copiedFeedback = Msgs.def(() => ({ text: () => 'Copied!' }))

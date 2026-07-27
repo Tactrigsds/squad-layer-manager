@@ -16,6 +16,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object-utils'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
 import { useLoggedInUser } from '@/systems/users.client'
@@ -199,7 +200,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 					{props.footerBeforeSubmit}
 					{submit && (
 						<Button disabled={!canSubmit} onClick={submit}>
-							Submit
+							{L_Msgs.submit().text()}
 						</Button>
 					)}
 				</div>

@@ -7,6 +7,7 @@ import { frameManager } from '@/frames/frame-manager'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import * as RPC from '@/orpc.client'
@@ -116,7 +117,7 @@ function RouteComponent() {
 		return () => sub.unsubscribe()
 	}, [params.filterId])
 
-	if (!loaderData || !frameKey) return <p>Something went wrong</p>
+	if (!loaderData || !frameKey) return <p>{APP_Msgs.somethingWentWrong().text()}</p>
 	return (
 		<FilterEdit
 			entity={loaderData.entity}

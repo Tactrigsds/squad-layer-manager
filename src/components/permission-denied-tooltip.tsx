@@ -1,6 +1,7 @@
 import React from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import * as RBAC_Msgs from '@/messages/rbac.messages'
 import type * as RBAC from '@/rbac.models'
 
 /**
@@ -13,18 +14,15 @@ export function PermissionDeniedTooltip(props: {
 	triggerClassName?: string
 }) {
 	if (!props.denied) return props.children
-	const { checkType: check, failures } = props.denied
-	const qualifier = check === 'all' ? 'all' : 'one'
+	const { checkType, failures } = props.denied
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
 				<span className={props.triggerClassName}>{props.children}</span>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-xs">
-				<p className="font-semibold text-destructive mb-1">Permission denied</p>
-				<p className="text-xs text-muted-foreground mb-1">
-					{failures.length === 1 ? 'You need the following permission:' : `You need ${qualifier} of the following permissions:`}
-				</p>
+				<p className="font-semibold text-destructive mb-1">{RBAC_Msgs.permissionDeniedHeading().text()}</p>
+				<p className="text-xs text-muted-foreground mb-1">{RBAC_Msgs.permissionsNeeded(checkType, failures.length).text()}</p>
 				<ul className="text-xs space-y-1">
 					{failures.map((msg) => (
 						<li key={msg} className="p-1.5 bg-muted/50 rounded space-y-0.5">

@@ -54,3 +54,54 @@ export const flagsAdded = Msgs.def((flaggedCount: number, playerCount: number, n
 }))
 
 export const refreshFailed = Msgs.def(() => ({ toast: () => ['Failed to refresh BattleMetrics data'] }))
+
+// -------- a player's BM sidebar --------
+
+export const hoursPlayedHint = Msgs.def(() => ({ text: () => "Hours played on this org's servers" }))
+
+export const hoursPlayed = Msgs.def((hours: number) => ({ text: () => `${hours}h` }))
+
+export const refreshHint = Msgs.def(() => ({ text: () => 'Refresh BattleMetrics data' }))
+
+export const showAllFlags = Msgs.def(() => ({ text: () => 'Show all tags' }))
+
+// -------- the add/manage flag dialogs --------
+
+export const keepFlag = Msgs.def(() => ({ text: () => 'Keep this flag' }))
+
+export const dontAddFlag = Msgs.def(() => ({ text: () => "Don't add this flag" }))
+
+export const removeFlag = Msgs.def(() => ({ text: () => 'Remove this flag' }))
+
+export const whyRemoving = Msgs.def(() => ({ text: () => 'Why is this flag being removed?' }))
+
+export const whyApplying = Msgs.def(() => ({ text: () => 'Why is this flag being applied?' }))
+
+export const flagsLabel = Msgs.def(() => ({ text: () => 'Flags' }))
+
+export const noFlags = Msgs.def(() => ({ text: () => 'This player has no flags.' }))
+
+export const flagsToAdd = Msgs.def(() => ({ text: () => 'Flags to add' }))
+
+export const noFlagsSelected = Msgs.def(() => ({ text: () => 'No flags selected yet.' }))
+
+export const selectFlag = Msgs.def(() => ({ text: () => 'Select a flag...' }))
+
+export const addFlag = Msgs.def(() => ({ text: () => 'Add flag' }))
+
+export const hasEveryFlag = Msgs.def(() => ({ text: () => 'This player already has every flag in the organization' }))
+
+export const reasonsBecomeNotes = Msgs.def((scope: 'player' | 'selection') => ({
+	text: () =>
+		scope === 'player'
+			? "Each reason is posted to the player's BattleMetrics profile as its own note."
+			: "Each reason is posted to every selected player's BattleMetrics profile as its own note.",
+}))
+
+export const manageFlagsHint = Msgs.def(() => ({ text: () => 'Manage flags' }))
+
+export const unknownFlag = Msgs.def(() => ({ text: () => 'Unknown flag' }))
+
+export const unknownFlagHint = Msgs.def((id: string) => ({ text: () => `Unknown flag: ${id}` }))
+
+export const flagPicker = Msgs.def(() => ({ text: () => 'Flag' }))

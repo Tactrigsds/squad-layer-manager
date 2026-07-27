@@ -429,3 +429,23 @@ export const serverAgentTokenBlurb = Msgs.def(() => ({
 }))
 
 export const serverAgentSetupGuide = Msgs.def(() => ({ text: () => 'Server agent setup guide' }))
+
+export const loadingEmojis = Msgs.def(() => ({ text: () => 'Loading emojis...' }))
+
+export const fullscreen = Msgs.def(() => ({ text: () => 'Fullscreen' }))
+
+export const exitFullscreen = Msgs.def(() => ({ text: () => 'Exit fullscreen (Esc)' }))
+
+export const jsonErrors = Msgs.def(() => ({ text: () => 'Errors' }))
+
+// -------- the pool config window --------
+
+export const poolConfigTitle = Msgs.def(() => ({ text: () => 'Pool Configuration' }))
+
+export const readOnlyBadge = Msgs.def(() => ({ text: () => 'Read-only' }))
+
+export const poolFiltersTab = Msgs.def(() => ({ text: () => 'Filters' }))
+
+export const resetChanges = Msgs.def(() => ({ text: () => 'Reset changes' }))
+
+export const saveChanges = Msgs.def(() => ({ text: () => 'Save Changes' }))

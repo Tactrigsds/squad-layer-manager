@@ -17,6 +17,60 @@ export const copiedHistoryEntryIds = Msgs.def((count: number) => ({
 	toast: () => [`Copied History Entry ID${count > 1 ? 's' : ''}`],
 }))
 
+// -------- the layer table --------
+
+export const showLayerInfo = Msgs.def(() => ({ text: () => 'Show layer info' }))
+
+export const copyLayerId = Msgs.def(() => ({ text: () => 'Copy layer id' }))
+
+export const copyHistoryEntryId = Msgs.def(() => ({ text: () => 'Copy history entry id' }))
+
+// the sort direction badge on a numeric column header, where the sort is by magnitude
+export const sortByMagnitude = Msgs.def(() => ({ text: () => '|x|' }))
+
+export const layerIndicatorsColumn = Msgs.def(() => ({ text: () => 'Layer Indicators' }))
+
+export const focusLayer = Msgs.def(() => ({ text: () => 'Focus Layer' }))
+
+export const focusLayerShortcut = Msgs.def(() => ({ text: () => 'Ctrl+Click' }))
+
+export const columnPicker = Msgs.def(() => ({ text: () => 'Column' }))
+
+export const toggleColumns = Msgs.def(() => ({ text: () => 'Toggle Columns' }))
+
+export const showSelected = Msgs.def(() => ({ text: () => 'Show Selected' }))
+
+export const resetSelectedLayers = Msgs.def(() => ({ text: () => 'Reset Selected Layers' }))
+
+export const selectedCount = Msgs.def((count: number) => ({ text: () => `${count} selected` }))
+
+export const randomize = Msgs.def(() => ({ text: () => 'Randomize' }))
+
+export const randomizeHint = Msgs.def(() => ({ text: () => 'Randomize layer selection (weighted to preferable layers)' }))
+
+export const rawLayerPlaceholder = Msgs.def(() => ({ text: () => 'Ex: Narva_RAAS_v1 RGF USMC or a layer id' }))
+
+export const layerFound = Msgs.def(() => ({ text: () => 'Layer exists in the database' }))
+
+// the count is emphasised, which is part of the sentence; the readout styles `strong` itself
+export const matchedLayers = Msgs.def((count: string) => ({
+	react: () => (
+		<>
+			<strong>{count}</strong> matched layers
+		</>
+	),
+}))
+
+export const noLayersMatched = Msgs.def(() => ({ text: () => 'No layers matched' }))
+
+export const initializingDatabase = Msgs.def(() => ({ text: () => 'Initializing layer database...' }))
+
+export const downloadingLayers = Msgs.def(() => ({ text: () => 'Downloading layers from server, this may take a few minutes...' }))
+
+export const loadFailed = Msgs.def(() => ({ text: () => 'Error loading layers:' }))
+
+export const loadFailedUnknown = Msgs.def(() => ({ text: () => 'Unknown error' }))
+
 // -------- the layer info panel --------
 
 export const copySetNextCommand = Msgs.def(() => ({ text: () => 'Copy AdminSetNextLayer command' }))
@@ -36,6 +90,19 @@ export const noDetails = Msgs.def(() => ({ text: () => 'No details available' })
 export const noScores = Msgs.def(() => ({ text: () => 'No scores available' }))
 
 // -------- one team's details --------
+
+// A team named for a reader rather than for a slot. Which scheme applies is the caller's: 'A'/'B' are normalized
+// across the swap, 1/2 are the raw slot (see docs/architecture.md). The faction rides in parentheses where the
+// layer is known.
+const normalizedTeamNames: Record<'A' | 'B', string> = { A: 'Team A', B: 'Team B' }
+const rawTeamNames: Record<1 | 2, string> = { 1: 'Team 1', 2: 'Team 2' }
+
+export const teamName = Msgs.def((team: 'A' | 'B' | 1 | 2, faction?: string | null) => ({
+	text: () => {
+		const name = typeof team === 'number' ? rawTeamNames[team] : normalizedTeamNames[team]
+		return faction ? `${name} (${faction})` : name
+	},
+}))
 
 export const team1 = Msgs.def(() => ({ text: () => 'Team 1' }))
 
@@ -116,3 +183,17 @@ export const unknownLayer = Msgs.def(() => ({ text: () => 'Layer Was parsed, but
 export const versus = Msgs.def(() => ({ text: () => 'vs' }))
 
 export const setByLabel = Msgs.def(() => ({ text: () => 'Set By' }))
+
+// -------- the layer set dialogs --------
+
+export const multiLayerPlaceholder = Msgs.def(() => ({
+	text: () => 'Enter one layer per line (e.g. Narva_RAAS_v1 RGF USMC or a layer id)',
+}))
+
+export const addLayers = Msgs.def((count: number) => ({
+	text: () => `Add ${count > 0 ? `${count} ` : ''}Layer${count !== 1 ? 's' : ''}`,
+}))
+
+export const editLayerTitle = Msgs.def(() => ({ text: () => 'Edit Layer' }))
+
+export const submit = Msgs.def(() => ({ text: () => 'Submit' }))

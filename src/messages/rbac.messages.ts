@@ -198,3 +198,16 @@ export const holdsEveryRole = Msgs.def(() => ({ text: () => 'You have every role
 
 // why a role cannot be simulated: simulation may only take access away
 export const roleGrantsMore = Msgs.def(() => ({ text: () => `Grants permissions you don't have` }))
+
+// -------- the denied-action tooltip --------
+
+export const permissionDeniedHeading = Msgs.def(() => ({ text: () => 'Permission denied' }))
+
+export const permissionsNeeded = Msgs.def((checkType: RBAC.PermissionDeniedResponse['checkType'], count: number) => ({
+	text: () =>
+		count === 1
+			? 'You need the following permission:'
+			: checkType === 'all'
+				? 'You need all of the following permissions:'
+				: 'You need one of the following permissions:',
+}))
