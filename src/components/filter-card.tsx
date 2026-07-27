@@ -14,6 +14,7 @@ import * as Sparse from '@/lib/sparse-tree'
 import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand.ts'
+import * as F_Msgs from '@/messages/filter.messages'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -285,8 +286,8 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const { addChild, addSeeded, setBlockType } = actions.block
 	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({
 		value: t,
-		label: F.BLOCK_TYPE_DISPLAY_NAMES[t],
-		description: F.BLOCK_TYPE_DESCRIPTIONS[t],
+		label: F_Msgs.blockTypeNames[t],
+		description: F_Msgs.blockTypeDescriptions[t],
 	}))
 	return (
 		<div className="flex items-center space-x-1">
@@ -456,8 +457,8 @@ export function LeafFilterNode(props: NodeProps) {
 					value={node.type}
 					options={F.APPLY_FILTER_TYPES.map((t) => ({
 						value: t,
-						label: F.APPLY_FILTER_TYPE_DISPLAY_NAMES[t],
-						description: F.APPLY_FILTER_TYPE_DESCRIPTIONS[t],
+						label: F_Msgs.applyFilterTypeNames[t],
+						description: F_Msgs.applyFilterTypeDescriptions[t],
 					}))}
 					onSelect={(v) => actions.applyFilter.setType(v as F.ApplyFilterType)}
 				/>
@@ -1251,7 +1252,7 @@ export function MatchupConfig(props: {
 					className="w-min"
 					title="Operator"
 					value={node.type}
-					options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F.MATCHUP_TYPE_DISPLAY_NAMES[t] }))}
+					options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F_Msgs.matchupTypeNames[t] }))}
 					onSelect={(v) => actions.setType(v as F.MatchupType)}
 				/>
 			)}
