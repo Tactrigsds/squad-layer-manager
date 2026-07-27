@@ -6,6 +6,7 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
@@ -102,7 +103,7 @@ export function readReasonInput(opts: {
 	const presetReasonLabel = opts.presetRef.current || undefined
 	const reason = presetReasonLabel ? undefined : opts.customRef?.current.trim() || undefined
 	if (opts.required && !presetReasonLabel && !reason) {
-		toast.error('Reason required', { description: `A reason is required for ${AAR.ADMIN_ACTIONS[opts.action].displayName}.` })
+		toast.error(...SM_Msgs.reasonRequired(AAR.ADMIN_ACTIONS[opts.action].displayName).toast())
 		return null
 	}
 	return { reason, presetReasonLabel }
