@@ -13,6 +13,19 @@ import * as ConfigClient from '@/systems/config.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
+function LinkRow({ heading, url }: { heading: string; url: string | undefined }) {
+	// a deployment that hasn't named a help or discord url has nowhere to send anyone, so the row is dropped
+	if (!url) return null
+	return (
+		<div className="flex flex-col space-y-1">
+			<span className="font-semibold">{heading}</span>
+			<a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+				{url}
+			</a>
+		</div>
+	)
+}
+
 export default function AboutPage() {
 	const config = Zus.useStore(ConfigClient.Store)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
@@ -41,26 +54,13 @@ export default function AboutPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>{APP_Msgs.about().text()}</CardTitle>
+					<CardTitle>{APP_Msgs.debugInfo().text()}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4 text-sm">
-					<p>{APP_Msgs.aboutBlurb().text()}</p>
-					{config.repoUrl && (
-						<div className="flex flex-col space-y-1">
-							<span className="font-semibold">{APP_Msgs.repositoryHeading().text()}</span>
-							<a href={config.repoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-								{config.repoUrl}
-							</a>
-						</div>
-					)}
-					{config.issuesUrl && (
-						<div className="flex flex-col space-y-1">
-							<span className="font-semibold">{APP_Msgs.reportIssuesHeading().text()}</span>
-							<a href={config.issuesUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-								{config.issuesUrl}
-							</a>
-						</div>
-					)}
+					<LinkRow heading={APP_Msgs.repositoryHeading().text()} url={config.repoUrl} />
+					<LinkRow heading={APP_Msgs.helpHeading().text()} url={config.helpUrl} />
+					<LinkRow heading={APP_Msgs.discordHelpHeading().text()} url={config.discordHelpUrl} />
+					<LinkRow heading={APP_Msgs.reportIssuesHeading().text()} url={config.issuesUrl} />
 					<div className="relative">
 						<Textarea
 							readOnly
@@ -81,6 +81,15 @@ export default function AboutPage() {
 							<Copy className="h-3 w-3" />
 						</Button>
 					</div>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>{APP_Msgs.acknowledgementsHeading().text()}</CardTitle>
+				</CardHeader>
+				<CardContent className="text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
+					{APP_Msgs.acknowledgements().react()}
 				</CardContent>
 			</Card>
 		</div>
