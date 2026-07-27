@@ -45,14 +45,16 @@ export const votePending = Msgs.def((matchStartTime: Date, threshold: number, au
 	},
 }))
 
-export const empty = Msgs.def(() => ({ warn: () => `WARNING: Queue is empty. Please populate it` }))
+export const empty = Msgs.def(() => ({
+	warn: (locale?: string) => Msgs.t('WARNING: Queue is empty. Please populate it', undefined, locale),
+}))
 
 export const abandonedEditsDiscarded = Msgs.def((draft: 'queue' | 'request') => ({
 	toast: () => [`Unsaved ${draft === 'queue' ? 'queue' : 'layer request'} edits were discarded: nobody was left editing them`],
 }))
 
 export const opFailed = Msgs.def(() => ({
-	toast: () => ['Failed to apply queue operation'],
+	toast: () => [Msgs.t('Failed to apply queue operation')],
 }))
 
 export const showNext = Msgs.def(
@@ -166,7 +168,7 @@ export const leavingDiscardsEdits = Msgs.def(
 )
 
 export const ownEditsDiscarded = Msgs.def(() => ({
-	toast: () => ['Your unsaved edits have been discarded'],
+	toast: () => [Msgs.t('Your unsaved edits have been discarded')],
 }))
 
 // -------- where a queue item came from --------

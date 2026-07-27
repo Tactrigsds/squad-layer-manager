@@ -4,6 +4,12 @@ import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
 import type { WarnOptions } from '@/models/squad-rcon.models'
 
+// Resolves one string inside a target body, for a message whose shape is richer than a bare pattern: a toast with a
+// description, a confirmation dialog's three parts, one of a warn's several popups. `node` is the same for a target
+// that positions rendered nodes inside its sentence.
+export const t = I18n.translate
+export const node = I18n.translateNode
+
 // Distinguishes two messages whose English is identical but whose translations are not: "Cancel" the dialog
 // dismissal against "Cancel" the lifting of a timeout. Part of the key, never rendered.
 export type MsgOpts = { context?: string }
@@ -31,8 +37,11 @@ export type ConfirmOptions = { title: string; description?: string; confirmLabel
 // `text` is the surface-agnostic one: a log line, an Error message, an HTTP response body. It exists because those
 // callers need a plain string and neither `warn` (a union they cannot narrow) nor `react` (a node) can give them one.
 export type Targets = {
-	broadcast?: () => string
-	warn?: () => WarnOptions
+	// broadcast and warn render for a game server and for one of its players, not for whoever is looking at the web
+	// app, so they are handed the locale to render in. Every other target renders for the viewer, whose locale is
+	// ambient.
+	broadcast?: (locale?: string) => string
+	warn?: (locale?: string) => WarnOptions
 	react?: () => React.ReactNode
 	toast?: () => ToastArgs
 	confirm?: () => ConfirmOptions

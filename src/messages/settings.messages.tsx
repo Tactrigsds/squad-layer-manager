@@ -309,40 +309,40 @@ export const repeatRuleAutogenHelp = Msgs.def('Also apply this rule when autogen
 
 // -------- saving --------
 
-export const saved = Msgs.def(() => ({ toast: () => ['Settings saved'] }))
+export const saved = Msgs.def(() => ({ toast: () => [Msgs.t('Settings saved')] }))
 
-export const serverSettingsSaved = Msgs.def(() => ({ toast: () => ['Server settings saved'] }))
+export const serverSettingsSaved = Msgs.def(() => ({ toast: () => [Msgs.t('Server settings saved')] }))
 
-export const serverCreated = Msgs.def(() => ({ toast: () => ['Server created'] }))
+export const serverCreated = Msgs.def(() => ({ toast: () => [Msgs.t('Server created')] }))
 
 // reason is the server's own account of which field failed
 export const invalid = Msgs.def((reason: string) => ({
-	toast: () => ['Invalid settings', { description: reason }],
+	toast: () => [Msgs.t('Invalid settings'), { description: reason }],
 }))
 
-export const serverNotFound = Msgs.def(() => ({ toast: () => ['Server not found'] }))
+export const serverNotFound = Msgs.def(() => ({ toast: () => [Msgs.t('Server not found')] }))
 
-export const serverIdTaken = Msgs.def(() => ({ toast: () => ['A server with that ID already exists'] }))
+export const serverIdTaken = Msgs.def(() => ({ toast: () => [Msgs.t('A server with that ID already exists')] }))
 
 // the save panel saves every dirty section at once, so it names none of them in the title; the change list
 // below it is what says which sections are involved
 export const confirmSaveAll = Msgs.def(() => ({
-	confirm: () => ({ title: 'Save settings?', confirmLabel: 'Save' }),
+	confirm: () => ({ title: Msgs.t('Save settings?'), confirmLabel: Msgs.t('Save') }),
 }))
 
 // displayName is absent for the global settings, which belong to no server
 export const confirmSave = Msgs.def((displayName?: string) => ({
 	confirm: () => ({
 		title: displayName === undefined ? 'Save global settings?' : `Save ${displayName} settings?`,
-		confirmLabel: 'Save',
+		confirmLabel: Msgs.t('Save'),
 	}),
 }))
 
 export const confirmDeleteServer = Msgs.def((displayName: string, serverId: string) => ({
 	confirm: () => ({
-		title: 'Delete Managed Server',
-		description: `Delete managed server "${displayName}" (${serverId})? This cannot be undone.`,
-		confirmLabel: 'Delete',
+		title: Msgs.t('Delete Managed Server'),
+		description: Msgs.t('Delete managed server "{displayName}" ({serverId})? This cannot be undone.', { displayName, serverId }),
+		confirmLabel: Msgs.t('Delete'),
 	}),
 }))
 

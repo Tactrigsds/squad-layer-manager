@@ -42,6 +42,7 @@ function readContext(node: babel.types.Node | undefined) {
 }
 
 const entries: Entry[] = []
+// prose still built in JavaScript inside a target body, which is what remains to convert
 let untranslated = 0
 
 for (const file of fs.readdirSync(MESSAGES_DIR).filter((f) => /\.messages\.tsx?$/.test(f))) {
@@ -52,12 +53,18 @@ for (const file of fs.readdirSync(MESSAGES_DIR).filter((f) => /\.messages\.tsx?$
 			const callee = p.node.callee
 			if (callee.type !== 'MemberExpression') return
 			if (callee.object.type !== 'Identifier' || callee.object.name !== 'Msgs') return
-			if (callee.property.type !== 'Identifier' || callee.property.name !== 'def') return
-
+			if (callee.property.type !== 'Identifier') return
 			const [first, second, third] = p.node.arguments
 			const from = `${module}.${exportNameOf(p)}`
+
+			// a string resolved inside a target body, which carries its values inline rather than through a mapper
+			if (callee.property.name === 't' || callee.property.name === 'node') {
+				if (first?.type === 'StringLiteral') entries.push({ source: first.value, icu: !!second, from })
+				return
+			}
+			if (callee.property.name !== 'def') return
 			if (first?.type !== 'StringLiteral') {
-				untranslated++
+				untranslated += unwrappedProse(p)
 				return
 			}
 			const icu = second?.type === 'ArrowFunctionExpression' || second?.type === 'FunctionExpression'
@@ -66,6 +73,39 @@ for (const file of fs.readdirSync(MESSAGES_DIR).filter((f) => /\.messages\.tsx?$
 	})
 }
 
+// counts the prose a def still builds in JavaScript: a literal no Msgs.t/node call has claimed, or JSX text
+function unwrappedProse(defPath: babel.NodePath) {
+	let n = 0
+	defPath.traverse({
+		'StringLiteral|TemplateLiteral|JSXText'(p: babel.NodePath) {
+			const node = p.node
+			const text =
+				node.type === 'StringLiteral' || node.type === 'JSXText'
+					? node.value
+					: (node as babel.types.TemplateLiteral).quasis.map((q) => q.value.cooked ?? '').join(' ')
+			if (!/[a-z]/i.test(text) || text.trim().length < 3) return
+			// a property key rather than a value
+			if (p.parentPath?.node.type === 'ObjectProperty' && p.parentPath.node.value !== node) return
+			// claimed by a Msgs.t / Msgs.node above it; the walk stops at the def, which is itself a Msgs call
+			let up: babel.NodePath | null = p.parentPath
+			while (up && up.node !== defPath.node) {
+				const c = up.node
+				if (
+					c.type === 'CallExpression' &&
+					c.callee.type === 'MemberExpression' &&
+					c.callee.object.type === 'Identifier' &&
+					c.callee.object.name === 'Msgs' &&
+					c.callee.property.type === 'Identifier' &&
+					['t', 'node'].includes(c.callee.property.name)
+				)
+					return
+				up = up.parentPath
+			}
+			n++
+		},
+	})
+	return n
+}
 const byKey = new Map<string, Entry[]>()
 for (const entry of entries) {
 	const key = entry.context ? `${entry.source} [${entry.context}]` : entry.source
@@ -82,7 +122,7 @@ fs.writeFileSync(path.join(OUT_DIR, 'en.json'), JSON.stringify(template, null, '
 const existing = fs.readdirSync(OUT_DIR).filter((f) => f.endsWith('.json') && f !== 'en.json')
 console.log(`extracted ${entries.length} translatable messages into ${byKey.size} keys`)
 console.log(`  ${entries.filter((e) => e.icu).length} take arguments, ${entries.filter((e) => !e.icu).length} do not`)
-console.log(`  ${untranslated} messages are still target maps and cannot be translated yet`)
+console.log(`  ${untranslated} strings inside target maps are still built in JavaScript`)
 
 for (const [key, group] of collisions) {
 	console.log(`  shared key ${JSON.stringify(key)}: ${group.map((e) => e.from).join(', ')}`)
