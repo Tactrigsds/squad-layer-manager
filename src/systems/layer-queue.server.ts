@@ -304,36 +304,49 @@ export const setupInstance = Instr.spanOp(
 
 		// -------- infer a vote from the server losing its next layer --------
 		// Enabling voting clears the server's next layer, and nothing is logged when an admin enables it, so the
-		// cleared next layer is the only thing SLM can see. A server with a head to set, not mid-roll, still
-		// reporting no next layer after the grace period has almost certainly had voting turned on. The reason is
-		// marked inferred: this is a deduction, and an admin should be told which it is.
+		// cleared next layer is the only thing SLM can see. This reads the status the existing poll already produces
+		// and issues no rcon of its own: an extra round trip on the shared connection delays the roster poll across
+		// a roll, which is enough to change what the roll looks like to everything downstream.
 		{
+			// a roll clears the next layer too, and SLM's write lands just after, so one sighting proves nothing --
+			// every roll produces one. Only a gap that outlasts the grace period is somebody else's doing.
+			let missingSince: number | null = null
 			ctx.cleanup.push(
 				ctx.squadRcon.layersStatus
 					.observe(ctx)
 					.pipe(
-						Instr.durableSub('infer-ingame-vote', { module }, async (status, signal) => {
-							if (status.code !== 'ok' || status.data.nextLayer) return
-							const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
-							if (!(await nextLayerMissingWithNothingToBlame(ctx))) return
+						Instr.durableSub('infer-ingame-vote', { module, levels: { event: 'trace' } }, async (status, signal) => {
+							const rolling = !!ctx.server.serverRolling$.value
+							if (status.code !== 'ok' || status.data.nextLayer || rolling) {
+								missingSince = null
+								return
+							}
+							if (missingSince === null) {
+								missingSince = Date.now()
+								return
+							}
+							if (Date.now() - missingSince < INFER_INGAME_VOTE_GRACE_MS) return
 
-							// A roll leaves the next layer empty until SLM writes the new head, and that write lands after
-							// the roll is done, so a single empty reading proves nothing. Wait, then ask the server itself
-							// rather than a cached reading.
-							await Prom.sleep(INFER_INGAME_VOTE_GRACE_MS, signal)
-							const recheck = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 0 })
-							if (recheck.code !== 'ok' || recheck.data.nextLayer) return
-							if (!(await nextLayerMissingWithNothingToBlame(ctx))) return
+							// only now is it worth reading anything: until here this has cost one comparison per poll
+							const ctxWithSignal = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
+							if (!(await nextLayerMissingWithNothingToBlame(ctxWithSignal))) {
+								missingSince = null
+								return
+							}
+							missingSince = null
 
-							const from = (await SquadServer.getServerState(ctx)).settings.updatesToSquadServerDisabled
-							await toggleUpdatesToSquadServer({ ctx, input: { disabled: { type: 'ingame-vote', inferred: true } } })
+							const from = (await SquadServer.getServerState(ctxWithSignal)).settings.updatesToSquadServerDisabled
+							await toggleUpdatesToSquadServer({
+								ctx: ctxWithSignal,
+								input: { disabled: { type: 'ingame-vote', inferred: true } },
+							})
 							await AppEventsSys.persistAppEvent(
-								ctx,
+								ctxWithSignal,
 								AppEvents.create<AppEvents.SettingsUpdated>({
 									type: 'SETTINGS_UPDATED',
 									actor: { type: 'system' },
-									serverId: ctx.serverId,
-									matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+									serverId: ctxWithSignal.serverId,
+									matchId: (await MatchHistory.getCurrentMatch(ctxWithSignal))?.historyEntryId ?? null,
 									causeId: null,
 									changes: [{ path: 'updatesToSquadServerDisabled', from, to: { type: 'ingame-vote', inferred: true } }],
 								}),
@@ -692,8 +705,9 @@ export const syncNextLayerToServer = Instr.spanOp(
 )
 
 // How long the server is allowed to have no next layer before SLM reads it as voting having been enabled. A roll
-// clears it and SLM's own write lands shortly after, so anything shorter than that gap reads every roll as a vote.
-const INFER_INGAME_VOTE_GRACE_MS = 20_000
+// clears it and SLM's own write lands shortly after -- a second or two -- so anything near that gap reads every roll
+// as a vote. The gap must also be seen on more than one poll, so this is a floor on the wait, not the whole of it.
+const INFER_INGAME_VOTE_GRACE_MS = 10_000
 
 // The conditions under which an empty next layer is somebody else's doing rather than SLM's own: SLM is writing the
 // rotation, it has a head it would have written, and no roll is in flight to explain the gap.

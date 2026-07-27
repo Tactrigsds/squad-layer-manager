@@ -36,7 +36,7 @@ while an admin already has updates off leaves their reason, and theirs, in place
 
 Enabling voting clears the server's next layer, and nothing is logged when an admin enables it. That cleared next
 layer is the only signal SLM gets, so a server that has a queue head to write, is not mid-roll, and still reports no
-next layer after a grace period is read as having had voting turned on. The reason is stored with `inferred: true`
+next layer across more than one poll, for longer than a short grace period, is read as having had voting turned on. The reason is stored with `inferred: true`
 and shown as a likelihood rather than a fact, since SLM deduced it instead of seeing it. The grace period matters:
 a roll clears the next layer too, and SLM's own write lands just after, so a shorter wait would read every roll as
 a vote.
