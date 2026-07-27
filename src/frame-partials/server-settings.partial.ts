@@ -117,7 +117,7 @@ export namespace Actions {
 				RbacClient.handlePermissionDenied(res)
 				return false
 			} else if (res?.code === 'err:invalid-settings') {
-				toast.error(...SETTINGS_Msgs.saveFailed(res.message).toast())
+				toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
 				return false
 			}
 			return true
