@@ -69,6 +69,11 @@ export const normalizeTeamsHint = Msgs.def('Show team A on the left and team B o
 
 // -------- theme --------
 
+export const language = Msgs.def('Language')
+
+// following the browser rather than pinning one
+export const languageAuto = Msgs.def('Automatic')
+
 export const theme = Msgs.def('Theme')
 
 export const themeNames = { light: 'Light', dark: 'Dark', system: 'System' }
