@@ -2,6 +2,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import * as SandboxFrame from '@/frames/sandbox.frame'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as SB_Msgs from '@/messages/sandbox.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 
@@ -30,7 +31,7 @@ function SandboxAdminListWindow(props: SandboxPanelWindowProps) {
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>Admins.cfg: {props.serverId}</DraggableWindowTitle>
+				<DraggableWindowTitle>{SB_Msgs.adminsCfgTitle(props.serverId).text()}</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="min-h-0 grow p-2">
@@ -50,7 +51,7 @@ export function SandboxAdminListPanel({ stores, className }: { stores: SandboxFr
 				{cfg ? (
 					<pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
 				) : (
-					<p className="p-2 text-xs text-muted-foreground">The emulated admin list is empty.</p>
+					<p className="p-2 text-xs text-muted-foreground">{SB_Msgs.adminListEmpty().text()}</p>
 				)}
 			</ScrollArea>
 		</div>

@@ -1,7 +1,25 @@
-import type React from 'react'
+import * as React from 'react'
 
 import { assertNever } from '@/lib/type-guards'
+import * as I18n from '@/messages/i18n'
 import type { WarnOptions } from '@/models/squad-rcon.models'
+
+// Resolves one string inside a target body, for a message whose shape is richer than a bare pattern: a toast with a
+// description, a confirmation dialog's three parts, one of a warn's several popups. `node` is the same for a target
+// that positions rendered nodes inside its sentence.
+export const t = I18n.translate
+export const node = I18n.translateNode
+
+// The inline elements a message may put around part of its own sentence, so which words are emphasised travels with
+// the text and a translator can move it. How they LOOK is still the container's, through `[&_strong]:` and friends.
+export const tags = {
+	strong: (chunks: React.ReactNode[]) => React.createElement('strong', null, ...chunks),
+	code: (chunks: React.ReactNode[]) => React.createElement('code', null, ...chunks),
+}
+
+// Distinguishes two messages whose English is identical but whose translations are not: "Cancel" the dialog
+// dismissal against "Cancel" the lifting of a timeout. Part of the key, never rendered.
+export type MsgOpts = { context?: string }
 
 // The vocabulary every message is written in. This module must stay an import leaf -- models absorb their own text
 // from here, and the display layer they feed imports them back, so a value import from @/lib or @/models closes a
@@ -26,8 +44,11 @@ export type ConfirmOptions = { title: string; description?: string; confirmLabel
 // `text` is the surface-agnostic one: a log line, an Error message, an HTTP response body. It exists because those
 // callers need a plain string and neither `warn` (a union they cannot narrow) nor `react` (a node) can give them one.
 export type Targets = {
-	broadcast?: () => string
-	warn?: () => WarnOptions
+	// broadcast and warn render for a game server and for one of its players, not for whoever is looking at the web
+	// app, so they are handed the locale to render in. Every other target renders for the viewer, whose locale is
+	// ambient.
+	broadcast?: (locale?: string) => string
+	warn?: (locale?: string) => WarnOptions
 	react?: () => React.ReactNode
 	toast?: () => ToastArgs
 	confirm?: () => ConfirmOptions
@@ -86,12 +107,53 @@ export function targetAffected(target: Target) {
 	}
 }
 
-// Declares a message. The implementation is the identity function: everything it buys is in the closure the factory
-// body opens, which is where logic shared between a message's targets lives -- reachable by every target of THIS
-// message and by nothing else, and computed once per message rather than once per target.
+// A text target that resolves against a locale, which only the shorthands below can produce. A target map written
+// out by hand carries whatever string its author wrote, so its `text` takes no locale and the compiler says so:
+// passing one is an error until that message is rewritten as an ICU pattern.
+type TextTarget = { readonly text: (locale?: string) => string }
+
+// Declares a message. The factory body is where logic shared between a message's targets lives -- reachable by every
+// target of THIS message and by nothing else, and computed once per message rather than once per target.
 //
 // `const T` keeps the target map inferred narrowly, so a message with no toast errors on `.toast()` rather than
 // silently handing back undefined. Args are declared once, on the factory, so targets cannot drift on what they take.
-export function def<A extends readonly unknown[], const T extends Targets>(build: (...args: A) => T): (...args: A) => T {
-	return build
+//
+// A message whose only target is `text` says so by producing the string directly: `def('Close')` where it takes no
+// arguments, `def((count: number) => ...)` where it does. That is four fifths of the messages in this tree, and the
+// bare form is the only one holding its text as data rather than as code, which is why it is the one this function
+// can resolve against a locale on the author's behalf. Every other shape stays the target map.
+//
+// A message that takes arguments becomes translatable by declaring an ICU pattern and a mapping from its own
+// parameters to that pattern's values. The mapping lives here so the call site keeps the signature it always had:
+//
+//   export const addLayers = Msgs.def(
+//     '{count, plural, =0 {Add Layers} one {Add 1 Layer} other {Add # Layers}}',
+//     (count: number) => ({ count }),
+//   )
+//
+// The target-map overload has to come first: a candidate ahead of it types the factory body without `Targets` as its
+// contextual type, and a `toast` returning an array literal then infers as an array rather than as a tuple.
+export function def<A extends readonly unknown[], const T extends Targets>(build: (...args: A) => T): (...args: A) => T
+export function def<A extends readonly unknown[]>(
+	icu: string,
+	values: (...args: A) => I18n.MessageValues,
+	opts?: MsgOpts,
+): (...args: A) => TextTarget
+export function def<A extends readonly unknown[]>(build: (...args: A) => string): (...args: A) => TextTarget
+export function def(text: string, opts?: MsgOpts): () => TextTarget
+export function def(
+	build: string | ((...args: never[]) => unknown),
+	values?: ((...args: never[]) => I18n.MessageValues) | MsgOpts,
+	opts?: MsgOpts,
+) {
+	if (typeof build === 'string') {
+		if (typeof values === 'function') {
+			return (...args: never[]) => ({ text: (locale?: string) => I18n.translate(build, values(...args), locale, opts?.context) })
+		}
+		return () => ({ text: (locale?: string) => I18n.translate(build, undefined, locale, values?.context) })
+	}
+	return (...args: never[]) => {
+		const built = build(...args)
+		return typeof built === 'string' ? { text: () => built } : built
+	}
 }

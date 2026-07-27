@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/lib/toast'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
@@ -69,41 +70,42 @@ export default function NicknameDialog(props: { children: React.ReactNode; open?
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Set Custom Nickname</DialogTitle>
-					<DialogDescription>
-						Choose a custom nickname that will be displayed instead of your Discord name. Leave empty to use your Discord display
-						name.
-					</DialogDescription>
+					<DialogTitle>{USR_Msgs.nicknameDialogTitle().text()}</DialogTitle>
+					<DialogDescription>{USR_Msgs.nicknameDialogBlurb().text()}</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="nickname">Nickname</Label>
+						<Label htmlFor="nickname">{USR_Msgs.nicknameFieldLabel().text()}</Label>
 						<Input
 							id="nickname"
 							value={nickname}
 							onChange={(e) => setNickname(e.target.value)}
 							onKeyDown={handleKeyDown}
-							placeholder="Enter a custom nickname..."
+							placeholder={USR_Msgs.nicknamePlaceholder().text()}
 							maxLength={64}
 							disabled={updateNicknameMutation.isPending}
 						/>
 						<div className="flex justify-between text-xs text-muted-foreground">
-							<span>{nickname ? `Will display as: "${nickname.trim() || user?.username}"` : 'Will use Discord display name'}</span>
+							<span>
+								{nickname
+									? USR_Msgs.nicknamePreview(nickname.trim() || (user?.username ?? '')).text()
+									: USR_Msgs.nicknameFallsBackToDiscord().text()}
+							</span>
 							<span className={nickname.length > 64 ? 'text-destructive' : ''}>{nickname.length}/64</span>
 						</div>
 					</div>
 
-					{!isValid && <div className="text-sm text-destructive">Nickname must be 64 characters or less</div>}
+					{!isValid && <div className="text-sm text-destructive">{USR_Msgs.nicknameTooLong().text()}</div>}
 				</div>
 
 				<DialogFooter className="flex flex-col sm:flex-row gap-2">
 					<Button variant="outline" onClick={handleCancel} disabled={updateNicknameMutation.isPending}>
-						Cancel
+						{UI_Msgs.cancel().text()}
 					</Button>
 					<Button onClick={handleSave} disabled={!isChanged || !isValid || updateNicknameMutation.isPending}>
 						{updateNicknameMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						{updateNicknameMutation.isPending ? 'Saving...' : 'Save'}
+						{updateNicknameMutation.isPending ? USR_Msgs.saving().text() : USR_Msgs.save().text()}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

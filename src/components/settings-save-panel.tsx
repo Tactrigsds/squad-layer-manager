@@ -69,7 +69,13 @@ type SectionView = {
 	deniedIds: string[]
 }
 
-export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditorFrame.Key[] }) {
+export function SettingsSavePanel({
+	sectionKeys,
+	onDiscardNewServer,
+}: {
+	sectionKeys: SettingsEditorFrame.Key[]
+	onDiscardNewServer: () => void
+}) {
 	const openDialog = useAlertDialog()
 	const zIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
 	const states = SettingsEditorFrame.useSectionStates(sectionKeys)
@@ -161,9 +167,14 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 		}
 	}
 
+	// an unsaved new-server section has no baseline to fall back to, so resetting it means closing the form outright
 	function handleReset() {
 		for (const s of sections) {
-			if (s.changedCount > 0) SettingsEditorFrame.Actions.resetDraft({ settingsEditor: s.key })
+			if (s.state.kind === 'new-server') {
+				if (!s.state.created) onDiscardNewServer()
+			} else if (s.changedCount > 0) {
+				SettingsEditorFrame.Actions.resetDraft({ settingsEditor: s.key })
+			}
 		}
 	}
 

@@ -31,10 +31,14 @@ export const presenceEventText: Record<UP.PresenceEventAction, string> = {
 
 // -------- the presence panel --------
 
-export const resetSession = Msgs.def(() => ({ text: () => 'Reset this session' }))
+export const resetSession = Msgs.def('Reset this session')
 
 // reads as "Last seen <relative time>"
-export const lastSeen = Msgs.def(() => ({ text: () => 'Last seen' }))
+export const lastSeen = Msgs.def('Last seen')
 
 // marks whichever avatar is the viewer's own
-export const youSuffix = Msgs.def(() => ({ text: () => ' (You)' }))
+// the reader's own row is marked in the name itself, so a locale can put the marker where its language wants it
+export const displayNameWithYou = Msgs.def('{name}{isYou, select, yes { (You)} other {}}', (name: string, isYou: boolean) => ({
+	name,
+	isYou: isYou ? 'yes' : 'no',
+}))

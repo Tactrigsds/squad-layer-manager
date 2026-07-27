@@ -22,6 +22,8 @@ import { Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/reac
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
+import * as UI_Msgs from '@/messages/ui.messages'
+
 // ============================================================================
 // Position Calculation
 // ============================================================================
@@ -584,7 +586,7 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 				'rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
 				className,
 			)}
-			aria-label="Close window"
+			aria-label={UI_Msgs.closeWindow().text()}
 			{...props}
 		>
 			<Cross2Icon className="h-4 w-4" />

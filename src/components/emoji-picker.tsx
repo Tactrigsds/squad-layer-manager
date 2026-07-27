@@ -6,6 +6,7 @@ import { useMemo } from 'react'
 
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as DiscordClient from '@/systems/discord.client'
 import * as ThemeClient from '@/systems/theme.client'
 
@@ -123,7 +124,7 @@ export function UnifiedEmojiPicker(props: UnifiedEmojiPickerProps) {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center" style={{ width, height }}>
-				<div className="text-sm text-muted-foreground">Loading emojis...</div>
+				<div className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEmojis().text()}</div>
 			</div>
 		)
 	}

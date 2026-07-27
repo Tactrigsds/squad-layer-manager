@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import * as Zus from '@/lib/zustand'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as UP from '@/models/user-presence'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -69,15 +70,19 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>
 					<span className="flex items-center gap-2">
-						Pool Configuration
-						{readOnly && <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">Read-only</span>}
+						{SETTINGS_Msgs.poolConfigTitle().text()}
+						{readOnly && (
+							<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+								{SETTINGS_Msgs.readOnlyBadge().text()}
+							</span>
+						)}
 					</span>
 				</DraggableWindowTitle>
 				<TabsList
 					options={[
-						{ label: 'Filters', value: 'filters' },
-						{ label: 'Repeat Rules', value: 'repeatRules' },
-						{ label: 'Next Layer', value: 'nextLayer' },
+						{ label: SETTINGS_Msgs.poolFiltersTab().text(), value: 'filters' },
+						{ label: SETTINGS_Msgs.repeatRules().text(), value: 'repeatRules' },
+						{ label: SETTINGS_Msgs.nextLayer().text(), value: 'nextLayer' },
 					]}
 					active={tab}
 					setActive={setTab}
@@ -118,7 +123,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>Reset changes</p>
+							<p>{SETTINGS_Msgs.resetChanges().text()}</p>
 						</TooltipContent>
 					</Tooltip>
 					<Button
@@ -127,7 +132,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						className="min-w-30"
 					>
 						<Spinner className="invisible data-[saving=true]:visible" data-saving={saving} />
-						Save Changes
+						{SETTINGS_Msgs.saveChanges().text()}
 						<Spinner className="invisible" />
 					</Button>
 				</div>

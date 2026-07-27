@@ -39,20 +39,22 @@ export const nextLayerWarning = Msgs.def(
 export const votePending = Msgs.def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
 	warn: () => {
 		const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
-		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { terse: false, round: 'second' })
+		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { round: 'second' })
 		const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
 		return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 	},
 }))
 
-export const empty = Msgs.def(() => ({ warn: () => `WARNING: Queue is empty. Please populate it` }))
+export const empty = Msgs.def(() => ({
+	warn: (locale?: string) => Msgs.t('WARNING: Queue is empty. Please populate it', undefined, locale),
+}))
 
 export const abandonedEditsDiscarded = Msgs.def((draft: 'queue' | 'request') => ({
 	toast: () => [`Unsaved ${draft === 'queue' ? 'queue' : 'layer request'} edits were discarded: nobody was left editing them`],
 }))
 
 export const opFailed = Msgs.def(() => ({
-	toast: () => ['Failed to apply queue operation'],
+	toast: () => [Msgs.t('Failed to apply queue operation')],
 }))
 
 export const showNext = Msgs.def(
@@ -161,12 +163,12 @@ export const requestFeedback = Msgs.def((index: LL.ItemIndex, playerName: string
 
 // You are the last one editing, so leaving drops the draft rather than handing it on. The browser's own confirm()
 // takes a bare string, hence `text`.
-export const leavingDiscardsEdits = Msgs.def(() => ({
-	text: () => 'Leaving discards your unsaved edits, since nobody else is editing. Are you sure you want to leave?',
-}))
+export const leavingDiscardsEdits = Msgs.def(
+	'Leaving discards your unsaved edits, since nobody else is editing. Are you sure you want to leave?',
+)
 
 export const ownEditsDiscarded = Msgs.def(() => ({
-	toast: () => ['Your unsaved edits have been discarded'],
+	toast: () => [Msgs.t('Your unsaved edits have been discarded')],
 }))
 
 // -------- where a queue item came from --------
@@ -179,99 +181,96 @@ export const sourceNames: Record<Exclude<LL.Source['type'], 'manual'>, string> =
 	'ingame-vote': 'In-Game Vote',
 }
 
-export const setByLabel = Msgs.def(() => ({ text: () => 'Set By' }))
+export const setByLabel = Msgs.def('Set By')
 
 // -------- the queue item controls --------
 
-export const editItem = Msgs.def(() => ({ text: () => 'Edit' }))
+export const editItem = Msgs.def('Edit')
 
-export const swapFactions = Msgs.def(() => ({ text: () => 'Swap Factions' }))
+export const swapFactions = Msgs.def('Swap Factions')
 
-export const deleteItem = Msgs.def(() => ({ text: () => 'Delete' }))
+export const deleteItem = Msgs.def('Delete')
 
-export const cloneItem = Msgs.def(() => ({ text: () => 'Clone' }))
+export const cloneItem = Msgs.def('Clone')
 
-export const addLayersBefore = Msgs.def(() => ({ text: () => 'Add Layers Before' }))
+export const addLayersBefore = Msgs.def('Add Layers Before')
 
-export const addLayersAfter = Msgs.def(() => ({ text: () => 'Add Layers After' }))
+export const addLayersAfter = Msgs.def('Add Layers After')
 
-export const sendToFront = Msgs.def(() => ({ text: () => 'Send to Front' }))
+export const sendToFront = Msgs.def('Send to Front')
 
-export const sendToBack = Msgs.def(() => ({ text: () => 'Send to Back' }))
+export const sendToBack = Msgs.def('Send to Back')
 
 // the choice a vote falls back to, and the one it landed on
-export const defaultChoice = Msgs.def(() => ({ text: () => 'Default' }))
+export const defaultChoice = Msgs.def('Default')
 
-export const selectedChoice = Msgs.def(() => ({ text: () => 'Selected' }))
+export const selectedChoice = Msgs.def('Selected')
 
-export const notCurrentNextLayer = Msgs.def(() => ({ text: () => 'Not current next layer on server' }))
+export const notCurrentNextLayer = Msgs.def('Not current next layer on server')
 
-export const pasteRotationTitle = Msgs.def(() => ({ text: () => 'Paste Rotation' }))
+export const pasteRotationTitle = Msgs.def('Paste Rotation')
 
 // -------- the queue panel --------
 
-export const repeatsDetected = Msgs.def(() => ({ text: () => 'Repeats Detected' }))
+export const repeatsDetected = Msgs.def('Repeats Detected')
 
-export const repeatsBlurb = Msgs.def(() => ({
-	text: () => 'The following queued layers have repeated elements that violate our configured rules:',
-}))
+export const repeatsBlurb = Msgs.def('The following queued layers have repeated elements that violate our configured rules:')
 
-export const filterWarnings = Msgs.def(() => ({ text: () => 'Filter Warnings' }))
+export const filterWarnings = Msgs.def('Filter Warnings')
 
-export const filterWarningsBlurb = Msgs.def(() => ({ text: () => 'The following queued layers triggered filter warnings:' }))
+export const filterWarningsBlurb = Msgs.def('The following queued layers triggered filter warnings:')
 
-export const clearQueue = Msgs.def(() => ({ text: () => 'Clear Queue' }))
+export const clearQueue = Msgs.def('Clear Queue')
 
-export const addLayers = Msgs.def(() => ({ text: () => 'Add Layers' }))
+export const addLayers = Msgs.def('Add Layers')
 
-export const genVote = Msgs.def(() => ({ text: () => 'Gen Vote' }))
+export const genVote = Msgs.def('Gen Vote')
 
-export const reset = Msgs.def(() => ({ text: () => 'Reset' }))
+export const reset = Msgs.def('Reset')
 
-export const saving = Msgs.def(() => ({ text: () => 'Saving...' }))
+export const saving = Msgs.def('Saving...')
 
-export const startEditing = Msgs.def(() => ({ text: () => 'Start Editing' }))
+export const startEditing = Msgs.def('Start Editing')
 
-export const toggleForceSave = Msgs.def(() => ({ text: () => 'Toggle force save' }))
+export const toggleForceSave = Msgs.def('Toggle force save')
 
-export const toggleForceSaveHint = Msgs.def(() => ({ text: () => 'Toggle Force save (Save even if others are still editing)' }))
+export const toggleForceSaveHint = Msgs.def('Toggle Force save (Save even if others are still editing)')
 
-export const poolConfiguration = Msgs.def(() => ({ text: () => 'Pool Configuration' }))
+export const poolConfiguration = Msgs.def('Pool Configuration')
 
-export const upNext = Msgs.def(() => ({ text: () => 'Up Next' }))
+export const upNext = Msgs.def('Up Next')
 
 // -------- what set the next layer --------
 // The heading names the mechanism; the attributions below finish the sentence "Disabled by ..." / "set by ...".
 
-export const inGameVoteRunning = Msgs.def(() => ({ text: () => 'In-Game Vote Running' }))
+export const inGameVoteRunning = Msgs.def('In-Game Vote Running')
 
-export const inGameVoteBlurb = Msgs.def(() => ({ text: () => 'The Squad server is running its own vote, which decides the next layer.' }))
+export const inGameVoteBlurb = Msgs.def('The Squad server is running its own vote, which decides the next layer.')
 
-export const currentlyVotingBetween = Msgs.def((choices: string) => ({ text: () => `Currently voting between ${choices}.` }))
+export const currentlyVotingBetween = Msgs.def('Currently voting between {choices}.', (choices: string) => ({ choices }))
 
-export const slmUpdatesDisabled = Msgs.def(() => ({ text: () => 'SLM Updates Disabled' }))
+export const slmUpdatesDisabled = Msgs.def('SLM Updates Disabled')
 
-export const slmUpdatesDisabledBy = Msgs.def(() => ({ text: () => 'SLM is not syncing the queue to the squad server. Disabled by' }))
+export const slmUpdatesDisabledBy = Msgs.def('SLM is not syncing the queue to the squad server. Disabled by')
 
-export const currentNextLayerIs = Msgs.def(() => ({ text: () => 'Current next layer on the server is' }))
+export const currentNextLayerIs = Msgs.def('Current next layer on the server is')
 
-export const clickHere = Msgs.def(() => ({ text: () => 'Click Here' }))
+export const clickHere = Msgs.def('Click Here')
 
-export const disabledByInferredVote = Msgs.def(() => ({
-	text: () => 'in-game voting, most likely: the server stopped having a next layer set',
-}))
+export const disabledByInferredVote = Msgs.def('in-game voting, most likely: the server stopped having a next layer set')
 
-export const disabledByIngameVote = Msgs.def(() => ({ text: () => 'an in-game vote on the Squad server' }))
+export const disabledByIngameVote = Msgs.def('an in-game vote on the Squad server')
 
-export const disabledByIngameAdmin = Msgs.def(() => ({ text: () => 'an admin in game' }))
+export const disabledByIngameAdmin = Msgs.def('an admin in game')
 
-export const disabledByUnrecorded = Msgs.def(() => ({ text: () => 'someone (not recorded)' }))
+export const disabledByUnrecorded = Msgs.def('someone (not recorded)')
 
-export const disabledByUnnamedUser = Msgs.def(() => ({ text: () => 'a user' }))
+export const disabledByUnnamedUser = Msgs.def('a user')
 
-export const disabledBySlm = Msgs.def(() => ({ text: () => 'SLM' }))
+export const disabledBySlm = Msgs.def('SLM')
 
 // what the enable button does, which differs when the server is mid-vote
-export const enableUpdatesCta = Msgs.def((alsoStopsIngameVote: boolean) => ({
-	text: () => (alsoStopsIngameVote ? 'to enable SLM Updates and turn off in-game voting on the server.' : 'to enable SLM Updates.'),
-}))
+export const enableUpdatesCta = Msgs.def(
+	'to enable SLM Updates{alsoStopsIngameVote, select, yes { and turn off in-game voting on the server} other {}}.',
+	(alsoStopsIngameVote: boolean) => ({ alsoStopsIngameVote: alsoStopsIngameVote ? 'yes' : 'no' }),
+)

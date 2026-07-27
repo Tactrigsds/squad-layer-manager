@@ -75,8 +75,8 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 	return (
 		<div className="grid gap-4">
 			<div className="space-y-2">
-				<h4 className="font-medium leading-none">Vote Display Options</h4>
-				<p className="text-sm text-muted-foreground">Choose what info to show to voters</p>
+				<h4 className="font-medium leading-none">{V_Msgs.displayOptionsHeading().text()}</h4>
+				<p className="text-sm text-muted-foreground">{V_Msgs.displayOptionsBlurb().text()}</p>
 			</div>
 			<div className="grid gap-4">
 				<div className="grid grid-cols-2 gap-4">
@@ -89,7 +89,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="layer">Layer</Label>
+								<Label htmlFor="layer">{V_Msgs.displayLayer().text()}</Label>
 							</div>
 							<div className="ml-6 grid gap-2">
 								<div className="flex items-center space-x-2">
@@ -99,7 +99,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 										onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="map">Map</Label>
+									<Label htmlFor="map">{V_Msgs.displayMap().text()}</Label>
 								</div>
 								<div className="flex items-center space-x-2">
 									<Checkbox
@@ -108,7 +108,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="gamemode">Gamemode</Label>
+									<Label htmlFor="gamemode">{V_Msgs.displayGamemode().text()}</Label>
 								</div>
 							</div>
 						</div>
@@ -122,7 +122,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="factions">Factions</Label>
+								<Label htmlFor="factions">{V_Msgs.displayFactions().text()}</Label>
 							</div>
 							<div className="flex items-center space-x-2">
 								<Checkbox
@@ -131,18 +131,18 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="units">Units</Label>
+								<Label htmlFor="units">{V_Msgs.displayUnits().text()}</Label>
 							</div>
 						</div>
 					</div>
 				</div>
 				{!valid && (
 					<div className="bg-destructive/10 border border-destructive rounded p-2">
-						<p className="text-sm text-destructive">Warning: Can't distinguish between vote choices.</p>
+						<p className="text-sm text-destructive">{V_Msgs.choicesIndistinguishable().text()}</p>
 					</div>
 				)}
 				<div className="space-y-2">
-					<Label>Preview</Label>
+					<Label>{V_Msgs.previewLabel().text()}</Label>
 					<pre
 						style={{
 							fontFamily: `"Roboto Condensed", 'sans-serif'`,
@@ -154,7 +154,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 					</pre>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="duration">Vote Duration (seconds)</Label>
+					<Label htmlFor="duration">{V_Msgs.durationLabel().text()}</Label>
 					<Input
 						id="duration"
 						type="number"
@@ -167,7 +167,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 				</div>
 				{(props.includeResetToDefault ?? true) && (
 					<Button variant="outline" size="sm" onClick={resetToDefault} disabled={usingDefault || props.readonly}>
-						Reset to Default
+						{V_Msgs.resetToDefault().text()}
 					</Button>
 				)}
 			</div>
