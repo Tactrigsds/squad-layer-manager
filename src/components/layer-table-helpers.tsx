@@ -1,6 +1,7 @@
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { toast } from '@/lib/toast'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as L from '@/models/layer'
 
 import LayerInfoDialog from './layer-info'
@@ -14,7 +15,7 @@ function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
 		text += id
 	}
 	void navigator.clipboard.writeText(text)
-	toast(`Copied History Entry ID${selectedHistoryEntryIds.length > 1 ? 's' : ''}`)
+	toast(...L_Msgs.copiedHistoryEntryIds(selectedHistoryEntryIds.length).toast())
 }
 
 function copyLayerId(selectedLayerIds: L.LayerId[]) {
@@ -24,7 +25,7 @@ function copyLayerId(selectedLayerIds: L.LayerId[]) {
 		text += id
 	}
 	void navigator.clipboard.writeText(text)
-	toast('Copied Layer ID')
+	toast(...L_Msgs.copiedLayerIds().toast())
 }
 
 export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; selectedHistoryEntryIds?: number[] }) {

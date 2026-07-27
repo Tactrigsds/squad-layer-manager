@@ -101,6 +101,15 @@ export const wrongChat = Msgs.def((correctChannel: string) => ({
 	warn: () => `Vote must be cast in ${correctChannel}`,
 }))
 
+// What the web client tells the admin once a vote mutation comes back ok. Distinct from the broadcasts above,
+// which announce the same events to players in game and are worded for that audience.
+export const adminReceipt = {
+	started: Msgs.def(() => ({ toast: () => ['Vote started!'] })),
+	aborted: Msgs.def(() => ({ toast: () => ['Vote aborted!'] })),
+	endedEarly: Msgs.def(() => ({ toast: () => ['Vote ended early!'] })),
+	autostartCancelled: Msgs.def(() => ({ toast: () => ['Vote autostart cancelled!'] })),
+}
+
 export const start = {
 	noVoteConfigured: Msgs.def(() => ({ warn: () => `No vote is currently configured` })),
 	voteAlreadyInProgress: Msgs.def(() => ({ warn: () => `A vote is already in progress` })),

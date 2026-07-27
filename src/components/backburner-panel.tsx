@@ -21,6 +21,7 @@ import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as BB_Msgs from '@/messages/backburner.messages'
 import * as BB from '@/models/backburner.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CB from '@/models/constraint-builders'
@@ -573,7 +574,7 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 	function save() {
 		const filter = RequestFrame.Sel.templateFilter(Zus.getState(frameKey))
 		if (filter.type === 'and' && filter.children.length === 0) {
-			toast.warning('Empty request', { description: 'Pick at least one of layer, map, gamemode, version, matchup or a filter' })
+			toast.warning(...BB_Msgs.emptyRequest().toast())
 			return
 		}
 		const queueKey: LayerQueuePrt.KeyProp = { queue: props.stores.squadServer! }
