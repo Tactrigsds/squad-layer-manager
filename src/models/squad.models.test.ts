@@ -657,7 +657,14 @@ describe('PlayerIds.match', () => {
 	})
 
 	it('matches on username substring when neither side has a hard id', () => {
-		expect(SM.PlayerIds.match({ username: 'Quincy' }, { usernameNoTag: '『tag』 Quincy' })).toBe(true)
+		expect(SM.PlayerIds.match({ username: 'Quincy' }, { usernameNoTag: '『tag』 Quincy' }, { inexact: true })).toBe(true)
+	})
+
+	it('rejects a name-only comparison at compile time unless it opts in to inexact matching', () => {
+		// @ts-expect-error a query carrying no hard id is not a Ref
+		expect(SM.PlayerIds.match({ username: 'Quincy' }, { username: 'Quincy' })).toBe(false)
+		// @ts-expect-error same, via the usernameNoTag substring path
+		expect(SM.PlayerIds.match({ username: 'Quincy' }, { usernameNoTag: '『tag』 Quincy' })).toBe(false)
 	})
 
 	// prod: player "Quincy" (00021f...) was resolved to a distinct impostor "REAL Quincy" (000275...) every
@@ -665,8 +672,38 @@ describe('PlayerIds.match', () => {
 	it('does not collapse two players with differing hard ids just because one name is a substring of the other', () => {
 		const quincy = { eos: '00021f', username: 'Quincy' }
 		const impostor = { eos: '000275', username: 'REAL Quincy', usernameNoTag: 'REAL Quincy' }
-		expect(SM.PlayerIds.match(quincy, impostor)).toBe(false)
-		expect(SM.PlayerIds.match(impostor, quincy)).toBe(false)
+		expect(SM.PlayerIds.match(quincy, impostor, { inexact: true })).toBe(false)
+		expect(SM.PlayerIds.match(impostor, quincy, { inexact: true })).toBe(false)
+	})
+
+	// prod: four distinct players named exactly "Dan"; the roster diff paired the wrong two every poll and
+	// re-emitted PLAYER_CHANGED_TEAM (always to the same team) once per poll, forever.
+	it('does not collapse two players with differing hard ids that share an identical username', () => {
+		const dan = { eos: '00026b', username: 'Dan' }
+		const otherDan = { eos: '00029a', username: 'Dan' }
+		expect(SM.PlayerIds.match(dan, otherDan)).toBe(false)
+		expect(SM.PlayerIds.match(dan, otherDan, { inexact: true })).toBe(false)
+	})
+})
+
+describe('PlayerIds.find', () => {
+	const player = (ids: SM.PlayerIds.Type) => ({ ids })
+
+	it('resolves by hard id regardless of name collisions', () => {
+		const players = [player({ eos: 'x', username: 'Dan' }), player({ eos: 'y', username: 'Dan' })]
+		expect(SM.PlayerIds.find(players, (p) => p.ids, { eos: 'y', username: 'Dan' })).toBe(players[1])
+	})
+
+	it('does not resolve a name-only query without inexact', () => {
+		const players = [player({ eos: 'x', username: 'Solo' })]
+		// @ts-expect-error the compiler refuses the lookup outright; it would silently resolve to nothing
+		expect(SM.PlayerIds.find(players, (p) => p.ids, { username: 'Solo' })).toBeUndefined()
+		expect(SM.PlayerIds.find(players, (p) => p.ids, { username: 'Solo' }, { inexact: true })).toBe(players[0])
+	})
+
+	it('refuses an ambiguous inexact match rather than taking the first', () => {
+		const players = [player({ eos: 'x', username: 'Dan' }), player({ eos: 'y', username: 'Dan' })]
+		expect(SM.PlayerIds.find(players, (p) => p.ids, { username: 'Dan' }, { inexact: true })).toBeUndefined()
 	})
 })
 

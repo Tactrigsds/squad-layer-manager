@@ -7,6 +7,7 @@ import { createId } from '@/lib/id'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Rx from '@/lib/rxjs'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
@@ -93,9 +94,6 @@ export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]>
 	})
 }
 
-// the delivered kick message when a timeout was issued without a reason
-const DEFAULT_TIMEOUT_TEXT = 'You have been kicked by an admin.'
-
 // creates the timeout (app event + row) and kicks the player from the issuing server. `reason` carries the
 // unrendered template + vars (with the ORIGINAL duration); enforcement re-renders with the remaining one.
 export async function kickWithTimeout(
@@ -156,7 +154,7 @@ export async function kickWithTimeout(
 			reasonTemplate: opts.reason?.template ?? null,
 			reasonVars: opts.reason?.vars ?? null,
 		})
-	const message = opts.reason ? AAR.renderAppliedReason(opts.reason) : DEFAULT_TIMEOUT_TEXT
+	const message = SM_Msgs.notifyKicked(opts.reason && AAR.renderAppliedReason(opts.reason)).text()
 	await SquadServer.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServer.notifyAdminsOfWebAction(ctx, appEvent)
 	update$.next()
@@ -200,9 +198,10 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 	for (const timeout of active) {
 		const applied = appliedReasonFromRow(timeout)
 		const remainingMs = timeout.expiresAt.getTime() - Date.now()
-		const message = applied
-			? AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
-			: DEFAULT_TIMEOUT_TEXT
+		const rendered =
+			applied &&
+			AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
+		const message = SM_Msgs.notifyKicked(rendered ?? undefined).text()
 		await SquadServer.kickPlayerAction(
 			ctx,
 			timeout.playerId,

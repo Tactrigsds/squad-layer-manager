@@ -24,6 +24,7 @@ import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as SS_Msgs from '@/messages/server-state.messages'
+import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as BAL from '@/models/balance-triggers.models'
@@ -1194,9 +1195,6 @@ export async function kickPlayerAction(
 	await SquadRcon.kickPlayer(ctx, target, reason)
 }
 
-// the delivered kick message when no reason was given
-const DEFAULT_KICK_TEXT = 'You have been kicked by an admin.'
-
 // a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
 // batch, and each kick's server event is attributed to it.
 export async function kickPlayersAction(
@@ -1217,7 +1215,7 @@ export async function kickPlayersAction(
 		reason,
 	})
 	await emitAppEvent(ctx, appEvent)
-	const message = reason ? AAR.renderAppliedReason(reason) : DEFAULT_KICK_TEXT
+	const message = SM_Msgs.notifyKicked(reason && AAR.renderAppliedReason(reason)).text()
 	for (const target of targets) {
 		await kickPlayerAction(ctx, target, { type: 'event', id: appEvent.id }, message)
 	}
