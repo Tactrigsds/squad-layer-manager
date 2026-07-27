@@ -1,0 +1,339 @@
+// see settings.messages.tsx on why a messages module with a react target keeps React in scope
+import * as React from 'react'
+
+import { assertNever } from '@/lib/type-guards'
+import * as Msgs from '@/messages/shared'
+import type * as F from '@/models/filter.models'
+
+// The operator vocabulary the filter editor shows. Keyed by operator rather than target, so these are plain
+// lookups rather than messages: the colloquial reading leads and the operation it names follows in parens,
+// which is what makes the negated pair (nor/nand) legible.
+export const blockTypeNames: Record<F.BlockType, string> = {
+	and: 'all of (and)',
+	or: 'any of (or)',
+	nor: 'none of (nor)',
+	nand: 'not all of (nand)',
+}
+
+export const blockTypeDescriptions: Record<F.BlockType, string> = {
+	and: 'Matches layers where every condition in this block matches.',
+	or: 'Matches layers where at least one condition in this block matches.',
+	nor: 'Matches layers where not a single condition in this block matches.',
+	nand: 'Matches layers where at least one condition in this block fails.',
+}
+
+export const applyFilterTypeNames: Record<F.ApplyFilterType, string> = {
+	'included-in': 'included in',
+	'excluded-from': 'excluded from',
+}
+
+export const applyFilterTypeDescriptions: Record<F.ApplyFilterType, string> = {
+	'included-in': 'Matches layers that the referenced filter matches.',
+	'excluded-from': 'Matches layers that the referenced filter does not match.',
+}
+
+export const matchupTypeNames: Record<F.MatchupType, string> = {
+	'allow-matchups': 'allow matchups',
+	'disallow-matchups': 'disallow matchups',
+}
+
+// Why a filter tree would not compile. Each one is attached to the node that caused it and rendered against that
+// node in the editor, so they are `text` rather than `toast`.
+
+export const recursiveFilter = Msgs.def((filterId: string) => ({
+	text: () => 'Filter is mutually recursive via filter: ' + filterId,
+}))
+
+export const unknownFilter = Msgs.def((filterId: string) => ({
+	text: () => `Filter ${filterId} doesn't exist`,
+}))
+
+export const unhandledNodeType = Msgs.def(() => ({
+	text: () => 'Unhandled filter node type',
+}))
+
+export const firstOperandMustBeColumn = Msgs.def(() => ({
+	text: () => "A comparison's first operand must be a column",
+}))
+
+export const needsColumnOperand = Msgs.def(() => ({
+	text: () => 'Comparison requires at least one column operand',
+}))
+
+export const columnsNotComparable = Msgs.def((left: string, right: string) => ({
+	text: () => `Columns ${left} and ${right} are not comparable (different data types)`,
+}))
+
+export const orderedComparisonNull = Msgs.def(() => ({
+	text: () => 'Ordered comparison cannot use null',
+}))
+
+export const rangeComparisonNull = Msgs.def(() => ({
+	text: () => 'Range comparison cannot use null',
+}))
+
+export const unresolvedTeamColumn = Msgs.def((column: string) => ({
+	text: () => `Team column "${column}" could not be resolved to a team`,
+}))
+
+export const unmappedColumn = Msgs.def((column: string) => ({
+	text: () => `Column ${column} is not mapped`,
+}))
+
+export const unmappedValue = Msgs.def((column: string, value: NonNullable<F.Value>) => ({
+	text: () => `Value ${value} is not mapped for column ${column}`,
+}))
+
+// Editing a filter entity.
+
+export const saved = Msgs.def(() => ({ toast: () => ['Filter saved'] }))
+
+export const notFound = Msgs.def(() => ({ toast: () => ['Unable to save: Filter Not Found'] }))
+
+export const created = Msgs.def(() => ({ toast: () => ['Filter created'] }))
+
+export const invalid = Msgs.def(() => ({
+	toast: () => ['Invalid filter', { description: 'Please check filter configuration' }],
+}))
+
+export const deleted = Msgs.def((name: string) => ({
+	toast: () => [`Filter "${name}" deleted`],
+}))
+
+// Declared here rather than imported from the filter-entity system, which is server-only. Widening it is what makes
+// the call site fail to typecheck if the server grows a delete failure this does not name.
+export type DeleteFailure =
+	| { code: 'err:permission-denied' }
+	| { code: 'err:cannot-delete-pool-filter' }
+	| { code: 'err:filter-not-found' }
+	| { code: 'err:filter-in-use'; referencingFilters: string[] }
+
+export const deleteFailed = Msgs.def((name: string, failure: DeleteFailure) => {
+	function blurb() {
+		switch (failure.code) {
+			case 'err:permission-denied':
+				return 'You do not have permission to delete this filter'
+			case 'err:cannot-delete-pool-filter':
+				return 'Cannot delete a filter that is currently in use by the layer pool'
+			case 'err:filter-in-use':
+				return 'Filter is in use by ' + failure.referencingFilters.join(', ')
+			case 'err:filter-not-found':
+				return 'Filter not found'
+			default:
+				assertNever(failure)
+		}
+	}
+
+	return { toast: () => [`Failed to delete filter "${name}"`, { description: blurb() }] }
+})
+
+export const formatFailed = Msgs.def((reason: string) => ({
+	toast: () => ['Unable to format: invalid json', { description: reason }],
+}))
+
+// Someone else's edit landing on a filter you have open.
+
+export const updatedBy = Msgs.def((name: string, editor: string) => ({
+	toast: () => [`Filter ${name} was updated by ${editor}`],
+}))
+
+export const deletedBy = Msgs.def((name: string, editor: string) => ({
+	toast: () => [`Filter ${name} was deleted by ${editor}`],
+}))
+
+// Contributors.
+
+export const contributorAlreadyAdded = Msgs.def(() => ({ toast: () => ['Contributor already added'] }))
+
+export const contributorNotFound = Msgs.def(() => ({ toast: () => ['Contributor not found'] }))
+
+export const addContributorFailed = Msgs.def((reason: string) => ({
+	toast: () => ['Failed to add contributor', { description: reason }],
+}))
+
+// -------- the filter card --------
+
+export const loadingEditor = Msgs.def(() => ({ text: () => 'Loading editor…' }))
+
+export const reformat = Msgs.def(() => ({ text: () => 'Reformat' }))
+
+export const resetFilter = Msgs.def(() => ({ text: () => 'Reset Filter' }))
+
+export const textTab = Msgs.def(() => ({ text: () => 'Text' }))
+
+export const builderTab = Msgs.def(() => ({ text: () => 'Builder' }))
+
+export const errorsHeading = Msgs.def(() => ({ text: () => 'Errors' }))
+
+export const filterHeading = Msgs.def(() => ({ text: () => 'Filter' }))
+
+// -------- one node --------
+
+export const operatorPicker = Msgs.def(() => ({ text: () => 'Operator' }))
+
+export const modePicker = Msgs.def(() => ({ text: () => 'mode' }))
+
+export const columnPicker = Msgs.def(() => ({ text: () => 'Column' }))
+
+export const addColumnPlaceholder = Msgs.def(() => ({ text: () => '+ column' }))
+
+export const valuePicker = Msgs.def(() => ({ text: () => 'value' }))
+
+export const filterPicker = Msgs.def(() => ({ text: () => 'Filter' }))
+
+export const nodeComment = Msgs.def(() => ({ text: () => 'Node comment' }))
+
+export const nodeCommentPlaceholder = Msgs.def(() => ({ text: () => 'Comment. Links are clickable.' }))
+
+export const compareToValue = Msgs.def(() => ({ text: () => 'Compare to a constant value' }))
+
+export const compareToColumn = Msgs.def(() => ({ text: () => 'Compare to another column' }))
+
+// the null chip a float column's `=` renders instead of a value editor
+export const nullValue = Msgs.def(() => ({ text: () => 'null' }))
+
+export const whyOnlyNull = Msgs.def(() => ({ text: () => 'Why only null?' }))
+
+// The operators named in it are the syntax being explained, so they are part of the prose; the caller renders
+// them as code.
+export const floatEqNullOnly = Msgs.def(() => ({
+	react: () => (
+		<>
+			This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make{' '}
+			<code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>&lt;</code>/<code>&gt;</code> to compare magnitudes;{' '}
+			<code>=</code> only checks whether the value is null.
+		</>
+	),
+}))
+
+// between the two bounds of an inrange comparison
+export const rangeTo = Msgs.def(() => ({ text: () => 'to' }))
+
+export const inSetNames = { in: 'in', notin: 'not in' }
+
+export const inSetDescriptions = {
+	in: 'Matches the listed layers.',
+	notin: 'Matches every layer except the listed ones.',
+}
+
+export const selectLayers = Msgs.def(() => ({ text: () => 'Select Layers' }))
+
+export const editLayers = Msgs.def(() => ({ text: () => 'Edit Layers' }))
+
+// -------- matchups --------
+
+// a locked matchup names the two slots; an unlocked one only knows they are opposite each other
+export const matchupSideLabels = { lockedLeft: 'Team 1', lockedRight: 'Team 2', left: 'One side', right: 'Other side' }
+
+export const swapSides = Msgs.def(() => ({ text: () => 'Swap the two sides' }))
+
+// the placeholder on a team-spec dimension, e.g. "any faction"
+export const anyTeamColumn = Msgs.def((column: string) => ({ text: () => `any ${column.toLowerCase()}` }))
+
+// -------- the filter editor page --------
+
+export const save = Msgs.def(() => ({ text: () => 'Save' }))
+
+export const deleteAction = Msgs.def(() => ({ text: () => 'Delete' }))
+
+export const cancel = Msgs.def(() => ({ text: () => 'Cancel' }))
+
+export const create = Msgs.def(() => ({ text: () => 'Create' }))
+
+// on the editor page the owner's name follows inline; in the index it labels a badge beside it
+export const ownerLabel = Msgs.def(() => ({ text: () => 'Owner:' }))
+
+export const ownerLine = Msgs.def((owner: string) => ({ text: () => `Owner: ${owner}` }))
+
+export const contributorsLabel = Msgs.def(() => ({ text: () => 'Contributors:' }))
+
+export const editDetails = Msgs.def(() => ({ text: () => 'Edit Details' }))
+
+export const cancelEditingDetails = Msgs.def(() => ({ text: () => 'Cancel Editing Details' }))
+
+// why the viewer may or may not edit this filter, one per way of holding (or not holding) the grant
+export const accessOwner = Msgs.def(() => ({ text: () => 'You are the owner of this filter' }))
+
+export const accessContributor = Msgs.def(() => ({ text: () => 'You are a contributor' }))
+
+export const accessNone = Msgs.def(() => ({ text: () => `You don't have permission to modify this filter` }))
+
+export const accessAllFilters = Msgs.def(() => ({ text: () => 'You have write access to all filters' }))
+
+export const showContributors = Msgs.def(() => ({ text: () => 'Show Contributors' }))
+
+export const contributorsHeading = Msgs.def(() => ({ text: () => 'Contributors' }))
+
+export const contributorsBlurb = Msgs.def(() => ({ text: () => 'Users and Roles that can edit this filter' }))
+
+export const usersHeading = Msgs.def(() => ({ text: () => 'Users' }))
+
+export const rolesHeading = Msgs.def(() => ({ text: () => 'Roles' }))
+
+export const searchUsers = Msgs.def(() => ({ text: () => 'Search for a user...' }))
+
+export const searchRoles = Msgs.def(() => ({ text: () => 'Search for a role...' }))
+
+export const matchIndicator = Msgs.def(() => ({ text: () => 'Match Indicator' }))
+
+export const missIndicator = Msgs.def(() => ({ text: () => 'Miss Indicator' }))
+
+export const confirmDeleteTitle = Msgs.def(() => ({ text: () => 'Delete Filter' }))
+
+export const confirmDeleteBlurb = Msgs.def(() => ({ text: () => 'Are you sure you want to delete this filter?' }))
+
+// -------- the filter index --------
+
+export const filtersHeading = Msgs.def(() => ({ text: () => 'Filters' }))
+
+export const newFilter = Msgs.def(() => ({ text: () => 'New Filter' }))
+
+// -------- the applied-filters panel --------
+
+export const scrollLeft = Msgs.def(() => ({ text: () => 'Scroll left (double-click to go to start)' }))
+
+export const scrollRight = Msgs.def(() => ({ text: () => 'Scroll right (double-click to go to end)' }))
+
+export const editExtraFilters = Msgs.def(() => ({ text: () => 'Edit extra filters' }))
+
+export const addExtraFilters = Msgs.def(() => ({ text: () => 'Add Extra Filters' }))
+
+export const disableAllFilters = Msgs.def(() => ({ text: () => 'Disable all filters' }))
+
+export const hideRepeats = Msgs.def(() => ({ text: () => 'Hide Repeats' }))
+
+export const hideRepeatsHint = Msgs.def(() => ({ text: () => 'Hide layers which violate Repeat rules' }))
+
+// -------- the layer filter menu --------
+
+export const clearAll = Msgs.def(() => ({ text: () => 'Clear All' }))
+
+export const swapFactions = Msgs.def(() => ({ text: () => 'Swap Factions' }))
+
+export const clearOtherFilters = Msgs.def(() => ({ text: () => 'Remove all other filters and select this one' }))
+
+// -------- the constraint indicators --------
+
+export const layerIndicators = Msgs.def(() => ({ text: () => 'Layer indicators' }))
+
+export const repeatsDetectedLabel = Msgs.def(() => ({ text: () => 'Repeats Detected:' }))
+
+export const matchingFiltersLabel = Msgs.def(() => ({ text: () => 'Matching Filters:' }))
+
+// Why a layer violates a repeat rule. `value` and `offset` are already rendered (the panel bolds them), so the
+// message positions them rather than formatting them.
+export const repeatDescriptor = Msgs.def((value: React.ReactNode, offset: React.ReactNode, matchCount: number) => ({
+	react: () => (
+		<>
+			{value} was played {offset} match{matchCount === 1 ? '' : 'es'} prior
+		</>
+	),
+}))
+
+export const repeatShouldBeOver = Msgs.def((within: React.ReactNode) => ({
+	react: () => <>Should be &gt; {within}</>,
+}))
+
+export const repeatWithin = Msgs.def((within: React.ReactNode) => ({
+	react: () => <>within {within}</>,
+}))
