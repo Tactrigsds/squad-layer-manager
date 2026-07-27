@@ -60,4 +60,18 @@ test.describe('nav bar', () => {
 	sharedAppTest('offers the Settings link to a user who can reach it', async ({ page }) => {
 		await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible({ timeout: 30_000 })
 	})
+
+	// The picker offers every locale this build carries a catalogue for, plus following the browser. With only
+	// English shipped that is a two-item menu, which is the honest rendering of what is available.
+	sharedAppTest('offers a language, following the browser until one is picked', async ({ page }) => {
+		await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible({ timeout: 30_000 })
+		await page.getByLabel('User menu').click()
+		await page.getByRole('menuitem', { name: 'Language' }).click()
+
+		const automatic = page.getByRole('menuitemradio', { name: 'Automatic' })
+		await expect(automatic).toBeVisible()
+		await expect(automatic).toHaveAttribute('aria-checked', 'true')
+		// named in its own language, which is what a reader who cannot read the current one needs
+		await expect(page.getByRole('menuitemradio', { name: 'English' })).toBeVisible()
+	})
 })

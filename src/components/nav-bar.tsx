@@ -40,6 +40,7 @@ import * as RPC from '@/orpc.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
+import * as LocaleClient from '@/systems/locale.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -86,6 +87,7 @@ export default function NavBar() {
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
+	const { choice: localeChoice, setChoice: setLocaleChoice } = LocaleClient.useLocale()
 	const config = Zus.useStore(ConfigClient.Store)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const selectedServerId = Zus.useStore(SquadServerClient.SelectedServerStore, (s) => s.selectedServerId)
@@ -146,6 +148,24 @@ export default function NavBar() {
 							<Icons.Monitor className="mr-2 h-4 w-4" />
 							{APP_Msgs.themeNames.system}
 						</DropdownMenuRadioItem>
+					</DropdownMenuRadioGroup>
+				</DropdownMenuSubContent>
+			</DropdownMenuSub>
+			<DropdownMenuSub>
+				<DropdownMenuSubTrigger className="text-sm" chevronLeft>
+					{APP_Msgs.language().text()}
+				</DropdownMenuSubTrigger>
+				<DropdownMenuSubContent>
+					<DropdownMenuRadioGroup value={localeChoice} onValueChange={setLocaleChoice}>
+						<DropdownMenuRadioItem value={LocaleClient.AUTO} className="text-sm">
+							<Icons.Languages className="mr-2 h-4 w-4" />
+							{APP_Msgs.languageAuto().text()}
+						</DropdownMenuRadioItem>
+						{LocaleClient.availableLocales().map((locale) => (
+							<DropdownMenuRadioItem key={locale} value={locale} className="text-sm">
+								{LocaleClient.endonym(locale)}
+							</DropdownMenuRadioItem>
+						))}
 					</DropdownMenuRadioGroup>
 				</DropdownMenuSubContent>
 			</DropdownMenuSub>
