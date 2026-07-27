@@ -6,17 +6,12 @@ import { Checkbox } from '@/components/ui/checkbox'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as SC_Msgs from '@/messages/server-console.messages'
 import type { ConsoleEvent } from '@/models/server-console.models'
+import * as SC from '@/models/server-console.models'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
 // route around every other permission and leave no app event behind.
-
-const TAB_LABEL: Record<ConsoleFrame.Tab, string> = {
-	unified: 'All',
-	rcon: 'RCON',
-	log: 'Logs',
-	command: 'Player Commands',
-}
 
 function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?: string } {
 	switch (event.type) {
@@ -48,7 +43,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	if (denied) {
 		return (
 			<div className={cn('flex min-h-0 items-center justify-center rounded-md border p-3', className)}>
-				<p className="text-sm text-muted-foreground">You do not have permission to read this server's console.</p>
+				<p className="text-sm text-muted-foreground">{SC_Msgs.denied().text()}</p>
 			</div>
 		)
 	}
@@ -56,8 +51,8 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	return (
 		<div className={cn('flex min-h-0 flex-col rounded-md border', className)}>
 			<div className="flex items-center gap-1 border-b px-1 py-1">
-				<div role="tablist" aria-label="Console channel" className="flex items-center gap-1">
-					{ConsoleFrame.TABS.map((t) => (
+				<div role="tablist" aria-label={SC_Msgs.channelTablist().text()} className="flex items-center gap-1">
+					{SC.TABS.map((t) => (
 						<Button
 							key={t}
 							type="button"
@@ -68,17 +63,17 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 							className="h-6 px-2 text-xs"
 							onClick={() => ConsoleFrame.Actions.setTab(stores, t)}
 						>
-							{TAB_LABEL[t]}
+							{SC_Msgs.tabNames[t]}
 						</Button>
 					))}
 				</div>
 				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
 					<Checkbox
 						checked={hideNoise}
-						aria-label="Hide noise"
+						aria-label={SC_Msgs.hideNoise().text()}
 						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)}
 					/>
-					Hide noise
+					{SC_Msgs.hideNoise().text()}
 					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
 				</label>
 				<Button
@@ -86,7 +81,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					size="icon"
 					variant="ghost"
 					className="h-6 w-6"
-					title="Clear"
+					title={SC_Msgs.clear().text()}
 					onClick={() => ConsoleFrame.Actions.clear(stores)}
 				>
 					<Icons.Eraser className="h-3.5 w-3.5" />
@@ -95,11 +90,11 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 			<div
 				ref={scrollRef}
 				role="tabpanel"
-				aria-label={`${TAB_LABEL[tab]} console output`}
+				aria-label={SC_Msgs.tabOutput(tab).text()}
 				className="min-h-0 grow overflow-y-auto bg-muted/30 p-1.5"
 			>
 				{events.length === 0 ? (
-					<p className="text-xs text-muted-foreground">Nothing yet.</p>
+					<p className="text-xs text-muted-foreground">{SC_Msgs.empty().text()}</p>
 				) : (
 					<ol className="space-y-0.5">
 						{events.map((event) => {

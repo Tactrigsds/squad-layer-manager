@@ -14,6 +14,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object-utils'
 import { useRefConstructor } from '@/lib/react.ts'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
@@ -77,7 +78,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
 			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
-					<HeadlessDialogTitle>Edit Layer</HeadlessDialogTitle>
+					<HeadlessDialogTitle>{L_Msgs.editLayerTitle().text()}</HeadlessDialogTitle>
 				</div>
 				<div className="flex justify-end items-center space-x-2">
 					{/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
@@ -104,7 +105,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			<HeadlessDialogFooter>
 				<div className="flex items-center justify-end w-full">
 					<Button disabled={!canSubmit} onClick={submit}>
-						Submit
+						{L_Msgs.submit().text()}
 					</Button>
 				</div>
 			</HeadlessDialogFooter>

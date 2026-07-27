@@ -12,6 +12,8 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
+import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -114,8 +116,8 @@ function ChatMessageEvent({
 	const channelLabel = (() => {
 		if (event.type === 'ADMIN_BROADCAST') {
 			return (
-				<span style={{ color: channelStyle.color }} title="admin broadcast message">
-					(broadcast)
+				<span style={{ color: channelStyle.color }} title={CHAT_Msgs.chatChannelBroadcastHint().text()}>
+					{CHAT_Msgs.chatChannelBroadcast().text()}
 				</span>
 			)
 		}
@@ -123,8 +125,8 @@ function ChatMessageEvent({
 		switch (event.channel.type) {
 			case 'ChatAll':
 				return (
-					<span style={{ color: channelStyle.color }} title="this message was sent in all chat">
-						(all)
+					<span style={{ color: channelStyle.color }} title={CHAT_Msgs.chatChannelAllHint().text()}>
+						{CHAT_Msgs.chatChannelAll().text()}
 					</span>
 				)
 			case 'ChatTeam':
@@ -161,8 +163,8 @@ function ChatMessageEvent({
 				)
 			case 'ChatAdmin':
 				return (
-					<span style={{ color: channelStyle.color }} title="this message was sent in admin chat">
-						(admin)
+					<span style={{ color: channelStyle.color }} title={CHAT_Msgs.chatChannelAdminHint().text()}>
+						{CHAT_Msgs.chatChannelAdmin().text()}
 					</span>
 				)
 		}
@@ -172,10 +174,10 @@ function ChatMessageEvent({
 		if (event.type === 'ADMIN_BROADCAST') {
 			if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />
 			if (event.from === 'RCON') {
-				return <span className="text-red-400">RCON</span>
+				return <span className="text-red-400">{CHAT_Msgs.broadcastFromRcon().text()}</span>
 			}
 			if (event.from === 'unknown') {
-				return <span className="text-yellow-400/60">unknown</span>
+				return <span className="text-yellow-400/60">{CHAT_Msgs.broadcastFromUnknown().text()}</span>
 			}
 			return null
 		}
@@ -215,12 +217,10 @@ function PlayerConnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UserPlus className="h-4 w-4 text-green-500 shrink-0" />}>
-			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> connected
-			{event.player.teamId && (
-				<>
-					, joining <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} />
-				</>
-			)}
+			{CHAT_Msgs.playerConnected(
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+				event.player.teamId ? <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} /> : undefined,
+			).react()}
 		</EventLine>
 	)
 }
@@ -234,7 +234,7 @@ function PlayerDisconnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UserMinus className="h-4 w-4 text-red-500 shrink-0" />}>
-			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> disconnected
+			{CHAT_Msgs.playerDisconnected(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />).react()}
 		</EventLine>
 	)
 }
@@ -248,7 +248,7 @@ function PossessedAdminCameraEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Camera className="h-4 w-4 text-purple-500 shrink-0" />}>
-			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> entered admin camera
+			{CHAT_Msgs.enteredAdminCamera(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />).react()}
 		</EventLine>
 	)
 }
@@ -262,7 +262,7 @@ function UnpossessedAdminCameraEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.CameraOff className="h-4 w-4 text-purple-500 shrink-0" />}>
-			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> exited admin camera
+			{CHAT_Msgs.exitedAdminCamera(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />).react()}
 		</EventLine>
 	)
 }
@@ -276,8 +276,10 @@ function PlayerKickedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-orange-500 shrink-0" />}>
-			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was kicked
-			{event.reason && <span className="text-muted-foreground/70"> - {event.reason}</span>}
+			{CHAT_Msgs.playerKicked(
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />,
+				event.reason ? <span className="text-muted-foreground/70">{event.reason}</span> : undefined,
+			).react()}
 		</EventLine>
 	)
 }
@@ -291,9 +293,11 @@ function SquadCreatedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Users className="h-4 w-4 text-blue-500 shrink-0" />}>
-			<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} /> created{' '}
-			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} /> on{' '}
-			<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />
+			{CHAT_Msgs.squadCreated(
+				<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} />,
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} />,
+				<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />,
+			).react()}
 			{event.squad.locked ? <Icons.Lock className="h-3 w-3 text-red-600 inline-block ml-1" /> : null}
 		</EventLine>
 	)
@@ -308,7 +312,7 @@ function PlayerBannedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
-			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> was banned reason: "{event.interval}"
+			{CHAT_Msgs.playerBanned(<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />, event.interval).react()}
 		</EventLine>
 	)
 }
@@ -322,7 +326,10 @@ function PlayerWarnedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}>
-			<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} /> was warned: "{event.reason}"
+			{CHAT_Msgs.playerWarned(
+				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />,
+				event.reason,
+			).react()}
 		</EventLine>
 	)
 }
@@ -337,23 +344,21 @@ function WarnsAggregatedEvent({
 	stores: SquadServerFrame.KeyProp
 }) {
 	const count = event.warns.length
-	const plural = count === 1 ? 'player' : 'players'
 	const matchId = event.matchId
 	const icon = <Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
-	const reason = <>: "{event.reason}"</>
 
 	if (count <= 4) {
+		const warnees = event.warns.map((warn, i) => (
+			// index disambiguates: the same player can appear more than once in an aggregated warn entry
+			// oxlint-disable-next-line react/no-array-index-key
+			<span key={`${warn.player.ids.eos}-${i}`}>
+				{i > 0 ? ', ' : ''}
+				<PlayerDisplay showTeam player={warn.player} matchId={matchId} stores={stores} />
+			</span>
+		))
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{event.warns.map((warn, i) => (
-					// index disambiguates: the same player can appear more than once in an aggregated warn entry
-					// oxlint-disable-next-line react/no-array-index-key
-					<span key={`${warn.player.ids.eos}-${i}`}>
-						{i > 0 ? ', ' : ''}
-						<PlayerDisplay showTeam player={warn.player} matchId={matchId} stores={stores} />
-					</span>
-				))}{' '}
-				were warned{reason}
+				{CHAT_Msgs.playersWarned(warnees, event.reason).react()}
 			</EventLine>
 		)
 	}
@@ -363,9 +368,7 @@ function WarnsAggregatedEvent({
 			<summary className="flex gap-2 items-baseline cursor-pointer">
 				<EventTime time={event.time} variant="small" />
 				{icon}
-				<span className="grow min-w-0 wrap-anywhere">
-					{count} {plural} were warned{reason}
-				</span>
+				<span className="grow min-w-0 wrap-anywhere">{CHAT_Msgs.playerCountWarned(count, event.reason).react()}</span>
 			</summary>
 			<div className="pl-6 pt-1 flex flex-col gap-0.5">
 				{event.warns.map((warn, i) => (
@@ -378,32 +381,6 @@ function WarnsAggregatedEvent({
 	)
 }
 
-// concise text for a warn's target grouping; null means "no grouping -- just show the count"
-function warnSummaryDescriptor(summary: CHAT.WarnSummary): string | null {
-	switch (summary.type) {
-		case 'everyone':
-			return 'the entire server'
-		case 'all-admins':
-			return 'all admins'
-		case 'teams':
-			return summary.teamIds.length === 2 ? 'both teams' : `everyone on Team ${summary.teamIds[0]}`
-		case 'squads': {
-			const names = summary.squads.map((s) => s.squadName).join(', ')
-			if (summary.otherPlayerCount > 0) {
-				return `${names} and ${summary.otherPlayerCount} other ${summary.otherPlayerCount === 1 ? 'player' : 'players'}`
-			}
-			return names
-		}
-		case 'players':
-			return null
-	}
-}
-
-function joinNames(names: string[]) {
-	if (names.length <= 1) return names[0] ?? ''
-	return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-}
-
 // display names for the SLM users an event attributes work to. Users already in the parts store (or the viewer
 // themselves) need no fetch; the rest are fetched in one batch.
 function useUserLabels(userIds: USR.UserId[]) {
@@ -413,7 +390,7 @@ function useUserLabels(userIds: USR.UserId[]) {
 	const fetched = new Map((res.data?.code === 'ok' ? res.data.users : []).map((u) => [u.discordId, u.displayName]))
 	return (userId: USR.UserId) => {
 		if (userId === loggedInUser?.discordId) return loggedInUser.displayName
-		return PartsSys.findUser(userId)?.displayName ?? fetched.get(userId) ?? 'An admin'
+		return PartsSys.findUser(userId)?.displayName ?? fetched.get(userId) ?? AppEvents_Msgs.unnamedSlmUser().text()
 	}
 }
 
@@ -427,53 +404,35 @@ function QueueChangeLayers({ layerIds }: { layerIds: L.LayerId[] }) {
 					{i < shown.length - 1 ? ',' : ''}
 				</span>
 			))}
-			{layerIds.length > shown.length && <span>and {layerIds.length - shown.length} more</span>}
+			{layerIds.length > shown.length && <span>{AppEvents_Msgs.queueAndMore(layerIds.length - shown.length).text()}</span>}
 		</span>
 	)
 }
 
 function QueueChangeLine({ change, labelFor }: { change: AppEvents.QueueChange; labelFor: (userId: USR.UserId) => string }) {
 	const who =
-		change.actor.type === 'slm-user' ? labelFor(change.actor.userId) : change.actor.type === 'system' ? 'SLM' : 'An in-game admin'
+		change.actor.type === 'slm-user'
+			? labelFor(change.actor.userId)
+			: change.actor.type === 'system'
+				? AppEvents_Msgs.systemActor().text()
+				: AppEvents_Msgs.unnamedIngameAdmin().text()
 	const layers = <QueueChangeLayers layerIds={change.layerIds} />
-	const vote = change.isVote ? `a vote (${change.layerIds.length} ${change.layerIds.length === 1 ? 'choice' : 'choices'}): ` : null
+	const vote = change.isVote ? AppEvents_Msgs.queueVoteChoices(change.layerIds.length).text() : null
 
 	const [marker, markerClass, body] = ((): [string, string, React.ReactNode] => {
 		switch (change.kind) {
 			case 'added':
-				return [
-					'+',
-					'text-added',
-					<>
-						{who} added {vote}
-						{layers}
-					</>,
-				]
+				return ['+', 'text-added', AppEvents_Msgs.queueItemAdded(who, vote, layers).react()]
 			case 'removed':
-				return [
-					'−',
-					'text-destructive',
-					<>
-						{who} removed {vote}
-						{layers}
-					</>,
-				]
+				return ['−', 'text-destructive', AppEvents_Msgs.queueItemRemoved(who, vote, layers).react()]
 			case 'edited':
 				return [
 					'~',
 					'text-amber-500',
-					<>
-						{who} changed <QueueChangeLayers layerIds={change.prevLayerIds} /> to {layers}
-					</>,
+					AppEvents_Msgs.queueItemEdited(who, <QueueChangeLayers layerIds={change.prevLayerIds} />, layers).react(),
 				]
 			case 'moved':
-				return [
-					'↕',
-					'text-indigo-400',
-					<>
-						{who} moved {layers} from #{change.fromIndex + 1} to #{change.toIndex + 1}
-					</>,
-				]
+				return ['↕', 'text-indigo-400', AppEvents_Msgs.queueItemMoved(who, layers, change.fromIndex + 1, change.toIndex + 1).react()]
 			default:
 				assertNever(change)
 		}
@@ -511,44 +470,37 @@ function QueueUpdatedEvent({
 		edited: changes.filter((c) => c.kind === 'edited').length,
 		moved: changes.filter((c) => c.kind === 'moved').length,
 	}
-	const parts = [
-		counts.added > 0 ? `+${counts.added}` : null,
-		counts.removed > 0 ? `−${counts.removed}` : null,
-		counts.edited > 0 ? `${counts.edited} changed` : null,
-		counts.moved > 0 ? 'reordered' : null,
-	].filter(Boolean)
 
 	const overrode = appEvent.save?.overrodeEditors ?? []
 	const kind = AppEvents.queueUpdateKind(appEvent)
 	const headline: React.ReactNode = ((): React.ReactNode => {
 		switch (kind) {
 			case 'roll':
-				return 'Queue advanced on map change'
+				return AppEvents_Msgs.queueAdvancedOnRoll().text()
 			case 'external-layer-change': {
 				const external = AppEvents.queueUpdateExternalSource(appEvent)
 				const who =
 					external?.type === 'player' && event.actorPlayer && matchId !== null ? (
 						<PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
 					) : external?.type === 'player' ? (
-						'an in-game admin'
+						CHAT_Msgs.ingameAdmin().text()
 					) : external?.type === 'rcon' ? (
-						'another RCON tool'
+						CHAT_Msgs.anotherRconTool().text()
 					) : null
 				// a layer SLM found already set has no actor to name (see externalActor)
-				return who ? <>Queue synced to a layer change by {who}</> : 'Queue synced to a layer change made outside SLM'
+				return who ? AppEvents_Msgs.queueSyncedTo(who).react() : AppEvents_Msgs.queueSyncedOutsideSlm().text()
 			}
 			case 'generated':
-				return 'SLM generated the next layer'
+				return AppEvents_Msgs.queueGenerated().text()
 			case 'vote-result':
-				return 'Vote result applied to the queue'
+				return AppEvents_Msgs.queueVoteApplied().text()
 			case 'force-save':
 			case 'save':
-				return (
-					<>
-						{actorLabel} {appEvent.save?.force ? 'force-saved' : 'saved'} the queue
-						{overrode.length > 0 && `, overriding ${joinNames(overrode.map(labelFor))}`}
-					</>
-				)
+				return AppEvents_Msgs.queueSaved(
+					actorLabel,
+					!!appEvent.save?.force,
+					overrode.length > 0 ? AppEvents_Msgs.joinNames(overrode.map(labelFor)).text() : undefined,
+				).react()
 			default:
 				assertNever(kind)
 		}
@@ -559,10 +511,10 @@ function QueueUpdatedEvent({
 	const summary = (
 		<>
 			{headline}
-			{parts.length > 0 ? ` (${parts.join(', ')})` : ''}
+			{AppEvents_Msgs.queueChangeCounts(counts).text()}
 			{nextAfter !== null && nextAfter !== nextBefore && (
 				<span className="inline-flex items-baseline gap-1">
-					, next layer {appEvent.trigger === 'external-layer-change' ? 'now' : 'set to'} <ShortLayerName layerId={nextAfter} />
+					{AppEvents_Msgs.queueNextLayer(appEvent.trigger === 'external-layer-change', <ShortLayerName layerId={nextAfter} />).react()}
 				</span>
 			)}
 		</>
@@ -616,29 +568,17 @@ function TeamswapsUpdatedEvent({
 	const removed = changes.filter((c) => c.kind === 'removed').length
 	const queued = appEvent.swaps.size
 
-	const players = `${removed} ${removed === 1 ? 'player' : 'players'}`
 	const summary: React.ReactNode =
-		appEvent.trigger === 'executed' || appEvent.trigger === 'swapped-now' ? (
-			// an execution with no actor is the map roll firing the queue; a manual one names the admin who fired it
-			appEvent.actor.type === 'system' ? (
-				`Queued teamswaps executed on map change (${players})`
-			) : (
-				<>
-					{actorLabel} executed the queued teamswaps ({players})
-				</>
-			)
-		) : appEvent.trigger === 'roster-change' ? (
-			`${removed} queued teamswap${removed === 1 ? '' : 's'} dropped, ${
-				removed === 1 ? 'the player' : 'those players'
-			} left or changed teams`
-		) : queued === 0 ? (
-			<>{actorLabel} cleared the queued teamswaps</>
-		) : (
-			<>
-				{actorLabel} updated the queued teamswaps (
-				{[added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', ')}), {queued} queued for next map
-			</>
-		)
+		appEvent.trigger === 'executed' || appEvent.trigger === 'swapped-now'
+			? // an execution with no actor is the map roll firing the queue; a manual one names the admin who fired it
+				appEvent.actor.type === 'system'
+				? AppEvents_Msgs.teamswapsExecutedOnRoll(removed).text()
+				: AppEvents_Msgs.teamswapsExecuted(actorLabel, removed).react()
+			: appEvent.trigger === 'roster-change'
+				? AppEvents_Msgs.teamswapsDropped(removed).text()
+				: queued === 0
+					? AppEvents_Msgs.teamswapsCleared(actorLabel).react()
+					: AppEvents_Msgs.teamswapsUpdated(actorLabel, added, removed, queued).react()
 	const icon = <Icons.ArrowLeftRight className="h-4 w-4 text-cyan-500 shrink-0" />
 
 	if (changes.length === 0 || matchId === null) {
@@ -660,22 +600,23 @@ function TeamswapsUpdatedEvent({
 				{changes.map((change) => {
 					const player = playerFor(change.playerId)
 					// the swap's own actor is only worth naming when it wasn't the admin this event is attributed to
-					const by =
+					const queuedBy =
 						change.kind === 'added' &&
 						change.byUserId &&
 						!(appEvent.actor.type === 'slm-user' && appEvent.actor.userId === change.byUserId)
-							? ` (queued by ${labelFor(change.byUserId)})`
-							: ''
+							? labelFor(change.byUserId)
+							: undefined
 					return (
 						<div key={`${change.kind}:${change.playerId}`} className="flex gap-2 items-baseline text-xs text-muted-foreground">
 							<span className={cn('font-mono shrink-0', change.kind === 'added' ? 'text-emerald-400' : 'text-rose-400')}>
 								{change.kind === 'added' ? '+' : '−'}
 							</span>
 							<span className="grow min-w-0 wrap-anywhere">
-								{player ? <PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} /> : change.playerId}
-								{' to '}
-								<MatchTeamDisplay matchId={matchId} teamId={change.toTeam} stores={stores} />
-								{by}
+								{AppEvents_Msgs.teamswapLine(
+									player ? <PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} /> : change.playerId,
+									<MatchTeamDisplay matchId={matchId} teamId={change.toTeam} stores={stores} />,
+									queuedBy,
+								).react()}
 							</span>
 						</div>
 					)
@@ -702,13 +643,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	// enrichAppEvent), and the fallback only applies to someone who left before the roster last reset
 	const actorLabel: React.ReactNode =
 		appEvent.actor.type === 'slm-user' ? (
-			(actorUser?.displayName ?? 'An admin')
+			(actorUser?.displayName ?? AppEvents_Msgs.unnamedSlmUser().text())
 		) : appEvent.actor.type === 'system' ? (
-			'SLM'
+			AppEvents_Msgs.systemActor().text()
 		) : event.actorPlayer && matchId !== null ? (
 			<PlayerDisplay player={event.actorPlayer} matchId={matchId} stores={stores} />
 		) : (
-			'An in-game admin'
+			AppEvents_Msgs.unnamedIngameAdmin().text()
 		)
 
 	// expandable list of the players involved (targets, or a disbanded squad's members)
@@ -729,9 +670,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 					<EventTime time={event.time} variant="small" />
 					<Icons.Users className="h-4 w-4 text-red-500 shrink-0" />
 					<span className="grow min-w-0 wrap-anywhere">
-						{actorLabel} disbanded {appEvent.squadName} (Team {appEvent.teamId})
-						{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
-						{n > 0 ? `, ${n} ${n === 1 ? 'player' : 'players'}` : ''}
+						{AppEvents_Msgs.squadDisbanded(actorLabel, appEvent.squadName, appEvent.teamId, appEvent.reason?.label, n).react()}
 					</span>
 				</summary>
 				{targetList}
@@ -743,7 +682,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	if (appEvent.type === 'SQUAD_RENAMED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.PencilLine className="h-4 w-4 text-cyan-500 shrink-0" />}>
-				{actorLabel} renamed {appEvent.squadName} (Team {appEvent.teamId})
+				{AppEvents_Msgs.squadRenamed(actorLabel, appEvent.squadName, appEvent.teamId).react()}
 			</EventLine>
 		)
 	}
@@ -751,16 +690,22 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
-				{actorLabel} demoted{' '}
-				{target && matchId !== null ? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} /> : 'the commander'}
-				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
+				{AppEvents_Msgs.commanderDemoted(
+					actorLabel,
+					target && matchId !== null ? (
+						<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+					) : (
+						AppEvents_Msgs.theCommander().text()
+					),
+					appEvent.reason?.label,
+				).react()}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'FOG_OF_WAR_TOGGLED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.CloudFog className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{actorLabel} turned fog of war {appEvent.enabled ? 'on' : 'off'}
+				{AppEvents_Msgs.fogOfWarToggled(actorLabel, appEvent.enabled).react()}
 			</EventLine>
 		)
 	}
@@ -769,7 +714,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	if (appEvent.type === 'BROADCAST_SENT') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Megaphone className="h-4 w-4 text-amber-500 shrink-0" />}>
-				{actorLabel} broadcast "{appEvent.message}"
+				{AppEvents_Msgs.broadcastSent(actorLabel, appEvent.message).react()}
 			</EventLine>
 		)
 	}
@@ -777,10 +722,16 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />}>
-				{actorLabel} timed out{' '}
-				{target && matchId !== null ? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} /> : 'a player'} for{' '}
-				{ZodUtils.formatHumanTime(appEvent.durationMs)}
-				{appEvent.reason?.label ? ` for ${appEvent.reason.label}` : ''}
+				{AppEvents_Msgs.playerTimedOut(
+					actorLabel,
+					target && matchId !== null ? (
+						<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+					) : (
+						AppEvents_Msgs.aPlayer().text()
+					),
+					ZodUtils.formatHumanTime(appEvent.durationMs),
+					appEvent.reason?.label,
+				).react()}
 			</EventLine>
 		)
 	}
@@ -788,44 +739,45 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.UserCheck className="h-4 w-4 text-green-500 shrink-0" />}>
-				{actorLabel} cancelled{' '}
-				{target && matchId !== null ? <PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} /> : 'a player'}'s
-				timeout
+				{AppEvents_Msgs.timeoutCancelled(
+					actorLabel,
+					target && matchId !== null ? (
+						<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+					) : (
+						AppEvents_Msgs.aPlayer().text()
+					),
+				).react()}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'MATCH_ENDED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-red-500 shrink-0" />}>
-				{actorLabel} ended the match
+				{AppEvents_Msgs.matchEnded(actorLabel).react()}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_STARTED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-blue-500 shrink-0" />}>
-				{actorLabel} started a vote ({appEvent.choiceCount} {appEvent.choiceCount === 1 ? 'option' : 'options'})
+				{AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount).react()}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ENDED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
-				{appEvent.reason === 'ended-early' ? <>{actorLabel} ended the vote early</> : 'The vote ended'}
-				{appEvent.winnerLayerId ? (
-					<>
-						: <ShortLayerName layerId={appEvent.winnerLayerId} /> won
-					</>
-				) : (
-					' (no winner)'
-				)}
+				{appEvent.reason === 'ended-early' ? AppEvents_Msgs.voteEndedEarly(actorLabel).react() : AppEvents_Msgs.voteEnded().text()}
+				{appEvent.winnerLayerId
+					? AppEvents_Msgs.voteWinner(<ShortLayerName layerId={appEvent.winnerLayerId} />).react()
+					: AppEvents_Msgs.voteNoWinner().text()}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ABORTED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
-				{actorLabel} aborted the vote
+				{AppEvents_Msgs.voteAborted(actorLabel).react()}
 			</EventLine>
 		)
 	}
@@ -844,7 +796,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		if (!appEvent.overrode || appEvent.overrode.type === 'unknown') {
 			return (
 				<EventLine time={event.time} icon={icon}>
-					SLM restored the queue's next layer, set to <ShortLayerName layerId={appEvent.layerId} />
+					{AppEvents_Msgs.nextLayerRestored(<ShortLayerName layerId={appEvent.layerId} />).react()}
 				</EventLine>
 			)
 		}
@@ -854,13 +806,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			appEvent.overrode.type === 'player' && overrodePlayer && matchId !== null ? (
 				<PlayerDisplay showTeam player={overrodePlayer} matchId={matchId} stores={stores} />
 			) : appEvent.overrode.type === 'player' ? (
-				'an in-game admin'
+				CHAT_Msgs.ingameAdmin().text()
 			) : (
-				'another RCON tool'
+				CHAT_Msgs.anotherRconTool().text()
 			)
 		return (
 			<EventLine time={event.time} icon={icon}>
-				SLM overrode a layer set by {who}, next layer set to <ShortLayerName layerId={appEvent.layerId} />
+				{AppEvents_Msgs.nextLayerOverrode(who, <ShortLayerName layerId={appEvent.layerId} />).react()}
 			</EventLine>
 		)
 	}
@@ -875,7 +827,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			)
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{actorLabel} {AppEvents.describeAppEvent(appEvent)}
+				{AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)).react()}
 			</EventLine>
 		)
 	}
@@ -894,7 +846,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).
 		return (
 			<EventLine time={event.time} icon={<Icons.ScrollText className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{actorLabel} {AppEvents.describeAppEvent(appEvent)}
+				{AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)).react()}
 			</EventLine>
 		)
 	}
@@ -915,13 +867,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const warnee: React.ReactNode = single ? (
 			<PlayerDisplay showTeam player={event.targetPlayers[0]} matchId={matchId!} stores={stores} />
 		) : summary.type === 'all-admins' ? (
-			'all admins'
+			AppEvents_Msgs.allAdmins().text()
 		) : (
 			(() => {
-				const descriptor = warnSummaryDescriptor(summary)
-				const players = `${warnCount} ${warnCount === 1 ? 'player' : 'players'}`
+				const descriptor = AppEvents_Msgs.warnTargetDescriptor(summary)
+				const players = AppEvents_Msgs.warnPlayerCount(warnCount).text()
 				if (!descriptor) return players
-				return warnCount > 1 ? `${descriptor} (${players})` : descriptor
+				return warnCount > 1 ? AppEvents_Msgs.warnDescriptorWithCount(descriptor, players).text() : descriptor
 			})()
 		)
 
@@ -929,9 +881,9 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			<span
 				className="inline-flex items-baseline gap-1 flex-nowrap whitespace-nowrap"
 				style={{ color: style.color }}
-				title="who sent this warning and who received it"
+				title={AppEvents_Msgs.warnChannelHint().text()}
 			>
-				({actorLabel} warned {warnee})
+				{AppEvents_Msgs.warnChannel(actorLabel, warnee).react()}
 			</span>
 		)
 
@@ -969,48 +921,38 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 
 	// PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED / PLAYER_KICKED: "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
-	const plural = count === 1 ? 'player' : 'players'
-	let verb: string
+	let verb: AppEvents_Msgs.TargetVerb
 	let icon: React.ReactNode
 	let suffix: React.ReactNode
 	if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
-		suffix = appEvent.reason?.label ? ` from their squad for ${appEvent.reason.label}` : ' from their squad'
+		suffix = AppEvents_Msgs.removedFromSquadSuffix(appEvent.reason?.label).text()
 	} else if (appEvent.type === 'PLAYER_KICKED') {
 		verb = 'kicked'
 		icon = <Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />
-		suffix = appEvent.reason?.label ? ` for ${appEvent.reason.label}` : null
+		suffix = appEvent.reason?.label ? AppEvents_Msgs.forReasonSuffix(appEvent.reason.label).text() : null
 	} else if (appEvent.type === 'PLAYER_KILLED') {
 		verb = 'killed'
 		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />
-		suffix = appEvent.reason ? <>: "{appEvent.reason}"</> : null
+		suffix = appEvent.reason ? AppEvents_Msgs.killReasonSuffix(appEvent.reason).text() : null
 	} else {
 		verb = 'swapped'
 		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-blue-500 shrink-0" />
-		suffix = ' to the other team'
+		suffix = AppEvents_Msgs.swappedTeamsSuffix().text()
 	}
 
 	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
 	if (count <= 4 && matchId !== null && event.targetPlayers.length === count) {
+		const targets = event.targetPlayers.map((player, i) => (
+			<span key={player.ids.eos}>
+				{i > 0 ? ', ' : ''}
+				<PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} />
+			</span>
+		))
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{actorLabel} {verb}{' '}
-				{event.targetPlayers.map((player, i) => (
-					<span key={player.ids.eos}>
-						{i > 0 ? ', ' : ''}
-						<PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} />
-					</span>
-				))}
-				{count > 1 ? (
-					<>
-						{' '}
-						({count} {plural})
-					</>
-				) : (
-					''
-				)}
-				{suffix}
+				{AppEvents_Msgs.actionOnNamedTargets(actorLabel, verb, targets, count, suffix).react()}
 			</EventLine>
 		)
 	}
@@ -1021,8 +963,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 				<EventTime time={event.time} variant="small" />
 				{icon}
 				<span className="grow min-w-0 wrap-anywhere">
-					{actorLabel} {verb} {count === 1 ? 'a player' : `${count} ${plural}`}
-					{suffix}
+					{AppEvents_Msgs.actionOnCountedTargets(actorLabel, verb, count, suffix).react()}
 				</span>
 			</summary>
 			{targetList}
@@ -1041,13 +982,13 @@ function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { 
 	switch (event.source) {
 		case 'new-game-detected':
 		case 'server-roll':
-			label = 'New game started'
+			label = CHAT_Msgs.newGameStarted().text()
 			break
 		case 'slm-started':
-			label = 'New game detected on Application Start'
+			label = CHAT_Msgs.newGameOnAppStart().text()
 			break
 		case 'rcon-reconnected':
-			label = 'New game detected on RCON Reconnect'
+			label = CHAT_Msgs.newGameOnRconReconnect().text()
 			break
 		default:
 			assertNever(event.source)
@@ -1056,8 +997,11 @@ function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { 
 	return (
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
 			<EventLine time={event.time} icon={<Icons.Play className="h-4 w-4 text-green-500 shrink-0" />} className="py-0.5">
-				{label} ({visibleMatchIndex === 0 ? 'Current Match' : visibleMatchIndex}):{' '}
-				{match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />}
+				{CHAT_Msgs.newGameLine(
+					label,
+					visibleMatchIndex === 0 ? CHAT_Msgs.currentMatch().text() : visibleMatchIndex,
+					match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />,
+				).react()}
 			</EventLine>
 		</div>
 	)
@@ -1085,57 +1029,44 @@ function RoundEndedEvent({
 		if (source.type === 'player') {
 			sourceName = (
 				<span>
-					by{' '}
-					{event.actorPlayer ? (
-						<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
-					) : (
-						<b>{source.playerIds.username}</b>
-					)}
+					{CHAT_Msgs.roundEndBy(
+						event.actorPlayer ? (
+							<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
+						) : (
+							<b>{source.playerIds.username}</b>
+						),
+					).react()}
 				</span>
 			)
 		} else if (source.type === 'rcon') {
-			sourceName = (
-				<span>
-					via <b>RCON</b>
-				</span>
-			)
+			sourceName = <span>{CHAT_Msgs.roundEndVia(<b>{CHAT_Msgs.rconTool().text()}</b>).react()}</span>
 		} else {
 			// an SLM action: the app event it links to is its own entry in the feed and names the admin
-			sourceName = (
-				<span>
-					via <b>SLM</b>
-				</span>
-			)
+			sourceName = <span>{CHAT_Msgs.roundEndVia(<b>{CHAT_Msgs.slmTool().text()}</b>).react()}</span>
 		}
 		let nextLayerText: React.ReactNode = null
 		if (event.action.type === 'AdminChangeLayer') {
-			nextLayerText = (
-				<span>
-					, switching to <ShortLayerName layerId={event.action.layerId} />
-				</span>
-			)
+			nextLayerText = <span>{CHAT_Msgs.roundEndSwitchingTo(<ShortLayerName layerId={event.action.layerId} />).react()}</span>
 		}
 		actionElt = (
-			<span className="text-xs font-semibold">
-				({event.action.type} {sourceName}
-				{nextLayerText})
-			</span>
+			<span className="text-xs font-semibold">{CHAT_Msgs.roundEndAction(event.action.type, sourceName, nextLayerText).react()}</span>
 		)
 	}
 
 	return (
-		<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-blue-500 shrink-0" />}>
-			Round ended (<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />){' '}
-			{winnerId === null && <span className="text-yellow-400">Draw</span>}
-			{winnerId !== null && (
-				<>
-					<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} /> won{' '}
-					<span className="font-semibold">
-						{winnerTickets} to {loserTickets}
-					</span>{' '}
-					against <MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />
-				</>
-			)}
+		<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-blue-500 shrink-0" />} className="[&_strong]:font-semibold">
+			{winnerId === null
+				? CHAT_Msgs.roundEndedDraw(
+						<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />,
+						<span className="text-yellow-400">{CHAT_Msgs.draw().text()}</span>,
+					).react()
+				: CHAT_Msgs.roundEndedWinner(
+						<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />,
+						<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} />,
+						winnerTickets,
+						loserTickets,
+						<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />,
+					).react()}
 			{actionElt && <> {actionElt}</>}
 		</EventLine>
 	)
@@ -1152,8 +1083,10 @@ function PlayerChangedTeamEvent({
 	if (event.newTeamId === null || event.prevTeamId === null) return
 	return (
 		<EventLine time={event.time} icon={<Icons.Repeat className="h-4 w-4 text-purple-400 shrink-0" />}>
-			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> changed to{' '}
-			<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />
+			{CHAT_Msgs.playerChangedTeam(
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+				<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1167,9 +1100,11 @@ function PlayerLeftSquadEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.LogOut className="h-4 w-4 text-orange-400 shrink-0" />}>
-			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> left{' '}
-			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={false} showTeam={true} stores={stores} />
-			{event.wasLeader ? ' (was leader)' : ''}
+			{CHAT_Msgs.playerLeftSquad(
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={false} showTeam={true} stores={stores} />,
+				event.wasLeader,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1183,7 +1118,9 @@ function SquadDisbandedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UsersRound className="h-4 w-4 text-red-400 shrink-0" />}>
-			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} /> was disbanded
+			{CHAT_Msgs.squadWasDisbanded(
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1209,8 +1146,10 @@ function SquadDetailsChangedEvent({
 				)
 			}
 		>
-			<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />{' '}
-			{locked ? 'locked' : 'unlocked'}
+			{CHAT_Msgs.squadLockChanged(
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />,
+				locked,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1223,15 +1162,21 @@ function SquadRenamedEvent({
 	stores: SquadServerFrame.KeyProp
 }) {
 	return (
-		<EventLine time={event.time} icon={<Icons.Pencil className="h-4 w-4 text-cyan-400 shrink-0" />}>
-			<SquadDisplay
-				squad={{ ...event.squad, squadName: event.oldSquadName }}
-				matchId={event.matchId}
-				showName={true}
-				showTeam={true}
-				stores={stores}
-			/>{' '}
-			renamed to <span className="font-medium text-foreground">"{event.newSquadName}"</span>
+		<EventLine
+			time={event.time}
+			icon={<Icons.Pencil className="h-4 w-4 text-cyan-400 shrink-0" />}
+			className="[&_strong]:font-medium [&_strong]:text-foreground"
+		>
+			{CHAT_Msgs.squadRenamed(
+				<SquadDisplay
+					squad={{ ...event.squad, squadName: event.oldSquadName }}
+					matchId={event.matchId}
+					showName={true}
+					showTeam={true}
+					stores={stores}
+				/>,
+				event.newSquadName,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1245,8 +1190,10 @@ function PlayerJoinedSquadEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.LogIn className="h-4 w-4 text-green-400 shrink-0" />}>
-			<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} /> joined{' '}
-			<SquadDisplay squad={event.squad} matchId={event.matchId} showTeam={true} stores={stores} />
+			{CHAT_Msgs.playerJoinedSquad(
+				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+				<SquadDisplay squad={event.squad} matchId={event.matchId} showTeam={true} stores={stores} />,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1260,8 +1207,9 @@ function PlayerPromotedToLeaderEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Crown className="h-4 w-4 text-yellow-400 shrink-0" />}>
-			<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} /> promoted to squad
-			leader
+			{CHAT_Msgs.playerPromotedToLeader(
+				<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} />,
+			).react()}
 		</EventLine>
 	)
 }
@@ -1295,35 +1243,31 @@ function PlayerWoundedOrDiedEvent({
 		}
 	}
 
-	const weaponSuffix = event.weapon && <span className="text-muted-foreground/70"> with {event.weapon}</span>
+	const weaponSuffix = event.weapon ? (
+		<span className="text-muted-foreground/70">{CHAT_Msgs.withWeapon(event.weapon).text()}</span>
+	) : undefined
 
 	const getMessage = () => {
 		switch (event.variant) {
 			case 'suicide':
-				return (
-					<>
-						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />{' '}
-						{event.type === 'PLAYER_WOUNDED' ? 'wounded themselves' : 'killed themselves'}
-						{weaponSuffix}
-					</>
-				)
+				return CHAT_Msgs.playerSuicide(
+					<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />,
+					event.type === 'PLAYER_WOUNDED',
+					weaponSuffix,
+				).react()
 			case 'teamkill':
-				return (
-					<>
-						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} /> teamkilled by{' '}
-						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />
-						{weaponSuffix}
-					</>
-				)
+				return CHAT_Msgs.playerTeamkilled(
+					<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />,
+					<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />,
+					weaponSuffix,
+				).react()
 			case 'normal':
-				return (
-					<>
-						<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} stores={stores} />{' '}
-						{event.type === 'PLAYER_WOUNDED' ? 'wounded by' : 'killed by'}{' '}
-						<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} stores={stores} />
-						{weaponSuffix}
-					</>
-				)
+				return CHAT_Msgs.playerDowned(
+					<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} stores={stores} />,
+					event.type === 'PLAYER_WOUNDED',
+					<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} stores={stores} />,
+					weaponSuffix,
+				).react()
 		}
 	}
 
@@ -1343,7 +1287,7 @@ function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { t
 	if (event.source?.type === 'observed') {
 		return (
 			<EventLine time={event.time} icon={icon} className="py-0.5">
-				Server's next layer is {layer}
+				{CHAT_Msgs.observedNextLayer(layer).react()}
 			</EventLine>
 		)
 	}
@@ -1351,14 +1295,13 @@ function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { t
 		event.source?.type === 'player' && event.actorPlayer ? (
 			<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
 		) : event.source?.type === 'player' ? (
-			(event.source.playerIds.username ?? 'an in-game admin')
+			(event.source.playerIds.username ?? CHAT_Msgs.ingameAdmin().text())
 		) : event.source?.type === 'rcon' ? (
-			'another RCON tool'
+			CHAT_Msgs.anotherRconTool().text()
 		) : null
 	return (
 		<EventLine time={event.time} icon={icon} className="py-0.5">
-			{who ? <>{who} set the next layer to </> : <>Next layer set to </>}
-			{layer}
+			{who ? CHAT_Msgs.nextLayerSetBy(who, layer).react() : CHAT_Msgs.nextLayerSet(layer).react()}
 		</EventLine>
 	)
 }
@@ -1372,8 +1315,8 @@ function IngameVoteStartedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-yellow-500 shrink-0" />}>
-			<span>In-game vote started on the Squad server</span>
-			{event.choices.length > 0 && <span className="text-muted-foreground"> ({event.choices.join(', ')})</span>}
+			<span>{CHAT_Msgs.ingameVoteStarted().text()}</span>
+			{event.choices.length > 0 && <span className="text-muted-foreground">{CHAT_Msgs.ingameVoteChoices(event.choices).text()}</span>}
 		</EventLine>
 	)
 }
@@ -1387,7 +1330,7 @@ function RconConnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Plug className="h-4 w-4 text-green-500 shrink-0" />}>
-			{event.reconnected ? 'RCON reconnected' : 'Application started, RCON connection established'}
+			{event.reconnected ? CHAT_Msgs.rconReconnected().text() : CHAT_Msgs.rconFirstConnected().text()}
 		</EventLine>
 	)
 }
@@ -1401,7 +1344,7 @@ function RconDisconnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Unplug className="h-4 w-4 text-red-500 shrink-0" />}>
-			RCON disconnected
+			{CHAT_Msgs.rconDisconnected().text()}
 		</EventLine>
 	)
 }

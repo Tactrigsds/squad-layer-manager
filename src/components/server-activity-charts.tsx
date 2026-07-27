@@ -5,6 +5,8 @@ import React from 'react'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
+import * as MH_Msgs from '@/messages/match-history.messages'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
@@ -227,12 +229,7 @@ export function ServerActivityCharts(props: {
 		const faction2 = layer && L.isKnownLayer(layer) ? layer.Faction_2 : null
 
 		if (!displayTeamsNormalized) {
-			return [
-				faction1 ? `Team 1 (${faction1})` : 'Team 1',
-				faction2 ? `Team 2 (${faction2})` : 'Team 2',
-				DH.TEAM_COLORS.team1,
-				DH.TEAM_COLORS.team2,
-			]
+			return [L_Msgs.teamName(1, faction1).text(), L_Msgs.teamName(2, faction2).text(), DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2]
 		}
 		// (parity + team - 1) % 2 === 0 → Team A, === 1 → Team B (mirrors teams-display.tsx)
 		const parity = props.currentMatchOrdinal ?? 0
@@ -241,8 +238,8 @@ export function ServerActivityCharts(props: {
 		const t1NormedIdx = (parity + 1 - 1) % 2 // team 1
 		const t2NormedIdx = (parity + 2 - 1) % 2 // team 2
 		return [
-			faction1 ? `Team ${normedLabels[t1NormedIdx]} (${faction1})` : `Team ${normedLabels[t1NormedIdx]}`,
-			faction2 ? `Team ${normedLabels[t2NormedIdx]} (${faction2})` : `Team ${normedLabels[t2NormedIdx]}`,
+			L_Msgs.teamName(normedLabels[t1NormedIdx], faction1).text(),
+			L_Msgs.teamName(normedLabels[t2NormedIdx], faction2).text(),
 			normedColors[t1NormedIdx],
 			normedColors[t2NormedIdx],
 		]
@@ -310,7 +307,7 @@ export function ServerActivityCharts(props: {
 	const hasAnything = !isEmpty || flagGroupChart !== null
 
 	if (!hasAnything) {
-		return <div className="text-muted-foreground text-sm text-center py-4">No data available for charts</div>
+		return <div className="text-muted-foreground text-sm text-center py-4">{MH_Msgs.noChartData().text()}</div>
 	}
 
 	return (
@@ -318,7 +315,7 @@ export function ServerActivityCharts(props: {
 			{!isEmpty && (
 				<div className="flex flex-wrap gap-x-6 gap-y-1 text-xs px-1">
 					<div className="flex items-center gap-2 shrink-0">
-						<span className="text-muted-foreground">K/D Ratio:</span>
+						<span className="text-muted-foreground">{MH_Msgs.kdRatio().text()}</span>
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 							{team1Label}:{' '}
@@ -331,7 +328,7 @@ export function ServerActivityCharts(props: {
 						</span>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
-						<span className="text-muted-foreground">Wound Ratio:</span>
+						<span className="text-muted-foreground">{MH_Msgs.woundRatio().text()}</span>
 						<span className="flex items-center gap-1">
 							<span className="w-2 h-2 rounded-full" style={{ backgroundColor: team1Color }}></span>
 							{team1Label}:{' '}
@@ -348,7 +345,7 @@ export function ServerActivityCharts(props: {
 			{flagGroupChart && (
 				<div>
 					<div className="flex items-center gap-1 px-1 mb-0.5">
-						<span className="text-xs text-muted-foreground">Team Breakdowns</span>
+						<span className="text-xs text-muted-foreground">{MH_Msgs.teamBreakdowns().text()}</span>
 						{groupingIds.length > 1 && (
 							<div className="flex gap-0.5 ml-2">
 								{groupingIds.map((groupingId) => (
