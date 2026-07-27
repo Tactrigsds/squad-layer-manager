@@ -64,3 +64,8 @@ export function useToggleSquadServerUpdates(serverId: string) {
 		},
 	}
 }
+
+export function useEnableIngameVoting(serverId: string) {
+	const mutation = useMutation(RPC.orpc.layerQueue.enableIngameVoting.mutationOptions())
+	return () => mutation.mutate({ serverId })
+}

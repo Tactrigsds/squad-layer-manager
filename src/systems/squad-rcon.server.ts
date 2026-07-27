@@ -98,6 +98,12 @@ export function initSquadRcon(
 		}),
 	)
 
+	cleanup.push(
+		layersStatus.observe(ctx).subscribe((status) => {
+			log.info('next layer %s', status.code === 'ok' ? (status.data.nextLayer?.id ?? null) : status.msg)
+		}),
+	)
+
 	return {
 		layersStatus,
 		serverInfo,

@@ -496,7 +496,14 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 function DisabledReason(props: { reason: SETTINGS.SlmUpdatesDisabled }) {
 	const by = props.reason.type === 'manual' ? props.reason.by : null
 	const user = UsersClient.useResolvedUser(by?.type === 'slm-user' ? by.userId : undefined)
-	if (props.reason.type === 'ingame-vote') return <>an in-game vote on the Squad server</>
+	if (props.reason.type === 'ingame-vote') {
+		// never state the deduction as fact: SLM saw the next layer go missing, not the vote itself
+		return props.reason.inferred ? (
+			<>in-game voting, most likely: the server stopped having a next layer set</>
+		) : (
+			<>an in-game vote on the Squad server</>
+		)
+	}
 	switch (by?.type) {
 		case 'slm-user':
 			return <span>{user?.displayName ?? 'a user'}</span>

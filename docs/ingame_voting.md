@@ -34,6 +34,16 @@ otherwise `{ type: 'manual', by }` or `{ type: 'ingame-vote' }` -- so a server t
 says why, and the queue panel shows it. SLM only claims the reason for itself when updates were on: a vote starting
 while an admin already has updates off leaves their reason, and theirs, in place.
 
+Enabling voting clears the server's next layer, and nothing is logged when an admin enables it. That cleared next
+layer is the only signal SLM gets, so a server that has a queue head to write, is not mid-roll, and still reports no
+next layer after a grace period is read as having had voting turned on. The reason is stored with `inferred: true`
+and shown as a likelihood rather than a fact, since SLM deduced it instead of seeing it. The grace period matters:
+a roll clears the next layer too, and SLM's own write lands just after, so a shorter wait would read every roll as
+a vote.
+
+"Enable In-Game Voting" in the server actions does both halves at once -- `AdminEnableVoting 1` and standing SLM
+down -- because doing either alone leaves the two overwriting each other.
+
 Re-enabling SLM's updates also runs `AdminEnableVoting 0`. Turning the vote off is the only way to stop it
 deciding the next layer, so without that SLM would go straight back to setting a layer the vote overwrites. The
 queue-panel button, the `enableslm` reply and the `slmstatus` reply all say so.
