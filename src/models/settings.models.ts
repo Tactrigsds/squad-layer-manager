@@ -762,7 +762,21 @@ export const QueueSettingsSchema = z.object({
 })
 export type QueueSettings = z.infer<typeof QueueSettingsSchema>
 
+// The language this managed server talks to its players in. Read where a warn or broadcast is rendered rather than
+// held ambiently: one process serves many servers, each with its own.
+export function locale(ctx: Ctx) {
+	return ctx.serverSettings.settings.locale
+}
+
 export const PublicServerSettingsSchema = z.object({
+	locale: z
+		.string()
+		.prefault('en')
+		.describe(
+			'The language this server talks to its players in: warnings, broadcasts and the in-game vote. A BCP-47 tag such as "en" or ' +
+				'"de". Falls back to English wherever a message has not been translated. Does not affect the web app, which follows each ' +
+				"viewer's own browser.",
+		),
 	adminLists: z
 		.array(SM.AdminListIdSchema)
 		.prefault([])

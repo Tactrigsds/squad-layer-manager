@@ -7,6 +7,8 @@ import * as MH from '@/models/match-history.models'
 // The warn and the web alert render the same sentence. Before, they were two functions with two different parameter
 // lists (the warn took `opts.isCurrent`, the other a bare `qualifyAsCurrent` boolean) and one called the other; now
 // the arguments are declared once and both targets read the text the factory built.
+// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
+// src/scripts/extract-messages.ts` counts what is left.
 export const showEvent = Msgs.def((event: BAL.BalanceTriggerEvent, referenceMatch: MH.MatchDetails, opts?: { isCurrent?: boolean }) => {
 	function build() {
 		if (!BAL.isKnownEventInstance(event)) {

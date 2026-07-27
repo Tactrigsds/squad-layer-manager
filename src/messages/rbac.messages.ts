@@ -3,11 +3,19 @@ import type * as RBAC from '@/rbac.models'
 
 // Delivered in-game as a warn and in the web client as an error toast, which is why it declares both.
 export const permissionDenied = Msgs.def((res: RBAC.PermissionDeniedResponse) => {
-	const text = `Permission denied. You need ${res.checkType} of the following: ${res.failures.join(', ')}`
+	const render = (locale?: string) =>
+		Msgs.t(
+			'Permission denied. You need {checkType} of the following: {failures}',
+			{
+				checkType: res.checkType,
+				failures: res.failures.join(', '),
+			},
+			locale,
+		)
 	return {
-		warn: () => text,
-		toast: () => [text],
-		text: () => text,
+		warn: (locale?: string) => render(locale),
+		toast: () => [render()],
+		text: () => render(),
 	}
 })
 
