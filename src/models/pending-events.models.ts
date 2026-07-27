@@ -1021,7 +1021,8 @@ async function* processPendingEvent(
 		}
 
 		case 'PLAYER_WARNED': {
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds)
+			// the RCON acknowledgement only echoes the display name
+			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds, { inexact: true })
 			if (!player) {
 				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
@@ -1251,7 +1252,7 @@ async function* processPendingEvent(
 		case 'ADMIN_REMOVED_FROM_SQUAD': {
 			// the log only carries a display name, so resolution is by username; if it's ambiguous/unknown we skip and
 			// let the teams poll reconcile the leave organically (without attribution)
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds)
+			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds, { inexact: true })
 			if (!player) {
 				log.warn('Remove from squad for unknown player: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break

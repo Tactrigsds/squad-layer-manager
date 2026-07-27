@@ -121,11 +121,17 @@ export namespace PlayerIds {
 
 	export type Type = z.infer<typeof Schema>
 
-	// in order of lookup preference
-	const LOOKUP_PROPS = ['eos', 'steam', 'epic', 'playerController', 'usernameNoTag', 'username'] as const
+	// Machine-assigned ids. Two distinct players never share one, so agreement is proof of identity.
+	const EXACT_PROPS = ['eos', 'steam', 'epic', 'playerController'] as const
+
+	// Human-chosen names. Distinct players routinely share these, so agreement is only a hint and matching on
+	// them requires opting in via MatchOpts.inexact.
+	const INEXACT_PROPS = ['usernameNoTag', 'username'] as const
 
 	// expected to be unique in a collection of PlayerIds. maybe playerController is unique too, not sure
 	const UNIQUE_PROPS = ['steam', 'eos', 'epic'] as const
+
+	export type MatchOpts = { inexact?: boolean }
 
 	// old signature
 	// export function parsePlayerIds(username: string, idsStr?: string): Type {
@@ -155,51 +161,59 @@ export namespace PlayerIds {
 		})
 	}
 
-	export function find(idList: Type[], id: IdQueryOrPlayerId): Type | undefined
-	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId): T | undefined
+	// Resolves against the hard ids first. Only if nothing matches there does an inexact lookup fall back to
+	// names, and then only when exactly one candidate matches -- an ambiguous name resolves to nothing rather
+	// than to whichever player happens to sit earliest in the list.
+	function lookup<T>(elts: T[], idsOf: (item: T) => Type, searchId: IdQuery, opts?: MatchOpts): number {
+		for (let i = 0; i < elts.length; i++) {
+			if (match(idsOf(elts[i]), searchId)) return i
+		}
+		if (!opts?.inexact) return -1
+		let matched = -1
+		for (let i = 0; i < elts.length; i++) {
+			if (!match(idsOf(elts[i]), searchId, opts)) continue
+			if (matched !== -1) return -1
+			matched = i
+		}
+		return matched
+	}
+
+	const selfIds = <T>(item: T) => item as unknown as Type
+
+	function lookupArgs<T>(
+		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
+		idOrOpts?: IdQueryOrPlayerId | MatchOpts,
+		maybeOpts?: MatchOpts,
+	) {
+		if (typeof cbOrId === 'function') {
+			return { idsOf: cbOrId, searchId: normalizeIdQuery(idOrOpts as IdQueryOrPlayerId), opts: maybeOpts }
+		}
+		return { idsOf: selfIds<T>, searchId: normalizeIdQuery(cbOrId!), opts: idOrOpts as MatchOpts | undefined }
+	}
+
+	export function find(idList: Type[], id: IdQueryOrPlayerId, opts?: MatchOpts): Type | undefined
+	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts?: MatchOpts): T | undefined
 	export function find<T>(
 		elts: T[] | Type[],
 		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
-		id?: IdQueryOrPlayerId,
+		idOrOpts?: IdQueryOrPlayerId | MatchOpts,
+		maybeOpts?: MatchOpts,
 	): T | Type | undefined {
-		if (typeof cbOrId === 'function') {
-			const cb = cbOrId
-			const searchId = normalizeIdQuery(id!)
-			for (const item of elts as T[]) {
-				const itemIds = cb(item)
-				if (match(itemIds, searchId)) return item
-			}
-			return undefined
-		}
-
-		const searchId = normalizeIdQuery(cbOrId!)
-		for (const prop of LOOKUP_PROPS) {
-			if (!searchId[prop]) continue
-			for (const item of elts as Type[]) {
-				if (match(item, searchId)) return item
-			}
-		}
+		const { idsOf, searchId, opts } = lookupArgs<T>(cbOrId, idOrOpts, maybeOpts)
+		const index = lookup(elts as T[], idsOf, searchId, opts)
+		return index === -1 ? undefined : (elts as T[])[index]
 	}
 
-	export function indexOf(idList: Type[], id: IdQueryOrPlayerId): number
-	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId): number
-	export function indexOf<T>(elts: T[] | Type[], cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId, id?: IdQueryOrPlayerId): number {
-		if (typeof cbOrId === 'function') {
-			const cb = cbOrId
-			const searchId = normalizeIdQuery(id!)
-			for (let i = 0; i < (elts as T[]).length; i++) {
-				const eltIds = cb((elts as T[])[i])
-				if (match(eltIds, searchId)) return i
-			}
-			return -1
-		}
-
-		const searchId = normalizeIdQuery(cbOrId!)
-		for (let i = 0; i < (elts as Type[]).length; i++) {
-			const elt = (elts as Type[])[i]
-			if (match(elt, searchId)) return i
-		}
-		return -1
+	export function indexOf(idList: Type[], id: IdQueryOrPlayerId, opts?: MatchOpts): number
+	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts?: MatchOpts): number
+	export function indexOf<T>(
+		elts: T[] | Type[],
+		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
+		idOrOpts?: IdQueryOrPlayerId | MatchOpts,
+		maybeOpts?: MatchOpts,
+	): number {
+		const { idsOf, searchId, opts } = lookupArgs<T>(cbOrId, idOrOpts, maybeOpts)
+		return lookup(elts as T[], idsOf, searchId, opts)
 	}
 
 	export function upsert(idList: Type[], id: Type): Type
@@ -246,48 +260,35 @@ export namespace PlayerIds {
 		return searchId
 	}
 
-	export function remove(idList: Type[], id: IdQueryOrPlayerId): boolean
-	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId): boolean
-	export function remove<T>(elts: T[] | Type[], cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId, id?: IdQueryOrPlayerId): boolean {
-		if (typeof cbOrId === 'function') {
-			const cb = cbOrId
-			const searchId = normalizeIdQuery(id!)
-			for (const prop of LOOKUP_PROPS) {
-				if (!searchId[prop]) continue
-				for (let i = 0; i < (elts as T[]).length; i++) {
-					if (cb((elts as T[])[i])[prop] === searchId[prop]) {
-						;(elts as T[]).splice(i, 1)
-						return true
-					}
-				}
-			}
-			return false
-		}
-
-		const searchId = normalizeIdQuery(cbOrId!)
-		for (const prop of LOOKUP_PROPS) {
-			if (!searchId[prop]) continue
-			for (let i = 0; i < (elts as Type[]).length; i++) {
-				if ((elts as Type[])[i][prop] === searchId[prop]) {
-					;(elts as Type[]).splice(i, 1)
-					return true
-				}
-			}
-		}
-		return false
+	export function remove(idList: Type[], id: IdQueryOrPlayerId, opts?: MatchOpts): boolean
+	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts?: MatchOpts): boolean
+	export function remove<T>(
+		elts: T[] | Type[],
+		cbOrId?: ((item: T) => Type) | IdQueryOrPlayerId,
+		idOrOpts?: IdQueryOrPlayerId | MatchOpts,
+		maybeOpts?: MatchOpts,
+	): boolean {
+		const { idsOf, searchId, opts } = lookupArgs<T>(cbOrId, idOrOpts, maybeOpts)
+		const index = lookup(elts as T[], idsOf, searchId, opts)
+		if (index === -1) return false
+		;(elts as T[]).splice(index, 1)
+		return true
 	}
 
-	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId): boolean {
+	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId, opts?: MatchOpts): boolean {
 		const aNorm = normalizeIdQuery(a)
 		const bNorm = normalizeIdQuery(b)
-		for (const prop of LOOKUP_PROPS) {
+		for (const prop of EXACT_PROPS) {
 			if (aNorm[prop] && bNorm[prop] && aNorm[prop] === bNorm[prop]) return true
 		}
-		// Two records that both carry a differing hard id are provably distinct players, so the loose
-		// username-substring fallback below must not override that (a player named "Quincy" would otherwise
-		// collide with a distinct "REAL Quincy").
+		if (!opts?.inexact) return false
+		// Two records that both carry a differing hard id are provably distinct players, so neither the name
+		// equality nor the substring fallback below may override that.
 		for (const prop of UNIQUE_PROPS) {
 			if (aNorm[prop] && bNorm[prop] && aNorm[prop] !== bNorm[prop]) return false
+		}
+		for (const prop of INEXACT_PROPS) {
+			if (aNorm[prop] && bNorm[prop] && aNorm[prop] === bNorm[prop]) return true
 		}
 		if (aNorm.username && bNorm.usernameNoTag?.includes(aNorm.username)) return true
 		if (bNorm.username && aNorm.usernameNoTag?.includes(bNorm.username)) return true
