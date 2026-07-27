@@ -91,7 +91,7 @@ export const descriptions = {
 export const aliasDescription = (command: string) => `Shortcut for "${command}"`
 
 export const copyFailed = Msgs.def(() => ({
-	toast: () => ['Failed to copy', { description: 'Could not copy command to clipboard' }],
+	toast: () => [Msgs.t('Failed to copy'), { description: Msgs.t('Could not copy command to clipboard') }],
 }))
 
 // -------- the prefixes editor --------

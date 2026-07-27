@@ -11,25 +11,28 @@ export const added = Msgs.def((parts: string[], ownCount: number, evictedCount: 
 })
 
 export const noSolutions = Msgs.def((request: string) => ({
-	warn: () => `No layers in the current pool match "${request}".`,
+	warn: (locale?: string) => Msgs.t('No layers in the current pool match "{request}".', { request }, locale),
 }))
 
 export const backburnerFull = Msgs.def((max: number) => ({
-	warn: () => `The layer request list is full (max ${max}).`,
+	warn: (locale?: string) => Msgs.t('The layer request list is full (max {max}).', { max }, locale),
 }))
 
 export const removed = Msgs.def((description: string) => ({
-	warn: () => `Removed layer request: ${description}`,
+	warn: (locale?: string) => Msgs.t('Removed layer request: {description}', { description }, locale),
 }))
 
-export const empty = Msgs.def(() => ({ warn: () => 'No layer requests queued.' }))
+export const empty = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No layer requests queued.', undefined, locale) }))
 
 export const cannotCombine = Msgs.def(() => ({
-	toast: () => ['Cannot combine these requests: a filter is applied normally on one and inverted on the other'],
+	toast: () => [Msgs.t('Cannot combine these requests: a filter is applied normally on one and inverted on the other')],
 }))
 
 export const emptyRequest = Msgs.def(() => ({
-	toast: () => ['Empty request', { description: 'Pick at least one of layer, map, gamemode, version, matchup or a filter' }],
+	toast: () => [
+		Msgs.t('Empty request'),
+		{ description: Msgs.t('Pick at least one of layer, map, gamemode, version, matchup or a filter') },
+	],
 }))
 
 // -------- the layer requests panel --------

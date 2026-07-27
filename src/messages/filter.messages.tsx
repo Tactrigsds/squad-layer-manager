@@ -70,18 +70,18 @@ export const unmappedValue = Msgs.def('Value {value} is not mapped for column {c
 
 // Editing a filter entity.
 
-export const saved = Msgs.def(() => ({ toast: () => ['Filter saved'] }))
+export const saved = Msgs.def(() => ({ toast: () => [Msgs.t('Filter saved')] }))
 
-export const notFound = Msgs.def(() => ({ toast: () => ['Unable to save: Filter Not Found'] }))
+export const notFound = Msgs.def(() => ({ toast: () => [Msgs.t('Unable to save: Filter Not Found')] }))
 
-export const created = Msgs.def(() => ({ toast: () => ['Filter created'] }))
+export const created = Msgs.def(() => ({ toast: () => [Msgs.t('Filter created')] }))
 
 export const invalid = Msgs.def(() => ({
-	toast: () => ['Invalid filter', { description: 'Please check filter configuration' }],
+	toast: () => [Msgs.t('Invalid filter'), { description: Msgs.t('Please check filter configuration') }],
 }))
 
 export const deleted = Msgs.def((name: string) => ({
-	toast: () => [`Filter "${name}" deleted`],
+	toast: () => [Msgs.t('Filter "{name}" deleted', { name })],
 }))
 
 // Declared here rather than imported from the filter-entity system, which is server-only. Widening it is what makes
@@ -108,31 +108,31 @@ export const deleteFailed = Msgs.def((name: string, failure: DeleteFailure) => {
 		}
 	}
 
-	return { toast: () => [`Failed to delete filter "${name}"`, { description: blurb() }] }
+	return { toast: () => [Msgs.t('Failed to delete filter "{name}"', { name }), { description: blurb() }] }
 })
 
 export const formatFailed = Msgs.def((reason: string) => ({
-	toast: () => ['Unable to format: invalid json', { description: reason }],
+	toast: () => [Msgs.t('Unable to format: invalid json'), { description: reason }],
 }))
 
 // Someone else's edit landing on a filter you have open.
 
 export const updatedBy = Msgs.def((name: string, editor: string) => ({
-	toast: () => [`Filter ${name} was updated by ${editor}`],
+	toast: () => [Msgs.t('Filter {name} was updated by {editor}', { name, editor })],
 }))
 
 export const deletedBy = Msgs.def((name: string, editor: string) => ({
-	toast: () => [`Filter ${name} was deleted by ${editor}`],
+	toast: () => [Msgs.t('Filter {name} was deleted by {editor}', { name, editor })],
 }))
 
 // Contributors.
 
-export const contributorAlreadyAdded = Msgs.def(() => ({ toast: () => ['Contributor already added'] }))
+export const contributorAlreadyAdded = Msgs.def(() => ({ toast: () => [Msgs.t('Contributor already added')] }))
 
-export const contributorNotFound = Msgs.def(() => ({ toast: () => ['Contributor not found'] }))
+export const contributorNotFound = Msgs.def(() => ({ toast: () => [Msgs.t('Contributor not found')] }))
 
 export const addContributorFailed = Msgs.def((reason: string) => ({
-	toast: () => ['Failed to add contributor', { description: reason }],
+	toast: () => [Msgs.t('Failed to add contributor'), { description: reason }],
 }))
 
 // -------- the filter card --------

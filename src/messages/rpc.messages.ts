@@ -4,7 +4,7 @@ import * as Msgs from '@/messages/shared'
 // the call site: one outage owns one toast, and keeping it keyed and unclearable is protocol, not wording.
 
 export const transportError = Msgs.def((reason: string) => ({
-	toast: () => ['Transport Error', { description: reason }],
+	toast: () => [Msgs.t('Transport Error'), { description: reason }],
 }))
 
 export const unknownError = Msgs.def('Unknown error')
@@ -15,8 +15,8 @@ export const reconnecting = Msgs.def('Lost connection to the server, reconnectin
 
 export const reconnected = Msgs.def('Reconnected to the server')
 
-export const upgrading = Msgs.def(() => ({ toast: () => ['SLM is being upgraded, window will refresh shortly...'] }))
+export const upgrading = Msgs.def(() => ({ toast: () => [Msgs.t('SLM is being upgraded, window will refresh shortly...')] }))
 
 export const subscriptionError = Msgs.def((tag: string, reason: string) => ({
-	toast: () => ['Remote Subscription Error', { description: `${tag}: ${reason}` }],
+	toast: () => [Msgs.t('Remote Subscription Error'), { description: `${tag}: ${reason}` }],
 }))

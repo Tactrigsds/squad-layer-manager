@@ -8,7 +8,7 @@ export const productName = Msgs.def('Squad Layer Manager')
 
 // what was copied goes in the description, since the title is the same wherever the app copies something
 export const copiedToClipboard = Msgs.def((what: string) => ({
-	toast: () => ['Copied to clipboard', { description: what }],
+	toast: () => [Msgs.t('Copied to clipboard'), { description: what }],
 }))
 
 // -------- the about dialog --------

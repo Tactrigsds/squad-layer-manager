@@ -35,7 +35,7 @@ export const stateUpdateSource = Msgs.def((source: SS.LQStateUpdate['source']) =
 })
 
 export const fogOff = Msgs.def(() => ({
-	broadcast: () => 'Fog of War is disabled. All points are visible. Check your maps.',
+	broadcast: (locale?: string) => Msgs.t('Fog of War is disabled. All points are visible. Check your maps.', undefined, locale),
 }))
 
 export const slmUpdatesSet = Msgs.def((enabled: boolean, ingameVotingTurnedOff?: boolean) => ({
@@ -73,9 +73,9 @@ export const disableFogOfWarFailed = Msgs.def('Failed to disable Fog of War (RCO
 
 export const confirmEndMatch = Msgs.def((serverName: string) => ({
 	confirm: () => ({
-		title: 'End Match',
-		description: `Are you sure you want to end the match for ${serverName}?`,
-		confirmLabel: 'End Match',
+		title: Msgs.t('End Match'),
+		description: Msgs.t('Are you sure you want to end the match for {serverName}?', { serverName }),
+		confirmLabel: Msgs.t('End Match'),
 	}),
 }))
 

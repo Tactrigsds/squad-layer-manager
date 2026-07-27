@@ -54,17 +54,17 @@ export const winnerSelected = Msgs.def(
 export const insufficientVotes = Msgs.def((voteItem: LL.VoteItem, displayProps: DH.LayerDisplayProp[]) => {
 	const defaultChoice = voteItem.choices[0]
 	return {
-		broadcast: () =>
-			`\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ${DH.toShortLayerNameFromId(
-				defaultChoice.layerId,
-				undefined,
-				displayProps,
-			)}`,
+		broadcast: (locale?: string) =>
+			Msgs.t(
+				'\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to {toShortLayerNameFromId}',
+				{ toShortLayerNameFromId: DH.toShortLayerNameFromId(defaultChoice.layerId, undefined, displayProps) },
+				locale,
+			),
 	}
 })
 
 export const aborted = Msgs.def(() => ({
-	broadcast: () => `\nThe vote has been aborted.`,
+	broadcast: (locale?: string) => Msgs.t('\nThe vote has been aborted.', undefined, locale),
 }))
 
 export const voteReminder = Msgs.def(
@@ -91,34 +91,41 @@ export const voteReminder = Msgs.def(
 	},
 )
 
-export const noVoteInProgress = Msgs.def(() => ({ warn: () => `No vote in progress` }))
-export const invalidChoice = Msgs.def(() => ({ warn: () => `Invalid vote choice` }))
+export const noVoteInProgress = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No vote in progress', undefined, locale) }))
+export const invalidChoice = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Invalid vote choice', undefined, locale) }))
 
 export const voteCast = Msgs.def((choice: L.LayerId, displayProps: DH.LayerDisplayProp[]) => ({
-	warn: () => `Vote cast for ${DH.toShortLayerNameFromId(choice, undefined, displayProps)}.`,
+	warn: (locale?: string) =>
+		Msgs.t(
+			'Vote cast for {toShortLayerNameFromId}.',
+			{ toShortLayerNameFromId: DH.toShortLayerNameFromId(choice, undefined, displayProps) },
+			locale,
+		),
 }))
 
 export const wrongChat = Msgs.def((correctChannel: string) => ({
-	warn: () => `Vote must be cast in ${correctChannel}`,
+	warn: (locale?: string) => Msgs.t('Vote must be cast in {correctChannel}', { correctChannel }, locale),
 }))
 
 // What the web client tells the admin once a vote mutation comes back ok. Distinct from the broadcasts above,
 // which announce the same events to players in game and are worded for that audience.
 export const adminReceipt = {
-	started: Msgs.def(() => ({ toast: () => ['Vote started!'] })),
-	aborted: Msgs.def(() => ({ toast: () => ['Vote aborted!'] })),
-	endedEarly: Msgs.def(() => ({ toast: () => ['Vote ended early!'] })),
-	autostartCancelled: Msgs.def(() => ({ toast: () => ['Vote autostart cancelled!'] })),
+	started: Msgs.def(() => ({ toast: () => [Msgs.t('Vote started!')] })),
+	aborted: Msgs.def(() => ({ toast: () => [Msgs.t('Vote aborted!')] })),
+	endedEarly: Msgs.def(() => ({ toast: () => [Msgs.t('Vote ended early!')] })),
+	autostartCancelled: Msgs.def(() => ({ toast: () => [Msgs.t('Vote autostart cancelled!')] })),
 }
 
 export const start = {
-	noVoteConfigured: Msgs.def(() => ({ warn: () => `No vote is currently configured` })),
-	voteAlreadyInProgress: Msgs.def(() => ({ warn: () => `A vote is already in progress` })),
-	itemNotFound: Msgs.def(() => ({ warn: () => `Item not found` })),
-	invalidItemType: Msgs.def(() => ({ warn: () => `Referenced item must be a vote` })),
-	editingInProgress: Msgs.def(() => ({ warn: () => `Vote is currently being edited` })),
-	publicVoteNotFirst: Msgs.def(() => ({ warn: () => `Public vote must be the first item in the queue when initiated` })),
-	noVoteInPostGame: Msgs.def(() => ({ warn: () => 'Not votes allowed in post-game' })),
+	noVoteConfigured: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No vote is currently configured', undefined, locale) })),
+	voteAlreadyInProgress: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('A vote is already in progress', undefined, locale) })),
+	itemNotFound: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Item not found', undefined, locale) })),
+	invalidItemType: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Referenced item must be a vote', undefined, locale) })),
+	editingInProgress: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Vote is currently being edited', undefined, locale) })),
+	publicVoteNotFirst: Msgs.def(() => ({
+		warn: (locale?: string) => Msgs.t('Public vote must be the first item in the queue when initiated', undefined, locale),
+	})),
+	noVoteInPostGame: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Not votes allowed in post-game', undefined, locale) })),
 }
 
 // -------- the vote row on the queue --------
