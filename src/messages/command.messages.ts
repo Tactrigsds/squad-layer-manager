@@ -93,3 +93,83 @@ export const aliasDescription = (command: string) => `Shortcut for "${command}"`
 export const copyFailed = Msgs.def(() => ({
 	toast: () => ['Failed to copy', { description: 'Could not copy command to clipboard' }],
 }))
+
+// -------- the prefixes editor --------
+
+export const prefixesBlurb = Msgs.def(() => ({
+	text: () => 'Editing a prefix updates every command string and alias that uses it. The default prefix seeds new commands.',
+}))
+
+// prefixes have no identity of their own, so every affordance addresses one by its position in the list
+export const prefixLabel = Msgs.def((position: number) => ({ text: () => `Prefix ${position}` }))
+
+export const makePrefixDefault = Msgs.def((position: number) => ({ text: () => `Make prefix ${position} the default` }))
+
+export const removePrefix = Msgs.def((position: number) => ({ text: () => `Remove prefix ${position}` }))
+
+export const defaultPrefix = Msgs.def(() => ({ text: () => 'Default' }))
+
+export const prefixUses = Msgs.def((count: number) => ({ text: () => `${count} ${count === 1 ? 'use' : 'uses'}` }))
+
+// why the remove button is disabled, in the two ways it can be
+export const defaultPrefixNotRemovable = Msgs.def(() => ({ text: () => 'The default prefix cannot be removed' }))
+
+export const prefixStillUsed = Msgs.def((count: number) => ({ text: () => `${count} strings still use this prefix` }))
+
+export const duplicatePrefix = Msgs.def(() => ({ text: () => 'That prefix already exists' }))
+
+export const newPrefix = Msgs.def(() => ({ text: () => 'New prefix' }))
+
+export const addPrefix = Msgs.def(() => ({ text: () => 'Add prefix' }))
+
+// -------- one command's card --------
+
+export const triggers = Msgs.def(() => ({ text: () => 'Triggers' }))
+
+export const triggersHelp = Msgs.def(() => ({
+	text: () => 'Strings that run this command, each starting with one of the allowed prefixes. Pin arguments to one to make it a shortcut.',
+}))
+
+export const allowedChats = Msgs.def(() => ({ text: () => 'Allowed chats' }))
+
+export const allowedChatsHelp = Msgs.def(() => ({ text: () => 'The in-game chats this command may be typed in.' }))
+
+export const enabled = Msgs.def(() => ({ text: () => 'Enabled' }))
+
+export const quickReference = Msgs.def(() => ({ text: () => 'Quick Reference' }))
+
+export const quickReferenceHelp = Msgs.def(() => ({
+	text: () => `Show this command on the commands page's quick reference, and in the in-game help command's default listing.`,
+}))
+
+// -------- one command's triggers --------
+
+export const triggerStringPlaceholder = Msgs.def(() => ({ text: () => 'prefix + command' }))
+
+export const pinArgs = Msgs.def(() => ({ text: () => 'Pin args' }))
+
+export const pinArgsHint = Msgs.def(() => ({ text: () => `Pin some of this command's arguments, so the trigger becomes a shortcut` }))
+
+export const pinnedArgsPlaceholder = Msgs.def(() => ({ text: () => '{{arg1}} 2h {{rest2}}' }))
+
+export const unpinArgs = Msgs.def(() => ({ text: () => 'Unpin' }))
+
+export const unpinArgsHint = Msgs.def(() => ({ text: () => `Take this command's arguments as typed instead` }))
+
+export const removeTrigger = Msgs.def((position: number) => ({ text: () => `Remove trigger ${position}` }))
+
+export const addTrigger = Msgs.def(() => ({ text: () => 'Add' }))
+
+export const takesNoArguments = Msgs.def(() => ({ text: () => 'This command takes no arguments, so pinned args can only be fixed text.' }))
+
+// introduces the list of {{ref}} arg pairs that follows
+export const takesArguments = Msgs.def(() => ({ text: () => 'Takes' }))
+
+// The placeholders are the syntax being explained, so they are part of the prose rather than examples the caller
+// substitutes in.
+export const argTemplateHelp = Msgs.def(() => ({
+	text: () =>
+		'A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, ' +
+		'{{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. ' +
+		'{{^arg2}}default{{/arg2}} fills a word in when it is left out.',
+}))
