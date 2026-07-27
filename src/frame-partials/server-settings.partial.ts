@@ -6,7 +6,8 @@ import * as Obj from '@/lib/object-utils'
 import { toast } from '@/lib/toast'
 import * as ZodDev from '@/lib/zod-utils.dev'
 import * as Zus from '@/lib/zustand'
-import * as SS from '@/models/server-state.models'
+import * as SS_Msgs from '@/messages/server-state.messages'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -74,7 +75,7 @@ export function initServerSettings(args: Args) {
 				const updated = Obj.structuralMerge(get().saved, settings)
 				set({ saved: updated, edited: updated, ops: [] })
 				if (source) {
-					toast(SS.printSource(source))
+					toast(...SS_Msgs.stateUpdateSource(source).toast())
 				}
 			}),
 	)
@@ -116,7 +117,7 @@ export namespace Actions {
 				RbacClient.handlePermissionDenied(res)
 				return false
 			} else if (res?.code === 'err:invalid-settings') {
-				toast.error('Error while saving settings:', { description: res.message })
+				toast.error(...SETTINGS_Msgs.saveFailed(res.message).toast())
 				return false
 			}
 			return true
