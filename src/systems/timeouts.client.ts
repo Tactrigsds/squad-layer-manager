@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import * as ReactRx from '@/lib/react-rxjs'
 import { toast } from '@/lib/toast'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as SM_Msgs from '@/messages/squad.messages'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -40,11 +41,11 @@ export async function timeoutPlayers(
 ): Promise<void> {
 	const durationMs = ZodUtils.tryParseHumanTimeToken(opts.durationText.trim())
 	if (durationMs === undefined) {
-		toast.error('Invalid duration', { description: 'Use a duration like 30m, 2h or 1d' })
+		toast.error(...SM_Msgs.invalidTimeoutDuration().toast())
 		return
 	}
 	if (typeof opts.maxTimeout === 'number' && durationMs > opts.maxTimeout) {
-		toast.error('Duration too long', { description: `Your maximum timeout is ${ZodUtils.formatHumanTime(opts.maxTimeout)}` })
+		toast.error(...SM_Msgs.timeoutTooLong(ZodUtils.formatHumanTime(opts.maxTimeout)).toast())
 		return
 	}
 	const results = await Promise.allSettled(
@@ -59,12 +60,8 @@ export async function timeoutPlayers(
 		else failed++
 	}
 	const duration = ZodUtils.formatHumanTime(durationMs)
-	if (timedOut > 0) toast(`Timed out ${timedOut} player${timedOut === 1 ? '' : 's'} for ${duration}`)
-	if (failed > 0) {
-		toast.error(`${failed} timeout${failed === 1 ? '' : 's'} failed`, {
-			description: 'They may already have an active timeout or have left the server.',
-		})
-	}
+	if (timedOut > 0) toast(...SM_Msgs.timedOut({ kind: 'players', count: timedOut }, duration).toast())
+	if (failed > 0) toast.error(...SM_Msgs.someTimeoutsFailed(failed).toast())
 }
 
 // the logged-in user's effective max timeout: undefined = cannot issue timeouts, null = unlimited,

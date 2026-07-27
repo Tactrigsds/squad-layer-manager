@@ -6,7 +6,7 @@ export const permissionDenied = Msgs.def((res: RBAC.PermissionDeniedResponse) =>
 	const text = `Permission denied. You need ${res.checkType} of the following: ${res.failures.join(', ')}`
 	return {
 		warn: () => text,
-		toast: () => text,
+		toast: () => [text],
 		text: () => text,
 	}
 })
