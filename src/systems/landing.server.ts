@@ -8,6 +8,7 @@ import { LandingDocument } from '@/components/landing-pages'
 import * as Rx from '@/lib/rxjs'
 import type * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
+import { DEFAULT_REPO_URL } from '@/server/config.server'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
 import * as Discord from '@/systems/discord.server'
@@ -21,8 +22,6 @@ import * as Settings from '@/systems/settings.server'
 // prod. Their own scoped Tailwind (landing-css.ts) is inlined so the pages are self-contained: unlike the app's
 // stylesheet under /assets, an inline <style> is not gated by the auth hook, so it loads for the unauthenticated
 // visitors these pages exist for.
-
-const DEFAULT_REPO_URL = 'https://github.com/Tactrigsds/squad-layer-manager'
 
 type Link = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }
 type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: string }

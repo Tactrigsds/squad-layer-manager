@@ -14,17 +14,19 @@ export const copiedToClipboard = Msgs.def((what: string) => ({
 	toast: () => [Msgs.t('Copied to clipboard'), { description: what }],
 }))
 
-// -------- the about page --------
+// -------- the debug info page --------
 
 export const about = Msgs.def('About')
 
-export const aboutBlurb = Msgs.def(
-	'Squad Layer Manager(SLM) is a tool for managing the upcoming layers of a squad server. and other things also.',
-)
+export const debugInfo = Msgs.def('Debug Info')
 
 export const repositoryHeading = Msgs.def('Repository:')
 
 export const reportIssuesHeading = Msgs.def('Report issues here, including the information below:')
+
+export const helpHeading = Msgs.def('Help:')
+
+export const discordHelpHeading = Msgs.def('Ask for help on Discord:')
 
 // The block the issue reporter is asked to paste. One message rather than four labels: which lines are present
 // depends on what the instance knows about itself, and the omissions only read correctly as a whole.
@@ -40,6 +42,21 @@ export const versionInfo = Msgs.def((info: { appVersion?: string; layersVersion?
 )
 
 export const versionInfoCopied = Msgs.def('Version information has been copied')
+
+// -------- acknowledgements --------
+
+export const acknowledgementsHeading = Msgs.def('Acknowledgements')
+
+// Prose rather than a list, so who is credited and what for reads as one sentence a translator can rearrange.
+// Edit the names here; they are the whole content of the section.
+export const acknowledgements = Msgs.def(() => ({
+	react: () =>
+		Msgs.node(
+			'SLM is built and maintained by <strong>grey275</strong>. It exists because the admins of <strong>Tactrigsds</strong>' +
+				' kept asking for it, ran every rough version against live servers, and said so when something was wrong.',
+			Msgs.tags,
+		),
+}))
 
 // -------- the nav bar --------
 
