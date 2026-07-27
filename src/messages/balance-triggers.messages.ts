@@ -56,6 +56,6 @@ export const sampleMessages = {
 // -------- the levels editor --------
 
 // a trigger with no level configured is not evaluated at all
-export const levelOff = Msgs.def(() => ({ text: () => 'Off' }))
+export const levelOff = Msgs.def('Off')
 
-export const levelPickerLabel = Msgs.def((triggerName: string) => ({ text: () => `${triggerName} level` }))
+export const levelPickerLabel = Msgs.def((triggerName: string) => `${triggerName} level`)

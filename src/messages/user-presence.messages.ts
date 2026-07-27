@@ -31,10 +31,10 @@ export const presenceEventText: Record<UP.PresenceEventAction, string> = {
 
 // -------- the presence panel --------
 
-export const resetSession = Msgs.def(() => ({ text: () => 'Reset this session' }))
+export const resetSession = Msgs.def('Reset this session')
 
 // reads as "Last seen <relative time>"
-export const lastSeen = Msgs.def(() => ({ text: () => 'Last seen' }))
+export const lastSeen = Msgs.def('Last seen')
 
 // marks whichever avatar is the viewer's own
-export const youSuffix = Msgs.def(() => ({ text: () => ' (You)' }))
+export const youSuffix = Msgs.def(' (You)')

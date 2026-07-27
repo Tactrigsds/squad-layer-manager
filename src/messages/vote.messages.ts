@@ -123,90 +123,91 @@ export const start = {
 
 // -------- the vote row on the queue --------
 
-export const heading = Msgs.def(() => ({ text: () => 'Vote' }))
+export const heading = Msgs.def('Vote')
 
 // reads as "starts in <countdown>"
-export const startsIn = Msgs.def(() => ({ text: () => 'starts in' }))
+export const startsIn = Msgs.def('starts in')
 
-export const cancelAutostart = Msgs.def(() => ({ text: () => 'Cancel Autostart' }))
+export const cancelAutostart = Msgs.def('Cancel Autostart')
 
-export const tally = Msgs.def((received: number, players: number) => ({ text: () => `${received} of ${players} votes received` }))
+export const tally = Msgs.def((received: number, players: number) => `${received} of ${players} votes received`)
 
-export const endVoteEarly = Msgs.def(() => ({ text: () => 'End Vote Early' }))
+export const endVoteEarly = Msgs.def('End Vote Early')
 
-export const abortVote = Msgs.def(() => ({ text: () => 'Abort Vote' }))
+export const abortVote = Msgs.def('Abort Vote')
 
 // an internal vote polls the admins in SLM rather than the players in game
-export const internalVote = Msgs.def(() => ({ text: () => 'Internal' }))
+export const internalVote = Msgs.def('Internal')
 
-export const startVote = Msgs.def(() => ({ text: () => 'Start Vote' }))
+export const startVote = Msgs.def('Start Vote')
 
-export const addVoteChoices = Msgs.def(() => ({ text: () => 'Add Vote Choices' }))
+export const addVoteChoices = Msgs.def('Add Vote Choices')
 
-export const configureVote = Msgs.def(() => ({ text: () => 'Configure vote' }))
+export const configureVote = Msgs.def('Configure vote')
 
-export const generateVoteTitle = Msgs.def(() => ({ text: () => 'Generate Vote' }))
+export const generateVoteTitle = Msgs.def('Generate Vote')
 
-export const saveVoteConfig = Msgs.def(() => ({ text: () => 'Save' }))
+export const saveVoteConfig = Msgs.def('Save')
 
 // -------- the vote display config editor --------
 
-export const displayOptionsHeading = Msgs.def(() => ({ text: () => 'Vote Display Options' }))
+export const displayOptionsHeading = Msgs.def('Vote Display Options')
 
-export const displayOptionsBlurb = Msgs.def(() => ({ text: () => 'Choose what info to show to voters' }))
+export const displayOptionsBlurb = Msgs.def('Choose what info to show to voters')
 
-export const displayLayer = Msgs.def(() => ({ text: () => 'Layer' }))
+export const displayLayer = Msgs.def('Layer')
 
-export const displayMap = Msgs.def(() => ({ text: () => 'Map' }))
+export const displayMap = Msgs.def('Map')
 
-export const displayGamemode = Msgs.def(() => ({ text: () => 'Gamemode' }))
+export const displayGamemode = Msgs.def('Gamemode')
 
-export const displayFactions = Msgs.def(() => ({ text: () => 'Factions' }))
+export const displayFactions = Msgs.def('Factions')
 
-export const displayUnits = Msgs.def(() => ({ text: () => 'Units' }))
+export const displayUnits = Msgs.def('Units')
 
-export const choicesIndistinguishable = Msgs.def(() => ({ text: () => "Warning: Can't distinguish between vote choices." }))
+export const choicesIndistinguishable = Msgs.def("Warning: Can't distinguish between vote choices.")
 
-export const previewLabel = Msgs.def(() => ({ text: () => 'Preview' }))
+export const previewLabel = Msgs.def('Preview')
 
-export const durationLabel = Msgs.def(() => ({ text: () => 'Vote Duration (seconds)' }))
+export const durationLabel = Msgs.def('Vote Duration (seconds)')
 
-export const resetToDefault = Msgs.def(() => ({ text: () => 'Reset to Default' }))
+export const resetToDefault = Msgs.def('Reset to Default')
 
 // -------- the generate-vote dialog --------
 
-export const noLayerSelected = Msgs.def(() => ({ text: () => 'No layer selected' }))
+export const noLayerSelected = Msgs.def('No layer selected')
 
-export const editChoice = Msgs.def(() => ({ text: () => 'Edit this choice' }))
+export const editChoice = Msgs.def('Edit this choice')
 
-export const regenerateChoice = Msgs.def(() => ({ text: () => 'Regenerate this choice' }))
+export const regenerateChoice = Msgs.def('Regenerate this choice')
 
-export const generateChoice = Msgs.def(() => ({ text: () => 'Generate this choice' }))
+export const generateChoice = Msgs.def('Generate this choice')
 
-export const removeChoice = Msgs.def(() => ({ text: () => 'Remove this choice (minimum 2 required)' }))
+export const removeChoice = Msgs.def('Remove this choice (minimum 2 required)')
 
-export const addChoiceHint = Msgs.def(() => ({ text: () => 'Add choice' }))
+export const addChoiceHint = Msgs.def('Add choice')
 
-export const addChoice = Msgs.def(() => ({ text: () => 'Add Choice' }))
+export const addChoice = Msgs.def('Add Choice')
 
-export const playNext = Msgs.def(() => ({ text: () => 'Play Next' }))
+export const playNext = Msgs.def('Play Next')
 
-export const playAfter = Msgs.def(() => ({ text: () => 'Play After' }))
+export const playAfter = Msgs.def('Play After')
 
-export const submit = Msgs.def(() => ({ text: () => 'Submit' }))
+export const submit = Msgs.def('Submit')
 
 // -------- the tally readout --------
 
-export const voteEnded = Msgs.def(() => ({ text: () => 'Vote has ended.' }))
+export const voteEnded = Msgs.def('Vote has ended.')
 
-export const voteInProgress = Msgs.def(() => ({ text: () => 'Vote in progress...' }))
+export const voteInProgress = Msgs.def('Vote in progress...')
 
-export const unknownChoice = Msgs.def(() => ({ text: () => 'Unknown' }))
+export const unknownChoice = Msgs.def('Unknown')
 
-export const choiceVotes = Msgs.def((votes: number, percentage: number) => ({
-	text: () => `${votes} vote${votes !== 1 ? 's' : ''} (${percentage.toFixed(1)}%)`,
-}))
+export const choiceVotes = Msgs.def(
+	(votes: number, percentage: number) => `${votes} vote${votes !== 1 ? 's' : ''} (${percentage.toFixed(1)}%)`,
+)
 
-export const turnout = Msgs.def((received: number, players: number, percentage: number | null) => ({
-	text: () => `Received: ${received} of ${players} votes` + (percentage !== null ? ` (${percentage.toFixed(1)}%)` : ''),
-}))
+export const turnout = Msgs.def(
+	(received: number, players: number, percentage: number | null) =>
+		`Received: ${received} of ${players} votes` + (percentage !== null ? ` (${percentage.toFixed(1)}%)` : ''),
+)
