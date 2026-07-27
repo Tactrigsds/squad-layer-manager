@@ -121,7 +121,7 @@ export const deleteFailed = Msgs.def((name: string, failure: DeleteFailure) => {
 		}
 	}
 
-	return { toast: () => [`Failed to delete filter "${name} : ${blurb()}"`] }
+	return { toast: () => [`Failed to delete filter "${name}"`, { description: blurb() }] }
 })
 
 export const formatFailed = Msgs.def((reason: string) => ({
