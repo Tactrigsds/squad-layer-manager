@@ -73,14 +73,12 @@ export const swapCancelled = Msgs.def((target: Msgs.Target) => ({
 	],
 }))
 
+// the players a swap sends to one team. Named by faction rather than by team id, since that is what the reader
+// sees in game.
 type SwapGroup = { faction: string; names: string[] }
 
-function headline(name: string, change: { added: number; removed: number }) {
-	const swaps = (count: number) => `${count} teamswap${count !== 1 ? 's' : ''}`
-	if (change.added > 0 && change.removed > 0) return `${name} queued ${swaps(change.added)} and cancelled ${change.removed}`
-	if (change.added > 0) return `${name} queued ${swaps(change.added)}`
-	return `${name} cancelled ${swaps(change.removed)}`
-}
+const swapGroupLine = (group: SwapGroup, locale?: string) =>
+	Msgs.t('to {faction}: {names}', { faction: group.faction, names: group.names.join(', ') }, locale)
 
 // what a save did, never what the queue happens to hold: added/removed are the real per-player diff against the
 // previously saved swaps (a save that adds 3 and removes 1 is not "added 2"), and the players named are only the
@@ -91,25 +89,59 @@ export const notifyAdminSwapsSaved = Msgs.def(
 		name: string,
 		change: { added: number; removed: number; addedGroups?: SwapGroup[]; removedGroups?: SwapGroup[] },
 		queued: SwapGroup[],
-	) => ({
-		warn: () => {
-			const total = queued.reduce((count, group) => count + group.names.length, 0)
-			if (total === 0) return `${name} cleared all queued teamswaps for next map.`
-			const named: string[] = []
-			for (const group of change.addedGroups ?? []) named.push(`to ${group.faction}: ${group.names.join(', ')}`)
-			for (const group of change.removedGroups ?? []) named.push(`no longer to ${group.faction}: ${group.names.join(', ')}`)
-			const summary = `now queued for next map: ${queued.map((group) => `${group.names.length} to ${group.faction}`).join(', ')}`
-			return [headline(name, change) + (named.length > 0 ? ':' : ''), ...named, summary].join('\n')
-		},
-	}),
+	) => {
+		// a sentence per case rather than one pattern branching three ways, so a translator is handed sentences.
+		// the colon is the pattern's because it belongs to the reading, and only the cases that list names take one
+		const headline = (listsNames: boolean, locale?: string) => {
+			const colon = listsNames ? 'yes' : 'no'
+			if (change.added > 0 && change.removed > 0) {
+				return Msgs.t(
+					'{name} queued {added, plural, one {# teamswap} other {# teamswaps}} and cancelled {removed}{colon, select, yes {:} other {}}',
+					{ name, added: change.added, removed: change.removed, colon },
+					locale,
+				)
+			}
+			if (change.added > 0) {
+				return Msgs.t(
+					'{name} queued {added, plural, one {# teamswap} other {# teamswaps}}{colon, select, yes {:} other {}}',
+					{ name, added: change.added, colon },
+					locale,
+				)
+			}
+			return Msgs.t(
+				'{name} cancelled {removed, plural, one {# teamswap} other {# teamswaps}}{colon, select, yes {:} other {}}',
+				{ name, removed: change.removed, colon },
+				locale,
+			)
+		}
+		return {
+			warn: (locale?: string) => {
+				const total = queued.reduce((count, group) => count + group.names.length, 0)
+				if (total === 0) return Msgs.t('{name} cleared all queued teamswaps for next map.', { name }, locale)
+				const named = [
+					...(change.addedGroups ?? []).map((group) => swapGroupLine(group, locale)),
+					...(change.removedGroups ?? []).map((group) =>
+						Msgs.t('no longer to {faction}: {names}', { faction: group.faction, names: group.names.join(', ') }, locale),
+					),
+				]
+				const totals = queued
+					.map((group) => Msgs.t('{count} to {faction}', { count: group.names.length, faction: group.faction }, locale))
+					.join(', ')
+				return [headline(named.length > 0, locale), ...named, Msgs.t('now queued for next map: {totals}', { totals }, locale)].join(
+					'\n',
+				)
+			},
+		}
+	},
 )
 
 export const notifyAdminManualSwap = Msgs.def((name: string, count: number, swapped?: SwapGroup[]) => ({
-	warn: () =>
+	warn: (locale?: string) =>
 		swapped?.length
-			? `${name} swapped ${count} player${count !== 1 ? 's' : ''}:\n` +
-				swapped.map((group) => `to ${group.faction}: ${group.names.join(', ')}`).join('\n')
-			: `${name} swapped ${count} player${count !== 1 ? 's' : ''} to the other team.`,
+			? Msgs.t('{name} swapped {count, plural, one {# player} other {# players}}:', { name, count }, locale) +
+				'\n' +
+				swapped.map((group) => swapGroupLine(group, locale)).join('\n')
+			: Msgs.t('{name} swapped {count, plural, one {# player} other {# players}} to the other team.', { name, count }, locale),
 }))
 
 // Why a teamswap op was rejected, keyed by code. A lookup rather than a message: it has no target axis, and it

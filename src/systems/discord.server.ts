@@ -55,7 +55,7 @@ export async function setup() {
 	log = module.getLogger()
 	ENV = envBuilder()
 	if (!ENV.DISCORD_ENABLED) {
-		log.warn('Discord integration is disabled (DISCORD_ENABLED=false); guild lookups will resolve as errors')
+		log.info('Discord integration is off (DISCORD_ENABLED=false); users resolve from the db and guild roles go unread')
 		return
 	}
 	client = new D.Client({
@@ -199,10 +199,16 @@ async function leaveForeignGuild(guild: D.Guild) {
 	}
 }
 
+// Distinct from an ok result and from a failed lookup: an install running without discord resolves every user
+// from the db, and callers report that as a fact about the install rather than as a per-lookup error.
+export function isEnabled() {
+	return ENV?.DISCORD_ENABLED ?? false
+}
+
 async function fetchGuild(guildId: bigint) {
 	if (!ENV.DISCORD_ENABLED) {
 		return {
-			code: 'err:discord' as const,
+			code: 'err:disabled' as const,
 			msg: 'discord integration disabled',
 			err: 'discord integration disabled',
 			errCode: undefined,

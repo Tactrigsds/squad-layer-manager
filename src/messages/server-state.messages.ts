@@ -39,28 +39,47 @@ export const fogOff = Msgs.def(() => ({
 }))
 
 export const slmUpdatesSet = Msgs.def((enabled: boolean, ingameVotingTurnedOff?: boolean) => ({
-	warn: () =>
-		`Updates from SLM have been ${enabled ? 'enabled' : 'disabled'}.` +
-		(ingameVotingTurnedOff ? ' In-game voting has been turned off, so it no longer decides the next layer.' : ''),
+	warn: (locale?: string) =>
+		Msgs.t(
+			'Updates from SLM have been {enabled, select, yes {enabled} other {disabled}}.' +
+				'{turnedOff, select, yes { In-game voting has been turned off, so it no longer decides the next layer.} other {}}',
+			{ enabled: enabled ? 'yes' : 'no', turnedOff: ingameVotingTurnedOff ? 'yes' : 'no' },
+			locale,
+		),
 }))
 
 export const slmUpdatesStatus = Msgs.def((enabled: boolean, disabledByIngameVote?: boolean) => ({
-	warn: () =>
-		`Updates from SLM are ${enabled ? 'enabled' : 'disabled'}.` +
-		(disabledByIngameVote ? ' An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting off.' : ''),
+	warn: (locale?: string) =>
+		Msgs.t(
+			'Updates from SLM are {enabled, select, yes {enabled} other {disabled}}.' +
+				'{byVote, select, yes { An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting ' +
+				'off.} other {}}',
+			{ enabled: enabled ? 'yes' : 'no', byVote: disabledByIngameVote ? 'yes' : 'no' },
+			locale,
+		),
 }))
 
 export const slmStarted = Msgs.def((restartedBy?: string) => ({
-	warn: () => (restartedBy ? `SLM has been restarted by ${restartedBy}.` : `SLM has been started.`),
+	warn: (locale?: string) =>
+		Msgs.t(
+			'{known, select, yes {SLM has been restarted by {restartedBy}.} other {SLM has been started.}}',
+			{
+				restartedBy,
+				known: restartedBy ? 'yes' : 'no',
+			},
+			locale,
+		),
 }))
 
 export const ingameVoteDisabledUpdates = Msgs.def((inferred?: boolean) => ({
-	warn: () =>
-		(inferred
-			? 'The server no longer has a next layer set, which most likely means in-game voting was enabled. '
-			: 'An in-game vote is running. ') +
-		'The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. ' +
-		'Re-enabling them will turn in-game voting off.',
+	warn: (locale?: string) =>
+		Msgs.t(
+			'{inferred, select, yes {The server no longer has a next layer set, which most likely means in-game voting was enabled.} ' +
+				'other {An in-game vote is running.}} The vote decides the next layer, so updates from SLM have been disabled to stop it ' +
+				'fighting the vote. Re-enabling them will turn in-game voting off.',
+			{ inferred: inferred ? 'yes' : 'no' },
+			locale,
+		),
 }))
 
 // The server actions an admin can take from the dashboard. Each toast.promise leg is a bare value rather than

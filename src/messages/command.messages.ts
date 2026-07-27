@@ -13,14 +13,18 @@ export const chatGroupLabels: Record<CMD.ChatGroup, string> = {
 // common case by far, and it matches how they're labelled on the commands page (chatGroupLabels), where the
 // raw ChatAdmin/ChatTeam enum names never appear.
 export const wrongChat = Msgs.def((allowedChats: CMD.ChatGroup[]) => ({
-	warn: () => {
-		if (allowedChats.length === 1 && allowedChats[0] === 'admin') return 'Admin only commands must be used in admin chat'
+	warn: (locale?: string) => {
+		if (allowedChats.length === 1 && allowedChats[0] === 'admin') {
+			return Msgs.t('Admin only commands must be used in admin chat', undefined, locale)
+		}
 		const correctChats = allowedChats.flatMap((s) => CMD.CHAT_GROUP_CHANNELS[s])
-		return `Command not available in this chat. Try using ${correctChats.join(' or ')}`
+		return Msgs.t('Command not available in this chat. Try using {correctChats}', { correctChats: correctChats.join(' or ') }, locale)
 	},
 }))
 
 // `section` is the raw token typed after the help command; omitted means the quick reference.
+// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
+// src/scripts/extract-messages.ts` counts what is left.
 export const help = Msgs.def((commands: CMD.CommandConfigs, section?: string) => ({
 	// one string per warn, since chat can only take a few lines at a time
 	warn: () => {

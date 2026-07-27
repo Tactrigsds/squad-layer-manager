@@ -17,6 +17,7 @@ import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
+import * as SETTINGS from '@/models/settings.models'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
@@ -518,7 +519,7 @@ const dispatchOp = Instr.spanOp(
 								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal
 								const notifyCtx = { ...ctx, signal: CleanupSys.shutdownSignal }
 								Prom.sleep(500, notifyCtx.signal)
-									.then(() => SquadRcon.warnAll(notifyCtx, toSwap, TSW_Msgs.notifyManualSwap().warn()))
+									.then(() => SquadRcon.warnAll(notifyCtx, toSwap, TSW_Msgs.notifyManualSwap().warn(SETTINGS.locale(ctx))))
 									.catch((error) => {
 										if (!Prom.isAbortError(error)) log.error(error)
 									})
@@ -554,7 +555,7 @@ const dispatchOp = Instr.spanOp(
 										: undefined
 								SquadRcon.warnAllAdmins(
 									{ ...ctx, signal: CleanupSys.shutdownSignal },
-									{ msg: TSW_Msgs.notifyAdminManualSwap(name, toSwap.length, swapped).warn() },
+									{ msg: TSW_Msgs.notifyAdminManualSwap(name, toSwap.length, swapped).warn(SETTINGS.locale(ctx)) },
 									excludeSteamIds,
 								).catch((error) => {
 									if (!Prom.isAbortError(error)) log.error(error)
@@ -646,7 +647,7 @@ const dispatchOp = Instr.spanOp(
 											removedGroups: named ? groups(removed, se.prevSaved) : undefined,
 										},
 										groups(Array.from(se.swaps.keys()), se.swaps),
-									).warn(),
+									).warn(SETTINGS.locale(ctx)),
 								},
 								excludeSteamIds,
 							).catch((error) => {
@@ -657,12 +658,12 @@ const dispatchOp = Instr.spanOp(
 					}
 
 					case 'notify-upcoming-teamswaps': {
-						await SquadRcon.warnAll(ctx, se.players, TSW_Msgs.notifyPlayerOfUpcomingTeamswap().warn())
+						await SquadRcon.warnAll(ctx, se.players, TSW_Msgs.notifyPlayerOfUpcomingTeamswap().warn(SETTINGS.locale(ctx)))
 						break
 					}
 
 					case 'notify-teamswaps-cancelled': {
-						await SquadRcon.warnAll(ctx, se.players, TSW_Msgs.notifyTeamswapCancelled().warn())
+						await SquadRcon.warnAll(ctx, se.players, TSW_Msgs.notifyTeamswapCancelled().warn(SETTINGS.locale(ctx)))
 						break
 					}
 
