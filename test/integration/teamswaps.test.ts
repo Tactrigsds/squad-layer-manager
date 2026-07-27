@@ -3,10 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { LAYERS, queue } from '../harness/arrange'
+import { cmd, LAYERS, queue } from '../harness/arrange'
 
-// Teamswaps, driven from in-game admin chat. `!swapnow` acts immediately over RCON;
-// `!swapnext` is held until the map rolls, which is the interesting one: the swap has to survive
+// Teamswaps, driven from in-game admin chat. `swapnow` acts immediately over RCON;
+// `swapnext` is held until the map rolls, which is the interesting one: the swap has to survive
 // a roll and then be applied against the new match's roster.
 
 const ADMIN_STEAM_ID = '76561198000000002'
@@ -35,11 +35,11 @@ function forceChangesFor(eosId: string) {
 }
 
 describe('teamswaps', () => {
-	it('!swapnow moves the player to the other team immediately', async () => {
+	it(cmd('swapnow moves the player to the other team immediately'), async () => {
 		expect(target.teamId).toBe(2)
 		app.emu.rcon.commandLog.length = 0
 
-		app.emu.world.chat(admin, 'ChatAdmin', '!swapnow swap_target')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnow swap_target'))
 
 		await app.waitFor(() => forceChangesFor(target.eos).length > 0, {
 			label: 'AdminForceTeamChange for the target',
@@ -49,13 +49,13 @@ describe('teamswaps', () => {
 		expect(target.teamId).toBe(1)
 	})
 
-	it('!swapnext holds the swap until the map rolls, then applies it', async () => {
+	it(cmd('swapnext holds the swap until the map rolls, then applies it'), async () => {
 		const held = makePlayer({ name: ' swap_later', teamId: 2 })
 		app.emu.world.connectPlayer(held)
 		await app.waitForRosterSync()
 		app.emu.rcon.commandLog.length = 0
 
-		app.emu.world.chat(admin, 'ChatAdmin', '!swapnext swap_later')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnext swap_later'))
 
 		// the app acknowledges the request to the admin, but leaves the player where they are
 		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body.startsWith('AdminWarn') && c.body.includes(admin.eos)), {

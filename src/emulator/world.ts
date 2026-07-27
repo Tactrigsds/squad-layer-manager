@@ -13,6 +13,10 @@ export type WorldSinks = {
 	// AdminChangeLayer travels asynchronously on a real server; the facade schedules the
 	// endMatch/startNewGame transition when this fires
 	layerChangeRequested?: (layer: Fmt.LayerLike) => void
+	// the server ended the match of its own accord (AdminEndMatch): it drops into WaitingPostMatch and brings the
+	// next world up a while later, which the facade schedules. endMatch only writes the round-end lines, so the
+	// callers that sequence their own travel (the layer change above, the test harness) do not fire this.
+	matchEnded?: () => void
 	// a player said something. Reported separately from the chat packet it produces, because "who typed what"
 	// is a different thing to observe than the wire traffic carrying it
 }
@@ -494,6 +498,7 @@ export class World {
 			}
 			case 'AdminEndMatch': {
 				this.endMatch({ source: Fmt.RCON_SOURCE })
+				this.#sinks.matchEnded?.()
 				return ''
 			}
 			case 'AdminSetFogOfWar': {

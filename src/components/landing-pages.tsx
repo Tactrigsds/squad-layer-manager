@@ -105,6 +105,45 @@ function LandingPage({ repoUrl, guildName }: { repoUrl: string; guildName: strin
 	)
 }
 
+function NoAuthPage({ repoUrl, error }: { repoUrl: string; error: string | null }) {
+	return (
+		<main className="w-full max-w-md rounded-xl border bg-card p-8 shadow-lg">
+			<p className="text-center text-sm font-medium uppercase tracking-wide text-muted-foreground">Squad Layer Manager</p>
+			<h1 className="mt-2 text-center text-2xl font-bold tracking-tight">Pick a name</h1>
+			<p className="mt-3 text-center text-muted-foreground">
+				This instance runs without authentication. Whatever you type here is who you are, and anyone else can be them too.
+			</p>
+			<form action="/login/no-auth" method="POST" className="mt-6 flex flex-col gap-3">
+				<label htmlFor="username" className="sr-only">
+					Username
+				</label>
+				<input
+					id="username"
+					name="username"
+					type="text"
+					autoFocus
+					required
+					maxLength={32}
+					autoComplete="off"
+					spellCheck={false}
+					placeholder="Username"
+					className="w-full rounded-md border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+				/>
+				{error && <p className="text-sm text-destructive-foreground">{error}</p>}
+				<button
+					type="submit"
+					className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+				>
+					Continue
+				</button>
+			</form>
+			<div className="text-center">
+				<RepoLink repoUrl={repoUrl} />
+			</div>
+		</main>
+	)
+}
+
 function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: string | null }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
@@ -137,31 +176,37 @@ function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: str
 	)
 }
 
+const TITLES: Record<LandingVariant, string> = {
+	landing: 'Squad Layer Manager',
+	'no-auth': 'Sign in - Squad Layer Manager',
+	forbidden: 'Access denied - Squad Layer Manager',
+}
+
 export function LandingDocument({
 	variant,
 	repoUrl,
 	guildName,
+	error,
 	head,
 	inlineCss,
 }: {
-	variant: 'landing' | 'forbidden'
+	variant: LandingVariant
 	repoUrl: string
 	guildName: string | null
+	error: string | null
 	head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
 	inlineCss: string
 }) {
-	const title = variant === 'landing' ? 'Squad Layer Manager' : 'Access denied - Squad Layer Manager'
 	return (
-		<Document title={title} htmlAttrs={head.htmlAttrs} metas={head.metas} assetLinks={head.assetLinks} inlineCss={inlineCss}>
-			{variant === 'landing' ? (
-				<LandingPage repoUrl={repoUrl} guildName={guildName} />
-			) : (
-				<ForbiddenPage repoUrl={repoUrl} guildName={guildName} />
-			)}
+		<Document title={TITLES[variant]} htmlAttrs={head.htmlAttrs} metas={head.metas} assetLinks={head.assetLinks} inlineCss={inlineCss}>
+			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} />}
+			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} />}
+			{variant === 'forbidden' && <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
 		</Document>
 	)
 }
 
+type LandingVariant = 'landing' | 'no-auth' | 'forbidden'
 type HtmlAttrs = Record<string, string>
 type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: string }
 type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }

@@ -8,3 +8,8 @@ export const noApplicationAccess = Msgs.def(() => ({
 export const unAuthenticated = Msgs.def(() => ({
 	text: () => `Not able to authenticate user`,
 }))
+
+// what the no-auth login portal says back when the name posted to it is not one (see fastify.server)
+export const invalidUsername = Msgs.def(() => ({
+	text: () => `Pick a name of 1 to 32 letters, digits, spaces, dots, dashes or underscores.`,
+}))

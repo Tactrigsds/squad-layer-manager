@@ -25,6 +25,7 @@ import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
+import * as Seed from '@/systems/seed.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as ServerConsole from '@/systems/server-console.server'
 import * as Sessions from '@/systems/sessions.server'
@@ -46,12 +47,15 @@ import { ensureLoggerSetup, initModule } from './logger.ts'
 import * as SecretBox from './secret-box.server.ts'
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
+const demoEnvBuilder = Env.getEnvBuilder({ ...Env.groups.demo })
 let ENV!: ReturnType<typeof envBuilder>
+let DEMO_ENV!: ReturnType<typeof demoEnvBuilder>
 const module = initModule('main')
 
 await Cli.ensureCliParsed()
 Env.ensureEnvSetup()
 ENV = envBuilder()
+DEMO_ENV = demoEnvBuilder()
 ensureLoggerSetup()
 const log = module.getLogger()
 
@@ -101,6 +105,9 @@ await Instr.spanOp('main', { module }, async () => {
 	await DB.setup()
 	// starts its own background loop; nothing else depends on it, but it needs the db open
 	Backups.setup()
+	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
+	// "has this database ever been configured" off
+	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await FilterEntity.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
@@ -121,6 +128,9 @@ await Instr.spanOp('main', { module }, async () => {
 	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+
+	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
+	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()
 
 	// after adminlist + settings + discord: rbac observes the admin list (whose fetch reads settings) and the discord gateway
 	Rbac.wireInvalidationSources()

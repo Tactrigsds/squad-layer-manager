@@ -149,7 +149,7 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 		}
 		case 'end': {
 			const { winnerTeamId } = input as SB.SandboxVerbInput<'end'>
-			world.endMatch(winnerTeamId ? { winnerTeamId } : undefined)
+			host.emu.endMatchAndRoll(winnerTeamId ? { winnerTeamId } : undefined)
 			return winnerTeamId ? `match ended, team ${winnerTeamId} won` : 'match ended'
 		}
 		case 'vote': {

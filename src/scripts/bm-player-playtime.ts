@@ -24,7 +24,12 @@ Env.ensureEnvSetup()
 ensureLoggerSetup()
 
 const ENV = Env.getEnvBuilder({ ...Env.groups.battlemetrics })()
-const { BM_HOST, BM_PAT, BM_ORG_ID } = ENV
+const { BM_HOST, BM_PAT } = ENV
+const BM_ORG_ID = ENV.BM_ORG_ID ?? throwUnset('BM_ORG_ID')
+
+function throwUnset(name: string): never {
+	throw new Error(`${name} is not set`)
+}
 
 async function bmFetch(url: URL) {
 	const response = await fetch(url.toString(), {

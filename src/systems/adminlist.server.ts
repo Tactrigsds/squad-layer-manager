@@ -12,7 +12,7 @@ import * as Rx from '@/lib/rxjs'
 import { withSftp } from '@/lib/sftp-file-store.ts'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as CS from '@/models/context-shared'
-import type * as SM from '@/models/squad.models.ts'
+import * as SM from '@/models/squad.models.ts'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
@@ -76,7 +76,7 @@ function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx
 // A list SLM synthesises for a server rather than fetching, keyed by server. The sandbox registers one so an
 // emulated server has admins without an operator configuring a source for something that only exists in memory.
 // Deliberately not a configured source: there is nothing to point a source at.
-export const IMPLICIT_LIST_ID = 'Emulated'
+export const IMPLICIT_LIST_ID = SM.IMPLICIT_LIST_ID
 const implicitLists = new Map<string, () => SM.AdminList>()
 
 export function registerImplicitList(serverId: string, provider: () => SM.AdminList) {

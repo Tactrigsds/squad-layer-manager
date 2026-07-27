@@ -13,6 +13,9 @@ export type EmulatorOptions = WorldOptions & {
 	rconPort?: number
 	// ms until AdminChangeLayer actually travels; the real server takes seconds
 	layerChangeDelayMs?: number
+	// ms spent in WaitingPostMatch before the next world is brought up, as a real server does. Defaults to the
+	// 30s a real one takes; the test harness turns it down, since a suite should never sit through it.
+	postMatchDelayMs?: number
 	// periodic tick-rate log line, like a real server's constant chatter. Also load-bearing for
 	// consumers: parseLogStream only completes an entry once the next one arrives, so a silent
 	// server would leave the last event stuck in the parser. 0 disables.
@@ -30,11 +33,13 @@ export class Emulator {
 	logLines: string[] = []
 	#logSubscribers = new Set<(line: string) => void>()
 	#layerChangeDelayMs: number
+	#postMatchDelayMs: number
 	#timers = new Set<NodeJS.Timeout>()
 
 	constructor(opts: EmulatorOptions = {}) {
 		this.password = opts.password ?? 'testpassword'
 		this.#layerChangeDelayMs = opts.layerChangeDelayMs ?? 200
+		this.#postMatchDelayMs = opts.postMatchDelayMs ?? 30_000
 		this.world = new World(
 			{
 				chatPacket: (body) => this.rcon.broadcastChatPacket(body),
@@ -43,13 +48,12 @@ export class Emulator {
 					for (const sub of this.#logSubscribers) sub(line)
 				},
 				layerChangeRequested: (layer) => {
-					const timer = setTimeout(() => {
-						this.#timers.delete(timer)
+					this.#schedule(() => {
 						this.world.endMatch()
 						this.world.startNewGame(layer)
 					}, this.#layerChangeDelayMs)
-					this.#timers.add(timer)
 				},
+				matchEnded: () => this.#scheduleTravelAfterMatch(),
 			},
 			opts,
 		)
@@ -61,6 +65,27 @@ export class Emulator {
 			timer.unref()
 			this.#timers.add(timer)
 		}
+	}
+
+	#schedule(fn: () => void, delayMs: number) {
+		const timer = setTimeout(() => {
+			this.#timers.delete(timer)
+			fn()
+		}, delayMs)
+		this.#timers.add(timer)
+	}
+
+	// A round ending is not a layer change: the server drops into WaitingPostMatch and brings the next world up
+	// on its own a while later. world.endMatch only writes the round-end lines, so calling it alone leaves the
+	// server sitting in WaitingPostMatch forever and no NEW_GAME ever arrives.
+	#scheduleTravelAfterMatch() {
+		this.#schedule(() => this.world.startNewGame(), this.#postMatchDelayMs)
+	}
+
+	// the sandbox `end` verb; AdminEndMatch over rcon arrives through the matchEnded sink instead
+	endMatchAndRoll(opts?: { winnerTeamId?: number }) {
+		this.world.endMatch(opts)
+		this.#scheduleTravelAfterMatch()
 	}
 
 	async start(opts?: { rconPort?: number }): Promise<this> {

@@ -24,7 +24,7 @@ import * as User from '@/systems/users.server'
 // the role type attributed to permissions granted by the env-level SUPER_USERS/SUPER_ROLES bootstrap
 const SUPER_ROLE: RBAC.Role = { type: 'super' }
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.rbac, ...Env.groups.discord })
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.demo, ...Env.groups.rbac, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 
 type RbacCache = {
@@ -162,6 +162,9 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 
 // superUsers/superRoles from the deploy-time config always receive every permission -- the anti-lockout bootstrap
 async function fetchIsSuperUser(userId: bigint): Promise<boolean> {
+	// a demo has no way to know who is who (anyone signs in as any name, see the no-auth login portal) and
+	// nothing worth protecting, so everyone administers it
+	if (ENV.DEMO) return true
 	if (superUserIds.has(userId)) return true
 	if (superRoleIds.size === 0) return false
 	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
