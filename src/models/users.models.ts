@@ -69,6 +69,18 @@ export const NoAuthLoginSchema = z.object({
 		.regex(/^[\p{L}\p{N} ._-]+$/u),
 })
 
+// A steam account linked to a discord account, as shown to a client. Ids are strings: neither a steam64 nor a
+// discord snowflake survives a trip through JSON as a number.
+export type SteamAccountLink = {
+	steamId: string
+	discordId: string
+	discordUsername: string
+	origin: SchemaModels.LinkOrigin
+	// who assigned it, named for display. null for a self-serve link, and for an assigner whose account is gone.
+	linkedBy: { discordId: string; displayName: string } | null
+	createdAt: Date
+}
+
 // should eventually replace all user id validation with this
 export const UserIdSchema = z.bigint().positive()
 

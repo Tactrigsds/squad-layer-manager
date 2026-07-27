@@ -112,9 +112,7 @@ export const router = {
 						const voteState = ctx.vote.state
 						if (voteState) {
 							const ids = getVoteStateDiscordIds(voteState)
-							const users = await Users.buildUsers(
-								await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids)),
-							)
+							const users = await Users.buildUsers(await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids)))
 							initialState = { ...voteState, parts: { users } }
 						}
 						yield { code: 'initial-state' as const, state: initialState } satisfies V.VoteStateUpdateOrInitialWithParts
@@ -700,8 +698,8 @@ async function includeVoteStateUpdatePart(ctx: C.Db, update: V.VoteStateUpdate) 
 		discordIds = new Set([...discordIds, ...getVoteStateDiscordIds(update.state)])
 	}
 	const discordIdsArray = Array.from(discordIds)
-	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, discordIdsArray))
-	const users = await Promise.all(dbUsers.map((user) => Users.buildUser(user)))
+	const dbUsers = await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, discordIdsArray))
+	const users = await Users.buildUsers(dbUsers)
 	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
 	return withParts
 }
