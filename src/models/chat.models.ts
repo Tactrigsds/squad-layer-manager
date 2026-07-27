@@ -90,7 +90,7 @@ export namespace InterpolableState {
 		else state.recentPlayers[index] = SM.toRecentPlayer(player)
 	}
 
-	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.HardIdQueryOrPlayerId) {
+	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.Ref) {
 		return SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, id)
 	}
 

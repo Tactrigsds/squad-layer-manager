@@ -661,7 +661,7 @@ describe('PlayerIds.match', () => {
 	})
 
 	it('rejects a name-only comparison at compile time unless it opts in to inexact matching', () => {
-		// @ts-expect-error a query carrying no hard id is not a HardIdQueryOrPlayerId
+		// @ts-expect-error a query carrying no hard id is not a Ref
 		expect(SM.PlayerIds.match({ username: 'Quincy' }, { username: 'Quincy' })).toBe(false)
 		// @ts-expect-error same, via the usernameNoTag substring path
 		expect(SM.PlayerIds.match({ username: 'Quincy' }, { usernameNoTag: '『tag』 Quincy' })).toBe(false)

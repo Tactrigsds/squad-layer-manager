@@ -131,11 +131,10 @@ export namespace PlayerIds {
 	// expected to be unique in a collection of PlayerIds. maybe playerController is unique too, not sure
 	const UNIQUE_PROPS = ['steam', 'eos', 'epic'] as const
 
-	// A query the default lookup can actually resolve: it carries at least one of EXACT_PROPS. A query holding
-	// only a username is not one, so the compiler makes such a caller pass MatchOpts and face the consequences
-	// rather than silently resolving to nothing.
-	export type HardIdQuery = IdQuery<'eos'> | IdQuery<'steam'> | IdQuery<'epic'> | IdQuery<'playerController'>
-	export type HardIdQueryOrPlayerId = HardIdQuery | PlayerId
+	// How you refer to a player anywhere a lookup can resolve it: a bare PlayerId, or a query carrying at least
+	// one of EXACT_PROPS. A query holding only a username is not a Ref, so the compiler makes that caller pass
+	// MatchOpts and face the ambiguity rather than silently resolving to nothing.
+	export type Ref = PlayerId | IdQuery<'eos'> | IdQuery<'steam'> | IdQuery<'epic'> | IdQuery<'playerController'>
 
 	// `inexact: true` is the only setting worth naming -- omit the argument for an exact lookup.
 	export type MatchOpts = { inexact: true }
@@ -198,9 +197,9 @@ export namespace PlayerIds {
 		return { idsOf: selfIds<T>, searchId: normalizeIdQuery(cbOrId!), opts: idOrOpts as MatchOpts | undefined }
 	}
 
-	export function find(idList: Type[], id: HardIdQueryOrPlayerId): Type | undefined
+	export function find(idList: Type[], id: Ref): Type | undefined
 	export function find(idList: Type[], id: IdQueryOrPlayerId, opts: MatchOpts): Type | undefined
-	export function find<T>(idList: T[], cb: (item: T) => Type, id: HardIdQueryOrPlayerId): T | undefined
+	export function find<T>(idList: T[], cb: (item: T) => Type, id: Ref): T | undefined
 	export function find<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts: MatchOpts): T | undefined
 	export function find<T>(
 		elts: T[] | Type[],
@@ -213,9 +212,9 @@ export namespace PlayerIds {
 		return index === -1 ? undefined : (elts as T[])[index]
 	}
 
-	export function indexOf(idList: Type[], id: HardIdQueryOrPlayerId): number
+	export function indexOf(idList: Type[], id: Ref): number
 	export function indexOf(idList: Type[], id: IdQueryOrPlayerId, opts: MatchOpts): number
-	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: HardIdQueryOrPlayerId): number
+	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: Ref): number
 	export function indexOf<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts: MatchOpts): number
 	export function indexOf<T>(
 		elts: T[] | Type[],
@@ -271,9 +270,9 @@ export namespace PlayerIds {
 		return searchId
 	}
 
-	export function remove(idList: Type[], id: HardIdQueryOrPlayerId): boolean
+	export function remove(idList: Type[], id: Ref): boolean
 	export function remove(idList: Type[], id: IdQueryOrPlayerId, opts: MatchOpts): boolean
-	export function remove<T>(idList: T[], cb: (item: T) => Type, id: HardIdQueryOrPlayerId): boolean
+	export function remove<T>(idList: T[], cb: (item: T) => Type, id: Ref): boolean
 	export function remove<T>(idList: T[], cb: (item: T) => Type, id: IdQueryOrPlayerId, opts: MatchOpts): boolean
 	export function remove<T>(
 		elts: T[] | Type[],
@@ -290,7 +289,7 @@ export namespace PlayerIds {
 
 	// Both sides must carry a hard id for an exact match to be possible at all, so the compiler asks for one
 	// unless the caller opts in to matching on names.
-	export function match(a: HardIdQueryOrPlayerId, b: HardIdQueryOrPlayerId): boolean
+	export function match(a: Ref, b: Ref): boolean
 	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId, opts: MatchOpts): boolean
 	export function match(a: IdQueryOrPlayerId, b: IdQueryOrPlayerId, opts?: MatchOpts): boolean {
 		return matchIds(normalizeIdQuery(a), normalizeIdQuery(b), opts)
