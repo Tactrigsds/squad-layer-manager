@@ -13,7 +13,7 @@ import * as UsersClient from '@/systems/users.client'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	toast.error(RBAC_Msgs.permissionDenied(res).toast())
+	toast.error(...RBAC_Msgs.permissionDenied(res).toast())
 }
 
 export function usePermsCheck<T extends RBAC.PermissionType>(
