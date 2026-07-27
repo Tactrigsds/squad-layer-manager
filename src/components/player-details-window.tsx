@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
+import { DiscordMemberSelect } from '@/components/discord-picker'
 import EventFilterSelect from '@/components/event-filter-select'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
@@ -26,15 +27,19 @@ import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
+import * as UsersClient from '@/systems/users.client'
 
 import { CopyIdButton } from './copy-id-button'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
@@ -116,7 +121,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const livePlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.player(playerId)(s) ?? null)
 	const recentPlayer = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.recentPlayer(playerId)(s) ?? null)
 	const ids = livePlayer?.ids ?? recentPlayer?.ids
-	const groupColor = usePlayerGroupColor(playerId, livePlayer?.adminGroups ?? recentPlayer?.adminGroups ?? [])
+	const groupColor = usePlayerGroupColor(playerId, livePlayer ?? recentPlayer ?? undefined)
 
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
@@ -210,6 +215,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 					</ExtLink>
 					{!!profile?.hoursPlayed && <span title="Hours played on this org's servers">{profile.hoursPlayed}h</span>}
 				</div>
+				<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
 			</div>
 			<Separator />
 			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
@@ -283,6 +289,70 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						placeholder={`Warn ${ids?.username ?? 'player'}…`}
 						stores={stores}
 					/>
+				</div>
+			)}
+		</div>
+	)
+}
+
+// The discord account this player's steam account is linked to, and the controls to change it. Rendered only for
+// holders of users:manage-steam-links: the link decides what both identities are entitled to, and it puts a discord
+// name to somebody who has not chosen to show one here.
+//
+// The picker searches the home guild alone, so an account outside it cannot be linked -- one SLM cannot resolve
+// carries no name to show and no roles for a grouping rule to read.
+function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
+	const denied = RbacClient.usePermsCheck(RBAC.perm('users:manage-steam-links'))
+	const linkQuery = UsersClient.useSteamAccountLink(denied ? undefined : steamId)
+	const assign = UsersClient.useAssignSteamLinkMutation()
+	const remove = UsersClient.useRemoveSteamLinkMutation()
+	const [picked, setPicked] = React.useState('')
+
+	if (denied || !steamId) return null
+	const link = linkQuery.data?.code === 'ok' ? linkQuery.data.link : null
+	const pending = assign.isPending || remove.isPending
+
+	async function onAssign(discordId: string) {
+		setPicked(discordId)
+		if (!discordId || !steamId) return
+		const res = await assign.mutateAsync({ steamId, discordId })
+		if (res.code === 'ok') {
+			toast(...USR_Msgs.steamLinkAssigned(discordId).toast())
+			setPicked('')
+		} else if (res.code === 'err:not-a-guild-member') {
+			toast.error(...USR_Msgs.steamLinkNotAGuildMember(discordId).toast())
+		} else if (res.code === 'err:steam-already-linked') {
+			toast.error(...USR_Msgs.steamIdAlreadyLinked(steamId).toast())
+		} else {
+			toast.error(...USR_Msgs.steamLinkFailed().toast())
+		}
+	}
+
+	async function onRemove() {
+		if (!steamId) return
+		const res = await remove.mutateAsync({ steamId })
+		if (res.code === 'ok') toast(...USR_Msgs.steamLinkRemoved().toast())
+		else toast.error(...USR_Msgs.steamLinkFailed().toast())
+	}
+
+	return (
+		<div className="flex items-center gap-2">
+			<span className="text-muted-foreground shrink-0">Discord</span>
+			{link ? (
+				<>
+					<span className="truncate" title={link.discordId}>
+						{link.discordUsername}
+					</span>
+					<span className="text-muted-foreground shrink-0">
+						{link.origin === 'assigned' ? `linked by ${link.linkedBy?.displayName ?? 'an admin'}` : 'self-linked'}
+					</span>
+					<Button type="button" size="sm" variant="ghost" className="h-6 px-1 text-destructive" disabled={pending} onClick={onRemove}>
+						Unlink
+					</Button>
+				</>
+			) : (
+				<div className="min-w-0 flex-1">
+					<DiscordMemberSelect value={picked} onChange={onAssign} disabled={pending} />
 				</div>
 			)}
 		</div>
