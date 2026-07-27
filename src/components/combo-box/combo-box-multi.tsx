@@ -6,6 +6,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DisplayHelpers from '@/lib/display-helpers.ts'
 import { cn } from '@/lib/utils'
+import * as UI_Msgs from '@/messages/ui.messages'
 
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
@@ -254,14 +255,13 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 											<CommandInput
 												value={props.inputValue}
 												onValueChange={props.setInputValue}
-												placeholder="Search options..."
+												placeholder={UI_Msgs.searchOptions().text()}
 											/>
 										</div>
 										{/* Right header: selected count + action buttons */}
 										<div className="flex-1 flex items-center justify-between px-2 h-[41px]">
 											<span className="text-sm font-medium">
-												Selected {props.title ? props.title + 's ' : ''}({displayValues.length}
-												{selectionLimit ? `/${selectionLimit}` : ''})
+												{UI_Msgs.selectedCount(props.title, displayValues.length, selectionLimit).text()}
 											</span>
 											<span className="flex items-center space-x-1">
 												{reset &&
@@ -279,7 +279,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 																onClick={() => onSelect(resetValues)}
 																disabled={isIdentical}
 																className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
-																title="Reset to Initial"
+																title={UI_Msgs.resetToInitial().text()}
 															>
 																<Undo2 className="h-4 w-4" />
 															</Button>
@@ -301,7 +301,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															onSelect(allValues)
 														}}
 														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-														title="Select All"
+														title={UI_Msgs.selectAll().text()}
 													>
 														<CheckCheck className="h-4 w-4" />
 													</Button>
@@ -312,7 +312,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														size="sm"
 														onClick={() => onSelect([])}
 														className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-														title="Clear All"
+														title={UI_Msgs.clearAll().text()}
 													>
 														<Trash2 className="h-4 w-4" />
 													</Button>
@@ -323,7 +323,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														size="sm"
 														onClick={() => setOpen(false)}
 														className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-														title="Close"
+														title={UI_Msgs.close().text()}
 													>
 														<X className="h-4 w-4" />
 													</Button>
@@ -337,12 +337,12 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										{/* Left — available options */}
 										<div className="flex-1 border-r overflow-hidden">
 											<CommandList className="max-h-[340px]">
-												<CommandEmpty>No results found.</CommandEmpty>
+												<CommandEmpty>{UI_Msgs.noResults().text()}</CommandEmpty>
 												<CommandGroup>
 													{options === LOADING && (
 														<CommandItem>
 															<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-															Loading...
+															{UI_Msgs.loadingEllipsis().text()}
 														</CommandItem>
 													)}
 													{options !== LOADING &&
@@ -386,7 +386,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										{/* Right — selected items */}
 										<div className="flex-1 overflow-y-auto p-2 space-y-1">
 											{displayValues.length === 0 ? (
-												<div className="text-sm text-muted-foreground text-center py-8">No items selected</div>
+												<div className="text-sm text-muted-foreground text-center py-8">{UI_Msgs.nothingSelected().text()}</div>
 											) : (
 												displayValues.map((value) => {
 													const option = optionsByValue.get(value)

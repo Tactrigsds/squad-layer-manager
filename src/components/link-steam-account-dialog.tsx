@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as UI_Msgs from '@/messages/ui.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import type * as USR from '@/models/users.models'
 import * as UsersClient from '@/systems/users.client'
@@ -27,11 +28,8 @@ export default function LinkSteamAccountDialog(props: {
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Linked Steam Accounts</DialogTitle>
-					<DialogDescription>
-						Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need. Links an admin made
-						on your behalf are listed here too, and you can remove them.
-					</DialogDescription>
+					<DialogTitle>{USR_Msgs.steamDialogTitle().text()}</DialogTitle>
+					<DialogDescription>{USR_Msgs.steamDialogBlurb().text()}</DialogDescription>
 				</DialogHeader>
 				{linkedQuery.data?.code === 'ok' ? (
 					// mounts once per dialog open (DialogContent unmounts on close), seeding the draft from the query in
@@ -39,7 +37,7 @@ export default function LinkSteamAccountDialog(props: {
 					// Steam to copy their ID) must not clobber their in-progress edits
 					<LinkedSteamAccountsEditor links={linkedQuery.data.links} onClose={() => props.onOpenChange?.(false)} />
 				) : (
-					<p className="text-sm text-muted-foreground">Loading...</p>
+					<p className="text-sm text-muted-foreground">{UI_Msgs.loadingEllipsis().text()}</p>
 				)}
 			</DialogContent>
 		</Dialog>
@@ -96,7 +94,7 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 								<Input
 									autoComplete="off"
 									inputMode="numeric"
-									placeholder="17-digit Steam64 ID"
+									placeholder={USR_Msgs.steamIdPlaceholder().text()}
 									value={value}
 									onChange={(e) => setId(idx, e.target.value)}
 									disabled={updateMutation.isPending}
@@ -114,7 +112,9 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 							</div>
 							{error && <p className="text-xs text-destructive pl-1">{error}</p>}
 							{!error && assignedBy.has(value.trim()) && (
-								<p className="pl-1 text-xs text-muted-foreground">Linked by {assignedBy.get(value.trim())}</p>
+								<p className="pl-1 text-xs text-muted-foreground">
+									{USR_Msgs.steamLinkedByAdmin(assignedBy.get(value.trim())!).text()}
+								</p>
 							)}
 						</div>
 					)
@@ -123,11 +123,11 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 
 			<DialogFooter className="flex flex-col sm:flex-row gap-2">
 				<Button variant="outline" onClick={onClose} disabled={updateMutation.isPending}>
-					Cancel
+					{UI_Msgs.cancel().text()}
 				</Button>
 				<Button onClick={handleSave} disabled={hasErrors || updateMutation.isPending}>
 					{updateMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-					{updateMutation.isPending ? 'Saving...' : 'Save'}
+					{updateMutation.isPending ? USR_Msgs.saving().text() : USR_Msgs.save().text()}
 				</Button>
 			</DialogFooter>
 		</>

@@ -22,6 +22,25 @@ test.describe('settings page', () => {
 		await expect(adminLists.getByRole('combobox')).toHaveText(/Select admin lists/)
 	})
 
+	// The new-server form has no saved baseline to fall back to, so the save panel's Reset has to close it outright
+	// rather than blanking its fields and leaving a half-filled form behind.
+	test('resetting discards the new managed server form', async ({ app, page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/settings'))
+
+		const addServer = page.getByRole('button', { name: 'Add Managed Server' })
+		await expect(addServer).toBeVisible({ timeout: 20_000 })
+		await addServer.click()
+
+		const heading = page.getByRole('heading', { name: 'New Managed Server' })
+		await expect(heading).toBeVisible()
+		await page.getByLabel('Server ID').fill('reset-me')
+
+		await page.getByRole('button', { name: 'Reset', exact: true }).click()
+
+		await expect(heading).toBeHidden()
+		await expect(addServer).toBeVisible()
+	})
+
 	// A JSON-mode section renders no per-field anchors, so its TOC node has to collapse to a leaf. The TOC reads that
 	// mode straight off the section frames now rather than being handed it down, and nothing else exercises the path.
 	test('the table of contents follows a section between GUI and JSON mode', async ({ app, page }) => {

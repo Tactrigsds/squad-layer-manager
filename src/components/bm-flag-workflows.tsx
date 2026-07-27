@@ -5,6 +5,7 @@ import React from 'react'
 import { BmFlagSelect, FlagLabel } from '@/components/bm-flag-picker'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import type * as Msgs from '@/messages/shared'
 import type * as BM from '@/models/battlemetrics.models'
@@ -49,7 +50,13 @@ function FlagRow(props: {
 						variant="ghost"
 						size="sm"
 						className="h-6 px-1"
-						title={removing ? 'Keep this flag' : props.change === 'adding' ? "Don't add this flag" : 'Remove this flag'}
+						title={
+							removing
+								? BM_Msgs.keepFlag().text()
+								: props.change === 'adding'
+									? BM_Msgs.dontAddFlag().text()
+									: BM_Msgs.removeFlag().text()
+						}
 						onClick={props.onToggle}
 					>
 						{removing ? <Icons.Undo2 className="h-3 w-3" /> : <Icons.X className="h-3 w-3 text-destructive" />}
@@ -59,12 +66,18 @@ function FlagRow(props: {
 			{props.change && (
 				<div className="grid gap-1">
 					<Label className="text-xs font-normal text-muted-foreground">
-						Reason {props.requiresReason ? <span className="text-destructive">(required)</span> : '(optional)'}
+						{AAR_Msgs.reasonLabel(
+							props.requiresReason ? (
+								<span className="text-destructive">{AAR_Msgs.reasonRequired().text()}</span>
+							) : (
+								AAR_Msgs.reasonOptional().text()
+							),
+						).react()}
 					</Label>
 					<Input
 						autoComplete="off"
 						className="h-7"
-						placeholder={removing ? 'Why is this flag being removed?' : 'Why is this flag being applied?'}
+						placeholder={removing ? BM_Msgs.whyRemoving().text() : BM_Msgs.whyApplying().text()}
 						defaultValue={props.reasonsRef.current[props.id] ?? ''}
 						onChange={(e) => {
 							props.reasonsRef.current[props.id] = e.target.value
@@ -115,8 +128,10 @@ export function ManageFlagsDialogContent(props: {
 
 	return (
 		<div className="grid gap-2">
-			<Label>Flags</Label>
-			{currentFlagIds.length === 0 && pending.length === 0 && <p className="text-xs text-muted-foreground">This player has no flags.</p>}
+			<Label>{BM_Msgs.flagsLabel().text()}</Label>
+			{currentFlagIds.length === 0 && pending.length === 0 && (
+				<p className="text-xs text-muted-foreground">{BM_Msgs.noFlags().text()}</p>
+			)}
 			<ul className="grid gap-1">
 				{currentFlagIds.map((id) => (
 					<FlagRow
@@ -146,7 +161,7 @@ export function ManageFlagsDialogContent(props: {
 					value={undefined}
 					only={addable}
 					autoOpen
-					placeholder="Select a flag..."
+					placeholder={BM_Msgs.selectFlag().text()}
 					// dismissing without picking puts the button back, so the picker is never left sitting there empty
 					onOpenChange={(open) => {
 						if (!open) setPicking(false)
@@ -160,14 +175,14 @@ export function ManageFlagsDialogContent(props: {
 					size="sm"
 					className="justify-self-start"
 					disabled={addable.length === 0}
-					title={addable.length === 0 ? 'This player already has every flag in the organization' : undefined}
+					title={addable.length === 0 ? BM_Msgs.hasEveryFlag().text() : undefined}
 					onClick={() => setPicking(true)}
 				>
 					<Icons.Plus className="mr-1 h-3 w-3" />
-					Add flag
+					{BM_Msgs.addFlag().text()}
 				</Button>
 			)}
-			<span className="text-xs text-muted-foreground">Each reason is posted to the player's BattleMetrics profile as its own note.</span>
+			<span className="text-xs text-muted-foreground">{BM_Msgs.reasonsBecomeNotes('player').text()}</span>
 		</div>
 	)
 }
@@ -202,8 +217,8 @@ export function AddFlagsDialogContent(props: {
 
 	return (
 		<div className="grid gap-2">
-			<Label>Flags to add</Label>
-			{pending.length === 0 && <p className="text-xs text-muted-foreground">No flags selected yet.</p>}
+			<Label>{BM_Msgs.flagsToAdd().text()}</Label>
+			{pending.length === 0 && <p className="text-xs text-muted-foreground">{BM_Msgs.noFlagsSelected().text()}</p>}
 			<ul className="grid gap-1">
 				{pending.map((id) => (
 					<FlagRow
@@ -222,7 +237,7 @@ export function AddFlagsDialogContent(props: {
 					value={undefined}
 					only={addable}
 					autoOpen
-					placeholder="Select a flag..."
+					placeholder={BM_Msgs.selectFlag().text()}
 					onOpenChange={(open) => {
 						if (!open) setPicking(false)
 					}}
@@ -238,12 +253,10 @@ export function AddFlagsDialogContent(props: {
 					onClick={() => setPicking(true)}
 				>
 					<Icons.Plus className="mr-1 h-3 w-3" />
-					Add flag
+					{BM_Msgs.addFlag().text()}
 				</Button>
 			)}
-			<span className="text-xs text-muted-foreground">
-				Each reason is posted to every selected player's BattleMetrics profile as its own note.
-			</span>
+			<span className="text-xs text-muted-foreground">{BM_Msgs.reasonsBecomeNotes('selection').text()}</span>
 		</div>
 	)
 }
@@ -379,7 +392,7 @@ export function PlayerFlagsButton(props: { playerId: string }) {
 				disabled={disabled}
 				onClick={manageFlags}
 				className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
-				title="Manage flags"
+				title={BM_Msgs.manageFlagsHint().text()}
 			>
 				<Icons.Pencil className="h-3 w-3" />
 			</button>

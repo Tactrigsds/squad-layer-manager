@@ -1,3 +1,4 @@
+import * as SC_Msgs from '@/messages/server-console.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 
@@ -24,7 +25,7 @@ function ServerConsoleWindow(props: ServerConsoleWindowProps) {
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>Server console: {props.serverId}</DraggableWindowTitle>
+				<DraggableWindowTitle>{SC_Msgs.windowTitle(props.serverId).text()}</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="min-h-0 grow p-2">

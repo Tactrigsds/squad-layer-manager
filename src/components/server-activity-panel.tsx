@@ -15,6 +15,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
@@ -106,7 +107,7 @@ function ServerChatEvents(props: {
 			)}
 			{selectedMatchOrdinal !== null && displayMatch && (
 				<div className="text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
-					<span>Viewing historical match</span>
+					<span>{CHAT_Msgs.viewingHistoricalMatch().text()}</span>
 					<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
 					{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
 				</div>
@@ -115,13 +116,11 @@ function ServerChatEvents(props: {
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
 					{noPlayersSelected && (
-						<div className="text-muted-foreground text-sm text-center py-8">
-							No players selected. Select players in the teams panel to filter the feed.
-						</div>
+						<div className="text-muted-foreground text-sm text-center py-8">{CHAT_Msgs.noPlayersSelected().text()}</div>
 					)}
 					{!noPlayersSelected && props.filteredEvents && props.filteredEvents.length === 0 && (
 						<div className="text-muted-foreground text-sm text-center py-8">
-							No events yet for {selectedMatchOrdinal === null ? 'current match' : 'this match'}
+							{CHAT_Msgs.noEventsYet(selectedMatchOrdinal === null ? 'current' : 'historical').text()}
 						</div>
 					)}
 					{props.filteredEvents &&
@@ -137,8 +136,8 @@ function ServerChatEvents(props: {
 							)}
 							<span className="text-xs">
 								{connectionError.code === 'CONNECTION_LOST'
-									? 'Connection lost - attempting to reconnect...'
-									: 'Reconnection failed - unable to reconnect to the server. Please refresh the page.'}
+									? CHAT_Msgs.connectionLost().text()
+									: CHAT_Msgs.reconnectionFailed().text()}
 							</span>
 						</div>
 					)}
@@ -150,11 +149,11 @@ function ServerChatEvents(props: {
 					variant="secondary"
 					style={{ zIndex: scrollToBottomZIndex }}
 					className="absolute bottom-0 left-0 right-0 w-full h-8 shadow-lg flex items-center justify-center gap-2 bg-opacity-20! rounded-none backdrop-blur-sm"
-					title="Scroll to bottom"
+					title={CHAT_Msgs.scrollToBottom().text()}
 				>
 					<Icons.ChevronDown className="h-4 w-4" />
 					<span className="text-xs">
-						{newMessageCount > 0 ? `${newMessageCount} new event${newMessageCount === 1 ? '' : 's'}` : 'Scroll to bottom'}
+						{newMessageCount > 0 ? CHAT_Msgs.newEvents(newMessageCount).text() : CHAT_Msgs.scrollToBottom().text()}
 					</span>
 				</Button>
 			)}
@@ -188,17 +187,29 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 		<div className="inline-flex shrink-0 text-muted-foreground gap-x-2 items-center text-sm tabular-nums">
 			{/* online over queue while the panel is narrow, side by side once there is room */}
 			<div className="flex flex-col items-end leading-tight @[760px]:flex-row @[760px]:items-center @[760px]:gap-2">
-				<span className="inline-flex items-center gap-1" title="Players online" aria-label="Players online">
+				<span
+					className="inline-flex items-center gap-1"
+					title={CHAT_Msgs.playersOnline().text()}
+					aria-label={CHAT_Msgs.playersOnline().text()}
+				>
 					<Icons.Users className="h-3.5 w-3.5" />
 					{playerCount ?? '?'}/{serverInfo.maxPlayerCount}
 				</span>
-				<span className="inline-flex items-center gap-1" title="Players in queue" aria-label="Players in queue">
+				<span
+					className="inline-flex items-center gap-1"
+					title={CHAT_Msgs.playersInQueue().text()}
+					aria-label={CHAT_Msgs.playersInQueue().text()}
+				>
 					<Icons.Hourglass className="h-3.5 w-3.5" />
 					{serverInfo.queueLength}/{serverInfo.maxQueueLength}
 				</span>
 			</div>
 			{tickRate != null && (
-				<span className="inline-flex items-center gap-1" title="Server tick rate" aria-label="Server tick rate">
+				<span
+					className="inline-flex items-center gap-1"
+					title={CHAT_Msgs.serverTickRate().text()}
+					aria-label={CHAT_Msgs.serverTickRate().text()}
+				>
 					<Icons.Activity className="h-3.5 w-3.5" />
 					<span className={tickRateColor}>{tickRate.toFixed(1)}</span>
 				</span>
@@ -393,12 +404,12 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		// a labelled region so the feed is a landmark users (and tests) can jump to, rather than an anonymous div
 		// that only reads as a pile of text. Named directly rather than by its title, which is down to the icon
 		// alone once the panel is narrow.
-		<Card role="region" aria-label="Server Activity" className="flex flex-col h-full min-h-0 w-full @container">
+		<Card role="region" aria-label={CHAT_Msgs.activityTitle().text()} className="flex flex-col h-full min-h-0 w-full @container">
 			<CardHeader className="flex flex-row justify-between flex-shrink-0 items-center gap-2 pb-3">
 				<div className="flex min-w-0 items-center gap-1.5 @[640px]:gap-4">
 					<CardTitle className="flex items-center gap-2 whitespace-nowrap">
 						<Icons.Server className="h-5 w-5" />
-						<span className="hidden @[640px]:inline">Server Activity</span>
+						<span className="hidden @[640px]:inline">{CHAT_Msgs.activityTitle().text()}</span>
 					</CardTitle>
 					<ButtonGroup>
 						<Button
@@ -407,11 +418,18 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 							onClick={handlePrevious}
 							disabled={!canGoPrevious}
 							className="h-8 w-8 p-0"
-							title="Previous match"
+							title={CHAT_Msgs.previousMatch().text()}
 						>
 							<Icons.ChevronLeft className="h-4 w-4" />
 						</Button>
-						<Button variant="ghost" size="sm" onClick={handleNext} disabled={!canGoNext} className="h-8 w-8 p-0" title="Next match">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={handleNext}
+							disabled={!canGoNext}
+							className="h-8 w-8 p-0"
+							title={CHAT_Msgs.nextMatch().text()}
+						>
 							<Icons.ChevronRight className="h-4 w-4" />
 						</Button>
 						{selectedMatchOrdinal !== null && (
@@ -420,10 +438,10 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 								size="sm"
 								onClick={() => ChatPrt.Actions.setSelectedMatchOrdinal({ chat: stores.squadServer! }, null)}
 								className="h-8 px-2 whitespace-nowrap @[640px]:px-3 bg-green-500 hover:bg-green-600 text-white"
-								title="Return to live events"
+								title={CHAT_Msgs.returnToLiveTooltip().text()}
 							>
 								<Icons.Radio className="h-4 w-4 @[640px]:mr-1" />
-								<span className="hidden @[640px]:inline">Return to Live</span>
+								<span className="hidden @[640px]:inline">{CHAT_Msgs.returnToLive().text()}</span>
 							</Button>
 						)}
 					</ButtonGroup>
