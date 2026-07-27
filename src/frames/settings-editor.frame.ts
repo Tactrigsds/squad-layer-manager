@@ -7,6 +7,7 @@ import type { SettingChange } from '@/lib/settings-diff'
 import { diffSettings } from '@/lib/settings-diff'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
@@ -369,11 +370,11 @@ export namespace Actions {
 						return false
 					}
 					if (res.code === 'err:invalid-settings') {
-						toast.error('Invalid settings', { description: res.message })
+						toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
 						return false
 					}
 					// the watchSettings subscription delivers the new baseline; the draft is left as-is and rediffs to clean
-					toast('Settings saved')
+					toast(...SETTINGS_Msgs.saved().toast())
 					return true
 				}
 				case 'server': {
@@ -384,14 +385,14 @@ export namespace Actions {
 						return false
 					}
 					if (res.code === 'err:invalid-settings') {
-						toast.error('Invalid settings', { description: res.message })
+						toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
 						return false
 					}
 					if (res.code === 'err:server-not-found') {
-						toast.error('Server not found')
+						toast.error(...SETTINGS_Msgs.serverNotFound().toast())
 						return false
 					}
-					toast('Server settings saved')
+					toast(...SETTINGS_Msgs.serverSettingsSaved().toast())
 					// refresh the baseline with the server-normalized value; only re-seed the draft if no edits landed mid-save
 					const draftAtSave = state.draft
 					await loadServerSettings(
@@ -420,14 +421,14 @@ export namespace Actions {
 						return false
 					}
 					if (res.code === 'err:server-already-exists') {
-						toast.error('A server with that ID already exists')
+						toast.error(...SETTINGS_Msgs.serverIdTaken().toast())
 						return false
 					}
 					if (res.code === 'err:invalid-settings') {
-						toast.error('Invalid settings', { description: res.message })
+						toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
 						return false
 					}
-					toast('Server created')
+					toast(...SETTINGS_Msgs.serverCreated().toast())
 					s.setState({ created: true })
 					return true
 				}
