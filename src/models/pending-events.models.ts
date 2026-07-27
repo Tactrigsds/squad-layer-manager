@@ -1021,7 +1021,8 @@ async function* processPendingEvent(
 		}
 
 		case 'PLAYER_WARNED': {
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds)
+			// the RCON acknowledgement only echoes the display name
+			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds, { inexact: true })
 			if (!player) {
 				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
@@ -1251,7 +1252,7 @@ async function* processPendingEvent(
 		case 'ADMIN_REMOVED_FROM_SQUAD': {
 			// the log only carries a display name, so resolution is by username; if it's ambiguous/unknown we skip and
 			// let the teams poll reconcile the leave organically (without attribution)
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds)
+			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds, { inexact: true })
 			if (!player) {
 				log.warn('Remove from squad for unknown player: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
@@ -1289,18 +1290,15 @@ async function* processPendingEvent(
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
 			// the log identifies the victim by display name only, which can carry a clan tag the RCON roster name
-			// lacks; fall back to a loose unique match rather than dropping the event
-			let victim = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds)
-			if (!victim && pendingEvent.victimIds.username) {
-				victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds.username)
-				if (victim) {
-					log.debug(
-						'resolved %s victim "%s" via loose username match -> %s',
-						pendingEvent.type,
-						pendingEvent.victimIds.username,
-						SM.PlayerIds.prettyPrint(victim.ids),
-					)
-				}
+			// lacks, so a loose unique match is the only way to resolve them
+			const victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds.username)
+			if (victim) {
+				log.debug(
+					'resolved %s victim "%s" -> %s',
+					pendingEvent.type,
+					pendingEvent.victimIds.username,
+					SM.PlayerIds.prettyPrint(victim.ids),
+				)
 			}
 			const attacker = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.attackerIds)
 			if (!victim || !attacker) {
