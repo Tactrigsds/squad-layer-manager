@@ -1,4 +1,4 @@
-import type React from 'react'
+import * as React from 'react'
 
 import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
@@ -9,6 +9,13 @@ import type { WarnOptions } from '@/models/squad-rcon.models'
 // that positions rendered nodes inside its sentence.
 export const t = I18n.translate
 export const node = I18n.translateNode
+
+// The inline elements a message may put around part of its own sentence, so which words are emphasised travels with
+// the text and a translator can move it. How they LOOK is still the container's, through `[&_strong]:` and friends.
+export const tags = {
+	strong: (chunks: React.ReactNode[]) => React.createElement('strong', null, ...chunks),
+	code: (chunks: React.ReactNode[]) => React.createElement('code', null, ...chunks),
+}
 
 // Distinguishes two messages whose English is identical but whose translations are not: "Cancel" the dialog
 // dismissal against "Cancel" the lifting of a timeout. Part of the key, never rendered.

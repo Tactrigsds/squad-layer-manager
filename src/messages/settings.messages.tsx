@@ -136,11 +136,7 @@ export const deniedCount = Msgs.def('{count} not permitted', (count: number) => 
 
 // the count is emphasised, which is part of the sentence; the panel styles `strong` itself
 export const changedCount = Msgs.def((count: number) => ({
-	react: () => (
-		<>
-			<strong>{count}</strong> {count === 1 ? 'setting' : 'settings'} changed
-		</>
-	),
+	react: () => Msgs.node('<strong>{count}</strong> {count, plural, one {setting} other {settings}} changed', { count, ...Msgs.tags }),
 }))
 
 // -------- the pool filter --------

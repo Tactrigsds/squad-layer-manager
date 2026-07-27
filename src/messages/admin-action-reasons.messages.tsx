@@ -57,15 +57,15 @@ export const previewMissingActionText = Msgs.def('<action text>')
 // helpers are not available here. Which words are the link is part of the prose; how it looks is not, so the
 // caller styles `a`.
 export const templateSyntaxHint = Msgs.def((docUrl: string) => ({
-	react: () => (
-		<>
-			Supports{' '}
-			<a href={docUrl} target="_blank" rel="noopener noreferrer">
-				Mustache {'{{variable}}'} syntax
-			</a>
-			.
-		</>
-	),
+	react: () =>
+		Msgs.node('Supports <link>Mustache {syntax} syntax</link>.', {
+			syntax: '{{variable}}',
+			link: (chunks) => (
+				<a href={docUrl} target="_blank" rel="noopener noreferrer">
+					{chunks}
+				</a>
+			),
+		}),
 }))
 
 // -------- the reason field, wherever an action or a flag asks for one --------
@@ -73,7 +73,7 @@ export const templateSyntaxHint = Msgs.def((docUrl: string) => ({
 // Whether a reason is required is coloured differently in each case, which no single class on the container can
 // express, so the caller renders the qualifier and the message positions it.
 export const reasonLabel = Msgs.def((qualifier: React.ReactNode) => ({
-	react: () => <>Reason {qualifier}</>,
+	react: () => Msgs.node('Reason {qualifier}', { qualifier }),
 }))
 
 export const reasonRequired = Msgs.def('(required)')

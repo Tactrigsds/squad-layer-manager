@@ -14,44 +14,27 @@ export const helpTitle = Msgs.def('Team Swaps Help')
 export const helpIntro = Msgs.def('Queue players to be moved to the opposite team, either at the start of the next round or immediately.')
 
 export const helpStepQueue = Msgs.def(() => ({
-	react: () => (
-		<>
-			Right-click a player and choose <strong>Swap Next</strong> to queue them.
-		</>
-	),
+	react: () => Msgs.node('Right-click a player and choose <strong>Swap Next</strong> to queue them.', { ...Msgs.tags }),
 }))
 
 export const helpStepSave = Msgs.def(() => ({
-	react: () => (
-		<>
-			Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next
-			round.
-		</>
-	),
+	react: () =>
+		Msgs.node(
+			'Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.',
+			{ ...Msgs.tags },
+		),
 }))
 
 export const helpStepSwapNow = Msgs.def(() => ({
-	react: () => (
-		<>
-			Click <strong>Swap Now</strong> to immediately execute all saved swaps.
-		</>
-	),
+	react: () => Msgs.node('Click <strong>Swap Now</strong> to immediately execute all saved swaps.', { ...Msgs.tags }),
 }))
 
 export const helpRevert = Msgs.def(() => ({
-	react: () => (
-		<>
-			<strong>Revert</strong> discards unsaved edits back to the last saved state.
-		</>
-	),
+	react: () => Msgs.node('<strong>Revert</strong> discards unsaved edits back to the last saved state.', { ...Msgs.tags }),
 }))
 
 export const helpClearTeam = Msgs.def(() => ({
-	react: () => (
-		<>
-			The <strong>trash icon</strong> on a team column clears all for that team.
-		</>
-	),
+	react: () => Msgs.node('The <strong>trash icon</strong> on a team column clears all for that team.', { ...Msgs.tags }),
 }))
 
 export const notifyPlayerOfUpcomingTeamswap = Msgs.def(() => ({
