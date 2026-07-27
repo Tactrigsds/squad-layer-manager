@@ -722,6 +722,23 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	}
 	const onResourceFatalError = (err: unknown) => void destroyAfterFatalError(err)
 
+	// How long a logged line can take to reach us. A polled source can be a whole poll behind; a pushed one is near-live.
+	const logDeliveryMs =
+		settings.connections.type === 'sftp'
+			? settings.connections.sftp.pollInterval
+			: settings.connections.type === 'local'
+				? Settings.GLOBAL_SETTINGS.logFilePollInterval
+				: settings.connections.type === 'server-agent'
+					? 500
+					: // in-process: a log line is delivered in the same tick the world writes it
+						settings.connections.type === 'sandbox'
+						? 0
+						: assertNever(settings.connections)
+
+	// Long enough to survive a tick split across two deliveries, and short enough to stay inside the window below,
+	// so a poll doesn't give up waiting for the log while the parser is still holding a tick.
+	const logIdleFlushMs = Math.max(logDeliveryMs * 1.5, 100)
+
 	const eventState: PendingEvents.State = PendingEvents.init({
 		counters: {
 			squadId: globalState.squadIdCounter,
@@ -741,19 +758,9 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				return res.code === 'ok' ? res.data : null
 			},
 		},
-		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up.
-		// A polled source can be a whole poll behind; a pushed one is near-live.
-		minSafeLogLeadTimeForOtherEvents:
-			settings.connections.type === 'sftp'
-				? settings.connections.sftp.pollInterval * 2
-				: settings.connections.type === 'local'
-					? Settings.GLOBAL_SETTINGS.logFilePollInterval * 2
-					: settings.connections.type === 'server-agent'
-						? 1000
-						: // in-process: a log line is delivered in the same tick the world writes it
-							settings.connections.type === 'sandbox'
-							? 0
-							: assertNever(settings.connections),
+		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up:
+		// one delivery, and the parser's wait for the tick it is accumulating to go quiet
+		minSafeLogLeadTimeForOtherEvents: logDeliveryMs + logIdleFlushMs,
 	})
 
 	const server: SQS.Ctx.Payload = {
@@ -951,7 +958,11 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		for await (const event of SM.LogEvents.parseLogStream(
 			Rx.Ext.toAsyncGenerator(countedChunk$.pipe(Rx.Ext.withAbortSignal(logStreamAc.signal))),
 			errors,
-			(rate) => server.tickRate$.next(rate),
+			{
+				onTickRate: (rate) => server.tickRate$.next(rate),
+				// a tick is otherwise only closed by the next one, which on a quiet server can be a long time
+				idleFlushMs: logIdleFlushMs,
+			},
 		)) {
 			if (logStreamAc.signal.aborted) break
 			const ctx = resolveCtx(getBaseCtx(), serverId)

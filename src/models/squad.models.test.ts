@@ -760,6 +760,75 @@ function emittedTypes(events: (SM.LogEvents.AnyChainEvent | SM.LogEvents.NonChai
 	return events.flatMap((event) => ('events' in event ? Object.keys(event.events) : [event.type]))
 }
 
+// A tick is normally closed by a line from the next one. On a quiet server that line can be a long time coming,
+// and until it does the app cannot see what just happened -- long enough for a roll to complete around a connect
+// that the post-roll roster should have absorbed. idleFlushMs bounds that wait.
+describe('LogEvents.parseLogStream idle flush', () => {
+	function controllableChunks() {
+		const queued: string[] = []
+		let ended = false
+		let notify: (() => void) | null = null
+		const wake = () => {
+			notify?.()
+			notify = null
+		}
+		async function* gen(): AsyncGenerator<string> {
+			for (;;) {
+				if (queued.length === 0) {
+					if (ended) return
+					await new Promise<void>((resolve) => (notify = resolve))
+					continue
+				}
+				yield queued.shift()!
+			}
+		}
+		return {
+			stream: gen(),
+			push(chunk: string) {
+				queued.push(chunk)
+				wake()
+			},
+			end() {
+				ended = true
+				wake()
+			},
+		}
+	}
+
+	it('closes a quiet tick rather than holding it until the next one', async () => {
+		const src = controllableChunks()
+		const errors: Error[] = []
+		const parsed = SM.LogEvents.parseLogStream(src.stream, errors, { idleFlushMs: 20 })
+		const next = parsed.next()
+		src.push(JOIN_CHAIN + '\n')
+
+		const event = (await next).value
+		expect(event && 'events' in event ? event.type : event?.type).toBe('PLAYER_CONNECTED_CHAIN')
+		expect(errors).toEqual([])
+		src.end()
+		await parsed.return(undefined)
+	})
+
+	it('keeps waiting when the tick is still missing a required chain member', async () => {
+		const src = controllableChunks()
+		const errors: Error[] = []
+		const parsed = SM.LogEvents.parseLogStream(src.stream, errors, { idleFlushMs: 20 })
+		const next = parsed.next()
+		// the delivery split the join chain: closing on what arrived would drop it entirely (partitionTick
+		// discards a chain missing a required member)
+		src.push(PLAYER_CONNECTED + '\n')
+		const held = await Promise.race([next, new Promise((resolve) => setTimeout(() => resolve('held'), 100))])
+		expect(held).toBe('held')
+
+		src.push(PLAYER_JOIN_SUCCEEDED + '\n')
+		const event = (await next).value
+		expect(event && 'events' in event ? event.type : event?.type).toBe('PLAYER_CONNECTED_CHAIN')
+		expect(errors).toEqual([])
+		src.end()
+		await parsed.return(undefined)
+	})
+})
+
 describe('LogEvents.parse conservation', () => {
 	it('has fixture coverage of the ticks that used to lose events', () => {
 		expect(CHAIN_TICKS.length).toBeGreaterThan(20)
