@@ -74,3 +74,21 @@ describe('two messages whose English is identical', () => {
 		expect(liftTimeout().text()).toBe('Cancel')
 	})
 })
+
+describe('choosing a locale for the reader', () => {
+	test('a preference with no catalogue is ignored rather than adopted', () => {
+		// adopting it would render English under that language's plural rules
+		expect(I18n.negotiateLocale(['ja', 'ko'])).toBe(I18n.DEFAULT_LOCALE)
+	})
+
+	test('a region falls back to the language we do carry', () => {
+		I18n.registerCatalogue('fr-FR', { Close: 'Fermer' })
+		expect(I18n.negotiateLocale(['fr-CA'])).toBe('fr-FR')
+		expect(I18n.negotiateLocale(['fr-FR'])).toBe('fr-FR')
+	})
+
+	test('preferences are taken in the reader’s order', () => {
+		I18n.registerCatalogue('es-ES', { Close: 'Cerrar' })
+		expect(I18n.negotiateLocale(['ja', 'es-ES'])).toBe('es-ES')
+	})
+})

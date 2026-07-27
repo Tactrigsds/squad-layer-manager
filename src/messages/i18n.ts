@@ -42,6 +42,22 @@ export function getAmbientLocale() {
 	return ambientLocale
 }
 
+// Picks the best of the reader's preferences that this build can actually serve, in their order of preference.
+//
+// Adopting a locale with no catalogue would be worse than ignoring it: the text would still be English, but the
+// plural rules would be that locale's, and a language whose rules have no `one` category renders "1 players".
+export function negotiateLocale(preferred: readonly string[]) {
+	const available = availableLocales()
+	for (const want of preferred) {
+		const exact = available.find((l) => l.toLowerCase() === want.toLowerCase())
+		if (exact) return exact
+		const primary = want.split('-')[0].toLowerCase()
+		const related = available.find((l) => l.split('-')[0].toLowerCase() === primary)
+		if (related) return related
+	}
+	return DEFAULT_LOCALE
+}
+
 const intls = new Map<string, IntlShape<React.ReactNode>>()
 
 function intlFor(locale: string) {

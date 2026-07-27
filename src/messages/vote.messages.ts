@@ -20,7 +20,7 @@ export const started = Msgs.def(
 					return []
 				})
 		const lines = MsgFmt.voteChoicesLines(layerIds, undefined, displayProps).join('\n')
-		const formattedInterval = MsgFmt.formatInterval(duration, { terse: false, round: 'second' })
+		const formattedInterval = MsgFmt.formatInterval(duration, { round: 'second' })
 		const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
 		const text = `Vote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.\n`
 
@@ -75,7 +75,7 @@ export const voteReminder = Msgs.def(
 		finalReminder = false,
 		displayProps: DH.LayerDisplayProp[],
 	) => {
-		const durationStr = MsgFmt.formatInterval(timeLeft, { terse: false, round: 'second' })
+		const durationStr = MsgFmt.formatInterval(timeLeft, { round: 'second' })
 		const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
 		const lines = MsgFmt.voteChoicesLines(
 			state.choiceIds.flatMap((id) => {
