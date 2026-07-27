@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type EmuPlayer, makePlayer } from '@/emulator'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { LAYERS, queue } from '../harness/arrange'
+import { cmd, LAYERS, queue } from '../harness/arrange'
 
 // Admin actions taken from in-game chat. Each one has to reach the game over RCON, carry the reason
 // text the admin picked, and land on the right targets -- one player for the player commands, every
@@ -36,17 +36,17 @@ beforeAll(async () => {
 		adminSteamIds: [ADMIN_STEAM_ID],
 		globalSettings: (s) => {
 			s.adminActionReasons = REASONS as typeof s.adminActionReasons
-			// shortcuts onto !warn: one pins the reason outright, the other only supplies it when the caller
+			// shortcuts onto warn: one pins the reason outright, the other only supplies it when the caller
 			// leaves it out
 			s.commands.warn.triggers.push(
-				{ string: '!warntox', args: '{{arg1}} tox' },
-				{ string: '!warnsp', args: '{{arg1}} {{^rest2}}tox{{/rest2}}{{rest2}}' },
+				{ string: cmd('warntox'), args: '{{arg1}} tox' },
+				{ string: cmd('warnsp'), args: '{{arg1}} {{^rest2}}tox{{/rest2}}{{rest2}}' },
 			)
 		},
 	})
 	app.emu.world.connectPlayer(admin)
 
-	// a squad of two on the admin's team, so `!warnsquad 1` (no team token) resolves against it
+	// a squad of two on the admin's team, so `warnsquad 1` (no team token) resolves against it
 	leader = app.emu.world.connectPlayer(makePlayer({ name: ' squad_leader', teamId: 1 }))
 	member = app.emu.world.connectPlayer(makePlayer({ name: ' squad_member', teamId: 1 }))
 	const squad = app.emu.world.createSquad(leader, 'ALPHA')
@@ -68,7 +68,7 @@ function warnsTo(player: EmuPlayer): string[] {
 describe('admin actions from in-game chat', () => {
 	it('warns a single player with the reason the admin named', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!warn squad_member tox')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('warn squad_member tox'))
 
 		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn to the player', timeoutMs: 20_000 })
 		// the reason's warn text is what the player is told, verbatim
@@ -81,7 +81,7 @@ describe('admin actions from in-game chat', () => {
 	// the result is dispatched as if the admin had typed the command out in full
 	it('warns through a trigger that pins the reason', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!warntox squad_member')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('warntox squad_member'))
 
 		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn through the shortcut', timeoutMs: 20_000 })
 		// the pinned token went through reason resolution, not just into the message: `tox` is a keyword
@@ -91,13 +91,13 @@ describe('admin actions from in-game chat', () => {
 
 	it('fills an omitted word from the template default, and yields to one that is typed', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!warnsp squad_member')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('warnsp squad_member'))
 
 		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn using the default reason', timeoutMs: 20_000 })
 		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
 
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', '!warnsp squad_member being rude')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('warnsp squad_member being rude'))
 
 		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn with the reason the caller typed', timeoutMs: 20_000 })
 		expect(warnsTo(member)[0]).toContain('being rude')
@@ -106,7 +106,7 @@ describe('admin actions from in-game chat', () => {
 	it('warns every member of a squad', async () => {
 		app.emu.rcon.commandLog.length = 0
 		// no team token: the squad is resolved on the sender's own team
-		app.emu.world.chat(admin, 'ChatAdmin', '!warnsquad 1 tox')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('warnsquad 1 tox'))
 
 		await app.waitFor(
 			() =>
@@ -124,7 +124,7 @@ describe('admin actions from in-game chat', () => {
 		await app.waitForRosterSync()
 		app.emu.rcon.commandLog.length = 0
 
-		app.emu.world.chat(admin, 'ChatAdmin', '!kick nuisance tox')
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('kick nuisance tox'))
 
 		const kick = await app.emu.expectCommand(new RegExp(`^AdminKick "${nuisance.eos}"`), { timeoutMs: 20_000 })
 		// AdminKick delivers the reason itself, so no follow-up warn is needed
