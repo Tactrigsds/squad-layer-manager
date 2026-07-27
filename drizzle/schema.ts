@@ -282,24 +282,51 @@ export const globalSettings = sqliteTable('globalSettings', {
 
 export type Server = typeof servers.$inferSelect
 
-export const users = sqliteTable('users', {
+// Every discord account SLM has had reason to record, whether or not it belongs to an SLM user. Steam accounts can
+// be linked to a player who has never signed in, so the identity a link points at cannot be an SLM user row.
+export const discordAccounts = sqliteTable('discordAccounts', {
 	discordId: bigintText('discordId').notNull().primaryKey(),
 	// https://support.discord.com/hc/en-us/articles/12620128861463-New-Usernames-Display-Names#h_01GXPQAGG6W477HSC5SR053QG1
 	username: text('username').notNull(),
+	updatedAt: timestamp('updatedAt')
+		.$defaultFn(() => new Date())
+		.notNull(),
+})
+
+export type DiscordAccount = typeof discordAccounts.$inferSelect
+
+// A discord account that has signed into SLM. The row is what every ownership and actor reference means by "a user",
+// so it stays distinct from the account itself: recording somebody's identity must not grant them one.
+export const users = sqliteTable('users', {
+	discordId: bigintText('discordId')
+		.notNull()
+		.primaryKey()
+		.references(() => discordAccounts.discordId, { onDelete: 'cascade' }),
+	// SLM-local display override the user sets for themselves, unlike `username`, which mirrors discord
 	nickname: text('nickname'),
 })
 
 export type User = typeof users.$inferSelect
 
-// steam accounts a user has self-linked. steam64Id is the pk (globally unique), so a steam account belongs to
-// at most one discord user. Deliberately no FK to `players`: admins may link accounts not present on any server.
+// How a steam link came to exist. 'self-serve' is the owner linking their own account; 'assigned' is another SLM
+// user linking it on their behalf, which is the only case with an actor worth recording.
+export const LINK_ORIGINS = ['self-serve', 'assigned'] as const
+export type LinkOrigin = (typeof LINK_ORIGINS)[number]
+
+// steam accounts linked to a discord account. steam64Id is the pk (globally unique), so a steam account belongs to
+// at most one discord account. Deliberately no FK to `players`: admins may link accounts not present on any server.
 export const linkedSteamAccounts = sqliteTable(
 	'linkedSteamAccounts',
 	{
 		steam64Id: bigintText('steam64Id').primaryKey(),
 		discordId: bigintText('discordId')
 			.notNull()
-			.references(() => users.discordId, { onDelete: 'cascade' }),
+			.references(() => discordAccounts.discordId, { onDelete: 'cascade' }),
+		origin: text('origin', { enum: LINK_ORIGINS }).notNull(),
+		// who assigned it, null for a self-serve link and for an assigner whose user row has since gone. Kept
+		// alongside `origin` rather than inferred from it, so losing the actor never turns an assignment into a
+		// self-serve link.
+		linkedBy: bigintText('linkedBy').references(() => users.discordId, { onDelete: 'set null' }),
 		createdAt: timestamp('createdAt')
 			.$defaultFn(() => new Date())
 			.notNull(),
@@ -308,6 +335,8 @@ export const linkedSteamAccounts = sqliteTable(
 		linkedSteamDiscordIdIndex: index('linkedSteamDiscordIdIndex').on(table.discordId),
 	}),
 )
+
+export type LinkedSteamAccount = typeof linkedSteamAccounts.$inferSelect
 
 export const sessions = sqliteTable(
 	'sessions',
