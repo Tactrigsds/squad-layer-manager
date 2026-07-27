@@ -6,6 +6,7 @@ import React from 'react'
 
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
+import { useDebounced } from '@/hooks/use-debounce'
 import * as Arr from '@/lib/array-utils'
 import * as Obj from '@/lib/object-utils'
 import type { Clearable, Focusable } from '@/lib/react'
@@ -35,6 +36,7 @@ import { Button, buttonVariants } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
 import { Input } from './ui/input'
 import { Separator } from './ui/separator.tsx'
+import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 const FilterTextEditor = React.lazy(() => import('./filter-text-editor'))
@@ -209,7 +211,7 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	}
 
 	return (
-		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId}>
+		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId} stores={props.stores}>
 			<BlockNodeControlPanel nodeId={props.nodeId} stores={props.stores} />
 			{immediateChildren.map((id) => {
 				const dragItem: DND.DragItem = { type: 'filter-node', id }
@@ -316,6 +318,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
 				]}
 			/>
+			<CommentButton nodeId={props.nodeId} stores={props.stores} />
 			{!isRootNode && (
 				<Button size="icon" variant="ghost" onClick={deleteNode}>
 					<Minus color="hsl(var(--destructive))" />
@@ -367,11 +370,13 @@ const NodeWrapper = ({
 	className,
 	path,
 	nodeId,
+	stores,
 }: {
 	children: React.ReactNode
 	className?: string
 	path: Sparse.NodePath
 	nodeId: string
+	stores: EditFrame.KeyProp
 }) => {
 	const dragItem: DND.DragItem = { type: 'filter-node', id: nodeId }
 	const depth = path.length
@@ -398,7 +403,10 @@ const NodeWrapper = ({
 					>
 						<Icons.GripVertical />
 					</button>
-					<div className={cn('min-w-0', className)}>{children}</div>
+					<div className="flex min-w-0 flex-1 flex-col">
+						<NodeComment nodeId={nodeId} stores={stores} />
+						<div className={cn('min-w-0', className)}>{children}</div>
+					</div>
 				</>
 			)}
 		</div>
@@ -406,6 +414,89 @@ const NodeWrapper = ({
 }
 
 type NodeProps = { nodeId: string; stores: EditFrame.KeyProp }
+
+// how much of a comment survives the collapsed view. whitespace is flattened first so the preview is
+// one line regardless of how the comment was written
+const COMMENT_PREVIEW_LENGTH = 160
+
+function NodeComment(props: NodeProps) {
+	const [comment, edited] = Zus.useStore(
+		props.stores.filterEditor,
+		Zus.useShallow((s) => [EditFrame.Sel.comment(props.nodeId)(s), EditFrame.Sel.commentEdited(props.nodeId)(s)] as const),
+	)
+	const [expanded, setExpanded] = React.useState(false)
+	const setComment = React.useCallback(
+		(value: string) => EditFrame.Actions.setNodeComment(props.stores, props.nodeId, value),
+		[props.stores, props.nodeId],
+	)
+	const setCommentDebounced = useDebounced({ delay: 250, onChange: setComment })
+
+	if (edited) {
+		return (
+			<Textarea
+				aria-label="Node comment"
+				autoFocus
+				rows={3}
+				maxLength={F.NODE_COMMENT_MAX_LENGTH}
+				placeholder="Comment"
+				defaultValue={comment ?? ''}
+				className="my-1 text-xs"
+				onChange={(e) => setCommentDebounced(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === 'Escape') e.currentTarget.blur()
+				}}
+				onBlur={(e) => {
+					setComment(e.target.value)
+					EditFrame.Actions.setCommentEdited(props.stores, props.nodeId, false)
+				}}
+			/>
+		)
+	}
+
+	if (!comment) return null
+
+	const flattened = comment.replace(/\s+/g, ' ')
+	const truncated = flattened.length > COMMENT_PREVIEW_LENGTH
+	const shown = !truncated || expanded ? comment : flattened.slice(0, COMMENT_PREVIEW_LENGTH).trimEnd() + '…'
+
+	return (
+		<div className="my-1 flex items-start gap-1 border-l-2 border-muted pl-2 text-xs text-muted-foreground">
+			<p className="min-w-0 break-words whitespace-pre-wrap">{shown}</p>
+			{truncated && (
+				<button type="button" className="shrink-0 underline" onClick={() => setExpanded((v) => !v)}>
+					{expanded ? 'less' : 'more'}
+				</button>
+			)}
+		</div>
+	)
+}
+
+function CommentButton(props: NodeProps) {
+	const [hasComment, edited] = Zus.useStore(
+		props.stores.filterEditor,
+		Zus.useShallow((s) => [!!EditFrame.Sel.comment(props.nodeId)(s), EditFrame.Sel.commentEdited(props.nodeId)(s)] as const),
+	)
+	const label = hasComment ? 'Edit comment' : 'Add comment'
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					size="icon"
+					variant="ghost"
+					aria-label={label}
+					aria-pressed={edited}
+					onClick={() => EditFrame.Actions.setCommentEdited(props.stores, props.nodeId, !edited)}
+				>
+					<Icons.MessageSquareText color={hasComment ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))'} />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p>{label}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
 export function LeafFilterNode(props: NodeProps) {
 	const editedFilterId = Zus.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
@@ -415,22 +506,25 @@ export function LeafFilterNode(props: NodeProps) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 
 	const opCluster = depth > 0 && (
-		<Button
-			size="icon"
-			variant="ghost"
-			onClick={() => {
-				actions.common.delete()
-			}}
-		>
-			<Minus color="hsl(var(--destructive))" />
-		</Button>
+		<>
+			<CommentButton nodeId={props.nodeId} stores={props.stores} />
+			<Button
+				size="icon"
+				variant="ghost"
+				onClick={() => {
+					actions.common.delete()
+				}}
+			>
+				<Minus color="hsl(var(--destructive))" />
+			</Button>
+		</>
 	)
 
 	if (F.isCompNode(node)) {
 		const subject = node.args[0]
 		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
 		return (
-			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
+			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				{isSelectLayers ? (
 					<SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				) : (
@@ -442,7 +536,7 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isMatchupNode(node)) {
 		return (
-			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
+			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				{opCluster}
 			</NodeWrapper>
@@ -450,7 +544,7 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isApplyFilterNode(node)) {
 		return (
-			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId}>
+			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<ComboBox
 					allowEmpty={false}
 					title="mode"
