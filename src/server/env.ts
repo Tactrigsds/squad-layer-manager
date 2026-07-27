@@ -429,6 +429,16 @@ export const groups = {
 	},
 
 	battlemetrics: {
+		// resolved from BM_PAT and BM_HOST when left unset, in ensureEnvSetup
+		BM_ENABLED: z
+			.stringbool()
+			.default(false)
+			.meta({
+				description:
+					'disables the battlemetrics integration entirely (no polling, no flag or profile lookups, and the features that read it report it as unconfigured). Defaults to off when there is no BM_PAT and BM_HOST is the real api, since there is nothing to authenticate with.',
+				envExample: { include: 'commented', dev: { include: 'commented' } },
+			}),
+
 		BM_HOST: z.url().prefault(BATTLEMETRICS_API).meta({
 			description: 'the battlemetrics api.',
 		}),
@@ -444,7 +454,7 @@ export const groups = {
 - player flags (add/remove; it does not need to create new ones)
 - player notes (read & create)
 - rcon (read)
-Leave it empty if you have no battlemetrics org: the app boots without it, and the features that read it fail.`,
+Leave it empty if you have no battlemetrics org: the integration turns itself off (see BM_ENABLED) and the features that read it report it as unconfigured.`,
 			}),
 
 		BM_ORG_ID: z
@@ -591,7 +601,7 @@ const DEMO_DEFAULTS: Record<string, string> = {
 // instance and the test harness both hand over inert credentials alongside a stub to spend them on, and that
 // is a demo rather than a contradiction of one.
 const discordIsTurnedOff = () => groups.discord.DISCORD_ENABLED.safeParse(rawEnv.DISCORD_ENABLED).data === false
-const battlemetricsIsTheRealApi = () => (rawEnv.BM_HOST ?? BATTLEMETRICS_API) === BATTLEMETRICS_API
+const battlemetricsIsAStub = () => (rawEnv.BM_HOST ?? BATTLEMETRICS_API) !== BATTLEMETRICS_API
 
 const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; reason: string }[] = [
 	{
@@ -612,9 +622,14 @@ const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; r
 	},
 	{
 		keys: ['BM_PAT'],
-		conflicts: () => battlemetricsIsTheRealApi(),
+		conflicts: () => !battlemetricsIsAStub(),
 		reason:
 			'a demo would write player flags and notes to the real battlemetrics org the token belongs to. A BM_HOST pointed at a stub is accepted',
+	},
+	{
+		keys: ['BM_ENABLED'],
+		conflicts: (value) => groups.battlemetrics.BM_ENABLED.safeParse(value).data === true && !battlemetricsIsAStub(),
+		reason: 'a demo has no battlemetrics org to read or write. A BM_HOST pointed at a stub is accepted',
 	},
 ]
 
@@ -674,6 +689,10 @@ export function ensureEnvSetup() {
 			rawEnv[key] ??= value
 		}
 	}
+
+	// Battlemetrics has no switch of its own for an install to leave alone, so an install that never configured it
+	// says so by omission. Reaching for the api anyway is a 401 per player, against a third party, forever.
+	rawEnv.BM_ENABLED ??= String(rawEnv.BM_PAT !== undefined || battlemetricsIsAStub())
 
 	const toValidate = buildForValidation()
 	// both of these are what DEMO deliberately does, so they only guard a real deployment
