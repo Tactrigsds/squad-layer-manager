@@ -324,7 +324,7 @@ export async function broadcast(ctx: SR.Ctx.Rcon & CS.AbortSignal, message: stri
 	}
 }
 
-export async function getPlayer(ctx: SR.Ctx & CS.AbortSignal, query: SM.PlayerIds.IdQuery, opts?: { ttl?: number }) {
+export async function getPlayer(ctx: SR.Ctx & CS.AbortSignal, query: SM.PlayerIds.HardIdQueryOrPlayerId, opts?: { ttl?: number }) {
 	const playersRes = await ctx.squadRcon.teams.get(ctx, opts)
 	if (playersRes.code !== 'ok') return playersRes
 	const players = playersRes.players
