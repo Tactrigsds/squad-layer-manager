@@ -89,6 +89,19 @@ export const steamUpdateFailed = Msgs.def((reason: string) => ({
 	toast: () => ['Failed to update', { description: reason }],
 }))
 
+export const steamLinkAssigned = Msgs.def((discordName: string) => ({
+	toast: () => ['Steam account linked', { description: `Linked to ${discordName}.` }],
+}))
+
+export const steamLinkRemoved = Msgs.def(() => ({ toast: () => ['Steam link removed'] }))
+
+// the picker only searches the home guild, so an id typed in by hand is the way to reach this
+export const steamLinkNotAGuildMember = Msgs.def((discordId: string) => ({
+	toast: () => ['Not a member of this Discord', { description: `${discordId} could not be resolved in the home guild.` }],
+}))
+
+export const steamLinkFailed = Msgs.def(() => ({ toast: () => ['Failed to update the link'] }))
+
 // One toast for the whole condition, kept alive and updated in place while it holds, so its id, its infinite
 // duration and its action handler stay at the call site.
 export const otherSessionsActive = Msgs.def((count: number) => ({

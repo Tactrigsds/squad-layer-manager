@@ -245,6 +245,28 @@ export async function fetchMember(guildId: bigint, memberId: bigint) {
 	}
 }
 
+// The role ids held by each of `memberIds`, for callers resolving many identities at once. Fetched in batches
+// rather than one member at a time: the gateway takes up to 100 ids per request, and a member who has left the
+// guild is simply absent from the result rather than failing the batch.
+export async function fetchMembersRoles(memberIds: bigint[]): Promise<Map<bigint, string[]>> {
+	const roles = new Map<bigint, string[]>()
+	if (memberIds.length === 0) return roles
+	const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
+	if (guildRes.code !== 'ok') return roles
+
+	const BATCH = 100
+	for (let i = 0; i < memberIds.length; i += BATCH) {
+		const batch = memberIds.slice(i, i + BATCH).map((id) => id.toString())
+		try {
+			const members = await guildRes.guild.members.fetch({ user: batch })
+			for (const member of members.values()) roles.set(BigInt(member.id), [...member.roles.cache.keys()])
+		} catch (err) {
+			log.warn({ err }, 'Failed to fetch a batch of %d guild members', batch.length)
+		}
+	}
+	return roles
+}
+
 export async function fetchGuildRoles() {
 	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
 	if (res.code !== 'ok') {

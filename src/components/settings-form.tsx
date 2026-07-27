@@ -490,6 +490,114 @@ function RuleDropSeparator({ position, groupingId, idx }: { position: 'before' |
 // sentinel option: leaves the list and lets a name be typed instead
 const ADD_NEW_GROUP = '__add-new-group__'
 
+// A rule of the given source with nothing filled in yet, keeping only the group, which every source shares.
+function emptyRuleFor(type: PG.GroupRuleSource, group: string): PG.GroupRule {
+	switch (type) {
+		case 'battlemetrics':
+			return { type, flag: '', group }
+		case 'admin-list':
+			return { type, adminGroup: '', group }
+		case 'server-admin':
+			return { type, group }
+		case 'name-regex':
+			return { type, pattern: '', group }
+		case 'discord-role':
+			return { type, roleId: '', group }
+		default:
+			return assertNever(type)
+	}
+}
+
+// What a rule matches on, which is the one part of a row that differs per source. `server-admin` has nothing to
+// pick: being an admin is the whole condition, so the cell says so rather than showing an empty control.
+function RuleValueField({
+	rule,
+	idx,
+	usedFlags,
+	usedAdminGroups,
+	usedRoleIds,
+	adminGroupOptions,
+	value$,
+	reset$,
+	onChange,
+}: {
+	rule: PG.GroupRule
+	idx: number
+	usedFlags: string[]
+	usedAdminGroups: string[]
+	usedRoleIds: string[]
+	adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) => void
+}) {
+	switch (rule.type) {
+		case 'battlemetrics':
+			return <BmFlagSelect value={rule.flag || undefined} exclude={usedFlags} onChange={(flag) => onChange(idx, { flag })} />
+		case 'admin-list':
+			return (
+				<ComboBox
+					title={PG_Msgs.adminGroupPicker().text()}
+					value={rule.adminGroup || undefined}
+					options={
+						adminGroupOptions === LOADING
+							? LOADING
+							: adminGroupOptions.filter((o) => o.value === rule.adminGroup || !usedAdminGroups.includes(o.value))
+					}
+					onSelect={(adminGroup) => {
+						if (adminGroup) onChange(idx, { adminGroup })
+					}}
+				/>
+			)
+		case 'server-admin':
+			return <span className="text-xs text-muted-foreground">{PG_Msgs.serverAdminRuleValue().text()}</span>
+		case 'name-regex':
+			return <RulePatternField rule={rule} idx={idx} value$={value$} reset$={reset$} onChange={onChange} />
+		case 'discord-role':
+			return (
+				<DiscordRoleSelect
+					value={rule.roleId}
+					onChange={(roleId) => {
+						if (!usedRoleIds.includes(roleId) || roleId === rule.roleId) onChange(idx, { roleId })
+					}}
+				/>
+			)
+		default:
+			return assertNever(rule)
+	}
+}
+
+// Uncontrolled like the group name beside it, for the same reason: re-emitting on every keystroke would clobber the
+// one in flight. The pattern is validated as it is typed rather than only on save, since an invalid one is rejected
+// by the schema and would otherwise fail the whole settings write with nothing pointing at this row.
+function RulePatternField({
+	rule,
+	idx,
+	value$,
+	reset$,
+	onChange,
+}: {
+	rule: Extract<PG.GroupRule, { type: 'name-regex' }>
+	idx: number
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (idx: number, patch: Partial<PG.GroupRule>, quiet?: boolean) => void
+}) {
+	const invalid = rule.pattern.trim() !== '' && PG.compilePattern(rule.pattern) === null
+	return (
+		<div className="min-w-0 space-y-1">
+			<TextInputField
+				value$={scopeValue(scopeValue(scopeValue(value$, 'rules'), idx), 'pattern')}
+				reset$={reset$}
+				onChange={(next) => onChange(idx, { pattern: (next as string) ?? '' }, true)}
+				numeric={false}
+				placeholder={PG_Msgs.namePatternPlaceholder().text()}
+			/>
+			{invalid && <p className="text-xs text-destructive">{PG_Msgs.invalidNamePattern().text()}</p>}
+		</div>
+	)
+}
+
 function RuleRow({
 	rule,
 	idx,
@@ -498,6 +606,7 @@ function RuleRow({
 	groupColors,
 	usedFlags,
 	usedAdminGroups,
+	usedRoleIds,
 	adminGroupOptions,
 	value$,
 	reset$,
@@ -512,6 +621,7 @@ function RuleRow({
 	groupColors: Record<string, string>
 	usedFlags: string[]
 	usedAdminGroups: string[]
+	usedRoleIds: string[]
 	adminGroupOptions: ComboBoxOption<string>[] | typeof LOADING
 	value$: ValueState
 	reset$: Rx.Subject<void>
@@ -529,7 +639,7 @@ function RuleRow({
 	// admin-list rule would be written straight back out again
 	function setSource(type: PG.GroupRuleSource) {
 		if (type === rule.type) return
-		onReplace(idx, type === 'battlemetrics' ? { type, flag: '', group: rule.group } : { type, adminGroup: '', group: rule.group })
+		onReplace(idx, emptyRuleFor(type, rule.group))
 	}
 	return (
 		<li
@@ -552,28 +662,23 @@ function RuleRow({
 				</SelectTrigger>
 				<SelectContent>
 					{PG.GROUP_RULE_SOURCES.map((source) => (
-						<SelectItem key={source} value={source}>
+						<SelectItem key={source} value={source} title={PG_Msgs.groupRuleSourceHints[source]}>
 							{PG_Msgs.groupRuleSourceLabels[source]}
 						</SelectItem>
 					))}
 				</SelectContent>
 			</Select>
-			{rule.type === 'battlemetrics' ? (
-				<BmFlagSelect value={rule.flag || undefined} exclude={usedFlags} onChange={(flag) => onChange(idx, { flag })} />
-			) : (
-				<ComboBox
-					title={PG_Msgs.adminGroupPicker().text()}
-					value={rule.adminGroup || undefined}
-					options={
-						adminGroupOptions === LOADING
-							? LOADING
-							: adminGroupOptions.filter((o) => o.value === rule.adminGroup || !usedAdminGroups.includes(o.value))
-					}
-					onSelect={(adminGroup) => {
-						if (adminGroup) onChange(idx, { adminGroup })
-					}}
-				/>
-			)}
+			<RuleValueField
+				rule={rule}
+				idx={idx}
+				usedFlags={usedFlags}
+				usedAdminGroups={usedAdminGroups}
+				usedRoleIds={usedRoleIds}
+				adminGroupOptions={adminGroupOptions}
+				value$={value$}
+				reset$={reset$}
+				onChange={onChange}
+			/>
 			<Icons.ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 			{namingNewGroup ? (
 				<div className="flex min-w-0 items-center gap-1">
@@ -726,7 +831,7 @@ function GroupingCard({
 						<span />
 						<span />
 						<span />
-						<span>{PG_Msgs.flagColumn().text()}</span>
+						<span>{PG_Msgs.matchesColumn().text()}</span>
 						<span />
 						<span>{PG_Msgs.mappedGroupingColumn().text()}</span>
 						<span />
@@ -745,6 +850,7 @@ function GroupingCard({
 								groupColors={groupColors}
 								usedFlags={rules.flatMap((r) => (r.type === 'battlemetrics' ? [r.flag] : []))}
 								usedAdminGroups={rules.flatMap((r) => (r.type === 'admin-list' ? [r.adminGroup] : []))}
+								usedRoleIds={rules.flatMap((r) => (r.type === 'discord-role' ? [r.roleId] : []))}
 								adminGroupOptions={adminGroupOptions}
 								value$={value$}
 								reset$={reset$}

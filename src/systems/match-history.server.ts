@@ -105,7 +105,8 @@ export const loadState = Instr.spanOp(
 				.with(recentMatchesCte)
 				.select()
 				.from(recentMatchesCte)
-				.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId)),
+				.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId))
+				.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId)),
 			ctx
 				.db()
 				.with(recentMatchesCte)
@@ -140,14 +141,16 @@ export const loadState = Instr.spanOp(
 				...m,
 				isCurrentMatch: m.historyEntryId === currentMatchId,
 			}))
-		const userRows = new Map<bigint, Schema.User>()
+		const userRows = new Map<bigint, UsersClient.DbUser>()
 		for (const row of rows) {
 			const isCurrentMatch = row.recent_matches.id === currentMatchId!
 			// @ts-expect-error idgaf
 			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches), isCurrentMatch)
 			state.recentMatches.push(details)
 
-			if (row.users) userRows.set(row.users.discordId, row.users)
+			if (row.users && row.discordAccounts) {
+				userRows.set(row.users.discordId, { ...row.users, username: row.discordAccounts.username })
+			}
 		}
 
 		// buildUser reaches the Discord REST API, which yields to the event loop. Enriching here would hold the

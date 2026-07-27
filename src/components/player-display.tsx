@@ -71,7 +71,7 @@ export function PlayerDisplay({
 }: PlayerDisplayProps) {
 	const playerId = SM.PlayerIds.getPlayerId(player.ids)
 	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
-	const groupColor = usePlayerGroupColor(playerId, player.adminGroups ?? [])
+	const groupColor = usePlayerGroupColor(playerId, player)
 
 	return (
 		<span className={cn('inline-flex items-baseline', className)}>

@@ -138,4 +138,32 @@ describe('applyPendingMigrations', () => {
 			other.close()
 		}
 	})
+
+	// A rebuild drops the original table. With enforcement on -- which better-sqlite3 does per connection -- that
+	// fires every inbound cascade, so an unrelated row referencing it loses its reference.
+	test('a table rebuild does not fire the cascades of tables referencing it', async () => {
+		driver.exec(`
+			CREATE TABLE owners (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+			CREATE TABLE owned (id TEXT PRIMARY KEY, owner TEXT REFERENCES owners(id) ON DELETE set null);
+			INSERT INTO owners (id, name) VALUES ('u', 'alice');
+			INSERT INTO owned (id, owner) VALUES ('f', 'u');
+		`)
+		writeSqlMigration(
+			'0001_rebuild_owners',
+			`CREATE TABLE __new_owners (id TEXT PRIMARY KEY);
+			 INSERT INTO __new_owners (id) SELECT id FROM owners;
+			 DROP TABLE owners;
+			 ALTER TABLE __new_owners RENAME TO owners;`,
+		)
+		await apply()
+
+		expect(driver.prepare(`SELECT owner FROM owned WHERE id = 'f'`).get()).toEqual({ owner: 'u' })
+	})
+
+	test('restores foreign key enforcement afterwards', async () => {
+		expect(driver.pragma('foreign_keys', { simple: true })).toBe(1)
+		writeSqlMigration('0001_first', 'CREATE TABLE first (id INTEGER PRIMARY KEY)')
+		await apply()
+		expect(driver.pragma('foreign_keys', { simple: true })).toBe(1)
+	})
 })
