@@ -36,6 +36,7 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/systems/battlemetrics.client'
+import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -310,12 +311,14 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 // carries no name to show and no roles for a grouping rule to read.
 function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('users:manage-steam-links'))
+	const discordEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.discordEnabled)
 	const linkQuery = UsersClient.useSteamAccountLink(denied ? undefined : steamId)
 	const assign = UsersClient.useAssignSteamLinkMutation()
 	const remove = UsersClient.useRemoveSteamLinkMutation()
 	const [picked, setPicked] = React.useState('')
 
-	if (denied || !steamId) return null
+	// a link points at a home-guild member, which is nobody without the guild to resolve them from
+	if (denied || !steamId || !discordEnabled) return null
 	const link = linkQuery.data?.code === 'ok' ? linkQuery.data.link : null
 	const pending = assign.isPending || remove.isPending
 
@@ -368,7 +371,9 @@ function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
 
 // on-demand bust of this player's cached BM data; the fresh flags/profile arrive over the watch stream
 function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
+	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
 	const refresh = useRefreshPlayerBmData()
+	if (!bmEnabled) return null
 	return (
 		<button
 			type="button"

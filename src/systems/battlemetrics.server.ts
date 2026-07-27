@@ -31,9 +31,20 @@ const orpcBase = getOrpcBase(module)
 let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
 
+// Every path out of this module is gated on it: with no token, a lookup is a 401 against a third party rather
+// than a missing flag, and the pollers would spend one per online player forever.
+export function isEnabled() {
+	return ENV?.BM_ENABLED ?? false
+}
+
 export async function setup() {
 	log = module.getLogger()
 	ENV = getEnv()
+
+	if (!ENV.BM_ENABLED) {
+		log.info('Battlemetrics integration is off (BM_ENABLED=false); player flags and profiles are unavailable')
+		return
+	}
 
 	try {
 		const stored = await PersistedCache.load<PersistedCacheValue>(CACHE_PERSIST_KEY)
@@ -299,6 +310,8 @@ async function bmFetch<T = null>(
 			attrs: () => ({ [ATTRS.Http.METHOD]: method, [ATTRS.Http.PATH]: path }),
 		},
 		async (ctx: CS.Ctx & CS.AbortSignal) => {
+			// the callers below all return early instead; reaching here means one of them stopped doing so
+			if (!ENV.BM_ENABLED) throw new Error('The battlemetrics integration is off (BM_ENABLED=false)')
 			const url = `${ENV.BM_HOST}${path}`
 
 			const headers: Record<string, string> = {
@@ -408,6 +421,7 @@ const OrgFlagsResponse = z.object({
 })
 
 export const getOrgFlags = Instr.spanOp('getOrgFlags', { module }, async (ctx: CS.Ctx & CS.AbortSignal): Promise<BM.PlayerFlag[]> => {
+	if (!ENV.BM_ENABLED) return []
 	if (orgFlagsCache) return orgFlagsCache
 
 	if (!orgFlagsFetchPromise) {
@@ -580,6 +594,7 @@ export const fetchSinglePlayerBmData = Instr.spanOp(
 	'fetchSinglePlayerBmData',
 	{ module, attrs: (_ctx, playerIds) => ({ [ATTRS.Player.EOS_ID]: playerIds.eos, [ATTRS.Player.STEAM_ID]: playerIds.steam }) },
 	async (ctx: CS.Ctx & CS.AbortSignal, playerIds: SM.PlayerIds.IdQuery<'eos'>): Promise<BM.PlayerFlagsAndProfile | null> => {
+		if (!ENV.BM_ENABLED) return null
 		const eosId = playerIds.eos
 		const cached = getCachedPlayer(eosId)
 		if (cached) return cached
@@ -600,6 +615,7 @@ export const fetchSinglePlayerBmData = Instr.spanOp(
 // -------- interval-based bulk polling --------
 
 export function setupSquadServerInstance(ctx: C.ManagedServer) {
+	if (!ENV.BM_ENABLED) return
 	const serverId = ctx.serverId
 
 	ctx.cleanup.push(
@@ -699,6 +715,7 @@ export const router = {
 		.handler(async ({ input, context: ctx }) => {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
 			if (denyRes) return denyRes
+			if (!ENV.BM_ENABLED) return { code: 'err:disabled' as const }
 
 			const orgFlags = await getOrgFlags(ctx)
 			// the client marks those fields required, but it's the client of a permission-gated mutation: re-check here
@@ -757,6 +774,7 @@ export const router = {
 		.handler(async ({ input, context: ctx }) => {
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('battlemetrics:write-flags'))
 			if (denyRes) return denyRes
+			if (!ENV.BM_ENABLED) return { code: 'err:disabled' as const }
 
 			const orgFlags = await getOrgFlags(ctx)
 			const missing = BM.flagsMissingRequiredNote(input.add, Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote)
