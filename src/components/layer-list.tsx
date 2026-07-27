@@ -785,13 +785,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast(...V_Msgs.adminReceipt.aborted().toast())
+				toast(...V_Msgs.adminReceipt.autostartCancelled().toast())
 				break
 			default:
 				toast.error(res.msg)
 		}
-
-		toast(...V_Msgs.adminReceipt.autostartCancelled().toast())
 	}
 
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
