@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/lib/toast'
 import { formatVersion } from '@/lib/versioning'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as ConfigClient from '@/systems/config.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -81,7 +82,7 @@ export default function AboutDialog({ children, open, onOpenChange }: AboutDialo
 								className="absolute top-1 right-1 h-6 w-6"
 								onClick={async () => {
 									await navigator.clipboard.writeText(versionText)
-									toast('Copied to clipboard', { description: 'Version information has been copied' })
+									toast(...APP_Msgs.copiedToClipboard('Version information has been copied').toast())
 								}}
 							>
 								<Copy className="h-3 w-3" />

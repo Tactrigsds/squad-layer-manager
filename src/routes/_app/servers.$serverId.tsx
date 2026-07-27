@@ -11,6 +11,7 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as UP from '@/models/user-presence'
 import * as RootRouter from '@/root-router'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -179,13 +180,13 @@ function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string
 		enableBeforeUnload: wouldDiscard,
 		shouldBlockFn: () => {
 			if (!wouldDiscardRef.current) return false
-			return !confirm('Leaving discards your unsaved edits, since nobody else is editing. Are you sure you want to leave?')
+			return !confirm(LL_Msgs.leavingDiscardsEdits().text())
 		},
 	})
 
 	React.useEffect(
 		() => () => {
-			if (wouldDiscardRef.current) toast.info('Your unsaved edits have been discarded')
+			if (wouldDiscardRef.current) toast.info(...LL_Msgs.ownEditsDiscarded().toast())
 		},
 		[],
 	)
