@@ -6,6 +6,7 @@ import { BmFlagSelect, FlagLabel } from '@/components/bm-flag-picker'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
+import type * as Msgs from '@/messages/shared'
 import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -313,7 +314,7 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 	)
 }
 
-function useAddFlagsAction(playerIds: string[], targetDescription: string) {
+function useAddFlagsAction(playerIds: string[], target: Msgs.Target) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const openDialog = useAlertDialog()
 	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
@@ -327,7 +328,7 @@ function useAddFlagsAction(playerIds: string[], targetDescription: string) {
 		reasonsRef.current = {}
 		// the server re-diffs against live flags per player; refreshing keeps its skip-already-flagged decision current
 		void refresh.mutateAsync({ playerIds })
-		const msg = BM_Msgs.addFlags(targetDescription).confirm()
+		const msg = BM_Msgs.addFlags(target).confirm()
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -356,9 +357,9 @@ function useAddFlagsAction(playerIds: string[], targetDescription: string) {
 }
 
 // bulk-selection and squad menu entry: add-only flags across every target
-export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; targetDescription: string; label?: string }) {
+export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; target: Msgs.Target; label?: string }) {
 	const { Item } = props.slots
-	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.targetDescription)
+	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.target)
 	return (
 		<PermissionDeniedTooltip denied={denied}>
 			<Item onClick={addFlags} disabled={disabled}>

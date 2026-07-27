@@ -8,10 +8,10 @@ export const manageFlags = Msgs.def(() => ({
 	}),
 }))
 
-export const addFlags = Msgs.def((targetDescription: string) => ({
+export const addFlags = Msgs.def((target: Msgs.Target) => ({
 	confirm: () => ({
 		title: 'Add Flags',
-		description: `Add BattleMetrics flags to ${targetDescription}.`,
+		description: `Add BattleMetrics flags to ${Msgs.targetSubject(target)}.`,
 		confirmLabel: 'Apply',
 	}),
 }))
