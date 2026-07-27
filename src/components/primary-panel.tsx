@@ -7,6 +7,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 
@@ -93,7 +94,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 								value: 'queue',
 								label: (
 									<div className="flex justify-between">
-										<span>Queue ({queueLength})</span>
+										<span>{APP_Msgs.queueTab(queueLength).text()}</span>
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
@@ -113,7 +114,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 													matchActivity: (root) =>
 														UP.Trans.editingQueue(serverId).match(root) ||
 														UP.Trans.editingLayerRequests(serverId).match(root),
-													leaveMessage: 'Finished editing',
+													leaveMessage: APP_Msgs.finishedEditing().text(),
 												},
 											]}
 											className="min-w-0"
@@ -125,7 +126,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 								value: 'teams',
 								label: (
 									<div className="flex justify-between">
-										<span>Teams ({playerCount})</span>
+										<span>{APP_Msgs.teamsTab(playerCount).text()}</span>
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}

@@ -6,6 +6,7 @@ import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import { LOADING } from '@/components/combo-box/constants'
 import { useDebounced } from '@/hooks/use-debounce'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as RPC from '@/orpc.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -53,7 +54,7 @@ export function DiscordRoleSelect({ value, onChange, disabled }: { value: string
 		<div className="space-y-1">
 			<ComboBox
 				className="w-full"
-				title="role"
+				title={USR_Msgs.discordRolePicker().text()}
 				value={value || undefined}
 				options={options}
 				disabled={disabled}
@@ -61,11 +62,7 @@ export function DiscordRoleSelect({ value, onChange, disabled }: { value: string
 					if (id) onChange(id)
 				}}
 			/>
-			{unresolved && (
-				<UnresolvedNote>
-					This Discord role no longer exists in the server (its id is shown). Pick another role or remove this assignment.
-				</UnresolvedNote>
-			)}
+			{unresolved && <UnresolvedNote>{USR_Msgs.discordRoleUnresolved().text()}</UnresolvedNote>}
 		</div>
 	)
 }
@@ -141,15 +138,15 @@ export function DiscordMemberSelect({
 	const hasQuery = queryTerm.trim().length > 0
 	const searching = hasQuery && searchRes.isFetching
 	const comboOptions = searching && options.length === 0 ? LOADING : options
-	const emptyMessage = hasQuery ? 'No members found.' : 'Type a name or id to search members.'
+	const emptyMessage = hasQuery ? USR_Msgs.noDiscordMembersFound().text() : USR_Msgs.searchDiscordMembers().text()
 
 	return (
 		<div className="space-y-1">
 			<ComboBox
 				className="w-full"
-				title="member"
-				placeholder="Search members…"
-				searchPlaceholder="Search by name or id…"
+				title={USR_Msgs.discordMemberPicker().text()}
+				placeholder={USR_Msgs.discordMemberPlaceholder().text()}
+				searchPlaceholder={USR_Msgs.discordMemberSearchPlaceholder().text()}
 				emptyMessage={emptyMessage}
 				value={value || undefined}
 				options={comboOptions}
@@ -163,11 +160,7 @@ export function DiscordMemberSelect({
 					if (id) onChange(id)
 				}}
 			/>
-			{unresolved && (
-				<UnresolvedNote>
-					This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise unknown.
-				</UnresolvedNote>
-			)}
+			{unresolved && <UnresolvedNote>{USR_Msgs.discordMemberUnresolved().text()}</UnresolvedNote>}
 		</div>
 	)
 }
