@@ -226,9 +226,13 @@ async function repointServers(driver: Database) {
 async function resolveLogin(driver: Database) {
 	const db = drizzle(driver)
 	const superUsers = Env.getEnvBuilder({ ...Env.groups.rbac })().SUPER_USERS
-	const candidates =
-		superUsers.length > 0 ? await db.select().from(Schema.users).where(E.inArray(Schema.users.discordId, superUsers)).limit(1) : []
-	const [user] = candidates.length > 0 ? candidates : await db.select().from(Schema.users).limit(1)
+	const selectUsers = () =>
+		db
+			.select({ discordId: Schema.users.discordId, username: Schema.discordAccounts.username })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+	const candidates = superUsers.length > 0 ? await selectUsers().where(E.inArray(Schema.users.discordId, superUsers)).limit(1) : []
+	const [user] = candidates.length > 0 ? candidates : await selectUsers().limit(1)
 	if (!user) {
 		console.error('the cloned database has no users, so no login for this instance -- pass ?login=<username> yourself')
 		return

@@ -14,6 +14,7 @@ import type * as C from '@/server/context.ts'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AdminList from '@/systems/adminlist.server'
+import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
 
 const module = initModule('squad-rcon')
 let log!: CS.Logger
@@ -169,9 +170,11 @@ async function fetchPlayers(ctx: SR.Ctx.Rcon & CS.ServerId & CS.AbortSignal) {
 
 		data.isAdmin = false
 		data.adminGroups = []
+		data.discordRoles = []
 		if (data.ids.steam) {
 			data.isAdmin = SM.AdminList.isAdminInAny(adminLists, data.ids)
 			data.adminGroups = SM.AdminList.collectPlayerGroups(adminLists, data.ids)
+			data.discordRoles = PlayerDiscordRoles.rolesForSteamId(BigInt(data.ids.steam))
 		} else {
 			log.info('parsed player info data without steam id: %o', data)
 		}
