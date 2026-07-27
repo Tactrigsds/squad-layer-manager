@@ -437,8 +437,18 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// the bypass login resolves users by username against this table; the admin additionally gets
 	// every permission via the SUPER_USERS env bootstrap below
 	const users = [{ ...ADMIN_USER, steamIds: opts.adminSteamIds }, ...(opts.users ?? [])]
-	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId, username: u.username })))
-	const steamLinks = users.flatMap((u) => (u.steamIds ?? []).map((steamId) => ({ steam64Id: BigInt(steamId), discordId: u.discordId })))
+	await db
+		.insert(Schema.discordAccounts)
+		.values(users.map((u) => ({ discordId: u.discordId, username: u.username, updatedAt: new Date() })))
+	await db.insert(Schema.users).values(users.map((u) => ({ discordId: u.discordId })))
+	const steamLinks = users.flatMap((u) =>
+		(u.steamIds ?? []).map((steamId) => ({
+			steam64Id: BigInt(steamId),
+			discordId: u.discordId,
+			origin: 'self-serve' as const,
+			linkedBy: u.discordId,
+		})),
+	)
 	if (steamLinks.length > 0) await db.insert(Schema.linkedSteamAccounts).values(steamLinks)
 
 	// -------- filters --------

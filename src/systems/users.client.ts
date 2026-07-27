@@ -159,6 +159,27 @@ export function useUpdateLinkedSteamAccountsMutation() {
 	)
 }
 
+// the link on one player's steam account. Behind users:manage-steam-links server-side, so callers gate the UI on
+// the same permission rather than rendering a section that always errors.
+export function useSteamAccountLink(steamId: string | undefined) {
+	return useQuery(
+		RPC.orpc.users.getSteamAccountLink.queryOptions({ input: { steamId: steamId ?? '' }, enabled: !!steamId, staleTime: 30_000 }),
+	)
+}
+
+function invalidateSteamLinks() {
+	void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.getSteamAccountLink.key() })
+	void RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.users.getMyLinkedSteamAccounts.key() })
+}
+
+export function useAssignSteamLinkMutation() {
+	return useMutation(RPC.orpc.users.assignSteamLink.mutationOptions({ onSuccess: (res) => res.code === 'ok' && invalidateSteamLinks() }))
+}
+
+export function useRemoveSteamLinkMutation() {
+	return useMutation(RPC.orpc.users.removeSteamLink.mutationOptions({ onSuccess: (res) => res.code === 'ok' && invalidateSteamLinks() }))
+}
+
 export namespace Sel {
 	type Args = [user: RBAC.UserWithRbac, rbacStore: RbacClient.RbacStore]
 	type MaybeArgs = [user: RBAC.UserWithRbac | undefined, rbacStore: RbacClient.RbacStore]

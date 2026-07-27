@@ -94,20 +94,24 @@ async function recordFilterContributor(
 export const filtersRouter = {
 	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
 		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
+		const contributorAccounts = aliasedTable(Schema.discordAccounts, 'contributingAccounts')
 		const rows = await ctx
 			.db()
 			.select({
-				user: userContributors,
+				user: { discordId: userContributors.discordId, nickname: userContributors.nickname, username: contributorAccounts.username },
 				role: Schema.filterRoleContributors.roleId,
 			})
 			.from(Schema.filters)
 			.where(E.eq(Schema.filters.id, input))
 			.leftJoin(Schema.filterUserContributors, E.eq(Schema.filterUserContributors.filterId, input))
 			.leftJoin(userContributors, E.eq(userContributors.discordId, Schema.filterUserContributors.userId))
+			.leftJoin(contributorAccounts, E.eq(contributorAccounts.discordId, userContributors.discordId))
 			.leftJoin(Schema.filterRoleContributors, E.eq(Schema.filterRoleContributors.filterId, input))
 
 		return {
-			users: await Users.buildUsers(rows.map((row) => row.user).filter((user) => user !== null)),
+			users: await Users.buildUsers(
+				rows.map((row) => row.user).filter((user) => user.discordId !== null && user.username !== null) as Users.DbUser[],
+			),
 			roles: rows.map((row) => row.role).filter((role) => role !== null),
 		}
 	}),
@@ -423,7 +427,7 @@ export async function* watchFilters({
 }): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
 	const ids = [...new Set(Array.from(state.filters.values()).map((f) => f.owner))]
 
-	const dbUsers = await ctx.db().select().from(Schema.users).where(E.inArray(Schema.users.discordId, ids))
+	const dbUsers = await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids))
 
 	yield {
 		code: 'initial-value' as const,
@@ -433,11 +437,9 @@ export async function* watchFilters({
 		},
 	}
 	for await (const [ctx, mutation] of Rx.Ext.toAsyncGenerator(filterMutation$.pipe(Rx.Ext.withAbortSignal(signal!)))) {
-		const dbUsers = await ctx
-			.db()
-			.select()
-			.from(Schema.users)
-			.where(E.inArray(Schema.users.discordId, [...new Set([mutation.value.owner, mutation.userId])]))
+		const dbUsers = await Users.selectUsers(ctx).where(
+			E.inArray(Schema.users.discordId, [...new Set([mutation.value.owner, mutation.userId])]),
+		)
 		const users = await Users.buildUsers(dbUsers)
 
 		yield {

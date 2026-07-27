@@ -4,6 +4,30 @@ import { assertNever } from '@/lib/type-guards'
 import type * as BM from '@/models/battlemetrics.models'
 import type * as SM from '@/models/squad.models'
 
+// Compiled once per distinct pattern rather than per player per render: a rule is evaluated against every player on
+// the roster, and the pattern only changes when settings do. Patterns that don't compile cache as null and never match,
+// so a bad one costs nothing beyond the first attempt.
+const compiledPatterns = new Map<string, RegExp | null>()
+
+export function compilePattern(pattern: string): RegExp | null {
+	if (compiledPatterns.has(pattern)) return compiledPatterns.get(pattern)!
+	let compiled: RegExp | null
+	try {
+		compiled = new RegExp(pattern, 'i')
+	} catch {
+		compiled = null
+	}
+	compiledPatterns.set(pattern, compiled)
+	return compiled
+}
+
+// Rejected at the edit rather than silently never matching, so a typo surfaces in the settings form.
+const PatternSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.refine((p) => compilePattern(p) !== null, { message: 'not a valid regular expression' })
+
 // A rule assigns players matching one source-specific attribute to a group. Sources are independent: rules from
 // different ones sit in the same priority order and a grouping may mix them freely.
 export const GroupRuleSchema = z.discriminatedUnion('type', [
@@ -20,17 +44,61 @@ export const GroupRuleSchema = z.discriminatedUnion('type', [
 		adminGroup: z.string().trim().min(1),
 		group: z.string().trim().min(1),
 	}),
+	// holds an admin-identifying permission on the server, whichever admin-list group granted it. The union of every
+	// `admin-list` rule an operator could write is not the same thing: this stays correct as the admin list gains groups.
+	z.object({
+		type: z.literal('server-admin'),
+		group: z.string().trim().min(1),
+	}),
+	// the player's in-game name matches, case-insensitively. Substring by default, since the use is clan tags.
+	z.object({
+		type: z.literal('name-regex'),
+		pattern: PatternSchema,
+		group: z.string().trim().min(1),
+	}),
+	// a role on the discord account the player has linked their steam account to. Players who have linked nothing
+	// match no such rule, which is the same outcome as holding none of the role.
+	z.object({
+		type: z.literal('discord-role'),
+		roleId: z.string().trim().min(1),
+		group: z.string().trim().min(1),
+	}),
 ])
 export type GroupRule = z.infer<typeof GroupRuleSchema>
 export type GroupRuleSource = GroupRule['type']
 
-export const GROUP_RULE_SOURCES: GroupRuleSource[] = ['battlemetrics', 'admin-list']
+export const GROUP_RULE_SOURCES: GroupRuleSource[] = ['battlemetrics', 'admin-list', 'server-admin', 'name-regex', 'discord-role']
 
 // What a rule matches against. Sourced per player and per server: the admin list is the server's own, so the same
 // grouping can put a player in different groups on different servers, which is the point of it being server config.
 export type PlayerFacts = {
 	flags: BM.PlayerFlag[]
 	adminGroups: string[]
+	isAdmin: boolean
+	username: string
+	// role ids on the linked discord account; empty when the player has linked none
+	discordRoles: string[]
+}
+
+// The roster fields a rule can match on. Structural rather than SM.Player so a RecentPlayer satisfies it too: a
+// player who has disconnected still has a name, an admin list and a linked discord account.
+export type PlayerFactsSource = {
+	ids: { username: string }
+	isAdmin: boolean
+	adminGroups?: string[]
+	discordRoles?: string[]
+}
+
+// Facts come from two places and neither knows about the other: the server stamps what it resolved for the roster
+// entry, and battlemetrics data arrives on the client over its own stream. This is where the two meet.
+export function playerFacts(player: PlayerFactsSource, flags: BM.PlayerFlag[]): PlayerFacts {
+	return {
+		flags,
+		adminGroups: player.adminGroups ?? [],
+		isAdmin: player.isAdmin,
+		username: player.ids.username,
+		discordRoles: player.discordRoles ?? [],
+	}
 }
 
 // A group's color either follows one of its own flags -- so a recolour in battlemetrics reaches the UI without anyone
@@ -141,6 +209,12 @@ function matchesRule(rule: GroupRule, facts: PlayerFacts): boolean {
 			return facts.flags.some((f) => f.id === rule.flag)
 		case 'admin-list':
 			return facts.adminGroups.includes(rule.adminGroup)
+		case 'server-admin':
+			return facts.isAdmin
+		case 'name-regex':
+			return compilePattern(rule.pattern)?.test(facts.username) ?? false
+		case 'discord-role':
+			return facts.discordRoles.includes(rule.roleId)
 		default:
 			return assertNever(rule)
 	}
