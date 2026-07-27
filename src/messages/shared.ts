@@ -86,12 +86,28 @@ export function targetAffected(target: Target) {
 	}
 }
 
-// Declares a message. The implementation is the identity function: everything it buys is in the closure the factory
-// body opens, which is where logic shared between a message's targets lives -- reachable by every target of THIS
-// message and by nothing else, and computed once per message rather than once per target.
+type TextTarget = { readonly text: () => string }
+
+// Declares a message. The factory body is where logic shared between a message's targets lives -- reachable by every
+// target of THIS message and by nothing else, and computed once per message rather than once per target.
 //
 // `const T` keeps the target map inferred narrowly, so a message with no toast errors on `.toast()` rather than
 // silently handing back undefined. Args are declared once, on the factory, so targets cannot drift on what they take.
-export function def<A extends readonly unknown[], const T extends Targets>(build: (...args: A) => T): (...args: A) => T {
-	return build
+//
+// A message whose only target is `text` says so by producing the string directly: `def('Close')` where it takes no
+// arguments, `def((count: number) => ...)` where it does. That is four fifths of the messages in this tree, and the
+// bare form is the only one holding its text as data rather than as code, which is what lets this function own the
+// lookup when the text stops being English. Every other shape stays the target map.
+//
+// The target-map overload has to come first: a candidate ahead of it types the factory body without `Targets` as its
+// contextual type, and a `toast` returning an array literal then infers as an array rather than as a tuple.
+export function def<A extends readonly unknown[], const T extends Targets>(build: (...args: A) => T): (...args: A) => T
+export function def<A extends readonly unknown[]>(build: (...args: A) => string): (...args: A) => TextTarget
+export function def(text: string): () => TextTarget
+export function def(build: string | ((...args: never[]) => unknown)) {
+	if (typeof build === 'string') return () => ({ text: () => build })
+	return (...args: never[]) => {
+		const built = build(...args)
+		return typeof built === 'string' ? { text: () => built } : built
+	}
 }
