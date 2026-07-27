@@ -312,12 +312,16 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	const dbPath = path.join(tmpDir, 'main.sqlite3')
 	const logFile = path.join(tmpDir, 'app.log')
 
-	const emu = new Emulator(opts.emulator)
+	// A real server (and so the emulator's default) spends 30s in WaitingPostMatch before it brings the next world
+	// up. Nothing in a suite should wait that long for a roll it asked for, so the harness turns it down; a test
+	// that cares about the real duration can pass its own.
+	const emulatorOpts: EmulatorOptions = { postMatchDelayMs: 50, ...opts.emulator }
+	const emu = new Emulator(emulatorOpts)
 	await emu.start()
 	const secondOpts = opts.secondServer === true ? {} : opts.secondServer || null
 	const secondId = secondOpts?.id ?? 'emu-server-2'
 	const secondDisplayName = secondOpts?.displayName ?? 'Second Emulated Server'
-	const secondEmu = secondOpts ? await new Emulator(opts.emulator).start() : null
+	const secondEmu = secondOpts ? await new Emulator(emulatorOpts).start() : null
 	const bm = new BmServer()
 	const bmPort = await bm.listen()
 

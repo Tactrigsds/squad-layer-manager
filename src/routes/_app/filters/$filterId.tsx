@@ -7,6 +7,7 @@ import { frameManager } from '@/frames/frame-manager'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
@@ -98,12 +99,12 @@ function RouteComponent() {
 						break
 					case 'update': {
 						if (mutation.userId === loggedInUser?.discordId) return
-						toast(`Filter ${mutation.value.name} was updated by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
+						toast(...F_Msgs.updatedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId)).toast())
 						break
 					}
 					case 'delete': {
 						if (mutation.userId === loggedInUser?.discordId) return
-						toast(`Filter ${mutation.value.name} was deleted by ${await UsersClient.fetchDisplayName(mutation.userId)}`)
+						toast(...F_Msgs.deletedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId)).toast())
 						void rootRouter.navigate({ to: '/filters' })
 						break
 					}

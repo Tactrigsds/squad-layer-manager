@@ -1,32 +1,11 @@
-import * as dateFns from 'date-fns'
 import type React from 'react'
 
-import * as DH from '@/lib/display-helpers'
 import { assertNever } from '@/lib/type-guards'
-import type * as L from '@/models/layer'
 import type { WarnOptions } from '@/models/squad-rcon.models'
 
-// Helpers shared between messages. Logic belonging to a single message stays in that message's module.
-
-export function formatInterval(interval: number, options?: { terse?: boolean; round?: 'second' }) {
-	const { terse = true, round } = options ?? {}
-	const normalizedInterval = round === 'second' ? Math.round(interval / 1000) * 1000 : interval
-	const duration = dateFns.intervalToDuration({ start: 0, end: normalizedInterval })
-	let txt = dateFns.formatDuration(duration)
-	if (terse) txt = txt.replace(' seconds', 's').replace(' minutes', 'm')
-	return txt
-}
-
-export function voteChoicesLines(choices: L.LayerId[], you?: 1 | 2, displayProps?: DH.LayerDisplayProp[]) {
-	const lines = choices.map((c, index) => {
-		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you, displayProps)}`
-	})
-
-	if (lines.join(' ').length < 50) {
-		return [lines.join(' ')]
-	}
-	return lines
-}
+// The vocabulary every message is written in. This module must stay an import leaf -- models absorb their own text
+// from here, and the display layer they feed imports them back, so a value import from @/lib or @/models closes a
+// module-init cycle. Formatters that need those live in ./format.ts.
 
 // The arguments a sonner toast call takes, so a message can carry a description without its caller unpacking one:
 // `toast.error(...m.toast())`. Which of toast/toast.error/toast.warning delivers it stays with the caller, since

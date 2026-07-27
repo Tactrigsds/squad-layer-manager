@@ -60,16 +60,23 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 
 		// A dev instance never reaches discord: the oauth callback is built from ORIGIN, so real login would
 		// need every slot's port registered as a redirect uri on the discord app. The bypass logs in as any
-		// user in the (cloned) db instead -- `?login=<username>`.
+		// user in the (cloned) db instead -- `?login=<username>`. The shared .env's credentials are unused
+		// either way, so a worktree carries dummies rather than the real app's, and cannot reach it at all.
 		DISCORD_ENABLED: 'false',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
+		DISCORD_CLIENT_ID: 'dev',
+		DISCORD_CLIENT_SECRET: 'dev',
+		DISCORD_BOT_TOKEN: 'dev',
+		DISCORD_HOME_GUILD_ID: '0',
 
 		// The stub the emulator host serves. Pointing at the real battlemetrics api would let a worktree write
 		// flags and notes to the live org, which is never what an experiment wants. The org id is pinned to the
 		// stub's: the app drops flags belonging to any other org, so leaving the real one here would make every
-		// player in a dev instance read as unflagged.
+		// player in a dev instance read as unflagged. The token is dropped for the same reason the host is
+		// redirected -- unset, nothing here can authenticate to the real api.
 		BM_HOST: `http://127.0.0.1:${slot.ports.bm}`,
 		BM_ORG_ID: BmServer.STUB_ORG_ID,
+		BM_PAT: '',
 
 		// One collector serves every worktree; this is what separates their telemetry in grafana.
 		OTEL_RESOURCE_ATTRIBUTES: [

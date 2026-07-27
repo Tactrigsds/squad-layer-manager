@@ -52,6 +52,12 @@ export const timeoutFailed = Msgs.def((reason: string) => ({
 }))
 
 // a bulk timeout fans out one call per player, so some can fail while the rest succeed
+export const timeoutCancelled = Msgs.def(() => ({ toast: () => ['Timeout cancelled'] }))
+
+export const cancelTimeoutFailed = Msgs.def((reason: string) => ({
+	toast: () => ['Cancel failed', { description: reason }],
+}))
+
 export const someTimeoutsFailed = Msgs.def((count: number) => ({
 	toast: () => [
 		`${count} timeout${count === 1 ? '' : 's'} failed`,

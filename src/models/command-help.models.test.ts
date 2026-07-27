@@ -17,8 +17,9 @@ const seeds: CMDH.ExampleSeeds = {
 }
 const noSeeds: CMDH.ExampleSeeds = { reasons: [] }
 
-// the real configs, with every command's declared strings under the fallback prefix
-const configs = CMD.seedCommandConfigs({}, CMD.FALLBACK_PREFIX) as unknown as CMD.CommandConfigs
+// the real configs, with every command's declared strings under the default prefix
+const configs = CMD.seedCommandConfigs({}, CMD.DEFAULT_PREFIX) as unknown as CMD.CommandConfigs
+const P = CMD.DEFAULT_PREFIX
 
 function withConfig(id: CMD.CommandId, patch: Partial<CMD.CommandConfig>): CMD.CommandConfigs {
 	return { ...configs, [id]: { ...configs[id], ...patch } }
@@ -26,35 +27,35 @@ function withConfig(id: CMD.CommandId, patch: Partial<CMD.CommandConfig>): CMD.C
 
 describe('buildExamples', () => {
 	it('gives an argless command exactly one example', () => {
-		expect(CMDH.buildExamples('swaps', configs.swaps, seeds)).toEqual([{ command: '!swaps', note: 'Run it' }])
+		expect(CMDH.buildExamples('swaps', configs.swaps, seeds)).toEqual([{ command: `${P}swaps`, note: 'Run it' }])
 	})
 
 	it('escalates from the required args to each optional one, then the free-text form', () => {
 		// timeout is <player> <duration> [reason], and reason has both a preset and a custom form
 		expect(CMDH.buildExamples('timeout', configs.timeout, seeds)).toEqual([
-			{ command: '!timeout Alice 2h', note: 'The shortest form' },
-			{ command: '!timeout Alice 2h toxicity', note: 'With reason' },
-			{ command: '!timeout Alice 2h stop doing that', note: 'With a custom reason' },
+			{ command: `${P}timeout Alice 2h`, note: 'The shortest form' },
+			{ command: `${P}timeout Alice 2h toxicity`, note: 'With reason' },
+			{ command: `${P}timeout Alice 2h stop doing that`, note: 'With a custom reason' },
 		])
 	})
 
 	it('fills reason args from the configured reasons applicable to the action', () => {
 		// teamkilling is warn-only, so kick must not offer it
 		const [, withReason] = CMDH.buildExamples('kick', configs.kick, seeds)
-		expect(withReason.command).toBe('!kick Alice toxicity')
+		expect(withReason.command).toBe(`${P}kick Alice toxicity`)
 	})
 
 	it('omits the preset example when the installation has no applicable reasons configured', () => {
 		expect(CMDH.buildExamples('kick', configs.kick, noSeeds)).toEqual([
-			{ command: '!kick Alice', note: 'The shortest form' },
-			{ command: '!kick Alice stop doing that', note: 'With a custom reason' },
+			{ command: `${P}kick Alice`, note: 'The shortest form' },
+			{ command: `${P}kick Alice stop doing that`, note: 'With a custom reason' },
 		])
 	})
 
 	it('treats a reason as required when the installation requires one for that action', () => {
 		const examples = CMDH.buildExamples('kick', configs.kick, seeds, ['kick'])
-		expect(examples[0]).toEqual({ command: '!kick Alice toxicity', note: 'The shortest form' })
-		expect(examples.every((e) => e.command !== '!kick Alice')).toBe(true)
+		expect(examples[0]).toEqual({ command: `${P}kick Alice toxicity`, note: 'The shortest form' })
+		expect(examples.every((e) => e.command !== `${P}kick Alice`)).toBe(true)
 	})
 
 	it('names a preset by its keyword, never its label', () => {
@@ -64,11 +65,11 @@ describe('buildExamples', () => {
 			...seeds,
 			reasons: [{ ...reason('No SLKit', ['warn']), keywords: ['slkit'] }],
 		}
-		expect(CMDH.buildExamples('warn', configs.warn, multiWord)[0].command).toBe('!warn Alice slkit')
+		expect(CMDH.buildExamples('warn', configs.warn, multiWord)[0].command).toBe(`${P}warn Alice slkit`)
 	})
 
 	it('uses the declared sample token for string args', () => {
-		expect(CMDH.buildExamples('flag', configs.flag, seeds)[0].command).toBe('!flag Alice cheater')
+		expect(CMDH.buildExamples('flag', configs.flag, seeds)[0].command).toBe(`${P}flag Alice cheater`)
 	})
 
 	it('follows the command string an admin actually configured', () => {
@@ -135,7 +136,7 @@ describe('resolveHelpListing', () => {
 		const listing = CMDH.resolveHelpListing(configs, undefined)
 		if (listing.code !== 'ok') throw new Error('expected ok')
 		expect(listing.title).toBe('Commands')
-		expect(listing.hint).toBe('More: !help <section> -- general, votes, layerRequests, teamswaps, flags, moderation, messaging, all')
+		expect(listing.hint).toBe(`More: ${P}help <section> -- general, votes, layerRequests, teamswaps, flags, moderation, messaging, all`)
 	})
 
 	// a shortcut trigger is the same command, so it is listed with it rather than separately -- and a disabled

@@ -1,5 +1,6 @@
 import * as DH from '@/lib/display-helpers'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
+import * as MsgFmt from '@/messages/format'
 import * as Msgs from '@/messages/shared'
 import * as CMD from '@/models/command.models'
 import * as L from '@/models/layer'
@@ -38,7 +39,7 @@ export const nextLayerWarning = Msgs.def(
 export const votePending = Msgs.def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
 	warn: () => {
 		const timeUntilVote = Math.max(0, threshold - (Date.now() - matchStartTime.getTime()))
-		const formattedTime = Msgs.formatInterval(timeUntilVote, { terse: false, round: 'second' })
+		const formattedTime = MsgFmt.formatInterval(timeUntilVote, { terse: false, round: 'second' })
 		const showNextCmd = CMD.buildCommand('showNext', {}, commands, true)[0]
 		return `A Vote is pending${autostart ? ' and will be run in ' + formattedTime : ''}. Run ${showNextCmd} to preview the vote`
 	},
@@ -93,7 +94,7 @@ export const showNext = Msgs.def(
 						lines.push('Upcoming vote:')
 					}
 					lines.push(
-						Msgs.voteChoicesLines(
+						MsgFmt.voteChoicesLines(
 							item.choices.map((choice) => choice.layerId),
 							playerNextTeamId,
 							['layer', 'factions', 'units'],

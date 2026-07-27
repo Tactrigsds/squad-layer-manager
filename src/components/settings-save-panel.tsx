@@ -8,6 +8,7 @@ import type { SettingChange } from '@/lib/settings-diff'
 import { formatChangeValue } from '@/lib/settings-diff'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Zus from '@/lib/zustand'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -140,8 +141,9 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 	async function handleSave() {
 		const dirty = sections.filter((s) => s.changedCount > 0)
 		if (dirty.length === 0 || dirty.some((s) => !s.state.valid || s.deniedIds.length > 0)) return
+		const msg = SETTINGS_Msgs.confirmSaveAll().confirm()
 		const result = await openDialog({
-			title: 'Save settings?',
+			title: msg.title,
 			content: (
 				<div className="space-y-4">
 					{dirty.map((s) => (
@@ -152,7 +154,7 @@ export function SettingsSavePanel({ sectionKeys }: { sectionKeys: SettingsEditor
 					))}
 				</div>
 			),
-			buttons: [{ id: 'save', label: 'Save' }],
+			buttons: [{ id: 'save', label: msg.confirmLabel }],
 		})
 		if (result === 'save') {
 			await Promise.all(dirty.map((s) => SettingsEditorFrame.Actions.save({ settingsEditor: s.key })))
