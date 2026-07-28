@@ -1430,7 +1430,8 @@ export async function removePlayersFromSquad(
 }
 
 // records a forced team change as an app event and arms attribution for the resulting PLAYER_CHANGED_TEAM server
-// events (which arrive via the next teams poll). The caller (teamswaps) still issues the actual switch.
+// events (which arrive via the next teams poll). The caller (teamswaps) still issues the actual switch. Returns the
+// event so a re-fire of the same switch can attribute to it rather than logging itself a second time.
 export async function forceTeamChangeAppEvent(
 	ctx: SQS.Ctx & C.Db & MH.Ctx & CS.AbortSignal,
 	targets: SM.PlayerId[],
@@ -1447,7 +1448,20 @@ export async function forceTeamChangeAppEvent(
 		targets,
 	})
 	await emitAppEvent(ctx, appEvent)
-	const source = { type: 'event' as const, id: appEvent.id }
+	await armTeamChangeAttribution(ctx, targets, appEvent.id)
+	return appEvent
+}
+
+// arms attribution for the PLAYER_CHANGED_TEAM events a forced switch produces, against an app event that already
+// records that switch. A queue execution logs itself as a TEAMSWAPS_UPDATED, so a TEAM_CHANGE_FORCED alongside it
+// would say the same thing twice.
+export async function armTeamChangeAttribution(
+	ctx: SQS.Ctx & C.Db & CS.AbortSignal,
+	targets: SM.PlayerId[],
+	causeId: AppEvents.AppEventId,
+) {
+	if (targets.length === 0) return
+	const source = { type: 'event' as const, id: causeId }
 	await collectEvents(ctx, () => {
 		for (const target of targets) {
 			PendingEvents.armExpectation(ctx.server.eventState, { type: 'PLAYER_CHANGED_TEAM', playerId: target }, source)

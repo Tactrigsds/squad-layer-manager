@@ -307,6 +307,24 @@ async function unswappedPlayers(
 	return unswapped
 }
 
+// the app event for a change to the saved queue. undefined when the save moved nothing (the collection is rebuilt
+// even when a delete matched nothing), which is not an update anyone needs to see.
+async function emitTeamswapsUpdated(ctx: SQS.Ctx & C.Db & CS.AbortSignal, se: Extract<TSW.SideEffect, { code: 'save' }>, matchId: number) {
+	const appEvent = AppEvents.create<AppEvents.TeamswapsUpdated>({
+		type: 'TEAMSWAPS_UPDATED',
+		actor: SquadServer.actorFromUser(ctx, se.source),
+		serverId: ctx.serverId,
+		matchId,
+		causeId: null,
+		trigger: se.trigger,
+		prevSwaps: se.prevSaved,
+		swaps: se.swaps,
+	})
+	if (AppEvents.summarizeTeamswapChanges(appEvent).length === 0) return
+	await SquadServer.emitAppEvent(ctx, appEvent)
+	return appEvent
+}
+
 // Runs outside the dispatch mutex (holding it here would block every teamswap op for the duration, and would
 // deadlock against the completion this is waiting for).
 async function watchExecution(
@@ -316,7 +334,8 @@ async function watchExecution(
 		swaps: TSW.TeamswapCollection
 		ordinal: number
 		retry: boolean
-		actor: AppEvents.Actor
+		// the event that logged this execution, which its re-fires attribute to as well
+		causeId: AppEvents.AppEventId | undefined
 	},
 ) {
 	const deadline = Date.now() + EXECUTION_TIMEOUT_MS
@@ -343,8 +362,8 @@ async function watchExecution(
 				attempts,
 				MAX_EXECUTION_ATTEMPTS,
 			)
-			// each re-fire is its own forced swap, so it arms its own attribution for the events it produces
-			await SquadServer.forceTeamChangeAppEvent(ctx, unswapped, execution.actor)
+			// a re-fire is the same swap, already logged: it only re-arms attribution for the events it produces
+			if (execution.causeId) await SquadServer.armTeamChangeAttribution(ctx, unswapped, execution.causeId)
 			await SquadRcon.switchPlayers(ctx, unswapped)
 			ctx.teamswaps.teamswapExecutedAt = Date.now()
 			continue
@@ -480,6 +499,13 @@ const dispatchOp = Instr.spanOp(
 		ctx.teamswaps.op$.next({ ops, sourceWsClientId: opts?.sourceWsClientId })
 
 		const nextOps: TSW.Op[] = []
+		// draining the queue and forcing the swaps are the same action, so an execution logs one event for both: the
+		// save's TEAMSWAPS_UPDATED, created before the swaps are issued so their PLAYER_CHANGED_TEAM events can
+		// attribute to it. Emitted below by 'execute-teamswaps', which is why 'save' has to know it already happened.
+		const executedSave = applied.sideEffects.find(
+			(se): se is Extract<TSW.SideEffect, { code: 'save' }> => se.code === 'save' && se.trigger === 'executed',
+		)
+		let executedAppEvent: AppEvents.TeamswapsUpdated | undefined
 		for (const se of applied.sideEffects) {
 			log.debug(sideEffectAttrs(se), 'side effect: %s', se.code)
 			try {
@@ -512,8 +538,23 @@ const dispatchOp = Instr.spanOp(
 							// every target may already be on its destination team, in which case there's nothing to
 							// announce to anyone
 							const isManual = manualOp && toSwap.length > 0 ? manualOp : undefined
-							// attribute the resulting PLAYER_CHANGED_TEAM events to whoever triggered the swap
-							await SquadServer.forceTeamChangeAppEvent(ctx, toSwap, SquadServer.actorFromUser(ctx, manualOp?.source))
+							// attribute the resulting PLAYER_CHANGED_TEAM events to whoever triggered the swap. An
+							// immediate swap has no queue drain to fold into, so it logs itself as a forced change
+							let causeId: AppEvents.AppEventId | undefined
+							if (executedSave) {
+								executedAppEvent = await emitTeamswapsUpdated(ctx, executedSave, currentMatch.historyEntryId)
+							}
+							if (executedAppEvent) {
+								causeId = executedAppEvent.id
+								await SquadServer.armTeamChangeAttribution(ctx, toSwap, executedAppEvent.id)
+							} else {
+								const forced = await SquadServer.forceTeamChangeAppEvent(
+									ctx,
+									toSwap,
+									SquadServer.actorFromUser(ctx, manualOp?.source),
+								)
+								causeId = forced?.id
+							}
 							const swapped$ = SquadRcon.switchPlayers(ctx, toSwap)
 							if (isManual) {
 								// notifications should outlive this dispatch, so bind them to the shutdown signal rather than the task signal
@@ -539,7 +580,7 @@ const dispatchOp = Instr.spanOp(
 									// only the map roll fires early enough for a retry to be the right answer. a manual swap
 									// that didn't land is reported, not re-issued behind the admin's back
 									retry: !manualOp,
-									actor: SquadServer.actorFromUser(ctx, manualOp?.source),
+									causeId,
 								},
 							).catch((error) => {
 								if (!Prom.isAbortError(error)) log.error(error)
@@ -604,20 +645,10 @@ const dispatchOp = Instr.spanOp(
 						})
 
 						// an immediate swap is already recorded as a TEAM_CHANGE_FORCED; the queue losing that player is
-						// a consequence of it, not a second action to log. a save that moved nothing (the collection is
-						// rebuilt even when the delete matched nothing) is not an update anyone needs to see either
-						const teamswapsUpdated = AppEvents.create<AppEvents.TeamswapsUpdated>({
-							type: 'TEAMSWAPS_UPDATED',
-							actor: SquadServer.actorFromUser(ctx, se.source),
-							serverId: ctx.serverId,
-							matchId: currentMatch.historyEntryId,
-							causeId: null,
-							trigger: se.trigger,
-							prevSwaps: se.prevSaved,
-							swaps: se.swaps,
-						})
-						if (se.trigger !== 'swapped-now' && AppEvents.summarizeTeamswapChanges(teamswapsUpdated).length > 0) {
-							await SquadServer.emitAppEvent(ctx, teamswapsUpdated)
+						// a consequence of it, not a second action to log. an execution emitted this event above,
+						// before the swaps it drained went out
+						if (se.trigger !== 'swapped-now' && !executedAppEvent) {
+							await emitTeamswapsUpdated(ctx, se, currentMatch.historyEntryId)
 						}
 
 						// only an edit to the queue is announced as one. an execution empties the saved swaps too, but it
