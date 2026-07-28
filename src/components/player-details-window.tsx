@@ -78,7 +78,6 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 		const serverId = props.stores.squadServer.serverId
 		await Promise.all([
 			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } })),
-			RPC.queryClient.fetchInfiniteQuery(playerEventsInfiniteOptions(serverId, props.playerId)),
 			RPC.queryClient.fetchQuery(
 				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
 			),
@@ -95,7 +94,13 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 			select: (res) => RPC.selectLoaded(res),
 		}),
 	)
-	const eventsQuery = useInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
+	// the window opens on the current match alone, which the chat feed already holds; earlier matches are fetched only
+	// once asked for, a page (several matches) at a time
+	const [historyRequested, setHistoryRequested] = React.useState(false)
+	const eventsQuery = useInfiniteQuery({ ...playerEventsInfiniteOptions(serverId, playerId), enabled: historyRequested })
+	const preloadHistory = () => {
+		void RPC.queryClient.prefetchInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
+	}
 	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
 	const orgFlags = useOrgFlags()
 	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
@@ -112,8 +117,9 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 		),
 	)
 
-	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events
-	const historicalEvents = (eventsQuery.data?.pages ?? [])
+	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events.
+	// gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
+	const historicalEvents = (historyRequested ? (eventsQuery.data?.pages ?? []) : [])
 		.slice()
 		.reverse()
 		.flatMap((p) => RPC.selectLoaded(p)?.events ?? [])
@@ -244,7 +250,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<div className="relative flex-1 min-h-0">
 					<ScrollArea ref={scrollAreaRef} className="h-full">
 						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
-							{eventsQuery.isPending && filteredEvents.length === 0 && (
+							{eventsQuery.isFetching && filteredEvents.length === 0 && (
 								<div className="flex items-center justify-center py-6">
 									<Spinner className="size-5" />
 								</div>
@@ -257,19 +263,22 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							))}
 						</div>
 					</ScrollArea>
-					{eventsQuery.hasNextPage && isAtTop && (
+					{(!historyRequested || eventsQuery.hasNextPage) && isAtTop && (
 						<Button
+							onMouseEnter={preloadHistory}
+							onFocus={preloadHistory}
 							onClick={() => {
 								anchorForPrepend()
-								void eventsQuery.fetchNextPage()
+								if (!historyRequested) setHistoryRequested(true)
+								else void eventsQuery.fetchNextPage()
 							}}
-							disabled={eventsQuery.isFetchingNextPage}
+							disabled={eventsQuery.isFetching}
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title={CHAT_Msgs.loadOlderEvents().text()}
 						>
-							{eventsQuery.isFetchingNextPage ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
+							{eventsQuery.isFetching ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
 							<span className="text-xs">{CHAT_Msgs.loadOlderEvents().text()}</span>
 						</Button>
 					)}
