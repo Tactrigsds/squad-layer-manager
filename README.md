@@ -2,6 +2,8 @@
 
 A Tool for managing the upcoming layers of a squad server, and other things also.
 
+It is currently the primary admin tool used by the Tactical Triggernomery server, for tasks like queueing layers to player, determining team balance and performing teamswaps, and basic administrative task like issueing warns, kicks, timeouts, etc.
+
 ## Try it
 
 ```sh
