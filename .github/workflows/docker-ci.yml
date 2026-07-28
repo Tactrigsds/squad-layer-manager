@@ -101,6 +101,8 @@ jobs:
               username: ${{ github.actor }}
               password: ${{ secrets.GITHUB_TOKEN }}
 
+         # `target:` must stay explicit. Without it the action builds the Dockerfile's LAST stage, so appending a
+         # stage silently changes what gets published -- which is how the test stage once shipped as the release.
          - name: Build and tag Docker image
            uses: docker/build-push-action@v6
            with:

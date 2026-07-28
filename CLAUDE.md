@@ -52,6 +52,12 @@ that it does Y".
 
 Keep concrete numbers, file paths, code and tables. Those are the signal.
 
+"Team A" and "Team B" are not free vocabulary. They mean `MH.NormedTeamId`, the team normalized across the
+team1/team2 swap, as against "Team 1" and "Team 2" for the raw slot. Never use A/B to mean an unordered or
+interchangeable side, which is roughly the opposite of what it denotes, and be aware that any UI toggling labels
+between A/B and 1/2 will read as driving the `displayTeamsNormalized` setting. Use "one side" and "the other side"
+when you need a side with no identity.
+
 docs/ and the README are user-facing. Keep implementation detail out of them, except in docs/architecture.md, which
 is for contributors.
 

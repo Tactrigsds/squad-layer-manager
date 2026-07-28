@@ -1,17 +1,17 @@
-# Squad Layer Manager
+# Squad Layer Manager (SLM)
 
-SLM manages the upcoming layers on a Squad server, and covers a lot of day-to-day server admin alongside it.
+SLM manages the upcoming layers on a Squad server, and other things also.
 
 It is the main admin tool of the Tactical Triggernometry server, used for queueing layers, reading the current state
 of team balance, and running teamswaps. It also handles warns, kicks and timeouts, and it integrates with
 BattleMetrics so you can set player flags and open player profiles without leaving the app. Those flags can then be
 used to categorise players for team balance or monitoring.
 
-Everything is available two ways: through a web GUI that authenticates against your Discord server, and through
+Everything is available in two ways: through a web GUI that authenticates against your Discord server via OAuth, and through
 in-game commands.
 
-Layer management is the focus. _Filters_ narrow the playable set with logical expressions, which makes finding a
-layer to play much quicker. _Repeat rules_ catch common mistakes like queueing the same map or faction twice in a
+Layer management is the primary focus of SLM. _Filters_ narrow the playable set with logical expressions, which makes finding a
+layer to play much easier. _Repeat rules_ catch common mistakes like queueing the same map or faction twice in a
 row.
 
 SLM ships with a layer scoring system written by community member Zero. It reduces a set of heuristics to one score
