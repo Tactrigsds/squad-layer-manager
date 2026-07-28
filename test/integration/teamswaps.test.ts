@@ -34,6 +34,39 @@ function forceChangesFor(eosId: string) {
 	return app.emu.rcon.commandLog.filter((c) => c.body === `AdminForceTeamChange ${eosId}`)
 }
 
+function latestMatchId(db: ReturnType<AppFixture['readDb']>) {
+	return (db.prepare(`SELECT id FROM matchHistory ORDER BY id DESC LIMIT 1`).get() as { id: number }).id
+}
+
+function appEventTypesForLatestMatch() {
+	const db = app.readDb()
+	try {
+		const rows = db.prepare(`SELECT type FROM appEvents WHERE matchId = ?`).all(latestMatchId(db)) as { type: string }[]
+		return rows.map((r) => r.type)
+	} finally {
+		db.close()
+	}
+}
+
+// the app event a player's team change in the current match was attributed to, if it landed and carried one
+function teamChangeAppEventType(eos: string) {
+	const db = app.readDb()
+	try {
+		const row = db
+			.prepare(
+				`SELECT ae.type as type FROM serverEvents se
+				 JOIN playerEventAssociations pea ON pea.serverEventId = se.id
+				 LEFT JOIN appEvents ae ON ae.id = se.appEventId
+				 WHERE se.type = 'PLAYER_CHANGED_TEAM' AND se.matchId = ? AND pea.playerId = ?
+				 ORDER BY se.id DESC LIMIT 1`,
+			)
+			.get(latestMatchId(db), eos) as { type: string | null } | undefined
+		return row?.type ?? null
+	} finally {
+		db.close()
+	}
+}
+
 describe('teamswaps', () => {
 	it(cmd('swapnow moves the player to the other team immediately'), async () => {
 		expect(target.teamId).toBe(2)
@@ -79,5 +112,20 @@ describe('teamswaps', () => {
 			timeoutMs: 30_000,
 		})
 		expect(held.teamId).toBe(2)
+
+		// draining the queue and forcing the switch are one action, and log one event. A TEAM_CHANGE_FORCED
+		// beside the execution's TEAMSWAPS_UPDATED says the same thing twice in the activity feed.
+		const appEventTypes = appEventTypesForLatestMatch()
+		expect(appEventTypes).toContain('TEAMSWAPS_UPDATED')
+		expect(appEventTypes).not.toContain('TEAM_CHANGE_FORCED')
+
+		// and the one event still claims the team changes it caused, so they fold into it rather than reading
+		// as a player switching sides on their own
+		await app.waitForRosterSync()
+		await app.waitFor(() => teamChangeAppEventType(held.eos) !== null, {
+			label: 'the applied swap attributed to the execution',
+			timeoutMs: 20_000,
+		})
+		expect(teamChangeAppEventType(held.eos)).toBe('TEAMSWAPS_UPDATED')
 	})
 })
