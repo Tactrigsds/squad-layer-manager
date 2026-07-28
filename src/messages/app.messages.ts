@@ -99,7 +99,7 @@ export const acknowledgedContributors = [
 	'AtLeastImCooler',
 ]
 
-export const acknowledgedUsers = ['Arrow2', 'BitingWit', 'dexii', 'LonelyNinja', 'sniffles', 'TomClaz', 'BosD']
+export const acknowledgedUsers = ['Arrow2', 'BitingWit', 'dexii', 'LonelyNinja', 'sniffles', 'TomClaz', 'Bosditch']
 
 // -------- the nav bar --------
 
