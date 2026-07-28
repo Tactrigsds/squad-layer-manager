@@ -6,7 +6,7 @@ app itself.
 | Service            | Image                                          | What it does                                        |
 | ------------------ | ---------------------------------------------- | --------------------------------------------------- |
 | `victoria-metrics` | `victoriametrics/victoria-metrics:v1.111.0`    | metrics, served over the Prometheus API             |
-| `victoria-logs`    | `victoriametrics/victoria-logs:v1.9.1`         | logs, queried with LogsQL                           |
+| `victoria-logs`    | `victoriametrics/victoria-logs:v1.52.0`        | logs, queried with LogsQL                           |
 | `victoria-traces`  | `victoriametrics/victoria-traces:v0.5.0`       | traces, served over the Jaeger query API            |
 | `otel-collector`   | `otel/opentelemetry-collector-contrib:0.157.0` | receives OTLP from the app and routes it per signal |
 | `grafana`          | `grafana/grafana:13.1.1`                       | serves the dashboards                               |
@@ -15,7 +15,7 @@ The app ships OTLP over HTTP to the collector on `:4318` (`OTLP_COLLECTOR_ENDPOI
 <http://localhost:3001>. Each store's HTTP port is published on loopback for ad-hoc queries:
 
 ```sh
-curl -s 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=severity:ERROR' --data-urlencode 'limit=10'
+curl -s 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=severity_text:ERROR' --data-urlencode 'limit=10'
 curl -s 'http://localhost:8428/api/v1/query' --data-urlencode 'query=slm_rcon_connected'
 ```
 
@@ -41,6 +41,12 @@ nothing.
 
 The logs plugin is in the Grafana catalog and signed by Grafana Labs, so it installs with the single
 `GF_INSTALL_PLUGINS` line in `docker-compose.yaml`. No unsigned-plugin flag, no baked image.
+
+That line is unpinned, so the plugin tracks its latest release while `victoria-logs` is pinned, and the
+two have to be bumped together: the plugin builds LogsQL out of whatever the current server understands,
+so an old server rejects it as a parse error rather than degrading. The level pills in Explore are what
+usually catches this first, since they compile to a filter (`contains_common_case`, added server-side in
+v1.35.0) that a server older than the plugin has never heard of.
 
 ## Two flags that are load-bearing
 
@@ -76,8 +82,13 @@ Every attribute the app attaches is a first-class field, so filtering is direct 
 dig. Fields whose names contain dots need quoting:
 
 ```logsql
-severity:in(WARN,ERROR,FATAL) "slm.module.name":squad-server
+severity_text:in(WARN,ERROR,FATAL) "slm.module.name":squad-server
 ```
+
+The level field is `severity_text` (uppercase, alongside a numeric `severity_number`), which is what
+OTLP's severityText lands in as of VictoriaLogs v1.50.0; before that it was a custom `severity`. The old
+name still resolves against records ingested by an older server, so during the retention window after an
+upgrade a query for one name reads as a gap rather than an error.
 
 Two things worth knowing when editing the log panels:
 
