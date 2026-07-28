@@ -47,15 +47,69 @@ export const versionInfoCopied = Msgs.def('Version information has been copied')
 
 export const acknowledgementsHeading = Msgs.def('Acknowledgements')
 
-// Prose rather than a list, so who is credited and what for reads as one sentence a translator can rearrange.
-// Edit the names here; they are the whole content of the section.
-export const acknowledgements = Msgs.def(() => ({
+// Prose rather than a label per person, so who is credited and what for reads as sentences a translator can rearrange.
+// The names below are the whole content of the section; edit them here.
+export const acknowledgementsIntro = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong> community. Here are a number of people who made significant contributions to SLM in various ways: <acknowledgements here>',
+			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong>' +
+				' community. Here are a number of people who made significant contributions to SLM in various ways.',
 			Msgs.tags,
 		),
 }))
+
+export const acknowledgementsZero = Msgs.def(() => ({
+	react: () =>
+		Msgs.node(
+			'<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring' +
+				' system that is integral to SLM. Through discussions with him he also shaped much of the early featureset, which' +
+				" came to be some of SLM's most important characteristics. Without his effort this project wouldn't have been" +
+				' feasible.',
+			Msgs.tags,
+		),
+}))
+
+export const acknowledgementsRandyNewman = Msgs.def(() => ({
+	react: () =>
+		Msgs.node(
+			"<strong>Randy Newman</strong>, instrumental in getting SLM introduced to TT's admin workflow by making hardware" +
+				' available for deployment and writing approachable documentation. Graciously put up with my constant feature' +
+				' additions that made his job harder at every turn.',
+			Msgs.tags,
+		),
+}))
+
+export const acknowledgementsContributorsIntro = Msgs.def(
+	'Thank you to everyone here who helped me not just with bugs but also with feature requests and suggestions. You were' +
+		" instrumental in shaping SLM's featureset.",
+)
+
+export const acknowledgementsUsersIntro = Msgs.def(
+	'And thanks to all of the people who actually chose to learn and use SLM even as it proved to be unstable. All of you have' +
+		" more than 100 (!!!) layer sets, such that at time of writing I'm not even in the top 5 in terms of layer set count" +
+		' anymore.',
+)
+
+// not messages: a name is the same in every locale
+export const acknowledgedContributors = [
+	'FancyFos',
+	'nvvy',
+	'Logano Stefano',
+	'MyEggo',
+	'Gaites',
+	'Hutchinman',
+	'India Golf 99',
+	'ItsJessedMe',
+	'AbradantMatthew',
+	'Scriptum',
+	'ChaosMuppet',
+	'crustacean_ultra',
+	'Siiz',
+	'John Wikipedia of Not Service Related',
+	'AtLeastImCooler',
+]
+
+export const acknowledgedUsers = ['Arrow2', 'BitingWit', 'dexii', 'LonelyNinja', 'sniffles', 'TomClaz', 'BosD']
 
 // -------- the nav bar --------
 
