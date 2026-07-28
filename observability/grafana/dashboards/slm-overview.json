@@ -449,7 +449,7 @@
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "severity:in(WARN,ERROR,FATAL)",
+					"expr": "severity_text:in(WARN,ERROR,FATAL)",
 					"queryType": "instant"
 				}
 			],
