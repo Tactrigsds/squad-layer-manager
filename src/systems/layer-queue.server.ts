@@ -445,7 +445,8 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 			Rx.Ext.toCold(async () => {
 				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				const queue = getSavedQueue(ctx)
-				if (queue && queue.length <= ctx.serverSettings.settings.queue.lowQueueWarningThreshold) {
+				const threshold = ctx.serverSettings.settings.queue.lowQueueWarningThreshold
+				if (threshold !== null && queue && queue.length <= threshold) {
 					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length).warn(SETTINGS.locale(ctx)))
 				}
 			}),
