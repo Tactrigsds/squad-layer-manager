@@ -80,6 +80,12 @@ import { MessagePreviewBox } from './warn-reasons-sub'
 // through React state; `reset$` is emitted after any structural or programmatic change so those uncontrolled inputs
 // re-read their current value. Composite widgets (selects, switches, pickers) render controlled off a small local
 // mirror of `value$` that only re-syncs on emissions/`reset$`.
+//
+// The `reset$` pulse is synchronous, so it lands while the inputs still hold their PREVIOUS `value$` bindings,
+// before React has re-rendered with the new ones. A structural edit that changes a value's shape or removes a row
+// therefore runs the old projection against the new data: a union-shaped field reads the wrong variant, and a
+// projection indexed by row position reads an index that no longer exists. Guard the projection (return undefined
+// for a row that is gone) rather than deferring the pulse, which the uncontrolled inputs depend on being immediate.
 
 type Node = any
 type Path = (string | number)[]

@@ -18,11 +18,10 @@ If you find an issue with the app, it's recommended that you submit an issue fir
 
 ## Getting your bearings
 
-[docs/architecture.md](docs/architecture.md) describes what the app is built out of: the layering, the
-conventions it leans on (context composition, result codes, namespace imports, schema-first models), the
-server and client state machinery, the layer engine, and a list of quirks that are easier to read about than
-to discover. Worth a skim before your first change, and [CLAUDE.md](CLAUDE.md) states the rules it explains
-the reasoning behind.
+[docs/architecture.md](docs/architecture.md) describes the shape of the app and the patterns that recur
+throughout it: the layering, the conventions it leans on (context composition, result codes, namespace imports,
+schema-first models), the server and client state machinery, and the layer engine. Worth a skim before your
+first change. [CLAUDE.md](CLAUDE.md) states the rules it gives the reasoning for.
 
 ## Prerequisites
 
