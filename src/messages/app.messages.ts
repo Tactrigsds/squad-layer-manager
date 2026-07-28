@@ -51,7 +51,7 @@ export const acknowledgementsHeading = Msgs.def('Acknowledgements')
 export const acknowledgementsIntro = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong> community. These are the people who made significant contributions to it.',
+			'SLM is built and maintained by <strong>grey275</strong>, but it exists because of the <strong>TacTrig</strong> community. These are the people who made significant contributions to it.',
 			Msgs.tags,
 		),
 }))
@@ -59,7 +59,7 @@ export const acknowledgementsIntro = Msgs.def(() => ({
 export const acknowledgementsZero = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			"<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring system that is integral to SLM. Our discussions also shaped much of the early featureset, which became some of SLM's defining characteristics. Without his effort this project wouldn't have been feasible.",
+			"<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring system that is integral to SLM. Our discussions also shaped much of the early feature set, which became some of SLM's defining characteristics. Without his effort this project wouldn't have been feasible.",
 			Msgs.tags,
 		),
 }))
@@ -67,13 +67,13 @@ export const acknowledgementsZero = Msgs.def(() => ({
 export const acknowledgementsRandyNewman = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			"<strong>Randy Newman</strong>, instrumental in getting SLM into TT's admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn.",
+			'<strong>Randy Newman</strong>, instrumental in getting SLM into the TacTrig admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn.',
 			Msgs.tags,
 		),
 }))
 
 export const acknowledgementsContributorsIntro = Msgs.def(
-	"Thank you to everyone below, who helped me not just with bugs but with feature requests and suggestions too. You had a real hand in shaping SLM's featureset.",
+	"Thank you to everyone below, who helped me not just with bugs but with feature requests and suggestions too. You had a real hand in shaping SLM's feature set.",
 )
 
 export const acknowledgementsUsersIntro = Msgs.def(

@@ -4,6 +4,8 @@ A Tool for managing the upcoming layers of a squad server, and other things also
 
 It is currently the primary admin tool used by the Tactical Triggernomery server, for tasks like queueing layers to player, determining team balance and performing teamswaps, and basic administrative task like issueing warns, kicks, timeouts, etc.
 
+Its primary focus, as its name suggests, is on managing upcoming layers, and for this it has a sophisticated system called _filters_ which allows users to fine-tune which layers should be played on the server, and to make it easier to find a layer to play.
+
 ## Try it
 
 ```sh
