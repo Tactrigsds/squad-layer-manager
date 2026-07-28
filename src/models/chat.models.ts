@@ -915,15 +915,15 @@ function isPinnedSystemEvent(event: EventEnriched): boolean {
 	}
 }
 
-// rcon-originated broadcasts are SLM/tooling output rather than someone talking, and are already represented by the
-// app event that sent them
-function isChatEvent(event: EventEnriched): boolean {
-	if (event.type === 'CHAT_MESSAGE') return true
-	return event.type === 'ADMIN_BROADCAST' && event.from !== 'RCON'
+// broadcasts show whoever sent them: an in-game admin, an external rcon tool, or SLM itself (which arrives as the
+// BROADCAST_SENT app event, with the raw server event collapsed under it)
+function isBroadcastEvent(event: EventEnriched): boolean {
+	if (event.type === 'ADMIN_BROADCAST') return true
+	return event.type === 'APP_EVENT' && event.appEvent.type === 'BROADCAST_SENT'
 }
 
+// raw in-game warns are noise in these feeds; only the SLM-initiated ones, which arrive as app events, show
 function isWarnEvent(event: EventEnriched): boolean {
-	if (event.type === 'PLAYER_WARNED' || event.type === 'WARNS_AGGREGATED') return true
 	return event.type === 'APP_EVENT' && event.appEvent.type === 'PLAYER_WARNED'
 }
 
@@ -960,15 +960,14 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
 		case 'CHAT':
-			return isChatEvent(event) || isWarnEvent(event)
+			return event.type === 'CHAT_MESSAGE' || isBroadcastEvent(event) || isWarnEvent(event)
 		case 'SLM_EVENTS':
 			return event.type === 'APP_EVENT' || event.type === 'MAP_SET'
 		case 'ADMIN':
 			if (event.type === 'APP_EVENT' || event.type === 'MAP_SET') return true
 			if (event.type === 'CHAT_MESSAGE') return event.channel.type === 'ChatAdmin'
-			if (event.type === 'ADMIN_BROADCAST') return event.from !== 'RCON'
+			if (isBroadcastEvent(event)) return true
 			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
-			// raw in-game warns are noisy under Admin; only the SLM-initiated ones (arriving as APP_EVENT, handled above) show
 			return isAdminActionEvent(event)
 		case 'KILLFEED':
 			return isKillfeedEvent(event)
