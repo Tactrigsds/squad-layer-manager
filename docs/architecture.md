@@ -607,6 +607,24 @@ Conventions from CLAUDE.md, each with a specific reason:
 - All overlays are z-50 body-level portal siblings, so **DOM order decides stacking**. Mount on demand rather
   than reaching for z-index.
 
+### Charts
+
+Charts are ours, not a library's. `src/lib/chart.ts` (`Chart`) holds the geometry as pure functions -- a nice
+integer axis, stacking a row of series values, projecting a value onto pixels -- and the components in
+`src/components/charts` render SVG from it. The data a chart draws (`Chart.Series`, `Chart.Row`) is built by a
+selector, so a chart component holds nothing but its own hover state.
+
+The reason for writing it rather than configuring one: a chart option object is a second, untyped description of
+state we already model, and the one chart in the app used a few hundred kilobytes of echarts to draw two stacked
+bars. What we need of a charting library is a scale, a stack and a tick.
+
+Hover tooltips on a chart use `TrackingTooltip` (`src/components/ui/tracking-tooltip.tsx`), which follows the
+pointer instead of anchoring to a trigger: chart segments and legend swatches are too small and too dense for
+Radix to anchor to one at a time. The caller owns which target is hovered and passes the content for it; `null`
+closes it. Movement is written to the node's transform from a pointermove listener, so following the pointer
+never re-renders React. Placement maths (which side of the pointer, clamped to the viewport or a boundary
+element) is in `src/lib/floating.ts` (`Flt`).
+
 ## ODSM: optimistic distributed state
 
 `src/lib/odsm.ts` (Optimistic Distributed State Machine) is how every piece of collaboratively edited state
