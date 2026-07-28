@@ -41,6 +41,13 @@ export const noChartData = Msgs.def('No data available for charts')
 
 export const kdRatio = Msgs.def('K/D Ratio:')
 
+export const kdBreakdown = Msgs.def('{kills} kills, {deaths} deaths', (kills: number, deaths: number) => ({ kills, deaths }))
+
 export const woundRatio = Msgs.def('Wound Ratio:')
+
+export const woundBreakdown = Msgs.def('{wounds} wounds dealt, {wounded} taken', (wounds: number, wounded: number) => ({
+	wounds,
+	wounded,
+}))
 
 export const teamBreakdowns = Msgs.def('Team Breakdowns')
