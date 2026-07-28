@@ -4,6 +4,7 @@ import * as net from 'node:net'
 import type { BmServer } from '../emulator/bm-server.ts'
 import type { Emulator, EmuPlayer } from '../emulator/index.ts'
 import * as Verbs from '../emulator/verbs.ts'
+import type { DevAdminList } from './admin-list.ts'
 
 // The socket that carries scenario commands to the emulator host.
 //
@@ -17,19 +18,33 @@ import * as Verbs from '../emulator/verbs.ts'
 type Request = { args: string[] }
 type Response = { ok: boolean; output: string }
 
-export function createEmuHost(ctx: { emu: Emulator; bm: BmServer }): { host: Verbs.SandboxHost; join: (name: string) => EmuPlayer } {
+export function createEmuHost(ctx: {
+	emu: Emulator
+	bm: BmServer
+	// the emulated Admins.cfg, when the caller keeps one (src/dev/admin-list.ts). It watches joins itself, so
+	// connecting lands a player in a group as it does on a sandbox server.
+	adminList?: DevAdminList
+}): { host: Verbs.SandboxHost; join: (name: string) => EmuPlayer } {
 	const host: Verbs.SandboxHost = {
 		emu: ctx.emu,
 		// Named players, so a scenario can refer to someone by the name it gave them rather than by an eos id.
 		players: new Map(),
-		onPlayerJoined: (player) => ctx.bm.addPlayer({ eosId: player.eos, steamId: player.steam }),
+		onPlayerJoined: (player) => {
+			ctx.bm.addPlayer({ eosId: player.eos, steamId: player.steam })
+			ctx.adminList?.onPlayerJoined(player)
+		},
+		adminList: ctx.adminList,
 	}
 	return { host, join: (name) => Verbs.joinPlayer(host, name) }
 }
 
-export async function dispatch(host: Verbs.SandboxHost, args: string[]): Promise<Response> {
+// `afterCommand` runs on success only, and is where the host rewrites its Admins.cfg: the roster a verb leaves
+// behind is what the list is rendered against, so a player who left has to stop being in a group.
+export async function dispatch(host: Verbs.SandboxHost, args: string[], opts?: { afterCommand?: () => void }): Promise<Response> {
 	try {
-		return { ok: true, output: await Verbs.executeTokens(host, args) }
+		const output = await Verbs.executeTokens(host, args)
+		opts?.afterCommand?.()
+		return { ok: true, output }
 	} catch (err) {
 		return { ok: false, output: err instanceof Error ? err.message : String(err) }
 	}
@@ -52,7 +67,7 @@ async function clearStaleSocket(socketPath: string) {
 	fs.rmSync(socketPath, { force: true })
 }
 
-export async function serve(socketPath: string, host: Verbs.SandboxHost): Promise<net.Server> {
+export async function serve(socketPath: string, host: Verbs.SandboxHost, opts?: { afterCommand?: () => void }): Promise<net.Server> {
 	await clearStaleSocket(socketPath)
 	const server = net.createServer((socket) => {
 		let buffered = ''
@@ -65,7 +80,7 @@ export async function serve(socketPath: string, host: Verbs.SandboxHost): Promis
 			void (async () => {
 				let response: Response
 				try {
-					response = await dispatch(host, (JSON.parse(line) as Request).args)
+					response = await dispatch(host, (JSON.parse(line) as Request).args, opts)
 				} catch (err) {
 					response = { ok: false, output: err instanceof Error ? err.message : String(err) }
 				}

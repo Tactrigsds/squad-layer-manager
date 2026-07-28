@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import type * as SM from '@/models/squad.models'
+
 // The scenario verbs a sandbox server understands, defined once for all three front ends: the repl inside
 // `pnpm dev:emu`, the one-shot `pnpm emuctl`, and the sandbox window's oRPC router. A verb added here reaches
 // all of them, and none of them can grow one the others lack.
@@ -286,4 +288,108 @@ export function parseVerbArgs<V extends SandboxVerb>(verb: V, args: unknown): Sa
 export function usageLines(): string[] {
 	const width = Math.max(...SANDBOX_VERB.map((v) => SANDBOX_VERBS[v].usage.length))
 	return SANDBOX_VERB.map((v) => `  ${SANDBOX_VERBS[v].usage.padEnd(width)}  ${SANDBOX_VERBS[v].summary}`)
+}
+
+// ---- the emulated Admins.cfg ----
+//
+// Held as structure and rendered to the real file format on read, so what an emulated server hands out is what a
+// squad server would be handed, and the parse path is the production one. Both emulated hosts share it: the
+// sandbox keeps it in memory, and the dev host writes it to the file its app reads back.
+
+export type EmulatedAdminList = {
+	// group name -> the permissions it grants
+	groups: Map<string, string[]>
+	// player name -> the groups they are in
+	memberships: Map<string, Set<string>>
+}
+
+// what the emulated list treats as marking an admin
+export const IDENTIFYING_PERMS = ['canseeadminchat']
+
+// The group an admin gets by default. Its permissions are the ones that actually gate things in SLM: seeing admin
+// chat is what puts a player in scope for in-game commands.
+export const DEFAULT_ADMIN_GROUP = 'Admin'
+
+// A group an emulated server's admin list ships with, and how a grouping built from it presents that group. The
+// two travel together because they are the same thing seen from either end: `name` is the token in Admins.cfg
+// that an `admin-list` rule matches on, `label` and `color` are what the rule's group looks like on a chart.
+export type SeededAdminGroup = { name: string; perms: SM.PlayerPerm[]; label: string; color: string }
+
+// Enough of a spread that a breakdown of an emulated server shows something, and a plausible one: an admin list is
+// mostly not admins. Only Admin grants an identifying permission -- the rest are the reserve-slot and tagging
+// groups a community actually keeps, which is exactly what grouping on an admin list is for.
+export const SEEDED_ADMIN_GROUPS: SeededAdminGroup[] = [
+	{
+		name: DEFAULT_ADMIN_GROUP,
+		perms: ['canseeadminchat', 'balance', 'cameraman', 'teamchange', 'kick', 'ban'],
+		label: 'Admin',
+		color: '#d1495b',
+	},
+	// no permissions at all: a watchlist marks a player, it does not give them anything
+	{ name: 'Watchlist', perms: [], label: 'Watchlist', color: '#e08e45' },
+	{ name: 'ArmorPlayer', perms: ['reserve'], label: 'Armor Player', color: '#3d7dd9' },
+	{ name: 'SquadLeader', perms: ['reserve'], label: 'Squad Leader', color: '#3f9e6b' },
+	{ name: 'Regular', perms: ['reserve'], label: 'Regular', color: '#8367c7' },
+]
+
+// Which groups the nth player to connect to an emulated server lands in. A fixed pattern rather than a random
+// draw, so the same scenario produces the same breakdown twice, and it repeats, so a roster of any size is spread
+// across every group. Some players are in two groups and some in none: both are the interesting cases, since rule
+// order is what decides the first and "Other" is what shows the second.
+const SEEDED_MEMBERSHIP_PATTERN: string[][] = [
+	['Admin', 'Regular'],
+	['Regular'],
+	['SquadLeader'],
+	['ArmorPlayer'],
+	[],
+	['Regular'],
+	['Watchlist'],
+	['SquadLeader'],
+	[],
+	['ArmorPlayer', 'Regular'],
+	['Admin'],
+	[],
+]
+
+export function seededGroupsFor(joinIndex: number): string[] {
+	return [...SEEDED_MEMBERSHIP_PATTERN[joinIndex % SEEDED_MEMBERSHIP_PATTERN.length]]
+}
+
+// The name an unnamed player gets, by the order they connect. Sequential rather than random so a scenario written
+// against Player1 keeps meaning the same thing -- and so anything written about them in advance names them right.
+export function defaultPlayerName(index: number): string {
+	return `Player${index + 1}`
+}
+
+// the index behind such a name, or null for a player a scenario named itself
+export function defaultPlayerIndex(name: string): number | null {
+	const match = /^Player(\d+)$/.exec(name)
+	if (!match) return null
+	const ordinal = Number(match[1])
+	return ordinal > 0 ? ordinal - 1 : null
+}
+
+export function initAdminList(): EmulatedAdminList {
+	return { groups: new Map(SEEDED_ADMIN_GROUPS.map((g) => [g.name, [...g.perms]])), memberships: new Map() }
+}
+
+// Squad's Admins.cfg format. A player the caller cannot resolve to a steam id cannot appear, and neither can a
+// membership of a group that has since been deleted.
+export function renderAdminsCfg(list: EmulatedAdminList, steamIdFor: (playerName: string) => string | undefined): string {
+	const lines: string[] = []
+	for (const [group, perms] of list.groups) lines.push(`Group=${group}:${perms.join(',')}`)
+	for (const [name, groups] of list.memberships) {
+		const steamId = steamIdFor(name)
+		if (!steamId) continue
+		for (const group of groups) {
+			if (!list.groups.has(group)) continue
+			lines.push(`Admin=${steamId}:${group}`)
+		}
+	}
+	return lines.length > 0 ? lines.join('\n') + '\n' : ''
+}
+
+// One group and the ids in it, for callers that hold steam ids rather than a roster to resolve names against.
+export function renderAdminsCfgGroup(group: string, perms: readonly SM.PlayerPerm[], steamIds: readonly string[]): string {
+	return [`Group=${group}:${perms.join(',')}`, ...steamIds.map((steamId) => `Admin=${steamId}:${group}`)].join('\n') + '\n'
 }

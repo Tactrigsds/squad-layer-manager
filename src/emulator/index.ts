@@ -5,7 +5,7 @@ import { World, type WorldOptions } from './world'
 export * as Fmt from './format'
 export { LogFileSink } from './log-file'
 export { RconServer } from './rcon-server'
-export { makePlayer, World } from './world'
+export { eosIdForName, makePlayer, steamIdForName, World } from './world'
 export type { EmuPlayer, WorldOptions } from './world'
 
 export type EmulatorOptions = WorldOptions & {

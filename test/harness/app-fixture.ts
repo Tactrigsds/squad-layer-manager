@@ -14,6 +14,7 @@ import type * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
+import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
 import * as Migrate from '@/server/migrate'
@@ -268,8 +269,8 @@ function startServerAgent(args: {
 }
 
 function renderAdminsCfg(steamIds: string[], reserveIds: string[] = []): string {
-	let cfg = DevInstance.renderAdminsCfg(steamIds, ADMIN_GROUP, [ADMIN_PERM, 'balance', 'cameraman', 'teamchange'])
-	if (reserveIds.length > 0) cfg += DevInstance.renderAdminsCfg(reserveIds, RESERVE_GROUP, [RESERVE_PERM])
+	let cfg = SB.renderAdminsCfgGroup(ADMIN_GROUP, [ADMIN_PERM, 'balance', 'cameraman', 'teamchange'], steamIds)
+	if (reserveIds.length > 0) cfg += SB.renderAdminsCfgGroup(RESERVE_GROUP, [RESERVE_PERM], reserveIds)
 	return cfg
 }
 
