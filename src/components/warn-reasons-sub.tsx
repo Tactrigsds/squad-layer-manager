@@ -8,11 +8,12 @@ import * as AAR from '@/models/admin-action-reasons.models'
 import type * as RBAC from '@/rbac.models'
 import * as SettingsClient from '@/systems/settings.client'
 
-import ComboBox from './combo-box/combo-box'
+import ComboBox, { type ComboBoxHandle } from './combo-box/combo-box'
 import { PermissionDeniedTooltip } from './permission-denied-tooltip'
 import type { MenuSlots } from './player-context-menu-options'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
+import { useBlockDialogSubmit } from './ui/lazy-alert-dialog'
 
 // the Warn menu entry: a flat item when no warn presets are configured (which leaves only the custom path),
 // otherwise a sub-menu offering Custom (the warn box) or Preset Reason (the warn dialog)
@@ -67,10 +68,12 @@ export function ReasonPicker(props: {
 	presetRef: React.MutableRefObject<string>
 	// pass when free-text reasons are allowed for this action (warn/kill/kick); omit for preset-only actions
 	customRef?: React.MutableRefObject<string>
-	// when true a reason is mandatory (enforced on submit); reflected in the label
+	// when true a reason is mandatory: the dialog's action buttons stay disabled until one is given
 	required?: boolean
 	// for timeouts: the currently-entered duration, so the preview can resolve {{duration}} live
 	durationMs?: number
+	// mount with the preset dropdown already open. Off for dialogs whose first field is something else.
+	autoOpen?: boolean
 }) {
 	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
 		s ? AAR.reasonsForAction(s.adminActionReasons, props.action) : [],
@@ -79,6 +82,16 @@ export function ReasonPicker(props: {
 	const [selected, setSelected] = React.useState(() => props.presetRef.current || CUSTOM)
 	// mirror the custom input into state so the message preview updates as the admin types
 	const [customText, setCustomText] = React.useState(() => props.customRef?.current ?? '')
+	const autoOpen = (props.autoOpen ?? true) && reasons.length > 0
+	const given = selected !== CUSTOM || (allowCustom && customText.trim().length > 0)
+	const comboRef = React.useRef<ComboBoxHandle>(null)
+	useBlockDialogSubmit(!!props.required && !given)
+	// deferred by a frame: opening during mount loses the popover to the closing context menu's focus restore
+	React.useEffect(() => {
+		if (!autoOpen) return
+		const raf = requestAnimationFrame(() => comboRef.current?.focus())
+		return () => cancelAnimationFrame(raf)
+	}, [autoOpen])
 	if (reasons.length === 0 && !allowCustom) {
 		// preset-only action with nothing configured: when a reason is required the dialog can't proceed, so say
 		// why instead of silently rendering nothing
@@ -105,6 +118,7 @@ export function ReasonPicker(props: {
 			</Label>
 			{reasons.length > 0 && (
 				<ComboBox
+					ref={comboRef}
 					title={AAR_Msgs.reasonPicker().text()}
 					className="w-full"
 					value={selected}
