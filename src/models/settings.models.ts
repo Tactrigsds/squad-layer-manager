@@ -738,11 +738,13 @@ export const QueueSettingsSchema = z.object({
 		.max(100)
 		.prefault(20)
 		.describe('How long the queue is meant to get. Reaching it turns the queue counter red; nothing is rejected.'),
+	// unset by default; the inner prefault is what the field fills in when it is switched back on
 	lowQueueWarningThreshold: z
 		.number()
 		.positive()
 		.prefault(1)
 		.nullable()
+		.prefault(null)
 		.describe(
 			'Admins are warned after a map roll when the queue holds this many items or fewer. Unset to never warn about a short queue.',
 		),
