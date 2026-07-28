@@ -98,6 +98,9 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	// once asked for, a page (several matches) at a time
 	const [historyRequested, setHistoryRequested] = React.useState(false)
 	const eventsQuery = useInfiniteQuery({ ...playerEventsInfiniteOptions(serverId, playerId), enabled: historyRequested })
+	// only a fetch the user asked for gets a spinner: the hover preload runs on this same query, and letting it disable
+	// the button would take the button out from under the cursor and re-trigger the preload as it came back
+	const isLoadingOlder = historyRequested && eventsQuery.isFetching
 	const preloadHistory = () => {
 		void RPC.queryClient.prefetchInfiniteQuery(playerEventsInfiniteOptions(serverId, playerId))
 	}
@@ -250,7 +253,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 				<div className="relative flex-1 min-h-0">
 					<ScrollArea ref={scrollAreaRef} className="h-full">
 						<div ref={contentRef} className="flex flex-col gap-0.5 min-h-0 w-full max-w-175">
-							{eventsQuery.isFetching && filteredEvents.length === 0 && (
+							{isLoadingOlder && filteredEvents.length === 0 && (
 								<div className="flex items-center justify-center py-6">
 									<Spinner className="size-5" />
 								</div>
@@ -272,17 +275,17 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 								if (!historyRequested) setHistoryRequested(true)
 								else void eventsQuery.fetchNextPage()
 							}}
-							disabled={eventsQuery.isFetching}
+							disabled={isLoadingOlder}
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
 							title={CHAT_Msgs.loadOlderEvents().text()}
 						>
-							{eventsQuery.isFetching ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
+							{isLoadingOlder ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
 							<span className="text-xs">{CHAT_Msgs.loadOlderEvents().text()}</span>
 						</Button>
 					)}
-					{historyRequested && !eventsQuery.hasNextPage && !eventsQuery.isFetching && isAtTop && (
+					{historyRequested && !eventsQuery.hasNextPage && !isLoadingOlder && isAtTop && (
 						<div
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute top-0 left-0 right-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
@@ -468,6 +471,9 @@ function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 		input: (cursor: number | undefined) => ({ serverId, playerId, cursor }),
 		initialPageParam: undefined as number | undefined,
 		getNextPageParam: (lastPage) => RPC.selectLoaded(lastPage)?.nextCursor,
+		// a finished match's events never change, so a repeated hover preload costs nothing and the click that follows
+		// one renders from the cache instead of refetching
+		staleTime: 60_000,
 	})
 }
 
