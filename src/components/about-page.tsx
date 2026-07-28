@@ -2,11 +2,12 @@ import { Copy } from 'lucide-react'
 
 import LogoMark from '@/components/logo-mark'
 import ManagedServersCard from '@/components/managed-servers-card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/lib/toast'
+import * as Typo from '@/lib/typography'
+import { cn } from '@/lib/utils'
 import { formatVersion } from '@/lib/versioning'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
@@ -18,7 +19,7 @@ function LinkRow({ heading, url }: { heading: string; url: string }) {
 	return (
 		<div className="flex flex-col space-y-1">
 			<span className="font-semibold">{heading}</span>
-			<a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+			<a href={url} target="_blank" rel="noopener noreferrer" className={cn(Typo.Link, 'break-all')}>
 				{url}
 			</a>
 		</div>
@@ -26,17 +27,7 @@ function LinkRow({ heading, url }: { heading: string; url: string }) {
 }
 
 function NameList({ names }: { names: readonly string[] }) {
-	return (
-		<ul className="flex flex-wrap gap-1.5">
-			{names.map((name) => (
-				<li key={name}>
-					<Badge variant="secondary" className="font-normal">
-						{name}
-					</Badge>
-				</li>
-			))}
-		</ul>
-	)
+	return <p className="text-foreground">{names.join(', ')}</p>
 }
 
 export default function AboutPage() {
