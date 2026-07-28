@@ -39,6 +39,8 @@ export const scrollToBottom = Msgs.def('Scroll to bottom')
 
 export const loadOlderEvents = Msgs.def('Load older events')
 
+export const noMoreEvents = Msgs.def('No more events to load')
+
 export const newEvents = Msgs.def('{count, plural, one {# new event} other {# new events}}', (count: number) => ({ count }))
 
 export const previousMatch = Msgs.def('Previous match')
