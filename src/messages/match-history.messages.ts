@@ -51,3 +51,10 @@ export const woundBreakdown = Msgs.def('{wounds} wounds dealt, {wounded} taken',
 }))
 
 export const teamBreakdowns = Msgs.def('Team Breakdowns')
+
+// what a click on one of the breakdown's bar segments does, said on the segment's own tooltip
+export const breakdownFilterHint = Msgs.def('Click to filter the teams panel to {group}', (group: string) => ({ group }))
+
+export const breakdownSelectTeamHint = Msgs.def('Shift-click to select them')
+
+export const breakdownSelectBothHint = Msgs.def('Ctrl+Shift-click to select {group} on both teams', (group: string) => ({ group }))

@@ -8,7 +8,7 @@ import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 import type { ClientOnlySettingsStore } from '@/systems/client-only-settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 
@@ -20,11 +20,14 @@ export type Ratio = { numerator: number; denominator: number; value: number | nu
 export type TeamCombat = { kd: Ratio; wounds: Ratio }
 export type CombatStats = { team1: TeamCombat; team2: TeamCombat }
 
+export type BreakdownMember = { id: SM.PlayerId; name: string }
+
 export type Breakdown = {
 	series: Chart.Series[]
 	rows: Chart.Row[]
-	// the names behind each bar segment, indexed [rowIndex][seriesIndex]
-	players: string[][][]
+	// who is behind each bar segment, indexed [rowIndex][seriesIndex]. Carries ids as well as names because a
+	// segment is clickable: what it selects is exactly what it counted.
+	members: BreakdownMember[][][]
 }
 
 export namespace Sel {
@@ -147,7 +150,7 @@ export namespace Sel {
 			const labelToIdx = new Map(labels.map((label, i) => [label, i]))
 			const ungroupedIdx = labels.length - 1
 			const counts = [labels.map(() => 0), labels.map(() => 0)]
-			const names: string[][][] = [labels.map((): string[] => []), labels.map((): string[] => [])]
+			const members: BreakdownMember[][][] = [labels.map((): BreakdownMember[] => []), labels.map((): BreakdownMember[] => [])]
 
 			for (const player of rostered) {
 				const rowIndex = (player.teamId ?? 0) - 1
@@ -156,13 +159,16 @@ export namespace Sel {
 				const seriesIndex = group != null ? (labelToIdx.get(group) ?? -1) : ungroupedIdx
 				if (seriesIndex === -1) continue
 				counts[rowIndex][seriesIndex]++
-				names[rowIndex][seriesIndex].push(player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?')
+				members[rowIndex][seriesIndex].push({
+					id: SM.PlayerIds.getPlayerId(player.ids),
+					name: player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?',
+				})
 			}
 
 			return {
 				series: labels.map((label) => ({ key: label, label, color: PG.getGroupColor(grouping, label, orgFlags) })),
 				rows: teamDisplays.map((team, rowIndex) => ({ key: `team${rowIndex + 1}`, label: team.label, values: counts[rowIndex] })),
-				players: names,
+				members,
 			}
 		},
 	)
