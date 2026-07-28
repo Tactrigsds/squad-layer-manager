@@ -6,7 +6,8 @@ import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
-import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
 import type * as Chart from '@/lib/chart'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -18,6 +19,7 @@ import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as SquadServerClient from '@/systems/squad-server.client'
 
 export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) {
 	const squadServer = props.stores.squadServer!
@@ -157,9 +159,29 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 	)
 	if (!breakdown) return null
 
+	// A segment names a group on one team, which is the pair the teams panel filters and selects by. Plain click
+	// filters, shift adds that team's members to the selection, ctrl+shift takes the group on both teams.
+	const onSegmentClick = (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
+		const group = breakdown.series[datum.seriesIndex].label
+		// clicking the group the panel is already filtered to lifts the filter, so the segment is its own undo. A
+		// selection always wants its players on screen, so those variants only ever set it.
+		const filtered = Zus.getState(squadServer, TeamsPanelPrt.Sel.groupFilter)
+		TeamsPanelPrt.Actions.setGroupFilter({ teamsPanel: squadServer }, !modifiers.shift && filtered === group ? null : group)
+		if (modifiers.shift) {
+			const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
+			SquadServerFrame.Actions.selectPlayerIds(
+				props.stores,
+				rows.flatMap((row) => row[datum.seriesIndex].map((member) => member.id)),
+			)
+		}
+		ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
+		// on a single-column layout the teams panel is behind a tab of its own
+		SquadServerClient.DashboardTabActions.setActiveTab('layers')
+	}
+
 	const renderTooltip = (datum: Chart.Datum) => {
 		const series = breakdown.series[datum.seriesIndex]
-		const players = breakdown.players[datum.rowIndex][datum.seriesIndex]
+		const members = breakdown.members[datum.rowIndex][datum.seriesIndex]
 		return (
 			<div className="flex flex-col gap-1">
 				<span className="font-semibold">{breakdown.rows[datum.rowIndex].label}</span>
@@ -169,7 +191,12 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 						<span className="font-semibold">{series.label}</span>: {datum.value}
 					</span>
 				</span>
-				{players.length > 0 && <span className="text-muted-foreground">{players.join(', ')}</span>}
+				{members.length > 0 && <span className="text-muted-foreground">{members.map((member) => member.name).join(', ')}</span>}
+				<span className="flex flex-col border-t border-border pt-1 mt-0.5 text-muted-foreground">
+					<span>{MH_Msgs.breakdownFilterHint(series.label).text()}</span>
+					<span>{MH_Msgs.breakdownSelectTeamHint().text()}</span>
+					<span>{MH_Msgs.breakdownSelectBothHint(series.label).text()}</span>
+				</span>
 			</div>
 		)
 	}
@@ -215,6 +242,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 				ariaLabel={MH_Msgs.teamBreakdowns().text()}
 				renderTooltip={renderTooltip}
 				renderLegendTooltip={renderLegendTooltip}
+				onSegmentClick={onSegmentClick}
 			/>
 		</div>
 	)

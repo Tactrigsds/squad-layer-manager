@@ -23,6 +23,8 @@ export function StackedBarChart(props: {
 	ariaLabel?: string
 	renderTooltip?: (datum: Chart.Datum) => React.ReactNode
 	renderLegendTooltip?: (seriesIndex: number) => React.ReactNode
+	// what the modifiers mean is the caller's to decide; the chart only reports which were held
+	onSegmentClick?: (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => void
 }) {
 	const barHeight = props.barHeight ?? 20
 	const [container, setContainer] = React.useState<HTMLDivElement | null>(null)
@@ -91,11 +93,14 @@ export function StackedBarChart(props: {
 									const segWidth = Chart.project(segment.value, axis.max, width) - gap
 									const label = String(segment.value)
 									const dimmed = highlighted !== null && highlighted !== segment.seriesIndex
+									const datum = { rowIndex, seriesIndex: segment.seriesIndex, value: segment.value }
 									return (
 										<g
 											key={props.series[segment.seriesIndex].key}
 											opacity={dimmed ? DIM_OPACITY : 1}
-											onPointerEnter={() => setHovered({ rowIndex, seriesIndex: segment.seriesIndex, value: segment.value })}
+											className={props.onSegmentClick ? 'cursor-pointer' : undefined}
+											onPointerEnter={() => setHovered(datum)}
+											onClick={(e) => props.onSegmentClick?.(datum, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
 										>
 											<rect
 												x={x}
