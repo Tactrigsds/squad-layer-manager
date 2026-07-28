@@ -6,7 +6,12 @@ import packageJson from './package.json'
 
 // Mainly just using rolldown through vite here. haven't explored using vite as a dev server, which we would need to do if we wanted to do any kind of transforms for the server code
 
-// Native or OpenTelemetry instrumented modules that should not be bundled (read from production dependencies)
+// Native or OpenTelemetry instrumented modules that should not be bundled (read from production dependencies).
+//
+// So `dependencies` here means "what rolldown leaves external", not "what production needs". Everything the server
+// imports is bundled either way. Moving a package between `dependencies` and `devDependencies` therefore changes
+// how it is built, not whether it ships: demote one that must stay external (a native addon, or anything otel
+// patches at require time) and it gets inlined, and the instrumentation silently stops applying.
 const externalModules: (string | RegExp)[] = Object.keys(packageJson.dependencies || {})
 
 externalModules.push(
