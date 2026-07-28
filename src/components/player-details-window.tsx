@@ -128,8 +128,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const connectionStatus = data?.connectionStatus ?? null
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
-	const globalFilterState = Zus.useStore(squadServerFrameKey, ChatPrt.Sel.secondaryFilterState)
-	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>(globalFilterState)
+	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const filteredEvents = allEvents.filter((e) => CHAT.isRenderableInFeed(e) && CHAT.showEventInFeed(e, filterState))
 	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
 	const { setIsPinned } = useDraggableWindow()
