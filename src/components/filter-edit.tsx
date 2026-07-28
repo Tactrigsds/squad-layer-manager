@@ -689,7 +689,7 @@ const markdownComponents = {
 		) : (
 			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-gray-100 p-3 font-mono text-sm dark:bg-gray-800" />
 		),
-	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className="text-blue-600 hover:underline dark:text-blue-400" />,
+	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className={Typo.Link} />,
 	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-gray-300 dark:border-gray-700" />,
 	img: ({ ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className="my-4 h-auto max-w-full rounded-md" />,
 	table: ({ ...props }: React.ComponentPropsWithoutRef<'table'>) => (

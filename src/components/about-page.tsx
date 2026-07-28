@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/lib/toast'
+import * as Typo from '@/lib/typography'
+import { cn } from '@/lib/utils'
 import { formatVersion } from '@/lib/versioning'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
@@ -13,17 +15,19 @@ import * as ConfigClient from '@/systems/config.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
-function LinkRow({ heading, url }: { heading: string; url: string | undefined }) {
-	// a deployment that hasn't named a help or discord url has nowhere to send anyone, so the row is dropped
-	if (!url) return null
+function LinkRow({ heading, url }: { heading: string; url: string }) {
 	return (
 		<div className="flex flex-col space-y-1">
 			<span className="font-semibold">{heading}</span>
-			<a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+			<a href={url} target="_blank" rel="noopener noreferrer" className={cn(Typo.Link, 'break-all')}>
 				{url}
 			</a>
 		</div>
 	)
+}
+
+function NameList({ names }: { names: readonly string[] }) {
+	return <p className="text-foreground">{names.join(', ')}</p>
 }
 
 export default function AboutPage() {
@@ -54,12 +58,11 @@ export default function AboutPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>{APP_Msgs.debugInfo().text()}</CardTitle>
+					<CardTitle>{APP_Msgs.debugAndHelpInfo().text()}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4 text-sm">
 					<LinkRow heading={APP_Msgs.repositoryHeading().text()} url={config.repoUrl} />
 					<LinkRow heading={APP_Msgs.helpHeading().text()} url={config.helpUrl} />
-					<LinkRow heading={APP_Msgs.discordHelpHeading().text()} url={config.discordHelpUrl} />
 					<LinkRow heading={APP_Msgs.reportIssuesHeading().text()} url={config.issuesUrl} />
 					<div className="relative">
 						<Textarea
@@ -88,8 +91,20 @@ export default function AboutPage() {
 				<CardHeader>
 					<CardTitle>{APP_Msgs.acknowledgementsHeading().text()}</CardTitle>
 				</CardHeader>
-				<CardContent className="text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
-					{APP_Msgs.acknowledgements().react()}
+				<CardContent className="space-y-5 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
+					<p>{APP_Msgs.acknowledgementsIntro().react()}</p>
+					<div className="space-y-3 border-l-2 border-border pl-4">
+						<p>{APP_Msgs.acknowledgementsZero().react()}</p>
+						<p>{APP_Msgs.acknowledgementsRandyNewman().react()}</p>
+					</div>
+					<div className="space-y-2">
+						<p>{APP_Msgs.acknowledgementsContributorsIntro().text()}</p>
+						<NameList names={APP_Msgs.acknowledgedContributors} />
+					</div>
+					<div className="space-y-2">
+						<p>{APP_Msgs.acknowledgementsUsersIntro().text()}</p>
+						<NameList names={APP_Msgs.acknowledgedUsers} />
+					</div>
 				</CardContent>
 			</Card>
 		</div>

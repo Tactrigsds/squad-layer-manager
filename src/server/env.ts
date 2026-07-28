@@ -157,16 +157,8 @@ export const groups = {
 			.url()
 			.optional()
 			.meta({
-				description: 'where the app points users who want help using it, e.g. your own documentation. No link is shown when unset.',
-				envExample: { include: 'commented', dev: { include: 'commented' } },
-			}),
-		// not in the discord group: a support server is worth linking even where the discord integration is off, and
-		// that group's vars are the bot's credentials
-		DISCORD_HELP_URL: z
-			.url()
-			.optional()
-			.meta({
-				description: 'an invite to the discord where users can ask for help. No link is shown when unset.',
+				description:
+					"where the app points users who want help, e.g. your own documentation or your community's discord. Defaults to this project's discord.",
 				envExample: { include: 'commented', dev: { include: 'commented' } },
 			}),
 	},
