@@ -742,7 +742,10 @@ export const QueueSettingsSchema = z.object({
 		.number()
 		.positive()
 		.prefault(1)
-		.describe('Admins are warned after a map roll when the queue holds this many items or fewer.'),
+		.nullable()
+		.describe(
+			'Admins are warned after a map roll when the queue holds this many items or fewer. Unset to never warn about a short queue.',
+		),
 	adminQueueReminderInterval: ZodUtils.HumanTime.prefault('10m').describe(
 		'How often to remind admins to maintain the queue. Low queue warnings happen half as often.',
 	),
