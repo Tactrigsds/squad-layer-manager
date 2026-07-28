@@ -282,6 +282,14 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							<span className="text-xs">{CHAT_Msgs.loadOlderEvents().text()}</span>
 						</Button>
 					)}
+					{historyRequested && !eventsQuery.hasNextPage && !eventsQuery.isFetching && isAtTop && (
+						<div
+							style={{ zIndex: aboveChatZIndex }}
+							className="absolute top-0 left-0 right-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
+						>
+							{CHAT_Msgs.noMoreEvents().text()}
+						</div>
+					)}
 					{showScrollButton && (
 						<Button
 							onClick={() => scrollToBottom()}
