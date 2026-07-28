@@ -9,6 +9,7 @@ export const Th = 'border px-4 py-2 text-left font-bold [[align=center]]:text-ce
 export const Td = 'border px-4 py-2 text-left [[align=center]]:text-center [[align=right]]:text-right'
 export const List = 'my-6 ml-6 list-disc [&>li]:mt-2'
 export const InlineCode = 'relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold'
+export const Link = 'text-blue-600 hover:underline dark:text-blue-400'
 export const Lead = 'text-xl text-muted-foreground'
 export const Large = 'text-lg font-semibold'
 export const Small = 'text-sm font-medium leading-none'
