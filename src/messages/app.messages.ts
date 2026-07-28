@@ -18,15 +18,13 @@ export const copiedToClipboard = Msgs.def((what: string) => ({
 
 export const about = Msgs.def('About')
 
-export const debugInfo = Msgs.def('Debug Info')
+export const debugAndHelpInfo = Msgs.def('Debug & Help Info')
 
 export const repositoryHeading = Msgs.def('Repository:')
 
 export const reportIssuesHeading = Msgs.def('Report issues here, including the information below:')
 
-export const helpHeading = Msgs.def('Help:')
-
-export const discordHelpHeading = Msgs.def('Ask for help on Discord:')
+export const helpHeading = Msgs.def('Ask for help here:')
 
 // The block the issue reporter is asked to paste. One message rather than four labels: which lines are present
 // depends on what the instance knows about itself, and the omissions only read correctly as a whole.
@@ -48,12 +46,12 @@ export const versionInfoCopied = Msgs.def('Version information has been copied')
 export const acknowledgementsHeading = Msgs.def('Acknowledgements')
 
 // Prose rather than a label per person, so who is credited and what for reads as sentences a translator can rearrange.
-// The names below are the whole content of the section; edit them here.
+// Each stays one string literal however long it runs: the extractor keys a message by a literal, and a concatenation
+// leaves it out of the catalogue. The names below are the whole content of the section; edit them here.
 export const acknowledgementsIntro = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong>' +
-				' community. Here are a number of people who made significant contributions to SLM in various ways.',
+			'SLM is built and maintained by <strong>grey275</strong>. However, it exists because of the <strong>Tactrig</strong> community. Here are a number of people who made significant contributions to SLM in various ways.',
 			Msgs.tags,
 		),
 }))
@@ -61,10 +59,7 @@ export const acknowledgementsIntro = Msgs.def(() => ({
 export const acknowledgementsZero = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			'<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring' +
-				' system that is integral to SLM. Through discussions with him he also shaped much of the early featureset, which' +
-				" came to be some of SLM's most important characteristics. Without his effort this project wouldn't have been" +
-				' feasible.',
+			"<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring system that is integral to SLM. Through discussions with him he also shaped much of the early featureset, which came to be some of SLM's most important characteristics. Without his effort this project wouldn't have been feasible.",
 			Msgs.tags,
 		),
 }))
@@ -72,22 +67,17 @@ export const acknowledgementsZero = Msgs.def(() => ({
 export const acknowledgementsRandyNewman = Msgs.def(() => ({
 	react: () =>
 		Msgs.node(
-			"<strong>Randy Newman</strong>, instrumental in getting SLM introduced to TT's admin workflow by making hardware" +
-				' available for deployment and writing approachable documentation. Graciously put up with my constant feature' +
-				' additions that made his job harder at every turn.',
+			"<strong>Randy Newman</strong>, instrumental in getting SLM introduced to TT's admin workflow by making hardware available for deployment and writing approachable documentation. Graciously put up with my constant feature additions that made his job harder at every turn.",
 			Msgs.tags,
 		),
 }))
 
 export const acknowledgementsContributorsIntro = Msgs.def(
-	'Thank you to everyone here who helped me not just with bugs but also with feature requests and suggestions. You were' +
-		" instrumental in shaping SLM's featureset.",
+	"Thank you to everyone here who helped me not just with bugs but also with feature requests and suggestions. You were instrumental in shaping SLM's featureset.",
 )
 
 export const acknowledgementsUsersIntro = Msgs.def(
-	'And thanks to all of the people who actually chose to learn and use SLM even as it proved to be unstable. All of you have' +
-		" more than 100 (!!!) layer sets, such that at time of writing I'm not even in the top 5 in terms of layer set count" +
-		' anymore.',
+	"And thanks to all of the people who actually chose to learn and use SLM even as it proved to be unstable. All of you have more than 100 (!!!) layer sets, such that at time of writing I'm not even in the top 5 in terms of layer set count anymore.",
 )
 
 // not messages: a name is the same in every locale

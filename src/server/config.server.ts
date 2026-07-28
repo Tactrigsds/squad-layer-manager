@@ -24,9 +24,10 @@ export let ENV!: ReturnType<typeof envBuilder>
 // ============================== public, static config (never changes for the lifetime of the process) ==============================
 
 // Where the product points when a deployment hasn't named somewhere of its own. A fork sets PUBLIC_REPO_URL /
-// PUBLIC_ISSUES_URL; everyone else gets upstream, which is better than no link at all.
+// PUBLIC_ISSUES_URL / PUBLIC_HELP_URL; everyone else gets upstream, which is better than no link at all.
 export const DEFAULT_REPO_URL = 'https://github.com/Tactrigsds/squad-layer-manager'
 const DEFAULT_ISSUES_URL = `${DEFAULT_REPO_URL}/issues`
+const DEFAULT_HELP_URL = 'https://discord.gg/U2ywQy48H'
 
 export type PublicConfig = {
 	isProduction: boolean
@@ -35,9 +36,7 @@ export type PublicConfig = {
 	PUBLIC_SQUADCALC_URL: string
 	repoUrl: string
 	issuesUrl: string
-	// no default: only a deployment knows where its own users should go for help
-	helpUrl: string | undefined
-	discordHelpUrl: string | undefined
+	helpUrl: string
 	layerTable: SETTINGS.GlobalSettings['layerTable']
 	layerGeneration: SETTINGS.GlobalSettings['layerGeneration']
 	layersVersion: string
@@ -57,8 +56,7 @@ export function pushPublicConfig() {
 		PUBLIC_SQUADCALC_URL: ENV.PUBLIC_SQUADCALC_URL,
 		repoUrl: ENV.PUBLIC_REPO_URL ?? DEFAULT_REPO_URL,
 		issuesUrl: ENV.PUBLIC_ISSUES_URL ?? DEFAULT_ISSUES_URL,
-		helpUrl: ENV.PUBLIC_HELP_URL,
-		discordHelpUrl: ENV.DISCORD_HELP_URL,
+		helpUrl: ENV.PUBLIC_HELP_URL ?? DEFAULT_HELP_URL,
 		layerTable: Settings.GLOBAL_SETTINGS.layerTable,
 		layerGeneration: Settings.GLOBAL_SETTINGS.layerGeneration,
 		layersVersion: LayerEngine.layersVersion,
