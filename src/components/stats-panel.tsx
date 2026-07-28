@@ -4,6 +4,7 @@ import React from 'react'
 
 import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
@@ -12,6 +13,7 @@ import type * as Chart from '@/lib/chart'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as MH_Msgs from '@/messages/match-history.messages'
+import * as SM_Msgs from '@/messages/squad.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import * as RPC from '@/orpc.client'
@@ -132,6 +134,28 @@ function formatRatio(ratio: StatsModels.Ratio) {
 	return ratio.value === null ? '∞' : ratio.value.toFixed(2)
 }
 
+// what the chart is and what clicking it does, out of the way of the segment tooltips that would otherwise repeat
+// it on every hover
+function BreakdownHelp() {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button type="button" className="ml-auto text-muted-foreground hover:text-foreground" aria-label={SM_Msgs.help().text()}>
+					<Icons.CircleHelp className="h-3.5 w-3.5" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-xs space-y-1.5">
+				<p>{MH_Msgs.breakdownDescription().text()}</p>
+				<ul className="text-muted-foreground">
+					<li>{MH_Msgs.breakdownFilterHint().text()}</li>
+					<li>{MH_Msgs.breakdownSelectTeamHint().text()}</li>
+					<li>{MH_Msgs.breakdownSelectBothHint().text()}</li>
+				</ul>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
 function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 	const squadServer = props.stores.squadServer!
 	const serverId = squadServer.serverId
@@ -192,11 +216,6 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 					</span>
 				</span>
 				{members.length > 0 && <span className="text-muted-foreground">{members.map((member) => member.name).join(', ')}</span>}
-				<span className="flex flex-col border-t border-border pt-1 mt-0.5 text-muted-foreground">
-					<span>{MH_Msgs.breakdownFilterHint(series.label).text()}</span>
-					<span>{MH_Msgs.breakdownSelectTeamHint().text()}</span>
-					<span>{MH_Msgs.breakdownSelectBothHint(series.label).text()}</span>
-				</span>
 			</div>
 		)
 	}
@@ -235,6 +254,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 						))}
 					</div>
 				)}
+				<BreakdownHelp />
 			</div>
 			<StackedBarChart
 				rows={breakdown.rows}
