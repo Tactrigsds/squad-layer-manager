@@ -2,6 +2,7 @@ import { Copy } from 'lucide-react'
 
 import LogoMark from '@/components/logo-mark'
 import ManagedServersCard from '@/components/managed-servers-card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -23,6 +24,20 @@ function LinkRow({ heading, url }: { heading: string; url: string | undefined })
 				{url}
 			</a>
 		</div>
+	)
+}
+
+function NameList({ names }: { names: readonly string[] }) {
+	return (
+		<ul className="flex flex-wrap gap-1.5">
+			{names.map((name) => (
+				<li key={name}>
+					<Badge variant="secondary" className="font-normal">
+						{name}
+					</Badge>
+				</li>
+			))}
+		</ul>
 	)
 }
 
@@ -88,8 +103,20 @@ export default function AboutPage() {
 				<CardHeader>
 					<CardTitle>{APP_Msgs.acknowledgementsHeading().text()}</CardTitle>
 				</CardHeader>
-				<CardContent className="text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
-					{APP_Msgs.acknowledgements().react()}
+				<CardContent className="space-y-5 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
+					<p>{APP_Msgs.acknowledgementsIntro().react()}</p>
+					<div className="space-y-3 border-l-2 border-border pl-4">
+						<p>{APP_Msgs.acknowledgementsZero().react()}</p>
+						<p>{APP_Msgs.acknowledgementsRandyNewman().react()}</p>
+					</div>
+					<div className="space-y-2">
+						<p>{APP_Msgs.acknowledgementsContributorsIntro().text()}</p>
+						<NameList names={APP_Msgs.acknowledgedContributors} />
+					</div>
+					<div className="space-y-2">
+						<p>{APP_Msgs.acknowledgementsUsersIntro().text()}</p>
+						<NameList names={APP_Msgs.acknowledgedUsers} />
+					</div>
 				</CardContent>
 			</Card>
 		</div>
