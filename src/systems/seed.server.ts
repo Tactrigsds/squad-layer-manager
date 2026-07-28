@@ -1,6 +1,8 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
+import * as PG from '@/models/player-groupings.models'
+import * as SB from '@/models/sandbox.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
@@ -163,6 +165,9 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 	return {
 		...defaults,
 		adminActionReasons: SEEDED_ADMIN_ACTION_REASONS,
+		// the sandbox this same boot creates seeds its admin list with exactly these groups, so the teams panel and
+		// the stats breakdown have something to say about it before anyone configures anything
+		playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS) },
 		navLinks: [
 			{ label: 'SLM on GitHub', url: DOCS_BASE },
 			{ label: 'Installing SLM', url: `${DOCS_BASE}/blob/main/docs/installing.md` },

@@ -107,6 +107,26 @@ neither can grow a verb the other lacks.
 the network, and scoped to the worktree by living in its own `data/dev`. It exits non-zero and says what is
 wrong if the command fails or no emulator is running, so it composes in scripts.
 
+### Admins and player groups
+
+The emulator keeps an `Admins.cfg` at `data/dev/Admins.cfg`, which the app reads back as an ordinary `local`
+admin list. It ships with the same groups a seeded sandbox does -- `Admin`, `Watchlist`, `ArmorPlayer`,
+`SquadLeader`, `Regular` -- and players are spread across them in a fixed pattern as they connect, so a roster
+you just joined breaks down into something rather than reading as one undifferentiated block. `dev:init`
+installs the matching grouping (`Admin List`) in the instance's settings, which is what the teams panel groups
+by and what the stats breakdown charts.
+
+Edit any of it with the same verbs the sandbox window offers:
+
+```sh
+pnpm emuctl set-player-groups Alice Admin Regular  # put a player in groups (none removes them from the list)
+pnpm emuctl define-group Donor reserve             # add a group, or change what it grants
+pnpm emuctl delete-group Donor
+```
+
+A change is written to the file immediately, but the app re-reads a local admin list every 30 seconds, so give
+it that long to reach the roster.
+
 Quote anything with a `!` or spaces (`'!vote 1'`) -- it is a single argument, and your shell would otherwise
 have opinions about it.
 

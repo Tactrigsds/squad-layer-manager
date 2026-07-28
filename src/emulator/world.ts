@@ -67,12 +67,44 @@ const COMMAND_INFO: Record<string, string> = {
 let nextControllerId = 2147400000
 let nextIpOctet = 1
 
+// Ids are derived from the name rather than drawn at random, so Player1 is the same player every time the
+// emulator starts. That is what lets anything be written about a player before they connect -- an Admins.cfg
+// listing them, a scenario naming their id -- and it makes a match history that outlives a restart line up.
+function seedFrom(name: string): () => number {
+	let state = 0x811c9dc5
+	for (let i = 0; i < name.length; i++) {
+		state = Math.imul(state ^ name.charCodeAt(i), 0x01000193) >>> 0
+	}
+	return () => {
+		state ^= state << 13
+		state >>>= 0
+		state ^= state >> 17
+		state ^= state << 5
+		state >>>= 0
+		return state
+	}
+}
+
+// 17 digits, as steam ids are, in the range the emulator drew from before
+export function steamIdForName(name: string): string {
+	const next = seedFrom(`steam:${name}`)
+	let digits = String(1 + (next() % 9))
+	while (digits.length < 10) digits += String(next() % 10)
+	return `7656119${digits}`
+}
+
+// 32 hex characters, the leading `0002` an eos id carries
+export function eosIdForName(name: string): string {
+	const next = seedFrom(`eos:${name}`)
+	let hex = ''
+	while (hex.length < 28) hex += (next() % 16).toString(16)
+	return `0002${hex}`
+}
+
 export function makePlayer(opts: Partial<EmuPlayer> & { name: string }): EmuPlayer {
-	const eos = opts.eos ?? `0002${Math.random().toString(16).slice(2).padEnd(28, '0').slice(0, 28)}`
-	const steam = opts.steam ?? `7656119${Math.floor(1000000000 + Math.random() * 8999999999)}`
 	return {
-		eos,
-		steam,
+		eos: opts.eos ?? eosIdForName(opts.name),
+		steam: opts.steam ?? steamIdForName(opts.name),
 		name: opts.name,
 		teamId: opts.teamId ?? null,
 		squadId: opts.squadId ?? null,

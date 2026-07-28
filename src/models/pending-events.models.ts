@@ -43,6 +43,13 @@ export const ATTRIBUTION_TTL_MS = 60_000
 // only fires for disconnects whose log line was missed.
 export const POLL_ABSENCE_CULL_THRESHOLD = 2
 
+// membership, not order: the admin lists a server recognises are read in whatever order they are configured
+function sameAdminGroups(a: string[] | undefined, b: string[] | undefined): boolean {
+	const left = a ?? []
+	const right = b ?? []
+	return left.length === right.length && left.every((group) => right.includes(group))
+}
+
 // consecutive teams polls an unknown squad is tolerated before we give up waiting on its SQUAD_CREATED log and
 // synthesize the event from poll data. Must comfortably exceed ordinary log-vs-poll lag (the driver already holds
 // back TEAMS_UPDATE processing by minSafeLeadTimeForOtherEventsSinceLog, so this is extra margin on a heuristic).
@@ -1445,12 +1452,30 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	const nextUnassigned = new Set<SM.PlayerId>()
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
-		const inCurrTeams = !!SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, nextPlayer.ids)
+		const known = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, nextPlayer.ids)
+		const inCurrTeams = !!known
 		if (nextPlayer.teamId == null) {
 			if (!inCurrTeams) nextUnassigned.add(playerId)
 			continue
 		}
-		if (inCurrTeams) continue
+		if (known) {
+			// The poll is the only thing that reports a player's role and their admin-list membership: the log stream
+			// carries neither, so someone whose connect line arrived first is holding placeholders until this fires.
+			// Only on a real difference, since every event is persisted -- once corrected, later polls agree.
+			if (
+				known.role === nextPlayer.role &&
+				known.isAdmin === nextPlayer.isAdmin &&
+				sameAdminGroups(known.adminGroups, nextPlayer.adminGroups)
+			)
+				continue
+			emittedEvent = true
+			yield await createEvent(state, {
+				type: 'PLAYER_RECONCILED',
+				player: { ...known, isAdmin: nextPlayer.isAdmin, adminGroups: nextPlayer.adminGroups, role: nextPlayer.role },
+				...base,
+			})
+			continue
+		}
 		emittedEvent = true
 		yield await createEvent(state, {
 			type: prevUnassigned.has(playerId) ? 'PLAYER_RECONCILED' : 'PLAYER_CONNECTED',
