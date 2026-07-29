@@ -24,15 +24,6 @@ export const EMU_SOCKET_PATH = path.join(DEV_DIR, 'emu.sock')
 // rather than something each worktree has to be told.
 export const RCON_PASSWORD = 'devpassword'
 
-export const ADMIN_GROUP = 'SlmDevAdmin'
-
-// Squad's Admins.cfg format, which the app reads back through a `local` admin list source.
-export function renderAdminsCfg(steamIds: string[], group: string, perms: string[]): string {
-	const lines = [`Group=${group}:${perms.join(',')}`]
-	for (const steamId of steamIds) lines.push(`Admin=${steamId}:${group}`)
-	return lines.join('\n') + '\n'
-}
-
 // The layer components are static app data, loaded at runtime rather than bundled. The emulator resolves its
 // team names from a layer's factions, so anything that builds a World needs them first. Resolved exactly as
 // the app under test resolves them, so the layers a scenario reasons about are the ones the app is running.
