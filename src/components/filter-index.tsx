@@ -30,7 +30,7 @@ interface FilterEntityCardProps {
 function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 	const rolesRes = useQuery(FilterEntityClient.getAllFilterRoleContributorsBase())
 	if (!cfg) return null
-	const user = PartsSys.findUser(entity.owner)!
+	const user = PartsSys.findUser(entity.owner)
 	const roles = rolesRes.data?.filter((role) => role.filterId === entity.id)
 
 	return (
@@ -49,16 +49,18 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 					<ItemFooter className="flex items-center gap-4 flex-wrap">
 						<div className="flex items-center gap-2">
 							<Label className={cn(Typo.Label)}>{F_Msgs.ownerLabel().text()}</Label>
-							<Badge variant="secondary" className="flex items-center gap-1.5">
-								<Avatar
-									style={{ backgroundColor: user.displayHexColor ?? undefined }}
-									className="hover:cursor-pointer select-none h-5 w-5 shrink-0"
-								>
-									<AvatarImage src={user.avatarUrl} crossOrigin="anonymous" />
-									<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-								</Avatar>
-								<span>{user?.displayName}</span>
-							</Badge>
+							{user && (
+								<Badge variant="secondary" className="flex items-center gap-1.5">
+									<Avatar
+										style={{ backgroundColor: user.displayHexColor ?? undefined }}
+										className="hover:cursor-pointer select-none h-5 w-5 shrink-0"
+									>
+										<AvatarImage src={user.avatarUrl} crossOrigin="anonymous" />
+										<AvatarFallback className="text-xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+									</Avatar>
+									<span>{user.displayName}</span>
+								</Badge>
+							)}
 						</div>
 						{roles && roles.length > 0 && (
 							<div className="flex items-center gap-2">
