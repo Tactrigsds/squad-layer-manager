@@ -62,7 +62,7 @@ datasources:
            detection:
               traceIdField: trace_id
               severity:
-                 # VictoriaLogs maps OTLP severityText onto `severity`, uppercase
-                 field: severity
+                 # VictoriaLogs maps OTLP severityText onto `severity_text`, uppercase
+                 field: severity_text
                  valueCase: string
                  source: manual
