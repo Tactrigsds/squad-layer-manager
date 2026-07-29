@@ -44,9 +44,14 @@ const AlertDialogContext = React.createContext<AlertDialogContextType>({
 	closeDialog: () => {},
 })
 
+// lets dialog content hold the action buttons while its input is incomplete. Blockers are counted so several
+// bits of content can hold the dialog at once, and each releases itself when it unmounts on close.
+const SubmitGateContext = React.createContext<{ block: () => () => void }>({ block: () => () => {} })
+
 export function AlertDialogProvider({ children }: { children: React.ReactNode }) {
 	const [open, setOpen] = React.useState(false)
 	const [options, setOptions] = React.useState<AlertDialogOptions | null>(null)
+	const [blockers, setBlockers] = React.useState(0)
 	const resolveRef = React.useRef<((value: string) => void) | null>(null)
 
 	const openDialog = useCallback((opts: AlertDialogOptions): Promise<string> => {
@@ -87,8 +92,18 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 	}
 
 	const contextValue = React.useMemo(() => ({ openDialog, closeDialog }), [openDialog, closeDialog])
+	const submitGate = React.useMemo(
+		() => ({
+			block: () => {
+				setBlockers((count) => count + 1)
+				return () => setBlockers((count) => count - 1)
+			},
+		}),
+		[],
+	)
 
 	const isDestructive = options?.variant === 'destructive'
+	const submitBlocked = blockers > 0
 
 	return (
 		<AlertDialogContext.Provider value={contextValue}>
@@ -116,10 +131,11 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 							className="contents"
 							onSubmit={(e) => {
 								e.preventDefault()
+								if (submitBlocked) return
 								if (options.buttons?.[0]) handleButtonClick(options.buttons[0].id)
 							}}
 						>
-							{options.content}
+							<SubmitGateContext.Provider value={submitGate}>{options.content}</SubmitGateContext.Provider>
 						</form>
 					)}
 					<AlertDialogFooter>
@@ -130,6 +146,7 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 								<AlertDialogAction
 									key={button.id}
 									className={variant ? buttonVariants({ variant }) : undefined}
+									disabled={submitBlocked}
 									onClick={() => handleButtonClick(button.id)}
 								>
 									{button.label}
@@ -149,6 +166,16 @@ export function useAlertDialog() {
 		throw new Error('useAlertDialog must be used within AlertDialogProvider')
 	}
 	return context.openDialog
+}
+
+// disables the enclosing dialog's action buttons while `blocked`. A no-op outside a dialog, so content that
+// is also rendered standalone can call it unconditionally.
+export function useBlockDialogSubmit(blocked: boolean) {
+	const gate = useContext(SubmitGateContext)
+	React.useEffect(() => {
+		if (!blocked) return
+		return gate.block()
+	}, [blocked, gate])
 }
 
 export function useCloseAlertDialog() {

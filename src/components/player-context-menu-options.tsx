@@ -212,6 +212,7 @@ export function TimeoutDialogContent({
 				customRef={customReasonRef}
 				required={required}
 				durationMs={durationMs}
+				autoOpen={false}
 			/>
 		</div>
 	)

@@ -1,3 +1,5 @@
+// Conflicting tailwind classes resolve last-wins, so `cn(props.className, ...own)` lets the component's own classes
+// eat the caller's. Put the caller's last when it is meant to be able to override.
 export { cn } from 'cnfast'
 
 // An affordance that stays out of the way until its `group/single-item` row is hovered. Collapsed to zero width rather

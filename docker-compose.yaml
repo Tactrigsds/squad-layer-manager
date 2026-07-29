@@ -57,7 +57,7 @@ services:
       restart: unless-stopped
 
    victoria-logs:
-      image: victoriametrics/victoria-logs:v1.9.1-victorialogs
+      image: victoriametrics/victoria-logs:v1.52.0
       command:
          - -storageDataPath=/vl-data
          - -httpListenAddr=:9428
