@@ -16,11 +16,12 @@ const REASONS = [
 	},
 ]
 
-async function fixtureWithSquad() {
+async function fixtureWithSquad(requireReasonFor: string[] = []) {
 	const app = await createAppFixture({
 		layerQueue: queue(LAYERS.gorodokRaas),
 		globalSettings: (s) => {
 			s.adminActionReasons = REASONS as typeof s.adminActionReasons
+			s.requireReasonFor = requireReasonFor as typeof s.requireReasonFor
 		},
 	})
 	const leader = app.emu.world.connectPlayer(makePlayer({ name: ' sq_leader', teamId: 1 }))
@@ -51,13 +52,42 @@ test.describe('admin actions from the teams panel', () => {
 			await page.getByRole('menuitem', { name: 'Warn' }).hover()
 			await page.getByRole('menuitem', { name: 'Preset Reason' }).click()
 			const dialog = page.getByRole('alertdialog', { name: 'Warn Player' })
-			await dialog.getByRole('combobox', { name: 'Reason' }).click()
+			// the reason list opens with the dialog, and warning is held until one is picked
+			const confirm = dialog.getByRole('button', { name: 'Warn', exact: true })
+			await expect(confirm).toBeDisabled()
 			await page.getByRole('option', { name: 'Toxicity', exact: true }).click()
-			await dialog.getByRole('button', { name: 'Warn', exact: true }).click()
+			await expect(confirm).toBeEnabled()
+			await confirm.click()
 
 			await app.waitFor(() => warnsTo(app, member.eos).length > 0, { label: 'the warn reaching the game', timeoutMs: 20_000 })
 			expect(warnsTo(app, member.eos)[0]).toContain('Cut out the toxicity')
 			expect(warnsTo(app, leader.eos)).toHaveLength(0)
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	test('a required reason holds the kick dialog shut until one is picked', async ({ page }) => {
+		const { app, loner } = await fixtureWithSquad(['kick'])
+		try {
+			await page.goto(app.loginUrl())
+			await page.getByRole('tab', { name: /^Teams \(3\)/ }).click({ timeout: 25_000 })
+			const panel = page.getByRole('tabpanel', { name: /^Teams/ })
+
+			const row = panel.getByRole('row', { name: /loner/ })
+			await expect(row).toBeVisible({ timeout: 20_000 })
+			await row.click({ button: 'right' })
+			await page.getByRole('menuitem', { name: 'Kick' }).click()
+
+			const dialog = page.getByRole('alertdialog', { name: 'Kick Player' })
+			const confirm = dialog.getByRole('button', { name: 'Kick', exact: true })
+			await expect(confirm).toBeDisabled()
+			await page.getByRole('option', { name: 'Toxicity', exact: true }).click()
+			await expect(confirm).toBeEnabled()
+			await confirm.click()
+
+			const kick = await app.emu.expectCommand(new RegExp(`^AdminKick "${loner.eos}"`), { timeoutMs: 20_000 })
+			expect(kick.body).toContain('Kicked for toxicity')
 		} finally {
 			await app.dispose()
 		}

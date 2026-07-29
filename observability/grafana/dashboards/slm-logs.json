@@ -14,10 +14,10 @@
 				"name": "severity",
 				"label": "Severity",
 				"type": "custom",
-				"query": "everything : *,info and above : severity:in(INFO\\,WARN\\,ERROR\\,FATAL),warnings and errors : severity:in(WARN\\,ERROR\\,FATAL),errors only : severity:in(ERROR\\,FATAL)",
+				"query": "everything : *,info and above : severity_text:in(INFO\\,WARN\\,ERROR\\,FATAL),warnings and errors : severity_text:in(WARN\\,ERROR\\,FATAL),errors only : severity_text:in(ERROR\\,FATAL)",
 				"includeAll": false,
 				"multi": false,
-				"current": { "text": "info and above", "value": "severity:in(INFO,WARN,ERROR,FATAL)" },
+				"current": { "text": "info and above", "value": "severity_text:in(INFO,WARN,ERROR,FATAL)" },
 				"options": []
 			},
 			{
@@ -46,7 +46,7 @@
 			"description": "Every record, regardless of the filters below: a quiet app and a filter that matches nothing look the same in the log panel but not here.",
 			"datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
 			"gridPos": { "h": 7, "w": 24, "x": 0, "y": 0 },
-			"targets": [{ "refId": "A", "expr": "* | stats by (_time:1m, severity) count() as value", "queryType": "statsRange" }],
+			"targets": [{ "refId": "A", "expr": "* | stats by (_time:1m, severity_text) count() as value", "queryType": "statsRange" }],
 			"fieldConfig": {
 				"defaults": {
 					"min": 0,

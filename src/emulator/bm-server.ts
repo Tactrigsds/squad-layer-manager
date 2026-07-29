@@ -24,6 +24,9 @@ export type BmRequest = { method: string; path: string; body: unknown }
 // stub's ids have to be uuids too or those settings can't be saved against it
 // The org the stub claims to be. A dev instance runs with BM_ORG_ID pinned to this (see dev/instance.ts) so the app
 // and the stub agree without either knowing the real org's id.
+//
+// If the two ever disagree, the failure is silent: the app filters flags by organization, so every player reads as
+// unflagged with no error anywhere. Flags can be written and confirmed present over curl while the UI shows none.
 export const STUB_ORG_ID = 'stub-org'
 
 const DEFAULT_FLAGS: BmFlag[] = [

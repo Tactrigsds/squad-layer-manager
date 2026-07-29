@@ -204,6 +204,10 @@ export class FrameManager {
 			// register before setup so key-based access (e.g. Actions) works from within setup itself
 			this.keys.set(directKey, directKey)
 
+			// `update$` is already live at this point, so a partial's init that subscribes to it sees every LATER
+			// partial's `set`, and frame-level fields read as undefined until the frame's own `args.set` has run.
+			// Ordering inside setup() is therefore load-bearing: set the frame's own state first, then init partials.
+
 			frame.setup({
 				get: instance.get as any,
 				set: instance.set,

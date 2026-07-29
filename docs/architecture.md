@@ -1,45 +1,38 @@
-# Architecture and Coding Style
+# Architecture and coding style
 
-A map of what SLM is built out of, the patterns it leans on, and the places where it deliberately does
-something unusual. This is a description of the codebase as it stands, not a spec: where the code and this
-document disagree, the code wins.
+The shape of SLM and the patterns that recur throughout it. This is orientation, not a specification: where the code
+and this document disagree, the code wins. Individual modules document their own quirks in-code.
 
-Companion reading: [CLAUDE.md](../CLAUDE.md) states the rules this document explains the reasoning behind.
+[CLAUDE.md](../CLAUDE.md) states the rules that this document gives the reasoning for.
 
 ## Contents
 
 - [The shape of the thing](#the-shape-of-the-thing)
 - [Cross-cutting conventions](#cross-cutting-conventions)
-- [Server-side machinery](#server-side-machinery)
-- [Client machinery](#client-machinery)
+- [Server-side patterns](#server-side-patterns)
+- [Client-side patterns](#client-side-patterns)
 - [ODSM: optimistic distributed state](#odsm-optimistic-distributed-state)
 - [The domain layer](#the-domain-layer)
 - [Messages and locales](#messages-and-locales)
 - [The layer engine (rust/wasm)](#the-layer-engine-rustwasm)
-- [Out-of-process pieces](#out-of-process-pieces)
 - [Data and persistence](#data-and-persistence)
 - [Observability](#observability)
 - [Testing](#testing)
-- [Quirks worth knowing](#quirks-worth-knowing)
 
 ## The shape of the thing
 
-One single-tenant TypeScript process serving a React SPA, talking to one or more game servers over RCON and
-their log files. Persistence is a local SQLite database in WAL mode (better-sqlite3 + drizzle), held open on
-one connection for the life of the process. There is no external datastore, which is a constraint worth
-keeping in mind throughout: see [Data and persistence](#data-and-persistence) for what that costs and buys.
+One single-tenant TypeScript process serving a React SPA, talking to one or more game servers over RCON and their
+log files. Persistence is a local SQLite database in WAL mode (better-sqlite3 + drizzle), on one connection held for
+the life of the process. There is no external datastore.
 
-Two Rust components sit alongside the TypeScript codebase, and both exist for a specific reason:
+Two Rust components sit alongside the TypeScript:
 
-- **The query engine**, compiled to wasm and run in both the server and the browser. Squad's layer set is
-  ~730k map/gamemode/faction/unit combinations (732,937 in the shipped v10.4.0 artifact), which is too many to
-  filter row-by-row in JS at interactive speed and too many to page over the wire. Compiling one columnar
-  engine to wasm means the same query code answers both the server's RPC callers and the layer table UI, with
-  the whole set resident on each side.
-- **The server agent**, an optional standalone binary installed next to a game server. It streams that
-  server's logs to SLM over a WebSocket and proxies its RCON, which is a better interface than SLM reaching
-  for the logs itself over SFTP and holding an RCON connection across the internet. It is not required to run
-  SLM.
+- **The query engine**, compiled to wasm and run in both the server and the browser. Squad's layer set is ~730k
+  map/gamemode/faction/unit combinations, too many to filter row-by-row in JS at interactive speed and too many to
+  page over the wire.
+- **The server agent**, an optional binary installed next to a game server. It streams that server's logs to SLM and
+  proxies its RCON, so SLM never holds the RCON password and never needs to reach the RCON port. It is not required
+  to run SLM. See [configuring.md](configuring.md#server-agent).
 
 The tree, in layering order:
 
@@ -53,64 +46,38 @@ The tree, in layering order:
 | `src/frame-partials` | Composable slices of client frame state.                         |
 | `src/components`     | React components. Presentation, plus a lot of bespoke editors.   |
 | `src/routes`         | TanStack Router route definitions.                               |
-| `src/emulator`       | A fake Squad server, for tests.                                  |
+| `src/emulator`       | A fake Squad server. Backs the test suites and sandbox servers.  |
 | `test`               | Integration and e2e suites.                                      |
 
-The layering is `lib` -> `models` -> `systems` -> `components`/`routes`. `src/components` is the largest
-directory by some margin and `src/models` the next, which is the shape you would expect: the domain is wide
-and the UI is mostly bespoke editors over it.
-
-**That ordering describes runtime imports, and the type graph is much looser.** `import type` erases at compile
-time, so it cannot create an import cycle or pull a module's transitive dependencies along with it, and the
-codebase leans on that freely: `lib` modules take `CS.Ctx`, `CS.Logger`, `CMD` and `SM` types from `models`
-(`import type * as CS from '@/models/context-shared'` in `async-resource.ts`, `cleanup.ts`, `sftp-tail.ts`,
-`fetch-admin-lists.ts`) while depending on nothing there at runtime. Read the layer ordering as a claim about
-runtime edges only. An upward `import type` is normal and not a smell; an upward value import is the thing to
-look twice at.
-
-Even the runtime ordering is aspirational rather than enforced, and there is no lint rule holding it up. The
-live exceptions are worth knowing, since they are the ones you will trip over:
-
-- A few `lib` modules reach up into `models` and even `src/server` for instrumentation: `async-resource.ts`,
-  `rcon/core-rcon.ts` and `rcon/fetch-admin-lists.ts` all import `C.spanOp` from `@/server/context`, and
-  `lib/otel.ts` imports otel attribute names from `@/models/otel-attrs`. Wanting a span in a `lib` module is
-  what pulls the whole context layer upward into it.
-- `models/teams-panel.models.ts` imports a **frame partial** at runtime for its selectors, which is a
-  three-layer inversion and the clearest violation in the tree.
-
-Treat those as debts, not precedent.
+The layering is `lib` -> `models` -> `systems` -> `components`/`routes`, and it describes **runtime imports only**.
+`import type` erases at compile time, so it cannot create a cycle, and the codebase uses upward type imports freely.
+An upward `import type` is normal. An upward value import is the thing to look twice at, and the handful that exist
+are debts rather than precedent.
 
 ### The `.server` / `.client` / `.shared` suffix
 
-`src/systems/*` is the feature layer, and every file's suffix declares which side of the wire it runs on:
+Every file in `src/systems` declares which side of the wire it runs on. `*.server.ts` runs in node only and may
+import `src/server/*`; `*.client.ts` runs in the browser only; `*.shared.ts` runs in both.
 
-- `*.server.ts` runs in node only. May import `src/server/*`.
-- `*.client.ts` runs in the browser only.
-- `*.shared.ts` runs in **both**, and this is load-bearing rather than incidental. `layer-queries.shared.ts`
-  is the single implementation of every layer query in the app; it executes server-side for RPC callers and
-  inside a browser Web Worker (`layer-queries.worker.ts`) for the layer table UI, both against the same wasm
-  engine. The client is not calling a thin API over a server-side query layer, it is running the query layer.
+`shared` is load-bearing rather than incidental. `layer-queries.shared.ts` is the single implementation of every
+layer query in the app: it executes server-side for RPC callers and inside a browser Web Worker for the layer table
+UI, both against the same wasm engine. The client is not calling a thin API over a server-side query layer; it is
+running the query layer.
 
-   That engine is the **columnar store**: the full table of Squad layers (every map/gamemode/faction
-   combination) held column-by-column in memory rather than row-by-row, so a filter scans one tightly packed
-   array per column it touches instead of walking whole rows. It is immutable for its lifetime and small enough
-   to ship to the browser, which is what makes running the same query layer on both sides practical in the
-   first place. It gets a full treatment in [The layer engine](#the-layer-engine-rustwasm).
-
-Systems pair up across the wire: `layer-queue.server.ts` / `layer-queue.client.ts`, `settings.server.ts` /
-`settings.client.ts`, and so on, sharing types through `src/models`.
+Systems otherwise pair up across the wire (`layer-queue.server.ts` / `layer-queue.client.ts`), sharing types through
+`src/models`.
 
 ## Cross-cutting conventions
 
 ### Namespace imports everywhere
 
-Nontrivial modules are imported as namespaces, with a short abbreviation that is **globally consistent across
-the app**. `import * as F from '@/models/filter.models'` means `F` is the filter model in every file that uses
-it. Likewise `L` (layer), `LC` (layer-columns), `LQY` (layer-queries), `SM` (squad models), `CS`
-(context-shared), `C` (server context), `SLL` (shared-layer-list).
+Nontrivial modules are imported as namespaces, with a short abbreviation that is **globally consistent across the
+app**. `import * as F from '@/models/filter.models'` means `F` is the filter model in every file that uses it.
+Likewise `L` (layer), `LC` (layer-columns), `LQY` (layer-queries), `SM` (squad models), `CS` (context-shared), `C`
+(server context), `SLL` (shared-layer-list).
 
-A reader who knows the abbreviations reads any file quickly, so an alias is only worth anything if it is the
-_only_ one for its module. The lib vocabulary:
+An alias is only worth anything if it is the _only_ one for its module, since the payoff is that a reader who knows
+the abbreviations reads any file quickly. The lib vocabulary:
 
 | namespace                        | module                                                        |                                                    |
 | -------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
@@ -122,26 +89,13 @@ _only_ one for its module. The lib vocabulary:
 | `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
 | `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
 
-The file is always the full type name plus `-utils`; the namespace keeps an abbreviation only where a good one
-exists. Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside
-the convention.
+Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
+convention.
 
-#### Third-party libraries are wrapped, not imported
-
-rxjs, zustand and react-rxjs are each reached through exactly one module in `src/lib`, which re-exports the
-package alongside our own additions. So `Rx.map` and `Rx.Ext.traceTag` come out of one namespace, and there is
-no per-file choice between two spellings of the same thing.
-
-The re-exports are enumerated rather than `export *` wherever we shadow a name the package also exports:
-`lib/zustand.ts` defines its own `useStore` and `Mutate`, and a star re-export would let ours win silently.
-Where the two things genuinely differ, they are named for the difference rather than for their origin, e.g.
-`ReactRx.bind` (guarded, can suspend) against `ReactRx.bindWithDefault` (the package's, cannot).
-
-`Rx.Ext` lives in its own module rather than as `export namespace Ext` inside the barrel: a TS namespace
-compiles to an IIFE with no pure annotation, which would pin the whole rxjs re-export in the client bundle.
-
-Wrapping is for libraries we extend. immer, date-fns, async-mutex and superjson are imported directly, because
-a barrel that adds nothing is just indirection.
+**Libraries we extend are wrapped, not imported.** rxjs, zustand and react-rxjs are each reached through exactly one
+module in `src/lib`, which re-exports the package alongside our own additions, so there is no per-file choice
+between two spellings of the same thing. Everything else is imported directly, because a barrel that adds nothing is
+just indirection.
 
 ### Result codes instead of exceptions
 
@@ -153,339 +107,155 @@ The dominant error convention is a returned discriminated union tagged with a `c
 { code: 'err:permission-denied', ... }
 ```
 
-There are ~216 `code: 'ok'` and ~153 `code: 'err:*'` sites, with error codes namespaced by colon
-(`err:invalid-op:different-user`). Exceptions are reserved for genuine bugs and for aborts.
+Error codes are namespaced by colon (`err:invalid-op:different-user`). Exceptions are reserved for genuine bugs and
+for aborts.
 
-Both routes are instrumented, so the preference is not about telemetry: `spanOp` (below) records a throw as an
-`error` outcome and a returned `err:*` as a `value-error` outcome. It is about the handling. An error code is
-part of the return type, so the compiler forces every caller to acknowledge it and `assertNever` forces them to
-widen when a new code appears, whereas a thrown error is invisible to the signature and is handled, or not, at
-whatever distance the nearest `catch` happens to sit.
+Both routes are instrumented, so this is not about telemetry. It is about handling. An error code is part of the
+return type, so the compiler forces every caller to acknowledge it, and `assertNever` forces them to widen when a
+new code appears. A thrown error is invisible to the signature, and is handled, or not, at whatever distance the
+nearest `catch` happens to sit.
 
 ### `assertNever` on every union
 
-~98 call sites. Every `switch` over a discriminated union ends in `default: assertNever(x)` from
-`src/lib/type-guards.ts`, so adding a variant to a union turns into a compile error at every site that must
-handle it. Given how many discriminated unions the domain layer has (30+), this is the main mechanism keeping
-them honest.
+Every `switch` over a discriminated union ends in `default: assertNever(x)` from `src/lib/type-guards.ts`, so adding
+a variant turns into a compile error at every site that must handle it. The domain layer has 30+ discriminated
+unions, and this is the main mechanism keeping them honest.
 
 ### Schema-first models
 
-Zod schema is declared first, the type is derived from it (`export type X = z.infer<typeof XSchema>`), near
-universally. Notable house conventions:
+The zod schema is declared first and the type derived from it (`export type X = z.infer<typeof XSchema>`), near
+universally. House conventions:
 
 - `.prefault(...)` rather than `.default(...)`, so defaults are themselves validated.
-- `.describe(...)` / `.meta({description})` are not only documentation, they are **UI**. The settings page renders
-  a schema-driven form and reads these as field help text, and the LSPs of the in-app editors will render these as tooltips due to the generated JSON schema.
-- `z.preprocess` is used sparingly and treated as a hazard. It is explicitly banned in `GlobalSettings`
-  after a past incident.
-- No `z.brand()` anywhere. Nominal-ish typing is done informally through type aliases.
-- Exactly one `z.codec`: `HumanTime` in `src/lib/zod.ts`, which round-trips `"5m"` <-> `300000`.
+- `.describe(...)` / `.meta({description})` are **UI**, not only documentation. The settings page renders a
+  schema-driven form from them, and the in-app editors render them as tooltips via the generated JSON schema.
+- `z.preprocess` is treated as a hazard and banned outright in `GlobalSettings`.
+- No `z.brand()`. Nominal-ish typing is done informally through type aliases.
 
-### Interning at parse boundaries
-
-`JSON.parse` allocates a fresh string for every occurrence of a value, so a schema whose output is **kept**
-pays for one copy of `"PLAYER_WOUNDED"` per event rather than one in total. `ZodUtils.internedEnum` and
-`ZodUtils.internedLiteral` hand back the schema's own value instead. That is a no-op semantically, since a
-parsed enum or literal is by definition one of those values, and the lookup table is the value set itself, so
-it cannot grow on hostile input the way a general intern cache would.
-
-They use `overwrite` rather than `transform` deliberately: `transform` returns a `ZodPipe`, and
-`z.discriminatedUnion` can no longer read a discriminator out of one. `overwrite` returns the same schema
-class, so `.options` and discriminated unions keep working.
-
-**Reach for them only where the parsed value is retained**, which today means the server event union: the
-match-events cache holds three matches at a time, and 6,000 events measure 1669KB parsed plainly against
-1499KB interned. Validating a request body that is then discarded gains nothing, and `layer.ts` deliberately
-hand-rolls its shape checks because zod parsing showed up hot in the bulk layer paths -- neither is a place to
-add this.
-
-The same reasoning applies outside zod. `L.setLayerData` interns the loaded layer artifact for the same
-reason, and `layerFactionAvailability` goes further and shares whole objects (see
-[The layer engine](#the-layer-engine-rustwasm)).
-
-## Server-side machinery
+## Server-side patterns
 
 ### Context as duck-typed dependency injection
 
-There is no DI container. Instead, a `ctx` object is threaded as the **first argument** to essentially every
-server function, and capabilities are expressed as intersection types over a branded base:
-
-```ts
-const CtxSymbol = Symbol('context')
-export type Ctx = { [CtxSymbol]: true }
-```
-
-Each capability is its own `Ctx &` type. A function declares the **minimal** intersection it actually needs:
+There is no DI container. A `ctx` object is threaded as the **first argument** to essentially every server function,
+and capabilities are expressed as intersection types over a branded base. A function declares the **minimal**
+intersection it actually needs:
 
 ```ts
 async function doThing(ctx: C.Db & USR.Ctx & CS.AbortSignal, ...) { ... }
 ```
 
-Callers build up context by spreading. The payoff is that a signature becomes a precise, checked statement of
-what a function touches. The `CtxSymbol` brand exists so `CS.isCtx()` can recognize a ctx at runtime, which
-`spanOp` uses to find it among a function's arguments.
-
+Callers build up context by spreading. A signature becomes a precise, checked statement of what a function touches.
 For observables, the same rule applies with the ctx as the first element of the emitted tuple.
 
-#### A domain's contexts live in that domain's models file
+**A domain's contexts live in that domain's models file.** `V.Ctx` is the vote context, `MH.Ctx` the match-history
+one, reached under the same namespace as the rest of that domain, with the runtime object it carries at
+`Ctx.Payload`. Two modules stay general rather than domain-owned: `src/models/context-shared.ts` (`CS`) is the leaf
+every context composes on, and `src/server/context.ts` (`C`) holds server infrastructure with no domain models file,
+plus the composition root `ManagedServer`.
 
-`V.Ctx` is the vote context, `MH.Ctx` the match-history one, and so on, reached under the same namespace as
-the rest of that domain. Where a domain has more than one, the primary stays `Ctx` and the rest go in a
-`namespace Ctx` beside it, named without a `Ctx` postfix since they are already read as `<domain>.Ctx.<name>`:
-
-```ts
-export type Ctx = CS.Ctx & { user: User }
-export namespace Ctx {
-	export type Id = CS.Ctx & { user: { discordId: bigint } }
-}
-```
-
-The runtime object a per-server context carries sits at `Ctx.Payload`, so `V.Ctx.Payload` is what lives at
-`ctx.vote`. That is a deliberate departure from naming them after the system that builds them: the old
-`LayerQueueSlice` was neither a redux slice nor the same thing as the client's frame slices.
-
-Two modules stay general rather than domain-owned:
-
-- **`src/models/context-shared.ts` (`CS`)** is the leaf every context composes on: the `Ctx` brand,
-  `AbortSignal`, `Log`, `Otel`, `Deferred`, and `ServerId`. It imports nothing but pino, promise-utils and
-  ctx-def.
-- **`src/server/context.ts` (`C`)** holds server infrastructure with no domain models file (`Db`, `Tx`,
-  `Mutexes`, the fastify and session contexts) plus the composition root, `ManagedServer`. It is types-only apart
-  from the defs, so it cannot pull anything into an import cycle.
-
-`C.SquadServer` is the one context still typed from a system rather than a models file. Its payload types
-`event$` with `C.ManagedServer`, so moving it would make the models layer depend on the type that composes it.
-
-#### Defs: contexts you can introspect
-
-Contexts are types and erase, which leaves nothing to merge, project or check at runtime. So each one has a
-**def** beside it, at the same scope level as the type it describes, carrying on the `XSchema` convention:
+**Contexts are types, so they erase.** Each therefore has a **def** beside it, following the `XSchema` convention,
+giving something to merge, project and check at runtime:
 
 ```ts
 export type Ctx = CS.Ctx & { vote: Ctx.Payload } & CS.ServerId
 export const CtxDef = CD.defCtx<Ctx>()(['vote'], { name: 'vote', extends: [CS.ServerIdDef] })
 ```
 
-The key tuple is checked against the type: a missing property (including an optional one), a key that is not on
-the type, and a duplicate are each a compile error naming the offending key. The brand is auto-excluded.
-
-`extends` is what makes this usable rather than noisy. Contexts are built by composition, so without it every
-per-server def would claim `serverId` and `ManagedServer`'s nine-def merge would report nine false collisions.
-
-A duplicated _own_ key is accepted only when **every** def that owns it declares it in `collisions`; one-sided
-declaration would leave the other party able to be surprised. Its one real customer is the `user` width pun,
-where `USR.Ctx.Id` is the same key at a narrower width and a function needing only the id accepts either.
-
-`CD.select([DbDef, CS.LogDef])` returns a projector that copies exactly those keys out of a wider ctx. That
-replaces rebuilding a handler ctx field by field to avoid pollution: name the capabilities you want to carry by
-closure, and construct only the rest.
-
-Generic contexts get no def, since a def can describe only one instantiation.
+The key tuple is checked against the type: a missing, extra or duplicated key is a compile error naming the
+offender. `extends` is what keeps composition from reporting false collisions. `CD.select([...])` projects exactly
+those keys out of a wider ctx, which is how a handler avoids carrying context it should not.
 
 ### spanOp: the unit of server work
 
-Server functions of any significance are wrapped in `spanOp`. It is on nearly every exported server function,
-so it is worth understanding before reading any of them:
+Server functions of any significance are wrapped in `spanOp`, so it is worth understanding before reading any of
+them:
 
 ```ts
 export const dispatchOp = C.spanOp('dispatchOp', { module }, async (ctx, op, opts) => { ... })
 ```
 
-`spanOp` declares "this is one unit of server work". It returns a function with the same signature, so call
-sites are unaffected, and gives the unit four things uniformly: it is traced and timed, it logs itself once
-with a consistent shape, its outcome is classified (succeeded, threw, or returned an error code), and it can
-declare mutexes to hold for its duration rather than acquiring them by hand.
+`spanOp` declares "this is one unit of server work". It returns a function with the same signature, so call sites
+are unaffected, and gives the unit four things uniformly: it is traced and timed, it logs itself once with a
+consistent shape, its outcome is classified (succeeded, threw, or returned an error code), and it can **declare**
+mutexes to hold for its duration rather than acquiring them by hand.
 
-That last part makes `spanOp` structural rather than merely observational. Locking is declared as an option:
-
-```ts
-export const dispatchOp = C.spanOp('dispatchOp', {
-	module,
-	mutexes: (ctx) => [ctx.layerQueue.updateLayerMtx, ctx.matchHistory.mtx],
-}, async (ctx, op, opts) => { ... })
-```
-
-`durableSub` is the RxJS counterpart, wrapping a long-lived server pipeline with the same treatment plus error
-recovery. [Observability](#observability) covers what both emit.
+That last part makes `spanOp` structural rather than merely observational. `durableSub` is the RxJS counterpart for
+long-lived pipelines, with the same treatment plus error recovery.
 
 ### ManagedServer: one live game server
 
-`ManagedServer` is the big intersection representing everything about one running Squad server:
+`ManagedServer` is a large intersection representing everything about one running Squad server: rcon, vote, layer
+queue, match history, teamswaps, settings, cleanup and an abort signal. SLM does not instantiate squad servers, it
+connects to and supervises them, so the entity is a server _under management_, which is also the user-facing name.
 
-```ts
-export type ManagedServer = CS.Ctx &
-	SQS.Ctx &
-	V.Ctx &
-	LQ.Ctx &
-	MH.Ctx &
-	MEC.Ctx &
-	TSW.Ctx &
-	SETTINGS.Ctx &
-	ManagedServerCleanup &
-	CS.AbortSignal
-```
+Four patterns hold it together, and each recurs elsewhere:
 
-SLM does not instantiate squad servers, it connects to and supervises them, so the entity is a server _under
-management_. That is also the user-facing name: the settings page calls the collection "Managed Servers".
-`SQS.Ctx` carries `SR.Ctx` transitively, so a `ManagedServer` is always usable where rcon is required.
+- **Cleanup tasks live on the ctx.** Every subsystem's `init*` pushes its own teardown on at the moment it creates
+  the thing needing teardown, so nothing maintains a separate destructor that drifts from the setup function. Tasks
+  are heterogeneous (a function, a `Subscription`, a mutex, an `AbortController`) and run FILO, with per-task errors
+  caught. The same primitive runs at process level for shutdown.
+- **Every managed server owns an AbortController**, combined with the caller's signal. The signal stops anything
+  watching it; the cleanup array disposes what needs an explicit call.
+- **Lifecycle transitions are serialized per server** under one non-reentrant mutex, so the codebase splits each
+  operation into a locking entry point and an unlocked `*Locked` internal. Acquiring the lock twice in one call
+  stack self-deadlocks, which is the trap when adding a lifecycle operation.
+- **Streams resolve the managed server on every tick, not once**, so a crashed and restarted game server heals
+  itself instead of leaving every client's subscription silently dead.
 
-They live in a module-level `Map<serverId, ManagedServer>` in `squad-server.server.ts` (`globalState.managedServers`),
-guarded by a per-server mutex, with an `IsolatedSubject` firing on every add/remove. `setupManagedServer()` is
-one long imperative function that opens RCON, builds the admin list resource, constructs the event
-reconciliation state, calls each subsystem's `init*`, registers the server, and wires up the event pipelines.
+### Cancellation, resources and locks
 
-Everything else in the module is reached namespace-qualified, so the names drop the qualifier they would
-otherwise restate: `SquadServer.tryCtx`, `.resolveCtx`, `.eventCtx`, `.stream$`, `.ensureRunning`,
-`.restartIfRunning`, `.require`.
+Async functions take cancellation via `ctx.signal` (`CS.AbortSignal`), not a separate parameter. Signals come from
+four sources and compose with `anySignal`: the oRPC middleware (per-call), the managed server (per-server), fastify
+(per-request), and the process-level shutdown signal.
 
-Four details are load-bearing:
+`AsyncResource` (`src/lib/async-resource.ts`) is a TTL cache for an async value with push-based observation, and the
+backbone of every polled thing: admin lists, server info, roster, layer status. It caches the _promise_, so
+concurrent callers dedupe onto one fetch, and it keeps a background refetch loop alive only while an observer
+exists.
 
-**Cleanup tasks are part of the managed server.** `ManagedServerCleanup` puts a `Cleanup.Tasks` array on the
-ctx itself, so every subsystem's `init*` pushes its own teardown on at the moment it creates the thing needing
-teardown. Nothing maintains a separate destructor that mirrors, and drifts from, `setupManagedServer`'s list of
-subsystems. A `Cleanup.Task` is heterogeneous by design (a function, an RxJS `Subscription` or `Subject`, a
-mutex, an `AbortController`, or a nested array of those), so a subsystem registers whatever it holds without
-wrapping it in a closure. Teardown runs the array **FILO**, catching per-task errors so one bad teardown cannot
-strand the rest. The same machinery runs at process level (see [Cleanup and
-shutdown](#cleanup-and-shutdown)); a managed server is just a smaller scope.
+Mutexes are **declared, not acquired**, via the `mutexes` option on `spanOp` and `durableSub`. Underneath,
+`src/lib/nodejs-reentrant-mutexes.ts` uses `AsyncLocalStorage` to make re-acquiring a held mutex a no-op rather than
+a self-deadlock, and sorts multiple acquisitions into a stable global order so overlapping mutex sets cannot
+deadlock. The `IsolatedSubject` family exists because of this: they re-enter the root async context before emitting,
+so a subscriber does not inherit the publisher's mutex ownership.
 
-**Every managed server owns an AbortController**, combined with the caller's signal via `anySignal`. Destroying
-one cancels every RxJS task and in-flight fetch inside it and touches nothing else. This is the coarse half of
-teardown, and it pairs with the cleanup array: the signal stops anything watching it, the array disposes what
-needs an explicit call.
+Three parallel buckets defer work until an enclosing critical section really ends, all mutable arrays shared by
+reference through ctx spreads:
 
-**Lifecycle transitions are serialized per server.** Setup, teardown and restart all run under one per-server
-mutex (`withLifecycleLock`), so no two can interleave and observe each other's half-applied state. The mutex is
-`async-mutex`'s, which is **not** reentrant, so the codebase splits each operation into a locking entry point
-and an unlocked `*Locked` internal: compound operations like `restartIfRunning` take the lock once and
-call the internals. Acquiring it twice in one call stack self-deadlocks, which is the trap to watch for when
-adding a lifecycle operation.
-
-The subtle case is the teardown triggered by a resource's `onFatalError`, which can fire while
-`setupManagedServer` still holds the lock. It is safe only because `AsyncResource` discards the callback's
-return rather than awaiting it, so nothing holding the lock ever waits on the teardown: it queues behind setup
-and tears down what setup just finished building. Awaiting that callback would close the cycle and deadlock.
-
-**Streams resolve the managed server on every tick, not once.** `SquadServer.stream$` re-subscribes to the
-lifecycle subject and switches to `err:server-not-loaded` whenever the managed server vanishes, which is why a
-crashed and restarted game server heals itself instead of leaving every connected client's subscription
-silently dead. This is documented in-code as the only correct way for an oRPC stream to resolve one.
-
-### Abort signals
-
-Async functions take cancellation via `ctx.signal` (`CS.AbortSignal`), not a separate parameter. Signals come
-from four sources: the oRPC middleware (per-call), the managed server (per-server), fastify (per-request),
-and `CleanupSys.shutdownSignal` (per-process). They compose with `anySignal`.
-
-There is one loudly-documented exception. `killPlayers` in `squad-rcon.server.ts` deliberately ignores its
-signal partway through, because the "kill" is implemented as two `AdminForceTeamChange` calls around a sleep,
-and aborting between them leaves the player alive on the wrong team rather than dead. It also holds the teams
-resource's fetch mutex across the whole trick so nothing observes the intermediate state.
+| Bucket               | Runs after                | Typical use                                                   |
+| -------------------- | ------------------------- | ------------------------------------------------------------- |
+| `ctx.tx.unlockTasks` | a db transaction commits  | don't broadcast a change a rollback would undo                |
+| mutex `releaseTasks` | a mutex set fully unlocks |                                                               |
+| `ctx.deferred`       | an ancestor awaits it     | best-effort background work, kept inside the ancestor's scope |
 
 ### oRPC over a WebSocket
 
-All client-server communication is oRPC (`@orpc/*`) over a **single WebSocket**, not HTTP. The router is a
-flat object of per-system subrouters in `orpc-app-router.ts`. Every router is built from `getOrpcBase(module)`,
-which installs exactly one middleware: it wraps the handler in `spanOp` and narrows the connection-level
-signal down to the individual call.
+All client-server communication is oRPC over a **single WebSocket**, not HTTP. The router is a flat object of
+per-system subrouters, each built from `getOrpcBase(module)`, which installs exactly one middleware: it wraps the
+handler in `spanOp` and narrows the connection-level signal down to the individual call.
 
-The consequence worth internalizing: **auth happens once, at the HTTP upgrade**, not per call. A session
-cookie is validated in a fastify `preValidation` hook, a `wsClientId` is minted, and the resulting ctx object
-lives for the lifetime of the socket and is reused for every RPC over it.
+The consequence worth internalising: **auth happens once, at the HTTP upgrade**, not per call. The ctx object minted
+there lives for the lifetime of the socket and is reused for every RPC over it.
 
-RBAC and db access are deliberately **not** middleware. Handlers call `Rbac.tryDeny*` themselves (which
-returns a denial _value_, per the result-code convention, rather than throwing) and attach a db with
-`DB.addPooledDb`. This is more verbose and more explicit; it also means you cannot tell whether a handler is
-permission-checked without reading it.
+RBAC and db access are deliberately **not** middleware. Handlers call `Rbac.tryDeny*` themselves, returning a denial
+_value_ per the result-code convention, and attach a db explicitly. This is more verbose and more explicit; it also
+means you cannot tell whether a handler is permission-checked without reading it.
 
-The client side uses `partysocket` for transparent reconnection, and surfaces connection state as an RxJS
-observable that deliberately waits 750ms before admitting anything is wrong.
+## Client-side patterns
 
-### AsyncResource
-
-`src/lib/async-resource.ts` is a TTL cache for an async value with push-based observation, and the backbone of
-every polled thing (admin lists, server info, teams/roster, layer status). It caches the _promise_, not the
-value, so concurrent callers dedupe onto one fetch. Less obviously:
-
-- It distinguishes one-shot `get()` subscribers from long-lived `observe()` subscribers, keeps a background
-  refetch loop alive only while an observer exists, and **aborts an in-flight fetch if the last subscriber
-  drops mid-flight**.
-- `fetchMtx` is deliberately public so external code can freeze refetches across a window where the fetched
-  state would be transiently incoherent (this is what the kill trick above holds).
-- A callback can throw `ImmediateRefetchError` via `ctx.refetch(...)` to force a retry instead of serving
-  known-incoherent data (used when RCON reports a squad with no leader).
-- `onFatalError` exists because the alternative is an unhandled rejection killing the process. Every
-  per-server resource wires it to "tear down this managed server", on the reasoning that a resource that
-  will not fetch means the server cannot do its job.
-
-### Reentrant mutexes via AsyncLocalStorage
-
-`src/lib/nodejs-reentrant-mutexes.ts` builds reentrancy on top of `async-mutex` using `AsyncLocalStorage` to
-track which mutexes the current call stack already holds, so re-acquiring is a no-op rather than a self-
-deadlock. Two further details:
-
-- When acquiring multiple new mutexes it sorts them into a **stable process-global order** (a `WeakMap`
-  assigning an increasing integer on first sight) and acquires them **sequentially**, not via `Promise.all`.
-  This is what prevents two concurrent operations needing overlapping mutex pairs from deadlocking.
-- `addReleaseTask` registers work to run once _all_ enclosing mutexes release.
-
-As noted above, mutexes are usually declared rather than acquired: `spanOp` and `durableSub` take a `mutexes`
-option and wrap the callback in `withAcquired` for you.
-
-`IsolatedSubject` / `IsolatedBehaviorSubject` / `IsolatedReplaySubject` (`src/lib/isolated-subject.ts`) exist
-because of this: they re-enter the root async context before calling `next()`, so a subscriber does not
-inherit the _publisher's_ mutex ownership and wrongly believe it already holds a lock.
-
-### Deferred work buckets
-
-Three parallel instances of "defer this until the enclosing critical section really ends", all implemented as
-mutable arrays shared by reference through ctx spreads:
-
-- `ctx.tx.unlockTasks` runs after a **db transaction** commits. This is how a settings broadcast is prevented
-  from firing for a transaction that later rolls back.
-- mutex `releaseTasks` runs after a **mutex** set fully unlocks.
-- `ctx.deferred` + `awaitDeferred` (`context-shared.ts`) is a bucket where a callee schedules best-effort
-  background work for an ancestor to await, keeping it inside the ancestor's lifetime and signal instead of
-  leaking as a fire-and-forget promise. It uses `allSettled` (never `all`) specifically so one rejection
-  cannot abandon its still-pending siblings and resurrect the unhandled-rejection risk it exists to prevent.
-
-### Cleanup and shutdown
-
-`Cleanup.runCleanup` is the shared primitive described under
-[ManagedServer](#managedserver-one-live-game-server): a heterogeneous task array, disposed FILO, errors caught
-per task. Managed servers use it for their own scope;
-`cleanup.server.ts` is the process-level registry that drives SIGTERM and owns `shutdownSignal`.
-
-`using` / explicit resource management appears (via `acquireInBlock` returning a `Symbol.dispose`) but is a
-targeted tool, not the house style. Babel's explicit-resource-management plugin is in the build for it.
-
-## Client machinery
-
-The client's core problem is that most of its state is neither global nor local: it belongs to "the server
-dashboard you currently have open", which is created and destroyed as you navigate. The answer is frames.
+Most of the client's state is neither global nor local. It belongs to "the server dashboard you currently have
+open", which is created and destroyed as you navigate. The answer is frames.
 
 ### Stores, frames, partials
 
-**A zustand store** is the primitive, used directly for genuinely app-global singletons (selected server,
-public settings, presence).
+**A zustand store** is the primitive, used directly for genuinely app-global singletons: selected server, public
+settings, presence.
 
 **A frame** is a reference-counted, keyed, lazily-created and torn-down zustand store, managed by a singleton
-`FrameManager`. You define one with `createFrame({ name, createKey, setup, ... })`; `setup()` runs once per
-instance and receives `{ get, set, input, sub, update$, key }`. Frames subscribe to async sources directly
-inside `setup()` (oRPC observables, piped through RxJS) and write results back with `set()`. There is no
-separate "async state" concept.
-
-Lifecycle:
-
-- Instances are keyed by a derived key and looked up by **deep equality**, so structurally-equal inputs share
-  one instance.
-- Each `ensureSetup` bumps a refcount and hands back a fresh outer key object.
-- Release paths: `dropKey` (refcount decrement, tears down at zero), `teardown` (unconditional), and a
-  `FinalizationRegistry` callback as a GC-driven backstop for keys dropped without an explicit call. The
-  `registry.unregister` calls exist to stop a key being released twice.
-- `useFrameTeardownOnUnmount` defers the drop to `requestIdleCallback` and cancels it if the same key
-  reappears, which is what lets frames survive React StrictMode's mount/unmount/remount simulation in dev.
+`FrameManager`. `setup()` runs once per instance and subscribes to async sources directly (oRPC observables, piped
+through RxJS), writing results back with `set()`. There is no separate "async state" concept. Instances are keyed by
+deep equality, so structurally-equal inputs share one instance, and release is refcounted with a
+`FinalizationRegistry` backstop.
 
 ```ts
 const frameKey = useFrameLifecycle(SquadServerFrame.frame, {
@@ -495,117 +265,66 @@ useFrameTeardownOnUnmount(frameKey)
 return <ServerDashboard stores={FRM.toProp(frameKey)} />
 ```
 
-**A frame-partial** (`src/frame-partials/*.partial.ts`) is not a frame at all. It is a module exporting a
-slice type, an `init*(args)`, and its own `Sel`/`Actions`, which a real frame composes into its state by
-intersecting the types and calling `init*` from `setup()`. `squad-server.frame.ts` composes four of them
-(chat, server settings, layer queue, teamswaps). Partials get a scoped view of the composite state via
-`Zus.toPartialSetter`/`toPartialGetter`. This is how a large frame stays modular without every slice
-needing its own FrameManager entry.
+**A frame-partial** (`src/frame-partials/*.partial.ts`) is not a frame. It is a module exporting a slice type, an
+`init*(args)`, and its own `Sel`/`Actions`, which a real frame composes by intersecting the types and calling
+`init*` from `setup()`. This is how a large frame stays modular without every slice needing its own FrameManager
+entry.
 
 ### Zus
 
-`src/lib/zustand.ts` is the client's central abstraction. Its key type:
+`src/lib/zustand.ts` is the client's central abstraction. Its key type unifies a raw zustand store, a frame instance
+key, a react-query options object and a react-rxjs `StateObservable`:
 
 ```ts
 type AnyInput<T> = AnyStore<T> | QuerySource<T> | StateObservable<T>
 ```
 
-which unifies a raw zustand store, a frame instance key, a react-query options object, and a react-rxjs
-`StateObservable` behind one interface. Everything downstream accepts `AnyInput`, so a component neither knows
-nor cares which of the four it was handed.
+Everything downstream accepts `AnyInput`, so a component neither knows nor cares which of the four it was handed.
 
-`Zus.useStore` is heavily overloaded and is the sanctioned read path for component display logic: one input
-returns its state;
-N inputs plus a trailing selector calls `selector(...states)`; N inputs alone returns a tuple. It reads through
-`useSyncExternalStore`, caching the snapshot on the states **and** the selector's identity: the states half is
-what stops an uncached snapshot from spinning, and the selector half is what makes an inline selector closing
-over a prop recompute when that prop changes. Nullish inputs are tolerated as placeholders so hook dependency
-counts stay stable.
-
-`useQueries` is called only when at least one input is a query source, because an empty one still allocates an
-observer and re-runs its `setQueries` effect on every render. That makes the hook call conditional, which is
-sound only because the count is fixed for a component instance; a guard throws if it ever changes. Pass a query
-unconditionally and use its `enabled` option if you need it inert.
-
-Outside render, the counterpart is **`Zus.getState`**, which mirrors the same overloads without
-subscribing: one input returns its state, N inputs plus a selector calls `selector(...states)`. Both resolve
-frame keys the same way and feed the same `Sel` selectors, so the choice is only whether you want to subscribe.
-If any input is a query source, `getState` returns a **promise** (it awaits via `ensureQueryData`); that is
-decided in the types, so it is a compile error rather than a silent `undefined`.
-
-Merging several sources into one selector is the intended way to derive state:
+`Zus.useStore` is the sanctioned read path in components, and `Zus.getState` is its non-subscribing counterpart
+outside render. Both are overloaded the same way: one input returns its state, N inputs plus a trailing selector
+calls `selector(...states)`. Merging several sources into one selector is the intended way to derive state:
 
 ```ts
 // in a component: subscribes, and re-renders when the derived value changes
 Zus.useStore(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
-```
 
-The same selectors are reusable verbatim off the render path, applied to a `getState` read instead. From
-`layer-table.partial.ts`, inside an `Actions` handler:
-
-```ts
 // in an event handler: reads once, subscribes to nothing
-const current = Sel.tanstackSortingState(Zus.getState(stores.layerTable))
-```
-
-The two call shapes rhyme, so moving a selector between render and handler code is a mechanical edit -- the
-merged read above works off the render path too:
-
-```ts
 const presence = Zus.getState(ConfigClient.Store, UPClient.Store, Sel.clientPresence)
 ```
 
-Frame keys are recognized structurally and resolved through a resolver that `frame-manager.ts` injects at init
-(`registerFrameKeyResolver`), purely because `zustand.ts` cannot import `frame.ts` without a cycle.
+The two call shapes rhyme, so moving a selector between render and handler code is a mechanical edit.
 
-`Zus.toObservable(store)` converts any store into an `Observable<[state, prev]>`, and is the bridge that
-lets frames drive RxJS pipelines from zustand state. It is also how side-effect handling works: per the
-`RbSync` rule, ops replay against several base states, so side effects never carry reduced state and instead
-react to prev/next diffs from a store subscription.
+`Zus.toObservable(store)` converts any store into an `Observable<[state, prev]>`, which is how frames drive RxJS
+pipelines from zustand state, and how ODSM side effects react to prev/next diffs.
 
 ### Sel and Actions
 
 Every stateful client file exports two namespaces:
 
-- **`Sel`** holds pure selectors, memoized with `reselect`. `createDeepSelector` (a selector creator with
-  `resultEqualityCheck: Obj.deepEqual`) is preferred for reusable selectors so call sites do not each need to
-  wrap in `useDeep`. `RSel.memoizeFactory` (weakMap memoization) builds parameterized per-item selectors.
-- **`Actions`** holds every user-initiated operation. An action takes `stores` (a `KeyProp`) as its first
-  argument and resolves the concrete store itself. Actions must not close over component state.
+- **`Sel`** holds pure selectors, memoized with `reselect`. Per-item selectors should index, not scan: one O(N) pass
+  building a `Map` plus an O(1) lookup beats each item's selector walking the list, which is O(N^2) on every change
+  and shows up in a profiler as recompute rather than re-render.
+- **`Actions`** holds every user-initiated operation. An action takes `stores` (a `KeyProp`) as its first argument
+  and resolves the concrete store itself. Actions must not close over component state.
 
-Components pass `stores: SomeFrame.KeyProp`, an object like `{ squadServer: Key }` built by `FRM.toProp`.
-React context is deliberately not used for stores: frame instances are refcounted per consumer, and context
-would obscure who is keeping an instance alive versus merely reading it.
-
-The per-item selector index in `layer-queue.partial.ts` is the pattern worth copying: one O(N) pass builds a
-`Map`, and each item's selector does an O(1) lookup. The naive version (each item's selector scanning the
-list) is O(N^2) on every change and is invisible in a profiler because it shows up as recompute, not re-render.
-
-### React and RxJS interop
-
-`zustand-rx`'s `toStream` is used in the client systems, always with the `fireImmediately` caveat: omit it and
-the stream silently skips the store's current value and only emits on subsequent changes.
-
-`@react-rxjs/core`'s `bind` is wrapped by a local `src/lib/react-rxjs-helpers.ts`, which adds a first-emit
-timeout guard. react-rxjs's Suspense integration has no timeout, so a stream that never emits suspends a
-component forever with nothing to attribute it to. The local `bind` races the source against a timer, and the
-timer **only runs while the websocket transport is up**, so a dropped connection reads as "still loading"
-rather than a hard error.
+Components pass `stores: SomeFrame.KeyProp`, built by `FRM.toProp`. React context is deliberately not used for
+stores: frame instances are refcounted per consumer, and context would obscure who is keeping an instance alive
+versus merely reading it.
 
 ### Component rules
 
 Conventions from CLAUDE.md, each with a specific reason:
 
-- **Never export non-components from a `.tsx` file.** It breaks hot module replacement. Hence the
-  `*.helpers.ts` files sitting next to components.
+- **Never export non-components from a `.tsx` file.** It breaks hot module replacement. Hence the `*.helpers.ts`
+  files next to components.
 - **Avoid controlled inputs** (do not set `value`); debounce anything that would re-render often.
 - **Prefer adding a selector over `useMemo` in the component body.**
-- **`useEffect`/`useState` interdependence is a code smell**; that is what frames are for.
-- React Compiler is on (babel plugin, in both vite and the prod rolldown build), which memoizes against stable
-  mutable objects. This bites with TanStack Table: derive render data from React state, and only call table
-  methods in event handlers.
-- All overlays are z-50 body-level portal siblings, so **DOM order decides stacking**. Mount on demand rather
-  than reaching for z-index.
+- **`useEffect`/`useState` interdependence is a code smell.** That is what frames are for.
+- React Compiler is on, and memoizes against stable mutable objects. This bites with TanStack Table: derive render
+  data from React state, and only call table methods in event handlers.
+- All overlays are z-50 body-level portal siblings, so **DOM order decides stacking**. Mount on demand rather than
+  reaching for z-index.
 
 ### Charts
 
@@ -627,38 +346,32 @@ element) is in `src/lib/floating.ts` (`Flt`).
 
 ## ODSM: optimistic distributed state
 
-`src/lib/odsm.ts` (Optimistic Distributed State Machine) is how every piece of collaboratively edited state
-stays coherent across the server and every connected client. It is the answer to "two admins are editing the
-queue at once, and one of them has 80ms of latency".
+`src/lib/odsm.ts` (Optimistic Distributed State Machine) keeps collaboratively edited state coherent across the
+server and every connected client. It is the answer to "two admins are editing the queue at once, and one of them
+has 80ms of latency".
 
 The state machine is defined **once**, in a `.ts` model shared by both sides, as a pure
-`Reducer<Op, State, SideEffect>`. It runs in three places against three different base states: the client
-applies an op **optimistically** the instant you perform it, the server applies the same op authoritatively,
-and the client reconciles its guess against the server's replay. Ops are deterministic, so the two normally
-agree and reconciliation is a no-op. The library has no I/O, no transport and no zustand, just session structs
-and functions over them, which is why the same file backs both sides.
+`Reducer<Op, State, SideEffect>`. It runs in three places against three different base states: the client applies an
+op optimistically the instant you perform it, the server applies the same op authoritatively, and the client
+reconciles its guess against the server's replay. Ops are deterministic, so the two normally agree. The library has
+no I/O, no transport and no zustand, which is why the same file backs both sides.
 
-A `Client.Session` carries a **synced** timeline (`syncedState` + `syncedOps`, what the server has confirmed)
-alongside a **local** one (`localState` + `pendingOps`, what you are looking at). The client's entry points are
-`processOutgoingOps` (you authored an op: apply locally, queue to send), `processIncomingOps` (someone else's
-op arrived), `processAcks` (the server confirmed yours) and `processInit` (a fresh snapshot). The server's side
-is just `initSession` / `applyOps`.
+A client session carries a **synced** timeline, what the server has confirmed, alongside a **local** one, what you
+are looking at.
 
 Before touching a reducer:
 
-- **Rejection is a thrown `RejectedError` with a typed `data` payload**, and it is all-or-nothing for the
-  batch: ops handed in together are dependent. This is the one place the codebase deliberately throws rather
-  than returning a result code, because it has to unwind an arbitrarily deep reducer.
-- **Rejection means different things depending on where the op came from.** A client-authored batch that is
-  rejected is dropped entirely, never queued and never sent, so no-ops stay out of every history. A batch that
-  arrives over the wire keeps its ops in history for coherence but leaves state untouched.
-- **The same op is replayed against several base states**, so a batch can be rejected against one and applied
-  against another. This is why reducers must be pure, and why side effects are _returned_ rather than
-  performed: only the non-rejected branch of `Applied` even exposes them. For the same reason a side-effect
-  handler must never have reduced state threaded into it; react to the resulting state via store
-  subscriptions instead.
-- Op history is **bounded** (last 50 guaranteed, 75 max), so it is a reconciliation buffer, not an audit log.
-  Durable history is the app-events subsystem's job.
+- **Rejection throws `RejectedError`**, and it is all-or-nothing for the batch, since ops handed in together are
+  dependent. This is the one place the codebase deliberately throws rather than returning a result code, because it
+  has to unwind an arbitrarily deep reducer.
+- **Rejection means different things depending on where the op came from.** A rejected client-authored batch is
+  dropped entirely and never sent. A batch that arrives over the wire keeps its ops in history for coherence but
+  leaves state untouched.
+- **The same op is replayed against several base states.** This is why reducers must be pure, and why side effects
+  are _returned_ rather than performed. For the same reason a side-effect handler must never have reduced state
+  threaded into it: react to the resulting state via store subscriptions instead.
+- Op history is **bounded**, so it is a reconciliation buffer, not an audit log. Durable history is the app-events
+  subsystem's job.
 
 Three state machines are built on it today, each as a model/server/client trio:
 
@@ -668,38 +381,24 @@ Three state machines are built on it today, each as a model/server/client trio:
 | Team swaps                   | `src/models/teamswaps.models.ts`  | `src/systems/teamswaps.server.ts`     | `src/frame-partials/teamswaps.partial.ts`   |
 | User presence                | `src/models/user-presence.ts`     | `src/systems/user-presence.server.ts` | `src/systems/user-presence.client.ts`       |
 
-The layer queue is the fullest example. `dispatchOp` on the server calls `ODSM.Server.applyOps`, assigns the
-returned session back onto the managed server, broadcasts the op, and then awaits each returned side effect in turn
-through a `spanOp`-wrapped `handleSideEffect`, all in one uninterrupted async context. Presence is the outlier
-in that its client half lives in a plain global store rather than a frame partial, because presence is
-genuinely app-global.
-
-`ODSM` is also re-exported into the debug console namespace on both sides (`src/server/console.ts`,
-`src/systems/console.client.ts`) so you can drive sessions by hand while poking at a live instance.
+The layer queue is the fullest example. Presence is the outlier: its client half lives in a plain global store
+rather than a frame partial, because presence is genuinely app-global.
 
 ## The domain layer
 
 ### Filters
 
 A filter is a recursive AST that is **operator-primary**: the operator name carries what used to be separate
-negation and conjunction flags.
+negation and conjunction flags. Comparisons (`eq`, `lt`, `gt`, `in`, `inrange`) constrain their first argument to be
+a column rather than a bare constant, since every value-first comparison has a column-first equivalent. Blocks
+(`all`, `some`, `none`, `notall`) fold the old and/or x negation matrix into four self-negating quantifiers. A
+filter can also reference another filter entity by id.
 
-- **Comparison**: `eq | lt | gt | in | inrange`, each with `neg` and an args tuple. `args[0]` is
-  structurally constrained to be a column or team-column, never a bare constant, because every value-first
-  comparison has a column-first equivalent (symmetric for `eq`/`in`, flip the operator for `lt`/`gt`).
-- **Block**: `all | some | none | notall`, folding the old and/or x negation matrix into four self-negating
-  quantifiers.
-- **Apply-filter**: `included-in | excluded-from`, referencing another filter entity by id.
+Validation is two-tiered: `EditableFilterNode` is what the editor manipulates mid-keystroke, with everything
+optional, against a fully-valid `FilterNode`. Errors are collected **by path** rather than thrown, so the editor can
+highlight the exact offending node.
 
-`team-column` args reference a `_1`/`_2` pair generically with an `either|both` quantifier that expands to
-OR/AND over both teams.
-
-Validation is two-tiered: `EditableFilterNode` (everything optional, what the editor manipulates mid-keystroke)
-versus a fully-valid `FilterNode`. Errors are collected **by path** rather than thrown, so the editor can
-highlight the exact offending node. There is a separate sparse-tree layer (`src/lib/sparse-tree.ts`) keeping a
-flat id->node/id->path map in sync with the recursive tree for drag-and-drop editing.
-
-Builders are layered and each only knows the level below it: `filter-builders.ts` constructs `FilterNode`s,
+Builders are layered and each only knows the level below it: `filter-builders.ts` constructs `FilterNode`s, and
 `constraint-builders.ts` wraps those into query `Constraint`s.
 
 ### Layers
@@ -710,341 +409,156 @@ Builders are layered and each only knows the level below it: `filter-builders.ts
 <Map>-<Gamemode>[-<Version>][-<Collection>]:<Faction1>[-<Unit1Abbr>]:<Faction2>[-<Unit2Abbr>]
 ```
 
-parsed by one large regex, resolving abbreviations against static component tables. Anything SLM cannot parse
-(an admin typing a layer by hand) becomes `RAW:<text>`, and `normalize()` can later upgrade a raw layer once
-new layer data makes it resolvable.
+Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
+later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
+bit-packed into a single integer, which is the row id the columnar store indexes by.
 
-For the engine, a known layer's component indices are **bit-packed into a single integer** (`packId`/
-`unpackId`), which is the row id the columnar store indexes by.
-
-Column configuration (`layer-columns.ts`) declares 13 base columns plus server-configurable extra columns,
-combined into an `EffectiveColumnConfig` memoized by `WeakMap` on the extra-columns array identity. That
-memoization is required, not an optimization: downstream query state is memoized against the returned config
-object, so the same columns must always produce the same object.
-
-Float columns are stored as **integers scaled by 10^precision** (3dp default), which is what shrank the layer
-data by ~112MB.
+The set of columns is not fixed: `layer-columns.ts` combines base columns with server-configurable extra columns
+into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
+must always produce the same object.
 
 ### Events: three distinct things with similar names
 
 - **server events** are SLM's domain events derived from game server input (`NEW_GAME`, `PLAYER_CONNECTED`,
   `MAP_SET`). High volume, low level.
-- **app events** (`app-events.models.ts`) are SLM's **audit log**: one entry per user- or system-initiated
-  action, with an `actor` (`slm-user | ingame-user | system`) and a `causeId` naming the app event that caused
-  this one. The only chain written today is `QUEUE_UPDATED` -> `MAP_SET`, and nothing reads `causeId` back.
-  Not every app event reaches the activity feed: see `isFeedVisible`, which both the emit path and the feed
-  backfill gate on.
-- **pending events** (`pending-events.models.ts`) is the **state machine that produces server events** out of
-  raw input.
+- **app events** (`app-events.models.ts`) are SLM's **audit log**: one entry per user- or system-initiated action,
+  with an actor and a `causeId` naming the app event that caused this one. A server event's `source` can point back
+  at the app event that caused it, which is what lets a warnAll's N `PLAYER_WARNED` events collapse into one
+  readable feed entry.
+- **pending events** (`pending-events.models.ts`) is the **state machine that produces server events** out of raw
+  input.
 
-The link between the first two is that a server event's `source` can point at the app event that caused it,
-which is what lets a warnAll's N `PLAYER_WARNED` server events collapse into one readable feed entry.
-
-`pending-events.models.ts` is the most intricate module in the codebase and worth reading in full before
-touching. It reconciles two unreliable, differently-lagged views of the same reality: a tailed log file and
-periodic RCON roster polls. It buffers inputs, orders them by time subject to a "safe lead time" guard so
-RCON-only events wait for log lines that may still be in flight, and yields ordered server events from an async
-generator while mutating the live roster. It also owns:
-
-- **Expectations/attribution**: an action arms an expectation _before_ issuing the RCON command, so when the
-  resulting event arrives it can be stamped with the app event that caused it. Expectations have a TTL purely
-  as a GC safety net, not as a matching window.
-- **A sync/roll state machine** (`desynced | syncing | rolling | synced`) with a watchdog that force-resyncs
-  from RCON if it gets stuck.
-- Heuristics with documented reasoning: cull a player after 2 consecutive absent polls (one grace poll, so a
-  single dropped poll never evicts a live player); synthesize a squad after 3 polls if its creation log never
-  arrives.
-
-The distinction between `time` (poll response received) and `polledAt` (poll issued) exists because a poll in
-flight across a layer roll carries the pre-roll roster but arrives post-roll, and only the roll-completion gate
-keys off `polledAt` for exactly that reason.
-
-It is a pure state machine (`init` + `on*` transitions), and the most heavily tested module in the codebase.
+`pending-events.models.ts` is the most intricate module in the codebase and worth reading in full before touching
+it. It reconciles two unreliable, differently-lagged views of the same reality, a tailed log file and periodic RCON
+roster polls, ordering them into a single event stream while mutating the live roster. It also owns
+expectation-based attribution: an action arms an expectation before issuing the RCON command, so the resulting event
+can be stamped with its cause. It is pure (`init` + `on*` transitions) and the most heavily tested module in the
+codebase.
 
 ### Settings
 
-Almost all configuration is runtime-editable settings in the database, not config files. This is done so that
-all hosts can have a smooth upgrade path via database migrations with limited manual intervention.
+Almost all configuration is runtime-editable settings in the database, not config files, so hosts get a smooth
+upgrade path via database migrations with limited manual intervention.
 
 Two schemas: `GlobalSettingsSchema` (one document: RBAC, commands, layer generation, admin action reasons,
-broadcasts, vote/queue tunables) and `ServerSettingsSchema` (per server: connections, admin list sources,
-queue, nav links). `PublicServerSettingsSchema` is the latter minus `connections`, and **that omission is the
-security boundary** rather than a display convenience.
+broadcasts, vote and queue tunables) and `ServerSettingsSchema` (per server: connections, admin list sources, queue,
+nav links). `PublicServerSettingsSchema` is the latter minus `connections`, and **that omission is the security
+boundary**, not a display convenience.
 
 RBAC lives _inside_ global settings so it is admin-editable. Roles carry flat permission expressions plus
-path-restricted grants (`globalSettingsGrants`, `serverSettingsGrants`) that the flat grammar cannot express.
-
-Permissions are computed fresh per request from three sources merged into a traced list where every grant
-records **which role granted it** (for UI and audit): env-var super users/roles (the bootstrap that cannot be
-locked out), admin-editable roles, and per-filter contributor grants.
-
-A server whose stored settings fail validation is marked `broken` and force-disabled, so that fixing an
-unrelated thing does not silently reactivate it. An admin must re-enable it explicitly.
+path-restricted grants that the flat grammar cannot express. Permissions are computed fresh per request and merged
+into a traced list where every grant records which role granted it, so the UI and the audit log can both explain
+why someone has access.
 
 ## Messages and locales
 
-Every string a person reads lives in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs`
-namespace that mirrors the domain's models alias. The tree is isomorphic: the same message feeds an in-game
-RCON broadcast and the web app's preview of that broadcast, so it must not import anything node-only.
+Every string a person reads lives in `src/messages/<domain>.messages.ts`, read through a `<Domain>_Msgs` namespace
+that mirrors the domain's models alias. The tree is isomorphic, and the same message feeds an in-game RCON broadcast
+and the web app's preview of that broadcast, so it must not import anything node-only.
 
-### Declaring a message
-
-`Msgs.def` takes the shape that fits. Most messages are a string and say so:
+`Msgs.def` takes the shape that fits. Most messages are a plain string. One that takes arguments declares an ICU
+pattern plus a mapping from its own parameters to that pattern's values, so the call site keeps an ordinary typed
+signature:
 
 ```ts
 export const close = Msgs.def('Close')
-```
-
-One that takes arguments declares an ICU pattern plus a mapping from its own parameters to that pattern's
-values. The mapping lives in the message so the call site keeps an ordinary typed signature:
-
-```ts
 export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # Layer} other {Add # Layers}}', (count: number) => ({ count }))
 ```
 
-Read either as `L_Msgs.addLayers(3).text()`.
+A message with more than a string to say returns a **target map** instead, whose shared logic lives in the factory's
+closure. The targets are `text`, `toast`, `react`, `confirm`, `warn` and `broadcast`. A message offers whichever it
+has something sensible to say on, and the compiler rejects the others.
 
-A message with more than a string to say returns a **target map** instead, and its shared logic lives in the
-factory's closure, reachable by every target of that message and by nothing else:
+Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical
+but whose translations differ are told apart by a `context`, which is part of the key and never rendered. Catalogues
+live in `src/messages/locales/`.
 
-```ts
-export const kill = Msgs.def((target: Msgs.Target) => ({
-  confirm: () => ({ title: Msgs.t('Kill {noun}', { noun: Msgs.targetNoun(target) }), ... }),
-  toast: () => [Msgs.t('Killed {who}', { who: Msgs.targetAffected(target) })],
-}))
-```
-
-The targets are `text`, `toast`, `react`, `confirm`, `warn` and `broadcast`. A message offers whichever it has
-something sensible to say on, and the compiler rejects the others: `.toast()` on a warn-only message does not
-type. `react` and `toast` are siblings of `warn`, never wrappers around it, because warn's return type is a
-union React cannot render and a React node handed to RCON would broadcast `[object Object]`.
-
-Strings inside a target body go through `Msgs.t` (or `Msgs.node`, for one positioning rendered nodes inside its
-sentence). Inline emphasis belongs to the sentence, so `<strong>` is written in the pattern and rendered through
-`Msgs.tags`; how it _looks_ stays with the container, through the `[&_strong]:` classes.
-
-### Locales
-
-Messages are keyed by their own English. A translator receives that string and returns another one, so no
-message declares an id. Two messages whose English is identical but whose translations differ are told apart by
-a `context`, which is part of the key and never rendered:
-
-```ts
-export const cancel = Msgs.def('Cancel')
-export const cancelTimeout = Msgs.def('Cancel', { context: 'lift a timeout' })
-```
-
-Catalogues live in `src/messages/locales/`. `pnpm script src/scripts/extract-messages.ts` regenerates `en.json`,
-which is the translator's template, and reports for every other locale what is untranslated and what no longer
-exists in the source. English is never looked up: a message _is_ its English, so resolving `en` hands the key
-straight back with no parse.
-
-**Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale
-is ambient: `main.tsx` negotiates it once from `navigator.languages` against the catalogues the build carries.
-A preference with no catalogue is ignored rather than adopted, because adopting it would leave the text English
-while the plural rules became that language's, and a language with no `one` category renders "1 players".
-
-`warn` and `broadcast` render for a game server and for one of its players rather than for whoever is looking at
-the web app, so they are handed a locale explicitly. `warn`'s per-recipient form, the function `warnAll`
-re-invokes for each player, is where a per-player locale would go.
-
-Durations are named by `Intl` through `MsgFmt.formatInterval`, so "1 minute, 30 seconds" comes out in the
-reader's language with the reader's separator.
+**Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale is
+ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players
+rather than for whoever is looking at the web app, so they are handed a locale explicitly.
 
 ## The layer engine (rust/wasm)
 
-`layer-engine/` is Rust compiled to wasm, which can query into a set columnar data format containing all known layer combinations.
-It handles a number of different query behaviors, including filtering, sorting, paging,
-distinct values, and weighted random selection.
+`layer-engine/` is Rust compiled to wasm. It queries a columnar table of all known layer combinations and handles
+filtering, sorting, paging, distinct values and weighted random selection. **One module serves both hosts:** the
+server and the browser's query worker load the same `.wasm`.
 
-**One module serves both hosts.** The server and the browser's query worker load the same `.wasm`.
+The table is held column-by-column rather than row-by-row, so a filter scans one tightly packed array per column it
+touches. It is immutable for its lifetime, which is what makes caching evaluated bitsets safe and what makes
+shipping the same engine to both sides practical.
 
-**The ABI is deliberately primitive**: no wasm-bindgen. The host calls `alloc`, writes bytes into linear
-memory, calls in, and reads the response back via `result_ptr`/`result_len`. Requests and responses are JSON.
-(Host-side gotcha: take a fresh `Uint8Array` view after every call, since allocation can grow and detach
-memory.)
+Three things shape working on it:
 
-**All semantic lowering is done in TypeScript.** `models/layer-engine.ts` compiles the filter AST down to a
-small IR of primitive comparisons over column indices and encoded values.
+- **The ABI is deliberately primitive**, with no wasm-bindgen. The host allocates, writes bytes into linear memory,
+  calls in, and reads the response back out. Requests and responses are JSON.
+- **All semantic lowering is done in TypeScript.** `models/layer-engine.ts` compiles the filter AST down to a small
+  IR of primitive comparisons over column indices and encoded values, inlining referenced filters recursively, so
+  the IR handed to Rust is always self-contained.
+- **The evaluator is three-valued**, tracking true and unknown as separate bitsets so SQL null semantics survive
+  negation. A two-valued port would let nulls through every negated comparison, which is the bug class that makes
+  the engine disagree with the pool the UI displays.
 
-```ts
-type Ir =
-	| { op: 'and' | 'or'; children: Ir[] }
-	| { op: 'not'; child: Ir }
-	| { op: 'true' | 'false' }
-	| { op: 'is_null'; col: number }
-	| { op: 'eq_val' | 'lt_val' | 'gt_val' | 'ge_val' | 'le_val'; col: number; val: number }
-	| { op: 'in_vals'; col: number; vals: number[] }
-	| { op: 'eq_col' | 'lt_col' | 'gt_col'; col: number; other: number }
-```
+The browser runs the engine for everything the UI does, so the server's copy exists for a few narrow jobs: queue
+autogen, the force-write pool check, backburner template probes and one route. The server loads it at boot and never
+drops it, because loading costs considerably more resident memory than holding it does.
 
-Referenced filters are inlined recursively (with mutual-recursion detection), so IR is always self-contained.
-
-**The evaluator is three-valued.** `Tri { t: bitset, u: bitset }` tracks true and unknown separately so SQL
-null semantics survive negation: `NOT(NULL)` stays NULL. A two-valued port would let nulls through every
-negated comparison, which is the bug class that makes the engine disagree with the pool the UI displays.
-
-Performance work that is load-bearing: AND sorts children by a `cost()` estimate so cheap leaves
-narrow the candidate bitset before expensive nested blocks run; `in_vals` does one membership-LUT pass rather
-than an OR-chain (real pool filters carry 60-value layer lists); evaluated filter bitsets are cached keyed by
-the IR's JSON, which can never go stale because the layer table is immutable for the engine's lifetime.
-
-The one place duplication _is_ accepted is generation key packing, which is implemented identically in
-`layer-columns.ts` and `gen.rs`, so a key computed from a weight entry matches the key computed from a row.
-
-**The server loads its copy at boot and holds it.** The browser runs the engine for everything the UI does (the
-layer table, the select dialog, gen-vote, filter evaluation), so the server's copy exists for four narrow jobs
-only: queue autogen, the force-write pool check, backburner template probes, and the `getLayerInfo` route.
-`LayerEngine.setup()` loads it as part of boot and `getEngine()` hands out the one instance thereafter.
-
-Holding it costs ~64MB resident and flat. Loading it costs 110-125MB of RSS while the load runs, because the
-artifact is held more than once over on the way into wasm memory, so the engine is never dropped and reloaded.
-
-**Nothing may query the engine inside a transaction.** A `runTransaction` callback must never await anything
-but a query (see
-[Data and persistence](#data-and-persistence)). Queue autogen is the case that makes this concrete: it runs as
-a side effect of the op that empties the list, and during a map roll that op is dispatched inside the roll's
-transaction. So `handleSideEffect` pushes generation onto `ctx.tx.unlockTasks`, which `runTransaction` awaits
-after committing and after releasing the lock, while the caller's mutexes still cover it.
-
-Two consequences of that worth knowing. `onNewGameDuringRoll` reads its `nextLayerId` **after** the
-transaction, because the generated item does not exist until the unlock tasks have run. And the match row and
-the generated queue item are **no longer written atomically**: a crash between them leaves a committed match
-with an empty queue, which self-heals, since the `init` op regenerates on an empty saved list.
-
-The cost is ~120ms added to boot. Shipping the artifact uncompressed would cut that to ~95ms (the gunzip is
-most of it) at the cost of ~57MB of image size, which is not currently thought worth it. Decompressing straight
-into wasm memory would avoid the one remaining intermediate copy, but sizing the buffer up front means trusting
-gzip's 4-byte `ISIZE` trailer, which is modulo 2^32 and wrong for multi-member streams. Not worth it for a copy
-that now happens once per process.
-
-`hash` (the `/layers.bin.gz` etag) is computed in the same pass, from the bytes of the file clients download
-rather than anything the engine derives from them, because that artifact is served byte for byte. Loading and
-serving do not always read the same file: the engine prefers an uncompressed table when one is present, to skip
-the gunzip above, while the endpoint always serves gzip, compressing the table into the temp dir on boot if the
-artifact directory holds no `.gz`. `layersVersion` still comes from resolving the artifact pair rather than from
-the loaded engine.
-
-### Availability is pooled in the artifact
-
-`layerFactionAvailability` answers "which faction/unit pairs can play this layer, on which team". Written out
-per layer it is 14,893 entries across 254 layers, of which **273 entries and 55 per-layer lists are distinct**:
-a layer's availability is really a property of its map/gamemode family, and the RAAS/FRAAS pass duplicates it
-again on top of that.
-
-So `layer-data.json` persists three things instead: the distinct `entries`, the distinct `lists` as arrays of
-entry indices, and `byLayer` mapping each layer to a list index. `LC.toBaseLayerComponents` pools on the way
-out and `LC.buildFullLayerComponents` expands on the way back in, which are the two functions that already
-convert between the persisted and in-memory shapes. Consumers see the same
-`Record<string, LayerFactionAvailabilityEntry[]>` they always did.
-
-It is worth 5.99MB -> 2.25MB on disk (which every client downloads) and 2.84MB -> 0.18MB in memory. The memory
-side comes from the sharing rather than the indices: expansion hands every layer in a family the same frozen
-array. They are frozen because they are shared, and nothing mutates them at runtime -- only `preprocess.ts`
-builds availability, and it builds rather than reads.
-
-`expandLayerFactionAvailability` passes an already-expanded map through untouched, which is not just for old
-files: `preprocess` builds the expanded form from the csv and hands it straight to
-`buildFullLayerComponents`. It also means a deployment can still mount an artifact written before the pool
-existed, which [the pair resolver](#the-layer-engine-rustwasm) explicitly supports.
-
-## Out-of-process pieces
-
-**The server agent** (`server-agent/agent`, Rust) runs on the game host. It tails
-`SquadGame.log` and streams lines over a WebSocket to `/server-agent`, and it proxies RCON: it holds the RCON password itself,
-authenticates to localhost, and tunnels an already-authenticated byte stream. **SLM never holds the RCON
-password and never needs to reach the RCON port.**
-
-The RCON abstraction reflects this: `RconTransport` is a byte pipe plus lifecycle, with two implementations (a
-direct TCP socket, and the agent tunnel). It has a distinct `onReady` separate from `onConnect` so a
-self-authenticating transport can say "usable, and I did the handshake myself".
-
-**The emulator** (`src/emulator/`) is a fake Squad server: a `World` model plus protocol frontends (an RCON
-server and a log file sink). It is what makes the integration and e2e suites need no external services.
+The data it reads is a versioned pair of artifacts. See [layer_data.md](layer_data.md).
 
 ## Data and persistence
 
-better-sqlite3 + drizzle, WAL mode. The schema is deliberately small (18 tables), because most structured
-state lives in JSON columns rather than being normalized. Those columns are **superjson**, not plain JSON,
-handled by a `superjsonify`/`unsuperjsonify` pair that walks the drizzle table config and transforms only
-`json`-typed columns. This is what allows bigints (Discord snowflakes) and Dates to round-trip.
+better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because most structured state lives in JSON
+columns rather than being normalized. Those columns are **superjson**, not plain JSON, transformed by a pair that
+walks the drizzle table config, which is what lets bigints (Discord snowflakes) and Dates round-trip.
 
-**Transactions serialize globally.** better-sqlite3 is one synchronous connection, but callbacks
-are still treated as though they could be async in the future, so
-`runTransaction` serializes logical transactions with a manual promise-chain lock around manual `BEGIN
-IMMEDIATE`/`COMMIT`/`ROLLBACK`. Re-entrant: an inner transaction joins the outer one, and an inner `rollback()`
-rolls back the outer. Therefore, all transactions may wait for others to complete asyncronously,
-but are always executed syncronously once the lock is acquired.
+**Transactions serialize globally.** better-sqlite3 is one synchronous connection, so `runTransaction` serializes
+logical transactions behind a promise-chain lock. It is re-entrant: an inner transaction joins the outer one, and an
+inner rollback rolls back the outer.
 
-Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.**(This isn't
-great, and there's probably a better way to do this while still using drizzle.) Queries
-resolve immediately (the driver is synchronous), so a transaction that only queries holds the lock for microseconds.
-Awaiting rcon, discord, sftp, or any other network call inside one instead stalls every write in the process for the
-length of that round-trip, and the external call is not rolled back with the transaction anyway. Two ways out, both
-already used: hoist the call above the transaction when the write depends on its result (`Sessions.logInUser` resolves
-the discord member first; `filterEntity.updateFilter` does its rbac check first), or push it onto `ctx.tx.unlockTasks`
-when it's a side effect of the write (`LayerQueue.saveQueueAndUpdateServer` defers its rcon layer-set this way). Note
-that `unlockTasks` belong to the _outermost_ transaction, so a deferred task escapes an enclosing transaction too; it
-runs after `COMMIT` with the mutex context still ambient, but with `tx` spent.
+Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.** Queries
+resolve immediately, so a query-only transaction holds the lock for microseconds. Awaiting rcon, discord, sftp or
+any other network call inside one stalls every write in the process for that round-trip, and the external call is
+not rolled back with the transaction anyway. Two ways out, both already used:
 
-**That rule is enforced, not just documented.** `runTransaction` races every callback against a `setImmediate`: because
-the driver is synchronous an awaited query settles on a microtask, and microtasks all drain before the loop reaches the
-check phase, so a query-only callback always wins. A callback that reaches the network, the disk or a timer has to yield
-and loses. Losing throws in development and test (loudly, rolling the transaction back), and warns in production, where
-a violation is a latency bug and failing the write would be the worse outcome. The report carries the stack of the
-offending `runTransaction` call, and a joined inner transaction reports before its outer one, so the innermost violator
-is named rather than the whole roll.
+- **Hoist** the call above the transaction, when the write depends on its result.
+- **Defer** it onto `ctx.tx.unlockTasks`, when it is a side effect of the write. Note these belong to the
+  _outermost_ transaction, so a deferred task escapes an enclosing transaction too.
 
-**Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges drizzle-kit
-generated `.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence tracked in
-`_slm_migrations`. Two constraints shape it:
+**The rule is enforced, not just documented.** `runTransaction` races every callback against a `setImmediate`: a
+query-only callback settles on a microtask and always wins, while one that reaches the network, the disk or a timer
+has to yield and loses. Losing throws in development and test and warns in production, where a violation is a
+latency bug and failing the write would be worse.
 
-- **Migrations are frozen in time.** A `.ts` migration gets only the raw driver and must not import from the
-  rest of the codebase, so a later refactor can never retroactively change what a historical migration meant.
-- **The prod server is bundled**, so `.ts` migrations cannot be globbed at runtime and are instead statically
-  imported through `src/migrations/registry.ts`.
+**Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges drizzle-kit generated
+`.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence. Two constraints shape it:
 
-`drizzle-kit generate` still authors schema SQL; only the _apply_ step is replaced.
+- **Migrations are frozen in time.** A `.ts` migration gets only the raw driver and must not import from the rest of
+  the codebase, so a later refactor can never retroactively change what a historical migration meant.
+- **The prod server is bundled**, so `.ts` migrations cannot be globbed at runtime and are statically imported
+  through `src/migrations/registry.ts`.
 
-Boot refuses to start against a database that is behind when `DB_AUTOMIGRATE` is off, rather than silently
-mutating it, and there is a guard that refuses to boot if it finds a database at the old default path.
+`drizzle-kit generate` still authors schema SQL. Only the _apply_ step is replaced.
 
-**Secrets** are read from a mounted `.env.secrets` file rather than `process.env`. The only switch is
-`secret: true` in the env schema's `.meta()`; env-var fallback still works for dev and tests, with a warning in
-prod. Connection secrets are AES-256-GCM sealed at the db boundary only (`enc:v<n>:base64(iv||tag||ciphertext)`),
-always plaintext in memory, keyed by `SETTINGS_ENCRYPTION_KEY`, with transparent fallback to a legacy key
-derivation and an opportunistic reseal on load.
-
-**Layer data** ships as a versioned _pair_ of artifacts (a columnar `.bin.gz` and a components `.json`).
-Both are checked into `assets/layers` and ship in the docker image; but any complete pair in the mounted `data/` always wins.
+**Secrets** are read from a mounted `.env.secrets` file rather than `process.env`, switched by `secret: true` in the
+env schema's `.meta()`. Connection secrets are sealed at the db boundary only, and always plaintext in memory.
 
 ## Observability
 
 OpenTelemetry (traces, metrics, logs) plus pino, with a local VictoriaMetrics + Grafana stack in `observability/`.
-One store per signal, read back over PromQL, the Jaeger API and LogsQL respectively.
+One store per signal, read back over PromQL, the Jaeger API and LogsQL.
 
-Almost all of it arrives through **`spanOp`** ([above](#spanop-the-unit-of-server-work)), which is why there
-is very little manual instrumentation anywhere: one call produces a span, a structured log line, and an
-op-duration histogram sample, and the full option set is `{ module, attrs, mutexes, kind }`.
+Almost all of it arrives through **`spanOp`**, which is why there is very little manual instrumentation anywhere.
+One call produces a span, a structured log line and an op-duration histogram sample.
 
 **`durableSub`** is its RxJS counterpart, and it **owns all error handling**: neither a failing source nor a
 torn-down task ever reaches the subscriber. These are always-on server pipelines subscribed with a bare
-`.subscribe()`, where RxJS's default of an uncaught error killing the subscription would take down the
-process. It retries per-task, then retries the source indefinitely.
-
-Span kind is set deliberately (CLIENT on egress, SERVER on ingress) because that is what a service graph
-keys off.
+`.subscribe()`, where RxJS's default of an uncaught error killing the subscription would take down the process.
 
 ## Testing
 
-The stance (CLAUDE.md) is explicit: **unit tests are reserved for code that is both actually complex and
-self-contained**. Everything else is covered by integration and e2e tests, and those do not try to
-exhaustively walk codepaths, they target the tricky ones. The reasoning is that a unit test over trivial or
-tightly-coupled code mostly pins the implementation in place, so it costs refactoring freedom without catching
-much.
-
-In practice the unit-tested modules are the ones that meet the bar: `pending-events`, `filter.models`,
-`app-events`, `command.models`, `teamswaps`, `user-presence`, `odsm`, `zustand`, `templating`, `layer`.
+The stance is explicit: **unit tests are reserved for code that is both actually complex and self-contained**.
+Everything else is covered by integration and e2e tests, which target the tricky codepaths rather than trying to
+walk all of them. A unit test over trivial or tightly-coupled code mostly pins the implementation in place, so it
+costs refactoring freedom without catching much.
 
 | Suite                   | What it does                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -1052,28 +566,10 @@ In practice the unit-tested modules are the ones that meet the bar: `pending-eve
 | `pnpm test:integration` | Boots the **real app** as a child process (ephemeral db and ports) against the emulator, one app per test file. |
 | `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright.                                      |
 
-Neither of the heavy suites needs an external service, which is the payoff for having written the emulator.
-The tests boot through `main-instrumented`, so a test's telemetry actually exists and a run id lets you scope a
-Grafana query to one test.
+Neither heavy suite needs an external service, which is the payoff for having written the emulator.
 
-### What the heavy suites spend their time on
-
-Both suites are dominated by two costs, and everything that has been done to them addresses one or the other.
-
-**Booting apps.** A fixture is a whole server process, and a run makes dozens of them. Both suites therefore go
-through `scripts/test-server-bundle.mjs`, which bundles the server once with rolldown (~1.5s) and points
-`SLM_TEST_SERVER_ENTRY` at it; loading the server's module graph through tsx instead costs ~3.5s of _every_
-boot. An `SLM_TEST_SERVER_ENTRY` already in the environment wins and nothing is built, which is how the docker
-test image has CI drive the exact artifact that gets deployed. `test:integration:src` / `test:e2e:src` run the
-sources through tsx, for when the bundler is what you suspect. Two other things that were paid per boot: the
-harness turns `seedSandboxServer` off (a fresh install otherwise seeds a sandbox, which is a second whole squad
-server polling away next to the one under test), and the e2e `page` fixture no longer logs in to a shared app,
-so a test that builds its own no longer pays for one it never touches.
-
-**Waiting on polls.** The app learns the roster from a polled `ListPlayers`, so `waitForRosterSync` cannot
-resolve faster than two poll intervals, and a test that acts in-game and then asserts does that repeatedly.
-`applyTestServerTimings` shortens the intervals, but only so far: the failure mode is RCON responses breaching
-core-rcon's 2s timeout under load, so poll interval, worker count and per-boot cost all trade against each
-other and none of them should be changed without re-measuring the whole suite. This is also why
-`server-rolling` is two files: one file's worth of roster waits was long enough to set the suite's wall time on
-its own.
+Both are dominated by two costs. **Booting apps:** a fixture is a whole server process and a run makes dozens, so
+both suites bundle the server once with rolldown rather than loading its module graph through tsx on every boot.
+**Waiting on polls:** the app learns the roster from a polled `ListPlayers`, so a test that acts in-game and then
+asserts cannot resolve faster than two poll intervals. Poll interval, worker count and per-boot cost all trade
+against each other, so none should be changed without re-measuring the whole suite.

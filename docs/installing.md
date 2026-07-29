@@ -3,12 +3,16 @@
 ### 1. Prerequisites
 
 1. Docker, and a server to run it on: [installation instructions](https://docs.docker.com/get-docker/)
-2. A domain and some way to send traffic to SLM.
-3. A Discord server, which you have permissions to install apps on.
+2. A domain, and some way to send traffic to SLM.
+3. A Discord server you have permission to install apps on.
 
-### 2. Where to Install
+### 2. Where to install
 
-SLM needs access to your Squad Server's log files in order to function. This can be done either locally by mounting the log files directly into the container, via an SFTP connection(this works with PSG-hosted servers for example), or by running a server agent on the game host that streams log data (and proxies RCON) to the SLM server (see [configuring.md#server-agent](configuring.md#server-agent) for more). SLM can be set up with any number of squad servers, so keep that in mind as well when deciding where to install it.
+SLM needs access to your squad server's log files. There are three ways to give it that: mount the log files
+directly into the container, connect over SFTP (this works with PSG-hosted servers), or run a server agent on the
+game host that streams the log data and proxies RCON (see
+[configuring.md#server-agent](configuring.md#server-agent)). SLM can manage any number of squad servers, so factor
+that in when deciding where to install it.
 
 ### 3. Installation
 
@@ -19,7 +23,16 @@ mkdir squad-layer-manager && cd squad-layer-manager
 curl -fsSL https://raw.githubusercontent.com/Tactrigsds/squad-layer-manager/main/install.sh | bash
 ```
 
-This lays down the files a deployment is made of: `docker-compose.yaml`, a `.env` (copied from `.env.example`, which is left alongside it), a `.env.secrets` (copied from `.env.secrets.example`, and holding every credential SLM reads: see [3.3](#33-secrets)), the `edit-global-settings.sh` and `restore.sh` helpers, and an `observability/` directory of Grafana and OpenTelemetry collector config. It also creates a `data/` directory, which houses the database file and any persistent data and will be bind-mounted to the app container.
+This lays down the files a deployment is made of:
+
+- `docker-compose.yaml`
+- `.env`, copied from `.env.example`, which is left alongside it
+- `.env.secrets`, copied from `.env.secrets.example`, holding every credential SLM reads (see [3.3](#33-secrets))
+- the `edit-global-settings.sh` and `restore.sh` helpers
+- an `observability/` directory of Grafana and OpenTelemetry collector config
+
+It also creates `data/`, which holds the database file and any other persistent data, and is bind-mounted into the
+app container.
 
 #### 3.2. Discord app
 
@@ -27,33 +40,39 @@ SLM authenticates users through a discord app you own, installed on your org's d
 
 Create one at [discord.com/developers/applications](https://discord.com/developers/applications).
 
-Then, make the settings match these screenshots:
+Then make the settings match these screenshots:
 
 ![discord_1](../images/discord_1.png)
 Note the `applications.commands` and `bot` scopes. Both are needed.
 
-Register `<ORIGIN>/login/callback` as a redirect uri, where ORIGIN is wherever you're planning on serving SLM from.
+Register `<ORIGIN>/login/callback` as a redirect uri, where ORIGIN is wherever you plan to serve SLM from.
 ![discord_2](../images/discord_2.png)
 
-Set ORIGIN in `.env` to match (without `/login/callback`), and fill out `DISCORD_CLIENT_ID` in `.env`. `DISCORD_CLIENT_SECRET` is a credential, so it goes in `.env.secrets` instead (see [3.3](#33-secrets)).
+Set ORIGIN in `.env` to match (without `/login/callback`), and fill out `DISCORD_CLIENT_ID` in `.env`.
+`DISCORD_CLIENT_SECRET` is a credential, so it goes in `.env.secrets` instead (see [3.3](#33-secrets)).
 
-Configure the bot's intents as such:
+Configure the bot's intents like this:
 ![discord_3](../images/discord_3.png)
 
-Copy your bot token into `DISCORD_BOT_TOKEN` in the `.env.secrets` file.
+Copy your bot token into `DISCORD_BOT_TOKEN` in `.env.secrets`.
 
-Like most other discord apps, SLM must be configured with a public install link, but this is not a security issue. Even if some other server gets the install link, they won't be able to perform actions, and SLM will automatically leave any discord server that's not the one configured below.
+Like most discord apps, SLM must be configured with a public install link. This is not a security issue. Another
+server getting hold of the install link cannot perform any actions, and SLM automatically leaves any discord server
+that is not the one configured below.
 
-Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find this, enable Developer Mode in your discord settings, and right-click on the server icon. Only members of the server can be granted access to SLM.
+Set `DISCORD_HOME_GUILD_ID` to the id of your org's discord server. To find it, enable Developer Mode in your
+discord settings and right-click the server icon. Only members of that server can be granted access to SLM.
 
-Set at least one `SUPER_USERS` id to your discord user id (available by clicking your profile picture with developer mode enabled), or nobody can administer the app: they are granted every permission
-unconditionally, and are the bootstrap you cannot lock yourself out of. This person must be a member of your org's discord server.
+Set at least one `SUPER_USERS` id to your discord user id (click your profile picture with developer mode enabled),
+or nobody can administer the app. Super users hold every permission unconditionally, and are the bootstrap you
+cannot lock yourself out of. This person must be a member of your org's discord server.
 
-Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make sure it's the same one as `DISCORD_HOME_GUILD_ID` in the `.env` file.
+Next, install the app on your org's discord server by visiting the install link on the `Installation` page. Make
+sure it is the same server as `DISCORD_HOME_GUILD_ID` in `.env`.
 
 #### 3.3. Secrets
 
-Every credential SLM reads lives in `.env.secrets`, apart from the rest of the configuration in `.env`:
+Every credential SLM reads lives in `.env.secrets`. The rest of the configuration stays in `.env`.
 
 | variable                             | what it is                                                          |
 | ------------------------------------ | ------------------------------------------------------------------- |
@@ -68,8 +87,8 @@ Every credential SLM reads lives in `.env.secrets`, apart from the rest of the c
 `SETTINGS_ENCRYPTION_KEY` already in it. Fill in the rest as you work through the sections below. Keep it out of
 version control, and out of any backup you would not also put a password in.
 
-**Mount this file into the container. Do not pass these as environment variables.** The `docker-compose.yaml`
-you installed already does:
+**Mount this file into the container. Do not pass these as environment variables.** The `docker-compose.yaml` you
+installed already does:
 
 ```yaml
 services:
@@ -83,8 +102,8 @@ SLM reads `.env.secrets` as a file and never loads it into its own environment, 
 `docker inspect`, `/proc/<pid>/environ`, and the environment every subprocess inherits. Everything else stays in
 `.env`, handed over with `env_file`.
 
-If your secrets come from a secrets manager, mount whatever file it produces and point `SECRETS_FILE` at it. As
-a docker secret, for instance:
+If your secrets come from a secrets manager, mount whatever file it produces and point `SECRETS_FILE` at it. As a
+docker secret, for instance:
 
 ```yaml
 services:
@@ -99,76 +118,74 @@ secrets:
       file: ./.env.secrets
 ```
 
-The format is the same wherever it is mounted: `KEY=value`, one per line. A `SECRETS_FILE` pointing at
-something that isn't there stops the boot, rather than quietly coming up without your credentials.
+The format is the same wherever it is mounted: `KEY=value`, one per line. A `SECRETS_FILE` pointing at something
+that is not there stops the boot, rather than quietly coming up without your credentials.
 
 #### 3.4. Encryption key
 
-SLM encrypts sensitive settings at rest (each server's RCON and SFTP passwords and its server-agent token). This is keyed by `SETTINGS_ENCRYPTION_KEY`, which is required: the app refuses to start without it. `install.sh` generates one into `.env.secrets` for you; if it wasn't able to, or you installed by hand, generate a strong key and paste it in there yourself:
+SLM encrypts sensitive settings at rest: each server's RCON and SFTP passwords, and its server-agent token. This is
+keyed by `SETTINGS_ENCRYPTION_KEY`, which is required, and the app refuses to start without it. `install.sh`
+generates one into `.env.secrets` for you. If it could not, or you installed by hand, generate a strong key and
+paste it in yourself:
 
 ```sh
 openssl rand -base64 32
 ```
 
-Keep this key safe and stable. If you change or lose it, the already-encrypted connection secrets can no longer be decrypted and have to be re-entered on the settings page. The first boot after setting the key transparently encrypts any connection secrets that were previously stored in plaintext.
+Keep this key safe and stable. If you change or lose it, the already-encrypted connection secrets can no longer be
+decrypted and have to be re-entered on the settings page. The first boot after setting the key transparently
+encrypts any connection secrets previously stored in plaintext.
 
 #### 3.5. Battlemetrics
 
-SLM has a battlemetrics integration. Among other things, it lets users update players flags remotely, and gives more context when managing players on the servers.
+SLM has a battlemetrics integration. Among other things, it lets users update player flags remotely and gives more
+context when managing players on the servers.
 
-Set `BM_PAT` (in `.env.secrets`, it is a credential) to a battlemetrics personal access token, and `BM_ORG_ID` (in `.env`) to your org's battlemetrics id.
-Check the environment variable's description of BM_PAT for the required scopes.
+Set `BM_PAT` (in `.env.secrets`, it is a credential) to a battlemetrics personal access token, and `BM_ORG_ID` (in
+`.env`) to your org's battlemetrics id. The required scopes are listed in the description of the `BM_PAT`
+environment variable.
 
-The integration is optional. Leave `BM_PAT` unset and it turns itself off: nothing is polled, no player flags or profiles are read, and the parts of the app that show them are hidden rather than failing. Set `BM_ENABLED=false` to turn it off while keeping the token configured.
+The integration is optional. Leave `BM_PAT` unset and it turns itself off: nothing is polled, no player flags or
+profiles are read, and the parts of the app that show them are hidden rather than failing. Set `BM_ENABLED=false` to
+turn it off while keeping the token configured.
 
 #### 3.6. Backups
 
 Backups happen for two reasons. One of them is not optional.
 
-**Before every migration**, always, the database is snapshotted into `BACKUPS_DIR` first. This happens whether
-the app applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod`
-yourself, and it is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if
-the snapshot fails. These are named `slm-backup-db-pre-migration-a6047f44deb0-20260713-134504.sqlite3.gz` (the sha is the version being
-upgraded _from_, which is the one a rollback wants), and the most
-recent one is never deleted by retention, however old it gets: it is the only way back from the migration it
-was taken before.
+**Before every migration**, the database is snapshotted into `BACKUPS_DIR` first. This happens whether the app
+applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod` yourself, and it
+is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if the snapshot fails.
+The most recent pre-migration backup is never deleted by retention, however old it gets: it is the only way back
+from the migration it was taken before.
 
-A migration will not run against a database another process has open.
-Stop SLM before attempting to migrate manually.
+A migration will not run against a database another process has open. Stop SLM before migrating manually.
 
-**Periodic Backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app will
-snapshot its database on that interval.
+**Periodic backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app
+snapshots its database on that interval.
 
-The two share a schedule and a retention window rather than running as separate systems. A backup taken to
-migrate counts as that interval's backup (it is uploaded and recorded like any other), so an upgrade doesn't
-produce two copies of the same database a minute apart, and the next periodic one is a full interval later.
+The two share a schedule and a retention window rather than running as separate systems. A backup taken to migrate
+counts as that interval's backup, and is uploaded and recorded like any other, so an upgrade does not produce two
+copies of the same database a minute apart, and the next periodic one is a full interval later.
 
-Backups are named after the database they came from, so two instances writing to one directory can't be confused
-and retention only ever prunes its own. The full format is:
+Every backup is named for where it came from:
 
 ```
 slm-backup-<db>[-pre-migration]-<sha>-<yyyyMMdd>-<HHmmss>.sqlite3.gz
-```
 
-For example:
-
-```
 slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz                 a periodic backup
 slm-backup-db-pre-migration-9c1f0a2b3d4e-20260713-134016.sqlite3.gz   taken before a migration
 ```
 
-| segment               | meaning                                                                                                                                                                                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `slm-backup-`         | fixed prefix marking an SLM backup                                                                                                                                                                                                                              |
-| `<db>`                | the source database's filename without extension (`db` for `db.sqlite3`). Retention only deletes names matching this, so distinct db names keep two instances sharing a directory from pruning each other's backups                                             |
-| `-pre-migration`      | present only on the snapshot taken before a migration, absent on periodic backups. It is what lets retention pin the newest pre-migration backup and never age it out                                                                                           |
-| `<sha>`               | short git sha of the build that owned the database when the snapshot was taken (recorded inside it, see `_slm_meta`). For a pre-migration backup this is the version being upgraded _from_, the one to roll back to. `unknown` if the database carried no stamp |
-| `<yyyyMMdd>-<HHmmss>` | when it was taken, which sorts chronologically                                                                                                                                                                                                                  |
-| `.sqlite3.gz`         | a gzipped SQLite database                                                                                                                                                                                                                                       |
+`<db>` is the source database's filename without its extension, and retention only deletes names matching it, so two
+instances sharing a directory cannot prune each other's backups. `<sha>` is the short git sha of the build that
+owned the database when the snapshot was taken, recorded inside it in `_slm_meta`, or `unknown` if the database
+carried no stamp. For a pre-migration backup that is the version being upgraded _from_, which is the one a rollback
+wants. The timestamp sorts chronologically.
 
 Each run is also recorded in the audit log as a `BACKUP_CREATED` event.
 
-It's also possible to configure an SFTP destination for the backups. See below.
+Backups can also be uploaded to an SFTP destination. See below.
 
 | variable                             | default          | what it does                                                          |
 | ------------------------------------ | ---------------- | --------------------------------------------------------------------- |
@@ -184,10 +201,11 @@ It's also possible to configure an SFTP destination for the backups. See below.
 | `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` |                  | if the key needs one                                                  |
 | `BACKUP_SFTP_DIR`                    | `.`              | remote directory, created if missing                                  |
 
-Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently: retention deletes any backup matching its own
-name, so they would prune each other's.
+Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently. Retention deletes
+any backup matching its own name, so they would prune each other's.
 
-A failed upload does not fail the backup. The local copy is still written, and the audit event records that it never left the box.
+A failed upload does not fail the backup. The local copy is still written, and the audit event records that it never
+left the box.
 
 ##### Restoring
 
@@ -205,57 +223,68 @@ A failed upload does not fail the backup. The local copy is still written, and t
 `--from` also takes a path, which is how you restore a backup fetched back off the SFTP target. Drop it in
 `data/backups` or pass the full path.
 
-Because the filename carries the owning build's sha (see the breakdown above), `--list` shows the build and
-`--commit-sha` can pick the newest backup from a particular version without unpacking anything. `--commit-sha`
-accepts a full sha, a short one, or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the
-search to pre-migration snapshots.
+Because the filename carries the owning build's sha, `--list` shows the build, and `--commit-sha` can pick the
+newest backup from a particular version without unpacking anything. `--commit-sha` accepts a full sha, a short one,
+or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the search to pre-migration snapshots.
 
-`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing: it unpacks
-the backup, reports which app build the database belongs to and which image tag to pin, and how far behind the
+`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks
+the backup and reports which app build the database belongs to, which image tag to pin, and how far behind the
 current build it is. Run it first when rolling back an upgrade, so you know which version to point
 `docker-compose.yaml` at before you start the app.
 
-The database being replaced is kept, renamed to `db.sqlite3.replaced-<timestamp>` next to it, because a restore
-is otherwise the one operation with no undo. Delete it once you are happy. The restore is checked
-(`integrity_check`) before anything is moved, so a corrupt archive costs nothing.
+The database being replaced is kept, renamed to `db.sqlite3.replaced-<timestamp>` next to it, because a restore is
+otherwise the one operation with no undo. Delete it once you are happy. The restore is checked (`integrity_check`)
+before anything is moved, so a corrupt archive costs nothing.
 
-Prefer this over doing it by hand. `gunzip -c backup.gz > data/db.sqlite3` looks complete and is not: the old
-`-wal` file is still sitting there, SQLite replays it over the file you just restored, and you silently get the
-**old** database back, with `integrity_check` calling it fine. Restoring while the app is running is worse, as
-the app goes on writing to a database that is no longer at that path, and those writes are simply lost.
+Prefer this over doing it by hand. `gunzip -c backup.gz > data/db.sqlite3` looks complete and is not: the old `-wal`
+file is still sitting there, SQLite replays it over the file you just restored, and you silently get the **old**
+database back, with `integrity_check` calling it fine. Restoring while the app is running is worse, because the app
+goes on writing to a database that is no longer at that path, and those writes are lost.
 
-If you are rolling back a bad upgrade, roll the image back too. Restoring a pre-migration backup and then
-starting the same version just applies the same migration again (the restore says so if the database it put
-back is behind the build). Each database is stamped with the git sha and branch of the app that last ran
-against it, so the restore (and `--inspect`) names the exact image tag to pin -- for a pre-migration snapshot
-that is the version you were upgrading _from_, which is the one to roll back to.
+If you are rolling back a bad upgrade, roll the image back too. Restoring a pre-migration backup and then starting
+the same version just applies the same migration again, and the restore says so if the database it put back is
+behind the build. Each database is stamped with the git sha and branch of the app that last ran against it, so the
+restore (and `--inspect`) names the exact image tag to pin. For a pre-migration snapshot that is the version you
+were upgrading from, which is the one to roll back to.
 
 #### 3.7. Event history retention
 
-`EVENT_HISTORY_RETENTION_PERIOD` prunes old server events (chat, kills, connects) as part of each backup run,
-which is what keeps the database from growing without bound. Events are deleted for matches older than the
-retention period, except that the 100 most recent matches per server are always kept regardless of age (the app loads them at startup). Match records themselves are never deleted, only their events, and neither is the audit log. The prune runs before the snapshot, so a backup never carries rows that were just dropped.
+`EVENT_HISTORY_RETENTION_PERIOD` prunes old server events (chat, kills, connects) as part of each backup run, which
+is what keeps the database from growing without bound. Events are deleted for matches older than the retention
+period, except that the 100 most recent matches per server are always kept regardless of age, because the app loads
+them at startup. Match records themselves are never deleted, only their events, and neither is the audit log. The
+prune runs before the snapshot, so a backup never carries rows that were just dropped.
 
-The first prune after turning this on clears the whole accumulated backlog and is much larger than the ones
-that follow.
+The first prune after turning this on clears the whole accumulated backlog, and is much larger than the ones that
+follow.
 
 #### 3.8. Telemetry
 
-Detailed logs and telemetry are available via grafana, hosted at `http://localhost:3001`, which you may also want to expose to the internet. Just make sure to change the default admin password before doing so. Three dashboards come preconfigured to assist with monitoring SLM. Behind them, an OpenTelemetry collector routes metrics, logs and traces into one [VictoriaMetrics](https://victoriametrics.com/) store per signal; see [observability/README.md](../observability/README.md) for how the pieces fit together and what the retention windows are.
+Detailed logs and telemetry are available via grafana at `http://localhost:3001`, which you may also want to expose
+to the internet. Change the default admin password before doing so. Three dashboards come preconfigured for
+monitoring SLM. Behind them, an OpenTelemetry collector routes metrics, logs and traces into one
+[VictoriaMetrics](https://victoriametrics.com/) store per signal. See
+[observability/README.md](../observability/README.md) for how the pieces fit together and what the retention windows
+are.
 
-If you don't want any telemetry, then set `OTEL_ENABLED=false`, and comment out or delete the `victoria-metrics`, `victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before starting the app.
+If you do not want any telemetry, set `OTEL_ENABLED=false` and comment out or delete the `victoria-metrics`,
+`victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before
+starting the app.
 
 #### 3.9. Starting SLM
 
-Assuming that your system already has docker installed and running, and you've got a public url for the server, you can start it up.
+With docker installed and running, and a public url for the server, start it up:
 
-`docker compose up -d`
+```sh
+docker compose up -d
+```
 
-If docker is configured to start on boot, then the app will start automatically when the system boots in the event of a reboot.
+If docker is configured to start on boot, the app starts automatically after a reboot.
 
-Stop everything with `docker compose down`. If you want to stop just the app while leaving grafana running, use `docker compose stop app`.
+Stop everything with `docker compose down`. To stop just the app and leave grafana running, use `docker compose stop
+app`.
 
-Once you've got the app running, you'll be able to sign in with discord OAuth, and you can move on to [configuring SLM](configuring.md).
+Once the app is running you can sign in with discord OAuth, and move on to [configuring SLM](configuring.md).
 
 #### 3.10. Upgrading
 
@@ -263,13 +292,13 @@ Once you've got the app running, you'll be able to sign in with discord OAuth, a
 docker compose pull && docker compose up -d
 ```
 
-Migrations are applied on boot by default; set `DB_AUTOMIGRATE=0` to disable this behavior. Either way the
-database is backed up first (see [3.6](#36-backups)), so a bad upgrade is recoverable.
+Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
+up first (see [3.6](#36-backups)), so a bad upgrade is recoverable.
 
-An install that predates `.env.secrets` keeps working untouched: SLM reads the credentials from wherever it
-finds them. To move them out of the environment (see [3.3](#33-secrets)), take the six variables in that
-section out of your `.env` and put them in a `.env.secrets` next to it, then add the mount to the `app` service
-in your `docker-compose.yaml` before `docker compose up -d`:
+An install that predates `.env.secrets` keeps working untouched, since SLM reads the credentials from wherever it
+finds them. To move them out of the environment (see [3.3](#33-secrets)), take the six variables in that section out
+of your `.env`, put them in a `.env.secrets` next to it, then add the mount to the `app` service in your
+`docker-compose.yaml` before `docker compose up -d`:
 
 ```yaml
 volumes:

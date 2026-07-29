@@ -164,7 +164,7 @@
 			"targets": [
 				{
 					"refId": "A",
-					"expr": "\"op : \" severity:in(WARN,ERROR,FATAL)",
+					"expr": "\"op : \" severity_text:in(WARN,ERROR,FATAL)",
 					"queryType": "instant"
 				}
 			],
