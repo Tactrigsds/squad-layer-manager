@@ -30,49 +30,20 @@ const module = initModule('sandbox')
 const orpcBase = getOrpcBase(module)
 let log!: CS.Logger
 
-// The emulated Admins.cfg. Held as structure and rendered to the real file format on read, so the read-only view
-// shows what a squad server would actually be handed and the parse path is the production one.
-export type SandboxAdminList = {
-	// group name -> the permissions it grants
-	groups: Map<string, string[]>
-	// player name -> the groups they are in
-	memberships: Map<string, Set<string>>
-}
-
 // SandboxInstance is the Verbs.SandboxHost for a sandbox server: `adminList` is the editable emulated list, which
-// the dev host does not have (its admins come from a real Admins.cfg on disk).
+// the dev host keeps as a file on disk instead (see src/dev/admin-list.ts).
 export type SandboxInstance = Verbs.SandboxHost & {
 	emu: Emulator
 	players: Map<string, EmuPlayer>
-	list: SandboxAdminList
+	list: SB.EmulatedAdminList
 	// emits after every change, so watchers push rather than poll
 	changed$: Rx.Subject<void>
 }
 
-// The group an admin gets by default. Its permissions are the ones that actually gate things in SLM: seeing admin
-// chat is what puts a player in scope for in-game commands.
-export const DEFAULT_ADMIN_GROUP = 'Admin'
-const DEFAULT_ADMIN_PERMS = ['canseeadminchat', 'balance', 'cameraman', 'teamchange', 'kick', 'ban', 'chat']
-// what the emulated list treats as marking an admin; matches DEFAULT_ADMIN_GROUP's headline permission
-export const IDENTIFYING_PERMS = ['canseeadminchat']
+const IDENTIFYING_PERMS = SB.IDENTIFYING_PERMS
 
-function initAdminList(): SandboxAdminList {
-	return { groups: new Map([[DEFAULT_ADMIN_GROUP, [...DEFAULT_ADMIN_PERMS]]]), memberships: new Map() }
-}
-
-// Squad's Admins.cfg format. A player with no steam id cannot appear, but every emulated player has one.
 export function renderAdminsCfg(instance: SandboxInstance): string {
-	const lines: string[] = []
-	for (const [group, perms] of instance.list.groups) lines.push(`Group=${group}:${perms.join(',')}`)
-	for (const [name, groups] of instance.list.memberships) {
-		const player = instance.players.get(name)
-		if (!player) continue
-		for (const group of groups) {
-			if (!instance.list.groups.has(group)) continue
-			lines.push(`Admin=${player.steam}:${group}`)
-		}
-	}
-	return lines.length > 0 ? lines.join('\n') + '\n' : ''
+	return SB.renderAdminsCfg(instance.list, (name) => instance.players.get(name)?.steam)
 }
 
 // Editing the list changes who SLM thinks is an admin, and that answer is cached per player per server. Flushing
@@ -118,7 +89,7 @@ export async function ensureInstance(serverId: string, conn: SettingsModels.Sand
 		password: RCON_PASSWORD,
 	})
 	await emu.start({ rconPort: 0 })
-	const list = initAdminList()
+	const list = SB.initAdminList()
 	const changed$ = new Rx.Subject<void>()
 	const instance: SandboxInstance = {
 		emu,
@@ -218,10 +189,14 @@ const DEMO_PLAYERS = [
 
 export function populateDemoWorlds() {
 	for (const [serverId, instance] of instances) {
-		for (const name of DEMO_PLAYERS) Verbs.joinPlayer(instance, name)
-		// so the in-game admin commands have someone allowed to run them
-		instance.adminList!.setPlayerGroups(DEMO_PLAYERS[0], [DEFAULT_ADMIN_GROUP])
-		instance.changed$.next()
+		DEMO_PLAYERS.forEach((name, i) => {
+			Verbs.joinPlayer(instance, name)
+			// spread across the seeded groups, so the teams panel and the stats breakdown open on a roster that is
+			// actually split. The pattern starts with an admin, which is also what the in-game commands need.
+			const groups = SB.seededGroupsFor(i)
+			if (groups.length > 0) instance.list.memberships.set(name, new Set(groups))
+		})
+		onListChanged(instance.changed$)
 		log.info('Sandbox %s: connected %d demo players', serverId, DEMO_PLAYERS.length)
 	}
 }

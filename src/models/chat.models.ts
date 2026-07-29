@@ -584,8 +584,16 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		// roster backfill from the teams poll -- adds the player to client state like a connect, but is not
 		// rendered in the feed (see isRenderableInFeed / ServerEvent).
 		case 'PLAYER_RECONCILED': {
-			if (SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)) {
-				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} reconciled but was already in the player list`)
+			const known = SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)
+			if (known) {
+				// Already on the roster, so this is the poll correcting what only it can know. A player who arrived on
+				// the log stream carries no role and no admin-list membership: the log does not report either, and this
+				// is what fills them in.
+				known.role = event.player.role
+				known.isAdmin = event.player.isAdmin
+				known.adminGroups = event.player.adminGroups
+				InterpolableState.recordRecentPlayer(state, known)
+				return { ...event, player: known }
 			}
 			applyEventTeamMutations(chatLog, state, event)
 			InterpolableState.recordRecentPlayer(state, event.player)
