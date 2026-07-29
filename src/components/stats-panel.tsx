@@ -186,17 +186,19 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 	// A segment names a group on one team, which is the pair the teams panel filters and selects by. Plain click
 	// filters, shift adds that team's members to the selection, ctrl+shift takes the group on both teams.
 	const onSegmentClick = (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
-		const group = breakdown.series[datum.seriesIndex].label
-		// clicking the group the panel is already filtered to lifts the filter, so the segment is its own undo. A
-		// selection always wants its players on screen, so those variants only ever set it.
-		const filtered = Zus.getState(squadServer, TeamsPanelPrt.Sel.groupFilter)
-		TeamsPanelPrt.Actions.setGroupFilter({ teamsPanel: squadServer }, !modifiers.shift && filtered === group ? null : group)
+		let group = breakdown.series[datum.seriesIndex].label
+		if (group === 'Other') group = TeamsPanelPrt.FILTER_NONE
 		if (modifiers.shift) {
 			const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
 			SquadServerFrame.Actions.selectPlayerIds(
 				props.stores,
 				rows.flatMap((row) => row[datum.seriesIndex].map((member) => member.id)),
 			)
+		} else {
+			// clicking the group the panel is already filtered to lifts the filter, so the segment is its own undo. A
+			// selection always wants its players on screen, so those variants only ever set it.
+			const filtered = Zus.getState(squadServer, TeamsPanelPrt.Sel.groupFilter)
+			TeamsPanelPrt.Actions.setGroupFilter({ teamsPanel: squadServer }, !modifiers.shift && filtered === group ? null : group)
 		}
 		ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
 		// on a single-column layout the teams panel is behind a tab of its own
@@ -241,7 +243,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 							<button
 								type="button"
 								key={groupingId}
-								onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId)}
+								onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
 								className={cn(
 									'text-xs px-2 py-0.5 rounded',
 									groupings.active === groupingId
