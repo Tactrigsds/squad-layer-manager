@@ -200,6 +200,9 @@ export const poolFilterMissingIndicators = def(
 
 // -------- the secondary filter lists --------
 
+// names the language picker on a server's settings, whose options are the languages themselves
+export const localePicker = def('Language')
+
 export const secondaryFilters = def('Secondary Filters')
 
 export const aboutSecondaryFilters = def('About secondary filters')

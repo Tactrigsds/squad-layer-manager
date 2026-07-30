@@ -65,6 +65,7 @@ import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
+import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
@@ -369,6 +370,25 @@ type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (
 function FlagMultiSelectField({ value$, reset$, onChange }: OverrideProps) {
 	const value = useFieldValue(value$)
 	return <BmFlagMultiSelect value={value ?? []} onChange={onChange} />
+}
+
+// The languages this build ships a catalogue for. A stored tag this build no longer carries stays in the list, so
+// the setting shows what it actually holds rather than reading as unset; the runtime already falls back to English
+// for it. Each language is named in itself, which is what someone who cannot read the current one needs.
+function LocaleField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	const available = MessagesClient.availableLocales()
+	const tags = value && !available.includes(value) ? [...available, value] : available
+	return (
+		<ComboBox
+			className="w-min"
+			title={tr.text(SETTINGS_Msgs.localePicker())}
+			allowEmpty={false}
+			value={value}
+			options={tags.map((tag) => ({ value: tag, label: MessagesClient.endonym(tag), keywords: [tag] }))}
+			onSelect={(tag) => tag !== undefined && onChange(tag)}
+		/>
+	)
 }
 
 type PlayerGroupingsValue = Record<string, PG.Grouping | undefined>
@@ -3044,6 +3064,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	// global settings define the lists (a record); a server picks from them (an array of names)
 	if (path.length === 1 && last === 'adminLists') return _node.type === 'array' ? ServerAdminListsField : AdminListsField
 	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
+	if (path.length === 1 && last === 'locale') return LocaleField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
