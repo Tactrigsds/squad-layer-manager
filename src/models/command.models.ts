@@ -743,10 +743,11 @@ export type NearMiss = { argName: string; typed: string; cause: 'no-match' | 'am
 // usage line.
 export const MAX_CHOICES = 3
 
-// Below this the closest match is noise, and offering a wrong player next to a right one invites picking it. Set at
-// half, which is exactly where a one-character slip in a two-character reason keyword ("tq" for "tk") lands: the
-// coarsest case that still has to survive.
-const MIN_SIMILARITY = 0.5
+// Only there to keep a token that resembles nothing from producing a list. Set low, because the two costs are not
+// symmetric: the choices are ranked, capped at three and named, so a wrong one is a line the caller reads past,
+// while a bar set high costs the whole prompt. A shortening scores its length over the candidate's, which puts
+// "mod" for "moderation" at 0.3 -- anything stricter answers it with nothing at all.
+const MIN_SIMILARITY = 0.25
 
 // How close a typed token is to one candidate. Scored against the candidate's words as well as the whole of it, so
 // a clan tag or a suffix ("[7CAV] Alice_G") doesn't drown out the part the caller was aiming at. Levenshtein rather

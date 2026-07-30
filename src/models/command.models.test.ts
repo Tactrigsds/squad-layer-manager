@@ -119,7 +119,11 @@ describe('near misses', () => {
 		// "Alice" is one of Alice_The_Great's words, so it outranks Alicia despite the longer whole name
 		expect(CMD.nearest('alise', ['Alice_The_Great', 'Bob', 'Alicia'])).toEqual(['Alice_The_Great', 'Alicia'])
 		// a clan tag is scored against separately, so it does not drown out the name the caller aimed at
-		expect(CMD.nearest('alice', ['[7CAV] Alice_G', 'Charlie'])).toEqual(['[7CAV] Alice_G'])
+		expect(CMD.nearest('alice', ['[7CAV] Alice_G', 'Charlie'])[0]).toBe('[7CAV] Alice_G')
+	})
+
+	it('offers a shortening, which scores its length over the whole word', () => {
+		expect(CMD.nearest('mod', ['moderation', 'votes', 'flags'])).toEqual(['moderation'])
 	})
 
 	it('offers nothing when nothing is close, which is what leaves the plain error in place', () => {
