@@ -5,8 +5,9 @@ import * as DH from '@/lib/display-helpers'
 import * as I18n from '@/messages/i18n'
 import type * as L from '@/models/layer'
 
-// Formatters for values that appear inside message bodies. Separate from shared.ts because these reach into
-// display-helpers, and shared.ts has to stay an import leaf: it is imported by models that the display layer
+// Formatters for values that appear inside message bodies. Separate from the vocabulary in
+// models/messages.models.ts because these reach into display-helpers, and that module has to stay an import leaf:
+// it is imported by models that the display layer
 // itself imports, so an edge from there into @/lib or @/models closes a module-init cycle.
 
 // date-fns only measures the duration here; naming its parts is Intl's, which is what makes "1 minute, 30 seconds"

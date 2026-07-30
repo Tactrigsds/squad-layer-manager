@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as L from '@/models/layer'
+import { tr } from '@/systems/messages.client'
 
 export type MultiLayerSetDialogProps = {
 	onSubmit: (layers: L.UnvalidatedLayer[]) => void
@@ -53,16 +54,16 @@ export function MultiLayerSetDialog(props: MultiLayerSetDialogProps) {
 							className="w-full min-h-75 pr-8 min-w overflow-x-auto text-sm font-mono"
 							style={{ lineHeight: '1.5rem' }}
 							wrap="off"
-							placeholder={L_Msgs.multiLayerPlaceholder().text()}
+							placeholder={tr.text(L_Msgs.multiLayerPlaceholder())}
 						/>
 					</div>
 					<div className="flex justify-end space-x-2">
 						{props.extraFooter}
 						<Button variant="outline" onClick={() => setOpen(false)}>
-							{UI_Msgs.cancel().text()}
+							{tr.text(UI_Msgs.cancel())}
 						</Button>
 						<Button onClick={handleSubmit} disabled={possibleLayers.length === 0}>
-							{L_Msgs.addLayers(possibleLayers.length).text()}
+							{tr.text(L_Msgs.addLayers(possibleLayers.length))}
 						</Button>
 					</div>
 				</div>

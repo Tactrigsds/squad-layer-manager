@@ -8,6 +8,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import type * as AppEvents from '@/models/app-events.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { tr } from '@/systems/messages.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -45,28 +46,28 @@ function TimeoutsWindow() {
 
 	async function cancel(timeoutId: string) {
 		const res = await cancelMutation.mutateAsync({ timeoutId })
-		if (res.code !== 'ok') toast.error(...SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
-		else toast(...SM_Msgs.timeoutCancelled().toast())
+		if (res.code !== 'ok') toast.error(...tr.toast(SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code)))
+		else toast(...tr.toast(SM_Msgs.timeoutCancelled()))
 	}
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>{SM_Msgs.activeTimeoutsTitle().text()}</DraggableWindowTitle>
+				<DraggableWindowTitle>{tr.text(SM_Msgs.activeTimeoutsTitle())}</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<p className="px-3 pt-2 text-xs text-muted-foreground">{SM_Msgs.activeTimeoutsBlurb().text()}</p>
+			<p className="px-3 pt-2 text-xs text-muted-foreground">{tr.text(SM_Msgs.activeTimeoutsBlurb())}</p>
 			<ScrollArea className="min-h-0 grow px-3 pb-2">
 				{timeouts.length === 0 ? (
-					<p className="py-2 text-sm text-muted-foreground">{SM_Msgs.noActiveTimeouts().text()}</p>
+					<p className="py-2 text-sm text-muted-foreground">{tr.text(SM_Msgs.noActiveTimeouts())}</p>
 				) : (
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>{SM_Msgs.timeoutPlayerColumn().text()}</TableHead>
-								<TableHead>{SM_Msgs.timeoutExpiresColumn().text()}</TableHead>
-								<TableHead>{SM_Msgs.timeoutReasonColumn().text()}</TableHead>
-								<TableHead>{SM_Msgs.timeoutIssuedColumn().text()}</TableHead>
+								<TableHead>{tr.text(SM_Msgs.timeoutPlayerColumn())}</TableHead>
+								<TableHead>{tr.text(SM_Msgs.timeoutExpiresColumn())}</TableHead>
+								<TableHead>{tr.text(SM_Msgs.timeoutReasonColumn())}</TableHead>
+								<TableHead>{tr.text(SM_Msgs.timeoutIssuedColumn())}</TableHead>
 								{canCancel && <TableHead className="w-8" />}
 							</TableRow>
 						</TableHeader>
@@ -98,7 +99,7 @@ function TimeoutsWindow() {
 												{t.reasonMessage}
 											</>
 										) : (
-											<span className="italic">{SM_Msgs.noTimeoutReason().text()}</span>
+											<span className="italic">{tr.text(SM_Msgs.noTimeoutReason())}</span>
 										)}
 									</TableCell>
 									<TableCell
@@ -114,10 +115,10 @@ function TimeoutsWindow() {
 												size="sm"
 												variant="outline"
 												className="h-6 px-2"
-												title={SM_Msgs.cancelTimeoutHint().text()}
+												title={tr.text(SM_Msgs.cancelTimeoutHint())}
 												onClick={() => void cancel(t.id)}
 											>
-												{SM_Msgs.cancelTimeout().text()}
+												{tr.text(SM_Msgs.cancelTimeout())}
 											</Button>
 										</TableCell>
 									)}

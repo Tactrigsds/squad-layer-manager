@@ -11,6 +11,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
 import * as LP from '@/models/labeled-presets.models'
+import { t, type TString } from '@/models/messages.models'
 
 // what an arg kind accepts, explained once for every arg that uses it. `syntax` is the shape of the token(s);
 // `description` is the prose shown beside it.
@@ -211,8 +212,8 @@ export function buildExamples(
 // handful of commands they actually use, not thirty lines paged into chat. A command's shortcut triggers ride along
 // with it rather than being listed separately: they are the same command, reached a different way.
 export type HelpListing =
-	| { code: 'ok'; title: string; commands: CMD.CommandId[]; hint?: string }
-	| { code: 'err:unknown-section'; msg: string }
+	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; hint?: TString }
+	| { code: 'err:unknown-section'; msg: TString }
 
 const sectionOptions = () => CMD.sectionTokens().join(', ')
 
@@ -226,23 +227,27 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 		const helpString = primary ? CMD.triggerString(primary) : 'help'
 		return {
 			code: 'ok',
-			title: 'Commands',
+			title: t('Commands'),
 			commands,
-			hint: `More: ${helpString} <section> -- ${sectionOptions()}`,
+			// the placeholder is syntax rather than prose, and passing it in keeps the pattern free of a literal '<'
+			hint: t('More: {helpString} {placeholder} -- {options}', { helpString, placeholder: '<section>', options: sectionOptions() }),
 		}
 	}
 
 	if (sectionToken.trim().toLowerCase() === CMD.ALL_SECTIONS_TOKEN) {
-		return { code: 'ok', title: 'All commands', commands: CMD.COMMAND_IDS.filter(runnable) }
+		return { code: 'ok', title: t('All commands'), commands: CMD.COMMAND_IDS.filter(runnable) }
 	}
 
 	const section = CMD.resolveSectionToken(sectionToken)
 	if (!section) {
-		return { code: 'err:unknown-section', msg: `Unknown section "${sectionToken}". Try one of: ${sectionOptions()}` }
+		return {
+			code: 'err:unknown-section',
+			msg: t('Unknown section "{sectionToken}". Try one of: {options}', { sectionToken, options: sectionOptions() }),
+		}
 	}
 	return {
 		code: 'ok',
-		title: `${CMD.COMMAND_SECTIONS[section].label} commands`,
+		title: t('{label} commands', { label: CMD.COMMAND_SECTIONS[section].label }),
 		commands: CMD.commandsInSection(section).filter(runnable),
 	}
 }

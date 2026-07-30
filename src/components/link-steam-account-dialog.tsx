@@ -9,6 +9,7 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import type * as USR from '@/models/users.models'
+import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
 
 // keeps a trailing empty slot so the list auto-expands as the user fills the last input
@@ -28,8 +29,8 @@ export default function LinkSteamAccountDialog(props: {
 			<DialogTrigger asChild>{props.children}</DialogTrigger>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>{USR_Msgs.steamDialogTitle().text()}</DialogTitle>
-					<DialogDescription>{USR_Msgs.steamDialogBlurb().text()}</DialogDescription>
+					<DialogTitle>{tr.text(USR_Msgs.steamDialogTitle())}</DialogTitle>
+					<DialogDescription>{tr.text(USR_Msgs.steamDialogBlurb())}</DialogDescription>
 				</DialogHeader>
 				{linkedQuery.data?.code === 'ok' ? (
 					// mounts once per dialog open (DialogContent unmounts on close), seeding the draft from the query in
@@ -37,7 +38,7 @@ export default function LinkSteamAccountDialog(props: {
 					// Steam to copy their ID) must not clobber their in-progress edits
 					<LinkedSteamAccountsEditor links={linkedQuery.data.links} onClose={() => props.onOpenChange?.(false)} />
 				) : (
-					<p className="text-sm text-muted-foreground">{UI_Msgs.loadingEllipsis().text()}</p>
+					<p className="text-sm text-muted-foreground">{tr.text(UI_Msgs.loadingEllipsis())}</p>
 				)}
 			</DialogContent>
 		</Dialog>
@@ -71,12 +72,12 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 		if (hasErrors) return
 		const res = await updateMutation.mutateAsync([...new Set(nonEmpty)])
 		if (res.code === 'ok') {
-			toast(...USR_Msgs.steamAccountsUpdated().toast())
+			toast(...tr.toast(USR_Msgs.steamAccountsUpdated()))
 			onClose()
 		} else if (res.code === 'err:steam-already-linked') {
-			toast.error(...USR_Msgs.steamIdAlreadyLinked(res.steamId).toast())
+			toast.error(...tr.toast(USR_Msgs.steamIdAlreadyLinked(res.steamId)))
 		} else {
-			toast.error(...USR_Msgs.steamUpdateFailed(res.msg).toast())
+			toast.error(...tr.toast(USR_Msgs.steamUpdateFailed(res.msg)))
 		}
 	}
 
@@ -94,7 +95,7 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 								<Input
 									autoComplete="off"
 									inputMode="numeric"
-									placeholder={USR_Msgs.steamIdPlaceholder().text()}
+									placeholder={tr.text(USR_Msgs.steamIdPlaceholder())}
 									value={value}
 									onChange={(e) => setId(idx, e.target.value)}
 									disabled={updateMutation.isPending}
@@ -113,7 +114,7 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 							{error && <p className="text-xs text-destructive pl-1">{error}</p>}
 							{!error && assignedBy.has(value.trim()) && (
 								<p className="pl-1 text-xs text-muted-foreground">
-									{USR_Msgs.steamLinkedByAdmin(assignedBy.get(value.trim())!).text()}
+									{tr.text(USR_Msgs.steamLinkedByAdmin(assignedBy.get(value.trim())!))}
 								</p>
 							)}
 						</div>
@@ -123,11 +124,11 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 
 			<DialogFooter className="flex flex-col sm:flex-row gap-2">
 				<Button variant="outline" onClick={onClose} disabled={updateMutation.isPending}>
-					{UI_Msgs.cancel().text()}
+					{tr.text(UI_Msgs.cancel())}
 				</Button>
 				<Button onClick={handleSave} disabled={hasErrors || updateMutation.isPending}>
 					{updateMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-					{updateMutation.isPending ? USR_Msgs.saving().text() : USR_Msgs.save().text()}
+					{updateMutation.isPending ? tr.text(USR_Msgs.saving()) : tr.text(USR_Msgs.save())}
 				</Button>
 			</DialogFooter>
 		</>

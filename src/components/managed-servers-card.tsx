@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 export default function ManagedServersCard({ className }: { className?: string }) {
@@ -15,10 +16,10 @@ export default function ManagedServersCard({ className }: { className?: string }
 	return (
 		<Card className={className}>
 			<CardHeader>
-				<CardTitle>{APP_Msgs.managedServers().text()}</CardTitle>
+				<CardTitle>{tr.text(APP_Msgs.managedServers())}</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-2">
-				{servers.length === 0 && <p className="text-sm text-muted-foreground">{APP_Msgs.noServersAvailable().text()}</p>}
+				{servers.length === 0 && <p className="text-sm text-muted-foreground">{tr.text(APP_Msgs.noServersAvailable())}</p>}
 				{servers.map((server) => {
 					const serverId = server.id
 					const usable = SettingsClient.isServerUsable(server)

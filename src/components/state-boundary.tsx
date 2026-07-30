@@ -7,6 +7,7 @@ import { Spinner } from '@/components/ui/spinner'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as RPC from '@/orpc.client'
+import { tr } from '@/systems/messages.client'
 
 // a suspended component never commits, so it can't time itself out; the fallback is the only thing mounted while
 // we wait, which makes it the only place that can tell the user the wait has gone on too long. The hard failure
@@ -25,7 +26,7 @@ function SlowAwareFallback(props: { subject: APP_Msgs.BoundarySubject; slowAfter
 		<div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
 			<Loader2 className="h-4 w-4 animate-spin" />
 			<span>
-				{APP_Msgs.boundaryLoading(props.subject, !slow ? 'waiting' : connectStatus === 'open' ? 'slow' : 'reconnecting').text()}
+				{tr.text(APP_Msgs.boundaryLoading(props.subject, !slow ? 'waiting' : connectStatus === 'open' ? 'slow' : 'reconnecting'))}
 			</span>
 		</div>
 	)
@@ -38,11 +39,11 @@ function StateErrorFallback(props: { subject: APP_Msgs.BoundarySubject; error: u
 	return (
 		<Alert variant="destructive">
 			<AlertCircle className="h-4 w-4" />
-			<AlertTitle>{APP_Msgs.boundaryFailed(props.subject, timedOut).text()}</AlertTitle>
+			<AlertTitle>{tr.text(APP_Msgs.boundaryFailed(props.subject, timedOut))}</AlertTitle>
 			<AlertDescription className="space-y-2">
-				<p>{timedOut ? APP_Msgs.boundaryTimedOutBlurb().text() : message}</p>
+				<p>{timedOut ? tr.text(APP_Msgs.boundaryTimedOutBlurb()) : message}</p>
 				<Button size="sm" variant="outline" onClick={props.reset}>
-					{APP_Msgs.retry().text()}
+					{tr.text(APP_Msgs.retry())}
 				</Button>
 			</AlertDescription>
 		</Alert>
@@ -56,7 +57,7 @@ export function RoutePendingComponent() {
 	return (
 		<div className="flex flex-1 h-full w-full items-center justify-center gap-2 p-2 text-sm text-muted-foreground">
 			<Spinner />
-			{import.meta.env.DEV && <span>{APP_Msgs.routeSuspended().text()}</span>}
+			{import.meta.env.DEV && <span>{tr.text(APP_Msgs.routeSuspended())}</span>}
 		</div>
 	)
 }

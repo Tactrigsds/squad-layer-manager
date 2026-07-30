@@ -9,6 +9,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import { usePlayerGroupColor } from '@/systems/battlemetrics.client'
+import { tr } from '@/systems/messages.client'
 
 import PlayerContextMenuOptions from './player-context-menu-options'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
@@ -78,7 +79,7 @@ export function PlayerDisplay({
 		<span className={cn('inline-flex items-baseline', className)}>
 			{player.isAdmin && (
 				<span
-					title={SM_Msgs.adminBadgeHint().text()}
+					title={tr.text(SM_Msgs.adminBadgeHint())}
 					className="inline-block"
 					onClickCapture={(e) => {
 						if (!e.shiftKey) return
@@ -91,7 +92,7 @@ export function PlayerDisplay({
 				</span>
 			)}
 			{player.isLeader && (
-				<span title={SM_Msgs.squadLeaderBadge().text()}>
+				<span title={tr.text(SM_Msgs.squadLeaderBadge())}>
 					<Icons.Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
 				</span>
 			)}

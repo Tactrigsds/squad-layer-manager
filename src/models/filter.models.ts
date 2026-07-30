@@ -11,6 +11,7 @@ import { assertNever } from '@/lib/type-guards'
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
 // another filter entity.
 import type * as CS from '@/models/context-shared'
+import type * as Msgs from '@/models/messages.models'
 
 import * as LC from './layer-columns'
 
@@ -753,7 +754,8 @@ export type InvalidFilterNodeResult = { code: 'err:invalid-node'; errors: NodeVa
 
 type ErrorBase = {
 	path: string[]
-	msg: string
+	// deferred: validation runs on both sides, and only the side displaying an error knows who is reading it
+	msg: Msgs.TString
 }
 
 export type NodeValidationError =

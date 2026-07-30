@@ -4,13 +4,14 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import type * as Msgs from '@/messages/shared'
 import * as SM_Msgs from '@/messages/squad.messages'
+import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -85,7 +86,7 @@ export default function PlayerBulkContextMenuOptions({
 		return detectFullSquadSelection(playerIds, state.players, state.squads)
 	})
 
-	const msgTarget = { kind: 'players', count: playerIds.length } as const satisfies Msgs.Target
+	const msgTarget = { kind: 'players', count: playerIds.length } as const satisfies Tgt.Target
 
 	// scrollable list of the selected players' usernames, shown in the swap/kill confirmation dialogs so
 	// the admin can see exactly who is affected
@@ -116,7 +117,7 @@ export default function PlayerBulkContextMenuOptions({
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-				const msg = TSW_Msgs.swapNow(msgTarget).confirm()
+				const msg = tr.confirm(TSW_Msgs.swapNow(msgTarget))
 				const result = await openDialog({
 					title: msg.title,
 					variant: 'destructive',
@@ -125,7 +126,7 @@ export default function PlayerBulkContextMenuOptions({
 					buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 				})
 				if (result === 'dismissed') {
-					toast.warning(...TSW_Msgs.swapCancelled(msgTarget).toast())
+					toast.warning(...tr.toast(TSW_Msgs.swapCancelled(msgTarget)))
 					return
 				}
 				if (result !== 'confirm') return
@@ -140,7 +141,7 @@ export default function PlayerBulkContextMenuOptions({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.kill(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.kill(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -164,10 +165,10 @@ export default function PlayerBulkContextMenuOptions({
 			// awaited inside withPlayerDialogue so the presence dialogue stays open until the kill settles
 			const res = await killMutation.mutateAsync({ serverId, playerIds, ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.kill(msgTarget).toast())
+			toast(...tr.toast(SM_Msgs.kill(msgTarget)))
 		})
 	}
 
@@ -175,7 +176,7 @@ export default function PlayerBulkContextMenuOptions({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.kick(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.kick(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -198,10 +199,10 @@ export default function PlayerBulkContextMenuOptions({
 			if (!input) return
 			const res = await kickMutation.mutateAsync({ serverId, playerIds, ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.kick(msgTarget).toast())
+			toast(...tr.toast(SM_Msgs.kick(msgTarget)))
 		})
 	}
 
@@ -210,7 +211,7 @@ export default function PlayerBulkContextMenuOptions({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.timeout(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.timeout(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -262,7 +263,7 @@ export default function PlayerBulkContextMenuOptions({
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('REMOVING_FROM_SQUAD', async () => {
-			const msg = SM_Msgs.removeFromSquad(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.removeFromSquad(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -278,11 +279,11 @@ export default function PlayerBulkContextMenuOptions({
 			if (!input) return
 			// one call for the whole batch: the server aggregates the resulting squad-leaves under a single app event
 			// unwrap() keeps the presence dialogue open until it settles; the toast surfaces any error
-			const [failedMessage, failedOpts] = SM_Msgs.removeFromSquadFailed(playerIds.length).toast()
+			const [failedMessage, failedOpts] = tr.toast(SM_Msgs.removeFromSquadFailed(playerIds.length))
 			await toast
 				.promise(removePlayersFromSquadMutation.mutateAsync({ serverId, playerIds, presetReasonLabel: input.presetReasonLabel }), {
-					loading: SM_Msgs.removingFromSquad(playerIds.length).text(),
-					success: SM_Msgs.removedFromSquad(playerIds.length).text(),
+					loading: tr.text(SM_Msgs.removingFromSquad(playerIds.length)),
+					success: tr.text(SM_Msgs.removedFromSquad(playerIds.length)),
 					error: { message: failedMessage, ...failedOpts, richColors: true },
 				})
 				.unwrap()
@@ -292,7 +293,7 @@ export default function PlayerBulkContextMenuOptions({
 
 	async function warnPreset() {
 		presetReasonRef.current = ''
-		const msg = SM_Msgs.warnPreset({ ...msgTarget, fullSquad: !!fullSquad }).confirm()
+		const msg = tr.confirm(SM_Msgs.warnPreset({ ...msgTarget, fullSquad: !!fullSquad }))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -314,25 +315,25 @@ export default function PlayerBulkContextMenuOptions({
 			taggedSquad: fullSquad ? { squadId: fullSquad.squadId, squadName: fullSquad.squadName, teamId: fullSquad.teamId } : undefined,
 		})
 		if (res.code !== 'ok') {
-			toast.error(...SM_Msgs.warnFailed('msg' in res ? res.msg : res.code).toast())
+			toast.error(...tr.toast(SM_Msgs.warnFailed('msg' in res ? res.msg : res.code)))
 			return
 		}
-		toast(...SM_Msgs.warned(msgTarget, presetReasonRef.current).toast())
+		toast(...tr.toast(SM_Msgs.warned(msgTarget, presetReasonRef.current)))
 	}
 
 	return (
 		<>
 			<ContextMenuLabel>
-				{playerIds.length} {SM_Msgs.playersSelected().text()}
+				{playerIds.length} {tr.text(SM_Msgs.playersSelected())}
 			</ContextMenuLabel>
 			<ContextMenuItem onClick={() => SquadServerFrame.Actions.invertSelection(stores)}>
-				{SM_Msgs.invertSelection().text()}
+				{tr.text(SM_Msgs.invertSelection())}
 				<ContextMenuShortcut>{SM_Msgs.shortcuts.invertBox.all}</ContextMenuShortcut>
 			</ContextMenuItem>
 			<ContextMenuSeparator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.swapNext(stores, playerIds)} disabled={!!manageDenied || !canQueue}>
-					{SM_Msgs.swapNextLabel().text()}
+					{tr.text(SM_Msgs.swapNextLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
@@ -342,7 +343,7 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={swapNow}
 					disabled={!!manageDenied || !canSwapNow}
 				>
-					{SM_Msgs.swapNowLabel().text()}
+					{tr.text(SM_Msgs.swapNowLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -351,7 +352,7 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={kill}
 					disabled={!!manageDenied || !canSwapNow}
 				>
-					{SM_Msgs.killLabel().text()}
+					{tr.text(SM_Msgs.killLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
@@ -360,7 +361,7 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={kick}
 					disabled={!!kickDenied || playerIds.length === 0}
 				>
-					{SM_Msgs.kickLabel().text()}
+					{tr.text(SM_Msgs.kickLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
@@ -369,12 +370,12 @@ export default function PlayerBulkContextMenuOptions({
 					onClick={timeout}
 					disabled={!!timeoutDenied || playerIds.length === 0}
 				>
-					{SM_Msgs.timeoutLabel().text()}
+					{tr.text(SM_Msgs.timeoutLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={() => TSWClient.Actions.removeSwap(stores, playerIds)} disabled={!!manageDenied}>
-					{SM_Msgs.deleteSwapsLabel().text()}
+					{tr.text(SM_Msgs.deleteSwapsLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 			<ContextMenuSeparator />
@@ -384,7 +385,7 @@ export default function PlayerBulkContextMenuOptions({
 			<WarnReasonsSub
 				slots={contextMenuSlots}
 				denied={warnDenied}
-				label={fullSquad ? SM_Msgs.warnSquadLabel().text() : SM_Msgs.warnLabel().text()}
+				label={fullSquad ? tr.text(SM_Msgs.warnSquadLabel()) : tr.text(SM_Msgs.warnLabel())}
 				onCustom={warn}
 				onPreset={warnPreset}
 			/>
@@ -395,7 +396,7 @@ export default function PlayerBulkContextMenuOptions({
 			/>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<ContextMenuItem onClick={removeFromSquad} disabled={!!manageDenied}>
-					{SM_Msgs.removeFromSquadLabel().text()}
+					{tr.text(SM_Msgs.removeFromSquadLabel())}
 				</ContextMenuItem>
 			</PermissionDeniedTooltip>
 		</>

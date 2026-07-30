@@ -16,6 +16,7 @@ import * as SB_Msgs from '@/messages/sandbox.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SB from '@/models/sandbox.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { tr } from '@/systems/messages.client'
 
 import type { SandboxControlWindowProps } from './sandbox-control-window.helpers'
 import { SandboxAdminListPanel } from './sandbox-panels'
@@ -68,7 +69,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	async function run<V extends SB.SandboxVerb>(verb: V, args: SB.SandboxVerbInput<V>) {
 		const res = await SandboxFrame.Actions.run(stores, verb, args)
 		if (res.code === 'ok') return true
-		toast.error(...SB_Msgs.verbFailed('message' in res && res.message ? res.message : res.code).toast())
+		toast.error(...tr.toast(SB_Msgs.verbFailed('message' in res && res.message ? res.message : res.code)))
 		return false
 	}
 
@@ -82,7 +83,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	async function bulkJoin() {
 		const count = Number(bulkRef.current?.value ?? '')
 		if (!Number.isInteger(count) || count < 1) {
-			toast.error(...SB_Msgs.bulkJoinNeedsCount().toast())
+			toast.error(...tr.toast(SB_Msgs.bulkJoinNeedsCount()))
 			return
 		}
 		await run('bulk-join', { count })
@@ -92,10 +93,10 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 		return (
 			<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 				<DraggableWindowDragBar>
-					<DraggableWindowTitle>{SB_Msgs.windowTitle().text()}</DraggableWindowTitle>
+					<DraggableWindowTitle>{tr.text(SB_Msgs.windowTitle())}</DraggableWindowTitle>
 					<DraggableWindowClose />
 				</DraggableWindowDragBar>
-				<p className="px-3 py-2 text-sm text-muted-foreground">{SB_Msgs.unavailable().text()}</p>
+				<p className="px-3 py-2 text-sm text-muted-foreground">{tr.text(SB_Msgs.unavailable())}</p>
 			</div>
 		)
 	}
@@ -103,15 +104,15 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>{SB_Msgs.windowTitleFor(props.serverId).text()}</DraggableWindowTitle>
+				<DraggableWindowTitle>{tr.text(SB_Msgs.windowTitleFor(props.serverId))}</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<ScrollArea className="min-h-0 grow">
 				<div className="space-y-4 px-3 py-2">
-					<p className="text-xs text-muted-foreground">{SB_Msgs.blurb().text()}</p>
+					<p className="text-xs text-muted-foreground">{tr.text(SB_Msgs.blurb())}</p>
 
 					<Section
-						title={SB_Msgs.playersSection().text()}
+						title={tr.text(SB_Msgs.playersSection())}
 						action={
 							<div className="flex items-center gap-1.5">
 								<Input
@@ -120,11 +121,11 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 									type="number"
 									min={1}
 									max={SB.MAX_PLAYERS}
-									placeholder={SB_Msgs.bulkJoinCountPlaceholder().text()}
+									placeholder={tr.text(SB_Msgs.bulkJoinCountPlaceholder())}
 									disabled={full}
 								/>
 								<Button type="button" size="sm" variant="outline" className="h-7" disabled={full} onClick={() => void bulkJoin()}>
-									{SB_Msgs.bulkJoin().text()}
+									{tr.text(SB_Msgs.bulkJoin())}
 								</Button>
 							</div>
 						}
@@ -134,7 +135,7 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 							<Input
 								ref={joinRef}
 								className="h-8"
-								placeholder={full ? SB_Msgs.serverFull(SB.MAX_PLAYERS).text() : nextName}
+								placeholder={full ? tr.text(SB_Msgs.serverFull(SB.MAX_PLAYERS)) : nextName}
 								disabled={full}
 								onKeyDown={(e) => {
 									if (e.key !== 'Enter') return
@@ -144,14 +145,14 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 							/>
 							<Button type="button" size="sm" variant="outline" className="h-8" disabled={full} onClick={() => void join()}>
 								<Icons.UserPlus className="mr-1 h-3.5 w-3.5" />
-								{SB_Msgs.join().text()}
+								{tr.text(SB_Msgs.join())}
 							</Button>
 						</div>
 					</Section>
 
 					<ChatComposer stores={stores} run={run} />
 
-					<Section title={SB_Msgs.matchSection().text()}>
+					<Section title={tr.text(SB_Msgs.matchSection())}>
 						<div className="flex flex-wrap items-center gap-1.5">
 							<Button
 								type="button"
@@ -160,27 +161,27 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 								className="h-7"
 								onClick={() => void run('end', { winnerTeamId: null })}
 							>
-								{SB_Msgs.endMatch().text()}
+								{tr.text(SB_Msgs.endMatch())}
 							</Button>
 							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('end', { winnerTeamId: 1 })}>
-								{SB_Msgs.teamWins(1).text()}
+								{tr.text(SB_Msgs.teamWins(1))}
 							</Button>
 							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('end', { winnerTeamId: 2 })}>
-								{SB_Msgs.teamWins(2).text()}
+								{tr.text(SB_Msgs.teamWins(2))}
 							</Button>
 							<Button type="button" size="sm" variant="outline" className="h-7" onClick={() => void run('cycle', {})}>
 								<Icons.Unplug className="mr-1 h-3.5 w-3.5" />
-								{SB_Msgs.dropRcon().text()}
+								{tr.text(SB_Msgs.dropRcon())}
 							</Button>
 						</div>
 					</Section>
 
 					<Section
-						title={SB_Msgs.adminListSection().text()}
+						title={tr.text(SB_Msgs.adminListSection())}
 						action={
 							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openAdminList()}>
 								<Icons.ExternalLink className="mr-1 h-3.5 w-3.5" />
-								{SB_Msgs.popOut().text()}
+								{tr.text(SB_Msgs.popOut())}
 							</Button>
 						}
 					>
@@ -188,11 +189,11 @@ function SandboxControlWindow(props: SandboxControlWindowProps) {
 					</Section>
 
 					<Section
-						title={SB_Msgs.consoleSection().text()}
+						title={tr.text(SB_Msgs.consoleSection())}
 						action={
 							<Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => openConsole()}>
 								<Icons.ExternalLink className="mr-1 h-3.5 w-3.5" />
-								{SB_Msgs.popOut().text()}
+								{tr.text(SB_Msgs.popOut())}
 							</Button>
 						}
 					>
@@ -221,13 +222,13 @@ function TeamCell({ player, run }: { player: PlayerRow; run: RunFn }) {
 			value={player.teamId ? String(player.teamId) : undefined}
 			onValueChange={(value) => void run('set-team', { name: player.name, teamId: Number(value) as 1 | 2 })}
 		>
-			<SelectTrigger className="h-7 w-[6rem]" aria-label={SB_Msgs.teamPicker(player.name).text()}>
-				<SelectValue placeholder={SB_Msgs.noTeam().text()} />
+			<SelectTrigger className="h-7 w-[6rem]" aria-label={tr.text(SB_Msgs.teamPicker(player.name))}>
+				<SelectValue placeholder={tr.text(SB_Msgs.noTeam())} />
 			</SelectTrigger>
 			<SelectContent>
 				{TEAM_IDS.map((teamId) => (
 					<SelectItem key={teamId} value={String(teamId)}>
-						{SB_Msgs.teamOption(teamId).text()}
+						{tr.text(SB_Msgs.teamOption(teamId))}
 					</SelectItem>
 				))}
 			</SelectContent>
@@ -262,21 +263,21 @@ function SquadCell({ player, squads, run }: { player: PlayerRow; squads: SquadRo
 				onValueChange={onValueChange}
 				disabled={player.teamId === null}
 			>
-				<SelectTrigger className="h-7 w-[10rem]" aria-label={SB_Msgs.squadPicker(player.name).text()}>
+				<SelectTrigger className="h-7 w-[10rem]" aria-label={tr.text(SB_Msgs.squadPicker(player.name))}>
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
-					<SelectItem value={NO_SQUAD}>{SB_Msgs.noSquad().text()}</SelectItem>
+					<SelectItem value={NO_SQUAD}>{tr.text(SB_Msgs.noSquad())}</SelectItem>
 					{onTeam.map((s) => (
 						<SelectItem key={s.squadId} value={String(s.squadId)}>
-							{SB_Msgs.squadOption(s.squadId, s.name, s.size).text()}
+							{tr.text(SB_Msgs.squadOption(s.squadId, s.name, s.size))}
 						</SelectItem>
 					))}
-					<SelectItem value={NEW_SQUAD}>{SB_Msgs.createSquad().text()}</SelectItem>
+					<SelectItem value={NEW_SQUAD}>{tr.text(SB_Msgs.createSquad())}</SelectItem>
 				</SelectContent>
 			</Select>
 			{player.isLeader && (
-				<Icons.Crown className="h-3.5 w-3.5 text-muted-foreground" aria-label={SB_Msgs.squadLeader(player.name).text()} />
+				<Icons.Crown className="h-3.5 w-3.5 text-muted-foreground" aria-label={tr.text(SB_Msgs.squadLeader(player.name))} />
 			)}
 		</div>
 	)
@@ -300,15 +301,15 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 		void run('set-player-groups', { name, groups })
 	}
 
-	if (total === 0) return <p className="text-sm text-muted-foreground">{SB_Msgs.nobodyConnected().text()}</p>
+	if (total === 0) return <p className="text-sm text-muted-foreground">{tr.text(SB_Msgs.nobodyConnected())}</p>
 
 	return (
 		<div className="space-y-1.5">
 			<div className="flex items-center gap-1.5">
 				<Input
 					className="h-7"
-					placeholder={SB_Msgs.searchPlayers().text()}
-					aria-label={SB_Msgs.searchPlayersLabel().text()}
+					placeholder={tr.text(SB_Msgs.searchPlayers())}
+					aria-label={tr.text(SB_Msgs.searchPlayersLabel())}
 					onChange={(e) => onSearch(e.target.value)}
 				/>
 				<span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
@@ -316,18 +317,18 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 				</span>
 			</div>
 			{matched === 0 ? (
-				<p className="text-sm text-muted-foreground">{SB_Msgs.noPlayerMatches().text()}</p>
+				<p className="text-sm text-muted-foreground">{tr.text(SB_Msgs.noPlayerMatches())}</p>
 			) : (
 				<>
 					<div className="overflow-x-auto">
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>{SB_Msgs.playerColumn().text()}</TableHead>
-									<TableHead className="w-24">{SB_Msgs.teamColumn().text()}</TableHead>
-									<TableHead className="w-48">{SB_Msgs.squadColumn().text()}</TableHead>
-									<TableHead className="w-16">{SB_Msgs.adminColumn().text()}</TableHead>
-									<TableHead className="min-w-[12rem]">{SB_Msgs.groupsColumn().text()}</TableHead>
+									<TableHead>{tr.text(SB_Msgs.playerColumn())}</TableHead>
+									<TableHead className="w-24">{tr.text(SB_Msgs.teamColumn())}</TableHead>
+									<TableHead className="w-48">{tr.text(SB_Msgs.squadColumn())}</TableHead>
+									<TableHead className="w-16">{tr.text(SB_Msgs.adminColumn())}</TableHead>
+									<TableHead className="min-w-[12rem]">{tr.text(SB_Msgs.groupsColumn())}</TableHead>
 									<TableHead className="w-10" />
 								</TableRow>
 							</TableHeader>
@@ -344,7 +345,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 										<TableCell>
 											<Checkbox
 												checked={p.isAdmin}
-												aria-label={SB_Msgs.isAdminCheckbox(p.name).text()}
+												aria-label={tr.text(SB_Msgs.isAdminCheckbox(p.name))}
 												onCheckedChange={(on) =>
 													setGroups(
 														p.name,
@@ -355,10 +356,10 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 										</TableCell>
 										<TableCell>
 											<ComboBoxMulti
-												title={SB_Msgs.groupPicker().text()}
+												title={tr.text(SB_Msgs.groupPicker())}
 												values={p.groups}
 												options={groupNames}
-												emptyLabel={SB_Msgs.noGroups().text()}
+												emptyLabel={tr.text(SB_Msgs.noGroups())}
 												chipDisplay
 												onSelect={(next) => setGroups(p.name, typeof next === 'function' ? next(p.groups) : next)}
 											/>
@@ -369,7 +370,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 												size="icon"
 												variant="ghost"
 												className="h-6 w-6"
-												title={SB_Msgs.disconnectPlayer(p.name).text()}
+												title={tr.text(SB_Msgs.disconnectPlayer(p.name))}
 												onClick={() => void run('leave', { name: p.name })}
 											>
 												<Icons.LogOut className="h-3.5 w-3.5" />
@@ -387,7 +388,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								size="icon"
 								variant="ghost"
 								className="h-6 w-6"
-								aria-label={SB_Msgs.previousPage().text()}
+								aria-label={tr.text(SB_Msgs.previousPage())}
 								disabled={page === 0}
 								onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page - 1)}
 							>
@@ -401,7 +402,7 @@ function PlayersTable({ stores, groupNames, run }: { stores: SandboxFrame.KeyPro
 								size="icon"
 								variant="ghost"
 								className="h-6 w-6"
-								aria-label={SB_Msgs.nextPage().text()}
+								aria-label={tr.text(SB_Msgs.nextPage())}
 								disabled={page >= pageCount - 1}
 								onClick={() => SandboxFrame.Actions.setPlayerPage(stores, page + 1)}
 							>
@@ -435,7 +436,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 	}
 
 	return (
-		<Section title={SB_Msgs.saySection().text()}>
+		<Section title={tr.text(SB_Msgs.saySection())}>
 			<div className="flex items-center gap-1.5">
 				<Select
 					value={speaker?.name ?? undefined}
@@ -443,7 +444,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 					disabled={players.length === 0}
 				>
 					<SelectTrigger className="h-8 w-[9rem]">
-						<SelectValue placeholder={SB_Msgs.speakerPlaceholder().text()} />
+						<SelectValue placeholder={tr.text(SB_Msgs.speakerPlaceholder())} />
 					</SelectTrigger>
 					<SelectContent>
 						{players.map((p) => (
@@ -472,7 +473,7 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 				<Input
 					ref={messageRef}
 					className="h-8"
-					placeholder={SB_Msgs.messagePlaceholder().text()}
+					placeholder={tr.text(SB_Msgs.messagePlaceholder())}
 					disabled={players.length === 0}
 					onKeyDown={(e) => {
 						if (e.key !== 'Enter') return
@@ -481,11 +482,11 @@ function ChatComposer({ stores, run }: { stores: SandboxFrame.KeyProp; run: RunF
 					}}
 				/>
 				<Button type="button" size="sm" variant="outline" className="h-8" disabled={players.length === 0} onClick={() => void send()}>
-					{SB_Msgs.send().text()}
+					{tr.text(SB_Msgs.send())}
 				</Button>
 			</div>
 			{players.length > 0 && !speaker?.isAdmin && (
-				<p className="text-xs text-muted-foreground">{SB_Msgs.adminChatNeedsAdmin().text()}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(SB_Msgs.adminChatNeedsAdmin())}</p>
 			)}
 		</Section>
 	)

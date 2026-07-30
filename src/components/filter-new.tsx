@@ -14,6 +14,7 @@ import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
 import { useFilterCreate } from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import { invalidateLoggedInUser } from '@/systems/users.client'
 
@@ -54,7 +55,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			const state = Zus.getState(props.stores.filterEditor)
 
 			if (!state.validatedFilter) {
-				toast.warning(...F_Msgs.invalid().toast())
+				toast.warning(...tr.toast(F_Msgs.invalid()))
 				return
 			}
 
@@ -72,7 +73,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			switch (res.code) {
 				case 'ok':
 					invalidateLoggedInUser()
-					toast(...F_Msgs.created().toast())
+					toast(...tr.toast(F_Msgs.created()))
 					void navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
 					break
 
@@ -94,7 +95,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			{(f) => (
 				<PermissionDeniedTooltip denied={createDenied}>
 					<Button onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
-						{F_Msgs.create().text()}
+						{tr.text(F_Msgs.create())}
 					</Button>
 				</PermissionDeniedTooltip>
 			)}
@@ -168,7 +169,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 
 					{/* Match Indicator Section */}
 					<div className="border rounded-lg p-4 space-y-4">
-						<h3 className="font-semibold text-sm">{F_Msgs.matchIndicator().text()}</h3>
+						<h3 className="font-semibold text-sm">{tr.text(F_Msgs.matchIndicator())}</h3>
 						<div className="flex gap-4">
 							<form.Field name="emoji">
 								{(field) => {
@@ -224,7 +225,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 
 					{/* Miss Indicator Section */}
 					<div className="border rounded-lg p-4 space-y-4">
-						<h3 className="font-semibold text-sm">{F_Msgs.missIndicator().text()}</h3>
+						<h3 className="font-semibold text-sm">{tr.text(F_Msgs.missIndicator())}</h3>
 						<div className="flex gap-4">
 							<form.Field name="invertedEmoji">
 								{(field) => {

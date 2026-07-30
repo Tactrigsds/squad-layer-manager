@@ -19,6 +19,7 @@ import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models.ts'
+import { tr } from '@/systems/messages.client'
 import { useLoggedInUser } from '@/systems/users.client'
 
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
@@ -200,7 +201,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 					{props.footerBeforeSubmit}
 					{submit && (
 						<Button disabled={!canSubmit} onClick={submit}>
-							{L_Msgs.submit().text()}
+							{tr.text(L_Msgs.submit())}
 						</Button>
 					)}
 				</div>

@@ -8,12 +8,13 @@ import * as Zus from '@/lib/zustand'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import type { PublicSettings } from '@/systems/settings.server'
 import * as UsersClient from '@/systems/users.client'
 
 export function handlePermissionDenied(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	toast.error(...RBAC_Msgs.permissionDenied(res).toast())
+	toast.error(...tr.toast(RBAC_Msgs.permissionDenied(res)))
 }
 
 export function usePermsCheck<T extends RBAC.PermissionType>(

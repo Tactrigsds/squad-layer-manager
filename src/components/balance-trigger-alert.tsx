@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as MH from '@/models/match-history.models'
+import { tr } from '@/systems/messages.client'
 
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
@@ -22,7 +23,7 @@ export default function BalanceTriggerAlert(props: {
 				<AlertIcon className="h-4 w-4 mr-2" />
 				{trigger.name}
 			</AlertTitle>
-			<AlertDescription>{BAL_Msgs.showEvent(props.event, props.referenceMatch).react()}</AlertDescription>
+			<AlertDescription>{tr.richText(BAL_Msgs.showEvent(props.event, props.referenceMatch))}</AlertDescription>
 		</Alert>
 	)
 }

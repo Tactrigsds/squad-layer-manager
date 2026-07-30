@@ -39,6 +39,7 @@ import { useOrgFlags, usePlayerGroupColor, useRefreshPlayerBmData } from '@/syst
 import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
@@ -147,7 +148,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
-					{ids?.username ?? SM_Msgs.playerDetailsTitle().text()}
+					{ids?.username ?? tr.text(SM_Msgs.playerDetailsTitle())}
 					{livePlayer && (livePlayer.teamId !== null || livePlayer.squadId !== null) && (
 						<span className="text-muted-foreground font-normal ml-1">
 							(
@@ -157,20 +158,20 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 									{livePlayer.squadId !== null && ', '}
 								</>
 							) : null}
-							{livePlayer.squadId !== null && SM_Msgs.squadWithId(livePlayer.squadId).text()})
+							{livePlayer.squadId !== null && tr.text(SM_Msgs.squadWithId(livePlayer.squadId))})
 						</span>
 					)}
 				</DraggableWindowTitle>
 				{connectionStatus &&
 					(connectionStatus.status === 'online' ? (
-						<span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={SM_Msgs.onlineFor(elapsed).text()} />
+						<span className="h-2 w-2 rounded-full bg-green-500 shrink-0" title={tr.text(SM_Msgs.onlineFor(elapsed))} />
 					) : (
 						<span
 							className="h-2 w-2 rounded-full bg-muted-foreground shrink-0"
 							title={
 								connectionStatus.lastSeen
-									? SM_Msgs.lastSeen(dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })).text()
-									: SM_Msgs.offline().text()
+									? tr.text(SM_Msgs.lastSeen(dateFns.formatDistanceToNow(connectionStatus.lastSeen, { addSuffix: true })))
+									: tr.text(SM_Msgs.offline())
 							}
 						/>
 					))}
@@ -182,7 +183,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						<button
 							type="button"
 							className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-							title={SM_Msgs.playerActions().text()}
+							title={tr.text(SM_Msgs.playerActions())}
 						>
 							<Icons.Ellipsis className="h-3.5 w-3.5" />
 						</button>
@@ -216,7 +217,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							</ExtLink>
 						</>
 					) : (
-						<span className="italic">{SM_Msgs.noSteamId().text()}</span>
+						<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
 					)}
 					<ExtLink
 						href={
@@ -228,7 +229,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						{SM_Msgs.linkNames.battlemetrics}
 					</ExtLink>
 					{!!profile?.hoursPlayed && (
-						<span title={BM_Msgs.hoursPlayedHint().text()}>{BM_Msgs.hoursPlayed(profile.hoursPlayed).text()}</span>
+						<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
 					)}
 				</div>
 				<PlayerDiscordLink steamId={ids?.steam ?? profile?.playerIds.steam} />
@@ -236,7 +237,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 			<Separator />
 			<div className="px-3 py-0.5 flex-1 min-h-0 flex flex-col">
 				<div className="inline-flex items-baseline gap-1 justify-between w-full">
-					<h3 className="inline">{CHAT_Msgs.activityTitle().text()}</h3>
+					<h3 className="inline">{tr.text(CHAT_Msgs.activityTitle())}</h3>
 					<EventFilterSelect
 						variant="ghost"
 						value={filterState}
@@ -279,10 +280,10 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute top-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
-							title={CHAT_Msgs.loadOlderEvents().text()}
+							title={tr.text(CHAT_Msgs.loadOlderEvents())}
 						>
 							{isLoadingOlder ? <Spinner className="h-3 w-3" /> : <Icons.ChevronUp className="h-3 w-3" />}
-							<span className="text-xs">{CHAT_Msgs.loadOlderEvents().text()}</span>
+							<span className="text-xs">{tr.text(CHAT_Msgs.loadOlderEvents())}</span>
 						</Button>
 					)}
 					{historyRequested && !eventsQuery.hasNextPage && !isLoadingOlder && isAtTop && (
@@ -290,7 +291,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute top-0 left-0 right-0 w-full h-6 flex items-center justify-center text-xs text-muted-foreground backdrop-blur-sm"
 						>
-							{CHAT_Msgs.noMoreEvents().text()}
+							{tr.text(CHAT_Msgs.noMoreEvents())}
 						</div>
 					)}
 					{showScrollButton && (
@@ -299,10 +300,10 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							variant="secondary"
 							style={{ zIndex: aboveChatZIndex }}
 							className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
-							title={CHAT_Msgs.scrollToBottom().text()}
+							title={tr.text(CHAT_Msgs.scrollToBottom())}
 						>
 							<Icons.ChevronDown className="h-3 w-3" />
-							<span className="text-xs">{CHAT_Msgs.scrollToBottom().text()}</span>
+							<span className="text-xs">{tr.text(CHAT_Msgs.scrollToBottom())}</span>
 						</Button>
 					)}
 				</div>
@@ -313,7 +314,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 						serverId={serverId}
 						playerIds={[playerId]}
 						focusTarget={{ kind: 'player', playerId }}
-						placeholder={SM_Msgs.warnPlayerPlaceholder(ids?.username ?? SM_Msgs.unnamedPlayer().text()).text()}
+						placeholder={tr.text(SM_Msgs.warnPlayerPlaceholder(ids?.username ?? tr.text(SM_Msgs.unnamedPlayer())))}
 						stores={stores}
 					/>
 				</div>
@@ -346,37 +347,37 @@ function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
 		if (!discordId || !steamId) return
 		const res = await assign.mutateAsync({ steamId, discordId })
 		if (res.code === 'ok') {
-			toast(...USR_Msgs.steamLinkAssigned(discordId).toast())
+			toast(...tr.toast(USR_Msgs.steamLinkAssigned(discordId)))
 			setPicked('')
 		} else if (res.code === 'err:not-a-guild-member') {
-			toast.error(...USR_Msgs.steamLinkNotAGuildMember(discordId).toast())
+			toast.error(...tr.toast(USR_Msgs.steamLinkNotAGuildMember(discordId)))
 		} else if (res.code === 'err:steam-already-linked') {
-			toast.error(...USR_Msgs.steamIdAlreadyLinked(steamId).toast())
+			toast.error(...tr.toast(USR_Msgs.steamIdAlreadyLinked(steamId)))
 		} else {
-			toast.error(...USR_Msgs.steamLinkFailed().toast())
+			toast.error(...tr.toast(USR_Msgs.steamLinkFailed()))
 		}
 	}
 
 	async function onRemove() {
 		if (!steamId) return
 		const res = await remove.mutateAsync({ steamId })
-		if (res.code === 'ok') toast(...USR_Msgs.steamLinkRemoved().toast())
-		else toast.error(...USR_Msgs.steamLinkFailed().toast())
+		if (res.code === 'ok') toast(...tr.toast(USR_Msgs.steamLinkRemoved()))
+		else toast.error(...tr.toast(USR_Msgs.steamLinkFailed()))
 	}
 
 	return (
 		<div className="flex items-center gap-2">
-			<span className="text-muted-foreground shrink-0">{USR_Msgs.discordLabel().text()}</span>
+			<span className="text-muted-foreground shrink-0">{tr.text(USR_Msgs.discordLabel())}</span>
 			{link ? (
 				<>
 					<span className="truncate" title={link.discordId}>
 						{link.discordUsername}
 					</span>
 					<span className="text-muted-foreground shrink-0">
-						{link.origin === 'assigned' ? USR_Msgs.linkedBy(link.linkedBy?.displayName).text() : USR_Msgs.selfLinked().text()}
+						{link.origin === 'assigned' ? tr.text(USR_Msgs.linkedBy(link.linkedBy?.displayName)) : tr.text(USR_Msgs.selfLinked())}
 					</span>
 					<Button type="button" size="sm" variant="ghost" className="h-6 px-1 text-destructive" disabled={pending} onClick={onRemove}>
-						{USR_Msgs.unlink().text()}
+						{tr.text(USR_Msgs.unlink())}
 					</Button>
 				</>
 			) : (
@@ -399,10 +400,10 @@ function PlayerBmRefreshButton({ playerId }: { playerId: string }) {
 			disabled={refresh.isPending}
 			onClick={async () => {
 				const res = await refresh.mutateAsync({ playerIds: [playerId] })
-				if (res.failed.length > 0) toast.error(...BM_Msgs.refreshFailed().toast())
+				if (res.failed.length > 0) toast.error(...tr.toast(BM_Msgs.refreshFailed()))
 			}}
 			className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:pointer-events-none"
-			title={BM_Msgs.refreshHint().text()}
+			title={tr.text(BM_Msgs.refreshHint())}
 		>
 			<Icons.RefreshCw className={`h-3 w-3 ${refresh.isPending ? 'animate-spin' : ''}`} />
 		</button>
@@ -419,21 +420,21 @@ function PlayerTimeoutStatus({ playerId }: { playerId: string }) {
 		<div className="flex items-center gap-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1">
 			<Icons.UserX className="h-3.5 w-3.5 text-red-500 shrink-0" />
 			<span className="min-w-0 truncate">
-				{SM_Msgs.timedOutUntil(dateFns.format(timeout.expiresAt, 'PPp'), timeout.reasonLabel ?? undefined).text()}
+				{tr.text(SM_Msgs.timedOutUntil(dateFns.format(timeout.expiresAt, 'PPp'), timeout.reasonLabel ?? undefined))}
 			</span>
 			{canCancel && (
 				<Button
 					size="sm"
 					variant="ghost"
 					className="h-6 px-2 ml-auto shrink-0"
-					title={SM_Msgs.cancelTimeoutHint().text()}
+					title={tr.text(SM_Msgs.cancelTimeoutHint())}
 					onClick={async () => {
 						const res = await cancelMutation.mutateAsync({ timeoutId: timeout.id })
-						if (res.code !== 'ok') toast.error(...SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
-						else toast(...SM_Msgs.timeoutCancelled().toast())
+						if (res.code !== 'ok') toast.error(...tr.toast(SM_Msgs.cancelTimeoutFailed('msg' in res && res.msg ? res.msg : res.code)))
+						else toast(...tr.toast(SM_Msgs.timeoutCancelled()))
 					}}
 				>
-					{SM_Msgs.cancelTimeout().text()}
+					{tr.text(SM_Msgs.cancelTimeout())}
 				</Button>
 			)}
 		</div>
@@ -518,7 +519,7 @@ function EventSeparator({ time, prevTime }: { time: number; prevTime: number | n
 		return (
 			<div className="flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground italic">
 				<Icons.ChevronsDown className="h-3 w-3 shrink-0" />
-				<span>{SM_Msgs.feedGap(formatGap(time - prevTime), dateFns.format(time, 'h:mm a')).text()}</span>
+				<span>{tr.text(SM_Msgs.feedGap(formatGap(time - prevTime), dateFns.format(time, 'h:mm a')))}</span>
 			</div>
 		)
 	}
@@ -587,7 +588,7 @@ function PlayerFlagsList({ flags }: PlayerFlagsListProps) {
 						<button
 							type="button"
 							className="inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-medium leading-tight shrink-0 bg-muted hover:bg-muted/80 transition-colors"
-							title={BM_Msgs.showAllFlags().text()}
+							title={tr.text(BM_Msgs.showAllFlags())}
 						>
 							<Icons.MoreHorizontal className="h-3 w-3" />
 						</button>

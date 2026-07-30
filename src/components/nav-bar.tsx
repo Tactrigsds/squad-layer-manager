@@ -40,7 +40,8 @@ import * as RPC from '@/orpc.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
-import * as LocaleClient from '@/systems/locale.client'
+import * as MessagesClient from '@/systems/messages.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -83,7 +84,7 @@ export default function NavBar() {
 	}
 
 	const { theme, setTheme } = ThemeClient.useTheme()
-	const { choice: localeChoice, setChoice: setLocaleChoice } = LocaleClient.useLocale()
+	const { choice: localeChoice, setChoice: setLocaleChoice } = MessagesClient.useLocale()
 	const config = Zus.useStore(ConfigClient.Store)
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const selectedServerId = Zus.useStore(SquadServerClient.SelectedServerStore, (s) => s.selectedServerId)
@@ -115,20 +116,20 @@ export default function NavBar() {
 			{simulate && (
 				<DropdownMenuItem onClick={() => setSimulate(false)} className="sm:hidden text-sm">
 					<Icons.X className="mr-2 h-4 w-4" />
-					{APP_Msgs.stopSimulating().text()}
+					{tr.text(APP_Msgs.stopSimulating())}
 				</DropdownMenuItem>
 			)}
 			{wsStatus === 'closed' && (
 				<DropdownMenuItem disabled className="md:hidden text-destructive text-sm">
 					<span className="flex space-x-2 items-center">
 						<Spinner className="h-4 w-4" />
-						<AlertTitle className="text-xs font-medium">{APP_Msgs.disconnectedFromServer().text()}</AlertTitle>
+						<AlertTitle className="text-xs font-medium">{tr.text(APP_Msgs.disconnectedFromServer())}</AlertTitle>
 					</span>
 				</DropdownMenuItem>
 			)}
 			<DropdownMenuSub>
 				<DropdownMenuSubTrigger className="text-sm" chevronLeft>
-					{APP_Msgs.theme().text()}
+					{tr.text(APP_Msgs.theme())}
 				</DropdownMenuSubTrigger>
 				<DropdownMenuSubContent>
 					<DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as 'dark' | 'light' | 'system')}>
@@ -149,17 +150,17 @@ export default function NavBar() {
 			</DropdownMenuSub>
 			<DropdownMenuSub>
 				<DropdownMenuSubTrigger className="text-sm" chevronLeft>
-					{APP_Msgs.language().text()}
+					{tr.text(APP_Msgs.language())}
 				</DropdownMenuSubTrigger>
 				<DropdownMenuSubContent>
 					<DropdownMenuRadioGroup value={localeChoice} onValueChange={setLocaleChoice}>
-						<DropdownMenuRadioItem value={LocaleClient.AUTO} className="text-sm">
+						<DropdownMenuRadioItem value={MessagesClient.AUTO} className="text-sm">
 							<Icons.Languages className="mr-2 h-4 w-4" />
-							{APP_Msgs.languageAuto().text()}
+							{tr.text(APP_Msgs.languageAuto())}
 						</DropdownMenuRadioItem>
-						{LocaleClient.availableLocales().map((locale) => (
+						{MessagesClient.availableLocales().map((locale) => (
 							<DropdownMenuRadioItem key={locale} value={locale} className="text-sm">
-								{LocaleClient.endonym(locale)}
+								{MessagesClient.endonym(locale)}
 							</DropdownMenuRadioItem>
 						))}
 					</DropdownMenuRadioGroup>
@@ -170,25 +171,25 @@ export default function NavBar() {
 			<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
 				<DropdownMenuItem onClick={() => setDropdownState('nickname')} className="text-sm">
 					<Icons.User className="mr-2 h-4 w-4" />
-					{APP_Msgs.setNickname().text()}
+					{tr.text(APP_Msgs.setNickname())}
 				</DropdownMenuItem>
 			</NicknameDialog>
 			<LinkSteamAccountDialog onOpenChange={onSteamLinkOpenChange} open={openState === 'steam-link'}>
 				<DropdownMenuItem onClick={() => setDropdownState('steam-link')} className="text-sm">
 					<Icons.Link className="mr-2 h-4 w-4" />
-					{APP_Msgs.linkedSteamAccounts().text()}
+					{tr.text(APP_Msgs.linkedSteamAccounts())}
 				</DropdownMenuItem>
 			</LinkSteamAccountDialog>
 			<UserPermissionsDialog onOpenChange={onPermissionsOpenChange} open={openState === 'permissions'}>
 				<DropdownMenuItem onClick={() => setDropdownState('permissions')} className="text-sm">
 					<Icons.Shield className="mr-2 h-4 w-4" />
-					{APP_Msgs.permissions().text()}
+					{tr.text(APP_Msgs.permissions())}
 				</DropdownMenuItem>
 			</UserPermissionsDialog>
 			<DropdownMenuItem asChild className="text-sm">
 				<TSR.Link to="/about">
 					<Icons.Info className="mr-2 h-4 w-4" />
-					{APP_Msgs.about().text()}
+					{tr.text(APP_Msgs.about())}
 				</TSR.Link>
 			</DropdownMenuItem>
 			<DropdownMenuSeparator />
@@ -196,7 +197,7 @@ export default function NavBar() {
 				<DropdownMenuItem asChild>
 					<button className="w-full text-sm" type="submit">
 						<Icons.LogOut className="mr-2 h-4 w-4" />
-						{APP_Msgs.logOut().text()}
+						{tr.text(APP_Msgs.logOut())}
 					</button>
 				</DropdownMenuItem>
 			</form>
@@ -209,7 +210,7 @@ export default function NavBar() {
 			style={settings?.topBarColor ? { borderBottom: `2px solid ${settings.topBarColor}` } : undefined}
 		>
 			<div className="flex items-center space-x-3 sm:space-x-6">
-				<TSR.Link to="/about" aria-label={APP_Msgs.about().text()} className="shrink-0">
+				<TSR.Link to="/about" aria-label={tr.text(APP_Msgs.about())} className="shrink-0">
 					<LogoMark accent={settings?.topBarColor ?? null} className="h-9 w-9" />
 				</TSR.Link>
 				{/* below sm the nav links (and the avatar menu) don't fit, so collapse them into one hamburger; tabs stay beside it */}
@@ -242,16 +243,16 @@ export default function NavBar() {
 						{!showDashboardTabs &&
 							(selectedServer ? (
 								<NavLink params={{ serverId: selectedServer.id }} to="/servers/$serverId">
-									{APP_Msgs.navServer().text()}
+									{tr.text(APP_Msgs.navServer())}
 								</NavLink>
 							) : (
-								<NavLink to="/servers">{APP_Msgs.navServer().text()}</NavLink>
+								<NavLink to="/servers">{tr.text(APP_Msgs.navServer())}</NavLink>
 							))}
-						<NavLink to="/commands">{APP_Msgs.navCommands().text()}</NavLink>
-						<NavLink to="/filters">{APP_Msgs.navFilters().text()}</NavLink>
-						{showSettingsLink && <NavLink to="/settings">{APP_Msgs.navSettings().text()}</NavLink>}
+						<NavLink to="/commands">{tr.text(APP_Msgs.navCommands())}</NavLink>
+						<NavLink to="/filters">{tr.text(APP_Msgs.navFilters())}</NavLink>
+						{showSettingsLink && <NavLink to="/settings">{tr.text(APP_Msgs.navSettings())}</NavLink>}
 						<Button variant="secondary" size="sm" onClick={() => setExploreLayersOpen(true)}>
-							{APP_Msgs.exploreLayers().text()}
+							{tr.text(APP_Msgs.exploreLayers())}
 						</Button>
 					</div>
 				)}
@@ -260,7 +261,7 @@ export default function NavBar() {
 			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
 				{simulate && (
 					<div className="hidden sm:flex items-center space-x-1 shrink-0">
-						<span className="text-sm font-medium">{APP_Msgs.simulating().text()}</span>{' '}
+						<span className="text-sm font-medium">{tr.text(APP_Msgs.simulating())}</span>{' '}
 						<Button size="icon" variant="ghost" onClick={() => setSimulate(false)}>
 							<Icons.X className="h-4 w-4" />
 						</Button>
@@ -271,12 +272,12 @@ export default function NavBar() {
 					<Alert variant="destructive" className="hidden md:flex space-x-2 py-1 px-2">
 						<span className="flex space-x-2 items-center">
 							<Spinner className="h-4 w-4" />
-							<AlertTitle className="text-xs font-medium">{APP_Msgs.disconnectedFromServer().text()}</AlertTitle>
+							<AlertTitle className="text-xs font-medium">{tr.text(APP_Msgs.disconnectedFromServer())}</AlertTitle>
 						</span>
 					</Alert>
 				)}
 				{(wsStatus === 'reconnecting' || wsStatus === 'pending') && (
-					<div title={APP_Msgs.connectingToServer().text()}>
+					<div title={tr.text(APP_Msgs.connectingToServer())}>
 						<Spinner />
 					</div>
 				)}
@@ -331,7 +332,7 @@ export default function NavBar() {
 						<DropdownMenu modal={false} open={openState !== null} onOpenChange={onPrimaryDropdownOpenChange}>
 							<DropdownMenuTrigger asChild>
 								<Avatar
-									aria-label={APP_Msgs.userMenu().text()}
+									aria-label={tr.text(APP_Msgs.userMenu())}
 									style={{ backgroundColor: user.displayHexColor ?? undefined }}
 									className="hover:cursor-pointer select-none h-8 w-8 sm:h-10 sm:w-10 shrink-0"
 								>
@@ -356,7 +357,7 @@ function NormalizeTeamsToggle() {
 			role="menuitemcheckbox"
 			aria-checked={displayTeamsNormalized}
 			className="text-sm justify-between gap-4"
-			title={APP_Msgs.normalizeTeamsHint().text()}
+			title={tr.text(APP_Msgs.normalizeTeamsHint())}
 			onSelect={(e) => {
 				e.preventDefault()
 				ClientOnlySettings.Actions.setDisplayTeamsNormalized(!displayTeamsNormalized)
@@ -364,7 +365,7 @@ function NormalizeTeamsToggle() {
 		>
 			<span className="flex items-center">
 				<Icons.ArrowLeftRight className="mr-2 h-4 w-4" />
-				{APP_Msgs.normalizeTeams().text()}
+				{tr.text(APP_Msgs.normalizeTeams())}
 			</span>
 			<Switch checked={displayTeamsNormalized} tabIndex={-1} className="pointer-events-none" />
 		</DropdownMenuItem>
@@ -384,7 +385,7 @@ function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolea
 			stores={{ selectLayers: frameKey }}
 			open={props.open}
 			onOpenChange={props.onOpenChange}
-			title={APP_Msgs.layersDialogTitle().text()}
+			title={tr.text(APP_Msgs.layersDialogTitle())}
 			pinMode="layers"
 		/>
 	)
@@ -413,26 +414,26 @@ function MobileNavMenu(props: {
 					<DropdownMenuItem asChild className="cursor-pointer">
 						{props.selectedServerId ? (
 							<TSR.Link to="/servers/$serverId" params={{ serverId: props.selectedServerId }}>
-								{APP_Msgs.navServer().text()}
+								{tr.text(APP_Msgs.navServer())}
 							</TSR.Link>
 						) : (
-							<TSR.Link to="/servers">{APP_Msgs.navServer().text()}</TSR.Link>
+							<TSR.Link to="/servers">{tr.text(APP_Msgs.navServer())}</TSR.Link>
 						)}
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem asChild className="cursor-pointer">
-					<TSR.Link to="/commands">{APP_Msgs.navCommands().text()}</TSR.Link>
+					<TSR.Link to="/commands">{tr.text(APP_Msgs.navCommands())}</TSR.Link>
 				</DropdownMenuItem>
 				<DropdownMenuItem asChild className="cursor-pointer">
-					<TSR.Link to="/filters">{APP_Msgs.navFilters().text()}</TSR.Link>
+					<TSR.Link to="/filters">{tr.text(APP_Msgs.navFilters())}</TSR.Link>
 				</DropdownMenuItem>
 				{props.showSettingsLink && (
 					<DropdownMenuItem asChild className="cursor-pointer">
-						<TSR.Link to="/settings">{APP_Msgs.navSettings().text()}</TSR.Link>
+						<TSR.Link to="/settings">{tr.text(APP_Msgs.navSettings())}</TSR.Link>
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem className="cursor-pointer" onClick={props.onExploreLayers}>
-					{APP_Msgs.exploreLayers().text()}
+					{tr.text(APP_Msgs.exploreLayers())}
 				</DropdownMenuItem>
 				{props.children && (
 					<>

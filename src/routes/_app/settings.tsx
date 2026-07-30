@@ -40,6 +40,7 @@ import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
@@ -55,7 +56,7 @@ const SchemaJsonEditor = React.lazy(
 
 export const Route = createFileRoute('/_app/settings')({
 	head: () => ({
-		meta: [{ title: SETTINGS_Msgs.pageTitle().text() }],
+		meta: [{ title: tr.text(SETTINGS_Msgs.pageTitle()) }],
 	}),
 
 	component: RouteComponent,
@@ -129,7 +130,7 @@ function RouteComponent() {
 				return !!s && SettingsEditorFrame.Sel.dirty(s)
 			})
 			if (!dirty) return false
-			const shouldLeave = confirm(SETTINGS_Msgs.unsavedChanges().text())
+			const shouldLeave = confirm(tr.text(SETTINGS_Msgs.unsavedChanges()))
 			return !shouldLeave
 		},
 	})
@@ -179,7 +180,7 @@ function RouteComponent() {
 	if (manageServersDenied && !globalAccess.canRead && servers.length === 0) {
 		return (
 			<div className="w-full h-full grid place-items-center">
-				<p className="text-muted-foreground">{SETTINGS_Msgs.noAccess().text()}</p>
+				<p className="text-muted-foreground">{tr.text(SETTINGS_Msgs.noAccess())}</p>
 			</div>
 		)
 	}
@@ -263,9 +264,9 @@ function AuditLogSection() {
 	const playerName = (id: string) => playerNames[id]
 
 	function actorName(actor: AppEvents.Actor): string {
-		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? AppEvents_Msgs.unnamedActors['slm-user']
+		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? tr.text(AppEvents_Msgs.unnamedActors['slm-user'])
 		if (actor.type === 'ingame-user') return playerName(actor.playerId) ?? AppEvents_Msgs.unnamedActors['ingame-user']
-		return AppEvents_Msgs.unnamedActors.system
+		return tr.text(AppEvents_Msgs.unnamedActors.system)
 	}
 
 	const headerRef = React.useRef<HTMLDivElement>(null)
@@ -274,12 +275,12 @@ function AuditLogSection() {
 		<Card>
 			<StickyGroup stickyRef={headerRef}>
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
-					<CardTitle>{AppEvents_Msgs.auditLog().text()}</CardTitle>
-					<CardDescription>{AppEvents_Msgs.auditLogBlurb().text()}</CardDescription>
+					<CardTitle>{tr.text(AppEvents_Msgs.auditLog())}</CardTitle>
+					<CardDescription>{tr.text(AppEvents_Msgs.auditLogBlurb())}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{events.length === 0 ? (
-						<p className="text-sm text-muted-foreground">{AppEvents_Msgs.noEvents().text()}</p>
+						<p className="text-sm text-muted-foreground">{tr.text(AppEvents_Msgs.noEvents())}</p>
 					) : (
 						<div className="max-h-[32rem] overflow-y-auto">
 							{events.map((e) => (
@@ -339,7 +340,7 @@ function JsonEditorToolbar({
 		<>
 			{deniedPaths.length > 0 && (
 				<p className="min-w-0 truncate text-xs text-amber-500">
-					{SETTINGS_Msgs.notPermittedToModify().text()}{' '}
+					{tr.text(SETTINGS_Msgs.notPermittedToModify())}{' '}
 					{deniedPaths.map((p) => (
 						<code key={p} className="mx-0.5">
 							{p}
@@ -349,13 +350,13 @@ function JsonEditorToolbar({
 			)}
 			<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
 				<Icons.Braces className="h-4 w-4" />
-				{SETTINGS_Msgs.format().text()}
+				{tr.text(SETTINGS_Msgs.format())}
 			</Button>
 			<Button size="sm" variant="outline" onClick={() => editorRef.current?.reset()}>
-				{SETTINGS_Msgs.reset().text()}
+				{tr.text(SETTINGS_Msgs.reset())}
 			</Button>
 			<Button size="sm" disabled={!canSave || saving} onClick={onSave}>
-				{saving ? SETTINGS_Msgs.saving().text() : SETTINGS_Msgs.save().text()}
+				{saving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
 			</Button>
 		</>
 	)
@@ -372,7 +373,7 @@ function LabeledInput({ label, ...props }: { label: string } & React.ComponentPr
 }
 
 function ServerStatusBadge({ state }: { state: SETTINGS_Msgs.ServerLifecycleState }) {
-	const label = SETTINGS_Msgs.serverLifecycleLabels[state]
+	const label = tr.text(SETTINGS_Msgs.serverLifecycleLabels[state])
 	switch (state) {
 		case 'running':
 			return (
@@ -494,7 +495,7 @@ function ServersSection({
 	}, [servers])
 
 	async function handleDelete(server: PublicServer) {
-		const msg = SETTINGS_Msgs.confirmDeleteServer(server.displayName, server.id).confirm()
+		const msg = tr.confirm(SETTINGS_Msgs.confirmDeleteServer(server.displayName, server.id))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -541,7 +542,7 @@ function ServersSection({
 					<ServerSettingsSection server={selectedServer} stores={{ settingsEditor: serverKey }} />
 				</div>
 			) : (
-				<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.selectServer().text()}</p>
+				<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.selectServer())}</p>
 			)}
 		</div>
 	)
@@ -579,7 +580,7 @@ function ServerList({
 	return (
 		<div className="space-y-2">
 			<div className="space-y-1">
-				{servers.length === 0 && <p className="text-sm text-muted-foreground">{SETTINGS_Msgs.noServersConfigured().text()}</p>}
+				{servers.length === 0 && <p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.noServersConfigured())}</p>}
 				{servers.map((server) => (
 					<div
 						key={server.id}
@@ -609,7 +610,7 @@ function ServerList({
 										onCheckedChange={(checked) => checked && onSetDefault(server)}
 									/>
 									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
-										{SETTINGS_Msgs.defaultServer().text()}
+										{tr.text(SETTINGS_Msgs.defaultServer())}
 									</Label>
 								</div>
 								<Button
@@ -617,17 +618,19 @@ function ServerList({
 									variant={server.enabled ? 'destructive' : 'outline'}
 									className={cn('w-28', server.broken && 'invisible')}
 									disabled={busy || server.broken}
-									title={server.enabled ? SETTINGS_Msgs.disconnectServerHint().text() : SETTINGS_Msgs.connectServerHint().text()}
+									title={
+										server.enabled ? tr.text(SETTINGS_Msgs.disconnectServerHint()) : tr.text(SETTINGS_Msgs.connectServerHint())
+									}
 									onClick={() => onToggle(server)}
 								>
-									{server.enabled ? SETTINGS_Msgs.disconnectServer().text() : SETTINGS_Msgs.connectServer().text()}
+									{server.enabled ? tr.text(SETTINGS_Msgs.disconnectServer()) : tr.text(SETTINGS_Msgs.connectServer())}
 								</Button>
 								{canDelete && (
 									<Button
 										size="icon"
 										variant="ghost"
 										disabled={busy}
-										title={SETTINGS_Msgs.deleteManagedServer().text()}
+										title={tr.text(SETTINGS_Msgs.deleteManagedServer())}
 										onClick={() => onDelete(server)}
 									>
 										<Icons.Trash2 className="h-4 w-4" />
@@ -641,7 +644,7 @@ function ServerList({
 			{canCreate && (
 				<Button variant="outline" size="sm" disabled={creating} onClick={onAddServer}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					{SETTINGS_Msgs.addManagedServer().text()}
+					{tr.text(SETTINGS_Msgs.addManagedServer())}
 				</Button>
 			)}
 		</div>
@@ -687,7 +690,7 @@ function ServerSettingsSection({
 
 	async function handleJsonSave() {
 		if (!valid) return
-		const msg = SETTINGS_Msgs.confirmSave(server.displayName).confirm()
+		const msg = tr.confirm(SETTINGS_Msgs.confirmSave(server.displayName))
 		const result = await openDialog({
 			title: msg.title,
 			content: <SettingsChangeList changes={changes} />,
@@ -709,20 +712,20 @@ function ServerSettingsSection({
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
-								{SETTINGS_Msgs.serverSettings().text()}
+								{tr.text(SETTINGS_Msgs.serverSettings())}
 								{access.write.kind === 'none' && (
 									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
-										{SETTINGS_Msgs.readOnly().text()}
+										{tr.text(SETTINGS_Msgs.readOnly())}
 									</span>
 								)}
 							</CardTitle>
 							<CardDescription>
 								{server.displayName} <span className="font-mono">({server.id})</span>
-								{server.broken && <span className="ml-2 text-destructive">{SETTINGS_Msgs.serverBroken().text()}</span>}
+								{server.broken && <span className="ml-2 text-destructive">{tr.text(SETTINGS_Msgs.serverBroken())}</span>}
 							</CardDescription>
 							{access.write.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
-									{SETTINGS_Msgs.onlyModifiable().text()}{' '}
+									{tr.text(SETTINGS_Msgs.onlyModifiable())}{' '}
 									{access.write.paths.map((p) => (
 										<code key={p} className="mx-0.5">
 											{p}
@@ -733,7 +736,7 @@ function ServerSettingsSection({
 						</div>
 						<div
 							role="group"
-							aria-label={SETTINGS_Msgs.serverEditorModeLabel().text()}
+							aria-label={tr.text(SETTINGS_Msgs.serverEditorModeLabel())}
 							className="flex items-center rounded-md border p-0.5"
 						>
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
@@ -748,9 +751,9 @@ function ServerSettingsSection({
 				{/* pt-3 keeps the first group's anchor-highlight ring clear of the sticky header */}
 				<CardContent className="space-y-4 pt-3">
 					{loadFailed ? (
-						<p className="text-sm text-destructive">{SETTINGS_Msgs.loadFailed(loadFailed).text()}</p>
+						<p className="text-sm text-destructive">{tr.text(SETTINGS_Msgs.loadFailed(loadFailed))}</p>
 					) : !ready ? (
-						<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loading().text()}</p>
+						<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loading())}</p>
 					) : mode === 'gui' ? (
 						<SettingsForm
 							schema={schema}
@@ -765,7 +768,7 @@ function ServerSettingsSection({
 							writeAccess={formWriteAccess}
 						/>
 					) : (
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
 							<SchemaJsonEditor
 								ref={editorRef}
 								schema={schema}
@@ -773,7 +776,7 @@ function ServerSettingsSection({
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
 								minHeightPx={350}
-								label={SETTINGS_Msgs.serverSettings().text()}
+								label={tr.text(SETTINGS_Msgs.serverSettings())}
 								toolbar={
 									<JsonEditorToolbar
 										editorRef={editorRef}
@@ -814,13 +817,13 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 				<CardHeader ref={headerRef} className="rounded-t-xl border-b bg-card">
 					<div className="flex items-center justify-between gap-2">
 						<div>
-							<CardTitle>{SETTINGS_Msgs.newManagedServer().text()}</CardTitle>
-							<CardDescription>{SETTINGS_Msgs.newServerBlurb().text()}</CardDescription>
+							<CardTitle>{tr.text(SETTINGS_Msgs.newManagedServer())}</CardTitle>
+							<CardDescription>{tr.text(SETTINGS_Msgs.newServerBlurb())}</CardDescription>
 						</div>
 						<div className="flex items-center gap-2">
 							<div
 								role="group"
-								aria-label={SETTINGS_Msgs.newServerEditorModeLabel().text()}
+								aria-label={tr.text(SETTINGS_Msgs.newServerEditorModeLabel())}
 								className="flex items-center rounded-md border p-0.5"
 							>
 								<Button
@@ -839,7 +842,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								</Button>
 							</div>
 							<Button size="sm" variant="outline" onClick={onCancel}>
-								{SETTINGS_Msgs.cancel().text()}
+								{tr.text(SETTINGS_Msgs.cancel())}
 							</Button>
 						</div>
 					</div>
@@ -848,18 +851,18 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 					<div className="grid grid-cols-2 gap-3">
 						<div className="space-y-1">
 							<LabeledInput
-								label={SETTINGS_Msgs.serverIdLabel().text()}
-								placeholder={SETTINGS_Msgs.serverIdPlaceholder().text()}
+								label={tr.text(SETTINGS_Msgs.serverIdLabel())}
+								placeholder={tr.text(SETTINGS_Msgs.serverIdPlaceholder())}
 								defaultValue={newId}
 								onChange={(e) => SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { id: e.target.value })}
 							/>
 							{newId.length > 0 && !idRes.success && (
-								<p className="text-xs text-destructive">{SETTINGS_Msgs.invalidServerId().text()}</p>
+								<p className="text-xs text-destructive">{tr.text(SETTINGS_Msgs.invalidServerId())}</p>
 							)}
 						</div>
 						<LabeledInput
-							label={SETTINGS_Msgs.displayNameLabel().text()}
-							placeholder={SETTINGS_Msgs.displayNamePlaceholder().text()}
+							label={tr.text(SETTINGS_Msgs.displayNameLabel())}
+							placeholder={tr.text(SETTINGS_Msgs.displayNamePlaceholder())}
 							defaultValue={newDisplayName}
 							onChange={(e) =>
 								SettingsEditorFrame.Actions.setNewServerFields({ settingsEditor: key }, { displayName: e.target.value })
@@ -879,7 +882,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 							issues={issues}
 						/>
 					) : (
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
 							<SchemaJsonEditor
 								ref={editorRef}
 								schema={SETTINGS.ServerSettingsSchema}
@@ -887,7 +890,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
 								minHeightPx={350}
-								label={SETTINGS_Msgs.serverSettings().text()}
+								label={tr.text(SETTINGS_Msgs.serverSettings())}
 							/>
 						</React.Suspense>
 					)}
@@ -921,8 +924,8 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>{SETTINGS_Msgs.globalSettings().text()}</CardTitle>
-					<CardDescription>{SETTINGS_Msgs.noGlobalAccess().text()}</CardDescription>
+					<CardTitle>{tr.text(SETTINGS_Msgs.globalSettings())}</CardTitle>
+					<CardDescription>{tr.text(SETTINGS_Msgs.noGlobalAccess())}</CardDescription>
 				</CardHeader>
 			</Card>
 		)
@@ -932,7 +935,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 
 	async function handleJsonSave() {
 		if (!valid) return
-		const msg = SETTINGS_Msgs.confirmSave().confirm()
+		const msg = tr.confirm(SETTINGS_Msgs.confirmSave())
 		const result = await openDialog({
 			title: msg.title,
 			content: <SettingsChangeList changes={changes} />,
@@ -952,17 +955,17 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 					<div className="flex items-center justify-between gap-2">
 						<div>
 							<CardTitle className="flex items-center gap-2">
-								{SETTINGS_Msgs.globalSettings().text()}
+								{tr.text(SETTINGS_Msgs.globalSettings())}
 								{writeAccess.kind === 'none' && (
 									<span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
-										{SETTINGS_Msgs.readOnly().text()}
+										{tr.text(SETTINGS_Msgs.readOnly())}
 									</span>
 								)}
 							</CardTitle>
-							<CardDescription>{SETTINGS_Msgs.globalSettingsBlurb().text()}</CardDescription>
+							<CardDescription>{tr.text(SETTINGS_Msgs.globalSettingsBlurb())}</CardDescription>
 							{writeAccess.kind === 'paths' && (
 								<p className="text-xs text-muted-foreground">
-									{SETTINGS_Msgs.onlyModifiable().text()}{' '}
+									{tr.text(SETTINGS_Msgs.onlyModifiable())}{' '}
 									{writeAccess.paths.map((p) => (
 										<code key={p} className="mx-0.5">
 											{p}
@@ -973,7 +976,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 						</div>
 						<div
 							role="group"
-							aria-label={SETTINGS_Msgs.globalEditorModeLabel().text()}
+							aria-label={tr.text(SETTINGS_Msgs.globalEditorModeLabel())}
 							className="flex items-center rounded-md border p-0.5"
 						>
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
@@ -1000,7 +1003,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 						/>
 					) : (
 						// GUI mode uses the shared bottom control panel; JSON mode keeps its own toolbar, inside the editor
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
+						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
 							<SchemaJsonEditor
 								ref={editorRef}
 								schema={SETTINGS.GlobalSettingsSchema}
@@ -1008,7 +1011,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
 								minHeightPx={450}
-								label={SETTINGS_Msgs.globalSettings().text()}
+								label={tr.text(SETTINGS_Msgs.globalSettings())}
 								toolbar={
 									<JsonEditorToolbar
 										editorRef={editorRef}
