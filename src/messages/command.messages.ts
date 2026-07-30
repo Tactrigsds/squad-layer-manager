@@ -60,6 +60,29 @@ export const help = def((commands: CMD.CommandConfigs, section?: string) => {
 	return { warn: groups.map((group) => join(group)) }
 })
 
+// What a caller sees when an argument didn't resolve but something close enough did, and they are asked to pick.
+// These carry the whole explanation: the exchange is meant to be understood from the chat it happens in.
+export namespace Prompt {
+	// The resolver's own account of the failure heads the list: only it knows whether the word failed as a team or
+	// as a squad. Option numbers are plain digits rather than formatted numbers, since the caller types them back.
+	export const question = def((opts: { msg: string; choices: CMD.ArgChoice[]; step: number; total: number }) => {
+		const head =
+			opts.total > 1 ? t('({step}/{total}) {msg}', { step: opts.step, total: opts.total, msg: opts.msg }) : t('{msg}', { msg: opts.msg })
+		const options = opts.choices.map((choice, i) => t('{index}) {label}', { index: i + 1, label: choice.label }))
+		return { warn: join([head, ...options, t('Reply 1-{last}, or 0 to cancel', { last: opts.choices.length })]) }
+	})
+
+	export const outOfRange = def((count: number) => ({ warn: t('Pick 1-{count}, or 0 to cancel', { count }) }))
+
+	export const cancelled = def('Cancelled')
+
+	// Naming the command matters more here than anywhere else in the exchange: the caller has moved on to something
+	// else, and a bare "discarded" would leave them guessing which one lapsed.
+	export const superseded = def('Discarded the pending choice for "{command}"', (command: string) => ({ command }))
+
+	export const expired = def('The choice for "{command}" expired', (command: string) => ({ command }))
+}
+
 export namespace PingAdmins {
 	export const confirmed = def('Admins have been notified, please wait for us to get back to you.')
 

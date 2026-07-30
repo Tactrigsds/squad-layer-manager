@@ -27,8 +27,9 @@ Only write a comment that is _absolutely necessary_: one without which it would 
 on, and why. Everything else is noise. Default to no comment.
 
 Before writing one, try to make it unnecessary. A precise name is almost always better than a comment explaining a
-vague one: `DOCS_SOURCE_REPO` needs no comment where `DOCS` needs three lines. If the rationale is long, it belongs
-in docs/ once, with the code pointing at it.
+vague one: `DOCS_SOURCE_REPO` needs no comment where `DOCS` needs three lines. Rationale that belongs to a
+particular piece of code stays with it, in a comment, however long it has to be. Only the high-level shape of the
+app belongs in docs/architecture.md.
 
 Never write a comment that:
 
@@ -37,7 +38,7 @@ Never write a comment that:
 - refers back to previous versions of the codebase, or to why something changed, without an extremely motivating
   reason
 
-Keep the ones that survive short. A necessary comment is usually one line.
+Keep the ones that survive no longer than their point needs. Most are one line.
 
 # Documentation, prose and app text
 

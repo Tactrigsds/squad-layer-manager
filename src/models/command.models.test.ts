@@ -23,6 +23,7 @@ describe('assignArgTokens', () => {
 		expect(CMD.assignArgTokens(args, ['bob'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], flag: undefined },
+			ranges: { player: { start: 0, len: 1 } },
 		})
 	})
 
@@ -35,6 +36,7 @@ describe('assignArgTokens', () => {
 		expect(CMD.assignArgTokens(args, ['bob', 'stop', 'that'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], reason: ['stop', 'that'] },
+			ranges: { player: { start: 0, len: 1 }, reason: { start: 1, len: 2 } },
 		})
 	})
 
@@ -46,18 +48,22 @@ describe('assignArgTokens', () => {
 		const p = preds({ teams: ['1', '2', 'A', 'B'], presets: ['afk', 'tk'] })
 
 		it.each([
-			[['3'], { squad: ['3'], reason: undefined }],
-			[['2', '3'], { squad: ['2', '3'], reason: undefined }],
-			[['2', 'afk'], { squad: ['2'], reason: ['afk'] }],
-			[['afkers', 'tk'], { squad: ['afkers'], reason: ['tk'] }],
-			[['A', 'cmd', 'afk'], { squad: ['A', 'cmd'], reason: ['afk'] }],
-		])('disband %j', (tokens, windows) => {
-			expect(CMD.assignArgTokens(disbandArgs, tokens as string[], p)).toEqual({ code: 'ok', windows })
+			[['3'], { squad: ['3'], reason: undefined }, { squad: { start: 0, len: 1 } }],
+			[['2', '3'], { squad: ['2', '3'], reason: undefined }, { squad: { start: 0, len: 2 } }],
+			[['2', 'afk'], { squad: ['2'], reason: ['afk'] }, { squad: { start: 0, len: 1 }, reason: { start: 1, len: 1 } }],
+			[['afkers', 'tk'], { squad: ['afkers'], reason: ['tk'] }, { squad: { start: 0, len: 1 }, reason: { start: 1, len: 1 } }],
+			[['A', 'cmd', 'afk'], { squad: ['A', 'cmd'], reason: ['afk'] }, { squad: { start: 0, len: 2 }, reason: { start: 2, len: 1 } }],
+		])('disband %j', (tokens, windows, ranges) => {
+			expect(CMD.assignArgTokens(disbandArgs, tokens as string[], p)).toEqual({ code: 'ok', windows, ranges })
 		})
 
 		it('a bare number followed by a non-squad token is a current-team squad; the rest is the reason', () => {
 			// "2" is a squad on the caller's team, "afq" (typo'd preset) is the reason -> did-you-mean later
-			expect(CMD.assignArgTokens(disbandArgs, ['2', 'afq'], p)).toEqual({ code: 'ok', windows: { squad: ['2'], reason: ['afq'] } })
+			expect(CMD.assignArgTokens(disbandArgs, ['2', 'afq'], p)).toEqual({
+				code: 'ok',
+				windows: { squad: ['2'], reason: ['afq'] },
+				ranges: { squad: { start: 0, len: 1 }, reason: { start: 1, len: 1 } },
+			})
 		})
 
 		it('timeoutsquad (squad + duration + reason) keeps the duration out of the squad window', () => {
@@ -66,11 +72,13 @@ describe('assignArgTokens', () => {
 			expect(CMD.assignArgTokens(timeoutSquadArgs, ['2', '2h', 'tk'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['2'], duration: ['2h'], reason: ['tk'] },
+				ranges: { squad: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, reason: { start: 2, len: 1 } },
 			})
 			// explicit team + squad + duration + reason
 			expect(CMD.assignArgTokens(timeoutSquadArgs, ['2', '3', '2h', 'stop', 'it'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['2', '3'], duration: ['2h'], reason: ['stop', 'it'] },
+				ranges: { squad: { start: 0, len: 2 }, duration: { start: 2, len: 1 }, reason: { start: 3, len: 2 } },
 			})
 		})
 
@@ -83,21 +91,80 @@ describe('assignArgTokens', () => {
 			expect(CMD.assignArgTokens(warnSquadArgs, ['2', '3', 'tk'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['2', '3'], reason: ['tk'] },
+				ranges: { squad: { start: 0, len: 2 }, reason: { start: 2, len: 1 } },
 			})
 			// a lone number is a squad on the caller's team; the rest is the reason
 			expect(CMD.assignArgTokens(warnSquadArgs, ['2', 'tk'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['2'], reason: ['tk'] },
+				ranges: { squad: { start: 0, len: 1 }, reason: { start: 1, len: 1 } },
 			})
 			// team letter + numeric squad -> pair
 			expect(CMD.assignArgTokens(warnSquadArgs, ['A', '3', 'get', 'moving'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['A', '3'], reason: ['get', 'moving'] },
+				ranges: { squad: { start: 0, len: 2 }, reason: { start: 2, len: 2 } },
 			})
 			expect(CMD.assignArgTokens(warnSquadArgs, ['afkers', 'get', 'moving'], p)).toEqual({
 				code: 'ok',
 				windows: { squad: ['afkers'], reason: ['get', 'moving'] },
+				ranges: { squad: { start: 0, len: 1 }, reason: { start: 1, len: 2 } },
 			})
+		})
+	})
+})
+
+describe('near misses', () => {
+	it('ranks by closeness, ignoring what a caller plausibly varies', () => {
+		// "Alice" is one of Alice_The_Great's words, so it outranks Alicia despite the longer whole name
+		expect(CMD.nearest('alise', ['Alice_The_Great', 'Bob', 'Alicia'])).toEqual(['Alice_The_Great', 'Alicia'])
+		// a clan tag is scored against separately, so it does not drown out the name the caller aimed at
+		expect(CMD.nearest('alice', ['[7CAV] Alice_G', 'Charlie'])).toEqual(['[7CAV] Alice_G'])
+	})
+
+	it('offers nothing when nothing is close, which is what leaves the plain error in place', () => {
+		expect(CMD.nearest('zzzzz', ['Alice', 'Bob'])).toEqual([])
+	})
+
+	describe('splicing picks back over the caller"s words', () => {
+		const p = preds({ teams: ['1', '2', 'A', 'B'], presets: ['tk'] })
+		const warnSquadArgs = [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'reason', name: 'reason', action: 'warn' },
+		] as const
+
+		// a squad picked as "<team> <squad>" is two words where one was typed, so splicing left to right would
+		// misplace every range after it
+		it('a pick may be wider than the window it replaces, and later args keep their own', () => {
+			const tokens = ['alpha', 'tq']
+			const assigned = CMD.assignArgTokens(warnSquadArgs, tokens, p)
+			if (assigned.code !== 'ok') throw new Error(assigned.code)
+			const spliced = CMD.spliceArgTokens(tokens, [
+				{ range: assigned.ranges.squad!, tokens: ['1', '3'] },
+				{ range: assigned.ranges.reason!, tokens: ['tk'] },
+			])
+			expect(spliced).toEqual(['1', '3', 'tk'])
+		})
+
+		it('a spliced pick re-assigns to the argument it answered for', () => {
+			const spliced = ['1', '3', 'tk']
+			expect(CMD.assignArgTokens(warnSquadArgs, spliced, p)).toEqual({
+				code: 'ok',
+				windows: { squad: ['1', '3'], reason: ['tk'] },
+				ranges: { squad: { start: 0, len: 2 }, reason: { start: 2, len: 1 } },
+			})
+		})
+
+		it('leaves the words nobody was asked about alone', () => {
+			const tokens = ['alise', '2h', 'stop', 'that']
+			const assigned = CMD.assignArgTokens(CMD.COMMAND_DECLARATIONS.timeout.args, tokens, noPreds)
+			if (assigned.code !== 'ok') throw new Error(assigned.code)
+			expect(CMD.spliceArgTokens(tokens, [{ range: assigned.ranges.player!, tokens: ['76561198000000009'] }])).toEqual([
+				'76561198000000009',
+				'2h',
+				'stop',
+				'that',
+			])
 		})
 	})
 })
@@ -133,10 +200,12 @@ describe('kick and timeout arg windows', () => {
 		expect(CMD.assignArgTokens(kickArgs, ['bob', 'stop', 'that'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], reason: ['stop', 'that'] },
+			ranges: { player: { start: 0, len: 1 }, reason: { start: 1, len: 2 } },
 		})
 		expect(CMD.assignArgTokens(kickArgs, ['bob'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], reason: undefined },
+			ranges: { player: { start: 0, len: 1 } },
 		})
 		expect(CMD.assignArgTokens(kickArgs, [], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'player' })
 	})
@@ -145,10 +214,12 @@ describe('kick and timeout arg windows', () => {
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h', 'tk'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], duration: ['2h'], reason: ['tk'] },
+			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, reason: { start: 2, len: 1 } },
 		})
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h', 'stop', 'that'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], duration: ['2h'], reason: ['stop', 'that'] },
+			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, reason: { start: 2, len: 2 } },
 		})
 	})
 
@@ -156,6 +227,7 @@ describe('kick and timeout arg windows', () => {
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h'], noPreds)).toEqual({
 			code: 'ok',
 			windows: { player: ['bob'], duration: ['2h'], reason: undefined },
+			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 } },
 		})
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob'], noPreds)).toEqual({ code: 'err:missing-arg', argName: 'duration' })
 	})
@@ -177,6 +249,12 @@ describe('resolveReasonArg', () => {
 			expect(res.msg).toContain('Did you mean tk?')
 			expect(res.msg).toContain('Available:')
 		}
+	})
+
+	it('an unknown token offers the closest reasons to pick from', () => {
+		const res = CMD.resolveReasonArg(reasons, 'warn', ['tq'])
+		expect(res.code).toBe('err:unknown-preset')
+		if (res.code === 'err:unknown-preset') expect(res.choices).toEqual([{ tokens: ['tk'], label: 'Teamkilling (tk)' }])
 	})
 
 	it('a real reason that is not set up for the action gets a distinct message', () => {
