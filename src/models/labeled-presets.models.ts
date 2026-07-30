@@ -1,4 +1,3 @@
-import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
 import * as ZodUtils from '@/lib/zod-utils'
@@ -72,14 +71,4 @@ export function keywordFromLabel(label: string): string {
 export function describePreset(preset: { label: string; keywords: string[] }): string {
 	const distinct = preset.keywords.filter((k) => k.toLowerCase() !== preset.label.toLowerCase())
 	return distinct.length === 0 ? preset.label : `${preset.label} (${distinct.join(', ')})`
-}
-
-// best match for "Did you mean ...?" feedback. Levenshtein rather than the dice coefficient parseCommand
-// uses: keywords are often 2-3 chars, where bigram overlap is degenerate
-export function didYouMean(input: string, candidates: string[]): string | undefined {
-	if (candidates.length === 0) return undefined
-	const sorted = StringComparison.levenshtein.sortMatch(input.toLowerCase(), candidates)
-	const best = sorted[sorted.length - 1]
-	if (!best || best.rating <= 0) return undefined
-	return best.member
 }

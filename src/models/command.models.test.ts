@@ -242,11 +242,20 @@ describe('resolveReasonArg', () => {
 		if (res.code === 'ok') expect(res.value).toEqual({ type: 'preset', reason: reasons[0] })
 	})
 
-	it('one unknown token errors with a did-you-mean suggestion and lists available reasons', () => {
+	it('one unknown token errors, leaving the suggesting to the choices', () => {
 		const res = CMD.resolveReasonArg(reasons, 'warn', ['tq'])
 		expect(res.code).toBe('err:unknown-preset')
 		if (res.code === 'err:unknown-preset') {
-			expect(res.msg).toContain('Did you mean tk?')
+			expect(res.msg).toContain('Unknown reason "tq"')
+			expect(res.msg).not.toContain('Available:')
+		}
+	})
+
+	it('lists the available reasons when nothing is close enough to offer', () => {
+		const res = CMD.resolveReasonArg(reasons, 'warn', ['sdfghj'])
+		expect(res.code).toBe('err:unknown-preset')
+		if (res.code === 'err:unknown-preset') {
+			expect(res.choices).toEqual([])
 			expect(res.msg).toContain('Available:')
 		}
 	})

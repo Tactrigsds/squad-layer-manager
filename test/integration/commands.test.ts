@@ -28,7 +28,10 @@ beforeAll(async () => {
 		},
 		globalSettings: (s) => {
 			// a configured reason, so a mistyped keyword has something to be a near miss of
-			s.adminActionReasons = [{ label: 'Teamkilling', keywords: ['tk'], actionTexts: { warn: 'Do not teamkill' } }]
+			s.adminActionReasons = [
+				{ label: 'Teamkilling', keywords: ['tk'], actionTexts: { warn: 'Do not teamkill' } },
+				{ label: 'Seeding Rules', keywords: ['seedrules'], actionTexts: { broadcast: 'Middle flag only' } },
+			]
 		},
 	})
 	app.emu.world.connectPlayer(admin)
@@ -144,6 +147,19 @@ describe('choosing between near misses', () => {
 		app.emu.world.chat(admin, 'ChatAdmin', '1')
 		await app.waitFor(() => warnsTo(alice).some((w) => w.includes('stop that')), { label: 'the warn to Alice', timeoutMs: 20_000 })
 		expect(warnsTo(alicia)).toHaveLength(0)
+	})
+
+	// a broadcast names a preset the same way an admin action names a reason, so it reaches the same machinery
+	it('offers the closest broadcast preset, and sends the one picked', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', `${cmd('broadcast')} seedrulez`)
+
+		const prompt = await awaitPrompt()
+		expect(prompt).toContain('Seeding Rules')
+
+		app.emu.world.chat(admin, 'ChatAdmin', '1')
+		const broadcast = await app.emu.expectCommand(/^AdminBroadcast .*Middle flag only/, { timeoutMs: 20_000 })
+		expect(broadcast.body).toContain('Middle flag only')
 	})
 
 	it('asks once per mistyped argument and answers both from one message', async () => {

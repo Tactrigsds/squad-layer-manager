@@ -750,7 +750,7 @@ const MIN_SIMILARITY = 0.5
 
 // How close a typed token is to one candidate. Scored against the candidate's words as well as the whole of it, so
 // a clan tag or a suffix ("[7CAV] Alice_G") doesn't drown out the part the caller was aiming at. Levenshtein rather
-// than the dice coefficient, matching LP.didYouMean: these strings are often short, where bigram overlap is degenerate.
+// than the dice coefficient: these strings are often short, where bigram overlap is degenerate.
 function similarity(typed: string, candidate: string): number {
 	const target = Str.normalizeForMatch(typed)
 	if (target === '') return 0
@@ -820,7 +820,7 @@ function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgC
 }
 
 // resolves a single reason token against ALL reasons for the action, distinguishing "no such reason" from
-// "exists but isn't set up for this action", and listing the valid options in either case
+// "exists but isn't set up for this action"
 export function resolveReasonToken(
 	allReasons: AAR.AdminActionReason[],
 	action: AAR.AdminActionType,
@@ -829,19 +829,14 @@ export function resolveReasonToken(
 	const res = AAR.resolveReason(allReasons, action, token)
 	if (res.code === 'ok') return { code: 'ok', reason: res.reason }
 	const applicable = AAR.reasonsForAction(allReasons, action)
-	if (res.code === 'err:reason-not-applicable') {
-		return {
-			code: 'err:unknown-preset',
-			msg: `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}. ${reasonOptionsHint(applicable)}`,
-			choices: reasonChoices(applicable, token),
-		}
-	}
-	const suggestion = LP.didYouMean(token, LP.keywordStrings(applicable))
-	return {
-		code: 'err:unknown-preset',
-		msg: `Unknown reason "${token}".${suggestion ? ` Did you mean ${suggestion}?` : ''} ${reasonOptionsHint(applicable)}`,
-		choices: reasonChoices(applicable, token),
-	}
+	const choices = reasonChoices(applicable, token)
+	const what =
+		res.code === 'err:reason-not-applicable'
+			? `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}.`
+			: `Unknown reason "${token}".`
+	// The choices are the suggestion. Listing every configured reason under them repeats most of the same words in a
+	// warn that holds a few lines, so the hint is what stands in for a list nobody can pick from.
+	return { code: 'err:unknown-preset', msg: choices.length > 0 ? what : `${what} ${reasonOptionsHint(applicable)}`, choices }
 }
 
 // snapshots a chat-resolved reason arg into an AppliedReason (see AAR.AppliedReason)
