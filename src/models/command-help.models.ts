@@ -213,7 +213,9 @@ export function buildExamples(
 // with it rather than being listed separately: they are the same command, reached a different way.
 export type HelpListing =
 	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; hint?: TString }
-	| { code: 'err:unknown-section'; msg: TString }
+	// `choices` are the sections close enough to what was typed to offer back; the message names the rest only when
+	// there are none, so a caller is never read a list twice
+	| { code: 'err:unknown-section'; msg: TString; choices: CMD.ArgChoice[] }
 
 const sectionOptions = () => CMD.sectionTokens().join(', ')
 
@@ -240,9 +242,14 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 
 	const section = CMD.resolveSectionToken(sectionToken)
 	if (!section) {
+		const choices = CMD.nearest(sectionToken, CMD.sectionTokens()).map((token) => ({ tokens: [token], label: token }))
 		return {
 			code: 'err:unknown-section',
-			msg: t('Unknown section "{sectionToken}". Try one of: {options}', { sectionToken, options: sectionOptions() }),
+			msg:
+				choices.length > 0
+					? t('Unknown section "{sectionToken}"', { sectionToken })
+					: t('Unknown section "{sectionToken}". Try one of: {options}', { sectionToken, options: sectionOptions() }),
+			choices,
 		}
 	}
 	return {

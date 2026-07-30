@@ -125,13 +125,21 @@ describe('resolveHelpListing', () => {
 
 	it('advertises sections by id, never by a label that could not be typed', () => {
 		// `section` is a single-token arg, so "Player Flags" would never match -- only `flags` can be advised
-		const listing = CMDH.resolveHelpListing(configs, 'nonsense')
+		const listing = CMDH.resolveHelpListing(configs, 'zzzzzzzz')
 		expect(listing.code).toBe('err:unknown-section')
 		if (listing.code !== 'err:unknown-section') return
 		const msg = I18n.ambient.text(listing.msg)
 		expect(msg).toContain('flags')
 		expect(msg).toContain('all')
 		expect(msg).not.toContain('Player Flags')
+	})
+
+	it('offers the section a shortening was aiming at, instead of listing every one', () => {
+		const listing = CMDH.resolveHelpListing(configs, 'mod')
+		expect(listing.code).toBe('err:unknown-section')
+		if (listing.code !== 'err:unknown-section') return
+		expect(listing.choices).toEqual([{ tokens: ['moderation'], label: 'moderation' }])
+		expect(I18n.ambient.text(listing.msg)).not.toContain('teamswaps')
 	})
 
 	it('trails the quick reference with a hint naming the single-token sections', () => {

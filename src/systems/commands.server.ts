@@ -335,7 +335,9 @@ function resolveSquadArg(
 			const layer = L.toLayer(currentMatch.layerId)
 			const factions = [layer.Faction_1, layer.Faction_2]
 			return nearMiss({
-				msg: `Unknown team "${teamInput}". Use 1/2, A/B, or faction name.`,
+				// both teams are always offered, so telling the caller how to name one is a line spent on advice the
+				// prompt underneath makes unnecessary
+				msg: `Unknown team "${teamInput}"`,
 				typed: teamInput,
 				cause: 'no-match',
 				// the squad token is carried through, so picking a team only replaces the team half of the window
@@ -607,7 +609,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				msg: h.ctx.tr.text(listing.msg),
 				typed: args.section!,
 				cause: 'no-match',
-				choices: CMD.nearest(args.section!, CMD.sectionTokens()).map((token) => ({ tokens: [token], label: token })),
+				choices: listing.choices,
 			})
 		}
 		await h.reply(CMD_Msgs.help(Settings.GLOBAL_SETTINGS.commands, args.section))
