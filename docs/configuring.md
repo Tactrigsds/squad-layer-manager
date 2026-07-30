@@ -187,36 +187,3 @@ argument, which is worth keeping in mind when writing one.
 
 The commands page lists a command's shortcut triggers under its details, and searching for one finds the command it
 runs. `!help` lists each shortcut on its own line, since it asks the caller for something different.
-
-## Choosing between near misses
-
-When an argument does not resolve but something close does, SLM asks instead of refusing. A mistyped player name, a
-squad name that matches two squads, or a mistyped reason keyword comes back as a short list to pick from:
-
-```
-No player matches found for "alise"
-1) Alice_The_Great
-2) Alicia
-Reply 1-2, or 0 to cancel
-```
-
-Reply with the number, in the same chat you typed the command in. The command then runs as if you had typed the
-choice yourself, permission check included.
-
-Mistype more than one argument and you are asked once per argument, in the order you typed them. Each question says
-which one it is, and you can answer several at once by sending the numbers together: `1 2` answers the first two.
-
-A question ends when you answer it, when you send `0` to cancel, when you run another command, or after 45 seconds.
-Running another command discards the question and says so, which keeps a number typed much later from acting on a
-command you have forgotten about.
-
-While a question is open, a number you send answers it rather than casting a vote. Send `0` first if you meant to
-vote. A number sent in a different chat is unaffected.
-
-Nothing is ever picked for you. SLM asks even when only one thing is close, because an admin action against the
-wrong player is what the question exists to prevent.
-
-Arguments matched against a known list work this way: players, squads, teams, reasons, BattleMetrics flags, the
-timed-out player `/cleartimeout` takes, `/help` sections, and the words of a layer request. An argument that is
-simply malformed, such as a duration or a queue number, is still an error, since there is nothing to choose
-between.

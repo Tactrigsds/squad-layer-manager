@@ -53,7 +53,7 @@ export const help = Msgs.def((commands: CMD.CommandConfigs, section?: string) =>
 }))
 
 // What a caller sees when an argument didn't resolve but something close enough did, and they are asked to pick.
-// See docs/configuring.md, "Choosing between near misses".
+// These carry the whole explanation: the exchange is meant to be understood from the chat it happens in.
 export namespace Prompt {
 	// The resolver's own account of the failure heads the list: only it knows whether the word failed as a team or
 	// as a squad. Option numbers are plain digits rather than formatted numbers, since the caller types them back.
