@@ -2,6 +2,7 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as Chart from '@/lib/chart'
 import * as DH from '@/lib/display-helpers'
 import * as RSel from '@/lib/reselect'
+import * as I18n from '@/messages/i18n'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as BM from '@/models/battlemetrics.models'
 import type * as CHAT from '@/models/chat.models'
@@ -55,8 +56,8 @@ export namespace Sel {
 			const factions = layer && L.isKnownLayer(layer) ? [layer.Faction_1, layer.Faction_2] : [null, null]
 			if (!normalized) {
 				return [
-					{ label: L_Msgs.teamName(1, factions[0]).text(), color: DH.TEAM_COLORS.team1 },
-					{ label: L_Msgs.teamName(2, factions[1]).text(), color: DH.TEAM_COLORS.team2 },
+					{ label: I18n.ambient.text(L_Msgs.teamName(1, factions[0])), color: DH.TEAM_COLORS.team1 },
+					{ label: I18n.ambient.text(L_Msgs.teamName(2, factions[1])), color: DH.TEAM_COLORS.team2 },
 				]
 			}
 			const parity = ordinal ?? 0
@@ -64,7 +65,10 @@ export namespace Sel {
 			const normedColors = [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB]
 			return ([1, 2] as const).map((teamId) => {
 				const normedIdx = (parity + teamId - 1) % 2
-				return { label: L_Msgs.teamName(normedLabels[normedIdx], factions[teamId - 1]).text(), color: normedColors[normedIdx] }
+				return {
+					label: I18n.ambient.text(L_Msgs.teamName(normedLabels[normedIdx], factions[teamId - 1])),
+					color: normedColors[normedIdx],
+				}
 			}) as [TeamDisplay, TeamDisplay]
 		},
 	)

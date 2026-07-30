@@ -13,6 +13,7 @@ import type * as LQY from '@/models/layer-queries.models'
 import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 
@@ -48,7 +49,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 					</ItemContent>
 					<ItemFooter className="flex items-center gap-4 flex-wrap">
 						<div className="flex items-center gap-2">
-							<Label className={cn(Typo.Label)}>{F_Msgs.ownerLabel().text()}</Label>
+							<Label className={cn(Typo.Label)}>{tr.text(F_Msgs.ownerLabel())}</Label>
 							{user && (
 								<Badge variant="secondary" className="flex items-center gap-1.5">
 									<Avatar
@@ -64,7 +65,7 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 						</div>
 						{roles && roles.length > 0 && (
 							<div className="flex items-center gap-2">
-								<Label className={cn(Typo.Label)}>{F_Msgs.contributorsLabel().text()}</Label>
+								<Label className={cn(Typo.Label)}>{tr.text(F_Msgs.contributorsLabel())}</Label>
 								<div className="flex gap-1.5 flex-wrap">
 									{roles?.map((role) => (
 										<Badge key={role.roleId} variant="secondary" className="flex items-center gap-1.5">
@@ -95,18 +96,18 @@ export default function FiltersIndex() {
 	return (
 		<div className="container mx-auto py-8">
 			<div className="mb-4 flex justify-between">
-				<h2 className={Typo.H2}>{F_Msgs.filtersHeading().text()}</h2>
+				<h2 className={Typo.H2}>{tr.text(F_Msgs.filtersHeading())}</h2>
 				{createDenied ? (
 					<PermissionDeniedTooltip denied={createDenied}>
 						<span className={cn(buttonVariants({ variant: 'secondary' }), 'pointer-events-none opacity-50')}>
 							<Icons.Plus />
-							<span>{F_Msgs.newFilter().text()}</span>
+							<span>{tr.text(F_Msgs.newFilter())}</span>
 						</span>
 					</PermissionDeniedTooltip>
 				) : (
 					<Link className={buttonVariants({ variant: 'secondary' })} to="/filters/new">
 						<Icons.Plus />
-						<span>{F_Msgs.newFilter().text()}</span>
+						<span>{tr.text(F_Msgs.newFilter())}</span>
 					</Link>
 				)}
 			</div>

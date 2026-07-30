@@ -7,12 +7,13 @@ import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
-import type * as Msgs from '@/messages/shared'
+import type * as Tgt from '@/messages/target'
 import type * as BM from '@/models/battlemetrics.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -53,10 +54,10 @@ function FlagRow(props: {
 						className="h-6 px-1"
 						title={
 							removing
-								? BM_Msgs.keepFlag().text()
+								? tr.text(BM_Msgs.keepFlag())
 								: props.change === 'adding'
-									? BM_Msgs.dontAddFlag().text()
-									: BM_Msgs.removeFlag().text()
+									? tr.text(BM_Msgs.dontAddFlag())
+									: tr.text(BM_Msgs.removeFlag())
 						}
 						onClick={props.onToggle}
 					>
@@ -67,18 +68,20 @@ function FlagRow(props: {
 			{props.change && (
 				<div className="grid gap-1">
 					<Label className="text-xs font-normal text-muted-foreground">
-						{AAR_Msgs.reasonLabel(
-							props.requiresReason ? (
-								<span className="text-destructive">{AAR_Msgs.reasonRequired().text()}</span>
-							) : (
-								AAR_Msgs.reasonOptional().text()
+						{tr.richText(
+							AAR_Msgs.reasonLabel(
+								props.requiresReason ? (
+									<span className="text-destructive">{tr.text(AAR_Msgs.reasonRequired())}</span>
+								) : (
+									tr.text(AAR_Msgs.reasonOptional())
+								),
 							),
-						).react()}
+						)}
 					</Label>
 					<Input
 						autoComplete="off"
 						className="h-7"
-						placeholder={removing ? BM_Msgs.whyRemoving().text() : BM_Msgs.whyApplying().text()}
+						placeholder={removing ? tr.text(BM_Msgs.whyRemoving()) : tr.text(BM_Msgs.whyApplying())}
 						defaultValue={props.reasonsRef.current[props.id] ?? ''}
 						onChange={(e) => {
 							props.reasonsRef.current[props.id] = e.target.value
@@ -129,9 +132,9 @@ export function ManageFlagsDialogContent(props: {
 
 	return (
 		<div className="grid gap-2">
-			<Label>{BM_Msgs.flagsLabel().text()}</Label>
+			<Label>{tr.text(BM_Msgs.flagsLabel())}</Label>
 			{currentFlagIds.length === 0 && pending.length === 0 && (
-				<p className="text-xs text-muted-foreground">{BM_Msgs.noFlags().text()}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(BM_Msgs.noFlags())}</p>
 			)}
 			<ul className="grid gap-1">
 				{currentFlagIds.map((id) => (
@@ -162,7 +165,7 @@ export function ManageFlagsDialogContent(props: {
 					value={undefined}
 					only={addable}
 					autoOpen
-					placeholder={BM_Msgs.selectFlag().text()}
+					placeholder={tr.text(BM_Msgs.selectFlag())}
 					// dismissing without picking puts the button back, so the picker is never left sitting there empty
 					onOpenChange={(open) => {
 						if (!open) setPicking(false)
@@ -176,14 +179,14 @@ export function ManageFlagsDialogContent(props: {
 					size="sm"
 					className="justify-self-start"
 					disabled={addable.length === 0}
-					title={addable.length === 0 ? BM_Msgs.hasEveryFlag().text() : undefined}
+					title={addable.length === 0 ? tr.text(BM_Msgs.hasEveryFlag()) : undefined}
 					onClick={() => setPicking(true)}
 				>
 					<Icons.Plus className="mr-1 h-3 w-3" />
-					{BM_Msgs.addFlag().text()}
+					{tr.text(BM_Msgs.addFlag())}
 				</Button>
 			)}
-			<span className="text-xs text-muted-foreground">{BM_Msgs.reasonsBecomeNotes('player').text()}</span>
+			<span className="text-xs text-muted-foreground">{tr.text(BM_Msgs.reasonsBecomeNotes('player'))}</span>
 		</div>
 	)
 }
@@ -218,8 +221,8 @@ export function AddFlagsDialogContent(props: {
 
 	return (
 		<div className="grid gap-2">
-			<Label>{BM_Msgs.flagsToAdd().text()}</Label>
-			{pending.length === 0 && <p className="text-xs text-muted-foreground">{BM_Msgs.noFlagsSelected().text()}</p>}
+			<Label>{tr.text(BM_Msgs.flagsToAdd())}</Label>
+			{pending.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(BM_Msgs.noFlagsSelected())}</p>}
 			<ul className="grid gap-1">
 				{pending.map((id) => (
 					<FlagRow
@@ -238,7 +241,7 @@ export function AddFlagsDialogContent(props: {
 					value={undefined}
 					only={addable}
 					autoOpen
-					placeholder={BM_Msgs.selectFlag().text()}
+					placeholder={tr.text(BM_Msgs.selectFlag())}
 					onOpenChange={(open) => {
 						if (!open) setPicking(false)
 					}}
@@ -254,10 +257,10 @@ export function AddFlagsDialogContent(props: {
 					onClick={() => setPicking(true)}
 				>
 					<Icons.Plus className="mr-1 h-3 w-3" />
-					{BM_Msgs.addFlag().text()}
+					{tr.text(BM_Msgs.addFlag())}
 				</Button>
 			)}
-			<span className="text-xs text-muted-foreground">{BM_Msgs.reasonsBecomeNotes('selection').text()}</span>
+			<span className="text-xs text-muted-foreground">{tr.text(BM_Msgs.reasonsBecomeNotes('selection'))}</span>
 		</div>
 	)
 }
@@ -285,7 +288,7 @@ function useManageFlagsAction(playerId: string) {
 		reasonsRef.current = {}
 		// pull fresh flags in case they moved since this player's data was last polled; the dialog reads them live
 		void refresh.mutateAsync({ playerIds: [playerId] })
-		const msg = BM_Msgs.manageFlags().confirm()
+		const msg = tr.confirm(BM_Msgs.manageFlags())
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -296,19 +299,19 @@ function useManageFlagsAction(playerId: string) {
 		const add = readFlagChanges(addRef.current, reasonsRef)
 		const remove = readFlagChanges(removeRef.current, reasonsRef)
 		if (add.length === 0 && remove.length === 0) {
-			toast.error(...BM_Msgs.noChanges().toast())
+			toast.error(...tr.toast(BM_Msgs.noChanges()))
 			return
 		}
 		const res = await mutation.mutateAsync({ playerId, add, remove })
 		if (res.code === 'err:reason-required') {
-			toast.error(...BM_Msgs.reasonRequired(res.flags).toast())
+			toast.error(...tr.toast(BM_Msgs.reasonRequired(res.flags)))
 			return
 		}
 		if (res.code !== 'ok') {
-			toast.error(...BM_Msgs.updateFailed(res.code).toast())
+			toast.error(...tr.toast(BM_Msgs.updateFailed(res.code)))
 			return
 		}
-		toast(...BM_Msgs.flagsUpdated(res.added, res.removed, res.noteAdded).toast())
+		toast(...tr.toast(BM_Msgs.flagsUpdated(res.added, res.removed, res.noteAdded)))
 	}
 
 	// null means BM data hasn't resolved for this player yet: there's nothing to edit
@@ -330,7 +333,7 @@ export function PlayerFlagsMenuItem(props: { slots: MenuSlots; playerId: string;
 	)
 }
 
-function useAddFlagsAction(playerIds: string[], target: Msgs.Target) {
+function useAddFlagsAction(playerIds: string[], target: Tgt.Target) {
 	const denied = RbacClient.usePermsCheck(RBAC.perm('battlemetrics:write-flags'))
 	const openDialog = useAlertDialog()
 	const refresh = BattlemetricsClient.useRefreshPlayerBmData()
@@ -344,7 +347,7 @@ function useAddFlagsAction(playerIds: string[], target: Msgs.Target) {
 		reasonsRef.current = {}
 		// the server re-diffs against live flags per player; refreshing keeps its skip-already-flagged decision current
 		void refresh.mutateAsync({ playerIds })
-		const msg = BM_Msgs.addFlags(target).confirm()
+		const msg = tr.confirm(BM_Msgs.addFlags(target))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -354,26 +357,26 @@ function useAddFlagsAction(playerIds: string[], target: Msgs.Target) {
 		if (result !== 'confirm') return
 		const add = readFlagChanges(addRef.current, reasonsRef)
 		if (add.length === 0) {
-			toast.error(...BM_Msgs.noFlagsToAdd().toast())
+			toast.error(...tr.toast(BM_Msgs.noFlagsToAdd()))
 			return
 		}
 		const res = await mutation.mutateAsync({ playerIds, add })
 		if (res.code === 'err:reason-required') {
-			toast.error(...BM_Msgs.reasonRequired(res.flags).toast())
+			toast.error(...tr.toast(BM_Msgs.reasonRequired(res.flags)))
 			return
 		}
 		if (res.code !== 'ok') {
-			toast.error(...BM_Msgs.addFailed(res.code).toast())
+			toast.error(...tr.toast(BM_Msgs.addFailed(res.code)))
 			return
 		}
-		toast(...BM_Msgs.flagsAdded(res.flaggedCount, res.playerCount, res.noteAdded).toast())
+		toast(...tr.toast(BM_Msgs.flagsAdded(res.flaggedCount, res.playerCount, res.noteAdded)))
 	}
 
 	return { addFlags, denied, disabled: !!denied || playerIds.length === 0 }
 }
 
 // bulk-selection and squad menu entry: add-only flags across every target
-export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; target: Msgs.Target; label?: string }) {
+export function AddPlayerFlagsMenuItem(props: { slots: MenuSlots; playerIds: string[]; target: Tgt.Target; label?: string }) {
 	const { Item } = props.slots
 	const bmEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.battlemetricsEnabled)
 	const { addFlags, denied, disabled } = useAddFlagsAction(props.playerIds, props.target)
@@ -399,7 +402,7 @@ export function PlayerFlagsButton(props: { playerId: string }) {
 				disabled={disabled}
 				onClick={manageFlags}
 				className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
-				title={BM_Msgs.manageFlagsHint().text()}
+				title={tr.text(BM_Msgs.manageFlagsHint())}
 			>
 				<Icons.Pencil className="h-3 w-3" />
 			</button>

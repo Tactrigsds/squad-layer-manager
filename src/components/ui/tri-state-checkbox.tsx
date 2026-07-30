@@ -5,6 +5,7 @@ import * as React from 'react'
 import { Button, type ButtonProps } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
+import { tr } from '@/systems/messages.client'
 
 const STATES = ['disabled', 'regular', 'inverted'] as const
 export type TriState = (typeof STATES)[number]
@@ -75,7 +76,7 @@ const TriStateCheckbox = ({
 			variant={variant}
 			size={buttonSize}
 			className={className}
-			title={UI_Msgs.invertHint().text()}
+			title={tr.text(UI_Msgs.invertHint())}
 			{...props}
 		>
 			{children}

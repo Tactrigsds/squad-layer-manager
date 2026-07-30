@@ -10,6 +10,7 @@ import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as UP from '@/models/user-presence'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
+import { tr } from '@/systems/messages.client'
 
 import BackburnerPanel from './backburner-panel.tsx'
 import { IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
@@ -94,7 +95,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 								value: 'queue',
 								label: (
 									<div className="flex justify-between">
-										<span>{APP_Msgs.queueTab(queueLength).text()}</span>
+										<span>{tr.text(APP_Msgs.queueTab(queueLength))}</span>
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}
@@ -114,7 +115,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 													matchActivity: (root) =>
 														UP.Trans.editingQueue(serverId).match(root) ||
 														UP.Trans.editingLayerRequests(serverId).match(root),
-													leaveMessage: APP_Msgs.finishedEditing().text(),
+													leaveMessage: tr.text(APP_Msgs.finishedEditing()),
 												},
 											]}
 											className="min-w-0"
@@ -126,7 +127,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 								value: 'teams',
 								label: (
 									<div className="flex justify-between">
-										<span>{APP_Msgs.teamsTab(playerCount).text()}</span>
+										<span>{tr.text(APP_Msgs.teamsTab(playerCount))}</span>
 										<UserPresencePanel
 											stores={props.stores}
 											sourcePresenceFn={sortEditingPresence}

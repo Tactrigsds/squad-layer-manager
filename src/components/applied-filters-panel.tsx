@@ -9,6 +9,7 @@ import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
@@ -102,7 +103,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 				onClick={scrollLeft}
 				onDoubleClick={scrollToStart}
 				disabled={!canScrollLeft}
-				title={F_Msgs.scrollLeft().text()}
+				title={tr.text(F_Msgs.scrollLeft())}
 			>
 				<Icons.ChevronLeft className="h-4 w-4" />
 			</Button>
@@ -122,7 +123,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 				onClick={scrollRight}
 				onDoubleClick={scrollToEnd}
 				disabled={!canScrollRight}
-				title={F_Msgs.scrollRight().text()}
+				title={tr.text(F_Msgs.scrollRight())}
 			>
 				<Icons.ChevronRight className="h-4 w-4" />
 			</Button>
@@ -133,12 +134,14 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 			>
 				{/* the label text only renders while there are no extras, so the name is pinned here rather than left to it */}
 				<Button
-					title={F_Msgs.editExtraFilters().text()}
-					aria-label={F_Msgs.editExtraFilters().text()}
+					title={tr.text(F_Msgs.editExtraFilters())}
+					aria-label={tr.text(F_Msgs.editExtraFilters())}
 					variant="ghost"
 					size={extraFilterIds.length > 0 ? 'icon' : 'default'}
 				>
-					{extraFilterIds.length === 0 && <div className="text-sm text-muted-foreground px-2">{F_Msgs.addExtraFilters().text()}</div>}
+					{extraFilterIds.length === 0 && (
+						<div className="text-sm text-muted-foreground px-2">{tr.text(F_Msgs.addExtraFilters())}</div>
+					)}
 					<Icons.Edit />
 				</Button>
 			</ComboBoxMulti>
@@ -150,7 +153,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 			</div>
 			<div className="flex flex-row gap-2 w-max">
 				<Button
-					title={F_Msgs.disableAllFilters().text()}
+					title={tr.text(F_Msgs.disableAllFilters())}
 					variant="ghost"
 					size="icon"
 					onClick={() => {
@@ -178,7 +181,7 @@ export function PoolFilterCheckbox({ stores }: { stores: Partial<SquadServerFram
 			variant="outline"
 			checked={poolApplyAs}
 			onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setPoolApplyAs(stores, applyAs)}
-			title={SETTINGS_Msgs.poolStateTitles[poolApplyAs]}
+			title={tr.text(SETTINGS_Msgs.poolStateTitles[poolApplyAs])}
 		>
 			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
 			<span>{filter.name}</span>
