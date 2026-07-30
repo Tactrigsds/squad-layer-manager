@@ -100,7 +100,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 		// On today's page, always include the current in-progress match even if it started yesterday
 		if (currentPage === 1) {
 			const currentMatch = history[history.length - 1]
-			if (currentMatch?.status === 'in-progress' && !entries.includes(currentMatch)) {
+			if (currentMatch?.isCurrentMatch && !entries.includes(currentMatch)) {
 				return [date, [currentMatch, ...entries]]
 			}
 		}

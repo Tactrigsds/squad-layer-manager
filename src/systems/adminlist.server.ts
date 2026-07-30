@@ -44,6 +44,15 @@ const resources = new Map<SM.AdminListId, AsyncResource<SM.AdminList, CS.Ctx & C
 export let status$: IsolatedBehaviorSubject<AdminListStatus>
 
 const ADMIN_LIST_TTL = ZodUtils.HumanTime.parse('1h')
+// A local file is a filesystem read, so it is polled often enough that an edit to Admins.cfg shows up while whoever
+// made it is still looking. Remote, ftp and sftp sources are a network round trip and keep the hourly cadence.
+const LOCAL_ADMIN_LIST_TTL = ZodUtils.HumanTime.parse('30s')
+
+// Fixed when the resource is created, so a list whose source type is edited keeps the old cadence until the next
+// boot. It only decides how often an unchanged list is re-read; an edit invalidates every list outright.
+function ttlFor(listId: SM.AdminListId): number {
+	return Settings.GLOBAL_SETTINGS.adminLists[listId]?.source.type === 'local' ? LOCAL_ADMIN_LIST_TTL : ADMIN_LIST_TTL
+}
 
 function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx & CS.AbortSignal> {
 	const existing = resources.get(listId)
@@ -60,7 +69,7 @@ function resourceFor(listId: SM.AdminListId): AsyncResource<SM.AdminList, CS.Ctx
 		},
 		module,
 		{
-			defaultTTL: ADMIN_LIST_TTL,
+			defaultTTL: ttlFor(listId),
 			retries: 3,
 			retryDelay: 1000,
 			log,

@@ -41,6 +41,25 @@ export const noChartData = Msgs.def('No data available for charts')
 
 export const kdRatio = Msgs.def('K/D Ratio:')
 
+export const kdBreakdown = Msgs.def('{kills} kills, {deaths} deaths', (kills: number, deaths: number) => ({ kills, deaths }))
+
 export const woundRatio = Msgs.def('Wound Ratio:')
 
+export const woundBreakdown = Msgs.def('{wounds} wounds dealt, {wounded} taken', (wounds: number, wounded: number) => ({
+	wounds,
+	wounded,
+}))
+
 export const teamBreakdowns = Msgs.def('Team Breakdowns')
+
+// the breakdown's own help, behind the "?" beside its heading rather than on every segment's tooltip
+
+export const breakdownDescription = Msgs.def(
+	'Everyone on the server right now, split by team and by the groups of the chosen grouping. A player no rule matches counts as Other.',
+)
+
+export const breakdownFilterHint = Msgs.def('Click a segment to filter the teams panel to its group')
+
+export const breakdownSelectTeamHint = Msgs.def("Shift-click to also select that team's players in it")
+
+export const breakdownSelectBothHint = Msgs.def('Ctrl+Shift-click to select the group on both teams')
