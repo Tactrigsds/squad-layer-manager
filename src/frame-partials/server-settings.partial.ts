@@ -10,6 +10,7 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 export type Store = {
@@ -75,7 +76,7 @@ export function initServerSettings(args: Args) {
 				const updated = Obj.structuralMerge(get().saved, settings)
 				set({ saved: updated, edited: updated, ops: [] })
 				if (source) {
-					toast(...SS_Msgs.stateUpdateSource(source).toast())
+					toast(...tr.toast(SS_Msgs.stateUpdateSource(source)))
 				}
 			}),
 	)
@@ -117,7 +118,7 @@ export namespace Actions {
 				RbacClient.handlePermissionDenied(res)
 				return false
 			} else if (res?.code === 'err:invalid-settings') {
-				toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
+				toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 				return false
 			}
 			return true

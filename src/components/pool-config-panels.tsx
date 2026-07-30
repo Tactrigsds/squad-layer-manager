@@ -14,6 +14,7 @@ import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
@@ -111,7 +112,7 @@ function MissingIndicatorWarning({ entity, kind }: { entity: F.FilterEntity; kin
 					<Icons.AlertTriangle className="h-4 w-4" />
 				</a>
 			</TooltipTrigger>
-			<TooltipContent>{SETTINGS_Msgs.missingIndicator(kind, missing).text()}</TooltipContent>
+			<TooltipContent>{tr.text(SETTINGS_Msgs.missingIndicator(kind, missing))}</TooltipContent>
 		</Tooltip>
 	)
 }
@@ -136,15 +137,15 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 	return (
 		<div className="space-y-3">
 			<span className="flex items-center gap-1">
-				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{SETTINGS_Msgs.poolFilter().text()}</h4>
-				<HelpTooltip label={SETTINGS_Msgs.aboutPoolFilter().text()}>
-					<p>{SETTINGS_Msgs.poolFilterHelpMembership().text()}</p>
-					<p>{SETTINGS_Msgs.poolFilterHelpToggle().text()}</p>
-					<p>{SETTINGS_Msgs.poolFilterHelpIndicators().text()}</p>
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.poolFilter())}</h4>
+				<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutPoolFilter())}>
+					<p>{tr.text(SETTINGS_Msgs.poolFilterHelpMembership())}</p>
+					<p>{tr.text(SETTINGS_Msgs.poolFilterHelpToggle())}</p>
+					<p>{tr.text(SETTINGS_Msgs.poolFilterHelpIndicators())}</p>
 				</HelpTooltip>
 			</span>
 			<div className="border rounded-md p-3 space-y-2">
-				<p className="text-xs text-muted-foreground">{SETTINGS_Msgs.poolFilterBlurb().text()}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.poolFilterBlurb())}</p>
 				<div className="flex items-center gap-2">
 					<InvertToggle
 						pressed={poolFilter?.mode === 'exclude'}
@@ -154,17 +155,17 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 					/>
 					<FilterEntitySelect
 						className="grow"
-						title={SETTINGS_Msgs.poolFilter().text()}
+						title={tr.text(SETTINGS_Msgs.poolFilter())}
 						filterId={poolFilter?.filterId ?? null}
 						onSelect={onSelect}
 						enabled={!api.writeDenied}
 					/>
 				</div>
-				{!poolFilter && <p className="text-sm text-muted-foreground">{SETTINGS_Msgs.noPoolFilter().text()}</p>}
+				{!poolFilter && <p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.noPoolFilter())}</p>}
 				{entity && missingIndicators.length > 0 && (
 					<Alert variant="destructive">
 						<AlertDescription className="flex items-center gap-1">
-							<span>{SETTINGS_Msgs.poolFilterMissingIndicators(missingIndicators).text()}</span>
+							<span>{tr.text(SETTINGS_Msgs.poolFilterMissingIndicators(missingIndicators))}</span>
 							<FilterEntityLink filterId={entity.id} />
 						</AlertDescription>
 					</Alert>
@@ -191,7 +192,7 @@ const SECONDARY_LISTS: Record<SETTINGS.SecondaryListKey, SecondaryListConfig> = 
 
 function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SETTINGS.SecondaryListKey }) {
 	const config = SECONDARY_LISTS[listKey]
-	const title = SETTINGS_Msgs.secondaryListTitles[listKey]
+	const title = tr.text(SETTINGS_Msgs.secondaryListTitles[listKey])
 	const path = [listKey]
 	const rawValue = (api.useValue(path) as (string | SETTINGS.AppliedFilterSetting | SETTINGS.SelectableFilterSetting)[] | null) ?? []
 	const entries = rawValue.map((v) => (typeof v === 'string' ? { filterId: v, applyAs: undefined } : v))
@@ -227,7 +228,10 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 	return (
 		<div className="space-y-2">
 			<div className="flex items-center justify-between">
-				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')} title={SETTINGS_Msgs.secondaryListBlurbs[listKey]}>
+				<h4
+					className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}
+					title={tr.text(SETTINGS_Msgs.secondaryListBlurbs[listKey])}
+				>
 					{title}
 				</h4>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
@@ -246,7 +250,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 				</PermissionDeniedTooltip>
 			</div>
 			<div className="border rounded-md p-2 space-y-1">
-				<p className="text-xs text-muted-foreground">{SETTINGS_Msgs.secondaryListBlurbs[listKey]}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.secondaryListBlurbs[listKey])}</p>
 				{entries.map((entry, index) => {
 					const entity = filterEntities.get(entry.filterId)
 					if (!entity) return null
@@ -270,11 +274,11 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 									variant="outline"
 									size="icon"
 									className="h-7 w-7 min-w-7"
-									title={
+									title={tr.text(
 										SETTINGS_Msgs.selectableStateTitles[
 											(entry.applyAs as SETTINGS.SelectableFilterApplyAs | undefined) ?? 'disabled'
-										]
-									}
+										],
+									)}
 								/>
 							)}
 							<FilterEntitySelect
@@ -305,7 +309,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 						</div>
 					)
 				})}
-				{entries.length === 0 && <p className="text-sm text-muted-foreground">{SETTINGS_Msgs.noFilters().text()}</p>}
+				{entries.length === 0 && <p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.noFilters())}</p>}
 			</div>
 		</div>
 	)
@@ -317,12 +321,12 @@ function SkipWarningsForTagsSection({ api }: { api: PoolConfigApi }) {
 	const path = ['skipWarningsForTags']
 	const tags = (api.useValue(path) as LTag.TagId[] | null) ?? []
 	return (
-		<section aria-label={SETTINGS_Msgs.skipWarningsFor().text()} className="space-y-2">
+		<section aria-label={tr.text(SETTINGS_Msgs.skipWarningsFor())} className="space-y-2">
 			<span className="flex items-center gap-1">
-				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{SETTINGS_Msgs.skipWarningsFor().text()}</h4>
-				<HelpTooltip label={SETTINGS_Msgs.aboutSkipWarnings().text()}>
-					<p>{SETTINGS_Msgs.skipWarningsHelpSilenced().text()}</p>
-					<p>{SETTINGS_Msgs.skipWarningsHelpStillApplies().text()}</p>
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.skipWarningsFor())}</h4>
+				<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutSkipWarnings())}>
+					<p>{tr.text(SETTINGS_Msgs.skipWarningsHelpSilenced())}</p>
+					<p>{tr.text(SETTINGS_Msgs.skipWarningsHelpStillApplies())}</p>
 				</HelpTooltip>
 			</span>
 			<div className="border rounded-md p-2">
@@ -351,10 +355,10 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 			<SkipWarningsForTagsSection api={api} />
 			<div className="space-y-3">
 				<span className="flex items-center gap-1">
-					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{SETTINGS_Msgs.secondaryFilters().text()}</h4>
-					<HelpTooltip label={SETTINGS_Msgs.aboutSecondaryFilters().text()}>
-						<p>{SETTINGS_Msgs.secondaryFiltersHelpBehavior().text()}</p>
-						<p>{SETTINGS_Msgs.secondaryFiltersHelpReuse().text()}</p>
+					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.secondaryFilters())}</h4>
+					<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutSecondaryFilters())}>
+						<p>{tr.text(SETTINGS_Msgs.secondaryFiltersHelpBehavior())}</p>
+						<p>{tr.text(SETTINGS_Msgs.secondaryFiltersHelpReuse())}</p>
 					</HelpTooltip>
 				</span>
 				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -394,13 +398,13 @@ function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; la
 export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettingKey, PoolConfigApi> }) {
 	return (
 		<div className="space-y-3">
-			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{SETTINGS_Msgs.nextLayer().text()}</h4>
+			<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.nextLayer())}</h4>
 			<div className="space-y-4">
 				{SETTINGS.NEXT_LAYER_SETTING_KEYS.map((key) => (
 					<BooleanSettingRow
 						key={key}
 						api={apis[key]}
-						label={SETTINGS_Msgs.nextLayerLabels[key]}
+						label={tr.text(SETTINGS_Msgs.nextLayerLabels[key])}
 						description={SETTINGS.PublicServerSettingsSchema.shape[key].description ?? ''}
 					/>
 				))}
@@ -488,7 +492,7 @@ function RepeatRuleRow(props: {
 		<>
 			<div className="contents">
 				<Input
-					placeholder={SETTINGS_Msgs.repeatRuleLabel().text()}
+					placeholder={tr.text(SETTINGS_Msgs.repeatRuleLabel())}
 					defaultValue={rule.label ?? rule.field}
 					disabled={!!api.writeDenied}
 					onChange={(e) => {
@@ -499,7 +503,7 @@ function RepeatRuleRow(props: {
 			</div>
 			<div className="contents">
 				<ComboBox
-					title={SETTINGS_Msgs.repeatRuleFieldPicker().text()}
+					title={tr.text(SETTINGS_Msgs.repeatRuleFieldPicker())}
 					options={LQY.RepeatRuleFieldSchema.options}
 					value={rule.field}
 					allowEmpty={false}
@@ -524,7 +528,7 @@ function RepeatRuleRow(props: {
 			<div className="contents">
 				<ComboBoxMulti
 					className="w-full min-w-0"
-					title={SETTINGS_Msgs.repeatRuleTargetPicker().text()}
+					title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
 					selectOnClose
 					options={targetValueOptions}
 					disabled={!!api.writeDenied}
@@ -536,7 +540,7 @@ function RepeatRuleRow(props: {
 			</div>
 			<div className="contents">
 				<Checkbox
-					title={SETTINGS_Msgs.repeatRuleWarnTitle().text()}
+					title={tr.text(SETTINGS_Msgs.repeatRuleWarnTitle())}
 					checked={!!rule.warn}
 					disabled={!!api.writeDenied}
 					onCheckedChange={(checked) => setWarn(checked === true)}
@@ -544,7 +548,7 @@ function RepeatRuleRow(props: {
 			</div>
 			<div className="contents">
 				<Checkbox
-					title={SETTINGS_Msgs.repeatRuleAutogenTitle().text()}
+					title={tr.text(SETTINGS_Msgs.repeatRuleAutogenTitle())}
 					checked={!!rule.autogen}
 					disabled={!!api.writeDenied}
 					onCheckedChange={(checked) => setAutogen(checked === true)}
@@ -578,13 +582,13 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 		<div className={cn('space-y-3', props.className)}>
 			<div className="flex items-center justify-between">
 				<span className="flex items-center gap-2">
-					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{SETTINGS_Msgs.repeatRules().text()}</h4>
+					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.repeatRules())}</h4>
 					<ConstraintViolationIcon />
 				</span>
 				<PermissionDeniedTooltip denied={api.writeDenied}>
 					<Button size="sm" variant="outline" disabled={!!api.writeDenied} onClick={addRule}>
 						<Icons.Plus className="h-4 w-4 mr-2" />
-						{SETTINGS_Msgs.addRepeatRule().text()}
+						{tr.text(SETTINGS_Msgs.addRepeatRule())}
 					</Button>
 				</PermissionDeniedTooltip>
 			</div>
@@ -595,18 +599,21 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 				>
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
-						<div>{SETTINGS_Msgs.repeatRuleLabel().text()}</div>
-						<div>{SETTINGS_Msgs.repeatRuleField().text()}</div>
-						<div>{SETTINGS_Msgs.repeatRuleWithin().text()}</div>
-						<div>{SETTINGS_Msgs.repeatRuleTargetValues().text()}</div>
+						<div>{tr.text(SETTINGS_Msgs.repeatRuleLabel())}</div>
+						<div>{tr.text(SETTINGS_Msgs.repeatRuleField())}</div>
+						<div>{tr.text(SETTINGS_Msgs.repeatRuleWithin())}</div>
+						<div>{tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}</div>
 						<div>
-							<HelpTooltip label={SETTINGS_Msgs.aboutRepeatRuleWarn().text()} trigger={SETTINGS_Msgs.repeatRuleWarn().text()}>
-								<p>{SETTINGS_Msgs.repeatRuleWarnHelp().text()}</p>
+							<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutRepeatRuleWarn())} trigger={tr.text(SETTINGS_Msgs.repeatRuleWarn())}>
+								<p>{tr.text(SETTINGS_Msgs.repeatRuleWarnHelp())}</p>
 							</HelpTooltip>
 						</div>
 						<div>
-							<HelpTooltip label={SETTINGS_Msgs.aboutRepeatRuleAutogen().text()} trigger={SETTINGS_Msgs.repeatRuleAutogen().text()}>
-								<p>{SETTINGS_Msgs.repeatRuleAutogenHelp().text()}</p>
+							<HelpTooltip
+								label={tr.text(SETTINGS_Msgs.aboutRepeatRuleAutogen())}
+								trigger={tr.text(SETTINGS_Msgs.repeatRuleAutogen())}
+							>
+								<p>{tr.text(SETTINGS_Msgs.repeatRuleAutogenHelp())}</p>
 							</HelpTooltip>
 						</div>
 						<div></div>

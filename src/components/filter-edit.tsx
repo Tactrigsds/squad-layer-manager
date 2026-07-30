@@ -32,6 +32,7 @@ import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -97,11 +98,11 @@ export function FilterEdit(props: {
 					break
 
 				case 'err:not-found':
-					toast(...F_Msgs.notFound().toast())
+					toast(...tr.toast(F_Msgs.notFound()))
 					break
 
 				case 'ok':
-					toast(...F_Msgs.saved().toast())
+					toast(...tr.toast(F_Msgs.saved()))
 					EditFrame.Actions.reset(stores, res.filter.filter)
 					void router.invalidate()
 					formApi.reset({
@@ -130,10 +131,10 @@ export function FilterEdit(props: {
 		}
 		const res = await deleteFilterMutation.mutateAsync(props.entity.id)
 		if (res.code === 'ok') {
-			toast(...F_Msgs.deleted(props.entity.name).toast())
+			toast(...tr.toast(F_Msgs.deleted(props.entity.name)))
 			void navigate({ to: '/filters' })
 		} else {
-			toast.error(...F_Msgs.deleteFailed(props.entity.name, res).toast())
+			toast.error(...tr.toast(F_Msgs.deleteFailed(props.entity.name, res)))
 		}
 	}, [deleteFilterMutation, navigate, props.entity])
 
@@ -168,7 +169,7 @@ export function FilterEdit(props: {
 							onClick={() => form.handleSubmit()}
 							disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
 						>
-							{F_Msgs.save().text()}
+							{tr.text(F_Msgs.save())}
 						</Button>
 					)
 				}}
@@ -181,7 +182,7 @@ export function FilterEdit(props: {
 		() => (
 			<DeleteFilterDialog onDelete={onDelete}>
 				<Button variant="destructive" disabled={!permitEdit}>
-					{F_Msgs.deleteAction().text()}
+					{tr.text(F_Msgs.deleteAction())}
 				</Button>
 			</DeleteFilterDialog>
 		),
@@ -215,10 +216,10 @@ export function FilterEdit(props: {
 								)}
 								<h3 className={Typo.H3}>{props.entity.name}</h3>
 								<Icons.Dot />
-								<small className="font-light">{F_Msgs.ownerLine(props.owner.displayName).text()}</small>
+								<small className="font-light">{tr.text(F_Msgs.ownerLine(props.owner.displayName))}</small>
 								<Icons.Dot />
 								<Button
-									aria-label={F_Msgs.editDetails().text()}
+									aria-label={tr.text(F_Msgs.editDetails())}
 									disabled={!permitEdit}
 									onClick={() => setEditingDetails(true)}
 									variant="ghost"
@@ -230,22 +231,22 @@ export function FilterEdit(props: {
 							<span className="flex h-min items-center space-x-2 self-end">
 								{loggedInUserRole === 'owner' && permitEdit && (
 									<Badge variant="outline" className="text-nowrap border-2 border-primary">
-										{F_Msgs.accessOwner().text()}
+										{tr.text(F_Msgs.accessOwner())}
 									</Badge>
 								)}
 								{loggedInUserRole === 'contributor' && (
 									<Badge variant="outline" className="text-nowrap border-2 border-info">
-										{F_Msgs.accessContributor().text()}
+										{tr.text(F_Msgs.accessContributor())}
 									</Badge>
 								)}
 								{!permitEdit && (
 									<Badge variant="outline" className="text-nowrap border-2 border-destructive">
-										{F_Msgs.accessNone().text()}
+										{tr.text(F_Msgs.accessNone())}
 									</Badge>
 								)}
 								{permitWriteAll && (
 									<Badge variant="outline" className="border-success text-nowrap border-2">
-										{F_Msgs.accessAllFilters().text()}
+										{tr.text(F_Msgs.accessAllFilters())}
 									</Badge>
 								)}
 								<FilterContributors
@@ -253,7 +254,7 @@ export function FilterEdit(props: {
 									contributors={props.contributors}
 									canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
 								>
-									<Button variant="outline">{F_Msgs.showContributors().text()}</Button>
+									<Button variant="outline">{tr.text(F_Msgs.showContributors())}</Button>
 								</FilterContributors>
 							</span>
 						</div>
@@ -296,7 +297,7 @@ export function FilterEdit(props: {
 
 								{/* Match Indicator Section */}
 								<div className="border rounded-lg p-4 space-y-4">
-									<h3 className="font-semibold text-sm">{F_Msgs.matchIndicator().text()}</h3>
+									<h3 className="font-semibold text-sm">{tr.text(F_Msgs.matchIndicator())}</h3>
 									<div className="flex gap-4">
 										<form.Field name="emoji">
 											{(field) => {
@@ -354,7 +355,7 @@ export function FilterEdit(props: {
 
 								{/* Miss Indicator Section */}
 								<div className="border rounded-lg p-4 space-y-4">
-									<h3 className="font-semibold text-sm">{F_Msgs.missIndicator().text()}</h3>
+									<h3 className="font-semibold text-sm">{tr.text(F_Msgs.missIndicator())}</h3>
 									<div className="flex gap-4">
 										<form.Field name="invertedEmoji">
 											{(field) => {
@@ -439,7 +440,7 @@ export function FilterEdit(props: {
 									}}
 								</form.Field>
 								<Button
-									aria-label={F_Msgs.cancelEditingDetails().text()}
+									aria-label={tr.text(F_Msgs.cancelEditingDetails())}
 									className="self-start"
 									variant="ghost"
 									size="icon"
@@ -476,7 +477,7 @@ function FilterContributors(props: {
 					case 'err:permission-denied':
 						return RbacClient.handlePermissionDenied(res)
 					case 'err:already-exists':
-						return toast(...F_Msgs.contributorAlreadyAdded().toast())
+						return toast(...tr.toast(F_Msgs.contributorAlreadyAdded()))
 					case 'ok':
 						break
 					default:
@@ -485,7 +486,7 @@ function FilterContributors(props: {
 				FilterEntityClient.invalidateQueriesForFilter(props.filterId)
 			},
 			onError: (err) => {
-				toast.error(...F_Msgs.addContributorFailed(err.message).toast())
+				toast.error(...tr.toast(F_Msgs.addContributorFailed(err.message)))
 			},
 		}),
 	)
@@ -496,7 +497,7 @@ function FilterContributors(props: {
 					case 'err:permission-denied':
 						return RbacClient.handlePermissionDenied(res)
 					case 'err:not-found':
-						return toast(...F_Msgs.contributorNotFound().toast())
+						return toast(...tr.toast(F_Msgs.contributorNotFound()))
 					case 'ok':
 						break
 					default:
@@ -515,13 +516,13 @@ function FilterContributors(props: {
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent className="p-0">
 				<CardHeader>
-					<CardTitle>{F_Msgs.contributorsHeading().text()}</CardTitle>
-					<CardDescription>{F_Msgs.contributorsBlurb().text()}</CardDescription>
+					<CardTitle>{tr.text(F_Msgs.contributorsHeading())}</CardTitle>
+					<CardDescription>{tr.text(F_Msgs.contributorsBlurb())}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div>
 						<div className="flex items-center space-x-2">
-							<h4 className="leading-none">{F_Msgs.usersHeading().text()}</h4>
+							<h4 className="leading-none">{tr.text(F_Msgs.usersHeading())}</h4>
 							{props.canManage && (
 								<SelectUserPopover selectUser={addUser}>
 									<Button variant="outline" size="icon">
@@ -546,7 +547,7 @@ function FilterContributors(props: {
 					</div>
 					<div id="roles">
 						<div>
-							<Label htmlFor="roles">{F_Msgs.rolesHeading().text()}</Label>
+							<Label htmlFor="roles">{tr.text(F_Msgs.rolesHeading())}</Label>
 							{props.canManage && (
 								<SelectUserDefinedRolePopover
 									selectRole={(role) => addMutation.mutate({ filterId: props.filterId, roleId: role.type })}
@@ -593,13 +594,13 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 			<AlertDialogTrigger asChild>{props.children}</AlertDialogTrigger>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>{F_Msgs.confirmDeleteTitle().text()}</AlertDialogTitle>
-					<AlertDialogDescription>{F_Msgs.confirmDeleteBlurb().text()}</AlertDialogDescription>
+					<AlertDialogTitle>{tr.text(F_Msgs.confirmDeleteTitle())}</AlertDialogTitle>
+					<AlertDialogDescription>{tr.text(F_Msgs.confirmDeleteBlurb())}</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel onClick={onCancel}>{F_Msgs.cancel().text()}</AlertDialogCancel>
+					<AlertDialogCancel onClick={onCancel}>{tr.text(F_Msgs.cancel())}</AlertDialogCancel>
 					<Button variant="destructive" onClick={onDelete}>
-						{F_Msgs.deleteAction().text()}
+						{tr.text(F_Msgs.deleteAction())}
 					</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -619,7 +620,7 @@ function SelectUserPopover(props: { children: React.ReactNode; selectUser: (user
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder={F_Msgs.searchUsers().text()} />
+					<CommandInput placeholder={tr.text(F_Msgs.searchUsers())} />
 					<CommandList>
 						{usersRes.data?.code === 'ok' &&
 							usersRes.data.users.map((user) => (
@@ -646,7 +647,7 @@ export function SelectUserDefinedRolePopover(props: { children: React.ReactNode;
 			<PopoverTrigger asChild>{props.children}</PopoverTrigger>
 			<PopoverContent>
 				<Command>
-					<CommandInput placeholder={F_Msgs.searchRoles().text()} />
+					<CommandInput placeholder={tr.text(F_Msgs.searchRoles())} />
 					<CommandList>
 						{rolesRes.data?.map((role) => (
 							<CommandItem key={role.type} onSelect={() => onSelect(role)}>

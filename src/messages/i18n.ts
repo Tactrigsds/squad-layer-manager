@@ -1,14 +1,17 @@
 import { createIntl, type IntlShape } from '@formatjs/intl'
-import type React from 'react'
+import * as React from 'react'
 
-// Where a message's text is resolved against a locale. Kept beside shared.ts rather than inside it so the
-// vocabulary and the lookup stay separable, and kept an import leaf for the same reason shared.ts is: models
+// messages.models is itself a type-only leaf, so this value import keeps i18n one too
+import * as Msgs from '@/models/messages.models'
+
+// Where a message's text is resolved against a locale. Kept beside the vocabulary (models/messages.models.ts)
+// rather than inside it so the two stay separable, and kept an import leaf for the same reason that one is: models
 // absorb their text from there, and the display layer that renders them imports those models back.
 //
 // Messages are keyed by their own English source. A translator receives that string and returns another one, which
-// is the gettext model rather than the invented-identifier one: no message has to declare an id, so the 897
-// zero-argument messages in this tree need no source change at all to become translatable. The cost is that
-// editing English copy orphans its translations, which the extractor reports rather than silently dropping.
+// is the gettext model rather than the invented-identifier one: no message declares an id, so the ~1,300
+// zero-argument messages in this tree read as their own text at the call site. The cost is that editing English
+// copy orphans its translations, which the extractor reports rather than silently dropping.
 //
 // Two English strings that need different translations are told apart by a `context`, which is part of the key and
 // never rendered. Only a handful need one: "Cancel" the dialog dismissal against "Cancel" the lifting of a timeout.
@@ -58,6 +61,26 @@ export function negotiateLocale(preferred: readonly string[]) {
 	return DEFAULT_LOCALE
 }
 
+// The header's language tags ordered by their q weights, ready for negotiateLocale. Wildcards and invalid
+// pieces are dropped; ties keep the header's own order, which sort() preserves by being stable.
+export function parseAcceptLanguage(header: string | undefined): string[] {
+	if (!header) return []
+	const entries: { tag: string; q: number }[] = []
+	for (const part of header.split(',')) {
+		const [tag, ...params] = part.trim().split(';')
+		const cleaned = tag.trim()
+		if (!cleaned || cleaned === '*') continue
+		let q = 1
+		for (const param of params) {
+			const [key, value] = param.trim().split('=')
+			if (key.trim() === 'q') q = Number(value)
+		}
+		if (Number.isNaN(q) || q <= 0) continue
+		entries.push({ tag: cleaned, q })
+	}
+	return entries.sort((a, b) => b.q - a.q).map((e) => e.tag)
+}
+
 const intls = new Map<string, IntlShape<React.ReactNode>>()
 
 function intlFor(locale: string) {
@@ -99,4 +122,124 @@ export function translateNode(source: string, values?: MessageValues, locale?: s
 		{ id: key(source, context), defaultMessage: source },
 		values as Record<string, React.ReactNode>,
 	) as React.ReactNode
+}
+
+// -------- resolving Msg values (see @/models/messages.models) --------
+
+// the formatting vocabulary every translator renders unasked; custom tags come in through Translator.withTags
+export const STANDARD_TAGS: Msgs.TagRenderers<Msgs.StandardTag> = {
+	strong: (chunks) => React.createElement('strong', null, ...chunks),
+	code: (chunks) => React.createElement('code', null, ...chunks),
+}
+
+export function createTranslator(props: Msgs.LocalizationProps): Msgs.Translator {
+	return makeTranslator(props, undefined)
+}
+
+function makeTranslator(props: Msgs.LocalizationProps, custom: Msgs.TagRenderers | undefined): Msgs.Translator<string> {
+	const { locale } = props
+	const dyn = <V>(value: Msgs.Dyn<V>): V => (typeof value === 'function' ? (value as (props: Msgs.LocalizationProps) => V)(props) : value)
+	const strArgs = (args?: Msgs.TArgs): MessageValues | undefined => {
+		if (!args) return undefined
+		const out: MessageValues = {}
+		for (const [name, value] of Object.entries(args)) out[name] = Msgs.isTString(value) ? str(value) : value
+		return out
+	}
+	// tag renderers and args share the ICU values namespace, so an arg may shadow a renderer of the same name
+	const nodeArgs = (args?: Msgs.TRichArgs): MessageValues => {
+		const out: MessageValues = { ...STANDARD_TAGS, ...custom }
+		if (args) for (const [name, value] of Object.entries(args)) out[name] = Msgs.isTTarget(value) ? render(value) : value
+		return out
+	}
+	const str = (target: Msgs.TString): string => {
+		if (target.parts) return target.parts.map(str).join(target.original)
+		if (target.verbatim) return target.original
+		return translate(target.original, strArgs(target.args), locale, target.context)
+	}
+	const rich = (target: Msgs.TRichText): React.ReactNode => translateNode(target.original, nodeArgs(target.args), locale, target.context)
+	const render = (target: Msgs.TTarget): React.ReactNode => (Msgs.isTString(target) ? str(target) : rich(target))
+	const warnBase = (base: Msgs.WarnOptionsBase): Msgs.WarnOptionsBase<string> => {
+		if (Msgs.isTString(base)) return str(base)
+		if (Array.isArray(base)) return base.map(str)
+		return { msg: Array.isArray(base.msg) ? base.msg.map(str) : str(base.msg) }
+	}
+	return {
+		locale,
+		withTags: (extra) => makeTranslator(props, { ...custom, ...extra }),
+		text: (msg) => str(Msgs.isTString(msg) ? msg : dyn(msg.text)),
+		broadcast: (msg) => str(dyn((msg.broadcast ?? msg.text)!)),
+		warn: (msg) => {
+			const warn: Msgs.WarnOptions = (msg.warn ?? msg.text)!
+			if (typeof warn === 'function') {
+				return (ctx) => {
+					const base = warn(ctx)
+					return base === undefined ? undefined : warnBase(base)
+				}
+			}
+			return warnBase(warn)
+		},
+		toast: (msg) => {
+			if (!msg.toast) return [str(dyn(msg.text!))]
+			const [message, options] = dyn(msg.toast)
+			return options?.description !== undefined ? [render(message), { description: render(options.description) }] : [render(message)]
+		},
+		confirm: (msg) => {
+			const confirm = dyn(msg.confirm)
+			return {
+				title: render(confirm.title),
+				confirmLabel: render(confirm.confirmLabel),
+				...(confirm.description !== undefined ? { description: render(confirm.description) } : {}),
+			}
+		},
+		richText: (msg) => {
+			if (Msgs.isTTarget(msg)) return render(msg)
+			return msg.richText ? rich(dyn(msg.richText)) : str(dyn(msg.text!))
+		},
+	}
+}
+
+const translators = new Map<string, Msgs.Translator>()
+
+// The translator for one HTTP request, chosen from the only preference an unauthenticated visitor carries.
+export function translatorForRequest(acceptLanguage: string | undefined): Msgs.Translator {
+	return translatorFor(negotiateLocale(parseAcceptLanguage(acceptLanguage)))
+}
+
+export function translatorFor(locale: string): Msgs.Translator {
+	let tr = translators.get(locale)
+	if (!tr) {
+		tr = createTranslator({ locale })
+		translators.set(locale, tr)
+	}
+	return tr
+}
+
+// The viewer's translator, following the ambient locale. Only a browser has one viewer, so this is the client's;
+// on the server it stands for the source language, which is what a log line or a test assertion wants.
+export const ambient: Msgs.Translator = liveTranslator(getAmbientLocale)
+
+// A translator that re-reads its locale on every call, for a long-lived ctx whose locale is a live setting.
+export function liveTranslator(locale: () => string, tags?: Msgs.TagRenderers): Msgs.Translator<string> {
+	const derived = new Map<string, Msgs.Translator<string>>()
+	const current = () => {
+		const resolved = locale()
+		let tr = derived.get(resolved)
+		if (!tr) {
+			tr = tags ? translatorFor(resolved).withTags(tags) : (translatorFor(resolved) as Msgs.Translator<string>)
+			derived.set(resolved, tr)
+		}
+		return tr
+	}
+	return {
+		get locale() {
+			return locale()
+		},
+		withTags: (extra) => liveTranslator(locale, { ...tags, ...extra }),
+		text: (msg) => current().text(msg),
+		broadcast: (msg) => current().broadcast(msg),
+		warn: (msg) => current().warn(msg),
+		toast: (msg) => current().toast(msg),
+		confirm: (msg) => current().confirm(msg),
+		richText: (msg) => current().richText(msg),
+	}
 }

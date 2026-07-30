@@ -11,6 +11,7 @@ import * as L_Msgs from '@/messages/layer.messages'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
+import { tr } from '@/systems/messages.client'
 
 import LayerInfoDialog from './layer-info'
 import MapLayerDisplay from './map-layer-display.tsx'
@@ -103,7 +104,7 @@ export default function ShortLayerName({
 				<>
 					<Icons.Dot className="self-center" width={20} height={20} />
 					{leftTeamElt}
-					<span className="mx-1">{L_Msgs.versus().text()}</span>
+					<span className="mx-1">{tr.text(L_Msgs.versus())}</span>
 					{rightTeamElt}
 				</>
 			)}

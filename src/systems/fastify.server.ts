@@ -15,6 +15,7 @@ import * as AR from '@/app-routes.ts'
 import { createId } from '@/lib/id.ts'
 import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
+import * as I18n from '@/messages/i18n'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
 import * as USR from '@/models/users.models'
@@ -154,7 +155,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		instance.post(AR.route('/login/no-auth'), async (req, reply) => {
 			const parsed = USR.NoAuthLoginSchema.safeParse(req.body)
 			if (!parsed.success) {
-				return sendHtmlPage(reply, Landing.noAuthHtml(USR_Msgs.invalidUsername().text()), 400)
+				return sendHtmlPage(reply, Landing.noAuthHtml(USR_Msgs.invalidUsername(), req.headers['accept-language']), 400)
 			}
 			await Sessions.logInWithoutAuth(buildHttpRequestContext(req, reply), parsed.data.username)
 			return reply.redirect(AR.route('/'), 302)
@@ -195,7 +196,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		if (denyRes) {
 			switch (denyRes.code) {
 				case 'err:permission-denied':
-					return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
+					return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
 				default:
 					assertNever(denyRes.code)
 			}
@@ -309,14 +310,18 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 				reply = Sessions.clearInvalidSession({ ...CS.init(), res: reply })
 				if (baseCtx.route?.def.handle === 'page') {
 					// unauthenticated visitors get the public login page at '/', not an automatic bounce to discord
-					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(), 200)
+					if (baseCtx.route.def.id === '/') return sendHtmlPage(reply, Landing.landingHtml(req.headers['accept-language']), 200)
 					return await reply.redirect(AR.route('/'), 302)
 				} else {
-					return await reply.status(401).send(USR_Msgs.unAuthenticated().text())
+					return await reply
+						.status(401)
+						.send(I18n.translatorForRequest(req.headers['accept-language']).text(USR_Msgs.unAuthenticated()))
 				}
 			case 'err:permission-denied':
-				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(), 403)
-				return await reply.status(401).send(USR_Msgs.noApplicationAccess().text())
+				if (baseCtx.route?.def.handle === 'page') return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
+				return await reply
+					.status(401)
+					.send(I18n.translatorForRequest(req.headers['accept-language']).text(USR_Msgs.noApplicationAccess()))
 			default:
 				assertNever(authRes)
 		}

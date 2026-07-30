@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import * as I18n from '@/messages/i18n'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
@@ -127,16 +128,19 @@ describe('resolveHelpListing', () => {
 		const listing = CMDH.resolveHelpListing(configs, 'nonsense')
 		expect(listing.code).toBe('err:unknown-section')
 		if (listing.code !== 'err:unknown-section') return
-		expect(listing.msg).toContain('flags')
-		expect(listing.msg).toContain('all')
-		expect(listing.msg).not.toContain('Player Flags')
+		const msg = I18n.ambient.text(listing.msg)
+		expect(msg).toContain('flags')
+		expect(msg).toContain('all')
+		expect(msg).not.toContain('Player Flags')
 	})
 
 	it('trails the quick reference with a hint naming the single-token sections', () => {
 		const listing = CMDH.resolveHelpListing(configs, undefined)
 		if (listing.code !== 'ok') throw new Error('expected ok')
-		expect(listing.title).toBe('Commands')
-		expect(listing.hint).toBe(`More: ${P}help <section> -- general, votes, layerRequests, teamswaps, flags, moderation, messaging, all`)
+		expect(I18n.ambient.text(listing.title)).toBe('Commands')
+		expect(I18n.ambient.text(listing.hint!)).toBe(
+			`More: ${P}help <section> -- general, votes, layerRequests, teamswaps, flags, moderation, messaging, all`,
+		)
 	})
 
 	// a shortcut trigger is the same command, so it is listed with it rather than separately -- and a disabled

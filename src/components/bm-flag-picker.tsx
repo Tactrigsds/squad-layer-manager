@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import * as BM_Msgs from '@/messages/battlemetrics.messages'
 import type * as BM from '@/models/battlemetrics.models'
 import { useOrgFlags } from '@/systems/battlemetrics.client'
+import { tr } from '@/systems/messages.client'
 
 // a compact colored badge matching how flags are rendered elsewhere (see player-details-window)
 export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?: string }) {
@@ -34,8 +35,8 @@ export function FlagBadge({ flag, className }: { flag: BM.PlayerFlag; className?
 // The entry stays present and removable either way -- a reference is never silently dropped.
 export function UnknownFlagLabel({ id }: { id: string }) {
 	return (
-		<span className="text-xs italic text-muted-foreground" title={BM_Msgs.unknownFlagHint(id).text()}>
-			{BM_Msgs.unknownFlag().text()}
+		<span className="text-xs italic text-muted-foreground" title={tr.text(BM_Msgs.unknownFlagHint(id))}>
+			{tr.text(BM_Msgs.unknownFlag())}
 		</span>
 	)
 }
@@ -93,7 +94,7 @@ export function BmFlagMultiSelect({
 	}
 	return (
 		<ComboBoxMulti
-			title={BM_Msgs.flagPicker().text()}
+			title={tr.text(BM_Msgs.flagPicker())}
 			values={value}
 			options={selectable}
 			disabled={disabled}

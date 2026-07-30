@@ -1,5 +1,6 @@
 import type * as EditFrame from '@/frames/filter-editor.frame.ts'
 import * as Zus from '@/lib/zustand'
+import { tr } from '@/systems/messages.client'
 
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 
@@ -9,9 +10,9 @@ export function FilterValidationErrorDisplay(props: { stores: EditFrame.KeyProp 
 	return (
 		<div className="mt-4 space-y-2">
 			{extraErrors.map((error) => (
-				<Alert key={`${error.path.join('.')}:${error.msg}`} variant="destructive">
+				<Alert key={error.path.join('.')} variant="destructive">
 					<AlertTitle>{error.path.slice(1).join('.')}</AlertTitle>
-					<AlertDescription>{error.msg}</AlertDescription>
+					<AlertDescription>{tr.text(error.msg)}</AlertDescription>
 				</Alert>
 			))}
 		</div>

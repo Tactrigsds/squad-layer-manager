@@ -4,6 +4,7 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import * as UI_Msgs from '@/messages/ui.messages'
+import { tr } from '@/systems/messages.client'
 
 function formatPageCount(count: number): string {
 	if (count < 1000) {
@@ -93,7 +94,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				size="icon"
 				onClick={handleFirst}
 				disabled={disabled || !canGoPrevious}
-				title={UI_Msgs.firstPageHint().text()}
+				title={tr.text(UI_Msgs.firstPageHint())}
 				className="h-8 w-8"
 			>
 				<Icons.ChevronsLeft className="h-4 w-4" />
@@ -104,7 +105,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				size="icon"
 				onClick={handlePrevious}
 				disabled={disabled || !canGoPrevious}
-				title={UI_Msgs.previousPageShortHint().text()}
+				title={tr.text(UI_Msgs.previousPageShortHint())}
 				className="h-8 w-8"
 			>
 				<Icons.ChevronLeft className="h-4 w-4" />
@@ -121,7 +122,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 					onKeyDown={handleInputKeyDown}
 					disabled={disabled}
 					className="h-8 w-16 text-center"
-					aria-label={UI_Msgs.pageNumber().text()}
+					aria-label={tr.text(UI_Msgs.pageNumber())}
 				/>
 				<span className="text-sm text-muted-foreground">/ {formatPageCount(pageCount)}</span>
 			</div>
@@ -131,7 +132,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				size="icon"
 				onClick={handleNext}
 				disabled={disabled || !canGoNext}
-				title={UI_Msgs.nextPageShortHint().text()}
+				title={tr.text(UI_Msgs.nextPageShortHint())}
 				className="h-8 w-8"
 			>
 				<Icons.ChevronRight className="h-4 w-4" />
@@ -142,7 +143,7 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 				size="icon"
 				onClick={handleLast}
 				disabled={disabled || !canGoNext}
-				title={UI_Msgs.lastPageHint().text()}
+				title={tr.text(UI_Msgs.lastPageHint())}
 				className="h-8 w-8"
 			>
 				<Icons.ChevronsRight className="h-4 w-4" />

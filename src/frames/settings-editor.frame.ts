@@ -12,6 +12,7 @@ import * as SS from '@/models/server-state.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -377,11 +378,11 @@ export namespace Actions {
 						return false
 					}
 					if (res.code === 'err:invalid-settings') {
-						toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
+						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 						return false
 					}
 					// the watchSettings subscription delivers the new baseline; the draft is left as-is and rediffs to clean
-					toast(...SETTINGS_Msgs.saved().toast())
+					toast(...tr.toast(SETTINGS_Msgs.saved()))
 					return true
 				}
 				case 'server': {
@@ -392,14 +393,14 @@ export namespace Actions {
 						return false
 					}
 					if (res.code === 'err:invalid-settings') {
-						toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
+						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 						return false
 					}
 					if (res.code === 'err:server-not-found') {
-						toast.error(...SETTINGS_Msgs.serverNotFound().toast())
+						toast.error(...tr.toast(SETTINGS_Msgs.serverNotFound()))
 						return false
 					}
-					toast(...SETTINGS_Msgs.serverSettingsSaved().toast())
+					toast(...tr.toast(SETTINGS_Msgs.serverSettingsSaved()))
 					// refresh the baseline with the server-normalized value; only re-seed the draft if no edits landed mid-save
 					const draftAtSave = state.draft
 					await loadServerSettings(
@@ -428,14 +429,14 @@ export namespace Actions {
 						return false
 					}
 					if (res.code === 'err:server-already-exists') {
-						toast.error(...SETTINGS_Msgs.serverIdTaken().toast())
+						toast.error(...tr.toast(SETTINGS_Msgs.serverIdTaken()))
 						return false
 					}
 					if (res.code === 'err:invalid-settings') {
-						toast.error(...SETTINGS_Msgs.invalid(res.message).toast())
+						toast.error(...tr.toast(SETTINGS_Msgs.invalid(res.message)))
 						return false
 					}
-					toast(...SETTINGS_Msgs.serverCreated().toast())
+					toast(...tr.toast(SETTINGS_Msgs.serverCreated()))
 					s.setState({ created: true })
 					return true
 				}

@@ -23,6 +23,7 @@ import * as LC from '@/models/layer-columns'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
@@ -124,7 +125,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
-					<React.Suspense fallback={<p className="text-sm text-muted-foreground">{F_Msgs.loadingEditor().text()}</p>}>
+					<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.loadingEditor())}</p>}>
 						<FilterTextEditor ref={editorRef} stores={props.stores} />
 					</React.Suspense>
 				</div>
@@ -145,7 +146,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>{F_Msgs.reformat().text()}</p>
+							<p>{tr.text(F_Msgs.reformat())}</p>
 						</TooltipContent>
 					</Tooltip>
 
@@ -157,7 +158,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>{F_Msgs.resetFilter().text()}</p>
+							<p>{tr.text(F_Msgs.resetFilter())}</p>
 						</TooltipContent>
 					</Tooltip>
 				</div>
@@ -172,7 +173,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						}}
 						className={triggerClass}
 					>
-						{F_Msgs.textTab().text()}
+						{tr.text(F_Msgs.textTab())}
 					</button>
 					<button
 						type="button"
@@ -180,7 +181,7 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 						onClick={() => setActiveTab('builder')}
 						className={triggerClass}
 					>
-						{F_Msgs.builderTab().text()}
+						{tr.text(F_Msgs.builderTab())}
 					</button>
 				</div>
 			</div>
@@ -287,16 +288,16 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
 	const { addChild, addSeeded, setBlockType } = actions.block
-	const blockTypeOptions = F.BLOCK_TYPES.map((t) => ({
-		value: t,
-		label: F_Msgs.blockTypeNames[t],
-		description: F_Msgs.blockTypeDescriptions[t],
+	const blockTypeOptions = F.BLOCK_TYPES.map((type) => ({
+		value: type,
+		label: tr.text(F_Msgs.blockTypeNames[type]),
+		description: tr.text(F_Msgs.blockTypeDescriptions[type]),
 	}))
 	return (
 		<div className="flex items-center space-x-1">
 			<ComboBox
 				className="w-min"
-				title={F_Msgs.operatorPicker().text()}
+				title={tr.text(F_Msgs.operatorPicker())}
 				value={node.type}
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
@@ -435,11 +436,11 @@ function NodeComment(props: NodeProps) {
 	if (edited) {
 		return (
 			<Textarea
-				aria-label={F_Msgs.nodeComment().text()}
+				aria-label={tr.text(F_Msgs.nodeComment())}
 				autoFocus
 				rows={3}
 				maxLength={F.NODE_COMMENT_MAX_LENGTH}
-				placeholder={F_Msgs.nodeCommentPlaceholder().text()}
+				placeholder={tr.text(F_Msgs.nodeCommentPlaceholder())}
 				defaultValue={comment ?? ''}
 				className="my-1 text-xs"
 				onChange={(e) => setCommentDebounced(e.target.value)}
@@ -552,12 +553,12 @@ export function LeafFilterNode(props: NodeProps) {
 			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<ComboBox
 					allowEmpty={false}
-					title={F_Msgs.modePicker().text()}
+					title={tr.text(F_Msgs.modePicker())}
 					value={node.type}
-					options={F.APPLY_FILTER_TYPES.map((t) => ({
-						value: t,
-						label: F_Msgs.applyFilterTypeNames[t],
-						description: F_Msgs.applyFilterTypeDescriptions[t],
+					options={F.APPLY_FILTER_TYPES.map((type) => ({
+						value: type,
+						label: tr.text(F_Msgs.applyFilterTypeNames[type]),
+						description: tr.text(F_Msgs.applyFilterTypeDescriptions[type]),
 					}))}
 					onSelect={(v) => actions.applyFilter.setType(v as F.ApplyFilterType)}
 				/>
@@ -630,7 +631,7 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 			<ComboBox
 				allowEmpty={false}
 				className={operatorSelectClass}
-				title={F_Msgs.modePicker().text()}
+				title={tr.text(F_Msgs.modePicker())}
 				value={props.node.neg ? 'notin' : 'in'}
 				options={[
 					{ value: 'in', label: F_Msgs.inSetNames.in, description: F_Msgs.inSetDescriptions.in },
@@ -832,7 +833,7 @@ export function Comparison(props: {
 		<ComboBox
 			allowEmpty={false}
 			className={cn(operatorSelectClass, componentStyles)}
-			title={F_Msgs.operatorPicker().text()}
+			title={tr.text(F_Msgs.operatorPicker())}
 			value={F.compOpSelectionKey(node)}
 			options={opOptions.map((o) => ({ value: o.key, label: o.label, description: o.description }))}
 			ref={codeBoxRef}
@@ -916,7 +917,7 @@ export function Comparison(props: {
 				<Button
 					size="icon"
 					variant={!isColumn ? 'secondary' : 'ghost'}
-					title={F_Msgs.compareToValue().text()}
+					title={tr.text(F_Msgs.compareToValue())}
 					onClick={() => setKind('value')}
 				>
 					<TextCursorInput className="h-4 w-4" />
@@ -924,7 +925,7 @@ export function Comparison(props: {
 				<Button
 					size="icon"
 					variant={isColumn ? 'secondary' : 'ghost'}
-					title={F_Msgs.compareToColumn().text()}
+					title={tr.text(F_Msgs.compareToColumn())}
 					onClick={() => setKind('column')}
 				>
 					<Columns3 className="h-4 w-4" />
@@ -968,7 +969,7 @@ export function Comparison(props: {
 					<ComboBox
 						allowEmpty
 						className={componentStyles}
-						title={F_Msgs.columnPicker().text()}
+						title={tr.text(F_Msgs.columnPicker())}
 						value={arg.column}
 						options={comparableColumnOptions()}
 						onSelect={(v) =>
@@ -988,16 +989,20 @@ export function Comparison(props: {
 			return (
 				<div className="flex items-center space-x-1">
 					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>
-						{F_Msgs.nullValue().text()}
+						{tr.text(F_Msgs.nullValue())}
 					</span>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={F_Msgs.whyOnlyNull().text()}>
+							<button
+								type="button"
+								className="text-muted-foreground hover:text-foreground"
+								aria-label={tr.text(F_Msgs.whyOnlyNull())}
+							>
 								<Icons.CircleHelp className="h-4 w-4" />
 							</button>
 						</TooltipTrigger>
 						<TooltipContent className="max-w-xs">
-							<p>{F_Msgs.floatEqNullOnly().react()}</p>
+							<p>{tr.richText(F_Msgs.floatEqNullOnly())}</p>
 						</TooltipContent>
 					</Tooltip>
 				</div>
@@ -1009,7 +1014,7 @@ export function Comparison(props: {
 				<div className="flex items-center space-x-1">
 					{operandKindSelector(index, false)}
 					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>
-						{F_Msgs.nullValue().text()}
+						{tr.text(F_Msgs.nullValue())}
 					</span>
 					{nullToggle(index, true)}
 				</div>
@@ -1043,7 +1048,7 @@ export function Comparison(props: {
 				<ComboBox
 					allowEmpty
 					className={componentStyles}
-					title={F_Msgs.valuePicker().text()}
+					title={tr.text(F_Msgs.valuePicker())}
 					value={value === undefined || value === null ? undefined : String(value)}
 					options={[
 						{ value: 'true', label: 'true' },
@@ -1113,7 +1118,7 @@ export function Comparison(props: {
 			valueBox = (
 				<div className="flex items-center space-x-2">
 					{scalarSlot(1, valueBoxRef)}
-					<span>{F_Msgs.rangeTo().text()}</span>
+					<span>{tr.text(F_Msgs.rangeTo())}</span>
 					{scalarSlot(2)}
 				</div>
 			)
@@ -1162,7 +1167,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 	return (
 		<ComboBox
 			ref={boxRef}
-			title={F_Msgs.filterPicker().text()}
+			title={tr.text(F_Msgs.filterPicker())}
 			options={options}
 			allowEmpty
 			value={props.filterId}
@@ -1298,7 +1303,7 @@ function TeamSpecConfig(props: {
 				<StringInConfig
 					key={teamColumn}
 					title={teamColumn}
-					emptyLabel={F_Msgs.anyTeamColumn(teamColumn).text()}
+					emptyLabel={tr.text(F_Msgs.anyTeamColumn(teamColumn))}
 					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
 					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
@@ -1351,9 +1356,9 @@ export function MatchupConfig(props: {
 				<ComboBox
 					allowEmpty={false}
 					className="w-min"
-					title={F_Msgs.operatorPicker().text()}
+					title={tr.text(F_Msgs.operatorPicker())}
 					value={node.type}
-					options={F.MATCHUP_TYPES.map((t) => ({ value: t, label: F_Msgs.matchupTypeNames[t] }))}
+					options={F.MATCHUP_TYPES.map((type) => ({ value: type, label: tr.text(F_Msgs.matchupTypeNames[type]) }))}
 					onSelect={(v) => actions.setType(v as F.MatchupType)}
 				/>
 			)}
@@ -1370,7 +1375,7 @@ export function MatchupConfig(props: {
 							<Icons.ArrowLeftRight />
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>{F_Msgs.swapSides().text()}</TooltipContent>
+					<TooltipContent>{tr.text(F_Msgs.swapSides())}</TooltipContent>
 				</Tooltip>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -1458,8 +1463,8 @@ function InListConfig(props: {
 			{props.allowColumns && addableColumns.length > 0 && (
 				<ComboBox
 					allowEmpty
-					title={F_Msgs.columnPicker().text()}
-					placeholder={F_Msgs.addColumnPlaceholder().text()}
+					title={tr.text(F_Msgs.columnPicker())}
+					placeholder={tr.text(F_Msgs.addColumnPlaceholder())}
 					value={undefined}
 					options={addableColumns}
 					onSelect={(v) => v && addColumn(v)}
@@ -1514,12 +1519,12 @@ function LayersInConfig(props: {
 			<div className="w-max">
 				<Button size="sm" variant="outline" onClick={() => setOpen(true)} className="w-full">
 					<Icons.Edit className="h-4 w-4 mr-2" />
-					{filteredValues.length === 0 ? F_Msgs.selectLayers().text() : F_Msgs.editLayers().text()}
+					{filteredValues.length === 0 ? tr.text(F_Msgs.selectLayers()) : tr.text(F_Msgs.editLayers())}
 				</Button>
 				<SelectLayersDialog
 					open={open}
 					onOpenChange={setOpen}
-					title={F_Msgs.selectLayers().text()}
+					title={tr.text(F_Msgs.selectLayers())}
 					pinMode="layers"
 					defaultSelected={filteredValues}
 					selectQueueItems={(items) =>

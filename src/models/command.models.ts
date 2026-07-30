@@ -358,6 +358,12 @@ export const COMMAND_DECLARATIONS = {
 		args: [{ kind: 'player', name: 'player', optional: true, describe: 'Lists every flag in the organization when omitted.' }],
 		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
 	}),
+	...declareCommand('pingAdmins', {
+		section: 'moderation',
+		permission: 'ping-admins',
+		defaults: { enabled: true, allowedChats: ['public', 'admin'], triggers: ['admin'], quickReference: true },
+		args: [{ kind: 'text', name: 'message', describe: 'The message you want to send to the admins.' }],
+	}),
 	...declareCommand('warn', {
 		section: 'moderation',
 		permission: 'squad-server:warn-players',

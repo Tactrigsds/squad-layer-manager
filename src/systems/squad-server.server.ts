@@ -24,6 +24,7 @@ import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as I18n from '@/messages/i18n'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -35,11 +36,12 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
 import * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
-import * as SETTINGS from '@/models/settings.models'
+import type * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
 import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
@@ -358,7 +360,7 @@ export const orpcRouter = {
 			}),
 		)
 		if (input.disabled) {
-			await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast(SETTINGS.locale(ctx)))
+			await SquadRcon.broadcast(ctx, ctx.tr.broadcast(SS_Msgs.fogOff()))
 		}
 		return { code: 'ok' as const }
 	}),
@@ -566,7 +568,7 @@ export const orpcRouter = {
 			if (denyRes) return denyRes
 			const reasonRes = resolveReasonInput('kill', input)
 			if (reasonRes.code !== 'ok') return reasonRes
-			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / SM_Msgs.notifyKilled().warn(SETTINGS.locale(ctx)))
+			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / ctx.tr.warn(SM_Msgs.notifyKilled()))
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
 			await killPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reason, reasonRes.applied?.label)
 			return { code: 'ok' as const }
@@ -800,10 +802,14 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		server.processEventsMtx,
 	)
 
+	// hoisted so the translator can follow the server's locale setting, whose payload is mutated in place
+	const serverSettings = Settings.initServerPayload({ ...ctx, cleanup, serverId }, serverState)
+
 	const managedServer: C.ManagedServer = {
 		...CS.init(),
 		serverId,
 		signal,
+		tr: I18n.liveTranslator(() => serverSettings.settings.locale),
 
 		rcon,
 		squadRcon,
@@ -821,7 +827,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			server,
 		}),
 		layerQueue: LayerQueue.initPayload({ ...ctx, cleanup, serverId }, serverState),
-		serverSettings: Settings.initServerPayload({ ...ctx, cleanup, serverId }, serverState),
+		serverSettings,
 		vote: Vote.initVoteContext(cleanup),
 
 		cleanup: cleanup,
@@ -1096,7 +1102,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		const restartedBy = AppEventsSys.restartInfo
 			? await Users.resolveDisplayName(ctx, AppEventsSys.restartInfo.userId, 'someone')
 			: undefined
-		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy).warn(SETTINGS.locale(managedServer)))
+		await SquadRcon.warnAllAdmins({ ...ctx, ...managedServer }, SS_Msgs.slmStarted(restartedBy))
 	}
 }
 
@@ -1167,7 +1173,7 @@ export function resolveReasonInput(
 // the web feed. In-game commands already echo to the invoking admin via reply() (and warn the target), so this
 // fires only for slm-user (web) actors; ingame-user/system actions no-op.
 export async function notifyAdminsOfWebAction(
-	ctx: SR.Ctx & C.Db & CS.AbortSignal,
+	ctx: SR.Ctx & C.Db & CS.AbortSignal & Msgs.Ctx,
 	appEvent: AppEvents.AppEvent,
 	// override the default describeAppEvent phrasing (e.g. squad warns name the squad + faction)
 	description?: string,
@@ -1181,7 +1187,7 @@ export async function notifyAdminsOfWebAction(
 // PLAYER_WARNED server events to the originating action's app event (so they collapse under it in the feed
 // rather than emitting a separate PLAYER_WARNED app event).
 async function sendReasonFollowUpWarn(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & CS.AbortSignal & Msgs.Ctx,
 	appEventId: AppEvents.AppEventId,
 	targets: SM.PlayerId[],
 	message: string,
@@ -1214,7 +1220,7 @@ export async function kickPlayerAction(
 // a plain kick (no timeout): the players are removed and may rejoin immediately. One app event covers the whole
 // batch, and each kick's server event is attributed to it.
 export async function kickPlayersAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1231,7 +1237,7 @@ export async function kickPlayersAction(
 		reason,
 	})
 	await emitAppEvent(ctx, appEvent)
-	const message = SM_Msgs.notifyKicked(reason && AAR.renderAppliedReason(reason)).text()
+	const message = ctx.tr.text(SM_Msgs.notifyKicked(reason && AAR.renderAppliedReason(reason)))
 	for (const target of targets) {
 		await kickPlayerAction(ctx, target, { type: 'event', id: appEvent.id }, message)
 	}
@@ -1239,7 +1245,7 @@ export async function kickPlayersAction(
 }
 
 export async function broadcastAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	message: string,
 	actor: AppEvents.Actor,
 	opts?: { presetLabel?: string },
@@ -1273,7 +1279,7 @@ export async function broadcastAction(
 // event to it, then issues the warns. Emit (persist) precedes arming and the warns so the app event exists before
 // any server event referencing it is saved.
 export async function warnPlayers(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	reason: string,
 	actor: AppEvents.Actor,
@@ -1355,7 +1361,7 @@ async function classifyWarnTargets(ctx: SR.Ctx & CS.AbortSignal, targets: SM.Pla
 // disbands a squad through an app event: records the squad + its members, arms the machine to attribute the
 // resulting SQUAD_DISBANDED server event to the acting user, then issues the disband.
 export async function disbandSquadAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	teamId: SM.TeamId,
 	squadId: SM.SquadId,
 	actor: AppEvents.Actor,
@@ -1399,7 +1405,7 @@ export async function disbandSquadAction(
 
 // removes players from their squads through an app event, attributing each resulting PLAYER_LEFT_SQUAD server event
 export async function removePlayersFromSquad(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,
@@ -1502,7 +1508,7 @@ export async function killPlayersAppEvent(
 }
 
 export async function killPlayersAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 	targets: SM.PlayerId[],
 	actor: AppEvents.Actor,
 	reason?: string,
@@ -1542,7 +1548,7 @@ export async function renameSquadAction(
 
 // demoting a commander has no attributable server event, so this is a pure audit-feed entry
 export async function demoteCommanderAction(
-	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal & Msgs.Ctx,
 	playerId: SM.PlayerId,
 	actor: AppEvents.Actor,
 	reason?: AAR.AppliedReason,

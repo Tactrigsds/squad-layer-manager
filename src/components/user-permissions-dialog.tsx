@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -55,12 +56,12 @@ function NegationBadges(props: { perm: RBAC.TracedPermission }) {
 		<>
 			{props.perm.negated && (
 				<Badge variant="destructive" className="text-xs">
-					{RBAC_Msgs.negatedBadge().text()}
+					{tr.text(RBAC_Msgs.negatedBadge())}
 				</Badge>
 			)}
 			{props.perm.negating && (
 				<Badge variant="outline" className="text-xs border-orange-500 text-orange-700">
-					{RBAC_Msgs.negatingBadge().text()}
+					{tr.text(RBAC_Msgs.negatingBadge())}
 				</Badge>
 			)}
 		</>
@@ -115,10 +116,10 @@ function RoleSection(props: {
 						<Label htmlFor={props.checkboxId} className="font-semibold">
 							{formatRoleName(props.role)}
 						</Label>
-						<p className="text-sm text-muted-foreground">{RBAC_Msgs.rolePermissionCount(props.perms.length).text()}</p>
+						<p className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.rolePermissionCount(props.perms.length))}</p>
 					</div>
 				</div>
-				{props.simulate && !props.enabled && <Badge variant="secondary">{RBAC_Msgs.roleDisabledBadge().text()}</Badge>}
+				{props.simulate && !props.enabled && <Badge variant="secondary">{tr.text(RBAC_Msgs.roleDisabledBadge())}</Badge>}
 			</div>
 
 			{props.enabled && (
@@ -188,11 +189,11 @@ export default function UserPermissionsDialog(props: {
 				<DialogTrigger asChild>{props.children}</DialogTrigger>
 				<DialogContent className="max-w-4xl">
 					<DialogHeader>
-						<DialogTitle>{RBAC_Msgs.userPermissionsTitle().text()}</DialogTitle>
-						<DialogDescription>{RBAC_Msgs.userPermissionsBlurb().text()}</DialogDescription>
+						<DialogTitle>{tr.text(RBAC_Msgs.userPermissionsTitle())}</DialogTitle>
+						<DialogDescription>{tr.text(RBAC_Msgs.userPermissionsBlurb())}</DialogDescription>
 					</DialogHeader>
 					<div className="flex items-center justify-center p-8">
-						<p className="text-muted-foreground">{RBAC_Msgs.loadingUser().text()}</p>
+						<p className="text-muted-foreground">{tr.text(RBAC_Msgs.loadingUser())}</p>
 					</div>
 				</DialogContent>
 			</Dialog>
@@ -217,36 +218,36 @@ export default function UserPermissionsDialog(props: {
 			{props.children}
 			<DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
 				<DialogHeader>
-					<DialogTitle>{RBAC_Msgs.userPermissionsTitle().text()}</DialogTitle>
-					<DialogDescription>{RBAC_Msgs.userPermissionsBlurb().text()}</DialogDescription>
+					<DialogTitle>{tr.text(RBAC_Msgs.userPermissionsTitle())}</DialogTitle>
+					<DialogDescription>{tr.text(RBAC_Msgs.userPermissionsBlurb())}</DialogDescription>
 				</DialogHeader>
 
 				<div className="flex items-center space-x-3 p-4 border rounded-lg bg-muted/50">
 					<Switch checked={simulate} onCheckedChange={setSimulate} id={simulateId} />
 					<Label htmlFor={simulateId} className="text-sm font-medium shrink-0">
-						{RBAC_Msgs.simulate().text()}
+						{tr.text(RBAC_Msgs.simulate())}
 					</Label>
-					<span className="text-xs text-muted-foreground text-balance leading-relaxed">{RBAC_Msgs.simulateBlurb().text()}</span>
+					<span className="text-xs text-muted-foreground text-balance leading-relaxed">{tr.text(RBAC_Msgs.simulateBlurb())}</span>
 				</div>
 
 				<Tabs defaultValue="roles" className="flex-1 overflow-hidden flex flex-col">
 					<TabsList className="grid w-full grid-cols-2">
-						<TabsTrigger value="roles">{RBAC_Msgs.byRoleTab().text()}</TabsTrigger>
-						<TabsTrigger value="permissions">{RBAC_Msgs.allPermissionsTab().text()}</TabsTrigger>
+						<TabsTrigger value="roles">{tr.text(RBAC_Msgs.byRoleTab())}</TabsTrigger>
+						<TabsTrigger value="permissions">{tr.text(RBAC_Msgs.allPermissionsTab())}</TabsTrigger>
 					</TabsList>
 
 					<TabsContent value="permissions" className="flex-1 overflow-auto">
 						<div className="space-y-4">
-							<div className="text-sm text-muted-foreground">{RBAC_Msgs.heldPermissionCount(activePermCount).text()}</div>
+							<div className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.heldPermissionCount(activePermCount))}</div>
 
 							<Table>
 								<TableHeader>
 									<TableRow>
 										{simulate && <TableHead className="w-8" />}
-										<TableHead>{RBAC_Msgs.permissionColumn().text()}</TableHead>
-										<TableHead>{RBAC_Msgs.descriptionColumn().text()}</TableHead>
-										<TableHead>{RBAC_Msgs.scopeColumn().text()}</TableHead>
-										<TableHead>{RBAC_Msgs.grantedByColumn().text()}</TableHead>
+										<TableHead>{tr.text(RBAC_Msgs.permissionColumn())}</TableHead>
+										<TableHead>{tr.text(RBAC_Msgs.descriptionColumn())}</TableHead>
+										<TableHead>{tr.text(RBAC_Msgs.scopeColumn())}</TableHead>
+										<TableHead>{tr.text(RBAC_Msgs.grantedByColumn())}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -298,9 +299,9 @@ export default function UserPermissionsDialog(props: {
 							</Table>
 
 							<section className="space-y-2">
-								<h3 className="text-sm font-semibold">{RBAC_Msgs.unheldPermissionsHeading().text()}</h3>
+								<h3 className="text-sm font-semibold">{tr.text(RBAC_Msgs.unheldPermissionsHeading())}</h3>
 								{unheldPermTypes.length === 0 ? (
-									<p className="text-sm text-muted-foreground">{RBAC_Msgs.holdsEveryPermission().text()}</p>
+									<p className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.holdsEveryPermission())}</p>
 								) : (
 									<div className="space-y-1">
 										{unheldPermTypes.map((permType) => (
@@ -340,10 +341,10 @@ export default function UserPermissionsDialog(props: {
 
 							<section className="space-y-3">
 								<div>
-									<h3 className="text-sm font-semibold">{RBAC_Msgs.unheldRolesHeading().text()}</h3>
-									<p className="text-xs text-muted-foreground">{RBAC_Msgs.unheldRolesBlurb().text()}</p>
+									<h3 className="text-sm font-semibold">{tr.text(RBAC_Msgs.unheldRolesHeading())}</h3>
+									<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.unheldRolesBlurb())}</p>
 								</div>
-								{unheldRoles.length === 0 && <p className="text-sm text-muted-foreground">{RBAC_Msgs.holdsEveryRole().text()}</p>}
+								{unheldRoles.length === 0 && <p className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.holdsEveryRole())}</p>}
 								{unheldRoles.map((role) => {
 									const simulatable = getSimulatableRole(role)
 									const added = !!simulatable && addedRoles.some((a) => Obj.deepEqual(a.role, role))
@@ -377,7 +378,7 @@ export default function UserPermissionsDialog(props: {
 											</div>
 											{!simulatable && (
 												<Badge variant="outline" className="text-xs">
-													{RBAC_Msgs.roleGrantsMore().text()}
+													{tr.text(RBAC_Msgs.roleGrantsMore())}
 												</Badge>
 											)}
 										</div>

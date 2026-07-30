@@ -12,6 +12,7 @@ import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import type * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
@@ -80,43 +81,43 @@ export default function WarnChatBox({
 				...(asPreset ? { presetReasonLabel: asPreset.label } : { reason: text }),
 			})
 			if (res.code !== 'ok') {
-				toast.error(...CHAT_Msgs.sendFailed(res.code).toast())
+				toast.error(...tr.toast(CHAT_Msgs.sendFailed(res.code)))
 				return
 			}
 			setMessage('')
 			draft.reset()
 		} catch (e) {
 			console.error(e)
-			toast.error(...CHAT_Msgs.sendFailed().toast())
+			toast.error(...tr.toast(CHAT_Msgs.sendFailed()))
 		}
 	}
 
 	// orange "targeted warn" accent, matching ServerChatBox's warn-selected channel
 	const accent = 'border-orange-500/60 focus-visible:ring-orange-500/50'
 	const resolvedPlaceholder = warnDenied
-		? CHAT_Msgs.missingPermission().text()
+		? tr.text(CHAT_Msgs.missingPermission())
 		: noTargets
-			? CHAT_Msgs.noOneToWarnPlaceholder().text()
-			: (placeholder ?? CHAT_Msgs.warnPlaceholder().text())
+			? tr.text(CHAT_Msgs.noOneToWarnPlaceholder())
+			: (placeholder ?? tr.text(CHAT_Msgs.warnPlaceholder()))
 
 	return (
 		<div className={cn('flex flex-col gap-1', className)}>
 			<div className="flex items-center self-end gap-2">
 				<label
 					className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-					title={CHAT_Msgs.notifyAdminsHint().text()}
+					title={tr.text(CHAT_Msgs.notifyAdminsHint())}
 				>
 					<Checkbox
 						checked={notifyAdminsChecked}
 						onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
 						className="h-3.5 w-3.5"
 					/>
-					{CHAT_Msgs.notifyAdmins().text()}
+					{tr.text(CHAT_Msgs.notifyAdmins())}
 				</label>
 				{username && (
 					<label
 						className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-						title={CHAT_Msgs.prefixNameHint().text()}
+						title={tr.text(CHAT_Msgs.prefixNameHint())}
 					>
 						<Checkbox checked={prefixName} onCheckedChange={(checked: boolean) => setPrefixName(checked)} className="h-3.5 w-3.5" />
 						{username}:
@@ -155,7 +156,7 @@ export default function WarnChatBox({
 					className={cn('h-auto self-stretch w-7 p-0 shrink-0 text-orange-400', accent)}
 					onClick={() => void send()}
 					disabled={sendDisabled}
-					title={CHAT_Msgs.sendWarningHint().text()}
+					title={tr.text(CHAT_Msgs.sendWarningHint())}
 				>
 					{pending ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Send className="h-3.5 w-3.5" />}
 				</Button>

@@ -6,6 +6,7 @@ import * as Zus from '@/lib/zustand'
 import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import type * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 import ComboBox, { type ComboBoxHandle } from './combo-box/combo-box'
@@ -48,9 +49,9 @@ export function WarnReasonsSub(props: {
 			<Sub>
 				<SubTrigger disabled={disabled}>{label}</SubTrigger>
 				<SubContent>
-					<Item onClick={props.onCustom}>{AAR_Msgs.customReason().text()}</Item>
+					<Item onClick={props.onCustom}>{tr.text(AAR_Msgs.customReason())}</Item>
 					<Separator />
-					<Item onClick={props.onPreset}>{AAR_Msgs.presetReasonItem().text()}</Item>
+					<Item onClick={props.onPreset}>{tr.text(AAR_Msgs.presetReasonItem())}</Item>
 				</SubContent>
 			</Sub>
 		</PermissionDeniedTooltip>
@@ -97,7 +98,7 @@ export function ReasonPicker(props: {
 		// why instead of silently rendering nothing
 		if (props.required) {
 			return (
-				<p className="text-xs text-destructive">{AAR_Msgs.noReasonsConfigured(AAR.ADMIN_ACTIONS[props.action].displayName).text()}</p>
+				<p className="text-xs text-destructive">{tr.text(AAR_Msgs.noReasonsConfigured(AAR.ADMIN_ACTIONS[props.action].displayName))}</p>
 			)
 		}
 		return null
@@ -108,24 +109,26 @@ export function ReasonPicker(props: {
 	return (
 		<div className="grid gap-2">
 			<Label>
-				{AAR_Msgs.reasonLabel(
-					props.required ? (
-						<span className="text-destructive">{AAR_Msgs.reasonRequired().text()}</span>
-					) : (
-						<span className="text-muted-foreground">{AAR_Msgs.reasonOptional().text()}</span>
+				{tr.richText(
+					AAR_Msgs.reasonLabel(
+						props.required ? (
+							<span className="text-destructive">{tr.text(AAR_Msgs.reasonRequired())}</span>
+						) : (
+							<span className="text-muted-foreground">{tr.text(AAR_Msgs.reasonOptional())}</span>
+						),
 					),
-				).react()}
+				)}
 			</Label>
 			{reasons.length > 0 && (
 				<ComboBox
 					ref={comboRef}
-					title={AAR_Msgs.reasonPicker().text()}
+					title={tr.text(AAR_Msgs.reasonPicker())}
 					className="w-full"
 					value={selected}
 					// configured order, with Custom/None pinned first
 					sort={false}
 					options={[
-						{ value: CUSTOM, label: allowCustom ? AAR_Msgs.customReason().text() : AAR_Msgs.noReason().text() },
+						{ value: CUSTOM, label: allowCustom ? tr.text(AAR_Msgs.customReason()) : tr.text(AAR_Msgs.noReason()) },
 						...reasons.map((reason) => ({
 							value: reason.label,
 							keywords: reason.keywords,
@@ -142,7 +145,7 @@ export function ReasonPicker(props: {
 			{customVisible && (
 				<Input
 					autoComplete="off"
-					placeholder={AAR_Msgs.enterReason().text()}
+					placeholder={tr.text(AAR_Msgs.enterReason())}
 					defaultValue={props.customRef!.current}
 					onChange={(e) => {
 						props.customRef!.current = e.target.value
@@ -184,7 +187,7 @@ export function ReasonMessagePreview(props: {
 
 	return (
 		<div className="grid gap-1">
-			<span className="text-xs text-muted-foreground">{AAR_Msgs.messagePreview().text()}</span>
+			<span className="text-xs text-muted-foreground">{tr.text(AAR_Msgs.messagePreview())}</span>
 			<MessagePreviewBox>{text}</MessagePreviewBox>
 		</div>
 	)

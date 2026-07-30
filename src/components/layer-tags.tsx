@@ -26,6 +26,7 @@ import * as LTag from '@/models/layer-tags.models'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -121,7 +122,7 @@ function TagChip(props: {
 				</HoverCardTrigger>
 				<button
 					type="button"
-					title={LTag_Msgs.removeTag(tag.label).text()}
+					title={tr.text(LTag_Msgs.removeTag(tag.label))}
 					disabled={props.disabled}
 					onClick={props.onRemove}
 					className="ml-0.5 opacity-60 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
@@ -131,7 +132,7 @@ function TagChip(props: {
 			</span>
 			<HoverCardContent className="w-64 space-y-2 p-3">
 				{tag.deleted ? (
-					<p className="text-xs text-muted-foreground">{LTag_Msgs.deletedTag().text()}</p>
+					<p className="text-xs text-muted-foreground">{tr.text(LTag_Msgs.deletedTag())}</p>
 				) : (
 					<>
 						<p className="text-sm font-medium" style={{ color: tag.color }}>
@@ -141,18 +142,18 @@ function TagChip(props: {
 							{tag.description ? (
 								<RichText text={tag.description} />
 							) : (
-								<span className="italic">{LTag_Msgs.noDescription().text()}</span>
+								<span className="italic">{tr.text(LTag_Msgs.noDescription())}</span>
 							)}
 						</p>
 						{props.canManage && (
 							<Button variant="outline" size="sm" className="h-6 w-full text-xs" onClick={props.onEdit}>
 								<Icons.Pencil className="mr-1 h-3 w-3" />
-								{LTag_Msgs.editTag().text()}
+								{tr.text(LTag_Msgs.editTag())}
 							</Button>
 						)}
 					</>
 				)}
-				{props.setBy !== undefined && <UserLabel userId={props.setBy} label={LTag_Msgs.taggedBy().text()} />}
+				{props.setBy !== undefined && <UserLabel userId={props.setBy} label={tr.text(LTag_Msgs.taggedBy())} />}
 			</HoverCardContent>
 		</HoverCard>
 	)
@@ -175,7 +176,7 @@ function AddTagDropdown(props: {
 				<Button
 					variant="ghost"
 					size="sm"
-					title={LTag_Msgs.addTag().text()}
+					title={tr.text(LTag_Msgs.addTag())}
 					className={cn(
 						'h-4 shrink-0 px-1 text-xs text-muted-foreground font-normal',
 						props.labelled ? 'gap-0.5' : 'w-4 px-0',
@@ -187,7 +188,7 @@ function AddTagDropdown(props: {
 					)}
 				>
 					<TagPlus className="h-3 w-3" />
-					{props.labelled && <span>{LTag_Msgs.addTagInline().text()}</span>}
+					{props.labelled && <span>{tr.text(LTag_Msgs.addTagInline())}</span>}
 				</Button>
 			</DropdownMenuTrigger>
 			{/* a description runs to note length, so the menu holds it to one clipped line and reads in full on the chip's hover card */}
@@ -201,13 +202,13 @@ function AddTagDropdown(props: {
 						</span>
 					</DropdownMenuItem>
 				))}
-				{available.length === 0 && <DropdownMenuItem disabled>{LTag_Msgs.noTagsAvailable().text()}</DropdownMenuItem>}
+				{available.length === 0 && <DropdownMenuItem disabled>{tr.text(LTag_Msgs.noTagsAvailable())}</DropdownMenuItem>}
 				{props.canManage && (
 					<>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem onSelect={props.onCreate}>
 							<Icons.Plus className="mr-2 h-3 w-3" />
-							{LTag_Msgs.newTagItem().text()}
+							{tr.text(LTag_Msgs.newTagItem())}
 						</DropdownMenuItem>
 					</>
 				)}
@@ -251,11 +252,11 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 					props.onClose()
 					return
 				}
-				if (res.code === 'err:duplicate-label') toast.error(...LTag_Msgs.duplicateLabel(res.message).toast())
-				else if (res.code === 'err:invalid-settings') toast.error(...LTag_Msgs.invalidTag(res.message).toast())
+				if (res.code === 'err:duplicate-label') toast.error(...tr.toast(LTag_Msgs.duplicateLabel(res.message)))
+				else if (res.code === 'err:invalid-settings') toast.error(...tr.toast(LTag_Msgs.invalidTag(res.message)))
 				else RbacClient.handlePermissionDenied(res)
 			},
-			onError: () => toast.error(...LTag_Msgs.saveFailed().toast()),
+			onError: () => toast.error(...tr.toast(LTag_Msgs.saveFailed())),
 		}),
 	)
 
@@ -276,35 +277,35 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle>{isNew ? LTag_Msgs.newTagTitle().text() : LTag_Msgs.editTag().text()}</DialogTitle>
-				<DialogDescription>{isNew ? LTag_Msgs.newTagBlurb().text() : LTag_Msgs.editTagBlurb().text()}</DialogDescription>
+				<DialogTitle>{isNew ? tr.text(LTag_Msgs.newTagTitle()) : tr.text(LTag_Msgs.editTag())}</DialogTitle>
+				<DialogDescription>{isNew ? tr.text(LTag_Msgs.newTagBlurb()) : tr.text(LTag_Msgs.editTagBlurb())}</DialogDescription>
 			</DialogHeader>
 			<div className="space-y-3">
 				<div className="space-y-1">
-					<Label htmlFor="layer-tag-label">{LTag_Msgs.labelColumn().text()}</Label>
+					<Label htmlFor="layer-tag-label">{tr.text(LTag_Msgs.labelColumn())}</Label>
 					<Input
 						id="layer-tag-label"
 						autoFocus
 						defaultValue={existing?.label ?? ''}
 						maxLength={LTag.MAX_LABEL_LENGTH}
 						onChange={(e) => setLabel(e.target.value)}
-						placeholder={LTag_Msgs.labelPlaceholder().text()}
+						placeholder={tr.text(LTag_Msgs.labelPlaceholder())}
 					/>
-					{duplicate && <p className="text-xs text-destructive">{LTag_Msgs.duplicateLabelInline(trimmed).text()}</p>}
+					{duplicate && <p className="text-xs text-destructive">{tr.text(LTag_Msgs.duplicateLabelInline(trimmed))}</p>}
 				</div>
 				<div className="space-y-1">
-					<Label htmlFor="layer-tag-description">{LTag_Msgs.descriptionColumn().text()}</Label>
+					<Label htmlFor="layer-tag-description">{tr.text(LTag_Msgs.descriptionColumn())}</Label>
 					<Textarea
 						id="layer-tag-description"
 						ref={descriptionRef}
 						defaultValue={existing?.description ?? ''}
 						maxLength={LTag.MAX_DESCRIPTION_LENGTH}
 						className="min-h-16 text-sm"
-						placeholder={LTag_Msgs.descriptionPlaceholder().text()}
+						placeholder={tr.text(LTag_Msgs.descriptionPlaceholder())}
 					/>
 				</div>
 				<div className="space-y-1">
-					<Label htmlFor="layer-tag-color">{LTag_Msgs.colorColumn().text()}</Label>
+					<Label htmlFor="layer-tag-color">{tr.text(LTag_Msgs.colorColumn())}</Label>
 					<div className="flex items-start space-x-2">
 						<HexColorPicker color={color} onChange={setColorFromPicker} style={{ width: 140, height: 110 }} />
 						<div className="space-y-1">
@@ -320,7 +321,7 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 								className="inline-flex items-center rounded-sm border px-1 text-xs leading-4"
 								style={{ borderColor: `${color}80`, backgroundColor: `${color}1a`, color }}
 							>
-								{trimmed || LTag_Msgs.previewLabel().text()}
+								{trimmed || tr.text(LTag_Msgs.previewLabel())}
 							</span>
 						</div>
 					</div>
@@ -328,10 +329,10 @@ function LayerTagDialogBody(props: { state: LTag.Tag | 'new'; onClose: () => voi
 			</div>
 			<DialogFooter>
 				<Button variant="outline" onClick={props.onClose}>
-					{LTag_Msgs.cancel().text()}
+					{tr.text(LTag_Msgs.cancel())}
 				</Button>
 				<Button disabled={!canSave} onClick={submit}>
-					{isNew ? LTag_Msgs.create().text() : LTag_Msgs.save().text()}
+					{isNew ? tr.text(LTag_Msgs.create()) : tr.text(LTag_Msgs.save())}
 				</Button>
 			</DialogFooter>
 		</>

@@ -5,8 +5,8 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
-import type * as Msgs from '@/messages/shared'
 import * as SM_Msgs from '@/messages/squad.messages'
+import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import type * as BM from '@/models/battlemetrics.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
@@ -17,6 +17,7 @@ import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
@@ -120,7 +121,7 @@ export function PlayerOpenLinksSub({
 	]
 	return (
 		<Sub>
-			<SubTrigger>{SM_Msgs.openLinks().text()}</SubTrigger>
+			<SubTrigger>{tr.text(SM_Msgs.openLinks())}</SubTrigger>
 			<SubContent>
 				{links.map(({ label, urls }) => (
 					<Item key={label} disabled={urls.length === 0} onClick={() => openAll(urls)}>
@@ -153,11 +154,11 @@ export function PlayerCopyIdsSub({
 	]
 	const copyAll = (label: string, values: string[]) => {
 		void navigator.clipboard.writeText(values.join('\n'))
-		toast(...SM_Msgs.copiedToClipboard(label, values.length).toast())
+		toast(...tr.toast(SM_Msgs.copiedToClipboard(label, values.length)))
 	}
 	return (
 		<Sub>
-			<SubTrigger>{SM_Msgs.copyIds().text()}</SubTrigger>
+			<SubTrigger>{tr.text(SM_Msgs.copyIds())}</SubTrigger>
 			<SubContent>
 				{ids.map(({ label, values }) => (
 					<Item key={label} disabled={values.length === 0} onClick={() => copyAll(label, values)}>
@@ -192,13 +193,13 @@ export function TimeoutDialogContent({
 	return (
 		<div className="grid gap-3 py-2">
 			<div className="grid gap-2">
-				<Label htmlFor="timeout-duration">{SM_Msgs.timeoutDurationLabel().text()}</Label>
+				<Label htmlFor="timeout-duration">{tr.text(SM_Msgs.timeoutDurationLabel())}</Label>
 				<Input
 					id="timeout-duration"
 					autoComplete="off"
-					placeholder={SM_Msgs.timeoutDurationPlaceholder(
-						maxTimeout == null ? undefined : ZodUtils.formatHumanTime(maxTimeout),
-					).text()}
+					placeholder={tr.text(
+						SM_Msgs.timeoutDurationPlaceholder(maxTimeout == null ? undefined : ZodUtils.formatHumanTime(maxTimeout)),
+					)}
 					defaultValue={durationRef.current}
 					onChange={(e) => {
 						durationRef.current = e.target.value
@@ -309,7 +310,7 @@ export function PlayerMenuItems({
 		},
 	)
 
-	const msgTarget: Msgs.Target = { kind: 'player', username: playerInfo?.username }
+	const msgTarget: Tgt.Target = { kind: 'player', username: playerInfo?.username }
 
 	const existingSwap = Zus.useStore(stores.squadServer, (s) => TSWClient.Sel.localState(s).editedSwaps.get(playerId) ?? null)
 
@@ -329,7 +330,7 @@ export function PlayerMenuItems({
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-				const msg = TSW_Msgs.swapNow(msgTarget, otherTeam).confirm()
+				const msg = tr.confirm(TSW_Msgs.swapNow(msgTarget, otherTeam))
 				const result = await openDialog({
 					title: msg.title,
 					variant: 'destructive',
@@ -337,7 +338,7 @@ export function PlayerMenuItems({
 					buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 				})
 				if (result === 'dismissed') {
-					toast.warning(...TSW_Msgs.swapCancelled(msgTarget).toast())
+					toast.warning(...tr.toast(TSW_Msgs.swapCancelled(msgTarget)))
 					return
 				}
 				if (result !== 'confirm') return
@@ -353,7 +354,7 @@ export function PlayerMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.kill(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.kill(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -375,10 +376,10 @@ export function PlayerMenuItems({
 			if (!input) return
 			const res = await killMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.kill(msgTarget).toast())
+			toast(...tr.toast(SM_Msgs.kill(msgTarget)))
 		})
 	}
 
@@ -386,7 +387,7 @@ export function PlayerMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.kick(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.kick(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -408,10 +409,10 @@ export function PlayerMenuItems({
 			if (!input) return
 			const res = await kickMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.kick(msgTarget).toast())
+			toast(...tr.toast(SM_Msgs.kick(msgTarget)))
 		})
 	}
 
@@ -420,7 +421,7 @@ export function PlayerMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.timeout(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.timeout(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -439,11 +440,11 @@ export function PlayerMenuItems({
 			if (result !== 'confirm') return
 			const durationMs = ZodUtils.tryParseHumanTimeToken(timeoutDurationRef.current.trim())
 			if (durationMs === undefined) {
-				toast.error(...SM_Msgs.invalidTimeoutDuration().toast())
+				toast.error(...tr.toast(SM_Msgs.invalidTimeoutDuration()))
 				return
 			}
 			if (typeof maxTimeout === 'number' && durationMs > maxTimeout) {
-				toast.error(...SM_Msgs.timeoutTooLong(ZodUtils.formatHumanTime(maxTimeout)).toast())
+				toast.error(...tr.toast(SM_Msgs.timeoutTooLong(ZodUtils.formatHumanTime(maxTimeout))))
 				return
 			}
 			const input = SquadServerClient.readReasonInput({
@@ -455,10 +456,10 @@ export function PlayerMenuItems({
 			if (!input) return
 			const res = await timeoutMutation.mutateAsync({ serverId, playerId, durationMs, ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.timeoutFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.timeoutFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.timedOut(msgTarget, ZodUtils.formatHumanTime(durationMs)).toast())
+			toast(...tr.toast(SM_Msgs.timedOut(msgTarget, ZodUtils.formatHumanTime(durationMs))))
 		})
 	}
 
@@ -470,7 +471,7 @@ export function PlayerMenuItems({
 
 	async function warnPreset() {
 		presetReasonRef.current = ''
-		const msg = SM_Msgs.warnPreset(msgTarget).confirm()
+		const msg = tr.confirm(SM_Msgs.warnPreset(msgTarget))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -486,22 +487,22 @@ export function PlayerMenuItems({
 		if (!input) return
 		const res = await warnPlayersMutation.mutateAsync({ serverId, playerIds: [playerId], ...input })
 		if (res.code !== 'ok') {
-			toast.error(...SM_Msgs.warnFailed('msg' in res ? res.msg : res.code).toast())
+			toast.error(...tr.toast(SM_Msgs.warnFailed('msg' in res ? res.msg : res.code)))
 			return
 		}
-		toast(...SM_Msgs.warned(msgTarget, presetReasonRef.current).toast())
+		toast(...tr.toast(SM_Msgs.warned(msgTarget, presetReasonRef.current)))
 	}
 
 	function copyTeleportCommand() {
 		void navigator.clipboard.writeText(`AdminTeleportToPlayer ${playerId}`)
-		toast(...SM_Msgs.copiedToClipboard('Teleport command').toast())
+		toast(...tr.toast(SM_Msgs.copiedToClipboard('Teleport command')))
 	}
 
 	async function removeFromSquad() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('REMOVING_FROM_SQUAD', async () => {
-			const msg = SM_Msgs.removeFromSquad(msgTarget, playerInfo?.squadName ? `"${playerInfo.squadName}"` : undefined).confirm()
+			const msg = tr.confirm(SM_Msgs.removeFromSquad(msgTarget, playerInfo?.squadName ? `"${playerInfo.squadName}"` : undefined))
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -525,7 +526,7 @@ export function PlayerMenuItems({
 		const { squadId, teamId, squadName } = playerInfo
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DISBANDING_SQUAD', async () => {
-			const msg = SM_Msgs.disbandSquad(squadName ? `"${squadName}"` : `squad ${squadId}`, teamId).confirm()
+			const msg = tr.confirm(SM_Msgs.disbandSquad(squadName ? `"${squadName}"` : `squad ${squadId}`, teamId))
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -553,7 +554,7 @@ export function PlayerMenuItems({
 		if (playerInfo?.squadId === null || playerInfo?.squadId === undefined || !playerInfo.teamId) return
 		const { squadId, teamId, squadName } = playerInfo
 		await UPClient.Actions.withPlayerDialogue('RESETTING_SQUAD_NAME', async () => {
-			const msg = SM_Msgs.resetSquadName(squadName ? `"${squadName}"` : `squad ${squadId}`).confirm()
+			const msg = tr.confirm(SM_Msgs.resetSquadName(squadName ? `"${squadName}"` : `squad ${squadId}`))
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -568,7 +569,7 @@ export function PlayerMenuItems({
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DEMOTING_COMMANDER', async () => {
-			const msg = SM_Msgs.demoteCommander().confirm()
+			const msg = tr.confirm(SM_Msgs.demoteCommander())
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -606,7 +607,7 @@ export function PlayerMenuItems({
 							SquadServerFrame.Actions.selectSquad(stores, playerId)
 						}}
 					>
-						{SM_Msgs.selectSquad(playerInfo?.squadName ?? undefined).text()}
+						{tr.text(SM_Msgs.selectSquad(playerInfo?.squadName ?? undefined))}
 						<ContextMenuShortcut>{SM_Msgs.shortcuts.squadCell.team}</ContextMenuShortcut>
 					</Item>
 				)}
@@ -618,7 +619,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.selectAllWithRole(stores, playerInfo.role, teamId)
 					}}
 				>
-					{SM_Msgs.selectRole(playerInfo?.role ?? undefined).text()}
+					{tr.text(SM_Msgs.selectRole(playerInfo?.role ?? undefined))}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.roleCell)}</ContextMenuShortcut>
 				</Item>
 				<Item
@@ -629,7 +630,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.selectGroup(stores, group, teamId)
 					}}
 				>
-					{SM_Msgs.selectGroup(group ?? undefined).text()}
+					{tr.text(SM_Msgs.selectGroup(group ?? undefined))}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.groupCell)}</ContextMenuShortcut>
 				</Item>
 				<Item
@@ -639,7 +640,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.selectAllSquadLeaders(stores, teamId)
 					}}
 				>
-					{SM_Msgs.selectSquadLeaders().text()}
+					{tr.text(SM_Msgs.selectSquadLeaders())}
 				</Item>
 				<Item
 					disabled={!playerInfo?.isAdmin || teamMissing}
@@ -648,7 +649,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.selectAllAdmins(stores, teamId)
 					}}
 				>
-					{SM_Msgs.selectAdmins().text()}
+					{tr.text(SM_Msgs.selectAdmins())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.adminBadge)}</ContextMenuShortcut>
 				</Item>
 				<Item
@@ -658,7 +659,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.selectAllInAdminCam(stores, teamId)
 					}}
 				>
-					{SM_Msgs.selectInAdminCam().text()}
+					{tr.text(SM_Msgs.selectInAdminCam())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.cameraIcon)}</ContextMenuShortcut>
 				</Item>
 				<Item
@@ -668,7 +669,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.selectAllTeamPlayers(stores, teamId)
 					}}
 				>
-					{SM_Msgs.selectAllPlayers().text()}
+					{tr.text(SM_Msgs.selectAllPlayers())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.selectAllBox)}</ContextMenuShortcut>
 				</Item>
 				<Item
@@ -678,7 +679,7 @@ export function PlayerMenuItems({
 						SquadServerFrame.Actions.invertSelection(stores, teamId)
 					}}
 				>
-					{SM_Msgs.invert().text()}
+					{tr.text(SM_Msgs.invert())}
 					<ContextMenuShortcut>{sc(SM_Msgs.shortcuts.invertBox)}</ContextMenuShortcut>
 				</Item>
 			</>
@@ -689,7 +690,7 @@ export function PlayerMenuItems({
 		<>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={() => TSWClient.Actions.swapNext(stores, [playerId])} disabled={!!manageDenied || !otherTeam || !canQueue}>
-					{SM_Msgs.swapNextLabel().text()}
+					{tr.text(SM_Msgs.swapNextLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
@@ -699,7 +700,7 @@ export function PlayerMenuItems({
 					onClick={swapNow}
 					disabled={!!manageDenied || !otherTeam || !canSwapNow}
 				>
-					{SM_Msgs.swapNowLabel().text()}
+					{tr.text(SM_Msgs.swapNowLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -708,7 +709,7 @@ export function PlayerMenuItems({
 					onClick={kill}
 					disabled={!!manageDenied || !otherTeam || !canSwapNow}
 				>
-					{SM_Msgs.killLabel().text()}
+					{tr.text(SM_Msgs.killLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
@@ -717,7 +718,7 @@ export function PlayerMenuItems({
 					onClick={kick}
 					disabled={!!kickDenied || !isOnServer}
 				>
-					{SM_Msgs.kickLabel().text()}
+					{tr.text(SM_Msgs.kickLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
@@ -726,53 +727,53 @@ export function PlayerMenuItems({
 					onClick={timeout}
 					disabled={!!timeoutDenied || !isOnServer}
 				>
-					{SM_Msgs.timeoutLabel().text()}
+					{tr.text(SM_Msgs.timeoutLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={() => TSWClient.Actions.removeSwap(stores, [playerId])} disabled={!!manageDenied || !existingSwap}>
-					{SM_Msgs.deleteSwapLabel().text()}
+					{tr.text(SM_Msgs.deleteSwapLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			{!omitWarn && <WarnReasonsSub slots={slots} denied={warnDenied} disabled={!isOnServer} onCustom={warn} onPreset={warnPreset} />}
 			<PlayerFlagsMenuItem slots={slots} playerId={playerId} />
 			<Item onClick={copyTeleportCommand} disabled={!isOnServer}>
-				{SM_Msgs.copyTeleportCommand().text()}
+				{tr.text(SM_Msgs.copyTeleportCommand())}
 			</Item>
 			<Separator />
 			<PlayerOpenLinksSub playerIds={[playerId]} slots={slots} stores={stores} />
 			<PlayerCopyIdsSub playerIds={[playerId]} slots={slots} stores={stores} />
 			<Separator />
 			<Sub>
-				<SubTrigger disabled={!isOnServer}>{SM_Msgs.selectFromTeam().text()}</SubTrigger>
+				<SubTrigger disabled={!isOnServer}>{tr.text(SM_Msgs.selectFromTeam())}</SubTrigger>
 				<SubContent>{selectItems('team')}</SubContent>
 			</Sub>
 			<Sub>
-				<SubTrigger disabled={!isOnServer}>{SM_Msgs.selectAll().text()}</SubTrigger>
+				<SubTrigger disabled={!isOnServer}>{tr.text(SM_Msgs.selectAll())}</SubTrigger>
 				<SubContent>{selectItems('all')}</SubContent>
 			</Sub>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={removeFromSquad} disabled={!!manageDenied || !inSquad}>
-					{SM_Msgs.removeFromSquadLabel().text()}
+					{tr.text(SM_Msgs.removeFromSquadLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !inSquad}>
-					{SM_Msgs.disbandSquadLabel().text()}
+					{tr.text(SM_Msgs.disbandSquadLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={resetSquadName} disabled={!!manageDenied || !inSquad}>
-					{SM_Msgs.resetSquadNameLabel().text()}
+					{tr.text(SM_Msgs.resetSquadNameLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={demoteCommander} disabled={!!manageDenied || !playerInfo?.isCommander}>
-					{SM_Msgs.demoteCommanderLabel().text()}
+					{tr.text(SM_Msgs.demoteCommanderLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 		</>

@@ -10,6 +10,7 @@ import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as DndKit from '@/systems/dndkit.client'
+import { tr } from '@/systems/messages.client'
 
 type Config = LC.LayerGenerationConfig
 type WeightEntry = { value: string; weight: number }
@@ -67,7 +68,7 @@ export default function LayerGenerationConfigEditor({
 		<div className="space-y-5">
 			<PickOrderSection value={value} onChange={onChange} />
 			{pickOrder.length === 0 ? (
-				<p className="text-xs text-muted-foreground">{LC_Msgs.noPicksConfigured().text()}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(LC_Msgs.noPicksConfigured())}</p>
 			) : (
 				pickOrder.map((key, idx) =>
 					LC.isMatchupKey(key) ? (
@@ -93,12 +94,12 @@ export default function LayerGenerationConfigEditor({
 			)}
 			{unpicked.length > 0 && (
 				<div className="space-y-1.5">
-					<SectionLabel hint={LC_Msgs.unusedWeightsHint().text()}>{LC_Msgs.unusedWeightsHeading().text()}</SectionLabel>
+					<SectionLabel hint={tr.text(LC_Msgs.unusedWeightsHint())}>{tr.text(LC_Msgs.unusedWeightsHeading())}</SectionLabel>
 					{unpicked.map((key) => (
 						<div key={key} className="flex items-center gap-2 text-sm">
 							<span className="font-mono">{pickLabel(key)}</span>
 							<span className="text-xs text-muted-foreground">
-								{weightCount(value, key)} {LC_Msgs.weightedCount().text()}
+								{weightCount(value, key)} {tr.text(LC_Msgs.weightedCount())}
 							</span>
 							<Button
 								type="button"
@@ -107,7 +108,7 @@ export default function LayerGenerationConfigEditor({
 								className="h-6 text-destructive"
 								onClick={() => (LC.isMatchupKey(key) ? setMatchupWeights(key, []) : setWeights(key, undefined))}
 							>
-								{LC_Msgs.discardWeights().text()}
+								{tr.text(LC_Msgs.discardWeights())}
 							</Button>
 						</div>
 					))}
@@ -165,8 +166,8 @@ function PickOrderSection({ value, onChange }: { value: Config; onChange: (next:
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint={LC_Msgs.pickOrderHint().text()}>{LC_Msgs.pickOrderHeading().text()}</SectionLabel>
-			{pickOrder.length === 0 && <p className="text-xs text-muted-foreground">{LC_Msgs.emptyPickOrder().text()}</p>}
+			<SectionLabel hint={tr.text(LC_Msgs.pickOrderHint())}>{tr.text(LC_Msgs.pickOrderHeading())}</SectionLabel>
+			{pickOrder.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(LC_Msgs.emptyPickOrder())}</p>}
 			<ol>
 				{pickOrder.map((key, idx) => (
 					<React.Fragment key={key}>
@@ -177,7 +178,7 @@ function PickOrderSection({ value, onChange }: { value: Config; onChange: (next:
 				{pickOrder.length > 0 && <PickDropSeparator position="after" pickKey={pickOrder[pickOrder.length - 1]} />}
 			</ol>
 			<ComboBox
-				title={LC_Msgs.addPick().text()}
+				title={tr.text(LC_Msgs.addPick())}
 				value={undefined}
 				options={addOptions}
 				onSelect={(key) => {
@@ -218,7 +219,7 @@ function PickRow({
 				type="button"
 				ref={drag.handleRef}
 				className="cursor-grab rounded text-muted-foreground"
-				aria-label={LC_Msgs.dragToReorder().text()}
+				aria-label={tr.text(LC_Msgs.dragToReorder())}
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
@@ -266,24 +267,24 @@ function WeightsSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint={LC_Msgs.columnWeightsHint(pickOrder, column, LC.DEFAULT_GENERATION_WEIGHT).text()}>
-				{column} {LC_Msgs.weightsHeading().text()}
+			<SectionLabel hint={tr.text(LC_Msgs.columnWeightsHint(pickOrder, column, LC.DEFAULT_GENERATION_WEIGHT))}>
+				{column} {tr.text(LC_Msgs.weightsHeading())}
 			</SectionLabel>
 			{entries.length > 0 && (
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
 							<th scope="col" className="text-left font-normal">
-								{LC_Msgs.valueColumn().text()}
+								{tr.text(LC_Msgs.valueColumn())}
 							</th>
 							<th scope="col" className="text-left font-normal">
-								{LC_Msgs.weightColumn().text()}
+								{tr.text(LC_Msgs.weightColumn())}
 							</th>
 							<th scope="col" className="text-right font-normal">
-								{LC_Msgs.shareColumn().text()}
+								{tr.text(LC_Msgs.shareColumn())}
 							</th>
 							<th scope="col" className="sr-only">
-								{LC_Msgs.removeColumn().text()}
+								{tr.text(LC_Msgs.removeColumn())}
 							</th>
 						</tr>
 					</thead>
@@ -296,9 +297,9 @@ function WeightsSection({
 									{!possibleValues.includes(entry.value) && (
 										<span
 											className="ml-1.5 text-xs font-sans text-muted-foreground"
-											title={LC_Msgs.noLayersWithValue(column).text()}
+											title={tr.text(LC_Msgs.noLayersWithValue(column))}
 										>
-											{LC_Msgs.unknownValue().text()}
+											{tr.text(LC_Msgs.unknownValue())}
 										</span>
 									)}
 								</td>
@@ -316,7 +317,7 @@ function WeightsSection({
 										size="icon"
 										variant="ghost"
 										className="h-6 w-6 text-destructive"
-										aria-label={LC_Msgs.removeWeight(entry.value).text()}
+										aria-label={tr.text(LC_Msgs.removeWeight(entry.value))}
 										onClick={() => remove(entry.value)}
 									>
 										<Icons.X className="h-4 w-4" />
@@ -328,7 +329,7 @@ function WeightsSection({
 				</table>
 			)}
 			<ComboBox
-				title={LC_Msgs.addValue(column).text()}
+				title={tr.text(LC_Msgs.addValue(column))}
 				value={undefined}
 				options={addOptions}
 				onSelect={(value) => {
@@ -373,28 +374,28 @@ function MatchupWeightsSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint={LC_Msgs.matchupWeightsHint(pickOrder, LC.DEFAULT_GENERATION_WEIGHT).text()}>
-				{pickLabel(matchup)} {LC_Msgs.weightsHeading().text()}
+			<SectionLabel hint={tr.text(LC_Msgs.matchupWeightsHint(pickOrder, LC.DEFAULT_GENERATION_WEIGHT))}>
+				{pickLabel(matchup)} {tr.text(LC_Msgs.weightsHeading())}
 			</SectionLabel>
 			{entries.length > 0 && (
 				<table className="w-full max-w-[32rem] text-sm">
 					<thead>
 						<tr className="text-xs text-muted-foreground">
 							<th scope="col" className="text-left font-normal">
-								{LC_Msgs.matchupColumn().text()}
+								{tr.text(LC_Msgs.matchupColumn())}
 							</th>
 							<th scope="col" className="text-left font-normal">
-								{LC_Msgs.weightColumn().text()}
+								{tr.text(LC_Msgs.weightColumn())}
 							</th>
 							<th scope="col" className="sr-only">
-								{LC_Msgs.removeColumn().text()}
+								{tr.text(LC_Msgs.removeColumn())}
 							</th>
 						</tr>
 					</thead>
 					<tbody>
 						{entries.map((entry) => {
 							const entryKey = LC.matchupEntryKey(matchup, entry.teams)
-							const text = `${formatSide(matchup, entry.teams[0])} ${LC_Msgs.versus().text()} ${formatSide(matchup, entry.teams[1])}`
+							const text = `${formatSide(matchup, entry.teams[0])} ${tr.text(LC_Msgs.versus())} ${formatSide(matchup, entry.teams[1])}`
 							const unknown = entry.teams.some((side) => !LC.isMatchupSideKnown(matchup, side))
 							return (
 								<tr key={entryKey}>
@@ -404,9 +405,9 @@ function MatchupWeightsSection({
 										{unknown && (
 											<span
 												className="ml-1.5 text-xs font-sans text-muted-foreground"
-												title={LC_Msgs.noLayersWithMatchup(label).text()}
+												title={tr.text(LC_Msgs.noLayersWithMatchup(label))}
 											>
-												{LC_Msgs.unknownValue().text()}
+												{tr.text(LC_Msgs.unknownValue())}
 											</span>
 										)}
 									</td>
@@ -419,7 +420,7 @@ function MatchupWeightsSection({
 											size="icon"
 											variant="ghost"
 											className="h-6 w-6 text-destructive"
-											aria-label={LC_Msgs.removeWeight(text).text()}
+											aria-label={tr.text(LC_Msgs.removeWeight(text))}
 											onClick={() => remove(entryKey)}
 										>
 											<Icons.X className="h-4 w-4" />
@@ -451,7 +452,7 @@ function AddMatchupRow({ matchup, onAdd }: { matchup: LC.MatchupKey; onAdd: (tea
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			<MatchupSideInput matchup={matchup} team={1} side={sides[0]} onChange={(side) => setSide(0, side)} />
-			<span className="text-xs text-muted-foreground">{LC_Msgs.versus().text()}</span>
+			<span className="text-xs text-muted-foreground">{tr.text(LC_Msgs.versus())}</span>
 			<MatchupSideInput matchup={matchup} team={2} side={sides[1]} onChange={(side) => setSide(1, side)} />
 			<Button
 				type="button"
@@ -465,7 +466,7 @@ function AddMatchupRow({ matchup, onAdd }: { matchup: LC.MatchupKey; onAdd: (tea
 					setSides([undefined, undefined])
 				}}
 			>
-				{LC_Msgs.addMatchup().text()}
+				{tr.text(LC_Msgs.addMatchup())}
 			</Button>
 		</div>
 	)
@@ -489,13 +490,13 @@ function MatchupSideInput({
 		return (
 			<div className="flex items-center gap-1">
 				<ComboBox
-					title={LC_Msgs.factionForTeam(team).text()}
+					title={tr.text(LC_Msgs.factionForTeam(team))}
 					value={faction}
 					options={LC.groupByColumnDefaultValues('Faction_1').map((f) => ({ value: f, label: f }))}
 					onSelect={(next) => onChange(next ? { Faction: next, Unit: '' } : undefined)}
 				/>
 				<ComboBox
-					title={LC_Msgs.unitForTeam(team).text()}
+					title={tr.text(LC_Msgs.unitForTeam(team))}
 					value={unit || undefined}
 					options={unitOptions}
 					disabled={!faction}
@@ -507,7 +508,7 @@ function MatchupSideInput({
 	const column = LC.MATCHUP_COLUMNS[matchup][0][0]
 	return (
 		<ComboBox
-			title={LC_Msgs.sideForTeam(pickLabel(matchup).replace(' matchup', ''), team).text()}
+			title={tr.text(LC_Msgs.sideForTeam(pickLabel(matchup).replace(' matchup', ''), team))}
 			value={side as string | undefined}
 			options={(LC.groupByColumnDefaultValues(column) as string[]).map((v) => ({ value: v, label: v }))}
 			onSelect={(next) => onChange(next ?? undefined)}

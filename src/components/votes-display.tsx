@@ -5,6 +5,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as V_Msgs from '@/messages/vote.messages'
 import type * as LL from '@/models/layer-list.models'
 import * as V from '@/models/vote.models'
+import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
 type VoteTallyProps = {
@@ -24,7 +25,7 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 				id: itemId,
 				index,
 				percentage: tally.percentages.get(itemId),
-				name: choice ? DH.toShortLayerNameFromId(choice.layerId) : V_Msgs.unknownChoice().text(),
+				name: choice ? DH.toShortLayerNameFromId(choice.layerId) : tr.text(V_Msgs.unknownChoice()),
 				votes: voteCount,
 				isWinner: voteState.code === 'ended:winner' && voteState.winnerId === itemId,
 			}
@@ -39,10 +40,10 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 		case 'ended:winner':
 		case 'ended:aborted':
 		case 'ended:insufficient-votes':
-			statusDisplay = V_Msgs.voteEnded().text()
+			statusDisplay = tr.text(V_Msgs.voteEnded())
 			break
 		case 'in-progress':
-			statusDisplay = V_Msgs.voteInProgress().text()
+			statusDisplay = tr.text(V_Msgs.voteInProgress())
 			break
 		default:
 			assertNever(voteState)
@@ -61,13 +62,13 @@ export default function VoteTallyDisplay({ voteState, voteItem, playerCount, ser
 								{option.index + 1}. {option.name}
 								{option.isWinner && ' ★'}
 							</span>
-							<span className="text-sm text-gray-500">{V_Msgs.choiceVotes(option.votes, option.percentage ?? 0).text()}</span>
+							<span className="text-sm text-gray-500">{tr.text(V_Msgs.choiceVotes(option.votes, option.percentage ?? 0))}</span>
 						</div>
 						<Progress value={option.percentage ?? 0} className="h-2 data-[winner]bg-green-100" data-winner={option.isWinner} />
 					</div>
 				))}
 				<div className="mt-4 text-center text-sm text-gray-500">
-					{V_Msgs.turnout(tally.totalVotes, serverInfo?.playerCount ?? 0, tally.turnoutPercentage).text()}
+					{tr.text(V_Msgs.turnout(tally.totalVotes, serverInfo?.playerCount ?? 0, tally.turnoutPercentage))}
 				</div>
 			</CardContent>
 		</Card>

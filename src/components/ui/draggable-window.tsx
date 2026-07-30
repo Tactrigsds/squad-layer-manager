@@ -23,6 +23,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 
 import * as UI_Msgs from '@/messages/ui.messages'
+import { tr } from '@/systems/messages.client'
 
 // ============================================================================
 // Position Calculation
@@ -586,7 +587,7 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 				'rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
 				className,
 			)}
-			aria-label={UI_Msgs.closeWindow().text()}
+			aria-label={tr.text(UI_Msgs.closeWindow())}
 			{...props}
 		>
 			<Cross2Icon className="h-4 w-4" />

@@ -9,6 +9,7 @@ import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import type * as UP from '@/models/user-presence'
 import * as RPC from '@/orpc.client'
+import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
 
 export type Store = {
@@ -40,9 +41,9 @@ async function resolveDisplayName(source: TSW.Teamswap['source'] | undefined): P
 // surfaces a rejected teamswap op to the user. only ever reached on the originating client -- either from
 // its own optimistic dispatch or from the server's `rejected` message -- so there's no user to filter by
 function toastOpError(code: TSW.Rejection['code']) {
-	const args = TSW_Msgs.rejectionTexts[code]
-	if (!args) return
-	toast.error(...args)
+	const rejection = TSW_Msgs.rejections[code]
+	if (!rejection) return
+	toast.error(...tr.toast(rejection()))
 }
 
 function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.PresenceEvent>) {
@@ -52,7 +53,7 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			const { source, swaps } = se
 			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'saved-teamswaps' })
 			void resolveDisplayName(source).then((name) => {
-				toast(...TSW_Msgs.saved(name, swaps.size).toast())
+				toast(...tr.toast(TSW_Msgs.saved(name, swaps.size)))
 			})
 			break
 		}
@@ -89,12 +90,14 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 
 		case 'teamswap-execution-failed': {
 			toast.error(
-				...TSW_Msgs.executionFailed(
-					se.reason === 'not-all-players-swapped' || se.reason === 'timeout'
-						? se.reason
-						: (se.message ?? 'An error occurred while executing the team swap.'),
-					se.playerIds?.length,
-				).toast(),
+				...tr.toast(
+					TSW_Msgs.executionFailed(
+						se.reason === 'not-all-players-swapped' || se.reason === 'timeout'
+							? se.reason
+							: (se.message ?? 'An error occurred while executing the team swap.'),
+						se.playerIds?.length,
+					),
+				),
 			)
 			break
 		}
@@ -104,12 +107,12 @@ function onSideEffect(se: TSW.SideEffect, presenceEvent$: Rx.Subject<UP.Presence
 			// no source means the map roll executed the queue: it's nobody's action, so it isn't attributed to a
 			// user and doesn't put an event on anyone in the presence panel
 			if (!source) {
-				toast(...TSW_Msgs.executed(swapCount).toast())
+				toast(...tr.toast(TSW_Msgs.executed(swapCount)))
 				break
 			}
 			if (source.discordId) presenceEvent$.next({ userId: source.discordId, action: 'executed-teamswaps' })
 			void resolveDisplayName(source).then((name) => {
-				toast(...TSW_Msgs.executed(swapCount, name).toast())
+				toast(...tr.toast(TSW_Msgs.executed(swapCount, name)))
 			})
 			break
 		}

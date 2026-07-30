@@ -18,6 +18,7 @@ import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
 import { DragContextProvider } from '@/systems/dndkit.client.tsx'
+import { tr } from '@/systems/messages.client'
 
 import AppliedFiltersPanel from './applied-filters-panel.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
@@ -78,7 +79,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
 			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
-					<HeadlessDialogTitle>{L_Msgs.editLayerTitle().text()}</HeadlessDialogTitle>
+					<HeadlessDialogTitle>{tr.text(L_Msgs.editLayerTitle())}</HeadlessDialogTitle>
 				</div>
 				<div className="flex justify-end items-center space-x-2">
 					{/* FIXME stage4: AppliedFiltersPanel's stores type also requires a squadServer key (see applied-filters-panel.tsx),
@@ -105,7 +106,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 			<HeadlessDialogFooter>
 				<div className="flex items-center justify-end w-full">
 					<Button disabled={!canSubmit} onClick={submit}>
-						{L_Msgs.submit().text()}
+						{tr.text(L_Msgs.submit())}
 					</Button>
 				</div>
 			</HeadlessDialogFooter>

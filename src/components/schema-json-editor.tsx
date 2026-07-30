@@ -12,6 +12,7 @@ import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
+import { tr } from '@/systems/messages.client'
 
 import type { SchemaJsonEditorProps } from './schema-json-editor.types'
 
@@ -164,12 +165,14 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 							{isFullscreen ? <Icons.Minimize2 className="h-4 w-4" /> : <Icons.Maximize2 className="h-4 w-4" />}
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>{isFullscreen ? SETTINGS_Msgs.exitFullscreen().text() : SETTINGS_Msgs.fullscreen().text()}</TooltipContent>
+					<TooltipContent>
+						{isFullscreen ? tr.text(SETTINGS_Msgs.exitFullscreen()) : tr.text(SETTINGS_Msgs.fullscreen())}
+					</TooltipContent>
 				</Tooltip>
 				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
 					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
-						<h3 className={Typo.Small}>{SETTINGS_Msgs.jsonErrors().text()}</h3>
+						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.jsonErrors())}</h3>
 						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
 							{errorText}
 						</pre>

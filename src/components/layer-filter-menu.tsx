@@ -8,6 +8,7 @@ import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
+import { tr } from '@/systems/messages.client'
 
 import type { ComparisonHandle } from './filter-card'
 import { Comparison } from './filter-card'
@@ -34,7 +35,7 @@ export default function LayerFilterMenu(props: { stores: LayerFilterMenuPrt.Pred
 				}}
 			>
 				<Icons.Trash />
-				{F_Msgs.clearAll().text()}
+				{tr.text(F_Msgs.clearAll())}
 			</Button>
 		</div>
 	)
@@ -73,7 +74,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 			{props.field === 'Alliance_2' && (
 				<div className="col-span-full gap-1 flex items-center">
 					<Button
-						title={F_Msgs.swapFactions().text()}
+						title={tr.text(F_Msgs.swapFactions())}
 						disabled={swapFactionsDisabled}
 						onClick={() => {
 							return LayerFilterMenuPrt.Actions.swapTeams(props.stores)
@@ -94,7 +95,7 @@ function LayerFilterMenuItem(props: { field: string; stores: LayerFilterMenuPrt.
 				node={comp}
 				allowedEnumValues={possibleValues}
 				onSetAllValuesAllowed={unlockAllValues}
-				onSetAllValuesAllowedLabel={F_Msgs.clearOtherFilters().text()}
+				onSetAllValuesAllowedLabel={tr.text(F_Msgs.clearOtherFilters())}
 				setNode={(update) => {
 					return LayerFilterMenuPrt.Actions.setComparison(props.stores, props.field, update)
 				}}

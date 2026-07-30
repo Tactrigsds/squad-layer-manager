@@ -14,6 +14,7 @@ import * as SLL from '@/models/shared-layer-list'
 import type * as UP from '@/models/user-presence'
 import * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
@@ -59,7 +60,7 @@ export function initLayerQueue(args: Args) {
 		const op = se.op
 		if (op.op === 'discard-abandoned-queue-edits' || op.op === 'discard-abandoned-request-edits') {
 			const draft = op.op === 'discard-abandoned-queue-edits' ? 'queue' : 'request'
-			toast.info(...LL_Msgs.abandonedEditsDiscarded(draft).toast())
+			toast.info(...tr.toast(LL_Msgs.abandonedEditsDiscarded(draft)))
 			return
 		}
 		if (!('userId' in op)) return
@@ -390,7 +391,7 @@ export namespace Actions {
 			// the op will never be acked, so it must leave the pending set -- see dropPendingOps
 			rollbackOp(slice, op.opId)
 			console.error('layer queue op dispatch failed:', error)
-			toast.error(...LL_Msgs.opFailed().toast())
+			toast.error(...tr.toast(LL_Msgs.opFailed()))
 			return
 		}
 		if (res.code === 'ok') return
@@ -453,7 +454,7 @@ export namespace Actions {
 		if (target && source) {
 			const merged = BB.mergeTemplateFilters(target.filter, source.filter)
 			if (merged.code !== 'ok') {
-				toast.error(...BB_Msgs.cannotCombine().toast())
+				toast.error(...tr.toast(BB_Msgs.cannotCombine()))
 				return
 			}
 		}

@@ -13,6 +13,7 @@ import * as SC_Msgs from '@/messages/server-console.messages'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { tr } from '@/systems/messages.client'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
 // route around every other permission and leave no app event behind.
@@ -48,7 +49,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	if (denied) {
 		return (
 			<div className={cn('flex min-h-0 items-center justify-center rounded-md border p-3', className)}>
-				<p className="text-sm text-muted-foreground">{SC_Msgs.denied().text()}</p>
+				<p className="text-sm text-muted-foreground">{tr.text(SC_Msgs.denied())}</p>
 			</div>
 		)
 	}
@@ -56,7 +57,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	return (
 		<div className={cn('flex min-h-0 flex-col rounded-md border', className)}>
 			<div className="flex items-center gap-1 border-b px-1 py-1">
-				<div role="tablist" aria-label={SC_Msgs.channelTablist().text()} className="flex items-center gap-1">
+				<div role="tablist" aria-label={tr.text(SC_Msgs.channelTablist())} className="flex items-center gap-1">
 					{SC.TABS.map((t) => (
 						<Button
 							key={t}
@@ -68,17 +69,17 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 							className="h-6 px-2 text-xs"
 							onClick={() => ConsoleFrame.Actions.setTab(stores, t)}
 						>
-							{SC_Msgs.tabNames[t]}
+							{tr.text(SC_Msgs.tabNames[t])}
 						</Button>
 					))}
 				</div>
 				<label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
 					<Checkbox
 						checked={hideNoise}
-						aria-label={SC_Msgs.hideNoise().text()}
+						aria-label={tr.text(SC_Msgs.hideNoise())}
 						onCheckedChange={(on) => ConsoleFrame.Actions.setHideNoise(stores, on === true)}
 					/>
-					{SC_Msgs.hideNoise().text()}
+					{tr.text(SC_Msgs.hideNoise())}
 					{hideNoise && hidden > 0 && <span className="tabular-nums">({hidden})</span>}
 				</label>
 				<Button
@@ -86,17 +87,17 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					size="icon"
 					variant="ghost"
 					className="h-6 w-6"
-					title={SC_Msgs.clear().text()}
+					title={tr.text(SC_Msgs.clear())}
 					onClick={() => ConsoleFrame.Actions.clear(stores)}
 				>
 					<Icons.Eraser className="h-3.5 w-3.5" />
 				</Button>
 			</div>
 			<div className="relative min-h-0 grow bg-muted/30">
-				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={SC_Msgs.tabOutput(tab).text()} className="h-full">
+				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={tr.text(SC_Msgs.tabOutput(tab))} className="h-full">
 					<div ref={contentRef} className="p-1.5">
 						{events.length === 0 ? (
-							<p className="text-xs text-muted-foreground">{SC_Msgs.empty().text()}</p>
+							<p className="text-xs text-muted-foreground">{tr.text(SC_Msgs.empty())}</p>
 						) : (
 							<ol className="space-y-0.5">
 								{events.map((event) => {
@@ -118,10 +119,10 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 						variant="secondary"
 						style={{ zIndex: scrollToBottomZIndex }}
 						className="absolute bottom-0 left-0 right-0 h-6 w-full rounded-none bg-opacity-20! shadow-lg backdrop-blur-sm"
-						title={CHAT_Msgs.scrollToBottom().text()}
+						title={tr.text(CHAT_Msgs.scrollToBottom())}
 					>
 						<Icons.ChevronDown className="h-3 w-3" />
-						<span className="text-xs">{CHAT_Msgs.scrollToBottom().text()}</span>
+						<span className="text-xs">{tr.text(CHAT_Msgs.scrollToBottom())}</span>
 					</Button>
 				)}
 			</div>
