@@ -58,6 +58,10 @@ export const breakdownDescription = def(
 	'Everyone on the server right now, split by team and by the groups of the chosen grouping. A player no rule matches counts as Other.',
 )
 
+export const breakdownDescriptionHistorical = def(
+	'Everyone who played this match, split by the team they spent the most time on and by the groups of the chosen grouping. Players under the team attribution thresholds are left out; the Teams view in the activity panel shows the full roster with them flagged.',
+)
+
 export const breakdownFilterHint = def('Click a segment to filter the teams panel to its group')
 
 export const breakdownSelectTeamHint = def("Shift-click to also select that team's players in it")

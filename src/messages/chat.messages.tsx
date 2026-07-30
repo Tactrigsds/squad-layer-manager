@@ -3,6 +3,7 @@ import * as React from 'react'
 
 import type * as CHAT from '@/models/chat.models'
 import { def, raw, rt, t, type TString } from '@/models/messages.models'
+import type * as TA from '@/models/team-attribution.models'
 
 export const secondaryFilterLabels: Record<CHAT.SecondaryFilterState, TString> = {
 	ALL: t('All'),
@@ -50,6 +51,37 @@ export const nextMatch = def('Next match')
 export const returnToLive = def('Return to Live')
 
 export const returnToLiveTooltip = def('Return to live events')
+
+// -------- the historical teams view --------
+
+export const feedViewLabel = def('Feed')
+
+export const teamsViewLabel = def('Teams')
+
+export const historicalTeamsTitle = def('Historical teams')
+
+export const historicalTeamsDescription = def(
+	'Everyone who played this match, on the team they spent the most time on. Flagged players are not counted in the team breakdown chart.',
+)
+
+export const unassignedSquad = def('Unassigned')
+
+export const teamPlayerCount = def('{count, plural, one {# player} other {# players}}', (count: number) => ({ count }))
+
+export const scorelineHint = def('Kills / Wounds / Deaths')
+
+export const timeOnTeam = def('{time} on this team', (time: string) => ({ time }))
+
+export const alsoOnOtherTeam = def('Also played {time} on the other team', (time: string) => ({ time }))
+
+export const notInBreakdown = def('Not counted in the team breakdown:')
+
+export const exclusionReasonLabels: Record<TA.ExclusionReason, TString> = {
+	'low-team-time': t('too little time on their team'),
+	'split-team-time': t('time split too evenly between teams'),
+	'no-squad': t('never joined a squad'),
+	'no-combat': t('no kills, deaths or wounds'),
+}
 
 export const playersOnline = def('Players online')
 

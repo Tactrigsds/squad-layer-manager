@@ -65,7 +65,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 				) : (
 					<div className="w-full flex flex-col gap-2">
 						<CombatStats stores={props.stores} historicalEvents={historicalEvents} />
-						<TeamBreakdown stores={props.stores} />
+						<TeamBreakdown stores={props.stores} historicalEvents={historicalEvents} />
 					</div>
 				)}
 			</CardContent>
@@ -136,8 +136,8 @@ function formatRatio(ratio: StatsModels.Ratio) {
 }
 
 // what the chart is and what clicking it does, out of the way of the segment tooltips that would otherwise repeat
-// it on every hover
-function BreakdownHelp() {
+// it on every hover. The click hints only apply while the chart is interactive, i.e. showing the live roster.
+function BreakdownHelp(props: { interactive: boolean }) {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
@@ -146,20 +146,23 @@ function BreakdownHelp() {
 				</button>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-xs space-y-1.5">
-				<p>{tr.text(MH_Msgs.breakdownDescription())}</p>
-				<ul className="text-muted-foreground">
-					<li>{tr.text(MH_Msgs.breakdownFilterHint())}</li>
-					<li>{tr.text(MH_Msgs.breakdownSelectTeamHint())}</li>
-					<li>{tr.text(MH_Msgs.breakdownSelectBothHint())}</li>
-				</ul>
+				<p>{tr.text(props.interactive ? MH_Msgs.breakdownDescription() : MH_Msgs.breakdownDescriptionHistorical())}</p>
+				{props.interactive && (
+					<ul className="text-muted-foreground">
+						<li>{tr.text(MH_Msgs.breakdownFilterHint())}</li>
+						<li>{tr.text(MH_Msgs.breakdownSelectTeamHint())}</li>
+						<li>{tr.text(MH_Msgs.breakdownSelectBothHint())}</li>
+					</ul>
+				)}
 			</TooltipContent>
 		</Tooltip>
 	)
 }
 
-function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
+function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEvents: CHAT.EventEnriched[] | null }) {
 	const squadServer = props.stores.squadServer!
 	const serverId = squadServer.serverId
+	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
 	const currentMatch$ = MatchHistoryClient.currentMatch$(serverId)
 	const recentMatches$ = MatchHistoryClient.recentMatches$(serverId)
 	const breakdown = Zus.useStore_Susp(
@@ -170,7 +173,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 		BattlemetricsClient.playerBmData$,
 		BattlemetricsClient.Store,
 		SettingsClient.PublicSettingsStore,
-		StatsModels.Sel.breakdown,
+		StatsModels.Sel.breakdown(props.historicalEvents),
 	)
 	const groupings = Zus.useStore_Susp(
 		squadServer,
@@ -185,26 +188,30 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 	if (!breakdown) return null
 
 	// A segment names a group on one team, which is the pair the teams panel filters and selects by. Plain click
-	// filters, shift adds that team's members to the selection, ctrl+shift takes the group on both teams.
-	const onSegmentClick = (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
-		let group = breakdown.series[datum.seriesIndex].label
-		if (group === 'Other') group = TeamsPanelPrt.FILTER_NONE
-		if (modifiers.shift) {
-			const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
-			SquadServerFrame.Actions.selectPlayerIds(
-				props.stores,
-				rows.flatMap((row) => row[datum.seriesIndex].map((member) => member.id)),
-			)
-		} else {
-			// clicking the group the panel is already filtered to lifts the filter, so the segment is its own undo. A
-			// selection always wants its players on screen, so those variants only ever set it.
-			const filtered = Zus.getState(squadServer, TeamsPanelPrt.Sel.groupFilter)
-			TeamsPanelPrt.Actions.setGroupFilter({ teamsPanel: squadServer }, !modifiers.shift && filtered === group ? null : group)
-		}
-		ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
-		// on a single-column layout the teams panel is behind a tab of its own
-		SquadServerClient.DashboardTabActions.setActiveTab('layers')
-	}
+	// filters, shift adds that team's members to the selection, ctrl+shift takes the group on both teams. The teams
+	// panel only shows the live roster, so a historical chart's segments are not clickable.
+	const onSegmentClick =
+		selectedMatchOrdinal !== null
+			? undefined
+			: (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
+					let group = breakdown.series[datum.seriesIndex].label
+					if (group === 'Other') group = TeamsPanelPrt.FILTER_NONE
+					if (modifiers.shift) {
+						const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
+						SquadServerFrame.Actions.selectPlayerIds(
+							props.stores,
+							rows.flatMap((row) => row[datum.seriesIndex].map((member) => member.id)),
+						)
+					} else {
+						// clicking the group the panel is already filtered to lifts the filter, so the segment is its own undo. A
+						// selection always wants its players on screen, so those variants only ever set it.
+						const filtered = Zus.getState(squadServer, TeamsPanelPrt.Sel.groupFilter)
+						TeamsPanelPrt.Actions.setGroupFilter({ teamsPanel: squadServer }, !modifiers.shift && filtered === group ? null : group)
+					}
+					ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_TEAMS')
+					// on a single-column layout the teams panel is behind a tab of its own
+					SquadServerClient.DashboardTabActions.setActiveTab('layers')
+				}
 
 	const renderTooltip = (datum: Chart.Datum) => {
 		const series = breakdown.series[datum.seriesIndex]
@@ -257,7 +264,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 						))}
 					</div>
 				)}
-				<BreakdownHelp />
+				<BreakdownHelp interactive={selectedMatchOrdinal === null} />
 			</div>
 			<StackedBarChart
 				rows={breakdown.rows}

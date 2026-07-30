@@ -19,6 +19,7 @@ import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
 import type * as SS from '@/models/server-state.models'
 import * as SM from '@/models/squad.models'
+import * as TA from '@/models/team-attribution.models'
 import * as RBAC from '@/rbac.models'
 
 // ============================== rbac (moved out of the deploy-time config so it's admin-editable at runtime) ==============================
@@ -335,6 +336,11 @@ export const GlobalSettingsSchema = z
 			),
 		playerGroupings: PG.PlayerGroupingsSchema.prefault(PG.EMPTY_PLAYER_GROUPINGS).describe(
 			'Named ways of sorting players into coloured groups. Each grouping is an ordered list of rules assigning a group to players with a given flag, highest priority first; the players panel and activity charts pick which grouping to show.',
+		),
+		teamAttribution: TA.SettingsSchema.prefault(TA.DEFAULT_SETTINGS).describe(
+			'How players of a finished match are attributed to a team for the historical team breakdown: each player counts for the team they ' +
+				'spent the most time on. These thresholds carve marginal players out of the breakdown chart; carved-out players still appear in ' +
+				'the historical teams view, flagged. Players who never joined a squad or never took part in a kill or wound are always carved out.',
 		),
 		navLinks: NavLinkSchema.optional().describe(
 			'Links to display in the navbar dropdown menu, on every page. Each server can add links of its own on top of these.',
