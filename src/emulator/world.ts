@@ -379,11 +379,18 @@ export class World {
 
 	#dropFromSquad(p: EmuPlayer) {
 		const squad = p.squadId !== null && p.teamId !== null ? this.findSquad(p.teamId, p.squadId) : null
+		const wasLeader = p.isLeader
 		p.squadId = null
 		p.isLeader = false
-		if (squad && !this.playerList().some((x) => x.teamId === squad.teamId && x.squadId === squad.squadId)) {
+		if (!squad) return
+		const remaining = this.squadMembers(squad)
+		if (remaining.length === 0) {
 			this.squads = this.squads.filter((s) => s !== squad)
+			return
 		}
+		// the game hands the squad to someone still in it. A leaderless squad is a pair ListPlayers and ListSquads
+		// disagree about, which the app rejects and refetches until it gives up on the server.
+		if (wasLeader) remaining[0].isLeader = true
 	}
 
 	// ---------- RCON command surface ----------
