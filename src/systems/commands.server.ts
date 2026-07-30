@@ -11,6 +11,7 @@ import * as V_Msgs from '@/messages/vote.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BB from '@/models/backburner.models'
 import * as BM from '@/models/battlemetrics.models'
+import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared'
 import * as LP from '@/models/labeled-presets.models'
@@ -24,6 +25,7 @@ import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
+import * as CommandPrompts from '@/systems/command-prompts.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -45,7 +47,8 @@ export function setup() {
 
 type HandlerResult = { code: string; msg?: string } | undefined
 
-type HandlerCtx = {
+// What every message from a chat sender is handled against, whether it runs a command or answers a prompt.
+type ChatCtx = {
 	ctx: C.Db & C.ManagedServer & Partial<USR.Ctx> & SM.Ctx.Player
 	msg: SM.RconEvents.ChatMessage
 	// the resolved chat sender (steam id guaranteed)
@@ -55,12 +58,36 @@ type HandlerCtx = {
 	error: <T extends string>(reason: T, msg: string) => Promise<{ code: `err:${T}`; msg: string }>
 }
 
-export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
+// How this run of the command was reached, so a lookup that fails inside a handler can offer choices the same way
+// argument resolution does. `ranges` says where each argument sits in `tokens`, which is what a pick replaces.
+type Invocation = {
+	cmd: CMD.CommandId
+	trigger: CMD.CommandTrigger
+	tokens: string[]
+	ranges: CMD.ArgTokenRanges
+	// the command as the caller typed it, carried through a replay: by then the chat message in hand is their
+	// answer, which is not what a notice about the pending command should quote
+	typed: string
+}
+
+type HandlerCtx = ChatCtx & {
+	invocation: Invocation
+	// Raises a prompt for an argument this handler resolved itself. Only safe before the handler has changed
+	// anything: answering replays the whole command, so a side effect ahead of the prompt would happen twice.
+	nearMiss: (argName: string, opts: Omit<NearMissResult, 'code'>) => Promise<HandlerResult>
+}
+
+// the sender's own identity, which is what a prompt is keyed by
+function chatPlayerId(msg: SM.RconEvents.ChatMessage): SM.PlayerId {
+	return SM.PlayerIds.getPlayerId(msg.playerIds)
+}
+
+type Exchange = { code: 'ok'; chat: ChatCtx } | { code: 'done'; result: HandlerResult }
+
+// the sender lookup and reply helpers every chat message needs before anything can be decided about it
+async function openExchange(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage): Promise<Exchange> {
 	if (!SM.CHAT_CHANNEL_TYPE.safeParse(msg.channelType).success) {
-		return {
-			code: 'err:invalid-chat-channel' as const,
-			msg: 'Invalid chat channel',
-		}
+		return { code: 'done', result: { code: 'err:invalid-chat-channel', msg: 'Invalid chat channel' } }
 	}
 
 	async function reply(opts: SR.WarnInput) {
@@ -76,19 +103,32 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 
 	const playerRes = await SquadRcon.getPlayer(baseCtx, msg.playerIds)
 	if (playerRes.code === 'err:rcon') {
-		return await error('rcon-error', baseCtx.tr.text(CMD_Msgs.rconError()))
+		return { code: 'done', result: await error('rcon-error', baseCtx.tr.text(CMD_Msgs.rconError())) }
 	}
 	if (playerRes.code === 'err:player-not-found') {
-		return await error('player-not-found', baseCtx.tr.text(CMD_Msgs.playerNotFound()))
+		return { code: 'done', result: await error('player-not-found', baseCtx.tr.text(CMD_Msgs.playerNotFound())) }
 	}
 	const sender = playerRes.player
-	if (!sender.ids.steam) return { code: 'ok' as const }
+	if (!sender.ids.steam) return { code: 'done', result: { code: 'ok' } }
 	// const roles = Rbac.getRolesForIngameUser(ctx, sender.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
 	const discordId = await Users.findDiscordIdBySteam64Id(baseCtx, BigInt(sender.ids.steam!))
 
 	const user = discordId ? await Users.getUser(baseCtx, discordId) : undefined
-	const ctx: HandlerCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
-	const h: HandlerCtx = { ctx: ctx, msg, sender, user: { discordId, steamId: sender.ids.steam }, reply, error }
+	const ctx: ChatCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
+	return { code: 'ok', chat: { ctx, msg, sender, user: { discordId, steamId: sender.ids.steam }, reply, error } }
+}
+
+export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
+	const exchange = await openExchange(baseCtx, msg)
+	if (exchange.code === 'done') return exchange.result
+	const chat = exchange.chat
+	const { ctx, sender } = chat
+
+	// Typing another command means this one has been left behind, and a choice nobody remembers making is how a
+	// stale prompt turns a bare number into a moderation action. Unrecognised commands count: the caller has still
+	// moved on.
+	const superseded = CommandPrompts.take(ctx.serverId, chatPlayerId(msg))
+	if (superseded) await chat.reply(CMD_Msgs.Prompt.superseded(superseded.typed))
 
 	// the trigger that matched decides the arguments: a plain one takes them as typed, one with an args template
 	// pins some of them and feeds the rest through its placeholders (see CMD.parseCommand)
@@ -96,7 +136,7 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 	if (parseRes.code === 'err:unknown-command') {
 		// just don't respond to unknown commands from non-admins
 		if (!sender.isAdmin) return
-		return await error('unknown-command', parseRes.msg)
+		return await chat.error('unknown-command', parseRes.msg)
 	}
 
 	const { cmd, trigger, tokens } = parseRes
@@ -106,17 +146,31 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 	}
 	log.info('Command received: %s', cmd)
 
+	return await runCommand(chat, cmd, trigger, tokens, msg.message.trim())
+}
+
+// Everything a recognised command does: the gates, the arguments, the handler. Reached a second time when a caller
+// answers a prompt, with their picks spliced into `tokens` -- which is why the gates live here and not in
+// handleCommand. Permissions and the live roster are checked against the moment the command actually runs.
+async function runCommand(
+	chat: ChatCtx,
+	cmd: CMD.CommandId,
+	trigger: CMD.CommandTrigger,
+	tokens: string[],
+	typed: string,
+): Promise<HandlerResult> {
+	const { ctx, sender, msg } = chat
 	const cmdConfig = Settings.GLOBAL_SETTINGS.commands[cmd as keyof typeof Settings.GLOBAL_SETTINGS.commands]
 	if (!CMD.chatAllowed(cmdConfig.allowedChats, msg.channelType)) {
 		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.allowedChats, ['admin'])) {
 			// non-admin is trying to use admin command, just ignore them
 			return
 		}
-		return await error('wrong-chat', h.ctx.tr.text(CMD_Msgs.wrongChat(cmdConfig.allowedChats)))
+		return await chat.error('wrong-chat', ctx.tr.text(CMD_Msgs.wrongChat(cmdConfig.allowedChats)))
 	}
 
 	if (!cmdConfig.enabled) {
-		return await error('command-disabled', h.ctx.tr.text(CMD_Msgs.commandDisabled(cmd)))
+		return await chat.error('command-disabled', ctx.tr.text(CMD_Msgs.commandDisabled(cmd)))
 	}
 
 	// Authorization sits here, next to the allowed-chat and enabled gates, rather than in each handler: the declaration is
@@ -129,17 +183,104 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 				? RBAC.perm('battlemetrics:write-flags')
 				: RBAC.perm(permission, { serverId: ctx.serverId })
 		const denyRes = await Rbac.tryDenyPermissionsForPlayer(ctx, required)
-		if (denyRes) return await error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
+		if (denyRes) return await chat.error('permission-denied', ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
 	}
 
 	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender, trigger)
+	if (resolved.code === 'err:near-miss') {
+		return await raisePrompt(chat, { cmd, trigger, tokens, typed, ranges: resolved.ranges }, resolved.nearMisses)
+	}
 	if (resolved.code !== 'ok') {
-		return await error('invalid-args', resolved.msg)
+		return await chat.error('invalid-args', resolved.msg)
+	}
+
+	const invocation: Invocation = { cmd, trigger, tokens, typed, ranges: resolved.ranges }
+	const h: HandlerCtx = {
+		...chat,
+		invocation,
+		nearMiss: (argName, opts) => raisePrompt(chat, invocation, [{ argName, ...opts }]),
 	}
 
 	// TS cannot correlate handlers[cmd] with CommandArgs<typeof cmd> across the union, so the args
 	// are cast at this single dispatch point; each handler's signature is still fully typed
 	return await handlers[cmd](h, resolved.args as never)
+}
+
+// Asks the caller to pick, and holds what to run once they have. The command itself does not run: every near miss
+// is raised before anything has been applied, so replaying the whole command later repeats nothing.
+async function raisePrompt(chat: ChatCtx, invocation: Invocation, nearMisses: CMD.NearMiss[]): Promise<HandlerResult> {
+	const steps = nearMisses.flatMap((near) => {
+		const range = invocation.ranges[near.argName]
+		// nothing to offer, or an argument that never came from the caller's words and so has nothing to splice a
+		// pick over: either way they have to retype, and the resolver's message already says why
+		if (near.choices.length === 0 || !range) return []
+		return [{ argName: near.argName, typed: near.typed, range, msg: near.msg, choices: near.choices }]
+	})
+	if (steps.length === 0) return await chat.error('invalid-args', nearMisses[0].msg)
+
+	const session: CommandPrompts.PromptSession = {
+		cmd: invocation.cmd,
+		trigger: invocation.trigger,
+		tokens: invocation.tokens,
+		typed: invocation.typed,
+		channel: chat.msg.channelType,
+		steps,
+		picks: steps.map(() => undefined),
+		expiresAt: Date.now() + CommandPrompts.TTL_MS,
+	}
+	CommandPrompts.set(chat.ctx.serverId, chatPlayerId(chat.msg), session)
+	log.info('Command %s asked %s for %d choice(s)', invocation.cmd, chat.sender.ids.username, steps.length)
+	await askStep(chat, session, 0)
+	return { code: 'ok' }
+}
+
+async function askStep(chat: ChatCtx, session: CommandPrompts.PromptSession, index: number) {
+	const step = session.steps[index]
+	await chat.reply(CMD_Msgs.Prompt.question({ msg: step.msg, choices: step.choices, step: index + 1, total: session.steps.length }))
+}
+
+// A caller answering the choices they were asked for. Numbers fill the outstanding questions in order, so several
+// in one message answer several at once; 0 cancels; the command runs once nothing is left unanswered.
+export async function handleChoiceAnswer(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
+	const exchange = await openExchange(baseCtx, msg)
+	if (exchange.code === 'done') return exchange.result
+	const chat = exchange.chat
+	const playerId = chatPlayerId(msg)
+	const session = CommandPrompts.take(chat.ctx.serverId, playerId)
+	if (!session) return { code: 'ok' as const }
+
+	if (CommandPrompts.expired(session, Date.now())) {
+		await chat.reply(CMD_Msgs.Prompt.expired(session.typed))
+		return { code: 'ok' as const }
+	}
+
+	let picks = session.picks
+	for (const answer of CommandPrompts.parseAnswer(msg.message)) {
+		const index = CommandPrompts.nextStep({ ...session, picks })
+		if (index === undefined) break
+		if (answer === 0) {
+			await chat.reply(CMD_Msgs.Prompt.cancelled())
+			return { code: 'ok' as const }
+		}
+		const choice = session.steps[index].choices[answer - 1]
+		if (!choice) {
+			// the session survives a mistyped number: it was solicited, and losing it would mean retyping the command
+			CommandPrompts.set(chat.ctx.serverId, playerId, { ...session, picks })
+			await chat.reply(CMD_Msgs.Prompt.outOfRange(session.steps[index].choices.length))
+			return { code: 'ok' as const }
+		}
+		picks = picks.with(index, choice)
+	}
+
+	const answered = { ...session, picks }
+	const remaining = CommandPrompts.nextStep(answered)
+	if (remaining !== undefined) {
+		CommandPrompts.set(chat.ctx.serverId, playerId, { ...answered, expiresAt: Date.now() + CommandPrompts.TTL_MS })
+		await askStep(chat, answered, remaining)
+		return { code: 'ok' as const }
+	}
+
+	return await runCommand(chat, session.cmd, session.trigger, CommandPrompts.resolvedTokens(answered), session.typed)
 }
 
 // resolves a chat team token: 1|2, normalized A|B, or the faction name of the current layer
@@ -156,6 +297,23 @@ function resolveTeamToken(currentMatch: MH.MatchDetails, token: string): SM.Team
 
 type TeamsState = { players: SM.Player[]; squads: SM.Squad[] }
 
+// A failure the caller can fix by picking one of `choices`, as against retyping. `msg` is what they see when
+// nothing was close enough, which is why every near miss carries one.
+type NearMissResult = { code: 'err:near-miss'; msg: string; typed: string; cause: CMD.NearMiss['cause']; choices: CMD.ArgChoice[] }
+
+function nearMiss(opts: Omit<NearMissResult, 'code'>): NearMissResult {
+	return { code: 'err:near-miss', ...opts }
+}
+
+// A squad is picked back as "<team> <squad number>" rather than by name: both tokens are unambiguous, and the pair
+// re-assigns to the same argument window whatever the caller originally typed (see assignArgTokens).
+function squadChoices(teamId: SM.TeamId, squads: SM.Squad[]): CMD.ArgChoice[] {
+	return squads.map((squad) => ({
+		tokens: [String(teamId), String(squad.squadId)],
+		label: `${squad.squadName} (team ${teamId} squad ${squad.squadId})`,
+	}))
+}
+
 // resolves a [team] <squad> token window: team falls back to the caller's team; squad by "cmd" alias,
 // in-game number, or unique name substring
 function resolveSquadArg(
@@ -163,7 +321,7 @@ function resolveSquadArg(
 	currentMatch: MH.MatchDetails,
 	sender: SM.Player,
 	window: string[],
-): { code: 'ok'; value: CMD.ResolvedSquadArg } | { code: 'err'; msg: string } {
+): { code: 'ok'; value: CMD.ResolvedSquadArg } | { code: 'err'; msg: string } | NearMissResult {
 	const teamInput = window.length === 2 ? window[0] : undefined
 	const squadInput = window.length === 2 ? window[1] : window[0]
 
@@ -174,7 +332,18 @@ function resolveSquadArg(
 	} else {
 		rawTeamId = resolveTeamToken(currentMatch, teamInput)
 		if (!rawTeamId) {
-			return { code: 'err', msg: `Unknown team "${teamInput}". Use 1/2, A/B, or faction name.` }
+			const layer = L.toLayer(currentMatch.layerId)
+			const factions = [layer.Faction_1, layer.Faction_2]
+			return nearMiss({
+				msg: `Unknown team "${teamInput}". Use 1/2, A/B, or faction name.`,
+				typed: teamInput,
+				cause: 'no-match',
+				// the squad token is carried through, so picking a team only replaces the team half of the window
+				choices: ([1, 2] as const).map((teamId) => ({
+					tokens: [String(teamId), squadInput],
+					label: factions[teamId - 1] ? `Team ${teamId} (${factions[teamId - 1]})` : `Team ${teamId}`,
+				})),
+			})
 		}
 	}
 	const teamLabel = teamInput ?? String(rawTeamId)
@@ -194,16 +363,44 @@ function resolveSquadArg(
 			squadInput.toLowerCase(),
 		)
 		if (squadMatchRes.code === 'err:not-found') {
-			return { code: 'err', msg: `No squad matches "${squadInput}" on team ${teamLabel}` }
+			return nearMiss({
+				msg: `No squad matches "${squadInput}" on team ${teamLabel}`,
+				typed: squadInput,
+				cause: 'no-match',
+				choices: squadChoices(
+					rawTeamId,
+					CMD.nearestBy(squadInput, squadsOnTeam, (s) => s.squadName),
+				),
+			})
 		}
 		if (squadMatchRes.code === 'err:multiple-matches') {
-			return { code: 'err', msg: `${squadMatchRes.count} squads match "${squadInput}"` }
+			const matched = Str.simpleStringMatch(
+				squadsOnTeam.map((s) => s.squadName.toLowerCase()),
+				squadInput.toLowerCase(),
+			).map((idx) => squadsOnTeam[idx])
+			return nearMiss({
+				msg: `${squadMatchRes.count} squads match "${squadInput}"`,
+				typed: squadInput,
+				cause: 'ambiguous',
+				choices: squadChoices(rawTeamId, matched.slice(0, CMD.MAX_CHOICES)),
+			})
 		}
 		matchedSquad = squadsOnTeam[squadMatchRes.matched]
 	}
 
 	const players = teamsState.players.filter((p) => p.teamId === rawTeamId && p.squadId === matchedSquad.squadId)
 	return { code: 'ok', value: { teamId: rawTeamId, teamLabel, squad: matchedSquad, players } }
+}
+
+// The players a mistyped token might have meant: the ones it actually matched when it matched too many, the closest
+// usernames when it matched none. Picked back as a player id, which resolves to exactly one player.
+function playerChoices(players: SM.Player[], typed: string, cause: CMD.NearMiss['cause']): CMD.ArgChoice[] {
+	const named = players.filter((p) => p.ids.username)
+	const picked =
+		cause === 'ambiguous'
+			? named.filter((p) => Str.normalizeForMatch(p.ids.username!).includes(Str.normalizeForMatch(typed))).slice(0, CMD.MAX_CHOICES)
+			: CMD.nearestBy(typed, named, (p) => p.ids.username!)
+	return picked.map((p) => ({ tokens: [p.ids.steam ?? p.ids.eos], label: p.ids.username! }))
 }
 
 // central arg resolution: token windows via the declared arg kinds, then per-kind resolution.
@@ -219,22 +416,34 @@ async function resolveArgs<Id extends CMD.CommandId>(
 	tokens: string[],
 	sender: SM.Player,
 	trigger?: CMD.CommandTrigger,
-): Promise<{ code: 'ok'; args: CMD.CommandArgs<Id> } | { code: 'err'; msg: string }> {
+): Promise<
+	| { code: 'ok'; args: CMD.CommandArgs<Id>; ranges: CMD.ArgTokenRanges }
+	| { code: 'err'; msg: string }
+	| { code: 'err:near-miss'; nearMisses: CMD.NearMiss[]; ranges: CMD.ArgTokenRanges }
+> {
 	const defs = CMD.COMMAND_DECLARATIONS[cmd].args as readonly CMD.ArgDef[]
 	const res = await resolveArgDefs(ctx, defs, tokens, sender)
 	if (res.code === 'err:missing-arg') {
 		return { code: 'err', msg: CMD.formatUsage(cmd, cmdConfig, trigger, Settings.GLOBAL_SETTINGS.requireReasonFor) }
 	}
 	if (res.code !== 'ok') return res
-	return { code: 'ok', args: res.args as CMD.CommandArgs<Id> }
+	return { code: 'ok', args: res.args as CMD.CommandArgs<Id>, ranges: res.ranges }
 }
 
+// Every choice-fixable failure is collected rather than the first one reported, so a caller who mistyped two
+// arguments answers for both in one exchange. A failure they cannot fix by picking still wins: answering two
+// prompts and only then being told the duration is unparseable is worse than being told immediately.
 async function resolveArgDefs(
 	ctx: C.Db & C.ManagedServer,
 	defs: readonly CMD.ArgDef[],
 	tokens: string[],
 	sender: SM.Player,
-): Promise<{ code: 'ok'; args: Record<string, unknown> } | { code: 'err'; msg: string } | { code: 'err:missing-arg'; argName: string }> {
+): Promise<
+	| { code: 'ok'; args: Record<string, unknown>; ranges: CMD.ArgTokenRanges }
+	| { code: 'err'; msg: string }
+	| { code: 'err:missing-arg'; argName: string }
+	| { code: 'err:near-miss'; nearMisses: CMD.NearMiss[]; ranges: CMD.ArgTokenRanges }
+> {
 	let teamsState: TeamsState | undefined
 	let currentMatch: MH.MatchDetails | undefined
 	if (defs.some((d) => d.kind === 'player' || d.kind === 'squad')) {
@@ -252,6 +461,14 @@ async function resolveArgDefs(
 	if (assignRes.code === 'err:missing-arg') return assignRes
 
 	const out: Record<string, unknown> = {}
+	const nearMisses: CMD.NearMiss[] = []
+	// a near miss with nothing close enough to offer is not one: the caller has to retype either way, so it takes
+	// the hard-error path and its message stands on its own
+	const collect = (def: CMD.ArgDef, res: NearMissResult): { code: 'err'; msg: string } | undefined => {
+		if (res.choices.length === 0) return { code: 'err', msg: res.msg }
+		nearMisses.push({ argName: def.name, typed: res.typed, cause: res.cause, msg: res.msg, choices: res.choices })
+		return undefined
+	}
 	for (const def of defs) {
 		const window = assignRes.windows[def.name]
 		if (window === undefined) {
@@ -279,26 +496,52 @@ async function resolveArgDefs(
 				break
 			case 'player': {
 				const res = SM.PlayerIds.fuzzyMatchIdentifierUniquely(teamsState!.players, (p) => p.ids, window[0])
-				if (res.code === 'err:not-found') return { code: 'err', msg: `No player matches found for "${window[0]}"` }
-				if (res.code === 'err:multiple-matches') return { code: 'err', msg: `${res.count} players match "${window[0]}"` }
+				if (res.code !== 'ok') {
+					const cause = res.code === 'err:not-found' ? ('no-match' as const) : ('ambiguous' as const)
+					const hard = collect(def, {
+						code: 'err:near-miss',
+						msg:
+							res.code === 'err:not-found'
+								? `No player matches found for "${window[0]}"`
+								: `${res.count} players match "${window[0]}"`,
+						typed: window[0],
+						cause,
+						choices: playerChoices(teamsState!.players, window[0], cause),
+					})
+					if (hard) return hard
+					break
+				}
 				out[def.name] = res.matched
 				break
 			}
 			case 'squad': {
 				const res = resolveSquadArg(teamsState!, currentMatch!, sender, window)
+				if (res.code === 'err:near-miss') {
+					const hard = collect(def, res)
+					if (hard) return hard
+					break
+				}
 				if (res.code !== 'ok') return res
 				out[def.name] = res.value
 				break
 			}
 			case 'reason': {
 				const res = CMD.resolveReasonArg(Settings.GLOBAL_SETTINGS.adminActionReasons, def.action, window)
-				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				if (res.code !== 'ok') {
+					const hard = collect(def, { code: 'err:near-miss', msg: res.msg, typed: window[0], cause: 'no-match', choices: res.choices })
+					if (hard) return hard
+					break
+				}
 				out[def.name] = res.value
 				break
 			}
 			case 'preset-reason': {
 				const res = CMD.resolveReasonToken(Settings.GLOBAL_SETTINGS.adminActionReasons, def.action, window[0])
-				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				if (res.code !== 'ok') {
+					const hard = collect(def, { code: 'err:near-miss', msg: res.msg, typed: window[0], cause: 'no-match', choices: res.choices })
+					if (hard) return hard
+					break
+				}
 				out[def.name] = res.reason
 				break
 			}
@@ -306,7 +549,8 @@ async function resolveArgDefs(
 				def satisfies never
 		}
 	}
-	return { code: 'ok', args: out }
+	if (nearMisses.length > 0) return { code: 'err:near-miss', nearMisses, ranges: assignRes.ranges }
+	return { code: 'ok', args: out, ranges: assignRes.ranges }
 }
 
 function ingameActor(sender: SM.Player): { type: 'ingame-user'; playerId: SM.PlayerId } {
@@ -318,9 +562,54 @@ function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): M
 	return MH.getNormedTeamId(teamId, currentMatch.ordinal) === 'A' ? 'B' : 'A'
 }
 
+// A flag is named by one chat token, so one with whitespace is offered back with it stripped out: matching folds
+// whitespace away on both sides (Str.normalizeForMatch), so "SuspectedCheater" still finds "Suspected Cheater".
+function flagChoices(flags: BM.PlayerFlag[]): CMD.ArgChoice[] {
+	return flags.map((flag) => ({ tokens: [flag.name.replace(/\s+/g, '')], label: flag.name }))
+}
+
+// shared by the two flag commands, which name a flag the same way
+async function resolveFlagArg(
+	h: HandlerCtx,
+	flags: BM.PlayerFlag[],
+	typed: string,
+): Promise<{ code: 'ok'; flag: BM.PlayerFlag } | { code: 'asked'; result: HandlerResult }> {
+	const names = flags.map((f) => f.name)
+	const res = Str.simpleUniqueStringMatch(names, typed)
+	if (res.code === 'ok') return { code: 'ok', flag: flags[res.matched] }
+	const asked =
+		res.code === 'err:not-found'
+			? await h.nearMiss('flag', {
+					msg: `No flag matches found for "${typed}"`,
+					typed,
+					cause: 'no-match',
+					choices: flagChoices(CMD.nearestBy(typed, flags, (f) => f.name)),
+				})
+			: await h.nearMiss('flag', {
+					msg: `Multiple(${res.count}) flag matches found for "${typed}".`,
+					typed,
+					cause: 'ambiguous',
+					choices: flagChoices(
+						Str.simpleStringMatch(names, typed)
+							.slice(0, CMD.MAX_CHOICES)
+							.map((i) => flags[i]),
+					),
+				})
+	return { code: 'asked', result: asked }
+}
+
 // exhaustive by construction: a new CommandId without a handler is a compile error
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
 	help: async (h, args) => {
+		const listing = CMDH.resolveHelpListing(Settings.GLOBAL_SETTINGS.commands, args.section)
+		if (listing.code === 'err:unknown-section') {
+			return await h.nearMiss('section', {
+				msg: h.ctx.tr.text(listing.msg),
+				typed: args.section!,
+				cause: 'no-match',
+				choices: CMD.nearest(args.section!, CMD.sectionTokens()).map((token) => ({ tokens: [token], label: token })),
+			})
+		}
 		await h.reply(CMD_Msgs.help(Settings.GLOBAL_SETTINGS.commands, args.section))
 		return { code: 'ok' }
 	},
@@ -544,18 +833,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', h.ctx.tr.text(CMD_Msgs.battlemetricsDisabled()))
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
-		const matchedFlagRes = Str.simpleUniqueStringMatch(
-			flags.map((f) => f.name),
-			args.flag,
-		)
-		if (matchedFlagRes.code === 'err:not-found') {
-			return await h.error('not-found', h.ctx.tr.text(CMD_Msgs.noFlagMatch(args.flag)))
-		}
-		if (matchedFlagRes.code === 'err:multiple-matches') {
-			return await h.error('multiple-matches', h.ctx.tr.text(CMD_Msgs.multipleFlagMatches(matchedFlagRes.count, args.flag)))
-		}
+		const flagRes = await resolveFlagArg(h, flags, args.flag)
+		if (flagRes.code !== 'ok') return flagRes.result
 
-		const flagToUpdate = flags[matchedFlagRes.matched]
+		const flagToUpdate = flagRes.flag
 		const reason = args.reason?.trim()
 		if (Settings.GLOBAL_SETTINGS.playerFlagsRequiringNote.includes(flagToUpdate.id) && !reason) {
 			return await h.error(
@@ -601,18 +882,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', h.ctx.tr.text(CMD_Msgs.battlemetricsDisabled()))
 		const target = args.player
 		const flags = await Battlemetrics.getOrgFlags(h.ctx)
-		const matchedFlagRes = Str.simpleUniqueStringMatch(
-			flags.map((f) => f.name),
-			args.flag,
-		)
-		if (matchedFlagRes.code === 'err:not-found') {
-			return await h.error('not-found', h.ctx.tr.text(CMD_Msgs.noFlagMatch(args.flag)))
-		}
-		if (matchedFlagRes.code === 'err:multiple-matches') {
-			return await h.error('multiple-matches', h.ctx.tr.text(CMD_Msgs.multipleFlagMatches(matchedFlagRes.count, args.flag)))
-		}
+		const flagRes = await resolveFlagArg(h, flags, args.flag)
+		if (flagRes.code !== 'ok') return flagRes.result
 
-		const flagToRemove = flags[matchedFlagRes.matched]
+		const flagToRemove = flagRes.flag
 		const bmPlayerData = await Battlemetrics.fetchSinglePlayerBmData(h.ctx, target.ids)
 		if (!bmPlayerData) {
 			return await h.error('not-in-battlemetrics', h.ctx.tr.text(CMD_Msgs.playerNotInBattlemetrics(target.ids.username)))
@@ -826,9 +1099,26 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			matches = active.filter((t) => (t.username ?? '').toLowerCase().includes(lower))
 		}
 		const matchedPlayerIds = new Set(matches.map((t) => t.playerId))
-		if (matchedPlayerIds.size === 0) return await h.error('not-found', h.ctx.tr.text(CMD_Msgs.noTimeoutMatch(token)))
-		if (matchedPlayerIds.size > 1)
-			return await h.error('multiple-matches', h.ctx.tr.text(CMD_Msgs.multipleTimeoutMatches(matchedPlayerIds.size, token)))
+		// a player can hold more than one timeout row, but they are one thing to pick, named by the player id the
+		// token is matched against first
+		const distinct = [...new Map(active.map((t) => [t.playerId, t] as const)).values()]
+		const timeoutChoices = (timeouts: typeof distinct) => timeouts.map((t) => ({ tokens: [t.playerId], label: t.username ?? t.playerId }))
+		if (matchedPlayerIds.size === 0) {
+			return await h.nearMiss('player', {
+				msg: `No active timeout matches "${token}"`,
+				typed: token,
+				cause: 'no-match',
+				choices: timeoutChoices(CMD.nearestBy(token, distinct, (t) => t.username ?? '')),
+			})
+		}
+		if (matchedPlayerIds.size > 1) {
+			return await h.nearMiss('player', {
+				msg: `${matchedPlayerIds.size} timed-out players match "${token}"`,
+				typed: token,
+				cause: 'ambiguous',
+				choices: timeoutChoices(distinct.filter((t) => matchedPlayerIds.has(t.playerId)).slice(0, CMD.MAX_CHOICES)),
+			})
+		}
 		for (const timeout of matches) {
 			await Timeouts.cancelTimeout(h.ctx, { timeoutId: timeout.id, actor: ingameActor(h.sender), serverCtx: h.ctx })
 		}
@@ -840,6 +1130,21 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const tokens = args.request.split(/\s+/).filter((t) => t.length > 0)
 		const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
 		const resolveRes = BB.resolveRequestTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
+		if (resolveRes.code === 'err:unknown-token' || resolveRes.code === 'err:ambiguous-token') {
+			// only one word of the request is wrong, so each choice is the whole request with that word corrected:
+			// the argument's window is the request, and a pick replaces all of it
+			const offending = resolveRes.token
+			return await h.nearMiss('request', {
+				msg: resolveRes.msg,
+				typed: offending,
+				cause: resolveRes.code === 'err:unknown-token' ? 'no-match' : 'ambiguous',
+				choices: resolveRes.suggestions.slice(0, CMD.MAX_CHOICES).map((suggestion) => ({
+					// a suggestion with spaces is still one request word: matching folds whitespace away
+					tokens: tokens.map((t) => (t === offending ? suggestion.replace(/\s+/g, '') : t)),
+					label: suggestion,
+				})),
+			})
+		}
 		if (resolveRes.code !== 'ok') return await h.error('invalid-request', resolveRes.msg)
 		const source = await resolveChatOwner(h)
 		const res = await LayerQueue.addBackburnerRequestFromChat(h.ctx, {

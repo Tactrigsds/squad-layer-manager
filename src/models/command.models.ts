@@ -2,6 +2,7 @@ import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
 import * as Obj from '@/lib/object-utils'
+import * as Str from '@/lib/string-utils'
 import { renderTemplate, templateVars } from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -643,6 +644,12 @@ function isSquadToken(token: string): boolean {
 }
 
 export type ArgTokenWindows = Record<string, string[] | undefined>
+
+// where an argument's window sits in the token list, so a picked choice can be spliced back over exactly the
+// words that failed to resolve (see spliceArgTokens)
+export type ArgTokenRange = { start: number; len: number }
+export type ArgTokenRanges = Record<string, ArgTokenRange | undefined>
+
 export type AssignPredicates = {
 	// whether a token parses as a team specifier (1|2|A|B|faction of the current layer)
 	isTeamToken: (token: string) => boolean
@@ -656,8 +663,9 @@ export function assignArgTokens(
 	args: readonly ArgDef[],
 	tokens: string[],
 	preds: AssignPredicates,
-): { code: 'ok'; windows: ArgTokenWindows } | { code: 'err:missing-arg'; argName: string } {
+): { code: 'ok'; windows: ArgTokenWindows; ranges: ArgTokenRanges } | { code: 'err:missing-arg'; argName: string } {
 	const windows: ArgTokenWindows = {}
+	const ranges: ArgTokenRanges = {}
 	let i = 0
 	for (let a = 0; a < args.length; a++) {
 		const def = args[a]
@@ -674,6 +682,7 @@ export function assignArgTokens(
 					break
 				}
 				windows[def.name] = [rem[0]]
+				ranges[def.name] = { start: i, len: 1 }
 				i += 1
 				break
 			}
@@ -685,6 +694,7 @@ export function assignArgTokens(
 					break
 				}
 				windows[def.name] = rem
+				ranges[def.name] = { start: i, len: rem.length }
 				i = tokens.length
 				break
 			}
@@ -707,6 +717,7 @@ export function assignArgTokens(
 					windowLen = candidates.length >= 2 && preds.isTeamToken(candidates[0]) && isSquadToken(candidates[1]) ? 2 : 1
 				}
 				windows[def.name] = candidates.slice(0, windowLen)
+				ranges[def.name] = { start: i, len: windowLen }
 				i += windowLen
 				break
 			}
@@ -714,7 +725,61 @@ export function assignArgTokens(
 				def satisfies never
 		}
 	}
-	return { code: 'ok', windows }
+	return { code: 'ok', windows, ranges }
+}
+
+// -------- near misses --------
+
+// A replacement offered when a typed token doesn't resolve. `tokens` are spliced back over the argument's window
+// and resolved again, so they have to name the choice unambiguously: a steam id rather than a username, "1 3"
+// rather than a squad name.
+export type ArgChoice = { tokens: string[]; label: string }
+
+// A failure the caller can fix by picking rather than by retyping. `msg` is the resolver's own account of what went
+// wrong, which heads the prompt: only the resolver knows whether "1" failed as a team or as a squad.
+export type NearMiss = { argName: string; typed: string; cause: 'no-match' | 'ambiguous'; msg: string; choices: ArgChoice[] }
+
+// A Squad warn holds only a few lines, and a caller who has to read past three options is better served by the
+// usage line.
+export const MAX_CHOICES = 3
+
+// Below this the closest match is noise, and offering a wrong player next to a right one invites picking it. Set at
+// half, which is exactly where a one-character slip in a two-character reason keyword ("tq" for "tk") lands: the
+// coarsest case that still has to survive.
+const MIN_SIMILARITY = 0.5
+
+// How close a typed token is to one candidate. Scored against the candidate's words as well as the whole of it, so
+// a clan tag or a suffix ("[7CAV] Alice_G") doesn't drown out the part the caller was aiming at. Levenshtein rather
+// than the dice coefficient, matching LP.didYouMean: these strings are often short, where bigram overlap is degenerate.
+function similarity(typed: string, candidate: string): number {
+	const target = Str.normalizeForMatch(typed)
+	if (target === '') return 0
+	const parts = [candidate, ...candidate.split(/[^\p{L}\p{N}]+/u)].map(Str.normalizeForMatch).filter((p) => p !== '')
+	return Math.max(0, ...parts.map((p) => StringComparison.levenshtein.similarity(target, p)))
+}
+
+// the items whose text is closest to what was typed, best first
+export function nearestBy<T>(typed: string, items: readonly T[], text: (item: T) => string, limit = MAX_CHOICES): T[] {
+	return items
+		.map((item) => ({ item, score: similarity(typed, text(item)) }))
+		.filter((scored) => scored.score >= MIN_SIMILARITY)
+		.toSorted((a, b) => b.score - a.score)
+		.slice(0, limit)
+		.map((scored) => scored.item)
+}
+
+export function nearest(typed: string, candidates: readonly string[], limit = MAX_CHOICES): string[] {
+	return nearestBy(typed, candidates, (candidate) => candidate, limit)
+}
+
+// Applies picked choices back over the tokens the caller typed. Right to left, since a choice's token count need
+// not match the window it replaces: a squad typed as one word comes back as "1 3".
+export function spliceArgTokens(tokens: readonly string[], picks: { range: ArgTokenRange; tokens: string[] }[]): string[] {
+	const out = [...tokens]
+	for (const pick of picks.toSorted((a, b) => b.range.start - a.range.start)) {
+		out.splice(pick.range.start, pick.range.len, ...pick.tokens)
+	}
+	return out
 }
 
 export function coerceIntArg(name: string, token: string): { code: 'ok'; value: number } | { code: 'err:invalid-int'; msg: string } {
@@ -739,13 +804,28 @@ function reasonOptionsHint(applicable: AAR.AdminActionReason[]): string {
 	return `Available: ${applicable.map(LP.describePreset).join(', ')}`
 }
 
+// The reasons closest to what was typed, one choice per reason: a reason with several near keywords is still one
+// thing to pick, and the keyword that stands for it only has to resolve, not to be the closest.
+function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgChoice[] {
+	const choices: ArgChoice[] = []
+	for (const keyword of nearest(token, LP.keywordStrings(applicable), MAX_CHOICES * 2)) {
+		const reason = LP.findByKeyword(applicable, keyword)
+		if (!reason) continue
+		const label = LP.describePreset(reason)
+		if (choices.some((choice) => choice.label === label)) continue
+		choices.push({ tokens: [keyword], label })
+		if (choices.length === MAX_CHOICES) break
+	}
+	return choices
+}
+
 // resolves a single reason token against ALL reasons for the action, distinguishing "no such reason" from
 // "exists but isn't set up for this action", and listing the valid options in either case
 export function resolveReasonToken(
 	allReasons: AAR.AdminActionReason[],
 	action: AAR.AdminActionType,
 	token: string,
-): { code: 'ok'; reason: AAR.AdminActionReason } | { code: 'err:unknown-preset'; msg: string } {
+): { code: 'ok'; reason: AAR.AdminActionReason } | { code: 'err:unknown-preset'; msg: string; choices: ArgChoice[] } {
 	const res = AAR.resolveReason(allReasons, action, token)
 	if (res.code === 'ok') return { code: 'ok', reason: res.reason }
 	const applicable = AAR.reasonsForAction(allReasons, action)
@@ -753,12 +833,14 @@ export function resolveReasonToken(
 		return {
 			code: 'err:unknown-preset',
 			msg: `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}. ${reasonOptionsHint(applicable)}`,
+			choices: reasonChoices(applicable, token),
 		}
 	}
 	const suggestion = LP.didYouMean(token, LP.keywordStrings(applicable))
 	return {
 		code: 'err:unknown-preset',
 		msg: `Unknown reason "${token}".${suggestion ? ` Did you mean ${suggestion}?` : ''} ${reasonOptionsHint(applicable)}`,
+		choices: reasonChoices(applicable, token),
 	}
 }
 
@@ -776,7 +858,7 @@ export function resolveReasonArg(
 	allReasons: AAR.AdminActionReason[],
 	action: AAR.AdminActionType,
 	tokens: string[],
-): { code: 'ok'; value: ResolvedReasonArg } | { code: 'err:unknown-preset'; msg: string } {
+): { code: 'ok'; value: ResolvedReasonArg } | { code: 'err:unknown-preset'; msg: string; choices: ArgChoice[] } {
 	if (tokens.length === 1) {
 		const res = resolveReasonToken(allReasons, action, tokens[0])
 		if (res.code !== 'ok') return res
