@@ -7,6 +7,7 @@
 // changes. Instead each ArgDef kind documents and samples itself once (ARG_KIND_HELP, sampleTokens), and a command's
 // examples are those samples poured into its own signature.
 
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
@@ -242,7 +243,7 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 
 	const section = CMD.resolveSectionToken(sectionToken)
 	if (!section) {
-		const choices = CMD.nearest(sectionToken, CMD.sectionTokens()).map((token) => ({ tokens: [token], label: token }))
+		const choices = Str.nearest(sectionToken, CMD.sectionTokens(), CMD.MAX_CHOICES).map((token) => ({ tokens: [token], label: token }))
 		return {
 			code: 'err:unknown-section',
 			msg:
