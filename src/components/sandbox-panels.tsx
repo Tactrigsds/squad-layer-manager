@@ -5,6 +5,7 @@ import * as Zus from '@/lib/zustand'
 import * as SB_Msgs from '@/messages/sandbox.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
+import { tr } from '@/systems/messages.client'
 
 import type { SandboxPanelWindowProps } from './sandbox-panels.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
@@ -31,7 +32,7 @@ function SandboxAdminListWindow(props: SandboxPanelWindowProps) {
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
 			<DraggableWindowDragBar>
-				<DraggableWindowTitle>{SB_Msgs.adminsCfgTitle(props.serverId).text()}</DraggableWindowTitle>
+				<DraggableWindowTitle>{tr.text(SB_Msgs.adminsCfgTitle(props.serverId))}</DraggableWindowTitle>
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="min-h-0 grow p-2">
@@ -51,7 +52,7 @@ export function SandboxAdminListPanel({ stores, className }: { stores: SandboxFr
 				{cfg ? (
 					<pre className="p-2 font-mono text-xs whitespace-pre-wrap">{cfg}</pre>
 				) : (
-					<p className="p-2 text-xs text-muted-foreground">{SB_Msgs.adminListEmpty().text()}</p>
+					<p className="p-2 text-xs text-muted-foreground">{tr.text(SB_Msgs.adminListEmpty())}</p>
 				)}
 			</ScrollArea>
 		</div>

@@ -2,6 +2,7 @@ import * as Prom from '@/lib/promise-utils'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
 import { formatVersion } from '@/lib/versioning.ts'
+import * as Catalogues from '@/messages/catalogues'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import * as AdminList from '@/systems/adminlist.server'
@@ -82,6 +83,8 @@ await Instr.spanOp('main', { module }, async () => {
 	// missing key stops the boot here
 	SecretBox.setup()
 	CleanupSys.setup()
+	// before anything resolves a locale: the landing pages and every player-facing warn negotiate against these
+	Catalogues.register()
 	// layer components/factionunit configs are consumed synchronously all over the app (including
 	// while parsing config), so they load before everything else
 	await LayerData.setup()

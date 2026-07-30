@@ -5,11 +5,12 @@ import type { ButtonProps } from '@/components/ui/button'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
+import { tr } from '@/systems/messages.client'
 
 const Pagination = ({ className, ...props }: React.ComponentProps<'nav'>) => (
 	<nav
 		role="navigation"
-		aria-label={UI_Msgs.pagination().text()}
+		aria-label={tr.text(UI_Msgs.pagination())}
 		className={cn('mx-auto flex w-full justify-center', className)}
 		{...props}
 	/>
@@ -47,16 +48,16 @@ const PaginationLink = ({ className, isActive, size = 'icon', ...props }: Pagina
 PaginationLink.displayName = 'PaginationLink'
 
 const PaginationPrevious = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
-	<PaginationLink aria-label={UI_Msgs.previousPageHint().text()} size="default" className={cn('gap-1 pl-2.5', className)} {...props}>
+	<PaginationLink aria-label={tr.text(UI_Msgs.previousPageHint())} size="default" className={cn('gap-1 pl-2.5', className)} {...props}>
 		<ChevronLeftIcon className="h-4 w-4" />
-		<span>{UI_Msgs.previousPage().text()}</span>
+		<span>{tr.text(UI_Msgs.previousPage())}</span>
 	</PaginationLink>
 )
 PaginationPrevious.displayName = 'PaginationPrevious'
 
 const PaginationNext = ({ className, ...props }: React.ComponentProps<typeof PaginationLink>) => (
-	<PaginationLink aria-label={UI_Msgs.nextPageHint().text()} size="default" className={cn('gap-1 pr-2.5', className)} {...props}>
-		<span>{UI_Msgs.nextPage().text()}</span>
+	<PaginationLink aria-label={tr.text(UI_Msgs.nextPageHint())} size="default" className={cn('gap-1 pr-2.5', className)} {...props}>
+		<span>{tr.text(UI_Msgs.nextPage())}</span>
 		<ChevronRightIcon className="h-4 w-4" />
 	</PaginationLink>
 )
@@ -65,7 +66,7 @@ PaginationNext.displayName = 'PaginationNext'
 const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<'span'>) => (
 	<span aria-hidden className={cn('flex h-9 w-9 items-center justify-center', className)} {...props}>
 		<DotsHorizontalIcon className="h-4 w-4" />
-		<span className="sr-only">{UI_Msgs.morePages().text()}</span>
+		<span className="sr-only">{tr.text(UI_Msgs.morePages())}</span>
 	</span>
 )
 PaginationEllipsis.displayName = 'PaginationEllipsis'

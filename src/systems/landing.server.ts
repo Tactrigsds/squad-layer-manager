@@ -6,8 +6,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import * as Paths from '$root/paths'
 import { LandingDocument } from '@/components/landing-pages'
 import * as Rx from '@/lib/rxjs'
+import * as I18n from '@/messages/i18n'
 import type * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
+import type * as Msgs from '@/models/messages.models'
 import { DEFAULT_REPO_URL } from '@/server/config.server'
 import * as Env from '@/server/env.ts'
 import { initModule } from '@/server/logger'
@@ -16,8 +18,9 @@ import * as LogoSys from '@/systems/logo.server'
 import * as Settings from '@/systems/settings.server'
 
 // Static, no-JS pages served outside the SPA: the login landing at '/' and the 403 shown to authenticated users
-// who lack site access. Authored as React components (landing-pages.tsx), rendered to a string once at setup()
-// and held, so requests never re-render them. The <html> attributes, <meta> tags and fonts/preconnects are pulled
+// who lack site access. Authored as React components (landing-pages.tsx), rendered to a cached string per locale
+// (negotiated from Accept-Language, the only signal an unauthenticated no-JS visitor carries), so requests never
+// re-render them. The <html> attributes, <meta> tags and fonts/preconnects are pulled
 // out of index.html (the single source of truth, id="site-head"); the source in dev/test, the built dist copy in
 // prod. Their own scoped Tailwind (landing-css.ts) is inlined so the pages are self-contained: unlike the app's
 // stylesheet under /assets, an inline <style> is not gated by the auth hook, so it loads for the unauthenticated
@@ -34,8 +37,8 @@ const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
 const module = initModule('landing')
 
-let landingHtmlCache!: string
-let forbiddenHtmlCache!: string
+// one rendered string per (variant, negotiated locale); bounded because negotiation only yields catalogued locales
+const pageCache = new Map<string, string>()
 let renderInputs!: { repoUrl: string; guildName: string | null; head: Head; inlineCss: string; accent: string | null }
 
 // must run after Discord.setup() so the home guild name is resolved, and after Settings.setup() for the accent
@@ -58,9 +61,25 @@ export async function setup() {
 }
 
 function renderCaches() {
-	// with discord auth off there is no oauth flow to send anyone into, so '/' offers the username form instead
-	landingHtmlCache = render(ENV.QUERY_PARAM_AUTH_BYPASS ? 'no-auth' : 'landing', null)
-	forbiddenHtmlCache = render('forbidden', null)
+	pageCache.clear()
+	// eager for the default locale so a render error fails the boot rather than the first request
+	cachedPage(homeVariant(), I18n.DEFAULT_LOCALE)
+	cachedPage('forbidden', I18n.DEFAULT_LOCALE)
+}
+
+// with discord auth off there is no oauth flow to send anyone into, so '/' offers the username form instead
+function homeVariant(): USR_Msgs.LandingVariant {
+	return ENV.QUERY_PARAM_AUTH_BYPASS ? 'no-auth' : 'landing'
+}
+
+function cachedPage(variant: USR_Msgs.LandingVariant, locale: string) {
+	const key = `${variant}:${locale}`
+	let html = pageCache.get(key)
+	if (html === undefined) {
+		html = render(variant, null, locale)
+		pageCache.set(key, html)
+	}
+	return html
 }
 
 async function resolveInlineCss(): Promise<string> {
@@ -71,22 +90,31 @@ async function resolveInlineCss(): Promise<string> {
 	return compileLandingCss()
 }
 
-export function landingHtml() {
-	return landingHtmlCache
+export function landingHtml(acceptLanguage: string | undefined) {
+	return cachedPage(homeVariant(), localeFor(acceptLanguage))
 }
 
-export function forbiddenHtml() {
-	return forbiddenHtmlCache
+export function forbiddenHtml(acceptLanguage: string | undefined) {
+	return cachedPage('forbidden', localeFor(acceptLanguage))
 }
 
 // the only page rendered per request: a rejected username has to say why, and nobody is served this often
 // enough for a cache to matter
-export function noAuthHtml(error: string) {
-	return render('no-auth', error)
+export function noAuthHtml(error: Msgs.Variants.Textable, acceptLanguage: string | undefined) {
+	return render('no-auth', error, localeFor(acceptLanguage))
 }
 
-function render(variant: USR_Msgs.LandingVariant, error: string | null) {
-	return '<!DOCTYPE html>' + renderToStaticMarkup(createElement(LandingDocument, { variant, error, ...renderInputs }))
+function localeFor(acceptLanguage: string | undefined) {
+	return I18n.negotiateLocale(I18n.parseAcceptLanguage(acceptLanguage))
+}
+
+function render(variant: USR_Msgs.LandingVariant, error: Msgs.Variants.Textable | null, locale: string) {
+	const tr = I18n.translatorFor(locale)
+	const head = { ...renderInputs.head, htmlAttrs: { ...renderInputs.head.htmlAttrs, lang: locale } }
+	return (
+		'<!DOCTYPE html>' +
+		renderToStaticMarkup(createElement(LandingDocument, { variant, error: error ? tr.text(error) : null, tr, ...renderInputs, head }))
+	)
 }
 
 function resolveHead(): Head {

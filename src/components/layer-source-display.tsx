@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { assertNever } from '@/lib/type-guards'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import type * as LL from '@/models/layer-list.models'
+import { tr } from '@/systems/messages.client'
 
 import { Avatar } from './ui/avatar'
 import { UserAvatar } from './user-avatar'
@@ -30,7 +31,7 @@ export default function LayerSourceDisplay(props: { source: LL.Source }) {
 		case 'ingame-vote':
 			return renderIcon(LL_Msgs.sourceNames['ingame-vote'], '#d97706', <Icons.Vote />)
 		case 'manual':
-			return <UserAvatar userId={props.source.userId} label={LL_Msgs.setByLabel().text()} />
+			return <UserAvatar userId={props.source.userId} label={tr.text(LL_Msgs.setByLabel())} />
 		default:
 			assertNever(props.source)
 	}

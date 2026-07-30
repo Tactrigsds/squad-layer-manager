@@ -9,6 +9,7 @@ import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 
 import * as DH from '../lib/display-helpers'
 
@@ -66,7 +67,7 @@ export function TeamFactionDisplay(props: {
 				</TooltipTrigger>
 				<TooltipContent>
 					<div className="text-xs">
-						<div className="font-semibold">{SM_Msgs.failedToParseLayer().text()}</div>
+						<div className="font-semibold">{tr.text(SM_Msgs.failedToParseLayer())}</div>
 						<div className="text-muted-foreground mt-1">{error instanceof Error ? error.message : 'Unknown error'}</div>
 					</div>
 				</TooltipContent>

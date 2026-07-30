@@ -51,6 +51,7 @@ import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -324,7 +325,7 @@ function LoadedGenVoteView({
 
 	return (
 		<GenVoteDialog
-			title={V_Msgs.generateVoteTitle().text()}
+			title={tr.text(V_Msgs.generateVoteTitle())}
 			stores={dialogStores}
 			open={entry.active}
 			onOpenChange={onOpenChange}
@@ -381,7 +382,7 @@ function LoadedPasteRotation({
 
 	return (
 		<MultiLayerSetDialog
-			title={LL_Msgs.pasteRotationTitle().text()}
+			title={tr.text(LL_Msgs.pasteRotationTitle())}
 			open={entry.active}
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
@@ -506,14 +507,14 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
 			<Badge key="default-choice" variant="secondary">
-				{LL_Msgs.defaultChoice().text()}
+				{tr.text(LL_Msgs.defaultChoice())}
 			</Badge>,
 		)
 	}
 	if (isVoteWinner) {
 		badges.unshift(
 			<Badge key="winner" variant="added">
-				{LL_Msgs.selectedChoice().text()}
+				{tr.text(LL_Msgs.selectedChoice())}
 			</Badge>,
 		)
 	}
@@ -530,7 +531,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 				<TooltipTrigger>
 					<Badge variant="destructive">?</Badge>
 				</TooltipTrigger>
-				<TooltipContent>{LL_Msgs.notCurrentNextLayer().text()}</TooltipContent>
+				<TooltipContent>{tr.text(LL_Msgs.notCurrentNextLayer())}</TooltipContent>
 			</Tooltip>,
 		)
 	}
@@ -634,7 +635,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						render={Button}
 						variant="ghost"
 						size="icon"
-						title={LL_Msgs.editItem().text()}
+						title={tr.text(LL_Msgs.editItem())}
 						disabled={!canEdit}
 					>
 						<Icons.Pencil />
@@ -642,7 +643,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
-						title={LL_Msgs.swapFactions().text()}
+						title={tr.text(LL_Msgs.swapFactions())}
 						disabled={!canEdit || !L.swapFactions(item.layerId)}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 					>
@@ -651,7 +652,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
-						title={LL_Msgs.deleteItem().text()}
+						title={tr.text(LL_Msgs.deleteItem())}
 						disabled={!canEdit}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
 					>
@@ -749,7 +750,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast(...V_Msgs.adminReceipt.started().toast())
+				toast(...tr.toast(V_Msgs.adminReceipt.started()))
 				break
 			default:
 				toast.error(res.msg)
@@ -764,7 +765,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast(...V_Msgs.adminReceipt.aborted().toast())
+				toast(...tr.toast(V_Msgs.adminReceipt.aborted()))
 				break
 			default:
 				toast.error(res.msg)
@@ -779,7 +780,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast(...V_Msgs.adminReceipt.endedEarly().toast())
+				toast(...tr.toast(V_Msgs.adminReceipt.endedEarly()))
 				break
 			default:
 				toast.error(res.msg)
@@ -794,7 +795,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 				RbacClient.handlePermissionDenied(res)
 				break
 			case 'ok':
-				toast(...V_Msgs.adminReceipt.autostartCancelled().toast())
+				toast(...tr.toast(V_Msgs.adminReceipt.autostartCancelled()))
 				break
 			default:
 				toast.error(res.msg)
@@ -841,17 +842,17 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									>
 										<Icons.GripHorizontal />
 									</Button>
-									<h3 className={cn(Typo.Label, 'bold')}>{V_Msgs.heading().text()}</h3>
+									<h3 className={cn(Typo.Label, 'bold')}>{tr.text(V_Msgs.heading())}</h3>
 									{voteAutostartTime && (
 										<>
 											<span>:</span>
 											<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-												<span>{V_Msgs.startsIn().text()}</span> <Timer deadline={voteAutostartTime.getTime()} />
+												<span>{tr.text(V_Msgs.startsIn())}</span> <Timer deadline={voteAutostartTime.getTime()} />
 												<PermissionDeniedTooltip denied={manageVoteDenied}>
 													<Button
 														variant="ghost"
 														size="icon"
-														title={V_Msgs.cancelAutostart().text()}
+														title={tr.text(V_Msgs.cancelAutostart())}
 														onClick={cancelAutostart}
 														{...manageVoteButtonProps()}
 													>
@@ -868,7 +869,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											<Icons.Dot width={20} height={20} />
 											<span>
 												{voteTally && serverInfo && (
-													<span>{V_Msgs.tally(voteTally.totalVotes, serverInfo.playerCount).text()}</span>
+													<span>{tr.text(V_Msgs.tally(voteTally.totalVotes, serverInfo.playerCount))}</span>
 												)}
 											</span>
 											{voteState.code === 'in-progress' && (
@@ -887,7 +888,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											{voteState.code === 'in-progress' && (
 												<PermissionDeniedTooltip denied={manageVoteDenied}>
 													<Button
-														title={V_Msgs.endVoteEarly().text()}
+														title={tr.text(V_Msgs.endVoteEarly())}
 														variant="ghost"
 														size="icon"
 														onClick={endVoteEarly}
@@ -900,7 +901,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											{voteState.code === 'in-progress' && (
 												<PermissionDeniedTooltip denied={manageVoteDenied}>
 													<Button
-														title={V_Msgs.abortVote().text()}
+														title={tr.text(V_Msgs.abortVote())}
 														variant="ghost"
 														size="icon"
 														onClick={abortVote}
@@ -927,7 +928,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 												htmlFor={internalVoteCheckboxId}
 												className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 											>
-												{V_Msgs.internalVote().text()}
+												{tr.text(V_Msgs.internalVote())}
 											</Label>
 										</div>
 									</PermissionDeniedTooltip>
@@ -938,7 +939,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 											size="icon"
 											onClick={() => startVote()}
 											disabled={!!manageVoteDenied || canInitiateVote.code !== 'ok'}
-											title={V_Msgs.startVote().text()}
+											title={tr.text(V_Msgs.startVote())}
 										>
 											<Icons.Play />
 										</Button>
@@ -946,7 +947,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 
 									{/* -------- add vote choices -------- */}
 									{inline(() => {
-										const activityTitle = V_Msgs.addVoteChoices().text()
+										const activityTitle = tr.text(V_Msgs.addVoteChoices())
 										return (
 											<StartActivityInteraction
 												loaderName="selectLayers"
@@ -982,14 +983,14 @@ function VoteLayerListItem(props: LayerListItemProps) {
 										itemId={props.itemId}
 										readonly={!canEdit || !!manageVoteDenied}
 									>
-										<Button variant="ghost" size="icon" aria-label={V_Msgs.configureVote().text()}>
+										<Button variant="ghost" size="icon" aria-label={tr.text(V_Msgs.configureVote())}>
 											<Icons.Settings2 />
 										</Button>
 									</VoteDisplayPropsPopover>
 									<Button
 										variant="ghost"
 										size="icon"
-										title={LL_Msgs.swapFactions().text()}
+										title={tr.text(LL_Msgs.swapFactions())}
 										disabled={!canEdit || !L.swapFactions(item.layerId)}
 										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
 									>
@@ -998,7 +999,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 									<Button
 										variant="ghost"
 										size="icon"
-										title={LL_Msgs.deleteItem().text()}
+										title={tr.text(LL_Msgs.deleteItem())}
 										disabled={!canEdit}
 										onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
 									>
@@ -1072,7 +1073,7 @@ function VoteDisplayPropsForm(props: {
 			/>
 			{!props.readonly && (
 				<Button className="w-full mt-4" size="sm" onClick={handleSave}>
-					{V_Msgs.saveVoteConfig().text()}
+					{tr.text(V_Msgs.saveVoteConfig())}
 				</Button>
 			)}
 		</>
@@ -1209,7 +1210,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 					onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'clone', itemId: item.itemId })}
 				>
 					<Icons.Copy />
-					{LL_Msgs.cloneItem().text()}
+					{tr.text(LL_Msgs.cloneItem())}
 				</Menu.Item>
 			</Menu.Group>
 			<Menu.Separator />
@@ -1222,7 +1223,7 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 					render={Menu.Item}
 					disabled={!canEdit}
 				>
-					{LL_Msgs.addLayersBefore().text()}
+					{tr.text(LL_Msgs.addLayersBefore())}
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="selectLayers"
@@ -1232,17 +1233,17 @@ function ItemMenuItems(props: { stores: SquadServerFrame.KeyProp; itemId: LL.Ite
 					render={Menu.Item}
 					disabled={!canEdit}
 				>
-					{LL_Msgs.addLayersAfter().text()}
+					{tr.text(LL_Msgs.addLayersAfter())}
 				</StartActivityInteraction>
 			</Menu.Group>
 
 			<Menu.Separator />
 			<Menu.Group>
 				<Menu.Item disabled={!canEdit || (index.innerIndex ?? index.outerIndex) === 0} onClick={sendToFront}>
-					{LL_Msgs.sendToFront().text()}
+					{tr.text(LL_Msgs.sendToFront())}
 				</Menu.Item>
 				<Menu.Item disabled={!canEdit || (!!lastLocalIndex && LL.indexesEqual(index, lastLocalIndex))} onClick={sendToBack}>
-					{LL_Msgs.sendToBack().text()}
+					{tr.text(LL_Msgs.sendToBack())}
 				</Menu.Item>
 			</Menu.Group>
 		</>

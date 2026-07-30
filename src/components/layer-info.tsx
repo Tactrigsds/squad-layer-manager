@@ -16,6 +16,7 @@ import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import { tr } from '@/systems/messages.client'
 
 import type { LayerInfoWindowProps } from './layer-info-window.helpers'
 import MapLayerDisplay from './map-layer-display.tsx'
@@ -192,18 +193,18 @@ export function LayerInfo(props: LayerInfoContentProps) {
 						onClick={() => copyAdminSetNextLayerCommand([props.layerId])}
 						size="icon"
 						variant="ghost"
-						title={L_Msgs.copySetNextCommand().text()}
+						title={tr.text(L_Msgs.copySetNextCommand())}
 					>
 						<Icons.Clipboard />
 					</Button>
 					{!props.hidePopoutButton && (
-						<Button onClick={openInPopoutWindow} size="icon" variant="ghost" title={L_Msgs.openInPopoutWindow().text()}>
+						<Button onClick={openInPopoutWindow} size="icon" variant="ghost" title={tr.text(L_Msgs.openInPopoutWindow())}>
 							<Icons.ExternalLink />
 						</Button>
 					)}
 					<a
 						className={buttonVariants({ variant: 'ghost', size: 'icon' })}
-						title={L_Msgs.openInSquadCalc().text()}
+						title={tr.text(L_Msgs.openInSquadCalc())}
 						href={squadcalcUrl}
 						target="_blank"
 					>
@@ -214,11 +215,11 @@ export function LayerInfo(props: LayerInfoContentProps) {
 				{!props.hideTabs && (
 					<TabsList
 						options={[
-							{ value: 'details', label: L_Msgs.detailsTab().text() },
+							{ value: 'details', label: tr.text(L_Msgs.detailsTab()) },
 							{
 								value: 'scores',
-								label: L_Msgs.scoresTab().text(),
-								disabled: !hasScores && L_Msgs.scoresUnavailable().text(),
+								label: tr.text(L_Msgs.scoresTab()),
+								disabled: !hasScores && tr.text(L_Msgs.scoresUnavailable()),
 							},
 						]}
 						active={activeTab}
@@ -227,9 +228,9 @@ export function LayerInfo(props: LayerInfoContentProps) {
 				)}
 			</div>
 			{activeTab === 'details' && layerDetails && <LayerDetailsDisplay layerDetails={layerDetails} />}
-			{activeTab === 'details' && !layerDetails && <div>{L_Msgs.noDetails().text()}</div>}
+			{activeTab === 'details' && !layerDetails && <div>{tr.text(L_Msgs.noDetails())}</div>}
 			{activeTab === 'scores' && hasScores && scores && layerDetails && <ScoreGrid scores={scores} layerDetails={layerDetails} />}
-			{activeTab === 'scores' && !hasScores && <div>{L_Msgs.noScores().text()}</div>}
+			{activeTab === 'scores' && !hasScores && <div>{tr.text(L_Msgs.noScores())}</div>}
 		</div>
 	)
 }
@@ -248,14 +249,14 @@ function LayerDetailsDisplay({
 			<div className="grid grid-cols-2 grid-rows-[auto_auto] gap-4">
 				{/* Team Info Row */}
 				<TeamInfoOnly
-					title={L_Msgs.team1().text()}
+					title={tr.text(L_Msgs.team1())}
 					unit={layerDetails.team1}
 					faction={layerDetails.layer.Faction_1}
 					role={layerDetails.layerConfig?.teams[0].role}
 					tickets={layerDetails.layerConfig?.teams[0].tickets}
 				/>
 				<TeamInfoOnly
-					title={L_Msgs.team2().text()}
+					title={tr.text(L_Msgs.team2())}
 					unit={layerDetails.team2}
 					faction={layerDetails.layer.Faction_2}
 					role={layerDetails.layerConfig?.teams[1].role}
@@ -263,8 +264,8 @@ function LayerDetailsDisplay({
 				/>
 
 				{/* Vehicles Row */}
-				<VehiclesOnly title={L_Msgs.team1Vehicles().text()} vehicles={team1Vehicles} />
-				<VehiclesOnly title={L_Msgs.team2Vehicles().text()} vehicles={team2Vehicles} />
+				<VehiclesOnly title={tr.text(L_Msgs.team1Vehicles())} vehicles={team1Vehicles} />
+				<VehiclesOnly title={tr.text(L_Msgs.team2Vehicles())} vehicles={team2Vehicles} />
 			</div>
 		</div>
 	)
@@ -285,11 +286,13 @@ function TeamInfoOnly({
 }) {
 	return (
 		<section className="space-y-1">
-			<div className="text-sm">{L_Msgs.teamFactionLine(title, role, faction, unit?.type || L_Msgs.unknownUnit().text()).react()}</div>
-			<div className="text-sm font-light">{unit?.displayName || L_Msgs.unknownUnit().text()}</div>
+			<div className="text-sm">
+				{tr.richText(L_Msgs.teamFactionLine(title, role, faction, unit?.type || tr.text(L_Msgs.unknownUnit())))}
+			</div>
+			<div className="text-sm font-light">{unit?.displayName || tr.text(L_Msgs.unknownUnit())}</div>
 			{tickets && (
 				<div className="text-xs text-muted-foreground">
-					<strong>{L_Msgs.startingTickets().text()}</strong> {tickets}
+					<strong>{tr.text(L_Msgs.startingTickets())}</strong> {tickets}
 				</div>
 			)}
 
@@ -323,7 +326,7 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 								<TooltipTrigger>
 									<Icons.Info size={16} className="text-blue-400 hover:text-blue-300 cursor-pointer" />
 								</TooltipTrigger>
-								<TooltipContent>{L_Msgs.vehicleDelayRespawn().text()}</TooltipContent>
+								<TooltipContent>{tr.text(L_Msgs.vehicleDelayRespawn())}</TooltipContent>
 							</Tooltip>
 						</TooltipProvider>
 					</div>
@@ -332,11 +335,11 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 							<TooltipTrigger>
 								<Icons.Car size={16} className="text-green-400" />
 							</TooltipTrigger>
-							<TooltipContent>{L_Msgs.vehicleType().text()}</TooltipContent>
+							<TooltipContent>{tr.text(L_Msgs.vehicleType())}</TooltipContent>
 						</Tooltip>
 					</div>
 					<div className="font-medium" role="columnheader">
-						{L_Msgs.vehicleName().text()}
+						{tr.text(L_Msgs.vehicleName())}
 					</div>
 					{vehicles.map((vehicle) => (
 						<IndividualVehicleRow key={vehicle.name} vehicle={vehicle} />
@@ -417,7 +420,7 @@ function OtherScoreRow({
 					{scoreRange?.logarithmic && (
 						<>
 							{' '}
-							<span className="text-xs text-muted-foreground">{L_Msgs.logarithmicScale().text()}</span>
+							<span className="text-xs text-muted-foreground">{tr.text(L_Msgs.logarithmicScale())}</span>
 						</>
 					)}
 				</span>
@@ -551,7 +554,7 @@ function OtherScoreRow({
 						<line x1={`${cutoffPercentage}%`} y1="0" x2={`${cutoffPercentage}%`} y2="16" stroke="white" strokeWidth="2" />
 						{/* Pool cutoff label */}
 						<text x={`${cutoffPercentage}%`} y="32" textAnchor="middle" fontSize="10" fill="white" className="font-medium">
-							{L_Msgs.poolCutoff(String(scoreRange.poolCutoff)).text()}
+							{tr.text(L_Msgs.poolCutoff(String(scoreRange.poolCutoff)))}
 						</text>
 					</svg>
 				</div>
@@ -572,12 +575,12 @@ function LayerConfigInfo({ layerConfig }: { layerConfig: L.LayerConfig }) {
 		<div className="text-xs text-muted-foreground space-y-0.5">
 			{!layerConfig.hasCommander && (
 				<div>
-					<strong>{L_Msgs.commanderLabel().text()}</strong> {L_Msgs.commanderDisabled().text()}
+					<strong>{tr.text(L_Msgs.commanderLabel())}</strong> {tr.text(L_Msgs.commanderDisabled())}
 				</div>
 			)}
 			{layerConfig.persistentLightingType && (
 				<div>
-					<strong>{L_Msgs.lightingLabel().text()}</strong> {layerConfig.persistentLightingType}
+					<strong>{tr.text(L_Msgs.lightingLabel())}</strong> {layerConfig.persistentLightingType}
 				</div>
 			)}
 		</div>
@@ -639,12 +642,12 @@ function BalanceDifferentialRow({
 		<div className="space-y-1">
 			<div className="flex justify-center items-center">
 				<span className="text-sm font-medium">
-					{L_Msgs.balanceDifferential().text()}{' '}
+					{tr.text(L_Msgs.balanceDifferential())}{' '}
 					<span className={`text-xs ${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
 						({diff > 0 ? '+' : ''}
 						{diff.toFixed(2)})
 					</span>{' '}
-					<span className="text-xs text-muted-foreground">{L_Msgs.logarithmicScale().text()}</span>
+					<span className="text-xs text-muted-foreground">{tr.text(L_Msgs.logarithmicScale())}</span>
 				</span>
 			</div>
 			{scoreRange && scoreRange.poolCutoff !== undefined ? (
@@ -735,7 +738,7 @@ function BalanceDifferentialRow({
 							fill="white"
 							className="font-medium"
 						>
-							{L_Msgs.poolCutoff(`+${scoreRange.poolCutoff}`).text()}
+							{tr.text(L_Msgs.poolCutoff(`+${scoreRange.poolCutoff}`))}
 						</text>
 
 						{/* Negative pool cutoff line */}
@@ -756,7 +759,7 @@ function BalanceDifferentialRow({
 							fill="white"
 							className="font-medium"
 						>
-							{L_Msgs.poolCutoff(`-${scoreRange.poolCutoff}`).text()}
+							{tr.text(L_Msgs.poolCutoff(`-${scoreRange.poolCutoff}`))}
 						</text>
 
 						{/* Current value indicator */}
@@ -807,20 +810,24 @@ function ScoreGrid({
 			{zScoreTypes.length > 0 && (
 				<div className="flex justify-between items-center mb-2 text-xs">
 					<div className="text-blue-500 font-medium">
-						{L_Msgs.teamScoreHeading(
-							L_Msgs.team1().text(),
-							team1Role,
-							layerDetails?.layer.Faction_1 ?? '',
-							layerDetails?.layer.Unit_1 ?? '',
-						).react()}
+						{tr.richText(
+							L_Msgs.teamScoreHeading(
+								tr.text(L_Msgs.team1()),
+								team1Role,
+								layerDetails?.layer.Faction_1 ?? '',
+								layerDetails?.layer.Unit_1 ?? '',
+							),
+						)}
 					</div>
 					<div className="text-red-500 font-medium">
-						{L_Msgs.teamScoreHeading(
-							L_Msgs.team2().text(),
-							team2Role,
-							layerDetails?.layer.Faction_2 ?? '',
-							layerDetails?.layer.Unit_2 ?? '',
-						).react()}
+						{tr.richText(
+							L_Msgs.teamScoreHeading(
+								tr.text(L_Msgs.team2()),
+								team2Role,
+								layerDetails?.layer.Faction_2 ?? '',
+								layerDetails?.layer.Unit_2 ?? '',
+							),
+						)}
 					</div>
 				</div>
 			)}
@@ -908,20 +915,22 @@ function ZScoreRow({
 		<div className="space-y-2">
 			<div className="flex justify-between items-center">
 				<span className="text-xs text-blue-500">
-					{team1Score !== undefined ? team1Score.toFixed(2) : L_Msgs.scoreUnavailable().text()}
+					{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}
 				</span>
 				<span className="text-sm font-medium">
 					{scoreType.replace(/_/g, ' ')}
 					<span className="text-xs font-light">
-						{L_Msgs.scoreDiff(
-							<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
-								{Math.abs(diff).toFixed(2)}
-							</span>,
-						).react()}
+						{tr.richText(
+							L_Msgs.scoreDiff(
+								<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+									{Math.abs(diff).toFixed(2)}
+								</span>,
+							),
+						)}
 					</span>
 				</span>
 				<span className="text-xs text-red-500">
-					{team2Score !== undefined ? team2Score.toFixed(2) : L_Msgs.scoreUnavailable().text()}
+					{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}
 				</span>
 			</div>
 

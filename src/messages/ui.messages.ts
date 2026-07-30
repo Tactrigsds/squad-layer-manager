@@ -1,63 +1,67 @@
-import * as Msgs from '@/messages/shared'
+import { def, t } from '@/models/messages.models'
 
 // What the shared widgets say about themselves, regardless of what they are showing. A combo box says "Search
 // options..." whether it holds layers or roles, so this vocabulary belongs to the widget rather than to any domain.
 
 // -------- combo boxes --------
 
-export const searchOptions = Msgs.def('Search options...')
+export const searchOptions = def('Search options...')
 
 // The picker names what it holds, which the caller supplies as a bare noun and this pluralizes. The rule is at
 // least in the messages tree now; a locale that cannot pluralize by suffix still needs the noun itself, so this
 // stays i18n debt rather than a finished message.
-export const selectedCount = Msgs.def(
-	(noun: string | undefined, count: number, limit?: number) => `Selected ${noun ? noun + 's ' : ''}(${count}${limit ? `/${limit}` : ''})`,
-)
+export const selectedCount = def((noun: string | undefined, count: number, limit?: number) => {
+	if (noun === undefined)
+		return limit === undefined ? t('Selected ({count})', { count }) : t('Selected ({count}/{limit})', { count, limit })
+	return limit === undefined
+		? t('Selected {noun}s ({count})', { noun, count })
+		: t('Selected {noun}s ({count}/{limit})', { noun, count, limit })
+})
 
-export const resetToInitial = Msgs.def('Reset to Initial')
+export const resetToInitial = def('Reset to Initial')
 
-export const selectAll = Msgs.def('Select All')
+export const selectAll = def('Select All')
 
-export const clearAll = Msgs.def('Clear All')
+export const clearAll = def('Clear All')
 
-export const noResults = Msgs.def('No results found.')
+export const noResults = def('No results found.')
 
-export const nothingSelected = Msgs.def('No items selected')
+export const nothingSelected = def('No items selected')
 
 // -------- pagination --------
 
-export const pagination = Msgs.def('pagination')
+export const pagination = def('pagination')
 
-export const previousPage = Msgs.def('Previous')
+export const previousPage = def('Previous')
 
-export const previousPageHint = Msgs.def('Go to previous page')
+export const previousPageHint = def('Go to previous page')
 
-export const nextPage = Msgs.def('Next')
+export const nextPage = def('Next')
 
-export const nextPageHint = Msgs.def('Go to next page')
+export const nextPageHint = def('Go to next page')
 
-export const morePages = Msgs.def('More pages')
+export const morePages = def('More pages')
 
-export const firstPageHint = Msgs.def('First page')
+export const firstPageHint = def('First page')
 
-export const lastPageHint = Msgs.def('Last page')
+export const lastPageHint = def('Last page')
 
-export const previousPageShortHint = Msgs.def('Previous page')
+export const previousPageShortHint = def('Previous page')
 
-export const nextPageShortHint = Msgs.def('Next page')
+export const nextPageShortHint = def('Next page')
 
-export const pageNumber = Msgs.def('Page number')
+export const pageNumber = def('Page number')
 
 // -------- dialogs, windows and the rest --------
 
-export const close = Msgs.def('Close')
+export const close = def('Close')
 
-export const closeWindow = Msgs.def('Close window')
+export const closeWindow = def('Close window')
 
-export const cancel = Msgs.def('Cancel')
+export const cancel = def('Cancel')
 
-export const loading = Msgs.def('Loading')
+export const loading = def('Loading')
 
-export const loadingEllipsis = Msgs.def('Loading...')
+export const loadingEllipsis = def('Loading...')
 
-export const invertHint = Msgs.def('Ctrl+Click to invert')
+export const invertHint = def('Ctrl+Click to invert')

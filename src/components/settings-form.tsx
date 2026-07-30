@@ -65,6 +65,7 @@ import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -277,7 +278,7 @@ function FieldIssues({ issues, pathStr }: { issues: NormalizedIssue[]; pathStr: 
 				</p>
 			))}
 			{issues.length > MAX_SHOWN_FIELD_ISSUES && (
-				<p className="text-xs text-destructive/80">{SETTINGS_Msgs.moreIssues(issues.length - MAX_SHOWN_FIELD_ISSUES).text()}</p>
+				<p className="text-xs text-destructive/80">{tr.text(SETTINGS_Msgs.moreIssues(issues.length - MAX_SHOWN_FIELD_ISSUES))}</p>
 			)}
 		</div>
 	)
@@ -315,12 +316,12 @@ function RbacSuperCallout() {
 		<div className="space-y-2 rounded-md border border-info/40 bg-info/10 p-3">
 			<p className="flex items-center gap-1.5 text-sm font-medium">
 				<Icons.ShieldCheck className="h-4 w-4 shrink-0" />
-				{RBAC_Msgs.superUsersAndRoles().text()}
+				{tr.text(RBAC_Msgs.superUsersAndRoles())}
 			</p>
-			<p className="text-xs text-muted-foreground">{RBAC_Msgs.superBlurb().text()}</p>
+			<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.superBlurb())}</p>
 			{superUsers.length > 0 && (
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-xs text-muted-foreground">{RBAC_Msgs.superUsersLabel().text()}</span>
+					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.superUsersLabel())}</span>
 					{superUsers.map((id) => (
 						<span key={id} className="rounded border bg-background px-1.5 py-0.5 text-xs" title={id}>
 							{userMap.get(id)?.displayName ?? <span className="font-mono">{id}</span>}
@@ -330,7 +331,7 @@ function RbacSuperCallout() {
 			)}
 			{superRoles.length > 0 && (
 				<div className="flex flex-wrap items-center gap-1.5">
-					<span className="text-xs text-muted-foreground">{RBAC_Msgs.superRolesLabel().text()}</span>
+					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.superRolesLabel())}</span>
 					{superRoles.map((id) => {
 						const role = guildRoles.find((r) => r.id === id)
 						return (
@@ -449,7 +450,7 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 
 	return (
 		<div className="space-y-4">
-			{groupingIds.length === 0 && <p className="text-xs text-muted-foreground">{PG_Msgs.noGroupings().text()}</p>}
+			{groupingIds.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(PG_Msgs.noGroupings())}</p>}
 			{groupingIds.map((id) => (
 				<GroupingCard
 					key={id}
@@ -465,7 +466,7 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 			))}
 			<div className="flex max-w-sm items-center gap-2">
 				<Input
-					placeholder={PG_Msgs.newGroupingName().text()}
+					placeholder={tr.text(PG_Msgs.newGroupingName())}
 					value={newGrouping}
 					onChange={(e) => setNewGrouping(e.target.value)}
 					onKeyDown={(e) => {
@@ -477,7 +478,7 @@ function PlayerGroupingsField({ value$, reset$, onChange }: OverrideProps) {
 				/>
 				<Button type="button" variant="outline" size="sm" disabled={!canAdd} onClick={addGrouping}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					{PG_Msgs.addGrouping().text()}
+					{tr.text(PG_Msgs.addGrouping())}
 				</Button>
 			</div>
 		</div>
@@ -543,7 +544,7 @@ function RuleValueField({
 		case 'admin-list':
 			return (
 				<ComboBox
-					title={PG_Msgs.adminGroupPicker().text()}
+					title={tr.text(PG_Msgs.adminGroupPicker())}
 					value={rule.adminGroup || undefined}
 					options={
 						adminGroupOptions === LOADING
@@ -556,7 +557,7 @@ function RuleValueField({
 				/>
 			)
 		case 'server-admin':
-			return <span className="text-xs text-muted-foreground">{PG_Msgs.serverAdminRuleValue().text()}</span>
+			return <span className="text-xs text-muted-foreground">{tr.text(PG_Msgs.serverAdminRuleValue())}</span>
 		case 'name-regex':
 			return <RulePatternField rule={rule} idx={idx} value$={value$} reset$={reset$} onChange={onChange} />
 		case 'discord-role':
@@ -597,9 +598,9 @@ function RulePatternField({
 				reset$={reset$}
 				onChange={(next) => onChange(idx, { pattern: (next as string) ?? '' }, true)}
 				numeric={false}
-				placeholder={PG_Msgs.namePatternPlaceholder().text()}
+				placeholder={tr.text(PG_Msgs.namePatternPlaceholder())}
 			/>
-			{invalid && <p className="text-xs text-destructive">{PG_Msgs.invalidNamePattern().text()}</p>}
+			{invalid && <p className="text-xs text-destructive">{tr.text(PG_Msgs.invalidNamePattern())}</p>}
 		</div>
 	)
 }
@@ -657,19 +658,19 @@ function RuleRow({
 				type="button"
 				ref={drag.handleRef}
 				className="cursor-grab rounded text-muted-foreground"
-				aria-label={PG_Msgs.dragToReorder().text()}
+				aria-label={tr.text(PG_Msgs.dragToReorder())}
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
 			<span className="text-xs tabular-nums text-muted-foreground">{idx + 1}.</span>
 			<Select value={rule.type} onValueChange={(next) => setSource(next as PG.GroupRuleSource)}>
-				<SelectTrigger className="h-8" aria-label={PG_Msgs.ruleSource().text()}>
+				<SelectTrigger className="h-8" aria-label={tr.text(PG_Msgs.ruleSource())}>
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
 					{PG.GROUP_RULE_SOURCES.map((source) => (
-						<SelectItem key={source} value={source} title={PG_Msgs.groupRuleSourceHints[source]}>
-							{PG_Msgs.groupRuleSourceLabels[source]}
+						<SelectItem key={source} value={source} title={tr.text(PG_Msgs.groupRuleSourceHints[source])}>
+							{tr.text(PG_Msgs.groupRuleSourceLabels[source])}
 						</SelectItem>
 					))}
 				</SelectContent>
@@ -693,7 +694,7 @@ function RuleRow({
 						reset$={reset$}
 						onChange={(next) => onChange(idx, { group: (next as string) ?? '' }, true)}
 						numeric={false}
-						placeholder={PG_Msgs.groupNamePlaceholder().text()}
+						placeholder={tr.text(PG_Msgs.groupNamePlaceholder())}
 					/>
 					{groupNames.length > 0 && (
 						<Button
@@ -701,8 +702,8 @@ function RuleRow({
 							size="icon"
 							variant="ghost"
 							className="h-6 w-6 shrink-0"
-							title={PG_Msgs.pickExistingGroup().text()}
-							aria-label={PG_Msgs.pickExistingGroup().text()}
+							title={tr.text(PG_Msgs.pickExistingGroup())}
+							aria-label={tr.text(PG_Msgs.pickExistingGroup())}
 							onClick={() => setNamingNewGroup(false)}
 						>
 							<Icons.List className="h-4 w-4" />
@@ -711,7 +712,7 @@ function RuleRow({
 				</div>
 			) : (
 				<ComboBox
-					title={PG_Msgs.groupPicker().text()}
+					title={tr.text(PG_Msgs.groupPicker())}
 					value={rule.group || undefined}
 					options={[
 						...groupNames.map(
@@ -722,7 +723,7 @@ function RuleRow({
 						),
 						{
 							value: ADD_NEW_GROUP,
-							label: <span className="text-muted-foreground">{PG_Msgs.addNewGroup().text()}</span>,
+							label: <span className="text-muted-foreground">{tr.text(PG_Msgs.addNewGroup())}</span>,
 							keywords: ['new'],
 						},
 					]}
@@ -738,7 +739,7 @@ function RuleRow({
 				size="icon"
 				variant="ghost"
 				className="h-6 w-6 text-destructive"
-				aria-label={PG_Msgs.removeRule().text()}
+				aria-label={tr.text(PG_Msgs.removeRule())}
 				onClick={onRemove}
 			>
 				<Icons.X className="h-4 w-4" />
@@ -820,7 +821,7 @@ function GroupingCard({
 					size="icon"
 					variant="ghost"
 					className="h-6 w-6 shrink-0 text-destructive"
-					aria-label={PG_Msgs.removeGrouping(groupingId).text()}
+					aria-label={tr.text(PG_Msgs.removeGrouping(groupingId))}
 					onClick={() => onRemove(groupingId)}
 				>
 					<Icons.X className="h-4 w-4" />
@@ -828,18 +829,18 @@ function GroupingCard({
 			</div>
 
 			<div className="space-y-1.5">
-				<Label className="text-xs text-muted-foreground">{PG_Msgs.rules().text()}</Label>
-				<p className="text-xs text-muted-foreground">{PG_Msgs.rulesBlurb().text()}</p>
-				{rules.length === 0 && <p className="text-xs text-muted-foreground">{PG_Msgs.noRules().text()}</p>}
+				<Label className="text-xs text-muted-foreground">{tr.text(PG_Msgs.rules())}</Label>
+				<p className="text-xs text-muted-foreground">{tr.text(PG_Msgs.rulesBlurb())}</p>
+				{rules.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(PG_Msgs.noRules())}</p>}
 				{rules.length > 0 && (
 					// column headers, aligned to the same grid template as RuleRow
 					<div className="grid grid-cols-[auto_1.5rem_7rem_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-0 text-xs font-medium text-muted-foreground">
 						<span />
 						<span />
 						<span />
-						<span>{PG_Msgs.matchesColumn().text()}</span>
+						<span>{tr.text(PG_Msgs.matchesColumn())}</span>
 						<span />
-						<span>{PG_Msgs.mappedGroupingColumn().text()}</span>
+						<span>{tr.text(PG_Msgs.mappedGroupingColumn())}</span>
 						<span />
 					</div>
 				)}
@@ -870,14 +871,16 @@ function GroupingCard({
 				</ol>
 				<Button type="button" variant="outline" size="sm" onClick={addRule}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					{PG_Msgs.addRule().text()}
+					{tr.text(PG_Msgs.addRule())}
 				</Button>
 			</div>
 
 			{groupNames.length > 0 && (
 				<details>
-					<summary className="cursor-pointer text-xs text-muted-foreground">{PG_Msgs.colorsSummary(groupNames.length).text()}</summary>
-					<p className="mt-1 text-xs text-muted-foreground">{PG_Msgs.colorsBlurb().text()}</p>
+					<summary className="cursor-pointer text-xs text-muted-foreground">
+						{tr.text(PG_Msgs.colorsSummary(groupNames.length))}
+					</summary>
+					<p className="mt-1 text-xs text-muted-foreground">{tr.text(PG_Msgs.colorsBlurb())}</p>
 					<ul className="mt-1.5 space-y-1">
 						{groupNames.map((group) => {
 							const color = grouping.groups?.[group]?.color
@@ -889,16 +892,16 @@ function GroupingCard({
 										{group}
 									</span>
 									<BmFlagSelect
-										title={PG_Msgs.colorFromFlag().text()}
+										title={tr.text(PG_Msgs.colorFromFlag())}
 										value={color?.type === 'flag' ? color.flag : undefined}
 										only={PG.getGroupFlags(grouping, group)}
 										onChange={(flag) => setGroupColor(group, { type: 'flag', flag })}
 									/>
-									<span className="text-xs text-muted-foreground">{PG_Msgs.orCustomColor().text()}</span>
+									<span className="text-xs text-muted-foreground">{tr.text(PG_Msgs.orCustomColor())}</span>
 									<Input
 										key={`${group}:${color?.type === 'custom' ? color.color : ''}`}
 										className="h-8 font-mono"
-										placeholder={PG_Msgs.hexColorPlaceholder().text()}
+										placeholder={tr.text(PG_Msgs.hexColorPlaceholder())}
 										defaultValue={color?.type === 'custom' ? color.color : ''}
 										onChange={(e) => setGroupColor(group, { type: 'custom', color: e.target.value }, true)}
 									/>
@@ -919,7 +922,7 @@ function HelpTip({ text, links }: { text: string; links?: { label: string; ancho
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={SETTINGS_Msgs.help().text()}>
+				<button type="button" className="text-muted-foreground hover:text-foreground" aria-label={tr.text(SETTINGS_Msgs.help())}>
 					<Icons.CircleHelp className="h-3.5 w-3.5" />
 				</button>
 			</TooltipTrigger>
@@ -1003,7 +1006,7 @@ function PrefixRow({
 		<div className="flex items-center gap-2 rounded-md border px-2 py-1.5">
 			<span className="text-xs text-muted-foreground tabular-nums">#{index + 1}</span>
 			<Input
-				aria-label={CMD_Msgs.prefixLabel(index + 1).text()}
+				aria-label={tr.text(CMD_Msgs.prefixLabel(index + 1))}
 				className={cn('h-7 w-16 font-mono text-sm', invalid && 'border-destructive focus-visible:ring-destructive')}
 				title={invalid ? CMD.PREFIX_ERROR : undefined}
 				value={draft}
@@ -1017,18 +1020,20 @@ function PrefixRow({
 				}}
 			/>
 			<label className="flex items-center gap-1 text-xs text-muted-foreground">
-				<input type="radio" checked={isDefault} onChange={onSetDefault} aria-label={CMD_Msgs.makePrefixDefault(index + 1).text()} />
-				{CMD_Msgs.defaultPrefix().text()}
+				<input type="radio" checked={isDefault} onChange={onSetDefault} aria-label={tr.text(CMD_Msgs.makePrefixDefault(index + 1))} />
+				{tr.text(CMD_Msgs.defaultPrefix())}
 			</label>
-			<span className="whitespace-nowrap text-xs text-muted-foreground">{CMD_Msgs.prefixUses(usage).text()}</span>
+			<span className="whitespace-nowrap text-xs text-muted-foreground">{tr.text(CMD_Msgs.prefixUses(usage))}</span>
 			<Button
 				type="button"
 				size="icon"
 				variant="ghost"
 				className="h-6 w-6 shrink-0 text-destructive disabled:opacity-40"
-				aria-label={CMD_Msgs.removePrefix(index + 1).text()}
+				aria-label={tr.text(CMD_Msgs.removePrefix(index + 1))}
 				disabled={!removable}
-				title={isDefault ? CMD_Msgs.defaultPrefixNotRemovable().text() : usage > 0 ? CMD_Msgs.prefixStillUsed(usage).text() : undefined}
+				title={
+					isDefault ? tr.text(CMD_Msgs.defaultPrefixNotRemovable()) : usage > 0 ? tr.text(CMD_Msgs.prefixStillUsed(usage)) : undefined
+				}
 				onClick={onRemove}
 			>
 				<Icons.X className="h-4 w-4" />
@@ -1096,7 +1101,7 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 
 	return (
 		<div className="space-y-2">
-			<p className="text-xs text-muted-foreground">{CMD_Msgs.prefixesBlurb().text()}</p>
+			<p className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.prefixesBlurb())}</p>
 			<div className="flex flex-wrap items-center gap-3">
 				{prefixes.map((p, idx) => (
 					<PrefixRow
@@ -1114,12 +1119,12 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 				))}
 				<div className="flex items-center gap-2">
 					<Input
-						aria-label={CMD_Msgs.newPrefix().text()}
+						aria-label={tr.text(CMD_Msgs.newPrefix())}
 						className={cn(
 							'h-7 w-16 font-mono text-sm',
 							(newInvalid || newDuplicate) && 'border-destructive focus-visible:ring-destructive',
 						)}
-						title={newInvalid ? CMD.PREFIX_ERROR : newDuplicate ? CMD_Msgs.duplicatePrefix().text() : undefined}
+						title={newInvalid ? CMD.PREFIX_ERROR : newDuplicate ? tr.text(CMD_Msgs.duplicatePrefix()) : undefined}
 						placeholder="$"
 						value={newPrefix}
 						onChange={(e) => setNewPrefix(e.target.value)}
@@ -1131,7 +1136,7 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 						}}
 					/>
 					<Button type="button" variant="outline" size="sm" disabled={!newTrimmed || newInvalid || newDuplicate} onClick={addPrefix}>
-						{CMD_Msgs.addPrefix().text()}
+						{tr.text(CMD_Msgs.addPrefix())}
 					</Button>
 				</div>
 			</div>
@@ -1175,7 +1180,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 								value$={mapValue(trigger$, (t) => CMD.triggerString(t ?? ''))}
 								reset$={reset$}
 								numeric={false}
-								placeholder={CMD_Msgs.triggerStringPlaceholder().text()}
+								placeholder={tr.text(CMD_Msgs.triggerStringPlaceholder())}
 								onChange={(v) => setAt(idx, CMD.withTriggerString(current()[idx] ?? '', v ?? ''))}
 							/>
 						</div>
@@ -1185,12 +1190,12 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 								variant="ghost"
 								size="sm"
 								className="h-6 px-2 text-xs text-muted-foreground"
-								title={CMD_Msgs.pinArgsHint().text()}
+								title={tr.text(CMD_Msgs.pinArgsHint())}
 								onClick={() =>
 									structural(current().map((t, i) => (i === idx ? { string: CMD.triggerString(t), args: NEW_TRIGGER_ARGS } : t)))
 								}
 							>
-								{CMD_Msgs.pinArgs().text()}
+								{tr.text(CMD_Msgs.pinArgs())}
 							</Button>
 						) : (
 							<>
@@ -1199,7 +1204,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 										value$={mapValue(trigger$, (t) => CMD.triggerArgs(t) ?? '')}
 										reset$={reset$}
 										numeric={false}
-										placeholder={CMD_Msgs.pinnedArgsPlaceholder().text()}
+										placeholder={tr.text(CMD_Msgs.pinnedArgsPlaceholder())}
 										onChange={(v) => {
 											const t = current()[idx] ?? ''
 											// Unpin's reset pulse reaches this input before it unmounts; taking that for an edit would re-pin the row
@@ -1213,10 +1218,10 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 									variant="ghost"
 									size="sm"
 									className="h-6 px-2 text-xs text-muted-foreground"
-									title={CMD_Msgs.unpinArgsHint().text()}
+									title={tr.text(CMD_Msgs.unpinArgsHint())}
 									onClick={() => structural(current().map((t, i) => (i === idx ? CMD.triggerString(t) : t)))}
 								>
-									{CMD_Msgs.unpinArgs().text()}
+									{tr.text(CMD_Msgs.unpinArgs())}
 								</Button>
 							</>
 						)}
@@ -1225,7 +1230,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							size="icon"
 							variant="ghost"
 							className="h-6 w-6 shrink-0 text-destructive"
-							aria-label={CMD_Msgs.removeTrigger(idx + 1).text()}
+							aria-label={tr.text(CMD_Msgs.removeTrigger(idx + 1))}
 							onClick={() => structural(triggers.filter((_, i) => i !== idx))}
 						>
 							<Icons.X className="h-4 w-4" />
@@ -1236,7 +1241,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 			<div className="flex items-center gap-2">
 				<Button type="button" variant="outline" size="sm" onClick={() => structural([...current(), ''])}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					{CMD_Msgs.addTrigger().text()}
+					{tr.text(CMD_Msgs.addTrigger())}
 				</Button>
 			</div>
 			{/* only where a template is actually being edited: this field renders once per command, and the signature under
@@ -1244,10 +1249,10 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 			{triggers.some((t) => CMD.triggerArgs(t) !== undefined) && (
 				<div className="space-y-0.5 text-xs text-muted-foreground">
 					{signature.length === 0 ? (
-						<span>{CMD_Msgs.takesNoArguments().text()}</span>
+						<span>{tr.text(CMD_Msgs.takesNoArguments())}</span>
 					) : (
 						<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-							<span>{CMD_Msgs.takesArguments().text()}</span>
+							<span>{tr.text(CMD_Msgs.takesArguments())}</span>
 							{signature.map(({ ref, arg }) => (
 								<span key={ref} className="whitespace-nowrap">
 									<code className="rounded bg-muted px-1 py-0.5 font-mono">{ref}</code>
@@ -1256,7 +1261,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							))}
 						</div>
 					)}
-					<span>{CMD_Msgs.argTemplateHelp().text()}</span>
+					<span>{tr.text(CMD_Msgs.argTemplateHelp())}</span>
 				</div>
 			)}
 		</div>
@@ -1280,31 +1285,31 @@ function CommandCard({ value$, reset$, onChange, path }: OverrideProps) {
 		<div className="space-y-2">
 			<div className="space-y-1">
 				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-					{CMD_Msgs.triggers().text()} <HelpTip text={CMD_Msgs.triggersHelp().text()} />
+					{tr.text(CMD_Msgs.triggers())} <HelpTip text={tr.text(CMD_Msgs.triggersHelp())} />
 				</span>
 				<CommandTriggersField value$={triggers$} reset$={reset$} onChange={(v) => patch({ triggers: v })} path={[]} cmdId={cmdId} />
 			</div>
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="flex items-center gap-2">
 					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-						{CMD_Msgs.allowedChats().text()} <HelpTip text={CMD_Msgs.allowedChatsHelp().text()} />
+						{tr.text(CMD_Msgs.allowedChats())} <HelpTip text={tr.text(CMD_Msgs.allowedChatsHelp())} />
 					</span>
 					<ComboBoxMulti
-						title={CMD_Msgs.allowedChats().text()}
+						title={tr.text(CMD_Msgs.allowedChats())}
 						values={allowedChats}
-						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: CMD_Msgs.chatGroupLabels[group] }))}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: tr.text(CMD_Msgs.chatGroupLabels[group]) }))}
 						onSelect={(next) => patch({ allowedChats: typeof next === 'function' ? next(allowedChats) : next })}
 					/>
 				</div>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 					<Switch checked={enabled} onCheckedChange={(v) => patch({ enabled: v })} />
-					{CMD_Msgs.enabled().text()}
+					{tr.text(CMD_Msgs.enabled())}
 				</label>
 				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 					<Checkbox checked={quickReference} onCheckedChange={(v) => patch({ quickReference: v === true })} />
 					<span className="flex items-center gap-1">
-						{CMD_Msgs.quickReference().text()}
-						<HelpTip text={CMD_Msgs.quickReferenceHelp().text()} />
+						{tr.text(CMD_Msgs.quickReference())}
+						<HelpTip text={tr.text(CMD_Msgs.quickReferenceHelp())} />
 					</span>
 				</label>
 			</div>
@@ -1320,7 +1325,7 @@ function PasswordField({ value$, reset$, onChange }: OverrideProps) {
 			onChange={onChange}
 			numeric={false}
 			secret
-			placeholder={SETTINGS_Msgs.passwordPlaceholder().text()}
+			placeholder={tr.text(SETTINGS_Msgs.passwordPlaceholder())}
 		/>
 	)
 }
@@ -1371,7 +1376,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 					data-slot="input-group-control"
 					type={show ? 'text' : 'password'}
 					defaultValue={format(value$.getValue())}
-					placeholder={SETTINGS_Msgs.serverAgentTokenPlaceholder().text()}
+					placeholder={tr.text(SETTINGS_Msgs.serverAgentTokenPlaceholder())}
 					autoComplete="off"
 					spellCheck={false}
 					onChange={(e) => push(e.currentTarget.value)}
@@ -1380,25 +1385,25 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 				<InputGroupAddon align="inline-end">
 					<InputGroupButton
 						size="icon-xs"
-						aria-label={show ? SETTINGS_Msgs.hideToken().text() : SETTINGS_Msgs.showToken().text()}
+						aria-label={show ? tr.text(SETTINGS_Msgs.hideToken()) : tr.text(SETTINGS_Msgs.showToken())}
 						onClick={() => setShow((s) => !s)}
 					>
 						{show ? <Icons.EyeOff /> : <Icons.Eye />}
 					</InputGroupButton>
-					<InputGroupButton size="icon-xs" aria-label={SETTINGS_Msgs.copyToken().text()} onClick={copy}>
+					<InputGroupButton size="icon-xs" aria-label={tr.text(SETTINGS_Msgs.copyToken())} onClick={copy}>
 						{copied ? <Icons.Check /> : <Icons.Copy />}
 					</InputGroupButton>
 					<InputGroupButton size="xs" onClick={generate}>
 						<Icons.RefreshCw />
-						{SETTINGS_Msgs.generateToken().text()}
+						{tr.text(SETTINGS_Msgs.generateToken())}
 					</InputGroupButton>
 				</InputGroupAddon>
 			</InputGroup>
 			<p className="text-xs text-muted-foreground">
-				{SETTINGS_Msgs.serverAgentTokenBlurb().text()}{' '}
+				{tr.text(SETTINGS_Msgs.serverAgentTokenBlurb())}{' '}
 				{docUrl && (
 					<a href={docUrl} target="_blank" rel="noreferrer" className="underline hover:text-foreground">
-						{SETTINGS_Msgs.serverAgentSetupGuide().text()}
+						{tr.text(SETTINGS_Msgs.serverAgentSetupGuide())}
 					</a>
 				)}
 			</p>
@@ -1484,7 +1489,7 @@ function PresetTableField({
 				onClick={() => structural([...((value$.getValue() as object[]) ?? []), newRow()])}
 			>
 				<Icons.Plus className="h-4 w-4" />
-				{SETTINGS_Msgs.addItem().text()}
+				{tr.text(SETTINGS_Msgs.addItem())}
 			</Button>
 		</div>
 	)
@@ -1498,9 +1503,9 @@ function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
 			onChange={onChange}
 			headers={
 				<>
-					<TableHead className="w-[11rem]">{AAR_Msgs.labelColumn().text()}</TableHead>
-					<TableHead>{AAR_Msgs.textsColumn().text()}</TableHead>
-					<TableHead className="w-[10rem]">{AAR_Msgs.keywordsColumn().text()}</TableHead>
+					<TableHead className="w-[11rem]">{tr.text(AAR_Msgs.labelColumn())}</TableHead>
+					<TableHead>{tr.text(AAR_Msgs.textsColumn())}</TableHead>
+					<TableHead className="w-[10rem]">{tr.text(AAR_Msgs.keywordsColumn())}</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
@@ -1518,9 +1523,9 @@ function LayerTagsField({ value$, reset$, onChange }: OverrideProps) {
 			onChange={onChange}
 			headers={
 				<>
-					<TableHead className="w-[12rem]">{LTag_Msgs.labelColumn().text()}</TableHead>
-					<TableHead>{LTag_Msgs.descriptionColumn().text()}</TableHead>
-					<TableHead className="w-[9rem]">{LTag_Msgs.colorColumn().text()}</TableHead>
+					<TableHead className="w-[12rem]">{tr.text(LTag_Msgs.labelColumn())}</TableHead>
+					<TableHead>{tr.text(LTag_Msgs.descriptionColumn())}</TableHead>
+					<TableHead className="w-[9rem]">{tr.text(LTag_Msgs.colorColumn())}</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
@@ -1560,7 +1565,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 				<Input
 					defaultValue={row?.label ?? ''}
 					maxLength={LTag.MAX_LABEL_LENGTH}
-					placeholder={LTag_Msgs.labelColumn().text()}
+					placeholder={tr.text(LTag_Msgs.labelColumn())}
 					onBlur={(e) => commitLabel(e.target.value)}
 				/>
 				{row?.id && <p className="mt-1 font-mono text-2xs text-muted-foreground">{row.id}</p>}
@@ -1571,7 +1576,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 					defaultValue={row?.description ?? ''}
 					maxLength={LTag.MAX_DESCRIPTION_LENGTH}
 					className="min-h-8 text-sm"
-					placeholder={LTag_Msgs.descriptionPlaceholder().text()}
+					placeholder={tr.text(LTag_Msgs.descriptionPlaceholder())}
 					onBlur={(e) => setFields({ description: e.target.value })}
 				/>
 			</TableCell>
@@ -1581,7 +1586,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 						<PopoverTrigger asChild>
 							<button
 								type="button"
-								title={LTag_Msgs.pickColor().text()}
+								title={tr.text(LTag_Msgs.pickColor())}
 								className="h-6 w-6 shrink-0 rounded border"
 								style={{ backgroundColor: row?.color ?? LTag.DELETED_TAG_COLOR }}
 							/>
@@ -1605,7 +1610,7 @@ function LayerTagRow({ idx, parent$, reset$, parentOnChange, onRemove }: PresetR
 					size="icon"
 					variant="ghost"
 					className="h-8 w-8 text-destructive"
-					title={LTag_Msgs.deleteTag().text()}
+					title={tr.text(LTag_Msgs.deleteTag())}
 					onClick={onRemove}
 				>
 					<Icons.X className="h-4 w-4" />
@@ -1660,12 +1665,12 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 					reset$={reset$}
 					onChange={setField('label')}
 					numeric={false}
-					placeholder={AAR_Msgs.labelPlaceholder().text()}
+					placeholder={tr.text(AAR_Msgs.labelPlaceholder())}
 				/>
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="space-y-1.5">
-					{presentActions.length === 0 && <p className="text-xs text-destructive">{AAR_Msgs.noActionTexts().text()}</p>}
+					{presentActions.length === 0 && <p className="text-xs text-destructive">{tr.text(AAR_Msgs.noActionTexts())}</p>}
 					{presentActions.map((action) => {
 						const text$ = scopeValue(actionTexts$, action)
 						return (
@@ -1679,7 +1684,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 										size="icon"
 										variant="ghost"
 										className="h-5 w-5 text-destructive"
-										title={AAR_Msgs.removeActionText(AAR.ADMIN_ACTIONS[action].displayName).text()}
+										title={tr.text(AAR_Msgs.removeActionText(AAR.ADMIN_ACTIONS[action].displayName))}
 										onClick={() => removeAction(action)}
 									>
 										<Icons.X className="h-3.5 w-3.5" />
@@ -1689,7 +1694,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 									value$={text$}
 									reset$={reset$}
 									onChange={setActionText(action)}
-									placeholder={AAR_Msgs.actionTextPlaceholder(AAR.ADMIN_ACTIONS[action].displayName).text()}
+									placeholder={tr.text(AAR_Msgs.actionTextPlaceholder(AAR.ADMIN_ACTIONS[action].displayName))}
 								/>
 							</div>
 						)
@@ -1697,7 +1702,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 					{remainingActions.length > 0 && (
 						<Select value="" onValueChange={(a) => addAction(a as AAR.AdminActionType)}>
 							<SelectTrigger className="h-8">
-								<SelectValue placeholder={AAR_Msgs.addActionText().text()} />
+								<SelectValue placeholder={tr.text(AAR_Msgs.addActionText())} />
 							</SelectTrigger>
 							<SelectContent>
 								{remainingActions.map((a) => (
@@ -1739,13 +1744,13 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 	for (const action of AAR.ADMIN_ACTION_TYPE.options) {
 		if (reason.actionTexts[action] === undefined) continue
 		if (action === 'warn') {
-			entries.push({ context: AAR_Msgs.previewWarn().text(), text: applied('warn') })
-			entries.push({ context: AAR_Msgs.previewWarnSquad().text(), text: applied('warn', { audienceTag: '@Squad1' }) })
+			entries.push({ context: tr.text(AAR_Msgs.previewWarn()), text: applied('warn') })
+			entries.push({ context: tr.text(AAR_Msgs.previewWarnSquad()), text: applied('warn', { audienceTag: '@Squad1' }) })
 			continue
 		}
 		if (action === 'timeout') {
-			entries.push({ context: AAR_Msgs.previewTimeout().text(), text: applied('timeout', { duration: '2h' }) })
-			entries.push({ context: AAR_Msgs.previewTimeoutExpired().text(), text: applied('timeout', { duration: '' }) })
+			entries.push({ context: tr.text(AAR_Msgs.previewTimeout()), text: applied('timeout', { duration: '2h' }) })
+			entries.push({ context: tr.text(AAR_Msgs.previewTimeoutExpired()), text: applied('timeout', { duration: '' }) })
 			continue
 		}
 		const audienceTag = AAR.ADMIN_ACTIONS[action].targetKind === 'squad' ? '@Squad1' : undefined
@@ -1759,10 +1764,19 @@ function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<
 // not available here, and pointing at docs that advertise them would send authors down a dead end
 const TEMPLATE_SYNTAX_URL = 'https://mustache.github.io/mustache.5.html'
 
+// which words are the link is the message's; where it points and how it looks are not
+const trWithDocLink = tr.withTags({
+	link: (chunks) => (
+		<a href={TEMPLATE_SYNTAX_URL} target="_blank" rel="noopener noreferrer">
+			{chunks}
+		</a>
+	),
+})
+
 function TemplateSyntaxHint() {
 	return (
 		<p className="text-xs text-muted-foreground [&_a]:text-blue-600 [&_a]:hover:underline">
-			{AAR_Msgs.templateSyntaxHint(TEMPLATE_SYNTAX_URL).react()}
+			{trWithDocLink.richText(AAR_Msgs.templateSyntaxHint())}
 		</p>
 	)
 }
@@ -1774,23 +1788,23 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 	const actionTexts = Object.fromEntries(
 		Object.entries(raw?.actionTexts ?? {}).map(([action, text]) => [
 			action,
-			(text ?? '').trim() || AAR_Msgs.previewMissingActionText().text(),
+			(text ?? '').trim() || tr.text(AAR_Msgs.previewMissingActionText()),
 		]),
 	) as Partial<Record<AAR.AdminActionType, string>>
 	const reason: AAR.AdminActionReason = {
-		label: raw?.label?.trim() || AAR_Msgs.previewMissingLabel().text(),
+		label: raw?.label?.trim() || tr.text(AAR_Msgs.previewMissingLabel()),
 		keywords: raw?.keywords ?? [],
 		actionTexts,
 	}
 	return (
 		<Popover>
 			<PopoverTrigger asChild>
-				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title={AAR_Msgs.previewTitle().text()}>
+				<Button type="button" size="icon" variant="ghost" className="h-8 w-8" title={tr.text(AAR_Msgs.previewTitle())}>
 					<Icons.Eye className="h-4 w-4" />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className="w-96 space-y-2" align="end">
-				<p className="text-xs text-muted-foreground">{AAR_Msgs.previewBlurb().text()}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(AAR_Msgs.previewBlurb())}</p>
 				<TemplateSyntaxHint />
 				{reasonPreviewEntries(reason, customVars).map((entry) => (
 					<div key={entry.context} className="space-y-1">
@@ -1882,7 +1896,7 @@ function KeywordsCell({
 		<Input
 			ref={ref}
 			defaultValue={format(value$.getValue())}
-			placeholder={AAR_Msgs.keywordsPlaceholder().text()}
+			placeholder={tr.text(AAR_Msgs.keywordsPlaceholder())}
 			onChange={(e) => push(parse(e.currentTarget.value))}
 		/>
 	)
@@ -1950,17 +1964,17 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 	const available = definedLists.data?.code === 'ok' ? definedLists.data.lists.map((l) => l.listId) : []
 	const options = [...new Set([...available, ...value])].sort().map((listId) => ({
 		value: listId,
-		label: available.includes(listId) ? listId : SM_Msgs.adminListNotConfigured(listId).text(),
+		label: available.includes(listId) ? listId : tr.text(SM_Msgs.adminListNotConfigured(listId)),
 	}))
 
 	return (
 		<div className="space-y-2">
 			<div className="max-w-[28rem]">
 				<ComboBoxMulti
-					title={SM_Msgs.adminListPicker().text()}
+					title={tr.text(SM_Msgs.adminListPicker())}
 					values={value}
 					options={options}
-					emptyLabel={SM_Msgs.selectAdminLists().text()}
+					emptyLabel={tr.text(SM_Msgs.selectAdminLists())}
 					chipDisplay
 					onSelect={(next) => onChange(typeof next === 'function' ? next(value) : next)}
 				/>
@@ -1968,8 +1982,8 @@ function ServerAdminListsField({ value$, reset$, onChange }: OverrideProps) {
 			{isSandbox && (
 				<Alert>
 					<Icons.Info className="h-4 w-4" />
-					<AlertTitle>{SM_Msgs.sandboxAdminListTitle().text()}</AlertTitle>
-					<AlertDescription>{SM_Msgs.sandboxAdminListBlurb().text()}</AlertDescription>
+					<AlertTitle>{tr.text(SM_Msgs.sandboxAdminListTitle())}</AlertTitle>
+					<AlertDescription>{tr.text(SM_Msgs.sandboxAdminListBlurb())}</AlertDescription>
 				</Alert>
 			)}
 		</div>
@@ -1998,7 +2012,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 
 	return (
 		<div className="space-y-3">
-			{names.length === 0 && <p className="text-xs text-muted-foreground">{SM_Msgs.noAdminLists().text()}</p>}
+			{names.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(SM_Msgs.noAdminLists())}</p>}
 			{names.map((name) => {
 				const def = value[name]
 				const source = def.source
@@ -2021,7 +2035,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 								<SelectContent>
 									{ADMIN_SOURCE_TYPES.map((type) => (
 										<SelectItem key={type} value={type}>
-											{SM_Msgs.adminSourceTypeLabels[type]}
+											{tr.text(SM_Msgs.adminSourceTypeLabels[type])}
 										</SelectItem>
 									))}
 								</SelectContent>
@@ -2031,7 +2045,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 								size="icon"
 								variant="ghost"
 								className="ml-auto h-7 w-7 text-destructive"
-								title={SM_Msgs.deleteAdminList(name).text()}
+								title={tr.text(SM_Msgs.deleteAdminList(name))}
 								onClick={() =>
 									update((v) => {
 										const next = { ...v }
@@ -2048,7 +2062,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 							<div className="grid grid-cols-2 gap-2">
 								<Input
 									className="h-8"
-									placeholder={SM_Msgs.sftpHost().text()}
+									placeholder={tr.text(SM_Msgs.sftpHost())}
 									defaultValue={source.host}
 									onChange={(e) => patchSource(name, { host: e.target.value }, true)}
 								/>
@@ -2061,20 +2075,20 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 								/>
 								<Input
 									className="h-8"
-									placeholder={SM_Msgs.sftpUsername().text()}
+									placeholder={tr.text(SM_Msgs.sftpUsername())}
 									defaultValue={source.username}
 									onChange={(e) => patchSource(name, { username: e.target.value }, true)}
 								/>
 								<Input
 									className="h-8"
 									type="password"
-									placeholder={SM_Msgs.sftpPassword().text()}
+									placeholder={tr.text(SM_Msgs.sftpPassword())}
 									defaultValue={source.password}
 									onChange={(e) => patchSource(name, { password: e.target.value }, true)}
 								/>
 								<Input
 									className="col-span-2 h-8"
-									placeholder={SM_Msgs.sftpFilePath().text()}
+									placeholder={tr.text(SM_Msgs.sftpFilePath())}
 									defaultValue={source.filePath}
 									onChange={(e) => patchSource(name, { filePath: e.target.value }, true)}
 								/>
@@ -2090,14 +2104,14 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 
 						<div className="space-y-1">
 							<label className="flex items-center gap-1 text-xs text-muted-foreground">
-								{SM_Msgs.adminIdentifyingPermissions().text()}
-								<HelpTip text={SM_Msgs.adminIdentifyingPermissionsHelp().text()} />
+								{tr.text(SM_Msgs.adminIdentifyingPermissions())}
+								<HelpTip text={tr.text(SM_Msgs.adminIdentifyingPermissionsHelp())} />
 							</label>
 							<ComboBoxMulti
-								title={SM_Msgs.permissionPicker().text()}
+								title={tr.text(SM_Msgs.permissionPicker())}
 								values={def.adminIdentifyingPermissions}
 								options={PLAYER_PERM_OPTIONS}
-								emptyLabel={SM_Msgs.selectPermissions().text()}
+								emptyLabel={tr.text(SM_Msgs.selectPermissions())}
 								chipDisplay
 								onSelect={(next) =>
 									update((v) => ({
@@ -2118,7 +2132,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 			<div className="flex items-center gap-1.5">
 				<Input
 					className="h-8 w-[14rem]"
-					placeholder={SM_Msgs.newAdminListName().text()}
+					placeholder={tr.text(SM_Msgs.newAdminListName())}
 					value={newName}
 					onChange={(e) => setNewName(e.target.value)}
 					onKeyDown={(e) => {
@@ -2129,7 +2143,7 @@ function AdminListsField({ value$, reset$, onChange }: OverrideProps) {
 				/>
 				<Button type="button" size="sm" variant="outline" className="h-8" disabled={!canAdd} onClick={addList}>
 					<Icons.Plus className="mr-1 h-4 w-4" />
-					{SM_Msgs.addAdminList().text()}
+					{tr.text(SM_Msgs.addAdminList())}
 				</Button>
 			</div>
 		</div>
@@ -2306,16 +2320,16 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 			)}
 			{roleIds.length > 0 && (
 				<div className="flex items-center justify-between">
-					<p className="text-xs text-muted-foreground">{RBAC_Msgs.roleCount(roleIds.length).text()}</p>
+					<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.roleCount(roleIds.length))}</p>
 					<Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={clearAll}>
 						<Icons.Trash2 className="mr-1 h-4 w-4" />
-						{RBAC_Msgs.clearAllRoles().text()}
+						{tr.text(RBAC_Msgs.clearAllRoles())}
 					</Button>
 				</div>
 			)}
 			<div className="space-y-3">
 				<div className="flex flex-wrap items-center gap-1.5">
-					{roleIds.length === 0 && <p className="text-xs text-muted-foreground">{RBAC_Msgs.noRoles().text()}</p>}
+					{roleIds.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.noRoles())}</p>}
 					{roleIds.map((id) => (
 						<button
 							key={id}
@@ -2332,7 +2346,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 									<TooltipTrigger asChild>
 										<Icons.TriangleAlert className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
 									</TooltipTrigger>
-									<TooltipContent>{RBAC_Msgs.roleUnassignedShort().text()}</TooltipContent>
+									<TooltipContent>{tr.text(RBAC_Msgs.roleUnassignedShort())}</TooltipContent>
 								</Tooltip>
 							)}
 						</button>
@@ -2340,7 +2354,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 					<div className="flex items-center gap-1.5">
 						<Input
 							className="h-8 w-[11rem] font-mono"
-							placeholder={RBAC_Msgs.newRoleId().text()}
+							placeholder={tr.text(RBAC_Msgs.newRoleId())}
 							value={newRole}
 							onChange={(e) => setNewRole(e.target.value)}
 							onKeyDown={(e) => {
@@ -2366,7 +2380,7 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 						assigned={isRoleAssigned(rbac.roles?.[selected])}
 					/>
 				) : (
-					<p className="text-sm text-muted-foreground">{RBAC_Msgs.selectARole().text()}</p>
+					<p className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.selectARole())}</p>
 				)}
 			</div>
 		</div>
@@ -2440,11 +2454,11 @@ function RoleDetail({
 					onClick={() => update((r) => withRoleRemoved(r, roleId))}
 				>
 					<Icons.Trash2 className="mr-1 h-4 w-4" />
-					{RBAC_Msgs.deleteRole().text()}
+					{tr.text(RBAC_Msgs.deleteRole())}
 				</Button>
 			</div>
 
-			<RoleSubsection title={RBAC_Msgs.permissions().text()} description={RBAC_Msgs.permissionsBlurb().text()}>
+			<RoleSubsection title={tr.text(RBAC_Msgs.permissions())} description={tr.text(RBAC_Msgs.permissionsBlurb())}>
 				<RolePermissionsTable
 					roleId={roleId}
 					cfg={cfg}
@@ -2455,7 +2469,7 @@ function RoleDetail({
 				/>
 			</RoleSubsection>
 
-			<RoleSubsection title={RBAC_Msgs.assignments().text()} description={RBAC_Msgs.assignmentsBlurb().text()}>
+			<RoleSubsection title={tr.text(RBAC_Msgs.assignments())} description={tr.text(RBAC_Msgs.assignmentsBlurb())}>
 				<RoleAssignmentsEditor roleId={roleId} cfg={cfg} update={update} assigned={assigned} />
 			</RoleSubsection>
 		</div>
@@ -2507,9 +2521,9 @@ function RolePermissionsTable({
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead className="w-[7.5rem]">{RBAC_Msgs.effectColumn().text()}</TableHead>
-						<TableHead className="w-[16rem]">{RBAC_Msgs.permissionColumn().text()}</TableHead>
-						<TableHead>{RBAC_Msgs.scopeColumn().text()}</TableHead>
+						<TableHead className="w-[7.5rem]">{tr.text(RBAC_Msgs.effectColumn())}</TableHead>
+						<TableHead className="w-[16rem]">{tr.text(RBAC_Msgs.permissionColumn())}</TableHead>
+						<TableHead>{tr.text(RBAC_Msgs.scopeColumn())}</TableHead>
 						<TableHead className="w-10" />
 					</TableRow>
 				</TableHeader>
@@ -2517,7 +2531,7 @@ function RolePermissionsTable({
 					{rows.length === 0 && (
 						<TableRow>
 							<TableCell colSpan={4} className="text-xs text-muted-foreground">
-								{RBAC_Msgs.noPermissions().text()}
+								{tr.text(RBAC_Msgs.noPermissions())}
 							</TableCell>
 						</TableRow>
 					)}
@@ -2536,15 +2550,15 @@ function RolePermissionsTable({
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="allow">{RBAC_Msgs.allow().text()}</SelectItem>
-											<SelectItem value="deny">{RBAC_Msgs.deny().text()}</SelectItem>
+											<SelectItem value="allow">{tr.text(RBAC_Msgs.allow())}</SelectItem>
+											<SelectItem value="deny">{tr.text(RBAC_Msgs.deny())}</SelectItem>
 										</SelectContent>
 									</Select>
 								</TableCell>
 								<TableCell className="align-top">
 									<div className="flex items-start gap-1">
 										<code className="text-xs leading-8">
-											{row.type === PermRows.ALL_PERMISSIONS ? RBAC_Msgs.allPermissions().text() : row.type}
+											{row.type === PermRows.ALL_PERMISSIONS ? tr.text(RBAC_Msgs.allPermissions()) : row.type}
 										</code>
 										{PermRows.permDescription(row.type) && <HelpTip text={PermRows.permDescription(row.type)!} />}
 										{subsumed && (
@@ -2552,7 +2566,7 @@ function RolePermissionsTable({
 												<TooltipTrigger asChild>
 													<Icons.Info className="mt-2 h-3 w-3 shrink-0 text-muted-foreground" />
 												</TooltipTrigger>
-												<TooltipContent>{RBAC_Msgs.subsumedByWildcard().text()}</TooltipContent>
+												<TooltipContent>{tr.text(RBAC_Msgs.subsumedByWildcard())}</TooltipContent>
 											</Tooltip>
 										)}
 									</div>
@@ -2581,7 +2595,7 @@ function RolePermissionsTable({
 												<Icons.Trash2 className="h-4 w-4" />
 											</Button>
 										</TooltipTrigger>
-										<TooltipContent>{RBAC_Msgs.removePermission().text()}</TooltipContent>
+										<TooltipContent>{tr.text(RBAC_Msgs.removePermission())}</TooltipContent>
 									</Tooltip>
 								</TableCell>
 							</TableRow>
@@ -2590,8 +2604,8 @@ function RolePermissionsTable({
 				</TableBody>
 			</Table>
 			<ComboBox
-				title={RBAC_Msgs.permissionPicker().text()}
-				placeholder={RBAC_Msgs.addPermission().text()}
+				title={tr.text(RBAC_Msgs.permissionPicker())}
+				placeholder={tr.text(RBAC_Msgs.addPermission())}
 				className="w-[20rem]"
 				value={undefined}
 				options={addOptions}
@@ -2619,7 +2633,7 @@ function PermScopeCell({
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? []
 
 	// a denial is unrestricted by construction: the expression grammar carries no args
-	if (row.effect === 'deny') return <span className="text-xs leading-8 text-muted-foreground">{RBAC_Msgs.scopeEverything().text()}</span>
+	if (row.effect === 'deny') return <span className="text-xs leading-8 text-muted-foreground">{tr.text(RBAC_Msgs.scopeEverything())}</span>
 
 	const scope = PermRows.rowScope(row.type)
 	switch (scope) {
@@ -2627,21 +2641,21 @@ function PermScopeCell({
 		case 'global':
 			return (
 				<span className="text-xs leading-8 text-muted-foreground">
-					{scope === 'all' ? RBAC_Msgs.scopeEverything().text() : RBAC_Msgs.scopeNone().text()}
+					{scope === 'all' ? tr.text(RBAC_Msgs.scopeEverything()) : tr.text(RBAC_Msgs.scopeNone())}
 				</span>
 			)
 
 		case 'timeout':
 			return (
 				<div className="flex items-center gap-2">
-					<span className="text-xs text-muted-foreground">{RBAC_Msgs.scopeUpTo().text()}</span>
+					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.scopeUpTo())}</span>
 					<div className="w-24">
 						<TextInputField
 							value$={timeout$}
 							reset$={reset$}
 							onChange={(v) => onPatch(row.id, { maxTimeout: (v as string) || PermRows.DEFAULT_MAX_TIMEOUT }, true)}
 							numeric={false}
-							placeholder={RBAC_Msgs.maxTimeoutPlaceholder().text()}
+							placeholder={tr.text(RBAC_Msgs.maxTimeoutPlaceholder())}
 						/>
 					</div>
 				</div>
@@ -2650,7 +2664,7 @@ function PermScopeCell({
 		case 'layer-requests':
 			return (
 				<div className="flex items-center gap-2">
-					<span className="text-xs text-muted-foreground">{RBAC_Msgs.scopeUpTo().text()}</span>
+					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.scopeUpTo())}</span>
 					<div className="w-24">
 						<TextInputField
 							value$={layerRequests$}
@@ -2671,7 +2685,7 @@ function PermScopeCell({
 							placeholder={String(PermRows.DEFAULT_MAX_LAYER_REQUESTS)}
 						/>
 					</div>
-					<span className="text-xs text-muted-foreground">{RBAC_Msgs.scopeConcurrentRequests().text()}</span>
+					<span className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.scopeConcurrentRequests())}</span>
 				</div>
 			)
 
@@ -2680,7 +2694,7 @@ function PermScopeCell({
 				<ScopeValueRows
 					kind="setting-path"
 					mono
-					emptyLabel={RBAC_Msgs.scopeAllSettings().text()}
+					emptyLabel={tr.text(RBAC_Msgs.scopeAllSettings())}
 					values={row.paths ?? []}
 					options={globalGrantPathOptions()}
 					onChange={(paths) => onPatch(row.id, { paths })}
@@ -2692,7 +2706,7 @@ function PermScopeCell({
 			return (
 				<ScopeValueRows
 					kind="server"
-					emptyLabel={RBAC_Msgs.scopeAllServers().text()}
+					emptyLabel={tr.text(RBAC_Msgs.scopeAllServers())}
 					values={row.serverIds ?? []}
 					options={serverOptionsFor(servers, row.serverIds ?? [])}
 					onChange={(serverIds) => onPatch(row.id, { serverIds })}
@@ -2705,7 +2719,7 @@ function PermScopeCell({
 				<div className="space-y-3">
 					<ScopeValueRows
 						kind="server"
-						emptyLabel={RBAC_Msgs.scopeAllServers().text()}
+						emptyLabel={tr.text(RBAC_Msgs.scopeAllServers())}
 						values={row.serverIds ?? []}
 						options={serverOptionsFor(servers, row.serverIds ?? [])}
 						onChange={(serverIds) => onPatch(row.id, { serverIds })}
@@ -2713,7 +2727,7 @@ function PermScopeCell({
 					<ScopeValueRows
 						kind="setting-path"
 						mono
-						emptyLabel={RBAC_Msgs.scopeAllNonSensitiveSettings().text()}
+						emptyLabel={tr.text(RBAC_Msgs.scopeAllNonSensitiveSettings())}
 						values={row.paths ?? []}
 						options={serverGrantPathOptions()}
 						onChange={(paths) => onPatch(row.id, { paths })}
@@ -2841,13 +2855,13 @@ function RoleAssignmentsEditor({
 	const selectedPairs = selectedGroups.map((g) => encodeListGroup(g.listId, g.groupId))
 	const groupOptions = [...new Set([...availablePairs, ...selectedPairs])].sort().map((pair) => ({
 		value: pair,
-		label: availablePairs.includes(pair) ? pair : RBAC_Msgs.groupNotInAnyList(pair).text(),
+		label: availablePairs.includes(pair) ? pair : tr.text(RBAC_Msgs.groupNotInAnyList(pair)),
 	}))
 	const availableListIds = availableLists.map((l) => l.listId)
 	const selectedIngameLists = cfg.assignments?.ingameAdminLists ?? []
 	const ingameListOptions = [...new Set([...availableListIds, ...selectedIngameLists])].sort().map((listId) => ({
 		value: listId,
-		label: availableListIds.includes(listId) ? listId : SM_Msgs.adminListNotConfigured(listId).text(),
+		label: availableListIds.includes(listId) ? listId : tr.text(SM_Msgs.adminListNotConfigured(listId)),
 	}))
 	function setGroups(next: string[]) {
 		const pairs = next.map(decodeListGroup).filter((p): p is { listId: string; groupId: string } => p !== null)
@@ -2862,7 +2876,7 @@ function RoleAssignmentsEditor({
 			{!assigned && (
 				<p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
 					<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
-					{RBAC_Msgs.roleUnassigned().text()}
+					{tr.text(RBAC_Msgs.roleUnassigned())}
 				</p>
 			)}
 			<div className="flex items-center gap-2">
@@ -2870,23 +2884,23 @@ function RoleAssignmentsEditor({
 					checked={!!cfg.assignments?.everyMember}
 					onCheckedChange={(on) => update((r) => withRoleConfig(r, roleId, (c) => withAssignments(c, { everyMember: on })))}
 				/>
-				<span className="text-sm">{RBAC_Msgs.everyMember().text()}</span>
+				<span className="text-sm">{tr.text(RBAC_Msgs.everyMember())}</span>
 			</div>
 
 			<div className="space-y-1.5">
 				<label className="flex items-center gap-1 text-xs text-muted-foreground">
-					{RBAC_Msgs.ingameAdminsOfLists().text()}
+					{tr.text(RBAC_Msgs.ingameAdminsOfLists())}
 					<HelpTip
-						text={RBAC_Msgs.ingameAdminsHelp().text()}
-						links={[{ label: RBAC_Msgs.adminListsLink().text(), anchor: 'setting:adminLists' }]}
+						text={tr.text(RBAC_Msgs.ingameAdminsHelp())}
+						links={[{ label: tr.text(RBAC_Msgs.adminListsLink()), anchor: 'setting:adminLists' }]}
 					/>
 				</label>
 				<div className="max-w-[28rem]">
 					<ComboBoxMulti
-						title={SM_Msgs.adminListPicker().text()}
+						title={tr.text(SM_Msgs.adminListPicker())}
 						values={selectedIngameLists}
 						options={ingameListOptions}
-						emptyLabel={SM_Msgs.selectAdminLists().text()}
+						emptyLabel={tr.text(SM_Msgs.selectAdminLists())}
 						chipDisplay
 						onSelect={(next) => setIngameLists(typeof next === 'function' ? next(selectedIngameLists) : next)}
 					/>
@@ -2894,7 +2908,7 @@ function RoleAssignmentsEditor({
 			</div>
 
 			<div className="space-y-1.5">
-				<label className="text-xs text-muted-foreground">{RBAC_Msgs.discordRoles().text()}</label>
+				<label className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.discordRoles())}</label>
 				{roleAssignIds.map((id) => (
 					<div key={id} className="flex items-center gap-2">
 						<div className="min-w-0 flex-1 max-w-[24rem]">
@@ -2917,7 +2931,7 @@ function RoleAssignmentsEditor({
 			</div>
 
 			<div className="space-y-1.5">
-				<label className="text-xs text-muted-foreground">{RBAC_Msgs.discordUsers().text()}</label>
+				<label className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.discordUsers())}</label>
 				{userAssignIds.map((id) => (
 					<div key={id} className="flex items-center gap-2">
 						<div className="min-w-0 flex-1 max-w-[24rem]">
@@ -2941,21 +2955,21 @@ function RoleAssignmentsEditor({
 
 			<div className="space-y-1.5">
 				<label className="flex items-center gap-1 text-xs text-muted-foreground">
-					{RBAC_Msgs.adminListGroups().text()}
+					{tr.text(RBAC_Msgs.adminListGroups())}
 					<HelpTip
-						text={RBAC_Msgs.adminListGroupsHelp().text()}
-						links={[{ label: RBAC_Msgs.adminListsLink().text(), anchor: 'setting:adminLists' }]}
+						text={tr.text(RBAC_Msgs.adminListGroupsHelp())}
+						links={[{ label: tr.text(RBAC_Msgs.adminListsLink()), anchor: 'setting:adminLists' }]}
 					/>
 				</label>
 				{groupOptions.length === 0 ? (
-					<p className="text-xs text-muted-foreground">{RBAC_Msgs.noAdminListGroups().text()}</p>
+					<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.noAdminListGroups())}</p>
 				) : (
 					<div className="max-w-[28rem]">
 						<ComboBoxMulti
-							title={RBAC_Msgs.groupPicker().text()}
+							title={tr.text(RBAC_Msgs.groupPicker())}
 							values={selectedPairs}
 							options={groupOptions}
-							emptyLabel={RBAC_Msgs.selectAdminListGroups().text()}
+							emptyLabel={tr.text(RBAC_Msgs.selectAdminListGroups())}
 							chipDisplay
 							onSelect={(next) => setGroups(typeof next === 'function' ? next(selectedPairs) : next)}
 						/>
@@ -2990,17 +3004,17 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0 space-y-0.5">
 								<p className="text-sm font-medium">{BAL.TRIGGERS[id].name}</p>
-								<p className="text-xs text-muted-foreground">{BAL_Msgs.descriptions[id]}</p>
+								<p className="text-xs text-muted-foreground">{tr.text(BAL_Msgs.descriptions[id])}</p>
 							</div>
 							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
 								<SelectTrigger
 									className={cn('h-8 w-36 shrink-0', display?.text)}
-									aria-label={BAL_Msgs.levelPickerLabel(BAL.TRIGGERS[id].name).text()}
+									aria-label={tr.text(BAL_Msgs.levelPickerLabel(BAL.TRIGGERS[id].name))}
 								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value={TRIGGER_OFF}>{BAL_Msgs.levelOff().text()}</SelectItem>
+									<SelectItem value={TRIGGER_OFF}>{tr.text(BAL_Msgs.levelOff())}</SelectItem>
 									{BAL.TRIGGER_LEVEL.options.map((opt) => (
 										<SelectItem key={opt} value={opt} className={TRIGGER_LEVEL_DISPLAY[opt].text}>
 											{humanize(opt)}
@@ -3015,7 +3029,7 @@ function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) 
 									<AlertIcon className="mr-2 h-4 w-4" />
 									{BAL.TRIGGERS[id].name}
 								</AlertTitle>
-								<AlertDescription>{BAL_Msgs.sampleMessages[id]}</AlertDescription>
+								<AlertDescription>{tr.text(BAL_Msgs.sampleMessages[id])}</AlertDescription>
 							</Alert>
 						)}
 					</div>
@@ -3191,7 +3205,7 @@ function EnumArrayField({
 	const value = useFieldValue(value$) as any[]
 	return (
 		<ComboBoxMulti
-			title={SETTINGS_Msgs.enumValuePicker().text()}
+			title={tr.text(SETTINGS_Msgs.enumValuePicker())}
 			values={value ?? []}
 			options={options}
 			onSelect={(next) => onChange(typeof next === 'function' ? next(value ?? []) : next)}
@@ -3225,7 +3239,7 @@ function NullableField({
 						reset$.next()
 					}}
 				/>
-				{SETTINGS_Msgs.unsetField().text()}
+				{tr.text(SETTINGS_Msgs.unsetField())}
 			</label>
 			{!isNull && <div className="flex-1 min-w-0">{children}</div>}
 		</div>
@@ -3253,7 +3267,7 @@ function wrapNullable(
 function placeholderFor(node: Node, inner: Node, path: Path): string | undefined {
 	const def = effectiveDefault(node)
 	if (def.has && def.value !== '' && (typeof def.value === 'string' || typeof def.value === 'number')) return String(def.value)
-	if (isStringOrNumber(inner)) return SETTINGS_Msgs.durationExample().text()
+	if (isStringOrNumber(inner)) return tr.text(SETTINGS_Msgs.durationExample())
 	const last = path[path.length - 1]
 	return typeof last === 'string' ? humanize(last) : undefined
 }
@@ -3405,7 +3419,7 @@ function ArrayField({
 
 	return (
 		<div className="space-y-1.5">
-			{value.length === 0 && <p className="text-xs text-muted-foreground">{SETTINGS_Msgs.emptyList().text()}</p>}
+			{value.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.emptyList())}</p>}
 			{value.map((_, idx) => (
 				// list items have no stable id (primitives / freshly-added objects), so index is the pragmatic key here
 				<ArrayItem
@@ -3428,7 +3442,7 @@ function ArrayField({
 				onClick={() => structural([...((value$.getValue() as any[]) ?? []), emptyValue(items)])}
 			>
 				<Icons.Plus className="h-4 w-4" />
-				{SETTINGS_Msgs.addItem().text()}
+				{tr.text(SETTINGS_Msgs.addItem())}
 			</Button>
 		</div>
 	)
@@ -3523,7 +3537,7 @@ function RecordField({
 
 	return (
 		<div className="space-y-2">
-			{entries.length === 0 && <p className="text-xs text-muted-foreground">{SETTINGS_Msgs.noEntries().text()}</p>}
+			{entries.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(SETTINGS_Msgs.noEntries())}</p>}
 			{entries.map(([key]) => (
 				<RecordEntry
 					key={key}
@@ -3542,7 +3556,7 @@ function RecordField({
 				remainingKeys.length > 0 && (
 					<Select value="" onValueChange={add}>
 						<SelectTrigger className="h-8 max-w-[16rem]">
-							<SelectValue placeholder={SETTINGS_Msgs.addEntry().text()} />
+							<SelectValue placeholder={tr.text(SETTINGS_Msgs.addEntry())} />
 						</SelectTrigger>
 						<SelectContent>
 							{remainingKeys.map((k) => (
@@ -3557,7 +3571,7 @@ function RecordField({
 				<div className="flex items-center gap-2">
 					<Input
 						className="font-mono h-8 max-w-[16rem]"
-						placeholder={SETTINGS_Msgs.newEntryKey().text()}
+						placeholder={tr.text(SETTINGS_Msgs.newEntryKey())}
 						value={newKey}
 						onChange={(e) => setNewKey(e.target.value)}
 					/>
@@ -3569,7 +3583,7 @@ function RecordField({
 						onClick={() => add(newKey.trim())}
 					>
 						<Icons.Plus className="h-4 w-4" />
-						{SETTINGS_Msgs.addItem().text()}
+						{tr.text(SETTINGS_Msgs.addItem())}
 					</Button>
 				</div>
 			)}
@@ -3760,7 +3774,7 @@ function FieldResetControls({
 		<div className="flex items-center gap-1 shrink-0">
 			<TooltipButton
 				disabled={!canResetSaved}
-				tooltip={canResetSaved ? SETTINGS_Msgs.resetToSaved().text() : SETTINGS_Msgs.alreadySaved().text()}
+				tooltip={canResetSaved ? tr.text(SETTINGS_Msgs.resetToSaved()) : tr.text(SETTINGS_Msgs.alreadySaved())}
 				onClick={() => resetTo(savedValue)}
 			>
 				<Icons.RotateCcw className="h-3.5 w-3.5" />
@@ -3769,15 +3783,15 @@ function FieldResetControls({
 				<>
 					{showDefaultLabel && (
 						<span className="text-xs text-muted-foreground max-w-[12rem] truncate" title={formatDefaultValue(def.value)}>
-							{SETTINGS_Msgs.defaultHint(formatDefaultValue(def.value)).text()}
+							{tr.text(SETTINGS_Msgs.defaultHint(formatDefaultValue(def.value)))}
 						</span>
 					)}
 					<TooltipButton
 						disabled={!canResetDefault}
 						tooltip={
 							canResetDefault
-								? SETTINGS_Msgs.resetToDefault(formatDefaultValue(def.value)).text()
-								: SETTINGS_Msgs.alreadyDefault().text()
+								? tr.text(SETTINGS_Msgs.resetToDefault(formatDefaultValue(def.value)))
+								: tr.text(SETTINGS_Msgs.alreadyDefault())
 						}
 						onClick={() => resetTo(def.value)}
 					>
@@ -3795,8 +3809,8 @@ function AnchorLink({ domId }: { domId: string }) {
 		<a
 			href={`#${domId}`}
 			className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
-			title={SETTINGS_Msgs.linkToSetting().text()}
-			aria-label={SETTINGS_Msgs.linkToSetting().text()}
+			title={tr.text(SETTINGS_Msgs.linkToSetting())}
+			aria-label={tr.text(SETTINGS_Msgs.linkToSetting())}
 			onClick={(e) => {
 				e.preventDefault()
 				SettingsNav.navigateToAnchor(domId)
@@ -3838,7 +3852,7 @@ function AdvancedDisclosure({ paths, children }: { paths: string[]; children: Re
 				aria-expanded={open}
 			>
 				<Icons.ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />
-				{SETTINGS_Msgs.advanced().text()}
+				{tr.text(SETTINGS_Msgs.advanced())}
 				<span className="opacity-60">({paths.length})</span>
 				{hasIssue && <Icons.TriangleAlert className="h-3 w-3 text-destructive" />}
 			</button>
@@ -3937,7 +3951,7 @@ function LocalJsonField({
 		SettingsNav.scrollToAnchorSettled(domId)
 	}
 	return (
-		<React.Suspense fallback={<p className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEditor().text()}</p>}>
+		<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
 			<SchemaJsonEditor
 				key={seed.nonce}
 				schema={schema}
@@ -4095,7 +4109,7 @@ function LeafField({
 							<TooltipTrigger asChild>
 								<Icons.Lock className="h-3 w-3 text-muted-foreground" />
 							</TooltipTrigger>
-							<TooltipContent>{SETTINGS_Msgs.notPermittedToModifySetting().text()}</TooltipContent>
+							<TooltipContent>{tr.text(SETTINGS_Msgs.notPermittedToModifySetting())}</TooltipContent>
 						</Tooltip>
 					)}
 					{!isBoolean && controls}

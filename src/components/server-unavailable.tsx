@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import * as Zus from '@/lib/zustand'
 import * as SS_Msgs from '@/messages/server-state.messages'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type * as SquadServerClient from '@/systems/squad-server.client'
 
@@ -31,16 +32,16 @@ function ServerStarting(props: { displayName: string }) {
 				<CardHeader className="text-center pb-4">
 					<CardTitle className="flex items-center justify-center gap-2 text-2xl">
 						<Loader2 className="h-5 w-5 animate-spin" />
-						{SS_Msgs.startingTitle(props.displayName).text()}
+						{tr.text(SS_Msgs.startingTitle(props.displayName))}
 					</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<p className="text-sm text-muted-foreground text-center">{SS_Msgs.startingBlurb().text()}</p>
+					<p className="text-sm text-muted-foreground text-center">{tr.text(SS_Msgs.startingBlurb())}</p>
 					{slow && (
 						<Alert variant="destructive">
 							<AlertCircle className="h-4 w-4" />
-							<AlertTitle>{SS_Msgs.startingSlowTitle().text()}</AlertTitle>
-							<AlertDescription>{SS_Msgs.startingSlowBlurb().text()}</AlertDescription>
+							<AlertTitle>{tr.text(SS_Msgs.startingSlowTitle())}</AlertTitle>
+							<AlertDescription>{tr.text(SS_Msgs.startingSlowBlurb())}</AlertDescription>
 						</Alert>
 					)}
 				</CardContent>
@@ -66,17 +67,17 @@ function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'sta
 		<div className="flex items-center justify-center min-h-screen p-4 w-full">
 			<Card className="w-full max-w-lg">
 				<CardHeader className="text-center pb-4">
-					<CardTitle className="text-2xl">{SS_Msgs.unavailableTitle(props.status, props.displayName).text()}</CardTitle>
+					<CardTitle className="text-2xl">{tr.text(SS_Msgs.unavailableTitle(props.status, props.displayName))}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<Alert variant="destructive">
 						<AlertCircle className="h-4 w-4" />
-						<AlertTitle>{SS_Msgs.unavailableHeading().text()}</AlertTitle>
-						<AlertDescription>{SS_Msgs.unavailableDescriptions[props.status]}</AlertDescription>
+						<AlertTitle>{tr.text(SS_Msgs.unavailableHeading())}</AlertTitle>
+						<AlertDescription>{tr.text(SS_Msgs.unavailableDescriptions[props.status])}</AlertDescription>
 					</Alert>
 					{otherServers.length > 0 ? (
 						<div className="space-y-3">
-							<div className="text-sm font-medium text-muted-foreground">{SS_Msgs.otherServersHeading().text()}</div>
+							<div className="text-sm font-medium text-muted-foreground">{tr.text(SS_Msgs.otherServersHeading())}</div>
 							<div className="space-y-2">
 								{otherServers.map((server) => (
 									<Link key={server.id} to="/servers/$serverId" params={{ serverId: server.id }}>
@@ -93,7 +94,7 @@ function UnavailableCard(props: { serverId: string; status: Exclude<Status, 'sta
 							<Link to="/" className="block">
 								<Button className="w-full" size="lg">
 									<Home className="mr-2 h-4 w-4" />
-									{SS_Msgs.backToServersList().text()}
+									{tr.text(SS_Msgs.backToServersList())}
 								</Button>
 							</Link>
 						</div>

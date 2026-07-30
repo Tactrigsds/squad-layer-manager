@@ -15,6 +15,7 @@ import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as UP from '@/models/user-presence'
 import * as RootRouter from '@/root-router'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -180,13 +181,13 @@ function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string
 		enableBeforeUnload: wouldDiscard,
 		shouldBlockFn: () => {
 			if (!wouldDiscardRef.current) return false
-			return !confirm(LL_Msgs.leavingDiscardsEdits().text())
+			return !confirm(tr.text(LL_Msgs.leavingDiscardsEdits()))
 		},
 	})
 
 	React.useEffect(
 		() => () => {
-			if (wouldDiscardRef.current) toast.info(...LL_Msgs.ownEditsDiscarded().toast())
+			if (wouldDiscardRef.current) toast.info(...tr.toast(LL_Msgs.ownEditsDiscarded()))
 		},
 		[],
 	)

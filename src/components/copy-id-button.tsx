@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import * as SM_Msgs from '@/messages/squad.messages'
+import { tr } from '@/systems/messages.client'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
@@ -30,7 +31,7 @@ export function CopyIdButton({ kind, id }: { kind: SM_Msgs.IdKind; id: string })
 				<button
 					type="button"
 					className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer"
-					title={SM_Msgs.copyIdHint(kind).text()}
+					title={tr.text(SM_Msgs.copyIdHint(kind))}
 					onClick={handleClick}
 				>
 					<span className="font-mono text-muted-foreground">{SM_Msgs.idKindLabels[kind]}:</span>
@@ -38,7 +39,7 @@ export function CopyIdButton({ kind, id }: { kind: SM_Msgs.IdKind; id: string })
 					<Icons.Copy className="h-3 w-3" />
 				</button>
 			</TooltipTrigger>
-			<TooltipContent>{SM_Msgs.copiedFeedback().text()}</TooltipContent>
+			<TooltipContent>{tr.text(SM_Msgs.copiedFeedback())}</TooltipContent>
 		</Tooltip>
 	)
 }

@@ -15,6 +15,7 @@ import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 
@@ -56,15 +57,15 @@ export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string;
 		const consoleCommand = `${chatCommand} ${cmdString}`
 		try {
 			await navigator.clipboard.writeText(consoleCommand)
-			toast(...APP_Msgs.copiedToClipboard(consoleCommand).toast())
+			toast(...tr.toast(APP_Msgs.copiedToClipboard(consoleCommand)))
 		} catch {
-			toast.error(...CMD_Msgs.copyFailed().toast())
+			toast.error(...tr.toast(CMD_Msgs.copyFailed()))
 		}
 	}
 	return (
 		<div className="flex items-center gap-1">
 			<code className="px-2 py-1 bg-muted rounded text-sm font-mono">{cmdString}</code>
-			<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={copy} aria-label={CMD_Msgs.copyCommand(cmdString).text()}>
+			<Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={copy} aria-label={tr.text(CMD_Msgs.copyCommand(cmdString))}>
 				<Icons.Copy className="h-3 w-3" />
 			</Button>
 		</div>
@@ -116,13 +117,13 @@ function CommandDetails({
 									{arg.optional ? `[${arg.name}]` : `<${arg.name}>`}
 								</code>
 								<span className="text-xs text-muted-foreground font-mono">{arg.syntax}</span>
-								{arg.optional && <span className="text-xs text-muted-foreground">{CMD_Msgs.optionalArg().text()}</span>}
+								{arg.optional && <span className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.optionalArg())}</span>}
 							</dt>
 							<dd className="text-xs text-muted-foreground pt-0.5">
 								{arg.description}
 								{arg.presets.length > 0 && (
 									<span className="flex flex-wrap items-center gap-1 pt-1">
-										<span>{CMD_Msgs.configuredPresets().text()}</span>
+										<span>{tr.text(CMD_Msgs.configuredPresets())}</span>
 										{arg.presets.map((preset) => (
 											<Badge key={preset} variant="secondary" className="text-xs">
 												{preset}
@@ -136,7 +137,7 @@ function CommandDetails({
 				</dl>
 			)}
 			<div className="space-y-1">
-				<p className="text-xs font-medium text-muted-foreground">{CMD_Msgs.examplesHeading().text()}</p>
+				<p className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.examplesHeading())}</p>
 				{examples.map((example) => (
 					<div key={example.command} className="flex flex-wrap items-center gap-2">
 						<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
@@ -146,11 +147,11 @@ function CommandDetails({
 			</div>
 			{shortcuts.length > 0 && (
 				<div className="space-y-1">
-					<p className="text-xs font-medium text-muted-foreground">{CMD_Msgs.shortcutsHeading().text()}</p>
+					<p className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.shortcutsHeading())}</p>
 					{shortcuts.map(({ usage, expansion }) => (
 						<div key={usage} className="flex flex-wrap items-center gap-2">
 							<CopyableCommand cmdString={usage} chatCommand={chatCommand} />
-							<span className="text-xs text-muted-foreground">{CMD_Msgs.aliasDescription(expansion)}</span>
+							<span className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.aliasDescription(expansion))}</span>
 						</div>
 					))}
 				</div>
@@ -183,12 +184,12 @@ function CommandEntry({
 					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
 						<CopyableCommand key={cmdString} cmdString={cmdString} chatCommand={chatCommand} />
 					))}
-					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label={CMD_Msgs.linkToCommand().text()} />
+					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label={tr.text(CMD_Msgs.linkToCommand())} />
 				</div>
 				<div className="flex-1" />
 				{!cmd.enabled && (
 					<Badge variant="destructive" className="text-xs">
-						{CMD_Msgs.disabledBadge().text()}
+						{tr.text(CMD_Msgs.disabledBadge())}
 					</Badge>
 				)}
 				{cmd.allowedChats.map((group) => {
@@ -196,18 +197,18 @@ function CommandEntry({
 					return (
 						<Badge key={group} variant="outline" className={cn('gap-1 whitespace-nowrap text-xs', className)}>
 							<GroupIcon className="h-3 w-3" />
-							{CMD_Msgs.chatGroupLabels[group]}
+							{tr.text(CMD_Msgs.chatGroupLabels[group])}
 						</Badge>
 					)
 				})}
 				<CollapsibleTrigger asChild>
 					<Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-muted-foreground">
 						{open ? <Icons.ChevronDown className="h-3 w-3" /> : <Icons.ChevronRight className="h-3 w-3" />}
-						{CMD_Msgs.detailsToggle().text()}
+						{tr.text(CMD_Msgs.detailsToggle())}
 					</Button>
 				</CollapsibleTrigger>
 			</div>
-			<p className="text-sm text-muted-foreground">{CMD_Msgs.descriptions[cmdId]}</p>
+			<p className="text-sm text-muted-foreground">{tr.text(CMD_Msgs.descriptions[cmdId])}</p>
 			<CollapsibleContent>
 				<CommandDetails cmdId={cmdId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
 			</CollapsibleContent>
@@ -267,7 +268,7 @@ function detailsAnchorId(entry: Entry): string {
 // `onUnpin` is set for the pinned cards, adding an unpin control at the bottom-left.
 function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
 	const string = entry.label
-	const description = CMD_Msgs.descriptions[entry.cmdId]
+	const description = tr.text(CMD_Msgs.descriptions[entry.cmdId])
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
@@ -280,7 +281,7 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 					className="h-5 shrink-0 gap-0.5 px-1 text-xs text-muted-foreground"
 					onClick={() => onDetails(detailsAnchorId(entry))}
 				>
-					{CMD_Msgs.detailsToggle().text()} <Icons.ArrowRight className="h-3 w-3" />
+					{tr.text(CMD_Msgs.detailsToggle())} <Icons.ArrowRight className="h-3 w-3" />
 				</Button>
 			</div>
 			<p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
@@ -293,7 +294,7 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 					className="mt-auto h-5 shrink-0 gap-0.5 self-end px-1 text-xs text-muted-foreground hover:text-foreground"
 					onClick={onUnpin}
 				>
-					<Icons.PinOff className="h-3 w-3" /> {CMD_Msgs.unpinCommand().text()}
+					<Icons.PinOff className="h-3 w-3" /> {tr.text(CMD_Msgs.unpinCommand())}
 				</Button>
 			)}
 		</div>
@@ -401,7 +402,7 @@ function commandEntry(
 		search: [
 			cmdId,
 			...cmd.triggers.map(CMD.triggerString),
-			CMD_Msgs.descriptions[cmdId],
+			tr.text(CMD_Msgs.descriptions[cmdId]),
 			sectionLabel,
 			...shortcuts.map((s) => s.expansion),
 			shortcuts.length > 0 ? 'alias shortcut' : '',
@@ -595,14 +596,14 @@ export default function CommandsPage() {
 		>
 			<div className="mx-auto w-full max-w-6xl px-1">
 				<header className="pt-1 pb-3">
-					<h1 className="text-xl font-semibold">{CMD_Msgs.pageHeading().text()}</h1>
-					<p className="pt-1 text-sm text-muted-foreground">{CMD_Msgs.pageBlurb().text()}</p>
+					<h1 className="text-xl font-semibold">{tr.text(CMD_Msgs.pageHeading())}</h1>
+					<p className="pt-1 text-sm text-muted-foreground">{tr.text(CMD_Msgs.pageBlurb())}</p>
 				</header>
 				{(pinnedShortcut || quickRefShortcut) && (
 					<div className="space-y-4 pb-6">
 						{pinnedShortcut && (
 							<CompactSection
-								title={CMD_Msgs.pinnedSection().text()}
+								title={tr.text(CMD_Msgs.pinnedSection())}
 								section={pinnedShortcut}
 								onDetails={navigateToEntry}
 								onUnpin={ClientOnlySettings.Actions.toggleCommandPinned}
@@ -610,7 +611,7 @@ export default function CommandsPage() {
 						)}
 						{quickRefShortcut && (
 							<CompactSection
-								title={CMD_Msgs.quickReferenceSection().text()}
+								title={tr.text(CMD_Msgs.quickReferenceSection())}
 								section={quickRefShortcut}
 								onDetails={navigateToEntry}
 							/>
@@ -630,7 +631,7 @@ export default function CommandsPage() {
 							<Input
 								ref={searchRef}
 								className="h-8 pl-7"
-								placeholder={CMD_Msgs.searchCommands().text()}
+								placeholder={tr.text(CMD_Msgs.searchCommands())}
 								onChange={(e) => {
 									setQuery(e.target.value)
 									setCursorId(null)
@@ -640,7 +641,7 @@ export default function CommandsPage() {
 						</div>
 						<nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto">
 							{tocSections.length === 0 ? (
-								<p className="px-1 text-sm text-muted-foreground">{CMD_Msgs.noMatches().text()}</p>
+								<p className="px-1 text-sm text-muted-foreground">{tr.text(CMD_Msgs.noMatches())}</p>
 							) : (
 								<ul>
 									{tocSections.map((section) => (
@@ -690,7 +691,7 @@ export default function CommandsPage() {
 									<AnchorLinkIcon
 										id={section.id}
 										onNavigate={(id) => navigateToEntry(id, { scroll: false })}
-										label={CMD_Msgs.linkToSection(section.label).text()}
+										label={tr.text(CMD_Msgs.linkToSection(section.label))}
 									/>
 								</h2>
 								{section.blurb && <p className="pb-3 text-sm text-muted-foreground">{section.blurb}</p>}

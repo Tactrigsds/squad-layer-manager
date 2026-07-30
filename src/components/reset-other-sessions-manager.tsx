@@ -4,6 +4,7 @@ import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as ConfigClient from '@/systems/config.client'
+import { tr } from '@/systems/messages.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -23,14 +24,14 @@ export function ResetOtherSessionsManager() {
 			toastIdRef.current = null
 			return
 		}
-		const [message, opts] = USR_Msgs.otherSessionsActive(activeOtherCount).toast()
+		const [message, opts] = tr.toast(USR_Msgs.otherSessionsActive(activeOtherCount))
 		toastIdRef.current = toast.warning(message, {
 			...opts,
 			id: toastIdRef.current ?? undefined,
 			// infinite duration -- it stays until dismissed or the other sessions become inactive
 			duration: Infinity,
 			action: {
-				label: USR_Msgs.resetOtherSessions().text(),
+				label: tr.text(USR_Msgs.resetOtherSessions()),
 				onClick: () => UPClient.Actions.resetOtherClients(),
 			},
 		})

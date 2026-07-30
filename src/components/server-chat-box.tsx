@@ -13,6 +13,7 @@ import * as Zus from '@/lib/zustand'
 import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
@@ -135,26 +136,26 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				})
 			}
 			if (res.code !== 'ok') {
-				toast.error(...CHAT_Msgs.sendFailed(res.code).toast())
+				toast.error(...tr.toast(CHAT_Msgs.sendFailed(res.code)))
 				return
 			}
 			setMessage('')
 			draft.reset()
 		} catch (e) {
 			console.error(e)
-			toast.error(...CHAT_Msgs.sendFailed().toast())
+			toast.error(...tr.toast(CHAT_Msgs.sendFailed()))
 		}
 	}
 
 	const placeholder = channelDenied
-		? CHAT_Msgs.missingPermission().text()
+		? tr.text(CHAT_Msgs.missingPermission())
 		: channel === 'warn-admins'
-			? CHAT_Msgs.warnAdminsPlaceholder().text()
+			? tr.text(CHAT_Msgs.warnAdminsPlaceholder())
 			: channel === 'broadcast'
-				? CHAT_Msgs.broadcastPlaceholder().text()
+				? tr.text(CHAT_Msgs.broadcastPlaceholder())
 				: selectedCount === 0
-					? CHAT_Msgs.nobodySelectedPlaceholder().text()
-					: CHAT_Msgs.warnSelectedPlaceholder(selectedCount).text()
+					? tr.text(CHAT_Msgs.nobodySelectedPlaceholder())
+					: tr.text(CHAT_Msgs.warnSelectedPlaceholder(selectedCount))
 
 	return (
 		<div className="flex items-stretch gap-1.5 pt-1 shrink-0">
@@ -163,20 +164,20 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 					{channel === 'warn-selected' && (
 						<label
 							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-							title={CHAT_Msgs.notifyAdminsHint().text()}
+							title={tr.text(CHAT_Msgs.notifyAdminsHint())}
 						>
 							<Checkbox
 								checked={notifyAdminsChecked}
 								onCheckedChange={(checked: boolean) => setNotifyAdmins(checked)}
 								className="h-3.5 w-3.5"
 							/>
-							{CHAT_Msgs.notifyAdmins().text()}
+							{tr.text(CHAT_Msgs.notifyAdmins())}
 						</label>
 					)}
 					{username && (
 						<label
 							className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-							title={CHAT_Msgs.prefixNameHint().text()}
+							title={tr.text(CHAT_Msgs.prefixNameHint())}
 						>
 							<Checkbox
 								checked={prefixName}
@@ -196,13 +197,13 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 					</SelectTrigger>
 					<SelectContent>
 						<SelectItem value="warn-admins" disabled={!!warnDenied} className="text-xs text-admin whitespace-nowrap">
-							{CHAT_Msgs.warnAdminsChannel().text()}
+							{tr.text(CHAT_Msgs.warnAdminsChannel())}
 						</SelectItem>
 						<SelectItem value="broadcast" disabled={!!broadcastDenied} className="text-xs text-yellow-500 whitespace-nowrap">
-							{CHAT_Msgs.broadcastChannel().text()}
+							{tr.text(CHAT_Msgs.broadcastChannel())}
 						</SelectItem>
 						<SelectItem value="warn-selected" disabled={!!warnDenied} className="text-xs text-orange-400 whitespace-nowrap">
-							{CHAT_Msgs.warnSelectedChannel(selectedCount).text()}
+							{tr.text(CHAT_Msgs.warnSelectedChannel(selectedCount))}
 						</SelectItem>
 					</SelectContent>
 				</Select>
@@ -232,7 +233,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 						textareaRef.current?.focus()
 					}}
 					disabled={!!channelDenied}
-					title={channel === 'broadcast' ? AAR_Msgs.fillWithPresetBroadcast().text() : AAR_Msgs.fillWithPresetReason().text()}
+					title={channel === 'broadcast' ? tr.text(AAR_Msgs.fillWithPresetBroadcast()) : tr.text(AAR_Msgs.fillWithPresetReason())}
 					className={cfg.triggerClass}
 				/>
 			)}
@@ -242,7 +243,7 @@ export default function ServerChatBox({ stores }: { stores: SquadServerFrame.Key
 				className={cn('h-auto self-stretch w-7 p-0 shrink-0', cfg.triggerClass)}
 				onClick={() => void send()}
 				disabled={sendDisabled}
-				title={CHAT_Msgs.sendHint().text()}
+				title={tr.text(CHAT_Msgs.sendHint())}
 			>
 				{pending ? <Icons.Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icons.Send className="h-3.5 w-3.5" />}
 			</Button>

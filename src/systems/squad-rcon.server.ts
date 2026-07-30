@@ -7,7 +7,8 @@ import * as Rx from '@/lib/rxjs'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as SETTINGS from '@/models/settings.models'
+import * as Msgs from '@/models/messages.models'
+import type * as SETTINGS from '@/models/settings.models'
 import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as C from '@/server/context.ts'
@@ -340,12 +341,15 @@ export async function getPlayer(ctx: SR.Ctx & CS.AbortSignal, query: SM.PlayerId
 	return { code: 'ok' as const, player }
 }
 
-export async function warn(ctx: SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId, _opts: SR.WarnOptions) {
-	let opts: SR.WarnOptionsBase
+// Takes the message itself, and resolves it here: RCON renders plain strings, and this is the point where the
+// reader is known, so a per-recipient message gets the player it is being written to.
+export async function warn(ctx: SR.Ctx & CS.AbortSignal & Msgs.Ctx, ids: SM.PlayerIds.EosIdQueryOrPlayerId, input: SR.WarnInput) {
+	const _opts = Msgs.isMsg(input) ? ctx.tr.warn(input) : input
+	let opts: SR.WarnOptionsBase<string>
 	if (typeof _opts === 'function') {
 		const playerRes = await getPlayer(ctx, ids)
 		if (playerRes.code !== 'ok') return playerRes
-		const optsRes = _opts({ ...CS.init(), player: playerRes.player })
+		const optsRes = _opts({ ...CS.init(), player: playerRes.player, locale: ctx.tr.locale })
 		if (!optsRes) return
 		opts = optsRes
 	} else {
@@ -370,7 +374,7 @@ export async function warn(ctx: SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosId
 export const warnAll = Instr.spanOp(
 	'warnAll',
 	{ module, levels: { event: 'info' } },
-	async (ctx: SR.Ctx & CS.AbortSignal, players: SM.PlayerIds.EosIdQueryOrPlayerId[], options: SR.WarnOptions) => {
+	async (ctx: SR.Ctx & CS.AbortSignal & Msgs.Ctx, players: SM.PlayerIds.EosIdQueryOrPlayerId[], options: SR.WarnInput) => {
 		const ops: Promise<unknown>[] = []
 		for (const player of players) {
 			ops.push(warn(ctx, player, options))
@@ -383,7 +387,7 @@ export const warnAll = Instr.spanOp(
 export const warnAllAdmins = Instr.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
-	async (ctx: SR.Ctx & CS.AbortSignal, options: SR.WarnOptions, excludeSteamIds?: Set<string>) => {
+	async (ctx: SR.Ctx & CS.AbortSignal & Msgs.Ctx, options: SR.WarnInput, excludeSteamIds?: Set<string>) => {
 		const [adminLists, teamsRes] = await Promise.all([AdminList.getListsForServerId(ctx, ctx.serverId), ctx.squadRcon.teams.get(ctx)])
 		if (teamsRes.code === 'err:rcon') return
 		const admins: SM.PlayerIds.Schema[] = []
@@ -508,7 +512,7 @@ export async function switchPlayers(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, 
 // this doesn't broadcast switch notifications to admins, only warns the killed player, and invalidates
 // teams once after both switches complete so the intermediate (swapped) team state is never surfaced.
 export async function killPlayers(
-	ctx: SR.Ctx.Rcon & SR.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+	ctx: SR.Ctx.Rcon & SR.Ctx & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 	players: SM.PlayerIds.EosIdQueryOrPlayerId[],
 	reason?: string,
 ) {
@@ -528,7 +532,7 @@ export async function killPlayers(
 		await forceSwitch()
 	})
 	ctx.squadRcon.teams.invalidate(ctx)
-	await warnAll(ctx, ids, SM_Msgs.notifyKilled(reason).warn(SETTINGS.locale(ctx)))
+	await warnAll(ctx, ids, ctx.tr.warn(SM_Msgs.notifyKilled(reason)))
 }
 
 export async function demoteCommander(ctx: SR.Ctx.Rcon & SR.Ctx & CS.AbortSignal, ids: SM.PlayerIds.EosIdQueryOrPlayerId) {

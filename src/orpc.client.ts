@@ -15,6 +15,7 @@ import * as SM from '@/models/squad.models'
 import type * as RBAC from '@/rbac.models'
 import type { OrpcAppRouter } from '@/server/orpc-app-router'
 import * as ConfigClient from '@/systems/config.client'
+import { tr } from '@/systems/messages.client'
 
 import { formatVersion } from './lib/versioning'
 
@@ -50,9 +51,9 @@ const orpcLink = new RPCLink({
 			// reconnect toast isn't already saying. Only calls that failed while the transport was up are real news.
 			if (!transportOpen()) return
 			if (error instanceof Error) {
-				toast.error(...RPC_Msgs.transportError(error.message).toast())
+				toast.error(...tr.toast(RPC_Msgs.transportError(error.message)))
 			} else {
-				toast.error(...RPC_Msgs.transportError(RPC_Msgs.unknownError().text()).toast())
+				toast.error(...tr.toast(RPC_Msgs.transportError(tr.text(RPC_Msgs.unknownError()))))
 			}
 		}),
 	],
@@ -148,7 +149,7 @@ shouldWarnDisconnected$.subscribe((warn) => {
 		reconnectToastShown = true
 		// the whole state is in the title: updating a toast by id merges into the existing one, so a description set
 		// here would survive into the success toast that replaces it
-		toast.loading(RPC_Msgs.reconnecting().text(), {
+		toast.loading(tr.text(RPC_Msgs.reconnecting()), {
 			id: RECONNECT_TOAST_ID,
 			duration: Infinity,
 			dismissible: false,
@@ -158,7 +159,7 @@ shouldWarnDisconnected$.subscribe((warn) => {
 		// resolved because we reconnected -> tell the user; resolved because the tab went hidden while still down ->
 		// just drop the toast, there is nothing to celebrate and no one watching
 		if (transportOpen()) {
-			toast.success(RPC_Msgs.reconnected().text(), { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
+			toast.success(tr.text(RPC_Msgs.reconnected()), { id: RECONNECT_TOAST_ID, duration: 3_000, dismissible: true })
 		} else {
 			toast.dismiss(RECONNECT_TOAST_ID)
 		}
@@ -199,7 +200,7 @@ ConfigClient.Store.subscribe((config) => {
 		previousSha = config.PUBLIC_GIT_SHA
 		console.log(`%cSLM version ${formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA)}`, 'color: limegreen')
 	} else if (previousSha !== config.PUBLIC_GIT_SHA) {
-		toast.info(...RPC_Msgs.upgrading().toast())
+		toast.info(...tr.toast(RPC_Msgs.upgrading()))
 		setTimeout(async () => {
 			console.warn(`Version skew detected (${previousSha} -> ${config.PUBLIC_GIT_SHA}), reloading window`)
 			window.location.reload()
@@ -283,7 +284,7 @@ export function observe<T>(
 				console.error(`[${tag}] subscription failed (attempt ${count})`, error)
 				if (count > 2) {
 					// keyed per subscription so a stuck one replaces its own toast rather than stacking a new one each attempt
-					const [subErrorMsg, subErrorOpts] = RPC_Msgs.subscriptionError(tag, error.message).toast()
+					const [subErrorMsg, subErrorOpts] = tr.toast(RPC_Msgs.subscriptionError(tag, error.message))
 					toast.error(subErrorMsg, { ...subErrorOpts, id: `sub-error-${tag}` })
 				}
 

@@ -14,6 +14,7 @@ import * as RPC from '@/orpc.client'
 import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
 
 // editor frames minted by the loader, per filter id. Each loader run creates a fresh instance (and a post-save
@@ -100,12 +101,12 @@ function RouteComponent() {
 						break
 					case 'update': {
 						if (mutation.userId === loggedInUser?.discordId) return
-						toast(...F_Msgs.updatedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId)).toast())
+						toast(...tr.toast(F_Msgs.updatedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId))))
 						break
 					}
 					case 'delete': {
 						if (mutation.userId === loggedInUser?.discordId) return
-						toast(...F_Msgs.deletedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId)).toast())
+						toast(...tr.toast(F_Msgs.deletedBy(mutation.value.name, await UsersClient.fetchDisplayName(mutation.userId))))
 						void rootRouter.navigate({ to: '/filters' })
 						break
 					}
@@ -117,7 +118,7 @@ function RouteComponent() {
 		return () => sub.unsubscribe()
 	}, [params.filterId])
 
-	if (!loaderData || !frameKey) return <p>{APP_Msgs.somethingWentWrong().text()}</p>
+	if (!loaderData || !frameKey) return <p>{tr.text(APP_Msgs.somethingWentWrong())}</p>
 	return (
 		<FilterEdit
 			entity={loaderData.entity}
