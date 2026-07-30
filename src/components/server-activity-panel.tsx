@@ -478,7 +478,8 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 						onSelectedOnlyChange={(value) => ChatPrt.Actions.setSelectedOnly({ chat: stores.squadServer! }, value)}
 					/>
 				</div>
-				<ServerCounts stores={stores} />
+				{/* live-only readouts, and the historical controls need their header room */}
+				{selectedMatchOrdinal === null && <ServerCounts stores={stores} />}
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col">
 				<div className="flex-1 min-h-0">
