@@ -118,10 +118,12 @@ export function translate(source: string, values?: MessageValues, locale?: strin
 // The same, for a message whose arguments are rendered nodes. Returns the node list ICU assembled around them.
 export function translateNode(source: string, values?: MessageValues, locale?: string, context?: string): React.ReactNode {
 	const resolved = locale ?? ambientLocale
-	return intlFor(resolved).formatMessage(
-		{ id: key(source, context), defaultMessage: source },
-		values as Record<string, React.ReactNode>,
-	) as React.ReactNode
+	return normalizeNode(
+		intlFor(resolved).formatMessage(
+			{ id: key(source, context), defaultMessage: source },
+			values as Record<string, React.ReactNode>,
+		) as React.ReactNode,
+	)
 }
 
 // -------- resolving Msg values (see @/models/messages.models) --------
@@ -130,6 +132,25 @@ export function translateNode(source: string, values?: MessageValues, locale?: s
 export const STANDARD_TAGS: Msgs.TagRenderers<Msgs.StandardTag> = {
 	strong: (chunks) => React.createElement('strong', null, ...chunks),
 	code: (chunks) => React.createElement('code', null, ...chunks),
+}
+
+function keyChunks(chunks: React.ReactNode[]): React.ReactNode[] {
+	return chunks.map((chunk, index) => React.createElement(React.Fragment, { key: index }, normalizeNode(chunk)))
+}
+
+function keyedRenderers<T extends string>(renderers: Msgs.TagRenderers<T> | undefined): Msgs.TagRenderers<T> | undefined {
+	if (!renderers) return undefined
+	const out = {} as Msgs.TagRenderers<T>
+	for (const name in renderers) {
+		const render = renderers[name]
+		out[name] = (chunks) => render(keyChunks(chunks))
+	}
+	return out
+}
+
+function normalizeNode(node: React.ReactNode): React.ReactNode {
+	if (!Array.isArray(node)) return node
+	return node.map((part, index) => React.createElement(React.Fragment, { key: index }, normalizeNode(part)))
 }
 
 export function createTranslator(props: Msgs.LocalizationProps): Msgs.Translator {
@@ -147,7 +168,7 @@ function makeTranslator(props: Msgs.LocalizationProps, custom: Msgs.TagRenderers
 	}
 	// tag renderers and args share the ICU values namespace, so an arg may shadow a renderer of the same name
 	const nodeArgs = (args?: Msgs.TRichArgs): MessageValues => {
-		const out: MessageValues = { ...STANDARD_TAGS, ...custom }
+		const out: MessageValues = { ...keyedRenderers(STANDARD_TAGS), ...keyedRenderers(custom) }
 		if (args) for (const [name, value] of Object.entries(args)) out[name] = Msgs.isTTarget(value) ? render(value) : value
 		return out
 	}
