@@ -79,6 +79,38 @@ sharedAppTest.describe('server console', () => {
 		await expect(hideNoise).toBeChecked()
 		await expect(tickRate).toHaveCount(0)
 	})
+
+	sharedAppTest('follows the tail until the reader scrolls away from it', async ({ page }) => {
+		const output = await openConsole(page)
+		const viewport = output.locator('[data-radix-scroll-area-viewport]')
+		const distanceFromBottom = () => viewport.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)
+		const scrollHeight = () => viewport.evaluate((el) => el.scrollHeight)
+
+		// the polls are what make the console outgrow its panel within the life of a test
+		const hideNoise = page.getByRole('checkbox', { name: 'Hide noise' })
+		await hideNoise.click()
+		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(await viewport.evaluate((el) => el.clientHeight))
+		await expect.poll(distanceFromBottom, { timeout: 30_000 }).toBeLessThan(16)
+
+		// a deliberate scroll up hands the position back to the reader, and says how to give it up again
+		await viewport.hover()
+		await page.mouse.wheel(0, -600)
+		const backToBottom = page.getByRole('button', { name: 'Scroll to bottom' })
+		await expect(backToBottom).toBeVisible()
+		const parked = await viewport.evaluate((el) => el.scrollTop)
+
+		// traffic arriving while they read must not drag them back down
+		const grown = await scrollHeight()
+		await expect.poll(scrollHeight, { timeout: 30_000 }).toBeGreaterThan(grown)
+		expect(await viewport.evaluate((el) => el.scrollTop)).toBe(parked)
+
+		await backToBottom.click()
+		await expect.poll(distanceFromBottom, { timeout: 30_000 }).toBeLessThan(16)
+		await expect(backToBottom).toBeHidden()
+
+		await hideNoise.click()
+		await expect(hideNoise).toBeChecked()
+	})
 })
 
 test.describe('server console permission', () => {
