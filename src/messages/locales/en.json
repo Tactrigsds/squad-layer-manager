@@ -1171,6 +1171,7 @@
 	"Unknown error": "Unknown error",
 	"Unknown flag": "Unknown flag",
 	"Unknown flag: {id}": "Unknown flag: {id}",
+	"Unknown section \"{sectionToken}\"": "Unknown section \"{sectionToken}\"",
 	"Unknown section \"{sectionToken}\". Try one of: {options}": "Unknown section \"{sectionToken}\". Try one of: {options}",
 	"Unlink": "Unlink",
 	"Unpin": "Unpin",
