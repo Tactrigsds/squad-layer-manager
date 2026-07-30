@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
@@ -127,5 +128,28 @@ describe('teamswaps', () => {
 			timeoutMs: 20_000,
 		})
 		expect(teamChangeAppEventType(held.eos)).toBe('TEAMSWAPS_UPDATED')
+	})
+
+	// A squad leader crossing teams leaves their old squad behind. The app validates the ListPlayers/ListSquads pair
+	// and refetches when they disagree, and a squad with members but no leader never resolves: the retries run out
+	// and the server instance is torn down. This is the swap the sandbox panel makes, so it is the one that killed it.
+	it('survives the squad leader of a squad with other members changing team', async () => {
+		const leader = makePlayer({ name: ' squad_leader_swap', teamId: 1 })
+		const member = makePlayer({ name: ' squad_member_stays', teamId: 1 })
+		app.emu.world.connectPlayer(leader)
+		app.emu.world.connectPlayer(member)
+		const squad = app.emu.world.createSquad(leader, 'ALPHA')
+		app.emu.world.joinSquad(member, squad)
+		await app.waitForRosterSync()
+
+		app.emu.world.setTeam(leader, leader.teamId === 1 ? 2 : 1)
+
+		// the squad outlives them, led by whoever is left
+		expect(app.emu.world.squadMembers(squad).map((p) => p.name)).toEqual([member.name])
+		expect(member.isLeader).toBe(true)
+
+		// and the app polls straight through it rather than giving up on the server
+		await app.waitForRosterSync()
+		expect(fs.readFileSync(app.logFile, 'utf8')).not.toContain('tearing the server down')
 	})
 })
