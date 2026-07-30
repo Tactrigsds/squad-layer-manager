@@ -523,6 +523,7 @@
 	"Kill {targetSubject}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.": "Kill {targetSubject}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.",
 	"Killed {targetAffected}": "Killed {targetAffected}",
 	"Killfeed": "Killfeed",
+	"Kills / Wounds / Deaths": "Kills / Wounds / Deaths",
 	"Label": "Label",
 	"Language": "Language",
 	"Last page": "Last page",

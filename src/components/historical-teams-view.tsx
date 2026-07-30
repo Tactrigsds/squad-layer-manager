@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as Format from '@/messages/format'
+import * as SM_Msgs from '@/messages/squad.messages'
 import type * as CHAT from '@/models/chat.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
@@ -99,8 +100,19 @@ function MemberRow(props: { member: HistoricalMember; matchId: number; stores: S
 				className="min-w-0 truncate"
 				disableContextMenu
 			/>
+			<span className="ml-auto font-mono text-xs whitespace-nowrap" title={tr.text(CHAT_Msgs.scorelineHint())}>
+				{member.stats.kills}/{member.stats.wounds}/{member.stats.deaths}
+			</span>
+			{member.stats.teamkills > 0 && (
+				<span
+					className="font-mono text-xs tabular-nums text-destructive font-semibold whitespace-nowrap"
+					title={tr.text(SM_Msgs.teamKillsHint())}
+				>
+					{tr.text(SM_Msgs.teamKillsColumn())} {member.stats.teamkills}
+				</span>
+			)}
 			<span
-				className="ml-auto text-xs text-muted-foreground tabular-nums whitespace-nowrap"
+				className="text-xs text-muted-foreground tabular-nums whitespace-nowrap"
 				title={tr.text(CHAT_Msgs.timeOnTeam(Format.formatIntervalCompact(member.timeMs)))}
 			>
 				{Format.formatIntervalCompact(member.timeMs)}
