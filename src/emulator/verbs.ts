@@ -27,11 +27,9 @@ export type SandboxHost = {
 	}
 }
 
-// The name the next bulk-joined (or unnamed) player gets. Sequential rather than random so a scenario written
-// against Player1 keeps meaning the same thing.
 export function nextDefaultName(host: SandboxHost): string {
-	for (let n = 1; ; n++) {
-		const candidate = `Player${n}`
+	for (let i = 0; ; i++) {
+		const candidate = SB.defaultPlayerName(i)
 		if (!host.players.has(candidate)) return candidate
 	}
 }

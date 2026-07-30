@@ -1056,6 +1056,26 @@ describe('PendingEvents', () => {
 			expect(state.currTeams?.players.find((p) => p.ids.eos === 'eos-002')?.teamId).toBe(2)
 		})
 
+		// the log stream reports neither, so a player who arrived on it holds placeholders until a poll corrects them
+		it("emits PLAYER_RECONCILED when the poll disagrees about a tracked player's role or admin groups", async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1, { role: 'unknown', adminGroups: [] })], [])
+
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1, { isAdmin: true, adminGroups: ['Admin'] })]), 200)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const batch1 = await collect(state)
+			const reconciled = batch1.filter((e) => e.type === 'PLAYER_RECONCILED') as SE.PlayerReconciled[]
+			expect(reconciled).toHaveLength(1)
+			expect(reconciled[0].player.isAdmin).toBe(true)
+			expect(reconciled[0].player.adminGroups).toEqual(['Admin'])
+			expect(reconciled[0].player.role).toBe('Rifleman_01')
+
+			// the correction sticks, so an unchanged poll says nothing more
+			PendingEvents.onTeamsPolled(state, makeTeams([makePlayer('eos-001', 1, { isAdmin: true, adminGroups: ['Admin'] })]), 300)
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(301))
+			const batch2 = await collect(state)
+			expect(batch2.some((e) => e.type === 'PLAYER_RECONCILED')).toBe(false)
+		})
+
 		it('does not emit a spurious add for players already in currTeams', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
 

@@ -137,6 +137,20 @@ export const UNGROUPED_LABEL = 'Other'
 
 export const DEFAULT_GROUP_COLOR = '#888888'
 
+// The grouping a fresh install starts with, and the one a dev instance is given: it buckets a server's roster by
+// the admin list, which is the one source every install has without configuring anything. Its groups are the ones
+// the emulated servers seed their admin lists with, so a sandbox breaks down into something on first sight.
+export const SEEDED_GROUPING_ID = 'Admin List'
+
+// Rule order is priority order, so the groups are read in the order they are given. Colors are literal: an admin
+// list carries none to follow.
+export function adminListGrouping(groups: readonly { name: string; label: string; color: string }[]): Grouping {
+	return {
+		rules: groups.map((group): GroupRule => ({ type: 'admin-list', adminGroup: group.name, group: group.label })),
+		groups: Object.fromEntries(groups.map((group) => [group.label, { color: { type: 'custom' as const, color: group.color } }])),
+	}
+}
+
 export function getGroupingIds(groupings: PlayerGroupings): string[] {
 	return Object.keys(groupings)
 }

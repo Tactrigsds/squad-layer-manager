@@ -283,6 +283,16 @@ export namespace Actions {
 		}))
 	}
 
+	// Selecting from somewhere that is not the teams panel -- the stats breakdown naming the players behind a bar.
+	// Deliberately not constrained to the panel's visible rows the way selectPlayers is: the caller is naming
+	// players by hand, and it is usually changing the panel's filters in the same gesture, so the rows it would be
+	// constrained to are the ones from before the click.
+	export function selectPlayerIds(stores: KeyProp, playerIds: SM.PlayerId[]) {
+		store(stores).setState((state) => ({
+			playerSelection: { ...state.playerSelection, ...Object.fromEntries(playerIds.map((id) => [id, true])) },
+		}))
+	}
+
 	// Enter in the teams-panel search box adds every match to the selection. Takes the query rather than reading it
 	// off the panel state, which the search input only writes debounced.
 	export function selectSearchMatches(stores: KeyProp, searchQuery: string) {

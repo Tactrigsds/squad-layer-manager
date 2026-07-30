@@ -8,6 +8,8 @@ import { parseArgs } from 'node:util'
 import * as Schema from '$root/drizzle/schema.ts'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
+import * as PG from '@/models/player-groupings.models'
+import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as Env from '@/server/env'
 import * as Migrate from '@/server/migrate'
@@ -194,6 +196,10 @@ async function repointServers(driver: Database) {
 		}
 		const migratedPerms = Object.values(gsRaw.settings.adminLists ?? {}).flatMap((l) => l.adminIdentifyingPermissions ?? [])
 		const identifyingPerms = migratedPerms.length > 0 ? [...new Set(migratedPerms)] : ['canseeadminchat']
+		// The source's groupings are mostly battlemetrics rules, and a dev instance has no battlemetrics: every player
+		// would read as ungrouped. The emulator's own admin list is the one source a worktree does have, so the
+		// grouping over it is installed alongside whatever was cloned rather than replacing it.
+		const clonedGroupings = (gsRaw.settings.playerGroupings ?? {}) as Record<string, unknown>
 		const settings = {
 			...gsRaw.settings,
 			adminLists: {
@@ -202,6 +208,7 @@ async function repointServers(driver: Database) {
 					adminIdentifyingPermissions: identifyingPerms,
 				},
 			},
+			playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS), ...clonedGroupings },
 		}
 		await db
 			.update(Schema.globalSettings)

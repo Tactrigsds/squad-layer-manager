@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import * as readline from 'node:readline'
 import { parseArgs } from 'node:util'
 
+import * as DevAdminList from '../dev/admin-list.ts'
 import * as EmuControl from '../dev/emu-control.ts'
 import * as DevInstance from '../dev/instance.ts'
 import * as Slots from '../dev/slots.ts'
@@ -34,10 +35,6 @@ const adminSteamIds = (args.values.admins ?? '')
 	.split(',')
 	.map((id) => id.trim())
 	.filter(Boolean)
-fs.writeFileSync(
-	DevInstance.ADMINS_CFG_PATH,
-	DevInstance.renderAdminsCfg(adminSteamIds, DevInstance.ADMIN_GROUP, ['canseeadminchat', 'balance', 'cameraman', 'teamchange']),
-)
 
 // Truncated rather than appended to: a stale log from a previous session would be replayed as if it had just
 // happened the moment the app tails it.
@@ -51,8 +48,12 @@ const bm = new BmServer()
 bm.onNote = ({ bmPlayerId, note }) => console.log(`[bm] note on ${bmPlayerId}:\n${note}`)
 await bm.listen(slot.ports.bm)
 
-const { host, join } = EmuControl.createEmuHost({ emu, bm })
-const control = await EmuControl.serve(DevInstance.EMU_SOCKET_PATH, host)
+// The emulated Admins.cfg, written before the app can read it: players are spread across the seeded groups as
+// they connect, and `emuctl set-player-groups` / `define-group` edit the same file.
+const adminList = DevAdminList.createAdminList({ players: () => host.players, extraAdminSteamIds: adminSteamIds })
+const { host, join } = EmuControl.createEmuHost({ emu, bm, adminList })
+adminList.write()
+const control = await EmuControl.serve(DevInstance.EMU_SOCKET_PATH, host, { afterCommand: () => adminList.write() })
 
 for (let i = 0; i < Number(args.values.players); i++) join(`DevPlayer${i + 1}`)
 
@@ -87,7 +88,9 @@ rl?.prompt()
 rl?.on('close', shutdown)
 rl?.on('line', (line) => {
 	void (async () => {
-		const { ok, output } = await EmuControl.dispatch(host, line.trim().split(/\s+/).filter(Boolean))
+		const { ok, output } = await EmuControl.dispatch(host, line.trim().split(/\s+/).filter(Boolean), {
+			afterCommand: () => adminList.write(),
+		})
 		if (output) (ok ? console.log : console.error)(output)
 		rl.prompt()
 	})()
