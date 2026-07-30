@@ -44,6 +44,8 @@ export type PlayerAttribution = {
 	exclusionReasons: ExclusionReason[]
 	// counted into the breakdown chart. Equivalent to exclusionReasons being empty.
 	eligible: boolean
+	// per-match combat scoreline, tallied by the same rules as the live roster's playerStats
+	stats: CHAT.PlayerStats
 	// squad instance (uniqueId) the player last occupied on each team, for grouping the roster view; null where
 	// they ended the match squadless on that team
 	lastSquadByTeam: [number | null, number | null]
@@ -63,6 +65,7 @@ type Tracked = {
 	openSince: number
 	everInSquad: boolean
 	combatEventCount: number
+	stats: CHAT.PlayerStats
 	lastSquadByTeam: [number | null, number | null]
 }
 
@@ -95,6 +98,7 @@ export function computeTeamAttribution(events: readonly CHAT.EventEnriched[], se
 				openSince: 0,
 				everInSquad: false,
 				combatEventCount: 0,
+				stats: { kills: 0, wounds: 0, deaths: 0, teamkills: 0 },
 				lastSquadByTeam: [null, null],
 			}
 			tracked.set(id, entry)
@@ -202,9 +206,22 @@ export function computeTeamAttribution(events: readonly CHAT.EventEnriched[], se
 			case 'PLAYER_DIED':
 			case 'PLAYER_WOUNDED': {
 				// combat participation, on either end of it. Tracked without opening a presence interval: a combat
-				// event is evidence the player existed, not of when they arrived or left.
-				get(event.victim).combatEventCount++
-				if (event.variant !== 'suicide') get(event.attacker).combatEventCount++
+				// event is evidence the player existed, not of when they arrived or left. Scoreline rules match the
+				// live roster's (see interpolateEvent): deaths always land, kills only for normal kills, teamkills
+				// tallied separately, wounds credited to the attacker on a normal wound.
+				const victim = get(event.victim)
+				victim.combatEventCount++
+				if (event.type === 'PLAYER_DIED') victim.stats.deaths++
+				if (event.variant !== 'suicide') {
+					const attacker = get(event.attacker)
+					attacker.combatEventCount++
+					if (event.type === 'PLAYER_DIED') {
+						if (event.variant === 'normal') attacker.stats.kills++
+						else attacker.stats.teamkills++
+					} else if (event.variant === 'normal') {
+						attacker.stats.wounds++
+					}
+				}
 				break
 			}
 			default:
@@ -240,6 +257,7 @@ export function computeTeamAttribution(events: readonly CHAT.EventEnriched[], se
 			share,
 			exclusionReasons,
 			eligible: exclusionReasons.length === 0,
+			stats: entry.stats,
 			lastSquadByTeam: entry.lastSquadByTeam,
 		})
 	}

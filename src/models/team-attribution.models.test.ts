@@ -55,6 +55,14 @@ function died(
 ): CHAT.EventEnriched {
 	return { type: 'PLAYER_DIED', attacker, victim, damage: 100, weapon: 'BP_Rifle', variant, ...base(time) }
 }
+function wounded(
+	time: number,
+	attacker: SM.Player,
+	victim: SM.Player,
+	variant: 'normal' | 'suicide' | 'teamkill' = 'normal',
+): CHAT.EventEnriched {
+	return { type: 'PLAYER_WOUNDED', attacker, victim, damage: 100, weapon: 'BP_Rifle', variant, ...base(time) }
+}
 // a cheap end-of-match marker: attribution closes open intervals at the last event's time
 function endMarker(time: number): CHAT.EventEnriched {
 	return { type: 'TEAMS_POLLED_UPDATE', ...base(time) }
@@ -180,6 +188,26 @@ describe('computeTeamAttribution eligibility', () => {
 		const c = activePlayer('c', 2, squad2)
 		const result2 = TA.computeTeamAttribution([reset(0, [c], [squad2]), endMarker(m(30))], OPEN)
 		expect(attributionOf(result2, 'c').exclusionReasons).toEqual(['no-combat'])
+	})
+
+	it('tallies scorelines by the live rules: kills on normal, teamkills apart, wounds to the attacker', () => {
+		const a = makePlayer('a', { teamId: 1 })
+		const b = makePlayer('b', { teamId: 2 })
+		const c = makePlayer('c', { teamId: 1 })
+		const result = TA.computeTeamAttribution(
+			[
+				reset(0, [a, b, c]),
+				wounded(m(1), a, b),
+				died(m(1), a, b),
+				died(m(2), a, c, 'teamkill'),
+				died(m(3), b, b, 'suicide'),
+				endMarker(m(5)),
+			],
+			OPEN,
+		)
+		expect(attributionOf(result, 'a').stats).toEqual({ kills: 1, wounds: 1, deaths: 0, teamkills: 1 })
+		expect(attributionOf(result, 'b').stats).toEqual({ kills: 0, wounds: 0, deaths: 2, teamkills: 0 })
+		expect(attributionOf(result, 'c').stats).toEqual({ kills: 0, wounds: 0, deaths: 1, teamkills: 0 })
 	})
 
 	it('a suicide counts combat for the victim only once', () => {

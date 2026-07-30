@@ -16,6 +16,7 @@ export type HistoricalMember = {
 	otherTeamMs: number
 	exclusionReasons: TA.ExclusionReason[]
 	eligible: boolean
+	stats: CHAT.PlayerStats
 }
 
 export type HistoricalSquadGroup = {
@@ -73,6 +74,7 @@ export namespace Sel {
 						otherTeamMs: attr.teamMs[2 - teamId],
 						exclusionReasons: attr.exclusionReasons,
 						eligible: attr.eligible,
+						stats: attr.stats,
 					}
 					const lastSquadId = attr.lastSquadByTeam[teamId - 1]
 					// an unresolvable squad reference lands the player in Unassigned rather than a second phantom group

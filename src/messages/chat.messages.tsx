@@ -68,6 +68,8 @@ export const unassignedSquad = def('Unassigned')
 
 export const teamPlayerCount = def('{count, plural, one {# player} other {# players}}', (count: number) => ({ count }))
 
+export const scorelineHint = def('Kills / Wounds / Deaths')
+
 export const timeOnTeam = def('{time} on this team', (time: string) => ({ time }))
 
 export const alsoOnOtherTeam = def('Also played {time} on the other team', (time: string) => ({ time }))
