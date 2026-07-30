@@ -429,11 +429,13 @@ export type ResolvedRequest = {
 	parts: string[]
 }
 
+// `suggestions` are what the offending token might have meant, named as they would be typed back: the closest
+// known values when nothing matched, the values it matched when too many did.
 export type ResolveTokensResult =
 	| { code: 'ok'; value: ResolvedRequest }
 	| { code: 'err:empty'; msg: string }
-	| { code: 'err:unknown-token'; token: string; msg: string }
-	| { code: 'err:ambiguous-token'; token: string; msg: string }
+	| { code: 'err:unknown-token'; token: string; msg: string; suggestions: string[] }
+	| { code: 'err:ambiguous-token'; token: string; msg: string; suggestions: string[] }
 	| { code: 'err:too-many'; column: string; msg: string }
 
 type TokenTarget =
@@ -515,6 +517,7 @@ export function resolveRequestTokens(input: {
 				code: 'err:ambiguous-token',
 				token,
 				msg: `"${token}" matches ${mapMatches.count} maps. Be more specific`,
+				suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS),
 			}
 		}
 
@@ -532,10 +535,11 @@ export function resolveRequestTokens(input: {
 				code: 'err:ambiguous-token',
 				token,
 				msg: `"${token}" matches ${filterMatches.count} filters. Be more specific`,
+				suggestions: filterMatches.matched.slice(0, MAX_SUGGESTIONS),
 			}
 		}
 
-		return { code: 'err:unknown-token', token, msg: unknownTokenMessage(token, exact, components, filterEntities) }
+		return { code: 'err:unknown-token', token, ...unknownToken(token, exact, components, filterEntities) }
 	}
 
 	const parts = emptyTemplateParts()
@@ -595,16 +599,19 @@ function uniqueSubstringMatch(candidates: string[], token: string) {
 	const normalized = Str.normalizeForMatch(token)
 	const matched = candidates.filter((candidate) => Str.normalizeForMatch(candidate).includes(normalized))
 	if (matched.length === 0) return { code: 'err:not-found' as const }
-	if (matched.length > 1) return { code: 'err:multiple-matches' as const, count: matched.length }
+	if (matched.length > 1) return { code: 'err:multiple-matches' as const, count: matched.length, matched }
 	return { code: 'ok' as const, value: matched[0] }
 }
 
-function unknownTokenMessage(
+// as many alternatives as a chat warn can put in front of someone without becoming a wall
+const MAX_SUGGESTIONS = 3
+
+function unknownToken(
 	token: string,
 	exact: Map<string, TokenTarget>,
 	components: LC.LayerComponents,
 	filterEntities: { id: string; name: string }[],
-): string {
+): { msg: string; suggestions: string[] } {
 	const candidates = [
 		...exact.keys(),
 		...components.maps.map(Str.normalizeForMatch),
@@ -612,16 +619,21 @@ function unknownTokenMessage(
 	]
 	const sorted = StringComparison.diceCoefficient.sortMatch(Str.normalizeForMatch(token), candidates)
 	const base = `Unknown request "${token}"`
-	if (sorted.length === 0) return base
-	const best = sorted[sorted.length - 1]
-	const target = exact.get(best.member)
-	const suggestion = target
-		? 'value' in target
-			? target.value
-			: target.name
-		: (components.maps.find((m) => Str.normalizeForMatch(m) === best.member) ??
-			filterEntities.find((f) => Str.normalizeForMatch(f.name) === best.member)?.name)
-	return suggestion ? `${base}. Did you mean ${suggestion}?` : base
+	// sortMatch ranks worst first, so the closest are the tail, best last
+	const suggestions = sorted
+		.slice(-MAX_SUGGESTIONS)
+		.reverse()
+		.flatMap((match) => {
+			const target = exact.get(match.member)
+			const suggestion = target
+				? 'value' in target
+					? target.value
+					: target.name
+				: (components.maps.find((m) => Str.normalizeForMatch(m) === match.member) ??
+					filterEntities.find((f) => Str.normalizeForMatch(f.name) === match.member)?.name)
+			return suggestion ? [suggestion] : []
+		})
+	return { msg: suggestions.length > 0 ? `${base}. Did you mean ${suggestions[0]}?` : base, suggestions }
 }
 
 export function getLayerRequestSummary(
