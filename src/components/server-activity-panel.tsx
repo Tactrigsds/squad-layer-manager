@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import EventFilterSelect from '@/components/event-filter-select'
+import HistoricalTeamsView from '@/components/historical-teams-view'
 import ServerChatBox from '@/components/server-chat-box'
 import { ServerEvent } from '@/components/server-event'
 import { Button } from '@/components/ui/button'
@@ -224,6 +225,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	const synced = Zus.useStore(stores.squadServer!, (s) => s.chat.chatState.synced)
 	const connectionError = Zus.useStore(stores.squadServer!, (s) => s.chat.chatState.connectionError)
 	const selectedMatchOrdinal = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
+	const historicalView = Zus.useStore(stores.squadServer!, ChatPrt.Sel.historicalView)
 	const serverId = stores.squadServer!.serverId
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
@@ -446,6 +448,29 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 							</Button>
 						)}
 					</ButtonGroup>
+					{selectedMatchOrdinal !== null && (
+						<ButtonGroup>
+							{(['feed', 'teams'] as const).map((view) => (
+								<Button
+									key={view}
+									variant={historicalView === view ? 'secondary' : 'ghost'}
+									size="sm"
+									aria-pressed={historicalView === view}
+									onClick={() => ChatPrt.Actions.setHistoricalView({ chat: stores.squadServer! }, view)}
+									className="h-8 px-2 @[640px]:px-3"
+								>
+									{view === 'feed' ? (
+										<Icons.List className="h-4 w-4 @[640px]:mr-1" />
+									) : (
+										<Icons.Users className="h-4 w-4 @[640px]:mr-1" />
+									)}
+									<span className="hidden @[640px]:inline">
+										{tr.text(view === 'feed' ? CHAT_Msgs.feedViewLabel() : CHAT_Msgs.teamsViewLabel())}
+									</span>
+								</Button>
+							))}
+						</ButtonGroup>
+					)}
 					<EventFilterSelect
 						value={eventFilterState}
 						onValueChange={(value) => ChatPrt.Actions.setSecondaryFilterState({ chat: stores.squadServer! }, value)}
@@ -457,14 +482,35 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 			</CardHeader>
 			<CardContent className="flex-1 overflow-hidden min-h-0 flex flex-col">
 				<div className="flex-1 min-h-0">
-					<ServerChatEvents
-						className="min-w-[350px] h-full"
-						filteredEvents={finalFilteredEvents}
-						connectionError={connectionError}
-						synced={synced}
-						isLoadingHistorical={historicalEventsQuery.isLoading}
-						stores={stores}
-					/>
+					{selectedMatchOrdinal !== null && historicalView === 'teams' ? (
+						<div className="min-w-[350px] h-full flex flex-col">
+							{displayMatch && (
+								<div className="text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
+									<span>{tr.text(CHAT_Msgs.viewingHistoricalMatch())}</span>
+									<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
+									{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
+								</div>
+							)}
+							{historicalEventsQuery.isLoading ? (
+								<div className="flex-1 flex items-center justify-center">
+									<Icons.Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+								</div>
+							) : (
+								<div className="flex-1 min-h-0 pt-2">
+									<HistoricalTeamsView stores={stores} events={historicalEventsQuery.data?.events ?? null} />
+								</div>
+							)}
+						</div>
+					) : (
+						<ServerChatEvents
+							className="min-w-[350px] h-full"
+							filteredEvents={finalFilteredEvents}
+							connectionError={connectionError}
+							synced={synced}
+							isLoadingHistorical={historicalEventsQuery.isLoading}
+							stores={stores}
+						/>
+					)}
 				</div>
 				{selectedMatchOrdinal === null && <ServerChatBox stores={stores} />}
 			</CardContent>

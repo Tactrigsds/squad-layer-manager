@@ -22,6 +22,14 @@ export function formatInterval(interval: number, options?: { round?: 'second'; l
 	return new DurationFormat(locale ?? I18n.getAmbientLocale(), { style: 'long' }).format(duration)
 }
 
+// minute-granular "1h 47m" for tight roster rows. Sub-minute intervals round up to a minute so a player who was
+// present never displays as nothing.
+export function formatIntervalCompact(interval: number, locale?: string) {
+	const minutes = Math.max(1, Math.round(interval / 60_000))
+	const duration = minutes >= 60 ? { hours: Math.floor(minutes / 60), minutes: minutes % 60 } : { minutes }
+	return new DurationFormat(locale ?? I18n.getAmbientLocale(), { style: 'narrow' }).format(duration)
+}
+
 export function voteChoicesLines(choices: L.LayerId[], you?: 1 | 2, displayProps?: DH.LayerDisplayProp[]) {
 	const lines = choices.map((c, index) => {
 		return `${index + 1}. ${DH.toShortLayerNameFromId(c, you, displayProps)}`

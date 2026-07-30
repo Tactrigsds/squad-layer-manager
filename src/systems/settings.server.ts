@@ -390,6 +390,7 @@ export type PublicSettings = {
 	commands: SETTINGS.GlobalSettings['commands']
 	servers: ServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
+	teamAttribution: SETTINGS.GlobalSettings['teamAttribution']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
 	// every client rendering the queue needs these to resolve the tag ids stored on layer items
 	layerTags: SETTINGS.GlobalSettings['layerTags']
@@ -409,6 +410,7 @@ function buildPublicSettings(): PublicSettings {
 		commands: GLOBAL_SETTINGS.commands,
 		servers: listServerEntries(),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
+		teamAttribution: GLOBAL_SETTINGS.teamAttribution,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
 		layerTags: GLOBAL_SETTINGS.layerTags,
 		tickRateThresholds: GLOBAL_SETTINGS.tickRateThresholds,
