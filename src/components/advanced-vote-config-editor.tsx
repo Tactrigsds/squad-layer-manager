@@ -10,6 +10,7 @@ import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
 import type * as L from '@/models/layer'
 import * as V from '@/models/vote.models.ts'
+import { tr } from '@/systems/messages.client'
 
 export type AdvancedVoteConfigEditorProps = {
 	// vote defaults are per-server, so the editor needs the server whose defaults it is filling in
@@ -31,7 +32,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 
 	const preview =
 		props.choices.length > 0
-			? V_Msgs.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps).react()
+			? tr.richText(V_Msgs.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps))
 			: (props.previewPlaceholder ?? 'No layers selected for preview')
 	const valid = props.choices.length > 0 ? V.validateChoicesWithDisplayProps(props.choices, displayProps) : true
 
@@ -75,8 +76,8 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 	return (
 		<div className="grid gap-4">
 			<div className="space-y-2">
-				<h4 className="font-medium leading-none">{V_Msgs.displayOptionsHeading().text()}</h4>
-				<p className="text-sm text-muted-foreground">{V_Msgs.displayOptionsBlurb().text()}</p>
+				<h4 className="font-medium leading-none">{tr.text(V_Msgs.displayOptionsHeading())}</h4>
+				<p className="text-sm text-muted-foreground">{tr.text(V_Msgs.displayOptionsBlurb())}</p>
 			</div>
 			<div className="grid gap-4">
 				<div className="grid grid-cols-2 gap-4">
@@ -89,7 +90,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									onCheckedChange={(checked) => setDisplayProps({ layer: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="layer">{V_Msgs.displayLayer().text()}</Label>
+								<Label htmlFor="layer">{tr.text(V_Msgs.displayLayer())}</Label>
 							</div>
 							<div className="ml-6 grid gap-2">
 								<div className="flex items-center space-x-2">
@@ -99,7 +100,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 										onCheckedChange={(checked) => setDisplayProps({ map: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="map">{V_Msgs.displayMap().text()}</Label>
+									<Label htmlFor="map">{tr.text(V_Msgs.displayMap())}</Label>
 								</div>
 								<div className="flex items-center space-x-2">
 									<Checkbox
@@ -108,7 +109,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 										onCheckedChange={(checked) => setDisplayProps({ gamemode: checked === true })}
 										disabled={props.readonly}
 									/>
-									<Label htmlFor="gamemode">{V_Msgs.displayGamemode().text()}</Label>
+									<Label htmlFor="gamemode">{tr.text(V_Msgs.displayGamemode())}</Label>
 								</div>
 							</div>
 						</div>
@@ -122,7 +123,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									onCheckedChange={(checked) => setDisplayProps({ factions: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="factions">{V_Msgs.displayFactions().text()}</Label>
+								<Label htmlFor="factions">{tr.text(V_Msgs.displayFactions())}</Label>
 							</div>
 							<div className="flex items-center space-x-2">
 								<Checkbox
@@ -131,18 +132,18 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 									onCheckedChange={(checked) => setDisplayProps({ units: checked === true })}
 									disabled={props.readonly}
 								/>
-								<Label htmlFor="units">{V_Msgs.displayUnits().text()}</Label>
+								<Label htmlFor="units">{tr.text(V_Msgs.displayUnits())}</Label>
 							</div>
 						</div>
 					</div>
 				</div>
 				{!valid && (
 					<div className="bg-destructive/10 border border-destructive rounded p-2">
-						<p className="text-sm text-destructive">{V_Msgs.choicesIndistinguishable().text()}</p>
+						<p className="text-sm text-destructive">{tr.text(V_Msgs.choicesIndistinguishable())}</p>
 					</div>
 				)}
 				<div className="space-y-2">
-					<Label>{V_Msgs.previewLabel().text()}</Label>
+					<Label>{tr.text(V_Msgs.previewLabel())}</Label>
 					<pre
 						style={{
 							fontFamily: `"Roboto Condensed", 'sans-serif'`,
@@ -154,7 +155,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 					</pre>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="duration">{V_Msgs.durationLabel().text()}</Label>
+					<Label htmlFor="duration">{tr.text(V_Msgs.durationLabel())}</Label>
 					<Input
 						id="duration"
 						type="number"
@@ -167,7 +168,7 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 				</div>
 				{(props.includeResetToDefault ?? true) && (
 					<Button variant="outline" size="sm" onClick={resetToDefault} disabled={usingDefault || props.readonly}>
-						{V_Msgs.resetToDefault().text()}
+						{tr.text(V_Msgs.resetToDefault())}
 					</Button>
 				)}
 			</div>

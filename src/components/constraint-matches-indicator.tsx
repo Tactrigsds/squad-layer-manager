@@ -12,6 +12,7 @@ import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LQYClient from '@/systems/layer-queries.client'
+import { tr } from '@/systems/messages.client'
 
 import EmojiDisplay from './emoji-display'
 import { FilterEntityLink } from './filter-entity-select'
@@ -130,7 +131,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 		<Tooltip delayDuration={250}>
 			<TooltipTrigger
 				// the trigger is a row of emoji/icons, so it has no text of its own to be named by
-				aria-label={F_Msgs.layerIndicators().text()}
+				aria-label={tr.text(F_Msgs.layerIndicators())}
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={itemId ? onMouseOver : undefined}
@@ -145,7 +146,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 			>
 				{renderedRepeats.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>{F_Msgs.repeatsDetectedLabel().text()}</div>
+						<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.repeatsDetectedLabel())}</div>
 						<ItemGroup>
 							{renderedRepeats.map((constraint, index) => (
 								<React.Fragment key={constraint.id}>
@@ -164,7 +165,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 				)}
 				{renderedFilters.length > 0 && (
 					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>{F_Msgs.matchingFiltersLabel().text()}</div>
+						<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.matchingFiltersLabel())}</div>
 						<ItemGroup>
 							{renderedFilters.flatMap(([constraintId, elt], index) => {
 								return (
@@ -225,14 +226,14 @@ export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
 						<>
 							{descriptors.map((d) => (
 								<span key={`${d.fieldValue}-${d.constraintId}-${d.repeatOffset}`}>
-									{F_Msgs.repeatDescriptor(boldValue(d.fieldValue), boldValue(d.repeatOffset), d.repeatOffset).react()}
+									{tr.richText(F_Msgs.repeatDescriptor(boldValue(d.fieldValue), boldValue(d.repeatOffset), d.repeatOffset))}
 								</span>
 							))}
-							<span>{F_Msgs.repeatShouldBeOver(boldValue(constraint.rule.within)).react()}</span>
+							<span>{tr.richText(F_Msgs.repeatShouldBeOver(boldValue(constraint.rule.within)))}</span>
 						</>
 					) : (
 						<span className="whitespace-nowrap">
-							{F_Msgs.repeatWithin(<span className="font-semibold">{constraint.rule.within}</span>).react()}
+							{tr.richText(F_Msgs.repeatWithin(<span className="font-semibold">{constraint.rule.within}</span>))}
 						</span>
 					)}
 				</ItemDescription>

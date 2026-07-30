@@ -7,6 +7,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
 
 export const [useActiveTimeouts, activeTimeouts$] = ReactRx.bindWithDefault(
@@ -41,11 +42,11 @@ export async function timeoutPlayers(
 ): Promise<void> {
 	const durationMs = ZodUtils.tryParseHumanTimeToken(opts.durationText.trim())
 	if (durationMs === undefined) {
-		toast.error(...SM_Msgs.invalidTimeoutDuration().toast())
+		toast.error(...tr.toast(SM_Msgs.invalidTimeoutDuration()))
 		return
 	}
 	if (typeof opts.maxTimeout === 'number' && durationMs > opts.maxTimeout) {
-		toast.error(...SM_Msgs.timeoutTooLong(ZodUtils.formatHumanTime(opts.maxTimeout)).toast())
+		toast.error(...tr.toast(SM_Msgs.timeoutTooLong(ZodUtils.formatHumanTime(opts.maxTimeout))))
 		return
 	}
 	const results = await Promise.allSettled(
@@ -60,8 +61,8 @@ export async function timeoutPlayers(
 		else failed++
 	}
 	const duration = ZodUtils.formatHumanTime(durationMs)
-	if (timedOut > 0) toast(...SM_Msgs.timedOut({ kind: 'players', count: timedOut }, duration).toast())
-	if (failed > 0) toast.error(...SM_Msgs.someTimeoutsFailed(failed).toast())
+	if (timedOut > 0) toast(...tr.toast(SM_Msgs.timedOut({ kind: 'players', count: timedOut }, duration)))
+	if (failed > 0) toast.error(...tr.toast(SM_Msgs.someTimeoutsFailed(failed)))
 }
 
 // the logged-in user's effective max timeout: undefined = cannot issue timeouts, null = unlimited,

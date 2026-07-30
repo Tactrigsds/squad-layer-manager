@@ -13,6 +13,7 @@ import * as LNote_Msgs from '@/messages/layer-notes.messages'
 import * as LNote from '@/models/layer-notes.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -66,7 +67,7 @@ export function LayerNotes(props: {
 			<Button
 				variant="ghost"
 				size="sm"
-				title={LNote_Msgs.addNote().text()}
+				title={tr.text(LNote_Msgs.addNote())}
 				disabled={props.disabled}
 				onClick={() => setEditing('new')}
 				className={cn(
@@ -76,7 +77,7 @@ export function LayerNotes(props: {
 				)}
 			>
 				<Icons.MessageSquarePlus className="h-3 w-3" />
-				{notes.length === 0 && <span>{LNote_Msgs.addNoteInline().text()}</span>}
+				{notes.length === 0 && <span>{tr.text(LNote_Msgs.addNoteInline())}</span>}
 			</Button>
 			<NoteDialog state={editing} onClose={() => setEditing(null)} onSubmit={submit} />
 		</span>
@@ -116,7 +117,7 @@ function NoteListPopover(props: {
 			<PopoverTrigger asChild>
 				<Button variant="ghost" size="sm" className="h-4 px-1 text-xs text-muted-foreground font-normal gap-0.5">
 					<Icons.MessageSquare className="h-3 w-3" />
-					{LNote_Msgs.viewNotes(props.notes.length).text()}
+					{tr.text(LNote_Msgs.viewNotes(props.notes.length))}
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="start" className="w-96 max-h-80 space-y-3 overflow-y-auto p-3">
@@ -138,7 +139,7 @@ function NoteListPopover(props: {
 function NoteBody(props: { serverId: string; note: LNote.Note; disabled?: boolean; onEdit: () => void; onDelete: () => void }) {
 	const canManage = useCanManageNote(props.serverId, props.note)
 	return (
-		<div role="group" aria-label={LNote_Msgs.noteGroup().text()} className="space-y-1">
+		<div role="group" aria-label={tr.text(LNote_Msgs.noteGroup())} className="space-y-1">
 			<UserLabel userId={props.note.author} />
 			<p className="text-sm">
 				<RichText text={props.note.text} />
@@ -147,7 +148,7 @@ function NoteBody(props: { serverId: string; note: LNote.Note; disabled?: boolea
 				<div className="flex gap-1">
 					<Button variant="outline" size="sm" className="h-6 flex-1 text-xs" onClick={props.onEdit}>
 						<Icons.Pencil className="mr-1 h-3 w-3" />
-						{LNote_Msgs.edit().text()}
+						{tr.text(LNote_Msgs.edit())}
 					</Button>
 					<Button variant="outline" size="sm" className="h-6 text-xs text-destructive" onClick={props.onDelete}>
 						<Icons.Trash2 className="h-3 w-3" />
@@ -160,7 +161,7 @@ function NoteBody(props: { serverId: string; note: LNote.Note; disabled?: boolea
 
 function AuthorName(props: { userId: USR.UserId }) {
 	const user = UsersClient.useResolvedUser(props.userId)
-	return <span className="font-medium text-foreground">{user?.displayName ?? LNote_Msgs.unknownAuthor().text()}</span>
+	return <span className="font-medium text-foreground">{user?.displayName ?? tr.text(LNote_Msgs.unknownAuthor())}</span>
 }
 
 function NoteDialog(props: { state: Editing; onClose: () => void; onSubmit: (text: string) => void }) {
@@ -185,7 +186,7 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle>{existing ? LNote_Msgs.editNote().text() : LNote_Msgs.addNote().text()}</DialogTitle>
+				<DialogTitle>{existing ? tr.text(LNote_Msgs.editNote()) : tr.text(LNote_Msgs.addNote())}</DialogTitle>
 			</DialogHeader>
 			<Textarea
 				autoFocus
@@ -193,7 +194,7 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 				defaultValue={existing?.text ?? ''}
 				maxLength={LNote.MAX_LENGTH}
 				className="min-h-24 text-sm"
-				placeholder={LNote_Msgs.placeholder().text()}
+				placeholder={tr.text(LNote_Msgs.placeholder())}
 				onChange={(e) => setLength(e.target.value.trim().length)}
 			/>
 			<span className="text-xs text-muted-foreground">
@@ -201,10 +202,10 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 			</span>
 			<DialogFooter>
 				<Button variant="outline" onClick={props.onClose}>
-					{LNote_Msgs.cancel().text()}
+					{tr.text(LNote_Msgs.cancel())}
 				</Button>
 				<Button disabled={length === 0} onClick={submit}>
-					{existing ? LNote_Msgs.save().text() : LNote_Msgs.add().text()}
+					{existing ? tr.text(LNote_Msgs.save()) : tr.text(LNote_Msgs.add())}
 				</Button>
 			</DialogFooter>
 		</>

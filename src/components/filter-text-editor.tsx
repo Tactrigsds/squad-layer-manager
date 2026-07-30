@@ -11,6 +11,7 @@ import * as Typo from '@/lib/typography'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
+import { tr } from '@/systems/messages.client'
 
 import type { FilterTextEditorProps } from './filter-text-editor.types'
 
@@ -98,7 +99,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 				obj = JSON.parse(view.state.doc.toString())
 			} catch (err) {
 				if (err instanceof SyntaxError) {
-					toast.error(...F_Msgs.formatFailed(err.message).toast())
+					toast.error(...tr.toast(F_Msgs.formatFailed(err.message)))
 				}
 				return
 			}
@@ -109,8 +110,8 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 	return (
 		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
-			<h3 className={Typo.Small + 'mb-2 ml-[45px]'}>{F_Msgs.filterHeading().text()}</h3>
-			<h3 className={Typo.Small + 'mb-2'}>{F_Msgs.errorsHeading().text()}</h3>
+			<h3 className={Typo.Small + 'mb-2 ml-[45px]'}>{tr.text(F_Msgs.filterHeading())}</h3>
+			<h3 className={Typo.Small + 'mb-2'}>{tr.text(F_Msgs.errorsHeading())}</h3>
 			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
 				{errorText}

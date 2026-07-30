@@ -5,6 +5,7 @@ import * as React from 'react'
 import LogoMark from '@/components/logo-mark'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as USR_Msgs from '@/messages/users.messages'
+import type * as Msgs from '@/models/messages.models'
 
 // Presentational components for the static, no-hydration login landing page and the 403 page. Rendered to a
 // cached HTML string at boot by landing.server.ts (renderToStaticMarkup); never mounted on the client. Styled
@@ -33,7 +34,7 @@ function GithubIcon() {
 	)
 }
 
-function RepoLink({ repoUrl }: { repoUrl: string }) {
+function RepoLink({ repoUrl, tr }: { repoUrl: string; tr: Msgs.Translator }) {
 	return (
 		<a
 			href={repoUrl}
@@ -42,7 +43,7 @@ function RepoLink({ repoUrl }: { repoUrl: string }) {
 			className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
 		>
 			<GithubIcon />
-			<span>{USR_Msgs.viewOnGithub().text()}</span>
+			<span>{tr.text(USR_Msgs.viewOnGithub())}</span>
 		</a>
 	)
 }
@@ -81,45 +82,55 @@ function Document({
 	)
 }
 
-function Lockup({ accent }: { accent: string | null }) {
+function Lockup({ accent, tr }: { accent: string | null; tr: Msgs.Translator }) {
 	return (
 		<div className="flex flex-col items-center gap-3">
 			<LogoMark accent={accent} className="h-14 w-14" />
 			<div className="flex flex-col items-center gap-1.5">
-				<p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{APP_Msgs.productName().text()}</p>
-				<p className="text-center text-sm text-muted-foreground">{APP_Msgs.tagline().text()}</p>
+				<p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{tr.text(APP_Msgs.productName())}</p>
+				<p className="text-center text-sm text-muted-foreground">{tr.text(APP_Msgs.tagline())}</p>
 			</div>
 		</div>
 	)
 }
 
-function LandingPage({ repoUrl, guildName, accent }: { repoUrl: string; guildName: string | null; accent: string | null }) {
+function LandingPage({
+	repoUrl,
+	guildName,
+	accent,
+	tr,
+}: {
+	repoUrl: string
+	guildName: string | null
+	accent: string | null
+	tr: Msgs.Translator
+}) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
-			<Lockup accent={accent} />
-			<h1 className="mt-4 text-2xl font-bold tracking-tight">{USR_Msgs.landingHeading(guildName).text()}</h1>
-			<p className="mt-3 text-muted-foreground">{USR_Msgs.landingBlurb(guildName).text()}</p>
+			<Lockup accent={accent} tr={tr} />
+			<h1 className="mt-4 text-2xl font-bold tracking-tight">{tr.text(USR_Msgs.landingHeading(guildName))}</h1>
+			<p className="mt-3 text-muted-foreground">{tr.text(USR_Msgs.landingBlurb(guildName))}</p>
 			<a
 				href="/login"
 				className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#5865f2] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#4752c4]"
 			>
 				<DiscordIcon />
-				<span>{USR_Msgs.logInWithDiscord().text()}</span>
+				<span>{tr.text(USR_Msgs.logInWithDiscord())}</span>
 			</a>
-			<RepoLink repoUrl={repoUrl} />
+			<RepoLink repoUrl={repoUrl} tr={tr} />
 		</main>
 	)
 }
 
-function NoAuthPage({ repoUrl, error, accent }: { repoUrl: string; error: string | null; accent: string | null }) {
+function NoAuthPage({ repoUrl, error, accent, tr }: { repoUrl: string; error: string | null; accent: string | null; tr: Msgs.Translator }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 shadow-lg">
-			<Lockup accent={accent} />
-			<h1 className="mt-4 text-center text-2xl font-bold tracking-tight">{USR_Msgs.pickANameHeading().text()}</h1>
-			<p className="mt-3 text-center text-muted-foreground">{USR_Msgs.pickANameBlurb().text()}</p>
+			<Lockup accent={accent} tr={tr} />
+			<h1 className="mt-4 text-center text-2xl font-bold tracking-tight">{tr.text(USR_Msgs.pickANameHeading())}</h1>
+			<p className="mt-3 text-center text-muted-foreground">{tr.text(USR_Msgs.pickANameBlurb())}</p>
 			<form action="/login/no-auth" method="POST" className="mt-6 flex flex-col gap-3">
 				<label htmlFor="username" className="sr-only">
-					{USR_Msgs.usernameLabel().text()}
+					{tr.text(USR_Msgs.usernameLabel())}
 				</label>
 				<input
 					id="username"
@@ -130,7 +141,7 @@ function NoAuthPage({ repoUrl, error, accent }: { repoUrl: string; error: string
 					maxLength={32}
 					autoComplete="off"
 					spellCheck={false}
-					placeholder={USR_Msgs.usernameLabel().text()}
+					placeholder={tr.text(USR_Msgs.usernameLabel())}
 					className="w-full rounded-md border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 				/>
 				{error && <p className="text-sm text-destructive-foreground">{error}</p>}
@@ -138,42 +149,42 @@ function NoAuthPage({ repoUrl, error, accent }: { repoUrl: string; error: string
 					type="submit"
 					className="inline-flex w-full items-center justify-center rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
 				>
-					{USR_Msgs.continueLabel().text()}
+					{tr.text(USR_Msgs.continueLabel())}
 				</button>
 			</form>
 			<div className="text-center">
-				<RepoLink repoUrl={repoUrl} />
+				<RepoLink repoUrl={repoUrl} tr={tr} />
 			</div>
 		</main>
 	)
 }
 
-function ForbiddenPage({ repoUrl, guildName }: { repoUrl: string; guildName: string | null }) {
+function ForbiddenPage({ repoUrl, guildName, tr }: { repoUrl: string; guildName: string | null; tr: Msgs.Translator }) {
 	return (
 		<main className="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-lg">
 			<div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/20 text-destructive-foreground">
 				<DiscordIcon />
 			</div>
-			<h1 className="text-2xl font-bold tracking-tight">{USR_Msgs.accessDeniedHeading().text()}</h1>
-			<p className="mt-2 text-muted-foreground">{USR_Msgs.accessDeniedBlurb(guildName).text()}</p>
+			<h1 className="text-2xl font-bold tracking-tight">{tr.text(USR_Msgs.accessDeniedHeading())}</h1>
+			<p className="mt-2 text-muted-foreground">{tr.text(USR_Msgs.accessDeniedBlurb(guildName))}</p>
 			<div className="mt-6 flex flex-col gap-3">
 				<a
 					href="/"
 					className="inline-flex w-full items-center justify-center rounded-md border bg-secondary px-5 py-3 text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
 				>
-					{USR_Msgs.backToHome().text()}
+					{tr.text(USR_Msgs.backToHome())}
 				</a>
 				<form action="/logout" method="POST">
 					<button
 						type="submit"
 						className="inline-flex w-full items-center justify-center rounded-md border bg-secondary px-5 py-3 text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
 					>
-						{USR_Msgs.logOutAndSwitch().text()}
+						{tr.text(USR_Msgs.logOutAndSwitch())}
 					</button>
 				</form>
 			</div>
-			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">{USR_Msgs.accessDeniedContact().text()}</p>
-			<RepoLink repoUrl={repoUrl} />
+			<p className="mt-6 border-t pt-6 text-sm text-muted-foreground">{tr.text(USR_Msgs.accessDeniedContact())}</p>
+			<RepoLink repoUrl={repoUrl} tr={tr} />
 		</main>
 	)
 }
@@ -186,6 +197,7 @@ export function LandingDocument({
 	head,
 	inlineCss,
 	accent,
+	tr,
 }: {
 	variant: USR_Msgs.LandingVariant
 	repoUrl: string
@@ -194,18 +206,19 @@ export function LandingDocument({
 	head: { htmlAttrs: HtmlAttrs; metas: readonly Meta[]; assetLinks: readonly AssetLink[] }
 	inlineCss: string
 	accent: string | null
+	tr: Msgs.Translator
 }) {
 	return (
 		<Document
-			title={USR_Msgs.landingTitles[variant]}
+			title={tr.text(USR_Msgs.landingTitles[variant]())}
 			htmlAttrs={head.htmlAttrs}
 			metas={head.metas}
 			assetLinks={head.assetLinks}
 			inlineCss={inlineCss}
 		>
-			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} accent={accent} />}
-			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} accent={accent} />}
-			{variant === 'forbidden' && <ForbiddenPage repoUrl={repoUrl} guildName={guildName} />}
+			{variant === 'landing' && <LandingPage repoUrl={repoUrl} guildName={guildName} accent={accent} tr={tr} />}
+			{variant === 'no-auth' && <NoAuthPage repoUrl={repoUrl} error={error} accent={accent} tr={tr} />}
+			{variant === 'forbidden' && <ForbiddenPage repoUrl={repoUrl} guildName={guildName} tr={tr} />}
 		</Document>
 	)
 }

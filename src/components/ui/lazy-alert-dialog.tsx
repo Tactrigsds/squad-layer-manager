@@ -14,16 +14,17 @@ import {
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import * as UI_Msgs from '@/messages/ui.messages'
+import { tr } from '@/systems/messages.client'
 
 type AlertDialogButton = {
 	id: string
-	label: string
+	label: React.ReactNode
 	variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
 }
 
 type AlertDialogOptions = {
-	title: string
-	description?: string
+	title: React.ReactNode
+	description?: React.ReactNode
 	content?: React.ReactNode
 	buttons?: AlertDialogButton[]
 	// 'destructive' accents the dialog (title color + icon, border) and defaults action buttons to the
@@ -139,7 +140,7 @@ export function AlertDialogProvider({ children }: { children: React.ReactNode })
 						</form>
 					)}
 					<AlertDialogFooter>
-						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>{UI_Msgs.cancel().text()}</AlertDialogCancel>
+						<AlertDialogCancel onClick={() => handleButtonClick('cancel')}>{tr.text(UI_Msgs.cancel())}</AlertDialogCancel>
 						{options?.buttons?.map((button) => {
 							const variant = button.variant ?? (isDestructive ? 'destructive' : undefined)
 							return (

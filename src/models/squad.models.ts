@@ -1868,12 +1868,15 @@ export namespace Grants {
 	}
 }
 
-export type Ctx = CS.Ctx & {
-	player: Player
-}
-export const CtxDef = CD.defCtx<Ctx>()(['player'], { name: 'player' })
+// inside the namespace, `Player` is Ctx.Player, so the roster type needs an alias to stay reachable
+type PlayerPayload = Player
 
 export namespace Ctx {
+	export type Player = CS.Ctx & {
+		player: PlayerPayload
+	}
+	export const PlayerDef = CD.defCtx<Player>()(['player'], { name: 'player' })
+
 	// width pun on `player`, same shape as USR.Ctx / USR.Ctx.Id
 	export type Ids<T extends PlayerIds.Fields = 'eos'> = {
 		player: {
@@ -1881,5 +1884,5 @@ export namespace Ctx {
 		}
 	}
 
-	export type UserOrPlayer = Partial<USR.Ctx> & Partial<Ctx>
+	export type UserOrPlayer = Partial<USR.Ctx> & Partial<Player>
 }

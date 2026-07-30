@@ -8,6 +8,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as DiscordClient from '@/systems/discord.client'
+import { tr } from '@/systems/messages.client'
 import * as ThemeClient from '@/systems/theme.client'
 
 export type UnifiedEmojiPickerProps = {
@@ -124,7 +125,7 @@ export function UnifiedEmojiPicker(props: UnifiedEmojiPickerProps) {
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center" style={{ width, height }}>
-				<div className="text-sm text-muted-foreground">{SETTINGS_Msgs.loadingEmojis().text()}</div>
+				<div className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEmojis())}</div>
 			</div>
 		)
 	}

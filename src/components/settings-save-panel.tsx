@@ -10,6 +10,7 @@ import * as SettingsNav from '@/lib/settings-nav'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -89,10 +90,10 @@ export function SettingsSavePanel({
 			const gui = state.mode === 'gui'
 			const label =
 				state.kind === 'global'
-					? SETTINGS_Msgs.globalSettings().text()
+					? tr.text(SETTINGS_Msgs.globalSettings())
 					: state.kind === 'server'
 						? (nameById.get(state.serverId!) ?? state.serverId!)
-						: state.newDisplayName.trim() || SETTINGS_Msgs.newManagedServer().text()
+						: state.newDisplayName.trim() || tr.text(SETTINGS_Msgs.newManagedServer())
 			// a new-server section always counts as one pending change while open; once created it no longer participates
 			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
 			const deniedIds = gui
@@ -147,7 +148,7 @@ export function SettingsSavePanel({
 	async function handleSave() {
 		const dirty = sections.filter((s) => s.changedCount > 0)
 		if (dirty.length === 0 || dirty.some((s) => !s.state.valid || s.deniedIds.length > 0)) return
-		const msg = SETTINGS_Msgs.confirmSaveAll().confirm()
+		const msg = tr.confirm(SETTINGS_Msgs.confirmSaveAll())
 		const result = await openDialog({
 			title: msg.title,
 			content: (
@@ -189,12 +190,12 @@ export function SettingsSavePanel({
 			{totalErrors > 0 && (
 				<span className="flex items-center gap-0.5 text-sm font-medium text-destructive">
 					<Icons.CircleAlert className="mr-1 h-4 w-4" />
-					{SETTINGS_Msgs.errorCount(totalErrors).text()}
+					{tr.text(SETTINGS_Msgs.errorCount(totalErrors))}
 					<Button
 						variant="ghost"
 						size="icon"
 						className="ml-1 h-6 w-6 text-destructive"
-						title={SETTINGS_Msgs.previousError().text()}
+						title={tr.text(SETTINGS_Msgs.previousError())}
 						onClick={() => navigateErrors(-1)}
 					>
 						<Icons.ChevronUp className="h-4 w-4" />
@@ -203,7 +204,7 @@ export function SettingsSavePanel({
 						variant="ghost"
 						size="icon"
 						className="h-6 w-6 text-destructive"
-						title={SETTINGS_Msgs.nextError().text()}
+						title={tr.text(SETTINGS_Msgs.nextError())}
 						onClick={() => navigateErrors(1)}
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
@@ -211,14 +212,17 @@ export function SettingsSavePanel({
 				</span>
 			)}
 			{totalDenied > 0 && (
-				<span className="flex items-center gap-0.5 text-sm font-medium text-amber-500" title={SETTINGS_Msgs.deniedChangesHint().text()}>
+				<span
+					className="flex items-center gap-0.5 text-sm font-medium text-amber-500"
+					title={tr.text(SETTINGS_Msgs.deniedChangesHint())}
+				>
 					<Icons.ShieldAlert className="mr-1 h-4 w-4" />
-					{SETTINGS_Msgs.deniedCount(totalDenied).text()}
+					{tr.text(SETTINGS_Msgs.deniedCount(totalDenied))}
 					<Button
 						variant="ghost"
 						size="icon"
 						className="ml-1 h-6 w-6 text-amber-500"
-						title={SETTINGS_Msgs.previousDeniedChange().text()}
+						title={tr.text(SETTINGS_Msgs.previousDeniedChange())}
 						onClick={() => navigateDenied(-1)}
 					>
 						<Icons.ChevronUp className="h-4 w-4" />
@@ -227,19 +231,19 @@ export function SettingsSavePanel({
 						variant="ghost"
 						size="icon"
 						className="h-6 w-6 text-amber-500"
-						title={SETTINGS_Msgs.nextDeniedChange().text()}
+						title={tr.text(SETTINGS_Msgs.nextDeniedChange())}
 						onClick={() => navigateDenied(1)}
 					>
 						<Icons.ChevronDown className="h-4 w-4" />
 					</Button>
 				</span>
 			)}
-			<span className="text-sm [&_strong]:font-medium">{SETTINGS_Msgs.changedCount(totalChanges).react()}</span>
+			<span className="text-sm [&_strong]:font-medium">{tr.richText(SETTINGS_Msgs.changedCount(totalChanges))}</span>
 			<Button variant="outline" size="sm" onClick={handleReset}>
-				{SETTINGS_Msgs.reset().text()}
+				{tr.text(SETTINGS_Msgs.reset())}
 			</Button>
 			<Button size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
-				{anySaving ? SETTINGS_Msgs.saving().text() : SETTINGS_Msgs.save().text()}
+				{anySaving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
 			</Button>
 		</div>
 	)

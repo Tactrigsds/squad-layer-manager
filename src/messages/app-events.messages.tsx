@@ -3,28 +3,29 @@ import * as React from 'react'
 
 import * as DH from '@/lib/display-helpers'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as Msgs from '@/messages/shared'
+import * as I18n from '@/messages/i18n'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
 import * as LL from '@/models/layer-list.models'
+import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
 import type * as SM from '@/models/squad.models'
 
 // The audit log, rendered on the settings page. `describeAppEvent` in the models still builds each row's summary
 // line itself.
 
-export const auditLog = Msgs.def('Audit Log')
+export const auditLog = def('Audit Log')
 
-export const auditLogBlurb = Msgs.def('Recent actions taken across SLM.')
+export const auditLogBlurb = def('Recent actions taken across SLM.')
 
-export const noEvents = Msgs.def('No events yet.')
+export const noEvents = def('No events yet.')
 
 // what a row calls the actor when it cannot name them: an SLM user whose account no longer resolves, an in-game
 // admin missing from the players table, or the system, which has no name to resolve in the first place
-export const unnamedActors: Record<AppEvents.Actor['type'], string> = {
-	'slm-user': 'Admin',
-	'ingame-user': 'An in-game admin',
-	system: 'System',
+export const unnamedActors: Record<AppEvents.Actor['type'], TString> = {
+	'slm-user': t('Admin'),
+	'ingame-user': t('An in-game admin'),
+	system: t('System'),
 }
 
 // -------- the activity feed's app-event lines --------
@@ -32,220 +33,208 @@ export const unnamedActors: Record<AppEvents.Actor['type'], string> = {
 // One message per app-event type, each taking the nodes the feed renders inline. The actor is always a node
 // because it may be a rendered player display or a resolved SLM user's name.
 
-export const unnamedSlmUser = Msgs.def('An admin')
+export const unnamedSlmUser = def('An admin')
 
-export const systemActor = Msgs.def('SLM')
+export const systemActor = def('SLM')
 
-export const unnamedIngameAdmin = Msgs.def('An in-game admin')
+export const unnamedIngameAdmin = def('An in-game admin')
 
-// "a, b and c" -- the list a feed line names in prose rather than as a column
-export const joinNames = Msgs.def((names: readonly string[]) =>
-	names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`,
-)
+// "a, b and c" -- the list a feed line names in prose rather than as a column. Intl knows each locale's own
+// conjunction and separators, which no ICU pattern could hold for a list of unknown length.
+export const joinNames = def((names: readonly string[]) => ({
+	text: ({ locale }) => raw(new Intl.ListFormat(locale, { type: 'conjunction' }).format(names)),
+}))
 
-export const squadDisbanded = Msgs.def(
+export const squadDisbanded = def(
 	(actor: React.ReactNode, squadName: string, teamId: number, reasonLabel: string | undefined, memberCount: number) => ({
-		react: () =>
-			Msgs.node(
-				'{actor} disbanded {squadName} (Team {teamId}){hasReason, select, yes { for {reasonLabel}} other {}}' +
-					'{memberCount, plural, =0 {} one {, # player} other {, # players}}',
-				{ actor, squadName, teamId, reasonLabel, hasReason: reasonLabel ? 'yes' : 'no', memberCount },
-			),
+		richText: rt(
+			'{actor} disbanded {squadName} (Team {teamId}){hasReason, select, yes { for {reasonLabel}} other {}}{memberCount, plural, =0 {} one {, # player} other {, # players}}',
+			{ actor, squadName, teamId, reasonLabel, hasReason: reasonLabel ? 'yes' : 'no', memberCount },
+		),
 	}),
 )
 
-export const squadRenamed = Msgs.def((actor: React.ReactNode, squadName: string, teamId: number) => ({
-	react: () => Msgs.node('{actor} renamed {squadName} (Team {teamId})', { actor, squadName, teamId }),
+export const squadRenamed = def((actor: React.ReactNode, squadName: string, teamId: number) => ({
+	richText: rt('{actor} renamed {squadName} (Team {teamId})', { actor, squadName, teamId }),
 }))
 
-export const commanderDemoted = Msgs.def((actor: React.ReactNode, target: React.ReactNode, reasonLabel?: string) => ({
-	react: () =>
-		Msgs.node('{actor} demoted {target}{hasReason, select, yes { for {reasonLabel}} other {}}', {
-			actor,
-			target,
-			reasonLabel,
-			hasReason: reasonLabel ? 'yes' : 'no',
-		}),
+export const commanderDemoted = def((actor: React.ReactNode, target: React.ReactNode, reasonLabel?: string) => ({
+	richText: rt('{actor} demoted {target}{hasReason, select, yes { for {reasonLabel}} other {}}', {
+		actor,
+		target,
+		reasonLabel,
+		hasReason: reasonLabel ? 'yes' : 'no',
+	}),
 }))
 
-export const theCommander = Msgs.def('the commander')
+export const theCommander = def('the commander')
 
-export const aPlayer = Msgs.def('a player')
+export const aPlayer = def('a player')
 
-export const fogOfWarToggled = Msgs.def((actor: React.ReactNode, enabled: boolean) => ({
-	react: () => Msgs.node('{actor} turned fog of war {enabled, select, yes {on} other {off}}', { actor, enabled: enabled ? 'yes' : 'no' }),
+export const fogOfWarToggled = def((actor: React.ReactNode, enabled: boolean) => ({
+	richText: rt('{actor} turned fog of war {enabled, select, yes {on} other {off}}', { actor, enabled: enabled ? 'yes' : 'no' }),
 }))
 
-export const broadcastSent = Msgs.def((actor: React.ReactNode, message: string) => ({
-	react: () => Msgs.node('{actor} broadcast "{message}"', { actor, message }),
+export const broadcastSent = def((actor: React.ReactNode, message: string) => ({
+	richText: rt('{actor} broadcast "{message}"', { actor, message }),
 }))
 
-export const playerTimedOut = Msgs.def((actor: React.ReactNode, target: React.ReactNode, duration: string, reasonLabel?: string) => ({
-	react: () =>
-		Msgs.node('{actor} timed out {target} for {duration}{hasReason, select, yes { for {reasonLabel}} other {}}', {
-			actor,
-			target,
-			duration,
-			reasonLabel,
-			hasReason: reasonLabel ? 'yes' : 'no',
-		}),
+export const playerTimedOut = def((actor: React.ReactNode, target: React.ReactNode, duration: string, reasonLabel?: string) => ({
+	richText: rt('{actor} timed out {target} for {duration}{hasReason, select, yes { for {reasonLabel}} other {}}', {
+		actor,
+		target,
+		duration,
+		reasonLabel,
+		hasReason: reasonLabel ? 'yes' : 'no',
+	}),
 }))
 
-export const timeoutCancelled = Msgs.def((actor: React.ReactNode, target: React.ReactNode) => ({
-	react: () => Msgs.node("{actor} cancelled {target}'s timeout", { actor, target }),
+export const timeoutCancelled = def((actor: React.ReactNode, target: React.ReactNode) => ({
+	richText: rt("{actor} cancelled {target}'s timeout", { actor, target }),
 }))
 
-export const matchEnded = Msgs.def((actor: React.ReactNode) => ({
-	react: () => Msgs.node('{actor} ended the match', { actor }),
+export const matchEnded = def((actor: React.ReactNode) => ({
+	richText: rt('{actor} ended the match', { actor }),
 }))
 
-export const voteStarted = Msgs.def((actor: React.ReactNode, choiceCount: number) => ({
-	react: () => Msgs.node('{actor} started a vote ({choiceCount, plural, one {# option} other {# options}})', { actor, choiceCount }),
+export const voteStarted = def((actor: React.ReactNode, choiceCount: number) => ({
+	richText: rt('{actor} started a vote ({choiceCount, plural, one {# option} other {# options}})', { actor, choiceCount }),
 }))
 
-export const voteEndedEarly = Msgs.def((actor: React.ReactNode) => ({
-	react: () => Msgs.node('{actor} ended the vote early', { actor }),
+export const voteEndedEarly = def((actor: React.ReactNode) => ({
+	richText: rt('{actor} ended the vote early', { actor }),
 }))
 
-export const voteEnded = Msgs.def('The vote ended')
+export const voteEnded = def('The vote ended')
 
-export const voteWinner = Msgs.def((layer: React.ReactNode) => ({
-	react: () => Msgs.node(': {layer} won', { layer }),
+export const voteWinner = def((layer: React.ReactNode) => ({
+	richText: rt(': {layer} won', { layer }),
 }))
 
-export const voteNoWinner = Msgs.def(' (no winner)')
+export const voteNoWinner = def(' (no winner)')
 
-export const voteAborted = Msgs.def((actor: React.ReactNode) => ({
-	react: () => Msgs.node('{actor} aborted the vote', { actor }),
+export const voteAborted = def((actor: React.ReactNode) => ({
+	richText: rt('{actor} aborted the vote', { actor }),
 }))
 
 // a generic line for the types the feed has no renderer of its own for; the description comes from the models
-export const genericLine = Msgs.def((actor: React.ReactNode, description: string) => ({
-	react: () => (
-		<>
-			{actor} {description}
-		</>
-	),
+export const genericLine = def((actor: React.ReactNode, description: string) => ({
+	richText: rt('{actor} {description}', { actor, description }),
 }))
 
 // -------- MAP_SET --------
 
-export const nextLayerRestored = Msgs.def((layer: React.ReactNode) => ({
-	react: () => Msgs.node("SLM restored the queue's next layer, set to {layer}", { layer }),
+export const nextLayerRestored = def((layer: React.ReactNode) => ({
+	richText: rt("SLM restored the queue's next layer, set to {layer}", { layer }),
 }))
 
-export const nextLayerOverrode = Msgs.def((who: React.ReactNode, layer: React.ReactNode) => ({
-	react: () => Msgs.node('SLM overrode a layer set by {who}, next layer set to {layer}', { who, layer }),
+export const nextLayerOverrode = def((who: React.ReactNode, layer: React.ReactNode) => ({
+	richText: rt('SLM overrode a layer set by {who}, next layer set to {layer}', { who, layer }),
 }))
 
 // -------- the queue --------
 
-export const queueAdvancedOnRoll = Msgs.def('Queue advanced on map change')
+export const queueAdvancedOnRoll = def('Queue advanced on map change')
 
-export const queueSyncedTo = Msgs.def((who: React.ReactNode) => ({
-	react: () => Msgs.node('Queue synced to a layer change by {who}', { who }),
+export const queueSyncedTo = def((who: React.ReactNode) => ({
+	richText: rt('Queue synced to a layer change by {who}', { who }),
 }))
 
-export const queueSyncedOutsideSlm = Msgs.def('Queue synced to a layer change made outside SLM')
+export const queueSyncedOutsideSlm = def('Queue synced to a layer change made outside SLM')
 
-export const queueGenerated = Msgs.def('SLM generated the next layer')
+export const queueGenerated = def('SLM generated the next layer')
 
-export const queueVoteApplied = Msgs.def('Vote result applied to the queue')
+export const queueVoteApplied = def('Vote result applied to the queue')
 
-export const queueSaved = Msgs.def((actor: React.ReactNode, force: boolean, overrode?: string) => ({
-	react: () =>
-		Msgs.node(
-			'{actor} {force, select, yes {force-saved} other {saved}} the queue{hasOverride, select, yes {, overriding {overrode}} other {}}',
-			{ actor, force: force ? 'yes' : 'no', overrode, hasOverride: overrode !== undefined ? 'yes' : 'no' },
-		),
+export const queueSaved = def((actor: React.ReactNode, force: boolean, overrode?: string) => ({
+	richText: rt(
+		'{actor} {force, select, yes {force-saved} other {saved}} the queue{hasOverride, select, yes {, overriding {overrode}} other {}}',
+		{ actor, force: force ? 'yes' : 'no', overrode, hasOverride: overrode !== undefined ? 'yes' : 'no' },
+	),
 }))
 
 // the net effect of a save, as a parenthetical after the headline
-export const queueChangeCounts = Msgs.def((counts: { added: number; removed: number; edited: number; moved: number }) => {
+export const queueChangeCounts = def((counts: { added: number; removed: number; edited: number; moved: number }) => {
 	const parts = [
-		counts.added > 0 ? `+${counts.added}` : null,
-		counts.removed > 0 ? `−${counts.removed}` : null,
-		counts.edited > 0 ? `${counts.edited} changed` : null,
-		counts.moved > 0 ? 'reordered' : null,
-	].filter(Boolean)
-	return parts.length > 0 ? ` (${parts.join(', ')})` : ''
+		counts.added > 0 ? t('+{added}', { added: counts.added }) : undefined,
+		counts.removed > 0 ? t('−{removed}', { removed: counts.removed }) : undefined,
+		counts.edited > 0 ? t('{edited} changed', { edited: counts.edited }) : undefined,
+		counts.moved > 0 ? t('reordered') : undefined,
+	].filter((part) => part !== undefined)
+	return parts.length > 0 ? t(' ({parts})', { parts: join(parts, ', ') }) : raw('')
 })
 
 // "now" where the server moved first and SLM followed, "set to" where SLM decided it
-export const queueNextLayer = Msgs.def((external: boolean, layer: React.ReactNode) => ({
-	react: () =>
-		Msgs.node(', next layer {external, select, yes {now} other {set to}} {layer}', { external: external ? 'yes' : 'no', layer }),
+export const queueNextLayer = def((external: boolean, layer: React.ReactNode) => ({
+	richText: rt(', next layer {external, select, yes {now} other {set to}} {layer}', { external: external ? 'yes' : 'no', layer }),
 }))
 
-export const queueAndMore = Msgs.def('and {count} more', (count: number) => ({ count }))
+export const queueAndMore = def('and {count} more', (count: number) => ({ count }))
 
-export const queueVoteChoices = Msgs.def('a vote ({count, plural, one {# choice} other {# choices}}): ', (count: number) => ({ count }))
+export const queueVoteChoices = def('a vote ({count, plural, one {# choice} other {# choices}}): ', (count: number) => ({ count }))
 
-export const queueItemAdded = Msgs.def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
-	react: () => Msgs.node('{who} added {vote}{layers}', { who, vote, layers }),
+export const queueItemAdded = def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
+	richText: rt('{who} added {vote}{layers}', { who, vote, layers }),
 }))
 
-export const queueItemRemoved = Msgs.def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
-	react: () => Msgs.node('{who} removed {vote}{layers}', { who, vote, layers }),
+export const queueItemRemoved = def((who: string, vote: React.ReactNode, layers: React.ReactNode) => ({
+	richText: rt('{who} removed {vote}{layers}', { who, vote, layers }),
 }))
 
-export const queueItemEdited = Msgs.def((who: string, from: React.ReactNode, to: React.ReactNode) => ({
-	react: () => Msgs.node('{who} changed {from} to {to}', { who, from, to }),
+export const queueItemEdited = def((who: string, from: React.ReactNode, to: React.ReactNode) => ({
+	richText: rt('{who} changed {from} to {to}', { who, from, to }),
 }))
 
-export const queueItemMoved = Msgs.def((who: string, layers: React.ReactNode, fromIndex: number, toIndex: number) => ({
-	react: () => Msgs.node('{who} moved {layers} from #{fromIndex} to #{toIndex}', { who, layers, fromIndex, toIndex }),
+export const queueItemMoved = def((who: string, layers: React.ReactNode, fromIndex: number, toIndex: number) => ({
+	richText: rt('{who} moved {layers} from #{fromIndex} to #{toIndex}', { who, layers, fromIndex, toIndex }),
 }))
 
 // -------- teamswaps --------
 
-export const teamswapsExecutedOnRoll = Msgs.def(
+export const teamswapsExecutedOnRoll = def(
 	'Queued teamswaps executed on map change ({playerCount, plural, one {# player} other {# players}})',
 	(playerCount: number) => ({ playerCount }),
 )
 
-export const teamswapsExecuted = Msgs.def((actor: React.ReactNode, playerCount: number) => ({
-	react: () =>
-		Msgs.node('{actor} executed the queued teamswaps ({playerCount, plural, one {# player} other {# players}})', { actor, playerCount }),
+export const teamswapsExecuted = def((actor: React.ReactNode, playerCount: number) => ({
+	richText: rt('{actor} executed the queued teamswaps ({playerCount, plural, one {# player} other {# players}})', { actor, playerCount }),
 }))
 
-export const teamswapsDropped = Msgs.def(
+export const teamswapsDropped = def(
 	'{count, plural, one {# queued teamswap dropped, the player} other {# queued teamswaps dropped, those players}} left or changed teams',
 	(count: number) => ({ count }),
 )
 
-export const teamswapsCleared = Msgs.def((actor: React.ReactNode) => ({
-	react: () => Msgs.node('{actor} cleared the queued teamswaps', { actor }),
+export const teamswapsCleared = def((actor: React.ReactNode) => ({
+	richText: rt('{actor} cleared the queued teamswaps', { actor }),
 }))
 
-export const teamswapsUpdated = Msgs.def((actor: React.ReactNode, added: number, removed: number, queued: number) => ({
-	react: () =>
-		Msgs.node('{actor} updated the queued teamswaps ({delta}), {queued} queued for next map', {
-			actor,
-			delta: [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', '),
-			queued,
-		}),
+export const teamswapsUpdated = def((actor: React.ReactNode, added: number, removed: number, queued: number) => ({
+	richText: rt('{actor} updated the queued teamswaps ({delta}), {queued} queued for next map', {
+		actor,
+		delta: [added > 0 ? `+${added}` : null, removed > 0 ? `−${removed}` : null].filter(Boolean).join(', '),
+		queued,
+	}),
 }))
 
-export const teamswapLine = Msgs.def((player: React.ReactNode, team: React.ReactNode, queuedBy?: string) => ({
-	react: () =>
-		Msgs.node('{player} to {team}{hasQueuedBy, select, yes { (queued by {queuedBy})} other {}}', {
-			player,
-			team,
-			queuedBy,
-			hasQueuedBy: queuedBy !== undefined ? 'yes' : 'no',
-		}),
+export const teamswapLine = def((player: React.ReactNode, team: React.ReactNode, queuedBy?: string) => ({
+	richText: rt('{player} to {team}{hasQueuedBy, select, yes { (queued by {queuedBy})} other {}}', {
+		player,
+		team,
+		queuedBy,
+		hasQueuedBy: queuedBy !== undefined ? 'yes' : 'no',
+	}),
 }))
 
 // -------- warns --------
 
-export const warnChannel = Msgs.def((actor: React.ReactNode, warnee: React.ReactNode) => ({
-	react: () => Msgs.node('({actor} warned {warnee})', { actor, warnee }),
+export const warnChannel = def((actor: React.ReactNode, warnee: React.ReactNode) => ({
+	richText: rt('({actor} warned {warnee})', { actor, warnee }),
 }))
 
-export const warnChannelHint = Msgs.def('who sent this warning and who received it')
+export const warnChannelHint = def('who sent this warning and who received it')
 
-export const allAdmins = Msgs.def('all admins')
+export const allAdmins = def('all admins')
 
 // How a warn's targets are named when they are not listed individually. A plain function rather than a message:
 // a bare list of players has no descriptor at all, and a target that can return nothing is not a message (see
@@ -270,53 +259,51 @@ export function warnTargetDescriptor(summary: CHAT.WarnSummary): string | null {
 	}
 }
 
-export const warnPlayerCount = Msgs.def('{count, plural, one {# player} other {# players}}', (count: number) => ({ count }))
+export const warnPlayerCount = def('{count, plural, one {# player} other {# players}}', (count: number) => ({ count }))
 
 // a grouping plus the count it covers, where naming the group alone would hide how many it reached
-export const warnDescriptorWithCount = Msgs.def('{descriptor} ({players})', (descriptor: string, players: string) => ({
+export const warnDescriptorWithCount = def('{descriptor} ({players})', (descriptor: string, players: string) => ({
 	descriptor,
 	players,
 }))
 
 // -------- the shared "{actor} {verb} {targets}{suffix}" entries --------
 
-export const removedFromSquadSuffix = Msgs.def(
+export const removedFromSquadSuffix = def(
 	' from their squad{hasReason, select, yes { for {reasonLabel}} other {}}',
 	(reasonLabel?: string) => ({ reasonLabel, hasReason: reasonLabel ? 'yes' : 'no' }),
 )
 
-export const forReasonSuffix = Msgs.def(' for {reasonLabel}', (reasonLabel: string) => ({ reasonLabel }))
+export const forReasonSuffix = def(' for {reasonLabel}', (reasonLabel: string) => ({ reasonLabel }))
 
-export const killReasonSuffix = Msgs.def(': "{reason}"', (reason: string) => ({ reason }))
+export const killReasonSuffix = def(': "{reason}"', (reason: string) => ({ reason }))
 
-export const swappedTeamsSuffix = Msgs.def(' to the other team')
+export const swappedTeamsSuffix = def(' to the other team')
 
 export const targetVerbs = { removed: 'removed', kicked: 'kicked', killed: 'killed', swapped: 'swapped' }
 
 export type TargetVerb = keyof typeof targetVerbs
 
-export const actionOnNamedTargets = Msgs.def(
+export const actionOnNamedTargets = def(
 	(actor: React.ReactNode, verb: TargetVerb, targets: React.ReactNode, count: number, suffix: React.ReactNode) => ({
-		react: () =>
-			Msgs.node('{actor} {verb} {targets}{many, select, yes { ({count, plural, one {# player} other {# players}})} other {}}{suffix}', {
-				actor,
-				verb: targetVerbs[verb],
-				targets,
-				count,
-				many: count > 1 ? 'yes' : 'no',
-				suffix,
-			}),
+		richText: rt('{actor} {verb} {targets}{many, select, yes { ({count, plural, one {# player} other {# players}})} other {}}{suffix}', {
+			actor,
+			verb: targetVerbs[verb],
+			targets,
+			count,
+			many: count > 1 ? 'yes' : 'no',
+			suffix,
+		}),
 	}),
 )
 
-export const actionOnCountedTargets = Msgs.def((actor: React.ReactNode, verb: TargetVerb, count: number, suffix: React.ReactNode) => ({
-	react: () =>
-		Msgs.node('{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}', {
-			actor,
-			verb: targetVerbs[verb],
-			count,
-			suffix,
-		}),
+export const actionOnCountedTargets = def((actor: React.ReactNode, verb: TargetVerb, count: number, suffix: React.ReactNode) => ({
+	richText: rt('{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}', {
+		actor,
+		verb: targetVerbs[verb],
+		count,
+		suffix,
+	}),
 }))
 
 // ---- the audit log's summary line ----
@@ -326,13 +313,13 @@ export const actionOnCountedTargets = Msgs.def((actor: React.ReactNode, verb: Ta
 // warn-all-admins notice, so it stays a plain string rather than a react target.
 // `playerName` resolves an eos id for the types that name a player the caller cannot otherwise identify.
 
-const QUEUE_UPDATE_VERBS: Record<AppEvents.QueueUpdateKind, string> = {
-	roll: 'advanced the queue on map change',
-	'external-layer-change': 'synced the queue to an external layer change',
-	generated: 'generated the next layer',
-	'vote-result': 'applied the vote result to the queue',
-	'force-save': 'force-saved the queue',
-	save: 'updated the queue',
+const QUEUE_UPDATE_VERBS: Record<AppEvents.QueueUpdateKind, TString> = {
+	roll: t('advanced the queue on map change'),
+	'external-layer-change': t('synced the queue to an external layer change'),
+	generated: t('generated the next layer'),
+	'vote-result': t('applied the vote result to the queue'),
+	'force-save': t('force-saved the queue'),
+	save: t('updated the queue'),
 }
 
 // a short human-readable description of the action, WITHOUT the actor (the caller prepends the actor's name).
@@ -382,12 +369,14 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 		case 'VOTE_ABORTED':
 			return 'aborted a vote'
 		case 'QUEUE_UPDATED': {
-			const verb = QUEUE_UPDATE_VERBS[AppEvents.queueUpdateKind(e)]
+			const verb = I18n.ambient.text(QUEUE_UPDATE_VERBS[AppEvents.queueUpdateKind(e)])
 			// user-edit / roll saves have a companion MAP_SET row that states the next layer; external syncs don't
 			if (e.trigger !== 'external-layer-change') return verb
 			const nextBefore = LL.getNextLayerId(e.prevList)
 			const nextAfter = LL.getNextLayerId(e.list)
-			return nextAfter !== null && nextAfter !== nextBefore ? `${verb}, next layer now ${DH.toShortLayerNameFromId(nextAfter)}` : verb
+			return nextAfter !== null && nextAfter !== nextBefore
+				? I18n.ambient.text(t('{verb}, next layer now {nextLayer}', { verb, nextLayer: DH.toShortLayerNameFromId(nextAfter) }))
+				: verb
 		}
 		case 'TEAMSWAPS_UPDATED': {
 			const changes = AppEvents.summarizeTeamswapChanges(e)

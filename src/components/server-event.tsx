@@ -21,6 +21,7 @@ import * as LL from '@/models/layer-list.models'
 import type * as USR from '@/models/users.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -116,8 +117,8 @@ function ChatMessageEvent({
 	const channelLabel = (() => {
 		if (event.type === 'ADMIN_BROADCAST') {
 			return (
-				<span style={{ color: channelStyle.color }} title={CHAT_Msgs.chatChannelBroadcastHint().text()}>
-					{CHAT_Msgs.chatChannelBroadcast().text()}
+				<span style={{ color: channelStyle.color }} title={tr.text(CHAT_Msgs.chatChannelBroadcastHint())}>
+					{tr.text(CHAT_Msgs.chatChannelBroadcast())}
 				</span>
 			)
 		}
@@ -125,8 +126,8 @@ function ChatMessageEvent({
 		switch (event.channel.type) {
 			case 'ChatAll':
 				return (
-					<span style={{ color: channelStyle.color }} title={CHAT_Msgs.chatChannelAllHint().text()}>
-						{CHAT_Msgs.chatChannelAll().text()}
+					<span style={{ color: channelStyle.color }} title={tr.text(CHAT_Msgs.chatChannelAllHint())}>
+						{tr.text(CHAT_Msgs.chatChannelAll())}
 					</span>
 				)
 			case 'ChatTeam':
@@ -163,8 +164,8 @@ function ChatMessageEvent({
 				)
 			case 'ChatAdmin':
 				return (
-					<span style={{ color: channelStyle.color }} title={CHAT_Msgs.chatChannelAdminHint().text()}>
-						{CHAT_Msgs.chatChannelAdmin().text()}
+					<span style={{ color: channelStyle.color }} title={tr.text(CHAT_Msgs.chatChannelAdminHint())}>
+						{tr.text(CHAT_Msgs.chatChannelAdmin())}
 					</span>
 				)
 		}
@@ -174,10 +175,10 @@ function ChatMessageEvent({
 		if (event.type === 'ADMIN_BROADCAST') {
 			if (event.player) return <PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />
 			if (event.from === 'RCON') {
-				return <span className="text-red-400">{CHAT_Msgs.broadcastFromRcon().text()}</span>
+				return <span className="text-red-400">{tr.text(CHAT_Msgs.broadcastFromRcon())}</span>
 			}
 			if (event.from === 'unknown') {
-				return <span className="text-yellow-400/60">{CHAT_Msgs.broadcastFromUnknown().text()}</span>
+				return <span className="text-yellow-400/60">{tr.text(CHAT_Msgs.broadcastFromUnknown())}</span>
 			}
 			return null
 		}
@@ -217,10 +218,12 @@ function PlayerConnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UserPlus className="h-4 w-4 text-green-500 shrink-0" />}>
-			{CHAT_Msgs.playerConnected(
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
-				event.player.teamId ? <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} /> : undefined,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerConnected(
+					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+					event.player.teamId ? <MatchTeamDisplay stores={stores} teamId={event.player.teamId} matchId={event.matchId} /> : undefined,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -234,7 +237,9 @@ function PlayerDisconnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UserMinus className="h-4 w-4 text-red-500 shrink-0" />}>
-			{CHAT_Msgs.playerDisconnected(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />).react()}
+			{tr.richText(
+				CHAT_Msgs.playerDisconnected(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />),
+			)}
 		</EventLine>
 	)
 }
@@ -248,7 +253,9 @@ function PossessedAdminCameraEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Camera className="h-4 w-4 text-purple-500 shrink-0" />}>
-			{CHAT_Msgs.enteredAdminCamera(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />).react()}
+			{tr.richText(
+				CHAT_Msgs.enteredAdminCamera(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />),
+			)}
 		</EventLine>
 	)
 }
@@ -262,7 +269,9 @@ function UnpossessedAdminCameraEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.CameraOff className="h-4 w-4 text-purple-500 shrink-0" />}>
-			{CHAT_Msgs.exitedAdminCamera(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />).react()}
+			{tr.richText(
+				CHAT_Msgs.exitedAdminCamera(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />),
+			)}
 		</EventLine>
 	)
 }
@@ -276,10 +285,12 @@ function PlayerKickedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-orange-500 shrink-0" />}>
-			{CHAT_Msgs.playerKicked(
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />,
-				event.reason ? <span className="text-muted-foreground/70">{event.reason}</span> : undefined,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerKicked(
+					<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />,
+					event.reason ? <span className="text-muted-foreground/70">{event.reason}</span> : undefined,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -293,11 +304,13 @@ function SquadCreatedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Users className="h-4 w-4 text-blue-500 shrink-0" />}>
-			{CHAT_Msgs.squadCreated(
-				<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} />,
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} />,
-				<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.squadCreated(
+					<PlayerDisplay player={event.creator} matchId={event.matchId} stores={stores} />,
+					<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={false} stores={stores} />,
+					<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={event.squad.teamId} />,
+				),
+			)}
 			{event.squad.locked ? <Icons.Lock className="h-3 w-3 text-red-600 inline-block ml-1" /> : null}
 		</EventLine>
 	)
@@ -312,7 +325,9 @@ function PlayerBannedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
-			{CHAT_Msgs.playerBanned(<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />, event.interval).react()}
+			{tr.richText(
+				CHAT_Msgs.playerBanned(<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />, event.interval),
+			)}
 		</EventLine>
 	)
 }
@@ -326,10 +341,9 @@ function PlayerWarnedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}>
-			{CHAT_Msgs.playerWarned(
-				<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />,
-				event.reason,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerWarned(<PlayerDisplay showTeam player={event.player} matchId={event.matchId} stores={stores} />, event.reason),
+			)}
 		</EventLine>
 	)
 }
@@ -358,7 +372,7 @@ function WarnsAggregatedEvent({
 		))
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{CHAT_Msgs.playersWarned(warnees, event.reason).react()}
+				{tr.richText(CHAT_Msgs.playersWarned(warnees, event.reason))}
 			</EventLine>
 		)
 	}
@@ -368,7 +382,7 @@ function WarnsAggregatedEvent({
 			<summary className="flex gap-2 items-baseline cursor-pointer">
 				<EventTime time={event.time} variant="small" />
 				{icon}
-				<span className="grow min-w-0 wrap-anywhere">{CHAT_Msgs.playerCountWarned(count, event.reason).react()}</span>
+				<span className="grow min-w-0 wrap-anywhere">{tr.richText(CHAT_Msgs.playerCountWarned(count, event.reason))}</span>
 			</summary>
 			<div className="pl-6 pt-1 flex flex-col gap-0.5">
 				{event.warns.map((warn, i) => (
@@ -390,7 +404,7 @@ function useUserLabels(userIds: USR.UserId[]) {
 	const fetched = new Map((res.data?.code === 'ok' ? res.data.users : []).map((u) => [u.discordId, u.displayName]))
 	return (userId: USR.UserId) => {
 		if (userId === loggedInUser?.discordId) return loggedInUser.displayName
-		return PartsSys.findUser(userId)?.displayName ?? fetched.get(userId) ?? AppEvents_Msgs.unnamedSlmUser().text()
+		return PartsSys.findUser(userId)?.displayName ?? fetched.get(userId) ?? tr.text(AppEvents_Msgs.unnamedSlmUser())
 	}
 }
 
@@ -404,7 +418,7 @@ function QueueChangeLayers({ layerIds }: { layerIds: L.LayerId[] }) {
 					{i < shown.length - 1 ? ',' : ''}
 				</span>
 			))}
-			{layerIds.length > shown.length && <span>{AppEvents_Msgs.queueAndMore(layerIds.length - shown.length).text()}</span>}
+			{layerIds.length > shown.length && <span>{tr.text(AppEvents_Msgs.queueAndMore(layerIds.length - shown.length))}</span>}
 		</span>
 	)
 }
@@ -414,25 +428,29 @@ function QueueChangeLine({ change, labelFor }: { change: AppEvents.QueueChange; 
 		change.actor.type === 'slm-user'
 			? labelFor(change.actor.userId)
 			: change.actor.type === 'system'
-				? AppEvents_Msgs.systemActor().text()
-				: AppEvents_Msgs.unnamedIngameAdmin().text()
+				? tr.text(AppEvents_Msgs.systemActor())
+				: tr.text(AppEvents_Msgs.unnamedIngameAdmin())
 	const layers = <QueueChangeLayers layerIds={change.layerIds} />
-	const vote = change.isVote ? AppEvents_Msgs.queueVoteChoices(change.layerIds.length).text() : null
+	const vote = change.isVote ? tr.text(AppEvents_Msgs.queueVoteChoices(change.layerIds.length)) : null
 
 	const [marker, markerClass, body] = ((): [string, string, React.ReactNode] => {
 		switch (change.kind) {
 			case 'added':
-				return ['+', 'text-added', AppEvents_Msgs.queueItemAdded(who, vote, layers).react()]
+				return ['+', 'text-added', tr.richText(AppEvents_Msgs.queueItemAdded(who, vote, layers))]
 			case 'removed':
-				return ['−', 'text-destructive', AppEvents_Msgs.queueItemRemoved(who, vote, layers).react()]
+				return ['−', 'text-destructive', tr.richText(AppEvents_Msgs.queueItemRemoved(who, vote, layers))]
 			case 'edited':
 				return [
 					'~',
 					'text-amber-500',
-					AppEvents_Msgs.queueItemEdited(who, <QueueChangeLayers layerIds={change.prevLayerIds} />, layers).react(),
+					tr.richText(AppEvents_Msgs.queueItemEdited(who, <QueueChangeLayers layerIds={change.prevLayerIds} />, layers)),
 				]
 			case 'moved':
-				return ['↕', 'text-indigo-400', AppEvents_Msgs.queueItemMoved(who, layers, change.fromIndex + 1, change.toIndex + 1).react()]
+				return [
+					'↕',
+					'text-indigo-400',
+					tr.richText(AppEvents_Msgs.queueItemMoved(who, layers, change.fromIndex + 1, change.toIndex + 1)),
+				]
 			default:
 				assertNever(change)
 		}
@@ -476,31 +494,33 @@ function QueueUpdatedEvent({
 	const headline: React.ReactNode = ((): React.ReactNode => {
 		switch (kind) {
 			case 'roll':
-				return AppEvents_Msgs.queueAdvancedOnRoll().text()
+				return tr.text(AppEvents_Msgs.queueAdvancedOnRoll())
 			case 'external-layer-change': {
 				const external = AppEvents.queueUpdateExternalSource(appEvent)
 				const who =
 					external?.type === 'player' && event.actorPlayer && matchId !== null ? (
 						<PlayerDisplay showTeam player={event.actorPlayer} matchId={matchId} stores={stores} />
 					) : external?.type === 'player' ? (
-						CHAT_Msgs.ingameAdmin().text()
+						tr.text(CHAT_Msgs.ingameAdmin())
 					) : external?.type === 'rcon' ? (
-						CHAT_Msgs.anotherRconTool().text()
+						tr.text(CHAT_Msgs.anotherRconTool())
 					) : null
 				// a layer SLM found already set has no actor to name (see externalActor)
-				return who ? AppEvents_Msgs.queueSyncedTo(who).react() : AppEvents_Msgs.queueSyncedOutsideSlm().text()
+				return who ? tr.richText(AppEvents_Msgs.queueSyncedTo(who)) : tr.text(AppEvents_Msgs.queueSyncedOutsideSlm())
 			}
 			case 'generated':
-				return AppEvents_Msgs.queueGenerated().text()
+				return tr.text(AppEvents_Msgs.queueGenerated())
 			case 'vote-result':
-				return AppEvents_Msgs.queueVoteApplied().text()
+				return tr.text(AppEvents_Msgs.queueVoteApplied())
 			case 'force-save':
 			case 'save':
-				return AppEvents_Msgs.queueSaved(
-					actorLabel,
-					!!appEvent.save?.force,
-					overrode.length > 0 ? AppEvents_Msgs.joinNames(overrode.map(labelFor)).text() : undefined,
-				).react()
+				return tr.richText(
+					AppEvents_Msgs.queueSaved(
+						actorLabel,
+						!!appEvent.save?.force,
+						overrode.length > 0 ? tr.text(AppEvents_Msgs.joinNames(overrode.map(labelFor))) : undefined,
+					),
+				)
 			default:
 				assertNever(kind)
 		}
@@ -511,10 +531,12 @@ function QueueUpdatedEvent({
 	const summary = (
 		<>
 			{headline}
-			{AppEvents_Msgs.queueChangeCounts(counts).text()}
+			{tr.text(AppEvents_Msgs.queueChangeCounts(counts))}
 			{nextAfter !== null && nextAfter !== nextBefore && (
 				<span className="inline-flex items-baseline gap-1">
-					{AppEvents_Msgs.queueNextLayer(appEvent.trigger === 'external-layer-change', <ShortLayerName layerId={nextAfter} />).react()}
+					{tr.richText(
+						AppEvents_Msgs.queueNextLayer(appEvent.trigger === 'external-layer-change', <ShortLayerName layerId={nextAfter} />),
+					)}
 				</span>
 			)}
 		</>
@@ -572,13 +594,13 @@ function TeamswapsUpdatedEvent({
 		appEvent.trigger === 'executed' || appEvent.trigger === 'swapped-now'
 			? // an execution with no actor is the map roll firing the queue; a manual one names the admin who fired it
 				appEvent.actor.type === 'system'
-				? AppEvents_Msgs.teamswapsExecutedOnRoll(removed).text()
-				: AppEvents_Msgs.teamswapsExecuted(actorLabel, removed).react()
+				? tr.text(AppEvents_Msgs.teamswapsExecutedOnRoll(removed))
+				: tr.richText(AppEvents_Msgs.teamswapsExecuted(actorLabel, removed))
 			: appEvent.trigger === 'roster-change'
-				? AppEvents_Msgs.teamswapsDropped(removed).text()
+				? tr.text(AppEvents_Msgs.teamswapsDropped(removed))
 				: queued === 0
-					? AppEvents_Msgs.teamswapsCleared(actorLabel).react()
-					: AppEvents_Msgs.teamswapsUpdated(actorLabel, added, removed, queued).react()
+					? tr.richText(AppEvents_Msgs.teamswapsCleared(actorLabel))
+					: tr.richText(AppEvents_Msgs.teamswapsUpdated(actorLabel, added, removed, queued))
 	const icon = <Icons.ArrowLeftRight className="h-4 w-4 text-cyan-500 shrink-0" />
 
 	if (changes.length === 0 || matchId === null) {
@@ -612,11 +634,13 @@ function TeamswapsUpdatedEvent({
 								{change.kind === 'added' ? '+' : '−'}
 							</span>
 							<span className="grow min-w-0 wrap-anywhere">
-								{AppEvents_Msgs.teamswapLine(
-									player ? <PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} /> : change.playerId,
-									<MatchTeamDisplay matchId={matchId} teamId={change.toTeam} stores={stores} />,
-									queuedBy,
-								).react()}
+								{tr.richText(
+									AppEvents_Msgs.teamswapLine(
+										player ? <PlayerDisplay showTeam player={player} matchId={matchId} stores={stores} /> : change.playerId,
+										<MatchTeamDisplay matchId={matchId} teamId={change.toTeam} stores={stores} />,
+										queuedBy,
+									),
+								)}
 							</span>
 						</div>
 					)
@@ -643,13 +667,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	// enrichAppEvent), and the fallback only applies to someone who left before the roster last reset
 	const actorLabel: React.ReactNode =
 		appEvent.actor.type === 'slm-user' ? (
-			(actorUser?.displayName ?? AppEvents_Msgs.unnamedSlmUser().text())
+			(actorUser?.displayName ?? tr.text(AppEvents_Msgs.unnamedSlmUser()))
 		) : appEvent.actor.type === 'system' ? (
-			AppEvents_Msgs.systemActor().text()
+			tr.text(AppEvents_Msgs.systemActor())
 		) : event.actorPlayer && matchId !== null ? (
 			<PlayerDisplay player={event.actorPlayer} matchId={matchId} stores={stores} />
 		) : (
-			AppEvents_Msgs.unnamedIngameAdmin().text()
+			tr.text(AppEvents_Msgs.unnamedIngameAdmin())
 		)
 
 	// expandable list of the players involved (targets, or a disbanded squad's members)
@@ -670,7 +694,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 					<EventTime time={event.time} variant="small" />
 					<Icons.Users className="h-4 w-4 text-red-500 shrink-0" />
 					<span className="grow min-w-0 wrap-anywhere">
-						{AppEvents_Msgs.squadDisbanded(actorLabel, appEvent.squadName, appEvent.teamId, appEvent.reason?.label, n).react()}
+						{tr.richText(AppEvents_Msgs.squadDisbanded(actorLabel, appEvent.squadName, appEvent.teamId, appEvent.reason?.label, n))}
 					</span>
 				</summary>
 				{targetList}
@@ -682,7 +706,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	if (appEvent.type === 'SQUAD_RENAMED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.PencilLine className="h-4 w-4 text-cyan-500 shrink-0" />}>
-				{AppEvents_Msgs.squadRenamed(actorLabel, appEvent.squadName, appEvent.teamId).react()}
+				{tr.richText(AppEvents_Msgs.squadRenamed(actorLabel, appEvent.squadName, appEvent.teamId))}
 			</EventLine>
 		)
 	}
@@ -690,22 +714,24 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.ShieldOff className="h-4 w-4 text-orange-500 shrink-0" />}>
-				{AppEvents_Msgs.commanderDemoted(
-					actorLabel,
-					target && matchId !== null ? (
-						<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
-					) : (
-						AppEvents_Msgs.theCommander().text()
+				{tr.richText(
+					AppEvents_Msgs.commanderDemoted(
+						actorLabel,
+						target && matchId !== null ? (
+							<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+						) : (
+							tr.text(AppEvents_Msgs.theCommander())
+						),
+						appEvent.reason?.label,
 					),
-					appEvent.reason?.label,
-				).react()}
+				)}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'FOG_OF_WAR_TOGGLED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.CloudFog className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{AppEvents_Msgs.fogOfWarToggled(actorLabel, appEvent.enabled).react()}
+				{tr.richText(AppEvents_Msgs.fogOfWarToggled(actorLabel, appEvent.enabled))}
 			</EventLine>
 		)
 	}
@@ -714,7 +740,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	if (appEvent.type === 'BROADCAST_SENT') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Megaphone className="h-4 w-4 text-amber-500 shrink-0" />}>
-				{AppEvents_Msgs.broadcastSent(actorLabel, appEvent.message).react()}
+				{tr.richText(AppEvents_Msgs.broadcastSent(actorLabel, appEvent.message))}
 			</EventLine>
 		)
 	}
@@ -722,16 +748,18 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />}>
-				{AppEvents_Msgs.playerTimedOut(
-					actorLabel,
-					target && matchId !== null ? (
-						<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
-					) : (
-						AppEvents_Msgs.aPlayer().text()
+				{tr.richText(
+					AppEvents_Msgs.playerTimedOut(
+						actorLabel,
+						target && matchId !== null ? (
+							<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+						) : (
+							tr.text(AppEvents_Msgs.aPlayer())
+						),
+						ZodUtils.formatHumanTime(appEvent.durationMs),
+						appEvent.reason?.label,
 					),
-					ZodUtils.formatHumanTime(appEvent.durationMs),
-					appEvent.reason?.label,
-				).react()}
+				)}
 			</EventLine>
 		)
 	}
@@ -739,45 +767,49 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const target = event.targetPlayers[0]
 		return (
 			<EventLine time={event.time} icon={<Icons.UserCheck className="h-4 w-4 text-green-500 shrink-0" />}>
-				{AppEvents_Msgs.timeoutCancelled(
-					actorLabel,
-					target && matchId !== null ? (
-						<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
-					) : (
-						AppEvents_Msgs.aPlayer().text()
+				{tr.richText(
+					AppEvents_Msgs.timeoutCancelled(
+						actorLabel,
+						target && matchId !== null ? (
+							<PlayerDisplay showTeam player={target} matchId={matchId} stores={stores} />
+						) : (
+							tr.text(AppEvents_Msgs.aPlayer())
+						),
 					),
-				).react()}
+				)}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'MATCH_ENDED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-red-500 shrink-0" />}>
-				{AppEvents_Msgs.matchEnded(actorLabel).react()}
+				{tr.richText(AppEvents_Msgs.matchEnded(actorLabel))}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_STARTED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-blue-500 shrink-0" />}>
-				{AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount).react()}
+				{tr.richText(AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount))}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ENDED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.ListChecks className="h-4 w-4 text-green-500 shrink-0" />}>
-				{appEvent.reason === 'ended-early' ? AppEvents_Msgs.voteEndedEarly(actorLabel).react() : AppEvents_Msgs.voteEnded().text()}
+				{appEvent.reason === 'ended-early'
+					? tr.richText(AppEvents_Msgs.voteEndedEarly(actorLabel))
+					: tr.text(AppEvents_Msgs.voteEnded())}
 				{appEvent.winnerLayerId
-					? AppEvents_Msgs.voteWinner(<ShortLayerName layerId={appEvent.winnerLayerId} />).react()
-					: AppEvents_Msgs.voteNoWinner().text()}
+					? tr.richText(AppEvents_Msgs.voteWinner(<ShortLayerName layerId={appEvent.winnerLayerId} />))
+					: tr.text(AppEvents_Msgs.voteNoWinner())}
 			</EventLine>
 		)
 	}
 	if (appEvent.type === 'VOTE_ABORTED') {
 		return (
 			<EventLine time={event.time} icon={<Icons.Ban className="h-4 w-4 text-red-500 shrink-0" />}>
-				{AppEvents_Msgs.voteAborted(actorLabel).react()}
+				{tr.richText(AppEvents_Msgs.voteAborted(actorLabel))}
 			</EventLine>
 		)
 	}
@@ -796,7 +828,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		if (!appEvent.overrode || appEvent.overrode.type === 'unknown') {
 			return (
 				<EventLine time={event.time} icon={icon}>
-					{AppEvents_Msgs.nextLayerRestored(<ShortLayerName layerId={appEvent.layerId} />).react()}
+					{tr.richText(AppEvents_Msgs.nextLayerRestored(<ShortLayerName layerId={appEvent.layerId} />))}
 				</EventLine>
 			)
 		}
@@ -806,13 +838,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			appEvent.overrode.type === 'player' && overrodePlayer && matchId !== null ? (
 				<PlayerDisplay showTeam player={overrodePlayer} matchId={matchId} stores={stores} />
 			) : appEvent.overrode.type === 'player' ? (
-				CHAT_Msgs.ingameAdmin().text()
+				tr.text(CHAT_Msgs.ingameAdmin())
 			) : (
-				CHAT_Msgs.anotherRconTool().text()
+				tr.text(CHAT_Msgs.anotherRconTool())
 			)
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{AppEvents_Msgs.nextLayerOverrode(who, <ShortLayerName layerId={appEvent.layerId} />).react()}
+				{tr.richText(AppEvents_Msgs.nextLayerOverrode(who, <ShortLayerName layerId={appEvent.layerId} />))}
 			</EventLine>
 		)
 	}
@@ -827,7 +859,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			)
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)).react()}
+				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
 			</EventLine>
 		)
 	}
@@ -846,7 +878,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).
 		return (
 			<EventLine time={event.time} icon={<Icons.ScrollText className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)).react()}
+				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
 			</EventLine>
 		)
 	}
@@ -867,13 +899,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		const warnee: React.ReactNode = single ? (
 			<PlayerDisplay showTeam player={event.targetPlayers[0]} matchId={matchId!} stores={stores} />
 		) : summary.type === 'all-admins' ? (
-			AppEvents_Msgs.allAdmins().text()
+			tr.text(AppEvents_Msgs.allAdmins())
 		) : (
 			(() => {
 				const descriptor = AppEvents_Msgs.warnTargetDescriptor(summary)
-				const players = AppEvents_Msgs.warnPlayerCount(warnCount).text()
+				const players = tr.text(AppEvents_Msgs.warnPlayerCount(warnCount))
 				if (!descriptor) return players
-				return warnCount > 1 ? AppEvents_Msgs.warnDescriptorWithCount(descriptor, players).text() : descriptor
+				return warnCount > 1 ? tr.text(AppEvents_Msgs.warnDescriptorWithCount(descriptor, players)) : descriptor
 			})()
 		)
 
@@ -881,9 +913,9 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			<span
 				className="inline-flex items-baseline gap-1 flex-nowrap whitespace-nowrap"
 				style={{ color: style.color }}
-				title={AppEvents_Msgs.warnChannelHint().text()}
+				title={tr.text(AppEvents_Msgs.warnChannelHint())}
 			>
-				{AppEvents_Msgs.warnChannel(actorLabel, warnee).react()}
+				{tr.richText(AppEvents_Msgs.warnChannel(actorLabel, warnee))}
 			</span>
 		)
 
@@ -927,19 +959,19 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 	if (appEvent.type === 'PLAYER_REMOVED_FROM_SQUAD') {
 		verb = 'removed'
 		icon = <Icons.UserMinus className="h-4 w-4 text-orange-500 shrink-0" />
-		suffix = AppEvents_Msgs.removedFromSquadSuffix(appEvent.reason?.label).text()
+		suffix = tr.text(AppEvents_Msgs.removedFromSquadSuffix(appEvent.reason?.label))
 	} else if (appEvent.type === 'PLAYER_KICKED') {
 		verb = 'kicked'
 		icon = <Icons.UserX className="h-4 w-4 text-red-500 shrink-0" />
-		suffix = appEvent.reason?.label ? AppEvents_Msgs.forReasonSuffix(appEvent.reason.label).text() : null
+		suffix = appEvent.reason?.label ? tr.text(AppEvents_Msgs.forReasonSuffix(appEvent.reason.label)) : null
 	} else if (appEvent.type === 'PLAYER_KILLED') {
 		verb = 'killed'
 		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />
-		suffix = appEvent.reason ? AppEvents_Msgs.killReasonSuffix(appEvent.reason).text() : null
+		suffix = appEvent.reason ? tr.text(AppEvents_Msgs.killReasonSuffix(appEvent.reason)) : null
 	} else {
 		verb = 'swapped'
 		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-blue-500 shrink-0" />
-		suffix = AppEvents_Msgs.swappedTeamsSuffix().text()
+		suffix = tr.text(AppEvents_Msgs.swappedTeamsSuffix())
 	}
 
 	// few enough targets: name them inline instead of grouping/collapsing (but still show the count)
@@ -952,7 +984,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		))
 		return (
 			<EventLine time={event.time} icon={icon}>
-				{AppEvents_Msgs.actionOnNamedTargets(actorLabel, verb, targets, count, suffix).react()}
+				{tr.richText(AppEvents_Msgs.actionOnNamedTargets(actorLabel, verb, targets, count, suffix))}
 			</EventLine>
 		)
 	}
@@ -963,7 +995,7 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 				<EventTime time={event.time} variant="small" />
 				{icon}
 				<span className="grow min-w-0 wrap-anywhere">
-					{AppEvents_Msgs.actionOnCountedTargets(actorLabel, verb, count, suffix).react()}
+					{tr.richText(AppEvents_Msgs.actionOnCountedTargets(actorLabel, verb, count, suffix))}
 				</span>
 			</summary>
 			{targetList}
@@ -982,13 +1014,13 @@ function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { 
 	switch (event.source) {
 		case 'new-game-detected':
 		case 'server-roll':
-			label = CHAT_Msgs.newGameStarted().text()
+			label = tr.text(CHAT_Msgs.newGameStarted())
 			break
 		case 'slm-started':
-			label = CHAT_Msgs.newGameOnAppStart().text()
+			label = tr.text(CHAT_Msgs.newGameOnAppStart())
 			break
 		case 'rcon-reconnected':
-			label = CHAT_Msgs.newGameOnRconReconnect().text()
+			label = tr.text(CHAT_Msgs.newGameOnRconReconnect())
 			break
 		default:
 			assertNever(event.source)
@@ -997,11 +1029,13 @@ function NewGameEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { 
 	return (
 		<div className="border-t border-green-500 pt-0.5 mt-1 w-full">
 			<EventLine time={event.time} icon={<Icons.Play className="h-4 w-4 text-green-500 shrink-0" />} className="py-0.5">
-				{CHAT_Msgs.newGameLine(
-					label,
-					visibleMatchIndex === 0 ? CHAT_Msgs.currentMatch().text() : visibleMatchIndex,
-					match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />,
-				).react()}
+				{tr.richText(
+					CHAT_Msgs.newGameLine(
+						label,
+						visibleMatchIndex === 0 ? tr.text(CHAT_Msgs.currentMatch()) : visibleMatchIndex,
+						match && <ShortLayerName layerId={match.layerId} teamParity={match.ordinal % 2} className="text-xs" />,
+					),
+				)}
 			</EventLine>
 		</div>
 	)
@@ -1029,44 +1063,52 @@ function RoundEndedEvent({
 		if (source.type === 'player') {
 			sourceName = (
 				<span>
-					{CHAT_Msgs.roundEndBy(
-						event.actorPlayer ? (
-							<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
-						) : (
-							<b>{source.playerIds.username}</b>
+					{tr.richText(
+						CHAT_Msgs.roundEndBy(
+							event.actorPlayer ? (
+								<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
+							) : (
+								<b>{source.playerIds.username}</b>
+							),
 						),
-					).react()}
+					)}
 				</span>
 			)
 		} else if (source.type === 'rcon') {
-			sourceName = <span>{CHAT_Msgs.roundEndVia(<b>{CHAT_Msgs.rconTool().text()}</b>).react()}</span>
+			sourceName = <span>{tr.richText(CHAT_Msgs.roundEndVia(<b>{tr.text(CHAT_Msgs.rconTool())}</b>))}</span>
 		} else {
 			// an SLM action: the app event it links to is its own entry in the feed and names the admin
-			sourceName = <span>{CHAT_Msgs.roundEndVia(<b>{CHAT_Msgs.slmTool().text()}</b>).react()}</span>
+			sourceName = <span>{tr.richText(CHAT_Msgs.roundEndVia(<b>{tr.text(CHAT_Msgs.slmTool())}</b>))}</span>
 		}
 		let nextLayerText: React.ReactNode = null
 		if (event.action.type === 'AdminChangeLayer') {
-			nextLayerText = <span>{CHAT_Msgs.roundEndSwitchingTo(<ShortLayerName layerId={event.action.layerId} />).react()}</span>
+			nextLayerText = <span>{tr.richText(CHAT_Msgs.roundEndSwitchingTo(<ShortLayerName layerId={event.action.layerId} />))}</span>
 		}
 		actionElt = (
-			<span className="text-xs font-semibold">{CHAT_Msgs.roundEndAction(event.action.type, sourceName, nextLayerText).react()}</span>
+			<span className="text-xs font-semibold">
+				{tr.richText(CHAT_Msgs.roundEndAction(event.action.type, sourceName, nextLayerText))}
+			</span>
 		)
 	}
 
 	return (
 		<EventLine time={event.time} icon={<Icons.Flag className="h-4 w-4 text-blue-500 shrink-0" />} className="[&_strong]:font-semibold">
 			{winnerId === null
-				? CHAT_Msgs.roundEndedDraw(
-						<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />,
-						<span className="text-yellow-400">{CHAT_Msgs.draw().text()}</span>,
-					).react()
-				: CHAT_Msgs.roundEndedWinner(
-						<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />,
-						<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} />,
-						winnerTickets,
-						loserTickets,
-						<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />,
-					).react()}
+				? tr.richText(
+						CHAT_Msgs.roundEndedDraw(
+							<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />,
+							<span className="text-yellow-400">{tr.text(CHAT_Msgs.draw())}</span>,
+						),
+					)
+				: tr.richText(
+						CHAT_Msgs.roundEndedWinner(
+							<MapLayerDisplay layer={L.toLayer(match.layerId).Layer} className="text-xs font-semibold" />,
+							<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={winnerId} />,
+							winnerTickets,
+							loserTickets,
+							<MatchTeamDisplay stores={stores} matchId={event.matchId} teamId={loserId} />,
+						),
+					)}
 			{actionElt && <> {actionElt}</>}
 		</EventLine>
 	)
@@ -1083,10 +1125,12 @@ function PlayerChangedTeamEvent({
 	if (event.newTeamId === null || event.prevTeamId === null) return
 	return (
 		<EventLine time={event.time} icon={<Icons.Repeat className="h-4 w-4 text-purple-400 shrink-0" />}>
-			{CHAT_Msgs.playerChangedTeam(
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
-				<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerChangedTeam(
+					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+					<MatchTeamDisplay stores={stores} teamId={event.player.teamId!} matchId={event.matchId} />,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1100,11 +1144,13 @@ function PlayerLeftSquadEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.LogOut className="h-4 w-4 text-orange-400 shrink-0" />}>
-			{CHAT_Msgs.playerLeftSquad(
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={false} showTeam={true} stores={stores} />,
-				event.wasLeader,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerLeftSquad(
+					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+					<SquadDisplay squad={event.squad} matchId={event.matchId} showName={false} showTeam={true} stores={stores} />,
+					event.wasLeader,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1118,9 +1164,11 @@ function SquadDisbandedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.UsersRound className="h-4 w-4 text-red-400 shrink-0" />}>
-			{CHAT_Msgs.squadWasDisbanded(
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.squadWasDisbanded(
+					<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1146,10 +1194,12 @@ function SquadDetailsChangedEvent({
 				)
 			}
 		>
-			{CHAT_Msgs.squadLockChanged(
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />,
-				locked,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.squadLockChanged(
+					<SquadDisplay squad={event.squad} matchId={event.matchId} showName={true} showTeam={true} stores={stores} />,
+					locked,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1167,16 +1217,18 @@ function SquadRenamedEvent({
 			icon={<Icons.Pencil className="h-4 w-4 text-cyan-400 shrink-0" />}
 			className="[&_strong]:font-medium [&_strong]:text-foreground"
 		>
-			{CHAT_Msgs.squadRenamed(
-				<SquadDisplay
-					squad={{ ...event.squad, squadName: event.oldSquadName }}
-					matchId={event.matchId}
-					showName={true}
-					showTeam={true}
-					stores={stores}
-				/>,
-				event.newSquadName,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.squadRenamed(
+					<SquadDisplay
+						squad={{ ...event.squad, squadName: event.oldSquadName }}
+						matchId={event.matchId}
+						showName={true}
+						showTeam={true}
+						stores={stores}
+					/>,
+					event.newSquadName,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1190,10 +1242,12 @@ function PlayerJoinedSquadEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.LogIn className="h-4 w-4 text-green-400 shrink-0" />}>
-			{CHAT_Msgs.playerJoinedSquad(
-				<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
-				<SquadDisplay squad={event.squad} matchId={event.matchId} showTeam={true} stores={stores} />,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerJoinedSquad(
+					<PlayerDisplay player={event.player} matchId={event.matchId} stores={stores} />,
+					<SquadDisplay squad={event.squad} matchId={event.matchId} showTeam={true} stores={stores} />,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1207,9 +1261,11 @@ function PlayerPromotedToLeaderEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Crown className="h-4 w-4 text-yellow-400 shrink-0" />}>
-			{CHAT_Msgs.playerPromotedToLeader(
-				<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} />,
-			).react()}
+			{tr.richText(
+				CHAT_Msgs.playerPromotedToLeader(
+					<PlayerDisplay showTeam={true} showSquad={true} player={event.player} matchId={event.matchId} stores={stores} />,
+				),
+			)}
 		</EventLine>
 	)
 }
@@ -1244,30 +1300,36 @@ function PlayerWoundedOrDiedEvent({
 	}
 
 	const weaponSuffix = event.weapon ? (
-		<span className="text-muted-foreground/70">{CHAT_Msgs.withWeapon(event.weapon).text()}</span>
+		<span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(event.weapon))}</span>
 	) : undefined
 
 	const getMessage = () => {
 		switch (event.variant) {
 			case 'suicide':
-				return CHAT_Msgs.playerSuicide(
-					<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />,
-					event.type === 'PLAYER_WOUNDED',
-					weaponSuffix,
-				).react()
+				return tr.richText(
+					CHAT_Msgs.playerSuicide(
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />,
+						event.type === 'PLAYER_WOUNDED',
+						weaponSuffix,
+					),
+				)
 			case 'teamkill':
-				return CHAT_Msgs.playerTeamkilled(
-					<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />,
-					<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />,
-					weaponSuffix,
-				).react()
+				return tr.richText(
+					CHAT_Msgs.playerTeamkilled(
+						<PlayerDisplay showTeam showSquad={true} player={event.victim} matchId={event.matchId} stores={stores} />,
+						<PlayerDisplay showTeam showSquad={true} player={event.attacker} matchId={event.matchId} stores={stores} />,
+						weaponSuffix,
+					),
+				)
 			case 'normal':
-				return CHAT_Msgs.playerDowned(
-					<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} stores={stores} />,
-					event.type === 'PLAYER_WOUNDED',
-					<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} stores={stores} />,
-					weaponSuffix,
-				).react()
+				return tr.richText(
+					CHAT_Msgs.playerDowned(
+						<PlayerDisplay showTeam player={event.victim} matchId={event.matchId} stores={stores} />,
+						event.type === 'PLAYER_WOUNDED',
+						<PlayerDisplay showTeam={true} player={event.attacker} matchId={event.matchId} stores={stores} />,
+						weaponSuffix,
+					),
+				)
 		}
 	}
 
@@ -1287,7 +1349,7 @@ function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { t
 	if (event.source?.type === 'observed') {
 		return (
 			<EventLine time={event.time} icon={icon} className="py-0.5">
-				{CHAT_Msgs.observedNextLayer(layer).react()}
+				{tr.richText(CHAT_Msgs.observedNextLayer(layer))}
 			</EventLine>
 		)
 	}
@@ -1295,13 +1357,13 @@ function MapSetEvent({ event, stores }: { event: Extract<CHAT.EventEnriched, { t
 		event.source?.type === 'player' && event.actorPlayer ? (
 			<PlayerDisplay showTeam player={event.actorPlayer} matchId={event.matchId} stores={stores} />
 		) : event.source?.type === 'player' ? (
-			(event.source.playerIds.username ?? CHAT_Msgs.ingameAdmin().text())
+			(event.source.playerIds.username ?? tr.text(CHAT_Msgs.ingameAdmin()))
 		) : event.source?.type === 'rcon' ? (
-			CHAT_Msgs.anotherRconTool().text()
+			tr.text(CHAT_Msgs.anotherRconTool())
 		) : null
 	return (
 		<EventLine time={event.time} icon={icon} className="py-0.5">
-			{who ? CHAT_Msgs.nextLayerSetBy(who, layer).react() : CHAT_Msgs.nextLayerSet(layer).react()}
+			{who ? tr.richText(CHAT_Msgs.nextLayerSetBy(who, layer)) : tr.richText(CHAT_Msgs.nextLayerSet(layer))}
 		</EventLine>
 	)
 }
@@ -1315,8 +1377,8 @@ function IngameVoteStartedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-yellow-500 shrink-0" />}>
-			<span>{CHAT_Msgs.ingameVoteStarted().text()}</span>
-			{event.choices.length > 0 && <span className="text-muted-foreground">{CHAT_Msgs.ingameVoteChoices(event.choices).text()}</span>}
+			<span>{tr.text(CHAT_Msgs.ingameVoteStarted())}</span>
+			{event.choices.length > 0 && <span className="text-muted-foreground">{tr.text(CHAT_Msgs.ingameVoteChoices(event.choices))}</span>}
 		</EventLine>
 	)
 }
@@ -1330,7 +1392,7 @@ function RconConnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Plug className="h-4 w-4 text-green-500 shrink-0" />}>
-			{event.reconnected ? CHAT_Msgs.rconReconnected().text() : CHAT_Msgs.rconFirstConnected().text()}
+			{event.reconnected ? tr.text(CHAT_Msgs.rconReconnected()) : tr.text(CHAT_Msgs.rconFirstConnected())}
 		</EventLine>
 	)
 }
@@ -1344,7 +1406,7 @@ function RconDisconnectedEvent({
 }) {
 	return (
 		<EventLine time={event.time} icon={<Icons.Unplug className="h-4 w-4 text-red-500 shrink-0" />}>
-			{CHAT_Msgs.rconDisconnected().text()}
+			{tr.text(CHAT_Msgs.rconDisconnected())}
 		</EventLine>
 	)
 }

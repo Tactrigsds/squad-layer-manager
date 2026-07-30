@@ -24,6 +24,7 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SandboxClient from '@/systems/sandbox.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -41,7 +42,7 @@ void import('@/components/server-console-window')
 // wrapping toast.promise renders a single error toast instead of double-toasting.
 function permissionDeniedError(res: RBAC.PermissionDeniedResponse) {
 	UsersClient.invalidateLoggedInUser()
-	return new Error(RBAC_Msgs.permissionDenied(res).text())
+	return new Error(tr.text(RBAC_Msgs.permissionDenied(res)))
 }
 
 const dropdownMenuSlots: MenuSlots = {
@@ -57,7 +58,7 @@ export function ServerActionsDropdown(props: { stores: SquadServerFrame.KeyProp 
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button variant="secondary" size="sm">
-					{SS_Msgs.serverActions().text()}
+					{tr.text(SS_Msgs.serverActions())}
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent>
@@ -103,7 +104,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					case 'err:permission-denied':
 						throw permissionDeniedError(res)
 					case 'err:rcon':
-						throw new Error(SS_Msgs.disableFogOfWarFailed().text())
+						throw new Error(tr.text(SS_Msgs.disableFogOfWarFailed()))
 					case 'err:server-not-loaded':
 						throw new Error(res.msg)
 					default:
@@ -111,8 +112,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				}
 			})(),
 			{
-				loading: SS_Msgs.disablingFogOfWar().text(),
-				success: SS_Msgs.fogOfWarDisabled().text(),
+				loading: tr.text(SS_Msgs.disablingFogOfWar()),
+				success: tr.text(SS_Msgs.fogOfWarDisabled()),
 				error: (e: Error) => ({ message: e.message, richColors: true }),
 			},
 		)
@@ -120,7 +121,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 
 	async function endMatch() {
 		const serverName = serverInfoRes?.code === 'ok' ? serverInfoRes.data.name : serverId
-		const msg = SS_Msgs.confirmEndMatch(serverName).confirm()
+		const msg = tr.confirm(SS_Msgs.confirmEndMatch(serverName))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -145,8 +146,8 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 				}
 			})(),
 			{
-				loading: SS_Msgs.endingMatch(serverName).text(),
-				success: SS_Msgs.matchEnded().text(),
+				loading: tr.text(SS_Msgs.endingMatch(serverName)),
+				success: tr.text(SS_Msgs.matchEnded()),
 				error: (e: Error) => ({ message: e.message, richColors: true }),
 			},
 		)
@@ -160,42 +161,42 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 					onClick={() => void endMatch()}
 					className={cn('bg-destructive text-destructive-foreground space-x-1 focus:bg-red-600', !hasPlayers && 'flex flex-col')}
 				>
-					<span>{SS_Msgs.endMatchLabel().text()}</span>
-					{!hasPlayers && <small>{SS_Msgs.endMatchNeedsPlayers().text()}</small>}
+					<span>{tr.text(SS_Msgs.endMatchLabel())}</span>
+					{!hasPlayers && <small>{tr.text(SS_Msgs.endMatchNeedsPlayers())}</small>}
 				</Item>
 			</PermissionDeniedTooltip>
 			{updatesToSquadServerDisabled?.type !== 'ingame-vote' && (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={enableIngameVoting}>
-						{SS_Msgs.enableIngameVoting().text()}
+						{tr.text(SS_Msgs.enableIngameVoting())}
 					</Item>
 				</PermissionDeniedTooltip>
 			)}
 			{updatesToSquadServerDisabled ? (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={enableUpdates}>
-						{SS_Msgs.reenableSlmUpdates().text()}
+						{tr.text(SS_Msgs.reenableSlmUpdates())}
 					</Item>
 				</PermissionDeniedTooltip>
 			) : (
 				<PermissionDeniedTooltip denied={disableUpdatesDenied}>
 					<Item disabled={!!disableUpdatesDenied} onClick={disableUpdates}>
-						{SS_Msgs.disableSlmUpdates().text()}
+						{tr.text(SS_Msgs.disableSlmUpdates())}
 					</Item>
 				</PermissionDeniedTooltip>
 			)}
 			<PermissionDeniedTooltip denied={disableFogOfWarDenied}>
 				<Item disabled={!!disableFogOfWarDenied} onClick={disableFogOfWar}>
-					{SS_Msgs.disableFogOfWar().text()}
+					{tr.text(SS_Msgs.disableFogOfWar())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
 			<PermissionDeniedTooltip denied={consoleDenied}>
 				<Item disabled={!!consoleDenied} onClick={() => openConsoleWindow()}>
-					{SS_Msgs.serverConsole().text()}
+					{tr.text(SS_Msgs.serverConsole())}
 				</Item>
 			</PermissionDeniedTooltip>
-			{isSandbox && <Item onClick={() => openSandboxWindow()}>{SS_Msgs.sandboxControls().text()}</Item>}
+			{isSandbox && <Item onClick={() => openSandboxWindow()}>{tr.text(SS_Msgs.sandboxControls())}</Item>}
 		</>
 	)
 }

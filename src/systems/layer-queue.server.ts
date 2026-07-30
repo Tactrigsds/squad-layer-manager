@@ -24,6 +24,7 @@ import * as LNote from '@/models/layer-notes.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LQ from '@/models/layer-queue.models'
 import * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
 import type * as SS from '@/models/server-state.models'
@@ -56,7 +57,16 @@ import * as VoteSys from '@/systems/vote.server'
 
 // ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
 // roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
-type SideEffectCtx = C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Partial<Pick<C.Tx, 'tx'>>
+type SideEffectCtx = C.Db &
+	LQ.Ctx &
+	SQS.Ctx &
+	V.Ctx &
+	MH.Ctx &
+	SR.Ctx.Rcon &
+	SETTINGS.Ctx &
+	CS.AbortSignal &
+	Msgs.Ctx &
+	Partial<Pick<C.Tx, 'tx'>>
 
 const module = initModule('layer-queue')
 let log!: CS.Logger
@@ -144,7 +154,7 @@ export const setupInstance = Instr.spanOp(
 									})
 								await SquadRcon.warnAllAdmins(
 									ctx,
-									LL_Msgs.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }).warn(SETTINGS.locale(ctx)),
+									LL_Msgs.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
 								)
 								return
 							}
@@ -165,10 +175,10 @@ export const setupInstance = Instr.spanOp(
 										serverState.settings.vote.startVoteReminderThreshold,
 										serverState.settings.vote.autoStartVoteDelay !== null,
 										Settings.GLOBAL_SETTINGS.commands,
-									).warn(SETTINGS.locale(ctx)),
+									),
 								)
 							} else if (serverState.layerQueue.length === 0) {
-								await SquadRcon.warnAllAdmins(baseCtx, LL_Msgs.empty().warn(SETTINGS.locale(ctx)))
+								await SquadRcon.warnAllAdmins(baseCtx, LL_Msgs.empty())
 							}
 						}),
 					)
@@ -414,7 +424,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 			Rx.timer(ctx.serverSettings.settings.fogOffDelay).subscribe(async () => {
 				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 				await SquadRcon.setFogOfWar(ctx, 'off')
-				await SquadRcon.broadcast(ctx, SS_Msgs.fogOff().broadcast(SETTINGS.locale(ctx)))
+				await SquadRcon.broadcast(ctx, ctx.tr.broadcast(SS_Msgs.fogOff()))
 			}),
 		)
 	}
@@ -430,7 +440,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				if (!currentMatch) return
 				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
 				if (!mostRelevantEvent) return
-				await SquadRcon.warnAllAdmins(ctx, BAL_Msgs.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }).warn())
+				await SquadRcon.warnAllAdmins(ctx, BAL_Msgs.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
 			}),
 		)
 
@@ -447,7 +457,7 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				const queue = getSavedQueue(ctx)
 				const threshold = ctx.serverSettings.settings.queue.lowQueueWarningThreshold
 				if (threshold !== null && queue && queue.length <= threshold) {
-					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length).warn(SETTINGS.locale(ctx)))
+					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length))
 				}
 			}),
 		)
@@ -484,7 +494,7 @@ export function getSavedQueue(ctx: LQ.Ctx) {
 }
 
 export async function saveQueueAndUpdateServer(
-	ctx: C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
+	ctx: C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 	list: LL.List,
 	// the list this save replaces. Every next-layer change reaches the server through here -- an SLM edit, a roll, or
 	// adopting a layer someone set outside SLM -- so comparing the two heads is what tells admins the layer moved.
@@ -605,7 +615,7 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 )
 
 export async function warnShowNext(
-	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
 	opts?: { updated?: boolean },
 ) {
@@ -627,7 +637,7 @@ export async function warnShowNext(
 	const nextLayerRes = await ctx.squadRcon.layersStatus.get(ctx)
 	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
 	const commands = Settings.GLOBAL_SETTINGS.commands
-	const showNextMsg = LL_Msgs.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin }).warn()
+	const showNextMsg = ctx.tr.warn(LL_Msgs.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin }))
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, showNextMsg)
 	} else {
@@ -729,7 +739,7 @@ export async function toggleUpdatesToSquadServer({
 	ctx,
 	input,
 }: {
-	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal
+	ctx: C.Db & SQS.Ctx & SM.Ctx.UserOrPlayer & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx
 	// null re-enables. The reason is the state, so a caller cannot disable updates without saying why.
 	input: { disabled: SETTINGS.SlmUpdatesDisabled | null }
 }) {
@@ -756,8 +766,8 @@ export async function toggleUpdatesToSquadServer({
 	await SquadRcon.warnAllAdmins(
 		ctx,
 		byVote
-			? SS_Msgs.ingameVoteDisabledUpdates(input.disabled?.type === 'ingame-vote' && input.disabled.inferred).warn(SETTINGS.locale(ctx))
-			: SS_Msgs.slmUpdatesSet(!input.disabled, turnedIngameVotingOff).warn(SETTINGS.locale(ctx)),
+			? SS_Msgs.ingameVoteDisabledUpdates(input.disabled?.type === 'ingame-vote' && input.disabled.inferred)
+			: SS_Msgs.slmUpdatesSet(!input.disabled, turnedIngameVotingOff),
 	)
 	return { code: 'ok' as const }
 }
@@ -769,7 +779,7 @@ export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS
 }
 
 export async function requestFeedback(
-	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 	playerName: string,
 	layerQueueNumber: string | undefined,
 ) {
@@ -780,7 +790,7 @@ export async function requestFeedback(
 	else index = LL.resolveLayerQueueItemIndexForNumber(layerQueueNumber) ?? undefined
 	if (!index) return { code: 'err:not-found' as const }
 	const item = LL.resolveItemForIndex(layerQueue, index)!
-	await SquadRcon.warnAllAdmins(ctx, LL_Msgs.requestFeedback(index, playerName, item).warn(SETTINGS.locale(ctx)))
+	await SquadRcon.warnAllAdmins(ctx, LL_Msgs.requestFeedback(index, playerName, item))
 	return { code: 'ok' as const }
 }
 

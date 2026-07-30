@@ -15,6 +15,7 @@ import type * as LQY from '@/models/layer-queries.models'
 import { LAYERS_QUERY_SORT_DIRECTION } from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
+import { tr } from '@/systems/messages.client'
 
 type LayerTableConfig = LQY.LayerTableConfig
 
@@ -108,8 +109,8 @@ function ColumnsSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint={LC_Msgs.columnsHint().text()}>{LC_Msgs.columnsHeading().text()}</SectionLabel>
-			{columns.length === 0 && <p className="text-xs text-muted-foreground">{LC_Msgs.noColumnsConfigured().text()}</p>}
+			<SectionLabel hint={tr.text(LC_Msgs.columnsHint())}>{tr.text(LC_Msgs.columnsHeading())}</SectionLabel>
+			{columns.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(LC_Msgs.noColumnsConfigured())}</p>}
 			<ol>
 				{columns.map((col, idx) => (
 					<React.Fragment key={col.name}>
@@ -120,7 +121,7 @@ function ColumnsSection({
 				{columns.length > 0 && <ColumnDropSeparator position="after" columnName={columns[columns.length - 1].name} />}
 			</ol>
 			<ComboBox
-				title={LC_Msgs.addColumn().text()}
+				title={tr.text(LC_Msgs.addColumn())}
 				value={undefined}
 				options={addOptions}
 				onSelect={(name) => {
@@ -162,7 +163,7 @@ function ColumnRow({
 				type="button"
 				ref={drag.handleRef}
 				className="cursor-grab rounded text-muted-foreground"
-				aria-label={LC_Msgs.dragToReorder().text()}
+				aria-label={tr.text(LC_Msgs.dragToReorder())}
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
@@ -170,7 +171,7 @@ function ColumnRow({
 			<span className="min-w-0 truncate font-mono text-sm">{col.name}</span>
 			<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
 				<Switch checked={col.visible ?? true} onCheckedChange={onToggleVisible} />
-				{LC_Msgs.visibleByDefault().text()}
+				{tr.text(LC_Msgs.visibleByDefault())}
 			</label>
 			<Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={onRemove}>
 				<Icons.X className="h-4 w-4" />
@@ -194,7 +195,7 @@ function SortSection({
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint={LC_Msgs.defaultSortHint().text()}>{LC_Msgs.defaultSortHeading().text()}</SectionLabel>
+			<SectionLabel hint={tr.text(LC_Msgs.defaultSortHint())}>{tr.text(LC_Msgs.defaultSortHeading())}</SectionLabel>
 			<div className="flex flex-wrap items-center gap-2">
 				<Select
 					value={sort.type}
@@ -207,8 +208,8 @@ function SortSection({
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="random">{LC_Msgs.sortRandom().text()}</SelectItem>
-						<SelectItem value="column">{LC_Msgs.sortColumn().text()}</SelectItem>
+						<SelectItem value="random">{tr.text(LC_Msgs.sortRandom())}</SelectItem>
+						<SelectItem value="column">{tr.text(LC_Msgs.sortColumn())}</SelectItem>
 					</SelectContent>
 				</Select>
 
@@ -223,7 +224,7 @@ function SortSection({
 				{sort.type === 'column' && (
 					<>
 						<ComboBox
-							title={LC_Msgs.columnPicker().text()}
+							title={tr.text(LC_Msgs.columnPicker())}
 							className="w-[200px]"
 							value={sort.sortBy || undefined}
 							options={columnOptions}
@@ -265,7 +266,7 @@ function SeedInput({ seed, onChange, reset$ }: { seed: string | undefined; onCha
 		<input
 			key={resetKey}
 			className="h-9 w-[160px] rounded-md border bg-background px-3 text-sm"
-			placeholder={LC_Msgs.seedPlaceholder().text()}
+			placeholder={tr.text(LC_Msgs.seedPlaceholder())}
 			defaultValue={seed ?? ''}
 			onChange={(e) => push(e.currentTarget.value)}
 		/>
@@ -285,8 +286,8 @@ function ExtraMenuItemsSection({ value, patch }: { value: LayerTableConfig; patc
 
 	return (
 		<div className="space-y-1.5">
-			<SectionLabel hint={LC_Msgs.extraMenuItemsHint().text()}>{LC_Msgs.extraMenuItemsHeading().text()}</SectionLabel>
-			{items.length === 0 && <p className="text-xs text-muted-foreground">{LC_Msgs.noExtraMenuItems().text()}</p>}
+			<SectionLabel hint={tr.text(LC_Msgs.extraMenuItemsHint())}>{tr.text(LC_Msgs.extraMenuItemsHeading())}</SectionLabel>
+			{items.length === 0 && <p className="text-xs text-muted-foreground">{tr.text(LC_Msgs.noExtraMenuItems())}</p>}
 			<div className="space-y-2">
 				{items.map((item, idx) => (
 					// menu items have no stable id, so index is the pragmatic key (add appends, remove filters)
@@ -312,7 +313,7 @@ function ExtraMenuItemsSection({ value, patch }: { value: LayerTableConfig; patc
 			</div>
 			<Button type="button" size="sm" variant="outline" onClick={() => patch({ extraLayerSelectMenuItems: [...items, blankComp()] })}>
 				<Icons.Plus className="h-4 w-4" />
-				{LC_Msgs.addMenuItem().text()}
+				{tr.text(LC_Msgs.addMenuItem())}
 			</Button>
 		</div>
 	)

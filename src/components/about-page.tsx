@@ -12,6 +12,7 @@ import { formatVersion } from '@/lib/versioning'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
 import * as ConfigClient from '@/systems/config.client'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -36,21 +37,23 @@ export default function AboutPage() {
 	const user = UsersClient.useLoggedInUser()
 	if (!config || !user) return null
 
-	const versionText = APP_Msgs.versionInfo({
-		appVersion:
-			config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA ? formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA) : undefined,
-		layersVersion: config.layersVersion ?? undefined,
-		username: user.username,
-		wsClientId: config.wsClientId,
-	}).text()
+	const versionText = tr.text(
+		APP_Msgs.versionInfo({
+			appVersion:
+				config.PUBLIC_GIT_BRANCH || config.PUBLIC_GIT_SHA ? formatVersion(config.PUBLIC_GIT_BRANCH, config.PUBLIC_GIT_SHA) : undefined,
+			layersVersion: config.layersVersion ?? undefined,
+			username: user.username,
+			wsClientId: config.wsClientId,
+		}),
+	)
 
 	return (
 		<div className="w-full max-w-lg mx-auto py-6 space-y-4 overflow-y-auto">
 			<div className="flex flex-col items-center gap-3 pb-2">
 				<LogoMark accent={settings?.topBarColor ?? null} className="h-14 w-14" />
 				<div className="flex flex-col items-center gap-1.5">
-					<h1 className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{APP_Msgs.productName().text()}</h1>
-					<p className="text-center text-sm text-muted-foreground">{APP_Msgs.tagline().text()}</p>
+					<h1 className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">{tr.text(APP_Msgs.productName())}</h1>
+					<p className="text-center text-sm text-muted-foreground">{tr.text(APP_Msgs.tagline())}</p>
 				</div>
 			</div>
 
@@ -58,12 +61,12 @@ export default function AboutPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>{APP_Msgs.debugAndHelpInfo().text()}</CardTitle>
+					<CardTitle>{tr.text(APP_Msgs.debugAndHelpInfo())}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4 text-sm">
-					<LinkRow heading={APP_Msgs.repositoryHeading().text()} url={config.repoUrl} />
-					<LinkRow heading={APP_Msgs.helpHeading().text()} url={config.helpUrl} />
-					<LinkRow heading={APP_Msgs.reportIssuesHeading().text()} url={config.issuesUrl} />
+					<LinkRow heading={tr.text(APP_Msgs.repositoryHeading())} url={config.repoUrl} />
+					<LinkRow heading={tr.text(APP_Msgs.helpHeading())} url={config.helpUrl} />
+					<LinkRow heading={tr.text(APP_Msgs.reportIssuesHeading())} url={config.issuesUrl} />
 					<div className="relative">
 						<Textarea
 							readOnly
@@ -78,7 +81,7 @@ export default function AboutPage() {
 							className="absolute top-1 right-1 h-6 w-6"
 							onClick={async () => {
 								await navigator.clipboard.writeText(versionText)
-								toast(...APP_Msgs.copiedToClipboard(APP_Msgs.versionInfoCopied().text()).toast())
+								toast(...tr.toast(APP_Msgs.copiedToClipboard(tr.text(APP_Msgs.versionInfoCopied()))))
 							}}
 						>
 							<Copy className="h-3 w-3" />
@@ -89,20 +92,20 @@ export default function AboutPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>{APP_Msgs.acknowledgementsHeading().text()}</CardTitle>
+					<CardTitle>{tr.text(APP_Msgs.acknowledgementsHeading())}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-5 text-sm leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
-					<p>{APP_Msgs.acknowledgementsIntro().react()}</p>
+					<p>{tr.richText(APP_Msgs.acknowledgementsIntro())}</p>
 					<div className="space-y-3 border-l-2 border-border pl-4">
-						<p>{APP_Msgs.acknowledgementsZero().react()}</p>
-						<p>{APP_Msgs.acknowledgementsRandyNewman().react()}</p>
+						<p>{tr.richText(APP_Msgs.acknowledgementsZero())}</p>
+						<p>{tr.richText(APP_Msgs.acknowledgementsRandyNewman())}</p>
 					</div>
 					<div className="space-y-2">
-						<p>{APP_Msgs.acknowledgementsContributorsIntro().text()}</p>
+						<p>{tr.text(APP_Msgs.acknowledgementsContributorsIntro())}</p>
 						<NameList names={APP_Msgs.acknowledgedContributors} />
 					</div>
 					<div className="space-y-2">
-						<p>{APP_Msgs.acknowledgementsUsersIntro().text()}</p>
+						<p>{tr.text(APP_Msgs.acknowledgementsUsersIntro())}</p>
 						<NameList names={APP_Msgs.acknowledgedUsers} />
 					</div>
 				</CardContent>

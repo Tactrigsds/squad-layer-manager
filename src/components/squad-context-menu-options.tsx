@@ -4,13 +4,14 @@ import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import type * as Msgs from '@/messages/shared'
 import * as SM_Msgs from '@/messages/squad.messages'
+import type * as Tgt from '@/messages/target'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -98,7 +99,7 @@ export function SquadMenuItems({
 
 	const squadLabel = `"${squad.squadName}"`
 	const teamId = squad.teamId as 1 | 2
-	const msgTarget: Msgs.Target = { kind: 'squad', squadName: squad.squadName, count: squadPlayerIds.length }
+	const msgTarget: Tgt.Target = { kind: 'squad', squadName: squad.squadName, count: squadPlayerIds.length }
 
 	// mirrors the player/bulk Swap Now flow: confirm, then swap. The dialog auto-closes if any member changes
 	// teams while it's open (their swap would be a no-op or wrong), warning the admin the selection went stale.
@@ -113,7 +114,7 @@ export function SquadMenuItems({
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-				const msg = TSW_Msgs.swapNow(msgTarget).confirm()
+				const msg = tr.confirm(TSW_Msgs.swapNow(msgTarget))
 				const result = await openDialog({
 					title: msg.title,
 					variant: 'destructive',
@@ -121,7 +122,7 @@ export function SquadMenuItems({
 					buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 				})
 				if (result === 'dismissed') {
-					toast.warning(...TSW_Msgs.swapCancelled(msgTarget).toast())
+					toast.warning(...tr.toast(TSW_Msgs.swapCancelled(msgTarget)))
 					return
 				}
 				if (result !== 'confirm') return
@@ -141,7 +142,7 @@ export function SquadMenuItems({
 
 	async function warnSquadPreset() {
 		presetReasonRef.current = ''
-		const msg = SM_Msgs.warnPreset(msgTarget).confirm()
+		const msg = tr.confirm(SM_Msgs.warnPreset(msgTarget))
 		const result = await openDialog({
 			title: msg.title,
 			description: msg.description,
@@ -162,10 +163,10 @@ export function SquadMenuItems({
 			taggedSquad: { squadId: squad.squadId, squadName: squad.squadName, teamId: squad.teamId },
 		})
 		if (res.code !== 'ok') {
-			toast.error(...SM_Msgs.warnFailed('msg' in res ? res.msg : res.code).toast())
+			toast.error(...tr.toast(SM_Msgs.warnFailed('msg' in res ? res.msg : res.code)))
 			return
 		}
-		toast(...SM_Msgs.warned(msgTarget, presetReasonRef.current).toast())
+		toast(...tr.toast(SM_Msgs.warned(msgTarget, presetReasonRef.current)))
 	}
 
 	async function killSquad() {
@@ -173,7 +174,7 @@ export function SquadMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.kill(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.kill(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -196,10 +197,10 @@ export function SquadMenuItems({
 			// awaited inside withPlayerDialogue so the presence dialogue stays open until the kill settles
 			const res = await killMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.kill(msgTarget).toast())
+			toast(...tr.toast(SM_Msgs.kill(msgTarget)))
 		})
 	}
 
@@ -208,7 +209,7 @@ export function SquadMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.kick(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.kick(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -230,10 +231,10 @@ export function SquadMenuItems({
 			if (!input) return
 			const res = await kickMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, ...input })
 			if (res.code !== 'ok') {
-				toast.error(...SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code).toast())
+				toast.error(...tr.toast(SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
 			}
-			toast(...SM_Msgs.kick(msgTarget).toast())
+			toast(...tr.toast(SM_Msgs.kick(msgTarget)))
 		})
 	}
 
@@ -243,7 +244,7 @@ export function SquadMenuItems({
 		customReasonRef.current = ''
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-			const msg = SM_Msgs.timeout(msgTarget).confirm()
+			const msg = tr.confirm(SM_Msgs.timeout(msgTarget))
 			const result = await openDialog({
 				title: msg.title,
 				variant: 'destructive',
@@ -281,7 +282,7 @@ export function SquadMenuItems({
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		presetReasonRef.current = ''
 		await UPClient.Actions.withPlayerDialogue('DISBANDING_SQUAD', async () => {
-			const msg = SM_Msgs.disbandSquad(squadLabel).confirm()
+			const msg = tr.confirm(SM_Msgs.disbandSquad(squadLabel))
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -307,7 +308,7 @@ export function SquadMenuItems({
 	async function resetSquadName() {
 		TSWClient.Actions.ensureViewingTeams(serverId)
 		await UPClient.Actions.withPlayerDialogue('RESETTING_SQUAD_NAME', async () => {
-			const msg = SM_Msgs.resetSquadName(`squad ${squadLabel}`).confirm()
+			const msg = tr.confirm(SM_Msgs.resetSquadName(`squad ${squadLabel}`))
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
@@ -325,7 +326,7 @@ export function SquadMenuItems({
 					onClick={() => TSWClient.Actions.swapNext(stores, squadPlayerIds)}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canQueue}
 				>
-					{SM_Msgs.swapSquadNextLabel().text()}
+					{tr.text(SM_Msgs.swapSquadNextLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -334,7 +335,7 @@ export function SquadMenuItems({
 					onClick={swapNow}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
-					{SM_Msgs.swapSquadNowLabel().text()}
+					{tr.text(SM_Msgs.swapSquadNowLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
@@ -343,7 +344,7 @@ export function SquadMenuItems({
 					onClick={killSquad}
 					disabled={!!manageDenied || squadPlayerIds.length === 0 || !canSwapNow}
 				>
-					{SM_Msgs.killSquadLabel().text()}
+					{tr.text(SM_Msgs.killSquadLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={kickDenied}>
@@ -352,7 +353,7 @@ export function SquadMenuItems({
 					onClick={kickSquad}
 					disabled={!!kickDenied || squadPlayerIds.length === 0}
 				>
-					{SM_Msgs.kickSquadLabel().text()}
+					{tr.text(SM_Msgs.kickSquadLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={timeoutDenied}>
@@ -361,7 +362,7 @@ export function SquadMenuItems({
 					onClick={timeoutSquad}
 					disabled={!!timeoutDenied || squadPlayerIds.length === 0}
 				>
-					{SM_Msgs.timeoutSquadLabel().text()}
+					{tr.text(SM_Msgs.timeoutSquadLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<Separator />
@@ -373,7 +374,7 @@ export function SquadMenuItems({
 					SquadServerFrame.Actions.selectSquad(stores, squadPlayerIds[0])
 				}}
 			>
-				<span title={SM_Msgs.selectSquadShortcutHint().text()}>{SM_Msgs.selectSquadItem().text()}</span>
+				<span title={tr.text(SM_Msgs.selectSquadShortcutHint())}>{tr.text(SM_Msgs.selectSquadItem())}</span>
 				<ContextMenuShortcut>{SM_Msgs.shortcuts.squadCell.team}</ContextMenuShortcut>
 			</Item>
 			{!omitWarn && (
@@ -383,22 +384,22 @@ export function SquadMenuItems({
 						slots={slots}
 						denied={warnDenied}
 						disabled={uniqueId === null || squadPlayerIds.length === 0}
-						label={SM_Msgs.warnSquadLabel().text()}
+						label={tr.text(SM_Msgs.warnSquadLabel())}
 						onCustom={warn}
 						onPreset={warnSquadPreset}
 					/>
 				</>
 			)}
-			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label={SM_Msgs.addFlagsToSquad().text()} />
+			<AddPlayerFlagsMenuItem slots={slots} playerIds={squadPlayerIds} target={msgTarget} label={tr.text(SM_Msgs.addFlagsToSquad())} />
 			<Separator />
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={disbandSquad} disabled={!!manageDenied || !squadExists}>
-					{SM_Msgs.disbandSquadLabel().text()}
+					{tr.text(SM_Msgs.disbandSquadLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 			<PermissionDeniedTooltip denied={manageDenied}>
 				<Item onClick={resetSquadName} disabled={!!manageDenied || !squadExists}>
-					{SM_Msgs.resetSquadNameLabel().text()}
+					{tr.text(SM_Msgs.resetSquadNameLabel())}
 				</Item>
 			</PermissionDeniedTooltip>
 		</>

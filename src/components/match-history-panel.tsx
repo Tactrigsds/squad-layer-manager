@@ -27,6 +27,7 @@ import * as DndKit from '@/systems/dndkit.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -158,16 +159,16 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 
 	// -------- Date display helpers --------
 	const getDateDisplayText = () => {
-		if (!currentDate) return MH_Msgs.noMatchesOnAnyDay().text()
+		if (!currentDate) return tr.text(MH_Msgs.noMatchesOnAnyDay())
 
 		const date = new Date(currentDate + 'T00:00:00')
 		const today = new Date()
 		today.setHours(0, 0, 0, 0)
 
 		if (dateFns.isSameDay(date, today)) {
-			return MH_Msgs.today().text()
+			return tr.text(MH_Msgs.today())
 		} else if (dateFns.isSameDay(date, dateFns.subDays(today, 1))) {
-			return MH_Msgs.yesterday().text()
+			return tr.text(MH_Msgs.yesterday())
 		} else {
 			return dateFns.format(date, 'MMM d, yyyy')
 		}
@@ -176,7 +177,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 	return (
 		<>
 			<CardHeader className="flex flex-row justify-between items-start">
-				<CardTitle>{MH_Msgs.title().text()}</CardTitle>
+				<CardTitle>{tr.text(MH_Msgs.title())}</CardTitle>
 				<div className="flex items-center gap-1">
 					<div className="flex items-center">
 						<Button variant="outline" size="sm" className="rounded-r-none px-2" onClick={goToLastPage} disabled={onLastPage}>
@@ -214,34 +215,34 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 					<TableHeader>
 						<TableRow className="font-medium">
 							<TableHead className="text-right px-0.5"></TableHead>
-							<TableHead className="hidden @[820px]:table-cell">{MH_Msgs.timeColumn().text()}</TableHead>
-							<TableHead>{MH_Msgs.layerColumn().text()}</TableHead>
+							<TableHead className="hidden @[820px]:table-cell">{tr.text(MH_Msgs.timeColumn())}</TableHead>
+							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
 							<TableHead>
-								{L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1).text()}
+								{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}
 								{globalSettings.displayTeamsNormalized &&
 									currentStreak &&
 									currentStreak.length > 1 &&
 									currentStreak.team === 'teamA' && (
-										<span className="text-green-600 font-medium ml-1">{MH_Msgs.winStreak(currentStreak.length).text()}</span>
+										<span className="text-green-600 font-medium ml-1">{tr.text(MH_Msgs.winStreak(currentStreak.length))}</span>
 									)}
 							</TableHead>
-							<TableHead className="text-center">{MH_Msgs.outcomeColumn().text()}</TableHead>
+							<TableHead className="text-center">{tr.text(MH_Msgs.outcomeColumn())}</TableHead>
 							<TableHead>
-								{L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2).text()}
+								{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2))}
 								{globalSettings.displayTeamsNormalized &&
 									currentStreak &&
 									currentStreak.length > 1 &&
 									currentStreak.team === 'teamB' && (
-										<span className="text-green-600 font-medium ml-1">{MH_Msgs.winStreak(currentStreak.length).text()}</span>
+										<span className="text-green-600 font-medium ml-1">{tr.text(MH_Msgs.winStreak(currentStreak.length))}</span>
 									)}
 							</TableHead>
-							<TableHead className="text-center px-0.5" title={MH_Msgs.layerIndicatorsColumn().text()}>
+							<TableHead className="text-center px-0.5" title={tr.text(MH_Msgs.layerIndicatorsColumn())}>
 								<div className="flex flex-row justify-end items-center">
 									<Icons.Flag />
 								</div>
 							</TableHead>
 							<TableHead className="hidden @[900px]:table-cell pr-0.5">
-								<span title={MH_Msgs.setByColumn().text()}>
+								<span title={tr.text(MH_Msgs.setByColumn())}>
 									<Icons.User />
 								</span>
 							</TableHead>
@@ -251,16 +252,16 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 						{currentEntries.length === 0 ? (
 							<TableRow>
 								<TableCell colSpan={8} className="text-center text-muted-foreground py-8 hidden @[900px]:table-cell">
-									{MH_Msgs.noMatches().text()}
+									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
 								<TableCell
 									colSpan={7}
 									className="text-center text-muted-foreground py-8 hidden @[820px]:table-cell @[900px]:hidden"
 								>
-									{MH_Msgs.noMatches().text()}
+									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
 								<TableCell colSpan={6} className="text-center text-muted-foreground py-8 table-cell @[820px]:hidden">
-									{MH_Msgs.noMatches().text()}
+									{tr.text(MH_Msgs.noMatches())}
 								</TableCell>
 							</TableRow>
 						) : (
@@ -435,19 +436,19 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 			statusBadge = (
 				<Badge variant="info" className="flex items-center whitespace-nowrap">
 					<Icons.Loader2 className="mr-1 h-3 w-3 animate-spin" />
-					<span>{MH_Msgs.switchingLayer().text()}</span>
+					<span>{tr.text(MH_Msgs.switchingLayer())}</span>
 				</Badge>
 			)
 		} else if (entry.status === 'post-game') {
 			statusBadge = (
 				<Badge variant="outline" className="flex items-center whitespace-nowrap">
-					<span>{MH_Msgs.postGame().text()}</span>
+					<span>{tr.text(MH_Msgs.postGame())}</span>
 				</Badge>
 			)
 		} else if (entry.status === 'in-progress') {
 			statusBadge = (
 				<Badge variant="secondary" className="flex items-center whitespace-nowrap">
-					<span>{MH_Msgs.inProgress().text()}</span>
+					<span>{tr.text(MH_Msgs.inProgress())}</span>
 				</Badge>
 			)
 		}
@@ -456,7 +457,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 	// Build outcome display if available
 	if (entry.status === 'post-game') {
 		if (entry.outcome.type === 'draw') {
-			outcomeDisp = <span className="text-sm">{MH_Msgs.draw().text()}</span>
+			outcomeDisp = <span className="text-sm">{tr.text(MH_Msgs.draw())}</span>
 		} else if (entry.outcome.type === 'unknown') {
 			outcomeDisp = <span className="text-sm">-</span>
 		} else {
@@ -536,7 +537,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
 				<TableRow
-					title={MH_Msgs.rowActions().text()}
+					title={tr.text(MH_Msgs.rowActions())}
 					// dnd-kit's accessibility plugin stamps role="button" on any draggable that has no role of
 					// its own, which would make this <tr> a button wrapping <td> cells: invalid, and it drops the
 					// row out of the table's accessibility tree. Declaring the real role keeps dnd-kit off it.
