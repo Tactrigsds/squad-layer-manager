@@ -618,22 +618,22 @@ function unknownToken(
 		...filterEntities.map((f) => Str.normalizeForMatch(f.name)),
 	]
 	const sorted = StringComparison.diceCoefficient.sortMatch(Str.normalizeForMatch(token), candidates)
-	const base = `Unknown request "${token}"`
 	// sortMatch ranks worst first, so the closest are the tail, best last
-	const suggestions = sorted
-		.slice(-MAX_SUGGESTIONS)
-		.reverse()
-		.flatMap((match) => {
-			const target = exact.get(match.member)
-			const suggestion = target
-				? 'value' in target
-					? target.value
-					: target.name
-				: (components.maps.find((m) => Str.normalizeForMatch(m) === match.member) ??
-					filterEntities.find((f) => Str.normalizeForMatch(f.name) === match.member)?.name)
-			return suggestion ? [suggestion] : []
-		})
-	return { msg: suggestions.length > 0 ? `${base}. Did you mean ${suggestions[0]}?` : base, suggestions }
+	const suggestions: string[] = []
+	for (let i = sorted.length - 1; i >= 0 && suggestions.length < MAX_SUGGESTIONS; i--) {
+		const target = exact.get(sorted[i].member)
+		const suggestion = target
+			? 'value' in target
+				? target.value
+				: target.name
+			: (components.maps.find((m) => Str.normalizeForMatch(m) === sorted[i].member) ??
+				filterEntities.find((f) => Str.normalizeForMatch(f.name) === sorted[i].member)?.name)
+		// several candidates name the same thing (a map is both its own exact key and a fuzzy candidate), and the
+		// same option offered twice is one of three lines wasted
+		if (suggestion && !suggestions.includes(suggestion)) suggestions.push(suggestion)
+	}
+	// the suggestions are offered as choices, so naming the closest one here says it twice
+	return { msg: `Unknown request "${token}"`, suggestions }
 }
 
 export function getLayerRequestSummary(
