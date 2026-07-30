@@ -10,6 +10,7 @@ import * as L from '@/models/layer'
 import type * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
+import * as TA from '@/models/team-attribution.models'
 import type { ClientOnlySettingsStore } from '@/systems/client-only-settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 
@@ -125,63 +126,90 @@ export namespace Sel {
 	// what the grouping switcher above the chart renders: every configured grouping, and the one in effect
 	export const groupings = RSel.createDeepSelector([groupingIds, activeGroupingId], (ids, active) => ({ ids, active }))
 
-	// The live roster split by team and by the active grouping. A historical match has no roster to break down, so
-	// the chart is absent rather than empty while one is selected.
-	export const breakdown = RSel.createDeepSelector(
-		[
-			(...[store]: BreakdownInputs) => ChatPrt.Sel.selectedMatchOrdinal(store),
-			(...[store]: BreakdownInputs) => ChatPrt.Sel.chatState(store).players,
-			(...[, , , , bmData]: BreakdownInputs) => bmData,
-			(...[, , , , , bmStore]: BreakdownInputs) => bmStore.slsOnly,
-			(...[, , , , , bmStore]: BreakdownInputs) => bmStore.orgFlags,
-			(...[, , , , , , settings]: BreakdownInputs) => settings?.playerGroupings,
-			activeGroupingId,
-			(...args: BreakdownInputs) => teams(...teamInputs(args)),
-		],
-		(selectedOrdinal, players, bmData, slsOnly, orgFlags, playerGroupings, groupingId, teamDisplays): Breakdown | null => {
-			if (selectedOrdinal !== null || !playerGroupings || groupingId === null) return null
-			const grouping = playerGroupings[groupingId]
-			if (!grouping) return null
+	// Team attribution replayed from a historical match's events, parameterised like combatStats: the events arrive
+	// from a query, not a store.
+	export const attribution = RSel.memoizeFactory((historicalEvents: CHAT.EventEnriched[] | null) =>
+		RSel.createSelector(
+			[(...[, , , , , , settings]: BreakdownInputs) => settings?.teamAttribution],
+			(config): TA.MatchAttribution | null =>
+				historicalEvents ? TA.computeTeamAttribution(historicalEvents, config ?? TA.DEFAULT_SETTINGS) : null,
+		),
+	)
 
-			const rostered = slsOnly ? players.filter((p) => p.isLeader) : players
-			// bmData is keyed by EOS id, so players without one can only fall into the ungrouped series
-			const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = rostered
-				.filter((p) => p.ids.eos != null)
-				.map((p) => [p.ids.eos!, PG.playerFacts(p, BM.resolveFlags(bmData[p.ids.eos!]?.flagIds ?? [], orgFlags))])
-			const groups = PG.resolvePlayerGroups(playerFacts, playerGroupings, groupingId)
+	// The roster split by team and by the active grouping: the live roster for the current match, or the attributed
+	// roster (minus carved-out players) replayed from a historical match's events. The historical chart is absent
+	// rather than empty until those events load.
+	export const breakdown = RSel.memoizeFactory((historicalEvents: CHAT.EventEnriched[] | null) =>
+		RSel.createDeepSelector(
+			[
+				(...[store]: BreakdownInputs) => ChatPrt.Sel.selectedMatchOrdinal(store),
+				(...[store]: BreakdownInputs) => ChatPrt.Sel.chatState(store).players,
+				attribution(historicalEvents),
+				(...[, , , , bmData]: BreakdownInputs) => bmData,
+				(...[, , , , , bmStore]: BreakdownInputs) => bmStore.slsOnly,
+				(...[, , , , , bmStore]: BreakdownInputs) => bmStore.orgFlags,
+				(...[, , , , , , settings]: BreakdownInputs) => settings?.playerGroupings,
+				activeGroupingId,
+				(...args: BreakdownInputs) => teams(...teamInputs(args)),
+			],
+			(selectedOrdinal, players, attributed, bmData, slsOnly, orgFlags, playerGroupings, groupingId, teamDisplays): Breakdown | null => {
+				if (!playerGroupings || groupingId === null) return null
+				const grouping = playerGroupings[groupingId]
+				if (!grouping) return null
 
-			const labels = [...PG.getGroupNames(grouping), PG.UNGROUPED_LABEL]
-			const labelToIdx = new Map(labels.map((label, i) => [label, i]))
-			const ungroupedIdx = labels.length - 1
-			const counts = [labels.map(() => 0), labels.map(() => 0)]
-			const members: BreakdownMember[][][] = [labels.map((): BreakdownMember[] => []), labels.map((): BreakdownMember[] => [])]
+				// each roster entry with the team row it counts for; historical entries carry the team the player
+				// spent the most time on rather than the one they happened to occupy last
+				let roster: { player: SM.Player; teamId: SM.TeamId | null }[]
+				if (selectedOrdinal !== null) {
+					if (!attributed) return null
+					roster = attributed.players.filter((p) => p.eligible).map((p) => ({ player: p.player, teamId: p.primaryTeamId }))
+				} else {
+					roster = players.map((p) => ({ player: p, teamId: p.teamId }))
+				}
+				if (slsOnly) roster = roster.filter((p) => p.player.isLeader)
 
-			for (const player of rostered) {
-				const rowIndex = (player.teamId ?? 0) - 1
-				if (rowIndex !== 0 && rowIndex !== 1) continue
-				const group = player.ids.eos != null ? groups.get(player.ids.eos) : undefined
-				const seriesIndex = group != null ? (labelToIdx.get(group) ?? -1) : ungroupedIdx
-				if (seriesIndex === -1) continue
-				counts[rowIndex][seriesIndex]++
-				members[rowIndex][seriesIndex].push({
-					id: SM.PlayerIds.getPlayerId(player.ids),
-					name: player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?',
-				})
-			}
+				// bmData is keyed by EOS id, so players without one can only fall into the ungrouped series
+				const playerFacts: [SM.PlayerId, PG.PlayerFacts][] = roster
+					.filter((p) => p.player.ids.eos != null)
+					.map((p) => [
+						p.player.ids.eos!,
+						PG.playerFacts(p.player, BM.resolveFlags(bmData[p.player.ids.eos!]?.flagIds ?? [], orgFlags)),
+					])
+				const groups = PG.resolvePlayerGroups(playerFacts, playerGroupings, groupingId)
 
-			return {
-				series: labels.map((label) => ({ key: label, label, color: PG.getGroupColor(grouping, label, orgFlags) })),
-				rows: teamDisplays.map((team, rowIndex) => ({ key: `team${rowIndex + 1}`, label: team.label, values: counts[rowIndex] })),
-				members,
-			}
-		},
+				const labels = [...PG.getGroupNames(grouping), PG.UNGROUPED_LABEL]
+				const labelToIdx = new Map(labels.map((label, i) => [label, i]))
+				const ungroupedIdx = labels.length - 1
+				const counts = [labels.map(() => 0), labels.map(() => 0)]
+				const members: BreakdownMember[][][] = [labels.map((): BreakdownMember[] => []), labels.map((): BreakdownMember[] => [])]
+
+				for (const { player, teamId } of roster) {
+					const rowIndex = (teamId ?? 0) - 1
+					if (rowIndex !== 0 && rowIndex !== 1) continue
+					const group = player.ids.eos != null ? groups.get(player.ids.eos) : undefined
+					const seriesIndex = group != null ? (labelToIdx.get(group) ?? -1) : ungroupedIdx
+					if (seriesIndex === -1) continue
+					counts[rowIndex][seriesIndex]++
+					members[rowIndex][seriesIndex].push({
+						id: SM.PlayerIds.getPlayerId(player.ids),
+						name: player.ids.usernameNoTag ?? player.ids.username ?? player.ids.steam ?? '?',
+					})
+				}
+
+				return {
+					series: labels.map((label) => ({ key: label, label, color: PG.getGroupColor(grouping, label, orgFlags) })),
+					rows: teamDisplays.map((team, rowIndex) => ({ key: `team${rowIndex + 1}`, label: team.label, values: counts[rowIndex] })),
+					members,
+				}
+			},
+		),
 	)
 
 	// whether the panel has anything at all to draw, so it can show its empty state without every child duplicating
 	// the question
 	export const hasData = RSel.memoizeFactory((historicalEvents: CHAT.EventEnriched[] | null) =>
 		RSel.createSelector(
-			[(...args: BreakdownInputs) => combatStats(historicalEvents)(...teamInputs(args)), breakdown],
+			[(...args: BreakdownInputs) => combatStats(historicalEvents)(...teamInputs(args)), breakdown(historicalEvents)],
 			(combat, breakdown) => combat !== null || breakdown !== null,
 		),
 	)

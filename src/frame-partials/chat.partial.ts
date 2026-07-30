@@ -20,6 +20,8 @@ export type ChatSlice = {
 	eventGeneration: number
 	// Selected match ordinal for viewing historical events (null = current match)
 	selectedMatchOrdinal: number | null
+	// which body the activity panel shows while a historical match is selected; meaningless when live
+	historicalView: 'feed' | 'teams'
 }
 
 export type Store = {
@@ -43,6 +45,7 @@ export function initChat(args: Args) {
 		selectedOnly: false,
 		eventGeneration: 0,
 		selectedMatchOrdinal: null,
+		historicalView: 'feed',
 		handleChatEvents(events) {
 			const config = SettingsClient.getSettings()
 			set((state) => {
@@ -102,6 +105,9 @@ export namespace Sel {
 	}
 	export function selectedMatchOrdinal(store: Store) {
 		return store.chat.selectedMatchOrdinal
+	}
+	export function historicalView(store: Store) {
+		return store.chat.historicalView
 	}
 	// the match the dashboard is showing: the live one, or the historical one picked out of recent matches
 	export function displayMatch(store: Store, currentMatch: MH.MatchDetails | undefined, recentMatches: readonly MH.MatchDetails[]) {
@@ -221,6 +227,12 @@ export namespace Actions {
 	export async function setSelectedMatchOrdinal(stores: KeyProp, ordinal: number | null) {
 		const chat = Zus.toPartialStore(stores.chat, 'chat')
 		const currentMatch = await MatchHistoryClient.currentMatch$(chat.getState().serverId).getValue()
-		chat.setState({ selectedMatchOrdinal: currentMatch?.ordinal === ordinal ? null : ordinal })
+		const resolved = currentMatch?.ordinal === ordinal ? null : ordinal
+		// the teams view survives browsing between historical matches, but live always lands on the feed
+		chat.setState({ selectedMatchOrdinal: resolved, ...(resolved === null ? { historicalView: 'feed' as const } : {}) })
+	}
+
+	export function setHistoricalView(stores: KeyProp, view: ChatSlice['historicalView']) {
+		Zus.toPartialStore(stores.chat, 'chat').setState({ historicalView: view })
 	}
 }
