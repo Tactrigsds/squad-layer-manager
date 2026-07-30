@@ -371,7 +371,7 @@ function resolveSquadArg(
 				cause: 'no-match',
 				choices: squadChoices(
 					rawTeamId,
-					CMD.nearestBy(squadInput, squadsOnTeam, (s) => s.squadName),
+					Str.nearestBy(squadInput, squadsOnTeam, (s) => s.squadName, CMD.MAX_CHOICES),
 				),
 			})
 		}
@@ -401,7 +401,7 @@ function playerChoices(players: SM.Player[], typed: string, cause: CMD.NearMiss[
 	const picked =
 		cause === 'ambiguous'
 			? named.filter((p) => Str.normalizeForMatch(p.ids.username!).includes(Str.normalizeForMatch(typed))).slice(0, CMD.MAX_CHOICES)
-			: CMD.nearestBy(typed, named, (p) => p.ids.username!)
+			: Str.nearestBy(typed, named, (p) => p.ids.username!, CMD.MAX_CHOICES)
 	return picked.map((p) => ({ tokens: [p.ids.steam ?? p.ids.eos], label: p.ids.username! }))
 }
 
@@ -585,7 +585,7 @@ async function resolveFlagArg(
 					msg: `No flag matches found for "${typed}"`,
 					typed,
 					cause: 'no-match',
-					choices: flagChoices(CMD.nearestBy(typed, flags, (f) => f.name)),
+					choices: flagChoices(Str.nearestBy(typed, flags, (f) => f.name, CMD.MAX_CHOICES)),
 				})
 			: await h.nearMiss('flag', {
 					msg: `Multiple(${res.count}) flag matches found for "${typed}".`,
@@ -1110,7 +1110,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				msg: `No active timeout matches "${token}"`,
 				typed: token,
 				cause: 'no-match',
-				choices: timeoutChoices(CMD.nearestBy(token, distinct, (t) => t.username ?? '')),
+				choices: timeoutChoices(Str.nearestBy(token, distinct, (t) => t.username ?? '', CMD.MAX_CHOICES)),
 			})
 		}
 		if (matchedPlayerIds.size > 1) {

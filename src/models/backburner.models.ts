@@ -1,4 +1,3 @@
-import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
 import { createId } from '@/lib/id'
@@ -516,7 +515,7 @@ export function resolveRequestTokens(input: {
 			return {
 				code: 'err:ambiguous-token',
 				token,
-				msg: `"${token}" matches ${mapMatches.count} maps. Be more specific`,
+				msg: `"${token}" matches ${mapMatches.count} maps`,
 				suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS),
 			}
 		}
@@ -534,7 +533,7 @@ export function resolveRequestTokens(input: {
 			return {
 				code: 'err:ambiguous-token',
 				token,
-				msg: `"${token}" matches ${filterMatches.count} filters. Be more specific`,
+				msg: `"${token}" matches ${filterMatches.count} filters`,
 				suggestions: filterMatches.matched.slice(0, MAX_SUGGESTIONS),
 			}
 		}
@@ -612,25 +611,20 @@ function unknownToken(
 	components: LC.LayerComponents,
 	filterEntities: { id: string; name: string }[],
 ): { msg: string; suggestions: string[] } {
+	// every way a token can be written, paired with how it is named back: the exact vocabulary (values and their
+	// abbreviations) plus the two things that also match loosely
 	const candidates = [
-		...exact.keys(),
-		...components.maps.map(Str.normalizeForMatch),
-		...filterEntities.map((f) => Str.normalizeForMatch(f.name)),
+		...[...exact].map(([member, target]) => ({ member, suggestion: 'value' in target ? target.value : target.name })),
+		...components.maps.map((map) => ({ member: map, suggestion: map })),
+		...filterEntities.map((f) => ({ member: f.name, suggestion: f.name })),
 	]
-	const sorted = StringComparison.diceCoefficient.sortMatch(Str.normalizeForMatch(token), candidates)
-	// sortMatch ranks worst first, so the closest are the tail, best last
+	// several candidates name the same thing (a map is both its own exact key and a fuzzy candidate), and the same
+	// option offered twice is one of three lines wasted, so ranking runs over more of them than are kept
 	const suggestions: string[] = []
-	for (let i = sorted.length - 1; i >= 0 && suggestions.length < MAX_SUGGESTIONS; i--) {
-		const target = exact.get(sorted[i].member)
-		const suggestion = target
-			? 'value' in target
-				? target.value
-				: target.name
-			: (components.maps.find((m) => Str.normalizeForMatch(m) === sorted[i].member) ??
-				filterEntities.find((f) => Str.normalizeForMatch(f.name) === sorted[i].member)?.name)
-		// several candidates name the same thing (a map is both its own exact key and a fuzzy candidate), and the
-		// same option offered twice is one of three lines wasted
-		if (suggestion && !suggestions.includes(suggestion)) suggestions.push(suggestion)
+	for (const candidate of Str.nearestBy(token, candidates, (c) => c.member, MAX_SUGGESTIONS * 2)) {
+		if (suggestions.includes(candidate.suggestion)) continue
+		suggestions.push(candidate.suggestion)
+		if (suggestions.length === MAX_SUGGESTIONS) break
 	}
 	// the suggestions are offered as choices, so naming the closest one here says it twice
 	return { msg: `Unknown request "${token}"`, suggestions }

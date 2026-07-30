@@ -1,4 +1,3 @@
-import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
 import * as Obj from '@/lib/object-utils'
@@ -617,14 +616,12 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandCon
 		const allTriggerStrings = Obj.objValues(configs)
 			.filter((c) => chatAllowed(c.allowedChats, msg.channelType))
 			.flatMap((c) => c.triggers.map(triggerString))
-		const sortedMatches = StringComparison.diceCoefficient.sortMatch((words[0] ?? '').toLowerCase(), allTriggerStrings)
-		if (sortedMatches.length === 0) {
-			return { code: 'err:unknown-command' as const, msg: `Unknown command "${words[0] ?? ''}"` }
-		}
-		const matched = sortedMatches[sortedMatches.length - 1].member
+		// the one place a "did you mean" is still written into the message: an unknown command has nothing to offer
+		// back, since a prompt can only replace an argument the command it belongs to has already been chosen for
+		const [matched] = Str.nearest(words[0] ?? '', allTriggerStrings, 1)
 		return {
 			code: 'err:unknown-command' as const,
-			msg: `Unknown command "${words[0]}". Did you mean ${matched}?`,
+			msg: matched ? `Unknown command "${words[0]}". Did you mean ${matched}?` : `Unknown command "${words[0] ?? ''}"`,
 		}
 	}
 	const typed = words.slice(1)
@@ -743,36 +740,6 @@ export type NearMiss = { argName: string; typed: string; cause: 'no-match' | 'am
 // usage line.
 export const MAX_CHOICES = 3
 
-// Only there to keep a token that resembles nothing from producing a list. Set low, because the two costs are not
-// symmetric: the choices are ranked, capped at three and named, so a wrong one is a line the caller reads past,
-// while a bar set high costs the whole prompt. A shortening scores its length over the candidate's, which puts
-// "mod" for "moderation" at 0.3 -- anything stricter answers it with nothing at all.
-const MIN_SIMILARITY = 0.25
-
-// How close a typed token is to one candidate. Scored against the candidate's words as well as the whole of it, so
-// a clan tag or a suffix ("[7CAV] Alice_G") doesn't drown out the part the caller was aiming at. Levenshtein rather
-// than the dice coefficient: these strings are often short, where bigram overlap is degenerate.
-function similarity(typed: string, candidate: string): number {
-	const target = Str.normalizeForMatch(typed)
-	if (target === '') return 0
-	const parts = [candidate, ...candidate.split(/[^\p{L}\p{N}]+/u)].map(Str.normalizeForMatch).filter((p) => p !== '')
-	return Math.max(0, ...parts.map((p) => StringComparison.levenshtein.similarity(target, p)))
-}
-
-// the items whose text is closest to what was typed, best first
-export function nearestBy<T>(typed: string, items: readonly T[], text: (item: T) => string, limit = MAX_CHOICES): T[] {
-	return items
-		.map((item) => ({ item, score: similarity(typed, text(item)) }))
-		.filter((scored) => scored.score >= MIN_SIMILARITY)
-		.toSorted((a, b) => b.score - a.score)
-		.slice(0, limit)
-		.map((scored) => scored.item)
-}
-
-export function nearest(typed: string, candidates: readonly string[], limit = MAX_CHOICES): string[] {
-	return nearestBy(typed, candidates, (candidate) => candidate, limit)
-}
-
 // Applies picked choices back over the tokens the caller typed. Right to left, since a choice's token count need
 // not match the window it replaces: a squad typed as one word comes back as "1 3".
 export function spliceArgTokens(tokens: readonly string[], picks: { range: ArgTokenRange; tokens: string[] }[]): string[] {
@@ -809,7 +776,7 @@ function reasonOptionsHint(applicable: AAR.AdminActionReason[]): string {
 // thing to pick, and the keyword that stands for it only has to resolve, not to be the closest.
 function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgChoice[] {
 	const choices: ArgChoice[] = []
-	for (const keyword of nearest(token, LP.keywordStrings(applicable), MAX_CHOICES * 2)) {
+	for (const keyword of Str.nearest(token, LP.keywordStrings(applicable), MAX_CHOICES * 2)) {
 		const reason = LP.findByKeyword(applicable, keyword)
 		if (!reason) continue
 		const label = LP.describePreset(reason)
