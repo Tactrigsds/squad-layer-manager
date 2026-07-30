@@ -72,30 +72,22 @@ Once a goal or feature is complete, run `pnpm run lint:fix` and fix all lint err
 
 Full details in docs/dev_instances.md.
 
-Worktrees live in `~/projects/slm/<name>`, outside the repo. `EnterWorktree` puts them there and installs
-node_modules on the way, via the hooks in `.claude/settings.json`. By hand it is `pnpm worktree new <name>`, which
-provisions the dev instance too.
-
 From a worktree, do not run `pnpm server:dev` or `pnpm client:dev`, and do not use ports 3000/5173. Those belong to
-the main checkout, and an app you reach there is not running your changes. Each worktree gets its own instance, on
-its own ports, with its own database and an emulated squad server:
+the main checkout, and an app you reach there is not running your changes. Each worktree runs its own instance
+instead, with its own database and an emulated squad server:
 
 ```sh
-pnpm dev:init    # once per worktree: claims a port slot, links .env, clones the db. Prints the url.
-pnpm dev         # the app, the client and the emulator. Prints the url again.
-pnpm -s dev:url  # just the url, for reporting
-pnpm dev:slots   # which worktree owns which ports
+pnpm dev:init     # once per worktree: claims a port slot, links .env, clones the db. Prints the url.
+pnpm dev          # the app, the client and the emulator. Prints the url again.
+pnpm -s dev:url   # just the url, for reporting
+pnpm emuctl help  # drive the emulated server: join, chat, end, cycle
 ```
 
 `pnpm dev` is long-lived, so an agent must start it as a tracked background job (`run_in_background`).
 
-That url, `http://localhost:<client port>/?login=<user>`, is the whole instance and the only one to hand anyone.
-Everything else is proxied behind it, and it arrives signed in, since discord oauth is off for dev instances. Wait
-for the port to answer before opening it: a request that lands during boot fails the bypass and bounces into the
-real Discord oauth flow, which looks like the bypass is broken when it is not.
-
-Drive the emulated server with `pnpm emuctl <command>` (`pnpm emuctl help`) rather than trying to reach a real squad
-server. For example `pnpm emuctl join Alice`, `pnpm emuctl chat Alice '!vote 1'`, `pnpm emuctl end 1`.
+`pnpm -s dev:url` prints the one url the instance answers on, and it is the only one to hand anyone. Wait for the
+port to answer before opening it: a request that lands during boot bounces into the real Discord oauth flow, which
+looks like the bypass is broken when it is not.
 
 Never point a worktree at a real squad server or the real battlemetrics org. `dev:init` deliberately scrubs those,
 and re-adding them means an experiment drives production.

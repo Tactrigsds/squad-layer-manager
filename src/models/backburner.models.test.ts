@@ -73,11 +73,14 @@ describe('resolveRequestTokens', () => {
 		expect(res.code).toBe('err:ambiguous-token')
 	})
 
-	it('rejects unknown tokens with a suggestion', () => {
+	it('rejects unknown tokens with suggestions to pick from', () => {
 		const res = resolve(['gorodokk'])
 		expect(res.code).toBe('err:unknown-token')
 		if (res.code !== 'err:unknown-token') throw new Error('unreachable')
-		expect(res.msg).toContain('Did you mean')
+		expect(res.msg).toContain('Unknown request "gorodokk"')
+		expect(res.suggestions[0]).toBe('Gorodok')
+		// a map is both its own exact key and a fuzzy candidate, so it can rank twice
+		expect(new Set(res.suggestions).size).toBe(res.suggestions.length)
 	})
 
 	it('fuzzy-matches filter entity names', () => {

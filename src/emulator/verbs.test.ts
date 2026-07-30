@@ -119,6 +119,43 @@ describe('execute', () => {
 		expect(emu.world.squads).toEqual([])
 	})
 
+	// a squad whose leader left is the other state the app rejects the ListPlayers/ListSquads pair over: it refetches
+	// until it gives up and tears the server instance down
+	it('hands the squad to a remaining member when its leader changes team', async () => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await Verbs.execute(host, 'join', { name: 'Bob' })
+		await Verbs.execute(host, 'set-team', { name: 'Bob', teamId: 1 })
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Able' })
+		const able = emu.world.squads[0]
+		await Verbs.execute(host, 'join-squad', { name: 'Bob', squad: 'Able' })
+
+		await Verbs.execute(host, 'set-team', { name: 'Alice', teamId: 2 })
+		expect(emu.world.squads).toEqual([able])
+		expect(emu.world.squadMembers(able).map((p) => p.name)).toEqual(['Bob'])
+		expect(host.players.get('Bob')!.isLeader).toBe(true)
+		expect(host.players.get('Alice')!.isLeader).toBe(false)
+	})
+
+	// every way out of a squad goes through the same drop, so none of them may leave it leaderless
+	it.each([
+		['leave-squad', (name: string) => Verbs.execute(host, 'leave-squad', { name })],
+		['leave', (name: string) => Verbs.execute(host, 'leave', { name })],
+		['AdminRemovePlayerFromSquad', (name: string) => Verbs.execute(host, 'rcon', { command: `AdminRemovePlayerFromSquad "${name}"` })],
+		['AdminForceTeamChange', (name: string) => Verbs.execute(host, 'rcon', { command: `AdminForceTeamChange "${name}"` })],
+	])('promotes a new leader when the leader leaves via %s', async (_verb, run) => {
+		await Verbs.execute(host, 'join', { name: 'Alice' })
+		await Verbs.execute(host, 'join', { name: 'Bob' })
+		await Verbs.execute(host, 'set-team', { name: 'Bob', teamId: 1 })
+		await Verbs.execute(host, 'squad', { name: 'Alice', squadName: 'Able' })
+		await Verbs.execute(host, 'join-squad', { name: 'Bob', squad: 'Able' })
+
+		await run('Alice')
+		const able = emu.world.squads[0]
+		expect(able).toBeDefined()
+		const leaders = emu.world.squadMembers(able).filter((p) => p.isLeader)
+		expect(leaders.map((p) => p.name)).toEqual(['Bob'])
+	})
+
 	it('joins a squad by id or by name, and leaves it again', async () => {
 		await Verbs.execute(host, 'join', { name: 'Alice' })
 		await Verbs.execute(host, 'join', { name: 'Bob' })
