@@ -7,6 +7,7 @@
 // changes. Instead each ArgDef kind documents and samples itself once (ARG_KIND_HELP, sampleTokens), and a command's
 // examples are those samples poured into its own signature.
 
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
@@ -213,7 +214,9 @@ export function buildExamples(
 // with it rather than being listed separately: they are the same command, reached a different way.
 export type HelpListing =
 	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; hint?: TString }
-	| { code: 'err:unknown-section'; msg: TString }
+	// `choices` are the sections close enough to what was typed to offer back; the message names the rest only when
+	// there are none, so a caller is never read a list twice
+	| { code: 'err:unknown-section'; msg: TString; choices: CMD.ArgChoice[] }
 
 const sectionOptions = () => CMD.sectionTokens().join(', ')
 
@@ -240,9 +243,14 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 
 	const section = CMD.resolveSectionToken(sectionToken)
 	if (!section) {
+		const choices = Str.nearest(sectionToken, CMD.sectionTokens(), CMD.MAX_CHOICES).map((token) => ({ tokens: [token], label: token }))
 		return {
 			code: 'err:unknown-section',
-			msg: t('Unknown section "{sectionToken}". Try one of: {options}', { sectionToken, options: sectionOptions() }),
+			msg:
+				choices.length > 0
+					? t('Unknown section "{sectionToken}"', { sectionToken })
+					: t('Unknown section "{sectionToken}". Try one of: {options}', { sectionToken, options: sectionOptions() }),
+			choices,
 		}
 	}
 	return {

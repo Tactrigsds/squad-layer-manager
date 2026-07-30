@@ -43,13 +43,3 @@ describe('addLabelKeywordUniquenessIssues', () => {
 		expect(schema([preset('Seeding')]).success).toBe(false)
 	})
 })
-
-describe('didYouMean', () => {
-	it('returns the closest candidate', () => {
-		expect(LP.didYouMean('sed', LP.keywordStrings([preset('Seeding', ['seed']), preset('Live', ['live'])]))).toBe('seed')
-	})
-
-	it('returns undefined with no candidates', () => {
-		expect(LP.didYouMean('x', [])).toBeUndefined()
-	})
-})

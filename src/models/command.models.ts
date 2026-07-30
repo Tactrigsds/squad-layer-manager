@@ -1,4 +1,3 @@
-import StringComparison from 'string-comparison'
 import { z } from 'zod'
 
 import * as Obj from '@/lib/object-utils'
@@ -617,14 +616,12 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandCon
 		const allTriggerStrings = Obj.objValues(configs)
 			.filter((c) => chatAllowed(c.allowedChats, msg.channelType))
 			.flatMap((c) => c.triggers.map(triggerString))
-		const sortedMatches = StringComparison.diceCoefficient.sortMatch((words[0] ?? '').toLowerCase(), allTriggerStrings)
-		if (sortedMatches.length === 0) {
-			return { code: 'err:unknown-command' as const, msg: `Unknown command "${words[0] ?? ''}"` }
-		}
-		const matched = sortedMatches[sortedMatches.length - 1].member
+		// the one place a "did you mean" is still written into the message: an unknown command has nothing to offer
+		// back, since a prompt can only replace an argument the command it belongs to has already been chosen for
+		const [matched] = Str.nearest(words[0] ?? '', allTriggerStrings, 1)
 		return {
 			code: 'err:unknown-command' as const,
-			msg: `Unknown command "${words[0]}". Did you mean ${matched}?`,
+			msg: matched ? `Unknown command "${words[0]}". Did you mean ${matched}?` : `Unknown command "${words[0] ?? ''}"`,
 		}
 	}
 	const typed = words.slice(1)
@@ -743,35 +740,6 @@ export type NearMiss = { argName: string; typed: string; cause: 'no-match' | 'am
 // usage line.
 export const MAX_CHOICES = 3
 
-// Below this the closest match is noise, and offering a wrong player next to a right one invites picking it. Set at
-// half, which is exactly where a one-character slip in a two-character reason keyword ("tq" for "tk") lands: the
-// coarsest case that still has to survive.
-const MIN_SIMILARITY = 0.5
-
-// How close a typed token is to one candidate. Scored against the candidate's words as well as the whole of it, so
-// a clan tag or a suffix ("[7CAV] Alice_G") doesn't drown out the part the caller was aiming at. Levenshtein rather
-// than the dice coefficient, matching LP.didYouMean: these strings are often short, where bigram overlap is degenerate.
-function similarity(typed: string, candidate: string): number {
-	const target = Str.normalizeForMatch(typed)
-	if (target === '') return 0
-	const parts = [candidate, ...candidate.split(/[^\p{L}\p{N}]+/u)].map(Str.normalizeForMatch).filter((p) => p !== '')
-	return Math.max(0, ...parts.map((p) => StringComparison.levenshtein.similarity(target, p)))
-}
-
-// the items whose text is closest to what was typed, best first
-export function nearestBy<T>(typed: string, items: readonly T[], text: (item: T) => string, limit = MAX_CHOICES): T[] {
-	return items
-		.map((item) => ({ item, score: similarity(typed, text(item)) }))
-		.filter((scored) => scored.score >= MIN_SIMILARITY)
-		.toSorted((a, b) => b.score - a.score)
-		.slice(0, limit)
-		.map((scored) => scored.item)
-}
-
-export function nearest(typed: string, candidates: readonly string[], limit = MAX_CHOICES): string[] {
-	return nearestBy(typed, candidates, (candidate) => candidate, limit)
-}
-
 // Applies picked choices back over the tokens the caller typed. Right to left, since a choice's token count need
 // not match the window it replaces: a squad typed as one word comes back as "1 3".
 export function spliceArgTokens(tokens: readonly string[], picks: { range: ArgTokenRange; tokens: string[] }[]): string[] {
@@ -808,7 +776,7 @@ function reasonOptionsHint(applicable: AAR.AdminActionReason[]): string {
 // thing to pick, and the keyword that stands for it only has to resolve, not to be the closest.
 function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgChoice[] {
 	const choices: ArgChoice[] = []
-	for (const keyword of nearest(token, LP.keywordStrings(applicable), MAX_CHOICES * 2)) {
+	for (const keyword of Str.nearest(token, LP.keywordStrings(applicable), MAX_CHOICES * 2)) {
 		const reason = LP.findByKeyword(applicable, keyword)
 		if (!reason) continue
 		const label = LP.describePreset(reason)
@@ -820,7 +788,7 @@ function reasonChoices(applicable: AAR.AdminActionReason[], token: string): ArgC
 }
 
 // resolves a single reason token against ALL reasons for the action, distinguishing "no such reason" from
-// "exists but isn't set up for this action", and listing the valid options in either case
+// "exists but isn't set up for this action"
 export function resolveReasonToken(
 	allReasons: AAR.AdminActionReason[],
 	action: AAR.AdminActionType,
@@ -829,19 +797,14 @@ export function resolveReasonToken(
 	const res = AAR.resolveReason(allReasons, action, token)
 	if (res.code === 'ok') return { code: 'ok', reason: res.reason }
 	const applicable = AAR.reasonsForAction(allReasons, action)
-	if (res.code === 'err:reason-not-applicable') {
-		return {
-			code: 'err:unknown-preset',
-			msg: `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}. ${reasonOptionsHint(applicable)}`,
-			choices: reasonChoices(applicable, token),
-		}
-	}
-	const suggestion = LP.didYouMean(token, LP.keywordStrings(applicable))
-	return {
-		code: 'err:unknown-preset',
-		msg: `Unknown reason "${token}".${suggestion ? ` Did you mean ${suggestion}?` : ''} ${reasonOptionsHint(applicable)}`,
-		choices: reasonChoices(applicable, token),
-	}
+	const choices = reasonChoices(applicable, token)
+	const what =
+		res.code === 'err:reason-not-applicable'
+			? `Reason "${token}" isn't set up for ${AAR.ADMIN_ACTIONS[action].displayName}.`
+			: `Unknown reason "${token}".`
+	// The choices are the suggestion. Listing every configured reason under them repeats most of the same words in a
+	// warn that holds a few lines, so the hint is what stands in for a list nobody can pick from.
+	return { code: 'err:unknown-preset', msg: choices.length > 0 ? what : `${what} ${reasonOptionsHint(applicable)}`, choices }
 }
 
 // snapshots a chat-resolved reason arg into an AppliedReason (see AAR.AppliedReason)
