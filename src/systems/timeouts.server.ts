@@ -162,7 +162,7 @@ export async function kickWithTimeout(
 			reasonTemplate: opts.reason?.template ?? null,
 			reasonVars: opts.reason?.vars ?? null,
 		})
-	const message = SM_Msgs.notifyKicked(opts.reason && AAR.renderAppliedReason(opts.reason)).text()
+	const message = ctx.tr.text(SM_Msgs.notifyKicked(opts.reason && AAR.renderAppliedReason(opts.reason)))
 	await SquadServer.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServer.notifyAdminsOfWebAction(ctx, appEvent)
 	update$.next()
@@ -209,7 +209,7 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 		const rendered =
 			applied &&
 			AAR.renderAppliedReason(applied, { extraVars: { duration: remainingMs > 0 ? ZodUtils.formatDurationApprox(remainingMs) : '' } })
-		const message = SM_Msgs.notifyKicked(rendered ?? undefined).text()
+		const message = ctx.tr.text(SM_Msgs.notifyKicked(rendered ?? undefined))
 		await SquadServer.kickPlayerAction(
 			ctx,
 			timeout.playerId,

@@ -26,6 +26,7 @@ import * as LQY from '@/models/layer-queries.models'
 import * as V from '@/models/vote.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
+import { tr } from '@/systems/messages.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import EditLayerDialog from './edit-layer-dialog'
@@ -241,7 +242,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 																<AlertTitle>{error}</AlertTitle>
 															</Alert>
 														) : (
-															<span className="text-muted-foreground">{V_Msgs.noLayerSelected().text()}</span>
+															<span className="text-muted-foreground">{tr.text(V_Msgs.noLayerSelected())}</span>
 														)}
 													</div>
 												</div>
@@ -251,7 +252,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 														variant="ghost"
 														onClick={() => setEditingChoiceIndex(index)}
 														disabled={generating}
-														title={V_Msgs.editChoice().text()}
+														title={tr.text(V_Msgs.editChoice())}
 													>
 														<Icons.Pencil />
 													</Button>
@@ -260,7 +261,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 														variant="ghost"
 														onClick={() => handleRegen(index)}
 														disabled={generating}
-														title={choice.layerId ? V_Msgs.regenerateChoice().text() : V_Msgs.generateChoice().text()}
+														title={choice.layerId ? tr.text(V_Msgs.regenerateChoice()) : tr.text(V_Msgs.generateChoice())}
 													>
 														<Icons.RefreshCw
 															className={regeneratingIndex === 'all' || regeneratingIndex === index ? 'animate-spin' : ''}
@@ -271,7 +272,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 														variant="ghost"
 														onClick={() => GenVoteFrame.Actions.removeChoice(genVoteStores, index)}
 														disabled={generating || choices.length <= 2}
-														title={V_Msgs.removeChoice().text()}
+														title={tr.text(V_Msgs.removeChoice())}
 													>
 														<Icons.X />
 													</Button>
@@ -297,11 +298,11 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								variant="outline"
 								onClick={() => GenVoteFrame.Actions.addChoice(genVoteStores)}
 								disabled={generating}
-								title={V_Msgs.addChoiceHint().text()}
+								title={tr.text(V_Msgs.addChoiceHint())}
 								className="w-full"
 							>
 								<Icons.Plus />
-								{V_Msgs.addChoice().text()}
+								{tr.text(V_Msgs.addChoice())}
 							</Button>
 						</div>
 						<div className="w-80 shrink-0 flex flex-col justify-between">
@@ -316,8 +317,8 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							<div className="self-end flex gap-1">
 								<TabsList
 									options={[
-										{ label: V_Msgs.playNext().text(), value: 'next' },
-										{ label: V_Msgs.playAfter().text(), value: 'after' },
+										{ label: tr.text(V_Msgs.playNext()), value: 'next' },
+										{ label: tr.text(V_Msgs.playAfter()), value: 'after' },
 									]}
 									active={cursor?.type === 'start' ? 'next' : 'after'}
 									setActive={() => {
@@ -326,7 +327,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 									}}
 								/>
 								<Button onClick={handleSubmit} disabled={!canSubmit}>
-									{V_Msgs.submit().text()}
+									{tr.text(V_Msgs.submit())}
 								</Button>
 							</div>
 						</div>

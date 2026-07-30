@@ -228,6 +228,8 @@ export const PERMISSION_DEFINITION = {
 	}),
 	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
 	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
+
+	...definePermission('ping-admins', { description: 'Request the attention of admins in the chat', scope: 'server' }),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[keyof typeof PERMISSION_DEFINITION]
 export type PermissionType = KnownPermission['type']

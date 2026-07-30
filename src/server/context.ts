@@ -10,6 +10,7 @@ import * as CS from '@/models/context-shared.ts'
 import * as LQ from '@/models/layer-queue.models'
 import * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SQS from '@/models/squad-server.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -101,6 +102,10 @@ export type ManagedServerCleanup = CS.Ctx & {
 	cleanup: Cleanup.Tasks
 }
 export const ManagedServerCleanupDef = CD.defCtx<ManagedServerCleanup>()(['cleanup'], { name: 'managedServerCleanup' })
+
+// def here rather than beside Msgs.Ctx: messages.models is a type-only leaf
+export const TranslatorDef = CD.defCtx<Msgs.Ctx>()(['tr'], { name: 'translator' })
+
 export type ManagedServer = CS.Ctx &
 	SQS.Ctx &
 	V.Ctx &
@@ -109,11 +114,24 @@ export type ManagedServer = CS.Ctx &
 	MEC.Ctx &
 	TSW.Ctx &
 	SETTINGS.Ctx &
+	// resolves against the server's own locale setting, read live
+	Msgs.Ctx &
 	ManagedServerCleanup &
 	// aborts when the managed server is destroyed or the process shuts down
 	CS.AbortSignal
 
 export const ManagedServerDef = CD.mergeDefs(
-	[SQS.CtxDef, V.CtxDef, LQ.CtxDef, MH.CtxDef, MEC.CtxDef, TSW.CtxDef, SETTINGS.CtxDef, ManagedServerCleanupDef, CS.AbortSignalDef],
+	[
+		SQS.CtxDef,
+		V.CtxDef,
+		LQ.CtxDef,
+		MH.CtxDef,
+		MEC.CtxDef,
+		TSW.CtxDef,
+		SETTINGS.CtxDef,
+		TranslatorDef,
+		ManagedServerCleanupDef,
+		CS.AbortSignalDef,
+	],
 	{ name: 'managedServer' },
 )

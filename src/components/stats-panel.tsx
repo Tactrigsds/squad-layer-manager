@@ -20,6 +20,7 @@ import * as RPC from '@/orpc.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
@@ -55,12 +56,12 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 			<CardHeader className="flex flex-row items-center pb-3">
 				<CardTitle className="flex items-center gap-2">
 					<Icons.BarChart2 className="h-5 w-5" />
-					{MH_Msgs.statsTitle().text()}
+					{tr.text(MH_Msgs.statsTitle())}
 				</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{!hasData ? (
-					<div className="text-muted-foreground text-sm text-center py-4">{MH_Msgs.noChartData().text()}</div>
+					<div className="text-muted-foreground text-sm text-center py-4">{tr.text(MH_Msgs.noChartData())}</div>
 				) : (
 					<div className="w-full flex flex-col gap-2">
 						<CombatStats stores={props.stores} historicalEvents={historicalEvents} />
@@ -94,16 +95,16 @@ function CombatStats(props: { stores: SquadServerFrame.KeyProp; historicalEvents
 	return (
 		<div className="flex flex-wrap gap-x-6 gap-y-1 text-xs px-1">
 			<RatioGroup
-				label={MH_Msgs.kdRatio().text()}
+				label={tr.text(MH_Msgs.kdRatio())}
 				teams={teams}
 				ratios={[stats.team1.kd, stats.team2.kd]}
-				describe={(ratio) => MH_Msgs.kdBreakdown(ratio.numerator, ratio.denominator).text()}
+				describe={(ratio) => tr.text(MH_Msgs.kdBreakdown(ratio.numerator, ratio.denominator))}
 			/>
 			<RatioGroup
-				label={MH_Msgs.woundRatio().text()}
+				label={tr.text(MH_Msgs.woundRatio())}
 				teams={teams}
 				ratios={[stats.team1.wounds, stats.team2.wounds]}
-				describe={(ratio) => MH_Msgs.woundBreakdown(ratio.numerator, ratio.denominator).text()}
+				describe={(ratio) => tr.text(MH_Msgs.woundBreakdown(ratio.numerator, ratio.denominator))}
 			/>
 		</div>
 	)
@@ -140,16 +141,16 @@ function BreakdownHelp() {
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<button type="button" className="ml-auto text-muted-foreground hover:text-foreground" aria-label={SM_Msgs.help().text()}>
+				<button type="button" className="ml-auto text-muted-foreground hover:text-foreground" aria-label={tr.text(SM_Msgs.help())}>
 					<Icons.CircleHelp className="h-3.5 w-3.5" />
 				</button>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-xs space-y-1.5">
-				<p>{MH_Msgs.breakdownDescription().text()}</p>
+				<p>{tr.text(MH_Msgs.breakdownDescription())}</p>
 				<ul className="text-muted-foreground">
-					<li>{MH_Msgs.breakdownFilterHint().text()}</li>
-					<li>{MH_Msgs.breakdownSelectTeamHint().text()}</li>
-					<li>{MH_Msgs.breakdownSelectBothHint().text()}</li>
+					<li>{tr.text(MH_Msgs.breakdownFilterHint())}</li>
+					<li>{tr.text(MH_Msgs.breakdownSelectTeamHint())}</li>
+					<li>{tr.text(MH_Msgs.breakdownSelectBothHint())}</li>
 				</ul>
 			</TooltipContent>
 		</Tooltip>
@@ -236,7 +237,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 	return (
 		<div>
 			<div className="flex items-center gap-1 px-1 mb-0.5">
-				<span className="text-xs text-muted-foreground">{MH_Msgs.teamBreakdowns().text()}</span>
+				<span className="text-xs text-muted-foreground">{tr.text(MH_Msgs.teamBreakdowns())}</span>
 				{groupings.ids.length > 1 && (
 					<div className="flex gap-0.5 ml-2">
 						{groupings.ids.map((groupingId) => (
@@ -261,7 +262,7 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp }) {
 			<StackedBarChart
 				rows={breakdown.rows}
 				series={breakdown.series}
-				ariaLabel={MH_Msgs.teamBreakdowns().text()}
+				ariaLabel={tr.text(MH_Msgs.teamBreakdowns())}
 				renderTooltip={renderTooltip}
 				renderLegendTooltip={renderLegendTooltip}
 				onSegmentClick={onSegmentClick}

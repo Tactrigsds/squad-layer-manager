@@ -12,6 +12,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LQYClient from '@/systems/layer-queries.client'
+import { tr } from '@/systems/messages.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
 import ShortLayerName from './short-layer-name.tsx'
@@ -75,7 +76,7 @@ export default function LayerDisplay(props: {
 				</TooltipTrigger>
 				<TooltipContent>
 					<p>
-						{L_Msgs.unparsedLayer().text()} (<b>{DH.displayLayer(layer)}</b>)
+						{tr.text(L_Msgs.unparsedLayer())} (<b>{DH.displayLayer(layer)}</b>)
 					</p>
 				</TooltipContent>
 			</Tooltip>,
@@ -87,7 +88,7 @@ export default function LayerDisplay(props: {
 					<Icons.ShieldOff className="text-red-500" />
 				</TooltipTrigger>
 				<TooltipContent>
-					<b>{L_Msgs.unknownLayer().text()}</b>
+					<b>{tr.text(L_Msgs.unknownLayer())}</b>
 				</TooltipContent>
 			</Tooltip>,
 		)

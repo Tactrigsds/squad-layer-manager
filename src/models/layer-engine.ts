@@ -125,7 +125,7 @@ function lowerNode(
 				path: filterPath,
 				filterId: node.filterId,
 				type: 'recursive-filter',
-				msg: F_Msgs.recursiveFilter(node.filterId).text(),
+				msg: F_Msgs.recursiveFilter(node.filterId),
 			})
 			return undefined
 		}
@@ -135,7 +135,7 @@ function lowerNode(
 				path: filterPath,
 				filterId: node.filterId,
 				type: 'unknown-filter',
-				msg: F_Msgs.unknownFilter(node.filterId).text(),
+				msg: F_Msgs.unknownFilter(node.filterId),
 			})
 			return undefined
 		}
@@ -166,7 +166,7 @@ function lowerNode(
 		return semantics.negated ? not(base) : base
 	}
 
-	errors.push({ type: 'invalid-node', path, msg: F_Msgs.unhandledNodeType().text() })
+	errors.push({ type: 'invalid-node', path, msg: F_Msgs.unhandledNodeType() })
 	return undefined
 }
 
@@ -201,7 +201,7 @@ function teamSpecIr(ctx: LowerCtx, spec: F.MatchupTeamSpec, team: 1 | 2, path: s
 function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
 	const subject = node.args[0] as F.Arg | undefined
 	if (subject?.type !== 'column' && subject?.type !== 'team-column') {
-		errors.push({ type: 'invalid-node', path, msg: F_Msgs.firstOperandMustBeColumn().text() })
+		errors.push({ type: 'invalid-node', path, msg: F_Msgs.firstOperandMustBeColumn() })
 		return undefined
 	}
 	// a comparison referencing a team-generic column expands over both teams, combined per the column's quantifier
@@ -240,7 +240,7 @@ function lowerCompForTeam(
 				errors.push({
 					type: 'invalid-node',
 					path,
-					msg: F_Msgs.columnsNotComparable(subject, name).text(),
+					msg: F_Msgs.columnsNotComparable(subject, name),
 				})
 				return undefined
 			}
@@ -265,7 +265,7 @@ function lowerCompForTeam(
 			if (!other) return undefined
 			if ('col' in other) return { op: node.type === 'lt' ? 'lt_col' : 'gt_col', col, other: other.col }
 			if (other.val === null) {
-				errors.push({ type: 'invalid-node', path, msg: F_Msgs.orderedComparisonNull().text() })
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.orderedComparisonNull() })
 				return { op: 'false' }
 			}
 			return { op: node.type === 'lt' ? 'lt_val' : 'gt_val', col, val: other.val }
@@ -275,7 +275,7 @@ function lowerCompForTeam(
 			const hi = operand(node.args[2])
 			if (!lo || !hi) return undefined
 			if (!('val' in lo) || !('val' in hi) || lo.val === null || hi.val === null) {
-				errors.push({ type: 'invalid-node', path, msg: F_Msgs.rangeComparisonNull().text() })
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.rangeComparisonNull() })
 				return { op: 'false' }
 			}
 			// reversed constant bounds are forgiven, matching the SQL backend; prod filters rely on it
@@ -322,7 +322,7 @@ function valueListIr(
 				errors.push({
 					type: 'invalid-node',
 					path,
-					msg: F_Msgs.columnsNotComparable(column, item.column).text(),
+					msg: F_Msgs.columnsNotComparable(column, item.column),
 				})
 				continue
 			}
@@ -345,19 +345,19 @@ function resolveColumn(
 ): string | undefined {
 	if (arg.type === 'team-column') {
 		if (team === undefined) {
-			errors.push({ type: 'invalid-node', path, msg: F_Msgs.unresolvedTeamColumn(arg.column).text() })
+			errors.push({ type: 'invalid-node', path, msg: F_Msgs.unresolvedTeamColumn(arg.column) })
 			return undefined
 		}
 		return F.resolveTeamColumn(arg.column, team)
 	}
 	if (arg.type === 'column') return arg.column
-	errors.push({ type: 'invalid-node', path, msg: F_Msgs.needsColumnOperand().text() })
+	errors.push({ type: 'invalid-node', path, msg: F_Msgs.needsColumnOperand() })
 	return undefined
 }
 
 function columnIndex(ctx: LowerCtx, column: string, path: string[], errors: F.NodeValidationError[]): number | undefined {
 	if (!LC.getColumnDef(column, ctx.effectiveColsConfig)) {
-		errors.push({ type: 'unmapped-column', column, path, msg: F_Msgs.unmappedColumn(column).text() })
+		errors.push({ type: 'unmapped-column', column, path, msg: F_Msgs.unmappedColumn(column) })
 		return undefined
 	}
 	return ctx.colIndex(column)
@@ -387,7 +387,7 @@ function encodeValue(
 ): number | undefined {
 	const encoded = LC.dbValue(column, value, ctx)
 	if (LC.isUnmappedDbValue(encoded) || encoded === null || encoded === undefined) {
-		errors.push({ type: 'unmapped-value', path, column, value, msg: F_Msgs.unmappedValue(column, value).text() })
+		errors.push({ type: 'unmapped-value', path, column, value, msg: F_Msgs.unmappedValue(column, value) })
 		return undefined
 	}
 	if (typeof encoded === 'boolean') return encoded ? 1 : 0

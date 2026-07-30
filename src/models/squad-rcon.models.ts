@@ -3,6 +3,7 @@ import * as CD from '@/lib/ctx-def'
 import type RconCore from '@/lib/rcon/core-rcon'
 import type * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared'
+import type * as Msgs from '@/models/messages.models'
 import type * as SM from '@/models/squad.models'
 
 export type Ctx = CS.Ctx & { squadRcon: Ctx.Payload } & Ctx.Rcon & CS.ServerId
@@ -23,9 +24,11 @@ export namespace Ctx {
 	}
 }
 
-export type WarnOptionsBase = { msg: string | string[] } | string | string[]
-// returning undefined indicates warning should be skipped
-export type WarnOptions = WarnOptionsBase | ((ctx: SM.Ctx) => WarnOptionsBase | undefined)
+export type { WarnOptions, WarnOptionsBase } from '@/models/messages.models'
+
+// What the warn utilities deliver: a Msg they translate themselves, or already-resolved strings from
+// callsites not yet converted to the message vocabulary.
+export type WarnInput = Msgs.Variants.Warnable | Msgs.WarnOptions<string>
 
 // after the namespace, not beside the type: a namespace compiles to an IIFE, so Ctx.RconDef does not
 // exist until that block has run. Types do not care about order, defs are values and do.

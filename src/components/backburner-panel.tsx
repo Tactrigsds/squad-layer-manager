@@ -33,6 +33,7 @@ import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -187,17 +188,17 @@ export default function BackburnerPanel(props: StoresProp) {
 			<Separator />
 			<CardHeader className="flex flex-row items-center justify-between space-y-0 py-3">
 				<CardTitle className="flex items-center gap-2 text-base">
-					{BB_Msgs.heading(items.length).text()}
-					{modified && <Badge variant="outline">{BB_Msgs.unsavedBadge().text()}</Badge>}
+					{tr.text(BB_Msgs.heading(items.length))}
+					{modified && <Badge variant="outline">{tr.text(BB_Msgs.unsavedBadge())}</Badge>}
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Icons.Info className="h-3.5 w-3.5 text-muted-foreground" />
 						</TooltipTrigger>
 						<TooltipContent className="max-w-72">
-							<p>{BB_Msgs.panelHelp().text()}</p>
+							<p>{tr.text(BB_Msgs.panelHelp())}</p>
 							<br />
 							<p>
-								{BB_Msgs.commandExampleLabel().text()}{' '}
+								{tr.text(BB_Msgs.commandExampleLabel())}{' '}
 								<CopyableCommand cmdString={commandExample?.command} chatCommand="ChatToAdmin" />
 							</p>
 						</TooltipContent>
@@ -219,11 +220,11 @@ export default function BackburnerPanel(props: StoresProp) {
 											<Icons.Undo2 className="h-3.5 w-3.5" />
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent>{BB_Msgs.revertToSaved().text()}</TooltipContent>
+									<TooltipContent>{tr.text(BB_Msgs.revertToSaved())}</TooltipContent>
 								</Tooltip>
 								<Button size="sm" variant="secondary" onClick={() => setEditorState({ open: true, itemId: null })}>
 									<Icons.ListPlus className="mr-1 h-4 w-4" />
-									{BB_Msgs.requestLayer().text()}
+									{tr.text(BB_Msgs.requestLayer())}
 								</Button>
 								<ButtonGroup>
 									<Tooltip>
@@ -237,7 +238,7 @@ export default function BackburnerPanel(props: StoresProp) {
 												<Icons.Sword className="h-3.5 w-3.5" />
 											</Button>
 										</TooltipTrigger>
-										<TooltipContent>{BB_Msgs.toggleForceSaveHint().text()}</TooltipContent>
+										<TooltipContent>{tr.text(BB_Msgs.toggleForceSaveHint())}</TooltipContent>
 									</Tooltip>
 									<Button size="sm" variant={forceSave ? 'destructive' : 'default'} onClick={handleFinishOrSave}>
 										{saveButtonLabel}
@@ -245,15 +246,15 @@ export default function BackburnerPanel(props: StoresProp) {
 								</ButtonGroup>
 							</>
 						) : (
-							<Button size="sm" variant="outline" aria-label={BB_Msgs.editRequests().text()} onClick={() => setIsEditing(true)}>
+							<Button size="sm" variant="outline" aria-label={tr.text(BB_Msgs.editRequests())} onClick={() => setIsEditing(true)}>
 								<Icons.Edit className="mr-1 h-3.5 w-3.5" />
-								{BB_Msgs.startEditing().text()}
+								{tr.text(BB_Msgs.startEditing())}
 							</Button>
 						))}
 				</span>
 			</CardHeader>
 			<CardContent className="pb-3">
-				{items.length === 0 && <span className="text-sm text-muted-foreground">{BB_Msgs.noRequests().text()}</span>}
+				{items.length === 0 && <span className="text-sm text-muted-foreground">{tr.text(BB_Msgs.noRequests())}</span>}
 				<ul>
 					{items.map((item, index) => (
 						<React.Fragment key={item.itemId}>
@@ -309,7 +310,7 @@ function QueueDropDialogContent(props: StoresProp & { drop: QueueDrop; onCommit:
 
 	return (
 		<SelectLayersDialog
-			title={BB_Msgs.addRequestedLayerTitle().text()}
+			title={tr.text(BB_Msgs.addRequestedLayerTitle())}
 			open={true}
 			onOpenChange={(open) => !open && props.onClose()}
 			stores={{ selectLayers: frameKey, squadServer: props.stores.squadServer }}
@@ -480,13 +481,13 @@ function BackburnerRow(
 									size="icon"
 									variant="ghost"
 									className="h-7 w-7"
-									aria-label={BB_Msgs.cloneRequest().text()}
+									aria-label={tr.text(BB_Msgs.cloneRequest())}
 									onClick={() => LayerQueuePrt.Actions.addBackburnerItem(queueKey, { filter: item.filter })}
 								>
 									<Icons.Copy className="h-3.5 w-3.5" />
 								</Button>
 							</TooltipTrigger>
-							<TooltipContent>{BB_Msgs.cloneRequestHint().text()}</TooltipContent>
+							<TooltipContent>{tr.text(BB_Msgs.cloneRequestHint())}</TooltipContent>
 						</Tooltip>
 					)}
 					{canEdit && (
@@ -495,7 +496,7 @@ function BackburnerRow(
 								size="icon"
 								variant="ghost"
 								className="h-7 w-7"
-								aria-label={BB_Msgs.editRequest().text()}
+								aria-label={tr.text(BB_Msgs.editRequest())}
 								onClick={props.onEdit}
 							>
 								<Icons.Pencil className="h-3.5 w-3.5" />
@@ -504,7 +505,7 @@ function BackburnerRow(
 								size="icon"
 								variant="ghost"
 								className="h-7 w-7"
-								aria-label={BB_Msgs.removeRequest().text()}
+								aria-label={tr.text(BB_Msgs.removeRequest())}
 								onClick={() => LayerQueuePrt.Actions.removeBackburnerItems(queueKey, [props.itemId])}
 							>
 								<Icons.X className="h-3.5 w-3.5" />
@@ -520,8 +521,8 @@ function BackburnerRow(
 // who asked for the layer. A request made in chat by a player with no linked discord account can only be
 // named by their steam id, so that falls back to text rather than an avatar.
 function RequestOwner(props: { source: BB.BackburnerItem['source'] }) {
-	if (props.source.discordId !== undefined) return <UserAvatar userId={props.source.discordId} label={BB_Msgs.requestedBy().text()} />
-	const name = props.source.steamId ? `steam:${props.source.steamId}` : BB_Msgs.unknownRequester().text()
+	if (props.source.discordId !== undefined) return <UserAvatar userId={props.source.discordId} label={tr.text(BB_Msgs.requestedBy())} />
+	const name = props.source.steamId ? `steam:${props.source.steamId}` : tr.text(BB_Msgs.unknownRequester())
 	return (
 		<span className="max-w-32 truncate text-xs text-muted-foreground" title={name}>
 			{name}
@@ -579,7 +580,7 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 	function save() {
 		const filter = RequestFrame.Sel.templateFilter(Zus.getState(frameKey))
 		if (filter.type === 'and' && filter.children.length === 0) {
-			toast.warning(...BB_Msgs.emptyRequest().toast())
+			toast.warning(...tr.toast(BB_Msgs.emptyRequest()))
 			return
 		}
 		const queueKey: LayerQueuePrt.KeyProp = { queue: props.stores.squadServer! }
@@ -591,15 +592,15 @@ function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; o
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle>{props.itemId ? BB_Msgs.editRequestTitle().text() : BB_Msgs.newRequestTitle().text()}</DialogTitle>
+				<DialogTitle>{props.itemId ? tr.text(BB_Msgs.editRequestTitle()) : tr.text(BB_Msgs.newRequestTitle())}</DialogTitle>
 			</DialogHeader>
 			<RequestEditor stores={{ backburnerRequest: frameKey, squadServer: props.stores.squadServer }} />
 			<DialogFooter className="items-center">
 				<MatchingCount stores={{ backburnerRequest: frameKey }} />
 				<Button variant="outline" onClick={props.onClose}>
-					{BB_Msgs.cancel().text()}
+					{tr.text(BB_Msgs.cancel())}
 				</Button>
-				<Button onClick={save}>{props.itemId ? BB_Msgs.applyRequest().text() : BB_Msgs.addRequest().text()}</Button>
+				<Button onClick={save}>{props.itemId ? tr.text(BB_Msgs.applyRequest()) : tr.text(BB_Msgs.addRequest())}</Button>
 			</DialogFooter>
 		</>
 	)
@@ -647,8 +648,8 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 					onValueChange={(value) => RequestFrame.Actions.setActiveTab(props.stores, value as RequestFrame.IdentityTab)}
 				>
 					<TabsList className="grid w-full grid-cols-2">
-						<TabsTrigger value="components">{BB_Msgs.componentsTab().text()}</TabsTrigger>
-						<TabsTrigger value="layer">{BB_Msgs.specificLayerTab().text()}</TabsTrigger>
+						<TabsTrigger value="components">{tr.text(BB_Msgs.componentsTab())}</TabsTrigger>
+						<TabsTrigger value="layer">{tr.text(BB_Msgs.specificLayerTab())}</TabsTrigger>
 					</TabsList>
 					<TabsContent value="components">
 						<div className={menuGridClass}>
@@ -664,10 +665,10 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 					</TabsContent>
 				</Tabs>
 				<div className="flex items-start gap-2">
-					<span className="w-20 shrink-0 pt-2 text-sm text-muted-foreground">{BB_Msgs.matchupLabel().text()}</span>
+					<span className="w-20 shrink-0 pt-2 text-sm text-muted-foreground">{tr.text(BB_Msgs.matchupLabel())}</span>
 					<MatchupConfig node={matchup} actions={matchupActions} allowedTeamValues={allowedTeamValues} showTypeSelect={false} />
 				</div>
-				{extras.length > 0 && <p className="text-xs text-muted-foreground">{BB_Msgs.alsoConstrainedBy(extras.join(', ')).text()}</p>}
+				{extras.length > 0 && <p className="text-xs text-muted-foreground">{tr.text(BB_Msgs.alsoConstrainedBy(extras.join(', ')))}</p>}
 			</div>
 			<RequestFiltersColumn stores={props.stores} />
 		</div>
@@ -722,7 +723,7 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 
 	return (
 		<div className="w-64 shrink-0 space-y-2 border-l pl-4">
-			<span className="text-sm font-medium">{BB_Msgs.filtersHeading().text()}</span>
+			<span className="text-sm font-medium">{tr.text(BB_Msgs.filtersHeading())}</span>
 			{(poolFilterId !== null || selectableFilterIds.length > 0) && (
 				<div className="flex flex-col items-start gap-1">
 					<PoolFilterCheckbox stores={{ squadServer: props.stores.squadServer, appliedFilters: key }} />
@@ -734,13 +735,13 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 			<ListEditor
 				items={extraIds}
 				itemKey={(filterId) => filterId}
-				addLabel={BB_Msgs.addFilter().text()}
+				addLabel={tr.text(BB_Msgs.addFilter())}
 				addDisabled={exhausted}
 				onRemove={removeExtra}
 				renderItem={(filterId) => (
 					<>
 						<ComboBox
-							title={BB_Msgs.filterPicker().text()}
+							title={tr.text(BB_Msgs.filterPicker())}
 							className="w-full min-w-0"
 							value={filterId}
 							options={optionsFor(filterId)}
@@ -755,9 +756,9 @@ function RequestFiltersColumn(props: { stores: RequestFrame.KeyProp & Partial<Sq
 				renderAddControl={({ ref, done }) => (
 					<ComboBox
 						ref={ref}
-						title={BB_Msgs.filterPicker().text()}
+						title={tr.text(BB_Msgs.filterPicker())}
 						className="w-full min-w-0"
-						placeholder={BB_Msgs.selectFilter().text()}
+						placeholder={tr.text(BB_Msgs.selectFilter())}
 						value={undefined}
 						options={optionsFor()}
 						onSelect={(next) => {
@@ -791,7 +792,7 @@ function RequestMenuField(props: { field: string; stores: RequestFrame.KeyProp }
 				lockOnSingleOption
 				highlight={F.editableCompHasValue(comp)}
 				onSetAllValuesAllowed={() => Zus.getState(key).resetAllConstraints()}
-				onSetAllValuesAllowedLabel={BB_Msgs.clearOtherConstraints().text()}
+				onSetAllValuesAllowedLabel={tr.text(BB_Msgs.clearOtherConstraints())}
 				setNode={(update) => RequestFrame.Actions.setMenuComparison(props.stores, props.field, update)}
 			/>
 			<Button

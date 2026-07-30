@@ -12,6 +12,7 @@ import type * as LL from '@/models/layer-list.models'
 import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as ConfigClient from '@/systems/config.client'
+import { tr } from '@/systems/messages.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -125,7 +126,7 @@ function ResetSessionButton({ clientId }: { clientId: string }) {
 			onClick={() => UPClient.Actions.resetClient(clientId)}
 			className="mt-1.5 w-full rounded border border-border px-2 py-0.5 text-xs font-medium hover:bg-accent"
 		>
-			{UP_Msgs.resetSession().text()}
+			{tr.text(UP_Msgs.resetSession())}
 		</button>
 	)
 }
@@ -222,7 +223,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	React.useEffect(() => {
 		if (!props.event$) return
 		const sub = props.event$.subscribe((event) => {
-			showEventText(event.userId, UP_Msgs.presenceEventText[event.action])
+			showEventText(event.userId, tr.text(UP_Msgs.presenceEventText[event.action]))
 		})
 		return () => sub.unsubscribe()
 	}, [props.event$, showEventText])
@@ -423,12 +424,12 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											/>
 											<div className="flex flex-col leading-none gap-0.5">
 												<span className="text-xs font-medium">
-													{UP_Msgs.displayNameWithYou(user.displayName, loggedInUser?.discordId === user.discordId).text()}
+													{tr.text(UP_Msgs.displayNameWithYou(user.displayName, loggedInUser?.discordId === user.discordId))}
 												</span>
 												{activityText && <span className="text-xs opacity-70">{activityText}</span>}
 												{presence.away && presence.lastSeen && (
 													<span className="text-xs opacity-70">
-														{UP_Msgs.lastSeen().text()}{' '}
+														{tr.text(UP_Msgs.lastSeen())}{' '}
 														{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 													</span>
 												)}
@@ -483,7 +484,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 																</div>
 																{presence.away && presence.lastSeen && (
 																	<div className="text-xs mt-1">
-																		{UP_Msgs.lastSeen().text()}{' '}
+																		{tr.text(UP_Msgs.lastSeen())}{' '}
 																		{DateFns.formatDistanceToNow(new Date(presence.lastSeen), {
 																			addSuffix: true,
 																		})}
@@ -542,7 +543,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 											</div>
 											{presence.away && presence.lastSeen && (
 												<div className="text-xs mt-1">
-													{UP_Msgs.lastSeen().text()}{' '}
+													{tr.text(UP_Msgs.lastSeen())}{' '}
 													{DateFns.formatDistanceToNow(new Date(presence.lastSeen), { addSuffix: true })}
 												</div>
 											)}

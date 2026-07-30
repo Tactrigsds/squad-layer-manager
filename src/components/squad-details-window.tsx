@@ -29,6 +29,7 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
+import { tr } from '@/systems/messages.client'
 
 import { ServerEvent } from './server-event'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
@@ -133,7 +134,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const teamId = (knownSquad?.teamId ?? squad?.teamId) as 1 | 2 | undefined
 	const ingameSquadId = knownSquad?.squadId ?? squad?.ingameSquadId
 	const isDefaultName = !knownSquad || knownSquad.squadName === `Squad ${ingameSquadId}`
-	const displayName = knownSquad?.squadName ?? (ingameSquadId != null ? `Squad ${ingameSquadId}` : SM_Msgs.squadDetailsTitle().text())
+	const displayName = knownSquad?.squadName ?? (ingameSquadId != null ? `Squad ${ingameSquadId}` : tr.text(SM_Msgs.squadDetailsTitle()))
 
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
@@ -145,7 +146,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					{teamId != null && (
 						<span className="text-muted-foreground font-normal ml-1">
 							({currentMatch && <MatchTeamDisplay matchId={currentMatch.historyEntryId} teamId={teamId} stores={stores} />}
-							{liveSquad?.locked && <Icons.Lock className="h-3 w-3 inline ml-1" aria-label={SM_Msgs.squadLocked().text()} />})
+							{liveSquad?.locked && <Icons.Lock className="h-3 w-3 inline ml-1" aria-label={tr.text(SM_Msgs.squadLocked())} />})
 						</span>
 					)}
 				</DraggableWindowTitle>
@@ -155,7 +156,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 							<button
 								type="button"
 								className="inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-								title={SM_Msgs.squadActions().text()}
+								title={tr.text(SM_Msgs.squadActions())}
 							>
 								<Icons.Ellipsis className="h-3.5 w-3.5" />
 							</button>
@@ -172,7 +173,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 			<div className="px-3 py-2 space-y-1 text-xs border-b border-border/50">
 				{creatorId && (
 					<div className="flex items-center gap-1">
-						<span className="text-muted-foreground shrink-0">{SM_Msgs.squadCreator().text()}</span>
+						<span className="text-muted-foreground shrink-0">{tr.text(SM_Msgs.squadCreator())}</span>
 						{creatorPlayer ? (
 							<PlayerDisplay player={creatorPlayer} matchId={currentMatch?.historyEntryId ?? 0} stores={stores} />
 						) : (
@@ -183,11 +184,11 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 				{teamId != null && ingameSquadId != null && (
 					<div className="flex items-center gap-2 text-muted-foreground">
 						<span>
-							{SM_Msgs.squadTeam().text()} {teamId}
+							{tr.text(SM_Msgs.squadTeam())} {teamId}
 						</span>
 						<span>·</span>
 						<span>
-							{SM_Msgs.squadInGameId().text()} {ingameSquadId}
+							{tr.text(SM_Msgs.squadInGameId())} {ingameSquadId}
 						</span>
 					</div>
 				)}
@@ -198,14 +199,14 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 			<div className="flex min-h-0 flex-1">
 				<div className="flex-1 px-3 py-0.5 min-w-0 flex flex-col">
 					<div className="flex items-center justify-between gap-2 py-0.5">
-						<h3 className="text-xs font-medium">{SM_Msgs.squadEvents().text()}</h3>
+						<h3 className="text-xs font-medium">{tr.text(SM_Msgs.squadEvents())}</h3>
 						<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
 							<Checkbox
 								className="h-3.5 w-3.5"
 								checked={squadMessagesOnly}
 								onCheckedChange={(checked) => setSquadMessagesOnly(checked === true)}
 							/>
-							{SM_Msgs.hideTeamChat().text()}
+							{tr.text(SM_Msgs.hideTeamChat())}
 						</label>
 					</div>
 					<div className="relative flex-1 min-h-0">
@@ -227,10 +228,10 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 								variant="secondary"
 								style={{ zIndex: aboveChatZIndex }}
 								className="absolute bottom-0 left-0 right-0 w-full h-6 shadow-lg flex items-center justify-center bg-opacity-20! rounded-none backdrop-blur-sm"
-								title={CHAT_Msgs.scrollToBottom().text()}
+								title={tr.text(CHAT_Msgs.scrollToBottom())}
 							>
 								<Icons.ChevronDown className="h-3 w-3" />
-								<span className="text-xs">{CHAT_Msgs.scrollToBottom().text()}</span>
+								<span className="text-xs">{tr.text(CHAT_Msgs.scrollToBottom())}</span>
 							</Button>
 						)}
 					</div>
@@ -239,7 +240,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 				<Separator orientation="vertical" />
 
 				<div className="w-36 shrink-0 px-2 py-0.5 flex flex-col min-h-0">
-					<h3 className="text-xs font-medium py-0.5">{SM_Msgs.squadPlayersHeading(currentPlayers.length).text()}</h3>
+					<h3 className="text-xs font-medium py-0.5">{tr.text(SM_Msgs.squadPlayersHeading(currentPlayers.length))}</h3>
 					<div className="flex flex-col gap-1 overflow-y-auto min-h-0">
 						{[...currentPlayers]
 							.sort((a, b) => Number(b.isLeader) - Number(a.isLeader))
@@ -253,7 +254,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 								/>
 							))}
 						{currentPlayers.length === 0 && (
-							<span className="text-muted-foreground text-xs italic">{SM_Msgs.noPlayersInSquad().text()}</span>
+							<span className="text-muted-foreground text-xs italic">{tr.text(SM_Msgs.noPlayersInSquad())}</span>
 						)}
 					</div>
 				</div>
@@ -265,7 +266,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 						playerIds={currentPlayers.map((p) => SM.PlayerIds.getPlayerId(p.ids))}
 						taggedSquad={{ squadId: liveSquad.squadId, squadName: liveSquad.squadName, teamId: liveSquad.teamId }}
 						focusTarget={{ kind: 'squad', uniqueSquadId }}
-						placeholder={SM_Msgs.warnSquadPlaceholder(displayName).text()}
+						placeholder={tr.text(SM_Msgs.warnSquadPlaceholder(displayName))}
 						stores={stores}
 					/>
 				</div>

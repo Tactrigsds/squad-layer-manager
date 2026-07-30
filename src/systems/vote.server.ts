@@ -19,6 +19,7 @@ import * as CS from '@/models/context-shared'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list'
@@ -231,7 +232,7 @@ export const startVote = Instr.spanOp(
 		mutexes: (ctx) => ctx.vote.mtx,
 	},
 	async (
-		ctx: C.Db & SQS.Ctx & SR.Ctx.Rcon & V.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+		ctx: C.Db & SQS.Ctx & SR.Ctx.Rcon & V.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 		opts: Omit<V.StartVoteInput, 'serverId'> & { initiator: USR.GuiOrChatUserId | 'autostart' },
 	) => {
 		const statusRes = await ctx.squadRcon.layersStatus.get(ctx, { ttl: 10_000 })
@@ -240,24 +241,24 @@ export const startVote = Instr.spanOp(
 		}
 		const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 		if (currentMatch.status === 'post-game') {
-			return { code: 'err:vote-not-allowed' as const, msg: V_Msgs.start.noVoteInPostGame().warn(SETTINGS.locale(ctx)) }
+			return { code: 'err:vote-not-allowed' as const, msg: ctx.tr.text(V_Msgs.start.noVoteInPostGame()) }
 		}
 
 		const duration = opts.duration ?? ctx.serverSettings.settings.vote.voteDuration
 		const layerQueue = LayerQueue.getSavedQueue(ctx)
 		const itemId = opts.itemId ?? layerQueue[0]?.itemId
 		if (!itemId) {
-			return { code: 'err:item-not-found' as const, msg: V_Msgs.start.itemNotFound().warn(SETTINGS.locale(ctx)) }
+			return { code: 'err:item-not-found' as const, msg: ctx.tr.text(V_Msgs.start.itemNotFound()) }
 		}
 
 		const initiateVoteRes = V.canInitiateVote(itemId, layerQueue, opts.voterType ?? 'public', ctx.vote.state ?? undefined)
 
 		const msgMap = {
-			'err:item-not-found': V_Msgs.start.itemNotFound().warn(SETTINGS.locale(ctx)),
-			'err:invalid-item-type': V_Msgs.start.invalidItemType().warn(SETTINGS.locale(ctx)),
-			'err:editing-in-progress': V_Msgs.start.editingInProgress().warn(SETTINGS.locale(ctx)),
-			'err:public-vote-not-first': V_Msgs.start.publicVoteNotFirst().warn(SETTINGS.locale(ctx)),
-			'err:vote-in-progress': V_Msgs.start.voteAlreadyInProgress().warn(SETTINGS.locale(ctx)),
+			'err:item-not-found': ctx.tr.text(V_Msgs.start.itemNotFound()),
+			'err:invalid-item-type': ctx.tr.text(V_Msgs.start.invalidItemType()),
+			'err:editing-in-progress': ctx.tr.text(V_Msgs.start.editingInProgress()),
+			'err:public-vote-not-first': ctx.tr.text(V_Msgs.start.publicVoteNotFirst()),
+			'err:vote-in-progress': ctx.tr.text(V_Msgs.start.voteAlreadyInProgress()),
 			ok: null,
 		} satisfies Record<(typeof initiateVoteRes)['code'], string | null>
 
@@ -303,12 +304,14 @@ export const startVote = Instr.spanOp(
 		await broadcastVoteUpdate(
 			ctx,
 			updatedVoteState,
-			V_Msgs.started(
-				ctx.vote.state,
-				item,
-				duration,
-				item.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
-			).broadcast(),
+			ctx.tr.broadcast(
+				V_Msgs.started(
+					ctx.vote.state,
+					item,
+					duration,
+					item.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
+				),
+			),
 		)
 
 		await SquadServer.emitAppEvent(
@@ -335,7 +338,10 @@ export const handleVote = Instr.spanOp(
 		module,
 		attrs: (_, msg) => ({ messageId: msg.message, playerUsername: msg.playerIds.username }),
 	},
-	(ctx: C.Db & SQS.Ctx & V.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & CS.Deferred, msg: SM.RconEvents.ChatMessage) => {
+	(
+		ctx: C.Db & SQS.Ctx & V.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & CS.Deferred & Msgs.Ctx,
+		msg: SM.RconEvents.ChatMessage,
+	) => {
 		//
 		const choiceIdx = parseInt(msg.message.trim())
 		const voteState = ctx.vote.state
@@ -344,16 +350,16 @@ export const handleVote = Instr.spanOp(
 			return
 		}
 		if (voteState.voterType === 'internal' && msg.channelType !== 'ChatAdmin') {
-			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.wrongChat('AdminChat').warn(SETTINGS.locale(ctx))))
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.wrongChat('AdminChat')))
 			return
 		}
 		if (choiceIdx <= 0 || choiceIdx > voteState.choiceIds.length) {
 			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Invalid choice')
-			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.invalidChoice().warn(SETTINGS.locale(ctx))))
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.invalidChoice()))
 			return
 		}
 		if (voteState.code !== 'in-progress') {
-			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.noVoteInProgress().warn(SETTINGS.locale(ctx))))
+			CS.defer(ctx, SquadRcon.warn(ctx, msg.playerIds, V_Msgs.noVoteInProgress()))
 			Instr.setSpanStatus(Otel.SpanStatusCode.ERROR, 'Vote not in progress')
 			return
 		}
@@ -382,9 +388,7 @@ export const handleVote = Instr.spanOp(
 				await SquadRcon.warn(
 					ctx,
 					msg.playerIds,
-					V_Msgs.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps).warn(
-						SETTINGS.locale(ctx),
-					),
+					V_Msgs.voteCast(choiceLayerId, voteItem?.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps),
 				)
 			})(),
 		)
@@ -401,7 +405,7 @@ export const abortVote = Instr.spanOp(
 		mutexes: (ctx) => ctx.vote.mtx,
 	},
 	async (
-		ctx: C.Db & SR.Ctx.Rcon & SQS.Ctx & MH.Ctx & V.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal,
+		ctx: C.Db & SR.Ctx.Rcon & SQS.Ctx & MH.Ctx & V.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 		opts: { aborter: USR.GuiOrChatUserId },
 	) => {
 		const voteState = ctx.vote.state
@@ -426,7 +430,7 @@ export const abortVote = Instr.spanOp(
 				event: 'abort-vote',
 			},
 		}
-		await broadcastVoteUpdate(ctx, newVoteState, V_Msgs.aborted().broadcast(SETTINGS.locale(ctx)))
+		await broadcastVoteUpdate(ctx, newVoteState, ctx.tr.broadcast(V_Msgs.aborted()))
 		ctx.vote.state = null
 		addReleaseTask(() => ctx.vote.update$.next(update))
 		ctx.vote.voteEndTask?.unsubscribe()
@@ -511,13 +515,15 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 					if (!SETTINGS.remindersEnabled(serverState.settings)) return
 					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 					if (!voteItem || !LL.isVoteItem(voteItem)) return
-					const msg = V_Msgs.voteReminder(
-						ctx.vote.state,
-						voteItem,
-						timeLeft,
-						false,
-						voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
-					).broadcast()
+					const msg = ctx.tr.broadcast(
+						V_Msgs.voteReminder(
+							ctx.vote.state,
+							voteItem,
+							timeLeft,
+							false,
+							voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
+						),
+					)
 					await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 				}),
 			)
@@ -536,13 +542,15 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 						if (!SETTINGS.remindersEnabled(serverState.settings)) return
 						const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 						if (!voteItem || !LL.isVoteItem(voteItem)) return
-						const msg = V_Msgs.voteReminder(
-							ctx.vote.state,
-							voteItem,
-							ctx.serverSettings.settings.vote.finalVoteReminder,
-							true,
-							voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
-						).broadcast()
+						const msg = ctx.tr.broadcast(
+							V_Msgs.voteReminder(
+								ctx.vote.state,
+								voteItem,
+								ctx.serverSettings.settings.vote.finalVoteReminder,
+								true,
+								voteItem.voteConfig?.displayProps ?? ctx.serverSettings.settings.vote.voteDisplayProps,
+							),
+						)
 						await broadcastVoteUpdate(ctx, ctx.vote.state, msg, { onlyNotifyNonVotingAdmins: true })
 					}),
 				)
@@ -576,7 +584,7 @@ export const endVote = Instr.spanOp(
 		}),
 	},
 	async (
-		ctx: C.Db & SQS.Ctx & V.Ctx & LQ.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal,
+		ctx: C.Db & SQS.Ctx & V.Ctx & LQ.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 		opts: { reason: 'vote-timeout' } | { reason: 'ended-early'; endedBy: USR.GuiOrChatUserId },
 	) => {
 		if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') {
@@ -633,11 +641,13 @@ export const endVote = Instr.spanOp(
 			await broadcastVoteUpdate(
 				ctx,
 				endingVoteState,
-				V_Msgs.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early').broadcast(),
+				ctx.tr.broadcast(
+					V_Msgs.winnerSelected(tally!, listItem, endingVoteState.winnerId, displayProps, opts.reason === 'ended-early'),
+				),
 			)
 		}
 		if (endingVoteState.code === 'ended:insufficient-votes') {
-			await broadcastVoteUpdate(ctx, endingVoteState, V_Msgs.insufficientVotes(listItem, displayProps).broadcast(SETTINGS.locale(ctx)))
+			await broadcastVoteUpdate(ctx, endingVoteState, ctx.tr.broadcast(V_Msgs.insufficientVotes(listItem, displayProps)))
 		}
 		await SquadServer.emitAppEvent(
 			ctx,
@@ -663,7 +673,7 @@ export const endVote = Instr.spanOp(
 )
 
 async function broadcastVoteUpdate(
-	ctx: SQS.Ctx & V.Ctx & SR.Ctx.Rcon & CS.AbortSignal,
+	ctx: SQS.Ctx & V.Ctx & SR.Ctx.Rcon & CS.AbortSignal & Msgs.Ctx,
 	voteState: V.VoteState | V.EndingVoteState,
 	msg: string,
 	opts?: { onlyNotifyNonVotingAdmins?: boolean },

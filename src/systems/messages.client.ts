@@ -1,5 +1,6 @@
 import * as Zus from '@/lib/zustand'
 import * as I18n from '@/messages/i18n'
+import type * as Msgs from '@/models/messages.models'
 
 // The language this browser reads the app in. "auto" follows the browser's own preference list, which is the
 // default and what almost everyone should stay on; a named locale is for reading the app in something other than
@@ -49,6 +50,15 @@ export function setup() {
 export function useLocale() {
 	return Zus.useStore(LocaleStore)
 }
+
+// The viewer's translator, and what every client call site uses. A browser has exactly one viewer, so unlike the
+// server there is nothing here for a translator to be ambiguous about: components, action handlers and store
+// selectors all resolve against the same locale. It re-reads that locale per call, so it is safe to hold from
+// before setup(), and changing language reloads the page (see setChoice), so nothing has to invalidate on it.
+//
+// A message whose pattern uses a custom tag needs the renderers for it: `tr.withTags({ user: ... })`, at module
+// scope where they are static.
+export const tr: Msgs.Translator = I18n.ambient
 
 // Each language named in itself, which is what a reader who cannot read the current one needs.
 export function endonym(locale: string) {

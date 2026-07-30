@@ -3,6 +3,7 @@ import { ContextMenuItem } from '@/components/ui/context-menu'
 import { toast } from '@/lib/toast'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as L from '@/models/layer'
+import { tr } from '@/systems/messages.client'
 
 import LayerInfoDialog from './layer-info'
 
@@ -15,7 +16,7 @@ function copyHistoryEntryId(selectedHistoryEntryIds: number[]) {
 		text += id
 	}
 	void navigator.clipboard.writeText(text)
-	toast(...L_Msgs.copiedHistoryEntryIds(selectedHistoryEntryIds.length).toast())
+	toast(...tr.toast(L_Msgs.copiedHistoryEntryIds(selectedHistoryEntryIds.length)))
 }
 
 function copyLayerId(selectedLayerIds: L.LayerId[]) {
@@ -25,7 +26,7 @@ function copyLayerId(selectedLayerIds: L.LayerId[]) {
 		text += id
 	}
 	void navigator.clipboard.writeText(text)
-	toast(...L_Msgs.copiedLayerIds().toast())
+	toast(...tr.toast(L_Msgs.copiedLayerIds()))
 }
 
 export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; selectedHistoryEntryIds?: number[] }) {
@@ -33,16 +34,16 @@ export function LayerContextMenuItems(props: { selectedLayerIds: L.LayerId[]; se
 		<>
 			{props.selectedLayerIds.length === 1 && L.isKnownLayer(props.selectedLayerIds[0]) && (
 				<LayerInfoDialog layerId={props.selectedLayerIds[0]}>
-					<ContextMenuItem>{L_Msgs.showLayerInfo().text()}</ContextMenuItem>
+					<ContextMenuItem>{tr.text(L_Msgs.showLayerInfo())}</ContextMenuItem>
 				</LayerInfoDialog>
 			)}
 			<ContextMenuItem onClick={() => copyAdminSetNextLayerCommand(props.selectedLayerIds)}>
-				{L_Msgs.copySetNextCommand().text()}
+				{tr.text(L_Msgs.copySetNextCommand())}
 			</ContextMenuItem>
-			<ContextMenuItem onClick={() => copyLayerId(props.selectedLayerIds)}>{L_Msgs.copyLayerId().text()}</ContextMenuItem>
+			<ContextMenuItem onClick={() => copyLayerId(props.selectedLayerIds)}>{tr.text(L_Msgs.copyLayerId())}</ContextMenuItem>
 			{props.selectedHistoryEntryIds && (
 				<ContextMenuItem onClick={() => copyHistoryEntryId(props.selectedHistoryEntryIds!)}>
-					{L_Msgs.copyHistoryEntryId().text()}
+					{tr.text(L_Msgs.copyHistoryEntryId())}
 				</ContextMenuItem>
 			)}
 		</>

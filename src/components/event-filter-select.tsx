@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as CHAT from '@/models/chat.models'
+import { tr } from '@/systems/messages.client'
 
 export default function EventFilterSelect(props: {
 	value: CHAT.SecondaryFilterState
@@ -32,7 +33,7 @@ export default function EventFilterSelect(props: {
 			<DropdownMenuTrigger asChild>
 				<Button variant={props?.variant ?? 'outline'} size="sm" className="h-8 gap-2">
 					<Icons.Filter className="h-4 w-4" />
-					<span className="text-xs">{labels[props.value]}</span>
+					<span className="text-xs">{tr.text(labels[props.value])}</span>
 					<Icons.ChevronDown className="h-3 w-3 ml-1" />
 				</Button>
 			</DropdownMenuTrigger>
@@ -40,7 +41,7 @@ export default function EventFilterSelect(props: {
 				<DropdownMenuRadioGroup value={props.value} onValueChange={props.onValueChange as (value: string) => void}>
 					{options.map((option) => (
 						<DropdownMenuRadioItem key={option} value={option}>
-							{labels[option]}
+							{tr.text(labels[option])}
 						</DropdownMenuRadioItem>
 					))}
 				</DropdownMenuRadioGroup>
@@ -52,7 +53,7 @@ export default function EventFilterSelect(props: {
 							onSelect={(e) => e.preventDefault()}
 							onCheckedChange={props.onSelectedOnlyChange}
 						>
-							{CHAT_Msgs.selectedOnly().text()}
+							{tr.text(CHAT_Msgs.selectedOnly())}
 						</DropdownMenuCheckboxItem>
 					</>
 				)}

@@ -5,12 +5,13 @@ import { enableMapSet } from 'immer'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 
+import * as Catalogues from '@/messages/catalogues'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
-import * as LocaleClient from '@/systems/locale.client'
+import * as MessagesClient from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeSys from '@/systems/theme.client'
@@ -28,8 +29,10 @@ enableMapSet()
 await LayerDataClient.setup()
 ;(function setupClientSystems() {
 	console.debug('running system initialization')
+	// catalogues first: the locale store negotiates against what is registered
+	Catalogues.register()
 	// one viewer per tab, so the locale is ambient; this reads their stored choice and falls back to the browser
-	LocaleClient.setup()
+	MessagesClient.setup()
 	ThemeSys.setup()
 	ConfigClient.setup()
 	SquadServerClient.setup()

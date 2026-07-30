@@ -39,6 +39,7 @@ import ShortLayerName from './short-layer-name.tsx'
 void import('@/components/pool-config-window')
 
 import { assertNever } from '@/lib/type-guards.ts'
+import { tr } from '@/systems/messages.client'
 
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLink } from './filter-entity-select.tsx'
@@ -84,9 +85,9 @@ function ValidationWarningsDisplay(props: {
 			{repeatWarnings.length > 0 && (
 				<Alert variant="repeat-violation" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
-					<AlertTitle>{LL_Msgs.repeatsDetected().text()}</AlertTitle>
+					<AlertTitle>{tr.text(LL_Msgs.repeatsDetected())}</AlertTitle>
 					<AlertDescription>
-						{LL_Msgs.repeatsBlurb().text()}
+						{tr.text(LL_Msgs.repeatsBlurb())}
 						<div className="flex flex-col gap-1">
 							{repeatWarnings.map((warning) => {
 								const { item, index, parity, descriptors } = warning
@@ -131,9 +132,9 @@ function ValidationWarningsDisplay(props: {
 			{filterWarnings.size > 0 && (
 				<Alert variant="warning" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
-					<AlertTitle>{LL_Msgs.filterWarnings().text()}</AlertTitle>
+					<AlertTitle>{tr.text(LL_Msgs.filterWarnings())}</AlertTitle>
 					<AlertDescription>
-						{LL_Msgs.filterWarningsBlurb().text()}
+						{tr.text(LL_Msgs.filterWarningsBlurb())}
 						<div className="flex flex-col gap-1">
 							{[...filterWarnings.values()].map((warnings) => {
 								const { item, index, parity } = warnings[0]
@@ -265,7 +266,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>
-						<p>{LL_Msgs.clearQueue().text()}</p>
+						<p>{tr.text(LL_Msgs.clearQueue())}</p>
 					</TooltipContent>
 				</Tooltip>
 				<StartActivityInteraction
@@ -283,7 +284,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					disabled={!isEditing}
 				>
 					<Icons.ListPlus />
-					<span>{LL_Msgs.addLayers().text()}</span>
+					<span>{tr.text(LL_Msgs.addLayers())}</span>
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="genVote"
@@ -300,7 +301,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					disabled={!isEditing}
 				>
 					<Icons.Vote />
-					{LL_Msgs.genVote().text()}
+					{tr.text(LL_Msgs.genVote())}
 				</StartActivityInteraction>
 				<StartActivityInteraction
 					loaderName="pasteRotation"
@@ -313,7 +314,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					disabled={!isEditing}
 				>
 					<Icons.FileText />
-					<span>{LL_Msgs.pasteRotationTitle().text()}</span>
+					<span>{tr.text(LL_Msgs.pasteRotationTitle())}</span>
 				</StartActivityInteraction>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -328,14 +329,14 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>
-						<p>{LL_Msgs.reset().text()}</p>
+						<p>{tr.text(LL_Msgs.reset())}</p>
 					</TooltipContent>
 				</Tooltip>
 				{/*<Separator orientation="vertical" />*/}
 				<div className="grid">
 					<div className="col-start-2 row-start-1 flex items-center gap-2 invisible group-data-[status=saving]:visible">
 						<Icons.LoaderCircle className="animate-spin h-4 w-4" />
-						<span className="text-sm">{LL_Msgs.saving().text()}</span>
+						<span className="text-sm">{tr.text(LL_Msgs.saving())}</span>
 					</div>
 					<PermissionDeniedTooltip denied={startEditingDenied}>
 						<Button
@@ -345,7 +346,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 							onClick={() => setEditing(true)}
 						>
 							<Icons.Edit />
-							<span>{LL_Msgs.startEditing().text()}</span>
+							<span>{tr.text(LL_Msgs.startEditing())}</span>
 						</Button>
 					</PermissionDeniedTooltip>
 					{(() => {
@@ -357,7 +358,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 											size="icon"
 											variant={forceSave ? 'destructive' : 'secondary'}
 											// icon-only, so it needs a name of its own: the tooltip is not one
-											aria-label={LL_Msgs.toggleForceSave().text()}
+											aria-label={tr.text(LL_Msgs.toggleForceSave())}
 											aria-pressed={forceSave}
 											onClick={() => setForceSave(!forceSave)}
 										>
@@ -365,7 +366,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>
-										<p>{LL_Msgs.toggleForceSaveHint().text()}</p>
+										<p>{tr.text(LL_Msgs.toggleForceSaveHint())}</p>
 									</TooltipContent>
 								</Tooltip>
 								<Tooltip>
@@ -404,7 +405,12 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 						return <div className="col-start-2 row-start-1 invisible group-data-[status=editing]:visible">{saveButtonGroup}</div>
 					})()}
 				</div>
-				<Button size="icon" variant="ghost" title={LL_Msgs.poolConfiguration().text()} onClick={(e) => openPoolConfig(e.currentTarget)}>
+				<Button
+					size="icon"
+					variant="ghost"
+					title={tr.text(LL_Msgs.poolConfiguration())}
+					onClick={(e) => openPoolConfig(e.currentTarget)}
+				>
 					<Icons.Settings />
 				</Button>
 			</div>
@@ -441,7 +447,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
 						<span className="flex items-center space-x-1">
-							<CardTitle>{LL_Msgs.upNext().text()}</CardTitle>
+							<CardTitle>{tr.text(LL_Msgs.upNext())}</CardTitle>
 							{isModified && (
 								<CardDescription
 									data-limitreached={queueLength >= (maxQueueSize ?? Infinity)}
@@ -499,17 +505,17 @@ function DisabledReason(props: { reason: SETTINGS.SlmUpdatesDisabled }) {
 	const user = UsersClient.useResolvedUser(by?.type === 'slm-user' ? by.userId : undefined)
 	if (props.reason.type === 'ingame-vote') {
 		// never state the deduction as fact: SLM saw the next layer go missing, not the vote itself
-		return props.reason.inferred ? <>{LL_Msgs.disabledByInferredVote().text()}</> : <>{LL_Msgs.disabledByIngameVote().text()}</>
+		return props.reason.inferred ? <>{tr.text(LL_Msgs.disabledByInferredVote())}</> : <>{tr.text(LL_Msgs.disabledByIngameVote())}</>
 	}
 	switch (by?.type) {
 		case 'slm-user':
-			return <span>{user?.displayName ?? LL_Msgs.disabledByUnnamedUser().text()}</span>
+			return <span>{user?.displayName ?? tr.text(LL_Msgs.disabledByUnnamedUser())}</span>
 		case 'ingame-user':
-			return <>{LL_Msgs.disabledByIngameAdmin().text()}</>
+			return <>{tr.text(LL_Msgs.disabledByIngameAdmin())}</>
 		case 'system':
-			return <>{LL_Msgs.disabledBySlm().text()}</>
+			return <>{tr.text(LL_Msgs.disabledBySlm())}</>
 		case undefined:
-			return <>{LL_Msgs.disabledByUnrecorded().text()}</>
+			return <>{tr.text(LL_Msgs.disabledByUnrecorded())}</>
 		default:
 			assertNever(by)
 	}
@@ -524,10 +530,10 @@ export function IngameVoteAlert(props: { stores: SquadServerFrame.KeyProp }) {
 
 	return (
 		<Alert variant="warning">
-			<AlertTitle>{LL_Msgs.inGameVoteRunning().text()}</AlertTitle>
+			<AlertTitle>{tr.text(LL_Msgs.inGameVoteRunning())}</AlertTitle>
 			<AlertDescription>
-				{LL_Msgs.inGameVoteBlurb().text()}
-				{ingameVote.choices.length > 0 && <> {LL_Msgs.currentlyVotingBetween(ingameVote.choices.join(', ')).text()}</>}
+				{tr.text(LL_Msgs.inGameVoteBlurb())}
+				{ingameVote.choices.length > 0 && <> {tr.text(LL_Msgs.currentlyVotingBetween(ingameVote.choices.join(', ')))}</>}
 			</AlertDescription>
 		</Alert>
 	)
@@ -546,23 +552,23 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 
 	return (
 		<Alert variant="destructive">
-			<AlertTitle>{LL_Msgs.slmUpdatesDisabled().text()}</AlertTitle>
+			<AlertTitle>{tr.text(LL_Msgs.slmUpdatesDisabled())}</AlertTitle>
 			<AlertDescription>
-				{LL_Msgs.slmUpdatesDisabledBy().text()} <DisabledReason reason={updatesDisabled} />.{' '}
+				{tr.text(LL_Msgs.slmUpdatesDisabledBy())} <DisabledReason reason={updatesDisabled} />.{' '}
 				{/* during a vote the server's next layer is whatever the vote last wrote, so reporting it as the next layer
 				    would be stating something that is still being decided */}
 				{nextLayer && updatesDisabled.type !== 'ingame-vote' && (
 					<>
-						{LL_Msgs.currentNextLayerIs().text()} <ShortLayerName layerId={nextLayer.id} />.
+						{tr.text(LL_Msgs.currentNextLayerIs())} <ShortLayerName layerId={nextLayer.id} />.
 					</>
 				)}{' '}
 				<br />{' '}
 				<PermissionDeniedTooltip denied={enableUpdatesDenied} triggerClassName="mr-1 inline-block">
 					<Button disabled={!!enableUpdatesDenied} variant="secondary" onClick={() => enableUpdates()}>
-						{LL_Msgs.clickHere().text()}
+						{tr.text(LL_Msgs.clickHere())}
 					</Button>
 				</PermissionDeniedTooltip>
-				{LL_Msgs.enableUpdatesCta(updatesDisabled.type === 'ingame-vote').text()}
+				{tr.text(LL_Msgs.enableUpdatesCta(updatesDisabled.type === 'ingame-vote'))}
 			</AlertDescription>
 		</Alert>
 	)

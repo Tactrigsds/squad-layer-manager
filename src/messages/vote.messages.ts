@@ -1,13 +1,11 @@
 import * as DH from '@/lib/display-helpers'
 import * as MsgFmt from '@/messages/format'
-import * as Msgs from '@/messages/shared'
 import type * as L from '@/models/layer'
 import type * as LL from '@/models/layer-list.models'
+import { def, join, t } from '@/models/messages.models'
 import type * as V from '@/models/vote.models'
 
-// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
-// src/scripts/extract-messages.ts` counts what is left.
-export const started = Msgs.def(
+export const started = def(
 	(
 		state: Pick<V.VoteState, 'choiceIds' | 'voterType'>,
 		voteItem: LL.VoteItem | L.LayerId[],
@@ -22,58 +20,57 @@ export const started = Msgs.def(
 					return []
 				})
 		const lines = MsgFmt.voteChoicesLines(layerIds, undefined, displayProps).join('\n')
-		const formattedInterval = MsgFmt.formatInterval(duration, { round: 'second' })
-		const voterTypeDisp = state.voterType === 'internal' ? ' (internal)' : ''
-		const text = `Vote for the next layer${voterTypeDisp}:\n${lines}\nYou have ${formattedInterval} to vote.\n`
-
+		// the vote config editor previews the broadcast the server would actually send, so text serves both
 		return {
-			broadcast: () => text,
-			// the vote config editor previews the broadcast the server would actually send, so this is the same text
-			react: () => text,
+			text: ({ locale }) =>
+				t('Vote for the next layer{internal, select, yes { (internal)} other {}}:\n{lines}\nYou have {duration} to vote.\n', {
+					internal: state.voterType === 'internal' ? 'yes' : 'no',
+					lines,
+					duration: MsgFmt.formatInterval(duration, { round: 'second', locale }),
+				}),
 		}
 	},
 )
 
-// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
-// src/scripts/extract-messages.ts` counts what is left.
-export const winnerSelected = Msgs.def(
+export const winnerSelected = def(
 	(tally: V.Tally, voteItem: LL.VoteItem, winnerId: LL.ItemId, displayProps: DH.LayerDisplayProp[], early: boolean = false) => {
-		const resultsText = Array.from(tally.totals.entries())
+		const results = Array.from(tally.totals.entries())
 			.sort((a, b) => b[1] - a[1])
 			.map(([choiceId, votes]) => {
-				const isWinner = choiceId === winnerId
 				const choice = voteItem.choices.find((c) => c.itemId === choiceId)
-				const layerName = choice ? DH.toShortLayerNameFromId(choice.layerId, undefined, displayProps) : 'Unknown'
-				return `${votes} votes - (${tally.percentages.get(choiceId)?.toFixed(0)}%) ${isWinner ? '[WINNER] ' : ''}${layerName}`
+				return t('{votes} votes - ({percentage}%) {isWinner, select, yes {[WINNER] } other {}}{layerName}', {
+					votes,
+					percentage: tally.percentages.get(choiceId)?.toFixed(0),
+					isWinner: choiceId === winnerId ? 'yes' : 'no',
+					layerName: choice ? DH.toShortLayerNameFromId(choice.layerId, undefined, displayProps) : t('Unknown'),
+				})
 			})
-		const randomChoiceExplanation = tally.leaders.length > 1 ? `\n(Winner randomly selected - ${tally.leaders.length} way tie.)` : ''
+		const tie = tally.leaders.length > 1 ? [t('\n(Winner randomly selected - {count} way tie.)', { count: tally.leaders.length })] : []
 
 		return {
-			broadcast: () =>
-				`\nVote ${early ? 'was' : 'has'} ended${early ? ' early' : ''}:\n${resultsText.join('\n')}\n${randomChoiceExplanation}`,
+			broadcast: join([
+				t('\nVote {early, select, yes {was ended early} other {has ended}}:', { early: early ? 'yes' : 'no' }),
+				...results,
+				...tie,
+			]),
 		}
 	},
 )
 
-export const insufficientVotes = Msgs.def((voteItem: LL.VoteItem, displayProps: DH.LayerDisplayProp[]) => {
+export const insufficientVotes = def((voteItem: LL.VoteItem, displayProps: DH.LayerDisplayProp[]) => {
 	const defaultChoice = voteItem.choices[0]
 	return {
-		broadcast: (locale?: string) =>
-			Msgs.t(
-				'\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to {toShortLayerNameFromId}',
-				{ toShortLayerNameFromId: DH.toShortLayerNameFromId(defaultChoice.layerId, undefined, displayProps) },
-				locale,
-			),
+		broadcast: t('\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to {toShortLayerNameFromId}', {
+			toShortLayerNameFromId: DH.toShortLayerNameFromId(defaultChoice.layerId, undefined, displayProps),
+		}),
 	}
 })
 
-export const aborted = Msgs.def(() => ({
-	broadcast: (locale?: string) => Msgs.t('\nThe vote has been aborted.', undefined, locale),
+export const aborted = def(() => ({
+	broadcast: t('\nThe vote has been aborted.'),
 }))
 
-// Still assembles its text in JavaScript, so it takes no locale yet and renders in English. `pnpm script
-// src/scripts/extract-messages.ts` counts what is left.
-export const voteReminder = Msgs.def(
+export const voteReminder = def(
 	(
 		state: Extract<V.VoteState, { code: 'in-progress' }>,
 		voteItem: LL.VoteItem,
@@ -81,8 +78,6 @@ export const voteReminder = Msgs.def(
 		finalReminder = false,
 		displayProps: DH.LayerDisplayProp[],
 	) => {
-		const durationStr = MsgFmt.formatInterval(timeLeft, { round: 'second' })
-		const prefix = finalReminder ? `VOTE NOW: ${durationStr} left to cast your vote!` : `${durationStr} to cast your vote!`
 		const lines = MsgFmt.voteChoicesLines(
 			state.choiceIds.flatMap((id) => {
 				const choice = voteItem.choices.find((choice) => choice.itemId === id)
@@ -93,135 +88,137 @@ export const voteReminder = Msgs.def(
 			displayProps,
 		).join('\n')
 
-		return { broadcast: () => `${prefix}\n${lines}` }
+		return {
+			broadcast: ({ locale }) =>
+				t('{final, select, yes {VOTE NOW: {duration} left to cast your vote!} other {{duration} to cast your vote!}}\n{lines}', {
+					final: finalReminder ? 'yes' : 'no',
+					duration: MsgFmt.formatInterval(timeLeft, { round: 'second', locale }),
+					lines,
+				}),
+		}
 	},
 )
 
-export const noVoteInProgress = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No vote in progress', undefined, locale) }))
-export const invalidChoice = Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Invalid vote choice', undefined, locale) }))
+export const noVoteInProgress = def('No vote in progress')
+export const invalidChoice = def('Invalid vote choice')
 
-export const voteCast = Msgs.def((choice: L.LayerId, displayProps: DH.LayerDisplayProp[]) => ({
-	warn: (locale?: string) =>
-		Msgs.t(
-			'Vote cast for {toShortLayerNameFromId}.',
-			{ toShortLayerNameFromId: DH.toShortLayerNameFromId(choice, undefined, displayProps) },
-			locale,
-		),
+export const voteCast = def((choice: L.LayerId, displayProps: DH.LayerDisplayProp[]) => ({
+	warn: t('Vote cast for {toShortLayerNameFromId}.', {
+		toShortLayerNameFromId: DH.toShortLayerNameFromId(choice, undefined, displayProps),
+	}),
 }))
 
-export const wrongChat = Msgs.def((correctChannel: string) => ({
-	warn: (locale?: string) => Msgs.t('Vote must be cast in {correctChannel}', { correctChannel }, locale),
+export const wrongChat = def((correctChannel: string) => ({
+	warn: t('Vote must be cast in {correctChannel}', { correctChannel }),
 }))
 
 // What the web client tells the admin once a vote mutation comes back ok. Distinct from the broadcasts above,
 // which announce the same events to players in game and are worded for that audience.
 export const adminReceipt = {
-	started: Msgs.def(() => ({ toast: () => [Msgs.t('Vote started!')] })),
-	aborted: Msgs.def(() => ({ toast: () => [Msgs.t('Vote aborted!')] })),
-	endedEarly: Msgs.def(() => ({ toast: () => [Msgs.t('Vote ended early!')] })),
-	autostartCancelled: Msgs.def(() => ({ toast: () => [Msgs.t('Vote autostart cancelled!')] })),
+	started: def(() => ({ toast: [t('Vote started!')] })),
+	aborted: def(() => ({ toast: [t('Vote aborted!')] })),
+	endedEarly: def(() => ({ toast: [t('Vote ended early!')] })),
+	autostartCancelled: def(() => ({ toast: [t('Vote autostart cancelled!')] })),
 }
 
 export const start = {
-	noVoteConfigured: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('No vote is currently configured', undefined, locale) })),
-	voteAlreadyInProgress: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('A vote is already in progress', undefined, locale) })),
-	itemNotFound: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Item not found', undefined, locale) })),
-	invalidItemType: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Referenced item must be a vote', undefined, locale) })),
-	editingInProgress: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Vote is currently being edited', undefined, locale) })),
-	publicVoteNotFirst: Msgs.def(() => ({
-		warn: (locale?: string) => Msgs.t('Public vote must be the first item in the queue when initiated', undefined, locale),
-	})),
-	noVoteInPostGame: Msgs.def(() => ({ warn: (locale?: string) => Msgs.t('Not votes allowed in post-game', undefined, locale) })),
+	noVoteConfigured: def('No vote is currently configured'),
+	voteAlreadyInProgress: def('A vote is already in progress'),
+	itemNotFound: def('Item not found'),
+	invalidItemType: def('Referenced item must be a vote'),
+	editingInProgress: def('Vote is currently being edited'),
+	publicVoteNotFirst: def('Public vote must be the first item in the queue when initiated'),
+	noVoteInPostGame: def('Not votes allowed in post-game'),
 }
 
 // -------- the vote row on the queue --------
 
-export const heading = Msgs.def('Vote')
+export const heading = def('Vote')
 
 // reads as "starts in <countdown>"
-export const startsIn = Msgs.def('starts in')
+export const startsIn = def('starts in')
 
-export const cancelAutostart = Msgs.def('Cancel Autostart')
+export const cancelAutostart = def('Cancel Autostart')
 
-export const tally = Msgs.def('{received} of {players} votes received', (received: number, players: number) => ({ received, players }))
+export const tally = def('{received} of {players} votes received', (received: number, players: number) => ({ received, players }))
 
-export const endVoteEarly = Msgs.def('End Vote Early')
+export const endVoteEarly = def('End Vote Early')
 
-export const abortVote = Msgs.def('Abort Vote')
+export const abortVote = def('Abort Vote')
 
 // an internal vote polls the admins in SLM rather than the players in game
-export const internalVote = Msgs.def('Internal')
+export const internalVote = def('Internal')
 
-export const startVote = Msgs.def('Start Vote')
+export const startVote = def('Start Vote')
 
-export const addVoteChoices = Msgs.def('Add Vote Choices')
+export const addVoteChoices = def('Add Vote Choices')
 
-export const configureVote = Msgs.def('Configure vote')
+export const configureVote = def('Configure vote')
 
-export const generateVoteTitle = Msgs.def('Generate Vote')
+export const generateVoteTitle = def('Generate Vote')
 
-export const saveVoteConfig = Msgs.def('Save')
+export const saveVoteConfig = def('Save')
 
 // -------- the vote display config editor --------
 
-export const displayOptionsHeading = Msgs.def('Vote Display Options')
+export const displayOptionsHeading = def('Vote Display Options')
 
-export const displayOptionsBlurb = Msgs.def('Choose what info to show to voters')
+export const displayOptionsBlurb = def('Choose what info to show to voters')
 
-export const displayLayer = Msgs.def('Layer')
+export const displayLayer = def('Layer')
 
-export const displayMap = Msgs.def('Map')
+export const displayMap = def('Map')
 
-export const displayGamemode = Msgs.def('Gamemode')
+export const displayGamemode = def('Gamemode')
 
-export const displayFactions = Msgs.def('Factions')
+export const displayFactions = def('Factions')
 
-export const displayUnits = Msgs.def('Units')
+export const displayUnits = def('Units')
 
-export const choicesIndistinguishable = Msgs.def("Warning: Can't distinguish between vote choices.")
+export const choicesIndistinguishable = def("Warning: Can't distinguish between vote choices.")
 
-export const previewLabel = Msgs.def('Preview')
+export const previewLabel = def('Preview')
 
-export const durationLabel = Msgs.def('Vote Duration (seconds)')
+export const durationLabel = def('Vote Duration (seconds)')
 
-export const resetToDefault = Msgs.def('Reset to Default')
+export const resetToDefault = def('Reset to Default')
 
 // -------- the generate-vote dialog --------
 
-export const noLayerSelected = Msgs.def('No layer selected')
+export const noLayerSelected = def('No layer selected')
 
-export const editChoice = Msgs.def('Edit this choice')
+export const editChoice = def('Edit this choice')
 
-export const regenerateChoice = Msgs.def('Regenerate this choice')
+export const regenerateChoice = def('Regenerate this choice')
 
-export const generateChoice = Msgs.def('Generate this choice')
+export const generateChoice = def('Generate this choice')
 
-export const removeChoice = Msgs.def('Remove this choice (minimum 2 required)')
+export const removeChoice = def('Remove this choice (minimum 2 required)')
 
-export const addChoiceHint = Msgs.def('Add choice')
+export const addChoiceHint = def('Add choice')
 
-export const addChoice = Msgs.def('Add Choice')
+export const addChoice = def('Add Choice')
 
-export const playNext = Msgs.def('Play Next')
+export const playNext = def('Play Next')
 
-export const playAfter = Msgs.def('Play After')
+export const playAfter = def('Play After')
 
-export const submit = Msgs.def('Submit')
+export const submit = def('Submit')
 
 // -------- the tally readout --------
 
-export const voteEnded = Msgs.def('Vote has ended.')
+export const voteEnded = def('Vote has ended.')
 
-export const voteInProgress = Msgs.def('Vote in progress...')
+export const voteInProgress = def('Vote in progress...')
 
-export const unknownChoice = Msgs.def('Unknown')
+export const unknownChoice = def('Unknown')
 
-export const choiceVotes = Msgs.def(
-	'{votes, plural, one {# vote} other {# votes}} ({percentage}%)',
-	(votes: number, percentage: number) => ({ votes, percentage: percentage.toFixed(1) }),
-)
+export const choiceVotes = def('{votes, plural, one {# vote} other {# votes}} ({percentage}%)', (votes: number, percentage: number) => ({
+	votes,
+	percentage: percentage.toFixed(1),
+}))
 
-export const turnout = Msgs.def(
+export const turnout = def(
 	'Received: {received} of {players} votes{hasPercentage, select, yes { ({percentage}%)} other {}}',
 	(received: number, players: number, percentage: number | null) => ({
 		received,
