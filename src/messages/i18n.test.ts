@@ -1,6 +1,6 @@
 import { createElement, Fragment, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import * as I18n from '@/messages/i18n'
 import { def, rt } from '@/models/messages.models'
@@ -138,5 +138,20 @@ describe('rendering rich text tags', () => {
 		const msg = def({ richText: rt('one<br></br>two') })
 		const derived = tr.withTags({ br: () => createElement('br') })
 		expect(html(derived.richText(msg()))).toBe('one<br/>two')
+	})
+
+	test('rich text tags do not emit React key warnings', () => {
+		const msg = def({ richText: rt('review: <verdict>{inner}</verdict>', { inner: rt('<when>today</when>') }) })
+		const derived = tr.withTags({
+			verdict: (chunks) => createElement('em', null, ...chunks),
+			when: (chunks) => createElement('time', null, ...chunks),
+		})
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			html(derived.richText(msg()))
+			expect(errorSpy).not.toHaveBeenCalled()
+		} finally {
+			errorSpy.mockRestore()
+		}
 	})
 })

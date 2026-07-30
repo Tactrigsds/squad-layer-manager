@@ -69,7 +69,7 @@ export namespace Prompt {
 		const head =
 			opts.total > 1 ? t('({step}/{total}) {msg}', { step: opts.step, total: opts.total, msg: opts.msg }) : t('{msg}', { msg: opts.msg })
 		const options = opts.choices.map((choice, i) => t('{index}) {label}', { index: i + 1, label: choice.label }))
-		return { warn: [head, ...options, t('Reply 1-{last}, or 0 to cancel', { last: opts.choices.length })] }
+		return { warn: join([head, ...options, t('Reply 1-{last}, or 0 to cancel', { last: opts.choices.length })]) }
 	})
 
 	export const outOfRange = def((count: number) => ({ warn: t('Pick 1-{count}, or 0 to cancel', { count }) }))
