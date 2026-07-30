@@ -3,12 +3,16 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import * as ConsoleFrame from '@/frames/server-console.frame'
+import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as SC_Msgs from '@/messages/server-console.messages'
 import type { ConsoleEvent } from '@/models/server-console.models'
 import * as SC from '@/models/server-console.models'
+import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 
 // The tail of what a squad server is saying and being told. Read-only by design: issuing rcon from here would
@@ -34,12 +38,13 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 		stores.serverConsole,
 		(s) => [ConsoleFrame.Sel.view(s), s.tab, s.hideNoise, s.denied] as const,
 	)
-	const scrollRef = React.useRef<HTMLDivElement>(null)
-	// a console that does not follow its own tail is a worse version of the log file it is showing
+	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
+	const scrollToBottomZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+
+	// each channel is its own tail, so switching to one starts at its end
 	React.useEffect(() => {
-		const el = scrollRef.current
-		if (el) el.scrollTop = el.scrollHeight
-	}, [events])
+		scrollToBottom()
+	}, [tab, scrollToBottom])
 
 	if (denied) {
 		return (
@@ -88,26 +93,37 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					<Icons.Eraser className="h-3.5 w-3.5" />
 				</Button>
 			</div>
-			<div
-				ref={scrollRef}
-				role="tabpanel"
-				aria-label={tr.text(SC_Msgs.tabOutput(tab))}
-				className="min-h-0 grow overflow-y-auto bg-muted/30 p-1.5"
-			>
-				{events.length === 0 ? (
-					<p className="text-xs text-muted-foreground">{tr.text(SC_Msgs.empty())}</p>
-				) : (
-					<ol className="space-y-0.5">
-						{events.map((event) => {
-							const { prefix, body, tone } = formatEvent(event)
-							return (
-								<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
-									<span className={cn('shrink-0', tone)}>{prefix}</span>
-									<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
-								</li>
-							)
-						})}
-					</ol>
+			<div className="relative min-h-0 grow bg-muted/30">
+				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={tr.text(SC_Msgs.tabOutput(tab))} className="h-full">
+					<div ref={contentRef} className="p-1.5">
+						{events.length === 0 ? (
+							<p className="text-xs text-muted-foreground">{tr.text(SC_Msgs.empty())}</p>
+						) : (
+							<ol className="space-y-0.5">
+								{events.map((event) => {
+									const { prefix, body, tone } = formatEvent(event)
+									return (
+										<li key={event.seq} className="flex items-start gap-1.5 font-mono text-[11px] leading-tight">
+											<span className={cn('shrink-0', tone)}>{prefix}</span>
+											<span className="min-w-0 whitespace-pre-wrap break-all">{body}</span>
+										</li>
+									)
+								})}
+							</ol>
+						)}
+					</div>
+				</ScrollArea>
+				{showScrollButton && (
+					<Button
+						onClick={() => scrollToBottom()}
+						variant="secondary"
+						style={{ zIndex: scrollToBottomZIndex }}
+						className="absolute bottom-0 left-0 right-0 h-6 w-full rounded-none bg-opacity-20! shadow-lg backdrop-blur-sm"
+						title={tr.text(CHAT_Msgs.scrollToBottom())}
+					>
+						<Icons.ChevronDown className="h-3 w-3" />
+						<span className="text-xs">{tr.text(CHAT_Msgs.scrollToBottom())}</span>
+					</Button>
 				)}
 			</div>
 		</div>
