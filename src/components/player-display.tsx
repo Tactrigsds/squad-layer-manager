@@ -24,7 +24,8 @@ export interface PlayerDisplayProps {
 	showSquad?: boolean
 	showRole?: boolean
 	className?: string
-	matchId: number
+	// only the team display needs it, so a caller showing neither team nor squad can omit it
+	matchId?: number
 	stores: SquadServerFrame.KeyProp
 	// when true, the name doesn't mount its own context menu so an enclosing one (e.g. the teams-panel
 	// row's bulk-aware menu) handles the right-click instead
@@ -107,10 +108,13 @@ export function PlayerDisplay({
 				disableContextMenu={disableContextMenu}
 				style={groupColor ? { color: groupColor } : undefined}
 			/>
-			{(showTeam && player.teamId !== null) || (showSquad && player.squadId !== null) ? (
+			{(showTeam && player.teamId !== null && matchId !== undefined) || (showSquad && player.squadId !== null) ? (
 				<span className="inline-flex flex-nowrap">
-					({showTeam && player.teamId !== null && <MatchTeamDisplay matchId={matchId} teamId={player.teamId} stores={stores} />}
-					{showTeam && player.teamId !== null && showSquad && player.squadId !== null && ', '}
+					(
+					{showTeam && player.teamId !== null && matchId !== undefined && (
+						<MatchTeamDisplay matchId={matchId} teamId={player.teamId} stores={stores} />
+					)}
+					{showTeam && player.teamId !== null && matchId !== undefined && showSquad && player.squadId !== null && ', '}
 					{showSquad && player.squadId !== null && player.squadId})
 				</span>
 			) : null}

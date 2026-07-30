@@ -1,18 +1,26 @@
 import * as dateFns from 'date-fns'
+import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { frameManager } from '@/frames/frame-manager'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as FRM from '@/lib/frame'
 import { toast } from '@/lib/toast'
+import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
 import type * as AppEvents from '@/models/app-events.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as SM from '@/models/squad.models'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { CopyIdButton } from './copy-id-button'
+import { PlayerDisplay } from './player-display'
 import type { TimeoutsWindowProps } from './timeouts-window.helpers'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowTitle, useDraggableWindow } from './ui/draggable-window'
 
@@ -28,6 +36,22 @@ DraggableWindowStore.getState().registerDefinition<TimeoutsWindowProps, unknown>
 	getId: () => 'timeouts',
 })
 
+type ActiveTimeout = ReturnType<typeof TimeoutsClient.useActiveTimeouts>[number]
+
+// a timed-out player is by definition off the roster, so their live position is unknown and the admin list isn't
+// joined in: the row carries identity only.
+function TimeoutPlayer({ timeout, stores }: { timeout: ActiveTimeout; stores: SquadServerFrame.KeyProp | undefined }) {
+	if (timeout.username === null || !stores) {
+		return timeout.steamId !== null ? (
+			<CopyIdButton kind="steam" id={timeout.steamId.toString()} />
+		) : (
+			<CopyIdButton kind="eos" id={timeout.playerId} />
+		)
+	}
+	const ids = { eos: timeout.playerId, username: timeout.username, steam: timeout.steamId?.toString() }
+	return <PlayerDisplay player={SM.fromRecentPlayer({ ids, isAdmin: false })} stores={stores} />
+}
+
 function TimeoutsWindow() {
 	useDraggableWindow()
 	const timeouts = TimeoutsClient.useActiveTimeouts()
@@ -37,6 +61,20 @@ function TimeoutsWindow() {
 	const userIds = [...new Set(timeouts.flatMap((t) => (t.actor?.type === 'slm-user' ? [t.actor.userId] : [])))]
 	const usersRes = UsersClient.useUsers(userIds, { enabled: userIds.length > 0 })
 	const userMap = new Map((usersRes.data?.code === 'ok' ? usersRes.data.users : []).map((u) => [u.discordId, u]))
+
+	// PlayerDisplay is server-scoped (the details window it opens queries per server), and this window lists timeouts
+	// from every server at once, so each row resolves against the server that issued its timeout rather than whichever
+	// server the window was opened from. A server that isn't usable gets no frame, and its rows fall back to the ids.
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const storesByServer = React.useMemo(() => {
+		const entries = [...new Set(timeouts.flatMap((t) => t.issuedServerId ?? []))].flatMap((serverId) => {
+			const server = settings?.servers.find((s) => s.id === serverId)
+			if (!SettingsClient.isServerUsable(server)) return []
+			const key = frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(serverId))
+			return [[serverId, FRM.toProp(key)] as const]
+		})
+		return new Map(entries)
+	}, [timeouts, settings])
 
 	function actorName(actor: AppEvents.Actor | null, actorUsername: string | null): string {
 		if (actor?.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? SM_Msgs.timeoutActorFallbacks['slm-user']
@@ -75,14 +113,7 @@ function TimeoutsWindow() {
 							{timeouts.map((t) => (
 								<TableRow key={t.id}>
 									<TableCell className="align-top">
-										{t.username !== null && <div className="font-medium">{t.username}</div>}
-										<div className="text-xs">
-											{t.steamId !== null ? (
-												<CopyIdButton kind="steam" id={t.steamId.toString()} />
-											) : (
-												<CopyIdButton kind="eos" id={t.playerId} />
-											)}
-										</div>
+										<TimeoutPlayer timeout={t} stores={t.issuedServerId ? storesByServer.get(t.issuedServerId) : undefined} />
 									</TableCell>
 									<TableCell className="align-top whitespace-nowrap" title={dateFns.format(t.expiresAt, 'PPp')}>
 										{dateFns.formatDistanceToNow(t.expiresAt, { addSuffix: true })}
