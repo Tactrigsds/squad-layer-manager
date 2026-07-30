@@ -55,6 +55,7 @@ import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as CommandPrompts from '@/systems/command-prompts.server'
 import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
@@ -705,6 +706,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	rcon.ensureConnected()
 	cleanup.push(() => rcon.disconnect())
 	cleanup.push(() => ServerConsole.disposeFor(serverId))
+	cleanup.push(() => CommandPrompts.disposeFor(serverId))
 
 	const layersStatusExt$: SQS.Ctx.Payload['layersStatusExt$'] = getLayersStatusExt$(serverId)
 
@@ -1036,6 +1038,14 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some((prefix) => event.message.startsWith(prefix))) {
 									opts.push(
 										Commands.handleCommand(ctx, event).then((res) => {
+											if (res && res?.code !== 'ok') log.error(res)
+										}),
+									)
+								} else if (CommandPrompts.capturesAnswer(serverId, SM.PlayerIds.getPlayerId(event.playerIds), event)) {
+									// a number this player was just asked for outranks the same number as a vote: the prompt was
+									// solicited from them seconds ago and clears itself either way (see command-prompts.server)
+									opts.push(
+										Commands.handleChoiceAnswer(ctx, event).then((res) => {
 											if (res && res?.code !== 'ok') log.error(res)
 										}),
 									)

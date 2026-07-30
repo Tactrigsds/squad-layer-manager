@@ -52,6 +52,41 @@ export const help = Msgs.def((commands: CMD.CommandConfigs, section?: string) =>
 	},
 }))
 
+// What a caller sees when an argument didn't resolve but something close enough did, and they are asked to pick.
+// See docs/configuring.md, "Choosing between near misses".
+export namespace Prompt {
+	// The resolver's own account of the failure heads the list: only it knows whether the word failed as a team or
+	// as a squad. Option numbers are plain digits rather than formatted numbers, since the caller types them back.
+	export const question = Msgs.def((opts: { msg: string; choices: CMD.ArgChoice[]; step: number; total: number }) => ({
+		warn: (locale?: string) => {
+			const head =
+				opts.total > 1
+					? Msgs.t('({step}/{total}) {msg}', { step: String(opts.step), total: String(opts.total), msg: opts.msg }, locale)
+					: opts.msg
+			const options = opts.choices.map((choice, i) => `${i + 1}) ${choice.label}`)
+			return [head, ...options, Msgs.t('Reply 1-{last}, or 0 to cancel', { last: String(opts.choices.length) }, locale)].join('\n')
+		},
+	}))
+
+	export const outOfRange = Msgs.def((count: number) => ({
+		warn: (locale?: string) => Msgs.t('Pick 1-{count}, or 0 to cancel', { count: String(count) }, locale),
+	}))
+
+	export const cancelled = Msgs.def(() => ({
+		warn: (locale?: string) => Msgs.t('Cancelled', undefined, locale),
+	}))
+
+	// Naming the command matters more here than anywhere else in the exchange: the caller has moved on to something
+	// else, and a bare "discarded" would leave them guessing which one lapsed.
+	export const superseded = Msgs.def((command: string) => ({
+		warn: (locale?: string) => Msgs.t('Discarded the pending choice for "{command}"', { command }, locale),
+	}))
+
+	export const expired = Msgs.def((command: string) => ({
+		warn: (locale?: string) => Msgs.t('The choice for "{command}" expired', { command }, locale),
+	}))
+}
+
 // Keyed reference data rather than a message: no target axis applies to a lookup table.
 export const descriptions = {
 	help: 'Display help information',
