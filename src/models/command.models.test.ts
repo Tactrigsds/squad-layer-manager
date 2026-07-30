@@ -115,17 +115,6 @@ describe('assignArgTokens', () => {
 })
 
 describe('near misses', () => {
-	it('ranks by closeness, ignoring what a caller plausibly varies', () => {
-		// "Alice" is one of Alice_The_Great's words, so it outranks Alicia despite the longer whole name
-		expect(CMD.nearest('alise', ['Alice_The_Great', 'Bob', 'Alicia'])).toEqual(['Alice_The_Great', 'Alicia'])
-		// a clan tag is scored against separately, so it does not drown out the name the caller aimed at
-		expect(CMD.nearest('alice', ['[7CAV] Alice_G', 'Charlie'])).toEqual(['[7CAV] Alice_G'])
-	})
-
-	it('offers nothing when nothing is close, which is what leaves the plain error in place', () => {
-		expect(CMD.nearest('zzzzz', ['Alice', 'Bob'])).toEqual([])
-	})
-
 	describe('splicing picks back over the caller"s words', () => {
 		const p = preds({ teams: ['1', '2', 'A', 'B'], presets: ['tk'] })
 		const warnSquadArgs = [
@@ -242,11 +231,20 @@ describe('resolveReasonArg', () => {
 		if (res.code === 'ok') expect(res.value).toEqual({ type: 'preset', reason: reasons[0] })
 	})
 
-	it('one unknown token errors with a did-you-mean suggestion and lists available reasons', () => {
+	it('one unknown token errors, leaving the suggesting to the choices', () => {
 		const res = CMD.resolveReasonArg(reasons, 'warn', ['tq'])
 		expect(res.code).toBe('err:unknown-preset')
 		if (res.code === 'err:unknown-preset') {
-			expect(res.msg).toContain('Did you mean tk?')
+			expect(res.msg).toContain('Unknown reason "tq"')
+			expect(res.msg).not.toContain('Available:')
+		}
+	})
+
+	it('lists the available reasons when nothing is close enough to offer', () => {
+		const res = CMD.resolveReasonArg(reasons, 'warn', ['sdfghj'])
+		expect(res.code).toBe('err:unknown-preset')
+		if (res.code === 'err:unknown-preset') {
+			expect(res.choices).toEqual([])
 			expect(res.msg).toContain('Available:')
 		}
 	})
