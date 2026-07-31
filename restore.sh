@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore the database from a backup, stopping the app around it.
+# Restore the database from a backup.
 #
 #   ./restore.sh --list                  what backups there are (with the build each belongs to)
 #   ./restore.sh --inspect --latest      which build a backup belongs to (which image to pin), without restoring it
@@ -8,9 +8,10 @@
 #   ./restore.sh --commit-sha <sha>      the newest backup taken by a given build (a git sha or commit-<sha> tag)
 #   ./restore.sh --from <file>           a specific one, e.g. one pulled back off the sftp target into ./data/backups
 #
-# The app must not be running: it would go on writing to the database being replaced and lose those writes, without
-# an error anywhere. This stops it first and starts it again afterwards. The database being replaced is kept, renamed
-# aside, because a restore is otherwise the one operation with no undo.
+# Stop the app first: it would otherwise go on writing to the database being replaced and lose those writes, without
+# an error anywhere. This refuses to run while the app is up, and does not start it again afterwards -- point
+# docker-compose.yaml at the image the restored database belongs to (`--inspect` names it) before you do. The
+# database being replaced is kept, renamed aside, because a restore is otherwise the one operation with no undo.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -18,43 +19,21 @@ cd "$(dirname "$0")"
 command -v docker > /dev/null 2>&1 || { echo "error: docker is required" >&2; exit 1; }
 docker compose version > /dev/null 2>&1 || { echo "error: docker compose (v2) is required" >&2; exit 1; }
 
-# --list and --inspect touch neither the live database nor the app, so they have no business stopping anybody's app
+# --list and --inspect replace nothing, so a running app is no obstacle to them
+replaces_the_db=1
 for arg in "$@"; do
-	if [[ $arg == --list || $arg == --inspect ]]; then
-		exec docker compose run --rm app pnpm db:restore:prod "$@"
-	fi
+	if [[ $arg == --list || $arg == --inspect ]]; then replaces_the_db=""; fi
 done
 
-was_running=""
-if [[ -n "$(docker compose ps --status running --quiet app 2>/dev/null)" ]]; then
-	was_running=1
-	echo "stopping the app..."
-	docker compose stop app
-fi
-
-# deliberately not `set -e`'d into oblivion: on failure we want to say what state things are in, and a failed restore
-# must not silently take the app back up on a database nobody has looked at.
-status=0
-docker compose run --rm app pnpm db:restore:prod "$@" || status=$?
-
-# 2 means the restore worked but the database it put back is behind this image. Starting the app now would migrate it
-# straight back up, which for a rollback undoes the exact thing you just did -- so this is the one success we refuse to
-# restart on.
-if [[ $status -eq 2 ]]; then
-	echo
-	echo "The app is left stopped on purpose. Point docker-compose.yaml at the version this database belongs to, then:"
-	echo "  docker compose up -d app"
-	exit 0
-fi
-
-if [[ $status -ne 0 ]]; then
+# The restore refuses on its own if anything at all holds the database open. This is that refusal early and with the
+# docker commands in it, which the restore itself cannot name because it also runs outside compose.
+if [[ -n $replaces_the_db && -n "$(docker compose ps --status running --quiet app 2> /dev/null)" ]]; then
+	echo "error: the app is running. Restoring under it would lose every write it makes from here on." >&2
 	echo >&2
-	echo "restore failed (exit $status). The app is left stopped: check the message above before starting it." >&2
-	[[ -n $was_running ]] && echo "Start it with 'docker compose up -d app' once you are happy." >&2
-	exit $status
+	echo "  docker compose stop app" >&2
+	echo "  $0 $*" >&2
+	echo "  docker compose up -d app     # once docker-compose.yaml points at the image the restored database belongs to" >&2
+	exit 1
 fi
 
-if [[ -n $was_running ]]; then
-	echo "starting the app..."
-	docker compose up -d app
-fi
+exec docker compose run --rm app pnpm db:restore:prod "$@"
