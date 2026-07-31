@@ -131,9 +131,8 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 	let menuItemConditions: Record<string, LE.Ir> | undefined
 	const itemConstraint = constraints.find((c) => c.type === 'filter-menu-items')
 	const conditions = [...baseConditions]
+	const itemConditions: Record<string, LE.Ir> = {}
 	if (itemConstraint) {
-		menuItemConditions = {}
-		const itemConditions: Record<string, LE.Ir> = {}
 		for (const { field, node } of itemConstraint.items) {
 			if (!node) continue
 			const res = LE.lowerFilterNode(lower, node)
@@ -141,7 +140,23 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 			itemConditions[field] = res.ir
 		}
 		conditions.push(...Object.values(itemConditions))
+	}
 
+	// Layers outside the default collection (mod sources) are opt-in: they only enter a query when one of its own
+	// conditions names the Collection column. Everything else -- pools, generation, the browser's default view --
+	// stays on the collection the game server runs unmodded.
+	const collectionCol = ctx.engine.columnIndex('Collection')
+	let implicitCollection: LE.Ir | null = null
+	if (!conditions.some((condition) => LE.referencesColumn(condition, collectionCol))) {
+		const defaultCollection = LC.dbValue('Collection', L.getDefaultCollection(), ctx)
+		if (typeof defaultCollection === 'number') {
+			implicitCollection = { op: 'eq_val', col: collectionCol, val: defaultCollection }
+			conditions.push(implicitCollection)
+		}
+	}
+
+	if (itemConstraint) {
+		menuItemConditions = {}
 		for (const item of itemConstraint.items) {
 			if (!item.returnPossibleValues) continue
 			const forField = [...baseConditions]
@@ -149,6 +164,8 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 				if (item.field === field || item.excludedSiblings?.includes(field)) continue
 				forField.push(condition)
 			}
+			// the Collection field itself must still offer the mod collections, or nothing could ever opt in
+			if (implicitCollection && item.field !== 'Collection') forField.push(implicitCollection)
 			menuItemConditions[item.field] = LE.and(forField)
 		}
 	}

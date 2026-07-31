@@ -165,9 +165,18 @@ async function buildLayerArtifact(
 	const seen = new Set<string>()
 	const rows: { id: number; values: number[] }[] = []
 	for (const layer of baseLayers) {
-		if (seen.has(layer.id)) throw new Error(`Duplicate layer ID: ${layer.id}`)
+		if (seen.has(layer.id)) {
+			throw new Error(
+				`Duplicate layer ID ${layer.id} (from layer ${layer.Layer}): two layers share Map/Gamemode/Version and factions; add a layerOverrides entry to the source manifest`,
+			)
+		}
 		seen.add(layer.id)
-		const row = LC.toRow(layer, ctx, components) as Record<string, number | null>
+		let row: Record<string, number | null>
+		try {
+			row = LC.toRow(layer, ctx, components) as Record<string, number | null>
+		} catch (err) {
+			throw new Error(`failed to pack layer ${JSON.stringify(layer)}`, { cause: err })
+		}
 		rows.push({
 			id: Number(row.id),
 			values: baseColumns.map((column) => (row[column] === null || row[column] === undefined ? -1 : row[column])),
@@ -178,12 +187,16 @@ async function buildLayerArtifact(
 	log.info('Building artifact for %s layers', rowCount)
 
 	const ids = new Int32Array(rowCount)
-	const baseData = baseColumns.map(() => new Uint8Array(rowCount))
+	const baseKinds = baseColumns.map((name) => {
+		const def = LC.BASE_COLUMN_DEFS[name] as LC.ColumnDef & { enumMapping: string }
+		return LA.columnKind({ ...def, table: 'layers' }, (components[def.enumMapping as keyof LC.LayerComponents] as unknown[]).length)
+	})
+	const baseData = baseColumns.map((_, c) => (baseKinds[c] === 'u16' ? new Uint16Array(rowCount) : new Uint8Array(rowCount)))
 	for (let i = 0; i < rowCount; i++) {
 		ids[i] = rows[i].id
 		for (let c = 0; c < baseColumns.length; c++) {
 			const value = rows[i].values[c]
-			baseData[c][i] = value < 0 ? LA.NULL_U8 : value
+			baseData[c][i] = value < 0 ? (baseKinds[c] === 'u16' ? LA.NULL_U16 : LA.NULL_U8) : value
 		}
 	}
 
@@ -258,7 +271,7 @@ async function buildLayerArtifact(
 		layersVersion: args.layersVersion,
 		columns: [
 			{ name: 'id', kind: 'i32', values: ids },
-			...baseColumns.map((name, c) => ({ name, kind: 'u8' as const, values: baseData[c] })),
+			...baseColumns.map((name, c) => ({ name, kind: baseKinds[c], values: baseData[c] })),
 			...extraDefs.map((def, c) => ({
 				name: def.name,
 				kind: LA.columnKind({ ...def, table: 'extra-cols' }),
@@ -325,32 +338,97 @@ function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 	}
 }
 
-async function parseSquadLayerSheetData() {
-	const json = SLL.RootSchema.parse(
-		JSON.parse(await fsPromise.readFile(path.join(Paths.DATA, 'squad-layer-list.json'), 'utf-8').then((res) => res)),
-	)
-	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(json)
-	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
-	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
-	// @ts-expect-error it's fine
-	const componentsTemp = LC.buildFullLayerComponents({}, true)
+type LayerSource = { manifest: SLL.SourceManifest; root: SLL.Root; vocab: Set<string> }
 
+function loadLayerSources(): LayerSource[] {
+	const sourcesDir = path.join(Paths.DATA, 'sources')
+	const names = fs
+		.readdirSync(sourcesDir)
+		.filter((dir) => fs.existsSync(path.join(sourcesDir, dir, 'source.json')))
+		// vanilla first: on any cross-source disagreement (duplicate unit object names, battlegroup mappings) the
+		// vanilla definition wins
+		.sort((a, b) => (a === 'vanilla' ? -1 : b === 'vanilla' ? 1 : a.localeCompare(b)))
+	if (names.length === 0) throw new Error(`no layer sources found in ${sourcesDir}`)
+	return names.map((dir) => {
+		const manifest = SLL.SourceManifestSchema.parse(JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'source.json'), 'utf-8')))
+		if (manifest.name !== dir) throw new Error(`source ${dir}: manifest name "${manifest.name}" does not match its directory`)
+		const rawRoot = JSON.parse(fs.readFileSync(path.join(sourcesDir, dir, 'layers.json'), 'utf-8'))
+		const vocab = SLL.collectUnitTypeVocabulary(rawRoot, manifest)
+		const root = SLL.createRootSchema(vocab, manifest.unitTypeOverrides).parse(rawRoot) as SLL.Root
+		return { manifest, root, vocab }
+	})
+}
+
+type ParsedSource = {
+	mapLayers: L.LayerConfig[]
+	availability: Map<string, L.LayerFactionAvailabilityEntry[]>
+}
+
+// (factionID, unit type, position, variants, seed/skirmish) identifies the Units record an availability entry
+// resolves to. First-wins on the rare mod duplicates.
+function buildUnitIndex(source: LayerSource): Map<string, string> {
+	const index: Map<string, string> = new Map()
+	for (const [name, unit] of Object.entries(source.root.Units)) {
+		if (!unit.type) continue
+		const parsed = SLL.parseUnitName(name, source.vocab, source.manifest.unitTypeOverrides)
+		const segments = name.split(/[_-]/)
+		const key = [
+			unit.factionID,
+			unit.type,
+			parsed.position ?? '',
+			parsed.variants.boats,
+			parsed.variants.noHeli,
+			segments.includes('Seed'),
+			segments.includes('Skirmish'),
+		].join('|')
+		if (!index.has(key)) index.set(key, name)
+	}
+	return index
+}
+
+const SIZE_LETTERS: Record<string, string> = { Small: 'S', Medium: 'M', Large: 'L' }
+
+function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponents): ParsedSource {
+	const { manifest, root } = source
 	const mapLayers: L.LayerConfig[] = []
-	for (const map of json.Maps) {
+	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
+	const unitIndex = buildUnitIndex(source)
+	let unresolvedUnitNames = 0
+
+	for (const map of root.Maps) {
 		if (map.levelName.includes('Automation')) continue
 		if (map.levelName.toLowerCase().includes('tutorial')) continue
-		const segments = L.parseLayerStringSegment(map.levelName, componentsTemp)
-		if (!segments) {
-			log.error(`Invalid layer name: ${map.levelName}`)
-			continue
+
+		let segments: L.ParseLayerStringSegmentResult | null
+		if (manifest.layerNames === 'parsed') {
+			segments = L.parseLayerStringSegment(map.levelName, componentsTemp)
+			if (!segments) {
+				log.error(`${manifest.name}: invalid layer name: ${map.levelName}`)
+				continue
+			}
+		} else {
+			// the export's structured fields are the authority; the only thing still read out of the name is the
+			// version, which has no field of its own
+			const versionMatch = map.levelName.match(/_[vV](\d+)(?:_|$)/)
+			segments = {
+				layerType: 'normal',
+				Map: map.mapId,
+				Gamemode: map.gamemode,
+				LayerVersion: versionMatch ? `V${versionMatch[1]}` : null,
+				Collection: manifest.collection.name,
+				...manifest.layerOverrides[map.levelName],
+			}
 		}
-		if (!map.teamConfigs.team1 || !map.teamConfigs.team2) continue
-		const size = deriveLayerSize(map)
+		if (!map.teamConfigs.team1?.defaultFactionUnit || !map.teamConfigs.team2?.defaultFactionUnit) continue
+		const size = deriveLayerSize(source, map)
 		const teamConfigs = Object.entries(map.teamConfigs)
 			.sort((a, b) => a[0].localeCompare(b[0]))
 			.map(([_, team]) => team)
 		const baseConfig = {
-			...segments,
+			Map: segments.Map,
+			Gamemode: segments.Gamemode,
+			LayerVersion: segments.LayerVersion,
+			Collection: segments.Collection,
 			Size: size,
 			Layer: map.levelName,
 
@@ -393,9 +471,9 @@ async function parseSquadLayerSheetData() {
 		mapLayers.push({
 			...baseConfig,
 			teams: teamConfigs.map((t): L.MapConfigTeam => {
-				const defaultFaction = t.defaultFactionUnit.split('_')[0]
+				const defaultFaction = root.Units[t.defaultFactionUnit!]?.factionID ?? t.defaultFactionUnit!.split('_')[0]
 				let role: L.MapConfigTeam['role']
-				if (L.ASYMM_GAMEMODES.includes(segments.Gamemode)) {
+				if (L.ASYMM_GAMEMODES.includes(segments!.Gamemode)) {
 					if (t.isAttackingTeam) role = 'attack'
 					if (t.isDefendingTeam) role = 'defend'
 				}
@@ -407,29 +485,142 @@ async function parseSquadLayerSheetData() {
 				}
 			}),
 		})
-		for (const faction of map.factions) {
-			const idDetails = json.Units[faction.defaultUnit]
-			const units = new Set(faction.types)
-			const parsedId = SLL.parseUnitId(idDetails.unitObjectName)
-			units.add(parsedId.unit)
-			const parsedDefaultUnit = SLL.parseUnitId(faction.defaultUnit)
-			for (const unit of units) {
+		const sizeLetter = SIZE_LETTERS[size] ?? 'S'
+		const roleForTeam = (team: 1 | 2) => ((team === 1 ? map.teamConfigs.team1 : map.teamConfigs.team2)!.isDefendingTeam ? 'D' : 'O')
+		const lookupUnitName = (faction: string, unit: string, team: 1 | 2, variants: { boats: boolean; noHeli: boolean }) => {
+			const seed = segments!.Gamemode === 'Seed'
+			const skirmish = segments!.Gamemode === 'Skirmish'
+			const role = roleForTeam(team)
+			const positions = sizeLetter === 'S' ? ['S'] : [`${sizeLetter}${role}`, `${sizeLetter}${role === 'O' ? 'D' : 'O'}`]
+			for (const position of positions) {
+				const name = unitIndex.get([faction, unit, position, variants.boats, variants.noHeli, seed, skirmish].join('|'))
+				if (name) return name
+			}
+			return undefined
+		}
+
+		if (map.factions.length > 0) {
+			for (const faction of map.factions) {
+				if (!faction.defaultUnit) continue
+				const idDetails = root.Units[faction.defaultUnit]
+				if (!idDetails) {
+					log.warn(`${manifest.name}: ${map.levelName}: default unit ${faction.defaultUnit} is not in Units`)
+					continue
+				}
+				const parsedDefaultUnit = SLL.parseUnitName(faction.defaultUnit, source.vocab, manifest.unitTypeOverrides)
+				const defaultType = parsedDefaultUnit.unit ?? idDetails.type
+				const units = new Set(faction.types)
+				if (idDetails.type) units.add(idDetails.type)
+				if (units.size === 0) {
+					log.warn(`${manifest.name}: ${map.levelName}: no unit types resolve for faction ${faction.factionId}`)
+					continue
+				}
+				for (const unit of units) {
+					const unitObjectNames: { 1?: string; 2?: string } = {}
+					for (const team of faction.availableOnTeams) {
+						const name =
+							lookupUnitName(faction.factionId, unit, team, parsedDefaultUnit.variants) ??
+							(unit === defaultType ? faction.defaultUnit : undefined)
+						if (name) unitObjectNames[team] = name
+						else unresolvedUnitNames++
+					}
+					availForLayer.push({
+						Faction: faction.factionId,
+						Unit: unit,
+						allowedTeams: faction.availableOnTeams,
+						isDefaultUnit: defaultType == unit,
+						variants: parsedDefaultUnit.variants,
+						...(Object.keys(unitObjectNames).length > 0 ? { unitObjectNames } : {}),
+					})
+				}
+			}
+		} else {
+			// range/training layers of structured sources carry no factions list; the default units are all there is
+			for (const [index, team] of teamConfigs.entries()) {
+				const record = root.Units[team.defaultFactionUnit!]
+				const parsed = SLL.parseUnitName(team.defaultFactionUnit!, source.vocab, manifest.unitTypeOverrides)
+				const faction = record?.factionID ?? team.defaultFactionUnit!.split('_')[0]
+				const teamNumber = (index + 1) as 1 | 2
 				availForLayer.push({
-					Faction: faction.factionId,
-					Unit: unit,
-					allowedTeams: faction.availableOnTeams,
-					isDefaultUnit: parsedDefaultUnit.unit == unit,
-					variants: {
-						boats: faction.defaultUnit.includes('Boats'),
-						noHeli: faction.defaultUnit.includes('NoHeli'),
-					},
+					Faction: faction,
+					Unit: record?.type ?? parsed.unit ?? 'CombinedArms',
+					allowedTeams: [teamNumber],
+					isDefaultUnit: true,
+					variants: parsed.variants,
+					...(record ? { unitObjectNames: { [teamNumber]: team.defaultFactionUnit! } } : {}),
 				})
 			}
 		}
 	}
+	if (unresolvedUnitNames > 0) {
+		log.warn(
+			'%s: %s availability entries have no resolvable unit record; their layer details will degrade',
+			manifest.name,
+			unresolvedUnitNames,
+		)
+	}
 
-	let baseLayers: L.KnownLayer[] = []
-	const idToIdx: Map<string, number> = new Map()
+	if (manifest.fraasVariants) {
+		const fraasLayers: L.LayerConfig[] = []
+		for (const layerConfig of mapLayers) {
+			if (layerConfig.Gamemode !== 'RAAS') continue
+			const fraasLayer = { ...layerConfig, Gamemode: 'FRAAS', Layer: layerConfig.Layer.replace('RAAS', 'FRAAS') }
+			fraasLayers.push(fraasLayer)
+			availability.set(fraasLayer.Layer, availability.get(layerConfig.Layer)!)
+		}
+		mapLayers.push(...fraasLayers)
+	}
+
+	return { mapLayers, availability }
+}
+
+async function parseSquadLayerSheetData() {
+	const sources = loadLayerSources()
+
+	const sourceAbbreviations: LC.SourceAbbreviations = { maps: {}, gamemodes: {}, units: {}, unitShortNames: {}, collections: {} }
+	for (const { manifest } of sources) {
+		Object.assign(sourceAbbreviations.maps, manifest.mapAbbreviations)
+		Object.assign(sourceAbbreviations.gamemodes, manifest.gamemodeAbbreviations)
+		for (const [unit, defs] of Object.entries(manifest.extraUnitTypes)) {
+			sourceAbbreviations.units[unit] = defs.abbreviation
+			sourceAbbreviations.unitShortNames[unit] = defs.shortName
+		}
+		sourceAbbreviations.collections[manifest.collection.name] = manifest.collection.abbreviation
+	}
+
+	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName, factionUnits } = parseBattlegroups(sources)
+	// a mod faction may own no unit record (its availability points at another faction's units); its alliance then
+	// comes from the default unit it borrows
+	const alliancedFactions = new Set(Array.from(allianceToFaction.values()).flatMap((factions) => Array.from(factions)))
+	for (const source of sources) {
+		for (const map of source.root.Maps) {
+			for (const faction of map.factions) {
+				if (!faction.defaultUnit) continue
+				const record = source.root.Units[faction.defaultUnit]
+				if (record && !alliancedFactions.has(faction.factionId)) {
+					OneToMany.set(allianceToFaction, record.alliance, faction.factionId)
+					alliancedFactions.add(faction.factionId)
+				}
+			}
+		}
+	}
+	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
+	// @ts-expect-error it's fine
+	const componentsTemp = LC.buildFullLayerComponents({ sourceAbbreviations }, true)
+
+	const mapLayers: L.LayerConfig[] = []
+	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
+	for (const source of sources) {
+		const parsed = parseSourceLayers(source, componentsTemp)
+		for (const [layer, entries] of parsed.availability) {
+			if (availability.has(layer)) throw new Error(`layer ${layer} appears in more than one source`)
+			availability.set(layer, entries)
+		}
+		mapLayers.push(...parsed.mapLayers)
+		log.info('%s: parsed %s layers', source.manifest.name, parsed.mapLayers.length)
+	}
+
+	const baseLayers: L.KnownLayer[] = []
 	const components: LC.LayerComponents = LC.buildFullLayerComponents(
 		{
 			mapLayers,
@@ -446,6 +637,7 @@ async function parseSquadLayerSheetData() {
 			factions: [],
 			units: [],
 			size: [],
+			sourceAbbreviations,
 		},
 		true,
 	)
@@ -462,34 +654,35 @@ async function parseSquadLayerSheetData() {
 		Arr.upsert(components.maps, layer.Map)
 		Arr.upsert(components.size, layer.Size)
 		Arr.upsert(components.layers, layer.Layer)
-		const rawSegments = L.parseLayerStringSegment(layer.Layer, components)
-		if (!rawSegments) throw new Error(`Invalid layer string segment: ${layer.Layer}`)
-		const parsedSegments = L.applyBackwardsCompatMappings(rawSegments, components)
+		const layerCollection = layer.Collection!
+		if (!components.collections.includes(layerCollection)) {
+			throw new Error(`Invalid collection: ${layerCollection}`)
+		}
+		// a source can list the same faction+unit more than once for a layer (variant default units); one row each
+		const seenPairs = new Set<string>()
 		for (const availEntry1 of availability.get(layer.Layer)!) {
 			if (!availEntry1.allowedTeams.includes(1)) continue
 			for (const availEntry2 of availability.get(layer.Layer)!) {
 				if (!availEntry2.allowedTeams.includes(2)) continue
 
 				if (availEntry1.Faction === availEntry2.Faction) continue
+				const pairKey = `${availEntry1.Faction}|${availEntry1.Unit}|${availEntry2.Faction}|${availEntry2.Unit}`
+				if (seenPairs.has(pairKey)) continue
+				seenPairs.add(pairKey)
 
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry1.Faction)!)
 				Arr.upsert(components.alliances, factionToAlliance.get(availEntry2.Faction)!)
-				Arr.upsert(components.versions, parsedSegments.LayerVersion)
-				if (!components.collections.includes(parsedSegments.Collection))
-					throw new Error(`Invalid collection: ${parsedSegments.Collection}`)
-				if (!Object.keys(components.collectionAbbreviations).includes(parsedSegments.Collection)) {
-					throw new Error(`Invalid collection (no abbreviation): ${parsedSegments.Collection}`)
-				}
-				Arr.upsert(components.gamemodes, parsedSegments.Gamemode)
+				Arr.upsert(components.versions, layer.LayerVersion)
+				Arr.upsert(components.gamemodes, layer.Gamemode)
 				Arr.upsert(components.factions, availEntry1.Faction)
 				Arr.upsert(components.factions, availEntry2.Faction)
 				if (availEntry1.Unit) Arr.upsert(components.units, availEntry1.Unit)
 				if (availEntry2.Unit) Arr.upsert(components.units, availEntry2.Unit)
 				const idArgs = {
 					Map: layer.Map,
-					LayerVersion: parsedSegments.LayerVersion,
-					Gamemode: parsedSegments.Gamemode,
-					Collection: parsedSegments.Collection,
+					LayerVersion: layer.LayerVersion,
+					Gamemode: layer.Gamemode,
+					Collection: layerCollection,
 					Faction_1: availEntry1.Faction,
 					Faction_2: availEntry2.Faction,
 					Unit_1: availEntry1.Unit ?? null,
@@ -501,9 +694,9 @@ async function parseSquadLayerSheetData() {
 					id: layerId,
 					Map: layer.Map,
 					Layer: layer.Layer,
-					Gamemode: parsedSegments.Gamemode,
-					LayerVersion: parsedSegments.LayerVersion,
-					Collection: parsedSegments.Collection,
+					Gamemode: layer.Gamemode,
+					LayerVersion: layer.LayerVersion,
+					Collection: layerCollection,
 					Size: layer.Size,
 					Faction_1: availEntry1.Faction,
 					Unit_1: availEntry1.Unit ?? null,
@@ -512,79 +705,48 @@ async function parseSquadLayerSheetData() {
 					Alliance_1: factionToAlliance.get(availEntry1.Faction)!,
 					Alliance_2: factionToAlliance.get(availEntry2.Faction)!,
 				}
-				idToIdx.set(layerId, baseLayers.length)
 				baseLayers.push(baseLayer)
 			}
 		}
-		log.info('parsed layer configs for %s', layer.Layer)
 	}
-
-	// -------- include FRAAS --------
-	Arr.upsert(components.gamemodes, 'FRAAS')
-	for (const layer of Array.from(components.layers)) {
-		Arr.upsert(components.layers, layer.replace('RAAS', 'FRAAS'))
-	}
-
-	const layersToAdd: L.KnownLayer[] = []
-	let i = 0
-	for (const layer of baseLayers) {
-		if (layer.Gamemode !== 'RAAS') continue
-		const fraasVariant = L.getFraasVariant(layer)
-		Arr.upsert(components.layers, fraasVariant.Layer)
-		layersToAdd.push(fraasVariant)
-		idToIdx.set(fraasVariant.id, i + baseLayers.length)
-		i++
-	}
-	baseLayers = baseLayers.concat(layersToAdd)
-
-	const mapLayersToAdd: L.LayerConfig[] = []
-	for (const layerConfig of components.mapLayers) {
-		if (layerConfig.Gamemode !== 'RAAS') continue
-		const newLayerConfig = { ...layerConfig }
-		newLayerConfig.Gamemode = 'FRAAS'
-		newLayerConfig.Layer = newLayerConfig.Layer.replace('RAAS', 'FRAAS')
-		mapLayersToAdd.push(newLayerConfig)
-	}
-	components.mapLayers.push(...mapLayersToAdd)
-
-	const addedAvailability: LC.LayerComponents['layerFactionAvailability'] = {}
-	for (const [key, entries] of Object.entries(components.layerFactionAvailability)) {
-		if (!key.includes('RAAS')) continue
-
-		addedAvailability[key.replace('RAAS', 'FRAAS')] = entries
-	}
-	Object.assign(components.layerFactionAvailability, addedAvailability)
 
 	log.info('Parsed %s total layers', baseLayers.length)
-	return { baseLayers, idToIdx, components, units: json.Units }
+	return { baseLayers, components, units: factionUnits }
 }
 
-function parseBattlegroups(root: SLL.Root) {
+function parseBattlegroups(sources: LayerSource[]) {
 	const allianceToFaction: OneToManyMap<string, string> = new Map()
 	const factionToUnit: OneToManyMap<string, string> = new Map()
 	const factionUnitToFullUnitName: Map<`${string}:${string}`, string> = new Map()
+	const factionUnits: Record<string, SLL.Unit> = {}
+	let duplicateUnitNames = 0
 
-	// Extract data from LayerListData.Units
-	for (const unit of Object.values(root.Units)) {
-		const alliance = unit.alliance
-		const faction = unit.factionID
-		const unitName = unit.type
+	for (const source of sources) {
+		for (const [unitName, unit] of Object.entries(source.root.Units)) {
+			// sources ship modified copies of each other's units under the same object name; the first source
+			// (vanilla) keeps the name
+			if (factionUnits[unitName]) {
+				duplicateUnitNames++
+				continue
+			}
+			factionUnits[unitName] = unit
 
-		// Map alliance to faction
-		OneToMany.set(allianceToFaction, alliance, faction)
-
-		// Map faction to unit
-		OneToMany.set(factionToUnit, faction, unitName)
-
-		// Map faction:unit to full unit name
-		factionUnitToFullUnitName.set(`${faction}:${unitName}`, unit.displayName)
+			OneToMany.set(allianceToFaction, unit.alliance, unit.factionID)
+			if (unit.type) {
+				OneToMany.set(factionToUnit, unit.factionID, unit.type)
+				if (!factionUnitToFullUnitName.has(`${unit.factionID}:${unit.type}`)) {
+					factionUnitToFullUnitName.set(`${unit.factionID}:${unit.type}`, unit.displayName)
+				}
+			}
+		}
 	}
 
+	if (duplicateUnitNames > 0) log.warn('%s unit object names appear in more than one source; the first source wins', duplicateUnitNames)
 	log.info(`Parsed ${allianceToFaction.size} alliance to faction mappings`)
 	log.info(`Parsed ${factionToUnit.size} faction to unit mappings`)
 	log.info(`Parsed ${factionUnitToFullUnitName.size} faction unit to full unit name mappings`)
 
-	return { allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName }
+	return { allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName, factionUnits }
 }
 
 // a layer's size is the tier baked into its default unit ids: the position segment starts L(arge)/M(edium)/S(mall),
@@ -592,11 +754,14 @@ function parseBattlegroups(root: SLL.Root) {
 const UNIT_POSITION_SIZES: Record<string, string> = { L: 'Large', M: 'Medium', S: 'Small' }
 const SIZE_ORDER = ['Small', 'Medium', 'Large']
 
-function deriveLayerSize(map: SLL.Map): string {
+function deriveLayerSize(source: LayerSource, map: SLL.Map): string {
 	const sizes = [map.teamConfigs.team1!, map.teamConfigs.team2!].map((team) => {
-		const { position } = SLL.parseUnitId(team.defaultFactionUnit)
-		const size = UNIT_POSITION_SIZES[position[0]]
-		if (!size) throw new Error(`${map.levelName}: cannot derive a layer size from unit ${team.defaultFactionUnit}`)
+		const { position } = SLL.parseUnitName(team.defaultFactionUnit!, source.vocab, source.manifest.unitTypeOverrides)
+		const size = position === null ? undefined : UNIT_POSITION_SIZES[position[0]]
+		if (!size) {
+			log.warn(`${source.manifest.name}: ${map.levelName}: no layer size in unit ${team.defaultFactionUnit}, assuming Small`)
+			return 'Small'
+		}
 		return size
 	})
 	return sizes.reduce((a, b) => (SIZE_ORDER.indexOf(a) >= SIZE_ORDER.indexOf(b) ? a : b))

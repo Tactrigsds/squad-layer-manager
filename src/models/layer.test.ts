@@ -250,3 +250,56 @@ describe('getLayerCommand', () => {
 		})
 	})
 })
+
+describe('mod source layers', () => {
+	const supermodLayer = 'SU_Sanxian_Invasion_v2'
+
+	function firstMatchup(layer: string) {
+		const avail = L.StaticLayerComponents.layerFactionAvailability[layer]
+		const team1 = avail.find((e) => e.allowedTeams.includes(1))!
+		const team2 = avail.find((e) => e.allowedTeams.includes(2) && e.Faction !== team1.Faction)!
+		return { team1, team2 }
+	}
+
+	it('resolves a supermod RCON string to a known layer', () => {
+		const { team1, team2 } = firstMatchup(supermodLayer)
+		const raw = `${supermodLayer} ${team1.Faction}+${team1.Unit} ${team2.Faction}+${team2.Unit}`
+		const layer = L.parseRawLayerText(raw)!
+		expect(L.isRawLayer(layer)).toBe(false)
+		expect(layer.Layer).toBe(supermodLayer)
+		expect(layer.Gamemode).toBe('Invasion')
+		expect(layer.Collection).toBe('SuperMod')
+	})
+
+	it('round-trips a supermod layer id', () => {
+		const { team1, team2 } = firstMatchup(supermodLayer)
+		const id = L.getKnownLayerId({
+			Map: 'Supermod_Sanxian',
+			Gamemode: 'Invasion',
+			LayerVersion: 'V2',
+			Collection: 'SuperMod',
+			Faction_1: team1.Faction,
+			Unit_1: team1.Unit,
+			Faction_2: team2.Faction,
+			Unit_2: team2.Unit,
+		})!
+		expect(id).not.toBeNull()
+		const res = L.parseLayerId(id)
+		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
+		expect(res.layer.Layer).toBe(supermodLayer)
+		expect(res.layer.Faction_1).toBe(team1.Faction)
+	})
+
+	it('emits the exact layer string in commands, not a reconstruction', () => {
+		const { team1, team2 } = firstMatchup(supermodLayer)
+		const raw = `${supermodLayer} ${team1.Faction}+${team1.Unit} ${team2.Faction}+${team2.Unit}`
+		const layer = L.parseRawLayerText(raw)!
+		expect(L.getLayerCommand(layer, 'set-next')).toBe(`AdminSetNextLayer ${raw}`)
+	})
+
+	it('sends bare commands for mod training layers', () => {
+		const layer = L.parseRawLayerText('SU_JensensRange_ADF')!
+		expect(layer.Gamemode).toBe('Training')
+		expect(L.getLayerCommand(layer, 'set-next')).toBe('AdminSetNextLayer SU_JensensRange_ADF')
+	})
+})
