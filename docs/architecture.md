@@ -32,7 +32,7 @@ Two Rust components sit alongside the TypeScript:
   page over the wire.
 - **The server agent**, an optional binary installed next to a game server. It streams that server's logs to SLM and
   proxies its RCON, so SLM never holds the RCON password and never needs to reach the RCON port. It is not required
-  to run SLM. See [configuring.md](configuring.md#server-agent).
+  to run SLM. See [server_agent.md](server_agent.md).
 
 The tree, in layering order:
 
@@ -88,6 +88,7 @@ the abbreviations reads any file quickly. The lib vocabulary:
 | `Zus`                            | `zustand`                                                     | zustand itself, plus our store helpers             |
 | `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
 | `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
+| `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
 
 Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
 convention.

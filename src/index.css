@@ -43,6 +43,19 @@
 	animation: anchor-highlight-flash 1.2s ease-out;
 }
 
+/* the scoped find bar (src/components/subtree-find-bar.tsx). These are the only styles a match ever gets: the
+   ranges are handed to the CSS Custom Highlight API, so no element is created, marked or re-rendered to carry one.
+   ::highlight() accepts colour and text decoration and nothing else, which is why the current match is inverted
+   rather than outlined. The names are fixed because CSS cannot interpolate a session id into the selector. */
+::highlight(slm-find) {
+	background-color: hsl(var(--warning) / 0.35);
+}
+
+::highlight(slm-find-current) {
+	background-color: hsl(var(--warning));
+	color: hsl(var(--warning-foreground));
+}
+
 @keyframes anchor-highlight-flash {
 	0% {
 		box-shadow:

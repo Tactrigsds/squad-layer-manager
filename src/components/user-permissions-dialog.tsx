@@ -1,6 +1,8 @@
 import React from 'react'
 
+import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { useSubtreeFind } from '@/components/use-subtree-find'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
@@ -182,6 +184,9 @@ export default function UserPermissionsDialog(props: {
 	const unheldPermTypes = Zus.useStore(UsersClient.loggedInUserQueryOptions, RbacClient.Sel.unheldPermTypes)
 
 	const simulateId = React.useId()
+	// a session per tab: the inactive tab's content is unmounted, so one shared session would have nothing to search
+	const permsFind = useSubtreeFind()
+	const rolesFind = useSubtreeFind()
 
 	if (!user) {
 		return (
@@ -236,8 +241,11 @@ export default function UserPermissionsDialog(props: {
 						<TabsTrigger value="permissions">{tr.text(RBAC_Msgs.allPermissionsTab())}</TabsTrigger>
 					</TabsList>
 
-					<TabsContent value="permissions" className="flex-1 overflow-auto">
-						<div className="space-y-4">
+					{/* the bar is pinned rather than scrolling, and the content is padded clear of it: unlike a feed, a tab
+					    here starts at its first row, so an overlay would sit on the table header */}
+					<TabsContent value="permissions" className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+						<SubtreeFindBar stores={permsFind.stores} className="absolute right-4 top-0" />
+						<div ref={permsFind.scopeRef} className="min-h-0 flex-1 space-y-4 overflow-auto pt-10">
 							<div className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.heldPermissionCount(activePermCount))}</div>
 
 							<Table>
@@ -324,8 +332,9 @@ export default function UserPermissionsDialog(props: {
 						</div>
 					</TabsContent>
 
-					<TabsContent value="roles" className="flex-1 overflow-auto">
-						<div className="space-y-6">
+					<TabsContent value="roles" className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+						<SubtreeFindBar stores={rolesFind.stores} className="absolute right-4 top-0" />
+						<div ref={rolesFind.scopeRef} className="min-h-0 flex-1 space-y-6 overflow-auto pt-10">
 							{heldRoles.map(({ role, perms }) => (
 								<RoleSection
 									key={JSON.stringify(role)}
