@@ -306,13 +306,16 @@ export function clear(...names: string[]) {
 	for (const name of names) CSS.highlights.delete(name)
 }
 
+// `hidden` counts: it establishes a scrolling box that no scrollbar reaches but `scrollTop` still moves, which is
+// what a container clipping its overflow without offering a bar is. Only `visible` and `clip` never scroll.
+const SCROLLABLE_OVERFLOW = /^(auto|scroll|overlay|hidden)$/
+
 function scrollableAxes(el: Element) {
 	if (el === document.documentElement) return { y: true, x: true }
 	const style = getComputedStyle(el)
-	const scrollable = /^(auto|scroll|overlay)$/
 	return {
-		y: scrollable.test(style.overflowY) && el.scrollHeight > el.clientHeight,
-		x: scrollable.test(style.overflowX) && el.scrollWidth > el.clientWidth,
+		y: SCROLLABLE_OVERFLOW.test(style.overflowY) && el.scrollHeight > el.clientHeight,
+		x: SCROLLABLE_OVERFLOW.test(style.overflowX) && el.scrollWidth > el.clientWidth,
 	}
 }
 

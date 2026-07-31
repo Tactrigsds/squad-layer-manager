@@ -10,9 +10,11 @@ export const counterTruncated = def('{current} of {total}+', (current: number, t
 
 export const noMatches = def('No results')
 
-export const previous = def('Previous match')
+// "result", not "match": "Previous match" is already the activity panel's word for the previous game, and a
+// translator handed one shared key cannot tell the two apart
+export const previous = def('Previous result')
 
-export const next = def('Next match')
+export const next = def('Next result')
 
 export const closeBar = def('Close find')
 
