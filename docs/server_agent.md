@@ -22,7 +22,7 @@ Set the server's connection mode to _server agent_. See
 
 Then choose or generate a secret token. The agent sends this token to authenticate, so treat it as a credential.
 
-The agent needs three things from this page:
+The agent needs three things from the server's connection settings:
 
 - the _url_ SLM is served on. This is the same `ORIGIN` you serve the app on, with the path `/server-agent`. Use
   `wss://` if you serve SLM over https, and `ws://` over plain http.

@@ -29,10 +29,10 @@ change this setting:
 
 ![adminlist](configuring_screenshots/adminlist.png)
 
-An admin list identifies a player by steam ID or by EOS ID. SLM accepts both, and one list can use a mix of the two.
+An admin list identifies a player by steam ID or EOS ID, and one list can use a mix of the two.
 
-You can configure more than one admin list. Do this when you run several servers and each server has its own list.
-Each server then names the lists that apply to it. See [2.2](#22-server-admin-lists).
+You can configure more than one admin list, which is useful when each of your servers has its own. Each server names
+the lists that apply to it. See [2.2](#22-server-admin-lists).
 
 The groups in your admin list do more than mark who is an admin. You can also:
 
@@ -59,13 +59,12 @@ Click _Add Server_ to set up a real one:
 
 Each server uses one of three connection modes:
 
-- _local_ - SLM shares the machine with the squad server. It reads `SquadGame.log` from disk and dials RCON
-  directly. This gives the lowest latency for SLM's event processing. It needs a log file path and RCON details.
-- _sftp_ - SLM runs elsewhere. It tails the log file over SFTP, polling for new data, and dials RCON over the
-  network. Use this with PSG-hosted squad servers, where you cannot run a program on the game host. It needs SFTP
-  details and RCON details.
-- _server agent (recommended)_ - a small program on the game host handles both the log stream and RCON. SLM never
-  holds the RCON password, and never has to reach the RCON port. Here it needs only a shared token. See
+- _local_ - SLM shares the machine with the squad server, reading `SquadGame.log` from disk and dialling RCON
+  directly. Lowest latency for SLM's event processing. Needs a log file path and RCON details.
+- _sftp_ - SLM runs elsewhere, tailing the log file over SFTP and dialling RCON over the network. Use this with
+  PSG-hosted squad servers, where you cannot run a program on the game host. Needs SFTP and RCON details.
+- _server agent_ (recommended) - a small program on the game host handles both the log stream and RCON. SLM never
+  holds the RCON password, and never has to reach the RCON port. Needs only a shared token. See
   [server_agent.md](server_agent.md).
 
 If a server does not behave as you expect, open the [server console](server_console.md). It shows the RCON traffic
@@ -86,7 +85,7 @@ here. If you name none, SLM recognises no in-game admins on this server.
 ### 3. Permissions
 
 SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, which it grants to
-everyone assigned that role. Some permissions are global. Many can be scoped to one squad server.
+everyone assigned that role. Some permissions are global; many can be scoped to one squad server.
 
 Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds the sum of every role
 they are assigned, except that a denial in any one role beats an allow in another.
@@ -116,8 +115,8 @@ Go to the _Permissions & Roles_ section of the global settings. Three roles exis
 - `owners` - every permission. Maximum timeout of 52w. It is assigned to nobody by default.
 
 All three cover a new server on their own: their permissions are granted unscoped, and the `managers` settings
-grant names no servers, which means every server. It is a role that narrows a permission or a settings grant to
-named servers that has to be revisited when you add one.
+grant names no servers, which means every server. Only a role that narrows a permission or a settings grant to
+named servers needs revisiting when you add one.
 
 #### 3.3. Assigning permissions to roles
 
@@ -147,9 +146,9 @@ You can assign a role to a user or to a player:
 - a _user_ signs in with their discord account and works from the web interface
 - a _player_ is in the game and uses the [in-game commands](#5-in-game-commands)
 
-A user can link their discord account to their in-game account. The permissions from both then combine for every
-action. This is optional. It matters for people who hold elevated permissions on their user account and want to use
-them in game.
+A user can link their discord account to their in-game account, and the permissions from both then combine for
+every action. This is optional, and matters mostly for people who hold elevated permissions on their user account
+and want to use them in game.
 
 The _Assignments_ subsection of a role holds five sources. Two of them cover in-game players:
 
@@ -201,8 +200,7 @@ _Require a Reason_ makes a reason mandatory for the actions you name:
 The user can still type a freeform reason instead of choosing a configured one.
 
 Admins then use a configured reason with the in-game `/warn`, `/broadcast`, `/kick`, `/timeout` and other commands,
-as long as that reason has text for the action. If the kick action has no text for a reason, you cannot kick a
-player with that reason.
+as long as that reason has text for the action: a reason with no kick text cannot be used to kick.
 
 ![warn_details](configuring_screenshots/warn_details.png)
 
@@ -221,7 +219,7 @@ it:
 #### 5.1. Command prefixes
 
 By default, every command has the prefix `/`. Change this prefix, or add another, in _Allowed Prefixes_, under
-Advanced in the _In-game Commands_ section:
+_Advanced_ in the _In-game Commands_ section:
 
 ![allowed_prefixes](configuring_screenshots/allowed_prefixes.png)
 
@@ -250,8 +248,7 @@ and the limits on what a trigger can reach.
 A _player grouping_ sorts players into named, coloured groups, for administration and for monitoring balance.
 Configure them under _Players & Balance_.
 
-A grouping is an ordered list of rules. A player joins the group of the first rule they match, so an earlier rule
-takes precedence over a later one.
+A grouping is an ordered list of rules, and a player joins the group of the first rule they match.
 
 A rule can match on:
 
@@ -297,7 +294,7 @@ To require a note for a particular flag, name it in _Player Flags Requiring Note
 ![player_flags_requiring_note](configuring_screenshots/player_flags_requiring_note.png)
 ![player_flags_requiring_note_enforced](configuring_screenshots/player_flags_requiring_note_enforced.png)
 
-A flag set from the battlemetrics interface can take a while to reach SLM's interface. SLM caches battlemetrics data
+A flag set from the battlemetrics interface can take a while to appear in SLM, which caches battlemetrics data
 aggressively to stay inside their rate limits. To see a change immediately, purge the cache for that player with the
 _refresh_ button:
 
@@ -325,8 +322,8 @@ so a layer matches unless both of these hold:
 - `Map` is Manicouagan, Skorpo or Lashkar
 - `Unit (Either)` is Mechanized or Armored
 
-A filter does nothing on its own. It is an entity that other settings point at, and one filter can be used inside
-another. _Main Pool_ is built out of two of the others:
+A filter does nothing on its own: other settings point at it, and one filter can be used inside another.
+_Main Pool_ is built out of two of the others:
 
 ![main_pool](configuring_screenshots/main_pool_card.png)
 ![main_pool_edit](configuring_screenshots/main_pool_edit.png)
@@ -358,13 +355,11 @@ It has three tabs: _Filters_, _Repeat Rules_ and _Next Layer_.
 
 #### 8.3. The pool filter
 
-_Pool Filter_ is the setting that matters most. It is the single filter deciding which layers are in the server's
-layer pool.
+_Pool Filter_ is the setting that matters most: the single filter deciding which layers are in the server's layer
+pool. It is _Main Pool_ by default.
 
-The _Pool Filter_ is _Main Pool_ by default.
-
-A layer the pool filter matches is _in-pool_, and one it does not match is _out-of-pool_. That status
-follows the layer through the whole app:
+A layer the pool filter matches is _in-pool_, and one it does not match is _out-of-pool_. That status follows the
+layer through the whole app:
 
 - out-of-pool layers are hidden behind the pool toggle during layer selection
 - only a user holding `queue:force-write` can queue one
@@ -405,8 +400,8 @@ out-of-pool, and its indicators still display.
 
 #### 8.5. Secondary filters
 
-_Secondary Filters_ never decide whether a layer is in-pool. They add behaviour on top of it, and one filter can
-appear in several of the lists at once.
+_Secondary Filters_ never decide whether a layer is in-pool. They add behaviour on top, and one filter can appear
+in several of the lists at once.
 
 | List                           | What it does                                                              |
 | ------------------------------ | ------------------------------------------------------------------------- |
@@ -437,9 +432,9 @@ SLM overrides is not announced, so turning both on tells admins only about chang
 #### 8.7. Disabling SLM updates
 
 SLM normally writes the next layer to the server over RCON. _Disable SLM Updates_, in the _Server Actions_ menu,
-stops it. The queue still runs and still tracks what is played. SLM just never sets the map itself, and it stops sending
-the recurring reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside
-something else that owns the rotation.
+stops it. The queue still runs and tracks what is played; SLM just never sets the map itself, and stops sending the
+recurring reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside something
+else that owns the rotation.
 
 ![disable_slm_updates](configuring_screenshots/disable_slm_updates.png)
 
@@ -453,8 +448,8 @@ in-game voting off on the server. See [ingame_voting.md](ingame_voting.md).
 
 #### 8.8. Repeat rules
 
-A _repeat rule_ sets how long it takes before a map, layer or faction may be played again, counting across both the
-queue and the recent match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
+A _repeat rule_ sets how soon a map, layer or faction may be played again, counting across both the queue and the
+recent match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
 
 These are the defaults:
 
@@ -513,14 +508,14 @@ Generation walks down a configurable pick order of layer columns and matchups:
 
 ![layer_weights_pick_order](configuring_screenshots/layer_weights_pick_order.png)
 
-At each step it draws one value at random, weighted by the weights you configure for that column, and the draw
-narrows the pool the next step draws from:
+At each step it draws one value at random, using the weights you configure for that column, and the draw narrows
+the pool the next step draws from:
 
 ![layer_weights_maps](configuring_screenshots/layer_weights_maps.png)
 
 A value you do not list weighs 0.1. Matchups are unordered, so `[ADF, PLA]` and `[PLA, ADF]` are one entry.
 
-Generation keeps going down the pick order until one layer remains, or until the pick order runs out. In that case
+Generation keeps going down the pick order until one layer remains, or until the pick order runs out, in which case
 it picks one of the remaining layers at random.
 
 The weights are relative, not probabilities. SLM normalizes them against the values actually available at pick time,
