@@ -16,8 +16,13 @@ const SAME_SIDES = 'NV-RAAS-V1:RGF-CA:USA-CA'
 // Team A of the previous match ran Mechanized, team B ran AirAssault. Queueing this same layer again swaps which
 // team holds which unit, because the parity flips: at the cursor team A runs AirAssault and team B Mechanized.
 const PREVIOUS_UNITS = 'HJ-RAAS-V1:RGF-MZ:PLA-AA'
-// team A = Mechanized, matching the previous team A; team B = Armored, matching nothing
+// team A = Mechanized, matching the previous team A; team B = Armored, matching nothing. As a matchup this is
+// Armored vs Mechanized, which is not the previous matchup at all.
 const UNITS_ONE_SIDE = 'FL-RAAS-V2:TLF-AR:ADF-MZ'
+// the same two units as PREVIOUS_UNITS with the slots swapped: a different layer, the same matchup
+const UNITS_REVERSED = 'HJ-RAAS-V1:PLA-AA:RGF-MZ'
+// both sides run CombinedArms, so the matchup is its own mirror
+const PREVIOUS_MIRROR_UNITS = 'NV-RAAS-V1:USA-CA:RGF-CA'
 
 const COLUMNS = Object.keys(LC.BASE_COLUMN_CONFIG.defs)
 
@@ -103,6 +108,63 @@ describe('a Unit repeat rule', () => {
 			{ col: col('Unit_2'), vals: pooled },
 			{ col: col('Unit_1'), vals: pooled },
 		])
+	})
+})
+
+describe('a UnitMatchup repeat rule', () => {
+	const orientation = (first: string, second: string) => ({
+		op: 'and',
+		children: [
+			{ op: 'in_vals', col: col('Unit_1'), vals: [unit(first)] },
+			{ op: 'in_vals', col: col('Unit_2'), vals: [unit(second)] },
+		],
+	})
+
+	it('matches the previous matchup in either orientation', () => {
+		expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }, unitList)).toEqual({
+			op: 'or',
+			children: [orientation('Mechanized', 'AirAssault'), orientation('AirAssault', 'Mechanized')],
+		})
+	})
+
+	it('is unaffected by crossTeam, having no per-team reading to widen', () => {
+		const rule = { label: 'Unit Matchup', field: 'UnitMatchup', within: 3 } as const
+		expect(whereFor({ ...rule, crossTeam: true }, unitList)).toEqual(whereFor(rule, unitList))
+	})
+
+	it('collapses a mirror matchup to a single orientation', () => {
+		const mirrorList = listAfter(PREVIOUS_MIRROR_UNITS)
+		expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }, mirrorList)).toEqual(
+			orientation('CombinedArms', 'CombinedArms'),
+		)
+	})
+
+	it('drops a matchup no target value names', () => {
+		const rule: LQY.RepeatRule = { label: 'Unit Matchup', field: 'UnitMatchup', within: 3, targetValues: ['Armored'] }
+		expect(whereFor(rule, unitList)).toEqual({ op: 'false' })
+	})
+})
+
+describe('the match descriptors a UnitMatchup repeat rule produces', () => {
+	const fieldsFor = (rule: LQY.RepeatRule, layerId: string) =>
+		(getRepeatRuleMatchDescriptors(unitList, 1, 'rule', rule, layerId) ?? []).map((d) => d.field)
+
+	const rule: LQY.RepeatRule = { label: 'Unit Matchup', field: 'UnitMatchup', within: 3 }
+
+	it('reports both sides when the same matchup comes back', () => {
+		expect(fieldsFor(rule, PREVIOUS_UNITS)).toEqual(['UnitMatchup_A', 'UnitMatchup_B'])
+	})
+
+	it('reports the repeat even though the two sides have swapped', () => {
+		expect(fieldsFor(rule, UNITS_REVERSED)).toEqual(['UnitMatchup_A', 'UnitMatchup_B'])
+	})
+
+	it('reports nothing for a matchup that only shares one unit', () => {
+		expect(fieldsFor(rule, UNITS_ONE_SIDE)).toEqual([])
+	})
+
+	it('reports nothing when no target value names the matchup', () => {
+		expect(fieldsFor({ ...rule, targetValues: ['Armored'] }, PREVIOUS_UNITS)).toEqual([])
 	})
 })
 

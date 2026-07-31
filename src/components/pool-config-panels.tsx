@@ -487,6 +487,7 @@ function RepeatRuleRow(props: {
 			targetValueOptions = L.StaticLayerComponents.factions
 			break
 		case 'Unit':
+		case 'UnitMatchup':
 			targetValueOptions = L.StaticLayerComponents.units
 			break
 		case 'Alliance':
