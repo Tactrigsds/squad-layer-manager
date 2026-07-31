@@ -1,35 +1,9 @@
-import type { Locator } from '@playwright/test'
-
 import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
+import { settledText, settledTextAfter } from '../harness/settle'
 import { expect, test } from './fixtures'
-
-// The pool filter is seeded asynchronously (the panel waits for filter entities over the websocket), so the count
-// readout first shows a real, larger number for the unconstrained query -- matching /\d+ matched layers/ does not
-// mean the baseline is the pool's. The query pipeline additionally throttles at 500ms, so the constrained result
-// can land a full throttle window later; the stability window here has to clear that comfortably.
-const STABLE_READS = 4
-const READ_INTERVAL_MS = 400
-
-async function settledText(locator: Locator) {
-	let previous: string | null = null
-	let agreements = 0
-	await expect
-		.poll(
-			async () => {
-				// the readout unmounts while a query is in flight, so a missing element counts as "not settled"
-				const current = (await locator.count()) === 1 ? await locator.textContent() : null
-				agreements = current !== null && current === previous ? agreements + 1 : 0
-				previous = current
-				return agreements
-			},
-			{ timeout: 30_000, intervals: [READ_INTERVAL_MS] },
-		)
-		.toBeGreaterThanOrEqual(STABLE_READS)
-	return previous!
-}
 
 // The applied-filters panel renders two kinds of control from one filter list: the ones the pool config
 // pins (its pool filter and its default-selectable filters) and the "extras" a user pulls in themselves.
@@ -110,11 +84,11 @@ test.describe('applied filters', () => {
 			const extraControl = dialog.getByRole('checkbox', { name: 'Narva Only' })
 			await expect(extraControl).toBeVisible()
 			await expect(extraControl).toHaveAttribute('aria-checked', 'false')
-			await expect(matchedCount).toHaveText(poolOnlyCount!)
+			await expect(matchedCount).toHaveText(poolOnlyCount)
 
 			await extraControl.click()
 			await expect(extraControl).toHaveAttribute('aria-checked', 'true')
-			await expect(matchedCount).not.toHaveText(poolOnlyCount!)
+			await settledTextAfter(matchedCount, poolOnlyCount)
 			await expect(dialog.getByRole('row').filter({ hasText: 'Narva' }).first()).toBeVisible()
 		} finally {
 			await app.dispose()
