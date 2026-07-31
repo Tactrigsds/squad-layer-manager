@@ -144,7 +144,11 @@ You can assign a role to a user or to a player:
 - a _player_ is in the game and uses the [in-game commands](#5-in-game-commands)
 
 A user can link their discord account to their in-game account, and the permissions from both then combine for
-every action. This is optional, and matters mostly for people who hold elevated permissions on their user account
+every action:
+![linked_steam_account_button](configuring_screenshots/linked_steam_accounts_button.png)
+![linked_steam_account_dialog](configuring_screenshots/linked_steam_accounts_dialog.png)
+
+This is optional, and matters mostly for people who hold elevated permissions on their user account
 and want to use them in game.
 
 The _Assignments_ subsection of a role holds five sources. Two of them cover in-game players:
@@ -479,6 +483,14 @@ decide what else it does:
 
 A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
 opt out of that.
+
+### Layer Tags
+
+Individual layers can be tagged in the layer queue.
+Layers with certain tags can be configured to skip warnings:
+
+![skip_warnings_for_tag](configuring_screenshots/skip_warnings_for_tag.png)
+![fogless_friday](configuring_screenshots/fogless_friday.png)
 
 ### 9. Layer table
 

@@ -66,9 +66,9 @@ docker run -d --restart unless-stopped \
 | `--server-id`     | `SLM_SERVER_ID`     | yes      |         | Server id as configured in SLM                                           |
 | `--token`         | `SLM_TOKEN`         | yes      |         | The server-agent token for that server                                   |
 | `--file`          | `SLM_LOG_PATH`      | yes      |         | Path to `SquadGame.log`                                                  |
-| `--rcon-host`     | `SLM_RCON_HOST`     | no\*     |         | Local RCON host to proxy (usually `127.0.0.1`)                           |
-| `--rcon-port`     | `SLM_RCON_PORT`     | no\*     |         | Local RCON port                                                          |
-| `--rcon-password` | `SLM_RCON_PASSWORD` | no\*     |         | RCON password (stays on the game host, never sent to SLM)                |
+| `--rcon-host`     | `SLM_RCON_HOST`     | yes\*    |         | Local RCON host to proxy (usually `127.0.0.1`)                           |
+| `--rcon-port`     | `SLM_RCON_PORT`     | yes\*    |         | Local RCON port                                                          |
+| `--rcon-password` | `SLM_RCON_PASSWORD` | yes\*    |         | RCON password (stays on the game host, never sent to SLM)                |
 | `--reconnect-ms`  | `SLM_RECONNECT_MS`  | no       | `5000`  | Delay between reconnect attempts, in milliseconds                        |
 | `--poll-ms`       | `SLM_POLL_MS`       | no       | `1000`  | How often to check the log for new data, in milliseconds                 |
 | `--log-file`      | `SLM_AGENT_LOG`     | no       |         | Also append the agent's own logs to this file                            |
@@ -78,11 +78,29 @@ docker run -d --restart unless-stopped \
 
 ## The RCON proxy
 
-The RCON proxy is opt-in. Supply `--rcon-host`, `--rcon-port` and `--rcon-password` to turn it on. Omit all three to
-run the agent logs-only, and give SLM the RCON details itself.
+Supply `--rcon-host`, `--rcon-port` and `--rcon-password` to turn on the proxy. The three options are all or
+nothing. If you supply some of them but not all, the agent refuses to start rather than run without the proxy you
+asked for.
 
-The three options are all or nothing. If you supply some of them but not all, the agent refuses to start rather than
-run without the proxy you asked for.
+The proxy is required, from agent 0.3.0 on. An agent tells SLM which of the two data sources, the log and RCON, it
+can supply, and SLM rejects an agent that does not supply both. A server in agent mode has no other route to the
+game server: SLM holds no RCON details for it and reads no log file of its own, so an agent that carries only one
+of the two leaves the other permanently dead.
+
+An agent that is rejected says so in its own log, with what it supplied and what to add. It keeps retrying, so
+fixing the settings on either end is enough to bring it up. Nothing streams in the meantime.
+
+## Versions
+
+Agent 0.3.0 is where the agent started declaring its data sources. Upgrade the agents and SLM in either order:
+
+- A 0.3.0 agent works against an older SLM. It declares its sources in the connection url, which an SLM that does
+  not read them ignores.
+- An agent older than 0.3.0 works against a 0.3.0 SLM. It cannot declare anything, so SLM connects it without
+  checking what it carries, and notes the version in its own log.
+
+Only an agent from 0.3.0 on is held to supplying both. One that predates the field keeps whatever it was already
+doing, including logs-only.
 
 ## Checking that it works
 

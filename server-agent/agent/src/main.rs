@@ -6,7 +6,10 @@
 // See ../../src/systems/server-agent.server.ts for the other end of the protocol.
 //
 // Protocol:
-//   1. connect to `wss://<origin>/server-agent` (or ws:// for plaintext)
+//   1. connect to `wss://<origin>/server-agent?sources=<a,b>` (or ws:// for plaintext), where `sources` names
+//      what we can supply for the server, out of `logs` and `rcon`. SLM needs both and rejects an agent that
+//      offers less. It rides in the query string so the frame below stays byte-identical to what every
+//      earlier agent sent, and an SLM too old to read `sources` still understands us.
 //   2. send one text frame: `slm-server-agent@<version>:<serverId>:<token>`
 //   3. expect an `ok` text frame back (any other reply / close means rejected)
 //   4. every subsequent frame is BINARY, tagged by its first byte:
@@ -37,6 +40,10 @@ use tokio_tungstenite::WebSocketStream;
 // from Cargo.toml so it can't drift from the crate the binary was built from, which is what the release tag
 // (server-agent-v<version>) names.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// SLM's close code for an agent that does not supply every data source it needs (see
+// ../../src/systems/server-agent.server.ts). The one rejection an operator can fix from this side.
+const CLOSE_INCOMPLETE_SOURCES: u16 = 4005;
 
 // binary frame channel tags (first byte of every post-handshake frame)
 const TAG_LOG: u8 = 0x00;
@@ -118,6 +125,33 @@ struct Config {
     rcon: Option<RconConfig>,
 }
 
+impl Config {
+    // What we can supply for this server, for the handshake's `sources=` field. The log is always one of
+    // them, since --file is required; rcon only when the proxy is configured.
+    fn sources(&self) -> &'static str {
+        if self.rcon.is_some() {
+            "logs,rcon"
+        } else {
+            "logs"
+        }
+    }
+}
+
+// Why a connection ended.
+enum ConnErr {
+    // SLM refused the handshake and said why. Retrying as-is gets the same answer: either this agent's
+    // options or the server's settings in SLM have to change.
+    Rejected { code: u16, reason: String },
+    // Anything about reaching SLM or staying connected, which retrying may well fix.
+    Transport(String),
+}
+
+impl From<String> for ConnErr {
+    fn from(msg: String) -> ConnErr {
+        ConnErr::Transport(msg)
+    }
+}
+
 fn main() {
     let cfg = match Config::parse() {
         Ok(cfg) => cfg,
@@ -194,6 +228,10 @@ async fn run(cfg: Config, log: Arc<Logger>) {
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
 
+    // the rejection we have already spelled out in full, so a reconnect loop against an unchanged
+    // misconfiguration doesn't bury everything else under the same banner every few seconds
+    let mut reported_rejection: Option<String> = None;
+
     loop {
         tokio::select! {
             biased;
@@ -203,8 +241,21 @@ async fn run(cfg: Config, log: Arc<Logger>) {
             }
             result = connect_and_stream(&cfg, &log, &mut tail, &stats) => {
                 match result {
-                    Ok(()) => log.info("connection closed by server"),
-                    Err(err) => log.error(&format!("connection ended: {err}")),
+                    Ok(()) => {
+                        reported_rejection = None;
+                        log.info("connection closed by server");
+                    }
+                    Err(ConnErr::Rejected { code, reason }) => {
+                        if reported_rejection.as_deref() == Some(reason.as_str()) {
+                            log.error(&format!("rejected by SLM again: {reason}"));
+                        } else {
+                            for line in rejection_report(&cfg, code, &reason) {
+                                log.error(&line);
+                            }
+                            reported_rejection = Some(reason);
+                        }
+                    }
+                    Err(ConnErr::Transport(err)) => log.error(&format!("connection ended: {err}")),
                 }
             }
         }
@@ -221,15 +272,63 @@ async fn run(cfg: Config, log: Arc<Logger>) {
     }
 }
 
+// A rejected handshake is a misconfiguration, not a blip: nothing will stream until someone changes
+// something, and the one-line report every other failure gets scrolls past unnoticed in a service log. So
+// spell this one out, once per distinct reason, along with what to do about it.
+fn rejection_report(cfg: &Config, code: u16, reason: &str) -> Vec<String> {
+    let rule = "*".repeat(96);
+    let mut lines = vec![
+        rule.clone(),
+        format!(
+            "SLM REJECTED THIS AGENT for server {}: {reason} (close code {code})",
+            cfg.server_id
+        ),
+    ];
+    if code == CLOSE_INCOMPLETE_SOURCES {
+        lines.push(format!(
+            "SLM needs one agent to supply both logs and rcon for a server. This one supplies: {}.",
+            cfg.sources()
+        ));
+        if cfg.rcon.is_none() {
+            lines.push(
+                "Restart it with --rcon-host, --rcon-port and --rcon-password (or SLM_RCON_HOST,"
+                    .into(),
+            );
+            lines.push(
+                "SLM_RCON_PORT and SLM_RCON_PASSWORD) so it proxies rcon as well as the log."
+                    .into(),
+            );
+        }
+    }
+    lines.push("Nothing streams until this is fixed. Still retrying, in case SLM changes.".into());
+    lines.push(rule);
+    lines
+}
+
+// The configured url with our sources appended, keeping whatever query the operator already put there.
+fn handshake_url(cfg: &Config) -> String {
+    let (base, fragment) = match cfg.url.split_once('#') {
+        Some((base, fragment)) => (base, Some(fragment)),
+        None => (cfg.url.as_str(), None),
+    };
+    let separator = if base.contains('?') { '&' } else { '?' };
+    let mut url = format!("{base}{separator}sources={}", cfg.sources());
+    if let Some(fragment) = fragment {
+        url.push('#');
+        url.push_str(fragment);
+    }
+    url
+}
+
 async fn connect_and_stream(
     cfg: &Config,
     log: &Arc<Logger>,
     tail: &mut Tail,
     stats: &Arc<Stats>,
-) -> Result<(), String> {
+) -> Result<(), ConnErr> {
     let target = Target::parse(&cfg.url)?;
-    let request = cfg
-        .url
+    let url = handshake_url(cfg);
+    let request = url
         .as_str()
         .into_client_request()
         .map_err(|e| format!("invalid url: {e}"))?;
@@ -267,7 +366,7 @@ async fn drive<S>(
     tail: &mut Tail,
     ws: WebSocketStream<S>,
     stats: &Arc<Stats>,
-) -> Result<(), String>
+) -> Result<(), ConnErr>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -285,12 +384,16 @@ where
     match tokio::time::timeout(HANDSHAKE_TIMEOUT, read.next()).await {
         Ok(Some(Ok(Message::Text(t)))) if t == "ok" => {}
         Ok(Some(Ok(Message::Close(frame)))) => {
-            return Err(format!("server rejected handshake: {frame:?}"));
+            let (code, reason) = match frame {
+                Some(f) => (u16::from(f.code), f.reason.to_string()),
+                None => (0, "no reason given".to_string()),
+            };
+            return Err(ConnErr::Rejected { code, reason });
         }
-        Ok(Some(Ok(other))) => return Err(format!("unexpected handshake reply: {other:?}")),
-        Ok(Some(Err(e))) => return Err(format!("handshake read error: {e}")),
-        Ok(None) => return Err("server closed during handshake".into()),
-        Err(_) => return Err("handshake timed out".into()),
+        Ok(Some(Ok(other))) => return Err(format!("unexpected handshake reply: {other:?}").into()),
+        Ok(Some(Err(e))) => return Err(format!("handshake read error: {e}").into()),
+        Ok(None) => return Err("server closed during handshake".to_string().into()),
+        Err(_) => return Err("handshake timed out".to_string().into()),
     }
 
     log.info("connected");
@@ -347,7 +450,13 @@ where
     });
 
     let rcon_task = cfg.rcon.clone().map(|rc| {
-        tokio::spawn(rcon_bridge(rc, tx.clone(), rcon_in_rx, log.clone(), cfg.reconnect))
+        tokio::spawn(rcon_bridge(
+            rc,
+            tx.clone(),
+            rcon_in_rx,
+            log.clone(),
+            cfg.reconnect,
+        ))
     });
 
     let result = pump_loop(cfg, log, tail, &tx, &mut reader).await;
@@ -358,7 +467,7 @@ where
     }
     writer.abort();
     reader.abort();
-    result
+    result.map_err(ConnErr::from)
 }
 
 async fn pump_loop(
@@ -841,7 +950,7 @@ usage: slm-server-agent --url <ws-url> --server-id <id> --token <token> --file <
   --log-file <path>      also append agent logs to this file                       [env SLM_AGENT_LOG]
   --insecure             do not verify the server's TLS certificate                [env SLM_INSECURE=1]
 
-  RCON proxy (all three together enable it; omit all to run logs-only):
+  RCON proxy (all three together, and required: SLM rejects an agent that does not proxy rcon):
   --rcon-host <host>     local RCON host to proxy (usually 127.0.0.1)              [env SLM_RCON_HOST]
   --rcon-port <port>     local RCON port                                           [env SLM_RCON_PORT]
   --rcon-password <pw>   RCON password (stays on this host, never sent to SLM)     [env SLM_RCON_PASSWORD]
@@ -900,18 +1009,26 @@ impl Config {
             }
         }
 
-        // rcon is opt-in and all-or-nothing: a partial config is a mistake worth failing loudly on
-        let rcon = match (rcon_host, rcon_port, rcon_password) {
-            (None, None, None) => None,
-            (Some(host), Some(port), Some(password)) if !host.is_empty() && !password.is_empty() => {
-                Some(RconConfig { host, port, password })
-            }
-            _ => {
-                return Err(
-                    "rcon proxy needs all of --rcon-host / --rcon-port / --rcon-password (or none)".into(),
-                )
-            }
-        };
+        // all-or-nothing: a partial config is a mistake worth failing loudly on. SLM requires the proxy, and
+        // says so when it rejects the connection, so an agent without it still starts and reports from there
+        // rather than second-guessing what the SLM it dials will accept.
+        let rcon =
+            match (rcon_host, rcon_port, rcon_password) {
+                (None, None, None) => None,
+                (Some(host), Some(port), Some(password))
+                    if !host.is_empty() && !password.is_empty() =>
+                {
+                    Some(RconConfig {
+                        host,
+                        port,
+                        password,
+                    })
+                }
+                _ => return Err(
+                    "rcon proxy needs all of --rcon-host / --rcon-port / --rcon-password (or none)"
+                        .into(),
+                ),
+            };
 
         Ok(Config {
             url: require(url, "--url / SLM_URL")?,
