@@ -25,11 +25,33 @@ export const RepeatRuleSchema = z.object({
 	label: z.string().min(1).max(100).describe('A label for the rule'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
+	crossTeam: z
+		.boolean()
+		.optional()
+		.describe(
+			"For a team-specific field, pool both teams' values together: a value one team played counts as a repeat for the other team too. " +
+				'Ignored for fields that are not team-specific.',
+		),
 })
 export type RepeatRule = z.infer<typeof RepeatRuleSchema>
 export function valueFilteredByTargetValues(rule: RepeatRule, value?: string): boolean {
 	if (!rule.targetValues || rule.targetValues.length === 0) return false
 	return !rule.targetValues.includes(value as string)
+}
+
+export function isTeamSpecificRepeatRuleField(field: RepeatRuleField): boolean {
+	switch (field) {
+		case 'Faction':
+		case 'Alliance':
+			return true
+		case 'Map':
+		case 'Layer':
+		case 'Gamemode':
+		case 'Size':
+			return false
+		default:
+			assertNever(field)
+	}
 }
 
 export type Constraint =
