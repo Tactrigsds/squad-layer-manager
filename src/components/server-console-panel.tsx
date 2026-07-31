@@ -1,9 +1,11 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useSubtreeFind } from '@/components/use-subtree-find'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
 import { cn } from '@/lib/utils'
@@ -40,6 +42,7 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 	)
 	const { scrollAreaRef, contentRef, showScrollButton, scrollToBottom } = useTailingScroll()
 	const scrollToBottomZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	const find = useSubtreeFind()
 
 	// each channel is its own tail, so switching to one starts at its end
 	React.useEffect(() => {
@@ -93,7 +96,8 @@ export function ServerConsolePanel({ stores, className }: { stores: ConsoleFrame
 					<Icons.Eraser className="h-3.5 w-3.5" />
 				</Button>
 			</div>
-			<div className="relative min-h-0 grow bg-muted/30">
+			<div ref={find.scopeRef} className="relative min-h-0 grow bg-muted/30">
+				<SubtreeFindBar stores={find.stores} className="absolute right-3 top-2" />
 				<ScrollArea ref={scrollAreaRef} role="tabpanel" aria-label={tr.text(SC_Msgs.tabOutput(tab))} className="h-full">
 					<div ref={contentRef} className="p-1.5">
 						{events.length === 0 ? (
