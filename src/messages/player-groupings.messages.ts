@@ -75,13 +75,14 @@ export const addNewGroup = def('Add new group...')
 
 export const colorsSummary = def('Colors ({count})', (count: number) => ({ count }))
 
-export const colorsBlurb = def('Following a flag keeps the color in step with battlemetrics.')
+export const colorsBlurb = def('Tracking a flag keeps the color in step with battlemetrics. Editing the hex code stops it tracking.')
 
 export const colorFromFlag = def('Color from flag')
 
 export const pickColor = def('Pick color')
 
-// between the flag-derived color and the custom one, which are alternatives
-export const orCustomColor = def('or')
+// reads as "tracking <flag>", in front of the flag the color follows
+export const trackingFlag = def('tracking')
 
-export const hexColorPlaceholder = def('#rrggbb')
+// the same control's empty state, so it reads "tracking select a flag" rather than naming colors twice
+export const trackNoFlag = def('select a flag')
