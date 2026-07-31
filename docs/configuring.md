@@ -85,8 +85,8 @@ here. If you name none, SLM recognises no in-game admins on this server.
 
 ### 3. Permissions
 
-SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, and you assign roles
-to people. Some permissions are global. Many can be scoped to one squad server.
+SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, which it grants to
+everyone assigned that role. Some permissions are global. Many can be scoped to one squad server.
 
 Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds the sum of every role
 they are assigned, except that a denial in any one role beats an allow in another.
@@ -114,6 +114,10 @@ Go to the _Permissions & Roles_ section of the global settings. Three roles exis
   except the connection details. Maximum timeout of 6h. It cannot add a server, because adding one means supplying
   connection details.
 - `owners` - every permission. Maximum timeout of 52w. It is assigned to nobody by default.
+
+All three cover a new server on their own: their permissions are granted unscoped, and the `managers` settings
+grant names no servers, which means every server. It is a role that narrows a permission or a settings grant to
+named servers that has to be revisited when you add one.
 
 #### 3.3. Assigning permissions to roles
 
