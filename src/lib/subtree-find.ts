@@ -31,6 +31,16 @@ const SKIPPED_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'IFRAME
 
 /** Opts an element and its subtree out of every find bar above it. */
 export const IGNORE_ATTR = 'data-find-ignore'
+const IGNORE_SELECTOR = `[${IGNORE_ATTR}]`
+
+/**
+ * Whether a node sits in a subtree opted out of indexing. Callers watching the region for changes need this as
+ * well: text that is never indexed changing is not a change to what was searched.
+ */
+export function isIgnored(node: Node) {
+	const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+	return !!el?.closest(IGNORE_SELECTOR)
+}
 
 export function isSupported() {
 	return typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
