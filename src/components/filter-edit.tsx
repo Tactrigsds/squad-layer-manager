@@ -40,6 +40,7 @@ import EmojiDisplay from './emoji-display'
 import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
+import { FilterReferences } from './filter-references'
 import LayerTable from './layer-table'
 import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
@@ -99,6 +100,10 @@ export function FilterEdit(props: {
 
 				case 'err:not-found':
 					toast(...tr.toast(F_Msgs.notFound()))
+					break
+
+				case 'err:cyclical-reference':
+					toast.error(...tr.toast(F_Msgs.cyclicalReference(res.cycle)))
 					break
 
 				case 'ok':
@@ -178,15 +183,21 @@ export function FilterEdit(props: {
 		[form, filterValid, filterModified, permitEdit],
 	)
 
+	const referenceCount = FilterEntityClient.useFilterReferences().get(props.entity.id)?.length ?? 0
+
 	const deleteBtn = React.useMemo(
 		() => (
 			<DeleteFilterDialog onDelete={onDelete}>
-				<Button variant="destructive" disabled={!permitEdit}>
+				<Button
+					variant="destructive"
+					disabled={!permitEdit || referenceCount > 0}
+					title={referenceCount > 0 ? tr.text(F_Msgs.deleteBlockedByReferences()) : undefined}
+				>
 					{tr.text(F_Msgs.deleteAction())}
 				</Button>
 			</DeleteFilterDialog>
 		),
-		[onDelete, permitEdit],
+		[onDelete, permitEdit, referenceCount],
 	)
 
 	const filterCard = React.useMemo(
@@ -260,6 +271,7 @@ export function FilterEdit(props: {
 						</div>
 						<Separator orientation="horizontal" />
 						<DescriptionDisplay description={props.entity.description} />
+						<FilterReferences filterId={props.entity.id} />
 					</div>
 				) : (
 					<div className="space-y-4 w-full">

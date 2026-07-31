@@ -8,6 +8,7 @@ import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } 
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as RBAC from '@/rbac.models'
@@ -18,6 +19,7 @@ import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 import EmojiDisplay from './emoji-display'
+import { FilterPoolFilterFor, FilterReferenceCount } from './filter-references'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Badge } from './ui/badge'
 import { buttonVariants } from './ui/button'
@@ -44,7 +46,11 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 						</ItemMedia>
 					)}
 					<ItemContent className="self-start">
-						<ItemTitle>{entity.name}</ItemTitle>
+						<ItemTitle className="flex-wrap">
+							{entity.name}
+							<FilterReferenceCount filterId={entity.id} />
+							<FilterPoolFilterFor filterId={entity.id} />
+						</ItemTitle>
 						<ItemDescription>{entity.description?.split('\n')[0]}</ItemDescription>
 					</ItemContent>
 					<ItemFooter className="flex items-center gap-4 flex-wrap">
@@ -87,7 +93,11 @@ export default function FiltersIndex() {
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
 	const filterEntities = FilterEntityClient.useFilterEntities()
+	const references = FilterEntityClient.useFilterReferences()
+	const isPoolFilter = (filter: F.FilterEntity) => (references.get(filter.id) ?? []).some(FR.isPoolFilterReference)
 	const filters = Array.from(filterEntities.values()).sort((a, b) => {
+		// a pool filter decides what its server can queue, so it leads regardless of the rest of the ordering
+		if (isPoolFilter(a) !== isPoolFilter(b)) return isPoolFilter(a) ? -1 : 1
 		if (a.emoji && !b.emoji) return -1
 		if (!a.emoji && b.emoji) return 1
 		return a.name.localeCompare(b.name)

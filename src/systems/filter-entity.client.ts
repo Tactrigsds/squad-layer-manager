@@ -4,6 +4,7 @@ import * as MapUtils from '@/lib/map-utils'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
+import type * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as USR from '@/models/users.models'
@@ -94,9 +95,18 @@ export const filterMutation$ = new Rx.Observable<USR.UserEntityMutation<F.Filter
 	return () => promise.unsubscribe()
 }).pipe(Rx.share())
 
+// where each filter is referenced, recomputed server-side whenever a filter or a server's pool config changes.
+// Empty until the first message lands, which reads as "referenced by nothing" -- deletion is gated server-side
+// regardless, so the worst an early read costs is a delete button that is briefly enabled.
+export const [useFilterReferences, filterReferences$] = ReactRx.bindWithDefault(
+	RPC.observe('filters.watchFilterReferences', () => RPC.orpc.filters.watchFilterReferences.call()),
+	new Map<F.FilterEntityId, FR.Reference[]>() as FR.Index,
+)
+
 export function setup() {
 	filterMutation$.subscribe()
 	filterEntities$.subscribe()
+	filterReferences$.subscribe()
 	initializedFilterEntities$().pipe(ReactRx.retryHot()).subscribe()
 }
 
