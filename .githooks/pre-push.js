@@ -40,6 +40,10 @@ process.stdin.on('end', () => {
 		execSync('pnpm run lint', { stdio: 'inherit' })
 		console.log('✅ Linting passed\n')
 
+		console.log('🔗 Checking doc links...')
+		execSync('pnpm run docs:lint', { stdio: 'inherit' })
+		console.log('✅ Doc links passed\n')
+
 		console.log('🧪 Running unit tests...')
 		execSync('pnpm run test', { stdio: 'inherit' })
 		console.log('✅ Unit tests passed\n')
