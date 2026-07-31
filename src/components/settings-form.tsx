@@ -904,38 +904,109 @@ function GroupingCard({
 					</summary>
 					<p className="mt-1 text-xs text-muted-foreground">{tr.text(PG_Msgs.colorsBlurb())}</p>
 					<ul className="mt-1.5 space-y-1">
-						{groupNames.map((group) => {
-							const color = grouping.groups?.[group]?.color
-							const resolved = PG.getGroupColor(grouping, group, orgFlags)
-							return (
-								<li key={group} className="grid grid-cols-[1.25rem_minmax(0,8rem)_minmax(0,1fr)_auto_7rem] items-center gap-2">
-									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: resolved }} />
-									<span className="min-w-0 truncate text-xs" title={group}>
-										{group}
-									</span>
-									<BmFlagSelect
-										title={tr.text(PG_Msgs.colorFromFlag())}
-										value={color?.type === 'flag' ? color.flag : undefined}
-										only={PG.getGroupFlags(grouping, group)}
-										onChange={(flag) => setGroupColor(group, { type: 'flag', flag })}
-									/>
-									<span className="text-xs text-muted-foreground">{tr.text(PG_Msgs.orCustomColor())}</span>
-									<Input
-										key={`${group}:${color?.type === 'custom' ? color.color : ''}`}
-										className="h-8 font-mono"
-										placeholder={tr.text(PG_Msgs.hexColorPlaceholder())}
-										defaultValue={color?.type === 'custom' ? color.color : ''}
-										onChange={(e) => setGroupColor(group, { type: 'custom', color: e.target.value }, true)}
-									/>
-								</li>
-							)
-						})}
+						{groupNames.map((group) => (
+							<GroupColorRow
+								key={group}
+								group={group}
+								grouping={grouping}
+								orgFlags={orgFlags}
+								value$={value$}
+								reset$={reset$}
+								onSetColor={setGroupColor}
+							/>
+						))}
 					</ul>
 				</details>
 			)}
 		</div>
 	)
 }
+
+// One group's color: the swatch and the hex code are the same control, and the flag it follows sits after them. The
+// hex field always shows the color in effect, flag-derived or not, so editing it is how a group stops tracking.
+function GroupColorRow({
+	group,
+	grouping,
+	orgFlags,
+	value$,
+	reset$,
+	onSetColor,
+}: {
+	group: string
+	grouping: PG.Grouping
+	orgFlags: BM.PlayerFlag[] | undefined
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onSetColor: (group: string, color: PG.GroupColor, quiet?: boolean) => void
+}) {
+	const hexRef = React.useRef<HTMLInputElement>(null)
+	const color = grouping.groups?.[group]?.color
+	const resolved = PG.getGroupColor(grouping, group, orgFlags)
+	const flags = PG.getGroupFlags(grouping, group)
+
+	const seedHex = (hex: string) => {
+		if (hexRef.current && hexRef.current.value !== hex) hexRef.current.value = hex
+	}
+	// the pulse lands before React re-renders, so the new color has to be read off value$ rather than the props. A
+	// group the edit removed is gone from it, and has no color left to show.
+	useReset(reset$, () => {
+		const current = value$.getValue() as PG.Grouping | undefined
+		if (current?.groups?.[group]) seedHex(PG.getGroupColor(current, group, orgFlags))
+	})
+
+	// `quiet` so a keystroke is not clobbered mid-edit, which also means an edit from anywhere else has to write the
+	// uncontrolled input back by hand
+	const setCustom = (hex: string, fromHexField?: boolean) => {
+		if (!fromHexField) seedHex(hex)
+		onSetColor(group, { type: 'custom', color: hex }, true)
+	}
+
+	return (
+		<li className="grid grid-cols-[minmax(0,8rem)_auto_minmax(0,1fr)] items-center gap-2">
+			<span className="min-w-0 truncate text-xs" title={group}>
+				{group}
+			</span>
+			<InputGroup className="h-8 w-[9.5rem]">
+				<InputGroupAddon align="inline-start">
+					<Popover>
+						<PopoverTrigger asChild>
+							<InputGroupButton size="icon-xs" title={tr.text(PG_Msgs.pickColor())} aria-label={tr.text(PG_Msgs.pickColor())}>
+								<span className="size-4 rounded-sm border" style={{ backgroundColor: resolved }} />
+							</InputGroupButton>
+						</PopoverTrigger>
+						<PopoverContent className="w-auto p-2">
+							<HexColorPicker color={resolved} onChange={(c) => setCustom(c)} />
+						</PopoverContent>
+					</Popover>
+				</InputGroupAddon>
+				{/* a bare input (not InputGroupInput, whose custom Input wraps the control in a div that breaks the flex row) */}
+				<input
+					ref={hexRef}
+					data-slot="input-group-control"
+					defaultValue={resolved}
+					maxLength={7}
+					autoComplete="off"
+					spellCheck={false}
+					onChange={(e) => setCustom(e.currentTarget.value.trim(), true)}
+					className="w-full min-w-0 bg-transparent py-1 pr-2 font-mono text-xs outline-none"
+				/>
+			</InputGroup>
+			{flags.length > 0 && (
+				<span className="flex min-w-0 items-center gap-2">
+					<span className="shrink-0 text-xs text-muted-foreground">{tr.text(PG_Msgs.trackingFlag())}</span>
+					<BmFlagSelect
+						title={tr.text(PG_Msgs.colorFromFlag())}
+						placeholder={tr.text(PG_Msgs.trackNoFlag())}
+						value={color?.type === 'flag' ? color.flag : undefined}
+						only={flags}
+						onChange={(flag) => onSetColor(group, { type: 'flag', flag })}
+					/>
+				</span>
+			)}
+		</li>
+	)
+}
+
 // -------- command prefixes editor --------
 
 // a small "?" affordance that reveals a longer explanation on hover, so compact editors can drop verbose inline
