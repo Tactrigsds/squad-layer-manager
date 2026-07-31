@@ -47,13 +47,13 @@ export const notifyManualSwap = def('You have been swapped to the other team by 
 
 // The team a swap sends players to, named by its faction, since that is what the reader sees in game. The
 // normalized id is only the fallback for a layer whose factions we could not read.
-export function destination(team: MH.NormedTeamId, faction?: string | null) {
-	return faction ?? t('Team {team}', { team })
+export function destination(team: MH.NormedTeamId, faction?: string | null): TString {
+	return faction ? raw(faction) : t('Team {team}', { team })
 }
 
 // the destination is named only when swapping a single player, where it is unambiguous; a selection or a squad can
 // span both teams, so each member goes to whichever team they are not on
-export const swapNow = def((target: Tgt.Target, toTeam?: string | TString) => ({
+export const swapNow = def((target: Tgt.Target, toTeam?: TString) => ({
 	confirm: {
 		title: t('Swap {targetNoun} Now', { targetNoun: Tgt.noun(target) }),
 		description:
@@ -74,7 +74,7 @@ export const swapCancelled = def((target: Tgt.Target) => ({
 }))
 
 // the players a swap sends to one team, that team named by `destination`
-type SwapGroup = { faction: string | TString; names: string[] }
+type SwapGroup = { faction: TString; names: string[] }
 
 const swapGroupLine = (group: SwapGroup) => t('to {faction}: {names}', { faction: group.faction, names: group.names.join(', ') })
 

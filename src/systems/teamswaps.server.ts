@@ -404,8 +404,8 @@ function buildSwapGroups(
 	players: { ids: SM.PlayerIds.Schema }[],
 	layer: { Faction_1: string; Faction_2: string } | null | undefined,
 	ordinal: number,
-): { faction: string | TString; names: string[] }[] {
-	const groups = new Map<MH.NormedTeamId, { faction: string | TString; names: string[] }>()
+): { faction: TString; names: string[] }[] {
+	const groups = new Map<MH.NormedTeamId, { faction: TString; names: string[] }>()
 	for (const playerId of playerIds) {
 		const toTeam = swaps.get(playerId)?.toTeam
 		if (!toTeam) continue

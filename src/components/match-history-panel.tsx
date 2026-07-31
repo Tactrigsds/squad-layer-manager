@@ -21,7 +21,7 @@ import * as MH_Msgs from '@/messages/match-history.messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
-import type * as MH from '@/models/match-history.models'
+import * as MH from '@/models/match-history.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
@@ -52,7 +52,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 	const history = historyState.recentMatches
 	const [showFullDay, setShowFullDay] = React.useState(false)
 	type MatchesByDate = [string, MH.MatchDetails[]][]
-	const [currentStreak, matchesByDate, currentMatchOrdinal] = React.useMemo(() => {
+	const [currentStreak, matchesByDate, currentMatchOrdinal, currentMatch] = React.useMemo(() => {
 		const matchesByDate: MatchesByDate = []
 
 		// We can't resolve a day of matches without any previous dates to go by so we just skip those
@@ -89,8 +89,8 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 			}
 		}
 
-		const currentMatchOrdinal = history[history.length - 1]?.ordinal ?? 0
-		return [BAL.getCurrentStreak(history), matchesByDate, currentMatchOrdinal]
+		const currentMatch: MH.MatchDetails | undefined = history[history.length - 1]
+		return [BAL.getCurrentStreak(history), matchesByDate, currentMatch?.ordinal ?? 0, currentMatch] as const
 	}, [history])
 
 	// -------- Page-based navigation --------
@@ -218,7 +218,11 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							<TableHead className="hidden @[820px]:table-cell">{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
 							<TableHead>
-								{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}
+								{tr.text(
+									globalSettings.displayTeamsNormalized
+										? L_Msgs.teamName('A', currentMatch && MH.getNormedTeamFaction(currentMatch, 'A'), true)
+										: L_Msgs.teamName(1, currentMatch && MH.getTeamFaction(currentMatch, 1), true),
+								)}
 								{globalSettings.displayTeamsNormalized &&
 									currentStreak &&
 									currentStreak.length > 1 &&
@@ -228,7 +232,11 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							</TableHead>
 							<TableHead className="text-center">{tr.text(MH_Msgs.outcomeColumn())}</TableHead>
 							<TableHead>
-								{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2))}
+								{tr.text(
+									globalSettings.displayTeamsNormalized
+										? L_Msgs.teamName('B', currentMatch && MH.getNormedTeamFaction(currentMatch, 'B'), true)
+										: L_Msgs.teamName(2, currentMatch && MH.getTeamFaction(currentMatch, 2), true),
+								)}
 								{globalSettings.displayTeamsNormalized &&
 									currentStreak &&
 									currentStreak.length > 1 &&

@@ -89,11 +89,17 @@ export const noScores = def('No scores available')
 
 // A team named for a reader rather than for a slot. Which scheme applies is the caller's: 'A'/'B' are normalized
 // across the swap, 1/2 are the raw slot (see docs/architecture.md). The faction rides in parentheses where the
-// layer is known.
+// layer is known, since a slot name alone does not say who the reader is looking at. `isCurrent` qualifies it as
+// the faction of the match in progress, which a surface spanning several matches has to say out loud.
 
 export const teamName = def(
-	'{team, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes { ({faction})} other {}}',
-	(team: 'A' | 'B' | 1 | 2, faction?: string | null) => ({ team: String(team), faction, hasFaction: faction ? 'yes' : 'no' }),
+	'{team, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}{faction})} other {}}',
+	(team: 'A' | 'B' | 1 | 2, faction?: string | null, isCurrent?: boolean) => ({
+		team: String(team),
+		faction,
+		hasFaction: faction ? 'yes' : 'no',
+		isCurrent: isCurrent ? 'yes' : 'no',
+	}),
 )
 
 export const team1 = def('Team 1')

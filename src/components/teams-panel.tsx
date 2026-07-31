@@ -22,6 +22,7 @@ import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map-utils'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
@@ -1388,7 +1389,9 @@ function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: string; s
 			baseColumns={teamPlayerColumns}
 			meta={meta}
 			sortingTarget="teams"
-			label={tr.text(SM_Msgs.teamTableLabel(props.teamId))}
+			label={tr.text(
+				SM_Msgs.teamTableLabel(tr.text(L_Msgs.teamName(props.teamId, match && MH.getNormedTeamFaction(match, props.teamId), true))),
+			)}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
 			className={props.className}
