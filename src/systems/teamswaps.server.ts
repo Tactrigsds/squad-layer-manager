@@ -14,6 +14,7 @@ import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
+import type { TString } from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
@@ -403,8 +404,8 @@ function buildSwapGroups(
 	players: { ids: SM.PlayerIds.Schema }[],
 	layer: { Faction_1: string; Faction_2: string } | null | undefined,
 	ordinal: number,
-): { faction: string; names: string[] }[] {
-	const groups = new Map<MH.NormedTeamId, { faction: string; names: string[] }>()
+): { faction: string | TString; names: string[] }[] {
+	const groups = new Map<MH.NormedTeamId, { faction: string | TString; names: string[] }>()
 	for (const playerId of playerIds) {
 		const toTeam = swaps.get(playerId)?.toTeam
 		if (!toTeam) continue
@@ -412,7 +413,7 @@ function buildSwapGroups(
 		const playerName = player?.ids.usernameNoTag ?? player?.ids.username ?? playerId
 		if (!groups.has(toTeam)) {
 			const factionProp = MH.getTeamNormalizedFactionProp(ordinal, toTeam)
-			groups.set(toTeam, { faction: layer?.[factionProp] ?? toTeam, names: [] })
+			groups.set(toTeam, { faction: TSW_Msgs.destination(toTeam, layer?.[factionProp]), names: [] })
 		}
 		groups.get(toTeam)!.names.push(playerName)
 	}

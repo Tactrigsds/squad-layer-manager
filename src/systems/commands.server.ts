@@ -7,6 +7,7 @@ import * as BB_Msgs from '@/messages/backburner.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
+import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BB from '@/models/backburner.models'
@@ -701,7 +702,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('currently-swapping', h.ctx.tr.text(CMD_Msgs.swapInProgress()))
 			}
 		}
-		await h.reply(CMD_Msgs.swappingNow(target.ids.username, toTeam))
+		await h.reply(CMD_Msgs.swappingNow(target.ids.username, TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))))
 		return { code: 'ok' }
 	},
 

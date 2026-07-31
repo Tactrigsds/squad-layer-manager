@@ -3,7 +3,8 @@
 import * as React from 'react'
 
 import * as Tgt from '@/messages/target'
-import { def, join, raw, rt, t, type Variants } from '@/models/messages.models'
+import type * as MH from '@/models/match-history.models'
+import { def, join, raw, rt, t, type TString, type Variants } from '@/models/messages.models'
 import type * as TSW from '@/models/teamswaps.models'
 
 // -------- the help window --------
@@ -44,15 +45,21 @@ export const notifyTeamswapCancelled = def('You will no longer be swapped to the
 
 export const notifyManualSwap = def('You have been swapped to the other team by an admin.')
 
-// otherTeam is named only when swapping a single player, where the destination is unambiguous; a selection or a
-// squad can span both teams, so each member goes to whichever team they are not on
-export const swapNow = def((target: Tgt.Target, otherTeam?: string) => ({
+// The team a swap sends players to, named by its faction, since that is what the reader sees in game. The
+// normalized id is only the fallback for a layer whose factions we could not read.
+export function destination(team: MH.NormedTeamId, faction?: string | null) {
+	return faction ?? t('Team {team}', { team })
+}
+
+// the destination is named only when swapping a single player, where it is unambiguous; a selection or a squad can
+// span both teams, so each member goes to whichever team they are not on
+export const swapNow = def((target: Tgt.Target, toTeam?: string | TString) => ({
 	confirm: {
 		title: t('Swap {targetNoun} Now', { targetNoun: Tgt.noun(target) }),
 		description:
-			otherTeam === undefined
+			toTeam === undefined
 				? t('Move {subject} to the opposite team immediately?', { subject: Tgt.subject(target) })
-				: t('Move {subject} to Team {otherTeam} immediately?', { subject: Tgt.subject(target), otherTeam }),
+				: t('Move {subject} to {toTeam} immediately?', { subject: Tgt.subject(target), toTeam }),
 		confirmLabel: t('Swap Now'),
 	},
 }))
@@ -66,9 +73,8 @@ export const swapCancelled = def((target: Tgt.Target) => ({
 	],
 }))
 
-// the players a swap sends to one team. Named by faction rather than by team id, since that is what the reader
-// sees in game.
-type SwapGroup = { faction: string; names: string[] }
+// the players a swap sends to one team, that team named by `destination`
+type SwapGroup = { faction: string | TString; names: string[] }
 
 const swapGroupLine = (group: SwapGroup) => t('to {faction}: {names}', { faction: group.faction, names: group.names.join(', ') })
 

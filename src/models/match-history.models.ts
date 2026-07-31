@@ -301,10 +301,14 @@ export function getTeamNormalizedAllianceProp(offset: number, team: NormedTeamId
 	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
+// the faction the given normalized team is playing in this match, e.g. "GFI"
+export function getNormedTeamFaction(match: Pick<MatchDetails, 'ordinal' | 'layerId'>, team: NormedTeamId): string | undefined {
+	return L.toLayer(match.layerId)[getTeamNormalizedFactionProp(match.ordinal, team)] ?? undefined
+}
+
 // the faction the given in-game (denormalized) team is playing in this match, e.g. "PLA"
 export function getTeamFaction(match: Pick<MatchDetails, 'ordinal' | 'layerId'>, teamId: SM.TeamId): string | undefined {
-	const prop = getTeamNormalizedFactionProp(match.ordinal, getNormedTeamId(teamId, match.ordinal))
-	return L.toLayer(match.layerId)[prop] ?? undefined
+	return getNormedTeamFaction(match, getNormedTeamId(teamId, match.ordinal))
 }
 
 // The left-to-right order teams should be laid out in. Normalized display keeps team A on the left across
