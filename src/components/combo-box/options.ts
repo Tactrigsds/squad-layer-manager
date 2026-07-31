@@ -12,9 +12,9 @@ export function cmdkItemKey<T extends string | null>(option: ComboBoxOption<T>):
 	return typeof option.label === 'string' ? option.label.trim() : null
 }
 
-// normalizes raw options to ComboBoxOption[], asserts value uniqueness, and sorts (disabled last,
-// then label/value unless sort is false). memoize at the call site -- this runs O(n log n) over
-// option lists that can be thousands of entries long
+// normalizes raw options to ComboBoxOption[], asserts value uniqueness, and sorts (disabled and
+// sortLast options last, then label/value unless sort is false). memoize at the call site -- this
+// runs O(n log n) over option lists that can be thousands of entries long
 export function normalizeOptions<T extends string | null>(
 	componentName: string,
 	rawOptions: (ComboBoxOption<T> | T)[] | typeof LOADING,
@@ -35,7 +35,7 @@ export function normalizeOptions<T extends string | null>(
 	}
 
 	options.sort((a, b) => {
-		const disabledDiff = (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0)
+		const disabledDiff = (a.disabled || a.sortLast ? 1 : 0) - (b.disabled || b.sortLast ? 1 : 0)
 		if (disabledDiff !== 0) return disabledDiff
 		if (!sort) return 0
 		const aKey = typeof a.label === 'string' ? a.label : (a.value ?? '')

@@ -1208,7 +1208,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			const matched = allowedSet?.has(value as T) ?? true
 			// null is a real enum value for some columns (e.g. LayerVersion "no version"); surface it
 			if (value === null) {
-				options.push({ label: '(none)', value: null, disabled: !matched && !hasUnlockAction })
+				options.push({ label: '(none)', value: null, disabled: !matched && !hasUnlockAction, sortLast: !matched })
 				continue
 			}
 			let label: React.ReactNode
@@ -1235,7 +1235,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			} else {
 				label = value
 			}
-			options.push({ label, value, disabled: !matched && !hasUnlockAction })
+			options.push({ label, value, disabled: !matched && !hasUnlockAction, sortLast: !matched })
 		}
 		return options
 	}, [props.column, props.allowedValues, hasUnlockAction, props.onSetAllValuesAllowedLabel])

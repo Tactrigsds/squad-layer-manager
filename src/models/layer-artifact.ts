@@ -2,33 +2,36 @@ import type * as LC from '@/models/layer-columns'
 
 // The columnar layer artifact the query engine reads (layer-engine/src/store.rs).
 //
-// Layout: "SLMC1", a u32 manifest length, the manifest as JSON, padding to a 4-byte boundary, then the column data.
+// Layout: "SLMC2", a u32 manifest length, the manifest as JSON, padding to a 4-byte boundary, then the column data.
 // Column offsets are relative to the start of that data section, so the manifest's own length never feeds back into
-// them. Enum columns are one byte per row (the widest, Layer, has 254 values), extra columns keep the
-// precision-scaled integer encoding the layer db already used, and ids are i32. Null is NULL_U8 / NULL_I32.
+// them. Enum columns are one byte per row, or two once their component list outgrows a byte (Layer crossed 255 when
+// mod sources were added). Extra columns keep the precision-scaled integer encoding the layer db already used, and
+// ids are i32. Null is NULL_U8 / NULL_U16 / NULL_I32.
 //
 // Rows are written in ascending id order. That is load-bearing twice over: the engine binary-searches ids to resolve
 // a layer, and packed-id order groups rows by map and layer, so a selective pool filter leaves whole 64-row words
 // empty and the filter scan skips them.
 
-export const MAGIC = 'SLMC1'
+export const MAGIC = 'SLMC2'
 export const ARTIFACT_EXT = '.bin'
 export const NULL_U8 = 255
+export const NULL_U16 = 65535
 export const NULL_I32 = -2147483648
 
-export type ColumnKind = 'u8' | 'i32'
+export type ColumnKind = 'u8' | 'u16' | 'i32'
 export type ColSpec = { name: string; kind: ColumnKind; offset: number }
 export type Manifest = { rowCount: number; columns: ColSpec[]; layersVersion: string }
 // values may arrive as a plain array (null for missing) or as a typed array with the null sentinel already written,
 // which is what preprocess uses: a plain array per column would cost hundreds of MB across 732k rows
 export type ArtifactColumn = { name: string; kind: ColumnKind; values: ArrayLike<number | null> }
 
-// enum columns index into their component list, which is why a byte is enough; everything else is already an integer
-export function columnKind(def: LC.CombinedColumnDef): ColumnKind {
+// enum columns index into their component list: a byte while the list fits one (index 255 is the null sentinel),
+// two bytes after. Everything else is already an integer.
+export function columnKind(def: LC.CombinedColumnDef, enumSize?: number): ColumnKind {
 	if (def.name === 'id') return 'i32'
 	switch (def.type) {
 		case 'string':
-			if (def.enumMapping) return 'u8'
+			if (def.enumMapping) return enumSize !== undefined && enumSize > NULL_U8 ? 'u16' : 'u8'
 			// a text extra column has no encoding the engine can compare against. None exist today, and adding one
 			// would need a dictionary column, so fail loudly rather than silently dropping it.
 			throw new Error(`Extra column "${def.name}" is a string; the layer engine has no string column type yet`)
@@ -63,6 +66,12 @@ export function writeArtifact(args: { rowCount: number; layersVersion: string; c
 			for (let i = 0; i < rowCount; i++) {
 				const value = column.values[i]
 				buf[i] = value === null ? NULL_U8 : value
+			}
+		} else if (column.kind === 'u16') {
+			buf = Buffer.alloc(rowCount * 2)
+			for (let i = 0; i < rowCount; i++) {
+				const value = column.values[i]
+				buf.writeUInt16LE(value === null ? NULL_U16 : value, i * 2)
 			}
 		} else {
 			buf = Buffer.alloc(rowCount * 4)

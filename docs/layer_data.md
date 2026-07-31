@@ -24,6 +24,36 @@ To build your own pair, with different scoring, extra columns, or different laye
 `src/scripts/preprocess.ts` (`pnpm preprocess`). It writes both halves into `assets/layers`, or into
 `LAYERS_OUTPUT_DIR` if that is set.
 
-## Mod support
+## Layer sources and mods
 
-Not implemented yet. Parts of SLM rely on the structure of vanilla layers.
+Layers come from sources under `data/sources/`. Each source is one directory:
+
+- `layers.json` - a [SquadLayerList](https://github.com/fantinodavide/SquadLayerList) export, current format.
+- `source.json` - the source manifest: the collection the source's layers belong to, abbreviations for its maps,
+  gamemodes and unit types, and per-layer fixes for broken mod data. `vanilla` is itself a source.
+
+To add a mod, create a directory with the mod's export and a manifest, then run `pnpm preprocess`. Preprocess fails
+with a named layer whenever the manifest is missing an abbreviation or two layers are indistinguishable; each
+failure is fixed by another manifest entry. `data/sources/supermod/source.json` is a complete example.
+
+A mod's `layers.json` can come from the SquadLayerList repo, or be extracted directly from a local Squad install
+with `tools/layer-extractor` (requires the .NET 10 SDK):
+
+```sh
+cd tools/layer-extractor
+dotnet run -- ~/.local/share/Steam/steamapps/workshop/content/393380/<workshopId> --out layers.json
+```
+
+It reads the cooked game files, so it works on whatever version of the mod Steam has downloaded, with no SDK
+involved. SquadLayerList's `exporter.py` only runs inside the Squad SDK against the mod author's project, which is
+why its exports lag behind workshop updates.
+
+A full workshop download is not needed. `tools/layer-extractor/fetch-workshop-mod.sh <workshopId> <outDir>` pulls
+about 5% of a mod: only the dedicated-server containers (which strip art but keep every gameplay asset), and within
+those only the containers that `LayerExtractor --plan` finds layer data in, by fetching the container indexes first.
+It uses DepotDownloader, which needs a Steam login that owns Squad on first run. The base game must still be
+installed; mods reference its assets.
+
+Every source's layers are in the pool of every query. The Collection column tells them apart: a server that only
+runs vanilla should carry a `Collection == OWI` term in its pool filter, and generated votes draw whatever the pool
+filter admits.
