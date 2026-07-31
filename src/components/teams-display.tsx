@@ -3,6 +3,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -53,6 +54,9 @@ export function TeamFactionDisplay(props: {
 	team: SM.TeamId
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
+	// Names the team ahead of its faction -- "Team A(current PLA)" rather than "PLA". Only for a header sitting over
+	// the live roster, which is what makes "current" true.
+	leadWithTeamName?: boolean
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
@@ -113,7 +117,9 @@ export function TeamFactionDisplay(props: {
 	return (
 		<span className={cn('inline-block whitespace-nowrap', props.className)}>
 			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
-				<span className={cn(allianceStyles, factionStyles)}>{faction}</span>
+				<span className={cn(allianceStyles, factionStyles)}>
+					{props.leadWithTeamName ? tr.text(L_Msgs.teamName(attrs[0].id, faction, true)) : faction}
+				</span>
 				{props.includeUnits && shortUnit && <span className={unitStyles}>{` ${shortUnit}`}</span>}
 				{props.showAltTeamIndicator && <TeamIndicator team={attrs[1].id} />}
 			</span>
@@ -133,6 +139,7 @@ export function MatchTeamDisplay(props: {
 	teamId: SM.TeamId | MH.NormedTeamId
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
+	leadWithTeamName?: boolean
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
@@ -154,6 +161,7 @@ export function MatchTeamDisplay(props: {
 			layer={match.layerId}
 			includeUnits={props.includeUnits}
 			showAltTeamIndicator={props.showAltTeamIndicator}
+			leadWithTeamName={props.leadWithTeamName}
 		/>
 	)
 }
