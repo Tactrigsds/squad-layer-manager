@@ -250,7 +250,14 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setExpanded(false)
 			}}
 		>
-			<Button className="min-h-0" size="icon" variant="outline" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+			<Button
+				className="min-h-0"
+				size="icon"
+				variant="outline"
+				aria-label={tr.text(F_Msgs.addCondition())}
+				aria-expanded={expanded}
+				onClick={() => setExpanded((v) => !v)}
+			>
 				<Plus />
 			</Button>
 			{expanded && (
