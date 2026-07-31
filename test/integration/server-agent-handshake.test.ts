@@ -11,6 +11,7 @@ let app: AppFixture
 
 const CLOSE_UNAUTHORIZED = 4001
 const CLOSE_INCOMPLETE_SOURCES = 4005
+const CLOSE_DUPLICATE = 4009
 
 type HandshakeResult = { accepted: boolean; code?: number; reason?: string }
 
@@ -38,6 +39,21 @@ function handshake(version = '0.3.0', token = SERVER_AGENT_TOKEN) {
 	return `slm-server-agent@${version}:${app.serverId}:${token}`
 }
 
+// A server holds one agent slot, and releases it when the app processes the close rather than when we send
+// it, so an accepted connection can briefly see the previous one as a duplicate. Only the accepting cases
+// reach that check: every rejection here is decided before it.
+async function connectAccepted(frame: string, sources: string | null): Promise<HandshakeResult> {
+	return app.waitFor(
+		async () => {
+			const { ws, settled } = connect(frame, sources)
+			const result = await settled
+			ws.close()
+			return result.code === CLOSE_DUPLICATE ? undefined : result
+		},
+		{ label: 'the agent slot to be free' },
+	)
+}
+
 beforeAll(async () => {
 	app = await createAppFixture({ logSource: 'server-agent', startAgent: false })
 }, 120_000)
@@ -57,17 +73,24 @@ describe('server agent handshake', () => {
 		expect(result.reason).toContain('rcon')
 	})
 
-	// it declares nothing because it predates the field, which is worth saying rather than reporting it as
-	// an agent that supplies nothing
-	it('rejects an agent too old to declare its sources, naming its version', async () => {
-		const { ws, settled } = connect(handshake('0.2.2'), null)
+	// an agent that predates the field cannot say what it carries, and one already streaming a server is not
+	// cut off over a field it was built before
+	it('accepts an agent too old to declare its sources', async () => {
+		const result = await connectAccepted(handshake('0.2.2'), null)
+
+		expect(result.accepted).toBe(true)
+	})
+
+	// an agent new enough to declare does not get the same pass: declaring nothing is the query string
+	// having been dropped in transit, not a licence to skip the requirement
+	it('rejects a current agent that declares no sources at all', async () => {
+		const { ws, settled } = connect(handshake(), null)
 		const result = await settled
 		ws.close()
 
 		expect(result.accepted).toBe(false)
 		expect(result.code).toBe(CLOSE_INCOMPLETE_SOURCES)
-		expect(result.reason).toContain('0.2.2')
-		expect(result.reason).toContain('too old')
+		expect(result.reason).toContain('query string')
 	})
 
 	// the token is checked first, so an unauthenticated caller learns nothing about what the server wants
@@ -82,9 +105,7 @@ describe('server agent handshake', () => {
 	// the frame is what every agent since 0.1.0 has sent: moving the sources into the query string is what
 	// keeps an agent that sends this readable by an SLM too old to know about them
 	it('accepts an agent supplying both, on the unchanged handshake frame', async () => {
-		const { ws, settled } = connect(handshake(), 'logs,rcon')
-		const result = await settled
-		ws.close()
+		const result = await connectAccepted(handshake(), 'logs,rcon')
 
 		expect(result.accepted).toBe(true)
 	})
