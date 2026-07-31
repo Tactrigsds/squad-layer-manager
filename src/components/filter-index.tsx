@@ -46,14 +46,14 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 						</ItemMedia>
 					)}
 					<ItemContent className="self-start">
-						<ItemTitle className="flex items-center gap-2">
+						<ItemTitle className="flex-wrap">
 							{entity.name}
 							<FilterReferenceCount filterId={entity.id} />
+							<FilterPoolFilterFor filterId={entity.id} />
 						</ItemTitle>
 						<ItemDescription>{entity.description?.split('\n')[0]}</ItemDescription>
 					</ItemContent>
 					<ItemFooter className="flex items-center gap-4 flex-wrap">
-						<FilterPoolFilterFor filterId={entity.id} />
 						<div className="flex items-center gap-2">
 							<Label className={cn(Typo.Label)}>{tr.text(F_Msgs.ownerLabel())}</Label>
 							{user && (
