@@ -577,7 +577,7 @@ export function LeafFilterNode(props: NodeProps) {
 				<Link
 					to="/filters/$filterId"
 					params={{ filterId: node.filterId ?? '' }}
-					target="__blank"
+					target="_blank"
 					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
 				>
 					<ExternalLink color="hsl(var(--primary))" />

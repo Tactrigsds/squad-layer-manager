@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import { StringDecoder } from 'node:string_decoder'
+import * as semver from 'semver'
 import type { WebSocket } from 'ws'
 
 import * as Schema from '$root/drizzle/schema.ts'
@@ -19,7 +20,8 @@ import * as Settings from '@/systems/settings.server'
 //     already-authenticated byte stream here. SLM never holds the RCON password for an agent-mode server.
 //
 // Protocol (deliberately thin, no oRPC):
-//   1. agent connects to `wss://<origin>/server-agent`
+//   1. agent connects to `wss://<origin>/server-agent?sources=<a,b>`, where `sources` names what that agent
+//      can supply for the server, out of `logs` and `rcon`. Agents before 0.3.0 do not send it.
 //   2. agent sends one text frame: `slm-server-agent@<version>:<serverId>:<token>`
 //   3. we validate against the server's live settings; on failure we close with a 4xxx code, on success we
 //      send an `ok` text frame
@@ -36,11 +38,26 @@ const TAG_RCON_CONTROL = 0x02
 const CLOSE_BAD_HANDSHAKE = 4000
 const CLOSE_UNAUTHORIZED = 4001
 const CLOSE_UNKNOWN_SERVER = 4004
+const CLOSE_INCOMPLETE_SOURCES = 4005
 const CLOSE_DUPLICATE = 4009
 
 // how long an agent has to send its handshake frame before we drop it
 const HANDSHAKE_TIMEOUT_MS = 10_000
 
+// An agent-mode server has no other route to its squad server: SLM holds no RCON details for it and reads no
+// log file of its own. An agent that supplies only one of the two leaves the other permanently dead, which
+// from here is indistinguishable from a server that is merely quiet, so we refuse the connection instead.
+const REQUIRED_SOURCES = ['logs', 'rcon'] as const
+
+// The version an agent declares its sources from. Older agents are taken at their word and connected
+// unchecked: they cannot say what they carry, and one that has been streaming a server for months is not a
+// thing to cut off over a field it was built before. The check is on the version rather than on the field
+// being absent, so an agent new enough to declare cannot skip the requirement by declaring nothing.
+const SOURCES_SINCE_VERSION = '0.3.0'
+
+// Unchanged since the first agent, and it stays that way: the sources ride in the query string precisely so
+// that this frame, and any agent that builds it, reads the same to every version of SLM. The token stays here
+// rather than in the url, which proxies and access logs record.
 const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(.+)$/
 
 // Per-server log chunk streams. Kept in a registry so each managed server only sees its own agent's
@@ -187,13 +204,16 @@ export function handleConnection(ws: WebSocket, req: FastifyRequest) {
 
 	ws.on('error', (err) => log.error(err, 'Server agent socket error for %s', remote))
 
+	const rawSources = (req.query as { sources?: unknown })?.sources
+	const sources = typeof rawSources === 'string' ? rawSources.split(',').filter((s) => s.length > 0) : []
+
 	ws.once('message', (raw: Buffer) => {
 		clearTimeout(handshakeTimer)
-		void onHandshake(ws, remote, raw.toString('utf-8').trim())
+		void onHandshake(ws, remote, raw.toString('utf-8').trim(), sources)
 	})
 }
 
-async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
+async function onHandshake(ws: WebSocket, remote: string, handshake: string, sources: string[]) {
 	const log = baseLogger
 	const match = HANDSHAKE_RE.exec(handshake)
 	if (!match) {
@@ -236,6 +256,43 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 		return
 	}
 
+	// after the token check, so what an agent is missing is only ever told to an authenticated one
+	const declaresSources = semver.gte(version, SOURCES_SINCE_VERSION)
+	const missing = REQUIRED_SOURCES.filter((source) => !sources.includes(source))
+	if (declaresSources && missing.length > 0) {
+		// an agent this version always names at least one source, so naming none means the query string did
+		// not survive the trip rather than that the agent has nothing to offer
+		const reason =
+			sources.length === 0
+				? 'declared no sources: does the connection url keep its query string?'
+				: `agent does not supply: ${missing.join(', ')}`
+		log.warn(
+			'Server agent %s for server %s supplies [%s] but SLM needs [%s]',
+			remote,
+			serverId,
+			sources.join(', '),
+			REQUIRED_SOURCES.join(', '),
+		)
+		ServerConsole.recordSlm(serverId, 'error', `Rejected the agent at ${remote}: ${reason}`)
+		close(ws, CLOSE_INCOMPLETE_SOURCES, reason)
+		return
+	}
+	if (!declaresSources) {
+		log.warn(
+			'Server agent %s for server %s is %s, which predates source declaration: connecting it unchecked. Upgrade it to %s or newer.',
+			remote,
+			serverId,
+			version,
+			SOURCES_SINCE_VERSION,
+		)
+		ServerConsole.recordSlm(
+			serverId,
+			'warn',
+			`Server agent at ${remote} is ${version}, too old to declare what it supplies; connecting it unchecked`,
+			`upgrade it to ${SOURCES_SINCE_VERSION} or newer`,
+		)
+	}
+
 	if (activeAgents.has(serverId)) {
 		log.warn('Server agent %s: server %s already has a connected agent', remote, serverId)
 		ServerConsole.recordSlm(serverId, 'warn', `Rejected the agent at ${remote}: an agent is already connected for this server`)
@@ -252,8 +309,18 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 	tunnel.attachAgent((payload) => {
 		if (ws.readyState === ws.OPEN) ws.send(Buffer.concat([Buffer.from([TAG_RCON_DATA]), payload]))
 	})
-	log.info('Server agent %s connected for server %s (version %s)', remote, serverId, version)
-	ServerConsole.recordSlm(serverId, 'info', `Server agent connected from ${remote} (version ${version})`)
+	log.info(
+		'Server agent %s connected for server %s (version %s, sources %s)',
+		remote,
+		serverId,
+		version,
+		sources.length > 0 ? sources.join(', ') : 'undeclared',
+	)
+	ServerConsole.recordSlm(
+		serverId,
+		'info',
+		`Server agent connected from ${remote} (version ${version}, supplying ${sources.length > 0 ? sources.join(' and ') : 'undeclared sources'})`,
+	)
 
 	// a chunk can split a multi-byte utf-8 sequence across frames; the decoder buffers the trailing partial
 	// bytes until the rest arrives rather than emitting replacement characters

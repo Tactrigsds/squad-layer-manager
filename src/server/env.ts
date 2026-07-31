@@ -400,17 +400,6 @@ export const groups = {
 
 	// only `pnpm preprocess` reads these, so they stay out of the deployment example
 	preprocess: {
-		SPREADSHEET_ID: z
-			.string()
-			.prefault('1UXEgkUMBxhmYyEkaMSUd1Ko_I7s--7krCdyshZ076pU')
-			.meta({
-				description: "OWI's layer spreadsheet. Only used for layer sizes at the moment.",
-				envExample: { include: 'omit', dev: { include: 'commented' } },
-			}),
-		SPREADSHEET_MAP_LAYERS_GID: ZodUtils.ParsedIntSchema.default(1212962563).meta({
-			description: 'the sheet within SPREADSHEET_ID the layers are read from.',
-			envExample: { include: 'omit', dev: { include: 'commented' } },
-		}),
 		EXTRA_COLS_CSV_PATH: z
 			.string()
 			.prefault(path.join(Paths.DATA, 'layers_v{{LAYERS_VERSION}}.csv'))

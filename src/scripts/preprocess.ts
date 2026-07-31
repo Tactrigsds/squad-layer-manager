@@ -1,5 +1,3 @@
-import { parse } from 'csv-parse'
-import http from 'follow-redirects'
 import * as fs from 'fs'
 import * as fsPromise from 'fs/promises'
 import { promisify } from 'node:util'
@@ -32,7 +30,7 @@ export const ParsedNanFloatSchema = z
 
 const ParsedNullableFloat = ZodUtils.ParsedFloatSchema.transform((val) => (isNaN(val) ? null : val))
 
-const Steps = z.enum(['build-layer-artifact', 'download-csvs', 'write-components-and-units', 'compress-artifact', 'all'])
+const Steps = z.enum(['build-layer-artifact', 'write-components-and-units', 'compress-artifact', 'all'])
 
 Env.ensureEnvSetup()
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.preprocess, ...Env.groups.layers, ...Env.groups.general })
@@ -89,12 +87,10 @@ async function main() {
 	LAYER_DB_CONFIG = readLayerDbConfig()
 	const ctx = { ...CS.init(), effectiveColsConfig: LC.getEffectiveColumnConfig(LAYER_DB_CONFIG.columns) }
 
-	const needsSheetData =
-		args.includes('write-components-and-units') || args.includes('build-layer-artifact') || args.includes('download-csvs')
+	const needsSheetData = args.includes('write-components-and-units') || args.includes('build-layer-artifact')
 	let data!: Awaited<ReturnType<typeof parseSquadLayerSheetData>>
 	let components!: LC.LayerComponents
 	if (needsSheetData) {
-		await ensureAllSheetsDownloaded({ invalidate: args.includes('download-csvs') })
 		data = await parseSquadLayerSheetData()
 		components = LC.buildFullLayerComponents(data.components)
 		L.setLayerData({ components, factionUnits: data.units, extraColumns: LAYER_DB_CONFIG.columns })
@@ -303,8 +299,7 @@ function binarySearch(haystack: Int32Array, needle: number): number {
 }
 
 // the extra-cols csv is machine-generated and contains no quoted fields, which lets us skip
-// csv-parse and its ~5x parsing overhead. bails if the no-quotes assumption ever breaks; the
-// google-sheet csvs (map-layers.csv) can contain quotes and stay on csv-parse.
+// a real csv parser and its ~5x parsing overhead. bails if the no-quotes assumption ever breaks.
 function* readSimpleCsv(csvPath: string): Generator<Record<string, string>> {
 	const text = fs.readFileSync(csvPath, 'utf8')
 	if (text.includes('"')) {
@@ -337,7 +332,6 @@ async function parseSquadLayerSheetData() {
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName } = parseBattlegroups(json)
 	const availability: Map<string, L.LayerFactionAvailabilityEntry[]> = new Map()
 	const factionToAlliance = OneToMany.invertOneToOne(allianceToFaction)
-	const sizes = await getMapLayerSizes()
 	// @ts-expect-error it's fine
 	const componentsTemp = LC.buildFullLayerComponents({}, true)
 
@@ -350,11 +344,8 @@ async function parseSquadLayerSheetData() {
 			log.error(`Invalid layer name: ${map.levelName}`)
 			continue
 		}
-		const size = sizes.get(map.levelName) ?? 'Small'
-		if (!size) {
-			log.error(`${map.levelName} has unknown size`)
-		}
 		if (!map.teamConfigs.team1 || !map.teamConfigs.team2) continue
+		const size = deriveLayerSize(map)
 		const teamConfigs = Object.entries(map.teamConfigs)
 			.sort((a, b) => a[0].localeCompare(b[0]))
 			.map(([_, team]) => team)
@@ -596,73 +587,19 @@ function parseBattlegroups(root: SLL.Root) {
 	return { allianceToFaction, factionToUnit, factionUnitToUnitFullName: factionUnitToFullUnitName }
 }
 
-function getMapLayerSizes() {
-	return new Promise<Map<string, string>>((resolve, reject) => {
-		const sizeMapping: Map<string, string> = new Map()
-		fs.createReadStream(path.join(Paths.DATA, 'map-layers.csv'))
-			.pipe(parse({ columns: true }))
-			.on('data', (row: Record<string, string>) => {
-				if (!row['Layer Name']) return
-				const size = row['Layer Size*']
-				const layer = row['Layer Name']
-				sizeMapping.set(layer, size)
-			})
-			.on('end', () => {
-				resolve(sizeMapping)
-			})
-			.on('error', (error) => {
-				console.error('Error parsing map layers CSV:', error)
-				reject(error)
-			})
+// a layer's size is the tier baked into its default unit ids: the position segment starts L(arge)/M(edium)/S(mall),
+// e.g. BAF_LO_CombinedArms is a Large layer's unit. On the rare layer whose teams field different tiers, the larger wins.
+const UNIT_POSITION_SIZES: Record<string, string> = { L: 'Large', M: 'Medium', S: 'Small' }
+const SIZE_ORDER = ['Small', 'Medium', 'Large']
+
+function deriveLayerSize(map: SLL.Map): string {
+	const sizes = [map.teamConfigs.team1!, map.teamConfigs.team2!].map((team) => {
+		const { position } = SLL.parseUnitId(team.defaultFactionUnit)
+		const size = UNIT_POSITION_SIZES[position[0]]
+		if (!size) throw new Error(`${map.levelName}: cannot derive a layer size from unit ${team.defaultFactionUnit}`)
+		return size
 	})
-}
-
-async function ensureAllSheetsDownloaded(opts?: { invalidate?: boolean }) {
-	const invalidate = opts?.invalidate ?? false
-	const ops: Promise<void>[] = []
-	const sheets = [
-		{
-			name: 'mapLayers',
-			filename: 'map-layers.csv',
-			gid: ENV.SPREADSHEET_MAP_LAYERS_GID,
-		},
-	]
-	for (const sheet of sheets) {
-		const sheetPath = path.join(Paths.DATA, sheet.filename)
-		if (invalidate || !fs.existsSync(sheetPath)) {
-			ops.push(downloadPublicSheetAsCSV(sheet.gid, sheetPath))
-		}
-	}
-	await Promise.all(ops)
-}
-
-async function downloadPublicSheetAsCSV(gid: number, filepath: string) {
-	const url = `https://docs.google.com/spreadsheets/d/${ENV.SPREADSHEET_ID}/export?gid=${gid}&format=csv#gid=${gid}`
-
-	return await new Promise<void>((resolve, reject) => {
-		const file = fs.createWriteStream(filepath)
-
-		http.https
-			.get(url, (response) => {
-				response.pipe(file)
-
-				file.on('finish', () => {
-					file.close()
-					log.info(`CSV downloaded successfully to %s`, filepath)
-					resolve()
-				})
-
-				file.on('error', (error) => {
-					file.close()
-					log.error(error, `Error downloading CSV from %s to %s`, url, filepath)
-					reject(error)
-				})
-			})
-			.on('error', (error) => {
-				log.error(error, 'Error downloading CSV:')
-				reject(error)
-			})
-	})
+	return sizes.reduce((a, b) => (SIZE_ORDER.indexOf(a) >= SIZE_ORDER.indexOf(b) ? a : b))
 }
 
 await main()

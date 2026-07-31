@@ -94,6 +94,7 @@ export const MapSchema = z.object({
 	mapId: z.string(),
 	teamConfigs: z.object({ team1: TeamSchema.optional(), team2: TeamSchema.optional() }),
 })
+export type Map = z.infer<typeof MapSchema>
 
 export const VehicleSchema = z.object({
 	name: z.string(),

@@ -50,7 +50,6 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	)
 
 	const onChangeDebounced = useDebounced({
-		defaultValue: () => stringifyCompact(F.treeToFilterNode(getState().tree)),
 		onChange: onChange,
 		delay: 100,
 	})
