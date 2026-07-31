@@ -64,6 +64,21 @@ describe('buildIndex', () => {
 	})
 })
 
+// the find bar renders inside the region it searches, so a caller watching that region for changes has to be able
+// to tell its own chrome apart from the content -- otherwise the counter ticking over invalidates the index
+describe('isIgnored', () => {
+	it('covers the opted-out element and everything under it, and nothing else', () => {
+		const root = mount(`<div id="content">text</div><div ${Find.IGNORE_ATTR}><span id="chrome">1 of 2</span></div>`)
+		const chrome = root.querySelector('#chrome')!
+		const content = root.querySelector('#content')!
+		expect(Find.isIgnored(chrome)).toBe(true)
+		expect(Find.isIgnored(chrome.firstChild!)).toBe(true)
+		expect(Find.isIgnored(chrome.parentElement!)).toBe(true)
+		expect(Find.isIgnored(content)).toBe(false)
+		expect(Find.isIgnored(content.firstChild!)).toBe(false)
+	})
+})
+
 describe('search', () => {
 	it('is case insensitive by default and exact when asked', () => {
 		const root = mount('<span>Alpha alpha ALPHA</span>')

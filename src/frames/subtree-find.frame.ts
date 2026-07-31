@@ -43,6 +43,9 @@ export type Engine = {
 	pending: string
 	// the match offset to stay near when the results change under the reader
 	anchor: number
+	// the match a pending frame will paint and scroll to, and that frame's handle while one is booked
+	revealTarget: number
+	revealHandle: number
 	observer: MutationObserver | null
 	typed$: Rx.Subject<void>
 	dirty$: Rx.Subject<void>
@@ -88,6 +91,8 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		matches: [],
 		pending: '',
 		anchor: 0,
+		revealTarget: -1,
+		revealHandle: 0,
 		observer: null,
 		typed$: new Rx.Subject<void>(),
 		dirty$: new Rx.Subject<void>(),
@@ -118,16 +123,32 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	}
 
 	// paints the current match over the rest of them and brings it into view
-	function reveal(current: number) {
-		const match = engine.matches[current]
+	function paintCurrent() {
+		engine.revealHandle = 0
+		const match = engine.matches[engine.revealTarget]
 		if (!engine.index || !match) {
 			Find.clear(HIGHLIGHT_CURRENT)
 			return
 		}
-		engine.anchor = match.start
 		const range = Find.toRange(engine.index, match)
 		Find.paint(HIGHLIGHT_CURRENT, [range], 1)
 		Find.scrollRangeIntoView(range)
+	}
+
+	function cancelReveal() {
+		if (engine.revealHandle === 0) return
+		cancelAnimationFrame(engine.revealHandle)
+		engine.revealHandle = 0
+	}
+
+	// Measuring and scrolling to a match forces a layout flush, and the enter key repeats far faster than the screen
+	// refreshes, so holding it spent every frame on positions nobody ever saw. Only the last one in a frame is worth
+	// showing. The anchor is still moved for each step, since a rebuild landing mid-burst reads it.
+	function reveal(current: number) {
+		const match = engine.matches[current]
+		if (match) engine.anchor = match.start
+		engine.revealTarget = current
+		if (engine.revealHandle === 0) engine.revealHandle = requestAnimationFrame(paintCurrent)
 	}
 
 	function run() {
@@ -135,6 +156,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		const query = engine.pending
 		if (!state.open || !engine.root || query === '') {
 			engine.matches = []
+			cancelReveal()
 			release(engine)
 			publish({ query, matchCount: 0, currentIndex: -1, truncated: false })
 			return
@@ -171,6 +193,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 		engine.matches = []
 		// dropping the index releases its references to every text node in the subtree
 		engine.index = null
+		cancelReveal()
 		release(engine)
 		args.set({ open: false, query: '', matchCount: 0, currentIndex: -1, truncated: false })
 	}
@@ -185,6 +208,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 	)
 	args.cleanup.push(() => {
 		engine.observer?.disconnect()
+		cancelReveal()
 		engine.index = null
 		engine.matches = []
 		release(engine)
@@ -223,7 +247,11 @@ export namespace Actions {
 		engine.root = root
 		engine.index = null
 		if (root) {
-			const observer = new MutationObserver(() => {
+			// The bar renders inside the region it searches often enough that its own counter ticking over would
+			// invalidate the index on every keypress, rebuild it and re-run the search -- a loop fed by nothing but
+			// reading the results. Stepping through matches with the enter key held drove it hardest.
+			const observer = new MutationObserver((records) => {
+				if (!records.some((record) => !Find.isIgnored(record.target))) return
 				engine.index = null
 				engine.dirty$.next()
 			})
