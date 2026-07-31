@@ -71,3 +71,73 @@ test.describe('the filter editor form', () => {
 		}
 	})
 })
+
+// Deleting a filter something still points at would leave the pool, or another filter, referring to nothing.
+// The gate is server-side; what these cover is that the page tells the user what is holding the filter and
+// stops offering the delete.
+test.describe('filter references', () => {
+	test('lists what references a filter and refuses to delete it until nothing does', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.harjuRaas),
+			filters: [
+				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
+				filter('unused', 'Unused', FB.and([FB.eq('Gamemode', 'AAS')])),
+			],
+			serverSettings: (settings) => {
+				settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
+			},
+		})
+		try {
+			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+
+			const references = page.getByRole('region', { name: 'References' })
+			await expect(references).toContainText('2 references', { timeout: 20_000 })
+			// referenced directly by raas-harju, and transitively by the pool filter that applies it
+			await expect(references).toContainText('RAAS on Harju')
+			await expect(references).toContainText('Pool filter')
+			await expect(references).toContainText('via raas-harju')
+
+			await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled()
+
+			// a filter nothing points at still deletes
+			await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))
+			await expect(page.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'Delete' }).click()
+			await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+
+			await app.waitFor(
+				() => {
+					const row = app.readDb().prepare('select id from filters where id = ?').get('unused')
+					return row ? null : true
+				},
+				{ label: 'unreferenced filter deleted' },
+			)
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	test('refuses to save an edit that would make two filters reference each other', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.harjuRaas),
+			filters: [
+				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
+			],
+		})
+		try {
+			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+
+			await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'apply existing filter' }).click()
+			await page.getByRole('combobox', { name: 'Filter' }).click()
+			await page.getByRole('option', { name: 'RAAS on Harju' }).click()
+
+			await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
+			await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+		} finally {
+			await app.dispose()
+		}
+	})
+})

@@ -725,15 +725,21 @@ export const BaseFilterEntitySchema = z.object({
 	invertedEmoji: z.string().nullable(),
 })
 
-export function filterContainsId(id: string, node: FilterNode): boolean {
-	if (isBlockNode(node)) return node.children.some((n) => filterContainsId(id, n))
-	if (isApplyFilterNode(node)) return node.filterId === id
-	return false
+// the filter entities this tree applies directly, via its apply-filter operators. Not transitive: a referenced
+// filter's own references are found by walking the entities (see filter-references.models.ts).
+export function appliedFilterIds(node: FilterNode | EditableFilterNode, ids = new Set<FilterEntityId>()): Set<FilterEntityId> {
+	if (isEditableBlockNode(node)) {
+		for (const child of node.children) appliedFilterIds(child, ids)
+	} else if (isApplyFilterNode(node) && node.filterId) {
+		ids.add(node.filterId)
+	}
+	return ids
 }
 
 export const FilterEntitySchema = BaseFilterEntitySchema
-	// this refinement does not deal with mutual recursion
-	.refine((e) => !filterContainsId(e.id, e.filter), {
+	// direct self-reference only. A loop through other filters is caught where the whole set is known, on the
+	// write path (see filter-references.models.ts, findCycle)
+	.refine((e) => !appliedFilterIds(e.filter).has(e.id), {
 		error: 'filter cannot be recursive',
 	}) satisfies z.ZodType<SchemaModels.Filter>
 
