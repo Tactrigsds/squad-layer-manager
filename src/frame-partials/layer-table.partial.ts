@@ -9,13 +9,17 @@ import type * as FRM from '@/lib/frame'
 import * as Obj from '@/lib/object-utils'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
+import * as SetUtils from '@/lib/set-utils'
 import * as Zus from '@/lib/zustand'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models.ts'
+import * as RBAC from '@/rbac.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import type * as RbacClient from '@/systems/rbac.client'
+import * as UsersClient from '@/systems/users.client'
 
 export type { PostProcessedLayer } from '@/systems/layer-queries.shared'
 
@@ -274,30 +278,67 @@ export namespace Sel {
 		return store.layerTable.maxSelected === 1 && store.layerTable.minSelected === 1
 	}
 
+	// the sources every pool-gated selector below takes, in order. The user and the rbac store arrive separately so
+	// simulation is folded in here rather than read once when the page was queried
+	type PoolArgs = [store: Store, user: RBAC.UserWithRbac | undefined, rbacStore: RbacClient.RbacStore]
+
+	// an unresolved user is treated as holding nothing, which disables out-of-pool rows until it loads. The server
+	// gates the write regardless, so the only cost of being wrong for a frame is an affordance that appears late
+	const canForceSelect = (...[, user, rbacStore]: PoolArgs) => {
+		const simulated = UsersClient.Sel.maybeLoggedInUser(user, rbacStore)
+		return !!simulated && RBAC.hasPermOnAnyServer(RBAC.fromTracedPermissions(simulated.perms), 'queue:force-write')
+	}
+
 	export const rowSelectionStatus = RSel.memoizeFactory((rowId: L.LayerId) =>
 		RSel.createDeepSelector(
 			[
-				(store: Store) => store.layerTable.pageData,
-				(store: Store) => store.layerTable.selected,
-				(store: Store) => store.layerTable.minSelected,
+				(...[store]: PoolArgs) => store.layerTable.pageData,
+				(...[store]: PoolArgs) => store.layerTable.selected,
+				(...[store]: PoolArgs) => store.layerTable.minSelected,
+				canForceSelect,
 			],
-			(pageData, selected, minSelected) => {
+			(pageData, selected, minSelected, canForceSelect) => {
 				const row = pageData?.layers.find((r) => r.id === rowId)
-				if (!row) return [false, false] as const
+				if (!row) return { isUnselectable: false, isSelected: false, blockedByPool: false }
 				const isSelected = selected.includes(rowId)
 
-				// If row is already disabled, it's disabled
-				if (row.isRowDisabled) return [true, isSelected] as const
+				const blockedByPool = row.isOutOfPool && !canForceSelect
+				if (blockedByPool) return { isUnselectable: true, isSelected, blockedByPool }
 
 				// Check if unchecking would violate minSelected
 				if (isSelected) {
 					const wouldBeUnderMin = (minSelected ?? 0) > selected.length - 1
-					if (wouldBeUnderMin) return [true, isSelected] as const
+					if (wouldBeUnderMin) return { isUnselectable: true, isSelected, blockedByPool }
 				}
 
-				return [false, isSelected] as const
+				return { isUnselectable: false, isSelected, blockedByPool }
 			},
 		),
+	)
+
+	export const selectAllStatus = RSel.createDeepSelector(
+		[
+			(...[store]: PoolArgs) => store.layerTable.pageData,
+			(...[store]: PoolArgs) => store.layerTable.selected,
+			(...[store]: PoolArgs) => store.layerTable.minSelected,
+			(...[store]: PoolArgs) => store.layerTable.maxSelected,
+			canForceSelect,
+		],
+		(pageData, selected, minSelected, maxSelected, canForceSelect) => {
+			if (pageData === null) return { selectState: null, disabled: true }
+			const selectedSet = new Set(selected)
+			const pageIds = new Set(pageData.layers.map((l) => l.id))
+			const intersect = SetUtils.intersection(selectedSet, pageIds)
+			const selectState: 'all' | 'some' | null = intersect.size === pageIds.size ? 'all' : intersect.size > 0 ? 'some' : null
+
+			const ifAllSelected = SetUtils.union(selectedSet, pageIds)
+			const ifAllUnselected = SetUtils.difference(selectedSet, pageIds)
+			const disabled =
+				(maxSelected ?? Infinity) < ifAllSelected.size ||
+				(minSelected ?? 0) > ifAllUnselected.size ||
+				(!canForceSelect && pageData.layers.some((l) => l.isOutOfPool))
+			return { selectState, disabled }
+		},
 	)
 
 	// compact mode hides all but COMPACT_VISIBLE_COLUMNS without touching the stored visibility prefs
