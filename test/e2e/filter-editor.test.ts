@@ -82,7 +82,8 @@ test.describe('filter references', () => {
 			filters: [
 				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
 				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
-				filter('unused', 'Unused', FB.and([FB.eq('Gamemode', 'AAS')])),
+				// named so it sorts first alphabetically: the pool filter has to jump ahead of it on its own merit
+				filter('unused', 'AAS Only', FB.and([FB.eq('Gamemode', 'AAS')])),
 			],
 			serverSettings: (settings) => {
 				settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
@@ -99,6 +100,15 @@ test.describe('filter references', () => {
 			await expect(references).toContainText('via raas-harju')
 
 			await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled()
+
+			// the filter the pool names directly says so on its own line, rather than among the other pool uses
+			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-harju'))
+			await expect(references.getByText('Pool filter for:')).toBeVisible({ timeout: 20_000 })
+
+			// and it leads the index, ahead of the alphabetically earlier filters
+			await page.goto(app.loginUrl(app.adminUser, '/filters'))
+			const cards = page.getByRole('listitem')
+			await expect(cards.first()).toContainText('RAAS on Harju', { timeout: 20_000 })
 
 			// a filter nothing points at still deletes
 			await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))

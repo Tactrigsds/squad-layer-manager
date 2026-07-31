@@ -102,6 +102,20 @@ export function referencesFor(index: Index, filterId: F.FilterEntityId): Referen
 	return index.get(filterId) ?? []
 }
 
+// This filter is what decides a server's pool membership. Being reached through the pool filter is not the same
+// thing, so a reference with hops behind it does not qualify.
+export function isPoolFilterReference(reference: Reference): boolean {
+	return reference.type === 'pool-config' && reference.key === 'poolFilter' && reference.via.length === 0
+}
+
+export function poolFilterServerIds(references: Reference[]): string[] {
+	const ids: string[] = []
+	for (const reference of references) {
+		if (reference.type === 'pool-config' && isPoolFilterReference(reference)) ids.push(reference.serverId)
+	}
+	return ids
+}
+
 // The apply-filter chain leading from `startId` back to a filter already on the path, or null if there is none.
 // The returned path starts at the first filter in the cycle and ends with that same filter repeated, so it reads
 // as the loop it describes.
