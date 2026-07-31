@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSubtreeFind } from '@/components/use-subtree-find'
 import * as ConsoleFrame from '@/frames/server-console.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
+import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
@@ -32,6 +33,19 @@ function formatEvent(event: ConsoleEvent): { prefix: string; body: string; tone?
 			return { prefix: 'log', body: event.line, tone: 'text-muted-foreground' }
 		case 'command':
 			return { prefix: `${event.channel} ${event.player}`, body: event.message, tone: 'text-amber-600 dark:text-amber-500' }
+		case 'slm':
+			return {
+				prefix: 'slm',
+				body: event.detail ? `${event.message} (${event.detail})` : event.message,
+				tone:
+					event.level === 'error'
+						? 'text-destructive'
+						: event.level === 'warn'
+							? 'text-amber-600 dark:text-amber-500'
+							: 'text-foreground',
+			}
+		default:
+			assertNever(event)
 	}
 }
 

@@ -10,6 +10,7 @@ import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
 
 // The slm-server-agent (see ../../server-agent, a small rust program) runs on/near a squad server box and
@@ -234,12 +235,23 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 
 	if (settings.connections.type !== 'server-agent') {
 		log.warn('Server agent %s: server %s is not configured for a server agent', remote, serverId)
+		ServerConsole.recordSlm(
+			serverId,
+			'error',
+			`Rejected the agent at ${remote}: this server is configured for ${settings.connections.type}, not a server agent`,
+		)
 		close(ws, CLOSE_UNKNOWN_SERVER, 'server not configured for a server agent')
 		return
 	}
 
 	if (settings.connections.token !== token) {
 		log.warn('Server agent %s: invalid token for server %s', remote, serverId)
+		ServerConsole.recordSlm(
+			serverId,
+			'error',
+			`Rejected the agent at ${remote}: wrong token`,
+			"the agent's token does not match this server's connection settings",
+		)
 		close(ws, CLOSE_UNAUTHORIZED, 'invalid token')
 		return
 	}
@@ -261,6 +273,7 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 			sources.join(', '),
 			REQUIRED_SOURCES.join(', '),
 		)
+		ServerConsole.recordSlm(serverId, 'error', `Rejected the agent at ${remote}: ${reason}`)
 		close(ws, CLOSE_INCOMPLETE_SOURCES, reason)
 		return
 	}
@@ -272,10 +285,17 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 			version,
 			SOURCES_SINCE_VERSION,
 		)
+		ServerConsole.recordSlm(
+			serverId,
+			'warn',
+			`Server agent at ${remote} is ${version}, too old to declare what it supplies; connecting it unchecked`,
+			`upgrade it to ${SOURCES_SINCE_VERSION} or newer`,
+		)
 	}
 
 	if (activeAgents.has(serverId)) {
 		log.warn('Server agent %s: server %s already has a connected agent', remote, serverId)
+		ServerConsole.recordSlm(serverId, 'warn', `Rejected the agent at ${remote}: an agent is already connected for this server`)
 		close(ws, CLOSE_DUPLICATE, 'duplicate agent')
 		return
 	}
@@ -295,6 +315,11 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 		serverId,
 		version,
 		sources.length > 0 ? sources.join(', ') : 'undeclared',
+	)
+	ServerConsole.recordSlm(
+		serverId,
+		'info',
+		`Server agent connected from ${remote} (version ${version}, supplying ${sources.length > 0 ? sources.join(' and ') : 'undeclared sources'})`,
 	)
 
 	// a chunk can split a multi-byte utf-8 sequence across frames; the decoder buffers the trailing partial
@@ -319,10 +344,11 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 	})
 	ws.send('ok')
 
-	ws.on('close', () => {
+	ws.on('close', (code: number, reason: Buffer) => {
 		if (activeAgents.get(serverId) === ws) activeAgents.delete(serverId)
 		tunnel.detachAgent()
 		log.info('Server agent %s for server %s disconnected', remote, serverId)
+		ServerConsole.recordSlm(serverId, 'warn', `Server agent at ${remote} disconnected`, reason.toString('utf8') || `close code ${code}`)
 	})
 }
 

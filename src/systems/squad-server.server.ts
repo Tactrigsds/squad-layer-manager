@@ -694,6 +694,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	// the emulator has to be listening before anything can dial it, and it owns its own (ephemeral) port
 	if (Sandbox.isSandbox(settings.connections)) await Sandbox.ensureInstance(serverId, settings.connections)
 
+	ServerConsole.recordSlm(serverId, 'info', `Starting server, reaching it over ${settings.connections.type}`)
+
 	// local/sftp dial RCON directly; server-agent tunnels it through the agent (the agent holds the password).
 	// sandbox dials the in-process emulator over loopback, so the real packet framing still runs.
 	const rconTransport =
@@ -704,10 +706,11 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		serverId,
 		transport: rconTransport,
 		onTraffic: (dir, body, reqId) => ServerConsole.record(serverId, { type: 'rcon', dir, body, reqId, time: Date.now() }),
+		onStatus: (level, message, detail) => ServerConsole.recordSlm(serverId, level, message, detail),
 	})
 	rcon.ensureConnected()
 	cleanup.push(() => rcon.disconnect())
-	cleanup.push(() => ServerConsole.disposeFor(serverId))
+	cleanup.push(() => ServerConsole.recordSlm(serverId, 'info', 'Server stopped'))
 	cleanup.push(() => CommandPrompts.disposeFor(serverId))
 
 	const layersStatusExt$: SQS.Ctx.Payload['layersStatusExt$'] = getLayersStatusExt$(serverId)
@@ -720,6 +723,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	// setupManagedServer and tear down the managed server it just finished building.
 	const destroyAfterFatalError = async (err: unknown) => {
 		log.error(err, `Server ${serverId}: async resource failed permanently, tearing the server down`)
+		ServerConsole.recordSlm(serverId, 'error', 'A connection failed permanently, stopping the server', err)
 		try {
 			await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 		} catch (destroyErr) {
@@ -910,6 +914,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				maxReconnectAttempts: sftp.maxReconnectAttempts,
 				// reconnection attempts exhausted: tear the managed server down rather than letting the error crash the process
 				onFatalError: onResourceFatalError,
+				onStatus: (level, message, detail) => ServerConsole.recordSlm(serverId, level, message, detail),
 				parentModule: module,
 			})
 			cleanup.push(() => sftpReader.unwatch())
@@ -921,6 +926,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 				filePath: settings.connections.logFile,
 				pollInterval: Settings.GLOBAL_SETTINGS.logFilePollInterval,
 				onFatalError: onResourceFatalError,
+				onStatus: (level, message, detail) => ServerConsole.recordSlm(serverId, level, message, detail),
 				parentModule: module,
 			})
 			cleanup.push(() => fileReader.unwatch())
@@ -976,7 +982,12 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		)) {
 			if (logStreamAc.signal.aborted) break
 			const ctx = resolveCtx(getBaseCtx(), serverId)
-			for (const error of errors) log.error(error)
+			for (const error of errors) {
+				log.error(error)
+				// a line SLM could not parse is usually the game's log format having moved, which shows up to an admin
+				// as SLM quietly missing events rather than as anything being wrong
+				ServerConsole.recordSlm(serverId, 'warn', 'Could not parse a log line', error)
+			}
 			errors.splice(0, errors.length)
 
 			if (!event) {

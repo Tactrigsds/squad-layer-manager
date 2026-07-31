@@ -129,6 +129,11 @@ export default class Rcon extends EventEmitter<Events> {
 	private autoReconnectDelay: number
 	private msgId: number
 	private responseString: { id: number; body: string }
+	// The reconnect loop retries forever at a fixed delay, so an unreachable server would otherwise write the same
+	// line into the console every few seconds until someone noticed. Repeats of a reason already reported are
+	// dropped, and the run is summarised once a minute or so instead.
+	private connectAttempts = 0
+	private lastConnectError?: string
 	// Reported from the game server's point of view, not ours: a command we write is one the server receives.
 	// The auth handshake is deliberately not reported -- it carries the rcon password.
 	//
@@ -137,16 +142,22 @@ export default class Rcon extends EventEmitter<Events> {
 	// position in the stream does not correlate them. Absent on a packet the server pushed unprompted.
 	private onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
 
+	// Whether this client can reach the server at all, for an operator rather than for a log file. Carries the
+	// transport's label (host:port) because that is the thing they have to check, never the password.
+	private onStatus?: (level: 'info' | 'warn' | 'error', message: string, detail?: unknown) => void
+
 	constructor(options: {
 		serverId: string
 		transport: RconTransport
 		autoReconnectDelay?: number
 		onTraffic?: (dir: 'recv' | 'send', body: string, reqId?: number) => void
+		onStatus?: (level: 'info' | 'warn' | 'error', message: string, detail?: unknown) => void
 	}) {
 		super()
 		this.serverId = options.serverId
 		this.transport = options.transport
 		this.onTraffic = options.onTraffic
+		this.onStatus = options.onStatus
 		this.stream = Buffer.alloc(0)
 		this.type = { auth: 0x03, command: 0x02, response: 0x00, server: 0x01 }
 		this.soh = { size: 7, id: 0, type: this.type.response, body: '' }
@@ -163,6 +174,9 @@ export default class Rcon extends EventEmitter<Events> {
 		sub.add(
 			Rx.fromEvent(this, 'auth').subscribe(() => {
 				log.info('RCON Connected to: %s', this.transport.label)
+				this.onStatus?.('info', `RCON connected to ${this.transport.label}`)
+				this.connectAttempts = 0
+				this.lastConnectError = undefined
 				this.connected$.next(true)
 			}),
 		)
@@ -179,6 +193,10 @@ export default class Rcon extends EventEmitter<Events> {
 				)
 				.subscribe(() => {
 					log.info('Attempting to connect to RCON: %s', this.transport.label)
+					// this loop never gives up, so only the first attempt of a run is worth announcing; the failures
+					// themselves are reported by #onNetError, which is where the reason lives
+					if (this.connectAttempts === 0) this.onStatus?.('info', `Connecting to RCON at ${this.transport.label}`)
+					this.connectAttempts++
 					this.transport.destroy()
 					this.transport.connect({
 						// direct: TCP connected, send the Source auth packet. tunnel: no-op (the agent authenticates itself).
@@ -354,6 +372,21 @@ export default class Rcon extends EventEmitter<Events> {
 		else if (bufSize <= this.stream.byteLength - 4) {
 			const bufId = this.stream.readInt32LE(4)
 			const bufType = this.stream.readInt32LE(8)
+			// Source signals a rejected password with id -1 on the auth response, which is otherwise indistinguishable
+			// from corruption by the id check below. Worth telling them apart: a wrong password is the likeliest thing
+			// wrong with a new server's config, and as a "bad packet" it looks like a protocol fault instead.
+			if (bufId === -1 && bufType === this.type.command) {
+				if (this.lastConnectError !== 'auth-rejected') {
+					this.onStatus?.(
+						'error',
+						`RCON at ${this.transport.label} rejected the password`,
+						'the server accepted the connection and refused the credentials',
+					)
+					this.lastConnectError = 'auth-rejected'
+				}
+				this.stream = Buffer.alloc(0)
+				return null
+			}
 			if (this.stream[bufSize + 2] !== 0 || this.stream[bufSize + 3] !== 0 || bufId < 0 || bufType < 0 || bufType > 5) {
 				return this.#badPacket()
 			} else {
@@ -389,11 +422,23 @@ export default class Rcon extends EventEmitter<Events> {
 
 	#onClose(): void {
 		log.trace(`Socket closed.`)
-		if (this.connected$.value) this.connected$.next(false)
+		if (this.connected$.value) {
+			this.onStatus?.('warn', `RCON connection to ${this.transport.label} closed, reconnecting`)
+			this.connected$.next(false)
+		}
 	}
 
 	#onNetError(error: Error): void {
 		log.error(error, `node:net error`)
+		const reason = (error as NodeJS.ErrnoException).code ?? error.message
+		// one line per distinct reason, then a periodic reminder that it is still failing. ATTEMPTS_PER_REPORT is
+		// counted in attempts rather than time so it tracks the reconnect delay whatever it is set to.
+		const ATTEMPTS_PER_REPORT = 12
+		if (reason !== this.lastConnectError || this.connectAttempts % ATTEMPTS_PER_REPORT === 0) {
+			const attempts = this.connectAttempts > 1 ? ` (attempt ${this.connectAttempts})` : ''
+			this.onStatus?.('error', `Cannot reach RCON at ${this.transport.label}${attempts}`, error)
+			this.lastConnectError = reason
+		}
 		this.emit('RCON_ERROR', error)
 		if (this.connected$.value) this.connected$.next(false)
 	}
