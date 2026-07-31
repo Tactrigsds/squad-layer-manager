@@ -4,6 +4,7 @@ import * as CD from '@/lib/ctx-def'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Obj from '@/lib/object-utils'
 import type * as Rx from '@/lib/rxjs'
+import * as Templating from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as AppEvents from '@/models/app-events.models'
@@ -291,7 +292,10 @@ export const GlobalSettingsSchema = z
 				}),
 			)
 			.prefault([])
-			.describe('Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz").'),
+			.describe(
+				'Custom variables usable in any admin action reason as {{name}} (e.g. name "discord", value "discord.gg/xyz"). A value is ' +
+					'itself a template, so it can reference the other variables here, as long as the references do not form a cycle.',
+			),
 		chat: CHAT.ChatConfigSchema.prefault({}).describe(
 			'What the live chat feed leaves out. Neither list changes what is actually sent in-game.',
 		),
@@ -475,6 +479,19 @@ export const GlobalSettingsSchema = z
 			}
 			seenTagLabel.add(label)
 		})
+
+		const messageVariables = val.messageVariables ?? []
+		for (const cycle of Templating.templateVarCycles(messageVariables)) {
+			const members = new Set(cycle)
+			messageVariables.forEach((v, i) => {
+				if (!members.has(v.name)) return
+				ctx.addIssue({
+					code: 'custom',
+					message: `Message variables reference each other in a cycle: ${cycle.join(' -> ')}`,
+					path: ['messageVariables', i, 'value'],
+				})
+			})
+		}
 	})
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>

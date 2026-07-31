@@ -36,6 +36,7 @@ import type { SettingsGroup } from '@/lib/settings-groups'
 import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
+import * as Templating from '@/lib/templating'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
@@ -207,9 +208,10 @@ function emptyValue(node: Node): unknown {
 const MessageVarsContext = React.createContext<Record<string, string>>({})
 
 function readMessageVars(v: any): Record<string, string> {
-	return Object.fromEntries(
-		((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) => (mv.name ? [[mv.name, mv.value ?? '']] : [])),
+	const defs = ((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) =>
+		mv.name ? [{ name: mv.name, value: mv.value ?? '' }] : [],
 	)
+	return Templating.resolveTemplateVars(defs)
 }
 
 // This one feeds a context at the form root, so it must hold its identity while the contents match: a fresh object

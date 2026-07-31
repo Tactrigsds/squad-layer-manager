@@ -1136,11 +1136,10 @@ export function resolvePresetReason(action: AAR.AdminActionType, presetReasonLab
 	return AAR.resolveReasonByLabel(Settings.GLOBAL_SETTINGS.adminActionReasons, action, presetReasonLabel)
 }
 
-// the variable context for reason/broadcast message templates: the admin-configured custom variables,
-// overlaid with any per-call standard variables (e.g. duration)
+// the variable context for reason/broadcast message templates: the admin-configured custom variables, expanded
+// against each other, overlaid with any per-call standard variables (e.g. duration)
 export function messageVars(extra?: Record<string, string>): Record<string, string> {
-	const custom = Object.fromEntries(Settings.GLOBAL_SETTINGS.messageVariables.map((v) => [v.name, v.value]))
-	return { ...custom, ...extra }
+	return Templating.resolveTemplateVars(Settings.GLOBAL_SETTINGS.messageVariables, extra)
 }
 
 // enforces the per-action "require a reason" setting; returns an error result when the action needs a reason
