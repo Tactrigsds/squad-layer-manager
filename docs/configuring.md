@@ -13,15 +13,15 @@ Use the table of contents on the left to move between sections:
 
 ![toc](configuring_screenshots/toc.png)
 
-Each setting has a **GUI** / **JSON** toggle, so you can also edit it as JSON. Settings that most installs never
-change sit in a collapsed **Advanced** disclosure at the bottom of their section. The table of contents still lists
+Each setting has a _GUI_ / _JSON_ toggle, so you can also edit it as JSON. Settings that most installs never
+change sit in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists
 them, and navigating to one opens the disclosure it sits in.
 
 ### 1. Admin lists
 
-The admin list settings are under **Permissions & Roles**.
+The admin list settings are under _Permissions & Roles_.
 
-An **admin list** is the standard `Admins.cfg` format, which SLM reads as-is. Point it at a file mounted into the
+An _admin list_ is the standard `Admins.cfg` format, which SLM reads as-is. Point it at a file mounted into the
 container, or at a copy hosted over SFTP or HTTP(S).
 
 By default, SLM treats a player with the `canseeadminchat` role as an admin. If your list uses a different role,
@@ -47,11 +47,11 @@ sandbox's own list, so a new list grants nobody the `admins` role until you name
 
 One SLM instance can manage several squad servers.
 
-A fresh install already has a server named **Sandbox**. It attaches to an emulated squad server, which imitates a real
+A fresh install already has a server named _Sandbox_. It attaches to an emulated squad server, which imitates a real
 one closely enough for SLM to work against. Use it to learn the interface without touching anyone real. See
 [sandbox_servers.md](sandbox_servers.md).
 
-Click **Add Server** to set up a real one:
+Click _Add Server_ to set up a real one:
 
 ![add_managed_server](configuring_screenshots/add_managed_server.png)
 
@@ -59,12 +59,12 @@ Click **Add Server** to set up a real one:
 
 Each server uses one of three connection modes:
 
-- **local** - SLM shares the machine with the squad server. It reads `SquadGame.log` from disk and dials RCON
+- _local_ - SLM shares the machine with the squad server. It reads `SquadGame.log` from disk and dials RCON
   directly. This gives the lowest latency for SLM's event processing. It needs a log file path and RCON details.
-- **sftp** - SLM runs elsewhere. It tails the log file over SFTP, polling for new data, and dials RCON over the
+- _sftp_ - SLM runs elsewhere. It tails the log file over SFTP, polling for new data, and dials RCON over the
   network. Use this with PSG-hosted squad servers, where you cannot run a program on the game host. It needs SFTP
   details and RCON details.
-- **server agent (recommended)** - a small program on the game host handles both the log stream and RCON. SLM never
+- _server agent (recommended)_ - a small program on the game host handles both the log stream and RCON. SLM never
   holds the RCON password, and never has to reach the RCON port. Here it needs only a shared token. See
   [server_agent.md](server_agent.md).
 
@@ -85,7 +85,7 @@ here. If you name none, SLM recognises no in-game admins on this server.
 
 ### 3. Permissions
 
-SLM has a role-based access control (RBAC) system. A **role** holds a set of **permissions**, and you assign roles
+SLM has a role-based access control (RBAC) system. A _role_ holds a set of _permissions_, and you assign roles
 to people. Some permissions are global. Many can be scoped to one squad server.
 
 Unlike discord roles, SLM roles are not hierarchical: no role outranks another. Someone holds the sum of every role
@@ -103,7 +103,7 @@ Keep at least one after you assign real roles, so you can still get in if an ass
 
 #### 3.2. Default roles
 
-Go to the **Permissions & Roles** section of the global settings. Three roles exist by default:
+Go to the _Permissions & Roles_ section of the global settings. Three roles exist by default:
 
 - `admins` - the features needed for day-to-day operations: the queue, votes, filters, and managing, warning,
   broadcasting to and kicking players. Maximum timeout of 2h. It is assigned to the in-game admins of the sandbox's
@@ -117,13 +117,13 @@ Go to the **Permissions & Roles** section of the global settings. Three roles ex
 
 #### 3.3. Assigning permissions to roles
 
-The **Permissions** table holds everything a role may do. Each row is one permission, with three columns:
+The _Permissions_ table holds everything a role may do. Each row is one permission, with three columns:
 
-| Column         | What it holds                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------- |
-| **Effect**     | Allow or Deny. A denial overrides an allow, so use it to carve an exception out of a wider grant. |
-| **Permission** | The permission itself, or `*` for all of them.                                                    |
-| **Scope**      | What narrows the permission. Leave it empty to grant the permission unrestricted.                 |
+| Column       | What it holds                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| _Effect_     | Allow or Deny. A denial overrides an allow, so use it to carve an exception out of a wider grant. |
+| _Permission_ | The permission itself, or `*` for all of them.                                                    |
+| _Scope_      | What narrows the permission. Leave it empty to grant the permission unrestricted.                 |
 
 A scope names specific servers, specific setting paths, or a cap such as a maximum timeout.
 
@@ -140,18 +140,18 @@ Settings access works the same way:
 
 You can assign a role to a user or to a player:
 
-- a **user** signs in with their discord account and works from the web interface
-- a **player** is in the game and uses the [in-game commands](#5-in-game-commands)
+- a _user_ signs in with their discord account and works from the web interface
+- a _player_ is in the game and uses the [in-game commands](#5-in-game-commands)
 
 A user can link their discord account to their in-game account. The permissions from both then combine for every
 action. This is optional. It matters for people who hold elevated permissions on their user account and want to use
 them in game.
 
-The **Assignments** subsection of a role holds five sources. Two of them cover in-game players:
+The _Assignments_ subsection of a role holds five sources. Two of them cover in-game players:
 
-- **In-game admins of these lists** - the role goes to every player an admin list counts as an admin. It applies
+- _In-game admins of these lists_ - the role goes to every player an admin list counts as an admin. It applies
   only on servers that use that list.
-- **Admin-list groups** - the role goes to the members of a named group in a named list, whether or not that group
+- _Admin-list groups_ - the role goes to the members of a named group in a named list, whether or not that group
   identifies admins. A whitelist reserve-slot group works here. Again, it applies only on servers that use the list.
 
 The other three cover users, and take an individual discord user, a discord role, or every member of your discord
@@ -168,7 +168,7 @@ Every user can see the permissions they hold, in the permissions info dialog:
 
 The dialog groups permissions by role or by permission, and traces each one back to the role that granted it.
 
-Click **Simulate Permissions** to check and uncheck roles, and see how the interface behaves for someone who holds
+Click _Simulate Permissions_ to check and uncheck roles, and see how the interface behaves for someone who holds
 them:
 
 ![simulate_permissions_1](configuring_screenshots/simulate_permissions_1.png)
@@ -179,18 +179,18 @@ does not gate runs with what you actually hold.
 
 ### 4. Warns, broadcasts and admin actions
 
-The **Warns & Broadcasts** section holds the messages SLM shows to players: admin warnings, kicks, broadcasts, and
+The _Warns & Broadcasts_ section holds the messages SLM shows to players: admin warnings, kicks, broadcasts, and
 more.
 
-Configure reasons such as teamkilling, spamming or soloing under **Admin Action Reasons**. Each reason carries one
+Configure reasons such as teamkilling, spamming or soloing under _Admin Action Reasons_. Each reason carries one
 text per action, where an action is a warn, a broadcast, a kick, a timeout, and so on:
 
 ![admin_action_reasons](configuring_screenshots/admin_action_reasons.png)
 
-Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. **Message Variables** in the
+Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. _Message Variables_ in the
 same section holds reusable snippets. You can use one in several texts, or inside another message variable.
 
-**Require a Reason** makes a reason mandatory for the actions you name:
+_Require a Reason_ makes a reason mandatory for the actions you name:
 
 ![actions_requiring_reason](configuring_screenshots/actions_requiring_reason.png)
 
@@ -216,8 +216,8 @@ it:
 
 #### 5.1. Command prefixes
 
-By default, every command has the prefix `/`. Change this prefix, or add another, in **Allowed Prefixes**, under
-Advanced in the **In-game Commands** section:
+By default, every command has the prefix `/`. Change this prefix, or add another, in _Allowed Prefixes_, under
+Advanced in the _In-game Commands_ section:
 
 ![allowed_prefixes](configuring_screenshots/allowed_prefixes.png)
 
@@ -230,10 +230,9 @@ If you change an existing prefix, SLM moves every [trigger](#52-command-triggers
 
 #### 5.2. Command triggers
 
-An in-game command runs from one of its **triggers**: the strings listed against it under
-**Settings > In-game Commands**.
-`/timeout` and `/to` are two triggers for the same command, and typing either takes the command's arguments exactly
-as written.
+An in-game command runs from one of its _triggers_: the strings listed against it under _Settings > In-game
+Commands_. `/timeout` and `/to` are two triggers for the same command, and typing either takes the command's
+arguments exactly as written.
 
 A trigger can also pin some of those arguments. Give it an `args` template and it becomes a shortcut, which is what
 command aliases used to be:
@@ -246,7 +245,7 @@ command aliases used to be:
 | `/say`    | `{{rest}}`                                   | `/say back in 5`        | `/broadcast back in 5`       |
 | `/warnsp` | `{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}` | `/warnsp Alice`         | `/warn Alice spam`           |
 
-The numbers count the words the caller types, not the words of the command that ends up running. `{{arg1}}` is
+**The numbers count the words the caller types, not the words of the command that ends up running.** `{{arg1}}` is
 the first word typed after the trigger, `{{arg2}}` the second, and so on. `{{restN}}` is the Nth word typed onwards,
 joined by spaces, and `{{rest}}` is all of them. Use `{{restN}}` for anything that can be more than one word, such
 as a reason.
@@ -261,7 +260,7 @@ it runs:     Alice  2h  spamming badly
                     ^^ pinned text, never typed, so no placeholder refers to it
 ```
 
-Once a trigger has pinned arguments, the command's card in **Settings > In-game Commands** shows which placeholder fills
+Once a trigger has pinned arguments, the command's card in _Settings > In-game Commands_ shows which placeholder fills
 which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest3}} <reason|message>`), including whether each one is
 required under the current reason settings.
 
@@ -283,8 +282,8 @@ runs. `!help` lists each shortcut on its own line, since it asks the caller for 
 
 ### 6. Player groupings
 
-A **player grouping** sorts players into named, coloured groups, for administration and for balance. Configure them
-under **Players & Balance**.
+A _player grouping_ sorts players into named, coloured groups, for administration and for balance. Configure them
+under _Players & Balance_.
 
 A grouping is an ordered list of rules. A player joins the group of the first rule they match, so an earlier rule
 takes precedence over a later one.
@@ -325,17 +324,17 @@ You can apply a battlemetrics flag to a player from in game with the `/flag` com
 ![flag_gui](configuring_screenshots/flag_gui.png)
 
 A user can add a reason for the flag, which SLM posts as a note on the player's battlemetrics profile. The note is
-freeform text for now, and is not connected to the
-[admin action reasons](#4-warns-broadcasts-and-admin-actions). This may change.
+freeform text for now, and is not connected to the [admin action reasons](#4-warns-broadcasts-and-admin-actions).
+This may change.
 
-To require a note for a particular flag, name it in **Player Flags Requiring Note**:
+To require a note for a particular flag, name it in _Player Flags Requiring Note_:
 
 ![player_flags_requiring_note](configuring_screenshots/player_flags_requiring_note.png)
 ![player_flags_requiring_note_enforced](configuring_screenshots/player_flags_requiring_note_enforced.png)
 
 A flag set from the battlemetrics interface can take a while to reach SLM's interface. SLM caches battlemetrics data
 aggressively to stay inside their rate limits. To see a change immediately, purge the cache for that player with the
-**refresh** button:
+_refresh_ button:
 
 ![flags_refresh](configuring_screenshots/flags_refresh.png)
 
@@ -345,7 +344,7 @@ SLM refreshes a player's flags automatically when it changes them itself.
 
 #### 8.1. Filters
 
-Squad has about 730,000 possible layers, counting every map, gamemode, faction and unit combination. A **filter** is
+Squad has about 730,000 possible layers, counting every map, gamemode, faction and unit combination. A _filter_ is
 a named expression that picks a subset of them out. SLM ships with a few, listed in the filters index:
 
 ![filters_index](configuring_screenshots/filters_index.png)
@@ -354,47 +353,49 @@ Open one and you get the expression that decides what it matches:
 
 ![filter_edit](configuring_screenshots/filter_edit.png)
 
-The block at the top sets how the conditions under it combine. The four block types are **all of (and)**,
-**any of (or)**, **none of (nor)** and **not all of (nand)**. **No Mech on Hilly Maps** uses **not all of (nand)**,
+The block at the top sets how the conditions under it combine. The four block types are _all of (and)_,
+_any of (or)_, _none of (nor)_ and _not all of (nand)_. _No Mech on Hilly Maps_ uses _not all of (nand)_,
 so a layer matches unless both of these hold:
 
 - `Map` is Manicouagan, Skorpo or Lashkar
 - `Unit (Either)` is Mechanized or Armored
 
 A filter does nothing on its own. It is an entity that other settings point at, and one filter can be used inside
-another. **Main Pool** is built out of two of the others:
+another. _Main Pool_ is built out of two of the others:
 
 ![main_pool](configuring_screenshots/main_pool_card.png)
 
-It uses **all of (and)**, so a layer has to meet every one of:
+It uses _all of (and)_, so a layer has to meet every one of:
 
 - `Z_Pool` is true. This is one of the extra columns that ship with SLM's layer data, and it marks the competitive
   pool. See [layer_data.md](layer_data.md).
-- the layer is excluded from **Similar Factions**
-- the layer is included in **No Mech on Hilly Maps**
+- the layer is excluded from _Similar Factions_
+- the layer is included in _No Mech on Hilly Maps_
 
-Switch a filter between **Builder** and **Text**. The text view is quicker to read once an expression gets long.
+Switch a filter between _Builder_ and _Text_. The text view is quicker to read once an expression gets long.
 
 #### 8.2. Pool configuration
 
-**Pool Configuration** decides which layers count as playable, which ones raise warnings, and how soon a map, layer
+_Pool Configuration_ decides which layers count as playable, which ones raise warnings, and how soon a map, layer
 or faction may come round again.
 
-Reach it from the **Pool Configuration** page in the settings, or from the gear icon above the layer queue. The gear
+Reach it from the _Pool Configuration_ page in the settings, or from the gear icon above the layer queue. The gear
 is the one you will use:
 
 ![pool_config_button](configuring_screenshots/pool_config_button.png)
 
-It has three tabs: **Filters**, **Repeat Rules** and **Next Layer**.
+It has three tabs: _Filters_, _Repeat Rules_ and _Next Layer_.
 
 ![pool_config_popover](configuring_screenshots/pool_config_popover.png)
 
 #### 8.3. The pool filter
 
-**Pool Filter** is the setting that matters most. It is the single filter deciding which layers are in the server's
-layer pool, and it is **Main Pool** by default.
+_Pool Filter_ is the setting that matters most. It is the single filter deciding which layers are in the server's
+layer pool.
 
-A layer the pool filter matches is **in the pool**, and one it does not match is **out of pool**. That status
+The _Pool Filter_ is _Main Pool_ by default.
+
+A layer the pool filter matches is _in-pool_, and one it does not match is _out-of-pool_. That status
 follows the layer through the whole app:
 
 - out-of-pool layers are hidden behind the pool toggle during layer selection
@@ -402,12 +403,12 @@ follows the layer through the whole app:
 - saving one warns the editor, and in-game admins are warned when one is about to be played
 - autogenerated layers always come from the pool
 
-The toggle in front of the filter flips it between putting its matching layers in the pool and keeping them out.
+The toggle in front of the filter decides whether matching layers are in-pool or out-of-pool.
 
 #### 8.4. Match and miss indicators
 
-A filter carries a name, a description, a **Match Indicator** and a **Miss Indicator**. Each indicator has an
-**Emoji** and an **Alert Message**. Edit them from the filter itself:
+A filter carries a name, a description, a _Match Indicator_ and a _Miss Indicator_. Each indicator has an
+_Emoji_ and an _Alert Message_. Edit them from the filter itself:
 
 ![filter_extra_fields_edit_button](configuring_screenshots/filter_extra_fields_edit_button.png)
 ![filter_extra_fields](configuring_screenshots/filter_extra_fields.png)
@@ -416,45 +417,45 @@ An emoji can be a standard one, or one from your discord server's emoji library:
 
 ![emoji_library](configuring_screenshots/emoji_library.png)
 
-The pool filter needs all four configured, because they are what marks a layer as in or out of the pool everywhere
-it appears. The queue shows the emoji beside the layer:
+The pool filter needs all four configured, because they are what marks a layer as in-pool or out-of-pool
+everywhere it appears. The queue shows the emoji beside the layer:
 
 ![main_pool_indicator_matched](configuring_screenshots/main_pool_indicator_matched.png)
 
-The pool filter is also enabled by default in the **Add Layers** dialog:
+The pool filter is also enabled by default in the _Add Layers_ dialog:
 
 ![add_layers_pool_filter_enabled](configuring_screenshots/add_layers_pool_filter_enabled.png)
 
 Anyone can turn it off, but only a user holding `queue:force-write` can save an out-of-pool layer. Queue one, or
-edit a queued layer until it no longer matches, and SLM raises **Filter Warnings** before it saves:
+edit a queued layer until it no longer matches, and SLM raises _Filter Warnings_ before it saves:
 
 ![filter_warnings](configuring_screenshots/filter_warnings.png)
 
 While the next layer carries a warning, SLM repeats it to in-game admins. To silence the warnings on one queue item,
-tag the item and name that tag in **Skip warnings for**. The item still needs `queue:force-write` to save if it is
-out of pool, and its indicators still display.
+tag the item and name that tag in _Skip warnings for_. The item still needs `queue:force-write` to save if it is
+out-of-pool, and its indicators still display.
 
 #### 8.5. Secondary filters
 
-**Secondary Filters** never decide what is in the pool. They add behaviour on top of it, and one filter can appear
-in several of the lists at once.
+_Secondary Filters_ never decide whether a layer is in-pool. They add behaviour on top of it, and one filter can
+appear in several of the lists at once.
 
-| List                             | What it does                                                              |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| **Indicate matches for**         | Matching layers display the filter's match emoji                          |
-| **Indicate misses for**          | Layers that do not match display the filter's miss emoji                  |
-| **Default selectable filters**   | Offered during layer selection, starting in the state you set here        |
-| **Warn for**                     | Warn when a layer in the configured state is queued or about to be played |
-| **Constrain generated pool for** | Constrain autogenerated layers, on top of the pool filter                 |
+| List                           | What it does                                                              |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| _Indicate matches for_         | Matching layers display the filter's match emoji                          |
+| _Indicate misses for_          | Layers that do not match display the filter's miss emoji                  |
+| _Default selectable filters_   | Offered during layer selection, starting in the state you set here        |
+| _Warn for_                     | Warn when a layer in the configured state is queued or about to be played |
+| _Constrain generated pool for_ | Constrain autogenerated layers, on top of the pool filter                 |
 
-**Constrain generated pool for** is the one to set up first. When the queue runs out of layers, SLM generates one
-from the pool, and the default **Main Pool** is permissive. Naming a tighter filter here keeps generated layers
-closer to what you want to play. Each entry is set to **Must match** or **Must not match**.
+_Constrain generated pool for_ is the one to set up first. When the queue runs out of layers, SLM generates one
+from the pool, and the default _Main Pool_ is permissive. Naming a tighter filter here keeps generated layers
+closer to what you want to play. Each entry is set to _Must match_ or _Must not match_.
 
 #### 8.6. Repeat rules
 
-A **repeat rule** sets how far apart a map, layer or faction has to be spaced, across both the queue and the recent
-match history. Rules are per attribute, and they live on the **Repeat Rules** tab.
+A _repeat rule_ sets how far apart a map, layer or faction has to be spaced, across both the queue and the recent
+match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
 
 These are the defaults:
 
@@ -469,17 +470,17 @@ They keep out:
 A rule on a team-specific attribute such as `Faction` or `Unit` reads that side's own history, not both. One side can
 still draw a faction the other side played recently.
 
-**Target Values** narrows a rule to named values:
+_Target Values_ narrows a rule to named values:
 
 ![skorpo_repeat_rule](configuring_screenshots/skorpo_repeat_rule.png)
 
-That rule applies to Skorpo alone, and keeps it out for 10 matches. A **Within** of 0 turns a rule off.
+That rule applies to Skorpo alone, and keeps it out for 10 matches. A _Within_ of 0 turns a rule off.
 
 Two checkboxes decide what else a rule does:
 
-- **Warn** warns the editor before saving a layer that breaks the rule, and warns in-game admins when one is about
+- _Warn_ warns the editor before saving a layer that breaks the rule, and warns in-game admins when one is about
   to be played.
-- **Autogen** applies the rule when autogenerating layers as well.
+- _Autogen_ applies the rule when autogenerating layers as well.
 
 ![repeat_rules_warn](configuring_screenshots/repeat_rules_warn.png)
 ![repeat_rules_autogen](configuring_screenshots/repeat_rules_autogen.png)
@@ -492,8 +493,8 @@ opt out of that.
 #### 9.1. Default displayed columns
 
 The layer table can show more about each layer than it does by default, and each column it shows is another way to
-filter. Configure the columns under **Layers > Layer Table**. They apply to the layers table and to every layer
-select menu, such as the **Explore Layers** and **Add Layers** dialogs:
+filter. Configure the columns under _Layers > Layer Table_. They apply to the layers table and to every layer
+select menu, such as the _Explore Layers_ and _Add Layers_ dialogs:
 
 ![layer_table_columns](configuring_screenshots/layer_table_columns.png)
 
@@ -504,7 +505,7 @@ See [layer_data.md](layer_data.md) for where this data comes from, and how to bu
 
 #### 9.2. Randomization
 
-**Layer Generation Weights** controls how SLM picks layers at random. It covers layer generation, which runs when
+_Layer Generation Weights_ controls how SLM picks layers at random. It covers layer generation, which runs when
 the queue runs out of layers, vote generation, and the layer table's random sort.
 
 Generation walks down a configurable pick order of layer columns and matchups:
