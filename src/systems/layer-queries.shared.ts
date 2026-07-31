@@ -198,8 +198,9 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 				break
 			}
 			case 'UnitMatchup': {
-				const pair = unitMatchupDbValues(ctx, layer, rule)
-				if (pair) matchups.set(LQY.matchupKey(pair[0], pair[1]), pair)
+				const matchup = unitMatchupOf(layer, rule)
+				const pair = matchup && unitMatchupDbValues(ctx, layer, rule)
+				if (matchup && pair) matchups.set(matchup, pair)
 				break
 			}
 			default:
@@ -249,21 +250,21 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 	}
 }
 
-// A matchup is only a repeat as a whole, so a layer missing either unit contributes nothing. targetValues narrows
-// which matchups the rule polices: a matchup is in scope when either of its units is listed.
-function unitMatchupValues(layer: L.UnvalidatedLayer, rule: LQY.RepeatRule): [string, string] | null {
+// A matchup is only a repeat as a whole, so a layer missing either unit contributes nothing. A targetValues entry
+// names a whole matchup, so it is compared against the layer's matchup rather than against either unit on its own.
+function unitMatchupOf(layer: L.UnvalidatedLayer, rule: LQY.RepeatRule): string | null {
 	const [unit1, unit2] = [layer.Unit_1, layer.Unit_2]
 	if (!unit1 || !unit2) return null
-	if (rule.targetValues?.length && !rule.targetValues.includes(unit1) && !rule.targetValues.includes(unit2)) return null
-	return [unit1, unit2]
+	const matchup = LQY.unitMatchupValue(unit1, unit2)
+	if (rule.targetValues?.length && !rule.targetValues.includes(matchup)) return null
+	return matchup
 }
 
 function unitMatchupDbValues(ctx: LE.Ctx, layer: L.UnvalidatedLayer, rule: LQY.RepeatRule): [number, number] | null {
-	const units = unitMatchupValues(layer, rule)
-	if (!units) return null
+	if (!unitMatchupOf(layer, rule)) return null
 	const dbValues: number[] = []
-	for (const [i, column] of (['Unit_1', 'Unit_2'] as const).entries()) {
-		const dbValue = LC.dbValue(column, units[i], ctx)
+	for (const column of ['Unit_1', 'Unit_2'] as const) {
+		const dbValue = LC.dbValue(column, layer[column]!, ctx)
 		if (LC.isUnmappedDbValue(dbValue) || dbValue === null) return null
 		dbValues.push(Number(dbValue))
 	}
@@ -942,9 +943,9 @@ export function getRepeatRuleMatchDescriptors(
 				break
 			}
 			case 'UnitMatchup': {
-				const previous = unitMatchupValues(layer, rule)
-				const target = unitMatchupValues(targetLayer, rule)
-				if (!previous || !target || LQY.matchupKey(...previous) !== LQY.matchupKey(...target)) break
+				const previous = unitMatchupOf(layer, rule)
+				const target = unitMatchupOf(targetLayer, rule)
+				if (!previous || !target || previous !== target) break
 				descriptors.push(getViolationDescriptor('UnitMatchup_A'), getViolationDescriptor('UnitMatchup_B'))
 				break
 			}

@@ -434,6 +434,8 @@ function RepeatRuleRow(props: {
 		api.set([...rulePath, 'field'], field)
 		api.set([...rulePath, 'label'], field)
 		if (!LQY.isTeamSpecificRepeatRuleField(field)) api.set([...rulePath, 'crossTeam'], undefined)
+		// values named for the old field match nothing under the new one, which would leave the rule silently inert
+		api.set([...rulePath, 'targetValues'], undefined)
 		onStructural()
 	}
 
@@ -487,8 +489,10 @@ function RepeatRuleRow(props: {
 			targetValueOptions = L.StaticLayerComponents.factions
 			break
 		case 'Unit':
-		case 'UnitMatchup':
 			targetValueOptions = L.StaticLayerComponents.units
+			break
+		case 'UnitMatchup':
+			targetValueOptions = LQY.unitMatchupOptions(L.StaticLayerComponents.units)
 			break
 		case 'Alliance':
 			targetValueOptions = L.StaticLayerComponents.alliances
