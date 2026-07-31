@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import * as CD from '@/lib/ctx-def'
 import * as Gen from '@/lib/generator-utils'
+import * as ItemMut from '@/lib/item-mutations'
 import * as Obj from '@/lib/object-utils'
 import { assertNever, isNullOrUndef } from '@/lib/type-guards'
 import * as CB from '@/models/constraint-builders'
@@ -644,6 +645,58 @@ export type QueueWarning = {
 			constraintId: string
 	  }
 )
+
+// A repeat violation is the same one as before iff the same pair of items still trips the same rule. Neither the offset
+// between them nor the descriptor's field belongs in the key: an item added or deleted ahead of the pair changes the
+// offset, and shifts both items by one index, which flips the parity a Faction/Alliance rule normalizes its team slot
+// by. Both move without the pair repeating anything it was not repeating before.
+function repeatViolationKey(itemId: ItemId, descriptor: RepeatMatchDescriptor) {
+	return `${itemId}:${descriptor.constraintId}:${descriptor.sourceItemId}`
+}
+
+// The warnings an edit session is answerable for: those on items it touched, plus repeat violations it created between
+// items it did not. A deletion or a move can push two layers within a rule's window without either being edited, so the
+// second case is found by diffing against the warnings the saved queue would raise on its own.
+//
+// A null baseline means the saved queue's warnings are not known yet, and nothing can be attributed, so everything is
+// reported rather than silently dropped.
+export function filterEditInducedWarnings(
+	warns: QueueWarning[],
+	baselineWarns: QueueWarning[] | null,
+	list: LL.List,
+	mutations: ItemMut.Mutations,
+): QueueWarning[] {
+	if (!baselineWarns) return warns
+
+	// a vote's choices warn in their own right, but only the vote itself is recorded as mutated
+	const editedItemIds = ItemMut.getAllMutationIds(mutations)
+	for (const item of list) {
+		if (!LL.isVoteItem(item) || !editedItemIds.has(item.itemId)) continue
+		for (const choice of item.choices) editedItemIds.add(choice.itemId)
+	}
+
+	const baselineKeys = new Set<string>()
+	for (const warn of baselineWarns) {
+		if (warn.type !== 'repeat-rule-violation-warning') continue
+		for (const descriptor of warn.descriptors) baselineKeys.add(repeatViolationKey(warn.itemId, descriptor))
+	}
+
+	const induced: QueueWarning[] = []
+	for (const warn of warns) {
+		const itemWasEdited = typeof warn.itemId === 'string' && editedItemIds.has(warn.itemId)
+		if (warn.type === 'filter-entity-warning') {
+			if (itemWasEdited) induced.push(warn)
+		} else if (warn.type === 'repeat-rule-violation-warning') {
+			if (itemWasEdited) {
+				induced.push(warn)
+				continue
+			}
+			const newDescriptors = warn.descriptors.filter((d) => !baselineKeys.has(repeatViolationKey(warn.itemId, d)))
+			if (newDescriptors.length > 0) induced.push({ ...warn, descriptors: newDescriptors })
+		} else assertNever(warn)
+	}
+	return induced
+}
 
 export type Ctx = CS.Ctx & LE.Ctx & CS.Log & F.Ctx & LC.Ctx.Generation
 export const CtxDef = CD.mergeDefs([LE.CtxDef, CS.LogDef, F.CtxDef, LC.Ctx.GenerationDef], { name: 'layerQuery' })

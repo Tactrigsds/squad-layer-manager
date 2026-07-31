@@ -39,6 +39,11 @@ export type State = ChatPrt.Store &
 		// keeps using the stale ones meanwhile, which is what stops the indicators flickering on every edit.
 		layerItemStatusesFor: LQY.LayerItemsState | null
 
+		// what the last saved queue warns about on its own. The save flow subtracts these from the draft's warnings to
+		// find the ones the current edit session is answerable for. Refreshed on demand at save time rather than watched:
+		// a second standing status query starves the one the indicators read (see refreshSavedQueueWarnings).
+		savedQueueWarnings: LQY.QueueWarning[] | null
+
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
 		// player ids currently on screen (after search/filters) in the teams-panel tables, keyed per table so each
@@ -83,6 +88,7 @@ export const frame = frameManager.createFrame<Types>({
 			layerItemsState: LQY.initLayerItemsState(),
 			layerItemStatuses: null,
 			layerItemStatusesFor: null,
+			savedQueueWarnings: null,
 			playerSelection: {},
 			visiblePlayersByTable: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
@@ -203,16 +209,28 @@ export namespace Sel {
 		return allTargetsAreAdmins(selectedPlayerIds(s))(s)
 	}
 
-	// The warnings the queue would raise if it were saved as it stands: repeat-rule violations and pool-filter warnings
-	// on items the user themselves put there. Null means "nothing to warn about", which is also what an unloaded status
-	// set reports, so callers that must not skip a warning wait for current statuses first (see awaitCurrentStatuses).
+	// The warnings this edit session is answerable for: repeat-rule violations and pool-filter warnings on items it
+	// touched, plus repeat violations its deletions and moves created between items it did not (see
+	// LQY.filterEditInducedWarnings). Warnings the saved queue already carried on layers nobody touched are the
+	// responsibility of whoever saved them, so they are left out.
+	//
+	// Null means "nothing to warn about", which is also what an unloaded status set reports, so callers that must not
+	// skip a warning wait for current statuses first (see awaitCurrentStatuses).
 	export const queueWarnings = RSel.memoizeFactory((userDiscordId: bigint | undefined) =>
 		RSel.createDeepSelector(
-			[(s: State) => s.layerItemStatuses?.warns, (s: State) => s.queue.isModified, (s: State) => s.queue.rbSession],
-			(warns, isModified, rbSession): LQY.QueueWarning[] | null => {
+			[
+				(s: State) => s.layerItemStatuses?.warns,
+				(s: State) => s.savedQueueWarnings,
+				(s: State) => s.queue.layerList,
+				(s: State) => s.queue.mutations,
+				(s: State) => s.queue.isModified,
+				(s: State) => s.queue.rbSession,
+			],
+			(warns, savedWarns, list, mutations, isModified, rbSession): LQY.QueueWarning[] | null => {
 				if (!warns || warns.length === 0 || !userDiscordId) return null
 				if (!isModified || !SLL.hasUserMutations(ODSM.Client.localOps(rbSession), rbSession.localState, userDiscordId)) return null
-				return warns
+				const induced = LQY.filterEditInducedWarnings(warns, savedWarns, list, mutations)
+				return induced.length > 0 ? induced : null
 			},
 		),
 	)
@@ -421,6 +439,24 @@ export namespace Actions {
 
 export function statusesAreCurrent(state: State) {
 	return state.layerItemStatusesFor === state.layerItemsState
+}
+
+// The baseline Sel.queueWarnings subtracts: what the saved queue warns about with nobody's edits applied. Run on
+// demand, from the save flow, rather than watched alongside the draft's statuses -- both queries go to the same
+// worker, and a second standing one starves the draft query the indicators read.
+export async function refreshSavedQueueWarnings(key: Zus.AnyStore<State>): Promise<void> {
+	const store = Zus.resolveStore<State>(key)
+	const state = store.getState()
+	const settings = state.settings.saved
+	const recentMatches = await Rx.firstValueFrom(MatchHistoryClient.recentMatches$(state.queue.serverId))
+	const savedList = LQY.resolveLayerItemsState(state.queue.rbSession.localState.savedList, recentMatches)
+	const statuses = await LayerQueriesClient.fetchLayerItemStatuses({
+		constraints: SETTINGS.getSettingsConstraints(settings),
+		skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
+		list: savedList,
+	})
+	// a failed query leaves the baseline null, which reports every warning rather than dropping one on a guess
+	store.setState({ savedQueueWarnings: statuses?.warns ?? null })
 }
 
 // Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings
