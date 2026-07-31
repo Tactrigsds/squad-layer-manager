@@ -79,6 +79,8 @@ export const colorsBlurb = def('Following a flag keeps the color in step with ba
 
 export const colorFromFlag = def('Color from flag')
 
+export const pickColor = def('Pick color')
+
 // between the flag-derived color and the custom one, which are alternatives
 export const orCustomColor = def('or')
 

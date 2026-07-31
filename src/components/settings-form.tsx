@@ -907,7 +907,22 @@ function GroupingCard({
 							const resolved = PG.getGroupColor(grouping, group, orgFlags)
 							return (
 								<li key={group} className="grid grid-cols-[1.25rem_minmax(0,8rem)_minmax(0,1fr)_auto_7rem] items-center gap-2">
-									<span className="h-5 w-5 shrink-0 rounded border" style={{ backgroundColor: resolved }} />
+									<Popover>
+										<PopoverTrigger asChild>
+											<button
+												type="button"
+												title={tr.text(PG_Msgs.pickColor())}
+												className="h-5 w-5 shrink-0 rounded border"
+												style={{ backgroundColor: resolved }}
+											/>
+										</PopoverTrigger>
+										<PopoverContent className="w-auto p-2">
+											<HexColorPicker
+												color={resolved}
+												onChange={(c) => setGroupColor(group, { type: 'custom', color: c }, true)}
+											/>
+										</PopoverContent>
+									</Popover>
 									<span className="min-w-0 truncate text-xs" title={group}>
 										{group}
 									</span>
