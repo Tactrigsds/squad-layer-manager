@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import { StringDecoder } from 'node:string_decoder'
+import * as semver from 'semver'
 import type { WebSocket } from 'ws'
 
 import * as Schema from '$root/drizzle/schema.ts'
@@ -18,9 +19,9 @@ import * as Settings from '@/systems/settings.server'
 //     already-authenticated byte stream here. SLM never holds the RCON password for an agent-mode server.
 //
 // Protocol (deliberately thin, no oRPC):
-//   1. agent connects to `wss://<origin>/server-agent`
-//   2. agent sends one text frame: `slm-server-agent@<version>:<serverId>:sources=<a,b>:<token>`,
-//      where `sources` names what that agent can supply for the server, out of `logs` and `rcon`
+//   1. agent connects to `wss://<origin>/server-agent?sources=<a,b>`, where `sources` names what that agent
+//      can supply for the server, out of `logs` and `rcon`
+//   2. agent sends one text frame: `slm-server-agent@<version>:<serverId>:<token>`
 //   3. we validate against the server's live settings; on failure we close with a 4xxx code, on success we
 //      send an `ok` text frame
 //   4. every subsequent frame is BINARY, tagged by its first byte:
@@ -47,9 +48,14 @@ const HANDSHAKE_TIMEOUT_MS = 10_000
 // from here is indistinguishable from a server that is merely quiet, so we refuse the connection instead.
 const REQUIRED_SOURCES = ['logs', 'rcon'] as const
 
-// The `sources=` field is optional in the pattern only so an agent predating it gets told what it is missing
-// rather than a bare "malformed handshake". Unknown source names are ignored, so a later agent can offer more.
-const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(?:sources=([\w,]*):)?(.+)$/
+// The version an agent has to be to declare its sources at all. Below it, `sources` is absent because the
+// agent predates the field rather than because it supplies nothing, which is worth saying differently.
+const SOURCES_SINCE_VERSION = '0.3.0'
+
+// Unchanged since the first agent, and it stays that way: the sources ride in the query string precisely so
+// that this frame, and any agent that builds it, reads the same to every version of SLM. The token stays here
+// rather than in the url, which proxies and access logs record.
+const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(.+)$/
 
 // Per-server log chunk streams. Kept in a registry so each managed server only sees its own agent's
 // data. The subject outlives individual agent connections: an agent can drop and reconnect without the
@@ -195,13 +201,16 @@ export function handleConnection(ws: WebSocket, req: FastifyRequest) {
 
 	ws.on('error', (err) => log.error(err, 'Server agent socket error for %s', remote))
 
+	const rawSources = (req.query as { sources?: unknown })?.sources
+	const sources = typeof rawSources === 'string' ? rawSources.split(',').filter((s) => s.length > 0) : []
+
 	ws.once('message', (raw: Buffer) => {
 		clearTimeout(handshakeTimer)
-		void onHandshake(ws, remote, raw.toString('utf-8').trim())
+		void onHandshake(ws, remote, raw.toString('utf-8').trim(), sources)
 	})
 }
 
-async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
+async function onHandshake(ws: WebSocket, remote: string, handshake: string, sources: string[]) {
 	const log = baseLogger
 	const match = HANDSHAKE_RE.exec(handshake)
 	if (!match) {
@@ -209,8 +218,7 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 		close(ws, CLOSE_BAD_HANDSHAKE, 'malformed handshake')
 		return
 	}
-	const [, version, serverId, rawSources, token] = match
-	const sources = rawSources === undefined ? [] : rawSources.split(',').filter((s) => s.length > 0)
+	const [, version, serverId, token] = match
 
 	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	let settings
@@ -237,6 +245,10 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 	// after the token check, so what an agent is missing is only ever told to an authenticated one
 	const missing = REQUIRED_SOURCES.filter((source) => !sources.includes(source))
 	if (missing.length > 0) {
+		const tooOld = semver.lt(version, SOURCES_SINCE_VERSION)
+		const reason = tooOld
+			? `agent ${version} is too old to declare its sources; ${SOURCES_SINCE_VERSION} or newer supplies ${REQUIRED_SOURCES.join(' and ')}`
+			: `agent does not supply: ${missing.join(', ')}`
 		log.warn(
 			'Server agent %s for server %s supplies [%s] but SLM needs [%s]',
 			remote,
@@ -244,7 +256,7 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 			sources.join(', '),
 			REQUIRED_SOURCES.join(', '),
 		)
-		close(ws, CLOSE_INCOMPLETE_SOURCES, `agent does not supply: ${missing.join(', ')}`)
+		close(ws, CLOSE_INCOMPLETE_SOURCES, reason)
 		return
 	}
 
