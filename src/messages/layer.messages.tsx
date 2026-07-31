@@ -91,16 +91,24 @@ export const noScores = def('No scores available')
 // across the swap, 1/2 are the raw slot (see docs/architecture.md). The faction rides in parentheses where the
 // layer is known, since a slot name alone does not say who the reader is looking at. `isCurrent` qualifies it as
 // the faction of the match in progress, which a surface spanning several matches has to say out loud.
+//
+// The rich surface tags the two pieces that name the team, the slot and the faction, leaving the parenthetical
+// glue between them untagged. Which words those are is the message's; what a caller does with them is not. The
+// slot rides in an arg called `slot` because a tag and an arg of the same name would collide in ICU's namespace.
 
-export const teamName = def(
-	'{team, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}{faction})} other {}}',
-	(team: 'A' | 'B' | 1 | 2, faction?: string | null, isCurrent?: boolean) => ({
-		team: String(team),
-		faction,
-		hasFaction: faction ? 'yes' : 'no',
-		isCurrent: isCurrent ? 'yes' : 'no',
-	}),
-)
+export const teamName = def((team: 'A' | 'B' | 1 | 2, faction?: string | null, isCurrent?: boolean) => {
+	const args = { slot: String(team), faction, hasFaction: faction ? 'yes' : 'no', isCurrent: isCurrent ? 'yes' : 'no' }
+	return {
+		text: t(
+			'{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}{faction})} other {}}',
+			args,
+		),
+		richText: rt(
+			'<team>{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}</team>{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}<team>{faction}</team>)} other {}}',
+			args,
+		),
+	}
+})
 
 export const team1 = def('Team 1')
 
