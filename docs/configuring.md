@@ -230,9 +230,9 @@ If you change an existing prefix, SLM moves every [trigger](#52-command-triggers
 
 #### 5.2. Command triggers
 
-An in-game command runs from one of its _triggers_: the strings listed against it under _Settings > In-game
-Commands_. `/timeout` and `/to` are two triggers for the same command, and typing either takes the command's
-arguments exactly as written.
+An in-game command runs from one of its _triggers_: the strings listed against it under
+_Settings > In-game Commands_. `/timeout` and `/to` are two triggers for the same command, and typing either takes
+the command's arguments exactly as written.
 
 A trigger can also pin some of those arguments. Give it an `args` template and it becomes a shortcut, which is what
 command aliases used to be:
@@ -364,11 +364,12 @@ A filter does nothing on its own. It is an entity that other settings point at, 
 another. _Main Pool_ is built out of two of the others:
 
 ![main_pool](configuring_screenshots/main_pool_card.png)
+![main_pool_edit](configuring_screenshots/main_pool_edit.png)
 
 It uses _all of (and)_, so a layer has to meet every one of:
 
-- `Z_Pool` is true. This is one of the extra columns that ship with SLM's layer data, and it marks the competitive
-  pool. See [layer_data.md](layer_data.md).
+- `Z_Pool` is true, shown as `Z Pool` in the builder. This is one of the extra columns that ship with SLM's layer
+  data, and it marks the competitive pool. See [layer_data.md](layer_data.md).
 - the layer is excluded from _Similar Factions_
 - the layer is included in _No Mech on Hilly Maps_
 
@@ -452,7 +453,38 @@ _Constrain generated pool for_ is the one to set up first. When the queue runs o
 from the pool, and the default _Main Pool_ is permissive. Naming a tighter filter here keeps generated layers
 closer to what you want to play. Each entry is set to _Must match_ or _Must not match_.
 
-#### 8.6. Repeat rules
+#### 8.6. Next layer
+
+The _Next Layer_ tab holds two settings, both off by default. They decide how SLM reacts when the server's next
+layer changes underneath it.
+
+_Override the next layer when it is set outside SLM_ covers the case where something other than SLM sets the next
+layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to whatever the queue says. Off,
+SLM adopts the change instead, and puts that layer at the front of the queue.
+
+_Warn admins when the next layer changes_ sends every in-game admin the new next layer whenever it changes. A change
+SLM overrides is not announced, so turning both on tells admins only about changes SLM accepted.
+
+![pool_configuration_next_layer](configuring_screenshots/pool_configuration_next_layer.png)
+
+#### 8.7. Disabling SLM updates
+
+SLM normally writes the next layer to the server over RCON. _Disable SLM Updates_, in the _Server Actions_ menu,
+stops it. The queue still runs and still tracks what is played. SLM just never sets the map itself, and it stops sending
+the recurring reminders and announcements that describe the queue as the rotation. Use it to run SLM alongside
+something else that owns the rotation.
+
+![disable_slm_updates](configuring_screenshots/disable_slm_updates.png)
+
+While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off, and
+_Re-enable SLM Updates_ puts them back. Both need `squad-server:disable-slm-updates`.
+
+SLM also stands down on its own when Squad's built-in vote is deciding the next layer, because anything SLM wrote
+would be discarded. It does not always see the vote directly: sometimes it infers one from the server losing its
+next layer, and the alert says so rather than stating a guess as fact. Re-enabling from that alert also turns
+in-game voting off on the server. See [ingame_voting.md](ingame_voting.md).
+
+#### 8.8. Repeat rules
 
 A _repeat rule_ sets how far apart a map, layer or faction has to be spaced, across both the queue and the recent
 match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
@@ -524,4 +556,4 @@ it picks one of the remaining layers at random.
 
 The weights are relative, not probabilities. SLM normalizes them against the values actually available at pick time,
 and a value with no layers left is never picked. Your background filtering and the values already picked both narrow
-what remains, so configured weights do not map cleanly onto the shares you end up seeing.
+what remains, so configured weights do not map cleanly onto the distributions you end up seeing.
