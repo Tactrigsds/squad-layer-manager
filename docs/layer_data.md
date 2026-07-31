@@ -36,6 +36,18 @@ To add a mod, create a directory with the mod's export and a manifest, then run 
 with a named layer whenever the manifest is missing an abbreviation or two layers are indistinguishable; each
 failure is fixed by another manifest entry. `data/sources/supermod/source.json` is a complete example.
 
+A mod's `layers.json` can come from the SquadLayerList repo, or be extracted directly from a local Squad install
+with `tools/layer-extractor` (requires the .NET 10 SDK):
+
+```sh
+cd tools/layer-extractor
+dotnet run -- ~/.local/share/Steam/steamapps/workshop/content/393380/<workshopId> --out layers.json
+```
+
+It reads the cooked game files, so it works on whatever version of the mod Steam has downloaded, with no SDK
+involved. SquadLayerList's `exporter.py` only runs inside the Squad SDK against the mod author's project, which is
+why its exports lag behind workshop updates.
+
 Mod layers are opt-in per query: pools, generated votes and the layer browser only include layers outside the
 default collection when a filter names the Collection column. A vanilla server never sees mod layers unless someone
 writes a filter that asks for them.
