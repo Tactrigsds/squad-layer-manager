@@ -18,7 +18,6 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useDebouncedState } from '@/hooks/use-debounce'
 import * as DH from '@/lib/display-helpers'
 import type { Focusable } from '@/lib/react'
-import * as SetUtils from '@/lib/set-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import * as Zus from '@/lib/zustand'
@@ -31,6 +30,7 @@ import type * as LQY from '@/models/layer-queries.models.ts'
 import * as GlobalSettings from '@/systems/client-only-settings.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as RbacClient from '@/systems/rbac.client'
+import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import { LayerContextMenuItems } from './layer-table-helpers'
@@ -197,8 +197,6 @@ function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTabl
 }
 
 function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTablePrt.KeyProp) {
-	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
 	const getTableFrame = () => Zus.getState(stores.layerTable).layerTable
 
 	const tableColDefs: ColumnDef<LayerQueriesClient.RowData>[] = [
@@ -206,27 +204,11 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 			id: 'select',
 			size: LayerTablePrt.SELECT_COLUMN_SIZE,
 			header: function SelectHeader() {
-				const [selectState, disabled] = useTableFrame(
-					Zus.useShallow((table) => {
-						if (table.pageData === null) return [null, true] as const
-						const selected = new Set(table.selected)
-						const pageIds = new Set(table.pageData.layers.map((l) => l.id))
-						const intersect = SetUtils.intersection(selected, pageIds)
-						const selectState: 'all' | 'some' | null = (() => {
-							if (intersect.size === pageIds.size) return 'all' as const
-							if (intersect.size > 0) return 'some' as const
-							return null
-						})()
-
-						const ifAllSelected = SetUtils.union(selected, pageIds)
-						const ifAllUnselected = SetUtils.difference(selected, pageIds)
-
-						const disabled =
-							(table.maxSelected ?? Infinity) < ifAllSelected.size ||
-							(table.minSelected ?? 0) > ifAllUnselected.size ||
-							table.pageData.layers.some((t) => t.isRowDisabled)
-						return [selectState, disabled] as const
-					}),
+				const { selectState, disabled } = Zus.useStore(
+					stores.layerTable,
+					UsersClient.loggedInUserQueryOptions,
+					RbacClient.RbacStore,
+					LayerTablePrt.Sel.selectAllStatus,
 				)
 
 				const toggleAllSelected = (state: CheckedState) => {
@@ -260,14 +242,19 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 				)
 			},
 			cell: function SelectCell({ row }) {
-				const [isUnselectable, isSelected] = Zus.useStore(stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
+				const { isUnselectable, isSelected, blockedByPool } = Zus.useStore(
+					stores.layerTable,
+					UsersClient.loggedInUserQueryOptions,
+					RbacClient.RbacStore,
+					LayerTablePrt.Sel.rowSelectionStatus(row.id),
+				)
 
 				return (
 					<Checkbox
 						checked={isSelected}
 						disabled={isUnselectable}
 						// no handler here because we're already handling onClick on the row
-						className={row.original.isRowDisabled ? 'invisible' : ''}
+						className={blockedByPool ? 'invisible' : ''}
 						aria-label={tr.text(SM_Msgs.selectRow())}
 					/>
 				)
@@ -483,7 +470,12 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 	const getTableFrame = () => Zus.getState(props.stores.layerTable).layerTable
 	const canFocusLayers = Zus.useStore(props.stores.layerTable, (s) => !!s.onLayerFocused)
 
-	const [isUnselectable, isSelected] = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.rowSelectionStatus(row.id))
+	const { isUnselectable, isSelected } = Zus.useStore(
+		props.stores.layerTable,
+		UsersClient.loggedInUserQueryOptions,
+		RbacClient.RbacStore,
+		LayerTablePrt.Sel.rowSelectionStatus(row.id),
+	)
 	function toggleRow() {
 		if (isUnselectable) return
 
