@@ -54,6 +54,6 @@ those only the containers that `LayerExtractor --plan` finds layer data in, by f
 It uses DepotDownloader, which needs a Steam login that owns Squad on first run. The base game must still be
 installed; mods reference its assets.
 
-Mod layers are opt-in per query: pools, generated votes and the layer browser only include layers outside the
-default collection when a filter names the Collection column. A vanilla server never sees mod layers unless someone
-writes a filter that asks for them.
+Every source's layers are in the pool of every query. The Collection column tells them apart: a server that only
+runs vanilla should carry a `Collection == OWI` term in its pool filter, and generated votes draw whatever the pool
+filter admits.

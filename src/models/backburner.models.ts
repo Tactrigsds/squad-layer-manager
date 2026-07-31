@@ -366,6 +366,9 @@ export function templateFromLayer(layer: Partial<L.KnownLayer>): F.FilterNode {
 	if (layer.Map) parts.maps = [layer.Map]
 	if (layer.Gamemode) parts.gamemodes = [layer.Gamemode]
 	if (layer.LayerVersion) parts.versions = [layer.LayerVersion]
+	// mods reuse vanilla map names for their own takes on a layer; a request built from a layer means that
+	// layer's collection, not a lookalike from another one
+	if (layer.Collection) parts.collections = [layer.Collection]
 	const left: F.MatchupTeamSpec = {}
 	const right: F.MatchupTeamSpec = {}
 	if (layer.Faction_1) left.Faction = [layer.Faction_1]
