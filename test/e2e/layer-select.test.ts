@@ -2,6 +2,7 @@ import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
+import { settledText, settledTextAfter } from '../harness/settle'
 import { expect, test } from './fixtures'
 
 // The select-layers dialog. What it offers is the product of three things -- the server's pool config,
@@ -42,7 +43,7 @@ test.describe('selecting layers', () => {
 
 			// turning the filter off is what lets an admin reach outside the pool
 			const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-			const countWithFilter = await matchedCount.textContent()
+			const countWithFilter = await settledText(matchedCount)
 			await raasOnly.click()
 			await expect(raasOnly).toHaveAttribute('aria-checked', 'false')
 
@@ -51,7 +52,7 @@ test.describe('selecting layers', () => {
 			// shows Seed as out-of-pool, and an out-of-pool option swallows the click that would select it -- so
 			// clicking now is a coin flip. The count only renders on a settled query, so waiting for it to change is
 			// what makes the menu below answer for the pool we actually have.
-			await expect(matchedCount).not.toHaveText(countWithFilter!)
+			await settledTextAfter(matchedCount, countWithFilter)
 
 			// and now narrow to the gamemode being asserted on. The table sorts randomly by default (see the layerTable
 			// setting) and pages, so "is Sumari_Seed_v1 in the table" without narrowing to it is really "did the shuffle
