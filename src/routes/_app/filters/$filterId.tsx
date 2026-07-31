@@ -121,6 +121,9 @@ function RouteComponent() {
 	if (!loaderData || !frameKey) return <p>{tr.text(APP_Msgs.somethingWentWrong())}</p>
 	return (
 		<FilterEdit
+			// a reference badge navigates between filters on this same route, so without the key the editor UI
+			// (form, tabs, codemirror) would survive the swap holding the previous filter's state
+			key={params.filterId}
 			entity={loaderData.entity}
 			contributors={loaderData.contributors}
 			owner={loaderData.owner}
