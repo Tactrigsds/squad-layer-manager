@@ -20,7 +20,7 @@ import * as Settings from '@/systems/settings.server'
 //
 // Protocol (deliberately thin, no oRPC):
 //   1. agent connects to `wss://<origin>/server-agent?sources=<a,b>`, where `sources` names what that agent
-//      can supply for the server, out of `logs` and `rcon`
+//      can supply for the server, out of `logs` and `rcon`. Agents before 0.3.0 do not send it.
 //   2. agent sends one text frame: `slm-server-agent@<version>:<serverId>:<token>`
 //   3. we validate against the server's live settings; on failure we close with a 4xxx code, on success we
 //      send an `ok` text frame
@@ -48,8 +48,10 @@ const HANDSHAKE_TIMEOUT_MS = 10_000
 // from here is indistinguishable from a server that is merely quiet, so we refuse the connection instead.
 const REQUIRED_SOURCES = ['logs', 'rcon'] as const
 
-// The version an agent has to be to declare its sources at all. Below it, `sources` is absent because the
-// agent predates the field rather than because it supplies nothing, which is worth saying differently.
+// The version an agent declares its sources from. Older agents are taken at their word and connected
+// unchecked: they cannot say what they carry, and one that has been streaming a server for months is not a
+// thing to cut off over a field it was built before. The check is on the version rather than on the field
+// being absent, so an agent new enough to declare cannot skip the requirement by declaring nothing.
 const SOURCES_SINCE_VERSION = '0.3.0'
 
 // Unchanged since the first agent, and it stays that way: the sources ride in the query string precisely so
@@ -243,12 +245,15 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 	}
 
 	// after the token check, so what an agent is missing is only ever told to an authenticated one
+	const declaresSources = semver.gte(version, SOURCES_SINCE_VERSION)
 	const missing = REQUIRED_SOURCES.filter((source) => !sources.includes(source))
-	if (missing.length > 0) {
-		const tooOld = semver.lt(version, SOURCES_SINCE_VERSION)
-		const reason = tooOld
-			? `agent ${version} is too old to declare its sources; ${SOURCES_SINCE_VERSION} or newer supplies ${REQUIRED_SOURCES.join(' and ')}`
-			: `agent does not supply: ${missing.join(', ')}`
+	if (declaresSources && missing.length > 0) {
+		// an agent this version always names at least one source, so naming none means the query string did
+		// not survive the trip rather than that the agent has nothing to offer
+		const reason =
+			sources.length === 0
+				? 'declared no sources: does the connection url keep its query string?'
+				: `agent does not supply: ${missing.join(', ')}`
 		log.warn(
 			'Server agent %s for server %s supplies [%s] but SLM needs [%s]',
 			remote,
@@ -258,6 +263,15 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 		)
 		close(ws, CLOSE_INCOMPLETE_SOURCES, reason)
 		return
+	}
+	if (!declaresSources) {
+		log.warn(
+			'Server agent %s for server %s is %s, which predates source declaration: connecting it unchecked. Upgrade it to %s or newer.',
+			remote,
+			serverId,
+			version,
+			SOURCES_SINCE_VERSION,
+		)
 	}
 
 	if (activeAgents.has(serverId)) {
@@ -275,7 +289,13 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 	tunnel.attachAgent((payload) => {
 		if (ws.readyState === ws.OPEN) ws.send(Buffer.concat([Buffer.from([TAG_RCON_DATA]), payload]))
 	})
-	log.info('Server agent %s connected for server %s (version %s, sources %s)', remote, serverId, version, sources.join(', '))
+	log.info(
+		'Server agent %s connected for server %s (version %s, sources %s)',
+		remote,
+		serverId,
+		version,
+		sources.length > 0 ? sources.join(', ') : 'undeclared',
+	)
 
 	// a chunk can split a multi-byte utf-8 sequence across frames; the decoder buffers the trailing partial
 	// bytes until the rest arrives rather than emitting replacement characters
