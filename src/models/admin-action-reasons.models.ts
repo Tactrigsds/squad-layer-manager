@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { renderTemplate } from '@/lib/templating'
+import * as Templating from '@/lib/templating'
 import * as LP from '@/models/labeled-presets.models'
 import type * as RBAC from '@/rbac.models'
 
@@ -133,7 +133,7 @@ export function applyCustomReason(text: string, vars: Record<string, string>): A
 // per-render extras (e.g. the remaining timeout duration) and the leading tag naming who the message is aimed at
 // (`@Squad<id>`, `@admins`, or the recipients themselves)
 export function renderAppliedReason(applied: AppliedReason, opts?: { audienceTag?: string; extraVars?: Record<string, string> }): string {
-	const rendered = renderTemplate(applied.template, { ...applied.vars, label: applied.label ?? '', ...opts?.extraVars })
+	const rendered = Templating.renderTemplate(applied.template, { ...applied.vars, label: applied.label ?? '', ...opts?.extraVars })
 	return opts?.audienceTag ? `${opts.audienceTag} ${rendered}` : rendered
 }
 

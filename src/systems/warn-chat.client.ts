@@ -1,5 +1,6 @@
 import React from 'react'
 
+import * as Templating from '@/lib/templating'
 import * as Zus from '@/lib/zustand'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as SettingsClient from '@/systems/settings.client'
@@ -10,10 +11,7 @@ import * as SettingsClient from '@/systems/settings.client'
 export function useAdminReasonDraft(action: AAR.AdminActionType) {
 	const [pickedLabel, setPickedLabel] = React.useState<string | null>(null)
 	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => (s ? AAR.reasonsForAction(s.adminActionReasons, action) : []))
-	const vars = Zus.useStore(
-		SettingsClient.PublicSettingsStore,
-		(s) => Object.fromEntries((s?.messageVariables ?? []).map((v) => [v.name, v.value])) as Record<string, string>,
-	)
+	const vars = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => Templating.resolveTemplateVars(s?.messageVariables ?? []))
 	// a pick doesn't survive a change of action -- a warn preset is not a broadcast preset
 	React.useEffect(() => setPickedLabel(null), [action])
 

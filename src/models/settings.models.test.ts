@@ -118,3 +118,35 @@ describe('getSettingsConstraints', () => {
 		expect(byId.has('filter-cfg:a-filter')).toBe(false)
 	})
 })
+
+describe('message variable cycles', () => {
+	const parse = (messageVariables: { name: string; value: string }[]) => SETTINGS.parseGlobalSettings({ messageVariables })
+	const messageVariableIssues = (res: ReturnType<typeof parse>) =>
+		res.success ? [] : res.error.issues.filter((i) => i.path[0] === 'messageVariables')
+
+	test('accepts variables that reference each other acyclically', () => {
+		const res = parse([
+			{ name: 'discord', value: 'discord.gg/x' },
+			{ name: 'appeal', value: 'Appeal at {{discord}}' },
+		])
+		expect(messageVariableIssues(res)).toEqual([])
+	})
+
+	test('rejects a cycle, flagging every variable on it', () => {
+		const res = parse([
+			{ name: 'a', value: '{{b}}' },
+			{ name: 'b', value: '{{a}}' },
+			{ name: 'c', value: 'fine' },
+		])
+		const issues = messageVariableIssues(res)
+		expect(issues.map((i) => i.path)).toEqual([
+			['messageVariables', 0, 'value'],
+			['messageVariables', 1, 'value'],
+		])
+		expect(issues[0].message).toContain('a -> b -> a')
+	})
+
+	test('rejects a variable that references itself', () => {
+		expect(messageVariableIssues(parse([{ name: 'a', value: 'loop {{a}}' }]))).toHaveLength(1)
+	})
+})
