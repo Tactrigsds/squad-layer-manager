@@ -17,17 +17,17 @@ The source is at [server-agent/agent](../server-agent/agent). It is a small rust
 
 ## Setting up the server in SLM
 
-Set the server's connection mode to **server agent**. See
+Set the server's connection mode to _server agent_. See
 [configuring.md](configuring.md#21-connecting-the-server) for where that setting lives.
 
 Then choose or generate a secret token. The agent sends this token to authenticate, so treat it as a credential.
 
 The agent needs three things from this page:
 
-- the **url** SLM is served on. This is the same `ORIGIN` you serve the app on, with the path `/server-agent`. Use
+- the _url_ SLM is served on. This is the same `ORIGIN` you serve the app on, with the path `/server-agent`. Use
   `wss://` if you serve SLM over https, and `ws://` over plain http.
-- the **server id**, shown with the rest of the server's connection settings.
-- the **token** you just set.
+- the _server id_, shown with the rest of the server's connection settings.
+- the _token_ you just set.
 
 ## Running the agent
 
