@@ -66,13 +66,42 @@ export function recordLogChunk(serverId: string, chunk: string, time: number): v
 	for (const line of lines) record(serverId, { type: 'log', line, time })
 }
 
-// A managed server teardown drops the tail with it: the events describe a connection that no longer exists, and keeping
-// them would leave a restarted server showing the previous one's traffic.
+// A channel outlives the managed server it describes, and is dropped only when the server itself is deleted.
+//
+// It has to. The console is opened to find out why a server is down, so the moments worth reading -- a refused
+// connection, a rejected password, the teardown itself -- are all moments when there is no managed server. Ending
+// the channel with the managed server would close every open console's stream at exactly that point, and an rpc
+// stream that ends is not retried (see RPC.observe: it resubscribes on error, not on completion), so the window
+// would sit there frozen and never recover when the server came back.
+//
+// The buffer survives the restart for the same reason. What separates the old connection's traffic from the new
+// one's is the slm channel saying so, which is more use than an empty console.
 export function disposeFor(serverId: string): void {
 	const channel = channels.get(serverId)
 	if (!channel) return
 	channels.delete(serverId)
 	channel.event$.complete()
+}
+
+// SLM's own view of this server: connection attempts, refusals, retries and teardowns. The one channel that has
+// anything to say while the server is unreachable.
+export function recordSlm(serverId: string, level: SC.SlmLevel, message: string, detail?: unknown): void {
+	record(serverId, { type: 'slm', level, message, time: Date.now(), ...(detail === undefined ? {} : { detail: describe(detail) }) })
+}
+
+// Errors reach here from sockets, sftp and zod alike, and an admin needs the reason rather than the class name.
+function describe(detail: unknown): string {
+	if (typeof detail === 'string') return detail
+	if (detail instanceof Error) {
+		// node attaches the part an admin can act on (ECONNREFUSED, ENOTFOUND) to the error rather than the message
+		const code = (detail as NodeJS.ErrnoException).code
+		return code && !detail.message.includes(code) ? `${code}: ${detail.message}` : detail.message
+	}
+	try {
+		return JSON.stringify(detail) ?? String(detail)
+	} catch {
+		return String(detail)
+	}
 }
 
 export const orpcRouter = {

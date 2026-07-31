@@ -9,6 +9,7 @@ import * as CS from '@/models/context-shared'
 import * as DB from '@/server/db'
 import { baseLogger } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
 
 // The slm-server-agent (see ../../server-agent, a small rust program) runs on/near a squad server box and
@@ -214,18 +215,30 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 
 	if (settings.connections.type !== 'server-agent') {
 		log.warn('Server agent %s: server %s is not configured for a server agent', remote, serverId)
+		ServerConsole.recordSlm(
+			serverId,
+			'error',
+			`Rejected the agent at ${remote}: this server is configured for ${settings.connections.type}, not a server agent`,
+		)
 		close(ws, CLOSE_UNKNOWN_SERVER, 'server not configured for a server agent')
 		return
 	}
 
 	if (settings.connections.token !== token) {
 		log.warn('Server agent %s: invalid token for server %s', remote, serverId)
+		ServerConsole.recordSlm(
+			serverId,
+			'error',
+			`Rejected the agent at ${remote}: wrong token`,
+			"the agent's token does not match this server's connection settings",
+		)
 		close(ws, CLOSE_UNAUTHORIZED, 'invalid token')
 		return
 	}
 
 	if (activeAgents.has(serverId)) {
 		log.warn('Server agent %s: server %s already has a connected agent', remote, serverId)
+		ServerConsole.recordSlm(serverId, 'warn', `Rejected the agent at ${remote}: an agent is already connected for this server`)
 		close(ws, CLOSE_DUPLICATE, 'duplicate agent')
 		return
 	}
@@ -240,6 +253,7 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 		if (ws.readyState === ws.OPEN) ws.send(Buffer.concat([Buffer.from([TAG_RCON_DATA]), payload]))
 	})
 	log.info('Server agent %s connected for server %s (version %s)', remote, serverId, version)
+	ServerConsole.recordSlm(serverId, 'info', `Server agent connected from ${remote} (version ${version})`)
 
 	// a chunk can split a multi-byte utf-8 sequence across frames; the decoder buffers the trailing partial
 	// bytes until the rest arrives rather than emitting replacement characters
@@ -263,10 +277,11 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 	})
 	ws.send('ok')
 
-	ws.on('close', () => {
+	ws.on('close', (code: number, reason: Buffer) => {
 		if (activeAgents.get(serverId) === ws) activeAgents.delete(serverId)
 		tunnel.detachAgent()
 		log.info('Server agent %s for server %s disconnected', remote, serverId)
+		ServerConsole.recordSlm(serverId, 'warn', `Server agent at ${remote} disconnected`, reason.toString('utf8') || `close code ${code}`)
 	})
 }
 
