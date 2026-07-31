@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test'
+
 import * as FB from '@/models/filter-builders'
 
 import { createAppFixture, type TestUser } from '../harness/app-fixture'
@@ -10,6 +12,58 @@ import { expect, test } from './fixtures'
 // silently rot if the membership constraint and the row-disabling it drives ever diverged again.
 
 const WRITER: TestUser = { discordId: 900000000000000021n, username: 'test-writer' }
+const FORCE_WRITER: TestUser = { discordId: 900000000000000022n, username: 'test-force-writer' }
+
+// opens a fresh Add Layers dialog, turns the pool off to surface out-of-pool layers, and clicks Sumari_Seed_v1.
+// whether Submit arms is the answer to "did the row accept the selection"
+async function clickOutOfPoolRow(page: Page) {
+	await page.getByRole('button', { name: 'Add Layers' }).click()
+	const dialog = page.getByRole('dialog', { name: 'Add Layers' })
+
+	await dialog.getByRole('combobox', { name: 'Map' }).click()
+	await page.getByRole('option', { name: 'Sumari', exact: true }).click()
+
+	// see layer-select.test.ts for why the count settling is what makes the filter menu answer for the new pool
+	const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
+	const matchedCount = dialog.getByText(/matched layers|No layers matched/)
+	const countWithPool = await matchedCount.textContent()
+	await poolControl.click()
+	await expect(poolControl).toHaveAttribute('aria-checked', 'false')
+	await expect(matchedCount).not.toHaveText(countWithPool!)
+
+	await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
+	await page.getByRole('option', { name: 'Seed', exact: true }).click()
+	await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('Seed')
+
+	const seedRow = dialog.getByRole('row').filter({ hasText: 'Sumari_Seed_v1' }).first()
+	await expect(seedRow).toBeVisible()
+	await seedRow.click()
+	return dialog
+}
+
+// switches the permissions dialog's simulation on or off. Leaving it on is what the assertions below read
+async function setForceWriteSimulatedAway(page: Page, simulatedAway: boolean) {
+	await page.getByLabel('User menu').click()
+	await page.getByRole('menuitem', { name: 'Permissions' }).click()
+	const dialog = page.getByRole('dialog', { name: 'User Permissions' })
+	const simulate = dialog.getByRole('switch', { name: 'Simulate' })
+
+	if (simulatedAway) {
+		await simulate.click()
+		await expect(simulate).toHaveAttribute('aria-checked', 'true')
+		await dialog.getByRole('tab', { name: 'All Permissions' }).click()
+		const permCheckbox = dialog.getByRole('checkbox', { name: 'queue:force-write' })
+		await permCheckbox.click()
+		await expect(permCheckbox).toHaveAttribute('aria-checked', 'false')
+	} else {
+		// switching simulation off clears every toggle inside it, so the permission comes back with it
+		await simulate.click()
+		await expect(simulate).toHaveAttribute('aria-checked', 'false')
+	}
+
+	await page.keyboard.press('Escape')
+	await expect(dialog).toHaveCount(0)
+}
 
 test.describe('pool filter', () => {
 	test('constrains selection to the pool; out-of-pool layers are viewable but unselectable without force-write', async ({ page }) => {
@@ -85,6 +139,55 @@ test.describe('pool filter', () => {
 			await expect(raasRow).toBeVisible()
 			await raasRow.click()
 			await expect(dialog.getByRole('button', { name: 'Submit' })).toBeEnabled()
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	// row disabling used to be computed from the real permissions when the page was queried, so the permissions
+	// dialog's simulation could not narrow it: an admin simulating the loss of force-write still got selectable
+	// out-of-pool rows, which is the one thing the simulation is there to show them
+	test('simulating away force-write disables out-of-pool rows', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.harjuRaas),
+			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
+			serverSettings: (settings) => {
+				settings.queue.mainPool.poolFilter = { filterId: 'raas-only', mode: 'include' }
+			},
+			users: [FORCE_WRITER],
+			globalSettings: (settings) => {
+				settings.rbac.roles['queue-force-writer'] = {
+					permissions: ['site:authorized', 'queue:write', 'queue:force-write'],
+					globalSettingsGrants: [],
+					serverSettingsGrants: [],
+					serverGrants: [],
+					assignments: {
+						discordRoleIds: [],
+						discordUserIds: [String(FORCE_WRITER.discordId)],
+						everyMember: false,
+						ingameAdminLists: [],
+						adminListGroups: [],
+					},
+				}
+			},
+		})
+		try {
+			await page.goto(app.loginUrl(FORCE_WRITER))
+			await expect(page.getByRole('tab', { name: 'Queue (1)' })).toBeVisible({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+
+			await setForceWriteSimulatedAway(page, true)
+			const simulatedDialog = await clickOutOfPoolRow(page)
+			await expect(simulatedDialog.getByRole('button', { name: 'Submit' })).toBeDisabled()
+			// this one ignores Escape, so the close button is the only way back out to the user menu
+			await simulatedDialog.getByRole('button', { name: 'Close' }).click()
+			await expect(simulatedDialog.getByRole('heading', { name: 'Add Layers' })).toHaveCount(0)
+
+			// positive control: the same row, same clicks, with simulation off. Without this the assertion above
+			// would also pass if the row were unselectable for some reason unrelated to the permission
+			await setForceWriteSimulatedAway(page, false)
+			const realDialog = await clickOutOfPoolRow(page)
+			await expect(realDialog.getByRole('button', { name: 'Submit' })).toBeEnabled()
 		} finally {
 			await app.dispose()
 		}
