@@ -314,6 +314,16 @@ export const aboutRepeatRuleAutogen = def('About repeat rules during autogenerat
 
 export const repeatRuleAutogenHelp = def('Also apply this rule when autogenerating layers')
 
+export const repeatRuleCrossTeam = def('Cross-team')
+
+export const repeatRuleCrossTeamTitle = def('Count a value either team played as a repeat for both teams')
+
+export const repeatRuleCrossTeamHelpTitle = def('About cross-team repeat rules')
+
+export const repeatRuleCrossTeamHelp = def(
+	'By default a Faction or Alliance rule compares each team against the same team in earlier matches. Cross-team pools both teams together, so a faction one team played counts as a repeat when the other team plays it. Only applies to Faction and Alliance rules.',
+)
+
 // -------- saving --------
 
 export const saved = def(() => ({ toast: [t('Settings saved')] }))

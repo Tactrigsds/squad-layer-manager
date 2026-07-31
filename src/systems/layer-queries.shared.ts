@@ -41,7 +41,7 @@ export type QueryLayersResponsePart =
 
 // the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
 // streamed query need the log and the generation config on top
-type QueryCtx = LE.Ctx & F.Ctx
+export type QueryCtx = LE.Ctx & F.Ctx
 
 function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
 	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
@@ -164,6 +164,7 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 	const values = new Set<number>()
 	const valuesA = new Set<number>()
 	const valuesB = new Set<number>()
+	const matchups = new Map<string, [number, number]>()
 	const previousLayers = list.layerItems
 
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
@@ -183,9 +184,11 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 				}
 				break
 			}
-			case 'Faction': {
+			case 'Faction':
+			case 'Unit':
+			case 'Alliance': {
 				for (const team of ['A', 'B'] as const) {
-					const column = MH.getTeamNormalizedFactionProp(teamParity, team)
+					const column = LQY.teamNormalizedRepeatRuleProp(rule.field, teamParity, team)
 					const value = layer[column]
 					if (!value || LQY.valueFilteredByTargetValues(rule, value)) continue
 					const dbValue = LC.dbValue(column, value, ctx)
@@ -194,15 +197,10 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 				}
 				break
 			}
-			case 'Alliance': {
-				for (const team of ['A', 'B'] as const) {
-					const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
-					const alliance = layer[column]
-					if (LQY.valueFilteredByTargetValues(rule, alliance)) continue
-					const dbValue = LC.dbValue(column, alliance, ctx)
-					if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
-					;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
-				}
+			case 'UnitMatchup': {
+				const matchup = unitMatchupOf(layer, rule)
+				const pair = matchup && unitMatchupDbValues(ctx, layer, rule)
+				if (matchup && pair) matchups.set(matchup, pair)
 				break
 			}
 			default:
@@ -220,22 +218,57 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 			return { op: 'in_vals', col: col(rule.field), vals: [...values] }
 		}
 		case 'Faction':
+		case 'Unit':
 		case 'Alliance': {
-			const [colA, colB] =
-				rule.field === 'Faction'
-					? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
-					: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
+			const colA = LQY.teamNormalizedRepeatRuleProp(rule.field, targetParity, 'A')
+			const colB = LQY.teamNormalizedRepeatRuleProp(rule.field, targetParity, 'B')
+			const pooled = rule.crossTeam ? [...new Set([...valuesA, ...valuesB])] : null
 			return {
 				op: 'or',
 				children: [
-					{ op: 'in_vals', col: col(colA), vals: [...valuesA] },
-					{ op: 'in_vals', col: col(colB), vals: [...valuesB] },
+					{ op: 'in_vals', col: col(colA), vals: pooled ?? [...valuesA] },
+					{ op: 'in_vals', col: col(colB), vals: pooled ?? [...valuesB] },
 				],
 			}
+		}
+		case 'UnitMatchup': {
+			// the pair is unordered, so each previous matchup is matched in both orientations against the raw slots
+			const [col1, col2] = [col('Unit_1'), col('Unit_2')]
+			return LE.or(
+				[...matchups.values()].map(([a, b]) => {
+					const orient = (first: number, second: number): LE.Ir =>
+						LE.and([
+							{ op: 'in_vals', col: col1, vals: [first] },
+							{ op: 'in_vals', col: col2, vals: [second] },
+						])
+					return a === b ? orient(a, b) : LE.or([orient(a, b), orient(b, a)])
+				}),
+			)
 		}
 		default:
 			assertNever(rule.field)
 	}
+}
+
+// A matchup is only a repeat as a whole, so a layer missing either unit contributes nothing. A targetValues entry
+// names a whole matchup, so it is compared against the layer's matchup rather than against either unit on its own.
+function unitMatchupOf(layer: L.UnvalidatedLayer, rule: LQY.RepeatRule): string | null {
+	const [unit1, unit2] = [layer.Unit_1, layer.Unit_2]
+	if (!unit1 || !unit2) return null
+	const matchup = LQY.unitMatchupValue(unit1, unit2)
+	if (rule.targetValues?.length && !rule.targetValues.includes(matchup)) return null
+	return matchup
+}
+
+function unitMatchupDbValues(ctx: LE.Ctx, layer: L.UnvalidatedLayer, rule: LQY.RepeatRule): [number, number] | null {
+	if (!unitMatchupOf(layer, rule)) return null
+	const dbValues: number[] = []
+	for (const column of ['Unit_1', 'Unit_2'] as const) {
+		const dbValue = LC.dbValue(column, layer[column]!, ctx)
+		if (LC.isUnmappedDbValue(dbValue) || dbValue === null) return null
+		dbValues.push(Number(dbValue))
+	}
+	return [dbValues[0], dbValues[1]]
 }
 
 // ---------------------------- queries ----------------------------
@@ -708,7 +741,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const descriptors = getisMatchedByRepeatRuleDirect(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
+						const descriptors = getRepeatRuleMatchDescriptors(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
 						if (descriptors) itemDescriptors.push(...descriptors)
 						break
 					}
@@ -840,7 +873,7 @@ function postProcessLayers(
 		for (let i = 0; i < constraints.length; i++) {
 			const constraint = constraints[i]
 			if (constraint.type !== 'do-not-repeat' || !cursorIndex) continue
-			const descriptors = getisMatchedByRepeatRuleDirect(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
+			const descriptors = getRepeatRuleMatchDescriptors(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
 			if (descriptors) {
 				constraintResults[i] = true
 				matchDescriptors.push(...descriptors)
@@ -851,7 +884,7 @@ function postProcessLayers(
 	})
 }
 
-function getisMatchedByRepeatRuleDirect(
+export function getRepeatRuleMatchDescriptors(
 	list: LQY.LayerItemsState,
 	cursorIndex: number,
 	constraintId: string,
@@ -863,7 +896,7 @@ function getisMatchedByRepeatRuleDirect(
 	const previousLayers = list.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 
-	const descriptors: LQY.MatchDescriptor[] = []
+	const descriptors: LQY.RepeatMatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
@@ -892,30 +925,28 @@ function getisMatchedByRepeatRuleDirect(
 					descriptors.push(getViolationDescriptor(rule.field))
 				}
 				break
-			case 'Faction': {
-				const checkFaction = (team: MH.NormedTeamId) => {
-					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
-					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					if (targetFaction && previousFaction === targetFaction && !LQY.valueFilteredByTargetValues(rule, previousFaction)) {
-						descriptors.push(getViolationDescriptor(`Faction_${team}`))
+			case 'Faction':
+			case 'Unit':
+			case 'Alliance': {
+				for (const team of ['A', 'B'] as const) {
+					const targetValue = targetLayer[LQY.teamNormalizedRepeatRuleProp(rule.field, targetLayerTeamParity, team)]
+					if (!targetValue) continue
+					// under crossTeam a target team can match either previous team, but it still yields a single descriptor
+					const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? ['A', 'B'] : [team]
+					for (const previousTeam of previousTeams) {
+						const previousValue = layer[LQY.teamNormalizedRepeatRuleProp(rule.field, layerTeamParity, previousTeam)]
+						if (previousValue !== targetValue || LQY.valueFilteredByTargetValues(rule, previousValue)) continue
+						descriptors.push(getViolationDescriptor(`${rule.field}_${team}`))
+						break
 					}
 				}
-				checkFaction('A')
-				checkFaction('B')
 				break
 			}
-			case 'Alliance': {
-				const checkAlliance = (team: MH.NormedTeamId) => {
-					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
-					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
-
-					if (targetAlliance && targetAlliance === previousAlliance && !LQY.valueFilteredByTargetValues(rule, previousAlliance)) {
-						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
-					}
-				}
-
-				checkAlliance('A')
-				checkAlliance('B')
+			case 'UnitMatchup': {
+				const previous = unitMatchupOf(layer, rule)
+				const target = unitMatchupOf(targetLayer, rule)
+				if (!previous || !target || previous !== target) break
+				descriptors.push(getViolationDescriptor('UnitMatchup_A'), getViolationDescriptor('UnitMatchup_B'))
 				break
 			}
 			default:

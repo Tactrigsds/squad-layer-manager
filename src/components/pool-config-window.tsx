@@ -27,7 +27,8 @@ DraggableWindowStore.getState().registerDefinition<PoolConfigWindowProps, unknow
 	resizable: true,
 	minWidth: 560,
 	minHeight: 400,
-	defaultWidth: 800,
+	// the repeat rules table is the widest thing in here and wants 1047px of content; the 2 extra are the border
+	defaultWidth: 1049,
 	defaultHeight: 640,
 	getId: (props) => `pool-config:${props.stores.squadServer!.serverId}`,
 })
