@@ -130,8 +130,8 @@ test.describe('filter references', () => {
 			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
 			await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
+			// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
 			await page.getByRole('button', { name: 'apply existing filter' }).click()
-			await page.getByRole('combobox', { name: 'Filter' }).click()
 			await page.getByRole('option', { name: 'RAAS on Harju' }).click()
 
 			await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
