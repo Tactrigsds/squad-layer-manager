@@ -19,7 +19,8 @@ import * as Settings from '@/systems/settings.server'
 //
 // Protocol (deliberately thin, no oRPC):
 //   1. agent connects to `wss://<origin>/server-agent`
-//   2. agent sends one text frame: `slm-server-agent@<version>:<serverId>:<token>`
+//   2. agent sends one text frame: `slm-server-agent@<version>:<serverId>:sources=<a,b>:<token>`,
+//      where `sources` names what that agent can supply for the server, out of `logs` and `rcon`
 //   3. we validate against the server's live settings; on failure we close with a 4xxx code, on success we
 //      send an `ok` text frame
 //   4. every subsequent frame is BINARY, tagged by its first byte:
@@ -35,12 +36,20 @@ const TAG_RCON_CONTROL = 0x02
 const CLOSE_BAD_HANDSHAKE = 4000
 const CLOSE_UNAUTHORIZED = 4001
 const CLOSE_UNKNOWN_SERVER = 4004
+const CLOSE_INCOMPLETE_SOURCES = 4005
 const CLOSE_DUPLICATE = 4009
 
 // how long an agent has to send its handshake frame before we drop it
 const HANDSHAKE_TIMEOUT_MS = 10_000
 
-const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(.+)$/
+// An agent-mode server has no other route to its squad server: SLM holds no RCON details for it and reads no
+// log file of its own. An agent that supplies only one of the two leaves the other permanently dead, which
+// from here is indistinguishable from a server that is merely quiet, so we refuse the connection instead.
+const REQUIRED_SOURCES = ['logs', 'rcon'] as const
+
+// The `sources=` field is optional in the pattern only so an agent predating it gets told what it is missing
+// rather than a bare "malformed handshake". Unknown source names are ignored, so a later agent can offer more.
+const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(?:sources=([\w,]*):)?(.+)$/
 
 // Per-server log chunk streams. Kept in a registry so each managed server only sees its own agent's
 // data. The subject outlives individual agent connections: an agent can drop and reconnect without the
@@ -200,7 +209,8 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 		close(ws, CLOSE_BAD_HANDSHAKE, 'malformed handshake')
 		return
 	}
-	const [, version, serverId, token] = match
+	const [, version, serverId, rawSources, token] = match
+	const sources = rawSources === undefined ? [] : rawSources.split(',').filter((s) => s.length > 0)
 
 	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	let settings
@@ -224,6 +234,20 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 		return
 	}
 
+	// after the token check, so what an agent is missing is only ever told to an authenticated one
+	const missing = REQUIRED_SOURCES.filter((source) => !sources.includes(source))
+	if (missing.length > 0) {
+		log.warn(
+			'Server agent %s for server %s supplies [%s] but SLM needs [%s]',
+			remote,
+			serverId,
+			sources.join(', '),
+			REQUIRED_SOURCES.join(', '),
+		)
+		close(ws, CLOSE_INCOMPLETE_SOURCES, `agent does not supply: ${missing.join(', ')}`)
+		return
+	}
+
 	if (activeAgents.has(serverId)) {
 		log.warn('Server agent %s: server %s already has a connected agent', remote, serverId)
 		close(ws, CLOSE_DUPLICATE, 'duplicate agent')
@@ -239,7 +263,7 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string) {
 	tunnel.attachAgent((payload) => {
 		if (ws.readyState === ws.OPEN) ws.send(Buffer.concat([Buffer.from([TAG_RCON_DATA]), payload]))
 	})
-	log.info('Server agent %s connected for server %s (version %s)', remote, serverId, version)
+	log.info('Server agent %s connected for server %s (version %s, sources %s)', remote, serverId, version, sources.join(', '))
 
 	// a chunk can split a multi-byte utf-8 sequence across frames; the decoder buffers the trailing partial
 	// bytes until the rest arrives rather than emitting replacement characters

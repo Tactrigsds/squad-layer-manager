@@ -135,6 +135,9 @@ export type AppFixtureOptions = {
 	// same file and proxies RCON, streaming both to the app over the /server-agent websocket. Exercises the
 	// full remote-agent pipeline including the RCON tunnel.
 	logSource?: 'local' | 'server-agent'
+	// with logSource 'server-agent', skip spawning the real agent. For tests that drive the /server-agent
+	// websocket themselves: those need the app in agent mode but not the rust binary, which has to be built.
+	startAgent?: boolean
 	// a second enabled server, with an emulator and log file of its own, for anything about choosing between
 	// servers. Off by default: it costs a second emulator and a second slice, and every other test would rather
 	// have one server whose state it fully controls.
@@ -193,7 +196,7 @@ export const TEST_ADMIN_LIST = 'test-admins'
 // a group holding no admin-identifying permission, for reserveAdmins
 const RESERVE_GROUP = 'SlmTestReserve'
 const RESERVE_PERM: SM.PlayerPerm = 'reserve'
-const SERVER_AGENT_TOKEN = 'test-server-agent-token'
+export const SERVER_AGENT_TOKEN = 'test-server-agent-token'
 const AGENT_DIR = path.join(REPO_ROOT, 'server-agent/agent')
 
 // Resolves the real server agent binary, building it once (release) if no build is present. The debug build
@@ -597,7 +600,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// the real server agent tails the file the emulator writes and proxies its RCON; start it only once the
 	// app is listening so its first connection lands
 	let serverAgent: ServerAgentController | null = null
-	if (logSource === 'server-agent' && opts.spawn !== false) {
+	if (logSource === 'server-agent' && opts.spawn !== false && opts.startAgent !== false) {
 		serverAgent = startServerAgent({
 			appPort,
 			serverId,
