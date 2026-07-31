@@ -151,106 +151,24 @@ turn it off while keeping the token configured.
 
 #### 3.6. Backups
 
-Backups happen for two reasons. One of them is not optional.
+The database is snapshotted into `BACKUPS_DIR` before every migration, whether the app applies them at boot
+(`DB_AUTOMIGRATE`, the default) or you run them yourself. Nothing is applied if the snapshot fails. That one is not
+optional, and it is what a bad upgrade is rolled back from. Periodic backups are off until you set an interval.
 
-**Before every migration**, the database is snapshotted into `BACKUPS_DIR` first. This happens whether the app
-applies migrations itself at boot (`DB_AUTOMIGRATE`, the default) or you run `pnpm db:migrate:prod` yourself, and it
-is what you restore from if an upgrade turns out to have been a mistake. Nothing is applied if the snapshot fails.
-The most recent pre-migration backup is never deleted by retention, however old it gets: it is the only way back
-from the migration it was taken before.
+| variable                     | default          | what it does                                                          |
+| ---------------------------- | ---------------- | --------------------------------------------------------------------- |
+| `AUTOMATIC_BACKUPS_PERIODIC` | unset (disabled) | how often to back up, e.g. `72h`                                      |
+| `BACKUPS_DIR`                | `./data/backups` | where backups are written                                             |
+| `BACKUPS_RETAIN_COUNT`       | `10`             | how many backups to keep, locally and remotely. `0` keeps all of them |
 
-A migration will not run against a database another process has open. Stop SLM before migrating manually.
-
-**Periodic backups** are off by default. Set `AUTOMATIC_BACKUPS_PERIODIC` to a duration (e.g. `72h`) and the app
-snapshots its database on that interval.
-
-The two share a schedule and a retention window rather than running as separate systems. A backup taken to migrate
-counts as that interval's backup, and is uploaded and recorded like any other, so an upgrade does not produce two
-copies of the same database a minute apart, and the next periodic one is a full interval later.
-
-Every backup is named for where it came from:
-
-```
-slm-backup-<db>[-pre-migration]-<sha>-<yyyyMMdd>-<HHmmss>.sqlite3.gz
-
-slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz                 a periodic backup
-slm-backup-db-pre-migration-9c1f0a2b3d4e-20260713-134016.sqlite3.gz   taken before a migration
-```
-
-`<db>` is the source database's filename without its extension, and retention only deletes names matching it, so two
-instances sharing a directory cannot prune each other's backups. `<sha>` is the short git sha of the build that
-owned the database when the snapshot was taken, recorded inside it in `_slm_meta`, or `unknown` if the database
-carried no stamp. For a pre-migration backup that is the version being upgraded _from_, which is the one a rollback
-wants. The timestamp sorts chronologically.
-
-Each run is also recorded in the audit log as a `BACKUP_CREATED` event.
-
-Backups can also be uploaded to an SFTP destination. See below.
-
-| variable                             | default          | what it does                                                          |
-| ------------------------------------ | ---------------- | --------------------------------------------------------------------- |
-| `AUTOMATIC_BACKUPS_PERIODIC`         | unset (disabled) | how often to back up, e.g. `72h`                                      |
-| `EVENT_HISTORY_RETENTION_PERIOD`     | unset (disabled) | prune server events older than this, e.g. `90d` (see below)           |
-| `BACKUPS_DIR`                        | `./data/backups` | where backups are written                                             |
-| `BACKUPS_RETAIN_COUNT`               | `10`             | how many backups to keep, locally and remotely. `0` keeps all of them |
-| `BACKUP_SFTP_HOST`                   | unset (disabled) | setting this uploads each backup to that host                         |
-| `BACKUP_SFTP_PORT`                   | `22`             |                                                                       |
-| `BACKUP_SFTP_USERNAME`               |                  | required when a host is set                                           |
-| `BACKUP_SFTP_PASSWORD`               |                  | this or a private key is required when a host is set                  |
-| `BACKUP_SFTP_PRIVATE_KEY_PATH`       |                  | path to a private key, as an alternative to a password                |
-| `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` |                  | if the key needs one                                                  |
-| `BACKUP_SFTP_DIR`                    | `.`              | remote directory, created if missing                                  |
-
-Two SLM instances must not share a `BACKUP_SFTP_DIR` unless their databases are named differently. Retention deletes
-any backup matching its own name, so they would prune each other's.
-
-A failed upload does not fail the backup. The local copy is still written, and the audit event records that it never
-left the box.
-
-##### Restoring
-
-`restore.sh` stops the app, puts a backup back, and starts it again:
-
-```sh
-./restore.sh --list                   # what backups there are, and the build each belongs to
-./restore.sh --inspect --latest       # which build a backup belongs to, without restoring it
-./restore.sh --pre-migration          # the snapshot taken before the last migration: undo a bad upgrade
-./restore.sh --latest                 # the newest backup of any kind
-./restore.sh --commit-sha commit-a6047f4    # the newest backup taken by a given build
-./restore.sh --from slm-backup-db-a6047f44deb0-20260713-134504.sqlite3.gz    # a specific one
-```
-
-`--from` also takes a path, which is how you restore a backup fetched back off the SFTP target. Drop it in
-`data/backups` or pass the full path.
-
-Because the filename carries the owning build's sha, `--list` shows the build, and `--commit-sha` can pick the
-newest backup from a particular version without unpacking anything. `--commit-sha` accepts a full sha, a short one,
-or a `commit-<sha>` image tag, and pairs with `--pre-migration` to restrict the search to pre-migration snapshots.
-
-`--inspect` pairs with a backup selector (`--latest`, `--pre-migration`, `--from`) and changes nothing. It unpacks
-the backup and reports which app build the database belongs to, which image tag to pin, and how far behind the
-current build it is. Run it first when rolling back an upgrade, so you know which version to point
-`docker-compose.yaml` at before you start the app.
-
-The database being replaced is kept, renamed to `db.sqlite3.replaced-<timestamp>` next to it, because a restore is
-otherwise the one operation with no undo. Delete it once you are happy. The restore is checked (`integrity_check`)
-before anything is moved, so a corrupt archive costs nothing.
-
-Prefer this over doing it by hand. `gunzip -c backup.gz > data/db.sqlite3` looks complete and is not: the old `-wal`
-file is still sitting there, SQLite replays it over the file you just restored, and you silently get the **old**
-database back, with `integrity_check` calling it fine. Restoring while the app is running is worse, because the app
-goes on writing to a database that is no longer at that path, and those writes are lost.
-
-If you are rolling back a bad upgrade, roll the image back too. Restoring a pre-migration backup and then starting
-the same version just applies the same migration again, and the restore says so if the database it put back is
-behind the build. Each database is stamped with the git sha and branch of the app that last ran against it, so the
-restore (and `--inspect`) names the exact image tag to pin. For a pre-migration snapshot that is the version you
-were upgrading from, which is the one to roll back to.
+Backups can also be uploaded to an SFTP destination. See [backups and restoring](backups.md) for that, for what the
+filenames mean, and for putting one back with `restore.sh`.
 
 #### 3.7. Event history retention
 
-`EVENT_HISTORY_RETENTION_PERIOD` prunes old server events (chat, kills, connects) as part of each backup run, which
-is what keeps the database from growing without bound. Events are deleted for matches older than the retention
+`EVENT_HISTORY_RETENTION_PERIOD` is unset by default, which keeps everything. Set it to a duration (e.g. `90d`) and
+old server events (chat, kills, connects) are pruned as part of each backup run, which is what keeps the database
+from growing without bound. Events are deleted for matches older than the retention
 period, except that the 100 most recent matches per server are always kept regardless of age, because the app loads
 them at startup. Match records themselves are never deleted, only their events, and neither is the audit log. The
 prune runs before the snapshot, so a backup never carries rows that were just dropped.
@@ -293,7 +211,9 @@ docker compose pull && docker compose up -d
 ```
 
 Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
-up first (see [3.6](#36-backups)), so a bad upgrade is recoverable.
+up first (see [3.6](#36-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
+putting the snapshot back and pinning the image it belongs to. The same pinning holds an install on a version you
+have chosen instead of tracking `:latest`.
 
 An install that predates `.env.secrets` keeps working untouched, since SLM reads the credentials from wherever it
 finds them. To move them out of the environment (see [3.3](#33-secrets)), take the six variables in that section out
@@ -305,4 +225,5 @@ volumes:
    - ./.env.secrets:/app/.env.secrets:ro
 ```
 
-Run migrations manually with `docker compose run --rm app pnpm db:migrate:prod`.
+Run migrations manually with `docker compose run --rm app pnpm db:migrate:prod`. Stop the app first: a migration
+will not run against a database another process has open.

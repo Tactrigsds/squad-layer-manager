@@ -14,8 +14,8 @@ import * as DbMeta from '@/server/db-meta'
 import * as Env from '@/server/env'
 import * as Migrate from '@/server/migrate'
 
-// Puts a backup back. Run in dev via `pnpm db:restore`; in the production image via `pnpm db:restore:prod`, with the
-// app stopped (restore.sh does that choreography for a docker deployment).
+// Puts a backup back. Run in dev via `pnpm db:restore`; in the production image via `pnpm db:restore:prod`, or the
+// restore.sh wrapper for a docker deployment. The app has to be stopped, and this refuses to run if it isn't.
 //
 // This exists because the manual version is a loaded gun. `gunzip -c backup.gz > data/db.sqlite3` looks complete and
 // is not: the old -wal is still sitting there, sqlite replays it over the file you just restored, and you silently get
@@ -41,7 +41,8 @@ const DB_PATH = path.resolve(ENV.DB_PATH)
 
 // The restore worked, but the database it put back is older than the code about to run against it -- which is the
 // normal case for `--pre-migration`, and the one where blindly starting the app would apply the migration again and
-// undo the whole exercise. Its own exit code so the wrapper can decline to restart the app rather than walk into that.
+// undo the whole exercise. Its own exit code so `./restore.sh --pre-migration && docker compose up -d app` stops
+// there rather than walking into it.
 const EXIT_RESTORED_BEHIND_BUILD = 2
 
 type Candidate = { fileName: string; path: string; kind: DbBackup.BackupKind; sha: string | null; takenAt: Date; sizeBytes: number }
