@@ -373,12 +373,14 @@ It uses _all of (and)_, so a layer has to meet every one of:
 - the layer is excluded from _Similar Factions_
 - the layer is included in _No Mech on Hilly Maps_
 
-Switch a filter between _Builder_ and _Text_. The text view is quicker to read once an expression gets long.
+Switch a filter between _Builder_ and _Text_. The text view edits the expression as text, which is easier for
+changes the builder makes you do a row at a time, such as copying part of an expression or changing how its
+conditions nest. _Reformat_ tidies the text up.
 
 #### 8.2. Pool configuration
 
 _Pool Configuration_ decides which layers count as playable, which ones raise warnings, and how soon a map, layer
-or faction may come round again.
+or faction may be played again.
 
 Reach it from the _Pool Configuration_ page in the settings, or from the gear icon above the layer queue. The gear
 is the one you will use:
@@ -486,33 +488,35 @@ in-game voting off on the server. See [ingame_voting.md](ingame_voting.md).
 
 #### 8.8. Repeat rules
 
-A _repeat rule_ sets how far apart a map, layer or faction has to be spaced, across both the queue and the recent
-match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
+A _repeat rule_ sets how long it takes before a map, layer or faction may be played again, counting across both the
+queue and the recent match history. Rules are per attribute, and they live on the _Repeat Rules_ tab.
 
 These are the defaults:
 
 ![default_repeat_rules](configuring_screenshots/default_repeat_rules.png)
 
-They keep out:
+They treat a layer as a repeat when it reuses:
 
-- the same `Map` within 4 matches
-- the same `Layer`, which is the map, gamemode and version together, within 7 matches
-- the same `Faction`, for either side, within 3 matches
+- its `Map` within 4 matches
+- its `Layer`, which is the map, gamemode and version together, within 7 matches
+- its `Faction`, on the same side, within 3 matches
 
 A rule on a team-specific attribute such as `Faction` or `Unit` reads that side's own history, not both. One side can
-still draw a faction the other side played recently.
+still play a faction the other side played recently.
 
 _Target Values_ narrows a rule to named values:
 
 ![skorpo_repeat_rule](configuring_screenshots/skorpo_repeat_rule.png)
 
-That rule applies to Skorpo alone, and keeps it out for 10 matches. A _Within_ of 0 turns a rule off.
+That rule covers Skorpo alone, over 10 matches. A _Within_ of 0 turns a rule off.
 
-Two checkboxes decide what else a rule does:
+On its own a rule only marks the repeat, which the layer table can hide behind _Hide Repeats_. Two checkboxes
+decide what else it does:
 
 - _Warn_ warns the editor before saving a layer that breaks the rule, and warns in-game admins when one is about
   to be played.
-- _Autogen_ applies the rule when autogenerating layers as well.
+- _Autogen_ applies the rule when autogenerating layers as well. It is on for all three defaults, and off for the
+  Skorpo rule above.
 
 ![repeat_rules_warn](configuring_screenshots/repeat_rules_warn.png)
 ![repeat_rules_autogen](configuring_screenshots/repeat_rules_autogen.png)
