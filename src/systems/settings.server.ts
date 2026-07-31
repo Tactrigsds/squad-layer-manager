@@ -24,6 +24,7 @@ import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Seed from '@/systems/seed.server'
+import * as ServerConsole from '@/systems/server-console.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 const module = initModule('settings')
@@ -156,6 +157,9 @@ async function loadServerRegistry(ctx: C.Db) {
 		let enabled = row.enabled
 		if (broken) {
 			log.error(brokenReason, `Server ${row.id} has invalid settings, it won't run until it's repaired`)
+			// the row says "broken" and nothing else; the console is the one place an admin can be told what is
+			// actually wrong with the settings they have to repair
+			ServerConsole.recordSlm(row.id, 'error', 'This server will not start until its settings are repaired', brokenReason)
 			if (enabled) {
 				// force it disabled so that repairing the settings later doesn't silently bring it back online -- an admin has to
 				// explicitly re-enable it once they're confident the fix is correct
@@ -223,6 +227,8 @@ export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
 	await ctx.db({ redactParams: true }).delete(Schema.servers).where(E.eq(Schema.servers.id, serverId))
 	serverRegistry.delete(serverId)
+	// the console outlives a stopped server, so deleting the server is what finally drops its tail
+	ServerConsole.disposeFor(serverId)
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s deleted', serverId)
 	return { code: 'ok' as const }

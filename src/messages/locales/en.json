@@ -248,6 +248,7 @@
 	"Connected": "Connected",
 	"Connecting to server...": "Connecting to server...",
 	"Connecting…": "Connecting…",
+	"Connection": "Connection",
 	"Connection lost - attempting to reconnect...": "Connection lost - attempting to reconnect...",
 	"Console channel": "Console channel",
 	"Constrain generated pool for": "Constrain generated pool for",

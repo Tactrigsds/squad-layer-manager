@@ -8,6 +8,7 @@ export const tabNames: Record<SC.Tab, TString> = {
 	rcon: t('RCON'),
 	log: t('Logs'),
 	command: t('Player Commands'),
+	slm: t('Connection'),
 }
 
 export const channelTablist = def('Console channel')
