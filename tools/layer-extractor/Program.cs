@@ -36,7 +36,8 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: S
 
 // the package paths extraction reads out of a mod; --plan reports the containers that hold them, and a partial
 // fetch that has only those containers still extracts completely
-var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/" };
+// GLD is Galactic Contention's spelling of Gameplay_Layer_Data
+var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/" };
 
 if (plan)
 {
@@ -67,6 +68,17 @@ if (plan)
 		if (Path.GetFullPath(vfs.Path).StartsWith(gamePakDir)) continue;
 		if (!vfs.Files.Keys.Any(f => neededPathMarkers.Any(f.Contains))) continue;
 		Console.WriteLine(Path.ChangeExtension(Path.GetFileName(vfs.Path), ".ucas"));
+	}
+	return;
+}
+
+// list:<substring> prints matching mounted file paths instead of extracting; for poking at a mod's layout
+if (outPath == null && argv.Count > 1 && argv[1].StartsWith("list:"))
+{
+	var needle = argv[1]["list:".Length..];
+	foreach (var k in provider.Files.Keys.Where(k => k.Contains(needle, StringComparison.OrdinalIgnoreCase)).Distinct().Take(60))
+	{
+		Console.WriteLine(k);
 	}
 	return;
 }
@@ -215,7 +227,9 @@ string AllianceOf(string factionId)
 // ---------------------------------------------------------------- layers
 
 var layerFiles = provider.Files.Keys
-	.Where(k => k.Contains("/Gameplay_Layer_Data/", StringComparison.OrdinalIgnoreCase) && k.EndsWith(".uasset"))
+	.Where(k =>
+		(k.Contains("/Gameplay_Layer_Data/", StringComparison.OrdinalIgnoreCase) || k.Contains("/GLD/", StringComparison.OrdinalIgnoreCase))
+		&& k.EndsWith(".uasset"))
 	.Where(k => vanilla
 		? k.StartsWith("SquadGame/Content/", StringComparison.OrdinalIgnoreCase)
 			|| k.StartsWith("SquadGame/Plugins/Expansions/", StringComparison.OrdinalIgnoreCase)
