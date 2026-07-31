@@ -49,6 +49,9 @@ export interface ComboBoxOption<T> {
 	label?: React.ReactNode
 	keywords?: string[]
 	disabled?: boolean
+	// sorts with the disabled options at the end of the list while staying interactive; for options that are
+	// currently pointless (no results under the other active filters) but still carry an affordance
+	sortLast?: boolean
 	// longer explanatory text shown in a floating box while the option is highlighted
 	description?: React.ReactNode
 }
