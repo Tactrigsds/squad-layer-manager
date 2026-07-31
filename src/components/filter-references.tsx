@@ -67,11 +67,20 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 	)
 }
 
+// carried by every badge that navigates, so a badge that goes somewhere is distinguishable from one that is
+// only a label (the index card's, which cannot link -- the card is already one)
+function LinkIndicator() {
+	return <Icons.ExternalLink className="h-3 w-3 opacity-70" />
+}
+
 function FilterReferenceBadge(props: { filterId: F.FilterEntityId }) {
 	const filter = FilterEntityClient.useFilterEntities().get(props.filterId)
 	return (
 		<Link to="/filters/$filterId" params={{ filterId: props.filterId }}>
-			<Badge variant="secondary">{filter?.name ?? props.filterId}</Badge>
+			<Badge variant="secondary" className="gap-1">
+				<span>{filter?.name ?? props.filterId}</span>
+				<LinkIndicator />
+			</Badge>
 		</Link>
 	)
 }
@@ -94,7 +103,10 @@ function ServerBadge(props: { serverId: string; variant: 'secondary' | 'info'; c
 function ServerBadgeLink(props: { serverId: string; variant: 'secondary' | 'info'; children?: React.ReactNode }) {
 	return (
 		<Link to="/servers/$serverId" params={{ serverId: props.serverId }}>
-			<ServerBadge {...props} />
+			<ServerBadge serverId={props.serverId} variant={props.variant}>
+				{props.children}
+				<LinkIndicator />
+			</ServerBadge>
 		</Link>
 	)
 }
