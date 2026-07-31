@@ -7,10 +7,12 @@ import EventFilterSelect from '@/components/event-filter-select'
 import HistoricalTeamsView from '@/components/historical-teams-view'
 import ServerChatBox from '@/components/server-chat-box'
 import { ServerEvent } from '@/components/server-event'
+import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useSubtreeFind } from '@/components/use-subtree-find'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { useTailingScroll } from '@/hooks/use-tailing-scroll'
@@ -81,6 +83,7 @@ function ServerChatEvents(props: {
 	// the loading overlay covers the scroll affordance, not the other way round
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1
+	const find = useSubtreeFind()
 
 	// "Selected Only" has nothing to match against until the teams panel has a selection, so the feed is
 	// reduced to the pinned match markers. say why rather than looking broken
@@ -90,7 +93,8 @@ function ServerChatEvents(props: {
 	)
 
 	return (
-		<div className={cn(props.className, 'h-full relative @container')}>
+		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative @container')}>
+			<SubtreeFindBar stores={find.stores} className="absolute right-4 top-1" />
 			{!synced && selectedMatchOrdinal === null && (
 				<div
 					style={{ zIndex: loaderZIndex }}

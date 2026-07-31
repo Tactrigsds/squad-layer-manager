@@ -14,6 +14,7 @@
 		"format:check": "oxfmt --check",
 		"i18n:extract": "tsx --tsconfig tsconfig.node.json src/scripts/extract-messages.ts",
 		"i18n:lint": "tsx --tsconfig tsconfig.node.json src/scripts/extract-messages.ts lint",
+		"docs:lint": "tsx --tsconfig tsconfig.node.json src/scripts/check-doc-links.ts",
 		"test": "vitest run",
 		"test:integration": "node scripts/test-server-bundle.mjs vitest run --config vitest.integration.config.ts",
 		"test:integration:src": "vitest run --config vitest.integration.config.ts",
