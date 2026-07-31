@@ -48,7 +48,7 @@ sandbox's own list, so a new list grants nobody the `admins` role until you name
 One SLM instance can manage several squad servers.
 
 A fresh install already has a server named _Sandbox_. It attaches to an emulated squad server, which imitates a real
-one closely enough for SLM to work against. Use it to learn the interface without touching anyone real. See
+one closely enough for SLM to work against. Use it to test things out. See
 [sandbox_servers.md](sandbox_servers.md).
 
 Click _Add Server_ to set up a real one:
@@ -69,9 +69,6 @@ Each server uses one of three connection modes:
 
 If a server does not behave as you expect, open the [server console](server_console.md). It shows the RCON traffic
 and the log lines as SLM receives them, which tells you whether the connection or SLM is at fault.
-
-Squad has a voting system of its own, and it overwrites the layer SLM sets. Read [ingame_voting.md](ingame_voting.md)
-before you turn it on.
 
 #### 2.2. Server admin lists
 
