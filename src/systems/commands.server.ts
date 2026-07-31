@@ -7,6 +7,7 @@ import * as BB_Msgs from '@/messages/backburner.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
+import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BB from '@/models/backburner.models'
@@ -701,7 +702,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('currently-swapping', h.ctx.tr.text(CMD_Msgs.swapInProgress()))
 			}
 		}
-		await h.reply(CMD_Msgs.swappingNow(target.ids.username, toTeam))
+		await h.reply(CMD_Msgs.swappingNow(target.ids.username, TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))))
 		return { code: 'ok' }
 	},
 
@@ -776,8 +777,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return { code: 'ok' }
 		}
 
-		const factionA = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'A')] ?? 'Team A'
-		const factionB = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'B')] ?? 'Team B'
+		const factionA = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'A')]
+		const factionB = layer[MH.getTeamNormalizedFactionProp(currentMatch.ordinal, 'B')]
+		const destA = h.ctx.tr.text(TSW_Msgs.destination('A', factionA))
+		const destB = h.ctx.tr.text(TSW_Msgs.destination('B', factionB))
 
 		const toA: SM.PlayerId[] = []
 		const toB: SM.PlayerId[] = []
@@ -786,10 +789,9 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			else toB.push(playerId)
 		}
 
-		const parts = [
-			toA.length > 0 ? `${toA.length} to current ${factionA}` : null,
-			toB.length > 0 ? `${toB.length} to current ${factionB}` : null,
-		].filter(Boolean)
+		const parts = [toA.length > 0 ? `${toA.length} to ${destA}` : null, toB.length > 0 ? `${toB.length} to ${destB}` : null].filter(
+			Boolean,
+		)
 		const header = `Swaps: ${parts.join(', ')}`
 
 		if (swaps.size <= 8) {
@@ -798,11 +800,11 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			const getName = (playerId: SM.PlayerId) => SM.PlayerIds.find(players, (p) => p.ids, playerId)?.ids.username ?? playerId
 			const lines = [header]
 			if (toA.length > 0) {
-				lines.push(`\nto ${factionA}:`)
+				lines.push(`\nto ${destA}:`)
 				for (const id of toA) lines.push(getName(id))
 			}
 			if (toB.length > 0) {
-				lines.push(`\nto ${factionB}:`)
+				lines.push(`\nto ${destB}:`)
 				for (const id of toB) lines.push(getName(id))
 			}
 			await h.reply(lines.join('\n'))

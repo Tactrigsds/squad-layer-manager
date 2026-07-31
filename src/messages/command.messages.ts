@@ -280,7 +280,7 @@ export const squadHasNoPlayers = def('Squad "{squadName}" has no players', (squa
 
 export const swapInProgress = def('A team swap is currently in progress')
 
-export const swappingNow = def('Swapping {username} to team {toTeam} now', (username: string | undefined, toTeam: string) => ({
+export const swappingNow = def('Swapping {username} to {toTeam} now', (username: string | undefined, toTeam: TString) => ({
 	username,
 	toTeam,
 }))

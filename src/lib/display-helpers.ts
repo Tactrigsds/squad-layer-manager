@@ -51,12 +51,6 @@ export function fromDisplayPropStatuses(statuses: LayerDisplayPropsStatuses): La
 	return displayProps
 }
 
-export function toFormattedNormalizedTeam(team: MH.NormedTeamIdOrProp) {
-	const normedTeam = MH.toNormedTeamId(team)
-	if (normedTeam === 'A') return 'Team A'
-	return 'Team B'
-}
-
 export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
 	// If no display props specified, show everything
 	if (!displayProps || displayProps.length === 0) {
