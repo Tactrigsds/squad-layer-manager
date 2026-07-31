@@ -10,6 +10,7 @@ import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
+import { useComboBoxDismissal } from './dismissal.ts'
 import { cmdkItemKey, normalizeOptions } from './options.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
@@ -135,6 +136,11 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		selectedOptionDisplay = props.value ?? props.placeholder ?? `Select ${props.title}...`
 	}
 
+	useComboBoxDismissal(open, () => {
+		setOpen(false)
+		props.onOpenChange?.(false)
+	})
+
 	return (
 		<Popover
 			open={open}
@@ -145,10 +151,11 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			}}
 		>
 			<PopoverTrigger asChild>
-				{props.children ? (
-					props.children
+				{React.isValidElement(props.children) ? (
+					React.cloneElement(props.children as React.ReactElement<Record<string, unknown>>, { 'data-combobox-trigger': '' })
 				) : (
 					<Button
+						data-combobox-trigger=""
 						disabled={disabled}
 						ref={btnRef}
 						variant="outline"
