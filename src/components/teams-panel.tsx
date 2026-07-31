@@ -231,7 +231,13 @@ function TeamTitle(props: { teamId: MH.NormedTeamId; stores: SquadServerFrame.Ke
 	const match = MatchHistoryClient.useCurrentMatch(props.stores.squadServer!.serverId)
 	return (
 		<div>
-			<MatchTeamDisplay teamId={props.teamId} matchId={match?.historyEntryId} showAltTeamIndicator={true} stores={props.stores} />
+			<MatchTeamDisplay
+				teamId={props.teamId}
+				matchId={match?.historyEntryId}
+				showAltTeamIndicator={true}
+				leadWithTeamName={true}
+				stores={props.stores}
+			/>
 		</div>
 	)
 }
