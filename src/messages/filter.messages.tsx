@@ -2,6 +2,7 @@
 import * as React from 'react'
 
 import { assertNever } from '@/lib/type-guards'
+import type * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import { def, raw, rt, t, type TString } from '@/models/messages.models'
 
@@ -88,19 +89,18 @@ export const deleted = def((name: string) => ({
 // the call site fail to typecheck if the server grows a delete failure this does not name.
 export type DeleteFailure =
 	| { code: 'err:permission-denied' }
-	| { code: 'err:cannot-delete-pool-filter' }
 	| { code: 'err:filter-not-found' }
-	| { code: 'err:filter-in-use'; referencingFilters: string[] }
+	| { code: 'err:filter-in-use'; references: FR.Reference[] }
 
 export const deleteFailed = def((name: string, failure: DeleteFailure) => {
 	function blurb() {
 		switch (failure.code) {
 			case 'err:permission-denied':
 				return t('You do not have permission to delete this filter')
-			case 'err:cannot-delete-pool-filter':
-				return t('Cannot delete a filter that is currently in use by the layer pool')
 			case 'err:filter-in-use':
-				return t('Filter is in use by {filters}', { filters: failure.referencingFilters.join(', ') })
+				return t('{count, plural, one {# reference} other {# references}} to it have to be removed first', {
+					count: failure.references.length,
+				})
 			case 'err:filter-not-found':
 				return t('Filter not found')
 			default:
@@ -110,6 +110,12 @@ export const deleteFailed = def((name: string, failure: DeleteFailure) => {
 
 	return { toast: [t('Failed to delete filter "{name}"', { name }), { description: blurb() }] }
 })
+
+export const cyclicalReference = def((cycle: string[]) => ({
+	toast: [t('Filters cannot reference each other in a loop'), { description: raw(cycle.join(' -> ')) }],
+}))
+
+export const cyclicalReferenceBlurb = def('Filters cannot reference each other in a loop: {cycle}', (cycle: string) => ({ cycle }))
 
 export const formatFailed = def((reason: string) => ({
 	toast: [t('Unable to format: invalid json'), { description: raw(reason) }],
@@ -164,6 +170,9 @@ export const addColumnPlaceholder = def('+ column')
 export const valuePicker = def('value')
 
 export const filterPicker = def('Filter')
+
+// the "+" that reveals the kinds of condition a block can take
+export const addCondition = def('Add condition')
 
 export const nodeComment = def('Node comment')
 
@@ -262,6 +271,35 @@ export const missIndicator = def('Miss Indicator')
 export const confirmDeleteTitle = def('Delete Filter')
 
 export const confirmDeleteBlurb = def('Are you sure you want to delete this filter?')
+
+// -------- references --------
+
+// Each names the pool-configuration list a filter is referenced from, as the pool config panels label it.
+export const poolConfigKeyNames: Record<FR.PoolConfigKey, TString> = {
+	poolFilter: t('Pool filter'),
+	indicateMatches: t('Match indicators'),
+	indicateMisses: t('Miss indicators'),
+	defaultSelectable: t('Selectable filters'),
+	warnFor: t('Warnings'),
+	constrainGeneration: t('Generation constraints'),
+}
+
+export const referencesHeading = def('References')
+
+export const noReferences = def('Nothing references this filter, so it can be deleted.')
+
+export const referencesBlurb = def('A filter can only be deleted once nothing references it. Extra filters do not count.')
+
+export const referencingFiltersLabel = def('Filters:')
+
+export const referencingPoolsLabel = def('Layer pools:')
+
+// the apply-filter hops between a configured filter and this one, e.g. "via pool-base -> vehicles"
+export const referenceVia = def('via {chain}', (chain: string) => ({ chain }))
+
+export const referenceCount = def('{count, plural, one {# reference} other {# references}}', (count: number) => ({ count }))
+
+export const deleteBlockedByReferences = def('This filter cannot be deleted while something references it')
 
 // -------- the filter index --------
 

@@ -12,6 +12,7 @@ import { assertNever } from '@/lib/type-guards'
 import type { Parts } from '@/lib/types'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
+import * as FR from '@/models/filter-references.models'
 import * as F from '@/models/filter.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as USR from '@/models/users.models'
@@ -23,7 +24,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
-import * as SquadServer from '@/systems/squad-server.server'
+import * as Settings from '@/systems/settings.server'
 import * as Users from '@/systems/users.server'
 
 const module = initModule('filter-entity')
@@ -90,6 +91,21 @@ async function recordFilterContributor(
 		}),
 	)
 }
+
+async function selectFilters(ctx: C.Db) {
+	return (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
+}
+
+// Recomputed rather than maintained incrementally: it is read when a filter page is opened or something changes,
+// and the whole set of filters and server pool configs is small enough that a full rebuild is cheaper than
+// keeping an incremental one honest.
+export async function computeReferenceIndex(ctx: C.Db): Promise<FR.Index> {
+	const [filters, servers] = await Promise.all([selectFilters(ctx), Settings.listServerPoolConfigs(ctx)])
+	return FR.buildIndex(filters, servers)
+}
+
+// the live reference index every client watches. Assigned in setup, since it needs a db context.
+export let filterReferences$!: Rx.Observable<FR.Index>
 
 export const filtersRouter = {
 	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
@@ -223,6 +239,9 @@ export const filtersRouter = {
 				...input,
 				owner: ctx.user.discordId,
 			}
+			// a filter can name one that doesn't exist yet, so creating that filter is a way to close a loop
+			const cycle = FR.findCycle([...(await selectFilters(ctx)), newFilterEntity], newFilterEntity.id)
+			if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
 			const res = await returnInsertErrors(ctx.db().insert(Schema.filters).values(newFilterEntity))
 			if (res.code === 'ok') {
 				filterMutation$.next([
@@ -257,6 +276,13 @@ export const filtersRouter = {
 				const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, id))
 				if (!rawFilter) {
 					return { code: 'err:not-found' as const }
+				}
+				if (update.filter) {
+					// the tree the engine sees is the referenced filters inlined, so a loop among them has no
+					// fixed point: it has to be refused at the point it would be written
+					const candidates = (await selectFilters(ctx)).map((f) => (f.id === id ? { ...f, ...update } : f))
+					const cycle = FR.findCycle(candidates, id)
+					if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
 				}
 				const updateResult = await ctx.db().update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
 
@@ -298,30 +324,11 @@ export const filtersRouter = {
 				return denyRes
 			}
 
-			for (const serverId of SquadServer.globalState.managedServers.keys()) {
-				const serverCtx = SquadServer.resolveCtx(ctx, serverId)
-				const serverState = await SquadServer.getServerState(serverCtx)
-				// TODO: right now we are not handling sub-filters here. we should do the following:
-				// 1. implement method to return the ids of all transient filters, while checking for cyclical dependencies
-				// 2. disallow any dependent filters from those applied in the filter pool from being deleted
-				// 3. include a filter entity status notification(novel concept at time of writing) on the filter-edit screen that indicates that this filter is part of the currently active layer pool setup
-				const mainPool = serverState.settings.queue.mainPool
-				const referencedIds = [
-					...(mainPool.poolFilter ? [mainPool.poolFilter.filterId] : []),
-					...mainPool.indicateMatches,
-					...mainPool.indicateMisses,
-					...[...mainPool.defaultSelectable, ...mainPool.warnFor, ...mainPool.constrainGeneration].map((c) => c.filterId),
-				]
-				if (referencedIds.includes(idToDelete)) return { code: 'err:cannot-delete-pool-filter' as const }
-			}
-
-			const allFilters = (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
-
-			const referencingFilters = allFilters
-				.filter((f) => f.id != idToDelete && F.filterContainsId(idToDelete, f.filter))
-				.map((f) => f.id)
-			if (referencingFilters.length > 0) {
-				return { code: 'err:filter-in-use' as const, referencingFilters }
+			// every way a filter can still be pointed at, so that nothing is left dangling by the delete. Extra
+			// filters are not among them: they are pruned client-side once the filter is gone.
+			const references = FR.referencesFor(await computeReferenceIndex(ctx), idToDelete)
+			if (references.length > 0) {
+				return { code: 'err:filter-in-use' as const, references }
 			}
 
 			const res = await DB.runTransaction(ctx, async (ctx) => {
@@ -373,6 +380,10 @@ export const filtersRouter = {
 		}),
 	watchFilters: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {
 		yield* watchFilters({ ctx: context, signal })
+	}),
+
+	watchFilterReferences: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
+		yield* Rx.Ext.toAsyncGenerator(filterReferences$.pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 
 	changeFilterOwner: orpcBase
@@ -455,10 +466,23 @@ export async function* watchFilters({
 export async function setup() {
 	log = module.getLogger()
 	const ctx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
-	const filterRows = (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
+	const filterRows = await selectFilters(ctx)
 	state = {
 		filters: new Map(filterRows.map((filter) => [filter.id, filter])),
 	}
+	filterReferences$ = Rx.merge(
+		Rx.of(null),
+		filterMutation$,
+		// a pool config lives in a server's settings, and the registry decides which servers there are
+		Settings.settings$.pipe(Rx.filter((e) => e.scope === 'server' || e.scope === 'registry')),
+	).pipe(
+		// a settings write broadcasts once per changed scope, and a filter mutation lands beside it; one rebuild covers the burst
+		Rx.debounceTime(0),
+		Rx.concatMap(() => computeReferenceIndex(ctx)),
+		Rx.shareReplay(1),
+	)
+	filterReferences$.subscribe()
+
 	filterMutation$.subscribe((mutation) => {
 		const [, mut] = mutation
 		switch (mut.type) {

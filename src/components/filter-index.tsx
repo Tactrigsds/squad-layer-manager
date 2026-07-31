@@ -18,6 +18,7 @@ import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 import EmojiDisplay from './emoji-display'
+import { FilterReferenceCount } from './filter-references'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Badge } from './ui/badge'
 import { buttonVariants } from './ui/button'
@@ -44,7 +45,10 @@ function FilterEntityCard({ entity, cfg }: FilterEntityCardProps) {
 						</ItemMedia>
 					)}
 					<ItemContent className="self-start">
-						<ItemTitle>{entity.name}</ItemTitle>
+						<ItemTitle className="flex items-center gap-2">
+							{entity.name}
+							<FilterReferenceCount filterId={entity.id} />
+						</ItemTitle>
 						<ItemDescription>{entity.description?.split('\n')[0]}</ItemDescription>
 					</ItemContent>
 					<ItemFooter className="flex items-center gap-4 flex-wrap">
