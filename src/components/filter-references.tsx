@@ -41,7 +41,7 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 						<div className="flex items-center gap-2 flex-wrap">
 							<Label className={Typo.Label}>{tr.text(F_Msgs.poolFilterForLabel())}</Label>
 							{poolFilterFor.map((serverId) => (
-								<ServerBadge key={serverId} serverId={serverId} variant="info" />
+								<ServerBadgeLink key={serverId} serverId={serverId} variant="info" />
 							))}
 						</div>
 					)}
@@ -82,11 +82,19 @@ function ServerBadge(props: { serverId: string; variant: 'secondary' | 'info'; c
 		(settings) => settings?.servers.find((entry) => entry.id === props.serverId)?.displayName,
 	)
 	return (
+		<Badge variant={props.variant} className="gap-1">
+			<span>{serverName ?? props.serverId}</span>
+			{props.children}
+		</Badge>
+	)
+}
+
+// the same badge, linked. Not for the filter index, whose whole card is already a link -- an anchor inside an
+// anchor is invalid html and the nested click target is ambiguous.
+function ServerBadgeLink(props: { serverId: string; variant: 'secondary' | 'info'; children?: React.ReactNode }) {
+	return (
 		<Link to="/servers/$serverId" params={{ serverId: props.serverId }}>
-			<Badge variant={props.variant} className="gap-1">
-				<span>{serverName ?? props.serverId}</span>
-				{props.children}
-			</Badge>
+			<ServerBadge {...props} />
 		</Link>
 	)
 }
@@ -94,27 +102,38 @@ function ServerBadge(props: { serverId: string; variant: 'secondary' | 'info'; c
 function PoolReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'pool-config' }> }) {
 	const via = props.reference.via
 	return (
-		<ServerBadge serverId={props.reference.serverId} variant="secondary">
+		<ServerBadgeLink serverId={props.reference.serverId} variant="secondary">
 			<Icons.Dot className="h-3 w-3" />
 			<span>{tr.text(F_Msgs.poolConfigKeyNames[props.reference.key])}</span>
 			{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
-		</ServerBadge>
+		</ServerBadgeLink>
 	)
 }
 
-// the count as it appears on a filter's card in the index, silent when nothing references the filter. A pool
-// filter takes the info variant, which is what makes it sorting to the top of the index legible.
+// the count as it appears on a filter's card in the index, silent when nothing references the filter
 export function FilterReferenceCount(props: { filterId: F.FilterEntityId; className?: string }) {
 	const references = FilterEntityClient.useFilterReferences().get(props.filterId) ?? []
 	if (references.length === 0) return null
 	const inPool = references.some((ref) => ref.type === 'pool-config')
 	return (
-		<Badge
-			variant={references.some(FR.isPoolFilterReference) ? 'info' : 'secondary'}
-			className={cn('flex items-center gap-1.5', props.className)}
-		>
+		<Badge variant="secondary" className={cn('flex items-center gap-1.5', props.className)}>
 			{inPool ? <Icons.Layers className="h-3 w-3" /> : <Icons.Link className="h-3 w-3" />}
 			<span>{tr.text(F_Msgs.referenceCount(references.length))}</span>
 		</Badge>
+	)
+}
+
+// which servers this filter is the pool filter for, as its own line on the index card: the claim the count
+// cannot make, and the reason the card sorts where it does. Silent for every other filter.
+export function FilterPoolFilterFor(props: { filterId: F.FilterEntityId }) {
+	const serverIds = FR.poolFilterServerIds(FilterEntityClient.useFilterReferences().get(props.filterId) ?? [])
+	if (serverIds.length === 0) return null
+	return (
+		<div className="flex items-center gap-2 flex-wrap">
+			<Label className={Typo.Label}>{tr.text(F_Msgs.poolFilterForLabel())}</Label>
+			{serverIds.map((serverId) => (
+				<ServerBadge key={serverId} serverId={serverId} variant="info" />
+			))}
+		</div>
 	)
 }

@@ -105,10 +105,12 @@ test.describe('filter references', () => {
 			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-harju'))
 			await expect(references.getByText('Pool filter for:')).toBeVisible({ timeout: 20_000 })
 
-			// and it leads the index, ahead of the alphabetically earlier filters
+			// and it leads the index, ahead of the alphabetically earlier filters, saying which server it is for
 			await page.goto(app.loginUrl(app.adminUser, '/filters'))
-			const cards = page.getByRole('listitem')
-			await expect(cards.first()).toContainText('RAAS on Harju', { timeout: 20_000 })
+			const leadCard = page.getByRole('listitem').first()
+			await expect(leadCard).toContainText('RAAS on Harju', { timeout: 20_000 })
+			await expect(leadCard).toContainText('Pool filter for:')
+			await expect(leadCard).toContainText('Emulated Server')
 
 			// a filter nothing points at still deletes
 			await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))
