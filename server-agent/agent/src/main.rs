@@ -43,8 +43,11 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 // SLM's close code for an agent that does not supply every data source it needs (see
 // ../../src/systems/server-agent.server.ts). The one rejection an operator can fix from this side.
 const CLOSE_INCOMPLETE_SOURCES: u16 = 4005;
-// SLM could not parse our handshake at all, which for a handshake we built ourselves means it is older than
-// this agent.
+// Bad token. Also what an SLM that predates the `sources=` field says to us, because its handshake pattern
+// reads that field as the leading part of the token and no token ever matches -- so the operator gets pointed
+// at a credential that is in fact correct unless we say otherwise.
+const CLOSE_UNAUTHORIZED: u16 = 4001;
+// SLM could not parse our handshake at all.
 const CLOSE_BAD_HANDSHAKE: u16 = 4000;
 
 // binary frame channel tags (first byte of every post-handshake frame)
@@ -301,6 +304,14 @@ fn rejection_report(cfg: &Config, code: u16, reason: &str) -> Vec<String> {
                     .into(),
             );
         }
+    } else if code == CLOSE_UNAUTHORIZED {
+        lines.push(format!(
+            "Check the token. An SLM older than this agent ({VERSION}) also says this, whatever the"
+        ));
+        lines.push(
+            "token is, because it cannot read the `sources=` field: check SLM's version too."
+                .into(),
+        );
     } else if code == CLOSE_BAD_HANDSHAKE {
         lines.push(format!(
             "SLM could not read our handshake, so it is probably older than this agent ({VERSION})."
