@@ -282,8 +282,8 @@ runs. `!help` lists each shortcut on its own line, since it asks the caller for 
 
 ### 6. Player groupings
 
-A _player grouping_ sorts players into named, coloured groups, for administration and for balance. Configure them
-under _Players & Balance_.
+A _player grouping_ sorts players into named, coloured groups, for administration and for monitoring balance.
+Configure them under _Players & Balance_.
 
 A grouping is an ordered list of rules. A player joins the group of the first rule they match, so an earlier rule
 takes precedence over a later one.
@@ -299,7 +299,7 @@ Here is a grouping keyed on admin list groups:
 
 ![player_groupings](configuring_screenshots/player_groupings.png)
 
-And here is TacTrig's grouping for balance:
+And here is TacTrig's grouping for monitoring balance:
 
 ![player_groupings_balance](configuring_screenshots/player_groupings_balance.png)
 
