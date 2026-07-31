@@ -111,6 +111,98 @@ test.describe('queue item constraints', () => {
 		}
 	})
 
+	// Whoever saved a repeat into the queue owns it. An editor who adds an unrelated layer on top is told nothing, so
+	// the warning that does fire keeps meaning "your edits did this".
+	test('says nothing about a repeat that was in the saved queue already', async ({ page }) => {
+		const app = await createAppFixture({
+			// Gorodok twice, two apart: already repeating before anyone starts editing
+			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.gorodokAas),
+			serverSettings: (settings) => {
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+
+			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			// the repeat is detected and indicated on the item; it is the save-time warning that is scoped to the session
+			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await page.getByRole('button', { name: 'Add Layers' }).click()
+			const dialog = page.getByRole('dialog', { name: 'Add Layers' })
+			await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
+			await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+			await dialog.getByRole('row').filter({ hasText: 'Narva_RAAS_v1' }).first().click()
+			await dialog.getByRole('button', { name: 'Submit' }).click()
+			await expect(dialog).toBeHidden()
+
+			// Narva repeats nothing, and the Gorodok repeat is not this session's doing, so the save commits at once
+			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+						return list.length === 4 && list.some((item) => item.layerId.startsWith('NV-RAAS-'))
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'queue saved without warning about the pre-existing repeat' },
+			)
+			await expect(page.getByText('Repeats Detected')).toHaveCount(0)
+		} finally {
+			await app.dispose()
+		}
+	})
+
+	// The other half of the rule: a repeat can be this session's doing without either layer involved being touched,
+	// because deleting what sat between them is what put them inside the rule's window.
+	test('warns when a deletion pulls two untouched layers inside a repeat rule', async ({ page }) => {
+		const app = await createAppFixture({
+			// the two Gorodoks are three apart, one past the rule's window, so the saved queue repeats nothing
+			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.narvaRaas, LAYERS.gorodokAas),
+			serverSettings: (settings) => {
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 2, warn: true }]
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (4)' })).toBeVisible({ timeout: 20_000 })
+
+			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toHaveCount(0)
+
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await items.filter({ hasText: 'Harju_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
+
+			// two apart now, and the repeat lands on an item nobody edited: the deletion is the only thing that caused it
+			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+
+			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
+			await expect(page.getByText('Repeats Detected')).toBeVisible()
+			await page.getByRole('button', { name: /^(Save Anyway|Force Save)$/ }).click()
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+						const list = JSON.parse(row.layerQueue).json as { layerId: string }[]
+						return list.length === 3 && !list.some((item) => item.layerId.startsWith('HJ-RAAS-'))
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'queue saved over the deletion-induced repeat warning' },
+			)
+		} finally {
+			await app.dispose()
+		}
+	})
+
 	// The counterpart to the test above: the same violating queue saves without a word once the offending item carries
 	// a tag the pool skips warnings for. The indicator is deliberately left alone -- the exemption silences the warning,
 	// it doesn't hide what the layer does.

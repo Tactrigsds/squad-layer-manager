@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import * as ItemMut from '@/lib/item-mutations'
-import * as LL from '@/models/layer-list.models'
+import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 
 // every case below warns on ids the list does not carry, which is the plain single-item shape: only vote choices need

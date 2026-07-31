@@ -219,6 +219,9 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 			// user has already edited away from. Gating on those both blocks a save that shouldn't be blocked and drops
 			// the acknowledgement when the real statuses land.
 			await SquadServerFrame.awaitCurrentStatuses(props.stores.squadServer!)
+			// only the warnings this session caused are worth stopping the save for, and telling them apart needs what
+			// the saved queue warns about on its own
+			await SquadServerFrame.refreshSavedQueueWarnings(props.stores.squadServer!)
 			const currentWarnings = SquadServerFrame.Sel.queueWarnings(loggedInUser?.discordId)(Zus.getState(props.stores.squadServer!))
 			if (currentWarnings && !showWarnings && !forceSave) {
 				setShowWarnings(true)

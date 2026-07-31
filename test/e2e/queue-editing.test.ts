@@ -25,11 +25,11 @@ test.describe('editing the queue', () => {
 			await expect(queuePanel.getByText('Gorodok_RAAS_v1')).toBeHidden()
 			expect(app.emu.world.nextLayer?.layer).toBe('Gorodok_RAAS_v1')
 
-			// what remains repeats a faction (RGF) inside the repeat-rule window, so the app surfaces the warning and
-			// asks for a second, deliberate save ("Save Anyway") rather than committing on the first click
+			// what remains still repeats a faction (RGF) inside the repeat-rule window, but it did so before the delete
+			// too, on items this session never touched. Deleting only took repeats away, so the save commits on the
+			// first click instead of asking for a deliberate "Save Anyway"
 			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
-			await expect(page.getByText('Repeats Detected')).toBeVisible()
-			await page.getByRole('button', { name: /^(Save Anyway|Force Save)$/ }).click()
+			await expect(page.getByText('Repeats Detected')).toHaveCount(0)
 
 			// saved: the queue persists without the deleted item, and the app moves the game server onto
 			// the new head
