@@ -209,8 +209,16 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		if (!content) return
 
 		if (definition.resizable) {
-			if (definition.defaultWidth) content.style.width = `${definition.defaultWidth}px`
-			if (definition.defaultHeight) content.style.height = `${definition.defaultHeight}px`
+			// the default size is a preference, not a demand: a viewport too small to hold it opens the window at
+			// whatever does fit, down to the minimum
+			const fit = (preferred: number, min: number, available: number) =>
+				Math.max(min, Math.min(preferred, available - collisionPadding * 2))
+			if (definition.defaultWidth) {
+				content.style.width = `${fit(definition.defaultWidth, definition.minWidth ?? 240, window.innerWidth)}px`
+			}
+			if (definition.defaultHeight) {
+				content.style.height = `${fit(definition.defaultHeight, definition.minHeight ?? 160, window.innerHeight)}px`
+			}
 		}
 
 		const contentRect = content.getBoundingClientRect()
@@ -226,6 +234,8 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		definition.resizable,
 		definition.defaultWidth,
 		definition.defaultHeight,
+		definition.minWidth,
+		definition.minHeight,
 	])
 
 	// Handle click outside

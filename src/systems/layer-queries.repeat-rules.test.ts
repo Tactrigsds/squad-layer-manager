@@ -4,7 +4,7 @@ import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as LC from '@/models/layer-columns'
 import type * as LE from '@/models/layer-engine'
-import type * as LQY from '@/models/layer-queries.models'
+import * as LQY from '@/models/layer-queries.models'
 import { buildQueryConstraints, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
 
 // Team A of the previous match played USA, team B played RGF.
@@ -140,8 +140,44 @@ describe('a UnitMatchup repeat rule', () => {
 	})
 
 	it('drops a matchup no target value names', () => {
-		const rule: LQY.RepeatRule = { label: 'Unit Matchup', field: 'UnitMatchup', within: 3, targetValues: ['Armored'] }
+		const rule: LQY.RepeatRule = {
+			label: 'Unit Matchup',
+			field: 'UnitMatchup',
+			within: 3,
+			targetValues: [LQY.unitMatchupValue('Armored', 'Mechanized')],
+		}
 		expect(whereFor(rule, unitList)).toEqual({ op: 'false' })
+	})
+
+	it('keeps a matchup a target value names, whichever way round it is written', () => {
+		const expected = {
+			op: 'or',
+			children: [orientation('Mechanized', 'AirAssault'), orientation('AirAssault', 'Mechanized')],
+		}
+		for (const targetValue of [LQY.unitMatchupValue('Mechanized', 'AirAssault'), LQY.unitMatchupValue('AirAssault', 'Mechanized')]) {
+			expect(whereFor({ label: 'Unit Matchup', field: 'UnitMatchup', within: 3, targetValues: [targetValue] }, unitList)).toEqual(
+				expected,
+			)
+		}
+	})
+})
+
+describe('the unit matchup options offered in settings', () => {
+	it('offers every unordered pairing of the units, mirrors included, and nothing twice', () => {
+		const options = LQY.unitMatchupOptions(['Armored', 'Mechanized', 'AirAssault'])
+		expect(options).toEqual([
+			'AirAssault vs AirAssault',
+			'AirAssault vs Armored',
+			'AirAssault vs Mechanized',
+			'Armored vs Armored',
+			'Armored vs Mechanized',
+			'Mechanized vs Mechanized',
+		])
+		expect(new Set(options).size).toBe(options.length)
+	})
+
+	it('produces the same value the evaluator compares against', () => {
+		expect(LQY.unitMatchupOptions(['Mechanized', 'AirAssault'])).toContain(LQY.unitMatchupValue('Mechanized', 'AirAssault'))
 	})
 })
 
@@ -164,7 +200,13 @@ describe('the match descriptors a UnitMatchup repeat rule produces', () => {
 	})
 
 	it('reports nothing when no target value names the matchup', () => {
-		expect(fieldsFor({ ...rule, targetValues: ['Armored'] }, PREVIOUS_UNITS)).toEqual([])
+		const targetValues = [LQY.unitMatchupValue('Armored', 'Mechanized')]
+		expect(fieldsFor({ ...rule, targetValues }, PREVIOUS_UNITS)).toEqual([])
+	})
+
+	it('still reports when a target value names this matchup', () => {
+		const targetValues = [LQY.unitMatchupValue('AirAssault', 'Mechanized')]
+		expect(fieldsFor({ ...rule, targetValues }, UNITS_REVERSED)).toEqual(['UnitMatchup_A', 'UnitMatchup_B'])
 	})
 })
 
