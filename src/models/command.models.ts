@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import * as Obj from '@/lib/object-utils'
 import * as Str from '@/lib/string-utils'
-import { renderTemplate, templateVars } from '@/lib/templating'
+import * as Templating from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
@@ -895,7 +895,7 @@ export function parseTriggerRef(name: string): TriggerRef | undefined {
 
 function templateRefs(template: string): TriggerRef[] {
 	const refs: TriggerRef[] = []
-	for (const { name } of templateVars(template) ?? []) {
+	for (const { name } of Templating.templateVars(template) ?? []) {
 		const ref = parseTriggerRef(name)
 		if (ref) refs.push(ref)
 	}
@@ -908,7 +908,7 @@ export function expandTriggerArgs(template: string, words: readonly string[]): s
 	const vars = Object.fromEntries(
 		templateRefs(template).map((r) => [r.name, r.rest ? words.slice(r.index - 1).join(' ') : (words[r.index - 1] ?? '')]),
 	)
-	return renderTemplate(template, vars)
+	return Templating.renderTemplate(template, vars)
 		.split(/\s+/)
 		.filter((w) => w !== '')
 }
@@ -930,7 +930,7 @@ const sentinel = (name: string) => `\u0000${name}\u0000`
 // parse, and reports which argument each placeholder fills. Player/squad/reason tokens can only be checked at
 // dispatch, so they're taken on faith.
 export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerArgsResolution {
-	const vars = templateVars(template)
+	const vars = Templating.templateVars(template)
 	if (vars === undefined) {
 		return { code: 'err:invalid-args', msg: 'The arguments are not a valid template. Check for an unclosed {{#section}}.' }
 	}
@@ -950,7 +950,7 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 	}
 
 	// every placeholder supplied, which is the shape that says what the trigger can accept at most
-	const expanded = renderTemplate(template, Object.fromEntries(refs.map((r) => [r.name, sentinel(r.name)])))
+	const expanded = Templating.renderTemplate(template, Object.fromEntries(refs.map((r) => [r.name, sentinel(r.name)])))
 	const tokens = expanded.split(/\s+/).filter((w) => w !== '')
 	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
 	// permissive predicates: a team can be named by the current layer's faction, which isn't knowable here, and

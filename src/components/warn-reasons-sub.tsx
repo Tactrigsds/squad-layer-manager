@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { renderTemplate } from '@/lib/templating'
+import * as Templating from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
@@ -173,17 +173,15 @@ export function ReasonMessagePreview(props: {
 	customText?: string
 	durationMs?: number
 }) {
-	const customVars = Zus.useStore(
-		SettingsClient.PublicSettingsStore,
-		(s) => Object.fromEntries((s?.messageVariables ?? []).map((v) => [v.name, v.value])) as Record<string, string>,
-	)
+	const messageVariables = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.messageVariables ?? [])
 	const custom = props.customText?.trim()
 	if (!props.reason && !custom) return null
 
-	const vars: Record<string, string> = { ...customVars }
+	const base: Record<string, string> = {}
 	if (props.action === 'timeout')
-		vars.duration = props.durationMs && props.durationMs > 0 ? ZodUtils.formatHumanTime(props.durationMs) : ''
-	const text = props.reason ? AAR.formatAppliedReason(props.action, props.reason, { vars }) : renderTemplate(custom!, vars)
+		base.duration = props.durationMs && props.durationMs > 0 ? ZodUtils.formatHumanTime(props.durationMs) : ''
+	const vars = Templating.resolveTemplateVars(messageVariables, base)
+	const text = props.reason ? AAR.formatAppliedReason(props.action, props.reason, { vars }) : Templating.renderTemplate(custom!, vars)
 
 	return (
 		<div className="grid gap-1">
