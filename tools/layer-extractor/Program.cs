@@ -10,8 +10,11 @@ using Serilog;
 // CUE4Parse. Squad's containers are unencrypted and cook with versioned properties, so no AES key or usmap needed.
 //
 // usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>] [--vanilla]
+//        LayerExtractor --plan <modDir> [--game <squadInstall>]
 //   <modDir>   a workshop item directory (steamapps/workshop/content/393380/<id>) or any directory of mod paks
 //   --vanilla  export the base game's layers instead of the mod's
+//   --plan     list which of the mod's .ucas containers hold layer data. Works from the .utoc indexes alone
+//              (fetch-workshop-mod.sh downloads those first, then only the containers this prints)
 
 var argv = new List<string>(args);
 string? TakeOpt(string name)
@@ -26,9 +29,25 @@ var gameDir = TakeOpt("--game")
 	?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/share/Steam/steamapps/common/Squad");
 var outPath = TakeOpt("--out");
 var vanilla = argv.Remove("--vanilla");
-var modDir = argv.Count > 0 ? argv[0] : throw new Exception("usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>] [--vanilla]");
+var plan = argv.Remove("--plan");
+var modDir = argv.Count > 0 ? argv[0] : throw new Exception("usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>] [--vanilla] [--plan]");
 
 Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: Serilog.Events.LogEventLevel.Verbose).MinimumLevel.Error().CreateLogger();
+
+// the package paths extraction reads out of a mod; --plan reports the containers that hold them, and a partial
+// fetch that has only those containers still extracts completely
+var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/" };
+
+if (plan)
+{
+	// a .utoc holds the container's entire directory index; the .ucas holds only bulk data. Stubbing empty .ucas
+	// files lets the provider mount and list index-only fetches.
+	foreach (var utoc in Directory.EnumerateFiles(modDir, "*.utoc", SearchOption.AllDirectories))
+	{
+		var ucas = Path.ChangeExtension(utoc, ".ucas");
+		if (!File.Exists(ucas)) File.Create(ucas).Dispose();
+	}
+}
 
 var provider = new DefaultFileProvider(
 	new DirectoryInfo(Path.Combine(gameDir, "SquadGame/Content/Paks")),
@@ -39,6 +58,18 @@ var provider = new DefaultFileProvider(
 provider.Initialize();
 provider.Mount();
 Console.Error.WriteLine($"mounted {provider.MountedVfs.Count} containers, {provider.Files.Count} files");
+
+if (plan)
+{
+	var gamePakDir = Path.GetFullPath(Path.Combine(gameDir, "SquadGame/Content/Paks"));
+	foreach (var vfs in provider.MountedVfs.OrderBy(v => v.Name, StringComparer.Ordinal))
+	{
+		if (Path.GetFullPath(vfs.Path).StartsWith(gamePakDir)) continue;
+		if (!vfs.Files.Keys.Any(f => neededPathMarkers.Any(f.Contains))) continue;
+		Console.WriteLine(Path.ChangeExtension(Path.GetFileName(vfs.Path), ".ucas"));
+	}
+	return;
+}
 
 // ---------------------------------------------------------------- helpers
 
