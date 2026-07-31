@@ -598,7 +598,16 @@ function uniqueSubstringMatch(candidates: string[], token: string) {
 	const normalized = Str.normalizeForMatch(token)
 	const matched = candidates.filter((candidate) => Str.normalizeForMatch(candidate).includes(normalized))
 	if (matched.length === 0) return { code: 'err:not-found' as const }
-	if (matched.length > 1) return { code: 'err:multiple-matches' as const, count: matched.length, matched }
+	if (matched.length > 1) {
+		// mod vocabularies embed the vanilla names (Fallujah, Supermod_Fallujah, GoingDark_Fallujah; ADF, SU_ADF). A
+		// match that is itself contained in every other match is the base name, and the one a chat token means; the
+		// mod variants stay reachable by typing more of their name.
+		const base = matched.find((candidate) =>
+			matched.every((other) => other === candidate || Str.normalizeForMatch(other).includes(Str.normalizeForMatch(candidate))),
+		)
+		if (base !== undefined) return { code: 'ok' as const, value: base }
+		return { code: 'err:multiple-matches' as const, count: matched.length, matched }
+	}
 	return { code: 'ok' as const, value: matched[0] }
 }
 

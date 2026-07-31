@@ -54,7 +54,13 @@ function whereFor(rule: LQY.RepeatRule, itemsState = list) {
 		cursor: { type: 'end' },
 	})
 	if (compiled.code !== 'ok') throw new Error('expected the constraints to compile')
-	return compiled.where
+	// every query carries the implicit default-collection condition; these tests are about the repeat rule alone
+	const where = compiled.where
+	if (where.op === 'and') {
+		const children = where.children.filter((child) => !(child.op === 'eq_val' && child.col === col('Collection')))
+		return children.length === 1 ? children[0] : { ...where, children }
+	}
+	return where
 }
 
 function inVals(where: LE.Ir): { col: number; vals: number[] }[] {

@@ -67,6 +67,33 @@ export type EngineHandle = {
 
 export type LowerResult = { code: 'ok'; ir: Ir } | F.InvalidFilterNodeResult
 
+export function referencesColumn(ir: Ir, col: number): boolean {
+	switch (ir.op) {
+		case 'and':
+		case 'or':
+			return ir.children.some((child) => referencesColumn(child, col))
+		case 'not':
+			return referencesColumn(ir.child, col)
+		case 'true':
+		case 'false':
+			return false
+		case 'is_null':
+		case 'eq_val':
+		case 'lt_val':
+		case 'gt_val':
+		case 'ge_val':
+		case 'le_val':
+		case 'in_vals':
+			return ir.col === col
+		case 'eq_col':
+		case 'lt_col':
+		case 'gt_col':
+			return ir.col === col || ir.other === col
+		default:
+			assertNever(ir)
+	}
+}
+
 // ---------------------------- filter -> IR ----------------------------
 
 export type LowerCtx = F.Ctx & LC.Ctx & { colIndex: ColumnIndex }

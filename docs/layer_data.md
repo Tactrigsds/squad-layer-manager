@@ -24,6 +24,18 @@ To build your own pair, with different scoring, extra columns, or different laye
 `src/scripts/preprocess.ts` (`pnpm preprocess`). It writes both halves into `assets/layers`, or into
 `LAYERS_OUTPUT_DIR` if that is set.
 
-## Mod support
+## Layer sources and mods
 
-Not implemented yet. Parts of SLM rely on the structure of vanilla layers.
+Layers come from sources under `data/sources/`. Each source is one directory:
+
+- `layers.json` - a [SquadLayerList](https://github.com/fantinodavide/SquadLayerList) export, current format.
+- `source.json` - the source manifest: the collection the source's layers belong to, abbreviations for its maps,
+  gamemodes and unit types, and per-layer fixes for broken mod data. `vanilla` is itself a source.
+
+To add a mod, create a directory with the mod's export and a manifest, then run `pnpm preprocess`. Preprocess fails
+with a named layer whenever the manifest is missing an abbreviation or two layers are indistinguishable; each
+failure is fixed by another manifest entry. `data/sources/supermod/source.json` is a complete example.
+
+Mod layers are opt-in per query: pools, generated votes and the layer browser only include layers outside the
+default collection when a filter names the Collection column. A vanilla server never sees mod layers unless someone
+writes a filter that asks for them.
