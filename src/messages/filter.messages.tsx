@@ -286,9 +286,7 @@ export const poolConfigKeyNames: Record<FR.PoolConfigKey, TString> = {
 
 export const referencesHeading = def('References')
 
-export const noReferences = def('Nothing references this filter, so it can be deleted.')
-
-export const referencesBlurb = def('A filter can only be deleted once nothing references it. Extra filters do not count.')
+export const noReferences = def('Nothing references this filter.')
 
 export const referencingFiltersLabel = def('Filters:')
 
