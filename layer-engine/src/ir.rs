@@ -4,7 +4,7 @@
 //! over both teams, values are already db-encoded through LC.dbValue, and referenced filters are already inlined. So
 //! this side only has to implement primitive comparisons and SQL's three-valued logic.
 
-use crate::store::{Col, Store, NULL_I32, NULL_U8};
+use crate::store::{Col, Store, NULL_I32, NULL_U16, NULL_U8};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -222,6 +222,7 @@ pub fn eval_with(store: &Store, ir: &Ir, cand: &[u64]) -> Tri {
         }
         Ir::IsNull { col } => match store.col(*col) {
             Col::U8(c) => scan!(rows, words, cand, |i: usize| (c[i] == NULL_U8, false)),
+            Col::U16(c) => scan!(rows, words, cand, |i: usize| (c[i] == NULL_U16, false)),
             Col::I32(c) => scan!(rows, words, cand, |i: usize| (c[i] == NULL_I32, false)),
         },
         // one membership pass rather than an OR of equalities: the real pool filters carry 60-value layer lists, and
@@ -237,6 +238,18 @@ pub fn eval_with(store: &Store, ir: &Ir, cand: &[u64]) -> Tri {
                 scan!(rows, words, cand, |i: usize| {
                     let v = c[i];
                     if v == NULL_U8 { (false, true) } else { (lut[v as usize], false) }
+                })
+            }
+            Col::U16(c) => {
+                let mut lut = vec![false; 65536];
+                for v in vals {
+                    if (0..65535).contains(v) {
+                        lut[*v as usize] = true;
+                    }
+                }
+                scan!(rows, words, cand, |i: usize| {
+                    let v = c[i];
+                    if v == NULL_U16 { (false, true) } else { (lut[v as usize], false) }
                 })
             }
             Col::I32(c) => {
@@ -267,6 +280,10 @@ fn cmp_val(store: &Store, col: usize, val: i64, cand: &[u64], f: fn(i64, i64) ->
         Col::U8(c) => scan!(rows, words, cand, |i: usize| {
             let v = c[i];
             if v == NULL_U8 { (false, true) } else { (f(v as i64, val), false) }
+        }),
+        Col::U16(c) => scan!(rows, words, cand, |i: usize| {
+            let v = c[i];
+            if v == NULL_U16 { (false, true) } else { (f(v as i64, val), false) }
         }),
         Col::I32(c) => scan!(rows, words, cand, |i: usize| {
             let v = c[i];

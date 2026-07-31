@@ -1,0 +1,63 @@
+{
+	"name": "galactic-contention",
+	"collection": {
+		"name": "GC",
+		"abbreviation": "GC"
+	},
+	"layerNames": "structured",
+	"gamemodeRenames": {
+		"Invasion_Myghetto": "Invasion"
+	},
+	"gamemodeAbbreviations": {
+		"Contention": "CTN",
+		"GLOP": "GLOP",
+		"KOTH": "KOTH",
+		"RINV": "RINV",
+		"TDM": "TDM"
+	},
+	"mapAbbreviations": {
+		"BespinPlatforms": "BSP",
+		"Coruscant": "COR",
+		"CorvetteAssaultV2": "CVA",
+		"Dev_ArmorValues": "DAV",
+		"Dev_Sound_Testing": "DSND",
+		"Dev_Testing": "DVT",
+		"Felucia": "FEL",
+		"Galban": "GLB",
+		"Geonosis": "GEO",
+		"KaminoTraining": "KAM",
+		"Kashyyyk": "KAS",
+		"Kavado": "KAV",
+		"MallidonCity": "MAL",
+		"Miniosis": "MINI",
+		"Morak": "MOR",
+		"MorakLegacy": "MORL",
+		"Mygeeto": "MYG",
+		"NabooPlains": "NAB",
+		"OrtoPlutonia": "ORT",
+		"RhenVar": "RHV",
+		"Ryloth": "RYL",
+		"Sesid": "SES",
+		"SesidEquator": "SESE",
+		"Sullust": "SUL",
+		"Tatooine": "TAT",
+		"Umbara": "UMB",
+		"VenatorAssault": "VEN",
+		"Yavin4": "YAV"
+	},
+	"extraUnitTypes": {
+		"SpecialForces": {
+			"abbreviation": "SF",
+			"shortName": "SpecFor"
+		},
+		"Special": {
+			"abbreviation": "SPL",
+			"shortName": "Special"
+		}
+	},
+	"layerOverrides": {
+		"GC_Miniosis_GLOPS": {
+			"Map": "Miniosis"
+		}
+	}
+}
