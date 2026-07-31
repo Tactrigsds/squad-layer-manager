@@ -18,7 +18,7 @@ import * as LL from './layer-list.models'
 import type * as LTag from './layer-tags.models'
 import * as MH from './match-history.models'
 
-export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Alliance', 'Size'])
+export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Unit', 'Alliance', 'Size'])
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
 	field: RepeatRuleFieldSchema,
@@ -39,9 +39,11 @@ export function valueFilteredByTargetValues(rule: RepeatRule, value?: string): b
 	return !rule.targetValues.includes(value as string)
 }
 
-export function isTeamSpecificRepeatRuleField(field: RepeatRuleField): boolean {
+export type TeamSpecificRepeatRuleField = 'Faction' | 'Unit' | 'Alliance'
+export function isTeamSpecificRepeatRuleField(field: RepeatRuleField): field is TeamSpecificRepeatRuleField {
 	switch (field) {
 		case 'Faction':
+		case 'Unit':
 		case 'Alliance':
 			return true
 		case 'Map':
@@ -49,6 +51,20 @@ export function isTeamSpecificRepeatRuleField(field: RepeatRuleField): boolean {
 		case 'Gamemode':
 		case 'Size':
 			return false
+		default:
+			assertNever(field)
+	}
+}
+
+// the one place that knows which layer column a team-specific rule reads for a given normalized team
+export function teamNormalizedRepeatRuleProp(field: TeamSpecificRepeatRuleField, parity: number, team: MH.NormedTeamId) {
+	switch (field) {
+		case 'Faction':
+			return MH.getTeamNormalizedFactionProp(parity, team)
+		case 'Unit':
+			return MH.getTeamNormalizedUnitProp(parity, team)
+		case 'Alliance':
+			return MH.getTeamNormalizedAllianceProp(parity, team)
 		default:
 			assertNever(field)
 	}
@@ -298,7 +314,7 @@ export function getEditFilterPageBaseInput(filter: F.FilterNode): BaseQueryInput
 export type RepeatMatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
-	field: 'Map' | 'Gamemode' | 'Layer' | 'Size' | 'Faction_A' | 'Faction_B' | 'Alliance_A' | 'Alliance_B'
+	field: 'Map' | 'Gamemode' | 'Layer' | 'Size' | 'Faction_A' | 'Faction_B' | 'Unit_A' | 'Unit_B' | 'Alliance_A' | 'Alliance_B'
 	itemId?: ItemId
 	layerId: string
 	repeatOffset: number
@@ -339,6 +355,10 @@ export function resolveLayerPropertyForRepeatDescriptorField(descriptor: RepeatM
 			return MH.getTeamNormalizedFactionProp(teamParity, 'A')
 		case 'Faction_B':
 			return MH.getTeamNormalizedFactionProp(teamParity, 'B')
+		case 'Unit_A':
+			return MH.getTeamNormalizedUnitProp(teamParity, 'A')
+		case 'Unit_B':
+			return MH.getTeamNormalizedUnitProp(teamParity, 'B')
 		case 'Alliance_A':
 			return MH.getTeamNormalizedAllianceProp(teamParity, 'A')
 		case 'Alliance_B':

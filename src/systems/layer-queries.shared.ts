@@ -183,23 +183,14 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 				}
 				break
 			}
-			case 'Faction': {
+			case 'Faction':
+			case 'Unit':
+			case 'Alliance': {
 				for (const team of ['A', 'B'] as const) {
-					const column = MH.getTeamNormalizedFactionProp(teamParity, team)
+					const column = LQY.teamNormalizedRepeatRuleProp(rule.field, teamParity, team)
 					const value = layer[column]
 					if (!value || LQY.valueFilteredByTargetValues(rule, value)) continue
 					const dbValue = LC.dbValue(column, value, ctx)
-					if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
-					;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
-				}
-				break
-			}
-			case 'Alliance': {
-				for (const team of ['A', 'B'] as const) {
-					const column = MH.getTeamNormalizedAllianceProp(teamParity, team)
-					const alliance = layer[column]
-					if (LQY.valueFilteredByTargetValues(rule, alliance)) continue
-					const dbValue = LC.dbValue(column, alliance, ctx)
 					if (LC.isUnmappedDbValue(dbValue) || dbValue === null) continue
 					;(team === 'A' ? valuesA : valuesB).add(Number(dbValue))
 				}
@@ -220,11 +211,10 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 			return { op: 'in_vals', col: col(rule.field), vals: [...values] }
 		}
 		case 'Faction':
+		case 'Unit':
 		case 'Alliance': {
-			const [colA, colB] =
-				rule.field === 'Faction'
-					? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
-					: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
+			const colA = LQY.teamNormalizedRepeatRuleProp(rule.field, targetParity, 'A')
+			const colB = LQY.teamNormalizedRepeatRuleProp(rule.field, targetParity, 'B')
 			const pooled = rule.crossTeam ? [...new Set([...valuesA, ...valuesB])] : null
 			return {
 				op: 'or',
@@ -894,15 +884,15 @@ export function getRepeatRuleMatchDescriptors(
 				}
 				break
 			case 'Faction':
+			case 'Unit':
 			case 'Alliance': {
-				const prop = rule.field === 'Faction' ? MH.getTeamNormalizedFactionProp : MH.getTeamNormalizedAllianceProp
 				for (const team of ['A', 'B'] as const) {
-					const targetValue = targetLayer[prop(targetLayerTeamParity, team)]
+					const targetValue = targetLayer[LQY.teamNormalizedRepeatRuleProp(rule.field, targetLayerTeamParity, team)]
 					if (!targetValue) continue
 					// under crossTeam a target team can match either previous team, but it still yields a single descriptor
 					const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? ['A', 'B'] : [team]
 					for (const previousTeam of previousTeams) {
-						const previousValue = layer[prop(layerTeamParity, previousTeam)]
+						const previousValue = layer[LQY.teamNormalizedRepeatRuleProp(rule.field, layerTeamParity, previousTeam)]
 						if (previousValue !== targetValue || LQY.valueFilteredByTargetValues(rule, previousValue)) continue
 						descriptors.push(getViolationDescriptor(`${rule.field}_${team}`))
 						break
