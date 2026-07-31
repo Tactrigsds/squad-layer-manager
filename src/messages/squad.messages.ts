@@ -431,7 +431,8 @@ export const selectAllTeamHint = def(
 
 export const selectAllCombinedHint = def('Select all shown. Shift+click: select all players on both teams. Alt+click: invert selection')
 
-export const teamTableLabel = def('Team {team} players', (team: string | number) => ({ team }))
+// the table is only labelled for a screen reader, so the team carries its faction the way the visible header does
+export const teamTableLabel = def('{team} players', (team: string) => ({ team }))
 
 export const combinedTableLabel = def('All players')
 

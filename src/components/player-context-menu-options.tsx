@@ -262,12 +262,13 @@ export function PlayerMenuItems({
 	const otherTeam = Zus.useStore(
 		stores.squadServer,
 		MatchHistoryClient.currentMatch$(serverId),
-		(chatStore: ChatPrt.Store, currentMatch: MH.MatchDetails | undefined): MH.NormedTeamId | null => {
+		(chatStore: ChatPrt.Store, currentMatch: MH.MatchDetails | undefined): { id: MH.NormedTeamId; faction?: string } | null => {
 			if (!currentMatch) return null
 			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, (p) => p.ids, playerId)
 			if (!player?.teamId) return null
 			const normed = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
-			return normed === 'A' ? 'B' : 'A'
+			const id = normed === 'A' ? 'B' : 'A'
+			return { id, faction: MH.getNormedTeamFaction(currentMatch, id) }
 		},
 	)
 
@@ -330,7 +331,7 @@ export function PlayerMenuItems({
 		})
 		try {
 			await UPClient.Actions.withPlayerDialogue('SWITCHING_PLAYERS', async () => {
-				const msg = tr.confirm(TSW_Msgs.swapNow(msgTarget, otherTeam))
+				const msg = tr.confirm(TSW_Msgs.swapNow(msgTarget, TSW_Msgs.destination(otherTeam.id, otherTeam.faction)))
 				const result = await openDialog({
 					title: msg.title,
 					variant: 'destructive',
