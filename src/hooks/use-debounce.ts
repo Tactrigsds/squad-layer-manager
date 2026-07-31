@@ -3,13 +3,10 @@ import React from 'react'
 import { useRefConstructor } from '@/lib/react'
 import * as Rx from '@/lib/rxjs'
 
-export function useDebounced<T>(ops: {
-	mode?: 'debounce' | 'throttle'
-	defaultValue?: () => T
-	delay: number
-	onChange: (value: T) => void
-}) {
-	const subRef = useRefConstructor(() => (ops.defaultValue ? new Rx.BehaviorSubject<T>(ops.defaultValue()) : new Rx.Subject<T>()))
+export function useDebounced<T>(ops: { mode?: 'debounce' | 'throttle'; delay: number; onChange: (value: T) => void }) {
+	// a plain Subject on purpose: a BehaviorSubject would replay the last value into the new subscription
+	// when onChange changes identity, delivering a stale value to a consumer that never saw it produced
+	const subRef = useRefConstructor(() => new Rx.Subject<T>())
 
 	React.useEffect(() => {
 		const subscription = new Rx.Subscription()
