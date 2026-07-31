@@ -58,11 +58,14 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 				inputRef.current?.select()
 				return
 			}
-			// escape dismisses the search the reader is looking at, from anywhere inside it -- clicking a result
-			// blurs the input, and until it is dismissed every match stays painted. Hover does not count here: a
-			// pointer resting over the region is not a reason to swallow the key from whatever owns focus. Stopped
-			// rather than only prevented, so a dialog holding this bar does not close itself out from under it.
-			if (!focused || !state.open) return
+			// Escape dismisses the search the reader is looking at, from anywhere inside it -- clicking a result
+			// blurs the input, and until it is dismissed every match stays painted. It also answers when nothing at
+			// all holds focus, which is where the browser leaves you after dismissing its own widgets, and where no
+			// other component has a claim on the key. Hover does not count: a pointer resting over the region is no
+			// reason to take Escape from whatever does own focus. Stopped rather than only prevented, because a
+			// dialog or a draggable window holding this bar closes itself on Escape otherwise.
+			const unowned = !active || active === document.body
+			if (!state.open || !(focused || unowned)) return
 			e.preventDefault()
 			e.stopPropagation()
 			FindFrame.Actions.close(stores)
@@ -127,9 +130,12 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 			className={cn('flex items-center gap-1 rounded-md border bg-background p-1 shadow-md', className)}
 		>
 			<Icons.Search className="ml-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+			{/* deliberately not type="search": that gives escape a native meaning (chrome cancels the field, and can
+			    take the keystroke before any listener sees it) which competes with escape dismissing the bar. It also
+			    draws a clear widget duplicating the close button. */}
 			<input
 				ref={inputRef}
-				type="search"
+				type="text"
 				aria-label={tr.text(SF_Msgs.label())}
 				placeholder={tr.text(SF_Msgs.placeholder())}
 				defaultValue=""
