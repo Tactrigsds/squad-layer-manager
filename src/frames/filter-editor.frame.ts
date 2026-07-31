@@ -12,6 +12,7 @@ import * as Rx from '@/lib/rxjs'
 import * as Sparse from '@/lib/sparse-tree'
 import * as Zus from '@/lib/zustand'
 import * as EFB from '@/models/editable-filter-builders'
+import * as FR from '@/models/filter-references.models'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -54,6 +55,9 @@ type FilterEditorBase = {
 	editedComments: Set<string>
 
 	validatedFilter: F.FilterNode | null
+	// the apply-filter loop this edit would create, if any. A loop has no fixed point once the referenced
+	// filters are inlined, so the server refuses to store one and saving is blocked here first.
+	referenceCycle: F.FilterEntityId[] | null
 	modified: boolean
 	valid: boolean
 
@@ -79,6 +83,17 @@ export type Types = {
 
 export type Frame = FRM.Frame<Types>
 
+// the loop the edited tree would close against the filters as they are currently stored
+function findCycle(editedFilterId: F.FilterEntityId, filter: F.FilterNode) {
+	const entities = Array.from(FilterEntityClient.filterEntities.values())
+	const edited = entities.find((e) => e.id === editedFilterId)
+	if (!edited) return null
+	return FR.findCycle(
+		entities.map((e) => (e.id === editedFilterId ? { ...e, filter } : e)),
+		editedFilterId,
+	)
+}
+
 const setup: Frame['setup'] = (args) => {
 	const get = args.get
 	const set = args.set
@@ -90,12 +105,14 @@ const setup: Frame['setup'] = (args) => {
 		errors: [],
 		setErrors: (errors) => set({ errors }),
 
+		editedFilterId: args.input.editedFilterId,
 		savedFilter: savedFilter,
 		tree: F.upsertFilterNodeTreeInPlace(savedFilter),
 		createHints: new Map(),
 		editedComments: new Set(),
 
 		validatedFilter: null,
+		referenceCycle: null,
 		modified: false,
 		valid: false,
 
@@ -108,10 +125,12 @@ const setup: Frame['setup'] = (args) => {
 		const filter = F.treeToFilterNode(state.tree)
 		const validatedFilter = F.isValidFilterNode(filter) ? filter : null
 		const baseQueryInput = validatedFilter ? Obj.deepClone(LQY.getEditFilterPageBaseInput(validatedFilter)) : undefined
+		const referenceCycle = validatedFilter && state.editedFilterId ? findCycle(state.editedFilterId, validatedFilter) : null
 		set({
 			validatedFilter: validatedFilter ?? null,
+			referenceCycle,
 			baseQueryInput,
-			valid: validatedFilter !== null,
+			valid: validatedFilter !== null && !referenceCycle,
 			modified: !Obj.deepEqual(filter, state.savedFilter),
 		})
 	}
