@@ -23,7 +23,7 @@ export type MapSet = {
 export const MAP_SET_META = meta()
 
 // Squad's own vote (AdminEnableVoting), not SLM's. Whatever it resolves to overwrites the next layer SLM set, so
-// SLM stops writing the rotation for the rest of the match. See docs/ingame_voting.md.
+// SLM stops writing the rotation for the rest of the match.
 export type IngameVoteStarted = {
 	type: 'INGAME_VOTE_STARTED'
 	container: string

@@ -1435,7 +1435,7 @@ export namespace LogEvents {
 	})
 
 	// Squad's own in-game vote (enabled with AdminEnableVoting). Its outcome overwrites whatever SLM set as the
-	// next layer, so SLM has to stand down while one is running. See docs/ingame_voting.md.
+	// next layer, so SLM has to stand down while one is running.
 	//
 	// One vote runs through several containers in turn -- the map and gamemode first, then each team's faction --
 	// so `container` names the stage, not a kind of vote. Nothing branches on it: a vote being under way at all is

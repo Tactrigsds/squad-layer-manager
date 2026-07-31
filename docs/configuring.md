@@ -438,10 +438,9 @@ else that owns the rotation.
 While updates are off, the queue panel carries an _SLM Updates Disabled_ alert naming who turned them off, and
 _Re-enable SLM Updates_ puts them back. Both need `squad-server:disable-slm-updates`.
 
-SLM also stands down on its own when Squad's built-in vote is deciding the next layer, because anything SLM wrote
-would be discarded. It does not always see the vote directly: sometimes it infers one from the server losing its
-next layer, and the alert says so rather than stating a guess as fact. Re-enabling from that alert also turns
-in-game voting off on the server. See [ingame_voting.md](ingame_voting.md).
+SLM also stands down on its own when Squad's built-in vote is deciding the next layer, or if it infers that voting has been turned on via `AdminEnableVoting 1`.
+
+Instead, it will report that voting has been enabled, and disable updates to the next layer until explicitely toggled back on, which will disable voting.
 
 #### 8.8. Repeat rules
 
