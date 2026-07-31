@@ -61,4 +61,4 @@ argument, which is worth keeping in mind when writing one.
 ## Finding them
 
 The commands page lists a command's shortcut triggers under its details, and searching for one finds the command it
-runs. `!help` lists each shortcut on its own line, since it asks the caller for something different.
+runs. `/help` lists each shortcut on its own line, since each one asks the caller for something different.
