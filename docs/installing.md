@@ -11,7 +11,7 @@
 SLM needs access to your squad server's log files. There are three ways to give it that: mount the log files
 directly into the container, connect over SFTP (this works with PSG-hosted servers), or run a server agent on the
 game host that streams the log data and proxies RCON (see
-[configuring.md#server-agent](configuring.md#server-agent)). SLM can manage any number of squad servers, so factor
+[server_agent.md](server_agent.md)). SLM can manage any number of squad servers, so factor
 that in when deciding where to install it.
 
 ### 3. Installation
