@@ -341,6 +341,21 @@ export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promi
 	return openConnections(SETTINGS.ServerSettingsSchema.parse(unsuperjsonify(Schema.servers, row).settings))
 }
 
+// the pool configuration of every server in the registry, including disabled ones: a server that is off still
+// holds a configuration that a filter it names has to survive for. Servers whose stored settings don't parse are
+// skipped, since nothing can be read out of them.
+export async function listServerPoolConfigs(ctx: C.Db): Promise<{ serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[]> {
+	const rows = await ctx.db().select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers)
+	const configs: { serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[] = []
+	for (const rawRow of rows) {
+		const row = unsuperjsonify(Schema.servers, rawRow) as { id: SS.ServerId; settings: unknown }
+		const res = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
+		if (!res.success) continue
+		configs.push({ serverId: row.id, mainPool: res.data.queue.mainPool })
+	}
+	return configs
+}
+
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
 export async function updateServerSettings(
 	ctx: C.Db & C.Tx & CS.ServerId,

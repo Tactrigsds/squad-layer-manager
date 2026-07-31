@@ -81,6 +81,10 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 					RbacClient.handlePermissionDenied(res)
 					break
 
+				case 'err:cyclical-reference':
+					toast.error(...tr.toast(F_Msgs.cyclicalReference(res.cycle)))
+					break
+
 				default:
 					assertNever(res)
 			}

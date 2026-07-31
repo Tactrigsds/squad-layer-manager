@@ -129,16 +129,25 @@ function getInitialFilterStates(context: Context, squadServer: SquadServerFrame.
 	return { filterStates, poolApplyAs }
 }
 
-// global, localStorage-backed set of extra filters the user has pulled into the applied-filters panel
+// global, localStorage-backed set of extra filters the user has pulled into the applied-filters panel. A deleted
+// filter is dropped from it rather than keeping the filter alive: extras are a view preference, so they are not
+// counted as references (see models/filter-references.models.ts).
 export const ExtraFiltersStore = Zus.createStore<LQY.ExtraQueryFiltersStore>((set, _get, store) => {
 	const extraFilters = new Set(localStorage.getItem('extraQueryFilters:v2')?.split(',') ?? [])
 	void (async () => {
 		await Prom.sleep(0)
+		// the entities arrive over the websocket after boot, and pruning against an empty map would wipe the
+		// stored set; every prune waits for the first real one
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
-		set((state) => ({
-			...state,
-			extraFilters: new Set(Gen.filter(state.extraFilters.values(), (f) => filterEntities.has(f))),
-		}))
+		const prune = () =>
+			set((state) => ({
+				...state,
+				extraFilters: new Set(Gen.filter(state.extraFilters.values(), (f) => filterEntities.has(f))),
+			}))
+		prune()
+		FilterEntityClient.filterMutation$.subscribe((mutation) => {
+			if (mutation.type === 'delete') prune()
+		})
 	})()
 
 	store.subscribe((state, prev) => {

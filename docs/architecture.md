@@ -402,6 +402,11 @@ highlight the exact offending node.
 Builders are layered and each only knows the level below it: `filter-builders.ts` constructs `FilterNode`s, and
 `constraint-builders.ts` wraps those into query `Constraint`s.
 
+`filter-references.models.ts` answers where a filter entity is used: another filter's apply-filter operator, or a
+server's pool configuration, transitively through the filters that configuration applies. The server recomputes the
+index whenever a filter or a server's settings change, streams it to clients, and refuses to delete a filter that
+has any reference, or to store an apply-filter loop (which has no fixed point once the references are inlined).
+
 ### Layers
 
 `LayerId` is a **structured string**, not an opaque id:
