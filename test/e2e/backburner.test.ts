@@ -116,7 +116,13 @@ test.describe('layer requests panel', () => {
 			backburner: [
 				{
 					itemId: 'req-sumari',
-					filter: FB.and([FB.eq('Map', 'Sumari'), FB.allowMatchups([{ Faction: ['USA'] }, { Faction: ['RGF'] }])]),
+					// mod sources reuse the Sumari map name; the collection term keeps the dialog's table on the
+					// vanilla layers the assertions below pick from
+					filter: FB.and([
+						FB.eq('Map', 'Sumari'),
+						FB.eq('Collection', 'OWI'),
+						FB.allowMatchups([{ Faction: ['USA'] }, { Faction: ['RGF'] }]),
+					]),
 					source: { discordId: ADMIN_USER.discordId },
 					createdAt: 1000,
 				},

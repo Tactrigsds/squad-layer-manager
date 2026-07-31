@@ -472,30 +472,15 @@ export function packId(layerOrId: L.LayerId | L.KnownLayer, components = L.Stati
 	const faction2Index = assertedEnumDbValue('Faction_2', layer.Faction_2, ctx, components)
 	const unit2Index = assertedEnumDbValue('Unit_2', layer.Unit_2, ctx, components)
 
-	// Calculate bits needed for each component based on array sizes
-	// const layerBits = Math.ceil(Math.log2(components.layers.length))
-	const factionBits = Math.ceil(Math.log2(components.factions.length))
-	const unitBits = Math.ceil(Math.log2(components.units.length))
-
-	// Pack components into a single integer
-	let packed = 0
-	let bitOffset = 0
-
-	// Pack in reverse order so most significant bits contain the layer
-	packed |= unit2Index << bitOffset
-	bitOffset += unitBits
-
-	packed |= faction2Index << bitOffset
-	bitOffset += factionBits
-
-	packed |= unit1Index << bitOffset
-	bitOffset += unitBits
-
-	packed |= faction1Index << bitOffset
-	bitOffset += factionBits
-
-	packed |= layerIndex << bitOffset
-
+	// Mixed-radix rather than bit-packed: exact products keep the id inside i32 (the artifact's id column) where
+	// power-of-two widths would overflow it at today's component counts. Layer-major, so ascending ids group rows by
+	// map and layer, which the artifact's row order and the engine's scan skipping both rely on.
+	const factions = components.factions.length
+	const units = components.units.length
+	const packed = (((layerIndex * factions + faction1Index) * units + unit1Index) * factions + faction2Index) * units + unit2Index
+	if (packed > 2147483647) {
+		throw new Error(`packed layer id overflows i32: ${components.layers.length} layers x ${factions} factions x ${units} units`)
+	}
 	return packed
 }
 
@@ -535,39 +520,28 @@ export function packLayers(layers: (L.LayerId | L.KnownLayer)[], components = L.
  * Unpacks a layer from its integer encoding
  */
 export function unpackId(packed: number, components = L.StaticLayerComponents) {
-	// Calculate bits needed for each component
-	const layerBits = Math.ceil(Math.log2(components.layers.length))
-	const factionBits = Math.ceil(Math.log2(components.factions.length))
-	const unitBits = Math.ceil(Math.log2(components.units.length))
+	const factions = components.factions.length
+	const units = components.units.length
 
-	// Create masks for each component
-	const unitMask = (1 << unitBits) - 1
-	const factionMask = (1 << factionBits) - 1
-	const layerMask = (1 << layerBits) - 1
-
-	// Unpack in reverse order
-	let bitOffset = 0
-
-	const unit2Index = (packed >> bitOffset) & unitMask
-	bitOffset += unitBits
-
-	const faction2Index = (packed >> bitOffset) & factionMask
-	bitOffset += factionBits
-
-	const unit1Index = (packed >> bitOffset) & unitMask
-	bitOffset += unitBits
-
-	const faction1Index = (packed >> bitOffset) & factionMask
-	bitOffset += factionBits
-
-	const layerIndex = (packed >> bitOffset) & layerMask
+	const unit2Index = packed % units
+	packed = (packed - unit2Index) / units
+	const faction2Index = packed % factions
+	packed = (packed - faction2Index) / factions
+	const unit1Index = packed % units
+	packed = (packed - unit1Index) / units
+	const faction1Index = packed % factions
+	packed = (packed - faction1Index) / factions
+	const layerIndex = packed
 
 	const layer = components.layers[layerIndex]
-	const parsedSegments = L.parseLayerStringSegment(layer, components)!
-	const compatMappedSegments = L.applyBackwardsCompatMappings(parsedSegments, components)
+	const config = L.getLayerConfig(layer, components)
+	if (!config) throw new Error(`packed id references layer ${layer}, which is not in the catalog`)
 	return L.getKnownLayerId(
 		{
-			...compatMappedSegments,
+			Map: config.Map,
+			Gamemode: config.Gamemode,
+			LayerVersion: config.LayerVersion,
+			Collection: L.layerConfigCollection(config, components),
 			Faction_1: components.factions[faction1Index],
 			Unit_1: components.units[unit1Index],
 			Faction_2: components.factions[faction2Index],
@@ -608,6 +582,16 @@ export type LayerFactionAvailabilityPool = {
 // the image ships (see layer-artifacts.server), so both shapes have to be readable
 export type PersistedLayerFactionAvailability = Record<string, L.LayerFactionAvailabilityEntry[]> | LayerFactionAvailabilityPool
 
+// vocabulary that layer sources add on top of the hardcoded core tables (see the source manifests under
+// data/sources). Ships inside layer-data.json so clients rebuild the same merged tables the artifact was built with.
+export type SourceAbbreviations = {
+	maps: Record<string, string>
+	gamemodes: Record<string, string>
+	units: Record<string, string>
+	unitShortNames: Record<string, string>
+	collections: Record<string, string | null>
+}
+
 export type BaseLayerComponents = {
 	maps: string[]
 	alliances: string[]
@@ -623,6 +607,8 @@ export type BaseLayerComponents = {
 	factionToUnit: Record<string, string[]>
 	factionUnitToUnitFullName: Record<string, string>
 	layerFactionAvailability: PersistedLayerFactionAvailability
+	// absent in artifacts written before mod sources existed
+	sourceAbbreviations?: SourceAbbreviations
 }
 
 export type LayerComponents = Omit<BaseLayerComponents, 'layerFactionAvailability'> & {
@@ -651,6 +637,7 @@ const BASE_LAYER_COMPONENT_KEYS = [
 	'factionToUnit',
 	'factionUnitToUnitFullName',
 	'layerFactionAvailability',
+	'sourceAbbreviations',
 ] as const satisfies (keyof BaseLayerComponents)[]
 
 export function toBaseLayerComponents(components: LayerComponents): BaseLayerComponents {
@@ -662,7 +649,8 @@ export function toBaseLayerComponents(components: LayerComponents): BaseLayerCom
 
 function availabilityEntryKey(entry: L.LayerFactionAvailabilityEntry) {
 	const variants = entry.variants ? `${entry.variants.boats}/${entry.variants.noHeli}` : ''
-	return `${entry.Faction}|${entry.Unit}|${entry.allowedTeams.join(',')}|${entry.isDefaultUnit}|${variants}`
+	const unitObjectNames = entry.unitObjectNames ? `${entry.unitObjectNames[1] ?? ''}/${entry.unitObjectNames[2] ?? ''}` : ''
+	return `${entry.Faction}|${entry.Unit}|${entry.allowedTeams.join(',')}|${entry.isDefaultUnit}|${variants}|${unitObjectNames}`
 }
 
 export function poolLayerFactionAvailability(byLayer: Record<string, L.LayerFactionAvailabilityEntry[]>): LayerFactionAvailabilityPool {
@@ -1051,18 +1039,47 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 		units: {},
 	}
 
+	const src = components.sourceAbbreviations ?? { maps: {}, gamemodes: {}, units: {}, unitShortNames: {}, collections: {} }
+	const mergeAbbreviations = <V extends string | null>(kind: string, core: Record<string, V>, added: Record<string, V>) => {
+		const merged: Record<string, V> = { ...core }
+		const values = new Set(Object.values(core).filter((v) => v !== null))
+		for (const [name, abbreviation] of Object.entries(added)) {
+			if (name in merged) {
+				if (merged[name] !== abbreviation) throw new Error(`${kind} ${name} is already defined with abbreviation ${merged[name]}`)
+				continue
+			}
+			if (abbreviation !== null && values.has(abbreviation)) {
+				throw new Error(`${kind} ${name}: abbreviation ${abbreviation} is already taken`)
+			}
+			merged[name] = abbreviation
+			if (abbreviation !== null) values.add(abbreviation)
+		}
+		return merged
+	}
+	const mapAbbreviations = mergeAbbreviations('map', MAP_ABBREVIATIONS, src.maps)
+	const gamemodeAbbreviations = mergeAbbreviations('gamemode', GAMEMODE_ABBREVIATIONS as Record<string, string>, src.gamemodes)
+	const unitAbbreviations = mergeAbbreviations('unit', UNIT_ABBREVIATIONS as Record<string, string>, src.units)
+	const unitShortNames = { ...UNIT_SHORT_NAMES, ...src.unitShortNames }
+	const collectionAbbreviations = mergeAbbreviations('collection', COLLECTION_ABBREVIATIONS, src.collections)
+	if (Object.values(collectionAbbreviations).filter((abbreviation) => abbreviation === null).length !== 1) {
+		throw new Error('exactly one collection must have a null abbreviation; it is the default collection')
+	}
+
 	if (!skipValidate) {
 		for (const mapLayer of components.mapLayers) {
-			if (!(mapLayer.Map in MAP_ABBREVIATIONS)) {
+			if (!(mapLayer.Map in mapAbbreviations)) {
 				throw new Error(`map ${mapLayer.Map} doesn't have an abbreviation`)
+			}
+			if (!(mapLayer.Gamemode in gamemodeAbbreviations)) {
+				throw new Error(`gamemode ${mapLayer.Gamemode} doesn't have an abbreviation`)
 			}
 		}
 		for (const subfaction of components.units) {
 			if (subfaction === null) continue
-			if (!(subfaction in UNIT_ABBREVIATIONS)) {
+			if (!(subfaction in unitAbbreviations)) {
 				throw new Error(`subfaction ${subfaction} doesn't have an abbreviation`)
 			}
-			if (!(subfaction in UNIT_SHORT_NAMES)) {
+			if (!(subfaction in unitShortNames)) {
 				throw new Error(`subfaction ${subfaction} doesn't have a short name`)
 			}
 		}
@@ -1071,12 +1088,12 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 	const layerComponents: LayerComponents = {
 		...components,
 		layerFactionAvailability: expandLayerFactionAvailability(components.layerFactionAvailability),
-		collections: Object.keys(COLLECTION_ABBREVIATIONS),
-		collectionAbbreviations: COLLECTION_ABBREVIATIONS,
-		gamemodeAbbreviations: GAMEMODE_ABBREVIATIONS,
-		unitAbbreviations: UNIT_ABBREVIATIONS,
-		unitShortNames: UNIT_SHORT_NAMES,
-		mapAbbreviations: MAP_ABBREVIATIONS,
+		collections: Object.keys(collectionAbbreviations),
+		collectionAbbreviations,
+		gamemodeAbbreviations,
+		unitAbbreviations,
+		unitShortNames,
+		mapAbbreviations,
 		backwardsCompat: BACKWARDS_COMPAT,
 	}
 

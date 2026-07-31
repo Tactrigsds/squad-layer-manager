@@ -114,8 +114,10 @@ export type UnvalidatedLayer = Partial<KnownLayer> & {
 	id: string
 }
 
+// factions admit digits and underscores because mod faction ids do (SU_ADF, FAF10); '-' and ':' stay reserved as
+// the id's own separators
 const knownLayerIdRegex =
-	/^(?<mapPart>[A-Za-z]+)-(?<gamemodePart>[A-Za-z]+)(?:-(?<versionOrCollectionPart1>[A-Za-z0-9]+))?(?:-(?<versionOrCollectionPart2>[A-Za-z0-9]+))?:(?<faction1>[A-Za-z]+)(?:-(?<unit1Abbr>[A-Za-z]+))?:(?<faction2>[A-Za-z]+)(?:-(?<unit2Abbr>[A-Za-z]+))?$/
+	/^(?<mapPart>[A-Za-z]+)-(?<gamemodePart>[A-Za-z]+)(?:-(?<versionOrCollectionPart1>[A-Za-z0-9]+))?(?:-(?<versionOrCollectionPart2>[A-Za-z0-9]+))?:(?<faction1>[A-Za-z0-9_]+)(?:-(?<unit1Abbr>[A-Za-z]+))?:(?<faction2>[A-Za-z0-9_]+)(?:-(?<unit2Abbr>[A-Za-z]+))?$/
 
 // hand-rolled shape checks rather than zod schemas: these run once per layer in bulk paths
 // (preprocess, id packing) where zod parsing showed up hot
@@ -204,10 +206,62 @@ export function areLayerIdArgsValid(layer: LayerIdArgs, components = StaticLayer
 	return true
 }
 
+// Layer strings are canonical: they come from the source export and mod naming follows no convention worth parsing,
+// so resolution is a catalog lookup, not string (re)construction. The caches key on the components object, which is
+// replaced wholesale when layer data loads.
+const layerConfigByLayerCache = new WeakMap<LC.LayerComponents, Map<string, LayerConfig>>()
+const layerConfigsByDetailsCache = new WeakMap<LC.LayerComponents, Map<string, LayerConfig[]>>()
+
+export function getLayerConfig(layer: string, components = StaticLayerComponents): LayerConfig | undefined {
+	let index = layerConfigByLayerCache.get(components)
+	if (!index) {
+		index = new Map(components.mapLayers.map((config) => [config.Layer, config]))
+		layerConfigByLayerCache.set(components, index)
+	}
+	return index.get(layer)
+}
+
+export function layerConfigCollection(config: LayerConfig, components = StaticLayerComponents) {
+	return config.Collection ?? getDefaultCollection(components)
+}
+
+// several layers can share a details tuple (every training layer of a map has the same map/gamemode/version); the
+// factions disambiguate via the layer's availability
+export function findLayerConfigs(
+	details: Pick<KnownLayer, 'Map' | 'Gamemode' | 'LayerVersion' | 'Collection'> & Partial<Pick<KnownLayer, 'Faction_1' | 'Faction_2'>>,
+	components = StaticLayerComponents,
+): LayerConfig[] {
+	let index = layerConfigsByDetailsCache.get(components)
+	if (!index) {
+		index = new Map()
+		for (const config of components.mapLayers) {
+			const key = `${config.Map}|${config.Gamemode}|${config.LayerVersion}|${layerConfigCollection(config, components)}`
+			let list = index.get(key)
+			if (!list) index.set(key, (list = []))
+			list.push(config)
+		}
+		layerConfigsByDetailsCache.set(components, index)
+	}
+	const candidates = index.get(`${details.Map}|${details.Gamemode}|${details.LayerVersion}|${details.Collection}`) ?? []
+	if (candidates.length <= 1 || !details.Faction_1 || !details.Faction_2) return candidates
+	const byFactions = candidates.filter((config) => {
+		const avail = components.layerFactionAvailability[config.Layer]
+		return (
+			avail?.some((e) => e.Faction === details.Faction_1 && e.allowedTeams.includes(1)) &&
+			avail?.some((e) => e.Faction === details.Faction_2 && e.allowedTeams.includes(2))
+		)
+	})
+	return byFactions.length > 0 ? byFactions : candidates
+}
+
 export function getLayerString(
 	details: Pick<KnownLayer, 'Map' | 'Gamemode' | 'LayerVersion' | 'Faction_1' | 'Faction_2' | 'Collection'>,
 	components = StaticLayerComponents,
 ) {
+	const configs = findLayerConfigs(details, components)
+	if (configs.length > 0) return configs[0].Layer
+
+	// vanilla reconstruction, for layers that are not in the catalog (raw layers, outdated persisted ids)
 	if (details.Gamemode === 'Training') {
 		return `${details.Map}_${details.Faction_1}-${details.Faction_2}`
 	}
@@ -233,7 +287,7 @@ export function lookupDefaultUnit(layer: string, faction: string, components = S
 	})?.Unit
 }
 
-function getDefaultCollection(components = StaticLayerComponents) {
+export function getDefaultCollection(components = StaticLayerComponents) {
 	const defaultCollection = components.collections.find((c) => components.collectionAbbreviations[c] === null)
 	if (!defaultCollection) throw new Error('no default collection found')
 	return defaultCollection
@@ -339,19 +393,27 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 	const collection = Obj.revLookupCached(components.collectionAbbreviations, collectionPart)
 
 	const layerVersion = versionPart ? versionPart.toUpperCase() : null
-	let layerString: string | undefined
-	if (gamemode === 'Training') {
-		layerString = `${map}_${faction1}-${faction2}`
-		if (!components.layers.includes(layerString)) {
+	const mapLayer = findLayerConfigs(
+		{
+			Map: map!,
+			Gamemode: gamemode!,
+			LayerVersion: layerVersion,
+			Collection: (collection as string | undefined) ?? getDefaultCollection(components),
+			Faction_1: faction1,
+			Faction_2: faction2,
+		},
+		components,
+	).at(0)
+	let layerString: string | undefined = mapLayer?.Layer
+	if (layerString === undefined) {
+		if (gamemode === 'Training') {
 			return {
 				code: 'err:unknown-training-layer' as const,
 				msg: `Unknown Training layer: ${id}`,
 			}
 		}
-	} else {
 		layerString = `${map}_${gamemode}${layerVersion ? `_${layerVersion.toLowerCase()}` : ''}${collectionPart ? `_${collectionPart}` : ''}`
 	}
-	const mapLayer = components.mapLayers.find((l) => l.Layer === layerString)
 
 	const layer = {
 		id,
@@ -518,8 +580,11 @@ export function getLayerCommand(
 	}
 
 	let commandArgs: string
+	const bareTrainingLayer =
+		layer.Layer.startsWith('JensensRange') ||
+		(layer.Gamemode === 'Training' && !!layer.Collection && layer.Collection !== getDefaultCollection(components))
 	if (isRawLayer(layer)) commandArgs = layer.id.slice('RAW:'.length)
-	else if (layer.Layer.startsWith('JensensRange')) {
+	else if (bareTrainingLayer) {
 		commandArgs = layer.Layer
 	} else {
 		commandArgs = layer.Layer
@@ -544,11 +609,29 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 		.replace(/\s+/g, ' ')
 	const [layerString, faction1String, faction2String] = rawLayerText.split(' ')
 	if (!layerString?.trim()) return null
-	const parsedLayer = parseLayerStringSegment(layerString, components)
+	// the catalog knows every layer string of every source; parsing the string is only for layers it doesn't have
+	const config = getLayerConfig(layerString, components)
+	const parsedLayer: ParseLayerStringSegmentResult | null = config
+		? {
+				layerType: 'normal',
+				Map: config.Map,
+				Gamemode: config.Gamemode,
+				LayerVersion: config.LayerVersion,
+				Collection: layerConfigCollection(config, components),
+			}
+		: parseLayerStringSegment(layerString, components)
 	let faction1: ParsedFaction | null = null
 	let faction2: ParsedFaction | null = null
-	if (parsedLayer && parsedLayer.layerType === 'training') {
+	if (!config && parsedLayer && parsedLayer.layerType === 'training') {
 		;[faction1, faction2] = parsedLayer.extraFactions.map((f): ParsedFaction => ({ faction: f, unit: 'CombinedArms' }))
+	} else if (config && !faction1String && !faction2String && config.Gamemode === 'Training') {
+		// training commands carry no faction arguments; the config's default factions are the factions
+		;[faction1, faction2] = config.teams.map(
+			(team): ParsedFaction => ({
+				faction: team.defaultFaction,
+				unit: lookupDefaultUnit(layerString, team.defaultFaction, components) ?? 'CombinedArms',
+			}),
+		)
 	} else {
 		;[faction1, faction2] = parseLayerFactions(layerString, faction1String, faction2String, components)
 	}
@@ -612,7 +695,7 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 }
 
 export const LAYER_STRING_PROPERTIES = ['Map', 'Gamemode', 'LayerVersion', 'Collection'] as const satisfies (keyof KnownLayer)[]
-type ParseLayerStringSegmentResult<Collection extends string | null = string> = {
+export type ParseLayerStringSegmentResult<Collection extends string | null = string> = {
 	Map: string
 	Gamemode: string
 	LayerVersion: string | null
@@ -718,15 +801,6 @@ function parseLayerFactions(layer: string, faction1String: string, faction2Strin
 	return parsedFactions
 }
 
-export function getFraasVariant(layer: KnownLayer) {
-	if (layer.Gamemode !== 'RAAS') throw new Error('Expected RAAS gamemode')
-	layer = Obj.deepClone(layer)
-	layer.Layer = layer.Layer.replace('RAAS', 'FRAAS')
-	layer.id = layer.id.replace('RAAS', 'FRAAS')
-	layer.Gamemode = 'FRAAS'
-	return layer
-}
-
 export const DEFAULT_LAYER_ID = 'GD-RAAS-V1:USA-CA:RGF-CA'
 
 export type LayerFactionAvailabilityEntry = {
@@ -738,6 +812,10 @@ export type LayerFactionAvailabilityEntry = {
 		boats: boolean
 		noHeli: boolean
 	}
+	// the exact Units record backing this entry per team, resolved at preprocess. Absent in artifacts that predate
+	// it, and for entries preprocess could not resolve; resolveLayerDetails then falls back to reconstructing a
+	// vanilla-convention name.
+	unitObjectNames?: { 1?: string; 2?: string }
 }
 
 export type FactionUnitConfig = SLL.Unit
@@ -750,7 +828,7 @@ export type LayerDetails = {
 }
 
 export function resolveLayerDetails(layer: KnownLayer, factionUnitConfigs = StaticFactionunitConfigs, components = StaticLayerComponents) {
-	const layerConfig = components.mapLayers.find((l) => l.Layer === layer.Layer)!
+	const layerConfig = getLayerConfig(layer.Layer, components)!
 	const factionUnitTeam1 = resolveFactionUnit(layer.Faction_1, layer.Unit_1, 1)
 	const factionUnitTeam2 = resolveFactionUnit(layer.Faction_2, layer.Unit_2, 2)
 	if (!factionUnitTeam1 || !factionUnitTeam2) return null
@@ -765,6 +843,7 @@ export function resolveLayerDetails(layer: KnownLayer, factionUnitConfigs = Stat
 	function resolveFactionUnit(faction: string, unit: string, team: 1 | 2) {
 		const entry = components.layerFactionAvailability[layer.Layer].find((e) => e.Faction === faction && e.Unit === unit)
 		if (!entry) return null
+		if (entry.unitObjectNames?.[team]) return entry.unitObjectNames[team]
 		const teamConfig = layerConfig.teams[team - 1]
 		let size: string
 		switch (layer.Size) {
@@ -812,6 +891,8 @@ export type LayerConfig = {
 	Size: string
 	Gamemode: string
 	LayerVersion: string | null
+	// absent in artifacts written before mod sources existed; read it via layerConfigCollection
+	Collection?: string
 	hasCommander: boolean
 	persistentLightingType: string | null
 	teams: MapConfigTeam[]
