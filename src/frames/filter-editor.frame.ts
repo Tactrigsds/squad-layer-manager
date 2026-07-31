@@ -105,6 +105,7 @@ const setup: Frame['setup'] = (args) => {
 		errors: [],
 		setErrors: (errors) => set({ errors }),
 
+		editedFilterId: args.input.editedFilterId,
 		savedFilter: savedFilter,
 		tree: F.upsertFilterNodeTreeInPlace(savedFilter),
 		createHints: new Map(),
