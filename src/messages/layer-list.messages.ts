@@ -219,11 +219,13 @@ export const pasteRotationTitle = def('Paste Rotation')
 
 export const repeatsDetected = def('Repeats Detected')
 
-export const repeatsBlurb = def('The following queued layers have repeated elements that violate our configured rules:')
+export const repeatsBlurb = def(
+	'Edits made in this session left the following queued layers repeating elements that violate our configured rules:',
+)
 
 export const filterWarnings = def('Filter Warnings')
 
-export const filterWarningsBlurb = def('The following queued layers triggered filter warnings:')
+export const filterWarningsBlurb = def('The following queued layers were edited in this session and trigger filter warnings:')
 
 export const clearQueue = def('Clear Queue')
 
