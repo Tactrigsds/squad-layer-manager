@@ -413,7 +413,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			segments = {
 				layerType: 'normal',
 				Map: map.mapId,
-				Gamemode: map.gamemode,
+				Gamemode: manifest.gamemodeRenames[map.gamemode] ?? map.gamemode,
 				LayerVersion: versionMatch ? `V${versionMatch[1]}` : null,
 				Collection: manifest.collection.name,
 				...manifest.layerOverrides[map.levelName],

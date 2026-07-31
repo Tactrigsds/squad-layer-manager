@@ -38,6 +38,9 @@ export const SourceManifestSchema = z.object({
 	// required for every Map value the source produces that the core table doesn't cover
 	mapAbbreviations: z.record(z.string(), z.string()).default({}),
 	gamemodeAbbreviations: z.record(z.string(), z.string()).default({}),
+	// structured exports can spell a gamemode differently than layer names do ("TerritoryControl" vs "TC"); renames
+	// keep one vocabulary across sources
+	gamemodeRenames: z.record(z.string(), z.string()).default({}),
 	// unit types beyond CORE_UNIT_TYPES that appear in this source's unit names
 	extraUnitTypes: z.record(z.string(), z.object({ abbreviation: z.string(), shortName: z.string() })).default({}),
 	// unit object name -> unit type, for names no parse can rescue (supermod ships a unit named "Mechanizedd")
