@@ -19,18 +19,79 @@ import * as LL from './layer-list.models'
 import type * as LTag from './layer-tags.models'
 import * as MH from './match-history.models'
 
-export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Alliance', 'Size'])
+export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Faction', 'Unit', 'UnitMatchup', 'Alliance', 'Size'])
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
 	field: RepeatRuleFieldSchema,
 	label: z.string().min(1).max(100).describe('A label for the rule'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
+	crossTeam: z
+		.boolean()
+		.optional()
+		.describe(
+			"For a team-specific field, pool both teams' values together: a value one team played counts as a repeat for the other team too. " +
+				'Ignored for fields that are not team-specific.',
+		),
 })
 export type RepeatRule = z.infer<typeof RepeatRuleSchema>
 export function valueFilteredByTargetValues(rule: RepeatRule, value?: string): boolean {
 	if (!rule.targetValues || rule.targetValues.length === 0) return false
 	return !rule.targetValues.includes(value as string)
+}
+
+export type TeamSpecificRepeatRuleField = 'Faction' | 'Unit' | 'Alliance'
+export function isTeamSpecificRepeatRuleField(field: RepeatRuleField): field is TeamSpecificRepeatRuleField {
+	switch (field) {
+		case 'Faction':
+		case 'Unit':
+		case 'Alliance':
+			return true
+		// a matchup is already unordered, so it has no per-team reading for crossTeam to widen
+		case 'UnitMatchup':
+		case 'Map':
+		case 'Layer':
+		case 'Gamemode':
+		case 'Size':
+			return false
+		default:
+			assertNever(field)
+	}
+}
+
+// A matchup names both sides at once and does not care which side is which, so it is written with its two units in a
+// fixed order. That makes it parity-independent: neither the team1/team2 swap nor crossTeam can change what it matches.
+// This one string is the matchup's identity everywhere: the lookback's dedup key, the comparison against a candidate
+// layer, and the value a targetValues entry holds. The separator is deliberately not translated, because the value is
+// persisted in server settings and must not change meaning with the reader's language.
+export const UNIT_MATCHUP_SEPARATOR = ' vs '
+
+export function unitMatchupValue(a: string, b: string): string {
+	return a <= b ? `${a}${UNIT_MATCHUP_SEPARATOR}${b}` : `${b}${UNIT_MATCHUP_SEPARATOR}${a}`
+}
+
+// every matchup two units can form, mirrors included, in the order they should be offered
+export function unitMatchupOptions(units: readonly string[]): string[] {
+	const sorted = [...units].sort()
+	const options: string[] = []
+	for (let i = 0; i < sorted.length; i++) {
+		for (let j = i; j < sorted.length; j++) options.push(unitMatchupValue(sorted[i], sorted[j]))
+	}
+	return options
+}
+
+// the one place that knows which layer column a team-specific rule reads for a given normalized team
+export function teamNormalizedRepeatRuleProp(field: TeamSpecificRepeatRuleField, parity: number, team: MH.NormedTeamId) {
+	switch (field) {
+		case 'Faction':
+			return MH.getTeamNormalizedFactionProp(parity, team)
+		case 'Unit':
+			return MH.getTeamNormalizedUnitProp(parity, team)
+		case 'Alliance':
+			return MH.getTeamNormalizedAllianceProp(parity, team)
+		default:
+			assertNever(field)
+	}
 }
 
 export type Constraint =
@@ -277,7 +338,19 @@ export function getEditFilterPageBaseInput(filter: F.FilterNode): BaseQueryInput
 export type RepeatMatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
-	field: 'Map' | 'Gamemode' | 'Layer' | 'Size' | 'Faction_A' | 'Faction_B' | 'Alliance_A' | 'Alliance_B'
+	field:
+		| 'Map'
+		| 'Gamemode'
+		| 'Layer'
+		| 'Size'
+		| 'Faction_A'
+		| 'Faction_B'
+		| 'Unit_A'
+		| 'Unit_B'
+		| 'UnitMatchup_A'
+		| 'UnitMatchup_B'
+		| 'Alliance_A'
+		| 'Alliance_B'
 	itemId?: ItemId
 	layerId: string
 	repeatOffset: number
@@ -318,6 +391,13 @@ export function resolveLayerPropertyForRepeatDescriptorField(descriptor: RepeatM
 			return MH.getTeamNormalizedFactionProp(teamParity, 'A')
 		case 'Faction_B':
 			return MH.getTeamNormalizedFactionProp(teamParity, 'B')
+		// a matchup implicates both unit slots, so it reports one descriptor per side and highlights both
+		case 'Unit_A':
+		case 'UnitMatchup_A':
+			return MH.getTeamNormalizedUnitProp(teamParity, 'A')
+		case 'Unit_B':
+		case 'UnitMatchup_B':
+			return MH.getTeamNormalizedUnitProp(teamParity, 'B')
 		case 'Alliance_A':
 			return MH.getTeamNormalizedAllianceProp(teamParity, 'A')
 		case 'Alliance_B':
