@@ -408,8 +408,8 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			}
 		} else {
 			// the export's structured fields are the authority; the only thing still read out of the name is the
-			// version, which has no field of its own
-			const versionMatch = map.levelName.match(/_[vV](\d+)(?:_|$)/)
+			// version, which has no field of its own ("V1-R" style weather variants keep their version)
+			const versionMatch = map.levelName.match(/_[vV](\d+)(?:[_-]|$)/)
 			segments = {
 				layerType: 'normal',
 				Map: map.mapId,
@@ -509,7 +509,7 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 				}
 				const parsedDefaultUnit = SLL.parseUnitName(faction.defaultUnit, source.vocab, manifest.unitTypeOverrides)
 				const defaultType = parsedDefaultUnit.unit ?? idDetails.type
-				const units = new Set(faction.types)
+				const units = new Set(faction.types.filter((type) => type !== 'None'))
 				if (idDetails.type) units.add(idDetails.type)
 				if (units.size === 0) {
 					log.warn(`${manifest.name}: ${map.levelName}: no unit types resolve for faction ${faction.factionId}`)
@@ -558,6 +558,42 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 			manifest.name,
 			unresolvedUnitNames,
 		)
+	}
+
+	// Mods ship layers the id tuple cannot tell apart: weather variants, dev copies, gamemode fields that lie.
+	// Manifest overrides resolve the ones worth naming; the rest get a version derived from a hash of the level
+	// name, which is stable across data updates so a persisted id keeps meaning the same layer. Training layers
+	// are exempt: their factions already tell them apart.
+	if (manifest.layerNames === 'structured') {
+		const tupleKey = (layer: L.LayerConfig) => `${layer.Map}|${layer.Gamemode}|${layer.LayerVersion}`
+		const byTuple = new Map<string, L.LayerConfig[]>()
+		for (const layer of mapLayers) {
+			if (layer.Gamemode === 'Training') continue
+			const key = tupleKey(layer)
+			let group = byTuple.get(key)
+			if (!group) byTuple.set(key, (group = []))
+			group.push(layer)
+		}
+		const taken = new Set(byTuple.keys())
+		for (const group of Array.from(byTuple.values())) {
+			if (group.length < 2) continue
+			group.sort((a, b) => a.Layer.localeCompare(b.Layer))
+			for (const layer of group.slice(1)) {
+				let hash = 2166136261
+				for (const char of layer.Layer) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+				let version = 1000 + ((hash >>> 0) % 9000)
+				while (taken.has(`${layer.Map}|${layer.Gamemode}|V${version}`)) version++
+				layer.LayerVersion = `V${version}`
+				taken.add(tupleKey(layer))
+				log.warn(
+					'%s: %s shares Map/Gamemode/Version with %s; its id uses the synthetic version V%s (name it with a layerOverrides entry instead if it matters)',
+					manifest.name,
+					layer.Layer,
+					group[0].Layer,
+					version,
+				)
+			}
+		}
 	}
 
 	if (manifest.fraasVariants) {
