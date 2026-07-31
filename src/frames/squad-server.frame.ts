@@ -39,6 +39,13 @@ export type State = ChatPrt.Store &
 		// keeps using the stale ones meanwhile, which is what stops the indicators flickering on every edit.
 		layerItemStatusesFor: LQY.LayerItemsState | null
 
+		// the same statuses for the last saved queue. The save flow subtracts these from the draft's warnings to find the
+		// ones the current edit session is answerable for. Only changes on save or reset, so it costs one query per edit
+		// session rather than one per edit.
+		savedLayerItemsState: LQY.LayerItemsState
+		savedLayerItemStatuses: LQY.LayerItemStatuses | null
+		savedLayerItemStatusesFor: LQY.LayerItemsState | null
+
 		// the teams-panel player selection every bulk admin action reads from
 		playerSelection: Record<SM.PlayerId, boolean>
 		// player ids currently on screen (after search/filters) in the teams-panel tables, keyed per table so each
@@ -83,6 +90,9 @@ export const frame = frameManager.createFrame<Types>({
 			layerItemsState: LQY.initLayerItemsState(),
 			layerItemStatuses: null,
 			layerItemStatusesFor: null,
+			savedLayerItemsState: LQY.initLayerItemsState(),
+			savedLayerItemStatuses: null,
+			savedLayerItemStatusesFor: null,
 			playerSelection: {},
 			visiblePlayersByTable: {},
 			settledSelectedPlayerIds: new Set<SM.PlayerId>(),
@@ -106,20 +116,25 @@ export const frame = frameManager.createFrame<Types>({
 
 		Rx.combineLatest([
 			args.update$.pipe(
-				Rx.concatMap(([state, prev]): LL.List[] => (state.queue.layerList === prev.queue.layerList ? [] : [state.queue.layerList])),
+				Rx.concatMap(([state, prev]): [LL.List, LL.List][] => {
+					const savedList = state.queue.rbSession.localState.savedList
+					if (state.queue.layerList === prev.queue.layerList && savedList === prev.queue.rbSession.localState.savedList) return []
+					return [[state.queue.layerList, savedList]]
+				}),
 			),
 			MatchHistoryClient.recentMatches$(args.input.serverId),
-		]).subscribe(([layerList, recentMatches]) => {
+		]).subscribe(([[layerList, savedList], recentMatches]) => {
 			args.set({
 				layerItemsState: LQY.resolveLayerItemsState(layerList, recentMatches),
+				savedLayerItemsState: LQY.resolveLayerItemsState(savedList, recentMatches),
 			})
 		})
 
 		const state$ = Zus.toObservable(args.key, true)
-		args.cleanup.push(
+		const statusesFor = (selectList: (state: State) => LQY.LayerItemsState) =>
 			Rx.combineLatest([
 				state$.pipe(
-					Rx.map(([state]) => state.layerItemsState),
+					Rx.map(([state]) => selectList(state)),
 					Rx.distinctUntilChanged(),
 				),
 				state$.pipe(
@@ -131,25 +146,31 @@ export const frame = frameManager.createFrame<Types>({
 					Rx.map(([state]) => state.backgroundStateEpoch),
 					Rx.distinctUntilChanged(),
 				),
-			])
-				.pipe(
-					Rx.debounceTime(250),
-					Rx.switchMap(([list, settings]) =>
-						Rx.from(
-							LayerQueriesClient.fetchLayerItemStatuses({
-								constraints: SETTINGS.getSettingsConstraints(settings),
-								skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
-								list,
-							}),
-						).pipe(
-							Rx.map((layerItemStatuses) => [layerItemStatuses, list] as const),
-							Rx.catchError(() => Rx.EMPTY),
-						),
+			]).pipe(
+				Rx.debounceTime(250),
+				Rx.switchMap(([list, settings]) =>
+					Rx.from(
+						LayerQueriesClient.fetchLayerItemStatuses({
+							constraints: SETTINGS.getSettingsConstraints(settings),
+							skipWarningsForTags: settings.queue.mainPool.skipWarningsForTags,
+							list,
+						}),
+					).pipe(
+						Rx.map((statuses) => [statuses, list] as const),
+						Rx.catchError(() => Rx.EMPTY),
 					),
-				)
-				.subscribe(([layerItemStatuses, list]) => {
-					if (layerItemStatuses) args.set({ layerItemStatuses, layerItemStatusesFor: list })
-				}),
+				),
+			)
+
+		args.cleanup.push(
+			statusesFor((state) => state.layerItemsState).subscribe(([layerItemStatuses, list]) => {
+				if (layerItemStatuses) args.set({ layerItemStatuses, layerItemStatusesFor: list })
+			}),
+		)
+		args.cleanup.push(
+			statusesFor((state) => state.savedLayerItemsState).subscribe(([savedLayerItemStatuses, list]) => {
+				if (savedLayerItemStatuses) args.set({ savedLayerItemStatuses, savedLayerItemStatusesFor: list })
+			}),
 		)
 	},
 })
@@ -203,16 +224,28 @@ export namespace Sel {
 		return allTargetsAreAdmins(selectedPlayerIds(s))(s)
 	}
 
-	// The warnings the queue would raise if it were saved as it stands: repeat-rule violations and pool-filter warnings
-	// on items the user themselves put there. Null means "nothing to warn about", which is also what an unloaded status
-	// set reports, so callers that must not skip a warning wait for current statuses first (see awaitCurrentStatuses).
+	// The warnings this edit session is answerable for: repeat-rule violations and pool-filter warnings on items it
+	// touched, plus repeat violations its deletions and moves created between items it did not (see
+	// LQY.filterEditInducedWarnings). Warnings the saved queue already carried on layers nobody touched are the
+	// responsibility of whoever saved them, so they are left out.
+	//
+	// Null means "nothing to warn about", which is also what an unloaded status set reports, so callers that must not
+	// skip a warning wait for current statuses first (see awaitCurrentStatuses).
 	export const queueWarnings = RSel.memoizeFactory((userDiscordId: bigint | undefined) =>
 		RSel.createDeepSelector(
-			[(s: State) => s.layerItemStatuses?.warns, (s: State) => s.queue.isModified, (s: State) => s.queue.rbSession],
-			(warns, isModified, rbSession): LQY.QueueWarning[] | null => {
+			[
+				(s: State) => s.layerItemStatuses?.warns,
+				(s: State) => s.savedLayerItemStatuses?.warns,
+				(s: State) => s.queue.layerList,
+				(s: State) => s.queue.mutations,
+				(s: State) => s.queue.isModified,
+				(s: State) => s.queue.rbSession,
+			],
+			(warns, savedWarns, list, mutations, isModified, rbSession): LQY.QueueWarning[] | null => {
 				if (!warns || warns.length === 0 || !userDiscordId) return null
 				if (!isModified || !SLL.hasUserMutations(ODSM.Client.localOps(rbSession), rbSession.localState, userDiscordId)) return null
-				return warns
+				const induced = LQY.filterEditInducedWarnings(warns, savedWarns ?? null, list, mutations)
+				return induced.length > 0 ? induced : null
 			},
 		),
 	)
@@ -419,8 +452,9 @@ export namespace Actions {
 
 // ---------------------------- layer item statuses ----------------------------
 
+// the saved queue's statuses are the baseline the save flow subtracts, so a save must not read them half-loaded either
 export function statusesAreCurrent(state: State) {
-	return state.layerItemStatusesFor === state.layerItemsState
+	return state.layerItemStatusesFor === state.layerItemsState && state.savedLayerItemStatusesFor === state.savedLayerItemsState
 }
 
 // Statuses lag the queue by a debounce plus a query, so reading them straight after an edit gates the save on warnings
