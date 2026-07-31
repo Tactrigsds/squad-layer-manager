@@ -32,7 +32,6 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 				<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.noReferences())}</p>
 			) : (
 				<>
-					<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.referencesBlurb())}</p>
 					{fromFilters.length > 0 && (
 						<div className="flex items-center gap-2 flex-wrap">
 							<Label className={Typo.Label}>{tr.text(F_Msgs.referencingFiltersLabel())}</Label>
