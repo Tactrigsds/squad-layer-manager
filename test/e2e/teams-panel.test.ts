@@ -33,7 +33,8 @@ function seedRoster(app: AppFixture) {
 // the name cell, rather than getByText, which also hits the button inside it. Exact, because the squad
 // separator row's cell carries the creator's name as part of a longer label.
 const playerRow = (table: Locator, name: string) => table.getByRole('cell', { name, exact: true })
-const teamTable = (page: Page, team: 'A' | 'B') => page.getByRole('table', { name: `Team ${team} players` })
+// the label qualifies the team with the match's faction ("Team A(current PLA) players"), so it is matched by prefix
+const teamTable = (page: Page, team: 'A' | 'B') => page.getByRole('table', { name: new RegExp(`^Team ${team}[( ]`) })
 // the name cell stops click propagation on purpose, so selecting a player means its checkbox
 const playerCheckbox = (page: Page, table: Locator, name: string) =>
 	table
