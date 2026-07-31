@@ -90,6 +90,12 @@ other permanently dead.
 An agent that is rejected says so in its own log, with what it supplied and what to add. It keeps retrying, so
 fixing the settings on either end is enough to bring it up. Nothing streams in the meantime.
 
+## Versions
+
+Agent 0.3.0 is where the agent started declaring its data sources, so it needs an SLM new enough to read that.
+Upgrade SLM first, then the agents. An older SLM rejects a 0.3.0 agent as having a bad token, whatever the token
+is, and the agent says so when it reports the rejection.
+
 ## Checking that it works
 
 The [server console](server_console.md) shows the log lines and the RCON traffic as SLM receives them. If the agent
