@@ -19,7 +19,7 @@ export const CHAT_GROUP_CHANNELS = {
 
 // A string that runs a command. A bare string passes whatever follows it straight through as the command's arguments
 // (`/timeout Alice 2h spam`). An object pins some of them with a template over the words typed after it, which is what
-// used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }`. See docs/configuring.md.
+// used to be a separate "command alias": `{ string: '/to2h', args: '{{arg1}} 2h {{rest2}}' }`. See docs/command_triggers.md.
 export type CommandTrigger = string | { string: string; args: string }
 
 // The indices count the words the CALLER TYPES after the trigger, not the words of the command that ends up running:
