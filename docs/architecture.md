@@ -418,8 +418,8 @@ has any reference, or to store an apply-filter loop (which has no fixed point on
 The `Layer` string itself (the name the game server speaks, e.g. `Gorodok_RAAS_v1` or supermod's
 `SU_Sanxian_Invasion_v2`) is canonical and comes from the source export: id resolution is a catalog lookup over
 `mapLayers`, never string reconstruction, because mod naming follows no parseable convention. Each layer belongs to
-a source (`data/sources/`, see docs/layer_data.md) whose collection becomes the id's Collection segment; queries
-exclude non-default collections unless a constraint names the Collection column.
+a source (`data/sources/`, see docs/layer_data.md) whose collection becomes the id's Collection segment; the
+Collection column is how filters and pools single a source out.
 
 Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
 later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are

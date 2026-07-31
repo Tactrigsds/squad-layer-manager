@@ -32,11 +32,26 @@ const SEEDED_FILTERS: SeededFilter[] = [
 		name: 'Main Pool',
 		description:
 			'The layers this server plays by default: the competitive pool, minus similar-faction matchups and heavy armor on hilly maps.',
-		filter: FB.and([FB.isTrue('Z_Pool'), FB.excludedFrom('similar-factions'), FB.includedIn('no-mech-on-hilly')]),
+		filter: FB.and([
+			FB.includedIn('vanilla-collections'),
+			FB.isTrue('Z_Pool'),
+			FB.excludedFrom('similar-factions'),
+			FB.includedIn('no-mech-on-hilly'),
+		]),
 		emoji: '✅',
 		alertMessage: 'In the main pool',
 		invertedEmoji: '⛔',
 		invertedAlertMessage: 'Not in the main pool',
+	},
+	{
+		id: 'vanilla-collections',
+		name: 'Vanilla Collections',
+		description: 'Layers an unmodded server can run: the OWI and Community collections.',
+		filter: FB.inValues('Collection', ['OWI', 'Community']),
+		emoji: '🍦',
+		alertMessage: 'Runs on vanilla Squad',
+		invertedEmoji: '🧩',
+		invertedAlertMessage: 'Needs a mod installed on the server',
 	},
 	{
 		id: 'seeding',
