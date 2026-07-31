@@ -98,7 +98,8 @@ export function collectUnitTypeVocabulary(rawRoot: unknown, manifest: SourceMani
 	for (const map of maps) {
 		for (const faction of map.factions ?? []) {
 			for (const type of faction.types ?? []) {
-				if (typeof type === 'string' && type) vocab.add(type)
+				// "None" is how some exports spell an empty slot
+				if (typeof type === 'string' && type && type !== 'None') vocab.add(type)
 			}
 		}
 	}
