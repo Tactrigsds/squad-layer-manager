@@ -1,11 +1,12 @@
 import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
+import type React from 'react'
 
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
-import type * as FR from '@/models/filter-references.models'
+import * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
@@ -20,7 +21,11 @@ import { Label } from './ui/label'
 export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 	const references = FilterEntityClient.useFilterReferences().get(props.filterId) ?? []
 	const fromFilters = references.filter((ref) => ref.type === 'filter-entity')
-	const fromPools = references.filter((ref) => ref.type === 'pool-config')
+	// being a server's pool filter decides what that server can queue at all, so it gets its own line
+	const poolFilterFor = FR.poolFilterServerIds(references)
+	const fromPools = references.filter(
+		(ref): ref is Extract<FR.Reference, { type: 'pool-config' }> => ref.type === 'pool-config' && !FR.isPoolFilterReference(ref),
+	)
 
 	return (
 		<section aria-label={tr.text(F_Msgs.referencesHeading())} className="flex flex-col gap-2">
@@ -32,6 +37,14 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 				<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.noReferences())}</p>
 			) : (
 				<>
+					{poolFilterFor.length > 0 && (
+						<div className="flex items-center gap-2 flex-wrap">
+							<Label className={Typo.Label}>{tr.text(F_Msgs.poolFilterForLabel())}</Label>
+							{poolFilterFor.map((serverId) => (
+								<ServerBadge key={serverId} serverId={serverId} variant="info" />
+							))}
+						</div>
+					)}
 					{fromFilters.length > 0 && (
 						<div className="flex items-center gap-2 flex-wrap">
 							<Label className={Typo.Label}>{tr.text(F_Msgs.referencingFiltersLabel())}</Label>
@@ -63,31 +76,43 @@ function FilterReferenceBadge(props: { filterId: F.FilterEntityId }) {
 	)
 }
 
-function PoolReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'pool-config' }> }) {
+function ServerBadge(props: { serverId: string; variant: 'secondary' | 'info'; children?: React.ReactNode }) {
 	const serverName = Zus.useStore(
 		SettingsClient.PublicSettingsStore,
-		(settings) => settings?.servers.find((entry) => entry.id === props.reference.serverId)?.displayName,
+		(settings) => settings?.servers.find((entry) => entry.id === props.serverId)?.displayName,
 	)
-	const via = props.reference.via
 	return (
-		<Link to="/servers/$serverId" params={{ serverId: props.reference.serverId }}>
-			<Badge variant="secondary" className="gap-1">
-				<span>{serverName ?? props.reference.serverId}</span>
-				<Icons.Dot className="h-3 w-3" />
-				<span>{tr.text(F_Msgs.poolConfigKeyNames[props.reference.key])}</span>
-				{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
+		<Link to="/servers/$serverId" params={{ serverId: props.serverId }}>
+			<Badge variant={props.variant} className="gap-1">
+				<span>{serverName ?? props.serverId}</span>
+				{props.children}
 			</Badge>
 		</Link>
 	)
 }
 
-// the count as it appears on a filter's card in the index, silent when nothing references the filter
+function PoolReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'pool-config' }> }) {
+	const via = props.reference.via
+	return (
+		<ServerBadge serverId={props.reference.serverId} variant="secondary">
+			<Icons.Dot className="h-3 w-3" />
+			<span>{tr.text(F_Msgs.poolConfigKeyNames[props.reference.key])}</span>
+			{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
+		</ServerBadge>
+	)
+}
+
+// the count as it appears on a filter's card in the index, silent when nothing references the filter. A pool
+// filter takes the info variant, which is what makes it sorting to the top of the index legible.
 export function FilterReferenceCount(props: { filterId: F.FilterEntityId; className?: string }) {
 	const references = FilterEntityClient.useFilterReferences().get(props.filterId) ?? []
 	if (references.length === 0) return null
 	const inPool = references.some((ref) => ref.type === 'pool-config')
 	return (
-		<Badge variant="secondary" className={cn('flex items-center gap-1.5', props.className)}>
+		<Badge
+			variant={references.some(FR.isPoolFilterReference) ? 'info' : 'secondary'}
+			className={cn('flex items-center gap-1.5', props.className)}
+		>
 			{inPool ? <Icons.Layers className="h-3 w-3" /> : <Icons.Link className="h-3 w-3" />}
 			<span>{tr.text(F_Msgs.referenceCount(references.length))}</span>
 		</Badge>

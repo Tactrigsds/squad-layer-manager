@@ -288,6 +288,8 @@ export const referencesHeading = def('References')
 
 export const noReferences = def('Nothing references this filter.')
 
+export const poolFilterForLabel = def('Pool filter for:')
+
 export const referencingFiltersLabel = def('Filters:')
 
 export const referencingPoolsLabel = def('Layer pools:')

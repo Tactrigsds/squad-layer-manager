@@ -8,6 +8,7 @@ import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } 
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as RBAC from '@/rbac.models'
@@ -91,7 +92,11 @@ export default function FiltersIndex() {
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('filters:create'))
 
 	const filterEntities = FilterEntityClient.useFilterEntities()
+	const references = FilterEntityClient.useFilterReferences()
+	const isPoolFilter = (filter: F.FilterEntity) => (references.get(filter.id) ?? []).some(FR.isPoolFilterReference)
 	const filters = Array.from(filterEntities.values()).sort((a, b) => {
+		// a pool filter decides what its server can queue, so it leads regardless of the rest of the ordering
+		if (isPoolFilter(a) !== isPoolFilter(b)) return isPoolFilter(a) ? -1 : 1
 		if (a.emoji && !b.emoji) return -1
 		if (!a.emoji && b.emoji) return 1
 		return a.name.localeCompare(b.name)
