@@ -130,6 +130,40 @@ test.describe('filter references', () => {
 		}
 	})
 
+	test('navigating between filters via reference badges leaves the editor pristine', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.harjuRaas),
+			filters: [
+				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
+			],
+		})
+		try {
+			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+
+			const references = page.getByRole('region', { name: 'References' })
+			await references.getByRole('link').filter({ hasText: 'RAAS on Harju' }).click({ timeout: 20_000 })
+			await page.waitForURL('**/filters/raas-harju*')
+			await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled({ timeout: 20_000 })
+
+			// returning serves the first filter from the router's cache, the other way this route re-enters
+			// without a remount. The editor must come back pristine: same tree, save gated, nothing to warn about
+			await page.goBack()
+			await page.waitForURL('**/filters/raas-only*')
+			// a leaked tree from raas-harju would close a reference loop here, so the cycle alert doubles as the
+			// poison detector. It arrives asynchronously (debounced editor sync + validation), so settle first
+			await page.waitForTimeout(1_000)
+			await expect(page.getByRole('alert').filter({ hasText: 'raas-only ->' })).toHaveCount(0)
+			await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+			// a leftover dirty flag would put a confirm dialog in the way of this navigation and time it out
+			await page.getByRole('link', { name: 'Filters', exact: true }).click()
+			await page.waitForURL('**/filters')
+		} finally {
+			await app.dispose()
+		}
+	})
+
 	test('refuses to save an edit that would make two filters reference each other', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),
