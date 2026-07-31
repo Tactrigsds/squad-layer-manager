@@ -21,9 +21,11 @@ type Props = {
 	defaultOpen?: boolean
 	/** Leave off for a bar that is only ever opened by the caller. */
 	hotkey?: boolean
+	/** Leave off to collapse to nothing rather than to a button, for a bar reachable by ctrl+F alone. */
+	trigger?: boolean
 }
 
-export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey = true }: Props) {
+export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey = true, trigger = true }: Props) {
 	const [open, counter, caseSensitive, wholeWord, supported] = Zus.useStore(
 		stores.subtreeFind,
 		(s) => [s.open, FindFrame.Sel.counter(s), s.caseSensitive, s.wholeWord, s.supported] as const,
@@ -43,14 +45,27 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 	React.useEffect(() => {
 		if (!hotkey) return
 		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key !== 'f' || e.altKey || !(e.ctrlKey || e.metaKey)) return
-			const root = Zus.getState(stores.subtreeFind).engine.root
+			const isFind = e.key === 'f' && !e.altKey && (e.ctrlKey || e.metaKey)
+			if (!isFind && e.key !== 'Escape') return
+			const state = Zus.getState(stores.subtreeFind)
+			const root = state.engine.root
 			const active = document.activeElement
-			const at = (active && (root?.contains(active) || barRef.current?.contains(active))) || root?.matches(':hover')
-			if (!at) return
+			const focused = !!active && (!!root?.contains(active) || !!barRef.current?.contains(active))
+			if (isFind) {
+				if (!focused && !root?.matches(':hover')) return
+				e.preventDefault()
+				FindFrame.Actions.open(stores)
+				inputRef.current?.select()
+				return
+			}
+			// escape dismisses the search the reader is looking at, from anywhere inside it -- clicking a result
+			// blurs the input, and until it is dismissed every match stays painted. Hover does not count here: a
+			// pointer resting over the region is not a reason to swallow the key from whatever owns focus. Stopped
+			// rather than only prevented, so a dialog holding this bar does not close itself out from under it.
+			if (!focused || !state.open) return
 			e.preventDefault()
-			FindFrame.Actions.open(stores)
-			inputRef.current?.select()
+			e.stopPropagation()
+			FindFrame.Actions.close(stores)
 		}
 		document.addEventListener('keydown', onKeyDown, true)
 		return () => document.removeEventListener('keydown', onKeyDown, true)
@@ -60,7 +75,26 @@ export function SubtreeFindBar({ stores, className, defaultOpen = false, hotkey 
 		if (open) inputRef.current?.focus()
 	}, [open])
 
-	if (!open) return null
+	// collapsed, the bar is the button that opens it, in the same slot the caller positioned. Anything relying on
+	// ctrl+F alone stays undiscoverable, and the searched region is usually not somewhere a reader thinks to press it.
+	if (!open) {
+		if (!trigger) return null
+		return (
+			<Button
+				type="button"
+				size="icon"
+				variant="secondary"
+				style={{ zIndex }}
+				aria-label={tr.text(SF_Msgs.label())}
+				title={tr.text(SF_Msgs.label())}
+				{...{ [Find.IGNORE_ATTR]: '' }}
+				className={cn('h-7 w-7 shadow-md', className)}
+				onClick={() => FindFrame.Actions.open(stores)}
+			>
+				<Icons.Search className="h-4 w-4" />
+			</Button>
+		)
+	}
 
 	const onKeyDown = (e: React.KeyboardEvent) => {
 		switch (e.key) {
