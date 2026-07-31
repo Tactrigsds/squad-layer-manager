@@ -88,6 +88,7 @@ the abbreviations reads any file quickly. The lib vocabulary:
 | `Zus`                            | `zustand`                                                     | zustand itself, plus our store helpers             |
 | `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
 | `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
+| `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
 
 Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
 convention.
