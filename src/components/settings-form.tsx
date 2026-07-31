@@ -1432,7 +1432,7 @@ function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProps) {
 	const copiedTimeout = React.useRef<ReturnType<typeof setTimeout>>(null)
 	const push = useDebounced<any>({ delay: DEBOUNCE_MS, onChange })
 	const repoUrl = Zus.useStore(ConfigClient.Store, (s) => s?.repoUrl)
-	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/configuring.md#server-agent` : undefined
+	const docUrl = repoUrl ? `${repoUrl}/blob/HEAD/docs/server_agent.md` : undefined
 	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
 	useReset(reset$, () => {
 		const formatted = format(value$.getValue())
