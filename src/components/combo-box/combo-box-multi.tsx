@@ -11,6 +11,7 @@ import { tr } from '@/systems/messages.client'
 
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
+import { useComboBoxDismissal } from './dismissal.ts'
 import { normalizeOptions } from './options.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
@@ -170,8 +171,11 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	const showChips = chipDisplay && displayValues.length > 0
 	const trigger = (
 		<PopoverTrigger asChild>
-			{props.children ?? (
+			{React.isValidElement(props.children) ? (
+				React.cloneElement(props.children as React.ReactElement<Record<string, unknown>>, { 'data-combobox-trigger': '' })
+			) : (
 				<Button
+					data-combobox-trigger=""
 					variant="outline"
 					disabled={disabled}
 					role="combobox"
@@ -220,6 +224,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			)}
 		</PopoverTrigger>
 	)
+
+	useComboBoxDismissal(open, () => setOpen(false))
 
 	// we don't fully unbound the size here, just relax the limit
 	return (

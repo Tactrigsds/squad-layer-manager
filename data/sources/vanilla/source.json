@@ -1,0 +1,6 @@
+{
+	"name": "vanilla",
+	"collection": { "name": "OWI", "abbreviation": null },
+	"layerNames": "parsed",
+	"fraasVariants": true
+}
