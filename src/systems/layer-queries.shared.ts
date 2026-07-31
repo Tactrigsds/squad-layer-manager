@@ -41,7 +41,7 @@ export type QueryLayersResponsePart =
 
 // the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
 // streamed query need the log and the generation config on top
-type QueryCtx = LE.Ctx & F.Ctx
+export type QueryCtx = LE.Ctx & F.Ctx
 
 function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
 	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
@@ -225,11 +225,12 @@ function repeatRuleIr(ctx: LE.Ctx, list: LQY.LayerItemsState, cursorIndex: numbe
 				rule.field === 'Faction'
 					? [MH.getTeamNormalizedFactionProp(targetParity, 'A'), MH.getTeamNormalizedFactionProp(targetParity, 'B')]
 					: [MH.getTeamNormalizedAllianceProp(targetParity, 'A'), MH.getTeamNormalizedAllianceProp(targetParity, 'B')]
+			const pooled = rule.crossTeam ? [...new Set([...valuesA, ...valuesB])] : null
 			return {
 				op: 'or',
 				children: [
-					{ op: 'in_vals', col: col(colA), vals: [...valuesA] },
-					{ op: 'in_vals', col: col(colB), vals: [...valuesB] },
+					{ op: 'in_vals', col: col(colA), vals: pooled ?? [...valuesA] },
+					{ op: 'in_vals', col: col(colB), vals: pooled ?? [...valuesB] },
 				],
 			}
 		}
@@ -708,7 +709,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 				if (!active) continue
 				switch (constraint.type) {
 					case 'do-not-repeat': {
-						const descriptors = getisMatchedByRepeatRuleDirect(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
+						const descriptors = getRepeatRuleMatchDescriptors(list, i, constraint.id, constraint.rule, item.layerId, item.itemId)
 						if (descriptors) itemDescriptors.push(...descriptors)
 						break
 					}
@@ -840,7 +841,7 @@ function postProcessLayers(
 		for (let i = 0; i < constraints.length; i++) {
 			const constraint = constraints[i]
 			if (constraint.type !== 'do-not-repeat' || !cursorIndex) continue
-			const descriptors = getisMatchedByRepeatRuleDirect(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
+			const descriptors = getRepeatRuleMatchDescriptors(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
 			if (descriptors) {
 				constraintResults[i] = true
 				matchDescriptors.push(...descriptors)
@@ -851,7 +852,7 @@ function postProcessLayers(
 	})
 }
 
-function getisMatchedByRepeatRuleDirect(
+export function getRepeatRuleMatchDescriptors(
 	list: LQY.LayerItemsState,
 	cursorIndex: number,
 	constraintId: string,
@@ -863,7 +864,7 @@ function getisMatchedByRepeatRuleDirect(
 	const previousLayers = list.layerItems
 	const targetLayerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, cursorIndex)
 
-	const descriptors: LQY.MatchDescriptor[] = []
+	const descriptors: LQY.RepeatMatchDescriptor[] = []
 	for (let i = cursorIndex - 1; i >= Math.max(cursorIndex - rule.within, 0); i--) {
 		if (LQY.isLookbackTerminatingLayerItem(previousLayers[i])) break
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
@@ -892,30 +893,21 @@ function getisMatchedByRepeatRuleDirect(
 					descriptors.push(getViolationDescriptor(rule.field))
 				}
 				break
-			case 'Faction': {
-				const checkFaction = (team: MH.NormedTeamId) => {
-					const targetFaction = targetLayer[MH.getTeamNormalizedFactionProp(targetLayerTeamParity, team)]!
-					const previousFaction = layer[MH.getTeamNormalizedFactionProp(layerTeamParity, team)]
-					if (targetFaction && previousFaction === targetFaction && !LQY.valueFilteredByTargetValues(rule, previousFaction)) {
-						descriptors.push(getViolationDescriptor(`Faction_${team}`))
-					}
-				}
-				checkFaction('A')
-				checkFaction('B')
-				break
-			}
+			case 'Faction':
 			case 'Alliance': {
-				const checkAlliance = (team: MH.NormedTeamId) => {
-					const targetAlliance = targetLayer[MH.getTeamNormalizedAllianceProp(targetLayerTeamParity, team)]
-					const previousAlliance = layer[MH.getTeamNormalizedAllianceProp(layerTeamParity, team)]
-
-					if (targetAlliance && targetAlliance === previousAlliance && !LQY.valueFilteredByTargetValues(rule, previousAlliance)) {
-						descriptors.push(getViolationDescriptor(`Alliance_${team}`))
+				const prop = rule.field === 'Faction' ? MH.getTeamNormalizedFactionProp : MH.getTeamNormalizedAllianceProp
+				for (const team of ['A', 'B'] as const) {
+					const targetValue = targetLayer[prop(targetLayerTeamParity, team)]
+					if (!targetValue) continue
+					// under crossTeam a target team can match either previous team, but it still yields a single descriptor
+					const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? ['A', 'B'] : [team]
+					for (const previousTeam of previousTeams) {
+						const previousValue = layer[prop(layerTeamParity, previousTeam)]
+						if (previousValue !== targetValue || LQY.valueFilteredByTargetValues(rule, previousValue)) continue
+						descriptors.push(getViolationDescriptor(`${rule.field}_${team}`))
+						break
 					}
 				}
-
-				checkAlliance('A')
-				checkAlliance('B')
 				break
 			}
 			default:

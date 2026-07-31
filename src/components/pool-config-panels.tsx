@@ -433,6 +433,7 @@ function RepeatRuleRow(props: {
 	const setField = (field: LQY.RepeatRuleField) => {
 		api.set([...rulePath, 'field'], field)
 		api.set([...rulePath, 'label'], field)
+		if (!LQY.isTeamSpecificRepeatRuleField(field)) api.set([...rulePath, 'crossTeam'], undefined)
 		onStructural()
 	}
 
@@ -453,6 +454,10 @@ function RepeatRuleRow(props: {
 
 	const setAutogen = (autogen: boolean) => {
 		api.set([...rulePath, 'autogen'], autogen || undefined)
+	}
+
+	const setCrossTeam = (crossTeam: boolean) => {
+		api.set([...rulePath, 'crossTeam'], crossTeam || undefined)
 	}
 
 	const deleteRule = () => {
@@ -540,6 +545,14 @@ function RepeatRuleRow(props: {
 			</div>
 			<div className="contents">
 				<Checkbox
+					title={tr.text(SETTINGS_Msgs.repeatRuleCrossTeamTitle())}
+					checked={!!rule.crossTeam}
+					disabled={!!api.writeDenied || !LQY.isTeamSpecificRepeatRuleField(rule.field)}
+					onCheckedChange={(checked) => setCrossTeam(checked === true)}
+				/>
+			</div>
+			<div className="contents">
+				<Checkbox
 					title={tr.text(SETTINGS_Msgs.repeatRuleWarnTitle())}
 					checked={!!rule.warn}
 					disabled={!!api.writeDenied}
@@ -595,7 +608,7 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 			<div className="border rounded-md p-3">
 				<div
 					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content max-content max-content' }}
+					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content max-content max-content max-content' }}
 				>
 					{/* Header Row */}
 					<div className="contents text-sm font-medium text-muted-foreground">
@@ -603,6 +616,14 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 						<div>{tr.text(SETTINGS_Msgs.repeatRuleField())}</div>
 						<div>{tr.text(SETTINGS_Msgs.repeatRuleWithin())}</div>
 						<div>{tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}</div>
+						<div>
+							<HelpTooltip
+								label={tr.text(SETTINGS_Msgs.repeatRuleCrossTeamHelpTitle())}
+								trigger={tr.text(SETTINGS_Msgs.repeatRuleCrossTeam())}
+							>
+								<p>{tr.text(SETTINGS_Msgs.repeatRuleCrossTeamHelp())}</p>
+							</HelpTooltip>
+						</div>
 						<div>
 							<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutRepeatRuleWarn())} trigger={tr.text(SETTINGS_Msgs.repeatRuleWarn())}>
 								<p>{tr.text(SETTINGS_Msgs.repeatRuleWarnHelp())}</p>
