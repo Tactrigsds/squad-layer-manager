@@ -4,6 +4,7 @@ import * as FB from '@/models/filter-builders'
 
 import { createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queue } from '../harness/arrange'
+import { settledText, settledTextAfter } from '../harness/settle'
 import { expect, test } from './fixtures'
 
 // The pool filter is the single definition of pool membership: it constrains what layer selection
@@ -26,10 +27,10 @@ async function clickOutOfPoolRow(page: Page) {
 	// see layer-select.test.ts for why the count settling is what makes the filter menu answer for the new pool
 	const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
 	const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-	const countWithPool = await matchedCount.textContent()
+	const countWithPool = await settledText(matchedCount)
 	await poolControl.click()
 	await expect(poolControl).toHaveAttribute('aria-checked', 'false')
-	await expect(matchedCount).not.toHaveText(countWithPool!)
+	await settledTextAfter(matchedCount, countWithPool)
 
 	await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
 	await page.getByRole('option', { name: 'Seed', exact: true }).click()
@@ -115,10 +116,10 @@ test.describe('pool filter', () => {
 			// turning the pool off surfaces out-of-pool layers (see layer-select.test.ts for why the
 			// count settling is what makes the filter menu answer for the new pool)
 			const matchedCount = dialog.getByText(/matched layers|No layers matched/)
-			const countWithPool = await matchedCount.textContent()
+			const countWithPool = await settledText(matchedCount)
 			await poolControl.click()
 			await expect(poolControl).toHaveAttribute('aria-checked', 'false')
-			await expect(matchedCount).not.toHaveText(countWithPool!)
+			await settledTextAfter(matchedCount, countWithPool)
 
 			await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
 			await page.getByRole('option', { name: 'Seed', exact: true }).click()
