@@ -1,8 +1,11 @@
+import type * as React from 'react'
+
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { withThrown } from '@/lib/error'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -12,6 +15,19 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 
 import * as DH from '../lib/display-helpers'
+
+// What names the team is set apart from the parenthetical around it: the team's colour and a heavier weight
+// against the muted, regular-weight text the enclosing span sets. The colour rides in on a custom property so this
+// renderer can be a module constant -- one built during a render is a fresh component identity on every pass,
+// which is what react/no-unstable-nested-components is about.
+const TEAM_NAME_COLOR = '--team-name-color'
+const trTeamName = tr.withTags({
+	team: (chunks) => (
+		<span className="font-semibold" style={{ color: `var(${TEAM_NAME_COLOR})` }}>
+			{chunks}
+		</span>
+	),
+})
 
 export function TeamIndicator(props: { team: MH.NormedTeamId | SM.TeamId }) {
 	return (
@@ -53,6 +69,9 @@ export function TeamFactionDisplay(props: {
 	team: SM.TeamId
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
+	// Names the team ahead of its faction -- "Team A(current PLA)" rather than "PLA". Only for a header sitting over
+	// the live roster, which is what makes "current" true.
+	leadWithTeamName?: boolean
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
 }) {
 	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
@@ -112,8 +131,14 @@ export function TeamFactionDisplay(props: {
 
 	return (
 		<span className={cn('inline-block whitespace-nowrap', props.className)}>
-			<span title={attrs[0].title} style={{ color: attrs[0].color }} className="font-semibold">
-				<span className={cn(allianceStyles, factionStyles)}>{faction}</span>
+			<span
+				title={attrs[0].title}
+				style={props.leadWithTeamName ? ({ [TEAM_NAME_COLOR]: attrs[0].color } as React.CSSProperties) : { color: attrs[0].color }}
+				className={props.leadWithTeamName ? 'font-normal text-muted-foreground' : 'font-semibold'}
+			>
+				<span className={cn(allianceStyles, factionStyles)}>
+					{props.leadWithTeamName ? trTeamName.richText(L_Msgs.teamName(attrs[0].id, faction, true)) : faction}
+				</span>
 				{props.includeUnits && shortUnit && <span className={unitStyles}>{` ${shortUnit}`}</span>}
 				{props.showAltTeamIndicator && <TeamIndicator team={attrs[1].id} />}
 			</span>
@@ -133,6 +158,7 @@ export function MatchTeamDisplay(props: {
 	teamId: SM.TeamId | MH.NormedTeamId
 	includeUnits?: boolean
 	showAltTeamIndicator?: boolean
+	leadWithTeamName?: boolean
 	className?: string
 	stores: SquadServerFrame.KeyProp
 }) {
@@ -154,6 +180,7 @@ export function MatchTeamDisplay(props: {
 			layer={match.layerId}
 			includeUnits={props.includeUnits}
 			showAltTeamIndicator={props.showAltTeamIndicator}
+			leadWithTeamName={props.leadWithTeamName}
 		/>
 	)
 }

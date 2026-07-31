@@ -1,4 +1,5 @@
-import * as DH from '@/lib/display-helpers'
+import * as I18n from '@/messages/i18n'
+import * as L_Msgs from '@/messages/layer.messages'
 import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -17,15 +18,10 @@ export const showEvent = def((event: BAL.BalanceTriggerEvent, referenceMatch: MH
 		}
 
 		const currentLayerPartial = L.toLayer(referenceMatch.layerId)
-		let strongerTeamFormatted: string
 		const strongerTeamFaction = currentLayerPartial?.[MH.getTeamNormalizedFactionProp(referenceMatch.ordinal, event.strongerTeam)]
-		if (!strongerTeamFaction) {
-			strongerTeamFormatted = DH.toFormattedNormalizedTeam(event.strongerTeam)
-		} else {
-			strongerTeamFormatted = `${DH.toFormattedNormalizedTeam(event.strongerTeam)}(${
-				opts?.isCurrent ? 'current ' : ''
-			}${strongerTeamFaction})`
-		}
+		const strongerTeamFormatted = I18n.ambient.text(
+			L_Msgs.teamName(MH.toNormedTeamId(event.strongerTeam), strongerTeamFaction, opts?.isCurrent),
+		)
 
 		return event.evaluationResult!.messageTemplate.replace('{{strongerTeam}}', strongerTeamFormatted)
 	}
