@@ -48,6 +48,12 @@ It reads the cooked game files, so it works on whatever version of the mod Steam
 involved. SquadLayerList's `exporter.py` only runs inside the Squad SDK against the mod author's project, which is
 why its exports lag behind workshop updates.
 
+A full workshop download is not needed. `tools/layer-extractor/fetch-workshop-mod.sh <workshopId> <outDir>` pulls
+about 5% of a mod: only the dedicated-server containers (which strip art but keep every gameplay asset), and within
+those only the containers that `LayerExtractor --plan` finds layer data in, by fetching the container indexes first.
+It uses DepotDownloader, which needs a Steam login that owns Squad on first run. The base game must still be
+installed; mods reference its assets.
+
 Mod layers are opt-in per query: pools, generated votes and the layer browser only include layers outside the
 default collection when a filter names the Collection column. A vanilla server never sees mod layers unless someone
 writes a filter that asks for them.
