@@ -57,10 +57,6 @@ export const loggedInUserQueryOptions = RPC.orpc.users.getLoggedInUser.queryOpti
 	staleTime: Infinity,
 })
 
-export function useLoggedInUserBase() {
-	return useQuery(loggedInUserQueryOptions)?.data
-}
-
 // NOTE: this method of simulating perms will not work with actions that aren't validated client-side.
 export function useLoggedInUser() {
 	return Zus.useStore(loggedInUserQueryOptions, RbacClient.RbacStore, Sel.maybeLoggedInUser)

@@ -17,14 +17,12 @@ import * as LC from '@/models/layer-columns'
 import * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
-import * as RBAC from '@/rbac.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
 import type * as WorkerTypes from '@/systems/layer-queries.worker'
 // oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
-import * as UsersClient from '@/systems/users.client'
 
 export type Store = {
 	// bumped whenever mutable state the worker holds (filter entities, generation weights) changes, invalidating
@@ -59,13 +57,12 @@ export namespace Actions {
 	}
 }
 
-// only pool membership disables rows; constraint values are raw matches (pre-inversion), index-aligned to constraints
-function getIsLayerDisabled(layerData: RowData, canForceSelect: boolean, constraints: LQY.Constraint[]) {
-	if (canForceSelect) return false
+// constraint values are raw matches (pre-inversion), index-aligned to constraints
+function getIsLayerOutOfPool(constraintValues: boolean[], constraints: LQY.Constraint[]) {
 	const index = constraints.findIndex((c) => c.type === 'filter-entity' && c.poolFilterMode)
 	if (index === -1) return false
 	const poolConstraint = constraints[index] as Extract<LQY.Constraint, { type: 'filter-entity' }>
-	const matched = layerData.constraints.values?.[index] ?? false
+	const matched = constraintValues[index] ?? false
 	return poolConstraint.poolFilterMode === 'include' ? !matched : matched
 }
 
@@ -75,11 +72,11 @@ export type ConstraintRowDetails = {
 	queriedConstraints: LQY.Constraint[]
 	matchedConstraintDescriptors: LQY.MatchDescriptor[]
 }
-export type RowData = L.KnownLayer & Record<string, any> & { constraints: ConstraintRowDetails; isRowDisabled: boolean }
-/**
- * Convert a layer to RowData format with constraints and isRowDisabled computed
- */
-function layerToRowData(layer: any, userCanForceSelect: boolean, queriedConstraints: LQY.Constraint[]): RowData {
+// isOutOfPool is pool membership alone. Whether that actually disables the row depends on queue:force-write, which is
+// resolved in LayerTablePrt.Sel so it tracks the permissions dialog's simulation; baking it in here read the real
+// permissions and left simulation with nothing to narrow.
+export type RowData = L.KnownLayer & Record<string, any> & { constraints: ConstraintRowDetails; isOutOfPool: boolean }
+function layerToRowData(layer: any, queriedConstraints: LQY.Constraint[]): RowData {
 	// TODO  this is madness
 	const constraintValues = Array.isArray(layer.constraints) ? layer.constraints : (layer.constraints?.values ?? [])
 
@@ -94,12 +91,10 @@ function layerToRowData(layer: any, userCanForceSelect: boolean, queriedConstrai
 		matchedConstraintDescriptors,
 	}
 
-	const isRowDisabled = !userCanForceSelect && getIsLayerDisabled({ ...layer, constraints }, userCanForceSelect, queriedConstraints)
-
 	return {
 		...layer,
 		constraints,
-		isRowDisabled,
+		isOutOfPool: getIsLayerOutOfPool(constraintValues, queriedConstraints),
 	} as RowData
 }
 
@@ -135,8 +130,6 @@ async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGene
 			continue
 		}
 
-		const user = await UsersClient.fetchLoggedInUser()
-		const userCanForceSelect = RBAC.hasPermOnAnyServer(RBAC.fromTracedPermissions(user.perms), 'queue:force-write')
 		let page = {
 			...res,
 			input,
@@ -149,14 +142,14 @@ async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGene
 			const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
 				const layer = page!.layers.find((l) => l.id === id)
 				if (layer) {
-					return layerToRowData(layer, userCanForceSelect, input.constraints ?? [])
+					return layerToRowData(layer, input.constraints ?? [])
 				}
 				const newLayer: any = {
 					...L.toLayer(id),
 					constraints: Array(input.constraints?.length ?? 0).fill(false),
 					matchDescriptors: [],
 				}
-				return layerToRowData(newLayer, userCanForceSelect, input.constraints ?? [])
+				return layerToRowData(newLayer, input.constraints ?? [])
 			})
 			if (input.sort) {
 				;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
@@ -183,7 +176,7 @@ async function* streamQueryLayersPackets(input: LQY.LayersQueryInput): AsyncGene
 		if (page) {
 			yield {
 				...page,
-				layers: page.layers?.map((layer: any) => layerToRowData(layer, userCanForceSelect, input.constraints ?? [])),
+				layers: page.layers?.map((layer: any) => layerToRowData(layer, input.constraints ?? [])),
 			}
 		}
 	}
@@ -259,7 +252,7 @@ export async function checkBackburnerTemplates(input: LQY.BaseQueryInput & { tem
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
-	const choiceRowData = res.chosenLayers.map((l) => (l ? layerToRowData(l, false, input.constraints ?? []) : undefined))
+	const choiceRowData = res.chosenLayers.map((l) => (l ? layerToRowData(l, input.constraints ?? []) : undefined))
 	return {
 		...res,
 		chosenLayers: choiceRowData,
