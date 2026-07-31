@@ -6,10 +6,11 @@
 // See ../../src/systems/server-agent.server.ts for the other end of the protocol.
 //
 // Protocol:
-//   1. connect to `wss://<origin>/server-agent` (or ws:// for plaintext)
-//   2. send one text frame: `slm-server-agent@<version>:<serverId>:sources=<a,b>:<token>`, where `sources`
-//      names what we can supply for the server, out of `logs` and `rcon`. SLM needs both and rejects an
-//      agent that offers less.
+//   1. connect to `wss://<origin>/server-agent?sources=<a,b>` (or ws:// for plaintext), where `sources` names
+//      what we can supply for the server, out of `logs` and `rcon`. SLM needs both and rejects an agent that
+//      offers less. It rides in the query string so the frame below stays byte-identical to what every
+//      earlier agent sent, and an SLM too old to read `sources` still understands us.
+//   2. send one text frame: `slm-server-agent@<version>:<serverId>:<token>`
 //   3. expect an `ok` text frame back (any other reply / close means rejected)
 //   4. every subsequent frame is BINARY, tagged by its first byte:
 //        0x00 <log bytes>      raw SquadGame.log bytes, resuming from our own byte offset across reconnects
@@ -43,12 +44,6 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 // SLM's close code for an agent that does not supply every data source it needs (see
 // ../../src/systems/server-agent.server.ts). The one rejection an operator can fix from this side.
 const CLOSE_INCOMPLETE_SOURCES: u16 = 4005;
-// Bad token. Also what an SLM that predates the `sources=` field says to us, because its handshake pattern
-// reads that field as the leading part of the token and no token ever matches -- so the operator gets pointed
-// at a credential that is in fact correct unless we say otherwise.
-const CLOSE_UNAUTHORIZED: u16 = 4001;
-// SLM could not parse our handshake at all.
-const CLOSE_BAD_HANDSHAKE: u16 = 4000;
 
 // binary frame channel tags (first byte of every post-handshake frame)
 const TAG_LOG: u8 = 0x00;
@@ -304,22 +299,25 @@ fn rejection_report(cfg: &Config, code: u16, reason: &str) -> Vec<String> {
                     .into(),
             );
         }
-    } else if code == CLOSE_UNAUTHORIZED {
-        lines.push(format!(
-            "Check the token. An SLM older than this agent ({VERSION}) also says this, whatever the"
-        ));
-        lines.push(
-            "token is, because it cannot read the `sources=` field: check SLM's version too."
-                .into(),
-        );
-    } else if code == CLOSE_BAD_HANDSHAKE {
-        lines.push(format!(
-            "SLM could not read our handshake, so it is probably older than this agent ({VERSION})."
-        ));
     }
     lines.push("Nothing streams until this is fixed. Still retrying, in case SLM changes.".into());
     lines.push(rule);
     lines
+}
+
+// The configured url with our sources appended, keeping whatever query the operator already put there.
+fn handshake_url(cfg: &Config) -> String {
+    let (base, fragment) = match cfg.url.split_once('#') {
+        Some((base, fragment)) => (base, Some(fragment)),
+        None => (cfg.url.as_str(), None),
+    };
+    let separator = if base.contains('?') { '&' } else { '?' };
+    let mut url = format!("{base}{separator}sources={}", cfg.sources());
+    if let Some(fragment) = fragment {
+        url.push('#');
+        url.push_str(fragment);
+    }
+    url
 }
 
 async fn connect_and_stream(
@@ -329,8 +327,8 @@ async fn connect_and_stream(
     stats: &Arc<Stats>,
 ) -> Result<(), ConnErr> {
     let target = Target::parse(&cfg.url)?;
-    let request = cfg
-        .url
+    let url = handshake_url(cfg);
+    let request = url
         .as_str()
         .into_client_request()
         .map_err(|e| format!("invalid url: {e}"))?;
@@ -377,10 +375,8 @@ where
     // handshake
     write
         .send(Message::Text(format!(
-            "slm-server-agent@{VERSION}:{}:sources={}:{}",
-            cfg.server_id,
-            cfg.sources(),
-            cfg.token
+            "slm-server-agent@{VERSION}:{}:{}",
+            cfg.server_id, cfg.token
         )))
         .await
         .map_err(|e| format!("failed to send handshake: {e}"))?;

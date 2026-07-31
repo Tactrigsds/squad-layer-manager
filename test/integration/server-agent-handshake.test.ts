@@ -14,8 +14,9 @@ const CLOSE_INCOMPLETE_SOURCES = 4005
 
 type HandshakeResult = { accepted: boolean; code?: number; reason?: string }
 
-function connect(frame: string): { ws: WebSocket; settled: Promise<HandshakeResult> } {
-	const ws = new WebSocket(`ws://127.0.0.1:${app.appPort}/server-agent`)
+function connect(frame: string, sources: string | null): { ws: WebSocket; settled: Promise<HandshakeResult> } {
+	const query = sources === null ? '' : `?sources=${sources}`
+	const ws = new WebSocket(`ws://127.0.0.1:${app.appPort}/server-agent${query}`)
 	const settled = new Promise<HandshakeResult>((resolve, reject) => {
 		const timer = setTimeout(() => reject(new Error(`no reply to handshake: ${frame}`)), 15_000)
 		ws.on('open', () => ws.send(frame))
@@ -33,9 +34,8 @@ function connect(frame: string): { ws: WebSocket; settled: Promise<HandshakeResu
 	return { ws, settled }
 }
 
-function handshake(sources: string | null, token = SERVER_AGENT_TOKEN) {
-	const sourcesField = sources === null ? '' : `sources=${sources}:`
-	return `slm-server-agent@0.3.0:${app.serverId}:${sourcesField}${token}`
+function handshake(version = '0.3.0', token = SERVER_AGENT_TOKEN) {
+	return `slm-server-agent@${version}:${app.serverId}:${token}`
 }
 
 beforeAll(async () => {
@@ -48,7 +48,7 @@ afterAll(async () => {
 
 describe('server agent handshake', () => {
 	it('rejects an agent that supplies logs but not rcon', async () => {
-		const { ws, settled } = connect(handshake('logs'))
+		const { ws, settled } = connect(handshake(), 'logs')
 		const result = await settled
 		ws.close()
 
@@ -57,26 +57,32 @@ describe('server agent handshake', () => {
 		expect(result.reason).toContain('rcon')
 	})
 
-	it('rejects an agent too old to declare its sources', async () => {
-		const { ws, settled } = connect(handshake(null))
+	// it declares nothing because it predates the field, which is worth saying rather than reporting it as
+	// an agent that supplies nothing
+	it('rejects an agent too old to declare its sources, naming its version', async () => {
+		const { ws, settled } = connect(handshake('0.2.2'), null)
 		const result = await settled
 		ws.close()
 
 		expect(result.accepted).toBe(false)
 		expect(result.code).toBe(CLOSE_INCOMPLETE_SOURCES)
+		expect(result.reason).toContain('0.2.2')
+		expect(result.reason).toContain('too old')
 	})
 
 	// the token is checked first, so an unauthenticated caller learns nothing about what the server wants
 	it('rejects a bad token before looking at sources', async () => {
-		const { ws, settled } = connect(handshake('logs', 'not-the-token'))
+		const { ws, settled } = connect(handshake('0.3.0', 'not-the-token'), 'logs')
 		const result = await settled
 		ws.close()
 
 		expect(result.code).toBe(CLOSE_UNAUTHORIZED)
 	})
 
-	it('accepts an agent supplying both', async () => {
-		const { ws, settled } = connect(handshake('logs,rcon'))
+	// the frame is what every agent since 0.1.0 has sent: moving the sources into the query string is what
+	// keeps an agent that sends this readable by an SLM too old to know about them
+	it('accepts an agent supplying both, on the unchanged handshake frame', async () => {
+		const { ws, settled } = connect(handshake(), 'logs,rcon')
 		const result = await settled
 		ws.close()
 

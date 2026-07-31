@@ -92,9 +92,12 @@ fixing the settings on either end is enough to bring it up. Nothing streams in t
 
 ## Versions
 
-Agent 0.3.0 is where the agent started declaring its data sources, so it needs an SLM new enough to read that.
-Upgrade SLM first, then the agents. An older SLM rejects a 0.3.0 agent as having a bad token, whatever the token
-is, and the agent says so when it reports the rejection.
+Agent 0.3.0 is where the agent started declaring its data sources. It declares them in the connection url, so a
+0.3.0 agent still works against an older SLM, which ignores what it does not read.
+
+The other direction is the one that breaks: an agent older than 0.3.0 declares nothing, so an SLM from 0.3.0
+onwards rejects it. Upgrade the agents to 0.3.0 or newer, in any order relative to SLM. A rejected agent names
+its own version in the rejection it reports.
 
 ## Checking that it works
 
