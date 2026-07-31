@@ -90,7 +90,7 @@ The server agent ([server-agent/agent](server-agent/agent)) is a standalone rust
 pnpm run build:agent   # cargo build --release, binary at server-agent/agent/target/release/slm-server-agent
 ```
 
-See [docs/configuring.md#server-agent](docs/configuring.md#server-agent) for more details on how to configure it.
+See [docs/server_agent.md](docs/server_agent.md) for more details on how to configure it.
 
 ## The pre-push hook
 
