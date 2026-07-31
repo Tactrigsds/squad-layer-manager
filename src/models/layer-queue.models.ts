@@ -13,7 +13,7 @@ export const CtxDef = CD.defCtx<Ctx>()(['layerQueue'], { name: 'layerQueue', ext
 
 // A running in-game vote on the Squad server (AdminEnableVoting). Its result overwrites the next layer, so SLM
 // stands down for the rest of the match while one is live. Runtime-only: it is rebuilt from the log stream, and a
-// vote never outlives the match it was called in. See docs/ingame_voting.md.
+// vote never outlives the match it was called in.
 export type IngameVote = {
 	choices: string[]
 	startedAt: number
