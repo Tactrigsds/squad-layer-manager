@@ -141,6 +141,10 @@ test.describe('filter references', () => {
 		try {
 			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
+			// the editor is only live once its first validation has run, which is what constrains the layer table to
+			// the filter. Editing before that races the frame's setup, and the loop check would silently not run.
+			await expect(page.getByRole('row').filter({ hasText: 'Skirmish' })).toHaveCount(0, { timeout: 20_000 })
+
 			await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
 			// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
 			await page.getByRole('button', { name: 'apply existing filter' }).click()
