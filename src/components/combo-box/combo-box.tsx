@@ -219,6 +219,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 										<CommandItem
 											key={option.value}
 											value={option.value ?? undefined}
+											keywords={option.keywords}
 											disabled={option.disabled}
 											onSelect={() => {
 												if (option.disabled) return

@@ -1195,13 +1195,25 @@ function ApplyFilter(props: ApplyFilterProps) {
 // vehicle class codes are terse, so their options carry the readable name and an explanation; the code
 // stays the stored value and the compact display (chips, trigger)
 function enumOptionExtras(column: LC.EnumColumn, value: string): Partial<ComboBoxOption<string | null>> {
-	if (LC.vehicleColumnInfo(column)?.kind !== 'vehicleTypes') return {}
+	const kind = LC.vehicleColumnInfo(column)?.kind
+	if (kind === 'vehicles') {
+		const type = LC.vehicleTypeForVehicle(value)
+		if (!type) return {}
+		const typeLabel = LC_Msgs.vehicleTypeLabels[type]
+		return {
+			description: typeLabel ? `${type} (${tr.text(typeLabel)})` : type,
+			// searching a class code or name narrows the list to that class
+			keywords: typeLabel ? [type, tr.text(typeLabel)] : [type],
+		}
+	}
+	if (kind !== 'vehicleTypes') return {}
 	const label = LC_Msgs.vehicleTypeLabels[value]
 	if (!label) return {}
 	const description = LC_Msgs.vehicleTypeDescriptions[value]
 	return {
 		label: `${value} (${tr.text(label)})`,
 		chipLabel: value,
+		keywords: [tr.text(label)],
 		...(description ? { description: tr.text(description) } : {}),
 	}
 }
