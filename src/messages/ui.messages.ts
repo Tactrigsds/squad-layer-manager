@@ -26,6 +26,9 @@ export const clearAll = def('Clear All')
 
 export const noResults = def('No results found.')
 
+// the tab that lifts the group filter, showing every group's options at once
+export const allGroups = def('All')
+
 export const nothingSelected = def('No items selected')
 
 // -------- pagination --------

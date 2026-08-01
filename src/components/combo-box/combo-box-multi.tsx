@@ -12,7 +12,18 @@ import { tr } from '@/systems/messages.client'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 import { useComboBoxDismissal } from './dismissal.ts'
-import { groupRuns, normalizeOptions } from './options.ts'
+import { GroupTabs, PrefixedLabel } from './group-tabs.tsx'
+import {
+	ALL_GROUPS,
+	type ComboBoxGroupDef,
+	type GroupPrefixRenderer,
+	groupPrefixOf,
+	groupRuns,
+	liveGroups,
+	normalizeOptions,
+	optionsInGroup,
+	resolveGroups,
+} from './options.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
@@ -26,8 +37,13 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	selectionLimit?: number
 	disabled?: boolean
 	sort?: boolean
-	// ordering of option `group` headings; unlisted groups trail, alphabetically
-	groupOrder?: readonly string[]
+	// the option groups, in tab order. Two or more live groups turn on the tab strip; a bare string is a
+	// group whose key is already its display text.
+	groups?: readonly (ComboBoxGroupDef | string)[]
+	// group tab to open on. Defaults to the "all" tab; ignored when the group has no live options.
+	defaultGroup?: string
+	// how a group reads ahead of an option's label. false drops the prefix entirely.
+	renderGroupPrefix?: GroupPrefixRenderer | false
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect?: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
@@ -47,6 +63,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	const { values, selectionLimit, disabled, onSelect: _onSelect = () => {}, selectOnClose = false, reset } = props
 	const useInternalState = selectOnClose || !!props.confirm
 	const [open, _setOpen] = useState(false)
+	const [selectedGroup, setSelectedGroup] = useState(props.defaultGroup ?? ALL_GROUPS)
 	const [internalValues, setInternalValues] = useState<T[]>(values)
 	const [initialValues, setInitialValues] = useState<T[]>([])
 	const selectOnCloseRef = useRef(selectOnClose)
@@ -68,6 +85,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	const setOpen = React.useCallback(
 		(value: boolean) => {
 			if (value) {
+				setSelectedGroup(props.defaultGroup ?? ALL_GROUPS)
 				// When opening with confirm mode, reset internal state to current prop values
 				if (props.confirm) {
 					setInternalValues(values)
@@ -84,7 +102,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			}
 			_setOpen(value)
 		},
-		[_onSelect, internalValues, selectOnClose, useInternalState, reset, values, props.confirm],
+		[_onSelect, internalValues, selectOnClose, useInternalState, reset, values, props.confirm, props.defaultGroup],
 	)
 
 	// opt-in, as the name says: an unset prop leaves the trigger free to use the width its container
@@ -131,10 +149,38 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}
 
+	const groups = React.useMemo(() => resolveGroups(props.groups), [props.groups])
 	const options = React.useMemo(
-		() => normalizeOptions('ComboBoxMulti', props.options, props.sort ?? true, props.groupOrder),
-		[props.options, props.sort, props.groupOrder],
+		() =>
+			normalizeOptions(
+				'ComboBoxMulti',
+				props.options,
+				props.sort ?? true,
+				groups.map((g) => g.key),
+			),
+		[props.options, props.sort, groups],
 	)
+	const tabs = React.useMemo(() => (options === LOADING ? [] : liveGroups(options, groups)), [options, groups])
+	const showTabs = tabs.length >= 2
+	// see ComboBox: the picked group is stored raw and coerced to a live tab at render, so a default naming a
+	// group with no options degrades to "all" instead of showing an empty list
+	const activeGroup = selectedGroup === ALL_GROUPS || tabs.some((t) => t.key === selectedGroup) ? selectedGroup : ALL_GROUPS
+	const cycleGroup = (delta: number) => {
+		const keys = [ALL_GROUPS, ...tabs.map((t) => t.key)]
+		const next = (keys.indexOf(activeGroup) + delta + keys.length) % keys.length
+		setSelectedGroup(keys[next])
+	}
+	const visibleOptions = React.useMemo(
+		() => (options === LOADING || !showTabs ? options : optionsInGroup(options, activeGroup)),
+		[options, showTabs, activeGroup],
+	)
+	// a group tab names its own group, so only the "all" view prefixes
+	const prefixInList = showTabs && activeGroup === ALL_GROUPS && props.renderGroupPrefix !== false
+	const prefixRenderer = props.renderGroupPrefix === false ? undefined : props.renderGroupPrefix
+	const suppressHeadings = showTabs && (activeGroup !== ALL_GROUPS || prefixInList)
+	// a selection is read outside the list, where no tab or heading says which group it came from
+	const selectedPrefix = (option: ComboBoxOption<T> | undefined) =>
+		option && props.renderGroupPrefix !== false ? groupPrefixOf(option, groups) : undefined
 	const optionsByValue = React.useMemo(() => {
 		const map = new Map<T, ComboBoxOption<T>>()
 		if (options !== LOADING) {
@@ -164,7 +210,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 				.map((value) => {
 					const option = optionsByValue.get(value)
 					const displayValue = option ? (option.chipLabel ?? option.label ?? option.value) : value
-					return typeof displayValue === 'object' ? JSON.stringify(displayValue) : String(displayValue)
+					const text = typeof displayValue === 'object' ? JSON.stringify(displayValue) : String(displayValue)
+					const prefix = selectedPrefix(option)
+					return prefix ? `${prefix} ${text}` : text
 				})
 				.join(', ')
 
@@ -211,7 +259,11 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										key={value === null ? NULL.current : value}
 										className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
 									>
-										{label === null ? DisplayHelpers.NULL_DISPLAY : label}
+										<PrefixedLabel
+											prefix={selectedPrefix(option)}
+											label={label === null ? DisplayHelpers.NULL_DISPLAY : label}
+											render={prefixRenderer}
+										/>
 									</span>
 								)
 							})}
@@ -259,7 +311,15 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 									)}
 									<div className="text-xs text-muted-foreground break-words">{hoveredDescription}</div>
 								</PopoverContent>
-								<Command shouldFilter={!props.setInputValue} className="flex flex-col">
+								<Command
+									shouldFilter={!props.setInputValue}
+									className="flex flex-col"
+									onKeyDown={(e) => {
+										if (!showTabs || e.key !== 'Tab') return
+										e.preventDefault()
+										cycleGroup(e.shiftKey ? -1 : 1)
+									}}
+								>
 									{/* Shared header row */}
 									<div className="flex border-b shrink-0">
 										{/* Left header: search input */}
@@ -347,7 +407,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 									{/* Lists row */}
 									<div className="flex h-[340px]">
 										{/* Left — available options */}
-										<div className="flex-1 border-r overflow-hidden">
+										<div className="flex-1 border-r overflow-hidden flex flex-col">
+											{showTabs && <GroupTabs groups={tabs} value={activeGroup} onChange={setSelectedGroup} />}
 											<CommandList className="max-h-[340px]">
 												<CommandEmpty>{tr.text(UI_Msgs.noResults())}</CommandEmpty>
 												{options === LOADING && (
@@ -358,8 +419,8 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 														</CommandItem>
 													</CommandGroup>
 												)}
-												{options !== LOADING &&
-													groupRuns(options).map((run, i) => (
+												{visibleOptions !== LOADING &&
+													groupRuns(visibleOptions, suppressHeadings).map((run, i) => (
 														<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
 															{run.options.map((option) => (
 																<CommandItem
@@ -391,7 +452,14 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 																			displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
 																		)}
 																	/>
-																	{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+																	<PrefixedLabel
+																		prefix={prefixInList ? groupPrefixOf(option, groups) : undefined}
+																		label={
+																			option.label ??
+																			(option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)
+																		}
+																		render={prefixRenderer}
+																	/>
 																</CommandItem>
 															))}
 														</CommandGroup>
@@ -423,7 +491,11 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 															}}
 														>
 															<span className="flex-1 truncate">
-																{displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+																<PrefixedLabel
+																	prefix={selectedPrefix(option)}
+																	label={displayText === null ? DisplayHelpers.NULL_DISPLAY : displayText}
+																	render={prefixRenderer}
+																/>
 															</span>
 															<Button
 																variant="ghost"

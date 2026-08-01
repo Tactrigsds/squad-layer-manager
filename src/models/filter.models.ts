@@ -468,8 +468,8 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 			key: 'eq',
 			label: '=',
 			description: floatDomain
-				? 'Matches layers whose value is missing. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
-				: 'Matches layers whose value is exactly the one given.',
+				? 'Matches when the value is missing. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
+				: 'Matches when the value is exactly the one given.',
 			type: 'eq',
 			neg: false,
 		},
@@ -477,8 +477,8 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 			key: 'neq',
 			label: '!=',
 			description: floatDomain
-				? 'Matches layers whose value is present. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
-				: 'Matches layers whose value is anything other than the one given.',
+				? 'Matches when the value is present. Exact equality is unreliable on a decimal column, so this operator only tests against no value.'
+				: 'Matches when the value is anything other than the one given.',
 			type: 'eq',
 			neg: true,
 		},
@@ -486,11 +486,11 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 	// `in` uses exact equality, so skip it for floats (and it's redundant for booleans)
 	if (!floatDomain && (!domain || domain.kind !== 'boolean')) {
 		options.push(
-			{ key: 'in', label: 'in', description: 'Matches layers whose value is any one of the listed values.', type: 'in', neg: false },
+			{ key: 'in', label: 'in', description: 'Matches when the value is any one of the listed values.', type: 'in', neg: false },
 			{
 				key: 'notin',
 				label: 'not in',
-				description: 'Matches layers whose value is none of the listed values.',
+				description: 'Matches when the value is none of the listed values.',
 				type: 'in',
 				neg: true,
 			},
@@ -498,33 +498,33 @@ export function compOpSelectOptions(domain: ValueDomain | undefined): CompOpSele
 	}
 	if (!domain || domain.kind === 'number') {
 		options.push(
-			{ key: 'lt', label: '<', description: 'Matches layers whose value is less than the one given.', type: 'lt', neg: false },
-			{ key: 'gt', label: '>', description: 'Matches layers whose value is greater than the one given.', type: 'gt', neg: false },
+			{ key: 'lt', label: '<', description: 'Matches when the value is less than the one given.', type: 'lt', neg: false },
+			{ key: 'gt', label: '>', description: 'Matches when the value is greater than the one given.', type: 'gt', neg: false },
 			{
 				key: 'lte',
 				label: '<=',
-				description: 'Matches layers whose value is less than or equal to the one given.',
+				description: 'Matches when the value is less than or equal to the one given.',
 				type: 'gt',
 				neg: true,
 			},
 			{
 				key: 'gte',
 				label: '>=',
-				description: 'Matches layers whose value is greater than or equal to the one given.',
+				description: 'Matches when the value is greater than or equal to the one given.',
 				type: 'lt',
 				neg: true,
 			},
 			{
 				key: 'inrange',
 				label: '[..]',
-				description: 'Matches layers whose value falls between the two bounds given, inclusive.',
+				description: 'Matches when the value falls between the two bounds given, inclusive.',
 				type: 'inrange',
 				neg: false,
 			},
 			{
 				key: 'outrange',
 				label: '![..]',
-				description: 'Matches layers whose value falls outside the two bounds given.',
+				description: 'Matches when the value falls outside the two bounds given.',
 				type: 'inrange',
 				neg: true,
 			},

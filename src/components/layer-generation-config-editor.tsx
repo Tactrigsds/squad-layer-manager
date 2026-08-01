@@ -334,7 +334,7 @@ function WeightsSection({
 				title={tr.text(LC_Msgs.addValue(column))}
 				value={undefined}
 				options={addOptions}
-				groupOrder={LC.collectionGroupOrder()}
+				groups={LC.collectionGroups()}
 				onSelect={(value) => {
 					if (value && !entries.some((e) => e.value === value)) {
 						onChange([...entries, { value, weight: LC.DEFAULT_GENERATION_WEIGHT }])
@@ -500,7 +500,7 @@ function MatchupSideInput({
 						label: f,
 						group: LC.collectionForEnumValue('Faction_1', f),
 					}))}
-					groupOrder={LC.collectionGroupOrder()}
+					groups={LC.collectionGroups()}
 					onSelect={(next) => onChange(next ? { Faction: next, Unit: '' } : undefined)}
 				/>
 				<ComboBox
@@ -523,7 +523,7 @@ function MatchupSideInput({
 				label: v,
 				group: LC.collectionForEnumValue(column, v),
 			}))}
-			groupOrder={LC.collectionGroupOrder()}
+			groups={LC.collectionGroups()}
 			onSelect={(next) => onChange(next ?? undefined)}
 		/>
 	)
