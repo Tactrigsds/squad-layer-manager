@@ -8,9 +8,10 @@ import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 
-// The response headers for everything the app serves out of a file. All of it is invisible from the UI and silently
-// reversible -- dropping `preCompressed` or letting send compute its own Cache-Control leaves a working app that just
-// ships several times the bytes -- so the contract is asserted rather than left to be noticed in a waterfall.
+// The app's plain-HTTP surface, asserted with raw fetch: the response headers for everything served out of a file,
+// and the session endpoints. The file-serving contract is invisible from the UI and silently reversible -- dropping
+// `preCompressed` or letting send compute its own Cache-Control leaves a working app that just ships several times
+// the bytes -- so it is asserted rather than left to be noticed in a waterfall.
 
 let app: AppFixture
 let cookie: string
@@ -145,5 +146,34 @@ describe('GET /layers.bin.gz', () => {
 
 		const res = await get('/layers.bin.gz', { 'if-none-match': etag })
 		expect(res.status).toBe(304)
+	})
+})
+
+// Regression: POST /logout used to deadlock. Sessions.logout awaited clearInvalidSession, which returns the
+// FastifyReply, and a reply is a thenable that only settles once the response is sent -- so the handler blocked
+// forever waiting for a send it was itself holding up. The request never got a response.
+describe('POST /logout', () => {
+	it('responds instead of hanging on the thenable reply', async () => {
+		// a session of its own, so logging it out cannot invalidate the cookie the other tests share
+		const login = await fetch(`${base}/check-auth?login=${ADMIN_USER.username}`, { redirect: 'manual' })
+		expect(login.status).toBe(200)
+		const sessionCookie = login.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.find((c) => c.startsWith('session-id=') && c.length > 'session-id='.length)
+		expect(sessionCookie).toMatch(/^session-id=.+/)
+
+		// the deadlock never sent a response, so a short timeout is what turns the hang into a failed assertion
+		// rather than a stuck test
+		const res = await fetch(`${base}/logout`, {
+			method: 'POST',
+			headers: { cookie: sessionCookie! },
+			redirect: 'manual',
+			signal: AbortSignal.timeout(5000),
+		})
+		expect(res.status).toBe(302)
+		expect(res.headers.get('location')).toBe('/')
+		// the session cookie is cleared
+		expect(res.headers.getSetCookie().some((c) => c.startsWith('session-id=;') || /Max-Age=0/.test(c))).toBe(true)
 	})
 })
