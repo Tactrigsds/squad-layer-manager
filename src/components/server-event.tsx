@@ -1375,6 +1375,7 @@ function IngameVoteStartedEvent({
 	event: Extract<CHAT.EventEnriched, { type: 'INGAME_VOTE_STARTED' }>
 	stores: SquadServerFrame.KeyProp
 }) {
+	if (event.container !== 'Vote_NextLayer') return null
 	return (
 		<EventLine time={event.time} icon={<Icons.Vote className="h-4 w-4 text-yellow-500 shrink-0" />}>
 			<span>{tr.text(CHAT_Msgs.ingameVoteStarted())}</span>
