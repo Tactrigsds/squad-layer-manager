@@ -39,6 +39,37 @@ export const BASE_COLUMN_DEFS = {
 
 export const COLUMN_KEYS = Object.keys(BASE_COLUMN_DEFS) as L.LayerColumnKey[]
 
+// The artifact columns behind vehicle filtering: the Units record each team resolved to, per row. Not
+// column defs: nothing selects or displays them, only lowered vehicle predicates scan them by name.
+export const UNIT_RECORD_COLUMNS = { 1: 'UnitRecord_1', 2: 'UnitRecord_2' } as const
+
+// Vehicle columns are virtual: they have no artifact column, and comparisons against them lower into
+// membership tests over UNIT_RECORD_COLUMNS (see layer-engine.ts). The defs exist so the filter editor
+// and validation treat them like any other enum column.
+export const VEHICLE_COLUMNS = ['Vehicle_1', 'Vehicle_2', 'VehicleType_1', 'VehicleType_2'] as const
+export type VehicleColumn = (typeof VEHICLE_COLUMNS)[number]
+
+const virtualColumnDef = (name: VehicleColumn, displayName: string, enumMapping: 'vehicles' | 'vehicleTypes') => ({
+	[name]: { name, type: 'string' as const, displayName, enumMapping, table: 'virtual' as const },
+})
+
+export const VIRTUAL_COLUMN_DEFS = {
+	...virtualColumnDef('Vehicle_1', 'Vehicle T1', 'vehicles'),
+	...virtualColumnDef('Vehicle_2', 'Vehicle T2', 'vehicles'),
+	...virtualColumnDef('VehicleType_1', 'Vehicle type T1', 'vehicleTypes'),
+	...virtualColumnDef('VehicleType_2', 'Vehicle type T2', 'vehicleTypes'),
+} as const satisfies Record<string, CombinedColumnDef>
+
+export function vehicleColumnInfo(column: string): { kind: 'vehicles' | 'vehicleTypes'; team: 1 | 2 } | undefined {
+	const def = VIRTUAL_COLUMN_DEFS[column as VehicleColumn]
+	if (!def) return undefined
+	return { kind: def.enumMapping, team: column.endsWith('_1') ? 1 : 2 }
+}
+
+export function isVirtualColumn(name: string, cfg = BASE_COLUMN_CONFIG): boolean {
+	return getColumnDef(name, cfg)?.table === 'virtual'
+}
+
 // the layer-identity columns, offered together as one restricted subject group in the filter editor's
 // map/layer/gamemode add flows
 export const LAYER_IDENTITY_COLUMNS = [
@@ -55,7 +86,7 @@ export type EffectiveColumnConfig = {
 }
 
 export const BASE_COLUMN_CONFIG: EffectiveColumnConfig = {
-	defs: BASE_COLUMN_DEFS,
+	defs: { ...BASE_COLUMN_DEFS, ...VIRTUAL_COLUMN_DEFS },
 }
 // keyed by the extra-column array's identity: the query layer memoizes derived state (drizzle views, extra-col
 // schemas, query cache keys) against the returned config, so the same columns must always yield the same object
@@ -98,8 +129,19 @@ export const GROUP_BY_COLUMNS = [
 ] as const satisfies L.LayerColumnKey[]
 export type GroupByColumn = (typeof GROUP_BY_COLUMNS)[number]
 
-export function groupByColumnDefaultValues(column: GroupByColumn, components = L.StaticLayerComponents) {
+// every column an enum value editor can source options for: the groupable physical columns plus the
+// virtual vehicle columns
+export type EnumColumn = GroupByColumn | VehicleColumn
+
+export function groupByColumnDefaultValues(column: EnumColumn, components = L.StaticLayerComponents) {
 	switch (column) {
+		case 'Vehicle_1':
+		case 'Vehicle_2':
+			return components.vehicles ?? []
+
+		case 'VehicleType_1':
+		case 'VehicleType_2':
+			return components.vehicleTypes ?? []
 		case 'Map':
 			return components.maps
 
@@ -233,6 +275,8 @@ export function viewCol(name: string, ctx: Ctx) {
 			return view.layers[name as keyof typeof view.layers]
 		case 'extra-cols':
 			return view.layersExtra[name]
+		case 'virtual':
+			throw new ColumnNotFoundError(`Column "${name}" is virtual and has no view column`)
 		default:
 			assertNever(def.table)
 	}
@@ -263,7 +307,7 @@ export function isEnumeratedValue(column: string, value: string, ctx: Ctx, compo
 	if (!def) return false
 	if (def.type !== 'string') return false
 	if (!def.enumMapping) return
-	return (components[def.enumMapping as keyof typeof components] as string[]).includes(value)
+	return ((components[def.enumMapping as keyof typeof components] ?? []) as string[]).includes(value)
 }
 
 export type LayerRow = typeof layers.$inferSelect
@@ -375,7 +419,9 @@ export function dbValue(columnName: string, value: InputValue, ctx?: Ctx, compon
 	switch (def.type) {
 		case 'string': {
 			if (def.enumMapping) {
-				const targetArray = components[def.enumMapping as keyof typeof components]! as string[]
+				// vehicle mappings are absent from pre-vehicle-filtering artifacts, so a missing array reads
+				// as every value unmapped rather than a crash
+				const targetArray = (components[def.enumMapping as keyof typeof components] ?? []) as string[]
 
 				const index = enumIndexOf(targetArray, value)
 				if (index === -1) {
@@ -609,6 +655,12 @@ export type BaseLayerComponents = {
 	layerFactionAvailability: PersistedLayerFactionAvailability
 	// absent in artifacts written before mod sources existed
 	sourceAbbreviations?: SourceAbbreviations
+	// canonical vehicle tables (see vehicles.models.ts); absent in artifacts written before vehicle filtering
+	vehicles?: string[]
+	vehicleTypes?: string[]
+	vehicleTypeIds?: number[]
+	unitRecords?: string[]
+	unitRecordVehicles?: number[][]
 }
 
 export type LayerComponents = Omit<BaseLayerComponents, 'layerFactionAvailability'> & {
@@ -638,6 +690,11 @@ const BASE_LAYER_COMPONENT_KEYS = [
 	'factionUnitToUnitFullName',
 	'layerFactionAvailability',
 	'sourceAbbreviations',
+	'vehicles',
+	'vehicleTypes',
+	'vehicleTypeIds',
+	'unitRecords',
+	'unitRecordVehicles',
 ] as const satisfies (keyof BaseLayerComponents)[]
 
 export function toBaseLayerComponents(components: LayerComponents): BaseLayerComponents {
@@ -746,7 +803,7 @@ export const ColumnDefSchema = z.discriminatedUnion('type', [
 ])
 
 export type ColumnDef = z.infer<typeof ColumnDefSchema>
-export type CombinedColumnDef = ColumnDef & { table: 'layers' | 'extra-cols' }
+export type CombinedColumnDef = ColumnDef & { table: 'layers' | 'extra-cols' | 'virtual' }
 
 export const WEIGHT_COLUMNS = z.enum([
 	'Map',

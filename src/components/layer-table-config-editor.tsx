@@ -41,7 +41,12 @@ export default function LayerTableConfigEditor({
 	reset$: Rx.Subject<void>
 }) {
 	const cfg = ConfigClient.useEffectiveColConfig()
-	const columnOptions = cfg ? Object.values(cfg.defs).map((d) => ({ value: d.name, label: d.displayName ?? d.name })) : []
+	// virtual (vehicle) columns cannot be displayed, sorted or offered as menu items; they exist only for filters
+	const columnOptions = cfg
+		? Object.values(cfg.defs)
+				.filter((d) => d.table !== 'virtual')
+				.map((d) => ({ value: d.name, label: d.displayName ?? d.name }))
+		: []
 
 	function patch(next: Partial<LayerTableConfig>) {
 		onChange({ ...value, ...next })

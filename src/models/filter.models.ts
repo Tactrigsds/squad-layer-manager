@@ -27,11 +27,27 @@ export const TEAM_COLUMN_PAIRS = {
 	Alliance: ['Alliance_1', 'Alliance_2'],
 	Faction: ['Faction_1', 'Faction_2'],
 	Unit: ['Unit_1', 'Unit_2'],
+	Vehicle: ['Vehicle_1', 'Vehicle_2'],
+	VehicleType: ['VehicleType_1', 'VehicleType_2'],
 } as const
 
-export const TeamColumnSchema = z.enum(['Alliance', 'Faction', 'Unit'])
+export const TeamColumnSchema = z.enum(['Alliance', 'Faction', 'Unit', 'Vehicle', 'VehicleType'])
 export type TeamColumn = z.infer<typeof TeamColumnSchema>
 export const TEAM_COLUMNS = TeamColumnSchema.options
+
+// team columns whose pair exists as physical artifact columns. The vehicle pairs are virtual (they lower
+// into unit-record membership), so anything that queries a pair column directly, e.g. the possible-value
+// menu items behind the backburner request dialog, is restricted to these.
+export const PHYSICAL_TEAM_COLUMNS = ['Alliance', 'Faction', 'Unit'] as const satisfies TeamColumn[]
+export type PhysicalTeamColumn = (typeof PHYSICAL_TEAM_COLUMNS)[number]
+
+export const TEAM_COLUMN_LABELS: Record<TeamColumn, string> = {
+	Alliance: 'Alliance',
+	Faction: 'Faction',
+	Unit: 'Unit',
+	Vehicle: 'Vehicle',
+	VehicleType: 'Vehicle type',
+}
 
 export const TeamQuantifierSchema = z.enum(['either', 'both'])
 export type TeamQuantifier = z.infer<typeof TeamQuantifierSchema>
