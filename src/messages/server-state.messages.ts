@@ -91,6 +91,8 @@ export const matchEnded = def('Match ended!')
 
 export const serverActions = def('Server Actions')
 
+export const joinServer = def('Join Server')
+
 export const endMatchLabel = def('End Match')
 
 export const endMatchNeedsPlayers = def('(disabled: Cannot end match when server is empty.)')
