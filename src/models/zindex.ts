@@ -19,6 +19,8 @@ export const ZI_OFFSETS = {
 	// nesting depth, since a deeper header pins below its ancestors and must paint below them too
 	STICKYGROUP_FLOOR: 10,
 	STICKYGROUP_CEILING: 50,
+	// a scroll surface's own chrome, so it stays reachable over anything that scrolls or pins inside it
+	SCROLLBAR: 55,
 	// combo box, select, dropdown, context menu, hover card
 	POPOVER: 60,
 	// non-interactive, so it may safely sit above any popover anchored in the same context
