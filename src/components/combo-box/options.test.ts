@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ComboBoxOption } from './combo-box.tsx'
-import { groupRuns, normalizeOptions } from './options.ts'
+import { ALL_GROUPS, groupPrefixOf, groupRuns, liveGroups, normalizeOptions, optionsInGroup, resolveGroups } from './options.ts'
 
 const normalize = (options: (ComboBoxOption<string> | string)[], groupOrder?: readonly string[]) =>
 	normalizeOptions('test', options, true, groupOrder) as ComboBoxOption<string>[]
@@ -88,5 +88,61 @@ describe('groupRuns', () => {
 		)
 		expect(runs.map((r) => r.heading)).toEqual(['OWI', 'GC', undefined])
 		expect(values(runs[2].options)).toEqual(['dead'])
+	})
+})
+
+describe('group resolution', () => {
+	it('fills label and prefix from the key, and prefix from the label', () => {
+		expect(resolveGroups(['OWI', { key: 'gc', label: 'Galactic Contention' }, { key: 'su', label: 'SuperMod', prefix: 'SPM' }])).toEqual([
+			{ key: 'OWI', label: 'OWI', prefix: 'OWI' },
+			{ key: 'gc', label: 'Galactic Contention', prefix: 'Galactic Contention' },
+			{ key: 'su', label: 'SuperMod', prefix: 'SPM' },
+		])
+	})
+
+	it('keeps an explicit null prefix, so a group can tab without badging its options', () => {
+		const groups = resolveGroups([{ key: 'OWI', prefix: null }, { key: 'GC' }])
+		expect(groups).toEqual([
+			{ key: 'OWI', label: 'OWI', prefix: null },
+			{ key: 'GC', label: 'GC', prefix: 'GC' },
+		])
+		expect(groupPrefixOf({ value: 'Narva', group: 'OWI' }, groups)).toBeUndefined()
+		expect(groupPrefixOf({ value: 'Narva', group: 'GC' }, groups)).toBe('GC')
+	})
+
+	it('lists only groups with selectable options, declared order first', () => {
+		const options = normalize(
+			[
+				{ value: 'a', group: 'GC' },
+				{ value: 'b', group: 'Undeclared' },
+				{ value: 'c', group: 'Empty', disabled: true },
+			],
+			['OWI', 'GC'],
+		)
+		expect(liveGroups(options, resolveGroups(['OWI', 'GC', 'Empty'])).map((g) => g.key)).toEqual(['GC', 'Undeclared'])
+	})
+
+	it('filters to one group, and passes everything through for the all tab', () => {
+		const options = normalize([{ value: 'a', group: 'OWI' }, { value: 'b', group: 'GC' }, { value: 'c' }], ['OWI', 'GC'])
+		expect(values(optionsInGroup(options, 'OWI'))).toEqual(['a'])
+		expect(values(optionsInGroup(options, ALL_GROUPS))).toEqual(['a', 'b', 'c'])
+	})
+
+	it('resolves an option prefix, falling back to the raw group key when undeclared', () => {
+		const groups = resolveGroups([{ key: 'SuperMod', prefix: 'SPM' }])
+		expect(groupPrefixOf({ value: 'x', group: 'SuperMod' }, groups)).toBe('SPM')
+		expect(groupPrefixOf({ value: 'x', group: 'Other' }, groups)).toBe('Other')
+		expect(groupPrefixOf({ value: 'x' }, groups)).toBeUndefined()
+	})
+
+	it('drops headings when asked, for views where a tab or prefix already names the group', () => {
+		const options = normalize(
+			[
+				{ value: 'a', group: 'OWI' },
+				{ value: 'b', group: 'GC' },
+			],
+			['OWI', 'GC'],
+		)
+		expect(groupRuns(options, true)).toEqual([{ options }])
 	})
 })
