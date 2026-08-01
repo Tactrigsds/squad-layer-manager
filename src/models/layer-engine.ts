@@ -3,7 +3,9 @@ import { assertNever } from '@/lib/type-guards'
 import * as F_Msgs from '@/messages/filter.messages'
 import type * as CS from '@/models/context-shared'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
+import * as VEH from '@/models/vehicles.models'
 
 // The request/response shapes of the layer query engine (layer-engine/), and the lowering from a filter tree into the IR it
 // executes.
@@ -191,11 +193,78 @@ function teamSpecIr(ctx: LowerCtx, spec: F.MatchupTeamSpec, team: 1 | 2, path: s
 		const values = spec[teamColumn]
 		if (!values || values.length === 0) continue
 		const column = F.resolveTeamColumn(teamColumn, team)
+		const vehicleInfo = LC.vehicleColumnInfo(column)
+		if (vehicleInfo) {
+			const ir = vehicleValuesIr(ctx, column, vehicleInfo, values, path, errors)
+			if (ir) children.push(ir)
+			continue
+		}
 		const col = columnIndex(ctx, column, path, errors)
 		if (col === undefined) continue
 		children.push(valueListIr(ctx, column, col, values, path, errors))
 	}
 	return and(children)
+}
+
+// A vehicle predicate has no column of its own: it resolves the value list to canonical vehicle ids
+// against the layer-data tables, widens those to the unit records whose composition contains any of
+// them, and scans the team's UnitRecord column for membership. This is the entire vehicle-query
+// mechanism; the engine only ever sees the in_vals.
+function vehicleValuesIr(
+	ctx: LowerCtx,
+	column: string,
+	info: NonNullable<ReturnType<typeof LC.vehicleColumnInfo>>,
+	items: F.InListItem[],
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir | undefined {
+	const components = L.StaticLayerComponents
+	if (!VEH.hasVehicleData(components)) {
+		errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleDataUnavailable() })
+		return undefined
+	}
+	const ids = new Set<number>()
+	for (const item of items) {
+		if (item === null || F.isColumnListItem(item)) {
+			errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(column) })
+			continue
+		}
+		const encoded = encodeValue(ctx, column, item, path, errors)
+		if (encoded !== undefined) ids.add(encoded)
+	}
+	const vehicleIds = info.kind === 'vehicleTypes' ? VEH.vehicleIdsForTypes(ids, components) : ids
+	const unitRecordIds = VEH.unitRecordIdsForVehicles(vehicleIds, components)
+	const col = ctx.colIndex(LC.UNIT_RECORD_COLUMNS[info.team])
+	return or(unitRecordIds.length > 0 ? [{ op: 'in_vals', col, vals: unitRecordIds }] : [])
+}
+
+function lowerVehicleComp(
+	ctx: LowerCtx,
+	node: F.CompNode,
+	column: string,
+	info: NonNullable<ReturnType<typeof LC.vehicleColumnInfo>>,
+	path: string[],
+	errors: F.NodeValidationError[],
+): Ir | undefined {
+	switch (node.type) {
+		case 'eq': {
+			const arg = node.args[1]
+			if (arg.type !== 'value' || arg.value === null) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(column) })
+				return undefined
+			}
+			return vehicleValuesIr(ctx, column, info, [arg.value], path, errors)
+		}
+		case 'in':
+			return vehicleValuesIr(ctx, column, info, node.args[1].values, path, errors)
+		case 'lt':
+		case 'gt':
+		case 'inrange':
+			errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(column) })
+			return undefined
+		default:
+			assertNever(node)
+	}
 }
 
 function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
@@ -224,6 +293,9 @@ function lowerCompForTeam(
 ): Ir | undefined {
 	const subject = resolveColumn(ctx, node.args[0] as F.Arg, team, path, errors)
 	if (subject === undefined) return undefined
+	// vehicle columns are virtual: no artifact column exists, so they take their own lowering path
+	const vehicleInfo = LC.vehicleColumnInfo(subject)
+	if (vehicleInfo) return lowerVehicleComp(ctx, node, subject, vehicleInfo, path, errors)
 	const col = columnIndex(ctx, subject, path, errors)
 	if (col === undefined) return undefined
 	const subjectDomain = F.columnValueDomain(subject, ctx.effectiveColsConfig)
@@ -233,6 +305,10 @@ function lowerCompForTeam(
 		if (arg.type === 'column' || arg.type === 'team-column') {
 			const name = resolveColumn(ctx, arg, team, path, errors)
 			if (name === undefined) return undefined
+			if (LC.isVirtualColumn(name, ctx.effectiveColsConfig)) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(name) })
+				return undefined
+			}
 			const other = columnIndex(ctx, name, path, errors)
 			if (other === undefined) return undefined
 			const domain = F.columnValueDomain(name, ctx.effectiveColsConfig)
@@ -315,6 +391,10 @@ function valueListIr(
 			continue
 		}
 		if (F.isColumnListItem(item)) {
+			if (LC.isVirtualColumn(item.column, ctx.effectiveColsConfig)) {
+				errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleValuesOnly(item.column) })
+				continue
+			}
 			const other = columnIndex(ctx, item.column, path, errors)
 			if (other === undefined) continue
 			const domain = F.columnValueDomain(item.column, ctx.effectiveColsConfig)

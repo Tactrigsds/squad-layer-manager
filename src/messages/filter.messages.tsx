@@ -69,6 +69,10 @@ export const unmappedColumn = (column: string) => t('Column {column} is not mapp
 export const unmappedValue = (column: string, value: NonNullable<F.Value>) =>
 	t('Value {value} is not mapped for column {column}', { value, column })
 
+export const vehicleDataUnavailable = () => t('The loaded layer data predates vehicle filtering; rebuild the layer artifacts')
+
+export const vehicleValuesOnly = (column: string) => t('Column {column} can only be compared against vehicle values', { column })
+
 // Editing a filter entity.
 
 export const saved = def(() => ({ toast: [t('Filter saved')] }))

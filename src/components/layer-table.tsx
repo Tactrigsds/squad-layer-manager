@@ -284,6 +284,7 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 
 		// then add the rest
 		for (const key of Object.keys(cfg.defs)) {
+			if (LC.isVirtualColumn(key, cfg)) continue
 			if (sortedColKeys.some((c) => c.name === key)) continue
 			const colDef = LC.getColumnDef(key, cfg)!
 			const isNumeric = LC.isNumericColumn(key, ctx)

@@ -666,7 +666,14 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 				</Tabs>
 				<div className="flex items-start gap-2">
 					<span className="w-20 shrink-0 pt-2 text-sm text-muted-foreground">{tr.text(BB_Msgs.matchupLabel())}</span>
-					<MatchupConfig node={matchup} actions={matchupActions} allowedTeamValues={allowedTeamValues} showTypeSelect={false} />
+					<MatchupConfig
+						node={matchup}
+						actions={matchupActions}
+						allowedTeamValues={allowedTeamValues}
+						showTypeSelect={false}
+						// the dialog's possible-value queries pin pair columns directly, which the vehicle pairs cannot do
+						columns={F.PHYSICAL_TEAM_COLUMNS}
+					/>
 				</div>
 				{extras.length > 0 && <p className="text-xs text-muted-foreground">{tr.text(BB_Msgs.alsoConstrainedBy(extras.join(', ')))}</p>}
 			</div>

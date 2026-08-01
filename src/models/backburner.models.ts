@@ -250,7 +250,7 @@ const TEAM_PART_KEYS = {
 	Faction: 'factions',
 	Alliance: 'alliances',
 	Unit: 'units',
-} as const satisfies Record<F.TeamColumn, keyof TemplateParts>
+} as const satisfies Record<F.PhysicalTeamColumn, keyof TemplateParts>
 
 export function buildTemplateFilter(parts: Partial<TemplateParts>): F.FilterNode {
 	const nodes: F.FilterNode[] = []
@@ -259,7 +259,7 @@ export function buildTemplateFilter(parts: Partial<TemplateParts>): F.FilterNode
 		if (values.length === 1) nodes.push(FB.eq(column, values[0]))
 		else if (values.length > 1) nodes.push(FB.inValues(column, values))
 	}
-	for (const column of Object.keys(TEAM_PART_KEYS) as F.TeamColumn[]) {
+	for (const column of Object.keys(TEAM_PART_KEYS) as F.PhysicalTeamColumn[]) {
 		const values = parts[TEAM_PART_KEYS[column]] ?? []
 		if (values.length === 1) nodes.push(FB.eq(FB.teamCol(column), values[0]))
 		// two team values means a matchup, either orientation
@@ -301,9 +301,10 @@ export function parseTemplateParts(filter: F.FilterNode): TemplateParts {
 				node.type === 'eq' &&
 				subject?.type === 'team-column' &&
 				subject.quantifier === 'either' &&
-				parts[TEAM_PART_KEYS[subject.column]].length === 0
+				subject.column in TEAM_PART_KEYS &&
+				parts[TEAM_PART_KEYS[subject.column as F.PhysicalTeamColumn]].length === 0
 			) {
-				parts[TEAM_PART_KEYS[subject.column]].push(values[0])
+				parts[TEAM_PART_KEYS[subject.column as F.PhysicalTeamColumn]].push(values[0])
 				continue
 			}
 		}
@@ -346,7 +347,8 @@ export function templateToMenuFieldValues(filter: F.FilterNode): Record<string, 
 	set('Size', parts.sizes)
 	if (parts.matchup) {
 		const [left, right] = parts.matchup.teams
-		for (const column of F.TEAM_COLUMNS) {
+		// menu fields are physical columns only; a matchup's vehicle dimensions have no field to project onto
+		for (const column of F.PHYSICAL_TEAM_COLUMNS) {
 			set(F.resolveTeamColumn(column, 1), left[column] ?? [])
 			set(F.resolveTeamColumn(column, 2), right[column] ?? [])
 		}
