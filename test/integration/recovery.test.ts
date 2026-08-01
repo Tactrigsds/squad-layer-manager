@@ -1,3 +1,4 @@
+import * as fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
@@ -72,6 +73,14 @@ describe('recovering from a broken squad server', () => {
 
 	it('keeps ingesting the log after the game rotates it', async () => {
 		app.emu.rotateLog()
+
+		// The tail detects rotation only by the file shrinking below its held offset. This fixture's log is
+		// tiny, so writing immediately can grow the new file past the old offset before the app's next poll
+		// and the rotation goes unseen -- a window a real multi-megabyte SquadGame.log does not have. Hold
+		// the join until the app has observed the shrink.
+		await app.waitFor(() => fs.readFileSync(app.logFile, 'utf8').includes('log file shrank'), {
+			label: 'the app noticing the rotation',
+		})
 
 		// a player joining after the rotation still reaches the app, which means the tail restarted at
 		// the top of the new file rather than waiting for it to grow past its old offset
