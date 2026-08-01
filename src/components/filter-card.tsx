@@ -16,6 +16,7 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -1191,6 +1192,20 @@ function ApplyFilter(props: ApplyFilterProps) {
 	)
 }
 
+// vehicle class codes are terse, so their options carry the readable name and an explanation; the code
+// stays the stored value and the compact display (chips, trigger)
+function enumOptionExtras(column: LC.EnumColumn, value: string): Partial<ComboBoxOption<string | null>> {
+	if (LC.vehicleColumnInfo(column)?.kind !== 'vehicleTypes') return {}
+	const label = LC_Msgs.vehicleTypeLabels[value]
+	if (!label) return {}
+	const description = LC_Msgs.vehicleTypeDescriptions[value]
+	return {
+		label: `${value} (${tr.text(label)})`,
+		chipLabel: value,
+		...(description ? { description: tr.text(description) } : {}),
+	}
+}
+
 export function StringEqConfig<T extends string | null>(props: {
 	value: T | undefined
 	column: LC.EnumColumn
@@ -1241,7 +1256,13 @@ export function StringEqConfig<T extends string | null>(props: {
 			} else {
 				label = value
 			}
-			options.push({ label, value, disabled: !matched && !hasUnlockAction, sortLast: !matched })
+			options.push({
+				label,
+				...enumOptionExtras(props.column, value),
+				value,
+				disabled: !matched && !hasUnlockAction,
+				sortLast: !matched,
+			})
 		}
 		return options
 	}, [props.column, props.allowedValues, hasUnlockAction, props.onSetAllValuesAllowedLabel])
@@ -1280,7 +1301,7 @@ function StringInConfig(props: {
 				options.push({ label: '(none)', value: null, disabled: !matched })
 				continue
 			}
-			options.push({ label: value, value, disabled: !matched })
+			options.push({ label: value, ...enumOptionExtras(props.column, value), value, disabled: !matched })
 		}
 		return options
 	}, [props.column, props.allowedValues])

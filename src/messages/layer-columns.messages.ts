@@ -1,4 +1,4 @@
-import { def } from '@/models/messages.models'
+import { def, t, type TString } from '@/models/messages.models'
 
 // The layer-table and layer-generation config editors: how a column's display and a generation pick are described.
 
@@ -108,3 +108,45 @@ export const extraMenuItemsHint = def("Extra comparison controls added to the la
 export const noExtraMenuItems = def('None.')
 
 export const addMenuItem = def('Add menu item')
+
+// -------- vehicle classes --------
+// The vehicle class codes (SquadLayerList vocabulary) as surfaced by the Vehicle type filter columns.
+// Keyed by code so data-driven vocabularies fall back to the raw code for anything unlisted.
+
+export const vehicleTypeLabels: Record<string, TString> = {
+	AH: t('Attack helicopter'),
+	APC: t('Armored personnel carrier'),
+	IFV: t('Infantry fighting vehicle'),
+	LOGI: t('Logistics vehicle'),
+	LTV: t('Light transport vehicle'),
+	MBT: t('Main battle tank'),
+	MGS: t('Mobile gun system'),
+	MRAP: t('Mine-resistant vehicle'),
+	MSV: t('Mobile spawn vehicle'),
+	RSV: t('Recon scout vehicle'),
+	SPA: t('Self-propelled artillery'),
+	SPAA: t('Self-propelled anti-air'),
+	TD: t('Tank destroyer'),
+	TRAN: t('Transport vehicle'),
+	UH: t('Utility helicopter'),
+	ULTV: t('Ultralight transport vehicle'),
+}
+
+export const vehicleTypeDescriptions: Record<string, TString> = {
+	AH: t('Helicopters and gunships built to attack ground targets. Mod close-air-support aircraft land here too.'),
+	APC: t('Armored troop carriers, typically armed with a machine gun or grenade launcher.'),
+	IFV: t('Armored carriers that fight as well as carry, with autocannons and often anti-tank missiles.'),
+	LOGI: t('Supply vehicles that haul construction and ammunition points to FOBs.'),
+	LTV: t('Armed light vehicles: jeeps, technicals and gun trucks with mounted weapons.'),
+	MBT: t('Heavily armored tanks with large-caliber main guns.'),
+	MGS: t('Lighter platforms carrying a tank-caliber gun without tank armor.'),
+	MRAP: t('Mine-resistant armored cars, usually with a turret or remote weapon station.'),
+	MSV: t('Deployable spawn points on wheels or tracks.'),
+	RSV: t('Reconnaissance vehicles: fast scouts with good optics and light armament.'),
+	SPA: t('Mobile artillery: rocket and gun carriers for indirect fire.'),
+	SPAA: t('Mobile anti-aircraft gun platforms.'),
+	TD: t('Anti-armor vehicles built around missiles or high-velocity guns.'),
+	TRAN: t('Unarmed or lightly armed troop transports.'),
+	UH: t('Utility helicopters for troop transport and logistics.'),
+	ULTV: t('Motorbikes, quads and other ultralight runabouts.'),
+}
