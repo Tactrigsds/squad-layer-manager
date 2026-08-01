@@ -523,6 +523,7 @@
 	"It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -> Sandbox Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, because it only exists in memory.": "It applies on top of anything selected here and is edited from the sandbox control window (Server Actions -> Sandbox Controls), where you can define groups and tick which fabricated players are admins. There is no source to configure, because it only exists in memory.",
 	"Item not found": "Item not found",
 	"Join": "Join",
+	"Join Server": "Join Server",
 	"K/D Ratio:": "K/D Ratio:",
 	"Keep this flag": "Keep this flag",
 	"Keywords": "Keywords",

@@ -67,6 +67,7 @@ import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
+import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
@@ -364,6 +365,17 @@ export const orpcRouter = {
 			await SquadRcon.broadcast(ctx, ctx.tr.broadcast(SS_Msgs.fogOff()))
 		}
 		return { code: 'ok' as const }
+	}),
+
+	// The squad browser indexes servers by the name they report over RCON, so the lookup goes through the live
+	// server rather than the registry: an operator's display name for a server is their own and matches nothing.
+	getJoinLink: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: _ctx, input }) => {
+		const ctxRes = await tryCtx(_ctx, input.serverId)
+		if (ctxRes.code !== 'ok') return ctxRes
+		const ctx = ctxRes.ctx
+		const serverInfoRes = await ctx.squadRcon.serverInfo.get(ctx)
+		if (serverInfoRes.code !== 'ok') return serverInfoRes
+		return await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name)
 	}),
 
 	warnPlayers: orpcBase

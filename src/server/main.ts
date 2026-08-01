@@ -32,6 +32,7 @@ import * as ServerAgent from '@/systems/server-agent.server'
 import * as ServerConsole from '@/systems/server-console.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as Settings from '@/systems/settings.server'
+import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
@@ -115,6 +116,7 @@ await Instr.spanOp('main', { module }, async () => {
 	await FilterEntity.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
+	SquadBrowser.setup()
 	Rbac.setup()
 	void Sessions.setup()
 	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

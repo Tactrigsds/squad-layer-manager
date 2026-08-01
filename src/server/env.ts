@@ -59,6 +59,7 @@ const BigIntListSchema = z
 
 // named rather than inlined into BM_HOST because the DEMO conflict check asks whether that is where we point
 const BATTLEMETRICS_API = 'https://api.battlemetrics.com'
+const SQUADBROWSER_API = 'https://api.squadbrowser.app'
 
 export const groups = {
 	demo: {
@@ -463,6 +464,33 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 				description: 'the battlemetrics organization BM_PAT belongs to. Player flags are filtered to this org.',
 			}),
 	},
+
+	squadbrowser: {
+		// resolved from SQUADBROWSER_API_KEY and SQUADBROWSER_HOST when left unset, in ensureEnvSetup
+		SQUADBROWSER_ENABLED: z
+			.stringbool()
+			.default(false)
+			.meta({
+				description:
+					'disables the squad browser integration entirely (the dashboard join button is hidden). Defaults to off when there is no SQUADBROWSER_API_KEY and SQUADBROWSER_HOST is the real api, since there is nothing to authenticate with.',
+				envExample: { include: 'commented', dev: { include: 'commented' } },
+			}),
+
+		SQUADBROWSER_HOST: z.url().prefault(SQUADBROWSER_API).meta({
+			description: 'the squad browser api.',
+		}),
+
+		SQUADBROWSER_API_KEY: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				secret: true,
+				envExample: { include: 'set' },
+				description:
+					"squad browser API key, which starts with `sqb_`. It resolves a server's name into the join link behind the dashboard's join button. Leave it empty if you have no key: the integration turns itself off (see SQUADBROWSER_ENABLED) and the button is hidden.",
+			}),
+	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
 
 // section headers in the example env files. A group whose vars are all omitted never shows up.
@@ -496,6 +524,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 		description: 'only read by `pnpm preprocess`, which builds a layer artifact pair. The app itself never reads them.',
 	},
 	battlemetrics: { title: 'Battlemetrics' },
+	squadbrowser: { title: 'Squad Browser' },
 }
 
 export function isSecret(schema: z.ZodType): boolean {
@@ -599,6 +628,7 @@ const DEMO_DEFAULTS: Record<string, string> = {
 // is a demo rather than a contradiction of one.
 const discordIsTurnedOff = () => groups.discord.DISCORD_ENABLED.safeParse(rawEnv.DISCORD_ENABLED).data === false
 const battlemetricsIsAStub = () => (rawEnv.BM_HOST ?? BATTLEMETRICS_API) !== BATTLEMETRICS_API
+const squadbrowserIsAStub = () => (rawEnv.SQUADBROWSER_HOST ?? SQUADBROWSER_API) !== SQUADBROWSER_API
 
 const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; reason: string }[] = [
 	{
@@ -627,6 +657,17 @@ const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; r
 		keys: ['BM_ENABLED'],
 		conflicts: (value) => groups.battlemetrics.BM_ENABLED.safeParse(value).data === true && !battlemetricsIsAStub(),
 		reason: 'a demo has no battlemetrics org to read or write. A BM_HOST pointed at a stub is accepted',
+	},
+	{
+		keys: ['SQUADBROWSER_API_KEY'],
+		conflicts: () => !squadbrowserIsAStub(),
+		reason:
+			"a demo's servers are made up, so the key would be spent looking up names the real squad browser api has never seen. A SQUADBROWSER_HOST pointed at a stub is accepted",
+	},
+	{
+		keys: ['SQUADBROWSER_ENABLED'],
+		conflicts: (value) => groups.squadbrowser.SQUADBROWSER_ENABLED.safeParse(value).data === true && !squadbrowserIsAStub(),
+		reason: 'a demo has no real server to hand anyone a join link for. A SQUADBROWSER_HOST pointed at a stub is accepted',
 	},
 ]
 
@@ -690,6 +731,8 @@ export function ensureEnvSetup() {
 	// Battlemetrics has no switch of its own for an install to leave alone, so an install that never configured it
 	// says so by omission. Reaching for the api anyway is a 401 per player, against a third party, forever.
 	rawEnv.BM_ENABLED ??= String(rawEnv.BM_PAT !== undefined || battlemetricsIsAStub())
+	// same bargain for the squad browser: without a key every join-link lookup is a 401 against a third party
+	rawEnv.SQUADBROWSER_ENABLED ??= String(rawEnv.SQUADBROWSER_API_KEY !== undefined || squadbrowserIsAStub())
 
 	const toValidate = buildForValidation()
 	// both of these are what DEMO deliberately does, so they only guard a real deployment

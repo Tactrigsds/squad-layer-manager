@@ -191,6 +191,38 @@ describe('DEMO', () => {
 		const Env = await loadEnv('', { DEMO: '1', BM_ENABLED: 'true' })
 		expect(() => Env.ensureEnvSetup()).toThrow(/BM_ENABLED/)
 	})
+
+	it('refuses to boot with a squad browser key, which a demo has no real server to spend on', async () => {
+		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_real-key\n', { DEMO: '1' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/SQUADBROWSER_API_KEY/)
+	})
+
+	it('accepts a squad browser key there is only a stub to spend on', async () => {
+		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_stub-key\n', { DEMO: '1', SQUADBROWSER_HOST: 'http://127.0.0.1:3123' })
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
+})
+
+// same bargain as BM_ENABLED: an install that never configured the squad browser says so by omission, and the
+// join button is hidden rather than resolving to a 401 against a third party
+describe('SQUADBROWSER_ENABLED', () => {
+	it('is off when there is no key and only the real api to spend one on', async () => {
+		const Env = await loadEnv('', { DEMO: '1' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('false')
+	})
+
+	it('is on for an install that configured a key', async () => {
+		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('true')
+	})
+
+	it('leaves an explicit answer alone', async () => {
+		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY, SQUADBROWSER_ENABLED: 'false' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('false')
+	})
 })
 
 // there is no BM_ENABLED an install would already be setting, so an install that never configured battlemetrics

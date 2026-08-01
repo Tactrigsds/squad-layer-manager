@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type * as React from 'react'
 
 import type * as Cleanup from '@/lib/cleanup'
@@ -10,6 +10,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
 import * as Cookies from '@/systems/app-routes.client'
+import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 
@@ -71,6 +72,17 @@ export const [useServerRolling, serverRolling$] = ReactRx.bind('squadServer.serv
 export const [useTickRate, tickRate$] = ReactRx.bind('squadServer.tickRate', (serverId: string) =>
 	RPC.observe('squadServer.watchTickRate', () => RPC.orpc.squadServer.watchTickRate.call({ serverId })).pipe(RPC.dropServerNotLoaded()),
 )
+
+// The join link only moves when the server is renamed, and the lookup costs a request against a third party, so
+// it is fetched once per page rather than kept live. Null covers every reason there is no link to offer -- the
+// integration is off, the server isn't indexed, the lookup failed -- since the caller's only move is to hide.
+export function useJoinLink(serverId: string) {
+	const squadBrowserEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.squadBrowserEnabled)
+	const query = useQuery(
+		RPC.orpc.squadServer.getJoinLink.queryOptions({ input: { serverId }, enabled: squadBrowserEnabled, staleTime: Infinity }),
+	)
+	return query.data?.code === 'ok' ? query.data.joinUrl : null
+}
 
 export function useEndMatch() {
 	return useMutation({

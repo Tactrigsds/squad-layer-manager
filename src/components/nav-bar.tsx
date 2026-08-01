@@ -27,6 +27,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
@@ -36,6 +37,7 @@ import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -287,6 +289,7 @@ export default function NavBar() {
 					</span>
 				)}
 				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
+				{isOnServerDashboard && squadServerKey && <JoinServerButton serverId={squadServerKey.serverId} />}
 				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
 				{isOnServerDashboard &&
 					selectedServer &&
@@ -345,6 +348,26 @@ export default function NavBar() {
 					))}
 			</div>
 		</nav>
+	)
+}
+
+// An anchor rather than a click handler, so the link can be copied or opened in a new window like any other.
+function JoinServerButton(props: { serverId: string }) {
+	const joinUrl = SquadServerClient.useJoinLink(props.serverId)
+	if (!joinUrl) return null
+
+	const label = tr.text(SS_Msgs.joinServer())
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button asChild variant="ghost" size="icon" className="shrink-0">
+					<a href={joinUrl} target="_blank" rel="noopener noreferrer" aria-label={label}>
+						<Icons.Gamepad2 className="h-4 w-4" />
+					</a>
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
 	)
 }
 
