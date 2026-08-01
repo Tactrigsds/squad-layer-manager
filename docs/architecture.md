@@ -521,6 +521,14 @@ value list, to canonical vehicle ids, to the unit records whose composition cont
 per team over `UnitRecord_1/2`. The engine never learns what a vehicle is. Anything that addresses artifact columns
 directly (whole-layer selects, sorting, distinct/possible-value queries, table display) must skip virtual columns.
 
+**Value selectors group by collection.** Every picker whose options are layer vocabulary (maps, layers, gamemodes,
+factions, units, alliances, vehicles, vehicle classes) lists them under collection headings, ordered by
+`LC.collectionGroupOrder()`. `LC.collectionForEnumValue` derives the collection by walking the catalog: layer configs
+place maps, layers and gamemodes, availability entries carry it to factions, alliances and units, and resolved unit
+records carry it on to vehicles. A value used by several collections homes to the default one. Options that the other
+active filters have already excluded keep sorting to the back, below every heading, and a list with fewer than two
+live groups drops headings entirely rather than showing one that says nothing.
+
 The browser runs the engine for everything the UI does, so the server's copy exists for a few narrow jobs: queue
 autogen, the force-write pool check, backburner template probes and one route. The server loads it at boot and never
 drops it, because loading costs considerably more resident memory than holding it does.

@@ -320,8 +320,13 @@ function BlockNodeControlPanel(props: NodeProps) {
 						label: 'gamemode',
 						onSelect: () => addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }),
 					},
+					{
+						label: 'collection',
+						onSelect: () => addSeeded(EFB.inValues('Collection'), { group: 'layer-identity', focus: 'operator' }),
+					},
 					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
 					{ label: 'faction/unit', onSelect: () => addSeeded(EFB.inValues(), { group: 'team' }) },
+					{ label: 'vehicle', onSelect: () => addSeeded(EFB.inValuesForTeamColumn('Vehicle'), { group: 'team', focus: 'values' }) },
 					{ label: 'scores', onSelect: () => addSeeded(EFB.comp(), { group: 'extra' }) },
 					{ label: 'select layers', onSelect: () => addSeeded(EFB.inValues('id'), { autoOpenLayers: true }) },
 					'separator',
@@ -669,9 +674,9 @@ export function Comparison(props: {
 	showValueDropdown?: boolean
 	lockOnSingleOption?: boolean
 	defaultEditing?: boolean
-	// when a freshly-created comparison already has a subject column, open the operator select on mount
-	// instead of the subject picker
-	defaultFocus?: 'operator'
+	// when a freshly-created comparison already has a subject column, open the operator select or the value
+	// editor on mount instead of the subject picker
+	defaultFocus?: 'operator' | 'values'
 	highlight?: boolean
 	columnLabel?: string
 	// overrides the numeric value input's width wrapper (default w-[100px]); used to keep the compact
@@ -875,6 +880,7 @@ export function Comparison(props: {
 		if (!columnEditable) return
 		const raf = requestAnimationFrame(() => {
 			if (props.defaultFocus === 'operator' && hasSubject) codeBoxRef.current?.focus()
+			else if (props.defaultFocus === 'values' && hasSubject) valueBoxRef.current?.focus()
 			else if (props.defaultEditing || !hasSubject) columnBoxRef.current?.focus()
 		})
 		return () => cancelAnimationFrame(raf)
@@ -1195,22 +1201,26 @@ function ApplyFilter(props: ApplyFilterProps) {
 // vehicle class codes are terse, so their options carry the readable name and an explanation; the code
 // stays the stored value and the compact display (chips, trigger)
 function enumOptionExtras(column: LC.EnumColumn, value: string): Partial<ComboBoxOption<string | null>> {
+	const collection = LC.collectionForEnumValue(column, value)
+	const grouped: Partial<ComboBoxOption<string | null>> = collection ? { group: collection } : {}
 	const kind = LC.vehicleColumnInfo(column)?.kind
 	if (kind === 'vehicles') {
 		const type = LC.vehicleTypeForVehicle(value)
-		if (!type) return {}
+		if (!type) return grouped
 		const typeLabel = LC_Msgs.vehicleTypeLabels[type]
 		return {
+			...grouped,
 			description: typeLabel ? `${type} (${tr.text(typeLabel)})` : type,
 			// searching a class code or name narrows the list to that class
 			keywords: typeLabel ? [type, tr.text(typeLabel)] : [type],
 		}
 	}
-	if (kind !== 'vehicleTypes') return {}
+	if (kind !== 'vehicleTypes') return grouped
 	const label = LC_Msgs.vehicleTypeLabels[value]
-	if (!label) return {}
+	if (!label) return grouped
 	const description = LC_Msgs.vehicleTypeDescriptions[value]
 	return {
+		...grouped,
 		label: `${value} (${tr.text(label)})`,
 		chipLabel: value,
 		keywords: [tr.text(label)],
@@ -1287,6 +1297,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			disabled={lockOnSingleOption && options.length === 1}
 			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
 			options={options}
+			groupOrder={LC.collectionGroupOrder()}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
@@ -1324,6 +1335,7 @@ function StringInConfig(props: {
 			ref={props.ref}
 			values={props.values}
 			options={options}
+			groupOrder={LC.collectionGroupOrder()}
 			onSelect={props.setValues}
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}
