@@ -80,6 +80,7 @@ Every credential SLM reads lives in `.env.secrets`. The rest of the configuratio
 | `DISCORD_CLIENT_SECRET`              | the discord app's oauth2 client secret                              |
 | `DISCORD_BOT_TOKEN`                  | the discord bot token                                               |
 | `BM_PAT`                             | the battlemetrics personal access token                             |
+| `SQUADBROWSER_API_KEY`               | the squad browser api key, for the dashboard's join button          |
 | `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                   |
 | `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                    |
 
@@ -149,7 +150,19 @@ The integration is optional. Leave `BM_PAT` unset and it turns itself off: nothi
 profiles are read, and the parts of the app that show them are hidden rather than failing. Set `BM_ENABLED=false` to
 turn it off while keeping the token configured.
 
-#### 3.6. Backups
+#### 3.6. Squad browser
+
+The server dashboard can offer a button that joins the server you are looking at. SLM resolves the link through
+the squad browser, which identifies a server by the name it reports over RCON, so nothing needs configuring per
+server.
+
+Set `SQUADBROWSER_API_KEY` (in `.env.secrets`, it is a credential) to a squad browser api key. Keys start with
+`sqb_`.
+
+The integration is optional. Leave it unset and the button is hidden rather than failing. Set
+`SQUADBROWSER_ENABLED=false` to hide it while keeping the key configured.
+
+#### 3.7. Backups
 
 The database is snapshotted into `BACKUPS_DIR` before every migration, whether the app applies them at boot
 (`DB_AUTOMIGRATE`, the default) or you run them yourself. Nothing is applied if the snapshot fails. That one is not
@@ -164,7 +177,7 @@ optional, and it is what a bad upgrade is rolled back from. Periodic backups are
 Backups can also be uploaded to an SFTP destination. See [backups and restoring](backups.md) for that, for what the
 filenames mean, and for putting one back with `restore.sh`.
 
-#### 3.7. Event history retention
+#### 3.8. Event history retention
 
 `EVENT_HISTORY_RETENTION_PERIOD` is unset by default, which keeps everything. Set it to a duration (e.g. `90d`) and
 old server events (chat, kills, connects) are pruned as part of each backup run, which is what keeps the database
@@ -176,7 +189,7 @@ prune runs before the snapshot, so a backup never carries rows that were just dr
 The first prune after turning this on clears the whole accumulated backlog, and is much larger than the ones that
 follow.
 
-#### 3.8. Telemetry
+#### 3.9. Telemetry
 
 Detailed logs and telemetry are available via grafana at `http://localhost:3001`, which you may also want to expose
 to the internet. Change the default admin password before doing so. Three dashboards come preconfigured for
@@ -189,7 +202,7 @@ If you do not want any telemetry, set `OTEL_ENABLED=false` and comment out or de
 `victoria-logs`, `victoria-traces`, `otel-collector` and `grafana` services from `docker-compose.yaml` before
 starting the app.
 
-#### 3.9. Starting SLM
+#### 3.10. Starting SLM
 
 With docker installed and running, and a public url for the server, start it up:
 
@@ -204,19 +217,19 @@ app`.
 
 Once the app is running you can sign in with discord OAuth, and move on to [configuring SLM](configuring.md).
 
-#### 3.10. Upgrading
+#### 3.11. Upgrading
 
 ```sh
 docker compose pull && docker compose up -d
 ```
 
 Migrations are applied on boot by default. Set `DB_AUTOMIGRATE=0` to disable that. Either way the database is backed
-up first (see [3.6](#36-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
+up first (see [3.7](#37-backups)), so a bad upgrade is recoverable: [backups and restoring](backups.md) covers
 putting the snapshot back and pinning the image it belongs to. The same pinning holds an install on a version you
 have chosen instead of tracking `:latest`.
 
 An install that predates `.env.secrets` keeps working untouched, since SLM reads the credentials from wherever it
-finds them. To move them out of the environment (see [3.3](#33-secrets)), take the six variables in that section out
+finds them. To move them out of the environment (see [3.3](#33-secrets)), take the seven variables in that section out
 of your `.env`, put them in a `.env.secrets` next to it, then add the mount to the `app` service in your
 `docker-compose.yaml` before `docker compose up -d`:
 
