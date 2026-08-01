@@ -9,10 +9,11 @@ using Serilog;
 // only run inside the Squad SDK's editor; here the same assets are read from the shipped IoStore containers via
 // CUE4Parse. Squad's containers are unencrypted and cook with versioned properties, so no AES key or usmap needed.
 //
-// usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>] [--vanilla]
+// usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>]
+//        LayerExtractor --vanilla [--game <squadInstall>] [--out <file>]
 //        LayerExtractor --plan <modDir> [--game <squadInstall>]
 //   <modDir>   a workshop item directory (steamapps/workshop/content/393380/<id>) or any directory of mod paks
-//   --vanilla  export the base game's layers instead of the mod's
+//   --vanilla  export the base game's layers. Omit <modDir>: a mounted mod can shadow base game assets
 //   --plan     list which of the mod's .ucas containers hold layer data. Works from the .utoc indexes alone
 //              (fetch-workshop-mod.sh downloads those first, then only the containers this prints)
 
@@ -30,7 +31,17 @@ var gameDir = TakeOpt("--game")
 var outPath = TakeOpt("--out");
 var vanilla = argv.Remove("--vanilla");
 var plan = argv.Remove("--plan");
-var modDir = argv.Count > 0 ? argv[0] : throw new Exception("usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>] [--vanilla] [--plan]");
+var command = argv.FirstOrDefault(a => a.StartsWith("list:") || a.StartsWith("dump:"));
+var modDir = argv.FirstOrDefault(a => a != command);
+if (modDir == null && (plan || !vanilla))
+{
+	throw new Exception("usage: LayerExtractor <modDir> [--game <squadInstall>] [--out <file>] [--vanilla] [--plan]");
+}
+var gamePaks = Path.Combine(gameDir, "SquadGame/Content/Paks");
+if (!Directory.Exists(gamePaks))
+{
+	throw new Exception($"no Squad install at {gameDir} (missing SquadGame/Content/Paks); pass --game <squadInstall>");
+}
 
 Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: Serilog.Events.LogEventLevel.Verbose).MinimumLevel.Error().CreateLogger();
 
@@ -39,11 +50,14 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: S
 // GLD is Galactic Contention's spelling of Gameplay_Layer_Data
 var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/" };
 
+// the gamemodes with a defending side; mirrors ASYMM_GAMEMODES in src/models/layer.ts
+var asymmetricGamemodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Invasion", "Insurgency", "Destruction" };
+
 if (plan)
 {
 	// a .utoc holds the container's entire directory index; the .ucas holds only bulk data. Stubbing empty .ucas
 	// files lets the provider mount and list index-only fetches.
-	foreach (var utoc in Directory.EnumerateFiles(modDir, "*.utoc", SearchOption.AllDirectories))
+	foreach (var utoc in Directory.EnumerateFiles(modDir!, "*.utoc", SearchOption.AllDirectories))
 	{
 		var ucas = Path.ChangeExtension(utoc, ".ucas");
 		if (!File.Exists(ucas)) File.Create(ucas).Dispose();
@@ -51,10 +65,12 @@ if (plan)
 }
 
 var provider = new DefaultFileProvider(
-	new DirectoryInfo(Path.Combine(gameDir, "SquadGame/Content/Paks")),
-	new[] { new DirectoryInfo(modDir) },
+	new DirectoryInfo(gamePaks),
+	modDir != null ? new[] { new DirectoryInfo(modDir) } : Array.Empty<DirectoryInfo>(),
 	SearchOption.AllDirectories,
 	true,
+	// Squad cooks UE5.4, unencrypted, with versioned properties. An engine upgrade needs this bumped; a switch to
+	// unversioned cooks would also need a .usmap
 	new VersionContainer(EGame.GAME_UE5_4));
 provider.Initialize();
 provider.Mount();
@@ -62,7 +78,7 @@ Console.Error.WriteLine($"mounted {provider.MountedVfs.Count} containers, {provi
 
 if (plan)
 {
-	var gamePakDir = Path.GetFullPath(Path.Combine(gameDir, "SquadGame/Content/Paks"));
+	var gamePakDir = Path.GetFullPath(gamePaks);
 	foreach (var vfs in provider.MountedVfs.OrderBy(v => v.Name, StringComparer.Ordinal))
 	{
 		if (Path.GetFullPath(vfs.Path).StartsWith(gamePakDir)) continue;
@@ -72,14 +88,30 @@ if (plan)
 	return;
 }
 
+bool IsModPath(string key) => key.StartsWith("SquadGame/Plugins/Mods/", StringComparison.OrdinalIgnoreCase);
+
+// every by-name asset lookup scans this instead of provider.Files.Keys: vanilla must not resolve into the mounted
+// mod's files, a mod's own asset must beat a same-named base game one, and ordinal order keeps the pick stable
+// across machines where raw enumeration order is not. Keys repeat across a mod's per-platform cooks of the same
+// packages, hence the Distinct.
+var searchKeys = provider.Files.Keys
+	.Where(k => !(vanilla && IsModPath(k)))
+	.Distinct()
+	.OrderByDescending(IsModPath)
+	.ThenBy(k => k, StringComparer.Ordinal)
+	.ToList();
+
 // list:<substring> prints matching mounted file paths instead of extracting; for poking at a mod's layout
-if (outPath == null && argv.Count > 1 && argv[1].StartsWith("list:"))
+if (command != null && command.StartsWith("list:"))
 {
-	var needle = argv[1]["list:".Length..];
-	foreach (var k in provider.Files.Keys.Where(k => k.Contains(needle, StringComparison.OrdinalIgnoreCase)).Distinct().Take(60))
-	{
-		Console.WriteLine(k);
-	}
+	var needle = command["list:".Length..];
+	var matches = provider.Files.Keys
+		.Where(k => k.Contains(needle, StringComparison.OrdinalIgnoreCase))
+		.Distinct()
+		.OrderBy(k => k, StringComparer.Ordinal)
+		.ToList();
+	foreach (var k in matches.Take(200)) Console.WriteLine(k);
+	if (matches.Count > 200) Console.WriteLine($"... {matches.Count - 200} more; narrow the substring");
 	return;
 }
 
@@ -146,6 +178,34 @@ string? RefPackage(JToken? reference) =>
 
 string BaseName(string path) => path[(path.LastIndexOf('/') + 1)..];
 
+// "Class'Package:Export'" -> "Package:Export"; null when the shape is anything else, rather than crashing on it
+string? QuotedName(JToken? objectName)
+{
+	var parts = objectName?.ToString().Split('\'');
+	return parts?.Length >= 3 ? parts[^2] : null;
+}
+
+// dump:<substring> prints the raw exports of the first mounted package matching the substring; for working out
+// which property holds a value
+if (command != null && command.StartsWith("dump:"))
+{
+	var needle = command["dump:".Length..];
+	var file = searchKeys
+		.Where(k => k.EndsWith(".uasset") && k.Contains(needle, StringComparison.OrdinalIgnoreCase))
+		.OrderBy(k => k.Length)
+		.FirstOrDefault();
+	if (file == null)
+	{
+		Console.Error.WriteLine($"no package matching {needle}");
+		return;
+	}
+	Console.Error.WriteLine($"dumping {file}");
+	var dumped = LoadExports(file)?.ToString(Formatting.Indented) ?? "null";
+	if (outPath != null) File.WriteAllText(outPath, dumped);
+	else Console.WriteLine(dumped);
+	return;
+}
+
 // FText serializes as one of several shapes depending on how it was authored
 string TextToString(JToken? text)
 {
@@ -159,7 +219,7 @@ string TextToString(JToken? text)
 var enumDisplayNames = new Dictionary<string, string>();
 void LoadEnumDisplayNames(string enumName)
 {
-	var file = provider.Files.Keys.FirstOrDefault(k => k.EndsWith($"/{enumName}.uasset", StringComparison.OrdinalIgnoreCase));
+	var file = searchKeys.FirstOrDefault(k => k.EndsWith($"/{enumName}.uasset", StringComparison.OrdinalIgnoreCase));
 	if (file == null) return;
 	var exports = LoadExports(file);
 	var map = exports?.FirstOrDefault(e => e["Type"]?.ToString() == "UserDefinedEnum")?["Properties"]?["DisplayNameMap"];
@@ -194,7 +254,7 @@ LoadEnumDisplayNames("ESQFactionSetupType");
 
 // FactionTable rows give faction display names; Faction_<id> assets give the alliance
 var factionNames = new Dictionary<string, string>();
-foreach (var tableFile in provider.Files.Keys.Where(k => k.EndsWith("FactionTable.uasset")).Distinct())
+foreach (var tableFile in searchKeys.Where(k => k.EndsWith("FactionTable.uasset")))
 {
 	var rows = LoadExports(tableFile)?.FirstOrDefault(e => e["Type"]?.ToString() == "DataTable")?["Rows"];
 	if (rows is not JObject rowsObj) continue;
@@ -209,7 +269,7 @@ var factionAlliances = new Dictionary<string, string>();
 string AllianceOf(string factionId)
 {
 	if (factionAlliances.TryGetValue(factionId, out var cached)) return cached;
-	var file = provider.Files.Keys.FirstOrDefault(k => k.EndsWith($"/Faction_{factionId}.uasset", StringComparison.OrdinalIgnoreCase));
+	var file = searchKeys.FirstOrDefault(k => k.EndsWith($"/Faction_{factionId}.uasset", StringComparison.OrdinalIgnoreCase));
 	var alliance = "INDEPENDENT";
 	if (file != null)
 	{
@@ -226,16 +286,15 @@ string AllianceOf(string factionId)
 
 // ---------------------------------------------------------------- layers
 
-var layerFiles = provider.Files.Keys
+var layerFiles = searchKeys
 	.Where(k =>
 		(k.Contains("/Gameplay_Layer_Data/", StringComparison.OrdinalIgnoreCase) || k.Contains("/GLD/", StringComparison.OrdinalIgnoreCase))
 		&& k.EndsWith(".uasset"))
-	.Where(k => vanilla
-		? k.StartsWith("SquadGame/Content/", StringComparison.OrdinalIgnoreCase)
-			|| k.StartsWith("SquadGame/Plugins/Expansions/", StringComparison.OrdinalIgnoreCase)
-		: k.StartsWith("SquadGame/Plugins/Mods/", StringComparison.OrdinalIgnoreCase))
+	// the base game ships maps under three roots: SquadGame/Content, Plugins/Expansions/<Map> and a bare
+	// Plugins/<Map> (Al Basrah). Only Plugins/Mods is a mod, so vanilla is everything else (searchKeys has
+	// already dropped the mod's files when vanilla).
+	.Where(k => vanilla || IsModPath(k))
 	.Where(k => !BaseName(k).Contains("LayerTable"))
-	.Distinct()
 	.OrderBy(k => k, StringComparer.Ordinal)
 	.ToList();
 Console.Error.WriteLine($"found {layerFiles.Count} layer packages");
@@ -250,7 +309,14 @@ foreach (var layerFile in layerFiles)
 	var layer = exports?.FirstOrDefault(e => e["Properties"]?["TeamConfigs"] != null);
 	if (layer == null) continue;
 	var props = (JObject)layer["Properties"]!;
-	var levelName = BaseName(PackageOfObjectPath(layer["Package"]?.ToString()) ?? layerFile.Replace(".uasset", ""));
+	// the base game's layers are named by their DataTable row, which matches the package everywhere except Jensens
+	// Range, whose packages carry a Training_ infix the layer name does not. Mods are named by their package
+	// instead: their row names are copied along with the asset and left stale (Resurgence files
+	// RS_Yehorivka_Invasion_v2 under the row RS_Yehorivka_Domination_v1, and both rows exist).
+	var rowName = vanilla ? props["Data"]?["RowName"]?.ToString() : null;
+	var levelName = !string.IsNullOrEmpty(rowName)
+		? rowName
+		: BaseName(PackageOfObjectPath(layer["Package"]?.ToString()) ?? layerFile.Replace(".uasset", ""));
 
 	string SetupRowName(string setupPackage)
 	{
@@ -262,27 +328,43 @@ foreach (var layerFile in layerFiles)
 	}
 
 	var teamConfigs = new JObject();
-	var configRefs = (props["TeamConfigs"] as JArray) ?? new JArray();
-	for (var i = 0; i < configRefs.Count && i < 2; i++)
+	foreach (var configRef in (props["TeamConfigs"] as JArray) ?? new JArray())
 	{
-		var exportName = configRefs[i]["ObjectName"]?.ToString()?.Split("'")[^2]?.Split(':')[^1];
+		var exportName = QuotedName(configRef["ObjectName"])?.Split(':')[^1];
 		var config = exports!.FirstOrDefault(e => e["Name"]?.ToString() == exportName)?["Properties"] as JObject;
 		if (config == null) continue;
+		// the config's Index names its slot; cooked data omits it for the default, Team_One. Position in the
+		// TeamConfigs array is not authoritative, and neutral (civilian) configs are not a playable slot.
+		var slot = config["Index"]?.ToString() ?? "ESQTeam::Team_One";
+		var teamNumber = slot.EndsWith("Team_One") ? 1 : slot.EndsWith("Team_Two") ? 2 : 0;
+		if (teamNumber == 0) continue;
 		var setupPackage = RefPackage(config["SpecificFactionSetup"]);
+		// the blueprint decides attack/defend at runtime; in the data it shows as which role of default setup the
+		// team was given (LargeMap-Offense vs LargeMap-Defense). A team is one or the other, so anything not
+		// defending attacks: the symmetric modes take their setups from SmallMap, which carries neither marker.
+		var defending = setupPackage?.Contains("-Defense", StringComparison.OrdinalIgnoreCase) ?? false;
 		var team = new JObject
 		{
-			["index"] = i + 1,
+			["index"] = teamNumber,
 			["playerPercent"] = config["PlayerPercentage"]?.ToObject<double>() ?? 50,
 			["tickets"] = config["Tickets"]?.ToObject<double>() ?? 0,
 			["disabledVeh"] = config["DisableVehicleDuringStaggingPhase"]?.ToObject<bool>() ?? false,
-			// the blueprint decides attack/defend at runtime; in the data it shows as which role of default
-			// setup the team was given (LargeMap-Offense vs LargeMap-Defense)
-			["isAttackingTeam"] = setupPackage?.Contains("-Offense") ?? false,
-			["isDefendingTeam"] = setupPackage?.Contains("-Defense") ?? false,
+			["isAttackingTeam"] = !defending,
+			["isDefendingTeam"] = defending,
 			["allowedAlliances"] = new JArray(((config["Allowed Alliances"] as JArray) ?? new JArray()).Select(EnumName)),
 		};
 		if (setupPackage != null) team["defaultFactionUnit"] = SetupRowName(setupPackage);
-		teamConfigs[$"team{i + 1}"] = team;
+		teamConfigs[$"team{teamNumber}"] = team;
+	}
+
+	// an asymmetric layer always has a defender, but only says so in the setup paths when the two sides draw on
+	// different tiers. Where both draw on the same one there is no marker to read, and team two defends.
+	if (asymmetricGamemodes.Contains(props["GameMode"]?["RowName"]?.ToString() ?? "")
+		&& teamConfigs["team1"] is JObject firstTeam && teamConfigs["team2"] is JObject secondTeam
+		&& !firstTeam["isDefendingTeam"]!.ToObject<bool>() && !secondTeam["isDefendingTeam"]!.ToObject<bool>())
+	{
+		secondTeam["isAttackingTeam"] = false;
+		secondTeam["isDefendingTeam"] = true;
 	}
 
 	var separated = props["bSeparatedFactionsList"]?.ToObject<bool>()
@@ -293,11 +375,13 @@ foreach (var layerFile in layerFiles)
 		if (list is not JArray entries) continue;
 		foreach (var entry in entries)
 		{
+			var factionId = entry["Key"]?.ToString();
+			if (string.IsNullOrEmpty(factionId)) continue;
 			var defaultSetupPackage = RefPackage(entry["Value"]?["Faction"]);
-			var types = new JArray(((entry["Value"]?["Types"] as JArray) ?? new JArray()).Select(t => t["Key"]!.ToString()));
+			var types = new JArray(((entry["Value"]?["Types"] as JArray) ?? new JArray()).Select(t => t["Key"]?.ToString()).OfType<string>());
 			factions.Add(new JObject
 			{
-				["factionId"] = entry["Key"]!.ToString(),
+				["factionId"] = factionId,
 				["defaultUnit"] = defaultSetupPackage != null ? SetupRowName(defaultSetupPackage) : null,
 				["availableOnTeams"] = separated ? new JArray(teamIndex) : new JArray(1, 2),
 				["types"] = types,
@@ -376,13 +460,29 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 		}
 	}
 
+	// each characteristic is a row reference into FactionCharacteristicTable, whose row holds the display text
+	var characteristics = new JArray();
+	foreach (var reference in (props["Characteristics"] as JArray) ?? new JArray())
+	{
+		var characteristicRow = reference["RowName"]?.ToString();
+		var characteristicTable = RefPackage(reference["DataTable"]);
+		if (string.IsNullOrEmpty(characteristicRow) || characteristicTable == null) continue;
+		var row = LoadExports(characteristicTable)?.FirstOrDefault(e => e["Type"]?.ToString() == "DataTable")?["Rows"]?[characteristicRow];
+		if (row == null) continue;
+		characteristics.Add(new JObject
+		{
+			["key"] = characteristicRow,
+			["description"] = TextToString(FindRowField(row, "DisplayText")),
+		});
+	}
+
 	var vehicles = new JArray();
 	foreach (var vehicleRef in (props["Vehicles"] as JArray) ?? new JArray())
 	{
-		var exportName = vehicleRef["ObjectName"]?.ToString()?.Split("'")[^2]?.Split(':')[^1];
+		var exportName = QuotedName(vehicleRef["ObjectName"])?.Split(':')[^1];
 		var availability = exports!.FirstOrDefault(e => e["Name"]?.ToString() == exportName)?["Properties"];
 		if (availability == null) continue;
-		var settingName = availability["Setting"]?["ObjectName"]?.ToString()?.Split("'")[^2] ?? "";
+		var settingName = QuotedName(availability["Setting"]?["ObjectName"]) ?? "";
 		vehicles.Add(new JObject
 		{
 			["name"] = settingName,
@@ -416,7 +516,7 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 		["hasBuddyRally"] = props["HasBuddyRally"]?.ToObject<bool>() ?? false,
 		["roles"] = new JArray(),
 		["vehicles"] = vehicles,
-		["characteristics"] = new JArray(),
+		["characteristics"] = characteristics,
 	};
 }
 
