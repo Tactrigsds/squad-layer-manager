@@ -310,7 +310,6 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 					}}
 				>
 					<ConstraintEvalTooltip
-						side="right"
 						padEmpty
 						layerId={row.original.id}
 						itemParity={teamParity}
