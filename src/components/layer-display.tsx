@@ -50,7 +50,6 @@ export default function LayerDisplay(props: {
 			<ConstraintEvalTooltip
 				key="constraint violation display"
 				queriedConstraints={statusData.queriedConstraints}
-				side="top"
 				layerItem={props.item}
 				matchDescriptors={statusData.matchingDescriptors}
 				itemParity={teamParity}
