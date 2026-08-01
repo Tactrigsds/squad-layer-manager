@@ -169,7 +169,6 @@ function disabledReason(fixture: RollingFixture): { type: string; inferred?: boo
 	}
 }
 
-
 function setByTypeOf(fixture: RollingFixture, matchId: number): string {
 	const db = fixture.readDb()
 	try {

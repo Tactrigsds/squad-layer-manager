@@ -1,15 +1,37 @@
 import * as FB from '@/models/filter-builders'
 
-import { createAppFixture } from '../harness/app-fixture'
+import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
-// The filter entity form (name/id/alert messages), as opposed to the filter tree itself. It is the only
-// tanstack-form surface in the app, so it is where a form-library upgrade breaks first: field validation
-// and the submit gate are both library-driven, and neither shows up in a typecheck.
+// The filter pages, against one app: the entity form (the only tanstack-form surface, so where a
+// form-library upgrade breaks first), the reference graph a filter cannot be deleted out of, and the
+// cycle refusal. The tests read the seeded graph before they mutate it: the reference assertions run
+// before the rename, and the cycle test leaves its unsaved edit to die with the page.
+
+let app: AppFixture
+
+test.beforeAll(async () => {
+	app = await createAppFixture({
+		layerQueue: queue(LAYERS.harjuRaas),
+		filters: [
+			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+			filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
+			// named so it sorts first alphabetically: the pool filter has to jump ahead of it on its own merit
+			filter('unused', 'AAS Only', FB.and([FB.eq('Gamemode', 'AAS')])),
+		],
+		serverSettings: (settings) => {
+			settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
+		},
+	})
+})
+
+test.afterAll(async () => {
+	await app?.dispose()
+})
 
 test.describe('the filter editor form', () => {
-	test('rejects a malformed id with the schema message, and recovers once it is valid', async ({ app, page }) => {
+	test('rejects a malformed id with the schema message, and recovers once it is valid', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/new'))
 
 		const id = page.getByRole('textbox', { name: 'ID' })
@@ -26,7 +48,7 @@ test.describe('the filter editor form', () => {
 		await expect(error).toBeHidden()
 	})
 
-	test('derives the id from the name until the id is edited directly', async ({ app, page }) => {
+	test('derives the id from the name until the id is edited directly', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/new'))
 
 		const name = page.getByRole('textbox', { name: 'Name' })
@@ -41,35 +63,6 @@ test.describe('the filter editor form', () => {
 		await name.fill('Armored Layers Revised')
 		await expect(id).toHaveValue('custom-id')
 	})
-
-	test('saves an edited name back to the filter', async ({ page }) => {
-		const app = await createAppFixture({
-			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
-		})
-		try {
-			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
-
-			// the entity fields are behind the details toggle; the tree is what the page opens on
-			await page.getByRole('button', { name: 'Edit Details' }).click({ timeout: 20_000 })
-
-			const name = page.getByRole('textbox', { name: 'Name' })
-			await expect(name).toHaveValue('RAAS Only')
-			await name.fill('RAAS Only (renamed)')
-
-			await page.getByRole('button', { name: 'Save' }).click()
-
-			await app.waitFor(
-				() => {
-					const row = app.readDb().prepare('select name from filters where id = ?').get('raas-only') as { name: string } | undefined
-					return row?.name === 'RAAS Only (renamed)' ? row : null
-				},
-				{ label: 'renamed filter persisted' },
-			)
-		} finally {
-			await app.dispose()
-		}
-	})
 })
 
 // Deleting a filter something still points at would leave the pool, or another filter, referring to nothing.
@@ -77,117 +70,100 @@ test.describe('the filter editor form', () => {
 // stops offering the delete.
 test.describe('filter references', () => {
 	test('lists what references a filter and refuses to delete it until nothing does', async ({ page }) => {
-		const app = await createAppFixture({
-			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [
-				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
-				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
-				// named so it sorts first alphabetically: the pool filter has to jump ahead of it on its own merit
-				filter('unused', 'AAS Only', FB.and([FB.eq('Gamemode', 'AAS')])),
-			],
-			serverSettings: (settings) => {
-				settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+
+		const references = page.getByRole('region', { name: 'References' })
+		await expect(references).toContainText('2 references', { timeout: 20_000 })
+		// referenced directly by raas-harju, and transitively by the pool filter that applies it
+		await expect(references).toContainText('RAAS on Harju')
+		await expect(references).toContainText('Pool filter')
+		await expect(references).toContainText('via raas-harju')
+
+		await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled()
+
+		// the filter the pool names directly says so on its own line, rather than among the other pool uses
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-harju'))
+		await expect(references.getByText('Pool filter for:')).toBeVisible({ timeout: 20_000 })
+
+		// and it leads the index, ahead of the alphabetically earlier filters, saying which server it is for
+		await page.goto(app.loginUrl(app.adminUser, '/filters'))
+		const leadCard = page.getByRole('listitem').first()
+		await expect(leadCard).toContainText('RAAS on Harju', { timeout: 20_000 })
+		await expect(leadCard).toContainText('Pool filter for:')
+		await expect(leadCard).toContainText('Emulated Server')
+
+		// a filter nothing points at still deletes
+		await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))
+		await expect(page.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
+		await page.getByRole('button', { name: 'Delete' }).click()
+		await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
+
+		await app.waitFor(
+			() => {
+				const row = app.readDb().prepare('select id from filters where id = ?').get('unused')
+				return row ? null : true
 			},
-		})
-		try {
-			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
-
-			const references = page.getByRole('region', { name: 'References' })
-			await expect(references).toContainText('2 references', { timeout: 20_000 })
-			// referenced directly by raas-harju, and transitively by the pool filter that applies it
-			await expect(references).toContainText('RAAS on Harju')
-			await expect(references).toContainText('Pool filter')
-			await expect(references).toContainText('via raas-harju')
-
-			await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled()
-
-			// the filter the pool names directly says so on its own line, rather than among the other pool uses
-			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-harju'))
-			await expect(references.getByText('Pool filter for:')).toBeVisible({ timeout: 20_000 })
-
-			// and it leads the index, ahead of the alphabetically earlier filters, saying which server it is for
-			await page.goto(app.loginUrl(app.adminUser, '/filters'))
-			const leadCard = page.getByRole('listitem').first()
-			await expect(leadCard).toContainText('RAAS on Harju', { timeout: 20_000 })
-			await expect(leadCard).toContainText('Pool filter for:')
-			await expect(leadCard).toContainText('Emulated Server')
-
-			// a filter nothing points at still deletes
-			await page.goto(app.loginUrl(app.adminUser, '/filters/unused'))
-			await expect(page.getByText('Nothing references this filter')).toBeVisible({ timeout: 20_000 })
-			await page.getByRole('button', { name: 'Delete' }).click()
-			await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
-
-			await app.waitFor(
-				() => {
-					const row = app.readDb().prepare('select id from filters where id = ?').get('unused')
-					return row ? null : true
-				},
-				{ label: 'unreferenced filter deleted' },
-			)
-		} finally {
-			await app.dispose()
-		}
+			{ label: 'unreferenced filter deleted' },
+		)
 	})
 
 	test('navigating between filters via reference badges leaves the editor pristine', async ({ page }) => {
-		const app = await createAppFixture({
-			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [
-				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
-				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
-			],
-		})
-		try {
-			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
-			const references = page.getByRole('region', { name: 'References' })
-			await references.getByRole('link').filter({ hasText: 'RAAS on Harju' }).click({ timeout: 20_000 })
-			await page.waitForURL('**/filters/raas-harju*')
-			await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled({ timeout: 20_000 })
+		const references = page.getByRole('region', { name: 'References' })
+		await references.getByRole('link').filter({ hasText: 'RAAS on Harju' }).click({ timeout: 20_000 })
+		await page.waitForURL('**/filters/raas-harju*')
+		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled({ timeout: 20_000 })
 
-			// returning serves the first filter from the router's cache, the other way this route re-enters
-			// without a remount. The editor must come back pristine: same tree, save gated, nothing to warn about
-			await page.goBack()
-			await page.waitForURL('**/filters/raas-only*')
-			// a leaked tree from raas-harju would close a reference loop here, so the cycle alert doubles as the
-			// poison detector. It arrives asynchronously (debounced editor sync + validation), so settle first
-			await page.waitForTimeout(1_000)
-			await expect(page.getByRole('alert').filter({ hasText: 'raas-only ->' })).toHaveCount(0)
-			await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+		// returning serves the first filter from the router's cache, the other way this route re-enters
+		// without a remount. The editor must come back pristine: same tree, save gated, nothing to warn about
+		await page.goBack()
+		await page.waitForURL('**/filters/raas-only*')
+		// a leaked tree from raas-harju would close a reference loop here, so the cycle alert doubles as the
+		// poison detector. It arrives asynchronously (debounced editor sync + validation), so settle first
+		await page.waitForTimeout(1_000)
+		await expect(page.getByRole('alert').filter({ hasText: 'raas-only ->' })).toHaveCount(0)
+		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
 
-			// a leftover dirty flag would put a confirm dialog in the way of this navigation and time it out
-			await page.getByRole('link', { name: 'Filters', exact: true }).click()
-			await page.waitForURL('**/filters')
-		} finally {
-			await app.dispose()
-		}
+		// a leftover dirty flag would put a confirm dialog in the way of this navigation and time it out
+		await page.getByRole('link', { name: 'Filters', exact: true }).click()
+		await page.waitForURL('**/filters')
+	})
+
+	test('saves an edited name back to the filter', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+
+		// the entity fields are behind the details toggle; the tree is what the page opens on
+		await page.getByRole('button', { name: 'Edit Details' }).click({ timeout: 20_000 })
+
+		const name = page.getByRole('textbox', { name: 'Name' })
+		await expect(name).toHaveValue('RAAS Only')
+		await name.fill('RAAS Only (renamed)')
+
+		await page.getByRole('button', { name: 'Save' }).click()
+
+		await app.waitFor(
+			() => {
+				const row = app.readDb().prepare('select name from filters where id = ?').get('raas-only') as { name: string } | undefined
+				return row?.name === 'RAAS Only (renamed)' ? row : null
+			},
+			{ label: 'renamed filter persisted' },
+		)
 	})
 
 	test('refuses to save an edit that would make two filters reference each other', async ({ page }) => {
-		const app = await createAppFixture({
-			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [
-				filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
-				filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
-			],
-		})
-		try {
-			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
-			// the editor is only live once its first validation has run, which is what constrains the layer table to
-			// the filter. Editing before that races the frame's setup, and the loop check would silently not run.
-			await expect(page.getByRole('row').filter({ hasText: 'Skirmish' })).toHaveCount(0, { timeout: 20_000 })
+		// the editor is only live once its first validation has run, which is what constrains the layer table to
+		// the filter. Editing before that races the frame's setup, and the loop check would silently not run.
+		await expect(page.getByRole('row').filter({ hasText: 'Skirmish' })).toHaveCount(0, { timeout: 20_000 })
 
-			await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
-			// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
-			await page.getByRole('button', { name: 'apply existing filter' }).click()
-			await page.getByRole('option', { name: 'RAAS on Harju' }).click()
+		await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
+		// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
+		await page.getByRole('button', { name: 'apply existing filter' }).click()
+		await page.getByRole('option', { name: 'RAAS on Harju' }).click()
 
-			await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
-			await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
-		} finally {
-			await app.dispose()
-		}
+		await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
+		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
 	})
 })
