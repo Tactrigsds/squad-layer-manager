@@ -16,6 +16,7 @@ import { assertNever } from '@/lib/type-guards.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
@@ -756,10 +757,14 @@ export function Comparison(props: {
 		// label the concrete T1/T2 columns consistently within the group (some base display names, e.g.
 		// Faction's, omit the family prefix) so the four variants read uniformly
 		const teamGroup = F.TEAM_COLUMNS.flatMap((tc): ComboBoxOption<string>[] => [
-			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 1)) ? [{ value: F.resolveTeamColumn(tc, 1), label: `${tc} T1` }] : []),
-			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 2)) ? [{ value: F.resolveTeamColumn(tc, 2), label: `${tc} T2` }] : []),
-			{ value: teamColumnValue(tc, 'both'), label: `${tc} (Both)` },
-			{ value: teamColumnValue(tc, 'either'), label: `${tc} (Either)` },
+			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 1))
+				? [{ value: F.resolveTeamColumn(tc, 1), label: `${F.TEAM_COLUMN_LABELS[tc]} T1` }]
+				: []),
+			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 2))
+				? [{ value: F.resolveTeamColumn(tc, 2), label: `${F.TEAM_COLUMN_LABELS[tc]} T2` }]
+				: []),
+			{ value: teamColumnValue(tc, 'both'), label: `${F.TEAM_COLUMN_LABELS[tc]} (Both)` },
+			{ value: teamColumnValue(tc, 'either'), label: `${F.TEAM_COLUMN_LABELS[tc]} (Either)` },
 		])
 		const rest = allowedBaseCols
 			.filter((c) => !teamBaseCols.has(c))
@@ -904,6 +909,8 @@ export function Comparison(props: {
 		const cols = cfg ? Object.keys(cfg.defs) : LC.COLUMN_KEYS
 		return cols
 			.filter((c) => {
+				// virtual (vehicle) columns hold sets, not scalars; they can be a subject but never an operand
+				if (LC.isVirtualColumn(c, cfg)) return false
 				const d = F.columnValueDomain(c, cfg)
 				return d && domain && F.domainsCompatible(d, domain)
 			})
@@ -1044,7 +1051,7 @@ export function Comparison(props: {
 					allowedValues={props.allowedEnumValues}
 					onSetAllValuesAllowed={props.onSetAllValuesAllowed}
 					onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
-					column={optionsColumn as LC.GroupByColumn}
+					column={optionsColumn as LC.EnumColumn}
 					value={value as string | undefined | null}
 					setValue={(v) => setSlotValue(index, v)}
 				/>,
@@ -1111,7 +1118,7 @@ export function Comparison(props: {
 					<InListConfig
 						className={componentStyles}
 						ref={valueBoxRef as React.ForwardedRef<ComboBoxHandle>}
-						column={optionsColumn as LC.GroupByColumn}
+						column={optionsColumn as LC.EnumColumn}
 						allowedEnumValues={props.allowedEnumValues}
 						restrictValueSize={restrictValueSize}
 						items={items}
@@ -1185,9 +1192,35 @@ function ApplyFilter(props: ApplyFilterProps) {
 	)
 }
 
+// vehicle class codes are terse, so their options carry the readable name and an explanation; the code
+// stays the stored value and the compact display (chips, trigger)
+function enumOptionExtras(column: LC.EnumColumn, value: string): Partial<ComboBoxOption<string | null>> {
+	const kind = LC.vehicleColumnInfo(column)?.kind
+	if (kind === 'vehicles') {
+		const type = LC.vehicleTypeForVehicle(value)
+		if (!type) return {}
+		const typeLabel = LC_Msgs.vehicleTypeLabels[type]
+		return {
+			description: typeLabel ? `${type} (${tr.text(typeLabel)})` : type,
+			// searching a class code or name narrows the list to that class
+			keywords: typeLabel ? [type, tr.text(typeLabel)] : [type],
+		}
+	}
+	if (kind !== 'vehicleTypes') return {}
+	const label = LC_Msgs.vehicleTypeLabels[value]
+	if (!label) return {}
+	const description = LC_Msgs.vehicleTypeDescriptions[value]
+	return {
+		label: `${value} (${tr.text(label)})`,
+		chipLabel: value,
+		keywords: [tr.text(label)],
+		...(description ? { description: tr.text(description) } : {}),
+	}
+}
+
 export function StringEqConfig<T extends string | null>(props: {
 	value: T | undefined
-	column: LC.GroupByColumn
+	column: LC.EnumColumn
 	allowedValues?: T[]
 	onSetAllValuesAllowed?: () => void
 	onSetAllValuesAllowedLabel?: string
@@ -1235,7 +1268,13 @@ export function StringEqConfig<T extends string | null>(props: {
 			} else {
 				label = value
 			}
-			options.push({ label, value, disabled: !matched && !hasUnlockAction, sortLast: !matched })
+			options.push({
+				label,
+				...enumOptionExtras(props.column, value),
+				value,
+				disabled: !matched && !hasUnlockAction,
+				sortLast: !matched,
+			})
 		}
 		return options
 	}, [props.column, props.allowedValues, hasUnlockAction, props.onSetAllValuesAllowedLabel])
@@ -1255,7 +1294,7 @@ export function StringEqConfig<T extends string | null>(props: {
 
 function StringInConfig(props: {
 	values: (string | null)[]
-	column: LC.GroupByColumn
+	column: LC.EnumColumn
 	allowedValues?: (string | null)[]
 	setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 	className?: string
@@ -1274,7 +1313,7 @@ function StringInConfig(props: {
 				options.push({ label: '(none)', value: null, disabled: !matched })
 				continue
 			}
-			options.push({ label: value, value, disabled: !matched })
+			options.push({ label: value, ...enumOptionExtras(props.column, value), value, disabled: !matched })
 		}
 		return options
 	}, [props.column, props.allowedValues])
@@ -1302,15 +1341,17 @@ function TeamSpecConfig(props: {
 	setValues: (column: F.TeamColumn, values: F.Value[]) => void
 	// narrow a dimension's options to what still has matches (the backburner request dialog); absent = full list
 	allowedValues?: (column: F.TeamColumn) => string[] | undefined
+	// the dimensions to offer; hosts whose queries only understand physical team columns pass a subset
+	columns?: readonly F.TeamColumn[]
 }) {
 	return (
 		<div className="flex flex-col space-y-1 rounded border border-dashed px-2 py-1.5">
 			<span className="text-xs font-semibold text-muted-foreground">{props.label}</span>
-			{F.TEAM_COLUMNS.map((teamColumn) => (
+			{(props.columns ?? F.TEAM_COLUMNS).map((teamColumn) => (
 				<StringInConfig
 					key={teamColumn}
-					title={teamColumn}
-					emptyLabel={tr.text(F_Msgs.anyTeamColumn(teamColumn))}
+					title={F.TEAM_COLUMN_LABELS[teamColumn]}
+					emptyLabel={tr.text(F_Msgs.anyTeamColumn(F.TEAM_COLUMN_LABELS[teamColumn]))}
 					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
 					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
@@ -1318,7 +1359,7 @@ function TeamSpecConfig(props: {
 					restrictValueSize
 					allowedValues={props.allowedValues?.(teamColumn)}
 					// both teams' columns share an enum mapping, so team 1's value list serves either side
-					column={F.resolveTeamColumn(teamColumn, 1) as LC.GroupByColumn}
+					column={F.resolveTeamColumn(teamColumn, 1) as LC.EnumColumn}
 					values={(props.spec[teamColumn] ?? []) as (string | null)[]}
 					setValues={(update) => {
 						const prev = (props.spec[teamColumn] ?? []) as (string | null)[]
@@ -1347,6 +1388,8 @@ export function MatchupConfig(props: {
 	allowedTeamValues?: (side: 0 | 1, column: F.TeamColumn) => string[] | undefined
 	// hosts where the operator is fixed (a layer request is always allow-matchups) hide the select
 	showTypeSelect?: boolean
+	// the dimensions each side offers; defaults to all of them, including the vehicle columns
+	columns?: readonly F.TeamColumn[]
 }) {
 	const { node, actions } = props
 	// unlocked, the specs are not pinned to the _1/_2 columns, so naming them "Team 1"/"Team 2" would
@@ -1372,6 +1415,7 @@ export function MatchupConfig(props: {
 			<TeamSpecConfig
 				label={leftLabel}
 				spec={node.teams[0]}
+				columns={props.columns}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(0, column))}
 				setValues={(col, values) => actions.setTeamValues(0, col, values)}
 			/>
@@ -1406,6 +1450,7 @@ export function MatchupConfig(props: {
 			<TeamSpecConfig
 				label={rightLabel}
 				spec={node.teams[1]}
+				columns={props.columns}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(1, column))}
 				setValues={(col, values) => actions.setTeamValues(1, col, values)}
 			/>
@@ -1422,7 +1467,7 @@ function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; n
 function InListConfig(props: {
 	items: F.InListItem[]
 	setItems: (update: React.SetStateAction<F.InListItem[]>) => void
-	column: LC.GroupByColumn
+	column: LC.EnumColumn
 	allowedEnumValues?: string[]
 	comparableColumns: ComboBoxOption<string>[]
 	allowColumns: boolean

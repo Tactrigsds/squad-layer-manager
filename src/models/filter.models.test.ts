@@ -9,8 +9,10 @@ import { up as migrateBlockIds } from '@/migrations/0082_block_operators_to_logi
 import * as CS from '@/models/context-shared'
 import * as FB from '@/models/filter-builders'
 import * as F from '@/models/filter.models'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import * as LE from '@/models/layer-engine'
+import * as VEH from '@/models/vehicles.models'
 
 // -------- operator selection round-trips --------
 
@@ -395,6 +397,93 @@ describe('matchup lowering', () => {
 		const parsed = F.FilterNodeSchema.safeParse({ type: 'allow-matchups', teams: [{ Faction: ['USA'] }, {}] })
 		expect(parsed.success).toBe(true)
 		if (parsed.success) expect((parsed.data as F.MatchupNode).locked).toBe(false)
+	})
+})
+
+// -------- vehicle predicates --------
+
+describe('vehicle predicate lowering', () => {
+	// the artifact carries the UnitRecord columns after the base columns; the exact indices don't matter,
+	// only that vehicle predicates land on them
+	const engineColumns: string[] = [...LC.COLUMN_KEYS, LC.UNIT_RECORD_COLUMNS[1], LC.UNIT_RECORD_COLUMNS[2]]
+	const vehicleCtx = (): LE.LowerCtx => ({ ...testCtx(), colIndex: (name: string) => engineColumns.indexOf(name) })
+	const colOf = (name: string) => engineColumns.indexOf(name)
+	const components = () => L.StaticLayerComponents as LC.LayerComponents & VEH.VehicleComponents
+
+	const irFor = (node: F.FilterNode) => {
+		const res = LE.lowerFilterNode(vehicleCtx(), node)
+		expect(res.code).toBe('ok')
+		return res.code === 'ok' ? res.ir : null
+	}
+
+	it('the loaded layer data carries the vehicle tables', () => {
+		expect(VEH.hasVehicleData(components())).toBe(true)
+	})
+
+	it('lowers Vehicle_1 membership into unit-record membership over UnitRecord_1', () => {
+		const name = components().vehicles[0]
+		const ir = irFor(FB.inValues('Vehicle_1', [name])) as Extract<LE.Ir, { op: 'in_vals' }>
+		expect(ir).toMatchObject({ op: 'in_vals', col: colOf('UnitRecord_1') })
+		expect(ir.vals.length).toBeGreaterThan(0)
+		// every matched unit record actually contains the vehicle
+		const vehicleId = components().vehicles.indexOf(name)
+		for (const unitRecordId of ir.vals) {
+			expect(components().unitRecordVehicles[unitRecordId]).toContain(vehicleId)
+		}
+	})
+
+	it('expands a team-generic Vehicle comparison over both UnitRecord columns', () => {
+		const name = components().vehicles[0]
+		expect(irFor(FB.inValues(FB.teamCol('Vehicle', 'either'), [name]))).toMatchObject({
+			op: 'or',
+			children: [
+				{ op: 'in_vals', col: colOf('UnitRecord_1') },
+				{ op: 'in_vals', col: colOf('UnitRecord_2') },
+			],
+		})
+		expect(irFor(FB.inValues(FB.teamCol('Vehicle', 'both'), [name]))).toMatchObject({
+			op: 'and',
+			children: [
+				{ op: 'in_vals', col: colOf('UnitRecord_1') },
+				{ op: 'in_vals', col: colOf('UnitRecord_2') },
+			],
+		})
+	})
+
+	it('lowers VehicleType membership through the vehicles of that class', () => {
+		const typeName = components().vehicleTypes[components().vehicleTypeIds[0]]
+		const ir = irFor(FB.inValues('VehicleType_2', [typeName])) as Extract<LE.Ir, { op: 'in_vals' }>
+		expect(ir).toMatchObject({ op: 'in_vals', col: colOf('UnitRecord_2') })
+		const typeId = components().vehicleTypes.indexOf(typeName)
+		for (const unitRecordId of ir.vals) {
+			const hasType = components().unitRecordVehicles[unitRecordId].some(
+				(vehicleId) => components().vehicleTypeIds[vehicleId] === typeId,
+			)
+			expect(hasType).toBe(true)
+		}
+	})
+
+	it("lowers a matchup vehicle dimension against the side team's UnitRecord column", () => {
+		const name = components().vehicles[0]
+		const res = LE.lowerFilterNode(vehicleCtx(), FB.allowMatchups([{ Vehicle: [name] }, {}], { locked: true }))
+		expect(res.code).toBe('ok')
+		if (res.code === 'ok') expect(res.ir).toMatchObject({ op: 'in_vals', col: colOf('UnitRecord_1') })
+	})
+
+	it('rejects vehicle columns as comparison operands', () => {
+		expect(LE.lowerFilterNode(vehicleCtx(), FB.eq(FB.col('Vehicle_1'), FB.col('Vehicle_2'))).code).toBe('err:invalid-node')
+	})
+
+	it('rejects ordered comparisons on vehicle columns', () => {
+		expect(LE.lowerFilterNode(vehicleCtx(), FB.lt('Vehicle_1', 5)).code).toBe('err:invalid-node')
+	})
+
+	it('reports an unmapped vehicle value', () => {
+		const res = LE.lowerFilterNode(vehicleCtx(), FB.inValues('Vehicle_1', ['NotAVehicle']))
+		expect(res.code).toBe('err:invalid-node')
+		if (res.code === 'err:invalid-node') {
+			expect(res.errors.some((e) => e.type === 'unmapped-value')).toBe(true)
+		}
 	})
 })
 

@@ -244,7 +244,7 @@ function mergeOptionSets(
 	}
 	const union = (...lists: (string[] | undefined)[]) => Array.from(new Set(lists.flatMap((list) => list ?? []))).sort()
 	const sideOptions: MatchupSideOptions = [{}, {}]
-	for (const column of F.TEAM_COLUMNS) {
+	for (const column of F.PHYSICAL_TEAM_COLUMNS) {
 		const one = F.resolveTeamColumn(column, 1)
 		const two = F.resolveTeamColumn(column, 2)
 		if (plan.mode === 'dual') {
@@ -322,7 +322,8 @@ export namespace Sel {
 				[0, aTeam],
 				[1, aTeam === 1 ? 2 : 1],
 			] as [0 | 1, 1 | 2][]) {
-				for (const column of F.TEAM_COLUMNS) {
+				// possible-value menu items query pair columns directly, which the virtual vehicle pairs cannot do
+				for (const column of F.PHYSICAL_TEAM_COLUMNS) {
 					const values = (state.matchup.teams[sideIndex][column] ?? []).filter((value): value is string => typeof value === 'string')
 					const field = F.resolveTeamColumn(column, team)
 					teamItems.push({

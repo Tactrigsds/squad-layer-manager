@@ -51,8 +51,8 @@ why its exports lag behind workshop updates.
 A full workshop download is not needed. `tools/layer-extractor/fetch-workshop-mod.sh <workshopId> <outDir>` pulls
 about 5% of a mod: only the dedicated-server containers (which strip art but keep every gameplay asset), and within
 those only the containers that `LayerExtractor --plan` finds layer data in, by fetching the container indexes first.
-It uses DepotDownloader, which needs a Steam login that owns Squad on first run. The base game must still be
-installed; mods reference its assets.
+It uses DepotDownloader; Squad's workshop content is available to the anonymous dedicated-server login, so no
+Steam account is needed. The base game must still be installed; mods reference its assets.
 
 Every source's layers are in the pool of every query. The Collection column tells them apart: a server that only
 runs vanilla should carry a `Collection == OWI` term in its pool filter, and generated votes draw whatever the pool

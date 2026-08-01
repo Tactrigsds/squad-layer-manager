@@ -47,9 +47,10 @@ function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
 	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
 }
 
-// the app works in whole layers: every column of the effective config, in a stable order
+// the app works in whole layers: every column of the effective config, in a stable order. Virtual
+// columns have no artifact column to select.
 function layerColumns(ctx: LC.Ctx) {
-	return Object.keys(ctx.effectiveColsConfig.defs)
+	return Object.keys(ctx.effectiveColsConfig.defs).filter((name) => !LC.isVirtualColumn(name, ctx.effectiveColsConfig))
 }
 
 function columnIndexes(ctx: LE.Ctx, names: readonly string[]) {
