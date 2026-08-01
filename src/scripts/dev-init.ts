@@ -12,6 +12,9 @@ const args = parseArgs({
 	options: {
 		force: { type: 'boolean', default: false },
 		'no-clone': { type: 'boolean', default: false },
+		// `pnpm dev` provisions by running this itself, and closing on "next, run `pnpm dev`" reads as an
+		// instruction there rather than as the end of a step
+		'no-summary': { type: 'boolean', default: false },
 	},
 	allowPositionals: false,
 })
@@ -60,6 +63,8 @@ if (!args.values['no-clone']) {
 	const res = childProcess.spawnSync(path.join(worktree, 'node_modules/.bin/tsx'), cloneArgs, { cwd: worktree, stdio: 'inherit' })
 	if (res.status !== 0) process.exit(res.status ?? 1)
 }
+
+if (args.values['no-summary']) process.exit(0)
 
 console.log(`
 ready. \`pnpm dev\` runs this instance -- the app, the client and the emulated squad server -- at
