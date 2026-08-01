@@ -522,12 +522,17 @@ per team over `UnitRecord_1/2`. The engine never learns what a vehicle is. Anyth
 directly (whole-layer selects, sorting, distinct/possible-value queries, table display) must skip virtual columns.
 
 **Value selectors group by collection.** Every picker whose options are layer vocabulary (maps, layers, gamemodes,
-factions, units, alliances, vehicles, vehicle classes) lists them under collection headings, ordered by
-`LC.collectionGroupOrder()`. `LC.collectionForEnumValue` derives the collection by walking the catalog: layer configs
-place maps, layers and gamemodes, availability entries carry it to factions, alliances and units, and resolved unit
-records carry it on to vehicles. A value used by several collections homes to the default one. Options that the other
-active filters have already excluded keep sorting to the back, below every heading, and a list with fewer than two
-live groups drops headings entirely rather than showing one that says nothing.
+factions, units, alliances, vehicles, vehicle classes) is grouped by collection, via `LC.collectionGroups()`.
+`LC.collectionForEnumValue` derives the collection by walking the catalog: layer configs place maps, layers and
+gamemodes, availability entries carry it to factions, alliances and units, and resolved unit records carry it on to
+vehicles. A value used by several collections homes to the default one.
+
+Grouping is a combo box feature, not a filter-editor one: give either combo box a `groups` list and options carrying
+a `group` key. Two or more groups with selectable options turn on a tab strip (Tab and Shift-Tab cycle it) whose
+first tab shows every group at once and prefixes each row with its group, since a filtered list scatters rows away
+from any heading. A selection always carries its prefix, in chips and trigger text alike, because it is read with no
+tab or heading beside it. `renderGroupPrefix` replaces the badge or, given `false`, drops prefixing so headings carry
+the grouping instead. Options the other active filters have already excluded keep sorting behind every group.
 
 The browser runs the engine for everything the UI does, so the server's copy exists for a few narrow jobs: queue
 autogen, the force-write pool check, backburner template probes and one route. The server loads it at boot and never
