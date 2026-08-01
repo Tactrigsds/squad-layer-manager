@@ -34,5 +34,27 @@ export default defineConfig({
 		// selectors must be role/label-based, so tests double as an accessibility check on the markup
 		testIdAttribute: 'data-test-id',
 	},
-	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+	projects: [
+		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+		// Gecko differs from Blink in the places this app leans hardest: pointer-driven drag and drop, portalled
+		// overlays, and above all the layer table, whose every page is a wasm query over 2.7M layers. Running the
+		// whole suite on it costs as much again as chromium and mostly re-tests the server, so this project runs
+		// only what is tagged @firefox. `pnpm test:e2e:firefox` runs it.
+		//
+		// The timeouts are several times chromium's on purpose. Gecko runs the query engine ~4-5x slower than blink
+		// does, and every one of these tests waits on a query somewhere. Set this low and the suite reports that gap
+		// over and over, drowning the thing it is here to find; set it high and a failure means gecko behaved
+		// differently. An inline `{ timeout: n }` on an assertion overrides these, so a test that waits on a query
+		// must not carry one.
+		//
+		// The one genuine behavioural difference found so far is in drag and drop, and it is not a timeout: see
+		// test/harness/drag.ts, which every drag in the suite goes through.
+		{
+			name: 'firefox',
+			grep: /@firefox/,
+			timeout: 300_000,
+			expect: { timeout: 90_000 },
+			use: { ...devices['Desktop Firefox'] },
+		},
+	],
 })

@@ -78,9 +78,15 @@ See [docs/dev_instances.md](docs/dev_instances.md).
 | `pnpm test`             | unit tests (vitest)                                                     |
 | `pnpm test:integration` | boots the real app against the squad server emulator, per test file     |
 | `pnpm test:e2e`         | builds the engine + client bundle, then drives that app with playwright |
+| `pnpm test:e2e:firefox` | the `@firefox`-tagged part of the e2e suite, on firefox instead         |
+| `pnpm check:compat`     | checks the built client against the browsers we support                 |
 
 Both the integration and e2e suites spawn a real app instance (child process, ephemeral db and ports) against
 an emulated squad server, so they need no external services, but they are slow relative to the unit tests.
+
+`test:e2e:firefox` needs firefox installed once (`pnpm exec playwright install firefox`), and `check:compat`
+needs a client build to read. See [Browser support](docs/architecture.md#browser-support) for what each covers
+and where the supported-browser floor is set.
 
 ## The server agent
 

@@ -56,7 +56,7 @@ test.describe('a dashboard-only user', () => {
 		await expect(dialog.getByText('You have every permission.')).toHaveCount(0)
 	})
 
-	test('is withheld the server console', async ({ page }) => {
+	test('is withheld the server console', { tag: '@firefox' }, async ({ page }) => {
 		await page.goto(app.loginUrl(VIEWER))
 		// they really are on the dashboard: the denial below is about the console, not a broken session
 		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
@@ -72,7 +72,7 @@ test.describe('a dashboard-only user', () => {
 	})
 })
 
-test.describe('a console-reader user', () => {
+test.describe('a console-reader user', { tag: '@firefox' }, () => {
 	test('is granted the console by the permission alone', async ({ page }) => {
 		await page.goto(app.loginUrl(READER))
 		await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })

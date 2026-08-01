@@ -33,7 +33,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
-import { LayerContextMenuItems } from './layer-table-helpers'
+import LayerContextMenuOptions from './layer-context-menu-options'
 import MapLayerDisplay from './map-layer-display'
 import { MultiLayerSetDialog } from './multi-layer-set-dialog'
 import { TablePagination } from './table-pagination'
@@ -310,7 +310,6 @@ function buildColDefs(cfg: LQY.EffectiveColumnAndTableConfig, stores: LayerTable
 					}}
 				>
 					<ConstraintEvalTooltip
-						side="right"
 						padEmpty
 						layerId={row.original.id}
 						itemParity={teamParity}
@@ -573,7 +572,7 @@ export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: 
 		}),
 	)
 
-	return <LayerContextMenuItems selectedLayerIds={selectedForCopy} />
+	return <LayerContextMenuOptions layerIds={selectedForCopy} />
 }
 
 export function LayerTableControlPanel(props: {

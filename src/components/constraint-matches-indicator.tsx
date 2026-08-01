@@ -1,8 +1,9 @@
-import type { TooltipContentProps } from '@radix-ui/react-tooltip'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
+import { useFollowTooltip } from '@/hooks/use-follow-tooltip'
 import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -17,7 +18,6 @@ import { tr } from '@/systems/messages.client'
 import EmojiDisplay from './emoji-display'
 import { FilterEntityLink } from './filter-entity-select'
 import { Separator } from './ui/separator'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export type ConstraintEvalTooltipProps = {
 	queriedConstraints: LQY.Constraint[]
@@ -29,12 +29,12 @@ export type ConstraintEvalTooltipProps = {
 	// will be inferred from layerItem if layerId missing
 	layerId?: string
 	itemParity?: number
-	side?: TooltipContentProps['side']
 	height?: number
 }
 
 export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	const filters = FilterEntityClient.useFilterEntities()
+	const tooltip = useFollowTooltip()
 	const height = props.height ?? 24
 	const iconSize = height * 0.75
 	const layerId = props.layerId ?? props.layerItem?.layerId
@@ -128,58 +128,64 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 	if (renderedRepeats.length > 0) indicatorIcons.unshift(<ConstraintViolationIcon key="__repeat-violation__" size={iconSize} />)
 
 	return (
-		<Tooltip delayDuration={250}>
-			<TooltipTrigger
+		<>
+			<button
+				type="button"
 				// the trigger is a row of emoji/icons, so it has no text of its own to be named by
 				aria-label={tr.text(F_Msgs.layerIndicators())}
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={itemId ? onMouseOver : undefined}
 				onMouseOut={itemId ? onMouseOut : undefined}
+				{...tooltip.triggerProps}
 			>
 				{indicatorIcons}
-			</TooltipTrigger>
-			<TooltipContent
-				className="max-w-md p-3 bg-popover text-popover-foreground rounded-md border border-solid space-y-2"
-				align="start"
-				side={props.side ?? 'right'}
-			>
-				{renderedRepeats.length > 0 && (
-					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.repeatsDetectedLabel())}</div>
-						<ItemGroup>
-							{renderedRepeats.map((constraint, index) => (
-								<React.Fragment key={constraint.id}>
-									{index > 0 && <Separator key={`separator-${constraint.id}`} />}
-									<RepeatViolationDisplay
-										showIcon={true}
-										constraint={constraint}
-										layerId={props.layerId ?? props.layerItem?.layerId}
-										matchDescriptors={props.matchDescriptors}
-										itemParity={props.itemParity}
-									/>
-								</React.Fragment>
-							))}
-						</ItemGroup>
-					</div>
-				)}
-				{renderedFilters.length > 0 && (
-					<div className="flex flex-col">
-						<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.matchingFiltersLabel())}</div>
-						<ItemGroup>
-							{renderedFilters.flatMap(([constraintId, elt], index) => {
-								return (
-									<React.Fragment key={constraintId}>
-										{index > 0 && <Separator key={`separator-${constraintId}`} />}
-										{elt}
-									</React.Fragment>
-								)
-							})}
-						</ItemGroup>
-					</div>
-				)}
-			</TooltipContent>
-		</Tooltip>
+			</button>
+			<TrackingTooltip
+				{...tooltip.contentProps}
+				className="max-w-md p-3 space-y-2"
+				content={
+					!tooltip.open ? null : (
+						<>
+							{renderedRepeats.length > 0 && (
+								<div className="flex flex-col">
+									<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.repeatsDetectedLabel())}</div>
+									<ItemGroup>
+										{renderedRepeats.map((constraint, index) => (
+											<React.Fragment key={constraint.id}>
+												{index > 0 && <Separator key={`separator-${constraint.id}`} />}
+												<RepeatViolationDisplay
+													showIcon={true}
+													constraint={constraint}
+													layerId={props.layerId ?? props.layerItem?.layerId}
+													matchDescriptors={props.matchDescriptors}
+													itemParity={props.itemParity}
+												/>
+											</React.Fragment>
+										))}
+									</ItemGroup>
+								</div>
+							)}
+							{renderedFilters.length > 0 && (
+								<div className="flex flex-col">
+									<div className={cn(Typo.Label, 'text-foreground')}>{tr.text(F_Msgs.matchingFiltersLabel())}</div>
+									<ItemGroup>
+										{renderedFilters.flatMap(([constraintId, elt], index) => {
+											return (
+												<React.Fragment key={constraintId}>
+													{index > 0 && <Separator key={`separator-${constraintId}`} />}
+													{elt}
+												</React.Fragment>
+											)
+										})}
+									</ItemGroup>
+								</div>
+							)}
+						</>
+					)
+				}
+			/>
+		</>
 	)
 }
 

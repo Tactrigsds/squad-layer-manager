@@ -49,7 +49,7 @@ export type InitRequest = {
 	type: 'init'
 	// the worker doesn't share module state with the main thread, so layer data is passed along
 	// rather than fetched a second time. the column config is derived from it here.
-	input: LC.Ctx.Generation & BackgroundQueryState & { layerData: L.LayerData }
+	input: LC.Ctx.Generation & BackgroundQueryState & { layerData: L.LayerData; cacheLayerArtifact: boolean }
 }
 
 export type InitResponse = {
@@ -141,7 +141,10 @@ onmessage = withErrorResponse(async (e) => {
 async function init(initRequest: InitRequest) {
 	L.setLayerData(initRequest.input.layerData)
 
-	const [wasm, artifact] = await Promise.all([fetch(engineWasmUrl).then((res) => res.arrayBuffer()), fetchLayerArtifact()])
+	const [wasm, artifact] = await Promise.all([
+		fetch(engineWasmUrl).then((res) => res.arrayBuffer()),
+		fetchLayerArtifact(initRequest.input.cacheLayerArtifact),
+	])
 	const engine = await LayerEngine.create(wasm, new Uint8Array(artifact))
 	log.info('layer engine ready: %s layers', engine.rowCount)
 
@@ -175,12 +178,17 @@ function withErrorResponse<Msg extends { type: string } & Sequenced>(cb: (e: { d
 	}
 }
 
-async function fetchLayerArtifact() {
+async function fetchLayerArtifact(cache: boolean) {
 	try {
 		// Check if SharedArrayBuffer is available
 		if (typeof SharedArrayBuffer === 'undefined') {
 			throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
 		}
+
+		// Nothing will read the copy back (see cacheLayerArtifact in config.server.ts), so skip OPFS entirely rather
+		// than pay a 235MB write -- which costs more than the fetch and the inflate together -- to fill a directory
+		// that is discarded when this profile is.
+		if (!cache) return await inflateArtifact(await fetch(AR.link('/layers.bin.gz')))
 
 		const opfsRoot = await navigator.storage.getDirectory()
 		const artifactFileName = 'layers.bin'
@@ -221,11 +229,7 @@ async function fetchLayerArtifact() {
 			const cachedFile = await dbHandle.getFile()
 			buffer = await cachedFile.arrayBuffer()
 		} else {
-			postMessage({ type: 'layer-download-started' })
-			if (!res.body) throw new Error('No body on the layer artifact response')
-			// the endpoint always serves gzip, and inflating it here rather than letting the browser decode a
-			// Content-Encoding is what leaves the decompressed artifact to store in OPFS
-			buffer = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
+			buffer = await inflateArtifact(res)
 
 			// Store in OPFS
 			const writable = await dbHandle.createWritable()
@@ -245,4 +249,12 @@ async function fetchLayerArtifact() {
 		return buffer
 	} finally {
 	}
+}
+
+// the endpoint always serves gzip, and inflating it here rather than letting the browser decode a
+// Content-Encoding is what leaves the decompressed artifact to store in OPFS
+async function inflateArtifact(res: Response) {
+	postMessage({ type: 'layer-download-started' })
+	if (!res.body) throw new Error('No body on the layer artifact response')
+	return await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
 }

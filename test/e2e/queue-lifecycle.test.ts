@@ -29,7 +29,7 @@ test.afterAll(async () => {
 	await app?.dispose()
 })
 
-test.describe('the queue through its lifecycle', () => {
+test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 	test('renders the seeded queue in order, and keeps the game server on its head', async ({ page }) => {
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })

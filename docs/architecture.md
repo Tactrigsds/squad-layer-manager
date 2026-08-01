@@ -18,6 +18,7 @@ and this document disagree, the code wins. Individual modules document their own
 - [Data and persistence](#data-and-persistence)
 - [Observability](#observability)
 - [Testing](#testing)
+- [Browser support](#browser-support)
 
 ## The shape of the thing
 
@@ -324,8 +325,9 @@ Conventions from CLAUDE.md, each with a specific reason:
 - **`useEffect`/`useState` interdependence is a code smell.** That is what frames are for.
 - React Compiler is on, and memoizes against stable mutable objects. This bites with TanStack Table: derive render
   data from React state, and only call table methods in event handlers.
-- All overlays are z-50 body-level portal siblings, so **DOM order decides stacking**. Mount on demand rather than
-  reaching for z-index.
+- **Never hardcode a z-index.** Take an offset from `src/models/zindex.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
+  bands are relative to the nearest enclosing `BaseZIndexContext`, so a popover opened inside a dialog lands above
+  that dialog without either callsite knowing about the other.
 
 ### Charts
 
@@ -577,7 +579,8 @@ costs refactoring freedom without catching much.
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `pnpm test`             | vitest unit tests.                                                                                              |
 | `pnpm test:integration` | Boots the **real app** as a child process (ephemeral db and ports) against the emulator, one app per test file. |
-| `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright.                                      |
+| `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright, on chromium.                         |
+| `pnpm test:e2e:firefox` | The `@firefox`-tagged subset of the same suite, on gecko. See [Browser support](#browser-support).              |
 
 Neither heavy suite needs an external service, which is the payoff for having written the emulator.
 
@@ -586,3 +589,48 @@ both suites bundle the server once with rolldown rather than loading its module 
 **Waiting on polls:** the app learns the roster from a polled `ListPlayers`, so a test that acts in-game and then
 asserts cannot resolve faster than two poll intervals. Poll interval, worker count and per-boot cost all trade
 against each other, so none should be changed without re-measuring the whole suite.
+
+## Browser support
+
+The floor is in `src/browser-support.ts`: chrome 111, firefox 128, safari 16.4. It is tailwind 4's own floor,
+below which the emitted stylesheet does not work at all. Two things read it.
+
+**`build.target`** in `vite.config.ts`, so syntax the floor cannot parse is lowered rather than shipped.
+
+**`pnpm check:compat`**, which reads the _built_ client and reports platform features missing from a browser we
+claim to support. It reads `dist/` rather than `src/` because most of the shipped code is dependencies -- radix,
+dnd-kit, codemirror, react -- and that is where the interesting misses are; a source-level lint would never see
+any of it. The javascript is minified by then, so it matches three ways: free identifiers (a name with no binding
+in any enclosing scope, which is what separates the real `Highlight` from rxjs's own `Observable`), `A.b` where
+`A` is one of those, and member names distinctive enough that only one interface in all of MDN's data declares
+them. The css is parsed properly, so properties, at-rules and selectors are exact.
+
+A hit is a question, not a defect: a library that feature-detects before calling looks identical to one that does
+not, and a minified member name can collide with an unrelated one. Every hit is therefore either fixed or listed
+in `ALLOWED` in the script **with the reason it is safe**, and the check fails on an `ALLOWED` entry that no
+longer appears, so the list cannot rot.
+
+### Firefox
+
+Firefox is the only non-chromium engine the suite runs. The `firefox` project in `playwright.config.ts` runs the
+tests tagged `@firefox`: the ones that lean on pointer-driven drag and drop, portalled overlays, and the layer
+table. Its timeouts are several times chromium's, deliberately.
+
+That is because gecko runs the query engine several times slower than blink does, on identical wasm. It is worth
+knowing what that did and did not mean, because the first reading was wrong.
+
+Most of the original gap was **our** bug, not gecko's. The engine's distinct-values query tested membership by
+scanning the vector it was building, which is O(rows x distinct values): 2.7M rows against 928 values for the
+`Layer` column, and the layer-select filter menu asks for twelve such columns before it can render. Blink
+absorbed it at around a second; gecko took ten. A set fixed it for both, and the profile went flat in the number
+of values, which is what says the quadratic term is gone. Firefox's e2e suite went from 2.7 to 1.6 minutes,
+chromium's from 3.2 to 2.2.
+
+What remains is real but ordinary: on the same O(rows) scan gecko is still **~4-5x slower** than blink (~95ms a
+column against ~20ms). Startup is not affected -- fetching, inflating and parsing the artifact takes ~2.6s on
+both. So a slow firefox query is now worth profiling for an algorithm before it is blamed on the engine, and the
+filter menu's twelve separate full-table passes are the next thing to look at.
+
+The only behavioural difference found so far is in drag and drop, where dnd-kit needs the pointer to rest over a
+drop target for a few animation frames before a release commits it. Chromium tolerates a move-then-release;
+firefox does not, at any timeout. `test/harness/drag.ts` handles it, and every drag in the suite goes through it.

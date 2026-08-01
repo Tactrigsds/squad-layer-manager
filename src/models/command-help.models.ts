@@ -260,6 +260,18 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 	}
 }
 
+// The commands page's fragment for a command's full listing: its entry under its own declared section. The page also
+// lists pinned and quick-reference copies, each under its own fragment, but a link from elsewhere wants the listing
+// carrying the arguments and examples.
+export function commandsPageAnchor(cmdId: CMD.CommandId): string {
+	return `section:${CMD.COMMAND_DECLARATIONS[cmdId].section}/command:${cmdId}`
+}
+
+// the dotted global-settings path holding a command's configuration
+export function commandSettingsPath(cmdId: CMD.CommandId): string {
+	return `commands.${cmdId}`
+}
+
 // groups command ids into their declared sections, dropping empty ones. Section order follows COMMAND_SECTIONS.
 export function splitCommandsBySection(ids: CMD.CommandId[]): { section: CMD.CommandSection; label: string; ids: CMD.CommandId[] }[] {
 	return CMD.COMMAND_SECTION_IDS.map((section) => ({

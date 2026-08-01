@@ -600,6 +600,16 @@ export function getLayerCommand(
 	return `${cmd} ${commandArgs.replace('FRAAS', 'RAAS')}`.trim().replace(/\s+/g, ' ')
 }
 
+// undefined when the layer is too partial to locate on a map, which is what makes the caller disable its squadcalc entry
+export function getSquadcalcUrl(baseUrl: string, layerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents) {
+	const layer = toLayer(layerOrId, components)
+	if (!layer.Gamemode || !layer.Map) return undefined
+	const params = new URLSearchParams()
+	params.set('map', layer.Map)
+	params.set('layer', layer.Gamemode.replace('FRAAS', 'RAAS') + (layer.LayerVersion ? layer.LayerVersion.toLowerCase() : ''))
+	return baseUrl + '?' + params.toString()
+}
+
 export function parseRawLayerText(rawLayerText: string, components = StaticLayerComponents): UnvalidatedLayer | null {
 	let knownLayerRes = parseLayerId(rawLayerText, components)
 	if (knownLayerRes.code === 'ok') return knownLayerRes.layer
