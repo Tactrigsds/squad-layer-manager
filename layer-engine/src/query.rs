@@ -8,7 +8,8 @@ use crate::gen::{self, GenSpec, StepSpec};
 use crate::ir::{eval, Ir, Tri};
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::rc::Rc;
 
 #[derive(Deserialize)]
@@ -167,10 +168,14 @@ pub fn handle(store: &Store, id_col: usize, request: Request, cache: &mut Filter
         Request::Distinct { r#where, col } => {
             let hits = matched(store, &r#where, cache);
             let c = store.col(col);
+            // membership is a set rather than a scan of `seen`: a column with 928 distinct values over 2.7M rows
+            // costs a billion comparisons that way, which is most of what the layer-select filter menu waits on.
+            // `seen` still carries the order values were first met in, which is the order the menu shows them in.
             let mut seen: Vec<Option<i64>> = Vec::new();
+            let mut met: HashSet<Option<i64>, BuildHasherDefault<IntHasher>> = HashSet::default();
             for row in hits.rows() {
                 let v = store.value(c, row);
-                if !seen.contains(&v) {
+                if met.insert(v) {
                     seen.push(v);
                 }
             }
@@ -214,5 +219,55 @@ pub fn handle(store: &Store, id_col: usize, request: Request, cache: &mut Filter
             out.sort_unstable_by_key(|g| g.key);
             serde_json::to_string(&out).map_err(|e| e.to_string())
         }
+    }
+}
+
+/// The standard library hashes with SipHash, which buys DoS resistance we have no use for: the keys here are
+/// dictionary indices this module produced itself. Over 2.7M rows that costs more than the lookup it protects,
+/// so integer keys get a multiply-xor hash instead.
+#[derive(Default)]
+struct IntHasher(u64);
+
+impl IntHasher {
+    #[inline]
+    fn mix(&mut self, value: u64) {
+        self.0 = (self.0 ^ value).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+impl Hasher for IntHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        // the table indexes by the low bits, so fold the high ones down into them
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.mix(byte as u64);
+        }
+    }
+    #[inline]
+    fn write_u8(&mut self, i: u8) {
+        self.mix(i as u64)
+    }
+    #[inline]
+    fn write_u32(&mut self, i: u32) {
+        self.mix(i as u64)
+    }
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.mix(i)
+    }
+    #[inline]
+    fn write_i64(&mut self, i: i64) {
+        self.mix(i as u64)
+    }
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.mix(i as u64)
     }
 }

@@ -9,6 +9,7 @@ import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
 
 import * as AR from './src/app-routes.ts'
+import { BUILD_TARGET } from './src/browser-support.ts'
 import * as Env from './src/server/env.ts'
 
 Env.ensureEnvSetup()
@@ -87,6 +88,9 @@ export default defineConfig({
 	server: process.env.NODE_ENV === 'development' ? buildDevServerConfig() : undefined,
 	build: {
 		sourcemap: true,
+		// syntax the floor cannot parse is lowered rather than shipped. This covers only syntax; `pnpm check:compat`
+		// is what checks the apis and css the bundle reaches for.
+		target: BUILD_TARGET,
 	},
 	// optimizeDeps: {
 	// 	exclude: ['ace-builds'],

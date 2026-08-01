@@ -5,6 +5,7 @@ import * as L from '@/models/layer'
 
 import { ADMIN_USER, createAppFixture } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue } from '../harness/arrange'
+import { belowItem, centerOf, dragFrom } from '../harness/drag'
 import { expect, test } from './fixtures'
 
 // The backburner panel below the queue: requests arriving from chat show up live, and GUI edits are
@@ -12,7 +13,7 @@ import { expect, test } from './fixtures'
 
 const ADMIN_STEAM_ID = '76561198000000001'
 
-test.describe('layer requests panel', () => {
+test.describe('layer requests panel', { tag: '@firefox' }, () => {
 	test('shows chat requests live and removes one through the draft/save flow', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas),
@@ -94,14 +95,7 @@ test.describe('layer requests panel', () => {
 			await expect(invertedRow).toBeVisible()
 
 			// drag the inverted request onto the regular one: same filter applied both ways must not merge
-			await invertedRow.getByRole('button').first().hover()
-			await page.mouse.down()
-			// a first small move starts the drag (and expands the drop targets); then re-measure the target
-			await page.mouse.move(300, 300, { steps: 5 })
-			const target = await regularRow.boundingBox()
-			if (!target) throw new Error('target row not visible')
-			await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 })
-			await page.mouse.up()
+			await dragFrom(page, invertedRow.getByRole('button').first(), () => centerOf(regularRow))
 
 			await expect(page.getByText('Cannot combine these requests')).toBeVisible({ timeout: 5_000 })
 			await expect(panel.getByText('Layer Requests (2)')).toBeVisible()
@@ -144,21 +138,14 @@ test.describe('layer requests panel', () => {
 			await expect(queueItem).toBeVisible()
 
 			// drag the request's grip onto the separator just below the first queue item
-			const grip = requestRow.getByRole('button').first()
-			const gripBox = await grip.boundingBox()
-			if (!gripBox) throw new Error('grip not visible')
-			await grip.hover()
-			await page.mouse.down()
-			await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y - 20, { steps: 4 })
-			const box = await queueItem.boundingBox()
-			if (!box) throw new Error('queue item not visible')
-			await page.mouse.move(box.x + box.width / 2, box.y + box.height + 8, { steps: 20 })
-			await page.mouse.up()
+			await dragFrom(page, requestRow.getByRole('button').first(), () => belowItem(queueItem))
 
 			// the dialog opens seeded from the template (its headlessui root never reports visible, so assert on
-			// content): matchup left -> Team 1 (_1), right -> Team 2 (_2)
+			// content): matchup left -> Team 1 (_1), right -> Team 2 (_2). Seeding those fields is a layer query,
+			// so none of these carry an inline timeout: firefox is slow enough at one to blow a ceiling chromium
+			// never comes near (see the firefox project in playwright.config.ts).
 			const dialog = page.getByRole('dialog', { name: 'Add requested layer' })
-			await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Sumari', { timeout: 10_000 })
+			await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Sumari')
 
 			// pick a concrete Sumari layer and add it; the request is consumed
 			const layerRow = dialog.getByRole('row').filter({ hasText: 'Sumari_RAAS_v1' }).first()
@@ -204,7 +191,7 @@ test.describe('layer requests panel', () => {
 			const dialog = page.getByRole('dialog', { name: 'Edit layer request' })
 			const mapField = dialog.getByRole('combobox', { name: 'Map' })
 			// the form is built from the request whose pencil was clicked
-			await expect(mapField).toHaveText('Fallujah', { timeout: 10_000 })
+			await expect(mapField).toHaveText('Fallujah')
 
 			await mapField.click()
 			await page.getByRole('option', { name: 'Sumari', exact: true }).click()
@@ -216,7 +203,7 @@ test.describe('layer requests panel', () => {
 
 			// the next request opens on its own template rather than on the one the dialog last held
 			await panel.getByRole('listitem').filter({ hasText: 'Narva' }).getByRole('button', { name: 'Edit request' }).click()
-			await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Narva', { timeout: 10_000 })
+			await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Narva')
 		} finally {
 			await app.dispose()
 		}
@@ -235,19 +222,8 @@ test.describe('layer requests panel', () => {
 			await expect(panel.getByText('Layer Requests (0)')).toBeVisible({ timeout: 20_000 })
 
 			const queueItem = panel.getByRole('listitem').filter({ hasText: 'Gorodok' }).first()
-			const grip = queueItem.getByRole('button').first()
-			const gripBox = await grip.boundingBox()
-			if (!gripBox) throw new Error('queue grip not visible')
-
-			await grip.hover()
-			await page.mouse.down()
-			await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + 20, { steps: 4 })
 			// drop onto the (empty) requests panel, whose drop zone covers the whole card
-			const requestsPanel = panel.getByText('Layer Requests (0)')
-			const target = await requestsPanel.boundingBox()
-			if (!target) throw new Error('requests panel not visible')
-			await page.mouse.move(target.x + target.width / 2, target.y + 40, { steps: 20 })
-			await page.mouse.up()
+			await dragFrom(page, queueItem.getByRole('button').first(), () => centerOf(panel.getByText('Layer Requests (0)'), 40))
 
 			// the layer moves out of the queue and into a request: it's gone from the queue and Gorodok now shows
 			// exactly once (the request), not twice
@@ -281,20 +257,13 @@ test.describe('layer requests panel', () => {
 
 			const requestRow = panel.getByRole('listitem').filter({ hasText: 'Sumari' })
 			const queueItem = panel.getByRole('listitem').filter({ hasText: 'Gorodok' }).first()
-			const grip = requestRow.getByRole('button').first()
-			const gripBox = await grip.boundingBox()
-			if (!gripBox) throw new Error('grip not visible')
-			await grip.hover()
-			await page.mouse.down()
-			await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y - 20, { steps: 4 })
-			const box = await queueItem.boundingBox()
-			if (!box) throw new Error('queue item not visible')
-			await page.mouse.move(box.x + box.width / 2, box.y + box.height + 8, { steps: 20 })
-			await page.mouse.up()
+			await dragFrom(page, requestRow.getByRole('button').first(), () => belowItem(queueItem))
 
 			// the template pins map, gamemode, version and both sides of the matchup, so there is nothing left to
 			// pick: the layer lands in the queue and the request is consumed without the Select Layers dialog
-			await expect(panel.getByRole('listitem').filter({ hasText: 'Sumari_Seed_v1' })).toHaveCount(1, { timeout: 10_000 })
+			// no inline timeout: resolving the template to its single layer is a layer query, and firefox needs the
+			// project's much longer ceiling for it (see the firefox project in playwright.config.ts)
+			await expect(panel.getByRole('listitem').filter({ hasText: 'Sumari_Seed_v1' })).toHaveCount(1)
 			await expect(panel.getByText('Layer Requests (0)')).toBeVisible()
 			await expect(page.getByRole('dialog', { name: 'Add requested layer' })).toHaveCount(0)
 		} finally {
