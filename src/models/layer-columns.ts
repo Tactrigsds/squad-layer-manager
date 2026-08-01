@@ -144,15 +144,23 @@ export function collectionForEnumValue(
 	return enumValueCollections(components)[mapping]?.get(value)
 }
 
-const collectionGroupOrderCache = new WeakMap<object, string[]>()
+export type CollectionGroup = { key: string; label: string; prefix: string | null }
 
-export function collectionGroupOrder(components = L.StaticLayerComponents): string[] {
-	const cached = collectionGroupOrderCache.get(components)
+const collectionGroupsCache = new WeakMap<object, CollectionGroup[]>()
+
+// The collections as combo box groups: default collection first, then catalog order. The abbreviation is the
+// prefix, since that form is repeated on every row of an "all" listing, and the default collection's null
+// abbreviation carries through as a null prefix so unmodded values read bare, as they do everywhere else.
+// Memoized on the components object because it is passed as a prop, and a fresh array each render would
+// rebuild every option list.
+export function collectionGroups(components = L.StaticLayerComponents): CollectionGroup[] {
+	const cached = collectionGroupsCache.get(components)
 	if (cached) return cached
 	const defaultCollection = L.getDefaultCollection(components)
-	const order = [defaultCollection, ...components.collections.filter((c) => c !== defaultCollection)]
-	collectionGroupOrderCache.set(components, order)
-	return order
+	const ordered = [defaultCollection, ...components.collections.filter((c) => c !== defaultCollection)]
+	const groups = ordered.map((key) => ({ key, label: key, prefix: components.collectionAbbreviations[key] ?? null }))
+	collectionGroupsCache.set(components, groups)
+	return groups
 }
 
 const vehicleTypeIndexCache = new WeakMap<readonly string[], Map<string, string>>()

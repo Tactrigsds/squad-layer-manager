@@ -1,6 +1,6 @@
 import { useCommandState } from 'cmdk'
 import { Check, ChevronsUpDown, LoaderCircle } from 'lucide-react'
-import React, { useImperativeHandle, useRef, useState } from 'react'
+import React, { useCallback, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -11,7 +11,19 @@ import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
 import { useComboBoxDismissal } from './dismissal.ts'
-import { cmdkItemKey, groupRuns, normalizeOptions } from './options.ts'
+import { GroupTabs, PrefixedLabel } from './group-tabs.tsx'
+import {
+	ALL_GROUPS,
+	cmdkItemKey,
+	type ComboBoxGroupDef,
+	type GroupPrefixRenderer,
+	groupPrefixOf,
+	groupRuns,
+	liveGroups,
+	normalizeOptions,
+	optionsInGroup,
+	resolveGroups,
+} from './options.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -32,8 +44,13 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
 	sort?: boolean
-	// ordering of option `group` headings; unlisted groups trail, alphabetically
-	groupOrder?: readonly string[]
+	// the option groups, in tab order. Two or more live groups turn on the tab strip; a bare string is a
+	// group whose key is already its display text.
+	groups?: readonly (ComboBoxGroupDef | string)[]
+	// group tab to open on. Defaults to the "all" tab; ignored when the group has no live options.
+	defaultGroup?: string
+	// how a group reads ahead of an option's label. false drops the prefix entirely.
+	renderGroupPrefix?: GroupPrefixRenderer | false
 	// when set, Radix won't restore focus to the trigger as the popover closes. Use when a selection
 	// hands focus off to another element (e.g. the next argument), so the restore doesn't steal it back.
 	preventCloseAutoFocus?: boolean
@@ -59,8 +76,8 @@ export interface ComboBoxOption<T> {
 	description?: React.ReactNode
 	// compact form for the selection display (trigger text, chips); the full label stays in the list
 	chipLabel?: string
-	// heading the option is listed under. Grouped options render in labelled sections (in `groupOrder`),
-	// except excluded (disabled/sortLast) ones, which keep sorting to the back without a heading.
+	// key of the group this option belongs to; see the `groups` prop. Drives the tab it lists under and the
+	// prefix it carries. Excluded (disabled/sortLast) options keep sorting to the back regardless of group.
 	group?: string
 }
 
@@ -94,12 +111,43 @@ function HighlightedDescription<T extends string | null>(props: { options: Combo
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
+	const groups = React.useMemo(() => resolveGroups(props.groups), [props.groups])
 	const options = React.useMemo(
-		() => normalizeOptions('ComboBox', props.options, props.sort ?? true, props.groupOrder),
-		[props.options, props.sort, props.groupOrder],
+		() =>
+			normalizeOptions(
+				'ComboBox',
+				props.options,
+				props.sort ?? true,
+				groups.map((g) => g.key),
+			),
+		[props.options, props.sort, groups],
 	)
 
 	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
+
+	const tabs = React.useMemo(() => (options === LOADING ? [] : liveGroups(options, groups)), [options, groups])
+	const showTabs = tabs.length >= 2
+	// the tab strip only exists while the popover is open, so the group resets with each opening rather than
+	// persisting a filter the user cannot see they left behind. A default naming a group with no live options
+	// falls back to "all" here rather than at the point it was set, which keeps this independent of load order.
+	const [selectedGroup, setSelectedGroup] = useState(props.defaultGroup ?? ALL_GROUPS)
+	const resetActiveGroup = useCallback(() => setSelectedGroup(props.defaultGroup ?? ALL_GROUPS), [props.defaultGroup])
+	const activeGroup = selectedGroup === ALL_GROUPS || tabs.some((t) => t.key === selectedGroup) ? selectedGroup : ALL_GROUPS
+	const cycleGroup = (delta: number) => {
+		const keys = [ALL_GROUPS, ...tabs.map((t) => t.key)]
+		const next = (keys.indexOf(activeGroup) + delta + keys.length) % keys.length
+		setSelectedGroup(keys[next])
+	}
+	const visibleOptions = React.useMemo(
+		() => (options === LOADING || !showTabs ? options : optionsInGroup(options, activeGroup)),
+		[options, showTabs, activeGroup],
+	)
+	// a group tab names its own group, so only the "all" view prefixes
+	const prefixInList = showTabs && activeGroup === ALL_GROUPS && props.renderGroupPrefix !== false
+	const prefixRenderer = props.renderGroupPrefix === false ? undefined : props.renderGroupPrefix
+	// headings only earn their space when nothing else identifies the group: not under a group's own tab, and
+	// not in an "all" view whose rows are already prefixed
+	const suppressHeadings = showTabs && (activeGroup !== ALL_GROUPS || prefixInList)
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
@@ -114,6 +162,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		() => ({
 			focus: () => {
 				selectionInitiatedRef.current = false
+				resetActiveGroup()
 				setOpen(true)
 			},
 			get isFocused() {
@@ -124,7 +173,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				if (!ephemeral) _onSelect(undefined)
 			},
 		}),
-		[_onSelect, open],
+		[_onSelect, open, resetActiveGroup],
 	)
 	function onSelect(value: T | undefined) {
 		selectionInitiatedRef.current = true
@@ -141,7 +190,15 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		// prefer the option's own label (e.g. "(none)"), matching how the list renders it
 		selectedOptionDisplay = selectedOption.label ?? DH.MISSING_DISPLAY
 	} else if (selectedOption) {
-		selectedOptionDisplay = selectedOption.chipLabel ?? selectedOption.label ?? selectedOption.value
+		// a selection is read outside the list, where no tab or heading says which group it came from, so it
+		// carries its group whatever the list is currently showing
+		selectedOptionDisplay = (
+			<PrefixedLabel
+				prefix={props.renderGroupPrefix === false ? undefined : groupPrefixOf(selectedOption, groups)}
+				label={selectedOption.chipLabel ?? selectedOption.label ?? selectedOption.value}
+				render={prefixRenderer}
+			/>
+		)
 	} else {
 		selectedOptionDisplay = props.value ?? props.placeholder ?? `Select ${props.title}...`
 	}
@@ -155,7 +212,10 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		<Popover
 			open={open}
 			onOpenChange={(next) => {
-				if (next) selectionInitiatedRef.current = false
+				if (next) {
+					selectionInitiatedRef.current = false
+					resetActiveGroup()
+				}
 				setOpen(next)
 				props.onOpenChange?.(next)
 			}}
@@ -194,7 +254,15 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				{/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */}
 				{open && (
-					<Command shouldFilter={!props.setInputValue} className="relative">
+					<Command
+						shouldFilter={!props.setInputValue}
+						className="relative"
+						onKeyDown={(e) => {
+							if (!showTabs || e.key !== 'Tab') return
+							e.preventDefault()
+							cycleGroup(e.shiftKey ? -1 : 1)
+						}}
+					>
 						{hasDescriptions && <HighlightedDescription options={options as ComboBoxOption<T>[]} />}
 						<CommandInput
 							ref={inputRef}
@@ -202,6 +270,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 							value={props.inputValue}
 							onValueChange={props.setInputValue}
 						/>
+						{showTabs && <GroupTabs groups={tabs} value={activeGroup} onChange={setSelectedGroup} />}
 						<CommandList>
 							<CommandEmpty>{props.emptyMessage ?? `No ${props.title} found.`}</CommandEmpty>
 							{options === LOADING && (
@@ -225,8 +294,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 									</CommandItem>
 								</CommandGroup>
 							)}
-							{options !== LOADING &&
-								groupRuns(options).map((run, i) => (
+							{visibleOptions !== LOADING &&
+								groupRuns(visibleOptions, suppressHeadings).map((run, i) => (
 									<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
 										{run.options.map((option) => (
 											<CommandItem
@@ -240,7 +309,11 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 												}}
 											>
 												<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
-												{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+												<PrefixedLabel
+													prefix={prefixInList ? groupPrefixOf(option, groups) : undefined}
+													label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+													render={prefixRenderer}
+												/>
 											</CommandItem>
 										))}
 									</CommandGroup>
