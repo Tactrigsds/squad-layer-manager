@@ -3,8 +3,10 @@ import { createFileRoute, useBlocker } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
 import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
+import { useOpenServerConsoleWindow } from '@/components/server-console-window.helpers'
 import SettingsForm from '@/components/settings-form'
 import { SettingsChangeList, SettingsSavePanel } from '@/components/settings-save-panel'
 import SettingsToc from '@/components/settings-toc'
@@ -34,6 +36,7 @@ import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as AppEvents from '@/models/app-events.models'
 import * as SS from '@/models/server-state.models'
@@ -44,6 +47,9 @@ import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
+
+// registers the server-console window definition, which lives in the window module rather than its helpers
+void import('@/components/server-console-window')
 
 // stable empty-servers reference while public settings haven't loaded, keeping the readable-servers memo stable
 const NO_SERVERS: never[] = []
@@ -582,63 +588,19 @@ function ServerList({
 			<div className="space-y-1">
 				{servers.length === 0 && <p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.noServersConfigured())}</p>}
 				{servers.map((server) => (
-					<div
+					<ServerRow
 						key={server.id}
-						id={`section:server:${server.id}`}
-						className={cn(
-							'flex scroll-mt-2 items-center gap-3 rounded-md border px-2.5 py-2',
-							server.id === selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
-						)}
-					>
-						<button
-							type="button"
-							onClick={() => onSelect(server.id)}
-							className="flex min-w-0 grow flex-col gap-0.5 text-left"
-							aria-pressed={server.id === selected}
-						>
-							<span className="truncate text-sm font-medium">{server.displayName}</span>
-							<span className="truncate font-mono text-xs text-muted-foreground">{server.id}</span>
-						</button>
-						<ServerStatusBadge state={lifecycleState(server, inflight)} />
-						{canManage && (
-							<>
-								<div className="flex items-center gap-1.5">
-									<Checkbox
-										id={`default-${server.id}`}
-										checked={server.defaultServer}
-										disabled={busy || server.defaultServer}
-										onCheckedChange={(checked) => checked && onSetDefault(server)}
-									/>
-									<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
-										{tr.text(SETTINGS_Msgs.defaultServer())}
-									</Label>
-								</div>
-								<Button
-									size="sm"
-									variant={server.enabled ? 'destructive' : 'outline'}
-									className={cn('w-28', server.broken && 'invisible')}
-									disabled={busy || server.broken}
-									title={
-										server.enabled ? tr.text(SETTINGS_Msgs.disconnectServerHint()) : tr.text(SETTINGS_Msgs.connectServerHint())
-									}
-									onClick={() => onToggle(server)}
-								>
-									{server.enabled ? tr.text(SETTINGS_Msgs.disconnectServer()) : tr.text(SETTINGS_Msgs.connectServer())}
-								</Button>
-								{canDelete && (
-									<Button
-										size="icon"
-										variant="ghost"
-										disabled={busy}
-										title={tr.text(SETTINGS_Msgs.deleteManagedServer())}
-										onClick={() => onDelete(server)}
-									>
-										<Icons.Trash2 className="h-4 w-4" />
-									</Button>
-								)}
-							</>
-						)}
-					</div>
+						server={server}
+						selected={server.id === selected}
+						onSelect={onSelect}
+						inflight={inflight}
+						busy={busy}
+						canManage={canManage}
+						canDelete={canDelete}
+						onToggle={onToggle}
+						onSetDefault={onSetDefault}
+						onDelete={onDelete}
+					/>
 				))}
 			</div>
 			{canCreate && (
@@ -646,6 +608,101 @@ function ServerList({
 					<Icons.Plus className="mr-1 h-4 w-4" />
 					{tr.text(SETTINGS_Msgs.addManagedServer())}
 				</Button>
+			)}
+		</div>
+	)
+}
+
+function ServerRow({
+	server,
+	selected,
+	onSelect,
+	inflight,
+	busy,
+	canManage,
+	canDelete,
+	onToggle,
+	onSetDefault,
+	onDelete,
+}: {
+	server: PublicServer
+	selected: boolean
+	onSelect: (id: string) => void
+	inflight: { startingId?: string; stoppingId?: string }
+	busy: boolean
+	canManage: boolean
+	canDelete: boolean
+	onToggle: (server: PublicServer) => void
+	onSetDefault: (server: PublicServer) => void
+	onDelete: (server: PublicServer) => void
+}) {
+	const consoleDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:view-console', { serverId: server.id }))
+	const openConsoleWindow = useOpenServerConsoleWindow({ serverId: server.id })
+
+	return (
+		<div
+			id={`section:server:${server.id}`}
+			className={cn(
+				'flex scroll-mt-2 items-center gap-3 rounded-md border px-2.5 py-2',
+				selected ? 'border-primary bg-accent' : 'border-transparent hover:bg-accent/50',
+			)}
+		>
+			<button
+				type="button"
+				onClick={() => onSelect(server.id)}
+				className="flex min-w-0 grow flex-col gap-0.5 text-left"
+				aria-pressed={selected}
+			>
+				<span className="truncate text-sm font-medium">{server.displayName}</span>
+				<span className="truncate font-mono text-xs text-muted-foreground">{server.id}</span>
+			</button>
+			<ServerStatusBadge state={lifecycleState(server, inflight)} />
+			<PermissionDeniedTooltip denied={consoleDenied}>
+				<Button
+					size="icon"
+					variant="ghost"
+					disabled={!!consoleDenied}
+					title={tr.text(SS_Msgs.serverConsole())}
+					onClick={(e) => openConsoleWindow(e.currentTarget)}
+				>
+					<Icons.Terminal className="h-4 w-4" />
+				</Button>
+			</PermissionDeniedTooltip>
+			{canManage && (
+				<>
+					<div className="flex items-center gap-1.5">
+						<Checkbox
+							id={`default-${server.id}`}
+							checked={server.defaultServer}
+							disabled={busy || server.defaultServer}
+							onCheckedChange={(checked) => checked && onSetDefault(server)}
+						/>
+						<Label htmlFor={`default-${server.id}`} className="text-sm font-normal cursor-pointer">
+							{tr.text(SETTINGS_Msgs.defaultServer())}
+						</Label>
+					</div>
+					<Button
+						size="sm"
+						variant={server.enabled ? 'destructive' : 'outline'}
+						className={cn('w-28', server.broken && 'invisible')}
+						disabled={busy || server.broken}
+						title={server.enabled ? tr.text(SETTINGS_Msgs.disconnectServerHint()) : tr.text(SETTINGS_Msgs.connectServerHint())}
+						onClick={() => onToggle(server)}
+					>
+						{server.enabled ? tr.text(SETTINGS_Msgs.disconnectServer()) : tr.text(SETTINGS_Msgs.connectServer())}
+					</Button>
+					{canDelete && (
+						<Button
+							size="icon"
+							variant="ghost"
+							disabled={busy}
+							title={tr.text(SETTINGS_Msgs.deleteManagedServer())}
+							onClick={() => onDelete(server)}
+						>
+							<Icons.Trash2 className="h-4 w-4" />
+						</Button>
+					)}
+				</>
 			)}
 		</div>
 	)

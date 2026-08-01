@@ -12,7 +12,7 @@ test.describe('generating a vote', () => {
 	test('draws choices from the pool and adds them to the queue as a vote', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),
-			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')]))],
+			filters: [filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS'), FB.inValues('Collection', ['OWI', 'Community'])]))],
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
 				settings.queue.mainPool.repeatRules = []
@@ -77,6 +77,9 @@ test.describe('generating a vote', () => {
 	test('weights the columns it picks by the configured generation weights', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),
+			// mod layer names spell their gamemode unpredictably, so the pool pins the vanilla collections; the
+			// weights, not a filter, still have to be what narrows the gamemode
+			filters: [filter('vanilla', 'Vanilla', FB.and([FB.inValues('Collection', ['OWI', 'Community'])]))],
 			globalSettings: (settings) => {
 				// unlisted values weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so Invasion outweighs every other
 				// gamemode by four orders of magnitude: drawing anything else is a ~0.04% event per choice
@@ -87,7 +90,7 @@ test.describe('generating a vote', () => {
 				}
 			},
 			serverSettings: (settings) => {
-				// no pool filter: the weights, not a filter, have to be what narrows the gamemode
+				selectableFilter(settings.queue.mainPool, 'vanilla')
 				settings.queue.mainPool.repeatRules = []
 			},
 		})

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import type * as SC from '@/models/server-console.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as RBAC from '@/rbac.models'
 
@@ -78,6 +79,38 @@ describe('serverConsole.watch', () => {
 		expect(first.events.length).toBeGreaterThan(0)
 		expect(first.events.some((e) => e.type === 'rcon')).toBe(true)
 	})
+
+	// The console is opened to find out why a server is down, so it has to keep working across the moment it goes
+	// down. A stream that ends with the managed server is not retried by the client, so before the channel outlived
+	// the server this left every open console frozen at the teardown and dead thereafter, even once it came back.
+	it('keeps streaming across a stop and start of the server', async () => {
+		const adminClient = await createOrpcClient(app, app.adminUser)
+		const seen: SC.ConsoleEvent[] = []
+		const ac = new AbortController()
+		const collecting = (async () => {
+			for await (const res of await consoleReaderClient.serverConsole.watch({ serverId: app.serverId }, { signal: ac.signal })) {
+				if (res.code === 'ok') seen.push(...res.events)
+			}
+		})().catch(() => {})
+
+		const slmMessages = () => seen.filter((e) => e.type === 'slm').map((e) => e.message)
+		try {
+			await app.waitFor(() => seen.length > 0 || null, { label: 'the console backlog to arrive' })
+
+			await adminClient.settings.admin.disableServer({ serverId: app.serverId })
+			await app.waitFor(() => slmMessages().some((m) => m.includes('stopped')) || null, { label: 'the stop to reach the console' })
+
+			await adminClient.settings.admin.enableServer({ serverId: app.serverId })
+			// the same subscription has to see this. Under the old lifetime it had already ended at the stop above.
+			await app.waitFor(() => slmMessages().some((m) => m.includes('Starting server')) || null, {
+				label: 'the restart to reach the same subscription',
+				timeoutMs: 60_000,
+			})
+		} finally {
+			ac.abort()
+			await collecting
+		}
+	}, 120_000)
 
 	it('carries what a player said in game', async () => {
 		const client = consoleReaderClient
