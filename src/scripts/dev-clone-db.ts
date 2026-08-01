@@ -42,6 +42,11 @@ const args = parseArgs({
 	options: {
 		from: { type: 'string' },
 		force: { type: 'boolean', default: false },
+		// what provisioning asks for: a database belonging to this worktree, from whatever is here. A worktree
+		// with none gets the clone; one that already has a database keeps it and has it re-pointed, since a
+		// database provisioned for another slot names another slot's emulator, and an app pointed at one nobody
+		// is running looks like an app that cannot connect.
+		provision: { type: 'boolean', default: false },
 	},
 	allowPositionals: false,
 })
@@ -52,17 +57,21 @@ const slot = Slots.requireSlot()
 const source = path.resolve(args.values.from ?? path.join(Slots.repoRootCheckout(), 'data/db.sqlite3'))
 const dest = path.resolve(process.env.DB_PATH ?? './data/db.sqlite3')
 
-if (!fs.existsSync(source)) {
-	console.error(`no database to clone at ${source}`)
-	process.exit(1)
-}
-if (path.resolve(source) === dest) {
-	console.error(`source and destination are the same file (${dest}); run this from a worktree, not the main checkout`)
-	process.exit(1)
-}
-if (fs.existsSync(dest) && !args.values.force) {
-	console.error(`${dest} already exists. Pass --force to replace it.`)
-	process.exit(1)
+const reuseExisting = args.values.provision && fs.existsSync(dest) && !args.values.force
+
+if (!reuseExisting) {
+	if (!fs.existsSync(source)) {
+		console.error(`no database to clone at ${source}`)
+		process.exit(1)
+	}
+	if (path.resolve(source) === dest) {
+		console.error(`source and destination are the same file (${dest}); run this from a worktree, not the main checkout`)
+		process.exit(1)
+	}
+	if (fs.existsSync(dest) && !args.values.force) {
+		console.error(`${dest} already exists. Pass --force to replace it, or --provision to keep it and re-point it.`)
+		process.exit(1)
+	}
 }
 
 // Takes an exclusive lock on the destination and keeps it, returning the connection holding it; the caller
@@ -248,20 +257,27 @@ async function resolveLogin(driver: Database) {
 	console.log(`this instance signs in as ${user.username}`)
 }
 
-console.log(`cloning ${source}\n     -> ${dest}`)
-// held across the snapshot and the rename, not just checked before them
-const destLock = lockDest()
-try {
-	snapshot()
-} finally {
-	destLock?.close()
+if (reuseExisting) {
+	console.log(`re-pointing ${dest} at slot ${slot.slot}`)
+	// nothing to protect from the swap here, but the same lock still answers the same question: an app holding
+	// this database open would be reading settings that are about to change under it
+	lockDest()?.close()
+} else {
+	console.log(`cloning ${source}\n     -> ${dest}`)
+	// held across the snapshot and the rename, not just checked before them
+	const destLock = lockDest()
+	try {
+		snapshot()
+	} finally {
+		destLock?.close()
+	}
 }
 
 const driver = new DatabaseConstructor(dest)
 driver.pragma('journal_mode = WAL')
 try {
 	const integrity = driver.pragma('integrity_check', { simple: true })
-	if (integrity !== 'ok') throw new Error(`the clone failed its integrity check: ${String(integrity)}`)
+	if (integrity !== 'ok') throw new Error(`${reuseExisting ? dest : 'the clone'} failed its integrity check: ${String(integrity)}`)
 	await migrate(driver)
 	await repointServers(driver)
 	await resolveLogin(driver)

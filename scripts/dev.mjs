@@ -9,7 +9,6 @@
 
 import * as childProcess from 'node:child_process'
 import * as fs from 'node:fs'
-import { createRequire } from 'node:module'
 import * as path from 'node:path'
 
 const DB = 'data/db.sqlite3'
@@ -55,24 +54,23 @@ function ensureDependencies() {
 // rather than at import. A worktree that installed under a different node than it runs under -- which is
 // what a moved .tool-versions does to one -- therefore fails deep inside whatever opened a database first,
 // as a NODE_MODULE_VERSION mismatch that says nothing about the install that caused it.
+//
+// In a child rather than here: a process that has already tried to dlopen the old build cannot load the new
+// one, and says `Module did not self-register` instead of anything about the rebuild that just fixed it.
 function ensureNativeModules() {
-	const require_ = createRequire(path.join(worktree, 'package.json'))
 	const probe = () => {
-		try {
-			const Database = require_('better-sqlite3')
-			new Database(':memory:').close()
-			return null
-		} catch (err) {
-			return err
-		}
+		const res = childProcess.spawnSync(process.execPath, ['-e', "new (require('better-sqlite3'))(':memory:').close()"], {
+			cwd: worktree,
+			encoding: 'utf8',
+		})
+		return res.status === 0 ? null : (res.stderr || '').trim()
 	}
 
-	const err = probe()
-	if (!err) return
+	if (!probe()) return
 	console.log(`better-sqlite3 does not load under node ${process.version}; rebuilding it`)
 	run('pnpm', ['rebuild', 'better-sqlite3'])
 	const stillBroken = probe()
-	if (stillBroken) fail(stillBroken.message)
+	if (stillBroken) fail(stillBroken)
 }
 
 function slotEntry() {
@@ -83,21 +81,14 @@ function slotEntry() {
 	}
 }
 
-// dev:init claims the port slot, links the env files this worktree shares with the main checkout, and clones
-// the main checkout's database. A worktree that has never run it, or that has lost one of the three, gets it
-// run here rather than being told to go and run it.
+// dev:init claims the port slot, links the env files this worktree shares with the main checkout, and gives
+// the worktree a database. A worktree that has never run it, or that has lost one of the three, gets it run
+// here rather than being told to go and run it. It keeps a database already here rather than replacing one.
 function ensureProvisioned() {
-	const dbExists = fs.existsSync(path.join(worktree, DB))
 	const envLinked = fs.lstatSync(path.join(worktree, '.env'), { throwIfNoEntry: false }) !== undefined
 	const envAvailable = fs.existsSync(path.join(mainCheckout, '.env'))
-	if (slotEntry() && dbExists && (envLinked || !envAvailable)) return
-
-	// A database sitting here without a slot was made by an app booting in an unprovisioned worktree, not by
-	// a clone. dev:init refuses to replace one, so keep it and provision everything else.
-	const args = ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-init.ts', '--no-summary']
-	if (dbExists) args.push('--no-clone')
-	run(tsx, args)
-	if (dbExists) console.log(`kept the ${DB} already here; \`pnpm dev:db:clone --force\` replaces it with a clone of the main checkout's`)
+	if (slotEntry() && fs.existsSync(path.join(worktree, DB)) && (envLinked || !envAvailable)) return
+	run(tsx, ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-init.ts', '--no-summary'])
 }
 
 ensureDependencies()

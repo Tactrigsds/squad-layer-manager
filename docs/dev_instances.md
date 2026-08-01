@@ -13,8 +13,23 @@ pnpm dev                   # the app, the client and the emulated squad server
 `worktree new` prints the one url the instance answers on, and `pnpm dev` prints it again on boot. That url carries
 a `?login=`, so opening it lands you signed in.
 
-A worktree that already exists (one Claude Code made, or `git worktree add` by hand) needs only the provisioning
-step: `pnpm dev:init`, then `pnpm dev`.
+A worktree that already exists (one Claude Code made, or `git worktree add` by hand) needs nothing first. `pnpm dev`
+installs what is missing, provisions the instance and then runs it.
+
+## What `pnpm dev` does before it starts anything
+
+Each of these is a no-op once it has been done, so an ordinary run pays for a few stats:
+
+- **Dependencies.** `node_modules` is per worktree and gitignored, so a worktree made outside `pnpm worktree new` has
+  none, and one whose branch changed a dependency has a stale one. Either way it installs.
+- **Native modules.** `better-sqlite3` is compiled against one node ABI and only loads when the first database is
+  opened, so a worktree that installed under a different node than it runs under fails deep inside whatever opened a
+  database first. It rebuilds instead.
+- **Provisioning.** A worktree with no slot, no env links or no database gets `dev:init` run for it. A database
+  already here is kept and re-pointed at this worktree's slot rather than replaced.
+- **The ports.** Anything already listening on one of the slot's ports is named, with the pid holding it. Usually
+  that is this worktree's own instance, whose supervisor died and left its children behind; `pnpm dev --restart`
+  takes those over.
 
 ## Where worktrees live
 

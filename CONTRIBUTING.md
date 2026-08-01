@@ -64,10 +64,10 @@ To work on more than one change at a time, run each in its own git worktree as a
 its own ports, database and emulated squad server, so no two contend for a real server or for 5173:
 
 ```sh
-pnpm dev:init   # once per worktree
-pnpm dev:emu    # the emulated squad server
-pnpm dev        # the app + client
+pnpm dev        # the app, the client and the emulated squad server
 ```
+
+`pnpm dev` provisions the worktree the first time it runs there, so that is the whole setup.
 
 See [docs/dev_instances.md](docs/dev_instances.md).
 

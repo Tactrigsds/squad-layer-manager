@@ -77,11 +77,15 @@ the main checkout, and an app you reach there is not running your changes. Each 
 instead, with its own database and an emulated squad server:
 
 ```sh
-pnpm dev:init     # once per worktree: claims a port slot, links .env, clones the db. Prints the url.
-pnpm dev          # the app, the client and the emulator. Prints the url again.
+pnpm dev          # installs, provisions and runs: the app, the client and the emulator. Prints the url.
+pnpm dev --restart # take over an instance already running in this worktree
 pnpm -s dev:url   # just the url, for reporting
 pnpm emuctl help  # drive the emulated server: join, chat, end, cycle
 ```
+
+`pnpm dev` is the only command a worktree needs. It installs node_modules, rebuilds a native module built for
+another node, and runs `dev:init` (port slot, .env links, db clone) if any of that is missing, all of which used to
+fail as an error about something other than what was missing.
 
 `pnpm dev` is long-lived, so an agent must start it as a tracked background job (`run_in_background`).
 

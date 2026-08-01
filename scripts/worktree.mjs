@@ -217,7 +217,7 @@ function dispatch() {
 				console.log(`\ncd ${result.path}`)
 			} else {
 				ensureArtifacts(result.path)
-				console.log(`\nnext: cd ${result.path} && pnpm dev:init`)
+				console.log(`\nnext: cd ${result.path} && pnpm dev`)
 			}
 			break
 		}

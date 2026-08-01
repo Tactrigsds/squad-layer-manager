@@ -59,7 +59,9 @@ for (const name of ['.env', '.env.secrets']) {
 
 if (!args.values['no-clone']) {
 	const cloneArgs = ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-clone-db.ts']
-	if (args.values.force) cloneArgs.push('--force')
+	// so that re-running this on a worktree that already has a database re-points it rather than refusing.
+	// `--force` is how you ask for a fresh clone over the top of one.
+	cloneArgs.push(args.values.force ? '--force' : '--provision')
 	const res = childProcess.spawnSync(path.join(worktree, 'node_modules/.bin/tsx'), cloneArgs, { cwd: worktree, stdio: 'inherit' })
 	if (res.status !== 0) process.exit(res.status ?? 1)
 }
