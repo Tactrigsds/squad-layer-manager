@@ -93,6 +93,13 @@ export const serverActions = def('Server Actions')
 
 export const joinServer = def('Join Server')
 
+// The link is fetched when the button is clicked, so these are the only ways the click can come back empty.
+export const joinLinkNotIndexed = def(() => ({ toast: [t('The squad browser does not list this server')] }))
+
+export const joinLinkRateLimited = def(() => ({ toast: [t('Too many join link requests. Try again in a minute.')] }))
+
+export const joinLinkFailed = def(() => ({ toast: [t('Could not get a join link')] }))
+
 export const endMatchLabel = def('End Match')
 
 export const endMatchNeedsPlayers = def('(disabled: Cannot end match when server is empty.)')

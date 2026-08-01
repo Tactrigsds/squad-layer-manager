@@ -375,7 +375,8 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const serverInfoRes = await ctx.squadRcon.serverInfo.get(ctx)
 		if (serverInfoRes.code !== 'ok') return serverInfoRes
-		return await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name)
+		const currentMatch = await MatchHistory.getCurrentMatch(ctx)
+		return await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name, currentMatch.historyEntryId)
 	}),
 
 	warnPlayers: orpcBase
