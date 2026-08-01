@@ -638,7 +638,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 						<ContextMenuSeparator />
 					</>
 				)}
-				<LayerContextMenuOptions layerIds={[entry.layerId]} historyEntryIds={[entry.historyEntryId]} nested={entry.isCurrentMatch} />
+				<LayerContextMenuOptions layerIds={[entry.layerId]} historyEntryIds={[entry.historyEntryId]} labelled={entry.isCurrentMatch} />
 			</ContextMenuContent>
 		</ContextMenu>
 	)

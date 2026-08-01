@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type * as React from 'react'
 
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import { toast } from '@/lib/toast'
@@ -13,12 +14,23 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
 import type { MenuSlots } from './player-context-menu-options'
-import { ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger } from './ui/context-menu'
+import {
+	ContextMenuItem,
+	ContextMenuLabel,
+	ContextMenuSeparator,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+} from './ui/context-menu'
 
 void import('./layer-info')
 
-const contextMenuSlots: MenuSlots = {
+// the shared MenuSlots carries no Label, which only this item set needs
+type LayerMenuSlots = MenuSlots & { Label: React.ComponentType<React.PropsWithChildren> }
+
+const contextMenuSlots: LayerMenuSlots = {
 	Item: ContextMenuItem,
+	Label: ContextMenuLabel,
 	Separator: ContextMenuSeparator,
 	Sub: ContextMenuSub,
 	SubTrigger: ContextMenuSubTrigger,
@@ -71,20 +83,21 @@ export function LayerMenuItems({
 	layerIds,
 	historyEntryIds,
 	slots,
-	nested,
+	labelled,
 }: {
 	layerIds: L.LayerId[]
 	historyEntryIds?: number[]
-	slots: MenuSlots
-	// set where the menu also acts on something other than the layer, so the layer's actions sit behind a
-	// "Layer" submenu rather than reading as more actions on that thing
-	nested?: boolean
+	slots: LayerMenuSlots
+	// set where the menu also acts on something other than the layer, so a "Layer" heading says which of the
+	// menu's entries are about the layer
+	labelled?: boolean
 }) {
-	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
+	const { Item, Label, Separator, Sub, SubTrigger, SubContent } = slots
 	const singleKnownLayerId = layerIds.length === 1 && L.isKnownLayer(layerIds[0]) ? layerIds[0] : undefined
 
-	const items = (
+	return (
 		<>
+			{labelled && <Label>{tr.text(L_Msgs.layerGroup())}</Label>}
 			{singleKnownLayerId && (
 				<>
 					<SingleLayerItems layerId={singleKnownLayerId} slots={slots} />
@@ -101,18 +114,15 @@ export function LayerMenuItems({
 			</Sub>
 		</>
 	)
-
-	if (!nested) return items
-	return (
-		<Sub>
-			<SubTrigger>{tr.text(L_Msgs.layerSub())}</SubTrigger>
-			<SubContent>{items}</SubContent>
-		</Sub>
-	)
 }
 
-export default function LayerContextMenuOptions(props: { layerIds: L.LayerId[]; historyEntryIds?: number[]; nested?: boolean }) {
+export default function LayerContextMenuOptions(props: { layerIds: L.LayerId[]; historyEntryIds?: number[]; labelled?: boolean }) {
 	return (
-		<LayerMenuItems layerIds={props.layerIds} historyEntryIds={props.historyEntryIds} slots={contextMenuSlots} nested={props.nested} />
+		<LayerMenuItems
+			layerIds={props.layerIds}
+			historyEntryIds={props.historyEntryIds}
+			slots={contextMenuSlots}
+			labelled={props.labelled}
+		/>
 	)
 }
