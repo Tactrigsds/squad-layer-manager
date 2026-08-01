@@ -11,8 +11,17 @@ import * as childProcess from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
+// Everything here is derived from where git says it is, so a directory git cannot answer for -- a source tree
+// without its .git, a machine without git -- has to say that rather than fail as an exception from rev-parse.
 function git(args) {
-	return childProcess.execFileSync('git', args, { encoding: 'utf8' }).trim()
+	const res = childProcess.spawnSync('git', args, { encoding: 'utf8' })
+	if (res.status !== 0) {
+		fail(
+			"`pnpm dev` runs a git worktree's dev instance, and git resolves no worktree here.\n" +
+				'`pnpm worktree new <name>` makes one. The checkout itself runs `pnpm server:dev` and `pnpm client:dev`.',
+		)
+	}
+	return res.stdout.trim()
 }
 
 const worktree = git(['rev-parse', '--show-toplevel'])
