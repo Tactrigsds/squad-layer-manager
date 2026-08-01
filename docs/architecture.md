@@ -615,12 +615,20 @@ Firefox is the only non-chromium engine the suite runs. The `firefox` project in
 tests tagged `@firefox`: the ones that lean on pointer-driven drag and drop, portalled overlays, and the layer
 table. Its timeouts are several times chromium's, deliberately.
 
-That is because of the one real gap. **The layer-query path is far slower on gecko than on blink** -- tens of
-seconds against one or two for the same query over the same 2.7M layers, with no error and nothing in the
-console. It shows up in the ui as a layer table stuck on placeholder rows, and in a flow with no waiting state --
-dropping a fully-pinned layer request onto the queue -- as an action that appears to do nothing at all. Given
-long enough, firefox produces exactly what chromium does; the wasm engine itself loads fine and reports the same
-layer count on both. This is unfixed, and it is the reason the project's timeouts are what they are.
+That is because gecko runs the query engine several times slower than blink does, on identical wasm. It is worth
+knowing what that did and did not mean, because the first reading was wrong.
+
+Most of the original gap was **our** bug, not gecko's. The engine's distinct-values query tested membership by
+scanning the vector it was building, which is O(rows x distinct values): 2.7M rows against 928 values for the
+`Layer` column, and the layer-select filter menu asks for twelve such columns before it can render. Blink
+absorbed it at around a second; gecko took ten. A set fixed it for both, and the profile went flat in the number
+of values, which is what says the quadratic term is gone. Firefox's e2e suite went from 2.7 to 1.6 minutes,
+chromium's from 3.2 to 2.2.
+
+What remains is real but ordinary: on the same O(rows) scan gecko is still **~4-5x slower** than blink (~95ms a
+column against ~20ms). Startup is not affected -- fetching, inflating and parsing the artifact takes ~2.6s on
+both. So a slow firefox query is now worth profiling for an algorithm before it is blamed on the engine, and the
+filter menu's twelve separate full-table passes are the next thing to look at.
 
 The only behavioural difference found so far is in drag and drop, where dnd-kit needs the pointer to rest over a
 drop target for a few animation frames before a release commits it. Chromium tolerates a move-then-release;
