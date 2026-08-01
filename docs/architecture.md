@@ -324,8 +324,9 @@ Conventions from CLAUDE.md, each with a specific reason:
 - **`useEffect`/`useState` interdependence is a code smell.** That is what frames are for.
 - React Compiler is on, and memoizes against stable mutable objects. This bites with TanStack Table: derive render
   data from React state, and only call table methods in event handlers.
-- All overlays are z-50 body-level portal siblings, so **DOM order decides stacking**. Mount on demand rather than
-  reaching for z-index.
+- **Never hardcode a z-index.** Take an offset from `src/models/zindex.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
+  bands are relative to the nearest enclosing `BaseZIndexContext`, so a popover opened inside a dialog lands above
+  that dialog without either callsite knowing about the other.
 
 ### Charts
 
