@@ -20,6 +20,7 @@ export const config$: Rx.Observable<PublicConfigForClient> = Zus.toStream(Store,
 export const Sel = {
 	battlemetricsEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.battlemetrics ?? false,
 	discordEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.discord ?? false,
+	squadBrowserEnabled: (config: PublicConfigForClient | undefined) => config?.integrations.squadBrowser ?? false,
 }
 
 // just hope the config exists already (probably will)
