@@ -78,6 +78,15 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 	)
 
 	React.useEffect(() => {
+		if (mode === 'closed') return
+		const onKeyDown = (ev: KeyboardEvent) => {
+			if (ev.key === 'Escape') close()
+		}
+		document.addEventListener('keydown', onKeyDown, true)
+		return () => document.removeEventListener('keydown', onKeyDown, true)
+	}, [mode, close])
+
+	React.useEffect(() => {
 		if (mode !== 'pinned') return
 		const onPointerDown = (ev: PointerEvent) => {
 			const target = ev.target as Node | null
@@ -85,15 +94,8 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 			if (triggerRef.current?.contains(target) || contentRef.current?.contains(target)) return
 			close()
 		}
-		const onKeyDown = (ev: KeyboardEvent) => {
-			if (ev.key === 'Escape') close()
-		}
 		document.addEventListener('pointerdown', onPointerDown, true)
-		document.addEventListener('keydown', onKeyDown, true)
-		return () => {
-			document.removeEventListener('pointerdown', onPointerDown, true)
-			document.removeEventListener('keydown', onKeyDown, true)
-		}
+		return () => document.removeEventListener('pointerdown', onPointerDown, true)
 	}, [mode, close])
 
 	React.useEffect(() => {
