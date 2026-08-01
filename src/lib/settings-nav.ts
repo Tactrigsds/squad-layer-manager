@@ -4,6 +4,12 @@
 
 const SCROLL_GAP = 8
 
+// the anchor id of a global setting, given its dotted path. Mirrors the settings form's default idPrefix; server
+// settings scope theirs by server id instead (see sectionForAnchor).
+export function globalSettingAnchor(path: string): string {
+	return `setting:${path}`
+}
+
 // the section-level anchor that owns a given anchor id. A `setting:*` field degrades to its `section:*` header when the
 // field itself isn't rendered (the section is in JSON mode, or hasn't mounted yet). Returns null for unrecognized ids.
 export function sectionForAnchor(id: string): string | null {
