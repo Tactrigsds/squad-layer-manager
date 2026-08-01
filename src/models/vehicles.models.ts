@@ -61,28 +61,87 @@ const ROW_NAME_OVERRIDES: Record<string, string> = {
 	'EIMF_Tigr-M-Kord_BRDM-2_Turret': 'Tigr-M Kord BRDM-2 Turret',
 }
 
-// skin/context copies folded into their base vehicle, keyed by normalized name (Galactic Contention)
+// Cross-name merges: pairs whose blueprint models overlap under matching guards but whose labels
+// differ beyond punctuation, judged case by case from the model-overlap sweep. Generic pool labels
+// (Transport Truck, Light-vehicle HMG, Truck MSP, ...) deliberately stay apart from the specific
+// vehicles they contain: the class column answers the generic query.
 const NAME_MERGES: Record<string, string> = {
-	'laat dev': 'LAAT',
-	'laat skirmish': 'LAAT',
-	'hmp dev': 'HMP',
-	'hmp skirmish': 'HMP',
-	'mini skiff blue': 'Mini Skiff',
-	'tx 130 apc': 'TX-130',
-	'tx 130 ge': 'TX-130',
-	'tx 130 ge apc': 'TX-130',
-	'arc170 ge': 'ARC170',
-	'v wing ge': 'V-Wing',
-	'atte ge': 'ATTE',
+	// Galactic Contention skin/context copies
+	laatdev: 'LAAT',
+	laatskirmish: 'LAAT',
+	hmpdev: 'HMP',
+	hmpskirmish: 'HMP',
+	miniskiffblue: 'Mini Skiff',
+	tx130apc: 'TX-130',
+	tx130ge: 'TX-130',
+	tx130geapc: 'TX-130',
+	arc170ge: 'ARC170',
+	vwingge: 'V-Wing',
+	attege: 'ATTE',
+	// alternate labels for the same specific vehicle
+	m1a1abrams: 'M1A1',
+	uralbm21grad: 'BM-21 Grad',
+	truckbm21: 'BM-21 Grad',
+	brdmspandrel: 'BRDM-2 Spandrel',
+	btr60bmp1turret: 'BTR-60 BMP-1',
+	btrmdmkord: 'BTR-MDM Kord',
+	suvdvbtrmdmkord: 'BTR-MDM Kord',
+	bob: 'BoB - IED',
+	ctm131qjy88: 'CTM131 Transport QJY88',
+	ctm131qjz89: 'CTM131 Transport QJZ89',
+	motorbike: 'Dirtbike',
+	tigerarhrocketpods: 'EC-665 HAP - Rocketpods',
+	gas66msv: 'GAZ-66 MSV',
+	lightvehiculem2: 'Light Vehicle M2',
+	lightvehiclekord: 'Safir Kord',
+	simirlmg: 'Safir LMG',
+	safirmg3: 'Safir LMG',
+	m35a2guntruck: 'M35A2 Transport',
+	m35a2logistics: 'M35A2 Transport',
+	mtlbzu23: 'MT-LB ZU-23-2',
+	apczu23: 'APC ZU-23-2',
+	pbr: 'RHIB M2',
+	shilka: "ZSU 23-4 'Shilka'",
+	tigrrws: 'Tigr-M RWS Kord',
+	uh1hmg3: 'UH-1H',
+	uh60: 'UH-60M',
+	z9: 'Z-9A',
+	uralzis3: 'Ural-375 Zis-3',
+	vabm2: 'VAB Open Top .50 Cal',
+	zbl08hj73c: 'ZBL08',
+	zsd05qjz89: 'ZSD05',
+	zsd89apcqjz89: 'ZSD89 QJZ89',
+	zsd89apcqlz87: 'ZSD89 QLZ87',
+	zsd89ii: 'ZSD89II IFV',
+	zsl10qjz89: 'ZSL10',
+	uaz469spg9: 'UAZ SPG9',
+	uaz469logistics: 'UAZ Logistics',
+	uaz469transport: 'Transport UAZ',
+	logisticskamaz: 'KamAZ 5350 Logistics',
+	logisticskamaz5350: 'KamAZ 5350 Logistics',
+	transportkamaz: 'KamAZ 5350 Transport',
+	moderntechnicalub32: 'Technical UB-32',
+	simir: 'Simir UB-32',
+	truckzu23: 'Truck ZU-23-2',
+	technicalzu: 'Technical ZU-23',
+	technicalzu232: 'Technical ZU-23',
+	// word-order variants of the same pool
+	logisticsapc: 'APC Logistics',
+	logisticstechnical: 'Technical Logistics',
+	transporttechnical: 'Technical Transport',
+	lightvehicletransport: 'Transport Light Vehicle',
+	lightvehiclelogistics: 'Logistics Light Vehicle',
+	logisticsmodernpickup: 'Logistics Pickup Truck',
+	transportmodernpickup: 'Transport Pickup Truck',
+	pickuptruck: 'Transport Pickup Truck',
+	simirlogi: 'Logistics Light Vehicle',
 }
 
 // classes for records whose cooked Setting omits the default-valued VehicleType (GC starfighters)
 const VEH_TYPE_OVERRIDES: Record<string, string> = {
 	arc170: 'AH',
-	'v wing': 'AH',
-	'tri fighter': 'AH',
-	// nameless record (falls back to its rowName); a BTR-MDM turret carrier
-	'su vdv btr mdm kord': 'APC',
+	vwing: 'AH',
+	trifighter: 'AH',
 }
 
 // blueprint name tokens that vary between copies of the same vehicle: finishes, camos, damage/door/tent
@@ -141,21 +200,20 @@ const COSMETIC_TOKENS = new Set([
 
 // same name and same guards would merge these, but the pools mix genuinely different chassis
 // (GMV/UAZ/M998/Safir); they stay split per stripped blueprint model, per the review
-const CHASSIS_SPLIT_NAMES = new Set(['logistics light vehicle'])
+const CHASSIS_SPLIT_NAMES = new Set(['logisticslightvehicle'])
 
 // reviewed merges the rule cannot infer: guard metadata conflicts (mod retypes, missing tags) with
 // blueprints renamed too far for the model overlap check
-const FORCE_MERGE_NAMES = new Set(['loach scout', 'm1151 technical dshk', 'technical bmp 1'])
+const FORCE_MERGE_NAMES = new Set(['loachscout', 'm1151technicaldshk', 'technicalbmp1'])
 
 function guardSig(record: VehicleRecord): string {
 	return `${record.vehType}|${record.weaponTags}`
 }
 
+// separators are dropped entirely, not spaced: sources spell the same vehicle "BMP-2", "BMP2" and
+// "CSK131 QJZ-89"/"CSK131 QJZ89", and a space-preserving key would keep those apart
 export function normalizeVehicleName(name: string): string {
-	return name
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, ' ')
-		.trim()
+	return name.toLowerCase().replace(/[^a-z0-9]+/g, '')
 }
 
 function normalizeVehType(vehType: string, normName: string): string {
