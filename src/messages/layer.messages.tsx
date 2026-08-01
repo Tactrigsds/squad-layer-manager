@@ -19,7 +19,14 @@ export const copiedHistoryEntryIds = def((count: number) => ({
 
 // -------- the layer table --------
 
-export const showLayerInfo = def('Show layer info')
+// names the layer actions where they share a menu with actions on something else, e.g. a match history row
+export const layerGroup = def('Layer')
+
+export const showDetails = def('Show details')
+
+export const showScores = def('Show scores')
+
+export const copySub = def('Copy...')
 
 export const copyLayerId = def('Copy layer id')
 
