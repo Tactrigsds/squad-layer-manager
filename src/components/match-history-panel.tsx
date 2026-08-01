@@ -33,8 +33,8 @@ import * as UPClient from '@/systems/user-presence.client'
 
 import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
+import LayerContextMenuOptions from './layer-context-menu-options'
 import LayerSourceDisplay from './layer-source-display'
-import { LayerContextMenuItems } from './layer-table-helpers'
 import MapLayerDisplay from './map-layer-display'
 import { Timer } from './timer'
 import { Badge } from './ui/badge'
@@ -638,7 +638,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 						<ContextMenuSeparator />
 					</>
 				)}
-				<LayerContextMenuItems selectedLayerIds={[entry.layerId]} selectedHistoryEntryIds={[entry.historyEntryId]} />
+				<LayerContextMenuOptions layerIds={[entry.layerId]} historyEntryIds={[entry.historyEntryId]} />
 			</ContextMenuContent>
 		</ContextMenu>
 	)

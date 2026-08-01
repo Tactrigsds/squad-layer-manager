@@ -15,7 +15,9 @@ import * as LQYClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
+import LayerContextMenuOptions from './layer-context-menu-options.tsx'
 import ShortLayerName from './short-layer-name.tsx'
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from './ui/context-menu.tsx'
 
 export default function LayerDisplay(props: {
 	item: LQY.LayerItem
@@ -95,24 +97,35 @@ export default function LayerDisplay(props: {
 	}
 
 	return (
-		<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
-			<span
-				data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
-				className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-nowrap"
+		<ContextMenu modal={false}>
+			<ContextMenuTrigger
+				asChild
+				// the queue item this sits inside has its own menu -- right-clicking the layer is about the layer
+				onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
 			>
-				<ShortLayerName
-					ref={(props.droppable && dropOnAttrs.ref) || undefined}
-					className={dropOnAttrs.isDropTarget ? 'bg-secondary' : undefined}
-					layerId={props.item.layerId}
-					teamParity={teamParity}
-					backfillLayerId={props.backfillLayerId}
-					matchDescriptors={statusData?.highlightedMatchDescriptors}
-					allowShowInfo={props.allowShowInfo}
-				/>
-				{props.tags}
-				{props.notes}
-			</span>
-			<span className="flex items-center gap-1">{badges}</span>
-		</div>
+				<div className={cn('flex space-x-2 items-center', props.className)} ref={props.ref}>
+					<span
+						data-over={(props.droppable && dropOnAttrs.isDropTarget) || undefined}
+						className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-nowrap"
+					>
+						<ShortLayerName
+							ref={(props.droppable && dropOnAttrs.ref) || undefined}
+							className={dropOnAttrs.isDropTarget ? 'bg-secondary' : undefined}
+							layerId={props.item.layerId}
+							teamParity={teamParity}
+							backfillLayerId={props.backfillLayerId}
+							matchDescriptors={statusData?.highlightedMatchDescriptors}
+							allowShowInfo={props.allowShowInfo}
+						/>
+						{props.tags}
+						{props.notes}
+					</span>
+					<span className="flex items-center gap-1">{badges}</span>
+				</div>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<LayerContextMenuOptions layerIds={[props.item.layerId]} />
+			</ContextMenuContent>
+		</ContextMenu>
 	)
 }

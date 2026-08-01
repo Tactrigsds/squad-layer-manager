@@ -19,7 +19,11 @@ export const copiedHistoryEntryIds = def((count: number) => ({
 
 // -------- the layer table --------
 
-export const showLayerInfo = def('Show layer info')
+export const showDetails = def('Show details')
+
+export const showScores = def('Show scores')
+
+export const copySub = def('Copy...')
 
 export const copyLayerId = def('Copy layer id')
 
