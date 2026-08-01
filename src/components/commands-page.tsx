@@ -1,3 +1,4 @@
+import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import * as React from 'react'
 
@@ -5,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
+import * as SettingsNav from '@/lib/settings-nav'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -16,6 +18,7 @@ import * as CMD from '@/models/command.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
 
@@ -165,11 +168,13 @@ function CommandEntry({
 	settings,
 	pinned,
 	onLink,
+	showSettingsLink,
 }: {
 	entry: Entry
 	settings: PublicSettings
 	pinned: boolean
 	onLink: (id: string) => void
+	showSettingsLink: boolean
 }) {
 	const { cmdId, cmd } = entry
 	const [open, setOpen] = React.useState(false)
@@ -185,6 +190,7 @@ function CommandEntry({
 						<CopyableCommand key={cmdString} cmdString={cmdString} chatCommand={chatCommand} />
 					))}
 					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label={tr.text(CMD_Msgs.linkToCommand())} />
+					{showSettingsLink && <SettingsCrossLink cmdId={cmdId} />}
 				</div>
 				<div className="flex-1" />
 				{!cmd.enabled && (
@@ -255,11 +261,19 @@ function AnchorLinkIcon({ id, onNavigate, label }: { id: string; onNavigate: (id
 	)
 }
 
-// the full listing a compact card's "Details" jumps to: the command under its own declared section. The Pinned /
-// Quick Reference cards are shortcuts, so Details links to the real entry rather than repeating its arguments and
-// examples inline.
-function detailsAnchorId(entry: Entry): string {
-	return `section:${CMD.COMMAND_DECLARATIONS[entry.cmdId].section}/command:${entry.cmdId}`
+// A link from a command's listing to the block that configures it. Revealed on hover of its row, which must carry
+// `group`, like the anchor icon it sits beside.
+function SettingsCrossLink({ cmdId }: { cmdId: CMD.CommandId }) {
+	return (
+		<TSR.Link
+			to="/settings"
+			hash={SettingsNav.globalSettingAnchor(CMDH.commandSettingsPath(cmdId))}
+			className="shrink-0 text-xs text-muted-foreground underline-offset-2 opacity-0 transition-opacity hover:text-foreground hover:underline group-hover:opacity-100 focus-visible:opacity-100"
+			title={tr.text(CMD_Msgs.settingsCrossLinkTitle())}
+		>
+			{tr.text(CMD_Msgs.settingsCrossLink())}
+		</TSR.Link>
+	)
 }
 
 // A command reduced to its first string, its one-line description, and a link to the full listing. Small enough to
@@ -279,7 +293,7 @@ function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: 
 					variant="ghost"
 					size="sm"
 					className="h-5 shrink-0 gap-0.5 px-1 text-xs text-muted-foreground"
-					onClick={() => onDetails(detailsAnchorId(entry))}
+					onClick={() => onDetails(CMDH.commandsPageAnchor(entry.cmdId))}
 				>
 					{tr.text(CMD_Msgs.detailsToggle())} <Icons.ArrowRight className="h-3 w-3" />
 				</Button>
@@ -452,6 +466,8 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 export default function CommandsPage() {
 	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const pinnedCommands = Zus.useStore(ClientOnlySettings.Store, (s) => s.pinnedCommands)
+	// the cross-link into the global settings only makes sense for someone who may read them
+	const canReadGlobalSettings = RbacClient.useGlobalSettingsAccess().canRead
 	const [query, setQuery] = React.useState('')
 	// Where the arrow keys are. Kept as state rather than read back off the scroll position: the highlight otherwise
 	// follows whatever sits at the top of the body, which only updates on a real user scroll -- so each press would
@@ -699,7 +715,13 @@ export default function CommandsPage() {
 								<div className="divide-y divide-border/70">
 									{section.entries.map((entry) => (
 										<div key={entry.id} className="py-3 first:pt-0 last:pb-0">
-											<CommandEntry entry={entry} settings={settings} pinned={pinnedSet.has(entry.cmdId)} onLink={linkToEntry} />
+											<CommandEntry
+												entry={entry}
+												settings={settings}
+												pinned={pinnedSet.has(entry.cmdId)}
+												onLink={linkToEntry}
+												showSettingsLink={canReadGlobalSettings}
+											/>
 										</div>
 									))}
 								</div>

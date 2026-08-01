@@ -250,6 +250,12 @@ export const linkToCommand = def('Link to this command')
 
 export const linkToSection = def('Link to {section}', (section: string) => ({ section }))
 
+// the cross-links between a command's listing on the commands page and its configuration in the global settings
+export const settingsCrossLink = def('settings')
+export const settingsCrossLinkTitle = def('Configure this command in the global settings')
+export const commandsCrossLink = def('commands')
+export const commandsCrossLinkTitle = def('Show this command on the commands page')
+
 export const disabledBadge = def('Disabled')
 
 export const detailsToggle = def('Details')
