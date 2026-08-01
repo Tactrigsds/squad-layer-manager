@@ -4,8 +4,9 @@ import type * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LTag from '@/models/layer-tags.models'
 import type * as SETTINGS from '@/models/settings.models'
+import type * as RBAC from '@/rbac.models'
 
-import { ADMIN_USER } from './app-fixture'
+import { ADMIN_USER, type TestUser } from './app-fixture'
 
 // Builders for the state a fixture starts with. Tests arrange through these rather than through the
 // UI: it's faster, and a failure while clicking through setup would masquerade as a failure of the
@@ -71,6 +72,29 @@ export function filter(
 		emoji: opts?.emoji ?? null,
 		invertedAlertMessage: opts?.invertedAlertMessage ?? null,
 		invertedEmoji: opts?.invertedEmoji ?? null,
+	}
+}
+
+// An rbac role assigned to the given users and/or whole in-game admin lists. Caps that ride on a role
+// (maxTimeout, maxLayerRequests) go in opts.
+export function role(
+	permissions: RBAC.RolePermissionExpression[],
+	assign: { users?: TestUser[]; ingameAdminLists?: string[] },
+	opts?: Partial<Pick<SETTINGS.GlobalSettings['rbac']['roles'][string], 'maxTimeout' | 'maxLayerRequests'>>,
+): SETTINGS.GlobalSettings['rbac']['roles'][string] {
+	return {
+		permissions,
+		...opts,
+		globalSettingsGrants: [],
+		serverSettingsGrants: [],
+		serverGrants: [],
+		assignments: {
+			discordRoleIds: [],
+			discordUserIds: (assign.users ?? []).map((u) => String(u.discordId)),
+			everyMember: false,
+			ingameAdminLists: assign.ingameAdminLists ?? [],
+			adminListGroups: [],
+		},
 	}
 }
 
