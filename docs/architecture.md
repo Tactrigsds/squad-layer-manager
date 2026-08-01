@@ -513,6 +513,14 @@ Three things shape working on it:
   negation. A two-valued port would let nulls through every negated comparison, which is the bug class that makes
   the engine disagree with the pool the UI displays.
 
+**Vehicle filters are virtual columns.** `Vehicle_1/2` and `VehicleType_1/2` have column defs (`table: 'virtual'`)
+but no artifact column. Preprocess merges every source's per-unit vehicle records into canonical query vehicles
+(`models/vehicles.models.ts`), ships the tables in layer-data, and writes two artifact columns `UnitRecord_1/2`
+holding the Units record each team resolved to. Lowering rewrites a vehicle predicate into unit-record membership:
+value list, to canonical vehicle ids, to the unit records whose composition contains any of them, to one `in_vals`
+per team over `UnitRecord_1/2`. The engine never learns what a vehicle is. Anything that addresses artifact columns
+directly (whole-layer selects, sorting, distinct/possible-value queries, table display) must skip virtual columns.
+
 The browser runs the engine for everything the UI does, so the server's copy exists for a few narrow jobs: queue
 autogen, the force-write pool check, backburner template probes and one route. The server loads it at boot and never
 drops it, because loading costs considerably more resident memory than holding it does.

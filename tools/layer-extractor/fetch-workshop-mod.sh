@@ -8,9 +8,8 @@
 # reads them to name the containers that actually hold layer data, and only those .ucas files are fetched.
 #
 # usage: fetch-workshop-mod.sh <workshopId> <outDir> [DepotDownloader args...]
-#   e.g. fetch-workshop-mod.sh 2428425228 /tmp/gc -username you -remember-password
-# Workshop items of a paid app need a logged-in account that owns it; -remember-password makes later runs
-# non-interactive. Then: dotnet run --project tools/layer-extractor -- <outDir> --out layers.json
+#   e.g. fetch-workshop-mod.sh 2428425228 /tmp/gc
+# Squad's workshop content is available to the anonymous dedicated-server login, so no credentials are needed. Then: dotnet run --project tools/layer-extractor -- <outDir> --out layers.json
 set -eu
 ID=$1
 OUT=$2

@@ -15,6 +15,7 @@ import * as L from '@/models/layer'
 import * as LA from '@/models/layer-artifact'
 import * as LC from '@/models/layer-columns'
 import * as SLL from '@/models/squad-layer-list.models'
+import * as VEH from '@/models/vehicles.models'
 import * as Env from '@/server/env'
 import { baseLogger, ensureLoggerSetup, initModule } from '@/server/logger'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
@@ -157,13 +158,13 @@ async function main() {
 // null sentinels already written.
 async function buildLayerArtifact(
 	ctx: LC.Ctx,
-	args: { components: LC.LayerComponents; baseLayers: L.KnownLayer[]; csvPath: string; layersVersion: string },
+	args: { components: LC.LayerComponents; baseLayers: PreprocessBaseLayer[]; csvPath: string; layersVersion: string },
 ): Promise<Buffer> {
 	const { components, baseLayers, csvPath } = args
 	const baseColumns = LC.COLUMN_KEYS.filter((key) => key !== 'id')
 
 	const seen = new Set<string>()
-	const rows: { id: number; values: number[] }[] = []
+	const rows: { id: number; values: number[]; unitRecords: [number, number] }[] = []
 	for (const layer of baseLayers) {
 		if (seen.has(layer.id)) {
 			throw new Error(
@@ -180,6 +181,7 @@ async function buildLayerArtifact(
 		rows.push({
 			id: Number(row.id),
 			values: baseColumns.map((column) => (row[column] === null || row[column] === undefined ? -1 : row[column])),
+			unitRecords: [layer.UnitRecord_1 ?? -1, layer.UnitRecord_2 ?? -1],
 		})
 	}
 	rows.sort((a, b) => a.id - b.id)
@@ -192,11 +194,21 @@ async function buildLayerArtifact(
 		return LA.columnKind({ ...def, table: 'layers' }, (components[def.enumMapping as keyof LC.LayerComponents] as unknown[]).length)
 	})
 	const baseData = baseColumns.map((_, c) => (baseKinds[c] === 'u16' ? new Uint16Array(rowCount) : new Uint8Array(rowCount)))
+	const unitRecordKind = LA.columnKind(
+		{ name: 'UnitRecord_1', displayName: 'UnitRecord_1', type: 'string', enumMapping: 'unitRecords', table: 'layers' },
+		components.unitRecords?.length ?? 0,
+	)
+	const unitRecordNull = unitRecordKind === 'u16' ? LA.NULL_U16 : LA.NULL_U8
+	const unitRecordData = ([0, 1] as const).map(() => (unitRecordKind === 'u16' ? new Uint16Array(rowCount) : new Uint8Array(rowCount)))
 	for (let i = 0; i < rowCount; i++) {
 		ids[i] = rows[i].id
 		for (let c = 0; c < baseColumns.length; c++) {
 			const value = rows[i].values[c]
 			baseData[c][i] = value < 0 ? (baseKinds[c] === 'u16' ? LA.NULL_U16 : LA.NULL_U8) : value
+		}
+		for (const t of [0, 1] as const) {
+			const value = rows[i].unitRecords[t]
+			unitRecordData[t][i] = value < 0 ? unitRecordNull : value
 		}
 	}
 
@@ -272,6 +284,8 @@ async function buildLayerArtifact(
 		columns: [
 			{ name: 'id', kind: 'i32', values: ids },
 			...baseColumns.map((name, c) => ({ name, kind: baseKinds[c], values: baseData[c] })),
+			{ name: LC.UNIT_RECORD_COLUMNS[1], kind: unitRecordKind, values: unitRecordData[0] },
+			{ name: LC.UNIT_RECORD_COLUMNS[2], kind: unitRecordKind, values: unitRecordData[1] },
 			...extraDefs.map((def, c) => ({
 				name: def.name,
 				kind: LA.columnKind({ ...def, table: 'extra-cols' }),
@@ -610,6 +624,10 @@ function parseSourceLayers(source: LayerSource, componentsTemp: LC.LayerComponen
 	return { mapLayers, availability }
 }
 
+// a base layer plus the unit-record indices (into components.unitRecords) each team resolved to, which
+// only the artifact's UnitRecord_1/2 columns carry
+type PreprocessBaseLayer = L.KnownLayer & { UnitRecord_1: number | null; UnitRecord_2: number | null }
+
 async function parseSquadLayerSheetData() {
 	const sources = loadLayerSources()
 
@@ -625,6 +643,21 @@ async function parseSquadLayerSheetData() {
 	}
 
 	const { allianceToFaction, factionToUnit, factionUnitToUnitFullName, factionUnits } = parseBattlegroups(sources)
+	const { stats: vehicleStats, ...vehicleTables } = VEH.buildVehicleTables(factionUnits)
+	log.info(
+		'vehicle identity: %s distinct records in %s name groups -> %s canonical vehicles (%s split groups), %s classes',
+		vehicleStats.records,
+		vehicleStats.nameGroups,
+		vehicleStats.canonical,
+		vehicleStats.splitGroups.length,
+		vehicleTables.vehicleTypes.length,
+	)
+	for (const split of vehicleStats.splitGroups) {
+		log.debug('vehicle name "%s" split into: %s', split.name, split.names.join(', '))
+	}
+	if (vehicleStats.typelessVehicles.length > 0) {
+		log.warn('%s canonical vehicles have no class: %s', vehicleStats.typelessVehicles.length, vehicleStats.typelessVehicles.join(', '))
+	}
 	// a mod faction may own no unit record (its availability points at another faction's units); its alliance then
 	// comes from the default unit it borrows
 	const alliancedFactions = new Set(Array.from(allianceToFaction.values()).flatMap((factions) => Array.from(factions)))
@@ -656,9 +689,10 @@ async function parseSquadLayerSheetData() {
 		log.info('%s: parsed %s layers', source.manifest.name, parsed.mapLayers.length)
 	}
 
-	const baseLayers: L.KnownLayer[] = []
+	const baseLayers: PreprocessBaseLayer[] = []
 	const components: LC.LayerComponents = LC.buildFullLayerComponents(
 		{
+			...vehicleTables,
 			mapLayers,
 			allianceToFaction: Object.fromEntries(Array.from(allianceToFaction).map(([k, v]) => [k, Array.from(v)])),
 			factionToAlliance: Object.fromEntries(factionToAlliance),
@@ -684,6 +718,17 @@ async function parseSquadLayerSheetData() {
 		if (!layerNames.has(layer)) {
 			throw new Error(`Layer ${layer} from availability not found in mapLayers`)
 		}
+	}
+
+	let unitRecordlessRows = 0
+	const unitRecordIndex = (entry: L.LayerFactionAvailabilityEntry, team: 1 | 2): number | null => {
+		const name = entry.unitObjectNames?.[team]
+		const index = name === undefined ? -1 : LC.enumIndexOf(vehicleTables.unitRecords, name)
+		if (index === -1) {
+			unitRecordlessRows++
+			return null
+		}
+		return index
 	}
 
 	for (const layer of mapLayers) {
@@ -726,7 +771,9 @@ async function parseSquadLayerSheetData() {
 				}
 				const layerId = L.getKnownLayerId(idArgs, components)!
 				if (layerId === null) throw new Error(`Invalid layer ID: ${JSON.stringify(idArgs)}`)
-				const baseLayer: L.KnownLayer = {
+				const baseLayer: PreprocessBaseLayer = {
+					UnitRecord_1: unitRecordIndex(availEntry1, 1),
+					UnitRecord_2: unitRecordIndex(availEntry2, 2),
 					id: layerId,
 					Map: layer.Map,
 					Layer: layer.Layer,
@@ -746,6 +793,13 @@ async function parseSquadLayerSheetData() {
 		}
 	}
 
+	if (unitRecordlessRows > 0) {
+		log.warn(
+			'%s of %s per-team unit references resolve to no unit record; vehicle filters read those as unknown',
+			unitRecordlessRows,
+			baseLayers.length * 2,
+		)
+	}
 	log.info('Parsed %s total layers', baseLayers.length)
 	return { baseLayers, components, units: factionUnits }
 }
