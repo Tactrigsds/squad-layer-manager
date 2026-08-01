@@ -25,6 +25,10 @@ export type SftpTailOptions = {
 	// event for this: an EventEmitter 'error' with no listener crashes the process.
 	onFatalError: (err: unknown) => void | Promise<void>
 
+	// How the log tail is faring, for an operator rather than for a log file. Carries host:port, the username and
+	// the remote path, since those are exactly what they have to check, and never the password.
+	onStatus?: (level: 'info' | 'warn' | 'error', message: string, detail?: unknown) => void
+
 	parentModule: OtelModule
 }
 
@@ -43,6 +47,7 @@ type FullSftpTailOptions = {
 	reconnectInterval: number
 	maxReconnectAttempts: number
 	onFatalError: (err: unknown) => void | Promise<void>
+	onStatus?: (level: 'info' | 'warn' | 'error', message: string, detail?: unknown) => void
 	tailLastBytes: number
 }
 
@@ -70,6 +75,7 @@ export class SftpTail extends EventEmitter {
 			reconnectInterval: options.reconnectInterval,
 			maxReconnectAttempts: options.maxReconnectAttempts,
 			onFatalError: options.onFatalError,
+			onStatus: options.onStatus,
 		}
 
 		this.filePath = options.filePath
@@ -125,6 +131,11 @@ export class SftpTail extends EventEmitter {
 		// few bytes.
 		if (this.lastByteReceived === null || this.lastByteReceived > fileSize) {
 			this.log.debug('File has not been tailed before or has decreased in size.')
+			// a shrinking file is the server having rotated or restarted under us. Worth saying: it explains a gap in
+			// the log, and repeated rotations mean the tail is pointed at a file something else keeps replacing.
+			if (this.lastByteReceived !== null) {
+				this.options.onStatus?.('warn', `${this.filePath} shrank, so it was rotated or restarted; resuming from the new end`)
+			}
 			this.lastByteReceived = Math.max(0, fileSize - this.options.tailLastBytes)
 		}
 
@@ -157,10 +168,18 @@ export class SftpTail extends EventEmitter {
 		await this.sleep(this.options.fetchInterval)
 	}
 
+	// what an operator has to check when the tail will not connect. No password: a failure never needs to quote it.
+	private get endpoint(): string {
+		return `${this.options.ftp.username}@${this.options.ftp.host}:${this.options.ftp.port}`
+	}
+
 	async fetchLoop() {
 		while (this.fetchLoopActive) {
 			try {
 				await this._tryRead()
+				if (this.consecutiveFailures > 0) {
+					this.options.onStatus?.('info', `Log tail recovered after ${this.consecutiveFailures} failed attempts`)
+				}
 				this.consecutiveFailures = 0
 			} catch (err) {
 				this.consecutiveFailures++
@@ -169,6 +188,7 @@ export class SftpTail extends EventEmitter {
 
 				if (this.consecutiveFailures >= this.options.maxReconnectAttempts) {
 					this.log.error(err, 'SFTP tail failed %d times consecutively, giving up.', this.consecutiveFailures)
+					this.options.onStatus?.('error', `Log tail gave up on ${this.endpoint} after ${this.consecutiveFailures} attempts`, err)
 					this.fetchLoopActive = false
 					// hand off to the owner to tear things down. we can't await it: the owner's teardown typically
 					// calls unwatch(), which awaits this very loop. fire-and-forget, and guard against a throwing or
@@ -189,6 +209,11 @@ export class SftpTail extends EventEmitter {
 					this.consecutiveFailures,
 					this.options.maxReconnectAttempts,
 					this.options.reconnectInterval,
+				)
+				this.options.onStatus?.(
+					'warn',
+					`Log tail cannot reach ${this.endpoint} (attempt ${this.consecutiveFailures}/${this.options.maxReconnectAttempts}), retrying`,
+					err,
 				)
 				await this.sleep(this.options.reconnectInterval)
 			}
@@ -251,6 +276,7 @@ export class SftpTail extends EventEmitter {
 
 		this.emit('connected')
 		this.log.info('Connected to SFTP server.')
+		this.options.onStatus?.('info', `Log tail connected to ${this.endpoint}, reading ${this.filePath}`)
 	}
 
 	// tears down the underlying ssh2 client and clears connection state without emitting a 'disconnect' event.

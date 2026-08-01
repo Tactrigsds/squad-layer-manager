@@ -1,0 +1,195 @@
+{
+	"name": "resurgence",
+	"collection": {
+		"name": "Resurgence",
+		"abbreviation": "RS"
+	},
+	"layerNames": "structured",
+	"gamemodeRenames": {
+		"TerritoryControl": "TC"
+	},
+	"mapAbbreviations": {
+		"HLP_AlBasrah": "HAB",
+		"HLP_Anvil": "HAN",
+		"HLP_BlackCoast": "HBC",
+		"HLP_Chora": "HCH",
+		"HLP_Fallujah": "HFL",
+		"HLP_FoolsRoad": "HFR",
+		"HLP_GooseBay": "HGB",
+		"HLP_Gorodok": "HGD",
+		"HLP_Gorodok_Night": "HGDN",
+		"HLP_Harju": "HHJ",
+		"HLP_Kamdesh": "HKD",
+		"HLP_Kohat": "HKH",
+		"HLP_Kokan": "HKK",
+		"HLP_Kokan_Flooded": "HKKF",
+		"HLP_Lashkar": "HLK",
+		"HLP_Logar": "HLG",
+		"HLP_Manicouagan": "HMN",
+		"HLP_Mestia": "HMS",
+		"HLP_Mutaha": "HMT",
+		"HLP_Narva": "HNV",
+		"HLP_Sanxian_Islands": "HSXI",
+		"HLP_Skorpo": "HSK",
+		"HLP_Sumari": "HSM",
+		"HLP_Sumari_Night": "HSMN",
+		"HLP_Tallil": "HTL",
+		"HLP_Yehorivka": "HYH",
+		"Sanxian_Islands": "SXI"
+	},
+	"layerOverrides": {
+		"RS_BlackCoast_TC_v1": {
+			"Map": "BlackCoast"
+		},
+		"RS_HLP_AlBasrah_RAAS_v2": {
+			"Map": "HLP_AlBasrah"
+		},
+		"RS_HLP_AlBasrah_RAAS_v3": {
+			"Map": "HLP_AlBasrah"
+		},
+		"RS_HLP_Anvil_AAS_v1": {
+			"Map": "HLP_Anvil"
+		},
+		"RS_HLP_Anvil_RAAS_v1": {
+			"Map": "HLP_Anvil"
+		},
+		"RS_HLP_BlackCoast_RAAS_v1": {
+			"Map": "HLP_BlackCoast"
+		},
+		"RS_HLP_BlackCoast_RAAS_v2": {
+			"Map": "HLP_BlackCoast"
+		},
+		"RS_HLP_Chora_PAAS_v1": {
+			"Map": "HLP_Chora"
+		},
+		"RS_HLP_Chora_RAAS_v1": {
+			"Map": "HLP_Chora"
+		},
+		"RS_HLP_Chora_RAAS_v2": {
+			"Map": "HLP_Chora"
+		},
+		"RS_HLP_Fallujah_RAAS_v1": {
+			"Map": "HLP_Fallujah"
+		},
+		"RS_HLP_Fallujah_RAAS_v2": {
+			"Map": "HLP_Fallujah"
+		},
+		"RS_HLP_FoolsRoad_RAAS_v1": {
+			"Map": "HLP_FoolsRoad"
+		},
+		"RS_HLP_GooseBay_PAAS_v1": {
+			"Map": "HLP_GooseBay"
+		},
+		"RS_HLP_GooseBay_RAAS_v1": {
+			"Map": "HLP_GooseBay"
+		},
+		"RS_HLP_GooseBay_RAAS_v2": {
+			"Map": "HLP_GooseBay"
+		},
+		"RS_HLP_GooseBay_RAAS_v3": {
+			"Map": "HLP_GooseBay"
+		},
+		"RS_HLP_GooseBay_TC_v1": {
+			"Map": "HLP_GooseBay"
+		},
+		"RS_HLP_Gorodok_AAS_v1": {
+			"Map": "HLP_Gorodok"
+		},
+		"RS_HLP_Gorodok_AAS_v2": {
+			"Map": "HLP_Gorodok"
+		},
+		"RS_HLP_Gorodok_RAAS_v1": {
+			"Map": "HLP_Gorodok"
+		},
+		"RS_HLP_Gorodok_RAAS_v2": {
+			"Map": "HLP_Gorodok"
+		},
+		"RS_HLP_Gorodok_RAAS_v3": {
+			"Map": "HLP_Gorodok"
+		},
+		"RS_HLP_Gorodok_RAAS_v3_Night": {
+			"Map": "HLP_Gorodok_Night"
+		},
+		"RS_HLP_Harju_RAAS_v1": {
+			"Map": "HLP_Harju"
+		},
+		"RS_HLP_Harju_TC_v1": {
+			"Map": "HLP_Harju"
+		},
+		"RS_HLP_Harju_TC_v2": {
+			"Map": "HLP_Harju"
+		},
+		"RS_HLP_Kamdesh_RAAS_v1": {
+			"Map": "HLP_Kamdesh"
+		},
+		"RS_HLP_Kohat_AAS_v1": {
+			"Map": "HLP_Kohat"
+		},
+		"RS_HLP_Kohat_RAAS_v1": {
+			"Map": "HLP_Kohat"
+		},
+		"RS_HLP_Kohat_RAAS_v2": {
+			"Map": "HLP_Kohat"
+		},
+		"RS_HLP_Kohat_RAAS_v3": {
+			"Map": "HLP_Kohat"
+		},
+		"RS_HLP_Kokan_RAAS_v1": {
+			"Map": "HLP_Kokan"
+		},
+		"RS_HLP_Kokan_RAAS_v1_Flooded": {
+			"Map": "HLP_Kokan_Flooded"
+		},
+		"RS_HLP_Lashkar_RAAS_v1": {
+			"Map": "HLP_Lashkar"
+		},
+		"RS_HLP_Logar_AAS_v1": {
+			"Map": "HLP_Logar"
+		},
+		"RS_HLP_Manicouagan_RAAS_v1": {
+			"Map": "HLP_Manicouagan"
+		},
+		"RS_HLP_Manicouagan_TC_v1": {
+			"Map": "HLP_Manicouagan"
+		},
+		"RS_HLP_Mestia_PAAS_v1": {
+			"Map": "HLP_Mestia"
+		},
+		"RS_HLP_Mutaha_RAAS_v1": {
+			"Map": "HLP_Mutaha"
+		},
+		"RS_HLP_Mutaha_RAAS_v2": {
+			"Map": "HLP_Mutaha"
+		},
+		"RS_HLP_Narva_RAAS_v1": {
+			"Map": "HLP_Narva"
+		},
+		"RS_HLP_Sanxian_RAAS_v1": {
+			"Map": "HLP_Sanxian_Islands"
+		},
+		"RS_HLP_Skorpo_RAAS_v1": {
+			"Map": "HLP_Skorpo"
+		},
+		"RS_HLP_Sumari_RAAS_v1": {
+			"Map": "HLP_Sumari"
+		},
+		"RS_HLP_Sumari_RAAS_v1_Night": {
+			"Map": "HLP_Sumari_Night"
+		},
+		"RS_HLP_Tallil_TC_v1": {
+			"Map": "HLP_Tallil"
+		},
+		"RS_HLP_Yehorivka_RAAS_v1": {
+			"Map": "HLP_Yehorivka"
+		},
+		"RS_HLP_Yehorivka_RAAS_v2": {
+			"Map": "HLP_Yehorivka"
+		},
+		"RS_HLP_Yehorivka_RAAS_v3": {
+			"Map": "HLP_Yehorivka"
+		},
+		"RS_Tallil_Tanks_v1": {
+			"Gamemode": "Tanks"
+		}
+	}
+}

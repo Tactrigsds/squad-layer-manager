@@ -1,16 +1,18 @@
 //! The columnar layer store, and the on-disk artifact preprocess writes.
 //!
-//! Layout: `SLMC1` magic, a u32 manifest length, the manifest as JSON, then the column data back to back. Enum
-//! columns are one byte per row (the widest, Layer, has 254 values), extra columns are the precision-scaled integers
-//! the layer db already stored, and ids are i32. Null is 255 / i32::MIN.
+//! Layout: `SLMC2` magic (`SLMC1` artifacts, which predate u16 columns, still load), a u32 manifest length, the
+//! manifest as JSON, then the column data back to back. Enum columns are one byte per row, or two once their
+//! component list outgrows a byte; extra columns are the precision-scaled integers the layer db already stored, and
+//! ids are i32. Null is 255 / 65535 / i32::MIN.
 //!
 //! Rows are written in packed-id order, which groups them by map and layer. That's load-bearing for query speed: a
 //! selective pool filter leaves whole 64-row words empty, and the scan skips them outright.
 
 use serde::{Deserialize, Serialize};
 
-pub const MAGIC: &[u8; 5] = b"SLMC1";
+pub const MAGICS: [&[u8; 5]; 2] = [b"SLMC1", b"SLMC2"];
 pub const NULL_U8: u8 = 255;
+pub const NULL_U16: u16 = 65535;
 pub const NULL_I32: i32 = i32::MIN;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -43,12 +45,13 @@ pub struct Store {
 #[derive(Clone, Copy)]
 pub enum Col<'a> {
     U8(&'a [u8]),
+    U16(&'a [u16]),
     I32(&'a [i32]),
 }
 
 impl Store {
     pub fn load(bytes: Vec<u8>) -> Result<Store, String> {
-        if bytes.len() < 9 || &bytes[0..5] != MAGIC {
+        if bytes.len() < 9 || !MAGICS.iter().any(|m| &bytes[0..5] == *m) {
             return Err("not a layer engine artifact".into());
         }
         let manifest_len = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]) as usize;
@@ -87,6 +90,10 @@ impl Store {
         let start = self.data_start + spec.offset;
         if spec.kind == "u8" {
             Col::U8(&self.bytes[start..start + rows])
+        } else if spec.kind == "u16" {
+            let slice = &self.bytes[start..start + rows * 2];
+            debug_assert!(slice.as_ptr() as usize % 2 == 0);
+            Col::U16(unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const u16, rows) })
         } else {
             let slice = &self.bytes[start..start + rows * 4];
             // every column starts 4-byte aligned by construction (the writer pads), and the artifact is
@@ -108,6 +115,14 @@ impl Store {
                     Some(v as i64)
                 }
             }
+            Col::U16(c) => {
+                let v = c[row];
+                if v == NULL_U16 {
+                    None
+                } else {
+                    Some(v as i64)
+                }
+            }
             Col::I32(c) => {
                 let v = c[row];
                 if v == NULL_I32 {
@@ -123,7 +138,7 @@ impl Store {
     pub fn row_of_id(&self, id_col: usize, id: i32) -> Option<usize> {
         match self.col(id_col) {
             Col::I32(ids) => ids.binary_search(&id).ok(),
-            Col::U8(_) => None,
+            Col::U8(_) | Col::U16(_) => None,
         }
     }
 }

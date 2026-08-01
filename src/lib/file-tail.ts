@@ -18,6 +18,8 @@ export type FileTailOptions = {
 	// on first read, start this far back from the end rather than replaying the whole file
 	tailLastBytes?: number
 	onFatalError?: (err: unknown) => void | Promise<void>
+	// how the tail is faring, for an operator rather than for a log file
+	onStatus?: (level: 'info' | 'warn' | 'error', message: string, detail?: unknown) => void
 	parentModule: OtelModule
 }
 
@@ -26,6 +28,7 @@ const DEFAULT_TAIL_LAST_BYTES = 0
 export class FileTail extends EventEmitter {
 	private options: FileTailOptions
 	private lastByteReceived: number | null = null
+	private missing = false
 	private active = false
 	private loopPromise: Promise<void> | null = null
 	private log: ReturnType<OtelModule['getLogger']>
@@ -51,13 +54,24 @@ export class FileTail extends EventEmitter {
 		while (this.active) {
 			try {
 				await this.tryRead()
+				if (this.missing) {
+					this.options.onStatus?.('info', `Reading the log at ${this.options.filePath}`)
+					this.missing = false
+				}
 			} catch (err) {
 				// a missing file is expected while the server is starting up (or the emulator hasn't
 				// written yet); anything else is worth surfacing but not worth dying over
 				if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
 					this.log.error(err, 'error reading log file %s', this.options.filePath)
+					this.options.onStatus?.('error', `Cannot read the log at ${this.options.filePath}`, err)
 					await this.options.onFatalError?.(err)
 					return
+				}
+				// polled forever and expected at startup, so it is reported once rather than every interval. Said at
+				// all because a path that never appears is otherwise indistinguishable from a server with nothing to say.
+				if (!this.missing) {
+					this.missing = true
+					this.options.onStatus?.('warn', `No log file at ${this.options.filePath} yet, waiting for it to appear`)
 				}
 			}
 			await new Promise((resolve) => setTimeout(resolve, this.options.pollInterval))
@@ -76,6 +90,7 @@ export class FileTail extends EventEmitter {
 		// truncated or rotated under us: the offset we held no longer points where we think, so start over
 		if (this.lastByteReceived > fileSize) {
 			this.log.info('log file shrank (rotated or truncated), restarting from its start')
+			this.options.onStatus?.('warn', `${this.options.filePath} shrank, so it was rotated or restarted; reading it from the start`)
 			this.lastByteReceived = 0
 		}
 
