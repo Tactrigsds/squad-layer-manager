@@ -31,6 +31,7 @@ docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:la
 
 - [Installing](docs/installing.md) - get SLM running
 - [Configuring](docs/configuring.md) - configure SLM for your squad server
+- [Backups and restoring](docs/backups.md) - what gets backed up, uploading it offsite, and putting one back
 - [Server agent](docs/server_agent.md) - stream a game host's logs and proxy its RCON to SLM
 - [Layer data](docs/layer_data.md) - the layer artifact pair, how it is resolved, and building your own
 - [Contributing](CONTRIBUTING.md) - local dev setup, the test suites, and the pre-push hook
