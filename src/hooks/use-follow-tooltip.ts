@@ -13,7 +13,7 @@ export type FollowTooltip = ReturnType<typeof useFollowTooltip>
 /**
  * Drives a `TrackingTooltip` from a single trigger.
  *
- * Hovering the trigger opens a tooltip that follows the pointer. Clicking freezes it where the pointer is and lets
+ * Hovering the trigger opens a tooltip that follows the pointer, with no delay. Clicking freezes it where the pointer is and lets
  * the pointer reach it, which is the only way to use content containing links or buttons; from there it closes when
  * the pointer leaves both it and the trigger, when something outside is pressed, or when the trigger is clicked
  * again. That last one also blocks hover from reopening it until the pointer leaves the trigger, so the click that
@@ -21,8 +21,7 @@ export type FollowTooltip = ReturnType<typeof useFollowTooltip>
  *
  * Touch has no hover, so a tap goes straight to the frozen state and only an outside press or a second tap closes it.
  */
-export function useFollowTooltip(opts?: { openDelay?: number }) {
-	const openDelay = opts?.openDelay ?? 250
+export function useFollowTooltip() {
 	const id = React.useId()
 	const [mode, setMode] = React.useState<Mode>('closed')
 	const [anchor, setAnchor] = React.useState<Flt.Point | null>(null)
@@ -35,14 +34,7 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 	const lastPointerType = React.useRef('mouse')
 	// a pointer press always lands before the focus it causes, so an unclaimed focus is a keyboard one
 	const focusFromPointer = React.useRef(false)
-	const openTimer = React.useRef<number | null>(null)
 	const closeTimer = React.useRef<number | null>(null)
-
-	const cancelOpen = React.useCallback(() => {
-		if (openTimer.current === null) return
-		window.clearTimeout(openTimer.current)
-		openTimer.current = null
-	}, [])
 
 	const cancelClose = React.useCallback(() => {
 		if (closeTimer.current === null) return
@@ -51,12 +43,11 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 	}, [])
 
 	const close = React.useCallback(() => {
-		cancelOpen()
 		cancelClose()
 		openedByKeyboard.current = false
 		setAnchor(null)
 		setMode('closed')
-	}, [cancelOpen, cancelClose])
+	}, [cancelClose])
 
 	const scheduleClose = React.useCallback(() => {
 		cancelClose()
@@ -69,12 +60,11 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 
 	const pin = React.useCallback(
 		(at: Flt.Point | null) => {
-			cancelOpen()
 			cancelClose()
 			setAnchor(at ?? triggerCorner(triggerRef.current))
 			setMode('pinned')
 		},
-		[cancelOpen, cancelClose],
+		[cancelClose],
 	)
 
 	React.useEffect(() => {
@@ -98,12 +88,7 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 		return () => document.removeEventListener('pointerdown', onPointerDown, true)
 	}, [mode, close])
 
-	React.useEffect(() => {
-		return () => {
-			cancelOpen()
-			cancelClose()
-		}
-	}, [cancelOpen, cancelClose])
+	React.useEffect(() => cancelClose, [cancelClose])
 
 	const triggerProps = {
 		ref: triggerRef,
@@ -117,17 +102,13 @@ export function useFollowTooltip(opts?: { openDelay?: number }) {
 			if (e.pointerType === 'touch') return
 			overTrigger.current = true
 			cancelClose()
-			if (mode !== 'closed' || hoverBlocked.current || openTimer.current !== null) return
-			openTimer.current = window.setTimeout(() => {
-				openTimer.current = null
-				setMode('follow')
-			}, openDelay)
+			if (mode !== 'closed' || hoverBlocked.current) return
+			setMode('follow')
 		},
 		onPointerLeave: (e: React.PointerEvent) => {
 			if (e.pointerType === 'touch') return
 			overTrigger.current = false
 			hoverBlocked.current = false
-			cancelOpen()
 			if (mode === 'pinned') scheduleClose()
 			else if (mode === 'follow') close()
 		},

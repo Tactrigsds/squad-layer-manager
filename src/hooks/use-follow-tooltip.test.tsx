@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useFollowTooltip } from './use-follow-tooltip.ts'
 
-const OPEN_DELAY = 250
 const LEAVE_GRACE = 150
 
 function Harness() {
@@ -68,10 +67,8 @@ afterEach(() => {
 })
 
 describe('useFollowTooltip', () => {
-	it('opens on hover after the delay and closes as soon as the pointer leaves', () => {
+	it('opens as soon as the pointer enters and closes as soon as it leaves', () => {
 		hoverIn()
-		expect(isOpen()).toBe(false)
-		advance(OPEN_DELAY)
 		expect(isOpen()).toBe(true)
 		expect(isPinned()).toBe(false)
 
@@ -79,17 +76,8 @@ describe('useFollowTooltip', () => {
 		expect(isOpen()).toBe(false)
 	})
 
-	it('does not open when the pointer leaves before the delay elapses', () => {
-		hoverIn()
-		advance(OPEN_DELAY - 50)
-		hoverOut()
-		advance(OPEN_DELAY)
-		expect(isOpen()).toBe(false)
-	})
-
 	it('pins on click, and a pinned tooltip survives leaving the trigger for the content', () => {
 		hoverIn()
-		advance(OPEN_DELAY)
 		clickTrigger()
 		expect(isPinned()).toBe(true)
 
@@ -113,25 +101,21 @@ describe('useFollowTooltip', () => {
 
 	it('closes on a second click and will not reopen on hover until the pointer leaves the trigger', () => {
 		hoverIn()
-		advance(OPEN_DELAY)
 		clickTrigger()
 		clickTrigger()
 		expect(isOpen()).toBe(false)
 
 		// still hovering the trigger: nothing should bring it back
 		hoverIn()
-		advance(OPEN_DELAY * 2)
 		expect(isOpen()).toBe(false)
 
 		hoverOut()
 		hoverIn()
-		advance(OPEN_DELAY)
 		expect(isOpen()).toBe(true)
 	})
 
 	it('opens pinned on the first tap and closes on the second, ignoring hover entirely', () => {
 		fireEvent.pointerEnter(trigger(), touch)
-		advance(OPEN_DELAY)
 		expect(isOpen()).toBe(false)
 
 		clickTrigger(touch)
@@ -159,18 +143,13 @@ describe('useFollowTooltip', () => {
 		expect(isOpen()).toBe(true)
 	})
 
-	it('closes a hovered tooltip on escape, and does not reopen until the pointer leaves', () => {
+	it('closes a hovered tooltip on escape, and reopens on a fresh hover', () => {
 		hoverIn()
-		advance(OPEN_DELAY)
 		fireEvent.keyDown(document, { key: 'Escape' })
-		expect(isOpen()).toBe(false)
-
-		advance(OPEN_DELAY * 2)
 		expect(isOpen()).toBe(false)
 
 		hoverOut()
 		hoverIn()
-		advance(OPEN_DELAY)
 		expect(isOpen()).toBe(true)
 	})
 
