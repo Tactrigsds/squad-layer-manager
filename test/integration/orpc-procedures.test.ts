@@ -1,51 +1,48 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as FB from '@/models/filter-builders'
 import type * as SC from '@/models/server-console.models'
-import type * as SETTINGS from '@/models/settings.models'
-import type * as RBAC from '@/rbac.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { filter, role } from '../harness/arrange'
 import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
-// The console's permission is what stands between an ordinary dashboard user and every player's IP, steam and eos
-// id, the admin chat and every admin action. The e2e tests assert the client hides the entry; these assert the
-// server refuses to stream regardless of what the client asked for, which is the half that actually protects it.
+// Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
+// disables entries, but nothing stops a caller from asking anyway -- these assert the handlers themselves
+// refuse. Filter integrity first (deletion of a referenced filter, cyclical references), then the console
+// stream's permission check, which is what stands between an ordinary dashboard user and every player's IP,
+// steam and eos id.
 
 const DASHBOARD_ONLY: TestUser = { discordId: 900000000000000051n, username: 'test-dashboard-only' }
 const CONSOLE_READER: TestUser = { discordId: 900000000000000052n, username: 'test-console-reader' }
 
 let app: AppFixture
+let adminClient: TestOrpcClient
 let dashboardOnlyClient: TestOrpcClient
 let consoleReaderClient: TestOrpcClient
 
-type RoleConfig = SETTINGS.GlobalSettings['rbac']['roles'][string]
-
-function role(permissions: RBAC.RolePermissionExpression[], user: TestUser): RoleConfig {
-	return {
-		permissions,
-		globalSettingsGrants: [],
-		serverSettingsGrants: [],
-		serverGrants: [],
-		assignments: {
-			discordRoleIds: [],
-			discordUserIds: [String(user.discordId)],
-			everyMember: false,
-			ingameAdminLists: [],
-			adminListGroups: [],
-		},
-	}
-}
-
 beforeAll(async () => {
 	app = await createAppFixture({
+		filters: [
+			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS')])),
+			filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
+			filter('pool-only', 'Pool Only', FB.and([FB.eq('Gamemode', 'AAS')])),
+			filter('unused', 'Unused', FB.and([FB.eq('Gamemode', 'Invasion')])),
+		],
+		serverSettings: (settings) => {
+			settings.queue.mainPool.poolFilter = { filterId: 'pool-only', mode: 'include' }
+		},
 		users: [DASHBOARD_ONLY, CONSOLE_READER],
 		globalSettings: (settings) => {
 			// can see the dashboard, pointedly not the console
-			settings.rbac.roles['dashboard-only'] = role(['site:authorized', 'squad-server:view'], DASHBOARD_ONLY)
-			settings.rbac.roles['console-reader'] = role(['site:authorized', 'squad-server:view', 'squad-server:view-console'], CONSOLE_READER)
+			settings.rbac.roles['dashboard-only'] = role(['site:authorized', 'squad-server:view'], { users: [DASHBOARD_ONLY] })
+			settings.rbac.roles['console-reader'] = role(['site:authorized', 'squad-server:view', 'squad-server:view-console'], {
+				users: [CONSOLE_READER],
+			})
 		},
 	})
+	adminClient = await createOrpcClient(app)
 	dashboardOnlyClient = await createOrpcClient(app, DASHBOARD_ONLY)
 	consoleReaderClient = await createOrpcClient(app, CONSOLE_READER)
 }, 120_000)
@@ -54,6 +51,42 @@ afterAll(async () => {
 	// deliberately not closing the clients: see the teardown note in orpc-client.ts. Disposing the app takes
 	// their connections with it.
 	await app?.dispose()
+})
+
+describe('deleteFilter', () => {
+	it('refuses a filter another filter applies', async () => {
+		const res = await adminClient.filters.deleteFilter('raas-only')
+		expect(res.code).toBe('err:filter-in-use')
+		expect(res.code === 'err:filter-in-use' && res.references).toContainEqual({ type: 'filter-entity', filterId: 'raas-harju' })
+	})
+
+	it('refuses a filter a pool is configured with', async () => {
+		const res = await adminClient.filters.deleteFilter('pool-only')
+		expect(res.code).toBe('err:filter-in-use')
+		expect(res.code === 'err:filter-in-use' && res.references).toContainEqual({
+			type: 'pool-config',
+			serverId: app.serverId,
+			key: 'poolFilter',
+			via: [],
+		})
+	})
+
+	it('deletes a filter nothing references', async () => {
+		expect((await adminClient.filters.deleteFilter('unused')).code).toBe('ok')
+	})
+})
+
+describe('cyclical references', () => {
+	it('refuses an update that would close a loop', async () => {
+		const res = await adminClient.filters.updateFilter(['raas-only', { filter: FB.and([FB.includedIn('raas-harju')]) }])
+		expect(res.code).toBe('err:cyclical-reference')
+		expect(res.code === 'err:cyclical-reference' && res.cycle).toEqual(['raas-only', 'raas-harju', 'raas-only'])
+	})
+
+	it('allows an update that only deepens the chain', async () => {
+		const res = await adminClient.filters.updateFilter(['raas-only', { filter: FB.and([FB.includedIn('pool-only')]) }])
+		expect(res.code).toBe('ok')
+	})
 })
 
 describe('serverConsole.watch', () => {
@@ -84,7 +117,6 @@ describe('serverConsole.watch', () => {
 	// down. A stream that ends with the managed server is not retried by the client, so before the channel outlived
 	// the server this left every open console frozen at the teardown and dead thereafter, even once it came back.
 	it('keeps streaming across a stop and start of the server', async () => {
-		const adminClient = await createOrpcClient(app, app.adminUser)
 		const seen: SC.ConsoleEvent[] = []
 		const ac = new AbortController()
 		const collecting = (async () => {

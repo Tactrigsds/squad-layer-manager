@@ -4,7 +4,7 @@ import * as FB from '@/models/filter-builders'
 
 import { createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queue } from '../harness/arrange'
-import { settledText, settledTextAfter } from '../harness/settle'
+import { settledText, settledTextAfter } from './settle'
 import { expect, test } from './fixtures'
 
 // The pool filter is the single definition of pool membership: it constrains what layer selection

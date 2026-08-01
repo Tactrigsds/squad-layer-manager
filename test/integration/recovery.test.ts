@@ -5,19 +5,44 @@ import * as L from '@/models/layer'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
+import { savedQueue } from '../harness/inspect'
 
-// The failure modes a long-running server actually hits: rcon drops, the game rotates its log. The
-// app has to notice and pick back up on its own -- these are the paths where a hang or a lost event
-// stream would otherwise go unnoticed until someone complains.
+// The failure modes a long-running server actually hits: the app itself is down when the map rolls, rcon
+// drops, the game rotates its log. The app has to notice and pick back up on its own -- these are the paths
+// where a hang or a lost event stream would otherwise go unnoticed until someone complains.
+//
+// One app carries all three, in that order: the missed roll needs the seeded head still unplayed, so it runs
+// before the faults that roll the map themselves.
 
 let app: AppFixture
 
 beforeAll(async () => {
-	app = await createAppFixture({ layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed) })
+	app = await createAppFixture({ layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.skorpoRaas) })
 }, 120_000)
 
 afterAll(async () => {
 	await app?.dispose()
+})
+
+// A roll the app was not running for still consumes the queue item the app set as next. Nothing tells it that on
+// the way back up -- it reads the current layer off rcon, not the roll it missed -- so the head has to be
+// reconciled against what is actually playing, or the layer gets set as next a second time and played twice.
+describe('a map roll that happened while the app was down', () => {
+	it('consumes the queue head the server already played', async () => {
+		// the head is the item the server is about to play in the roll below
+		expect(savedQueue(app)[0]?.layerId).toBe(LAYERS.gorodokRaas)
+
+		await app.restart(() => {
+			app.emu.world.handleCommand(L.getLayerCommand(LAYERS.gorodokRaas, 'set-next'))
+			app.emu.world.startNewGame()
+		})
+
+		// the head is the layer now playing, so it has been played already: the next item is what is next
+		await app.waitFor(() => savedQueue(app)[0]?.layerId === LAYERS.sumariSeed, {
+			label: 'the played head consumed rather than queued again',
+			timeoutMs: 45_000,
+		})
+	})
 })
 
 describe('recovering from a broken squad server', () => {
@@ -71,54 +96,14 @@ describe('recovering from a broken squad server', () => {
 		)
 	})
 
-	it('still drives the server after both faults', async () => {
-		// the queue survived, and the app can still act on the server it reconnected to
+	it('still drives the server after all the faults', async () => {
+		// the queue survived, and the app can still act on the server it reconnected to: the roll plays the
+		// Sumari head and the app promotes the next item
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 
 		const setNext = await app.emu.expectCommand(/^AdminSetNextLayer /, { timeoutMs: 30_000 })
-		expect(setNext.body).toContain('Sumari_Seed_v1')
+		expect(setNext.body).toContain('Skorpo')
 	})
 })
-
-// A roll the app was not running for still consumes the queue item the app set as next. Nothing tells it that on
-// the way back up -- it reads the current layer off rcon, not the roll it missed -- so the head has to be
-// reconciled against what is actually playing, or the layer gets set as next a second time and played twice.
-describe('a map roll that happened while the app was down', () => {
-	let downApp: AppFixture
-
-	beforeAll(async () => {
-		downApp = await createAppFixture({ layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed) })
-	}, 120_000)
-
-	afterAll(async () => {
-		await downApp?.dispose()
-	})
-
-	it('consumes the queue head the server already played', async () => {
-		// the head is the item the server is about to play in the roll below
-		expect(savedQueueOf(downApp)[0]?.layerId).toBe(LAYERS.gorodokRaas)
-
-		await downApp.restart(() => {
-			downApp.emu.world.handleCommand(L.getLayerCommand(LAYERS.gorodokRaas, 'set-next'))
-			downApp.emu.world.startNewGame()
-		})
-
-		// the head is the layer now playing, so it has been played already: the next item is what is next
-		await downApp.waitFor(() => savedQueueOf(downApp)[0]?.layerId === LAYERS.sumariSeed, {
-			label: 'the played head consumed rather than queued again',
-			timeoutMs: 45_000,
-		})
-	})
-})
-
-function savedQueueOf(fixture: AppFixture): { layerId?: string }[] {
-	const db = fixture.readDb()
-	try {
-		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(fixture.serverId) as { layerQueue: string }
-		return JSON.parse(row.layerQueue).json
-	} finally {
-		db.close()
-	}
-}

@@ -2,7 +2,7 @@ import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
-import { settledText, settledTextAfter } from '../harness/settle'
+import { settledText, settledTextAfter } from './settle'
 import { expect, test } from './fixtures'
 
 // The select-layers dialog. What it offers is the product of three things -- the server's pool config,
