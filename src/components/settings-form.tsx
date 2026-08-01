@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 import { HexColorPicker } from 'react-colorful'
@@ -52,6 +53,7 @@ import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
+import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
@@ -3915,6 +3917,22 @@ function AnchorLink({ domId }: { domId: string }) {
 	)
 }
 
+// A link from a command's configuration to its listing on the commands page, where its arguments and examples are
+// written down. Renders nothing for any other field. Revealed on hover of its row, like the anchor icon it sits beside.
+function CommandsPageCrossLink({ path }: { path: Path }) {
+	if (path.length !== 2 || path[0] !== 'commands') return null
+	return (
+		<TSR.Link
+			to="/commands"
+			hash={CMDH.commandsPageAnchor(path[1] as CMD.CommandId)}
+			className="shrink-0 text-xs text-muted-foreground underline-offset-2 opacity-0 transition-opacity hover:text-foreground hover:underline group-hover:opacity-100 focus-visible:opacity-100"
+			title={tr.text(CMD_Msgs.commandsCrossLinkTitle())}
+		>
+			{tr.text(CMD_Msgs.commandsCrossLink())}
+		</TSR.Link>
+	)
+}
+
 // -------- advanced disclosure --------
 
 // The collapsed tail of a section: the fields most installs never touch (see settings-groups.ts). `paths` are the
@@ -4208,6 +4226,7 @@ function LeafField({
 					)}
 					{!isBoolean && controls}
 					<AnchorLink domId={domId} />
+					<CommandsPageCrossLink path={path} />
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}

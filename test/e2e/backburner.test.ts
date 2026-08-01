@@ -5,6 +5,7 @@ import * as L from '@/models/layer'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue } from '../harness/arrange'
+import { belowItem, centerOf, dragFrom } from '../harness/drag'
 import { expect, test } from './fixtures'
 
 // The backburner panel below the queue: requests arriving from chat show up live, GUI edits are draft
@@ -24,7 +25,7 @@ function savedBackburner(app: AppFixture): { itemId: string }[] {
 	}
 }
 
-test.describe('requests from chat and the edit dialog', () => {
+test.describe('requests from chat and the edit dialog', { tag: '@firefox' }, () => {
 	let app: AppFixture
 
 	test.beforeAll(async () => {
@@ -67,7 +68,7 @@ test.describe('requests from chat and the edit dialog', () => {
 		const dialog = page.getByRole('dialog', { name: 'Edit layer request' })
 		const mapField = dialog.getByRole('combobox', { name: 'Map' })
 		// the form is built from the request whose pencil was clicked
-		await expect(mapField).toHaveText('Narva', { timeout: 10_000 })
+		await expect(mapField).toHaveText('Narva')
 
 		await mapField.click()
 		await page.getByRole('option', { name: 'Sumari', exact: true }).click()
@@ -79,7 +80,7 @@ test.describe('requests from chat and the edit dialog', () => {
 
 		// the next request opens on its own template rather than on the one the dialog last held
 		await panel.getByRole('listitem').filter({ hasText: 'Skorpo' }).getByRole('button', { name: 'Edit request' }).click()
-		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Skorpo', { timeout: 10_000 })
+		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Skorpo')
 	})
 
 	test('shows chat requests live and removes one through the draft/save flow', async ({ page }) => {
@@ -110,7 +111,7 @@ test.describe('requests from chat and the edit dialog', () => {
 	})
 })
 
-test.describe('dragging requests onto the queue', () => {
+test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 	let app: AppFixture
 
 	test.beforeAll(async () => {
@@ -163,14 +164,7 @@ test.describe('dragging requests onto the queue', () => {
 		await expect(invertedRow).toBeVisible()
 
 		// drag the inverted request onto the regular one: same filter applied both ways must not merge
-		await invertedRow.getByRole('button').first().hover()
-		await page.mouse.down()
-		// a first small move starts the drag (and expands the drop targets); then re-measure the target
-		await page.mouse.move(300, 300, { steps: 5 })
-		const target = await regularRow.boundingBox()
-		if (!target) throw new Error('target row not visible')
-		await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 })
-		await page.mouse.up()
+		await dragFrom(page, invertedRow.getByRole('button').first(), () => centerOf(regularRow))
 
 		await expect(page.getByText('Cannot combine these requests')).toBeVisible({ timeout: 5_000 })
 		await expect(panel.getByText('Layer Requests (3)')).toBeVisible()
@@ -189,21 +183,14 @@ test.describe('dragging requests onto the queue', () => {
 		await expect(queueItem).toBeVisible()
 
 		// drag the request's grip onto the separator just below the first queue item
-		const grip = requestRow.getByRole('button').first()
-		const gripBox = await grip.boundingBox()
-		if (!gripBox) throw new Error('grip not visible')
-		await grip.hover()
-		await page.mouse.down()
-		await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y - 20, { steps: 4 })
-		const box = await queueItem.boundingBox()
-		if (!box) throw new Error('queue item not visible')
-		await page.mouse.move(box.x + box.width / 2, box.y + box.height + 8, { steps: 20 })
-		await page.mouse.up()
+		await dragFrom(page, requestRow.getByRole('button').first(), () => belowItem(queueItem))
 
 		// the dialog opens seeded from the template (its headlessui root never reports visible, so assert on
-		// content): matchup left -> Team 1 (_1), right -> Team 2 (_2)
+		// content): matchup left -> Team 1 (_1), right -> Team 2 (_2). Seeding those fields is a layer query,
+		// so none of these carry an inline timeout: firefox is slow enough at one to blow a ceiling chromium
+		// never comes near (see the firefox project in playwright.config.ts).
 		const dialog = page.getByRole('dialog', { name: 'Add requested layer' })
-		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Sumari', { timeout: 10_000 })
+		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Sumari')
 
 		// pick a concrete Sumari layer and add it; the request is consumed
 		const layerRow = dialog.getByRole('row').filter({ hasText: 'Sumari_RAAS_v1' }).first()
@@ -217,7 +204,7 @@ test.describe('dragging requests onto the queue', () => {
 	})
 })
 
-test.describe('pinned templates and moving queue items out', () => {
+test.describe('pinned templates and moving queue items out', { tag: '@firefox' }, () => {
 	let app: AppFixture
 
 	test.beforeAll(async () => {
@@ -248,16 +235,7 @@ test.describe('pinned templates and moving queue items out', () => {
 
 		const requestRow = panel.getByRole('listitem').filter({ hasText: 'Sumari' })
 		const queueItem = panel.getByRole('listitem').filter({ hasText: 'Gorodok' }).first()
-		const grip = requestRow.getByRole('button').first()
-		const gripBox = await grip.boundingBox()
-		if (!gripBox) throw new Error('grip not visible')
-		await grip.hover()
-		await page.mouse.down()
-		await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y - 20, { steps: 4 })
-		const box = await queueItem.boundingBox()
-		if (!box) throw new Error('queue item not visible')
-		await page.mouse.move(box.x + box.width / 2, box.y + box.height + 8, { steps: 20 })
-		await page.mouse.up()
+		await dragFrom(page, requestRow.getByRole('button').first(), () => belowItem(queueItem))
 
 		// the template pins map, gamemode, version and both sides of the matchup, so there is nothing left to
 		// pick: the layer lands in the queue and the request is consumed without the Select Layers dialog
@@ -280,18 +258,8 @@ test.describe('pinned templates and moving queue items out', () => {
 
 		const queueItem = panel.getByRole('listitem').filter({ hasText: 'Gorodok' }).first()
 		await expect(queueItem).toBeVisible()
-		const grip = queueItem.getByRole('button').first()
-		const gripBox = await grip.boundingBox()
-		if (!gripBox) throw new Error('queue grip not visible')
-
-		await grip.hover()
-		await page.mouse.down()
-		await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + 20, { steps: 4 })
 		// drop onto the requests panel, whose drop zone covers the whole card
-		const target = await requestsHeader.boundingBox()
-		if (!target) throw new Error('requests panel not visible')
-		await page.mouse.move(target.x + target.width / 2, target.y + 40, { steps: 20 })
-		await page.mouse.up()
+		await dragFrom(page, queueItem.getByRole('button').first(), () => centerOf(requestsHeader, 40))
 
 		// the layer moves out of the queue and into a request: it's gone from the queue and Gorodok now shows
 		// exactly once (the request), not twice

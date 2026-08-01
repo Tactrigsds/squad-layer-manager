@@ -42,7 +42,7 @@ test.afterAll(async () => {
 	await app?.dispose()
 })
 
-test.describe('layer tags and notes', () => {
+test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 	test('tagging and annotating an item, and who is allowed to change a note', async ({ page, browser }) => {
 		const second = await browser.newContext()
 		const pageB = await second.newPage()

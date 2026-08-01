@@ -167,7 +167,7 @@ test.describe('applied filters', () => {
 	})
 })
 
-test.describe('the filter menu', () => {
+test.describe('the filter menu', { tag: '@firefox' }, () => {
 	test('holds the filter menu to one layer at a time, and keeps the queried columns consistent', async ({ page }) => {
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
@@ -293,7 +293,7 @@ test.describe('pool membership and force-write', () => {
 		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
 	})
 
-	test('adds a chosen out-of-pool layer to the head of the queue', async ({ page }) => {
+	test('adds a chosen out-of-pool layer to the head of the queue', { tag: '@firefox' }, async ({ page }) => {
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
 

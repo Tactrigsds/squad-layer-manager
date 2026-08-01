@@ -573,6 +573,7 @@ async function setup() {
 		generationConfig: config.layerGeneration,
 		filters,
 		layerData,
+		cacheLayerArtifact: config.cacheLayerArtifact,
 	}
 
 	// set downloading-layers status when the worker signals that it has started a download
