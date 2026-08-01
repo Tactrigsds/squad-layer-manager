@@ -50,6 +50,9 @@ function handleMove(ev: PointerEvent) {
 	for (const listener of listeners) listener(lastPoint)
 }
 
+// a touch never moves before it lands, so pointerdown is the only chance to learn where a tap was
+const TRACKED = ['pointermove', 'pointerdown'] as const
+
 // The pointer's last known viewport position, or null before it has moved over the document. A follower mounting
 // mid-hover reads this to place itself for its first paint, rather than waiting for the next move.
 export function lastPointer(): Point | null {
@@ -58,10 +61,14 @@ export function lastPointer(): Point | null {
 
 // One document listener shared by every follower, installed while any of them is mounted.
 export function trackPointer(onMove: (p: Point) => void): () => void {
-	if (listeners.size === 0) document.addEventListener('pointermove', handleMove, { passive: true, capture: true })
+	if (listeners.size === 0) {
+		for (const type of TRACKED) document.addEventListener(type, handleMove, { passive: true, capture: true })
+	}
 	listeners.add(onMove)
 	return () => {
 		listeners.delete(onMove)
-		if (listeners.size === 0) document.removeEventListener('pointermove', handleMove, { capture: true })
+		if (listeners.size === 0) {
+			for (const type of TRACKED) document.removeEventListener(type, handleMove, { capture: true })
+		}
 	}
 }
