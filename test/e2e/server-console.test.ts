@@ -113,7 +113,7 @@ sharedAppTest.describe('server console', () => {
 	})
 })
 
-test.describe('server console permission', () => {
+test.describe('server console permission', { tag: '@firefox' }, () => {
 	// squad-server:view-console is deliberately separate from squad-server:view, because the console discloses
 	// considerably more than the dashboard does. This is the test that the separation is real rather than nominal.
 	test('is withheld from a user who can see the dashboard but not the console', async ({ page }) => {

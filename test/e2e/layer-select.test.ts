@@ -9,7 +9,7 @@ import { expect, test } from './fixtures'
 // the filters the user has applied on top of it, and the filter menu -- and the queue only ever gets a
 // layer that survived all three, so this is where a wrong constraint shows up as the wrong layer played.
 
-test.describe('selecting layers', () => {
+test.describe('selecting layers', { tag: '@firefox' }, () => {
 	test('applies the pool filter by default, narrows through the filter menu, and adds the chosen layer', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas),

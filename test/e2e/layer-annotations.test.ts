@@ -19,7 +19,7 @@ const ADMIN_NOTE = 'watch the middle cap, see https://example.com/callouts'
 // long enough that the two notes together exceed what the row will hold inline
 const WRITER_NOTE = 'disagree, the north route is the faster approach and the middle cap is a trap on this layer'
 
-test.describe('layer tags and notes', () => {
+test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 	test('tagging and annotating an item, and who is allowed to change a note', async ({ page, browser }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.harjuRaas, LAYERS.sumariRaas),
