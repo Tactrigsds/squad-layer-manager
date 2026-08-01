@@ -18,6 +18,7 @@ and this document disagree, the code wins. Individual modules document their own
 - [Data and persistence](#data-and-persistence)
 - [Observability](#observability)
 - [Testing](#testing)
+- [Browser support](#browser-support)
 
 ## The shape of the thing
 
@@ -577,7 +578,8 @@ costs refactoring freedom without catching much.
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `pnpm test`             | vitest unit tests.                                                                                              |
 | `pnpm test:integration` | Boots the **real app** as a child process (ephemeral db and ports) against the emulator, one app per test file. |
-| `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright.                                      |
+| `pnpm test:e2e`         | Builds the engine and client bundle, then drives that app with Playwright, on chromium.                         |
+| `pnpm test:e2e:firefox` | The `@firefox`-tagged subset of the same suite, on gecko. See [Browser support](#browser-support).              |
 
 Neither heavy suite needs an external service, which is the payoff for having written the emulator.
 
@@ -586,3 +588,40 @@ both suites bundle the server once with rolldown rather than loading its module 
 **Waiting on polls:** the app learns the roster from a polled `ListPlayers`, so a test that acts in-game and then
 asserts cannot resolve faster than two poll intervals. Poll interval, worker count and per-boot cost all trade
 against each other, so none should be changed without re-measuring the whole suite.
+
+## Browser support
+
+The floor is in `src/browser-support.ts`: chrome 111, firefox 128, safari 16.4. It is tailwind 4's own floor,
+below which the emitted stylesheet does not work at all. Two things read it.
+
+**`build.target`** in `vite.config.ts`, so syntax the floor cannot parse is lowered rather than shipped.
+
+**`pnpm check:compat`**, which reads the _built_ client and reports platform features missing from a browser we
+claim to support. It reads `dist/` rather than `src/` because most of the shipped code is dependencies -- radix,
+dnd-kit, codemirror, react -- and that is where the interesting misses are; a source-level lint would never see
+any of it. The javascript is minified by then, so it matches three ways: free identifiers (a name with no binding
+in any enclosing scope, which is what separates the real `Highlight` from rxjs's own `Observable`), `A.b` where
+`A` is one of those, and member names distinctive enough that only one interface in all of MDN's data declares
+them. The css is parsed properly, so properties, at-rules and selectors are exact.
+
+A hit is a question, not a defect: a library that feature-detects before calling looks identical to one that does
+not, and a minified member name can collide with an unrelated one. Every hit is therefore either fixed or listed
+in `ALLOWED` in the script **with the reason it is safe**, and the check fails on an `ALLOWED` entry that no
+longer appears, so the list cannot rot.
+
+### Firefox
+
+Firefox is the only non-chromium engine the suite runs. The `firefox` project in `playwright.config.ts` runs the
+tests tagged `@firefox`: the ones that lean on pointer-driven drag and drop, portalled overlays, and the layer
+table. Its timeouts are several times chromium's, deliberately.
+
+That is because of the one real gap. **The layer-query path is far slower on gecko than on blink** -- tens of
+seconds against one or two for the same query over the same 2.7M layers, with no error and nothing in the
+console. It shows up in the ui as a layer table stuck on placeholder rows, and in a flow with no waiting state --
+dropping a fully-pinned layer request onto the queue -- as an action that appears to do nothing at all. Given
+long enough, firefox produces exactly what chromium does; the wasm engine itself loads fine and reports the same
+layer count on both. This is unfixed, and it is the reason the project's timeouts are what they are.
+
+The only behavioural difference found so far is in drag and drop, where dnd-kit needs the pointer to rest over a
+drop target for a few animation frames before a release commits it. Chromium tolerates a move-then-release;
+firefox does not, at any timeout. `test/harness/drag.ts` handles it, and every drag in the suite goes through it.
