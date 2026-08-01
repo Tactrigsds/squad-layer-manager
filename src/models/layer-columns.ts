@@ -70,6 +70,19 @@ export function isVirtualColumn(name: string, cfg = BASE_COLUMN_CONFIG): boolean
 	return getColumnDef(name, cfg)?.table === 'virtual'
 }
 
+const vehicleTypeIndexCache = new WeakMap<readonly string[], Map<string, string>>()
+
+export function vehicleTypeForVehicle(vehicle: string, components = L.StaticLayerComponents): string | undefined {
+	const { vehicles, vehicleTypes, vehicleTypeIds } = components
+	if (!vehicles || !vehicleTypes || !vehicleTypeIds) return undefined
+	let index = vehicleTypeIndexCache.get(vehicles)
+	if (!index) {
+		index = new Map(vehicles.map((name, i) => [name, vehicleTypes[vehicleTypeIds[i]]]))
+		vehicleTypeIndexCache.set(vehicles, index)
+	}
+	return index.get(vehicle)
+}
+
 // the layer-identity columns, offered together as one restricted subject group in the filter editor's
 // map/layer/gamemode add flows
 export const LAYER_IDENTITY_COLUMNS = [
