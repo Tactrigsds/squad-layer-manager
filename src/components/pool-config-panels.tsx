@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils.ts'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
@@ -472,34 +473,48 @@ function RepeatRuleRow(props: {
 	}
 
 	let targetValueOptions: string[]
+	// the column the values are drawn from, which is what sorts them into collections. A UnitMatchup value
+	// pairs two units, so it belongs to no single column.
+	let targetValueColumn: string | undefined
 	switch (rule.field) {
 		case 'Map':
 			targetValueOptions = L.StaticLayerComponents.maps
+			targetValueColumn = 'Map'
 			break
 		case 'Layer':
 			targetValueOptions = L.StaticLayerComponents.layers
+			targetValueColumn = 'Layer'
 			break
 		case 'Size':
 			targetValueOptions = L.StaticLayerComponents.size
+			targetValueColumn = 'Size'
 			break
 		case 'Gamemode':
 			targetValueOptions = L.StaticLayerComponents.gamemodes
+			targetValueColumn = 'Gamemode'
 			break
 		case 'Faction':
 			targetValueOptions = L.StaticLayerComponents.factions
+			targetValueColumn = 'Faction_1'
 			break
 		case 'Unit':
 			targetValueOptions = L.StaticLayerComponents.units
+			targetValueColumn = 'Unit_1'
 			break
 		case 'UnitMatchup':
 			targetValueOptions = LQY.unitMatchupOptions(L.StaticLayerComponents.units)
 			break
 		case 'Alliance':
 			targetValueOptions = L.StaticLayerComponents.alliances
+			targetValueColumn = 'Alliance_1'
 			break
 		default:
 			assertNever(rule.field)
 	}
+	const targetOptions = targetValueOptions.map((value) => ({
+		value,
+		group: targetValueColumn ? LC.collectionForEnumValue(targetValueColumn, value) : undefined,
+	}))
 
 	return (
 		<>
@@ -543,7 +558,8 @@ function RepeatRuleRow(props: {
 					className="w-full min-w-0"
 					title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
 					selectOnClose
-					options={targetValueOptions}
+					options={targetOptions}
+					groupOrder={LC.collectionGroupOrder()}
 					disabled={!!api.writeDenied}
 					values={rule.targetValues ?? []}
 					onSelect={(updated) => {

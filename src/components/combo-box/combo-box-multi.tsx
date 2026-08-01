@@ -12,7 +12,7 @@ import { tr } from '@/systems/messages.client'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box.tsx'
 import { LOADING } from './constants.ts'
 import { useComboBoxDismissal } from './dismissal.ts'
-import { normalizeOptions } from './options.ts'
+import { groupRuns, normalizeOptions } from './options.ts'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
@@ -26,6 +26,8 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	selectionLimit?: number
 	disabled?: boolean
 	sort?: boolean
+	// ordering of option `group` headings; unlisted groups trail, alphabetically
+	groupOrder?: readonly string[]
 	options: (ComboBoxOption<T> | T)[] | typeof LOADING
 	onSelect?: React.Dispatch<React.SetStateAction<T[]>>
 	ref?: React.ForwardedRef<ComboBoxHandle>
@@ -129,7 +131,10 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}
 
-	const options = React.useMemo(() => normalizeOptions('ComboBoxMulti', props.options, props.sort ?? true), [props.options, props.sort])
+	const options = React.useMemo(
+		() => normalizeOptions('ComboBoxMulti', props.options, props.sort ?? true, props.groupOrder),
+		[props.options, props.sort, props.groupOrder],
+	)
 	const optionsByValue = React.useMemo(() => {
 		const map = new Map<T, ComboBoxOption<T>>()
 		if (options !== LOADING) {
@@ -345,48 +350,52 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 										<div className="flex-1 border-r overflow-hidden">
 											<CommandList className="max-h-[340px]">
 												<CommandEmpty>{tr.text(UI_Msgs.noResults())}</CommandEmpty>
-												<CommandGroup>
-													{options === LOADING && (
+												{options === LOADING && (
+													<CommandGroup>
 														<CommandItem>
 															<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
 															{tr.text(UI_Msgs.loadingEllipsis())}
 														</CommandItem>
-													)}
-													{options !== LOADING &&
-														options.map((option) => (
-															<CommandItem
-																key={option.value}
-																value={option.value === null ? NULL.current : option.value}
-																keywords={option.keywords}
-																onMouseEnter={() => setHoveredValue(option.value)}
-																onMouseLeave={() => setHoveredValue((cur) => (cur === option.value ? null : cur))}
-																disabled={
-																	option.disabled ||
-																	(selectionLimit
-																		? values.length >= selectionLimit && !values.includes(option.value)
-																		: false)
-																}
-																onSelect={() => {
-																	if (option.disabled) return
-																	onSelect((prevValues) => {
-																		if (prevValues.includes(option.value)) {
-																			return prevValues.filter((v) => v !== option.value)
-																		} else {
-																			return [...prevValues, option.value]
-																		}
-																	})
-																}}
-															>
-																<Check
-																	className={cn(
-																		'mr-2 h-4 w-4',
-																		displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
-																	)}
-																/>
-																{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-															</CommandItem>
-														))}
-												</CommandGroup>
+													</CommandGroup>
+												)}
+												{options !== LOADING &&
+													groupRuns(options).map((run, i) => (
+														<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
+															{run.options.map((option) => (
+																<CommandItem
+																	key={option.value}
+																	value={option.value === null ? NULL.current : option.value}
+																	keywords={option.keywords}
+																	onMouseEnter={() => setHoveredValue(option.value)}
+																	onMouseLeave={() => setHoveredValue((cur) => (cur === option.value ? null : cur))}
+																	disabled={
+																		option.disabled ||
+																		(selectionLimit
+																			? values.length >= selectionLimit && !values.includes(option.value)
+																			: false)
+																	}
+																	onSelect={() => {
+																		if (option.disabled) return
+																		onSelect((prevValues) => {
+																			if (prevValues.includes(option.value)) {
+																				return prevValues.filter((v) => v !== option.value)
+																			} else {
+																				return [...prevValues, option.value]
+																			}
+																		})
+																	}}
+																>
+																	<Check
+																		className={cn(
+																			'mr-2 h-4 w-4',
+																			displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
+																		)}
+																	/>
+																	{option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+																</CommandItem>
+															))}
+														</CommandGroup>
+													))}
 											</CommandList>
 										</div>
 

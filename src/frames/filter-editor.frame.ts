@@ -42,7 +42,7 @@ export const createInput = (args: {
 // from the chosen column); `focus`/`autoOpenLayers` are consumed once on mount.
 export type CreateHint = {
 	group?: F.SubjectColumnGroup
-	focus?: 'operator'
+	focus?: 'operator' | 'values'
 	autoOpenLayers?: boolean
 }
 

@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
 import { useComboBoxDismissal } from './dismissal.ts'
-import { cmdkItemKey, normalizeOptions } from './options.ts'
+import { cmdkItemKey, groupRuns, normalizeOptions } from './options.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -32,6 +32,8 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
 	sort?: boolean
+	// ordering of option `group` headings; unlisted groups trail, alphabetically
+	groupOrder?: readonly string[]
 	// when set, Radix won't restore focus to the trigger as the popover closes. Use when a selection
 	// hands focus off to another element (e.g. the next argument), so the restore doesn't steal it back.
 	preventCloseAutoFocus?: boolean
@@ -57,6 +59,9 @@ export interface ComboBoxOption<T> {
 	description?: React.ReactNode
 	// compact form for the selection display (trigger text, chips); the full label stays in the list
 	chipLabel?: string
+	// heading the option is listed under. Grouped options render in labelled sections (in `groupOrder`),
+	// except excluded (disabled/sortLast) ones, which keep sorting to the back without a heading.
+	group?: string
 }
 
 // floating box describing the currently highlighted option, anchored to the option list. cmdk owns the
@@ -89,7 +94,10 @@ function HighlightedDescription<T extends string | null>(props: { options: Combo
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
-	const options = React.useMemo(() => normalizeOptions('ComboBox', props.options, props.sort ?? true), [props.options, props.sort])
+	const options = React.useMemo(
+		() => normalizeOptions('ComboBox', props.options, props.sort ?? true, props.groupOrder),
+		[props.options, props.sort, props.groupOrder],
+	)
 
 	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
 
@@ -196,13 +204,15 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 						/>
 						<CommandList>
 							<CommandEmpty>{props.emptyMessage ?? `No ${props.title} found.`}</CommandEmpty>
-							<CommandGroup>
-								{options === LOADING && (
+							{options === LOADING && (
+								<CommandGroup>
 									<CommandItem>
 										<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
 									</CommandItem>
-								)}
-								{options !== LOADING && props.allowEmpty && (
+								</CommandGroup>
+							)}
+							{options !== LOADING && props.allowEmpty && (
+								<CommandGroup>
 									<CommandItem
 										value={DH.MISSING_DISPLAY}
 										onSelect={() => {
@@ -213,24 +223,28 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 										<Check className={cn('mr-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
 										{DH.MISSING_DISPLAY}
 									</CommandItem>
-								)}
-								{options !== LOADING &&
-									options.map((option) => (
-										<CommandItem
-											key={option.value}
-											value={option.value ?? undefined}
-											keywords={option.keywords}
-											disabled={option.disabled}
-											onSelect={() => {
-												if (option.disabled) return
-												onSelect(option.value)
-											}}
-										>
-											<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
-											{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
-										</CommandItem>
-									))}
-							</CommandGroup>
+								</CommandGroup>
+							)}
+							{options !== LOADING &&
+								groupRuns(options).map((run, i) => (
+									<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
+										{run.options.map((option) => (
+											<CommandItem
+												key={option.value}
+												value={option.value ?? undefined}
+												keywords={option.keywords}
+												disabled={option.disabled}
+												onSelect={() => {
+													if (option.disabled) return
+													onSelect(option.value)
+												}}
+											>
+												<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
+												{option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+											</CommandItem>
+										))}
+									</CommandGroup>
+								))}
 						</CommandList>
 					</Command>
 				)}

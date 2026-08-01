@@ -70,6 +70,91 @@ export function isVirtualColumn(name: string, cfg = BASE_COLUMN_CONFIG): boolean
 	return getColumnDef(name, cfg)?.table === 'virtual'
 }
 
+// Which collection each enum value belongs to, derived from the catalog: layer configs give maps, layers and
+// gamemodes theirs; availability entries propagate it to factions, alliances and units, and the resolved unit
+// records carry it on to vehicles and vehicle classes. A value spanning several collections homes to the
+// default collection when present, else the first in catalog order.
+type CollectionByEnumValue = Partial<Record<string, Map<string, string>>>
+const enumValueCollectionsCache = new WeakMap<object, CollectionByEnumValue>()
+
+function enumValueCollections(components: LayerComponents): CollectionByEnumValue {
+	const cached = enumValueCollectionsCache.get(components)
+	if (cached) return cached
+
+	const sets = new Map<string, Map<string, Set<string>>>()
+	const add = (mapping: string, value: string | null | undefined, collection: string) => {
+		if (!value) return
+		let byValue = sets.get(mapping)
+		if (!byValue) sets.set(mapping, (byValue = new Map()))
+		let collections = byValue.get(value)
+		if (!collections) byValue.set(value, (collections = new Set()))
+		collections.add(collection)
+	}
+	const unitRecordIndex = new Map((components.unitRecords ?? []).map((name, i) => [name, i]))
+	for (const config of components.mapLayers) {
+		const collection = L.layerConfigCollection(config, components)
+		add('maps', config.Map, collection)
+		add('layers', config.Layer, collection)
+		add('gamemodes', config.Gamemode, collection)
+		for (const entry of components.layerFactionAvailability[config.Layer] ?? []) {
+			add('factions', entry.Faction, collection)
+			add('alliances', components.factionToAlliance[entry.Faction], collection)
+			add('units', entry.Unit, collection)
+			for (const team of [1, 2] as const) {
+				const record = entry.unitObjectNames?.[team]
+				const recordIdx = record == null ? undefined : unitRecordIndex.get(record)
+				if (recordIdx === undefined) continue
+				for (const vehicleIdx of components.unitRecordVehicles?.[recordIdx] ?? []) {
+					add('vehicles', components.vehicles?.[vehicleIdx], collection)
+					add('vehicleTypes', components.vehicleTypes?.[components.vehicleTypeIds?.[vehicleIdx] ?? -1], collection)
+				}
+			}
+		}
+	}
+
+	const defaultCollection = L.getDefaultCollection(components)
+	const result: CollectionByEnumValue = {}
+	for (const [mapping, byValue] of sets) {
+		const home = new Map<string, string>()
+		for (const [value, collections] of byValue) {
+			home.set(
+				value,
+				collections.has(defaultCollection)
+					? defaultCollection
+					: (components.collections.find((c) => collections.has(c)) ?? defaultCollection),
+			)
+		}
+		result[mapping] = home
+	}
+	enumValueCollectionsCache.set(components, result)
+	return result
+}
+
+export function collectionForEnumValue(
+	column: string,
+	value: string | null,
+	components = L.StaticLayerComponents,
+	cfg = BASE_COLUMN_CONFIG,
+): string | undefined {
+	if (value === null) return undefined
+	const def = getColumnDef(column, cfg)
+	if (def?.type !== 'string') return undefined
+	const mapping = def.enumMapping
+	if (!mapping || mapping === 'collections') return undefined
+	return enumValueCollections(components)[mapping]?.get(value)
+}
+
+const collectionGroupOrderCache = new WeakMap<object, string[]>()
+
+export function collectionGroupOrder(components = L.StaticLayerComponents): string[] {
+	const cached = collectionGroupOrderCache.get(components)
+	if (cached) return cached
+	const defaultCollection = L.getDefaultCollection(components)
+	const order = [defaultCollection, ...components.collections.filter((c) => c !== defaultCollection)]
+	collectionGroupOrderCache.set(components, order)
+	return order
+}
+
 const vehicleTypeIndexCache = new WeakMap<readonly string[], Map<string, string>>()
 
 export function vehicleTypeForVehicle(vehicle: string, components = L.StaticLayerComponents): string | undefined {

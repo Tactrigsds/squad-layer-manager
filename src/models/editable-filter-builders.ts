@@ -58,6 +58,19 @@ export const inValues = (column?: string, values?: F.Value[]): F.EditableCompNod
 	args: [colArg(column), { type: 'values', values }],
 })
 
+export const inValuesForTeamColumn = (
+	column: F.TeamColumn,
+	quantifier: F.TeamQuantifier = 'either',
+	values?: F.Value[],
+): F.EditableCompNode => ({
+	type: 'in',
+	neg: false,
+	args: [
+		{ type: 'team-column', column, quantifier },
+		{ type: 'values', values },
+	],
+})
+
 export const lt = (column?: string, value?: F.Value): F.EditableCompNode => ({
 	type: 'lt',
 	neg: false,
