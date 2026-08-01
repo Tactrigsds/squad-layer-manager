@@ -247,7 +247,9 @@ function WeightsSection({
 	reset$: Rx.Subject<void>
 }) {
 	const possibleValues = React.useMemo(() => LC.groupByColumnDefaultValues(column) as string[], [column])
-	const addOptions = possibleValues.filter((v) => !entries.some((e) => e.value === v)).map((v) => ({ value: v, label: v }))
+	const addOptions = possibleValues
+		.filter((v) => !entries.some((e) => e.value === v))
+		.map((v) => ({ value: v, label: v, group: LC.collectionForEnumValue(column, v) }))
 
 	// weights are relative, so what an admin actually wants to see is the share a value would get. the true
 	// denominator depends on which values survive the filters at pick time, so this assumes every value is available:
@@ -332,6 +334,7 @@ function WeightsSection({
 				title={tr.text(LC_Msgs.addValue(column))}
 				value={undefined}
 				options={addOptions}
+				groupOrder={LC.collectionGroupOrder()}
 				onSelect={(value) => {
 					if (value && !entries.some((e) => e.value === value)) {
 						onChange([...entries, { value, weight: LC.DEFAULT_GENERATION_WEIGHT }])
@@ -492,7 +495,12 @@ function MatchupSideInput({
 				<ComboBox
 					title={tr.text(LC_Msgs.factionForTeam(team))}
 					value={faction}
-					options={LC.groupByColumnDefaultValues('Faction_1').map((f) => ({ value: f, label: f }))}
+					options={LC.groupByColumnDefaultValues('Faction_1').map((f) => ({
+						value: f,
+						label: f,
+						group: LC.collectionForEnumValue('Faction_1', f),
+					}))}
+					groupOrder={LC.collectionGroupOrder()}
 					onSelect={(next) => onChange(next ? { Faction: next, Unit: '' } : undefined)}
 				/>
 				<ComboBox
@@ -510,7 +518,12 @@ function MatchupSideInput({
 		<ComboBox
 			title={tr.text(LC_Msgs.sideForTeam(pickLabel(matchup).replace(' matchup', ''), team))}
 			value={side as string | undefined}
-			options={(LC.groupByColumnDefaultValues(column) as string[]).map((v) => ({ value: v, label: v }))}
+			options={(LC.groupByColumnDefaultValues(column) as string[]).map((v) => ({
+				value: v,
+				label: v,
+				group: LC.collectionForEnumValue(column, v),
+			}))}
+			groupOrder={LC.collectionGroupOrder()}
 			onSelect={(next) => onChange(next ?? undefined)}
 		/>
 	)
