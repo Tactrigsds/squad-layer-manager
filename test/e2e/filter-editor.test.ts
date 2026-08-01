@@ -130,6 +130,26 @@ test.describe('filter references', () => {
 		await page.waitForURL('**/filters')
 	})
 
+	test('refuses to save an edit that would make two filters reference each other', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+
+		// the editor is only live once its first validation has run, which is what constrains the layer table to
+		// the filter. Editing before that races the frame's setup, and the loop check would silently not run.
+		// The positive wait comes first: the absence check passes vacuously while the table has no rows at all.
+		await expect(page.getByRole('row').filter({ hasText: /RAAS/ }).first()).toBeVisible({ timeout: 20_000 })
+		await expect(page.getByRole('row').filter({ hasText: 'Skirmish' })).toHaveCount(0)
+
+		await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
+		// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
+		await page.getByRole('button', { name: 'apply existing filter' }).click()
+		await page.getByRole('option', { name: 'RAAS on Harju' }).click()
+
+		await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
+		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
+	})
+
+	// last on purpose: this save races the tree editor's hydration, and a save that lands before the
+	// tree is live can clobber the filter for anything that reads it afterwards
 	test('saves an edited name back to the filter', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
@@ -149,21 +169,5 @@ test.describe('filter references', () => {
 			},
 			{ label: 'renamed filter persisted' },
 		)
-	})
-
-	test('refuses to save an edit that would make two filters reference each other', async ({ page }) => {
-		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
-
-		// the editor is only live once its first validation has run, which is what constrains the layer table to
-		// the filter. Editing before that races the frame's setup, and the loop check would silently not run.
-		await expect(page.getByRole('row').filter({ hasText: 'Skirmish' })).toHaveCount(0, { timeout: 20_000 })
-
-		await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
-		// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
-		await page.getByRole('button', { name: 'apply existing filter' }).click()
-		await page.getByRole('option', { name: 'RAAS on Harju' }).click()
-
-		await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
-		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
 	})
 })
