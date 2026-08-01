@@ -1,5 +1,6 @@
 import { type AppFixture, createAppFixture, LOG_INGEST_SETTLE_MS } from './app-fixture'
 import { LAYERS, queue } from './arrange'
+import { latestMatch as latestMatchOf } from './inspect'
 
 // The map roll is the trickiest window in the event pipeline: the app enters `syncState: 'rolling'` on the
 // TransitionMap log, commits the destination NEW_GAME once it arrives, then waits for the first roster poll
@@ -53,14 +54,7 @@ export async function createRollingFixture(): Promise<RollingFixture> {
 		adminSteamIds: [ROLL_ADMIN_STEAM_ID],
 	})
 
-	function latestMatch() {
-		const db = app.readDb()
-		try {
-			return db.prepare(`SELECT id, layerId FROM matchHistory ORDER BY id DESC LIMIT 1`).get() as { id: number; layerId: string }
-		} finally {
-			db.close()
-		}
-	}
+	const latestMatch = () => latestMatchOf(app)
 
 	return {
 		...app,

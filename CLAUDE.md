@@ -161,6 +161,24 @@ Cover most complex features with integration or e2e tests instead. Do not try to
 the tricky ones. Where convenient, use semantic html tags, which make the playwright code better and improve
 accessibility as a side effect.
 
+Favour vertical scenario files over per-system ones. In test/integration and test/e2e every app fixture boots the
+real app as a child process, so fixtures are the unit of both isolation and cost. Before writing a new test file or
+booting a fresh fixture, look for an existing scenario file whose app config can carry the test, and extend its
+journey: order tests so earlier ones hand their state to later ones, with destructive steps last. Boot a separate
+app only when the config is the subject of the test (auth mode, otel, generation weights, a second server, agent
+mode) or when the test dirties state nothing after it can tolerate. When two files' configs differ only in seeded
+data, re-pick the data so one fixture serves both before accepting a second boot.
+
+Arrange through the harness, not inline: seeding via createAppFixture options, builders in test/harness/arrange.ts
+(queue, filter, role, ...), db and RCON readers in test/harness/inspect.ts (savedQueue, warnsTo, latestMatch, ...).
+Do not re-implement these in a test file.
+
+Two traps in tests that share an app. Draft edit-session state (queue ops, backburner edits) is not guaranteed to
+outlive the page that made it: a test that leaves a draft must commit it, or the test after it must read its
+starting state dynamically instead of assuming counts. And a save clicked before the page has hydrated can commit
+clobbered state (see the rename test in test/e2e/filter-editor.test.ts), so a test whose save is incidental runs
+after the tests that read what it saves.
+
 # Migrations
 
 Data migrations are applied by a custom runner, `pnpm db:migrate` (see ./src/server/migrate.ts). It is

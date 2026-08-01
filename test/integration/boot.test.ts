@@ -109,3 +109,28 @@ describe('app boot against emulator', () => {
 		await app.emu.expectCommand(/^ListPlayers$/, { timeoutMs: 20_000 })
 	})
 })
+
+// The engine is loaded at boot and held for the life of the process: a load costs 110-125MB of RSS while it runs,
+// against ~64MB to hold it flat. See "The layer engine" in docs/architecture.md.
+describe('the server holds its layer engine for the life of the process', () => {
+	const LOADED = /Loaded the layer engine/
+
+	function appLog(): string {
+		return fs.readFileSync(app.logFile, 'utf8')
+	}
+
+	it('loads it during boot, before anything queries', () => {
+		expect(appLog()).toMatch(LOADED)
+	})
+
+	it('never releases it, and never loads a second copy', async () => {
+		// the roll in the match-history test above drew a layer, which needs the engine
+		await app.waitFor(() => /squad-server:onNewGame/.test(appLog()), {
+			label: 'a roll, which draws a layer and so needs the engine',
+			timeoutMs: 30_000,
+		})
+
+		expect(appLog()).not.toMatch(/released the layer engine/)
+		expect(appLog().match(new RegExp(LOADED.source, 'g'))).toHaveLength(1)
+	}, 60_000)
+})

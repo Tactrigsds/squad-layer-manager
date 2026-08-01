@@ -4,6 +4,7 @@ import { makePlayer } from '@/emulator'
 import * as L from '@/models/layer'
 
 import { cmd } from '../harness/arrange'
+import { savedQueue } from '../harness/inspect'
 import { createRollingFixture, ROLL_ADMIN_STEAM_ID, type RollingFixture } from '../harness/rolling'
 
 // Which match an event across the roll belongs to, and whether it is read as something a player did or as
@@ -163,16 +164,6 @@ function disabledReason(fixture: RollingFixture): { type: string; inferred?: boo
 	try {
 		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(fixture.serverId) as { settings: string }
 		return JSON.parse(row.settings).json.updatesToSquadServerDisabled ?? null
-	} finally {
-		db.close()
-	}
-}
-
-function savedQueue(fixture: RollingFixture): { itemId?: string; layerId?: string }[] {
-	const db = fixture.readDb()
-	try {
-		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(fixture.serverId) as { layerQueue: string }
-		return JSON.parse(row.layerQueue).json
 	} finally {
 		db.close()
 	}
