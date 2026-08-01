@@ -11,8 +11,6 @@ import * as childProcess from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-const DB = 'data/db.sqlite3'
-
 function git(args) {
 	return childProcess.execFileSync('git', args, { encoding: 'utf8' }).trim()
 }
@@ -87,7 +85,7 @@ function slotEntry() {
 function ensureProvisioned() {
 	const envLinked = fs.lstatSync(path.join(worktree, '.env'), { throwIfNoEntry: false }) !== undefined
 	const envAvailable = fs.existsSync(path.join(mainCheckout, '.env'))
-	if (slotEntry() && fs.existsSync(path.join(worktree, DB)) && (envLinked || !envAvailable)) return
+	if (slotEntry() && fs.existsSync(path.join(worktree, 'data/db.sqlite3')) && (envLinked || !envAvailable)) return
 	run(tsx, ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev-init.ts', '--no-summary'])
 }
 
@@ -95,8 +93,11 @@ ensureDependencies()
 ensureNativeModules()
 ensureProvisioned()
 
-const res = childProcess.spawnSync(tsx, ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev.ts', ...process.argv.slice(2)], {
+const child = childProcess.spawn(tsx, ['--tsconfig', 'tsconfig.node.json', 'src/scripts/dev.ts', ...process.argv.slice(2)], {
 	cwd: worktree,
 	stdio: 'inherit',
 })
-process.exit(res.status ?? 1)
+// Ctrl-C reaches the child on its own, from the process group; forwarding is for the signal sent to this pid
+// alone, and either way the shell gets its prompt back when the instance is down rather than before.
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal))
+child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
