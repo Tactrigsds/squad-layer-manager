@@ -2,15 +2,11 @@ import type { Page } from '@playwright/test'
 
 import { makePlayer } from '@/emulator'
 
-import { createAppFixture, type TestUser } from '../harness/app-fixture'
-import { expect, sharedAppTest, test } from './fixtures'
+import { expect, sharedAppTest } from './fixtures'
 
 // The console is the one view that claims to show what actually crossed the wire rather than what the app
 // concluded from it, so these drive real traffic through the emulator and assert it comes out the other end.
-// Its permission is checked here too: it discloses player ids, IPs and admin chat, which makes "who can open it"
-// a security boundary rather than a UI preference.
-
-const VIEWER: TestUser = { discordId: 900000000000000041n, username: 'test-console-viewer' }
+// Who may open it at all is a security boundary, asserted in rbac-access.test.ts.
 
 async function openConsole(page: Page) {
 	await page.getByRole('button', { name: 'Server Actions' }).click()
@@ -110,78 +106,5 @@ sharedAppTest.describe('server console', () => {
 
 		await hideNoise.click()
 		await expect(hideNoise).toBeChecked()
-	})
-})
-
-test.describe('server console permission', () => {
-	// squad-server:view-console is deliberately separate from squad-server:view, because the console discloses
-	// considerably more than the dashboard does. This is the test that the separation is real rather than nominal.
-	test('is withheld from a user who can see the dashboard but not the console', async ({ page }) => {
-		const app = await createAppFixture({
-			users: [VIEWER],
-			globalSettings: (settings) => {
-				settings.rbac.roles['dashboard-only'] = {
-					// site:authorized is what lets the session exist at all; squad-server:view gets them the
-					// dashboard. view-console is pointedly absent.
-					permissions: ['site:authorized', 'squad-server:view'],
-					globalSettingsGrants: [],
-					serverSettingsGrants: [],
-					serverGrants: [],
-					assignments: {
-						discordRoleIds: [],
-						discordUserIds: [String(VIEWER.discordId)],
-						everyMember: false,
-						ingameAdminLists: [],
-						adminListGroups: [],
-					},
-				}
-			},
-		})
-		try {
-			await page.goto(app.loginUrl(VIEWER))
-			// they really are on the dashboard: the denial below is about the console, not a broken session
-			await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
-
-			await page.getByRole('button', { name: 'Server Actions' }).click()
-			const item = page.getByRole('menuitem', { name: 'Server Console' })
-			await expect(item).toBeVisible()
-			await expect(item).toBeDisabled()
-
-			// and the gate is not merely the disabled attribute: clicking it opens nothing
-			await item.click({ force: true })
-			await expect(page.getByRole('tabpanel', { name: /console output$/ })).toHaveCount(0)
-		} finally {
-			await app.dispose()
-		}
-	})
-
-	test('is granted by the permission alone', async ({ page }) => {
-		const app = await createAppFixture({
-			users: [VIEWER],
-			globalSettings: (settings) => {
-				settings.rbac.roles['console-reader'] = {
-					permissions: ['site:authorized', 'squad-server:view', 'squad-server:view-console'],
-					globalSettingsGrants: [],
-					serverSettingsGrants: [],
-					serverGrants: [],
-					assignments: {
-						discordRoleIds: [],
-						discordUserIds: [String(VIEWER.discordId)],
-						everyMember: false,
-						ingameAdminLists: [],
-						adminListGroups: [],
-					},
-				}
-			},
-		})
-		try {
-			await page.goto(app.loginUrl(VIEWER))
-			await expect(page.getByRole('heading', { name: 'Match History' })).toBeVisible({ timeout: 30_000 })
-
-			const output = await openConsole(page)
-			await expect(output.getByText('rcon <-').first()).toBeVisible({ timeout: 30_000 })
-		} finally {
-			await app.dispose()
-		}
 	})
 })
