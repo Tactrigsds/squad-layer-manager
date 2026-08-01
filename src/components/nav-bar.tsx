@@ -351,19 +351,25 @@ export default function NavBar() {
 	)
 }
 
-// An anchor rather than a click handler, so the link can be copied or opened in a new window like any other.
+// A button rather than a link: the url is fetched on the click (the api rate-limits the lookup per server), so
+// there is nothing to put in an href beforehand. Shown whenever the integration is configured, since finding out
+// that a server is unlisted costs the same request the click would spend.
 function JoinServerButton(props: { serverId: string }) {
-	const joinUrl = SquadServerClient.useJoinLink(props.serverId)
-	if (!joinUrl) return null
+	const squadBrowserEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.squadBrowserEnabled)
+	if (!squadBrowserEnabled) return null
 
 	const label = tr.text(SS_Msgs.joinServer())
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<Button asChild variant="ghost" size="icon" className="shrink-0">
-					<a href={joinUrl} target="_blank" rel="noopener noreferrer" aria-label={label}>
-						<Icons.Gamepad2 className="h-4 w-4" />
-					</a>
+				<Button
+					variant="ghost"
+					size="icon"
+					className="shrink-0"
+					aria-label={label}
+					onClick={() => void SquadServerClient.joinServer(props.serverId)}
+				>
+					<Icons.Gamepad2 className="h-4 w-4" />
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent>{label}</TooltipContent>
