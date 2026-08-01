@@ -559,7 +559,7 @@ function RepeatRuleRow(props: {
 					title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
 					selectOnClose
 					options={targetOptions}
-					groupOrder={LC.collectionGroupOrder()}
+					groups={LC.collectionGroups()}
 					disabled={!!api.writeDenied}
 					values={rule.targetValues ?? []}
 					onSelect={(updated) => {

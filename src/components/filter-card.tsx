@@ -1297,7 +1297,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			disabled={lockOnSingleOption && options.length === 1}
 			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
 			options={options}
-			groupOrder={LC.collectionGroupOrder()}
+			groups={LC.collectionGroups()}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
@@ -1335,7 +1335,7 @@ function StringInConfig(props: {
 			ref={props.ref}
 			values={props.values}
 			options={options}
-			groupOrder={LC.collectionGroupOrder()}
+			groups={LC.collectionGroups()}
 			onSelect={props.setValues}
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}

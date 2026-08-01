@@ -57,10 +57,71 @@ export function normalizeOptions<T extends string | null>(
 	return options
 }
 
+// -------- groups --------
+
+// A group an option can belong to. Given as a bare key when the key is already the display text.
+export type ComboBoxGroupDef = {
+	key: string
+	// tab label; defaults to the key
+	label?: string
+	// compact form used when prefixing an option's label; defaults to the label. null prefixes nothing, for
+	// the group whose membership is the unremarkable default and so goes unsaid
+	prefix?: string | null
+}
+
+export type ResolvedGroup = { key: string; label: string; prefix: string | null }
+
+// replaces the default group badge shown ahead of a prefixed option label
+export type GroupPrefixRenderer = (prefix: string) => React.ReactNode
+
+// the pseudo-group whose tab shows every group at once
+export const ALL_GROUPS = '__all_groups__'
+
+export function resolveGroups(groups?: readonly (ComboBoxGroupDef | string)[]): ResolvedGroup[] {
+	if (!groups) return []
+	return groups.map((group) => {
+		const def = typeof group === 'string' ? { key: group } : group
+		const label = def.label ?? def.key
+		return { key: def.key, label, prefix: def.prefix === undefined ? label : def.prefix }
+	})
+}
+
+// the groups with options a user can actually pick, in declared order. Groups the caller did not declare
+// trail alphabetically, so an undeclared group is still reachable rather than silently unlisted.
+export function liveGroups<T extends string | null>(options: ComboBoxOption<T>[], groups: readonly ResolvedGroup[]): ResolvedGroup[] {
+	const present = new Set<string>()
+	for (const option of options) {
+		if (option.disabled || option.sortLast || option.group == null) continue
+		present.add(option.group)
+	}
+	const declared = groups.filter((group) => present.has(group.key))
+	const undeclared = [...present]
+		.filter((key) => !groups.some((group) => group.key === key))
+		.sort()
+		.map((key): ResolvedGroup => ({ key, label: key, prefix: key }))
+	return [...declared, ...undeclared]
+}
+
+export function optionsInGroup<T extends string | null>(options: ComboBoxOption<T>[], group: string): ComboBoxOption<T>[] {
+	if (group === ALL_GROUPS) return options
+	return options.filter((option) => option.group === group)
+}
+
+export function groupPrefixOf<T extends string | null>(option: ComboBoxOption<T>, groups: readonly ResolvedGroup[]): string | undefined {
+	if (option.group == null) return undefined
+	const group = groups.find((group) => group.key === option.group)
+	if (!group) return option.group
+	return group.prefix ?? undefined
+}
+
 // consecutive same-group runs of normalized options, for rendering as headed sections. Excluded
 // (disabled/sortLast) options count as ungrouped, so the excluded tail renders heading-less. When the
 // live options span fewer than two groups, headings are noise: everything comes back as one run.
-export function groupRuns<T extends string | null>(options: ComboBoxOption<T>[]): { heading?: string; options: ComboBoxOption<T>[] }[] {
+export function groupRuns<T extends string | null>(
+	options: ComboBoxOption<T>[],
+	suppressHeadings = false,
+): { heading?: string; options: ComboBoxOption<T>[] }[] {
+	if (suppressHeadings) return [{ options }]
 	const headingOf = (option: ComboBoxOption<T>) => (option.disabled || option.sortLast ? undefined : option.group)
 	const headings = new Set(options.map(headingOf))
 	headings.delete(undefined)
