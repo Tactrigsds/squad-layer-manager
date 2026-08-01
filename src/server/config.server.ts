@@ -40,6 +40,10 @@ export type PublicConfig = {
 	layerTable: SETTINGS.GlobalSettings['layerTable']
 	layerGeneration: SETTINGS.GlobalSettings['layerGeneration']
 	layersVersion: string
+	// Whether it is worth the client storing the decompressed layer artifact in OPFS. It is ~235MB, and the write
+	// costs more than fetching and inflating it put together, so it only pays for itself where a later page load
+	// reads it back. e2e is the case where none ever does: playwright gives every test a fresh browser profile.
+	cacheLayerArtifact: boolean
 	// what this deployment is wired up to, so the client hides the affordances that would resolve to nothing
 	integrations: { battlemetrics: boolean; discord: boolean }
 }
@@ -60,6 +64,8 @@ export function pushPublicConfig() {
 		layerTable: Settings.GLOBAL_SETTINGS.layerTable,
 		layerGeneration: Settings.GLOBAL_SETTINGS.layerGeneration,
 		layersVersion: LayerEngine.layersVersion,
+		// a dev instance is reloaded against the same profile all day, so it wants the cache; only e2e does not
+		cacheLayerArtifact: ENV.NODE_ENV !== 'test',
 		integrations: { battlemetrics: ENV.BM_ENABLED, discord: ENV.DISCORD_ENABLED },
 	})
 }
