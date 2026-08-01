@@ -159,6 +159,21 @@ describe('useFollowTooltip', () => {
 		expect(isOpen()).toBe(true)
 	})
 
+	it('closes a hovered tooltip on escape, and does not reopen until the pointer leaves', () => {
+		hoverIn()
+		advance(OPEN_DELAY)
+		fireEvent.keyDown(document, { key: 'Escape' })
+		expect(isOpen()).toBe(false)
+
+		advance(OPEN_DELAY * 2)
+		expect(isOpen()).toBe(false)
+
+		hoverOut()
+		hoverIn()
+		advance(OPEN_DELAY)
+		expect(isOpen()).toBe(true)
+	})
+
 	it('opens pinned on keyboard focus and closes on blur and on escape', () => {
 		fireEvent.focus(trigger())
 		expect(isPinned()).toBe(true)
