@@ -561,8 +561,11 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		case 'RCON_CONNECTED':
 		case 'RCON_DISCONNECTED':
 		case 'TEAMS_POLLED_UPDATE':
-		case 'INGAME_VOTE_STARTED':
+		case 'INGAME_VOTE_STARTED': {
+			if (event.type === 'INGAME_VOTE_STARTED' && event.container !== 'Vote_NextLayer')
+				return noop("Skipping INGAME_VOTE_STARTED that doesn't have container Vote_NextLayer")
 			return { ...event }
+		}
 
 		case 'ROUND_ENDED': {
 			const source = event.action?.source
