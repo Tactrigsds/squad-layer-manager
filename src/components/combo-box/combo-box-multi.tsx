@@ -158,7 +158,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			const displayText = displayValues
 				.map((value) => {
 					const option = optionsByValue.get(value)
-					const displayValue = option ? (option.label ?? option.value) : value
+					const displayValue = option ? (option.chipLabel ?? option.label ?? option.value) : value
 					return typeof displayValue === 'object' ? JSON.stringify(displayValue) : String(displayValue)
 				})
 				.join(', ')
@@ -200,7 +200,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 						<span className="flex grow flex-wrap items-center gap-1">
 							{displayValues.map((value) => {
 								const option = optionsByValue.get(value)
-								const label = option ? (option.label ?? option.value) : value
+								const label = option ? (option.chipLabel ?? option.label ?? option.value) : value
 								return (
 									<span
 										key={value === null ? NULL.current : value}

@@ -55,6 +55,8 @@ export interface ComboBoxOption<T> {
 	sortLast?: boolean
 	// longer explanatory text shown in a floating box while the option is highlighted
 	description?: React.ReactNode
+	// compact form for the selection display (trigger text, chips); the full label stays in the list
+	chipLabel?: string
 }
 
 // floating box describing the currently highlighted option, anchored to the option list. cmdk owns the
@@ -131,7 +133,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		// prefer the option's own label (e.g. "(none)"), matching how the list renders it
 		selectedOptionDisplay = selectedOption.label ?? DH.MISSING_DISPLAY
 	} else if (selectedOption) {
-		selectedOptionDisplay = selectedOption.label ?? selectedOption.value
+		selectedOptionDisplay = selectedOption.chipLabel ?? selectedOption.label ?? selectedOption.value
 	} else {
 		selectedOptionDisplay = props.value ?? props.placeholder ?? `Select ${props.title}...`
 	}
