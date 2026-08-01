@@ -48,7 +48,7 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console(standardErrorFromLevel: S
 // the package paths extraction reads out of a mod; --plan reports the containers that hold them, and a partial
 // fetch that has only those containers still extracts completely
 // GLD is Galactic Contention's spelling of Gameplay_Layer_Data
-var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/" };
+var neededPathMarkers = new[] { "/Gameplay_Layer_Data/", "/GLD/", "/Settings/FactionSetups/", "/Settings/Factions/", "/Settings/Availability/", "/Settings/Vehicle/" };
 
 // the gamemodes with a defending side; mirrors ASYMM_GAMEMODES in src/models/layer.ts
 var asymmetricGamemodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Invasion", "Insurgency", "Destruction" };
@@ -217,8 +217,10 @@ string TextToString(JToken? text)
 
 // blueprint enums serialize as "SQEAlliance::NewEnumerator21"; their display names live in the enum asset
 var enumDisplayNames = new Dictionary<string, string>();
+var loadedEnums = new HashSet<string>();
 void LoadEnumDisplayNames(string enumName)
 {
+	if (!loadedEnums.Add(enumName)) return;
 	var file = searchKeys.FirstOrDefault(k => k.EndsWith($"/{enumName}.uasset", StringComparison.OrdinalIgnoreCase));
 	if (file == null) return;
 	var exports = LoadExports(file);
@@ -232,8 +234,11 @@ void LoadEnumDisplayNames(string enumName)
 string EnumName(JToken? value)
 {
 	var raw = value?.ToString() ?? "";
-	if (enumDisplayNames.TryGetValue(raw, out var display)) return display;
-	return raw.Contains("::") ? raw.Split("::")[^1] : raw;
+	if (!raw.Contains("::")) return raw;
+	// mods define their own enum types; the type name in the value is enough to find and load the asset
+	LoadEnumDisplayNames(raw.Split("::")[0]);
+	if (enumDisplayNames.TryGetValue(raw, out var display) && display != "") return display;
+	return raw.Split("::")[^1];
 }
 
 JToken? FindRowField(JToken row, string field)
@@ -249,6 +254,16 @@ JToken? FindRowField(JToken row, string field)
 
 LoadEnumDisplayNames("SQEAlliance");
 LoadEnumDisplayNames("ESQFactionSetupType");
+LoadEnumDisplayNames("ESQVehicle");
+LoadEnumDisplayNames("ESQVehicleTag");
+LoadEnumDisplayNames("ESQVehicleSpawnerSize");
+
+// SquadLayerList spells vehicle enum values in SCREAMING_SNAKE ("QuadBike" -> "QUAD_BIKE", "Low Caliber" -> "LOW_CALIBER")
+string SllEnumName(JToken? value)
+{
+	var name = EnumName(value);
+	return System.Text.RegularExpressions.Regex.Replace(name, "(?<=[a-z0-9])(?=[A-Z])", "_").Replace(' ', '_').ToUpperInvariant();
+}
 
 // ---------------------------------------------------------------- faction alliances and names
 
@@ -483,20 +498,60 @@ foreach (var (setupPackage, rowName) in referencedSetups.OrderBy(kv => kv.Value,
 		var availability = exports!.FirstOrDefault(e => e["Name"]?.ToString() == exportName)?["Properties"];
 		if (availability == null) continue;
 		var settingName = QuotedName(availability["Setting"]?["ObjectName"]) ?? "";
+
+		// the vehicle's identity lives in its Setting asset (Settings/Vehicle/<faction>/<name>.uasset): the class
+		// enums, the per-biome blueprint versions, and a DataTable row with the display name and icon
+		var settingPackage = RefPackage(availability["Setting"]);
+		var setting = settingPackage != null
+			? LoadExports(settingPackage)?.FirstOrDefault(e => e["Properties"]?["VehicleVersions"] != null || e["Properties"]?["VehicleType"] != null)?["Properties"]
+			: null;
+		if (setting == null && settingPackage != null) Console.Error.WriteLine($"warn: no vehicle setting export in {settingPackage}");
+
+		var vehicleRowName = setting?["Data"]?["RowName"]?.ToString() ?? settingName;
+		var vehicleName = vehicleRowName;
+		var vehicleIcon = "";
+		var vehicleTablePackage = RefPackage(setting?["Data"]?["DataTable"]);
+		if (vehicleTablePackage != null)
+		{
+			var row = LoadExports(vehicleTablePackage)?.FirstOrDefault(e => e["Type"]?.ToString() == "DataTable")?["Rows"]?[vehicleRowName];
+			if (row != null)
+			{
+				var text = TextToString(FindRowField(row, "DisplayName"));
+				if (text != "") vehicleName = text;
+				// the SLL convention is the texture's object name, the part after the dot ("pkg/map_x.T_map_x" -> "T_map_x")
+				var iconPath = FindRowField(row, "Icon")?["AssetPathName"]?.ToString();
+				if (!string.IsNullOrEmpty(iconPath) && iconPath != "None") vehicleIcon = iconPath[(iconPath.LastIndexOf('.') + 1)..];
+			}
+		}
+
+		var classNames = new SortedSet<string>(StringComparer.Ordinal);
+		var spawnCommands = new SortedSet<string>(StringComparer.Ordinal);
+		foreach (var version in (setting?["VehicleVersions"] as JArray) ?? new JArray())
+		{
+			var bpPath = FindRowField(version, "Vehicle")?["AssetPathName"]?.ToString();
+			if (string.IsNullOrEmpty(bpPath) || bpPath == "None") continue;
+			classNames.Add(bpPath[(bpPath.LastIndexOf('.') + 1)..]);
+			spawnCommands.Add($"AdminCreateVehicle {bpPath}");
+		}
+
 		vehicles.Add(new JObject
 		{
-			["name"] = settingName,
-			["rowName"] = settingName,
-			["type"] = settingName,
-			["count"] = RestrictionValue(availability["LimitedCount"], "Count", "MaxCount", "Quantity"),
-			["delay"] = RestrictionValue(availability["Delay"], "InitialDelay", "Delay"),
-			["respawnTime"] = RestrictionValue(availability["Delay"], "RespawnTime", "RespawnDelay"),
-			["vehType"] = settingName.Contains('-') ? settingName.Split('-')[^1] : "",
-			["spawnerSize"] = "",
-			["icon"] = "",
-			["classNames"] = new JArray(),
-			["tags"] = new JArray(),
-			["spawnCommands"] = new JArray(),
+			["name"] = vehicleName,
+			["rowName"] = vehicleRowName,
+			["type"] = vehicleName,
+			// SQRestriction_Count carries the cap in BaseAvailability; SQRestriction_Delay's InitialDelay is the
+			// match-start delay and Delay the respawn time, both FTimespans the layer lists speak in minutes
+			["count"] = RestrictionValue(availability["LimitedCount"], "BaseAvailability"),
+			["delay"] = RestrictionValue(availability["Delay"], "InitialDelay"),
+			["respawnTime"] = RestrictionValue(availability["Delay"], "Delay"),
+			["vehType"] = setting?["VehicleType"] != null
+				? SllEnumName(setting["VehicleType"])
+				: settingName.Contains('-') ? settingName.Split('-')[^1] : "",
+			["spawnerSize"] = setting?["SpawnerSize"] != null ? SllEnumName(setting["SpawnerSize"]) : "",
+			["icon"] = vehicleIcon,
+			["classNames"] = new JArray(classNames),
+			["tags"] = new JArray(((setting?["VehicleTags"] as JArray) ?? new JArray()).Select(SllEnumName)),
+			["spawnCommands"] = new JArray(spawnCommands),
 		});
 	}
 
