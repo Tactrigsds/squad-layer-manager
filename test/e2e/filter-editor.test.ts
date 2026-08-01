@@ -8,7 +8,7 @@ import { expect, test } from './fixtures'
 // tanstack-form surface in the app, so it is where a form-library upgrade breaks first: field validation
 // and the submit gate are both library-driven, and neither shows up in a typecheck.
 
-test.describe('the filter editor form', () => {
+test.describe('the filter editor form', { tag: '@firefox' }, () => {
 	test('rejects a malformed id with the schema message, and recovers once it is valid', async ({ app, page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/new'))
 
@@ -51,7 +51,7 @@ test.describe('the filter editor form', () => {
 			await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
 			// the entity fields are behind the details toggle; the tree is what the page opens on
-			await page.getByRole('button', { name: 'Edit Details' }).click({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'Edit Details' }).click()
 
 			const name = page.getByRole('textbox', { name: 'Name' })
 			await expect(name).toHaveValue('RAAS Only')

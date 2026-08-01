@@ -6,7 +6,7 @@ import { expect, test } from './fixtures'
 // only commits on save, so this is the path where an op that replays differently on the server shows
 // up as a queue that disagrees with what the user saw.
 
-test.describe('editing the queue', () => {
+test.describe('editing the queue', { tag: '@firefox' }, () => {
 	test('deleting the head, saving, and pushing the new head to the game server', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.skorpoRaas),
