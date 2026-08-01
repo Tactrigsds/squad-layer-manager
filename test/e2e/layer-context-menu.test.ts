@@ -42,12 +42,17 @@ test.describe('the layer context menu', () => {
 		await page.keyboard.press('Escape')
 	})
 
-	test('a match history row offers the layer actions and the history entry id', async ({ page }) => {
+	test('the current match row keeps the layer actions behind a Layer submenu, apart from the server actions', async ({ page }) => {
 		// dnd-kit marks the row aria-disabled while it isn't draggable, so the right-click goes to the layer cell
 		const layerCell = page.getByRole('row', { name: /Harju_RAAS_v1/ }).getByText('Harju_RAAS_v1')
 		await expect(layerCell).toBeVisible({ timeout: 20_000 })
 		await layerCell.click({ button: 'right' })
 
+		// this row acts on the match too, so the layer's actions don't sit alongside the server's
+		await expect(page.getByRole('menuitem', { name: 'Server Console' })).toBeVisible()
+		await expect(page.getByRole('menuitem', { name: 'Show details' })).toHaveCount(0)
+
+		await page.getByRole('menuitem', { name: 'Layer' }).hover()
 		await expect(page.getByRole('menuitem', { name: 'Show details' })).toBeVisible()
 		await expect(page.getByRole('menuitem', { name: 'Open in SquadCalc' })).toBeVisible()
 

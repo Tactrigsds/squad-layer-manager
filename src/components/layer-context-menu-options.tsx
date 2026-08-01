@@ -71,15 +71,19 @@ export function LayerMenuItems({
 	layerIds,
 	historyEntryIds,
 	slots,
+	nested,
 }: {
 	layerIds: L.LayerId[]
 	historyEntryIds?: number[]
 	slots: MenuSlots
+	// set where the menu also acts on something other than the layer, so the layer's actions sit behind a
+	// "Layer" submenu rather than reading as more actions on that thing
+	nested?: boolean
 }) {
 	const { Item, Separator, Sub, SubTrigger, SubContent } = slots
 	const singleKnownLayerId = layerIds.length === 1 && L.isKnownLayer(layerIds[0]) ? layerIds[0] : undefined
 
-	return (
+	const items = (
 		<>
 			{singleKnownLayerId && (
 				<>
@@ -97,8 +101,18 @@ export function LayerMenuItems({
 			</Sub>
 		</>
 	)
+
+	if (!nested) return items
+	return (
+		<Sub>
+			<SubTrigger>{tr.text(L_Msgs.layerSub())}</SubTrigger>
+			<SubContent>{items}</SubContent>
+		</Sub>
+	)
 }
 
-export default function LayerContextMenuOptions(props: { layerIds: L.LayerId[]; historyEntryIds?: number[] }) {
-	return <LayerMenuItems layerIds={props.layerIds} historyEntryIds={props.historyEntryIds} slots={contextMenuSlots} />
+export default function LayerContextMenuOptions(props: { layerIds: L.LayerId[]; historyEntryIds?: number[]; nested?: boolean }) {
+	return (
+		<LayerMenuItems layerIds={props.layerIds} historyEntryIds={props.historyEntryIds} slots={contextMenuSlots} nested={props.nested} />
+	)
 }
