@@ -77,7 +77,7 @@ export const [useTickRate, tickRate$] = ReactRx.bind('squadServer.tickRate', (se
 // Asked for on the click rather than kept warm: the link carries a steam lobby id that the server replaces as
 // it rolls, and the api rate-limits the lookup per server, so a dashboard left open must not spend requests
 // keeping one online. Handing the url to location lets the browser pass steam:// to its protocol handler.
-export async function joinServer(serverId: string) {
+async function joinServer(serverId: string) {
 	const res = await RPC.orpc.squadServer.getJoinLink.call({ serverId })
 	switch (res.code) {
 		case 'ok':
@@ -99,6 +99,10 @@ export async function joinServer(serverId: string) {
 		default:
 			assertNever(res)
 	}
+}
+
+export function useJoinServer() {
+	return useMutation({ mutationFn: joinServer })
 }
 
 export function useEndMatch() {
