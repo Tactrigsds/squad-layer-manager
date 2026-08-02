@@ -89,6 +89,14 @@ async function resolveSourceName(ctx: C.Db, source: TSW.Teamswap['source'], play
 	return 'Admin'
 }
 
+// Whether a swap tells the whole admin team about itself. An in-game command never does: every admin has already
+// read it in admin chat. A dashboard one does only where the server asks for it.
+async function notifiesAdmins(ctx: C.Db & SQS.Ctx & CS.AbortSignal, source: TSW.Teamswap['source']) {
+	if (USR.isFromChat(source)) return false
+	const serverState = await SquadServer.getServerState(ctx)
+	return serverState.settings.warnOnGuiTeamswaps
+}
+
 type Dispatched = ODSM.Server.Dispatched<TSW.Op, TSW.Rejection>
 
 export function setup() {
@@ -586,7 +594,7 @@ const dispatchOp = Instr.spanOp(
 							).catch((error) => {
 								if (!Prom.isAbortError(error)) log.error(error)
 							})
-							if (isManual && !USR.isFromChat(isManual.source)) {
+							if (isManual && (await notifiesAdmins(ctx, isManual.source))) {
 								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
 								const excludeSteamIds = isManual.source.steamId ? new Set([isManual.source.steamId]) : undefined
 								const layerRes = L.parseLayerId(currentMatch.layerId)
@@ -655,7 +663,12 @@ const dispatchOp = Instr.spanOp(
 						// only an edit to the queue is announced as one. an execution empties the saved swaps too, but it
 						// has its own admin warn (notifyAdminManualSwap) and would otherwise report itself as a clear
 						const { added, removed } = TSW.getTeamswapChanges(se.swaps, se.prevSaved)
-						if (se.source && !USR.isFromChat(se.source) && se.trigger === 'user-edit' && added.length + removed.length > 0) {
+						if (
+							se.source &&
+							se.trigger === 'user-edit' &&
+							added.length + removed.length > 0 &&
+							(await notifiesAdmins(ctx, se.source))
+						) {
 							const name = await resolveSourceName(ctx, se.source)
 							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
 							const layerRes = L.parseLayerId(currentMatch.layerId)
