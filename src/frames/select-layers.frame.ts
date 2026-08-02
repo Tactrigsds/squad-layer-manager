@@ -11,7 +11,7 @@ import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared'
 import * as EFB from '@/models/editable-filter-builders'
-import type * as F from '@/models/filter.models'
+import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LL from '@/models/layer-list.models'
@@ -34,6 +34,7 @@ export function createInput(
 		sharedInstanceId?: string
 		// seed the layer-select menu from a backburner template (matchup left -> Team 1, right -> Team 2)
 		startingTemplate?: F.FilterNode
+		rememberCollection?: boolean
 	} & Partial<SquadServerFrame.KeyProp>,
 ): Input {
 	const colConfig = ConfigClient.getColConfig()
@@ -44,6 +45,7 @@ export function createInput(
 		cursor: opts.cursor,
 		squadServer: opts.squadServer,
 		startingMenuItems: opts.startingTemplate ? menuItemsFromTemplate(opts.startingTemplate, colConfig) : undefined,
+		rememberCollection: opts.rememberCollection,
 	}
 	return {
 		...LayerTablePrt.getInputDefaults({
@@ -68,6 +70,7 @@ type BaseInput = {
 	initialEditedLayerId?: L.LayerId
 	instanceId: string
 	startingMenuItems?: Record<string, F.EditableCompNode>
+	rememberCollection?: boolean
 } & Partial<SquadServerFrame.KeyProp>
 
 type Input = BaseInput & LayerTablePrt.Input
@@ -133,12 +136,21 @@ const setup: Frame['setup'] = (args) => {
 		input: input.initialEditedLayerId ? { context: 'edit', editedLayerId: input.initialEditedLayerId } : { context: 'add' },
 	})
 	PoolCheckboxesPrt.initNewPoolCheckboxes({ ...args, input: { defaultState: { dnr: 'disabled' } } })
+	let startingMenuItems = input.startingMenuItems
+	if (!startingMenuItems && input.rememberCollection) {
+		startingMenuItems = LayerFilterMenuPrt.getDefaultFilterMenuItemState(
+			getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig),
+			input.colConfig,
+		)
+		startingMenuItems.Collection = readRememberedCollection()
+	}
+
 	LayerFilterMenuPrt.initLayerFilterMenuStore({
 		...args,
-		input: input.startingMenuItems
+		input: startingMenuItems
 			? {
 					colConfig: input.colConfig,
-					items: input.startingMenuItems,
+					items: startingMenuItems,
 					emptyItems: LayerFilterMenuPrt.getDefaultFilterMenuItemState({}, input.colConfig),
 				}
 			: { colConfig: input.colConfig, defaultFields: getFilterMenuDefaultFields(input.initialEditedLayerId, input.colConfig) },
@@ -161,6 +173,40 @@ const setup: Frame['setup'] = (args) => {
 			set({ baseQueryInput })
 		}),
 	)
+
+	if (input.rememberCollection) {
+		args.cleanup.push(
+			args.update$
+				.pipe(
+					Rx.map(([state]) => state.filterMenu.menuItems.Collection),
+					Rx.Ext.distinctDeepEquals(),
+				)
+				.subscribe(writeRememberedCollection),
+		)
+	}
+}
+
+// The catalog holds the mod collections alongside OWI, so a dialog that opens unpinned buries the vanilla layers.
+// `rememberCollection` opens it on the default collection, then on whatever the user last set the Collection menu
+// item to. The comparison is stored whole rather than as a bare collection name, so a change of operator comes
+// back with it. A value the catalog has since dropped is left alone, as a stale saved filter is.
+const REMEMBERED_COLLECTION_KEY = 'selectLayersCollection:v1'
+
+function readRememberedCollection(components = L.StaticLayerComponents): F.EditableCompNode {
+	const stored = localStorage.getItem(REMEMBERED_COLLECTION_KEY)
+	if (stored !== null) {
+		try {
+			const parsed = F.EditableCompNodeSchema.parse(JSON.parse(stored))
+			if (F.compAnchorColumn(parsed) === 'Collection') return parsed
+		} catch {
+			// fall through to the default: a key we cannot read is one the user can simply set again
+		}
+	}
+	return EFB.eq('Collection', L.getDefaultCollection(components))
+}
+
+function writeRememberedCollection(comp: F.EditableCompNode) {
+	localStorage.setItem(REMEMBERED_COLLECTION_KEY, JSON.stringify(comp))
 }
 
 // const onInputChanged: Frame['onInputChanged'] = (newInput, setupArgs) => {
