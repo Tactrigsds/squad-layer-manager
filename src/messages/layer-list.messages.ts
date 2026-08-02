@@ -13,25 +13,23 @@ export const lowQueueItemCount = def(
 	(count: number) => ({ count }),
 )
 
-export const nextLayerWarning = def(
-	(layerId: L.LayerId, _opts: { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }) => {
-		const repeatedList =
-			_opts.repeatViolations.length > 0 ? [...new Set(_opts.repeatViolations.map((r) => r.field))].join(', ') : undefined
-		const poolList = _opts.poolViolations.length > 0 ? _opts.poolViolations.join(', ') : undefined
-		const violations = t(
-			'{which, select, both {Repeat violations({repeatedList}) and pool violations ({poolList})} repeat {Repeat violations({repeatedList})} pool {Pool violations ({poolList})} other {}}',
-			{
-				repeatedList,
-				poolList,
-				which: repeatedList && poolList ? 'both' : repeatedList ? 'repeat' : poolList ? 'pool' : 'none',
-			},
-		)
-		return t('WARNING: The next layer ({layer}) has {violations}. Check SLM for more details.', {
-			layer: DH.displayLayer(layerId),
-			violations,
-		})
-	},
-)
+export type NextLayerViolations = { repeatViolations: LQY.RepeatMatchDescriptor[]; poolViolations: string[] }
+
+// What the next layer breaks, appended to a message that has already named it.
+function violationsLine(violations: NextLayerViolations) {
+	const repeatedList =
+		violations.repeatViolations.length > 0 ? [...new Set(violations.repeatViolations.map((r) => r.field))].join(', ') : undefined
+	const poolList = violations.poolViolations.length > 0 ? violations.poolViolations.join(', ') : undefined
+	if (!repeatedList && !poolList) return undefined
+	return t(
+		'{which, select, both {WARNING: repeat violations ({repeatedList}) and pool violations ({poolList})} repeat {WARNING: repeat violations ({repeatedList})} other {WARNING: pool violations ({poolList})}}. Check SLM for more details.',
+		{
+			repeatedList,
+			poolList,
+			which: repeatedList && poolList ? 'both' : repeatedList ? 'repeat' : 'pool',
+		},
+	)
+}
 
 export const votePending = def((matchStartTime: Date, threshold: number, autostart: boolean, commands: CMD.CommandConfigs) => ({
 	// formatInterval renders for a locale, which ICU cannot carry, so the message resolves per reader
@@ -87,7 +85,7 @@ export const showNext = def(
 		nextLayer: L.UnvalidatedLayer | null,
 		setByUser: USR.User | undefined,
 		commands: Record<CMD.CommandId, CMD.CommandConfig>,
-		opts?: { updated?: boolean; isAdmin?: boolean },
+		opts?: { updated?: boolean; isAdmin?: boolean; violations?: NextLayerViolations },
 	) => ({
 		// the per-recipient form: warnAll re-invokes this for each player, which is what lets the layer be rendered
 		// from that player's next-team perspective
@@ -153,6 +151,8 @@ export const showNext = def(
 			// only show who set the layer to admins
 			if (opts?.isAdmin) {
 				lines.push(setByDisplay(item, setByUser))
+				const violations = opts.violations && violationsLine(opts.violations)
+				if (violations) lines.push(violations)
 			}
 
 			return { msg: lines }
