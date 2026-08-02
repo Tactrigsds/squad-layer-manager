@@ -28,6 +28,9 @@ type Shortcut = { usage: string; expansion: string }
 // one listing in the page body. `key` identifies the command itself; `id` is the DOM anchor, which also carries the
 // section, since a pinned or quick-reference command is listed again under its own section. A shortcut trigger is not
 // an entry of its own: it belongs to the command it runs, and is listed (and searched) as part of it.
+//
+// `usages` is what to type to run the command, and `shortcuts` the ways in that stand for one of those usages. A
+// command whose every trigger pins arguments has no plainer form for them to stand for, so they are its usages.
 type Entry = {
 	key: string
 	id: string
@@ -35,6 +38,7 @@ type Entry = {
 	search: string
 	cmdId: CMD.CommandId
 	cmd: CMD.CommandConfig
+	usages: string[]
 	shortcuts: Shortcut[]
 }
 
@@ -105,7 +109,7 @@ function CommandDetails({
 	settings: PublicSettings
 }) {
 	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminActionReasons }
-	const args = CMDH.describeArgs(cmdId, seeds, settings.requireReasonFor)
+	const args = CMDH.describeArgs(cmdId, cmd, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 
@@ -113,41 +117,56 @@ function CommandDetails({
 		<div className="space-y-3 border-l-2 pl-3 ml-1">
 			{args.length > 0 && (
 				<dl className="space-y-2">
-					{args.map((arg) => (
-						<div key={arg.name} className="text-sm">
-							<dt className="flex flex-wrap items-baseline gap-2">
-								<code className="font-mono text-xs bg-muted rounded px-1 py-0.5">
-									{arg.optional ? `[${arg.name}]` : `<${arg.name}>`}
-								</code>
-								<span className="text-xs text-muted-foreground font-mono">{arg.syntax}</span>
-								{arg.optional && <span className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.optionalArg())}</span>}
-							</dt>
-							<dd className="text-xs text-muted-foreground pt-0.5">
-								{arg.description}
-								{arg.presets.length > 0 && (
-									<span className="flex flex-wrap items-center gap-1 pt-1">
-										<span>{tr.text(CMD_Msgs.configuredPresets())}</span>
-										{arg.presets.map((preset) => (
-											<Badge key={preset} variant="secondary" className="text-xs">
-												{preset}
-											</Badge>
-										))}
-									</span>
+					{args.map((arg) => {
+						// an argument the triggers fill in is a fact about what the command does, not a word to explain how to
+						// write: its value stands in for the syntax, and the kind's blurb has nothing left to tell anyone
+						const fixed = arg.fixed.length > 0
+						return (
+							<div key={arg.name} className="text-sm">
+								<dt className="flex flex-wrap items-baseline gap-2">
+									<code className="font-mono text-xs bg-muted rounded px-1 py-0.5">
+										{fixed ? arg.name : arg.optional ? `[${arg.name}]` : `<${arg.name}>`}
+									</code>
+									{fixed ? (
+										<span className="text-xs text-muted-foreground font-mono">{tr.text(CMD_Msgs.fixedArg(arg.fixed))}</span>
+									) : (
+										<>
+											<span className="text-xs text-muted-foreground font-mono">{arg.syntax}</span>
+											{arg.optional && <span className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.optionalArg())}</span>}
+										</>
+									)}
+								</dt>
+								{!fixed && (
+									<dd className="text-xs text-muted-foreground pt-0.5">
+										{arg.description}
+										{arg.presets.length > 0 && (
+											<span className="flex flex-wrap items-center gap-1 pt-1">
+												<span>{tr.text(CMD_Msgs.configuredPresets())}</span>
+												{arg.presets.map((preset) => (
+													<Badge key={preset} variant="secondary" className="text-xs">
+														{preset}
+													</Badge>
+												))}
+											</span>
+										)}
+									</dd>
 								)}
-							</dd>
-						</div>
-					))}
+							</div>
+						)
+					})}
 				</dl>
 			)}
-			<div className="space-y-1">
-				<p className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.examplesHeading())}</p>
-				{examples.map((example) => (
-					<div key={example.command} className="flex flex-wrap items-center gap-2">
-						<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
-						<span className="text-xs text-muted-foreground">{example.note}</span>
-					</div>
-				))}
-			</div>
+			{examples.length > 0 && (
+				<div className="space-y-1">
+					<p className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.examplesHeading())}</p>
+					{examples.map((example) => (
+						<div key={example.command} className="flex flex-wrap items-center gap-2">
+							<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
+							<span className="text-xs text-muted-foreground">{example.note}</span>
+						</div>
+					))}
+				</div>
+			)}
 			{shortcuts.length > 0 && (
 				<div className="space-y-1">
 					<p className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.shortcutsHeading())}</p>
@@ -178,16 +197,14 @@ function CommandEntry({
 }) {
 	const { cmdId, cmd } = entry
 	const [open, setOpen] = React.useState(false)
-	const args = CMD.COMMAND_DECLARATIONS[cmdId].args as readonly CMD.ArgDef[]
-	const argObject = Object.fromEntries(args.map((arg) => [arg.name, CMD.formatArg(arg, settings.requireReasonFor)]))
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 	return (
 		<Collapsible open={open} onOpenChange={setOpen} id={entry.id} data-cmd-anchor className="space-y-2">
 			<div className="group flex items-center gap-2">
 				<PinButton cmdId={cmdId} pinned={pinned} />
 				<div className="flex flex-wrap items-center gap-1">
-					{CMD.buildCommand(cmdId, argObject, settings.commands, true).map((cmdString) => (
-						<CopyableCommand key={cmdString} cmdString={cmdString} chatCommand={chatCommand} />
+					{entry.usages.map((usage) => (
+						<CopyableCommand key={usage} cmdString={usage} chatCommand={chatCommand} />
 					))}
 					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label={tr.text(CMD_Msgs.linkToCommand())} />
 					{showSettingsLink && <SettingsCrossLink cmdId={cmdId} />}
@@ -403,12 +420,16 @@ function commandEntry(
 	requiredReasonActions: readonly AAR.AdminActionType[],
 ): Entry {
 	const primary = CMD.primaryTrigger(cmd)
-	const shortcuts = cmd.triggers
-		.filter((t) => CMD.triggerArgs(t) !== undefined)
-		.map((t) => ({
-			usage: CMD.formatTriggerUsage(cmdId, t, requiredReasonActions),
-			expansion: CMD.describeTriggerExpansion(cmd, t),
-		}))
+	const groups = CMDH.triggerGroups(cmdId, cmd, requiredReasonActions)
+	const lines = (group: CMDH.TriggerGroup) => group.strings.map((str) => `${str} ${group.signature}`.trim())
+	const usages = groups
+		.filter((group) => group.expansion === undefined)
+		.flatMap(lines)
+		// longest first: the full string reads as the command's name, the short ones as abbreviations of it
+		.toSorted((a, b) => b.length - a.length)
+	const shortcuts = groups
+		.filter((group) => group.expansion !== undefined)
+		.flatMap((group) => lines(group).map((usage) => ({ usage, expansion: group.expansion! })))
 	return {
 		key: cmdId,
 		id: `${sectionId}/command:${cmdId}`,
@@ -425,6 +446,7 @@ function commandEntry(
 			.toLowerCase(),
 		cmdId,
 		cmd,
+		usages,
 		shortcuts,
 	}
 }
