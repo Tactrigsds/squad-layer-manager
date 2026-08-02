@@ -46,8 +46,8 @@ const SEEDED_FILTERS: SeededFilter[] = [
 	{
 		id: 'vanilla-collections',
 		name: 'Vanilla Collections',
-		description: 'Layers an unmodded server can run: the OWI and Community collections.',
-		filter: FB.inValues('Collection', ['OWI', 'Community']),
+		description: 'Layers an unmodded server can run: the OWI collection.',
+		filter: FB.eq('Collection', 'OWI'),
 		emoji: '🍦',
 		alertMessage: 'Runs on vanilla Squad',
 		invertedEmoji: '🧩',

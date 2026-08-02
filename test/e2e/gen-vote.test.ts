@@ -17,7 +17,7 @@ test.describe('generation weights', () => {
 			layerQueue: queue(LAYERS.harjuRaas),
 			// mod layer names spell their gamemode unpredictably, so the pool pins the vanilla collections; the
 			// weights, not a filter, still have to be what narrows the gamemode
-			filters: [filter('vanilla', 'Vanilla', FB.and([FB.inValues('Collection', ['OWI', 'Community'])]))],
+			filters: [filter('vanilla', 'Vanilla', FB.and([FB.eq('Collection', 'OWI')]))],
 			globalSettings: (settings) => {
 				// unlisted values weigh LC.DEFAULT_GENERATION_WEIGHT (0.1), so Invasion outweighs every other
 				// gamemode by four orders of magnitude: drawing anything else is a ~0.04% event per choice

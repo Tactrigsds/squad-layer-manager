@@ -16,7 +16,7 @@ test.beforeAll(async () => {
 		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.skorpoRaas),
 		filters: [
 			// the Collection pin keeps mod layers (which spell their gamemode unpredictably) out of generation
-			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS'), FB.inValues('Collection', ['OWI', 'Community'])])),
+			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS'), FB.eq('Collection', 'OWI')])),
 		],
 		serverSettings: (settings) => {
 			selectableFilter(settings.queue.mainPool, 'raas-only')
