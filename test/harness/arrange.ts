@@ -25,6 +25,15 @@ export const LAYERS = {
 	skorpoRaas: 'SK-RAAS-V1:USA-CA:RGF-CA',
 } satisfies Record<string, L.LayerId>
 
+// Matches a layer name as a whole name. `hasText` with a bare string is a substring match, and a mod layer name
+// embeds the vanilla one it is derived from: 'Narva_RAAS_v1' also picks out 'Supermod_Narva_RAAS_v1_SPM'. Only an
+// underscore is excluded on either side, because that is the one character a mod name pads with; the text
+// `hasText` matches runs adjacent cells together, so the name is routinely flanked by the item number and a
+// faction ('3Gorodok_AAS_v1RGF...') and a stricter word boundary would reject it.
+export function layerText(layerName: string): RegExp {
+	return new RegExp(`(?:^|[^_])${layerName}(?!_)`)
+}
+
 // An in-game command as an admin types it. The prefix is not restated, so these follow whatever a fresh install
 // seeds -- a trigger that does not start with an allowed prefix is refused by the settings schema, so a literal
 // would fail the whole fixture rather than the assertion it belongs to.
