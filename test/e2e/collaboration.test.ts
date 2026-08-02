@@ -1,7 +1,7 @@
 import * as LTag from '@/models/layer-tags.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
-import { LAYERS, queue, role } from '../harness/arrange'
+import { LAYERS, layerText, queue, role } from '../harness/arrange'
 import { savedQueue } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
@@ -51,7 +51,7 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
 
 			const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
-			const item = queuePanel.getByRole('listitem').filter({ hasText: 'Harju_RAAS_v1' })
+			const item = queuePanel.getByRole('listitem').filter({ hasText: layerText('Harju_RAAS_v1') })
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 
 			// -------- tagging --------
@@ -107,7 +107,7 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 			await pageB.goto(app.loginUrl(WRITER))
 			await expect(pageB.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
 			const panelB = pageB.getByRole('tabpanel', { name: /^Queue/ })
-			const itemB = panelB.getByRole('listitem').filter({ hasText: 'Harju_RAAS_v1' })
+			const itemB = panelB.getByRole('listitem').filter({ hasText: layerText('Harju_RAAS_v1') })
 			await expect(itemB.getByText(META.label, { exact: true })).toBeVisible()
 
 			// the note is someone else's and they hold no manage-all grant, so it offers them nothing to press
@@ -175,11 +175,19 @@ test.describe('collaborative queue editing', () => {
 			await pageB.getByRole('button', { name: 'Start Editing' }).click()
 
 			// A deletes the head; B is looking at the same session, so B sees it go
-			await panelA.getByRole('listitem').filter({ hasText: 'Harju_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
+			await panelA
+				.getByRole('listitem')
+				.filter({ hasText: layerText('Harju_RAAS_v1') })
+				.getByRole('button', { name: 'Delete' })
+				.click()
 			await expect(panelB.getByText('Harju_RAAS_v1')).toBeHidden({ timeout: 15_000 })
 
 			// and B's own edit lands on top of A's, in both clients
-			await panelB.getByRole('listitem').filter({ hasText: 'Skorpo_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
+			await panelB
+				.getByRole('listitem')
+				.filter({ hasText: layerText('Skorpo_RAAS_v1') })
+				.getByRole('button', { name: 'Delete' })
+				.click()
 			await expect(panelA.getByText('Skorpo_RAAS_v1')).toBeHidden({ timeout: 15_000 })
 			await expect(panelA.getByRole('listitem')).toHaveCount(1)
 
