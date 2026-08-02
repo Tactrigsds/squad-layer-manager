@@ -12,12 +12,12 @@ export function cmdkItemKey<T extends string | null>(option: ComboBoxOption<T>):
 	return typeof option.label === 'string' ? option.label.trim() : null
 }
 
-// the option's heading in the description box, which writes text rather than rendering nodes. An option
-// whose label is a node has no text form beyond its value, and a null-valued one has none at all.
+// the option's heading in the description box, which writes text rather than rendering nodes. It reads as
+// the row does, so the label leads; an option whose label is a node falls back to a text form of it, and a
+// null-valued one has none at all.
 export function descriptionTitle<T extends string | null>(option: ComboBoxOption<T>): string | null {
-	if (option.chipLabel) return option.chipLabel
 	if (typeof option.label === 'string') return option.label
-	return option.value
+	return option.chipLabel ?? option.value
 }
 
 // the options carrying a description, keyed the way cmdk reports its highlighted item
