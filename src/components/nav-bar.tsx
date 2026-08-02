@@ -405,7 +405,7 @@ function NormalizeTeamsToggle() {
 // server's settings. Switching servers therefore builds a fresh instance and drops the previous one, rather than leaving
 // the dialog constrained by the server the page happened to load with
 function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
-	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID })
+	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID, rememberCollection: true })
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
 	useFrameTeardownOnUnmount(frameKey)
 

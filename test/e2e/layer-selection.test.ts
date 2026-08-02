@@ -117,6 +117,48 @@ async function setForceWriteSimulatedAway(page: Page, simulatedAway: boolean) {
 	await expect(dialog).toHaveCount(0)
 }
 
+// Runs before the tests that edit the queue: it reloads the page, which would drop an editing session.
+test.describe('the explore-layers collection', () => {
+	async function openExplore(page: Page) {
+		await page.getByRole('button', { name: 'Explore Layers' }).click()
+		return page.getByRole('dialog', { name: 'Layers' })
+	}
+
+	test('opens on the default collection, then on whatever the user last picked', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+
+		const dialog = await openExplore(page)
+		const collection = dialog.getByRole('combobox', { name: 'Collection' })
+		await expect(collection).toHaveText('OWI')
+
+		await collection.click()
+		await page.getByRole('option', { name: 'GC', exact: true }).click()
+		await expect(collection).toHaveText('GC')
+
+		await page.reload()
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+		const reopened = await openExplore(page)
+		await expect(reopened.getByRole('combobox', { name: 'Collection' })).toHaveText('GC')
+	})
+
+	test('leaves the collection cleared once the user clears it', async ({ page }) => {
+		await page.goto(app.loginUrl())
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+
+		const dialog = await openExplore(page)
+		const collection = dialog.getByRole('combobox', { name: 'Collection' })
+		await collection.click()
+		await page.getByRole('option', { name: '-', exact: true }).click()
+		await expect(collection).toHaveText('Select Collection...')
+
+		await page.reload()
+		await expect(page.getByRole('tab', { name: 'Queue (2)' })).toBeVisible({ timeout: 20_000 })
+		const reopened = await openExplore(page)
+		await expect(reopened.getByRole('combobox', { name: 'Collection' })).toHaveText('Select Collection...')
+	})
+})
+
 test.describe('applied filters', () => {
 	// the pool's own filters are already rendered as pinned controls, so offering them again in the
 	// extras picker would produce two controls for one constraint
