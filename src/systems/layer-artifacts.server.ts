@@ -10,7 +10,7 @@ import * as Env from '@/server/env'
 
 // Where the layer artifacts come from, and which version of them the app runs on.
 //
-// A version is only usable as a *pair*: the columnar table the query engine reads
+// A version is only usable as a *pair*: the factored table the query engine reads
 // (layers_v<version>.bin[.gz]) and the components its encoded values index into
 // (layer-data_v<version>.json). A table read against the wrong components resolves to the wrong layers
 // silently, so a pair is only ever formed from two files sitting in the same directory under the same

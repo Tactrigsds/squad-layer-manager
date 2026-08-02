@@ -6,7 +6,7 @@
 
 use crate::gen::{self, GenSpec, StepSpec};
 use crate::ir::{eval, Ir, Tri};
-use crate::store::Store;
+use crate::store::{BlockCursor, ColData, Store};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
@@ -109,10 +109,10 @@ fn matched(store: &Store, filter: &Option<Ir>, cache: &mut FilterCache) -> Rc<Tr
 }
 
 fn project(store: &Store, row: usize, columns: &[usize]) -> Vec<Option<i64>> {
-    columns.iter().map(|c| store.value(store.col(*c), row)).collect()
+    columns.iter().map(|c| store.value(*c, row)).collect()
 }
 
-pub fn handle(store: &Store, id_col: usize, request: Request, cache: &mut FilterCache) -> Result<String, String> {
+pub fn handle(store: &Store, request: Request, cache: &mut FilterCache) -> Result<String, String> {
     match request {
         Request::Select { r#where, indicators, sort, page_index, page_size, columns } => {
             let hits = matched(store, &r#where, cache);
@@ -123,19 +123,23 @@ pub fn handle(store: &Store, id_col: usize, request: Request, cache: &mut Filter
                 Some(Sort::Random { spec, exclude_ids }) => {
                     let exclude: Vec<u32> = exclude_ids
                         .iter()
-                        .filter_map(|id| store.row_of_id(id_col, *id).map(|r| r as u32))
+                        .filter_map(|id| store.row_of_id(*id).map(|r| r as u32))
                         .collect();
                     let spec = GenSpec { num_layers: page_size, ..spec };
                     gen::generate(store, &hits, &spec, &exclude).into_iter().map(|r| r as usize).collect()
                 }
                 Some(Sort::Column { col, dir }) => {
-                    let c = store.col(col);
                     let abs = dir.ends_with(":ABS");
                     let desc = dir.starts_with("DESC");
+                    // hits come out ascending, so one cursor walk resolves every row's block and pattern row without
+                    // a lookup each. Reading through `store.value` here would binary-search the block table per row.
+                    let reader = store.reader(col);
+                    let mut cursor = BlockCursor::new(store);
                     let mut keyed: Vec<(bool, i64, usize)> = hits
                         .rows()
                         .map(|row| {
-                            let v = store.value(c, row);
+                            let (block, pattern_row) = cursor.locate(row);
+                            let v = reader.read(block, pattern_row, row);
                             // SQLite sorts nulls first ascending, so a null sorts below every value; DESC just
                             // reverses that, putting them last
                             (v.is_none(), v.map(|x| if abs { x.abs() } else { x }).unwrap_or(0), row)
@@ -167,23 +171,81 @@ pub fn handle(store: &Store, id_col: usize, request: Request, cache: &mut Filter
 
         Request::Distinct { r#where, col } => {
             let hits = matched(store, &r#where, cache);
-            let c = store.col(col);
             // membership is a set rather than a scan of `seen`: a column with 928 distinct values over 2.7M rows
             // costs a billion comparisons that way, which is most of what the layer-select filter menu waits on.
             // `seen` still carries the order values were first met in, which is the order the menu shows them in.
             let mut seen: Vec<Option<i64>> = Vec::new();
             let mut met: HashSet<Option<i64>, BuildHasherDefault<IntHasher>> = HashSet::default();
-            for row in hits.rows() {
-                let v = store.value(c, row);
-                if met.insert(v) {
-                    seen.push(v);
+            // A layer's own column takes one value per block, so the answer is settled by looking at the blocks that
+            // hold a hit rather than the hits themselves: 928 lookups instead of hundreds of thousands.
+            if let ColData::PerBlock(values) = store.col_data(col) {
+                for block in 0..store.block_count() {
+                    let (start, end) = store.block_rows(block);
+                    if start < end && hits.any_in(start, end) {
+                        let v = values.get(block);
+                        if met.insert(v) {
+                            seen.push(v);
+                        }
+                    }
+                }
+            } else if let ColData::PerPattern(values) = store.col_data(col) {
+                // A per-team column repeats across every block sharing an availability pattern, and a pool filter is
+                // usually made of layer-scope terms, so blocks tend to match whole. A block that does contributes
+                // exactly its pattern's distinct values, which are worth computing once per pattern.
+                let mut per_pattern: Vec<Option<Vec<Option<i64>>>> = vec![None; store.manifest.pattern_count];
+                for block in 0..store.block_count() {
+                    let (start, end) = store.block_rows(block);
+                    if start == end || !hits.any_in(start, end) {
+                        continue;
+                    }
+                    let pattern = store.block_pattern(block);
+                    let (p_start, p_end) = store.pattern_rows(pattern);
+                    if hits.all_in(start, end) {
+                        let distinct = per_pattern[pattern].get_or_insert_with(|| {
+                            let mut out: Vec<Option<i64>> = Vec::new();
+                            let mut local: HashSet<Option<i64>, BuildHasherDefault<IntHasher>> = HashSet::default();
+                            for p in p_start..p_end {
+                                let v = values.get(p);
+                                if local.insert(v) {
+                                    out.push(v);
+                                }
+                            }
+                            out
+                        });
+                        for v in distinct.iter() {
+                            if met.insert(*v) {
+                                seen.push(*v);
+                            }
+                        }
+                    } else {
+                        let mut p = p_start;
+                        for row in start..end {
+                            if hits.contains(row) {
+                                let v = values.get(p);
+                                if met.insert(v) {
+                                    seen.push(v);
+                                }
+                            }
+                            p += 1;
+                        }
+                    }
+                }
+            } else {
+                let reader = store.reader(col);
+                let mut cursor = BlockCursor::new(store);
+                for row in hits.rows() {
+                    let (block, pattern_row) = cursor.locate(row);
+                    let v = reader.read(block, pattern_row, row);
+                    if met.insert(v) {
+                        seen.push(v);
+                    }
                 }
             }
             serde_json::to_string(&seen).map_err(|e| e.to_string())
         }
 
         Request::Matches { filters, ids } => {
-            let rows: Vec<Option<usize>> = ids.iter().map(|id| store.row_of_id(id_col, *id)).collect();
+            let rows: Vec<Option<usize>> = ids.iter().map(|id| store.row_of_id(*id)).collect();
             let exists: Vec<bool> = rows.iter().map(|r| r.is_some()).collect();
             let matches: Vec<Vec<bool>> = filters
                 .iter()
@@ -196,7 +258,7 @@ pub fn handle(store: &Store, id_col: usize, request: Request, cache: &mut Filter
         }
 
         Request::Info { id, columns } => {
-            let row = store.row_of_id(id_col, id);
+            let row = store.row_of_id(id);
             let value = row.map(|r| project(store, r, &columns));
             serde_json::to_string(&value).map_err(|e| e.to_string())
         }

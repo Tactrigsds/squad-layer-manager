@@ -11,7 +11,7 @@ import * as LE from '@/models/layer-engine'
 import * as LQY from '@/models/layer-queries.models'
 import * as MH from '@/models/match-history.models'
 
-// The query layer, running against the columnar engine (layer-engine/) rather than SQLite.
+// The query layer, running against the factored engine (layer-engine/) rather than SQLite.
 //
 // Division of labour: TypeScript owns everything that needs to know what a layer *means* (constraint semantics, repeat
 // rules, cursors, match descriptors) and lowers filters into the engine's IR; the engine owns everything that has to

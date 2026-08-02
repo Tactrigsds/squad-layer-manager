@@ -426,7 +426,7 @@ Collection column is how filters and pools single a source out.
 Anything SLM cannot parse, such as an admin typing a layer by hand, becomes `RAW:<text>`, and `normalize()` can
 later upgrade it once new layer data makes it resolvable. For the engine, a known layer's component indices are
 packed mixed-radix into a single integer (exact products, not bit fields, to stay inside the store's i32 row ids),
-which is the row id the columnar store indexes by.
+which is the row id the store indexes by.
 
 The set of columns is not fixed: `layer-columns.ts` combines base columns with server-configurable extra columns
 into an `EffectiveColumnConfig`, and downstream query state is memoized against that object, so the same columns
@@ -494,13 +494,33 @@ rather than for whoever is looking at the web app, so they are handed a locale e
 
 ## The layer engine (rust/wasm)
 
-`layer-engine/` is Rust compiled to wasm. It queries a columnar table of all known layer combinations and handles
-filtering, sorting, paging, distinct values and weighted random selection. **One module serves both hosts:** the
-server and the browser's query worker load the same `.wasm`.
+`layer-engine/` is Rust compiled to wasm. It queries a table of all known layer combinations and handles filtering,
+sorting, paging, distinct values and weighted random selection. **One module serves both hosts:** the server and the
+browser's query worker load the same `.wasm`. It is immutable for its lifetime, which is what makes caching
+evaluated bitsets safe and what makes shipping the same engine to both sides practical.
 
-The table is held column-by-column rather than row-by-row, so a filter scans one tightly packed array per column it
-touches. It is immutable for its lifetime, which is what makes caching evaluated bitsets safe and what makes
-shipping the same engine to both sides practical.
+**Nothing is stored per row.** Rows are packed-id order, which groups them into one contiguous block per layer, and
+a block's rows are the cross product of that layer's faction/unit availability. That makes the row space enormously
+redundant, and the store exploits it: a layer's own columns are held once per block (928 of them), the per-team
+columns once per distinct availability pattern (314, shared by every block that repeats one), and the score columns
+once per (layer, faction, unit) side record (8313). 2.7M rows cost 13 MB rather than 246 MB.
+
+Two arrays carry the whole shape, and everything else is a lookup off them:
+
+```
+block_row_start[b]..block_row_start[b + 1]          the rows of block b
+pattern_row_start[p] + (row - block_row_start[b])   the pattern row behind `row`, where p = block_pattern[b]
+```
+
+**Scans walk blocks, not rows.** A predicate on a layer's own column is evaluated once per block and its whole row
+range set at once; one on a per-team column is evaluated once per distinct pattern and replayed across every block
+sharing it; only the score scopes go row by row. Blocks the candidate has already excluded are skipped whole. Any
+path that walks matched rows in order (sorting, distinct, generation) carries a `BlockCursor` instead of resolving
+each row's block independently, because `store.value` binary-searches the block table and that cost per row is what
+a naive port would reintroduce.
+
+`ColData` is how a scan asks _how_ a column varies before it enters its loop, and `Reader` resolves a column down to
+the slices it reads. Both exist so the per-row work never re-examines a column spec.
 
 Three things shape working on it:
 
