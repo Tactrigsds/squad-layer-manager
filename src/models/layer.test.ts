@@ -303,3 +303,52 @@ describe('mod source layers', () => {
 		expect(L.getLayerCommand(layer, 'set-next')).toBe('AdminSetNextLayer SU_JensensRange_ADF')
 	})
 })
+
+describe('the Community collection, folded into OWI', () => {
+	const layer = 'Fallujah_Invasion_v3_CL'
+
+	function firstMatchup(layerString: string) {
+		const avail = L.StaticLayerComponents.layerFactionAvailability[layerString]
+		const team1 = avail.find((e) => e.allowedTeams.includes(1))!
+		const team2 = avail.find((e) => e.allowedTeams.includes(2) && e.Faction !== team1.Faction)!
+		return { team1, team2 }
+	}
+
+	function idOf(layerString: string) {
+		const config = L.getLayerConfig(layerString)!
+		const { team1, team2 } = firstMatchup(layerString)
+		return L.getKnownLayerId({
+			Map: config.Map,
+			Gamemode: config.Gamemode,
+			LayerVersion: config.LayerVersion,
+			Collection: L.layerConfigCollection(config),
+			Faction_1: team1.Faction,
+			Unit_1: team1.Unit,
+			Faction_2: team2.Faction,
+			Unit_2: team2.Unit,
+		})!
+	}
+
+	it('is not a collection any more', () => {
+		expect(L.StaticLayerComponents.collections).not.toContain('Community')
+	})
+
+	it('puts its layers in OWI, so their ids carry no collection segment', () => {
+		expect(L.layerConfigCollection(L.getLayerConfig(layer)!)).toBe('OWI')
+		expect(idOf(layer)).not.toContain('-CL:')
+	})
+
+	it('resolves an id persisted with the old CL segment to the current one', () => {
+		const id = idOf(layer)
+		const res = L.parseLayerId(id.replace(/^([^:]+)/, '$1-CL'))
+		if (res.code !== 'ok') throw new Error(`expected ok, got ${res.code}`)
+		expect(res.layer.id).toBe(id)
+		expect(res.layer.Collection).toBe('OWI')
+		expect(res.layer.Layer).toBe(layer)
+	})
+
+	it('still rejects an id whose collection segment means nothing', () => {
+		const id = idOf(layer)
+		expect(L.parseLayerId(id.replace(/^([^:]+)/, '$1-ZZ')).code).not.toBe('ok')
+	})
+})
