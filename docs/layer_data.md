@@ -2,8 +2,9 @@
 
 SLM depends on a pair of artifacts, always of the same version:
 
-- `layers_v<version>.bin.gz` - every possible layer configuration (layer + factions + units) in a columnar format,
-  plus the scores attributed to each layer.
+- `layers_v<version>.bin.gz` - every possible layer configuration (layer + factions + units), plus the scores
+  attributed to each layer. Stored factored rather than row by row, so it is a few hundred kilobytes rather than
+  the tens of megabytes the combinations would take written out.
 - `layer-data_v<version>.json` - the components (maps, factions, units, extra-column definitions) that the table's
   encoded values refer to.
 
