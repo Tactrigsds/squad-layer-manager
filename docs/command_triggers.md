@@ -62,3 +62,19 @@ argument, which is worth keeping in mind when writing one.
 
 The commands page lists a command's shortcut triggers under its details, and searching for one finds the command it
 runs. `/help` lists each shortcut on its own line, since each one asks the caller for something different.
+
+## When every trigger pins something
+
+Leave a command no plain trigger and the shortcuts are all there is, so they are listed as the command itself
+rather than under it. The examples follow the first of them, and an argument they all pin is shown by the value it
+is fixed at instead of as a word to type:
+
+```
+/timeout <player>
+/to <player>
+  <player>   name | id
+  duration   fixed at 45m
+```
+
+An argument nothing passes on is left out entirely. `{{arg1}} 45m` never reaches `<reason>`, so a timeout run this
+way cannot carry one, and the page says so by not offering it.

@@ -919,7 +919,12 @@ export function expandTriggerArgs(template: string, words: readonly string[]): s
 // caller omit a word that fills a required argument.
 export type TriggerParam = { ref: TriggerRef; def: ArgDef; wholeSlot: boolean; hasDefault: boolean }
 
-export type TriggerArgsResolution = { code: 'ok'; params: TriggerParam[] } | { code: 'err:invalid-args'; msg: string }
+// `pinned` holds the arguments the template fills entirely from its own text, keyed by argument name: a caller
+// running the command through this trigger never types them, so they are the same every time. An argument in
+// neither `params` nor `pinned` cannot be supplied through this trigger at all.
+export type TriggerArgsResolution =
+	| { code: 'ok'; params: TriggerParam[]; pinned: Record<string, string> }
+	| { code: 'err:invalid-args'; msg: string }
 
 // a placeholder stands in as one word during analysis, so the real assignment logic decides which argument it fills.
 // NUL can't reach here from chat, which keeps the marker distinguishable from anything an admin typed literally.
@@ -961,6 +966,7 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 	}
 
 	const params: TriggerParam[] = []
+	const pinned: Record<string, string> = {}
 	for (const def of args) {
 		const window = assigned.windows[def.name]
 		if (!window || window.length === 0) continue
@@ -981,6 +987,7 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 			})
 		}
 		if (filling.length > 0) continue
+		pinned[def.name] = window.join(' ')
 		if (def.kind === 'int') {
 			const res = coerceIntArg(def.name, window[0])
 			if (res.code !== 'ok') return { code: 'err:invalid-args', msg: res.msg }
@@ -1007,7 +1014,7 @@ export function resolveTriggerArgs(cmdId: CommandId, template: string): TriggerA
 	}
 
 	params.sort((a, b) => a.ref.index - b.ref.index || Number(a.ref.rest) - Number(b.ref.rest))
-	return { code: 'ok', params }
+	return { code: 'ok', params, pinned }
 }
 
 // The placeholder that fills each of a command's arguments, for showing an admin what a template can refer to. Derived
@@ -1026,34 +1033,57 @@ export function argTemplateSignature(
 	return res.params.map((p) => ({ ref: `{{${p.ref.name}}}`, arg: formatArg(p.def, requiredReasonActions) }))
 }
 
-// What a caller types to run a command through this trigger. A plain trigger takes the command's own signature; one
-// with an args template takes only what that template leaves open, and a placeholder with a default reads as optional
-// even where the argument it fills is required, since omitting the word still leaves the argument filled.
-export function formatTriggerUsage(
+// What a caller types after this trigger. A plain trigger takes the command's own signature; one with an args template
+// takes only what that template leaves open, and a placeholder with a default reads as optional even where the
+// argument it fills is required, since omitting the word still leaves the argument filled.
+export function formatTriggerSignature(
 	cmdId: CommandId,
 	trigger: CommandTrigger,
 	requiredReasonActions: readonly AAR.AdminActionType[] = [],
 ): string {
 	const template = triggerArgs(trigger)
-	if (template === undefined) {
-		return `${triggerString(trigger)} ${formatArgSignature(COMMAND_DECLARATIONS[cmdId].args, requiredReasonActions)}`.trim()
-	}
+	if (template === undefined) return formatArgSignature(COMMAND_DECLARATIONS[cmdId].args, requiredReasonActions)
 	const res = resolveTriggerArgs(cmdId, template)
-	if (res.code !== 'ok') return triggerString(trigger)
-	const parts = res.params.map((p) => {
-		if (p.wholeSlot && p.def.kind === 'squad') return formatArg(p.def)
-		const inner = p.wholeSlot ? argLabel(p.def) : p.ref.name
-		return p.hasDefault || argOptional(p.def, requiredReasonActions) ? `[${inner}]` : `<${inner}>`
-	})
-	return [triggerString(trigger), ...parts].join(' ').trim()
+	if (res.code !== 'ok') return ''
+	return res.params
+		.map((p) => {
+			if (p.wholeSlot && p.def.kind === 'squad') return formatArg(p.def)
+			const inner = p.wholeSlot ? argLabel(p.def) : p.ref.name
+			return p.hasDefault || argOptional(p.def, requiredReasonActions) ? `[${inner}]` : `<${inner}>`
+		})
+		.join(' ')
 }
 
-// the command text a trigger with pinned arguments stands for, for anywhere that shows what a shortcut expands to
-export function describeTriggerExpansion(config: CommandConfig, trigger: CommandTrigger): string {
+// the whole line a caller types to run a command through this trigger
+export function formatTriggerUsage(
+	cmdId: CommandId,
+	trigger: CommandTrigger,
+	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+): string {
+	return `${triggerString(trigger)} ${formatTriggerSignature(cmdId, trigger, requiredReasonActions)}`.trim()
+}
+
+// The arguments a trigger fills from its own text, in declaration order: what running the command through it always
+// does, whoever runs it. An argument the template leaves out entirely is in neither this nor the trigger's signature,
+// since nothing can supply it.
+export function triggerPins(cmdId: CommandId, trigger: CommandTrigger): { name: string; value: string }[] {
 	const template = triggerArgs(trigger)
-	const primary = primaryTrigger(config)
-	const head = primary ? triggerString(primary) : ''
-	return template === undefined ? head : `${head} ${template}`.trim()
+	if (template === undefined) return []
+	const res = resolveTriggerArgs(cmdId, template)
+	if (res.code !== 'ok') return []
+	const args = COMMAND_DECLARATIONS[cmdId].args as readonly ArgDef[]
+	return args.filter((def) => def.name in res.pinned).map((def) => ({ name: def.name, value: res.pinned[def.name] }))
+}
+
+// The command text a trigger with pinned arguments stands for, for anywhere that shows what a shortcut expands to.
+// Undefined when the command has no plain trigger: there is then no fuller way to type it for the shortcut to stand
+// for, and naming the shortcut's own string as what it expands to would be circular.
+export function describeTriggerExpansion(config: CommandConfig, trigger: CommandTrigger): string | undefined {
+	const template = triggerArgs(trigger)
+	if (template === undefined) return undefined
+	const plain = config.triggers.find((t) => triggerArgs(t) === undefined)
+	if (plain === undefined) return undefined
+	return `${triggerString(plain)} ${template}`.trim()
 }
 
 export function chatAllowed(allowedChats: ChatGroup[], msgChat: SM.ChatChannelType) {
@@ -1075,8 +1105,12 @@ export function buildCommand(id: CommandId, argObj: Record<string, string>, conf
 	else throw new Error(`Command ${id} allows no chats`)
 	const argSubstring = (declaration.args as readonly ArgDef[]).map((arg) => argObj[arg.name] ?? '').join(' ')
 	// only plain triggers: one that pins arguments has a signature of its own, and is listed as a shortcut instead
-	return config.triggers
-		.filter((t) => triggerArgs(t) === undefined)
+	const plain = config.triggers.filter((t) => triggerArgs(t) === undefined)
+	// unless every trigger pins arguments, where they are the only way in and the caller has to be told one of them.
+	// The arguments given are dropped: a trigger that pins them takes something else, so writing them out would be a
+	// command that does not run.
+	if (plain.length === 0) return config.triggers.map((t) => `${unrealConsoleCommand} ${formatTriggerUsage(id, t)}`.trim())
+	return plain
 		.map(triggerString)
 		.toSorted((a, b) => b.length - a.length)
 		.map((str) => {

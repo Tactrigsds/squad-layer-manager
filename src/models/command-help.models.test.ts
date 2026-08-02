@@ -26,6 +26,12 @@ function withConfig(id: CMD.CommandId, patch: Partial<CMD.CommandConfig>): CMD.C
 	return { ...configs, [id]: { ...configs[id], ...patch } }
 }
 
+const pinned45m = (string: string): CMD.CommandTrigger => ({ string, args: '{{arg1}} 45m' })
+
+function withTimeoutTriggers(triggers: CMD.CommandTrigger[]): CMD.CommandConfig {
+	return { ...configs.timeout, triggers }
+}
+
 describe('buildExamples', () => {
 	it('gives an argless command exactly one example', () => {
 		expect(CMDH.buildExamples('swaps', configs.swaps, seeds)).toEqual([{ command: `${P}swaps`, note: 'Run it' }])
@@ -76,24 +82,91 @@ describe('buildExamples', () => {
 	it('follows the command string an admin actually configured', () => {
 		expect(CMDH.buildExamples('swaps', { ...configs.swaps, triggers: ['.showswaps'] }, seeds)[0].command).toBe('.showswaps')
 	})
+
+	it('shows only what the primary trigger takes when it pins the rest', () => {
+		// !to pins the duration and passes no reason on, so both would be words the trigger throws away
+		expect(CMDH.buildExamples('timeout', withTimeoutTriggers([pinned45m('!to')]), seeds)).toEqual([
+			{ command: '!to Alice', note: 'The shortest form' },
+		])
+	})
+
+	it('takes an optional word from the placeholder default that fills its argument', () => {
+		const config = { ...configs.warn, triggers: [{ string: '!warnsp', args: '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}' }] }
+		expect(CMDH.buildExamples('warn', config, seeds)).toEqual([
+			{ command: '!warnsp Alice', note: 'The shortest form' },
+			{ command: '!warnsp Alice toxicity', note: 'With reason' },
+			{ command: '!warnsp Alice stop doing that', note: 'With a custom reason' },
+		])
+	})
+
+	it('gives no examples for a trigger whose placeholder part-fills an argument', () => {
+		const config = { ...configs.broadcast, triggers: [{ string: '!eta', args: 'Round ends in {{arg1}} minutes' }] }
+		expect(CMDH.buildExamples('broadcast', config, seeds)).toEqual([])
+	})
 })
 
 describe('describeArgs', () => {
 	it('lists the configured presets a reason arg accepts, scoped to its action', () => {
-		const [, reasonArg] = CMDH.describeArgs('warn', seeds)
+		const [, reasonArg] = CMDH.describeArgs('warn', configs.warn, seeds)
 		expect(reasonArg.presets).toEqual(['toxicity', 'teamkilling'])
-		expect(CMDH.describeArgs('kick', seeds)[1].presets).toEqual(['toxicity'])
+		expect(CMDH.describeArgs('kick', configs.kick, seeds)[1].presets).toEqual(['toxicity'])
 	})
 
 	it("names every section in the help command's section arg", () => {
-		const [sectionArg] = CMDH.describeArgs('help', seeds)
+		const [sectionArg] = CMDH.describeArgs('help', configs.help, seeds)
 		for (const token of CMD.sectionTokens()) expect(sectionArg.description).toContain(token)
 	})
 
 	it('prepends the per-arg note to its kind description', () => {
-		const [flagArg] = CMDH.describeArgs('listFlags', seeds)
+		const [flagArg] = CMDH.describeArgs('listFlags', configs.listFlags, seeds)
 		expect(flagArg.description).toContain('Lists every flag in the organization when omitted.')
 		expect(flagArg.description).toContain(CMDH.ARG_KIND_HELP.player.description)
+	})
+
+	it('keeps an argument described as typed while any trigger takes it', () => {
+		// the shortcut pins the duration, but !timeout still asks for one
+		const config = withTimeoutTriggers(['!timeout', pinned45m('!to')])
+		const [player, duration, reason] = CMDH.describeArgs('timeout', config, seeds)
+		expect([player.name, duration.name, reason.name]).toEqual(['player', 'duration', 'reason'])
+		expect(duration.fixed).toEqual([])
+	})
+
+	it('describes an argument every trigger pins by the value they pin it to', () => {
+		const config = withTimeoutTriggers([pinned45m('!to'), pinned45m('!timeout')])
+		const [player, duration, ...rest] = CMDH.describeArgs('timeout', config, seeds)
+		expect(player.fixed).toEqual([])
+		expect(duration.fixed).toEqual([{ value: '45m', triggers: ['!to', '!timeout'] }])
+		// no trigger passes a reason on, so there is no way to give one
+		expect(rest).toEqual([])
+	})
+
+	it('names the trigger behind each value where the triggers pin different ones', () => {
+		const config = withTimeoutTriggers([pinned45m('!to'), { string: '!to2h', args: '{{arg1}} 2h' }])
+		const [, duration] = CMDH.describeArgs('timeout', config, seeds)
+		expect(duration.fixed).toEqual([
+			{ value: '45m', triggers: ['!to'] },
+			{ value: '2h', triggers: ['!to2h'] },
+		])
+	})
+})
+
+describe('triggerGroups', () => {
+	it('groups the triggers sharing a template, plain ones first', () => {
+		const config = withTimeoutTriggers([pinned45m('!to'), '!timeout', pinned45m('!to45'), '!t'])
+		const groups = CMDH.triggerGroups('timeout', config)
+		expect(groups.map((g) => g.strings)).toEqual([
+			['!timeout', '!t'],
+			['!to', '!to45'],
+		])
+		expect(groups[0].signature).toBe('<player> <duration> [reason|message]')
+		expect(groups[1]).toMatchObject({ signature: '<player>', expansion: '!timeout {{arg1}} 45m' })
+	})
+
+	it('leaves a shortcut with no plainer trigger to stand for describing what it pins instead', () => {
+		const groups = CMDH.triggerGroups('timeout', withTimeoutTriggers([pinned45m('!to')]))
+		expect(groups).toEqual([
+			{ strings: ['!to'], signature: '<player>', pins: [{ name: 'duration', value: '45m' }], expansion: undefined },
+		])
 	})
 })
 
