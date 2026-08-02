@@ -22,6 +22,7 @@ import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
+import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -585,7 +586,7 @@ const dispatchOp = Instr.spanOp(
 							).catch((error) => {
 								if (!Prom.isAbortError(error)) log.error(error)
 							})
-							if (isManual) {
+							if (isManual && !USR.isFromChat(isManual.source)) {
 								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
 								const excludeSteamIds = isManual.source.steamId ? new Set([isManual.source.steamId]) : undefined
 								const layerRes = L.parseLayerId(currentMatch.layerId)
@@ -654,7 +655,7 @@ const dispatchOp = Instr.spanOp(
 						// only an edit to the queue is announced as one. an execution empties the saved swaps too, but it
 						// has its own admin warn (notifyAdminManualSwap) and would otherwise report itself as a clear
 						const { added, removed } = TSW.getTeamswapChanges(se.swaps, se.prevSaved)
-						if (se.source && se.trigger === 'user-edit' && added.length + removed.length > 0) {
+						if (se.source && !USR.isFromChat(se.source) && se.trigger === 'user-edit' && added.length + removed.length > 0) {
 							const name = await resolveSourceName(ctx, se.source)
 							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
 							const layerRes = L.parseLayerId(currentMatch.layerId)

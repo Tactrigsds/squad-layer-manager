@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { type EmuPlayer, makePlayer } from '@/emulator'
+import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
-import { cmd, LAYERS, queue, role } from '../harness/arrange'
+import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
 import { warnsTo as warnsFrom } from '../harness/inspect'
 
 // Everything an in-game admin does through chat, and everything that stops them. One roster of admins
@@ -66,6 +67,11 @@ beforeAll(async () => {
 		reserveAdmins: [RESERVE_STEAM_ID],
 		adminSteamIds: [ACTION_STEAM_ID, SUPER_STEAM_ID],
 		users: [CAPPED_USER, INGAME_USER, RESERVE_USER],
+		// the queue head is a Gorodok layer, so warning on Gorodok gives shownext something to report
+		filters: [filter('discouraged', 'Discouraged', FB.and([FB.eq('Map', 'Gorodok')]), { alertMessage: 'Gorodok is discouraged' })],
+		serverSettings: (s) => {
+			s.queue.mainPool.warnFor = [{ filterId: 'discouraged', applyAs: 'regular' }]
+		},
 		globalSettings: (s) => {
 			s.adminActionReasons = REASONS as typeof s.adminActionReasons
 			// shortcuts onto warn: one pins the reason outright, the other only supplies it when the caller
@@ -267,5 +273,25 @@ describe('role assignment via in-game admin status', () => {
 		})
 		expect(warnsTo(reserveAdmin).some((w) => w.includes('Timed out'))).toBe(false)
 		expect(app.emu.world.players.has(targetReserve.eos)).toBe(true)
+	})
+})
+
+// What is wrong with the next layer is an admin's business: shownext carries the queue head's pool and repeat
+// warnings, but only for a reader who could act on them.
+describe('shownext warnings', () => {
+	it("reports the head layer's pool warning to an admin", async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('shownext'))
+
+		await app.waitFor(() => warnsTo(admin).length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
+		expect(warnsTo(admin).join('\n')).toContain('Gorodok is discouraged')
+	})
+
+	it('withholds it from a player who is not an admin', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(bystander, 'ChatAll', cmd('shownext'))
+
+		await app.waitFor(() => warnsTo(bystander).length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
+		expect(warnsTo(bystander).join('\n')).not.toContain('Gorodok is discouraged')
 	})
 })

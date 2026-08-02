@@ -116,48 +116,6 @@ export const setupInstance = Instr.spanOp(
 							const serverState = await SquadServer.getServerState(baseCtx)
 							if (!SETTINGS.remindersEnabled(serverState.settings)) return
 							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
-							const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
-
-							// statuses need the engine, so the query ctx stays unresolved until there is a next layer to report on
-							warnCondition: {
-								const nextLayer = getSavedQueue(baseCtx)[0] ?? null
-								if (!nextLayer) break warnCondition
-								const ctx = await LayerQueriesServer.resolveLayerQueryCtx(baseCtx)
-								const statusRes = await LayerQueries.getLayerItemStatuses({
-									ctx,
-									input: {
-										constraints: allConstraints,
-										skipWarningsForTags: serverState.settings.queue.mainPool.skipWarningsForTags,
-										list: await LayerQueriesServer.resolveLayerItemsState(baseCtx),
-									},
-								})
-								if (statusRes.code !== 'ok') break warnCondition
-								const warns = statusRes.statuses.warns.filter((w) => w.itemId === nextLayer.itemId)
-								if (warns.length === 0) break warnCondition
-								const repeatViolations = warns
-									.filter((w) => w.type === 'repeat-rule-violation-warning')
-									.flatMap((w) => w.descriptors)
-								const poolViolations = warns
-									.filter((w) => w.type === 'filter-entity-warning')
-									.map((w) => {
-										const constraint = allConstraints.find((c) => c.id === w.constraintId)! as Extract<
-											LQY.Constraint,
-											{ type: 'filter-entity' }
-										>
-										const entity = ctx.filters.get(constraint.filterId)
-										// warn 'inverted' fires when the layer does NOT match, so use the miss indicator's message
-										const missed = constraint.warn === 'inverted'
-										return (
-											(missed ? entity?.invertedAlertMessage : entity?.alertMessage) ??
-											`${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
-										)
-									})
-								await SquadRcon.warnAllAdmins(
-									ctx,
-									LL_Msgs.nextLayerWarning(nextLayer.layerId, { repeatViolations, poolViolations }),
-								)
-								return
-							}
 
 							const voteState = baseCtx.vote.state
 							if (baseCtx.server.serverRolling$.value || currentMatch.status === 'post-game') return
@@ -614,10 +572,46 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 	},
 )
 
+// What the queue head breaks, as the layer table's own warning indicators would show it: the repeat rules it
+// violates and the pool filters it misses. Undefined when there is nothing to report, so a caller can drop the
+// whole section rather than render an empty one.
+async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal) {
+	const head = getSavedQueue(ctx)[0]
+	if (!head) return undefined
+	const serverState = await SquadServer.getServerState(ctx)
+	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, { generatingLayers: false })
+	// statuses need the engine, so the query ctx is only resolved once there is a head to report on
+	const queryCtx = await LayerQueriesServer.resolveLayerQueryCtx(ctx)
+	const statusRes = await LayerQueries.getLayerItemStatuses({
+		ctx: queryCtx,
+		input: {
+			constraints: allConstraints,
+			skipWarningsForTags: serverState.settings.queue.mainPool.skipWarningsForTags,
+			list: await LayerQueriesServer.resolveLayerItemsState(ctx),
+		},
+	})
+	if (statusRes.code !== 'ok') return undefined
+	const warns = statusRes.statuses.warns.filter((w) => w.itemId === head.itemId)
+	if (warns.length === 0) return undefined
+	const repeatViolations = warns.filter((w) => w.type === 'repeat-rule-violation-warning').flatMap((w) => w.descriptors)
+	const poolViolations = warns
+		.filter((w) => w.type === 'filter-entity-warning')
+		.map((w) => {
+			const constraint = allConstraints.find((c) => c.id === w.constraintId)! as Extract<LQY.Constraint, { type: 'filter-entity' }>
+			const entity = queryCtx.filters.get(constraint.filterId)
+			// warn 'inverted' fires when the layer does NOT match, so use the miss indicator's message
+			const missed = constraint.warn === 'inverted'
+			return (
+				(missed ? entity?.invertedAlertMessage : entity?.alertMessage) ?? `${missed ? '!' : ''}${entity?.name ?? constraint.filterId}`
+			)
+		})
+	return { repeatViolations, poolViolations }
+}
+
 export async function warnShowNext(
-	ctx: C.Db & SQS.Ctx & LQ.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
+	ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx,
 	playerIds: 'all-admins' | SM.PlayerIds.Type,
-	opts?: { updated?: boolean },
+	opts?: { updated?: boolean; isAdmin?: boolean },
 ) {
 	const layerQueue = getSavedQueue(ctx)
 	const firstItem = layerQueue[0]
@@ -627,17 +621,16 @@ export async function warnShowNext(
 		const [user] = await Users.selectUsers(ctx).where(E.eq(Schema.users.discordId, userId))
 		setByUser = await Users.buildUser(user)
 	}
-	let isAdmin: boolean = false
-	if (playerIds === 'all-admins') {
-		isAdmin = true
-	} else if (playerIds.steam !== undefined) {
-		// isAdmin = (await ctx.adminList.get(ctx)).admins.has(playerIds.steam)
-	}
+	const isAdmin = playerIds === 'all-admins' || !!opts?.isAdmin
 
 	const nextLayerRes = await ctx.squadRcon.layersStatus.get(ctx)
 	const nextLayer = nextLayerRes.code === 'ok' ? nextLayerRes.data.nextLayer : null
 	const commands = Settings.GLOBAL_SETTINGS.commands
-	const showNextMsg = ctx.tr.warn(LL_Msgs.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin }))
+	// what is wrong with the layer is an admin's business, and the reader has to be one to act on it anyway
+	const violations = isAdmin ? await nextLayerViolations(ctx) : undefined
+	const showNextMsg = ctx.tr.warn(
+		LL_Msgs.showNext(layerQueue, nextLayer, setByUser, commands, { updated: opts?.updated, isAdmin, violations }),
+	)
 	if (playerIds === 'all-admins') {
 		await SquadRcon.warnAllAdmins(ctx, showNextMsg)
 	} else {
@@ -763,12 +756,13 @@ export async function toggleUpdatesToSquadServer({
 	// out-of-sync next layer already flagged would otherwise keep warning admins every 2 minutes forever.
 	if (input.disabled) ctx.layerQueue.unexpectedNextLayerSet$.next(null)
 
-	await SquadRcon.warnAllAdmins(
-		ctx,
-		byVote
-			? SS_Msgs.ingameVoteDisabledUpdates(input.disabled?.type === 'ingame-vote' && input.disabled.inferred)
-			: SS_Msgs.slmUpdatesSet(!input.disabled, turnedIngameVotingOff),
-	)
+	const notification = byVote
+		? SS_Msgs.ingameVoteDisabledUpdates(input.disabled?.type === 'ingame-vote' && input.disabled.inferred)
+		: SS_Msgs.slmUpdatesSet(!input.disabled, turnedIngameVotingOff)
+	// a chat command is read by every admin as it is typed, so only the admin who ran it needs telling. SLM standing
+	// down on its own is nobody's command and still goes to all of them.
+	if (ctx.player && !byVote) await SquadRcon.warn(ctx, ctx.player.ids, notification)
+	else await SquadRcon.warnAllAdmins(ctx, notification)
 	return { code: 'ok' as const }
 }
 

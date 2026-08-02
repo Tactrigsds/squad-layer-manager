@@ -21,10 +21,19 @@ export const GuiOrChatUserIdSchema = z.object({
 	discordId: z.bigint().optional(),
 	// TODO we should probably be using eosId here
 	steamId: z.string().optional(),
+	// which surface the action was taken from. An admin whose steam account is linked carries both ids whichever way
+	// they act, so the ids alone cannot say. Absent on sources persisted before this field existed.
+	origin: z.enum(['gui', 'chat']).optional(),
 })
 
 // TODO outdated
 export type GuiOrChatUserId = z.infer<typeof GuiOrChatUserIdSchema>
+
+// A command is typed into admin chat, where every other admin already read it, so an action from one does not
+// repeat itself as a warn to the whole admin team the way its web equivalent does.
+export function isFromChat(source: GuiOrChatUserId | undefined | null) {
+	return source?.origin === 'chat'
+}
 
 export type User = SchemaModels.User & {
 	username: string
