@@ -623,17 +623,8 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 		.replace(/\s+/g, ' ')
 	const [layerString, faction1String, faction2String] = rawLayerText.split(' ')
 	if (!layerString?.trim()) return null
-	// the catalog knows every layer string of every source; parsing the string is only for layers it doesn't have
 	const config = getLayerConfig(layerString, components)
-	const parsedLayer: ParseLayerStringSegmentResult | null = config
-		? {
-				layerType: 'normal',
-				Map: config.Map,
-				Gamemode: config.Gamemode,
-				LayerVersion: config.LayerVersion,
-				Collection: layerConfigCollection(config, components),
-			}
-		: parseLayerStringSegment(layerString, components)
+	const parsedLayer: ParseLayerStringSegmentResult | null = parseLayerStringSegment(layerString, components)
 	let faction1: ParsedFaction | null = null
 	let faction2: ParsedFaction | null = null
 	if (!config && parsedLayer && parsedLayer.layerType === 'training') {
@@ -729,6 +720,21 @@ export function parseLayerStringSegment<C extends typeof StaticLayerComponents |
 	// @ts-expect-error idgaf
 	components: C = StaticLayerComponents,
 ): ParseLayerStringSegmentResult<C extends null ? null : string> | null {
+	// the catalog is the authority. The regex below only reads back OWI's Map_Gamemode_vN convention, which no mod
+	// source follows: every Supermod/Resurgence/GC map name contains an underscore, so parsing one yields the wrong
+	// Map and drops the gamemode entirely. componentsTemp during preprocess has no mapLayers yet, hence the guard
+	const config = components?.mapLayers ? getLayerConfig(layer, components) : undefined
+	if (config) {
+		return {
+			layerType: 'normal' as const,
+			Map: config.Map,
+			Gamemode: config.Gamemode,
+			LayerVersion: config.LayerVersion,
+			// @ts-expect-error typescript bad and/or skill-issue
+			Collection: layerConfigCollection(config, components),
+		}
+	}
+
 	const groups = layer.match(/^([A-Za-z0-9]+)_([A-Za-z0-9]+)?(_v\d+)?(_\w+)?$/)
 	if (!groups) {
 		const trainingMaps = ['JensensRange', 'PacificProvingGrounds']

@@ -1,7 +1,7 @@
 import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, layerTag, queue, queueItem, selectableFilter } from '../harness/arrange'
+import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // What a queued layer violates has to be visible on the item itself: the indicators are the only thing
@@ -74,14 +74,20 @@ test.describe('queue item constraints', () => {
 			// add a second Gorodok layer, which repeats the head
 			await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
 			await page.getByRole('option', { name: 'Gorodok_AAS_v1', exact: true }).click()
-			await dialog.getByRole('row').filter({ hasText: 'Gorodok_AAS_v1' }).first().click()
+			await dialog
+				.getByRole('row')
+				.filter({ hasText: layerText('Gorodok_AAS_v1') })
+				.first()
+				.click()
 			await dialog.getByRole('button', { name: 'Submit' }).click()
 			await expect(dialog).toBeHidden()
 
 			// the warnings are only as fresh as the item statuses, which the server recomputes for the edited
 			// queue; the repeat showing up on the item it applies to is what says they have landed
 			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
-			await expect(items.filter({ hasText: 'Gorodok_RAAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+			await expect(
+				items.filter({ hasText: layerText('Gorodok_RAAS_v1') }).getByRole('button', { name: 'Layer indicators' }),
+			).toBeVisible()
 
 			// the first save attempt surfaces the warning instead of committing, and the button changes to
 			// say that saving now means saving anyway
@@ -127,14 +133,20 @@ test.describe('queue item constraints', () => {
 
 			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
 			// the repeat is detected and indicated on the item; it is the save-time warning that is scoped to the session
-			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+			await expect(
+				items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' }),
+			).toBeVisible()
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
 			await page.getByRole('button', { name: 'Add Layers' }).click()
 			const dialog = page.getByRole('dialog', { name: 'Add Layers' })
 			await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
 			await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
-			await dialog.getByRole('row').filter({ hasText: 'Narva_RAAS_v1' }).first().click()
+			await dialog
+				.getByRole('row')
+				.filter({ hasText: layerText('Narva_RAAS_v1') })
+				.first()
+				.click()
 			await dialog.getByRole('button', { name: 'Submit' }).click()
 			await expect(dialog).toBeHidden()
 
@@ -174,13 +186,20 @@ test.describe('queue item constraints', () => {
 			await expect(page.getByRole('tab', { name: 'Queue (4)' })).toBeVisible({ timeout: 20_000 })
 
 			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
-			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toHaveCount(0)
+			await expect(items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' })).toHaveCount(
+				0,
+			)
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
-			await items.filter({ hasText: 'Harju_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
+			await items
+				.filter({ hasText: layerText('Harju_RAAS_v1') })
+				.getByRole('button', { name: 'Delete' })
+				.click()
 
 			// two apart now, and the repeat lands on an item nobody edited: the deletion is the only thing that caused it
-			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+			await expect(
+				items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' }),
+			).toBeVisible()
 
 			await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
 			await expect(page.getByText('Repeats Detected')).toBeVisible()
@@ -224,7 +243,9 @@ test.describe('queue item constraints', () => {
 
 			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
 			// the repeat is still detected and still indicated on the item; only the warning is suppressed
-			await expect(items.filter({ hasText: 'Gorodok_AAS_v1' }).getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+			await expect(
+				items.filter({ hasText: layerText('Gorodok_AAS_v1') }).getByRole('button', { name: 'Layer indicators' }),
+			).toBeVisible()
 
 			// warnings only surface for a queue this user has edited, so make one that violates nothing itself: Narva
 			// repeats neither the queue nor the match the emulated server is playing
@@ -233,11 +254,15 @@ test.describe('queue item constraints', () => {
 			const dialog = page.getByRole('dialog', { name: 'Add Layers' })
 			await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
 			await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
-			await dialog.getByRole('row').filter({ hasText: 'Narva_RAAS_v1' }).first().click()
+			await dialog
+				.getByRole('row')
+				.filter({ hasText: layerText('Narva_RAAS_v1') })
+				.first()
+				.click()
 			await dialog.getByRole('button', { name: 'Submit' }).click()
 			await expect(dialog).toBeHidden()
 			// the added layer carries no indicator, so the only repeat in this queue is the tagged one
-			const narva = items.filter({ hasText: 'Narva_RAAS_v1' })
+			const narva = items.filter({ hasText: layerText('Narva_RAAS_v1') })
 			await expect(narva).toHaveCount(1)
 			await expect(narva.getByRole('button', { name: 'Layer indicators' })).toHaveCount(0)
 

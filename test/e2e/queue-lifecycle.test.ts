@@ -1,7 +1,7 @@
 import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
+import { filter, LAYERS, layerText, queue, selectableFilter } from '../harness/arrange'
 import { savedQueue } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
@@ -52,7 +52,11 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 		const queuePanel = page.getByRole('tabpanel', { name: /^Queue/ })
 		await page.getByRole('button', { name: 'Start Editing' }).click()
-		await queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
+		await queuePanel
+			.getByRole('listitem')
+			.filter({ hasText: layerText('Gorodok_RAAS_v1') })
+			.getByRole('button', { name: 'Delete' })
+			.click()
 		await expect(queuePanel.getByRole('listitem')).toHaveCount(2)
 
 		// the draft dies with the editing session, so navigating out asks before it does
@@ -69,7 +73,7 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		// and it really is gone server-side: the deleted item is back on the way in
 		await page.goto(app.loginUrl())
 		await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
-		await expect(queuePanel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' })).toBeVisible()
+		await expect(queuePanel.getByRole('listitem').filter({ hasText: layerText('Gorodok_RAAS_v1') })).toBeVisible()
 	})
 
 	test('deleting the head, saving, and pushing the new head to the game server', async ({ page }) => {
@@ -81,7 +85,10 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 
 		// the edit is local until saved: the list drops the item, but the server still has it queued
-		await items.filter({ hasText: 'Gorodok_RAAS_v1' }).getByRole('button', { name: 'Delete' }).click()
+		await items
+			.filter({ hasText: layerText('Gorodok_RAAS_v1') })
+			.getByRole('button', { name: 'Delete' })
+			.click()
 		await expect(items).toHaveCount(2)
 		await expect(queuePanel.getByText('Gorodok_RAAS_v1')).toBeHidden()
 		expect(app.emu.world.nextLayer?.layer).toBe('Gorodok_RAAS_v1')
