@@ -525,6 +525,10 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		BM_HOST: `http://127.0.0.1:${bmPort}`,
 		BM_PAT: 'stub-token',
 		BM_ORG_ID: 'stub-org',
+		// There is no squad browser stub to answer, and a checkout that configured a real key hands it to every
+		// fixture through the environment. Off, so no test can spend it against the real api.
+		SQUADBROWSER_API_KEY: '',
+		SQUADBROWSER_ENABLED: 'false',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
 		// fixed 32-byte base64 key so encrypted settings survive across restarts within a test run
 		SETTINGS_ENCRYPTION_KEY: 'c2xtLXRlc3QtZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=',

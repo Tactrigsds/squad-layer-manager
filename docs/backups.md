@@ -1,7 +1,7 @@
 # Backups and restoring
 
 Where backups come from, what the files mean, and how to put one back. Turning them on is part of
-[installing](installing.md#36-backups).
+[installing](installing.md#37-backups).
 
 ## When backups happen
 
