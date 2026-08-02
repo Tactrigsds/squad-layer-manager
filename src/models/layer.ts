@@ -390,7 +390,8 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 	const map = Obj.revLookupCached(components.mapAbbreviations, mapPart) as string | undefined
 	const unit1 = Obj.revLookupCached(components.unitAbbreviations, unit1Abbr) as string | undefined
 	const unit2 = Obj.revLookupCached(components.unitAbbreviations, unit2Abbr) as string | undefined
-	const collection = Obj.revLookupCached(components.collectionAbbreviations, collectionPart)
+	const foldedCollection = collectionPart === null ? undefined : components.backwardsCompat.collectionAbbreviations[collectionPart]
+	const collection = Obj.revLookupCached(components.collectionAbbreviations, collectionPart) ?? foldedCollection
 
 	const layerVersion = versionPart ? versionPart.toUpperCase() : null
 	const mapLayer = findLayerConfigs(
@@ -430,6 +431,9 @@ export function parseLayerId(id: string, components = StaticLayerComponents) {
 		Unit_2: unit2,
 		Alliance_2: components.factionToAlliance[faction2],
 	}
+	// the id carries the abbreviation of a collection that has since been folded into another, so it will not compare
+	// equal to one the app generates today. Hand back the current spelling instead.
+	if (foldedCollection) layer.id = getKnownLayerId(layer as LayerIdArgs, components) ?? id
 
 	if (!isKnownLayer(layer, components)) {
 		return { code: 'err:unknown-layer' as const, layer }
@@ -915,7 +919,9 @@ export type MapConfigTeam = {
 }
 
 export type BackwardsCompatMappings = Record<'factions' | 'units' | 'gamemodes' | 'maps', Record<string, string>> &
-	Record<'collections', Record<string, string | null>>
+	Record<'collections', Record<string, string | null>> &
+	// a collection folded into another leaves its abbreviation in every layer id already persisted or pasted into chat
+	Record<'collectionAbbreviations', Record<string, string>>
 
 export function applyBackwardsCompatMappings<T extends Partial<KnownLayer>>(layer: T, components = StaticLayerComponents) {
 	const updated = { ...layer }

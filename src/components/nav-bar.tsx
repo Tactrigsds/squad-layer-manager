@@ -356,6 +356,7 @@ export default function NavBar() {
 // that a server is unlisted costs the same request the click would spend.
 function JoinServerButton(props: { serverId: string }) {
 	const squadBrowserEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.squadBrowserEnabled)
+	const joinServer = SquadServerClient.useJoinServer()
 	if (!squadBrowserEnabled) return null
 
 	const label = tr.text(SS_Msgs.joinServer())
@@ -367,9 +368,10 @@ function JoinServerButton(props: { serverId: string }) {
 					size="icon"
 					className="shrink-0"
 					aria-label={label}
-					onClick={() => void SquadServerClient.joinServer(props.serverId)}
+					disabled={joinServer.isPending}
+					onClick={() => joinServer.mutate(props.serverId)}
 				>
-					<Icons.Gamepad2 className="h-4 w-4" />
+					{joinServer.isPending ? <Spinner className="h-4 w-4" /> : <Icons.Gamepad2 className="h-4 w-4" />}
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent>{label}</TooltipContent>
@@ -405,7 +407,7 @@ function NormalizeTeamsToggle() {
 // server's settings. Switching servers therefore builds a fresh instance and drops the previous one, rather than leaving
 // the dialog constrained by the server the page happened to load with
 function ExploreLayersDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
-	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID })
+	const input = SelectLayersFrame.createInput({ sharedInstanceId: EXPLORE_LAYERS_FRAME_INSTANCE_ID, rememberCollection: true })
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input, equalityFn: Obj.deepEqual })
 	useFrameTeardownOnUnmount(frameKey)
 
