@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test'
 import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
-import { filter, LAYERS, queue, role, selectableFilter } from '../harness/arrange'
+import { filter, LAYERS, layerText, queue, role, selectableFilter } from '../harness/arrange'
 import { expect, test } from './fixtures'
 import { settledText, settledTextAfter } from './settle'
 
@@ -87,7 +87,10 @@ async function clickOutOfPoolRow(page: Page) {
 	await page.getByRole('option', { name: 'Seed', exact: true }).click()
 	await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('Seed')
 
-	const seedRow = dialog.getByRole('row').filter({ hasText: 'Sumari_Seed_v1' }).first()
+	const seedRow = dialog
+		.getByRole('row')
+		.filter({ hasText: layerText('Sumari_Seed_v1') })
+		.first()
 	await expect(seedRow).toBeVisible()
 	await seedRow.click()
 	return dialog
@@ -224,7 +227,7 @@ test.describe('the filter menu', { tag: '@firefox' }, () => {
 		await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('RAAS')
 
 		const rows = dialog.getByRole('row')
-		await expect(rows.filter({ hasText: 'Narva_RAAS_v1' }).first()).toBeVisible()
+		await expect(rows.filter({ hasText: layerText('Narva_RAAS_v1') }).first()).toBeVisible()
 		await expect(rows.filter({ hasText: 'Gorodok' })).toHaveCount(0)
 
 		// Clear All puts every menu item back to empty, so nothing is left constraining the query
@@ -251,8 +254,8 @@ test.describe('pool membership and force-write', () => {
 		await page.getByRole('option', { name: 'Sumari', exact: true }).click()
 
 		const rows = dialog.getByRole('row')
-		await expect(rows.filter({ hasText: 'Sumari_RAAS_v1' }).first()).toBeVisible()
-		await expect(rows.filter({ hasText: 'Sumari_Seed_v1' })).toHaveCount(0)
+		await expect(rows.filter({ hasText: layerText('Sumari_RAAS_v1') }).first()).toBeVisible()
+		await expect(rows.filter({ hasText: layerText('Sumari_Seed_v1') })).toHaveCount(0)
 
 		// turning the pool off surfaces out-of-pool layers. The checkbox flips immediately but the query
 		// behind it does not, and the same response that refills the table is what tells the filter menu
@@ -270,7 +273,7 @@ test.describe('pool membership and force-write', () => {
 		await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('Seed')
 
 		// the out-of-pool layer is visible but its row refuses selection: clicking it must not arm Submit
-		const seedRow = rows.filter({ hasText: 'Sumari_Seed_v1' }).first()
+		const seedRow = rows.filter({ hasText: layerText('Sumari_Seed_v1') }).first()
 		await expect(seedRow).toBeVisible()
 		await seedRow.click()
 		await expect(dialog.getByRole('button', { name: 'Submit' })).toBeDisabled()
@@ -280,7 +283,7 @@ test.describe('pool membership and force-write', () => {
 		await dialog.getByRole('combobox', { name: 'Gamemode' }).click()
 		await page.getByRole('option', { name: 'RAAS', exact: true }).click()
 		await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('RAAS')
-		const raasRow = rows.filter({ hasText: 'Sumari_RAAS_v1' }).first()
+		const raasRow = rows.filter({ hasText: layerText('Sumari_RAAS_v1') }).first()
 		await expect(raasRow).toBeVisible()
 		await raasRow.click()
 		await expect(dialog.getByRole('button', { name: 'Submit' })).toBeEnabled()
@@ -317,7 +320,10 @@ test.describe('pool membership and force-write', () => {
 		await page.getByRole('button', { name: 'Start Editing' }).click()
 
 		// the in-pool layer: the membership check resolves and switches the pool on
-		await items.filter({ hasText: 'Harju_RAAS_v1' }).getByRole('button', { name: 'Edit' }).click()
+		await items
+			.filter({ hasText: layerText('Harju_RAAS_v1') })
+			.getByRole('button', { name: 'Edit' })
+			.click()
 		const dialog = page.getByRole('dialog', { name: 'Edit Layer' })
 		const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
 		await expect(poolControl).toHaveAttribute('aria-checked', 'true')
@@ -328,10 +334,13 @@ test.describe('pool membership and force-write', () => {
 
 		// the out-of-pool layer: the pool stays off, so the layer being edited isn't filtered out of
 		// its own dialog
-		await items.filter({ hasText: 'Sumari_Seed_v1' }).getByRole('button', { name: 'Edit' }).click()
+		await items
+			.filter({ hasText: layerText('Sumari_Seed_v1') })
+			.getByRole('button', { name: 'Edit' })
+			.click()
 		await expect(dialog.getByRole('heading', { name: 'Edit Layer' })).toBeVisible()
 		const rows = dialog.getByRole('row')
-		await expect(rows.filter({ hasText: 'Sumari_Seed_v1' }).first()).toBeVisible()
+		await expect(rows.filter({ hasText: layerText('Sumari_Seed_v1') }).first()).toBeVisible()
 		await expect(poolControl).toHaveAttribute('aria-checked', 'false')
 	})
 

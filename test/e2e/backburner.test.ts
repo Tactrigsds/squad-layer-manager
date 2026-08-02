@@ -4,7 +4,7 @@ import * as FB from '@/models/filter-builders'
 import * as L from '@/models/layer'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { cmd, filter, LAYERS, queue } from '../harness/arrange'
+import { cmd, filter, LAYERS, layerText, queue } from '../harness/arrange'
 import { belowItem, centerOf, dragFrom } from '../harness/drag'
 import { expect, test } from './fixtures'
 
@@ -179,7 +179,10 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 
 		// dragging a request expands the queue's drop separators into an easy target without the user
 		// having to start editing the queue first
-		const queueItem = panel.getByRole('listitem').filter({ hasText: 'Gorodok_RAAS_v1' }).first()
+		const queueItem = panel
+			.getByRole('listitem')
+			.filter({ hasText: layerText('Gorodok_RAAS_v1') })
+			.first()
 		await expect(queueItem).toBeVisible()
 
 		// drag the request's grip onto the separator just below the first queue item
@@ -193,13 +196,16 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Sumari')
 
 		// pick a concrete Sumari layer and add it; the request is consumed
-		const layerRow = dialog.getByRole('row').filter({ hasText: 'Sumari_RAAS_v1' }).first()
+		const layerRow = dialog
+			.getByRole('row')
+			.filter({ hasText: layerText('Sumari_RAAS_v1') })
+			.first()
 		await expect(layerRow).toBeVisible()
 		await layerRow.click()
 		await dialog.getByRole('button', { name: 'Submit' }).click()
 
 		// exactly one layer is added (guards against a double-dispatch), and the request is consumed
-		await expect(panel.getByRole('listitem').filter({ hasText: 'Sumari_RAAS_v1' })).toHaveCount(1)
+		await expect(panel.getByRole('listitem').filter({ hasText: layerText('Sumari_RAAS_v1') })).toHaveCount(1)
 		await expect(panel.getByText('Layer Requests (2)')).toBeVisible()
 	})
 })
@@ -239,7 +245,7 @@ test.describe('pinned templates and moving queue items out', { tag: '@firefox' }
 
 		// the template pins map, gamemode, version and both sides of the matchup, so there is nothing left to
 		// pick: the layer lands in the queue and the request is consumed without the Select Layers dialog
-		await expect(panel.getByRole('listitem').filter({ hasText: 'Sumari_Seed_v1' })).toHaveCount(1, { timeout: 10_000 })
+		await expect(panel.getByRole('listitem').filter({ hasText: layerText('Sumari_Seed_v1') })).toHaveCount(1, { timeout: 10_000 })
 		await expect(panel.getByText('Layer Requests (0)')).toBeVisible()
 		await expect(page.getByRole('dialog', { name: 'Add requested layer' })).toHaveCount(0)
 	})
