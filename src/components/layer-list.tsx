@@ -502,7 +502,6 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const voteCount = isVoteChoice && voteState ? tally?.totals?.get(item.itemId) : undefined
 	const nextLayerId = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.nextLayerId)
 	const isFirstQueuedLayer = index.innerIndex === 0 && nextLayerId === item.layerId
-	const viewingQueue = UPClient.useActivityMatch(UP.Trans.viewingQueue(props.stores.squadServer.serverId).match)
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
@@ -555,11 +554,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					data-is-hovered={activityHovered}
 				>
 					<span className="flex items-center">
-						<span
-							data-mobile={isMobile}
-							data-viewing-queue={viewingQueue}
-							className="text-right font-mono text-s invisible data-[mobile=false]:data-[viewing-queue=true]:visible"
-						>
+						<span data-mobile={isMobile} className="min-w-[4ch] text-right font-mono text-muted-foreground data-[mobile=true]:hidden">
 							{LL.getItemNumber(index)}
 						</span>
 						<Button ref={dragProps.handleRef} variant="ghost" size="icon" {...editButtonProps('data-[can-edit=true]:cursor-grab')}>
