@@ -1163,7 +1163,6 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 
 	const COLLECTION_ABBREVIATIONS: Record<string, string | null> = {
 		OWI: null,
-		Community: 'CL',
 	}
 
 	const GAMEMODE_ABBREVIATIONS = {
@@ -1197,7 +1196,8 @@ export function buildFullLayerComponents(components: BaseLayerComponents, skipVa
 			MEA: 'GFI',
 		},
 		gamemodes: {},
-		collections: {},
+		collections: { Community: 'OWI' },
+		collectionAbbreviations: { CL: 'OWI' },
 		maps: {},
 		units: {},
 	}
