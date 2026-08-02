@@ -261,6 +261,29 @@ describe('mod source layers', () => {
 		return { team1, team2 }
 	}
 
+	// mod map names contain underscores, which the Map_Gamemode_vN convention cannot express: reading SU_Sanxian_Invasion_v2
+	// positionally yields Map "SU", Gamemode "Sanxian" and no version
+	it('segments a mod layer string from the catalog rather than its shape', () => {
+		const segments = L.parseLayerStringSegment(supermodLayer)!
+		expect(segments.Map).toBe('Supermod_Sanxian')
+		expect(segments.Gamemode).toBe('Invasion')
+		expect(segments.LayerVersion).toBe('V2')
+		expect(segments.Collection).toBe('SuperMod')
+	})
+
+	it('segments every catalogued layer to the same values the catalog holds', () => {
+		const mismatched = L.StaticLayerComponents.mapLayers.filter((config) => {
+			const segments = L.parseLayerStringSegment(config.Layer)
+			return (
+				segments?.Map !== config.Map ||
+				segments.Gamemode !== config.Gamemode ||
+				segments.LayerVersion !== config.LayerVersion ||
+				segments.Collection !== L.layerConfigCollection(config)
+			)
+		})
+		expect(mismatched.map((config) => config.Layer)).toEqual([])
+	})
+
 	it('resolves a supermod RCON string to a known layer', () => {
 		const { team1, team2 } = firstMatchup(supermodLayer)
 		const raw = `${supermodLayer} ${team1.Faction}+${team1.Unit} ${team2.Faction}+${team2.Unit}`
