@@ -172,6 +172,11 @@ export type AppFixture = {
 	// roster from a polled ListPlayers, so a player who just joined isn't known to it yet -- anything
 	// that resolves a player (chat commands, warns) needs this first.
 	waitForRosterSync: (opts?: { timeoutMs?: number }) => Promise<void>
+	// Resolves once the emulated server's next layer is the head of the app's queue. The server rolls to
+	// whatever it holds as next, falling back to the layer it is already on, and the app pushes the head there
+	// over rcon only after it has saved the queue -- so a roll staged off the saved queue alone can play the
+	// wrong layer, which leaves the head unconsumed and generates nothing.
+	waitForNextLayerSync: (opts?: { timeoutMs?: number }) => Promise<void>
 	// fresh read-only connection to the app's db, for assertions
 	readDb: () => SqliteDb
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
@@ -542,6 +547,16 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	let child: childProcess.ChildProcess | null = null
 	let childExited: Promise<number | null> | null = null
 
+	function savedQueueHead(): L.LayerId | null {
+		const db = new Database(dbPath, { readonly: true })
+		try {
+			const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(serverId) as { layerQueue: string }
+			return LL.getNextLayerId(JSON.parse(row.layerQueue).json)
+		} finally {
+			db.close()
+		}
+	}
+
 	async function waitFor<T>(
 		probe: () => T | Promise<T>,
 		waitOpts?: { timeoutMs?: number; intervalMs?: number; label?: string },
@@ -640,6 +655,16 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				label: 'roster poll',
 				timeoutMs: syncOpts?.timeoutMs ?? 25_000,
 			})
+		},
+		waitForNextLayerSync: async (syncOpts) => {
+			await waitFor(
+				() => {
+					const head = savedQueueHead()
+					if (!head) return true
+					return emu.world.nextLayer?.layer === L.getLayerCommand(head, 'none').split(' ')[0] || null
+				},
+				{ label: "the server's next layer to catch up with the queue head", timeoutMs: syncOpts?.timeoutMs ?? 20_000 },
+			)
 		},
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
