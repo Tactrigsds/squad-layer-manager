@@ -60,6 +60,26 @@ export type ArgHelp = {
 	optional: boolean
 	// the configured reasons this arg accepts, when it draws on them
 	presets: string[]
+	// What the triggers fix this argument to, when none of them lets a caller type it: the value is then part of what
+	// the command does rather than something to explain how to write. `triggers` names which strings set each value,
+	// which only matters where they disagree.
+	fixed: { value: string; triggers: string[] }[]
+}
+
+// how each of a command's triggers treats its arguments. A plain trigger takes them all as typed; one with an args
+// template takes only what it leaves open and fixes the rest.
+type TriggerArgUse = { trigger: CMD.CommandTrigger; typed: Set<string>; pinned: Record<string, string> }
+
+function triggerArgUses(id: CMD.CommandId, config: CMD.CommandConfig): TriggerArgUse[] {
+	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
+	return config.triggers.map((trigger) => {
+		const template = CMD.triggerArgs(trigger)
+		if (template === undefined) return { trigger, typed: new Set(args.map((def) => def.name)), pinned: {} }
+		const res = CMD.resolveTriggerArgs(id, template)
+		// an unresolvable template runs nothing, so it neither takes nor fixes anything
+		if (res.code !== 'ok') return { trigger, typed: new Set<string>(), pinned: {} }
+		return { trigger, typed: new Set(res.params.map((p) => p.def.name)), pinned: res.pinned }
+	})
 }
 
 // an arg is optional in the signature unless its declaration says otherwise, or the installation requires a reason
@@ -88,23 +108,84 @@ function argPresets(def: CMD.ArgDef, seeds: ExampleSeeds): { label: string; keyw
 	}
 }
 
+// The arguments as the command's triggers actually expose them. An argument no trigger lets a caller type is
+// described by the value they fix it to instead, and one no trigger supplies at all is left out: explaining how to
+// write a word nothing can carry is worse than saying nothing, since it reads as an argument the command takes.
 export function describeArgs(
 	id: CMD.CommandId,
+	config: CMD.CommandConfig,
 	seeds: ExampleSeeds,
 	requiredReasonActions: readonly AAR.AdminActionType[] = [],
 ): ArgHelp[] {
 	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
-	return args.map((def) => {
+	const uses = triggerArgUses(id, config)
+	const help: ArgHelp[] = []
+	for (const def of args) {
 		const kindHelp = ARG_KIND_HELP[def.kind]
-		return {
+		const typed = uses.some((use) => use.typed.has(def.name))
+		const fixed: ArgHelp['fixed'] = []
+		if (!typed) {
+			for (const use of uses) {
+				const value = use.pinned[def.name]
+				if (value === undefined) continue
+				const existing = fixed.find((f) => f.value === value)
+				if (existing) existing.triggers.push(CMD.triggerString(use.trigger))
+				else fixed.push({ value, triggers: [CMD.triggerString(use.trigger)] })
+			}
+			if (fixed.length === 0) continue
+		}
+		help.push({
 			name: def.name,
 			syntax: kindHelp.syntax,
 			// the kind explains the general shape; `describe` says what this arg means for this command
 			description: def.describe ? `${def.describe} ${kindHelp.description}` : kindHelp.description,
 			optional: argOptional(def, requiredReasonActions),
 			presets: argPresets(def, seeds).map(LP.describePreset),
+			fixed,
+		})
+	}
+	return help
+}
+
+// -------- triggers --------
+
+// One way to run a command: the trigger strings that take the same thing from the caller, since a template is what
+// decides that rather than the string in front of it. `expansion` is the fuller command text a shortcut stands for,
+// and is absent for a group that is the command's own form -- the plain triggers, or every group where the command
+// has no plain trigger and each way in is all there is.
+export type TriggerGroup = {
+	strings: string[]
+	signature: string
+	// what running the command this way always sets, whoever runs it
+	pins: { name: string; value: string }[]
+	expansion?: string
+}
+
+export function triggerGroups(
+	id: CMD.CommandId,
+	config: CMD.CommandConfig,
+	requiredReasonActions: readonly AAR.AdminActionType[] = [],
+): TriggerGroup[] {
+	const groups: (TriggerGroup & { template?: string })[] = []
+	for (const trigger of config.triggers) {
+		const template = CMD.triggerArgs(trigger)
+		const existing = groups.find((g) => g.template === template)
+		if (existing) {
+			existing.strings.push(CMD.triggerString(trigger))
+			continue
 		}
-	})
+		groups.push({
+			template,
+			strings: [CMD.triggerString(trigger)],
+			signature: CMD.formatTriggerSignature(id, trigger, requiredReasonActions),
+			pins: CMD.triggerPins(id, trigger),
+			expansion: CMD.describeTriggerExpansion(config, trigger),
+		})
+	}
+	// the plain triggers first: the command in its fullest form, and what the shortcuts are shortcuts for
+	return groups
+		.map(({ template: _template, ...group }) => group)
+		.toSorted((a, b) => Number(a.expansion !== undefined) - Number(b.expansion !== undefined))
 }
 
 // -------- examples --------
@@ -157,49 +238,84 @@ function firstPresetToken(presets: { keywords: string[] }[]): string | undefined
 	return undefined
 }
 
-// how far down the arg list an example fills. Examples are built by walking the args in order, so a variant is a
-// cutoff plus whether the last filled arg takes its alternate form; anything past the cutoff is left off.
+// A word an example has to fill, in the order the caller types it. Not the same as the command's arguments: a trigger
+// with an args template asks for only the words it leaves open, and `wholeSlot` is false where the word it asks for
+// is one part of an argument rather than the whole of it (`args: 'Round ends in {{arg1}} minutes'`).
+type Slot = { def: CMD.ArgDef; name: string; optional: boolean; wholeSlot: boolean }
+
+// what the primary trigger takes from the caller, which is what an example of the command has to show them typing
+function exampleSlots(
+	id: CMD.CommandId,
+	trigger: CMD.CommandTrigger | undefined,
+	requiredReasonActions: readonly AAR.AdminActionType[],
+): Slot[] {
+	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
+	const template = trigger === undefined ? undefined : CMD.triggerArgs(trigger)
+	if (template === undefined) {
+		return args.map((def) => ({ def, name: def.name, optional: argOptional(def, requiredReasonActions), wholeSlot: true }))
+	}
+	const res = CMD.resolveTriggerArgs(id, template)
+	if (res.code !== 'ok') return []
+	return res.params.map((p) => ({
+		def: p.def,
+		name: p.wholeSlot ? p.def.name : p.ref.name,
+		// a placeholder with a fallback can be left out even where the argument it fills is required
+		optional: p.hasDefault || argOptional(p.def, requiredReasonActions),
+		wholeSlot: p.wholeSlot,
+	}))
+}
+
+// how far down the slot list an example fills. Examples are built by walking the slots in order, so a variant is a
+// cutoff plus whether the last filled slot takes its alternate form; anything past the cutoff is left off.
 type Variant = { note: string; upTo: number; useAlt?: true }
 
-function renderExample(cmdString: string, args: readonly CMD.ArgDef[], seeds: ExampleSeeds, variant: Variant): string | undefined {
+function renderExample(cmdString: string, slots: Slot[], seeds: ExampleSeeds, variant: Variant): string | undefined {
 	const tokens: string[] = []
 	for (let i = 0; i < variant.upTo; i++) {
-		const sample = sampleTokens(args[i], seeds)
+		const sample = sampleTokens(slots[i].def, seeds)
 		const token = variant.useAlt && i === variant.upTo - 1 ? sample.alt?.token : sample.token
-		// nothing to fill this arg with, so the example would be a lie about what the command accepts. The alternate
-		// form usually still renders, and covers the arg on its own
+		// nothing to fill this slot with, so the example would be a lie about what the command accepts. The alternate
+		// form usually still renders, and covers the slot on its own
 		if (token === undefined) return undefined
 		tokens.push(token)
 	}
 	return [cmdString, ...tokens].join(' ')
 }
 
-// Worked examples for a command, in escalating order: the shortest form that runs, then one adding each optional arg,
-// then the last arg's alternate form. Only the last arg can have one (the kinds that take free text must be declared
+// Worked examples for a command, in escalating order: the shortest form that runs, then one adding each optional word,
+// then the last word's alternate form. Only the last one can have one (the kinds that take free text must be declared
 // last, and it's the distinction admins trip on: one word means "look this preset up", two or more means "send it
-// verbatim"). Duplicates collapse, so an argless command gets exactly one example.
+// verbatim"). Duplicates collapse, so a command taking nothing gets exactly one example.
+//
+// The examples are of the primary trigger, so they show what that trigger takes rather than what the command
+// declares: an argument it pins is already filled, and copying an example that supplies one anyway would run
+// something other than what it reads as.
 export function buildExamples(
 	id: CMD.CommandId,
 	config: CMD.CommandConfig,
 	seeds: ExampleSeeds,
 	requiredReasonActions: readonly AAR.AdminActionType[] = [],
 ): CommandExample[] {
-	const args = CMD.COMMAND_DECLARATIONS[id].args as readonly CMD.ArgDef[]
 	const primary = CMD.primaryTrigger(config)
 	const cmdString = primary ? CMD.triggerString(primary) : id
-	const firstOptional = args.findIndex((def) => argOptional(def, requiredReasonActions))
-	const minimal = firstOptional === -1 ? args.length : firstOptional
+	const slots = exampleSlots(id, primary, requiredReasonActions)
+	// A word standing for part of an argument (`args: 'Round ends in {{arg1}} minutes'`) is the trigger's own idea,
+	// and nothing here knows what belongs there. Any word we filled it with would read as the shape it takes, so the
+	// usage line is left to speak for it.
+	if (slots.some((slot) => !slot.wholeSlot)) return []
+	const firstOptional = slots.findIndex((slot) => slot.optional)
+	const minimal = firstOptional === -1 ? slots.length : firstOptional
 
-	const variants: Variant[] = [{ note: args.length === 0 ? 'Run it' : 'The shortest form', upTo: minimal }]
-	for (let i = minimal + 1; i <= args.length; i++) {
-		variants.push({ note: `With ${args[i - 1].name}`, upTo: i })
+	const variants: Variant[] = [{ note: slots.length === 0 ? 'Run it' : 'The shortest form', upTo: minimal }]
+	for (let i = minimal + 1; i <= slots.length; i++) {
+		variants.push({ note: `With ${slots[i - 1].name}`, upTo: i })
 	}
-	const alt = args.length > 0 ? sampleTokens(args[args.length - 1], seeds).alt : undefined
-	if (alt) variants.push({ note: alt.note, upTo: args.length, useAlt: true })
+	const alt = slots.length > 0 ? sampleTokens(slots[slots.length - 1].def, seeds).alt : undefined
+	if (alt) variants.push({ note: alt.note, upTo: slots.length, useAlt: true })
 
 	const examples: CommandExample[] = []
 	for (const variant of variants) {
-		const command = renderExample(cmdString, args, seeds, variant)
+		const command = renderExample(cmdString, slots, seeds, variant)
 		if (command === undefined) continue
 		if (examples.some((e) => e.command === command)) continue
 		examples.push({ command, note: variant.note })

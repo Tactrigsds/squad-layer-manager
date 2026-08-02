@@ -21,6 +21,13 @@ export const wrongChat = def((allowedChats: CMD.ChatGroup[]) => {
 	return t('Command not available in this chat. Try using {correctChats}', { correctChats: correctChats.join(' or ') })
 })
 
+// What sets a way of running a command apart from the one listed above it: the fuller command text it stands for
+// where there is one, and otherwise the arguments it fills in for the caller.
+function groupDifference(id: CMD.CommandId, group: CMDH.TriggerGroup): TString {
+	if (group.expansion !== undefined) return aliasDescription(group.expansion)
+	return group.pins.length > 0 ? pinnedArgs(group.pins) : descriptions[id]
+}
+
 // `section` is the raw token typed after the help command; omitted means the quick reference. The brackets and the
 // colon are the listing's own layout rather than prose, so they sit in the pattern where a translator can see what
 // they punctuate.
@@ -28,27 +35,18 @@ export const help = def((commands: CMD.CommandConfigs, section?: string) => {
 	const listing = CMDH.resolveHelpListing(commands, section)
 	if (listing.code === 'err:unknown-section') return { warn: [listing.msg] }
 
-	const lines = listing.commands.flatMap((id) => {
-		const cmd = commands[id]
-		const plain = cmd.triggers.filter((trigger) => CMD.triggerArgs(trigger) === undefined).map(CMD.triggerString)
-		const sortedStrings = plain.toSorted((a, b) => a.length - b.length)
-		const signature = CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS[id].args)
-		const own = t('[{triggers}]{signature}: {description}', {
-			triggers: sortedStrings.join(', '),
-			signature: signature ? ` ${signature}` : '',
-			description: descriptions[id],
-		})
-		// a trigger that pins arguments takes a different thing from the caller, so it gets its own line
-		const shortcuts = cmd.triggers
-			.filter((trigger) => CMD.triggerArgs(trigger) !== undefined)
-			.map((trigger) =>
-				t('[{usage}]: {description}', {
-					usage: CMD.formatTriggerUsage(id, trigger),
-					description: aliasDescription(CMD.describeTriggerExpansion(cmd, trigger)),
-				}),
-			)
-		return [own, ...shortcuts]
-	})
+	// one line per way of running the command: triggers that take the same thing from the caller share a line, and one
+	// that takes something different gets its own
+	const lines = listing.commands.flatMap((id) =>
+		CMDH.triggerGroups(id, commands[id]).map((group, i) =>
+			t('[{triggers}]{signature}: {description}', {
+				triggers: group.strings.toSorted((a, b) => a.length - b.length).join(', '),
+				signature: group.signature ? ` ${group.signature}` : '',
+				// the first line is the command; the rest only have to say how they differ from it
+				description: i === 0 ? descriptions[id] : groupDifference(id, group),
+			}),
+		),
+	)
 	if (lines.length === 0) {
 		return { warn: [t('{title}: none.', { title: listing.title }), ...(listing.hint ? [listing.hint] : [])] }
 	}
@@ -138,6 +136,18 @@ export const descriptions = {
 
 // configurable fixed-duration timeout aliases; shared by the in-game help and the web help dialog
 export const aliasDescription = (command: string) => t('Shortcut for "{command}"', { command })
+
+// What a trigger fills in for the caller, where the argument names are not otherwise on show. Used for a trigger with
+// pinned arguments that has no plainer trigger to stand for, where its pins are all that distinguishes it.
+export const pinnedArgs = (pins: { name: string; value: string }[]) =>
+	t('always {pins}', { pins: pins.map((pin) => `${pin.name} ${pin.value}`).join(', ') })
+
+// An argument every trigger fills in, shown against the argument itself, so only the value needs naming. The trigger
+// strings come along only where they disagree on it -- with one value there is nothing to tell apart.
+export const fixedArg = (fixed: { value: string; triggers: string[] }[]) =>
+	t('fixed at {values}', {
+		values: fixed.map((f) => (fixed.length > 1 ? `${f.value} (${f.triggers.join(', ')})` : f.value)).join(', '),
+	})
 
 export const copyFailed = def({
 	toast: [t('Failed to copy'), { description: t('Could not copy command to clipboard') }],
