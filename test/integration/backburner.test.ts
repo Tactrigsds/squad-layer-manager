@@ -31,7 +31,13 @@ beforeAll(async () => {
 			filter('impossible', 'Impossible', FB.and([FB.eq('Map', 'Gorodok'), FB.eq('Map', 'Fallujah')])),
 			// generation is pinned to three maps so the repeat-rule assertion at the end is deterministic.
 			// The emulator boots on Harju, which lands in the repeat window: no map here may collide with it.
-			filter('gen-pool', 'Generation Pool', FB.and([FB.inValues('Map', ['Gorodok', 'Skorpo', 'Fallujah'])])),
+			// Seeding and training layers are out because a repeat rule's lookback stops at one (see
+			// isLookbackTerminatingLayerItem), which would leave the next generation unconstrained.
+			filter(
+				'gen-pool',
+				'Generation Pool',
+				FB.and([FB.inValues('Map', ['Gorodok', 'Skorpo', 'Fallujah']), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
+			),
 		],
 		globalSettings: (s) => {
 			s.rbac.roles['requesters'] = role([], { users: [REQUESTER] }, { maxLayerRequests: 1 })
@@ -106,10 +112,14 @@ describe('layer backburner via chat', () => {
 
 describe('generation on roll', () => {
 	it('folds queued requests into the next generated layer and consumes them', async () => {
-		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu'))
+		// A request carries only the pool filter, not constrainGeneration (addBackburnerRequestFromChat), so the
+		// gamemode is named here rather than left to the pool: an unpinned Fallujah request can come out as the
+		// seed layer, and the next test's repeat window has to survive playing whatever this one draws.
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer fallu raas'))
 		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
 
 		// rolling consumes the only queued layer, which forces generation of the next one
+		await app.waitForNextLayerSync()
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 
@@ -131,6 +141,7 @@ describe('generation on roll', () => {
 		// generation. The repeat window now holds Fallujah (playing), Gorodok and Harju: of the three maps
 		// generation may draw from, only Skorpo remains.
 		const fallujah = savedQueue(app)[0].layerId!
+		await app.waitForNextLayerSync()
 		app.emu.world.endMatch()
 		app.emu.world.startNewGame()
 

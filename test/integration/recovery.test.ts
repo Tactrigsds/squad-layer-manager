@@ -46,6 +46,18 @@ describe('a map roll that happened while the app was down', () => {
 	})
 })
 
+function resetsFromReconnect(): number {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT count(*) as n FROM serverEvents WHERE type = 'RESET' AND data LIKE ?`).get('%rcon-reconnected%') as {
+			n: number
+		}
+		return row.n
+	} finally {
+		db.close()
+	}
+}
+
 describe('recovering from a broken squad server', () => {
 	it('reconnects and resumes polling after rcon drops', async () => {
 		await app.emu.expectCommand(/^ListPlayers$/, { timeoutMs: 20_000 })
@@ -69,6 +81,15 @@ describe('recovering from a broken squad server', () => {
 			},
 			{ label: 'the disconnect recorded as a server event', timeoutMs: 25_000 },
 		)
+
+		// The reconnect is not finished until the roster has been reseeded. Until that RESET lands the app is
+		// still syncing, and a log-derived join in that window is folded into the snapshot rather than reported
+		// as an arrival (see PLAYER_CONNECTED_CHAIN in pending-events.models.ts) -- which is exactly what the
+		// next test asserts on.
+		await app.waitFor(() => resetsFromReconnect() > 0, {
+			label: 'the roster reseeded after the reconnect',
+			timeoutMs: 30_000,
+		})
 	})
 
 	it('keeps ingesting the log after the game rotates it', async () => {
