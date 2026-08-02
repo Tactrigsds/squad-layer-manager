@@ -862,6 +862,13 @@ export const PublicServerSettingsSchema = z.object({
 		.boolean()
 		.prefault(false)
 		.describe('Warn all in-game admins with the new next layer whenever it changes. A change SLM overrides is not announced.'),
+	warnOnGuiTeamswaps: z
+		.boolean()
+		.prefault(false)
+		.describe(
+			'Warn all in-game admins when someone swaps players, or edits the queued swaps, from the web dashboard. Swaps made with an ' +
+				'in-game command never warn: every admin has already read the command in admin chat.',
+		),
 	postRollAnnouncementsTimeout: ZodUtils.HumanTime.prefault('5m').describe(
 		'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is ' +
 			'running low.',
