@@ -10,7 +10,7 @@
 //! sampled algorithm's "filtered" set did.
 
 use crate::ir::Tri;
-use crate::store::{Col, Store};
+use crate::store::{BlockCursor, ColData, Store};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -44,30 +44,51 @@ pub struct GenSpec {
 }
 
 impl StepSpec {
-    fn side_key(&self, store: &Store, cols: &[usize], radices: &[i64], row: usize) -> i64 {
+    fn weight_map(&self) -> HashMap<i64, f64> {
+        self.weights.iter().map(|w| (w.key, w.weight)).collect()
+    }
+}
+
+/// A step's columns resolved to readers once, so grouping a node never re-examines a column spec.
+///
+/// Every column a step can name is a layer's own column or a per-team one (see WEIGHT_COLUMNS in
+/// models/layer-columns.ts), so this never touches the score scopes.
+struct StepKey<'a> {
+    sides: [Vec<crate::store::Reader<'a>>; 2],
+    radices: [&'a [i64]; 2],
+    matchup: bool,
+    side_radix: i64,
+}
+
+impl<'a> StepKey<'a> {
+    fn new(store: &'a Store, step: &'a StepSpec) -> Self {
+        let side1: Vec<_> = step.cols1.iter().map(|c| store.reader(*c)).collect();
+        let (side2, radices2, matchup) = match (&step.cols2, &step.radices2) {
+            (Some(cols2), Some(radices2)) => (cols2.iter().map(|c| store.reader(*c)).collect(), radices2.as_slice(), true),
+            _ => (Vec::new(), [].as_slice(), false),
+        };
+        let side_radix: i64 = radices2.iter().product::<i64>().max(1);
+        StepKey { sides: [side1, side2], radices: [&step.radices1, radices2], matchup, side_radix }
+    }
+
+    #[inline]
+    fn side(&self, which: usize, block: usize, pattern_row: usize, row: usize) -> i64 {
         let mut key = 0i64;
-        for (i, col) in cols.iter().enumerate() {
-            let v = store.value(store.col(*col), row).unwrap_or(-1);
-            key = key * radices[i] + v + 1;
+        for (i, reader) in self.sides[which].iter().enumerate() {
+            key = key * self.radices[which][i] + reader.read(block, pattern_row, row).unwrap_or(-1) + 1;
         }
         key
     }
 
-    fn key_of(&self, store: &Store, row: usize) -> i64 {
-        let side1 = self.side_key(store, &self.cols1, &self.radices1, row);
-        match (&self.cols2, &self.radices2) {
-            (Some(cols2), Some(radices2)) => {
-                let side2 = self.side_key(store, cols2, radices2, row);
-                let side_radix: i64 = radices2.iter().product();
-                let (lo, hi) = if side1 <= side2 { (side1, side2) } else { (side2, side1) };
-                lo * side_radix + hi
-            }
-            _ => side1,
+    #[inline]
+    fn key(&self, block: usize, pattern_row: usize, row: usize) -> i64 {
+        let side1 = self.side(0, block, pattern_row, row);
+        if !self.matchup {
+            return side1;
         }
-    }
-
-    fn weight_map(&self) -> HashMap<i64, f64> {
-        self.weights.iter().map(|w| (w.key, w.weight)).collect()
+        let side2 = self.side(1, block, pattern_row, row);
+        let (lo, hi) = if side1 <= side2 { (side1, side2) } else { (side2, side1) };
+        lo * self.side_radix + hi
     }
 }
 
@@ -116,9 +137,13 @@ impl Node {
     }
 
     fn expand(&mut self, store: &Store, step: &StepSpec, default_weight: f64) {
+        let key_of = StepKey::new(store, step);
+        let mut cursor = BlockCursor::new(store);
         let mut by_key: HashMap<i64, Vec<u32>> = HashMap::new();
+        // rows stay ascending through every level, which is what lets the cursor replace a block lookup per row
         for row in self.rows.drain(..) {
-            by_key.entry(step.key_of(store, row as usize)).or_default().push(row);
+            let (block, pattern_row) = cursor.locate(row as usize);
+            by_key.entry(key_of.key(block, pattern_row, row as usize)).or_default().push(row);
         }
         let weights = step.weight_map();
         let mut entries: Vec<(i64, Node)> = Vec::with_capacity(by_key.len());
@@ -254,32 +279,77 @@ pub fn generate(store: &Store, matched: &Tri, spec: &GenSpec, exclude: &[u32]) -
 /// Distinct group counts for one step over the rows that passed the filter. Used by the settings editor to show what
 /// share a weight actually buys, which is only meaningful against the real group universe.
 pub fn group_counts(store: &Store, matched: &Tri, step: &StepSpec) -> HashMap<i64, u32> {
+    let key_of = StepKey::new(store, step);
+    let mut cursor = BlockCursor::new(store);
     let mut counts: HashMap<i64, u32> = HashMap::new();
     for row in matched.rows() {
-        *counts.entry(step.key_of(store, row)).or_insert(0) += 1;
+        let (block, pattern_row) = cursor.locate(row);
+        *counts.entry(key_of.key(block, pattern_row, row)).or_insert(0) += 1;
     }
     counts
 }
 
-/// min/max of a column over the rows that passed the filter, for the score-range sliders.
+/// min/max of a column over the whole table, for the score-range sliders.
+///
+/// Reads the narrowest thing that holds every value the column can take: a layer's own column has one value per
+/// block, a per-team column one per pattern row, and a score column one per side record. Only the scopes that vary
+/// with the block and the pattern row together are walked per row.
 pub fn range(store: &Store, col: usize) -> Option<(i64, i64)> {
-    let c = store.col(col);
     let mut min = i64::MAX;
     let mut max = i64::MIN;
     let mut any = false;
-    for row in 0..store.row_count() {
-        if let Some(v) = store.value(c, row) {
+    let mut take = |v: Option<i64>| {
+        if let Some(v) = v {
             any = true;
             min = min.min(v);
             max = max.max(v);
         }
+    };
+
+    if let Some(metric) = store.score_metric_of(col) {
+        for record in 0..store.manifest.score_count {
+            take(store.score_value(record, metric));
+        }
+    } else if let Some(values) = store.dictionary_of(col) {
+        // a dictionary already is the column's value universe
+        for v in values {
+            take(Some(*v as i64));
+        }
+    } else if store.is_bitmap(col) {
+        take(Some(0));
+        take(Some(1));
+    } else {
+        match store.col_data(col) {
+            ColData::PerBlock(values) => {
+                for block in 0..store.block_count() {
+                    let (start, end) = store.block_rows(block);
+                    if start < end {
+                        take(values.get(block));
+                    }
+                }
+            }
+            ColData::PerPattern(values) => {
+                for p in 0..store.manifest.pattern_row_count {
+                    take(values.get(p));
+                }
+            }
+            ColData::PerRow => {
+                let reader = store.reader(col);
+                for block in 0..store.block_count() {
+                    let (start, end) = store.block_rows(block);
+                    let mut p = store.pattern_rows(store.block_pattern(block)).0;
+                    for row in start..end {
+                        take(reader.read(block, p, row));
+                        p += 1;
+                    }
+                }
+            }
+        }
     }
+
     if any {
         Some((min, max))
     } else {
         None
     }
 }
-
-#[allow(dead_code)]
-fn unused(_: Col<'_>) {}

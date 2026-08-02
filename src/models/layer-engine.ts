@@ -474,7 +474,7 @@ function encodeValue(
 	return Number(encoded)
 }
 
-// the columnar query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its
+// the factored query engine (layer-engine/), which replaced the SQLite layer db. It is immutable for its
 // lifetime, so it is shared by every request rather than opened per query.
 export type Ctx = CS.Ctx & { engine: EngineHandle } & LC.Ctx
 export const CtxDef = CD.defCtx<Ctx>()(['engine'], { name: 'layerEngine', extends: [LC.CtxDef] })

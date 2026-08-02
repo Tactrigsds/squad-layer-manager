@@ -1,6 +1,6 @@
 //! The layer query engine.
 //!
-//! One wasm module serves both hosts: the browser's query worker and the server. It owns the layer table in columnar
+//! One wasm module serves both hosts: the browser's query worker and the server. It owns the layer table in factored
 //! form and answers every query the app makes of it (filtering, sorting, paging, distinct values, layer statuses, and
 //! weighted generation), replacing the SQLite layer db.
 //!
@@ -20,7 +20,6 @@ use store::Store;
 
 pub struct Engine {
     pub store: Store,
-    id_col: usize,
     /// Evaluated filters, keyed by their IR. The queue re-asks "does this layer match this pool filter" on every
     /// change, and the pool filter is the same one every time, so caching the bitset turns those into bit tests.
     cache: RefCell<HashMap<String, std::rc::Rc<Tri>>>,
@@ -31,8 +30,7 @@ const MAX_CACHED_FILTERS: usize = 64;
 impl Engine {
     pub fn load(bytes: Vec<u8>) -> Result<Engine, String> {
         let store = Store::load(bytes)?;
-        let id_col = store.column_index("id").ok_or("artifact has no id column")?;
-        Ok(Engine { store, id_col, cache: RefCell::new(HashMap::new()) })
+        Ok(Engine { store, cache: RefCell::new(HashMap::new()) })
     }
 
     pub fn query(&self, request_json: &str) -> Result<String, String> {
@@ -43,7 +41,7 @@ impl Engine {
         if cache.len() > MAX_CACHED_FILTERS {
             cache.clear();
         }
-        query::handle(&self.store, self.id_col, request, &mut cache)
+        query::handle(&self.store, request, &mut cache)
     }
 
     pub fn column_index(&self, name: &str) -> Option<usize> {
@@ -71,7 +69,7 @@ pub unsafe extern "C" fn dealloc(ptr: *mut u8, len: usize) {
     drop(Vec::from_raw_parts(ptr, len, len));
 }
 
-/// Loads the columnar artifact. Takes ownership of the buffer, so the host must not free it.
+/// Loads the factored artifact. Takes ownership of the buffer, so the host must not free it.
 /// Returns the row count, or 0 on failure (the message is left in the result buffer).
 #[no_mangle]
 pub unsafe extern "C" fn load(ptr: *mut u8, len: usize) -> usize {
