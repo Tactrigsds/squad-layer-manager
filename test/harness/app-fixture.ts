@@ -48,6 +48,50 @@ function serverCommand(): [string, string[]] {
 	]
 }
 
+// How to run the app under test, once the fixture has seeded everything it needs. The default one spawns the
+// server bundle as a child process; the load harness passes one that runs the production container instead, so
+// what it profiles is the deployed image rather than a re-derivation of it (test/load/target.ts).
+export type AppLauncher = {
+	start: (spec: AppLaunchSpec) => Promise<void>
+	stop: () => Promise<void>
+	// null while it is up. The readiness probe reads this so a boot failure surfaces immediately rather than at
+	// the timeout, with the app log tail attached.
+	exitCode: () => number | null
+}
+
+export type AppLaunchSpec = {
+	env: Record<string, string>
+	port: number
+	// where the app's stdout and stderr are collected
+	logFile: string
+	// The directory holding the db, the emulated server's SquadGame.log and the Admins.cfg. A launcher that runs
+	// the app somewhere other than this machine has to make these readable at these exact paths: they are already
+	// written into the settings the app boots with.
+	tmpDir: string
+	repoRoot: string
+}
+
+export function childProcessLauncher(): AppLauncher {
+	let child: childProcess.ChildProcess | null = null
+	let exited: Promise<number | null> = Promise.resolve(null)
+	return {
+		start: async (spec) => {
+			const out = fs.openSync(spec.logFile, 'a')
+			const [command, args] = serverCommand()
+			child = childProcess.spawn(command, args, { cwd: spec.repoRoot, env: spec.env, stdio: ['ignore', out, out] })
+			exited = new Promise((resolve) => child!.once('exit', (code) => resolve(code)))
+		},
+		stop: async () => {
+			if (!child || child.exitCode !== null) return
+			child.kill('SIGTERM')
+			const killTimer = setTimeout(() => child?.kill('SIGKILL'), 8000)
+			await exited
+			clearTimeout(killTimer)
+		},
+		exitCode: () => child?.exitCode ?? null,
+	}
+}
+
 function freePort(): Promise<number> {
 	return new Promise((resolve, reject) => {
 		const srv = net.createServer()
@@ -130,6 +174,8 @@ export type AppFixtureOptions = {
 	reserveAdmins?: string[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
+	// how to run the app. Defaults to spawning the server bundle as a child process; see AppLauncher.
+	launch?: AppLauncher
 	// how the app reaches the emulated server. 'local' (default) tails the SquadGame.log directly and dials
 	// RCON directly; 'server-agent' runs the real rust server agent (server-agent/agent), which tails that
 	// same file and proxies RCON, streaming both to the app over the /server-agent websocket. Exercises the
@@ -162,7 +208,6 @@ export type AppFixture = {
 	second: { serverId: string; displayName: string; emu: Emulator } | null
 	// the Admins.cfg the app reads as a local admin list source; rewrite it to change who is an admin
 	adminsCfgPath: string
-	child: childProcess.ChildProcess | null
 	adminUser: TestUser
 	// the resource attributes this app's telemetry carries (see SLM_TEST_OTEL)
 	otelLabels: Record<string, string>
@@ -177,7 +222,6 @@ export type AppFixture = {
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
 	// stop the app and boot it again against the same db, emulator and ports. For anything that only happens on
 	// boot -- notably the feed backfill, which rebuilds state from the db rather than from what it saw live.
-	// `child` on the fixture is the original process and goes stale across this; nothing else does.
 	// `whileDown` runs against the still-live emulator between the two, for what the app has to work out on boot
 	// rather than observe: a map roll it was not running for.
 	restart: (whileDown?: () => Promise<void> | void) => Promise<void>
@@ -539,8 +583,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		...opts.env,
 	}
 
-	let child: childProcess.ChildProcess | null = null
-	let childExited: Promise<number | null> | null = null
+	const launcher = opts.launch ?? childProcessLauncher()
 
 	async function waitFor<T>(
 		probe: () => T | Promise<T>,
@@ -572,25 +615,15 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		)
 	}
 
-	async function stopApp() {
-		if (!child || child.exitCode !== null) return
-		child.kill('SIGTERM')
-		const killTimer = setTimeout(() => child?.kill('SIGKILL'), 8000)
-		await childExited
-		clearTimeout(killTimer)
-	}
-
 	async function spawnApp() {
-		const out = fs.openSync(logFile, 'a')
-		const [command, args] = serverCommand()
-		child = childProcess.spawn(command, args, { cwd: REPO_ROOT, env, stdio: ['ignore', out, out] })
-		childExited = new Promise((resolve) => child!.once('exit', (code) => resolve(code)))
+		await launcher.start({ env, port: appPort, logFile, tmpDir, repoRoot: REPO_ROOT })
 
 		await waitFor(
 			async () => {
-				if (child!.exitCode !== null) {
+				const exitCode = launcher.exitCode()
+				if (exitCode !== null) {
 					const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
-					throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
+					throw new Error(`app exited with code ${exitCode} during boot.\napp log tail:\n${tail}`)
 				}
 				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
 				return res !== null
@@ -628,7 +661,6 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		squadLogPath,
 		second: secondEmu ? { serverId: secondId, displayName: secondDisplayName, emu: secondEmu } : null,
 		adminsCfgPath,
-		child,
 		adminUser: ADMIN_USER,
 		otelLabels,
 		loginUrl: (user = ADMIN_USER, urlPath = '/') => `${appUrl}${urlPath}?login=${encodeURIComponent(user.username)}`,
@@ -644,13 +676,13 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
 		restart: async (whileDown?: () => Promise<void> | void) => {
-			await stopApp()
+			await launcher.stop()
 			await whileDown?.()
 			await spawnApp()
 		},
 		dispose: async () => {
 			serverAgent?.dispose()
-			await stopApp()
+			await launcher.stop()
 			emu.dispose()
 			secondEmu?.dispose()
 			bm.close()
