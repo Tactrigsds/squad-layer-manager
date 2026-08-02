@@ -12,6 +12,25 @@ export function cmdkItemKey<T extends string | null>(option: ComboBoxOption<T>):
 	return typeof option.label === 'string' ? option.label.trim() : null
 }
 
+// the option's heading in the description box, which writes text rather than rendering nodes. An option
+// whose label is a node has no text form beyond its value, and a null-valued one has none at all.
+export function descriptionTitle<T extends string | null>(option: ComboBoxOption<T>): string | null {
+	if (option.chipLabel) return option.chipLabel
+	if (typeof option.label === 'string') return option.label
+	return option.value
+}
+
+// the options carrying a description, keyed the way cmdk reports its highlighted item
+export function descriptionsByItemKey<T extends string | null>(options: ComboBoxOption<T>[]): Map<string, ComboBoxOption<T>> {
+	const map = new Map<string, ComboBoxOption<T>>()
+	for (const option of options) {
+		if (option.description == null) continue
+		const key = cmdkItemKey(option)
+		if (key !== null) map.set(key, option)
+	}
+	return map
+}
+
 // normalizes raw options to ComboBoxOption[], asserts value uniqueness, and sorts (disabled and
 // sortLast options last, then group, then label/value unless sort is false). memoize at the call
 // site -- this runs O(n log n) over option lists that can be thousands of entries long
