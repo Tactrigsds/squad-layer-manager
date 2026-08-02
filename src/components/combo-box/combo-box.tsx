@@ -4,18 +4,20 @@ import React, { useCallback, useImperativeHandle, useRef, useState } from 'react
 
 import { Button } from '@/components/ui/button.tsx'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover.tsx'
 import * as DH from '@/lib/display-helpers.ts'
 import type { Clearable, Focusable } from '@/lib/react.ts'
 import { cn } from '@/lib/utils'
 
 import { LOADING } from './constants.ts'
+import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
 import { useComboBoxDismissal } from './dismissal.ts'
 import { GroupTabs, PrefixedLabel } from './group-tabs.tsx'
 import {
 	ALL_GROUPS,
-	cmdkItemKey,
 	type ComboBoxGroupDef,
+	descriptionsByItemKey,
+	descriptionTitle,
 	type GroupPrefixRenderer,
 	groupPrefixOf,
 	groupRuns,
@@ -72,8 +74,9 @@ export interface ComboBoxOption<T> {
 	// sorts with the disabled options at the end of the list while staying interactive; for options that are
 	// currently pointless (no results under the other active filters) but still carry an affordance
 	sortLast?: boolean
-	// longer explanatory text shown in a floating box while the option is highlighted
-	description?: React.ReactNode
+	// longer explanatory text shown in a floating box while the option is highlighted. Text, not a node:
+	// the box writes it to the DOM directly rather than rendering it (see description-box.tsx)
+	description?: string
 	// compact form for the selection display (trigger text, chips); the full label stays in the list
 	chipLabel?: string
 	// key of the group this option belongs to; see the `groups` prop. Drives the tab it lists under and the
@@ -81,32 +84,20 @@ export interface ComboBoxOption<T> {
 	group?: string
 }
 
-// floating box describing the currently highlighted option, anchored to the option list. cmdk owns the
-// highlight (it follows both the pointer and arrow keys), so we read it rather than tracking hover
-// ourselves. Rendered only when some option carries a description.
-function HighlightedDescription<T extends string | null>(props: { options: ComboBoxOption<T>[] }) {
+// cmdk owns the highlight (it follows both the pointer and arrow keys), so we read it rather than tracking
+// hover ourselves. This renders nothing: the highlight changes on every row the pointer crosses, and the
+// description box takes its content through a ref so none of that reaches the option list.
+function HighlightedDescriptionSync<T extends string | null>(props: {
+	options: Map<string, ComboBoxOption<T>>
+	box: React.RefObject<DescriptionBoxHandle | null>
+}) {
 	const highlighted = useCommandState((state) => state.value) as string | undefined
-	const option = highlighted ? props.options.find((o) => cmdkItemKey(o) === highlighted) : undefined
-	const description = option?.description
-	return (
-		<Popover open={description != null}>
-			{/* spans the option panel, so the box sits beside the whole list rather than jumping between items */}
-			<PopoverAnchor asChild>
-				<div className="pointer-events-none absolute inset-0" />
-			</PopoverAnchor>
-			<PopoverContent
-				side="right"
-				align="start"
-				sideOffset={6}
-				onOpenAutoFocus={(e) => e.preventDefault()}
-				onCloseAutoFocus={(e) => e.preventDefault()}
-				className="pointer-events-none w-64 max-w-none space-y-1 p-3"
-			>
-				{option?.label != null && <div className="text-sm font-medium font-mono break-words">{option.label}</div>}
-				<div className="text-xs text-muted-foreground break-words">{description}</div>
-			</PopoverContent>
-		</Popover>
-	)
+	const option = highlighted ? props.options.get(highlighted) : undefined
+	React.useLayoutEffect(() => {
+		if (option?.description != null) props.box.current?.show(descriptionTitle(option), option.description)
+		else props.box.current?.hide()
+	})
+	return null
 }
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
@@ -123,7 +114,8 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		[props.options, props.sort, groups],
 	)
 
-	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
+	const describedOptions = React.useMemo(() => descriptionsByItemKey(options === LOADING ? [] : options), [options])
+	const descriptionBoxRef = useRef<DescriptionBoxHandle | null>(null)
 
 	const tabs = React.useMemo(() => (options === LOADING ? [] : liveGroups(options, groups)), [options, groups])
 	const showTabs = tabs.length >= 2
@@ -242,7 +234,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
-				className="w-50 p-0"
+				className="relative w-50 p-0"
 				onCloseAutoFocus={(e) => {
 					if (!props.preventCloseAutoFocus) return
 					// take full control of close-focus: Radix never restores. On a dismiss we reproduce the
@@ -253,17 +245,17 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			>
 				{/* gate on open so the option elements aren't built on every render while closed --
 				    option lists can be thousands of entries long */}
+				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="right" />}
 				{open && (
 					<Command
 						shouldFilter={!props.setInputValue}
-						className="relative"
 						onKeyDown={(e) => {
 							if (!showTabs || e.key !== 'Tab') return
 							e.preventDefault()
 							cycleGroup(e.shiftKey ? -1 : 1)
 						}}
 					>
-						{hasDescriptions && <HighlightedDescription options={options as ComboBoxOption<T>[]} />}
+						{describedOptions.size > 0 && <HighlightedDescriptionSync options={describedOptions} box={descriptionBoxRef} />}
 						<CommandInput
 							ref={inputRef}
 							placeholder={props.searchPlaceholder ?? 'Search...'}
