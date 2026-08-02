@@ -5,7 +5,9 @@ import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as RPC from '@/orpc.client'
@@ -71,6 +73,33 @@ export const [useServerRolling, serverRolling$] = ReactRx.bind('squadServer.serv
 export const [useTickRate, tickRate$] = ReactRx.bind('squadServer.tickRate', (serverId: string) =>
 	RPC.observe('squadServer.watchTickRate', () => RPC.orpc.squadServer.watchTickRate.call({ serverId })).pipe(RPC.dropServerNotLoaded()),
 )
+
+// Asked for on the click rather than kept warm: the link carries a steam lobby id that the server replaces as
+// it rolls, and the api rate-limits the lookup per server, so a dashboard left open must not spend requests
+// keeping one online. Handing the url to location lets the browser pass steam:// to its protocol handler.
+export async function joinServer(serverId: string) {
+	const res = await RPC.orpc.squadServer.getJoinLink.call({ serverId })
+	switch (res.code) {
+		case 'ok':
+			window.location.href = res.joinUrl
+			return
+		case 'err:no-such-server':
+			toast.error(...tr.toast(SS_Msgs.joinLinkNotIndexed()))
+			return
+		case 'err:rate-limited':
+			toast.error(...tr.toast(SS_Msgs.joinLinkRateLimited()))
+			return
+		case 'err:disabled':
+		case 'err:request-failed':
+		case 'err:rcon':
+		case 'err:server-not-loaded':
+		case 'err:permission-denied':
+			toast.error(...tr.toast(SS_Msgs.joinLinkFailed()))
+			return
+		default:
+			assertNever(res)
+	}
+}
 
 export function useEndMatch() {
 	return useMutation({

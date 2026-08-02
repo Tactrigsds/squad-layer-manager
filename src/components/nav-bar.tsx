@@ -27,6 +27,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import TabsList from '@/components/ui/tabs-list'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import UserPermissionsDialog from '@/components/user-permissions-dialog'
 import { frameManager, useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
@@ -36,6 +37,7 @@ import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as APP_Msgs from '@/messages/app.messages'
+import * as SS_Msgs from '@/messages/server-state.messages'
 import * as RPC from '@/orpc.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -287,6 +289,7 @@ export default function NavBar() {
 					</span>
 				)}
 				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
+				{isOnServerDashboard && squadServerKey && <JoinServerButton serverId={squadServerKey.serverId} />}
 				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
 				{isOnServerDashboard &&
 					selectedServer &&
@@ -345,6 +348,32 @@ export default function NavBar() {
 					))}
 			</div>
 		</nav>
+	)
+}
+
+// A button rather than a link: the url is fetched on the click (the api rate-limits the lookup per server), so
+// there is nothing to put in an href beforehand. Shown whenever the integration is configured, since finding out
+// that a server is unlisted costs the same request the click would spend.
+function JoinServerButton(props: { serverId: string }) {
+	const squadBrowserEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.squadBrowserEnabled)
+	if (!squadBrowserEnabled) return null
+
+	const label = tr.text(SS_Msgs.joinServer())
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					className="shrink-0"
+					aria-label={label}
+					onClick={() => void SquadServerClient.joinServer(props.serverId)}
+				>
+					<Icons.Gamepad2 className="h-4 w-4" />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
 	)
 }
 
