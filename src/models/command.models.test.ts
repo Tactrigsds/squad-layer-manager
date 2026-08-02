@@ -393,6 +393,13 @@ describe('resolveTriggerArgs', () => {
 		])
 	})
 
+	it('reports the args the template fills from its own text', () => {
+		const res = CMD.resolveTriggerArgs('timeout', '{{arg1}} 2h')
+		// the reason is in neither: the template passes nothing on to it, so nobody can supply one
+		expect(res.code === 'ok' && res.pinned).toEqual({ duration: '2h' })
+		expect(CMD.resolveTriggerArgs('broadcast', 'Read the rules')).toMatchObject({ pinned: { reason: 'Read the rules' } })
+	})
+
 	it('skips the literal token checks for an arg a placeholder fills', () => {
 		expect(CMD.resolveTriggerArgs('timeout', '{{arg1}} {{arg2}} {{rest3}}')).toMatchObject({ code: 'ok' })
 		expect(CMD.resolveTriggerArgs('removeFromSquad', '{{arg1}} {{rest2}}')).toMatchObject({ code: 'ok' })
@@ -501,5 +508,37 @@ describe('formatTriggerUsage', () => {
 
 	it('is just the string when the template pins everything', () => {
 		expect(CMD.formatTriggerUsage('broadcast', { string: '!rules', args: 'Read the rules' })).toBe('!rules')
+	})
+})
+
+describe('triggerPins', () => {
+	it('names the args a trigger fills in, in declaration order', () => {
+		expect(CMD.triggerPins('timeout', { string: '!to45', args: '{{arg1}} 45m' })).toEqual([{ name: 'duration', value: '45m' }])
+		expect(CMD.triggerPins('broadcast', { string: '!rules', args: 'Read the rules' })).toEqual([
+			{ name: 'reason', value: 'Read the rules' },
+		])
+	})
+
+	it('is empty for a plain trigger, which fills nothing in', () => {
+		expect(CMD.triggerPins('timeout', '!to')).toEqual([])
+	})
+})
+
+describe('describeTriggerExpansion', () => {
+	const config = (triggers: CMD.CommandTrigger[]): CMD.CommandConfig => ({
+		triggers,
+		allowedChats: ['admin'],
+		enabled: true,
+		quickReference: false,
+	})
+	const to45: CMD.CommandTrigger = { string: '!to45', args: '{{arg1}} 45m' }
+
+	it('spells a shortcut out as the plain trigger it stands for', () => {
+		expect(CMD.describeTriggerExpansion(config(['!timeout', to45]), to45)).toBe('!timeout {{arg1}} 45m')
+	})
+
+	// naming the shortcut's own string as what it expands to would say a trigger is a shortcut for itself
+	it('has nothing to give when every trigger pins arguments', () => {
+		expect(CMD.describeTriggerExpansion(config([to45]), to45)).toBeUndefined()
 	})
 })
