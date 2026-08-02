@@ -150,7 +150,7 @@ async function main() {
 	log.info('Done!')
 }
 
-// Builds the columnar artifact the query engine reads (see models/layer-artifact.ts and layer-engine/src/store.rs).
+// Builds the factored artifact the query engine reads (see models/layer-artifact.ts and layer-engine/src/store.rs).
 //
 // Two passes, so the whole table never exists as JS objects: first the base layers, which fix the row order (ascending
 // packed id, which the engine binary-searches and which groups layers of a map together); then the extra-cols csv,
@@ -191,20 +191,18 @@ async function buildLayerArtifact(
 	const ids = new Int32Array(rowCount)
 	const baseKinds = baseColumns.map((name) => {
 		const def = LC.BASE_COLUMN_DEFS[name] as LC.ColumnDef & { enumMapping: string }
-		return LA.columnKind({ ...def, table: 'layers' }, (components[def.enumMapping as keyof LC.LayerComponents] as unknown[]).length)
+		return LA.enumKind((components[def.enumMapping as keyof LC.LayerComponents] as unknown[]).length)
 	})
+	const baseNulls = baseKinds.map((kind) => (kind === 'u16' ? LA.NULL_U16 : LA.NULL_U8))
 	const baseData = baseColumns.map((_, c) => (baseKinds[c] === 'u16' ? new Uint16Array(rowCount) : new Uint8Array(rowCount)))
-	const unitRecordKind = LA.columnKind(
-		{ name: 'UnitRecord_1', displayName: 'UnitRecord_1', type: 'string', enumMapping: 'unitRecords', table: 'layers' },
-		components.unitRecords?.length ?? 0,
-	)
+	const unitRecordKind = LA.enumKind(components.unitRecords?.length ?? 0)
 	const unitRecordNull = unitRecordKind === 'u16' ? LA.NULL_U16 : LA.NULL_U8
 	const unitRecordData = ([0, 1] as const).map(() => (unitRecordKind === 'u16' ? new Uint16Array(rowCount) : new Uint8Array(rowCount)))
 	for (let i = 0; i < rowCount; i++) {
 		ids[i] = rows[i].id
 		for (let c = 0; c < baseColumns.length; c++) {
 			const value = rows[i].values[c]
-			baseData[c][i] = value < 0 ? (baseKinds[c] === 'u16' ? LA.NULL_U16 : LA.NULL_U8) : value
+			baseData[c][i] = value < 0 ? baseNulls[c] : value
 		}
 		for (const t of [0, 1] as const) {
 			const value = rows[i].unitRecords[t]
@@ -214,13 +212,9 @@ async function buildLayerArtifact(
 
 	// extra columns start out entirely null: a layer the scores csv doesn't cover simply has no scores
 	const extraDefs = LAYER_DB_CONFIG.columns
-	const extraData = extraDefs.map((def) => {
-		const kind = LA.columnKind({ ...def, table: 'extra-cols' })
-		if (kind === 'u8') return new Uint8Array(rowCount).fill(LA.NULL_U8)
-		const arr = new Int32Array(rowCount)
-		arr.fill(LA.NULL_I32)
-		return arr
-	})
+	// every extra is an i32 with one null sentinel, whatever its declared type: the factoring pass decides how each
+	// one is actually stored (side record, difference, bitmap, dictionary) from the data rather than the declaration
+	const extraData = extraDefs.map(() => new Int32Array(rowCount).fill(LA.NULL_I32))
 
 	const extraColsSchema = z.object(Object.fromEntries(extraDefs.map((col) => [col.name, extraColSchema(col)])))
 
@@ -278,20 +272,29 @@ async function buildLayerArtifact(
 	}
 	log.info('Attached extra columns for %s layers', seenExtra.size)
 
-	return LA.writeArtifact({
+	const factionAlliance = new Uint8Array(components.factions.length)
+	for (let i = 0; i < components.factions.length; i++) {
+		const alliance = components.factionToAlliance[components.factions[i]]
+		const index = components.alliances.indexOf(alliance)
+		if (index < 0) throw new Error(`faction ${components.factions[i]} has no alliance`)
+		factionAlliance[i] = index
+	}
+
+	return LA.factorArtifact({
 		rowCount,
 		layersVersion: args.layersVersion,
 		columns: [
-			{ name: 'id', kind: 'i32', values: ids },
-			...baseColumns.map((name, c) => ({ name, kind: baseKinds[c], values: baseData[c] })),
-			{ name: LC.UNIT_RECORD_COLUMNS[1], kind: unitRecordKind, values: unitRecordData[0] },
-			{ name: LC.UNIT_RECORD_COLUMNS[2], kind: unitRecordKind, values: unitRecordData[1] },
-			...extraDefs.map((def, c) => ({
-				name: def.name,
-				kind: LA.columnKind({ ...def, table: 'extra-cols' }),
-				values: extraData[c],
-			})),
+			{ name: 'id', values: ids, nullValue: LA.NULL_I32 },
+			...baseColumns.map((name, c) => ({ name, values: baseData[c], nullValue: baseNulls[c] })),
+			{ name: LC.UNIT_RECORD_COLUMNS[1], values: unitRecordData[0], nullValue: unitRecordNull },
+			{ name: LC.UNIT_RECORD_COLUMNS[2], values: unitRecordData[1], nullValue: unitRecordNull },
+			...extraDefs.map((def, c) => ({ name: def.name, values: extraData[c], nullValue: LA.NULL_I32 })),
 		],
+		layerCount: components.layers.length,
+		factionCount: components.factions.length,
+		unitCount: components.units.length,
+		factionAlliance,
+		booleanColumns: new Set(extraDefs.filter((def) => def.type === 'boolean').map((def) => def.name)),
 	})
 }
 
