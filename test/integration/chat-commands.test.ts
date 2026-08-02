@@ -14,9 +14,12 @@ import { appEventTypes, latestMatch, savedQueue, warnsTo } from '../harness/insp
 // variant has to survive a map roll.
 
 const ADMIN_STEAM_ID = '76561198000000001'
+// a second in-game admin who runs nothing: he is only here to be a recipient warnAllAdmins would reach
+const OTHER_ADMIN_STEAM_ID = '76561198000000002'
 
 let app: AppFixture
 const admin = makePlayer({ name: ' test_admin_player', steam: ADMIN_STEAM_ID, teamId: 1 })
+const otherAdmin = makePlayer({ name: ' other_admin_player', steam: OTHER_ADMIN_STEAM_ID, teamId: 1 })
 
 beforeAll(async () => {
 	app = await createAppFixture({
@@ -24,7 +27,7 @@ beforeAll(async () => {
 		layerQueue: [voteQueueItem([LAYERS.gorodokRaas, LAYERS.harjuRaas]), ...queue(LAYERS.sumariSeed)],
 		// in game this player is an admin (Admins.cfg); out of game he is the seeded superuser
 		// (linkedSteamAccounts). Commands need both: the first to be an admin, the second to be allowed.
-		admins: [ADMIN_STEAM_ID],
+		admins: [ADMIN_STEAM_ID, OTHER_ADMIN_STEAM_ID],
 		adminSteamIds: [ADMIN_STEAM_ID],
 		serverSettings: (s) => {
 			// so a roll leaves the queue "low" and the app warns every admin about it -- see the roll test
@@ -215,6 +218,7 @@ describe('teamswaps', () => {
 
 	beforeAll(async () => {
 		app.emu.world.connectPlayer(target)
+		app.emu.world.connectPlayer(otherAdmin)
 		await app.waitForRosterSync()
 	}, 60_000)
 
@@ -253,6 +257,11 @@ describe('teamswaps', () => {
 		})
 		// the emulated server acted on it, so the roster the app polls now disagrees with the old teams
 		expect(target.teamId).not.toBe(startingTeam)
+
+		// the command was typed in admin chat, where the other admin already read it, so the swap does not
+		// also reach him as a warn. A roster sync is two polls, long enough for a notification to have landed
+		await app.waitForRosterSync()
+		expect(warnsTo(app, otherAdmin)).toHaveLength(0)
 	})
 
 	it(cmd('swapnext holds the swap until the map rolls, then applies it'), async () => {

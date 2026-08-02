@@ -116,7 +116,7 @@ async function openExchange(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, ms
 
 	const user = discordId ? await Users.getUser(baseCtx, discordId) : undefined
 	const ctx: ChatCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
-	return { code: 'ok', chat: { ctx, msg, sender, user: { discordId, steamId: sender.ids.steam }, reply, error } }
+	return { code: 'ok', chat: { ctx, msg, sender, user: { discordId, steamId: sender.ids.steam, origin: 'chat' }, reply, error } }
 }
 
 export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, msg: SM.RconEvents.ChatMessage) {
@@ -663,7 +663,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	showNext: async (h) => {
-		await LayerQueue.warnShowNext(h.ctx, h.msg.playerIds)
+		await LayerQueue.warnShowNext(h.ctx, h.msg.playerIds, { isAdmin: h.sender.isAdmin })
 		return { code: 'ok' }
 	},
 

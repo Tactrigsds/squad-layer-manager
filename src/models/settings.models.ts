@@ -668,8 +668,8 @@ export const PoolConfigurationSchema = z.object({
 		.prefault([])
 		.meta({
 			description:
-				'Queue items carrying any of these tags raise no warnings: not when saving the queue, and not in the admin reminder before the ' +
-				'layer is played. Being out of pool still gates saving on queue:force-write.',
+				'Queue items carrying any of these tags raise no warnings: not when saving the queue, and not in the next-layer message ' +
+				'admins are shown in game. Being out of pool still gates saving on queue:force-write.',
 		}),
 	repeatRules: z
 		.array(RepeatRuleConfigSchema)
