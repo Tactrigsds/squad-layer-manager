@@ -33,11 +33,26 @@ without the accent, so never design a surface that depends on the accent being t
 
 - **Nav bar**: the tile, before the nav links.
 - **Landing and 403 pages**: the tile above the "Squad Layer Manager" wordmark, letter-spaced 0.14em.
-- **Favicons**: `/favicon.svg`, `/favicon.ico` and `/apple-touch-icon.png`.
+- **Icons**: one rendition per shape and size a platform asks for.
 
-The favicons are rendered per request from the current settings rather than built into `dist/`, because the accent
-follows a setting an admin can change at any time. `/favicon.svg` follows the browser's colour scheme. The rasters
-cannot, so they use the light tile, which reads against either tab strip.
+| path                    | size       | shape                      | asked for by                                    |
+| ----------------------- | ---------- | -------------------------- | ----------------------------------------------- |
+| `/favicon.svg`          | any        | rounded tile               | browsers that take an SVG icon                  |
+| `/favicon.ico`          | 16, 32, 48 | rounded tile               | the tab strip, bookmarks, the Windows shell     |
+| `/icon-192.png`         | 192        | rounded tile               | browsers that ignore an SVG icon                |
+| `/icon-512.png`         | 512        | rounded tile               | the manifest                                    |
+| `/apple-touch-icon.png` | 180        | full-bleed square          | the iOS home screen                             |
+| `/maskable-icon.png`    | 512        | full-bleed, content at 85% | Android adaptive icons                          |
+| `/manifest.webmanifest` |            |                            | Android's add-to-home-screen and install prompt |
+
+A platform that masks the icon itself gets the tile squared off, because iOS composites the transparent pixels of a
+corner we rounded onto black, inside the corner it rounds. Android crops a maskable icon to an arbitrary shape and
+guarantees only the circle inscribed in the middle 80% of the square, which the letters and the accent overrun at
+full size, so that rendition scales them to 85%.
+
+All of them are rendered from the current settings rather than built into `dist/`, because the accent follows a
+setting an admin can change at any time. `/favicon.svg` follows the browser's colour scheme. The rasters cannot, so
+they use the light tile, which reads against either tab strip.
 
 ## The letter outlines
 
