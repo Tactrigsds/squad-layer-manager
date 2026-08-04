@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils.ts'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type * as F from '@/models/filter.models.ts'
 import * as L from '@/models/layer'
-import * as LC from '@/models/layer-columns.ts'
+import type * as LC from '@/models/layer-columns.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
@@ -21,6 +21,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
 import { ConstraintViolationIcon } from './constraint-matches-indicator.tsx'
 import EmojiDisplay from './emoji-display.tsx'
+import { enumGroupings, enumOptionGroups } from './enum-options.helpers.ts'
 import FilterEntitySelect, { FilterEntityLink } from './filter-entity-select.tsx'
 import { LayerTags } from './layer-tags.tsx'
 import type { PoolConfigApi } from './pool-config-panels.helpers.ts'
@@ -475,7 +476,7 @@ function RepeatRuleRow(props: {
 	let targetValueOptions: string[]
 	// the column the values are drawn from, which is what sorts them into collections. A UnitMatchup value
 	// pairs two units, so it belongs to no single column.
-	let targetValueColumn: string | undefined
+	let targetValueColumn: LC.EnumColumn | undefined
 	switch (rule.field) {
 		case 'Map':
 			targetValueOptions = L.StaticLayerComponents.maps
@@ -513,7 +514,7 @@ function RepeatRuleRow(props: {
 	}
 	const targetOptions = targetValueOptions.map((value) => ({
 		value,
-		group: targetValueColumn ? LC.collectionForEnumValue(targetValueColumn, value) : undefined,
+		groups: targetValueColumn ? enumOptionGroups(targetValueColumn, value) : undefined,
 	}))
 
 	return (
@@ -559,7 +560,7 @@ function RepeatRuleRow(props: {
 					title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
 					selectOnClose
 					options={targetOptions}
-					groups={LC.collectionGroups()}
+					groupings={targetValueColumn ? enumGroupings(targetValueColumn) : undefined}
 					disabled={!!api.writeDenied}
 					values={rule.targetValues ?? []}
 					onSelect={(updated) => {

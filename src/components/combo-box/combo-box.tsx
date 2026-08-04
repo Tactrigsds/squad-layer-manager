@@ -12,19 +12,23 @@ import { cn } from '@/lib/utils'
 import { LOADING } from './constants.ts'
 import { DescriptionBox, type DescriptionBoxHandle } from './description-box.tsx'
 import { useComboBoxDismissal } from './dismissal.ts'
-import { GroupTabs, PrefixedLabel } from './group-tabs.tsx'
+import { GroupDrillIn, GroupDrillInHeader, GroupingBar, PrefixedLabel } from './groupings.tsx'
 import {
 	ALL_GROUPS,
-	type ComboBoxGroupDef,
+	type ComboBoxGroupingDef,
 	descriptionsByItemKey,
 	descriptionTitle,
-	type GroupPrefixRenderer,
+	groupCounts,
+	type GroupingBarEntry,
+	groupingBarEntries,
 	groupPrefixOf,
+	type GroupPrefixRenderer,
 	groupRuns,
-	liveGroups,
+	type GroupSelection,
 	normalizeOptions,
-	optionsInGroup,
-	resolveGroups,
+	optionsInSelection,
+	resolveGroupings,
+	selectableCount,
 } from './options.ts'
 
 export type ComboBoxHandle = Focusable & Clearable
@@ -46,11 +50,12 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	onSelect: (value: T | undefined) => void
 	disabled?: boolean
 	sort?: boolean
-	// the option groups, in tab order. Two or more live groups turn on the tab strip; a bare string is a
-	// group whose key is already its display text.
-	groups?: readonly (ComboBoxGroupDef | string)[]
-	// group tab to open on. Defaults to the "all" tab; ignored when the group has no live options.
-	defaultGroup?: string
+	// the dimensions the list can be narrowed by, in display order; see options.ts. Each gets a control once
+	// two or more of its groups are live, and they intersect. The first also orders, prefixes and heads the list.
+	groupings?: readonly ComboBoxGroupingDef[]
+	// the group each grouping opens on. Defaults to "all"; a grouping named here whose group has no live
+	// options falls back to "all".
+	defaultGroups?: GroupSelection
 	// how a group reads ahead of an option's label. false drops the prefix entirely.
 	renderGroupPrefix?: GroupPrefixRenderer | false
 	// when set, Radix won't restore focus to the trigger as the popover closes. Use when a selection
@@ -79,9 +84,10 @@ export interface ComboBoxOption<T> {
 	description?: string
 	// compact form for the selection display (trigger text, chips); the full label stays in the list
 	chipLabel?: string
-	// key of the group this option belongs to; see the `groups` prop. Drives the tab it lists under and the
-	// prefix it carries. Excluded (disabled/sortLast) options keep sorting to the back regardless of group.
-	group?: string
+	// the group this option belongs to per grouping key; see the `groupings` prop. Drives which controls list
+	// it and, for the first grouping, the prefix it carries. Excluded (disabled/sortLast) options keep sorting
+	// to the back regardless of group.
+	groups?: Record<string, string>
 }
 
 // cmdk owns the highlight (it follows both the pointer and arrow keys), so we read it rather than tracking
@@ -102,44 +108,77 @@ function HighlightedDescriptionSync<T extends string | null>(props: {
 
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
-	const groups = React.useMemo(() => resolveGroups(props.groups), [props.groups])
+	const groupings = React.useMemo(() => resolveGroupings(props.groupings), [props.groupings])
+	const primary = groupings.at(0)
 	const options = React.useMemo(
 		() =>
 			normalizeOptions(
 				'ComboBox',
 				props.options,
 				props.sort ?? true,
-				groups.map((g) => g.key),
+				primary && { key: primary.key, order: primary.groups.map((g) => g.key) },
 			),
-		[props.options, props.sort, groups],
+		[props.options, props.sort, primary],
 	)
 
 	const describedOptions = React.useMemo(() => descriptionsByItemKey(options === LOADING ? [] : options), [options])
 	const descriptionBoxRef = useRef<DescriptionBoxHandle | null>(null)
 
-	const tabs = React.useMemo(() => (options === LOADING ? [] : liveGroups(options, groups)), [options, groups])
-	const showTabs = tabs.length >= 2
-	// the tab strip only exists while the popover is open, so the group resets with each opening rather than
-	// persisting a filter the user cannot see they left behind. A default naming a group with no live options
-	// falls back to "all" here rather than at the point it was set, which keeps this independent of load order.
-	const [selectedGroup, setSelectedGroup] = useState(props.defaultGroup ?? ALL_GROUPS)
-	const resetActiveGroup = useCallback(() => setSelectedGroup(props.defaultGroup ?? ALL_GROUPS), [props.defaultGroup])
-	const activeGroup = selectedGroup === ALL_GROUPS || tabs.some((t) => t.key === selectedGroup) ? selectedGroup : ALL_GROUPS
-	const cycleGroup = (delta: number) => {
-		const keys = [ALL_GROUPS, ...tabs.map((t) => t.key)]
-		const next = (keys.indexOf(activeGroup) + delta + keys.length) % keys.length
-		setSelectedGroup(keys[next])
-	}
-	const visibleOptions = React.useMemo(
-		() => (options === LOADING || !showTabs ? options : optionsInGroup(options, activeGroup)),
-		[options, showTabs, activeGroup],
+	// the grouping controls only exist while the popover is open, so the narrowing resets with each opening
+	// rather than persisting a filter the user cannot see they left behind. A default naming a group with no
+	// live options falls back to "all" at render rather than where it was set, which keeps this independent
+	// of load order.
+	const [selection, setSelection] = useState<GroupSelection>(props.defaultGroups ?? {})
+	const [drillInto, setDrillInto] = useState<string | null>(null)
+	const [query, setQuery] = useState('')
+	const [drillQuery, setDrillQuery] = useState('')
+	const resetGroups = useCallback(() => {
+		setSelection(props.defaultGroups ?? {})
+		setDrillInto(null)
+		setDrillQuery('')
+		setQuery('')
+	}, [props.defaultGroups])
+
+	const barEntries = React.useMemo(
+		() => (options === LOADING ? [] : groupingBarEntries(options, groupings, selection)),
+		[options, groupings, selection],
 	)
-	// a group tab names its own group, so only the "all" view prefixes
-	const prefixInList = showTabs && activeGroup === ALL_GROUPS && props.renderGroupPrefix !== false
+	// a grouping with no control of its own narrows nothing, so what the bar shows is exactly what filters
+	const narrowing = React.useMemo(() => Object.fromEntries(barEntries.map((e) => [e.grouping.key, e.narrowed])), [barEntries])
+	const visibleOptions = React.useMemo(
+		() => (options === LOADING ? options : optionsInSelection(options, narrowing)),
+		[options, narrowing],
+	)
+
+	const drillEntry = barEntries.find((entry) => entry.grouping.key === drillInto)
+	const openDrill = (grouping: string) => {
+		setDrillQuery('')
+		setDrillInto(grouping)
+	}
+	const closeDrill = () => {
+		setDrillInto(null)
+		setDrillQuery('')
+	}
+	const pickGroup = (grouping: string, group: string) => setSelection((prev) => ({ ...prev, [grouping]: group }))
+	const cycleGroup = (entry: GroupingBarEntry, delta: number) => {
+		const keys = [ALL_GROUPS, ...entry.live.map((g) => g.key)]
+		const next = (keys.indexOf(entry.narrowed) + delta + keys.length) % keys.length
+		pickGroup(entry.grouping.key, keys[next])
+	}
+
+	// the primary grouping's own control names it, so only the un-narrowed view prefixes rows
+	const primaryEntry = barEntries.find((entry) => entry.grouping.key === primary?.key)
+	const prefixInList = !!primaryEntry && primaryEntry.narrowed === ALL_GROUPS && props.renderGroupPrefix !== false
 	const prefixRenderer = props.renderGroupPrefix === false ? undefined : props.renderGroupPrefix
-	// headings only earn their space when nothing else identifies the group: not under a group's own tab, and
-	// not in an "all" view whose rows are already prefixed
-	const suppressHeadings = showTabs && (activeGroup !== ALL_GROUPS || prefixInList)
+	// headings only earn their space when nothing else identifies the group: not under a narrowed grouping, and
+	// not in a view whose rows are already prefixed
+	const suppressHeadings = !!primaryEntry && (primaryEntry.narrowed !== ALL_GROUPS || prefixInList)
+
+	// the search input drives whichever list is showing. A caller only ever owns the option query, so a
+	// drill-in filters through its own state and hands the option query back untouched on the way out.
+	const callerControlsInput = props.setInputValue !== undefined
+	const inputValue = drillEntry ? drillQuery : callerControlsInput ? props.inputValue : query
+	const onInputChange = drillEntry ? setDrillQuery : callerControlsInput ? props.setInputValue : setQuery
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
@@ -154,7 +193,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		() => ({
 			focus: () => {
 				selectionInitiatedRef.current = false
-				resetActiveGroup()
+				resetGroups()
 				setOpen(true)
 			},
 			get isFocused() {
@@ -165,7 +204,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				if (!ephemeral) _onSelect(undefined)
 			},
 		}),
-		[_onSelect, open, resetActiveGroup],
+		[_onSelect, open, resetGroups],
 	)
 	function onSelect(value: T | undefined) {
 		selectionInitiatedRef.current = true
@@ -182,11 +221,11 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		// prefer the option's own label (e.g. "(none)"), matching how the list renders it
 		selectedOptionDisplay = selectedOption.label ?? DH.MISSING_DISPLAY
 	} else if (selectedOption) {
-		// a selection is read outside the list, where no tab or heading says which group it came from, so it
-		// carries its group whatever the list is currently showing
+		// a selection is read outside the list, where no control or heading says which group it came from, so
+		// it carries its group whatever the list is currently showing
 		selectedOptionDisplay = (
 			<PrefixedLabel
-				prefix={props.renderGroupPrefix === false ? undefined : groupPrefixOf(selectedOption, groups)}
+				prefix={props.renderGroupPrefix === false ? undefined : groupPrefixOf(selectedOption, primary)}
 				label={selectedOption.chipLabel ?? selectedOption.label ?? selectedOption.value}
 				render={prefixRenderer}
 			/>
@@ -195,10 +234,18 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		selectedOptionDisplay = props.value ?? props.placeholder ?? `Select ${props.title}...`
 	}
 
-	useComboBoxDismissal(open, () => {
-		setOpen(false)
-		props.onOpenChange?.(false)
-	})
+	useComboBoxDismissal(
+		open,
+		() => {
+			setOpen(false)
+			props.onOpenChange?.(false)
+		},
+		() => {
+			if (drillInto === null) return false
+			closeDrill()
+			return true
+		},
+	)
 
 	return (
 		<Popover
@@ -206,7 +253,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			onOpenChange={(next) => {
 				if (next) {
 					selectionInitiatedRef.current = false
-					resetActiveGroup()
+					resetGroups()
 				}
 				setOpen(next)
 				props.onOpenChange?.(next)
@@ -235,6 +282,11 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			<PopoverContent
 				align="start"
 				className="relative w-50 p-0"
+				// Escape belongs to the dismissal hook alone. Radix listens for it on the document too, and the
+				// two cannot agree: whichever runs first re-renders the other's state out from under it, so a
+				// drill-in that backed out here would still be dismissed there. Refusing unconditionally leaves
+				// one owner, which is what useComboBoxDismissal already claims to be.
+				onEscapeKeyDown={(e) => e.preventDefault()}
 				onCloseAutoFocus={(e) => {
 					if (!props.preventCloseAutoFocus) return
 					// take full control of close-focus: Radix never restores. On a dismiss we reproduce the
@@ -248,31 +300,52 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				{open && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="right" />}
 				{open && (
 					<Command
-						shouldFilter={!props.setInputValue}
+						shouldFilter={drillEntry ? true : !props.setInputValue}
 						onKeyDown={(e) => {
-							if (!showTabs || e.key !== 'Tab') return
+							if (e.key !== 'Tab') return
+							const tabbed = barEntries.find((entry) => entry.control === 'tabs')
+							if (!tabbed) return
 							e.preventDefault()
-							cycleGroup(e.shiftKey ? -1 : 1)
+							cycleGroup(tabbed, e.shiftKey ? -1 : 1)
 						}}
 					>
-						{describedOptions.size > 0 && <HighlightedDescriptionSync options={describedOptions} box={descriptionBoxRef} />}
+						{!drillEntry && describedOptions.size > 0 && (
+							<HighlightedDescriptionSync options={describedOptions} box={descriptionBoxRef} />
+						)}
 						<CommandInput
 							ref={inputRef}
 							placeholder={props.searchPlaceholder ?? 'Search...'}
-							value={props.inputValue}
-							onValueChange={props.setInputValue}
+							value={inputValue}
+							onValueChange={onInputChange}
 						/>
-						{showTabs && <GroupTabs groups={tabs} value={activeGroup} onChange={setSelectedGroup} />}
+						{drillEntry ? (
+							<GroupDrillInHeader grouping={drillEntry.grouping} onBack={closeDrill} />
+						) : (
+							<GroupingBar groupings={barEntries} onPick={pickGroup} onDrill={openDrill} />
+						)}
 						<CommandList>
 							<CommandEmpty>{props.emptyMessage ?? `No ${props.title} found.`}</CommandEmpty>
-							{options === LOADING && (
+							{drillEntry && options !== LOADING && (
+								<GroupDrillIn
+									grouping={drillEntry.grouping}
+									live={drillEntry.live}
+									counts={groupCounts(options, drillEntry.grouping, narrowing)}
+									narrowed={drillEntry.narrowed}
+									total={selectableCount(options, narrowing, drillEntry.grouping.key)}
+									onPick={(group) => {
+										pickGroup(drillEntry.grouping.key, group)
+										closeDrill()
+									}}
+								/>
+							)}
+							{!drillEntry && options === LOADING && (
 								<CommandGroup>
 									<CommandItem>
 										<LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
 									</CommandItem>
 								</CommandGroup>
 							)}
-							{options !== LOADING && props.allowEmpty && (
+							{!drillEntry && options !== LOADING && props.allowEmpty && (
 								<CommandGroup>
 									<CommandItem
 										value={DH.MISSING_DISPLAY}
@@ -286,8 +359,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 									</CommandItem>
 								</CommandGroup>
 							)}
-							{visibleOptions !== LOADING &&
-								groupRuns(visibleOptions, suppressHeadings).map((run, i) => (
+							{!drillEntry &&
+								visibleOptions !== LOADING &&
+								groupRuns(visibleOptions, primary, suppressHeadings).map((run, i) => (
 									<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
 										{run.options.map((option) => (
 											<CommandItem
@@ -302,7 +376,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 											>
 												<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
 												<PrefixedLabel
-													prefix={prefixInList ? groupPrefixOf(option, groups) : undefined}
+													prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
 													label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
 													render={prefixRenderer}
 												/>
