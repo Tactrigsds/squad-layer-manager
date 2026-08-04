@@ -82,6 +82,10 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 
 	const baseConditions: LE.Ir[] = []
 	const indicators: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
+	// a layer is a repeat when it breaks *any* repeat rule, so the rules are one disjunction rather than a condition
+	// each. Negating them individually and anding the results happens to say the same thing, but applying them
+	// regularly does not: that would ask for a layer repeating every rule at once.
+	const repeatIrs: Record<'regular' | 'inverted', LE.Ir[]> = { regular: [], inverted: [] }
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
@@ -109,23 +113,30 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 				assertNever(constraint)
 		}
 
-		switch (constraint.filterApplState) {
-			case 'regular':
-				baseConditions.push(ir)
-				break
-			case 'inverted':
-				baseConditions.push(LE.not(ir))
-				break
-			case 'disabled':
-				break
-			default:
-				assertNever(constraint)
+		if (constraint.type === 'do-not-repeat') {
+			if (constraint.filterApplState !== 'disabled') repeatIrs[constraint.filterApplState].push(ir)
+		} else {
+			switch (constraint.filterApplState) {
+				case 'regular':
+					baseConditions.push(ir)
+					break
+				case 'inverted':
+					baseConditions.push(LE.not(ir))
+					break
+				case 'disabled':
+					break
+				default:
+					assertNever(constraint)
+			}
 		}
 
 		// a repeat rule's indicator is filled in per item during post-processing, because a violation carries which
 		// earlier match it repeats, which is not something a condition over the table can say
 		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') indicators[i] = ir
 	}
+
+	if (repeatIrs.regular.length > 0) baseConditions.push(LE.or(repeatIrs.regular))
+	if (repeatIrs.inverted.length > 0) baseConditions.push(LE.not(LE.or(repeatIrs.inverted)))
 
 	// menu items: a field's possible values are computed under the *other* fields' conditions, minus the siblings it
 	// excludes and minus its own (or it could only ever offer the value already chosen)
@@ -155,6 +166,18 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 	}
 
 	return { code: 'ok', where: LE.and(conditions), indicators, menuItemConditions }
+}
+
+// the engine takes indicators as a dense list, so keep which constraint each answer belongs to alongside it
+function splitIndicators(compiled: CompiledConstraints) {
+	const indicators: LE.Ir[] = []
+	const indicatorConstraints: number[] = []
+	compiled.indicators.forEach((ir, idx) => {
+		if (ir === null) return
+		indicators.push(ir)
+		indicatorConstraints.push(idx)
+	})
+	return { indicators, indicatorConstraints }
 }
 
 // A do-not-repeat rule filters out the values the recent layers used, so it lowers to the same IR as everything else.
@@ -292,12 +315,7 @@ export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; 
 
 	const names = layerColumns(ctx)
 	const columns = columnIndexes(ctx, names)
-	const indicators = compiled.indicators.filter((ir): ir is LE.Ir => ir !== null)
-	// which constraint each indicator belongs to, so the engine's answers land back in constraint order
-	const indicatorConstraints: number[] = []
-	compiled.indicators.forEach((ir, idx) => {
-		if (ir !== null) indicatorConstraints.push(idx)
-	})
+	const { indicators, indicatorConstraints } = splitIndicators(compiled)
 
 	const res =
 		input.sort?.type === 'random'
@@ -491,6 +509,7 @@ export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) 
 	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
 	const names = layerColumns(ctx)
 	const columns = columnIndexes(ctx, names)
+	const { indicators, indicatorConstraints } = splitIndicators(base)
 	const seed = input.seed ?? LQY.getSeed()
 
 	for (let i = 0; i < choices.length; i++) {
@@ -504,13 +523,17 @@ export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) 
 		const generated = ctx.engine.query<LE.SelectResponse>({
 			kind: 'select',
 			where: LE.and([base.where, res.ir]),
-			indicators: [],
+			indicators,
 			sort: { random: { ...generationSpec(ctx, seed, i, 1), excludeIds: [] } },
 			pageIndex: 0,
 			pageSize: 1,
 			columns,
 		})
-		const [layer] = postProcessLayers(ctx, { rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [] }, input)
+		const [layer] = postProcessLayers(
+			ctx,
+			{ rows: generated.rows, names, indicatorResults: generated.indicators, indicatorConstraints },
+			input,
+		)
 		if (layer) {
 			choice.layerId = layer.id
 			chosenLayers[i] = layer
