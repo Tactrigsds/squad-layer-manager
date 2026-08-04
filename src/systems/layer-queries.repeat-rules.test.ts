@@ -528,3 +528,74 @@ describe('the constraints each path builds from the same settings', () => {
 		})
 	}
 })
+
+// ---------------------------- applying the rules as a filter ----------------------------
+
+// Hide Repeats applies every rule inverted; ctrl+clicking it applies them regularly to show only the layers it
+// would have hidden. The two must describe the same set, which they only do if the rules are one disjunction:
+// anding them regularly asks for a layer that repeats every rule at once.
+describe('the Hide Repeats filter', () => {
+	const filterSettings = SETTINGS.PublicServerSettingsSchema.parse({})
+	const filterList: LQY.LayerItemsState = {
+		layerItems: [{ type: 'match-history-entry', itemId: 1, layerId: 'GD-RAAS-V1:USA-CA:RGF-CA' }] as LQY.LayerItem[],
+		firstLayerItemParity: 0,
+	}
+
+	const CANDIDATES = {
+		// same map, different gamemode and factions
+		mapOnly: 'GD-AAS-V1:ADF-CA:PLA-CA',
+		// the same layer with the faction slots swapped, which at the next parity puts each faction back on its own side
+		everyRule: 'GD-RAAS-V1:RGF-CA:USA-CA',
+		unrelated: 'NV-AAS-V2:ADF-CA:PLA-CA',
+	}
+
+	const whereForApplyAs = (applyAs: SETTINGS.PoolFilterApplyAs) => {
+		const compiled = buildQueryConstraints(ctx, {
+			constraints: PoolCheckboxesPrt.getToggledRepeatRuleConstraints(filterSettings, applyAs),
+			list: filterList,
+			cursor: { type: 'end' },
+		})
+		if (compiled.code !== 'ok') throw new Error('expected the constraints to compile')
+		return compiled.where
+	}
+
+	function matches(where: LE.Ir, layerId: string): boolean {
+		const layer = L.toLayer(layerId) as Record<string, string | undefined>
+		switch (where.op) {
+			case 'true':
+				return true
+			case 'false':
+				return false
+			case 'and':
+				return where.children.every((c) => matches(c, layerId))
+			case 'or':
+				return where.children.some((c) => matches(c, layerId))
+			case 'not':
+				return !matches(where.child, layerId)
+			case 'in_vals': {
+				const value = layer[COLUMNS[where.col]]
+				if (!value) return false
+				const dbValue = LC.dbValue(COLUMNS[where.col], value, ctx)
+				if (dbValue === null || LC.isUnmappedDbValue(dbValue)) return false
+				return where.vals.includes(Number(dbValue))
+			}
+			default:
+				throw new Error(`unhandled ir op ${JSON.stringify(where)}`)
+		}
+	}
+
+	it('hides a layer that repeats a single rule', () => {
+		const where = whereForApplyAs('inverted')
+		expect(matches(where, CANDIDATES.mapOnly)).toBe(false)
+		expect(matches(where, CANDIDATES.everyRule)).toBe(false)
+		expect(matches(where, CANDIDATES.unrelated)).toBe(true)
+	})
+
+	it('shows exactly what it hides when inverted, including a layer repeating one rule alone', () => {
+		const hide = whereForApplyAs('inverted')
+		const showOnly = whereForApplyAs('regular')
+		for (const [name, layerId] of Object.entries(CANDIDATES)) {
+			expect(matches(showOnly, layerId), name).toBe(!matches(hide, layerId))
+		}
+	})
+})
