@@ -109,6 +109,13 @@ export const noExtraMenuItems = def('None.')
 
 export const addMenuItem = def('Add menu item')
 
+// -------- option groupings --------
+// The dimensions a value picker narrows its options by, named where their groups do not name themselves.
+
+export const collectionGrouping = def('Collection')
+
+export const vehicleTypeGrouping = def('Vehicle type')
+
 // -------- vehicle classes --------
 // The vehicle class codes (SquadLayerList vocabulary) as surfaced by the Vehicle type filter columns.
 // Keyed by code so data-driven vocabularies fall back to the raw code for anything unlisted.
