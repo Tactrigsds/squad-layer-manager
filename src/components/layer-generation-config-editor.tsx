@@ -2,6 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import ComboBox from '@/components/combo-box/combo-box'
+import { enumGroupings, enumOptionGroups } from '@/components/enum-options.helpers'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useDebounced } from '@/hooks/use-debounce'
@@ -249,7 +250,7 @@ function WeightsSection({
 	const possibleValues = React.useMemo(() => LC.groupByColumnDefaultValues(column) as string[], [column])
 	const addOptions = possibleValues
 		.filter((v) => !entries.some((e) => e.value === v))
-		.map((v) => ({ value: v, label: v, group: LC.collectionForEnumValue(column, v) }))
+		.map((v) => ({ value: v, label: v, groups: enumOptionGroups(column, v) }))
 
 	// weights are relative, so what an admin actually wants to see is the share a value would get. the true
 	// denominator depends on which values survive the filters at pick time, so this assumes every value is available:
@@ -334,7 +335,7 @@ function WeightsSection({
 				title={tr.text(LC_Msgs.addValue(column))}
 				value={undefined}
 				options={addOptions}
-				groups={LC.collectionGroups()}
+				groupings={enumGroupings(column)}
 				onSelect={(value) => {
 					if (value && !entries.some((e) => e.value === value)) {
 						onChange([...entries, { value, weight: LC.DEFAULT_GENERATION_WEIGHT }])
@@ -498,9 +499,9 @@ function MatchupSideInput({
 					options={LC.groupByColumnDefaultValues('Faction_1').map((f) => ({
 						value: f,
 						label: f,
-						group: LC.collectionForEnumValue('Faction_1', f),
+						groups: enumOptionGroups('Faction_1', f),
 					}))}
-					groups={LC.collectionGroups()}
+					groupings={enumGroupings('Faction_1')}
 					onSelect={(next) => onChange(next ? { Faction: next, Unit: '' } : undefined)}
 				/>
 				<ComboBox
@@ -521,9 +522,9 @@ function MatchupSideInput({
 			options={(LC.groupByColumnDefaultValues(column) as string[]).map((v) => ({
 				value: v,
 				label: v,
-				group: LC.collectionForEnumValue(column, v),
+				groups: enumOptionGroups(column, v),
 			}))}
-			groups={LC.collectionGroups()}
+			groupings={enumGroupings(column)}
 			onSelect={(next) => onChange(next ?? undefined)}
 		/>
 	)
