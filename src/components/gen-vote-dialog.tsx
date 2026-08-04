@@ -166,7 +166,12 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	return (
 		<>
-			<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
+			{/*
+				w-max sizes the dialog to the longest choice row, so it jumps between draws. The floor is the width that
+				leaves the choices panel ~700px: 21rem for the config panel and its gap, 50px for p-6 and the border. Its
+				95vw is the same term as max-w, so the floor can never outgrow the cap.
+			*/}
+			<HeadlessDialogContent className="max-h-[95vh] w-max min-w-[min(calc(700px_+_21rem_+_50px),95vw)] max-w-[95vw] flex flex-col overflow-auto">
 				<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 					<div className="flex items-center">
 						<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
