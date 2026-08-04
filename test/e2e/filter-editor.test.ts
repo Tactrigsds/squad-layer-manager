@@ -171,3 +171,46 @@ test.describe('filter references', () => {
 		)
 	})
 })
+
+// A vehicle picker narrows by two groupings at once. Collection tabs, because there are a handful; the
+// vehicle classes are too many to tab through and drill in instead. Runs against a new filter, so it owns
+// no seeded state and cannot disturb anything above it.
+test.describe('option groupings', () => {
+	test('narrows a vehicle picker by collection and class together', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/new'))
+		const addCondition = page.getByRole('button', { name: 'Add condition' }).first()
+		await expect(addCondition).toBeVisible({ timeout: 20_000 })
+
+		await addCondition.click()
+		await page.getByRole('button', { name: 'faction/unit' }).click()
+		// the blank comparison opens its own column picker, and picking a column hands focus on to the value
+		// picker, which opens itself in turn -- clicking either trigger here would close it
+		await page.getByRole('option', { name: 'Vehicle T1', exact: true }).click()
+
+		const picker = page.getByRole('dialog').filter({ hasText: 'Selected Vehicle T1s' })
+		const facet = picker.getByRole('button', { name: 'Narrow by Vehicle type' })
+		await expect(facet).toHaveText(/Vehicle type:\s*All/)
+		await expect(picker.getByRole('tab', { name: 'OWI' })).toBeVisible()
+
+		await facet.click()
+		// each class carries the count it would leave, so a dead end shows before it is taken
+		await picker.getByRole('option', { name: /Tracked IFV/ }).click()
+		await expect(facet).toHaveText(/Vehicle type:\s*Tracked IFV/)
+
+		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
+		await expect(picker.getByRole('option', { name: 'M1A1', exact: true })).toHaveCount(0)
+		// a SuperMod tracked IFV: present under every collection, gone once the collection tab narrows too
+		await expect(picker.getByRole('option', { name: /Marder 1A3/ })).toBeVisible()
+
+		await picker.getByRole('tab', { name: 'OWI' }).click()
+		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
+		await expect(picker.getByRole('option', { name: /Marder 1A3/ })).toHaveCount(0)
+
+		// escape backs out of the drill-in rather than closing the picker out from under it
+		await facet.click()
+		await expect(picker.getByRole('button', { name: 'Back to options' })).toBeVisible()
+		await page.keyboard.press('Escape')
+		await expect(facet).toBeVisible()
+		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
+	})
+})
