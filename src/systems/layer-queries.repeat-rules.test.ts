@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -7,7 +8,8 @@ import * as LC from '@/models/layer-columns'
 import type * as LE from '@/models/layer-engine'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
-import { buildQueryConstraints, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
+import * as SETTINGS from '@/models/settings.models'
+import { buildQueryConstraints, getLayerItemStatuses, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
 
 // Team A of the previous match played USA, team B played RGF.
 const PREVIOUS = 'GD-RAAS-V1:USA-CA:RGF-CA'
@@ -32,7 +34,11 @@ const ctx = {
 	...CS.init(),
 	effectiveColsConfig: LC.BASE_COLUMN_CONFIG,
 	filters: new Map(),
-	engine: { columnIndex: (name: string) => COLUMNS.indexOf(name) },
+	engine: {
+		columnIndex: (name: string) => COLUMNS.indexOf(name),
+		// these cases carry no filter-entity constraint, so getLayerItemStatuses only reads `exists`
+		query: (q: { ids?: unknown[] }) => ({ exists: (q.ids ?? []).map(() => true), matches: [] }),
+	},
 } as unknown as QueryCtx
 
 const col = (name: string) => COLUMNS.indexOf(name)
@@ -414,4 +420,111 @@ describe('the Hide Repeats filter and the violation indicator', () => {
 
 		expect(mismatches).toEqual([])
 	})
+})
+
+// ---------------------------- the two paths that resolve a match ----------------------------
+
+// A queued item's violations come from getLayerItemStatuses, which walks the list; a candidate row in the select
+// layers dialog comes from queryLayers, which resolves a cursor and post-processes each row. Both end up in
+// getRepeatRuleMatchDescriptors, so the risk is the index they hand it.
+const SLOT_HISTORY = ['GD-RAAS-V1:USA-CA:RGF-CA', 'NV-RAAS-V1:USA-CA:RGF-CA', 'FL-RAAS-V1:USA-CA:RGF-CA', 'CH-RAAS-V1:USA-CA:RGF-CA']
+const SLOT_QUEUE = ['GD-RAAS-V2:RGF-CA:USA-CA', 'NV-AAS-V1:USA-CA:RGF-CA', 'TL-RAAS-V1:USA-CA:RGF-CA']
+
+const slotList = (): LQY.LayerItemsState => ({
+	layerItems: [
+		...SLOT_HISTORY.map((layerId, i) => ({ type: 'match-history-entry', itemId: i + 1, layerId }) as LQY.LayerItem),
+		...SLOT_QUEUE.map((layerId, i) => ({ type: 'single-list-item', itemId: `q${i}`, layerId }) as LQY.LayerItem),
+	],
+	firstLayerItemParity: 0,
+})
+
+const indexFor = (list: LQY.LayerItemsState, cursor: LL.Cursor) =>
+	LQY.resolveCursorIndex(list, LQY.fromLayerListCursor(list, cursor))!.outerIndex
+
+describe('the cursor a select layers dialog resolves for a slot', () => {
+	const list = slotList()
+	const queueItemIds = SLOT_QUEUE.map((_, i) => `q${i}`)
+
+	it('puts play-next at the first queue slot and play-after past the last item', () => {
+		expect(indexFor(list, { type: 'start' })).toBe(SLOT_HISTORY.length)
+		expect(indexFor(list, { type: 'end' })).toBe(list.layerItems.length)
+	})
+
+	it('puts an "on" cursor at the item own index, so editing a layer never compares it against itself', () => {
+		queueItemIds.forEach((itemId, i) => {
+			expect(indexFor(list, { type: 'item-relative', itemId, position: 'on' })).toBe(SLOT_HISTORY.length + i)
+		})
+	})
+
+	it('puts "before" at the slot the new layer takes and "after" at the slot past it', () => {
+		queueItemIds.forEach((itemId, i) => {
+			expect(indexFor(list, { type: 'item-relative', itemId, position: 'before' })).toBe(SLOT_HISTORY.length + i)
+			expect(indexFor(list, { type: 'item-relative', itemId, position: 'after' })).toBe(SLOT_HISTORY.length + i + 1)
+		})
+	})
+
+	// iterItems yields a vote item before its own choices, so the last list item is the vote, not its last choice
+	it('puts play-after past a trailing vote item rather than inside it', () => {
+		const withVote = slotList()
+		withVote.layerItems.push({
+			type: 'vote-list-item',
+			itemId: 'v0',
+			layerId: SLOT_QUEUE[0],
+			choices: [
+				{ type: 'single-list-item', itemId: 'v0-a', layerId: SLOT_QUEUE[0] },
+				{ type: 'single-list-item', itemId: 'v0-b', layerId: SLOT_QUEUE[1] },
+			],
+		} as unknown as LQY.LayerItem)
+		expect(indexFor(withVote, { type: 'end' })).toBe(withVote.layerItems.length)
+	})
+})
+
+describe('queryLayers and getLayerItemStatuses resolving the same slot', () => {
+	const settings = SETTINGS.PublicServerSettingsSchema.parse({})
+	const repeatConstraints = SETTINGS.getSettingsConstraints(settings).filter((c) => c.type === 'do-not-repeat')
+	const key = (d: LQY.RepeatMatchDescriptor) => `${d.constraintId}|${d.field}|${d.repeatOffset}`
+
+	it('produce the same descriptors for every queued item', async () => {
+		const list = slotList()
+		const res = await getLayerItemStatuses({ ctx, input: { list, constraints: repeatConstraints } })
+		if (res.code !== 'ok') throw new Error('expected getLayerItemStatuses to succeed')
+
+		for (const item of list.layerItems) {
+			if (item.type === 'match-history-entry') continue
+			const fromStatuses = (res.statuses.matchDescriptors.get(item.itemId) ?? [])
+				.filter((d): d is LQY.RepeatMatchDescriptor => d.type === 'repeat-rule')
+				.map(key)
+				.sort()
+
+			const cursorIndex = indexFor(list, { type: 'item-relative', itemId: item.itemId as string, position: 'on' })
+			const fromQuery = repeatConstraints
+				.flatMap((c) =>
+					c.type === 'do-not-repeat' ? (getRepeatRuleMatchDescriptors(list, cursorIndex, c.id, c.rule, item.layerId) ?? []) : [],
+				)
+				.map(key)
+				.sort()
+
+			expect(fromQuery, item.itemId).toEqual(fromStatuses)
+		}
+	})
+})
+
+describe('the constraints each path builds from the same settings', () => {
+	const withWarn = (warn: boolean | undefined) => {
+		const settings = SETTINGS.PublicServerSettingsSchema.parse({})
+		settings.queue.mainPool.repeatRules = settings.queue.mainPool.repeatRules.map((rule) => ({ ...rule, warn }))
+		return settings
+	}
+	const warnFlags = (constraints: LQY.Constraint[]) =>
+		constraints.filter((c) => c.type === 'do-not-repeat').map((c) => `${c.id}:${c.warn}`)
+
+	// the Warn checkbox writes `warn || undefined`, so true and undefined are the only states it can produce
+	for (const warn of [true, undefined]) {
+		it(`carry the same warn flag with the checkbox ${warn ? 'ticked' : 'unticked'}`, () => {
+			const settings = withWarn(warn)
+			expect(warnFlags(SETTINGS.getSettingsConstraints(settings))).toEqual(
+				warnFlags(PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, 'disabled')),
+			)
+		})
+	}
 })
