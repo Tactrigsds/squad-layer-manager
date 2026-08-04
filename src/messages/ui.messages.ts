@@ -29,6 +29,13 @@ export const noResults = def('No results found.')
 // the tab that lifts the group filter, showing every group's options at once
 export const allGroups = def('All')
 
+// a grouping with too many groups to tab through is picked from its own list instead. The button already
+// reads "<grouping>: <group>", so only the hint has to say what it does.
+export const narrowByGrouping = def('Narrow by {grouping}', (grouping: string) => ({ grouping }))
+
+// leaves that list without picking, back to the options
+export const backToOptions = def('Back to options')
+
 export const nothingSelected = def('No items selected')
 
 // -------- pagination --------
