@@ -216,7 +216,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		return res.redirect(AR.route('/'), 302)
 	})
 
-	for (const kind of ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'] as const) {
+	for (const kind of LogoSys.KINDS) {
 		instance.get(AR.route(`/${kind}`), async (req, res) => {
 			for (const [key, value] of Object.entries(BASE_HEADERS)) {
 				res = res.header(key, value)

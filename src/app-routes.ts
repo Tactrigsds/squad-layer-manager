@@ -46,7 +46,11 @@ export const routes = [
 	// also loads on the landing and 403 pages (see logo.server.ts)
 	defRoute('/favicon.ico', [], 'custom', { authed: false }),
 	defRoute('/favicon.svg', [], 'custom', { authed: false }),
+	defRoute('/icon-192.png', [], 'custom', { authed: false }),
+	defRoute('/icon-512.png', [], 'custom', { authed: false }),
 	defRoute('/apple-touch-icon.png', [], 'custom', { authed: false }),
+	defRoute('/maskable-icon.png', [], 'custom', { authed: false }),
+	defRoute('/manifest.webmanifest', [], 'custom', { authed: false }),
 
 	defRoute('/layers.bin.gz', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),

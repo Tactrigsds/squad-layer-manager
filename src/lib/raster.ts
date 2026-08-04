@@ -6,7 +6,7 @@ import type * as Color from '@/lib/color'
 // absolute M/L/Q/C/Z subset the mark is drawn with (see lib/logo.ts) and nothing else, which is why it is a
 // few dozen lines rather than a dependency.
 
-export type Fill = { d: string; translate?: { x: number; y: number }; color: Color.Rgb }
+export type Fill = { d: string; translate?: { x: number; y: number }; scale?: number; color: Color.Rgb }
 
 /** Vertical samples per pixel row. Horizontal coverage is exact, so this alone sets the anti-aliasing quality. */
 const SUB_ROWS = 8
@@ -21,7 +21,7 @@ export function draw(fills: Fill[], opts: { size: number; viewBox: number }): Ui
 	const alpha = new Float32Array(size * size)
 
 	for (const fill of fills) {
-		const polygons = flatten(fill.d, scale, fill.translate ?? { x: 0, y: 0 })
+		const polygons = flatten(fill.d, scale, fill.translate ?? { x: 0, y: 0 }, fill.scale ?? 1)
 		const coverage = rasterize(polygons, size)
 		const [r, g, b] = [fill.color.r / 255, fill.color.g / 255, fill.color.b / 255]
 		for (let i = 0; i < coverage.length; i++) {
@@ -47,7 +47,8 @@ export function draw(fills: Fill[], opts: { size: number; viewBox: number }): Ui
 
 type Point = { x: number; y: number }
 
-function flatten(d: string, scale: number, offset: Point): Point[][] {
+// `translate(offset) scale(shapeScale)`, then into device pixels: (p * shapeScale + offset) * scale
+function flatten(d: string, scale: number, offset: Point, shapeScale: number): Point[][] {
 	const tokens = d.match(/[MLQCZ]|-?\d*\.?\d+/gi) ?? []
 	const polygons: Point[][] = []
 	let current: Point[] = []
@@ -55,8 +56,8 @@ function flatten(d: string, scale: number, offset: Point): Point[][] {
 	let start: Point = { x: 0, y: 0 }
 	let i = 0
 	const next = (): Point => {
-		const x = (Number.parseFloat(tokens[i++]) + offset.x) * scale
-		const y = (Number.parseFloat(tokens[i++]) + offset.y) * scale
+		const x = (Number.parseFloat(tokens[i++]) * shapeScale + offset.x) * scale
+		const y = (Number.parseFloat(tokens[i++]) * shapeScale + offset.y) * scale
 		return { x, y }
 	}
 	const close = () => {

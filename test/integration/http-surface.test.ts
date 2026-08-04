@@ -149,6 +149,77 @@ describe('GET /layers.bin.gz', () => {
 	})
 })
 
+// A device that gets no icon reports nothing, so the renditions are asserted rather than left to be spotted on a
+// phone: every href the shell links, and every icon the manifest names, has to answer unauthenticated.
+describe('the icon renditions', () => {
+	function shellIconHrefs(): string[] {
+		const html = fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
+		return [...html.matchAll(/<link\b[^>]*rel="(?:icon|apple-touch-icon|manifest)"[^>]*>/g)].map(
+			(tag) => tag[0].match(/href="([^"]+)"/)![1],
+		)
+	}
+
+	// unauthed, because the visitor who most needs an icon is the one looking at the landing page
+	const fetchIcon = (href: string) => fetch(`${base}${href}`, { redirect: 'manual' })
+
+	it('serves every icon the shell links', async () => {
+		const hrefs = shellIconHrefs()
+		expect(hrefs).toEqual(expect.arrayContaining(['/favicon.ico', '/favicon.svg', '/apple-touch-icon.png', '/manifest.webmanifest']))
+		for (const href of hrefs) {
+			const res = await fetchIcon(href)
+			expect(res.status, href).toBe(200)
+			expect((await res.arrayBuffer()).byteLength, href).toBeGreaterThan(0)
+		}
+	})
+
+	it("carries the shell head's icon links onto the landing page", async () => {
+		// the landing page rebuilds its head from index.html, and drops any attribute it does not know to copy
+		const html = await (await fetch(`${base}/`, { redirect: 'manual' })).text()
+		for (const link of shellIconHrefs()) expect(html).toContain(`href="${link}"`)
+		expect(html).toContain('sizes="180x180"')
+		expect(html).toContain('rel="manifest"')
+	})
+
+	it('serves every icon the manifest names, at the size it claims', async () => {
+		const manifest = await (await fetchIcon('/manifest.webmanifest')).json()
+		expect(manifest.icons.length).toBeGreaterThan(0)
+		expect(manifest.icons.some((icon: { purpose: string }) => icon.purpose === 'maskable')).toBe(true)
+		for (const icon of manifest.icons as { src: string; sizes: string }[]) {
+			const res = await fetchIcon(icon.src)
+			expect(res.status, icon.src).toBe(200)
+			const png = Buffer.from(await res.arrayBuffer())
+			expect(png.subarray(1, 4).toString('ascii'), icon.src).toBe('PNG')
+			// IHDR's width and height, which is what the platform actually picks the icon by
+			const declared = icon.sizes.split('x').map(Number)
+			expect([png.readUInt32BE(16), png.readUInt32BE(20)], icon.src).toEqual(declared)
+		}
+	})
+
+	it('packs the ico with the sizes the shell advertises', async () => {
+		const html = fs.readFileSync(path.join(Paths.DIST, 'index.html'), 'utf8')
+		const advertised = html
+			.match(/href="\/favicon\.ico" sizes="([^"]+)"/)![1]
+			.split(' ')
+			.map((size) => Number(size.split('x')[0]))
+
+		const ico = Buffer.from(await (await fetchIcon('/favicon.ico')).arrayBuffer())
+		expect(ico.readUInt16LE(2)).toBe(1)
+		const packed = Array.from({ length: ico.readUInt16LE(4) }, (_, i) => ico[6 + i * 16])
+		// a size the shell claims but the ico lacks leaves the browser upscaling another entry
+		expect(packed).toEqual(advertised)
+	})
+
+	it('revalidates rather than pinning a stale accent, and answers a matching etag with 304', async () => {
+		const first = await fetchIcon('/favicon.svg')
+		expect(first.headers.get('cache-control')).toBe('no-cache')
+		const etag = first.headers.get('etag')!
+		await first.arrayBuffer()
+
+		const res = await fetch(`${base}/favicon.svg`, { headers: { 'if-none-match': etag }, redirect: 'manual' })
+		expect(res.status).toBe(304)
+	})
+})
+
 // Regression: POST /logout used to deadlock. Sessions.logout awaited clearInvalidSession, which returns the
 // FastifyReply, and a reply is a thenable that only settles once the response is sent -- so the handler blocked
 // forever waiting for a send it was itself holding up. The request never got a response.

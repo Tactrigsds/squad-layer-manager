@@ -26,12 +26,12 @@ import * as Settings from '@/systems/settings.server'
 // stylesheet under /assets, an inline <style> is not gated by the auth hook, so it loads for the unauthenticated
 // visitors these pages exist for.
 
-type Link = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }
+type Link = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string; sizes?: string }
 type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: string }
 type Head = { htmlAttrs: Record<string, string>; metas: Meta[]; assetLinks: Link[] }
 
 // links we reuse from the SPA's <head>; modulepreload/script entries are SPA-only and dropped
-const SHARED_RELS = new Set(['preconnect', 'dns-prefetch', 'stylesheet', 'icon', 'apple-touch-icon'])
+const SHARED_RELS = new Set(['preconnect', 'dns-prefetch', 'stylesheet', 'icon', 'apple-touch-icon', 'manifest'])
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
@@ -171,6 +171,8 @@ function parseSharedLinks(html: string): Link[] {
 		if (attrs.as) link.as = attrs.as
 		if (attrs.type) link.type = attrs.type
 		if (attrs.media) link.media = attrs.media
+		// which .ico entry or PNG rendition to pick is the whole point of the icon links, so it has to survive
+		if (attrs.sizes) link.sizes = attrs.sizes
 		links.push(link)
 	}
 	return links

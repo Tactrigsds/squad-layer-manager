@@ -15,7 +15,7 @@ export default function LogoMark({ accent, className }: { accent: string | null;
 				<path
 					key={shape.role}
 					d={shape.d}
-					transform={shape.translate ? `translate(${shape.translate.x} ${shape.translate.y})` : undefined}
+					transform={Logo.transform(shape)}
 					className={shape.role === 'accent' ? undefined : FILL_CLASS[shape.role]}
 					fill={shape.role === 'accent' ? accent! : undefined}
 				/>
