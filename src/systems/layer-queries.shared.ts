@@ -82,6 +82,10 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 
 	const baseConditions: LE.Ir[] = []
 	const indicators: (LE.Ir | null)[] = new Array(constraints.length).fill(null)
+	// a layer is a repeat when it breaks *any* repeat rule, so the rules are one disjunction rather than a condition
+	// each. Negating them individually and anding the results happens to say the same thing, but applying them
+	// regularly does not: that would ask for a layer repeating every rule at once.
+	const repeatIrs: Record<'regular' | 'inverted', LE.Ir[]> = { regular: [], inverted: [] }
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
@@ -109,23 +113,30 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 				assertNever(constraint)
 		}
 
-		switch (constraint.filterApplState) {
-			case 'regular':
-				baseConditions.push(ir)
-				break
-			case 'inverted':
-				baseConditions.push(LE.not(ir))
-				break
-			case 'disabled':
-				break
-			default:
-				assertNever(constraint)
+		if (constraint.type === 'do-not-repeat') {
+			if (constraint.filterApplState !== 'disabled') repeatIrs[constraint.filterApplState].push(ir)
+		} else {
+			switch (constraint.filterApplState) {
+				case 'regular':
+					baseConditions.push(ir)
+					break
+				case 'inverted':
+					baseConditions.push(LE.not(ir))
+					break
+				case 'disabled':
+					break
+				default:
+					assertNever(constraint)
+			}
 		}
 
 		// a repeat rule's indicator is filled in per item during post-processing, because a violation carries which
 		// earlier match it repeats, which is not something a condition over the table can say
 		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') indicators[i] = ir
 	}
+
+	if (repeatIrs.regular.length > 0) baseConditions.push(LE.or(repeatIrs.regular))
+	if (repeatIrs.inverted.length > 0) baseConditions.push(LE.not(LE.or(repeatIrs.inverted)))
 
 	// menu items: a field's possible values are computed under the *other* fields' conditions, minus the siblings it
 	// excludes and minus its own (or it could only ever offer the value already chosen)
