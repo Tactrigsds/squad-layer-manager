@@ -208,10 +208,13 @@ export default function NavBar() {
 
 	return (
 		<nav
-			className="flex h-16 shrink-0 items-center justify-between border-b px-2 sm:px-4"
+			// between the sm breakpoint and the width where everything fits, the bar's two groups are wider than
+			// the viewport. Scrolling keeps the ones on the right (server picker, avatar menu) reachable; shrinking
+			// them used to hide them behind `overflow-hidden` with nothing to reveal them.
+			className="flex h-16 shrink-0 items-center justify-between gap-x-3 overflow-x-auto border-b px-2 sm:px-4"
 			style={settings?.topBarColor ? { borderBottom: `2px solid ${settings.topBarColor}` } : undefined}
 		>
-			<div className="flex items-center space-x-3 sm:space-x-6">
+			<div className="flex shrink-0 items-center space-x-3 sm:space-x-6">
 				<TSR.Link to="/about" aria-label={tr.text(APP_Msgs.about())} className="shrink-0">
 					<LogoMark accent={settings?.topBarColor ?? null} className="h-9 w-9" />
 				</TSR.Link>
@@ -260,7 +263,7 @@ export default function NavBar() {
 				)}
 			</div>
 			<ExploreLayersDialog open={exploreLayersOpen} onOpenChange={setExploreLayersOpen} />
-			<div className="flex h-max min-h-0 flex-row items-center space-x-1 sm:space-x-3 overflow-hidden">
+			<div className="flex h-max min-h-0 shrink-0 flex-row items-center space-x-1 sm:space-x-3">
 				{simulate && (
 					<div className="hidden sm:flex items-center space-x-1 shrink-0">
 						<span className="text-sm font-medium">{tr.text(APP_Msgs.simulating())}</span>{' '}
