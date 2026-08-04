@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import * as CB from '@/models/constraint-builders'
 import * as CS from '@/models/context-shared'
+import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns'
 import type * as LE from '@/models/layer-engine'
+import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import { buildQueryConstraints, getRepeatRuleMatchDescriptors, type QueryCtx } from '@/systems/layer-queries.shared'
 
@@ -249,5 +251,167 @@ describe('the match descriptors a Unit repeat rule produces', () => {
 	it('reports only the repeating team when one side keeps its unit', () => {
 		expect(fieldsFor(rule, UNITS_ONE_SIDE)).toEqual(['Unit_A'])
 		expect(fieldsFor(crossTeamRule, UNITS_ONE_SIDE)).toEqual(['Unit_A'])
+	})
+})
+
+// ---------------------------- the lookback window ----------------------------
+
+const HISTORY = [
+	'GD-RAAS-V1:USA-CA:RGF-CA',
+	'NV-RAAS-V1:USA-CA:RGF-CA',
+	'FL-RAAS-V1:USA-CA:RGF-CA',
+	'YH-RAAS-V1:USA-CA:RGF-CA',
+	'CH-RAAS-V1:USA-CA:RGF-CA',
+	'MT-RAAS-V1:USA-CA:RGF-CA',
+]
+const QUEUED = ['SM-RAAS-V1:USA-CA:RGF-CA', 'TL-RAAS-V1:USA-CA:RGF-CA']
+
+const historyItems = (layerIds: string[]): LQY.LayerItem[] =>
+	layerIds.map((layerId, i) => ({ type: 'match-history-entry', itemId: i + 1, layerId }) as LQY.LayerItem)
+const queueItems = (layerIds: string[]): LQY.LayerItem[] =>
+	layerIds.map((layerId, i) => ({ type: 'single-list-item', itemId: `q${i}`, layerId }) as LQY.LayerItem)
+const stateOf = (items: LQY.LayerItem[], firstLayerItemParity = 0): LQY.LayerItemsState => ({ layerItems: items, firstLayerItemParity })
+
+const mapRule: LQY.RepeatRule = { label: 'Map', field: 'Map', within: 4 }
+
+function cursorIndexOf(list: LQY.LayerItemsState, cursor: LL.Cursor) {
+	return LQY.resolveCursorIndex(list, LQY.fromLayerListCursor(list, cursor))!.outerIndex
+}
+
+function offsetsFor(rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, layerId: string) {
+	const descriptors = getRepeatRuleMatchDescriptors(list, cursorIndexOf(list, cursor), 'rule', rule, layerId) ?? []
+	return descriptors.map((d) => d.repeatOffset)
+}
+
+const mapsRepeating = (rule: LQY.RepeatRule, list: LQY.LayerItemsState, cursor: LL.Cursor, candidates: string[]) =>
+	candidates.filter((id) => offsetsFor(rule, list, cursor, id).length > 0).map((id) => L.toLayer(id).Map)
+
+describe('the window a repeat rule looks back over', () => {
+	const list = stateOf(historyItems(HISTORY))
+
+	it('covers exactly `within` items, ending at the item before the cursor', () => {
+		for (const within of [1, 2, 3, 4, 5, 6]) {
+			const offsets = HISTORY.flatMap((id) => offsetsFor({ ...mapRule, within }, list, { type: 'end' }, id)).sort((a, b) => a - b)
+			expect(offsets, `within ${within}`).toEqual(Array.from({ length: within }, (_, i) => i + 1))
+		}
+	})
+
+	it('excludes everything at a within of 0', () => {
+		expect(mapsRepeating({ ...mapRule, within: 0 }, list, { type: 'end' }, HISTORY)).toEqual([])
+	})
+
+	it('stops at a seeding match rather than counting past it', () => {
+		const withSeed = ['GD-RAAS-V1:USA-CA:RGF-CA', 'NV-RAAS-V1:USA-CA:RGF-CA', 'FL-SD-V1:USA-CA:RGF-CA', 'CH-RAAS-V1:USA-CA:RGF-CA']
+		const seedList = stateOf(historyItems(withSeed))
+		expect(mapsRepeating(mapRule, seedList, { type: 'end' }, withSeed)).toEqual(['Chora'])
+	})
+})
+
+describe('where the cursor sits in the queue', () => {
+	const list = stateOf([...historyItems(HISTORY), ...queueItems(QUEUED)])
+	const all = [...HISTORY, ...QUEUED]
+
+	it('counts the queued items when adding after them', () => {
+		expect(mapsRepeating(mapRule, list, { type: 'end' }, all)).toEqual(['Chora', 'Mutaha', 'Sumari', 'Tallil'])
+	})
+
+	it('counts only played matches when adding before them', () => {
+		expect(mapsRepeating(mapRule, list, { type: 'start' }, all)).toEqual(['Fallujah', 'Yehorivka', 'Chora', 'Mutaha'])
+	})
+
+	it('reports a queued repeat at the offset of its queue position', () => {
+		// Tallil sits last in the queue, one slot behind a layer added after it
+		expect(offsetsFor(mapRule, list, { type: 'end' }, 'TL-RAAS-V1:USA-CA:RGF-CA')).toEqual([1])
+	})
+})
+
+// The filter hides a row and the indicator marks it. They are computed separately -- one lowers to engine IR, the
+// other compares layers in JS -- so a divergence would show a violation the "Hide Repeats" toggle cannot hide.
+describe('the Hide Repeats filter and the violation indicator', () => {
+	function evalIr(ir: LE.Ir, layerId: string): boolean {
+		const layer = L.toLayer(layerId) as Record<string, string | undefined>
+		switch (ir.op) {
+			case 'true':
+				return true
+			case 'false':
+				return false
+			case 'and':
+				return ir.children.every((c) => evalIr(c, layerId))
+			case 'or':
+				return ir.children.some((c) => evalIr(c, layerId))
+			case 'not':
+				return !evalIr(ir.child, layerId)
+			case 'in_vals': {
+				const value = layer[COLUMNS[ir.col]]
+				if (!value) return false
+				const dbValue = LC.dbValue(COLUMNS[ir.col], value, ctx)
+				if (dbValue === null || LC.isUnmappedDbValue(dbValue)) return false
+				return ir.vals.includes(Number(dbValue))
+			}
+			default:
+				throw new Error(`unhandled ir op ${JSON.stringify(ir)}`)
+		}
+	}
+
+	function mulberry32(seed: number) {
+		return () => {
+			seed = (seed + 0x6d2b79f5) | 0
+			let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+			t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+			return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+		}
+	}
+
+	const LAYER_POOL = (() => {
+		const teams = ['USA-CA', 'RGF-CA', 'USA-MT', 'PLA-AR', 'ADF-MZ', 'TLF-AR', 'BAF-CA', 'CAF-CA']
+		const pool: string[] = []
+		for (const map of ['GD', 'NV', 'FL', 'YH', 'CH', 'MT', 'SM', 'TL', 'AB', 'KD']) {
+			for (const gamemode of ['RAAS', 'AAS', 'TC']) {
+				for (const version of ['V1', 'V2']) {
+					for (let i = 0; i < teams.length; i++) {
+						const id = `${map}-${gamemode}-${version}:${teams[i]}:${teams[(i + 1) % teams.length]}`
+						if (L.isKnownLayer(id)) pool.push(id)
+					}
+				}
+			}
+		}
+		return pool
+	})()
+
+	const FIELDS: LQY.RepeatRule['field'][] = ['Map', 'Layer', 'Gamemode', 'Size', 'Faction', 'Unit', 'Alliance', 'UnitMatchup']
+
+	it('agree across randomized histories, rules and candidates', () => {
+		expect(LAYER_POOL.length).toBeGreaterThan(50)
+		const rand = mulberry32(20260803)
+		const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)]
+		const mismatches: string[] = []
+
+		for (let trial = 0; trial < 2000; trial++) {
+			const items = [
+				...historyItems(Array.from({ length: 1 + Math.floor(rand() * 6) }, () => pick(LAYER_POOL))),
+				...queueItems(Array.from({ length: Math.floor(rand() * 4) }, () => pick(LAYER_POOL))),
+			]
+			const list = stateOf(items, Math.floor(rand() * 2))
+			const field = pick(FIELDS)
+			const rule: LQY.RepeatRule = {
+				label: field,
+				field,
+				within: 1 + Math.floor(rand() * 8),
+				...(rand() < 0.3 ? { crossTeam: true } : {}),
+			}
+			const where = whereFor(rule, list)
+			const cursorIndex = cursorIndexOf(list, { type: 'end' })
+
+			for (let c = 0; c < 3; c++) {
+				const candidate = pick(LAYER_POOL)
+				const hidden = evalIr(where, candidate)
+				const indicated = (getRepeatRuleMatchDescriptors(list, cursorIndex, 'rule', rule, candidate) ?? []).length > 0
+				if (hidden !== indicated && mismatches.length < 10) {
+					mismatches.push(JSON.stringify({ rule, candidate, hidden, indicated, items: items.map((i) => i.layerId) }))
+				}
+			}
+		}
+
+		expect(mismatches).toEqual([])
 	})
 })
