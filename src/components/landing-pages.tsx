@@ -225,4 +225,4 @@ export function LandingDocument({
 
 type HtmlAttrs = Record<string, string>
 type Meta = { charSet?: string; name?: string; content?: string; httpEquiv?: string }
-type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string }
+type AssetLink = { rel: string; href: string; crossOrigin?: 'anonymous'; as?: string; type?: string; media?: string; sizes?: string }
