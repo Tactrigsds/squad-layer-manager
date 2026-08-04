@@ -112,8 +112,10 @@ export function role(
 export function selectableFilter(
 	pool: SETTINGS.PoolConfiguration,
 	filterId: F.FilterEntityId,
-	opts?: { applyAs?: SETTINGS.SelectableFilterApplyAs },
+	opts?: { applyAs?: SETTINGS.SelectableFilterApplyAs; indicate?: 'matches' | 'misses' | 'both' },
 ) {
 	pool.defaultSelectable.push({ filterId, applyAs: opts?.applyAs ?? 'regular' })
-	pool.indicateMatches.push(filterId)
+	const indicate = opts?.indicate ?? 'matches'
+	if (indicate !== 'misses') pool.indicateMatches.push(filterId)
+	if (indicate !== 'matches') pool.indicateMisses.push(filterId)
 }
