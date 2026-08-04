@@ -9,6 +9,9 @@ import { expect, test } from './fixtures'
 // discarded, edited and saved, consumed by a map roll, refilled by a generated vote, and the vote
 // configured. Each test hands the next its starting state, so the order is the scenario.
 
+const MATCHES_POOL = '✅'
+const MISSES_POOL = '❌'
+
 let app: AppFixture
 
 test.beforeAll(async () => {
@@ -16,10 +19,15 @@ test.beforeAll(async () => {
 		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed, LAYERS.skorpoRaas),
 		filters: [
 			// the Collection pin keeps mod layers (which spell their gamemode unpredictably) out of generation
-			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS'), FB.eq('Collection', 'OWI')])),
+			filter('raas-only', 'RAAS Only', FB.and([FB.eq('Gamemode', 'RAAS'), FB.eq('Collection', 'OWI')]), {
+				emoji: MATCHES_POOL,
+				alertMessage: 'In the RAAS pool',
+				invertedEmoji: MISSES_POOL,
+				invertedAlertMessage: 'Not in the RAAS pool',
+			}),
 		],
 		serverSettings: (settings) => {
-			selectableFilter(settings.queue.mainPool, 'raas-only')
+			selectableFilter(settings.queue.mainPool, 'raas-only', { indicate: 'both' })
 			settings.queue.mainPool.repeatRules = []
 		},
 	})
@@ -152,6 +160,13 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		// ...and Map is a unique choice constraint by default, so no two choices share one
 		const maps = (await choices.allInnerTexts()).map((text) => /(\w+?)_RAAS_v\d/.exec(text)?.[1])
 		expect(new Set(maps).size).toBe(3)
+
+		// a generated choice is indicated against the same filters as any other layer: it came out of the pool,
+		// so it indicates as a match, not as a miss
+		const indicators = choices.getByRole('button', { name: 'Layer indicators' })
+		await expect(indicators).toHaveCount(3)
+		await expect(indicators.filter({ hasText: MATCHES_POOL })).toHaveCount(3)
+		await expect(indicators.filter({ hasText: MISSES_POOL })).toHaveCount(0)
 
 		await dialog.getByRole('button', { name: 'Submit' }).click()
 		await expect(dialog).toBeHidden()
