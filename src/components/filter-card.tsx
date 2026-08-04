@@ -29,6 +29,7 @@ import { tr } from '@/systems/messages.client'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
+import { enumGroupings, enumOptionGroups } from './enum-options.helpers.ts'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor.types'
 import { NodePortal, StoredParentNode } from './node-map.tsx'
@@ -1201,8 +1202,8 @@ function ApplyFilter(props: ApplyFilterProps) {
 // vehicle class codes are terse, so their options carry the readable name and an explanation; the code
 // stays the stored value and the compact display (chips, trigger)
 function enumOptionExtras(column: LC.EnumColumn, value: string): Partial<ComboBoxOption<string | null>> {
-	const collection = LC.collectionForEnumValue(column, value)
-	const grouped: Partial<ComboBoxOption<string | null>> = collection ? { group: collection } : {}
+	const groups = enumOptionGroups(column, value)
+	const grouped: Partial<ComboBoxOption<string | null>> = groups ? { groups } : {}
 	const kind = LC.vehicleColumnInfo(column)?.kind
 	if (kind === 'vehicles') {
 		const type = LC.vehicleTypeForVehicle(value)
@@ -1297,7 +1298,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			disabled={lockOnSingleOption && options.length === 1}
 			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
 			options={options}
-			groups={LC.collectionGroups()}
+			groupings={enumGroupings(props.column)}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
@@ -1335,7 +1336,7 @@ function StringInConfig(props: {
 			ref={props.ref}
 			values={props.values}
 			options={options}
-			groups={LC.collectionGroups()}
+			groupings={enumGroupings(props.column)}
 			onSelect={props.setValues}
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}

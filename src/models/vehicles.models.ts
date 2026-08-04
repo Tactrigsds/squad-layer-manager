@@ -50,6 +50,46 @@ export function vehicleIdsForTypes(typeIds: ReadonlySet<number>, components: Veh
 
 const WEAPON_TAGS = new Set(['ATGM', 'AGL', 'RWS', 'LOW_CALIBER'])
 
+// ---------------------------- locomotion ----------------------------
+// A tracked IFV and a wheeled one are different vehicles to a player, and the source records no such field.
+// The map icon is the signal: it is picked per vehicle, it names the running gear ("map_trackedifv" against
+// "map_ifv"), and it is what the player reads off the map anyway. Mod sources spell their own icons but keep
+// the tracked/wheeled tokens, so the rule below degrades to 'other' rather than guessing.
+
+export type Locomotion = 'tracked' | 'wheeled' | 'boat' | 'air' | 'other'
+
+// icons that name a role rather than a chassis. map_antiair is the tracked AA mount on every source that uses
+// it (MT-LB, BTR-ZD, BMP-1, T-55, Shilka); wheeled AA has its own truck/jeep icons.
+const TRACKED_ICONS = new Set(['map_tank', 'map_antiair'])
+const WHEELED_ICONS = new Set(['map_ifv', 'map_apc', 'T_map_apc_open_turret'])
+const WHEELED_ICON_TOKENS = /jeep|truck|car|motorcycle|moto|quad|bike|speeder/
+
+function locomotionOf(vehicle: SLL.Vehicle): Locomotion {
+	const icon = vehicle.icon.toLowerCase()
+	if (vehicle.spawnerSize === 'BOAT' || icon.includes('boat')) return 'boat'
+	if (vehicle.spawnerSize === 'HELICOPTER' || icon.includes('helo') || icon.includes('helicopter')) return 'air'
+	if (icon.includes('tracked') || TRACKED_ICONS.has(vehicle.icon)) return 'tracked'
+	if (icon.includes('wheeled') || WHEELED_ICONS.has(vehicle.icon) || WHEELED_ICON_TOKENS.test(icon)) return 'wheeled'
+	return 'other'
+}
+
+// classes worth splitting by running gear: the ones where the same role covers vehicles that play differently
+const LOCOMOTION_SPLIT_TYPES = new Set(['APC', 'IFV', 'LOGI'])
+
+const LOCOMOTION_SUFFIXES: Record<Locomotion, string> = {
+	tracked: 'TRACKED',
+	wheeled: 'WHEELED',
+	boat: 'BOAT',
+	air: 'AIR',
+	other: 'OTHER',
+}
+
+function refineVehType(vehType: string, locomotion: Locomotion): string {
+	if (LOCOMOTION_SPLIT_TYPES.has(vehType)) return `${vehType}_${LOCOMOTION_SUFFIXES[locomotion]}`
+	// boats are their own class wherever they land: the source files RHIBs under the runabout classes
+	return locomotion === 'boat' ? 'BOAT' : vehType
+}
+
 // records whose display name is wrong in the source data, keyed by rowName
 const ROW_NAME_OVERRIDES: Record<string, string> = {
 	// mislabeled "BRDM-2"; a Spandrel-blueprint tank destroyer. Kept apart from "BRDM-2 Spandrel" per review.
@@ -228,6 +268,7 @@ type VehicleRecord = {
 	name: string
 	normName: string
 	vehType: string
+	locomotion: Locomotion
 	weaponTags: string
 	models: Set<string>
 	// the chassis token of the first blueprint, original case; names the extra clusters of a split group
@@ -241,6 +282,7 @@ export type VehicleTableStats = {
 	canonical: number
 	splitGroups: { name: string; names: string[] }[]
 	typelessVehicles: string[]
+	mixedLocomotion: string[]
 }
 
 function stripModel(className: string, factionTokens: ReadonlySet<string>): string {
@@ -309,10 +351,11 @@ export function buildVehicleTables(factionUnits: Record<string, SLL.Unit>): Vehi
 							}),
 					)
 					.at(0) ?? ''
-			const key = [normName, vehType, weaponTags, Array.from(models).sort().join('|')].join('#')
+			const locomotion = locomotionOf(vehicle)
+			const key = [normName, vehType, locomotion, weaponTags, Array.from(models).sort().join('|')].join('#')
 			let record = records.get(key)
 			if (!record) {
-				records.set(key, (record = { key, name: overridden, normName, vehType, weaponTags, models, chassis, refs: 0 }))
+				records.set(key, (record = { key, name: overridden, normName, vehType, locomotion, weaponTags, models, chassis, refs: 0 }))
 			}
 			record.refs++
 			keys.push(key)
@@ -331,7 +374,14 @@ export function buildVehicleTables(factionUnits: Record<string, SLL.Unit>): Vehi
 	type Cluster = { records: VehicleRecord[]; name: string }
 	const clusterOf = new Map<string, Cluster>()
 	const allClusters: Cluster[] = []
-	const stats: VehicleTableStats = { records: records.size, nameGroups: groups.size, canonical: 0, splitGroups: [], typelessVehicles: [] }
+	const stats: VehicleTableStats = {
+		records: records.size,
+		nameGroups: groups.size,
+		canonical: 0,
+		splitGroups: [],
+		typelessVehicles: [],
+		mixedLocomotion: [],
+	}
 
 	for (const group of groups.values()) {
 		group.sort((a, b) => b.refs - a.refs || a.key.localeCompare(b.key))
@@ -401,14 +451,15 @@ export function buildVehicleTables(factionUnits: Record<string, SLL.Unit>): Vehi
 	const clusterIndex = new Map(allClusters.map((cluster, i) => [cluster, i]))
 	const vehicleTypeNames = allClusters.map((cluster) => {
 		// weighted majority among non-empty classes; guard conflicts within a merged cluster resolve here
-		const counts = new Map<string, number>()
-		for (const record of cluster.records) {
-			if (record.vehType === '') continue
-			counts.set(record.vehType, (counts.get(record.vehType) ?? 0) + record.refs)
+		const vehType = weightedMajority(cluster.records, (record) => record.vehType)
+		if (!vehType) stats.typelessVehicles.push(cluster.name)
+		// voted separately, so a cluster that merged copies carrying a stray icon still takes the running gear
+		// of its dominant records
+		const locomotion = weightedMajority(cluster.records, (record) => record.locomotion)!
+		if (new Set(cluster.records.map((record) => record.locomotion)).size > 1) {
+			stats.mixedLocomotion.push(`${cluster.name} -> ${locomotion}`)
 		}
-		const best = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
-		if (!best) stats.typelessVehicles.push(cluster.name)
-		return best?.[0] ?? 'UNKNOWN'
+		return refineVehType(vehType ?? 'UNKNOWN', locomotion)
 	})
 	const vehicleTypes = Array.from(new Set(vehicleTypeNames)).sort()
 	const vehicleTypeIds = vehicleTypeNames.map((name) => vehicleTypes.indexOf(name))
@@ -421,6 +472,16 @@ export function buildVehicleTables(factionUnits: Record<string, SLL.Unit>): Vehi
 
 	stats.canonical = vehicles.length
 	return { vehicles, vehicleTypes, vehicleTypeIds, unitRecords, unitRecordVehicles, stats }
+}
+
+function weightedMajority<T extends string>(records: VehicleRecord[], of: (record: VehicleRecord) => T): T | undefined {
+	const counts = new Map<T, number>()
+	for (const record of records) {
+		const value = of(record)
+		if (value === '') continue
+		counts.set(value, (counts.get(value) ?? 0) + record.refs)
+	}
+	return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
 }
 
 function refCount(records: VehicleRecord[]): number {

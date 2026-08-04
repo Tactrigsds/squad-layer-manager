@@ -93,7 +93,7 @@ function ServerChatEvents(props: {
 	)
 
 	return (
-		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative @container')}>
+		<div ref={find.scopeRef} className={cn(props.className, 'h-full relative flex flex-col @container')}>
 			<SubtreeFindBar stores={find.stores} className="absolute right-4 top-1" />
 			{!synced && selectedMatchOrdinal === null && (
 				<div
@@ -112,13 +112,13 @@ function ServerChatEvents(props: {
 				</div>
 			)}
 			{selectedMatchOrdinal !== null && displayMatch && (
-				<div className="text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
+				<div className="flex-shrink-0 text-muted-foreground text-xs py-2 bg-blue-500/10 flex flex-wrap justify-center gap-x-1">
 					<span>{tr.text(CHAT_Msgs.viewingHistoricalMatch())}</span>
 					<ShortLayerName layerId={displayMatch.layerId} teamParity={displayMatch.ordinal % 2} />
 					{displayMatch.startTime && <span>{dateFns.format(displayMatch.startTime, 'MMM d, yyyy HH:mm')}</span>}
 				</div>
 			)}
-			<ScrollArea ref={scrollAreaRef} className="h-full">
+			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
 				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
 					{noPlayersSelected && (

@@ -6,9 +6,15 @@ import React from 'react'
 // pointer events retargets panel clicks to <html>, which the dialog reads as a backdrop click and closes on. So
 // the combo boxes dismiss themselves: any pointerdown outside the popper content and the trigger closes them, and
 // Escape closes them without reaching anything else.
-export function useComboBoxDismissal(open: boolean, close: () => void) {
+// `consumeEscape` gets the key first and returns whether it used it, so a step nested inside the popover (a
+// grouping's drill-in) backs out on Escape instead of the whole thing closing under it. It cannot be done from
+// a handler inside the popover: this listener captures on the document and stops the event there, so nothing
+// below ever sees it.
+export function useComboBoxDismissal(open: boolean, close: () => void, consumeEscape?: () => boolean) {
 	const closeRef = React.useRef(close)
 	closeRef.current = close
+	const consumeRef = React.useRef(consumeEscape)
+	consumeRef.current = consumeEscape
 
 	React.useEffect(() => {
 		if (!open) return
@@ -20,6 +26,7 @@ export function useComboBoxDismissal(open: boolean, close: () => void) {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== 'Escape') return
 			event.stopPropagation()
+			if (consumeRef.current?.()) return
 			closeRef.current()
 		}
 		document.addEventListener('pointerdown', onPointerDown, { capture: true })
