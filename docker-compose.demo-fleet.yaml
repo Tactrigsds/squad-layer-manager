@@ -1,0 +1,48 @@
+# The demo fleet's control plane: one process that provisions, routes to and reaps SLM instances. Nothing here
+# is needed to run SLM; see dev_docs/demo_fleet.md.
+#
+# There is no reverse proxy in this file. The fleet routes by Host header itself, so whatever terminates TLS
+# needs one wildcard route to the port below and never learns that individual instances exist. Adding a proxy
+# here would only pick a fight with the one a host already runs.
+#
+# The control plane runs the same image as the app, with a different command. That is deliberate: a fleet cannot
+# then be provisioning a different build of SLM than the one it is itself built from.
+
+services:
+   demo-control:
+      image: ghcr.io/tactrigsds/squad-layer-manager:latest
+      command: ['pnpm', 'run', 'demo:control']
+      environment:
+         # instances are reached at <DEMO_HOST_PREFIX>g-<guildId>.<domain> and <DEMO_HOST_PREFIX>t-<slug>.<domain>
+         - DEMO_BASE_DOMAIN=${DEMO_BASE_DOMAIN}
+         # where a browser reaches the portal and the login broker. The scheme and port an instance url is built
+         # with are taken from this, so it has to be how the fleet is actually addressed from outside.
+         - DEMO_APEX_ORIGIN=${DEMO_APEX_ORIGIN:-https://${DEMO_BASE_DOMAIN}}
+         # set where instances have to share an existing wildcard certificate rather than getting one of their
+         # own, e.g. slm-demo- to put them at slm-demo-g-<guildId>.<domain>
+         - DEMO_HOST_PREFIX=${DEMO_HOST_PREFIX:-}
+         - DEMO_CONTROL_PORT=8080
+         - DEMO_DATA_DIR=/data
+         # the header the proxy in front is trusted to set to the real client address, for the per-address mint
+         # limit. Leave unset and the socket address is used, which behind any proxy is one shared bucket.
+         - DEMO_CLIENT_IP_HEADER=${DEMO_CLIENT_IP_HEADER:-}
+         # the fleet's own discord application. Leave all three unset to run the ephemeral portal alone.
+         - DEMO_DISCORD_CLIENT_ID=${DEMO_DISCORD_CLIENT_ID:-}
+         - DEMO_DISCORD_CLIENT_SECRET=${DEMO_DISCORD_CLIENT_SECRET:-}
+         - DEMO_DISCORD_BOT_TOKEN=${DEMO_DISCORD_BOT_TOKEN:-}
+         # gates /fleet. Unset means there is no fleet page.
+         - DEMO_FLEET_TOKEN=${DEMO_FLEET_TOKEN:-}
+      ports:
+         # loopback only: something in front terminates TLS and forwards here. A proxy sharing a docker network
+         # with this service can reach it without publishing anything, and should.
+         - 127.0.0.1:8080:8080
+      volumes:
+         # every instance's database, plus the registry and the broker keypair. A fleet of 98 is a few GB.
+         - demo_data:/data
+      # 98 instances at ~465MB RSS is ~39GB with the memory flags the spawner passes each child; the rest is
+      # headroom for the layer engine's wasm memory, which is external to the V8 heap.
+      mem_limit: 56g
+      restart: unless-stopped
+
+volumes:
+   demo_data:

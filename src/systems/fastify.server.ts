@@ -12,12 +12,14 @@ import type { WebSocket } from 'ws'
 
 import * as Paths from '$root/paths'
 import * as AR from '@/app-routes.ts'
+import * as DemoToken from '@/lib/demo-login-token'
 import { createId } from '@/lib/id.ts'
 import * as Prom from '@/lib/promise-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
+import * as DP from '@/models/discord-proxy.models'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
@@ -62,7 +64,12 @@ function sendHtmlPage(reply: FastifyReply, html: string, status: number) {
 	return reply.status(status).header('Cache-Control', 'no-store').header(STATIC_PAGE_HEADER, '1').type('text/html').send(html)
 }
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer, ...Env.groups.discord })
+const envBuilder = Env.getEnvBuilder({
+	...Env.groups.general,
+	...Env.groups.httpServer,
+	...Env.groups.discord,
+	...Env.groups.demo,
+})
 let ENV!: ReturnType<typeof envBuilder>
 const module = initModule('fastify')
 let log!: CS.Logger
@@ -139,10 +146,18 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 
 	await instance.register(fastifyCookie)
 
-	// QUERY_PARAM_AUTH_BYPASS is what turns discord auth off entirely: a username is the whole identity, taken
-	// either from `?login=` or from the form on '/'. There is no oauth app to talk to, so the flow isn't
-	// registered at all rather than left to fail against whatever credentials happen to be configured.
-	if (ENV.QUERY_PARAM_AUTH_BYPASS) {
+	// Exactly one login flow is ever registered, so an instance can never be reached through a second one nobody
+	// meant to leave open.
+	//
+	// DEMO_LOGIN_TOKEN_PUBKEY comes first because it is what a demo-fleet guild instance has instead of an oauth
+	// app of its own: discord caps an application at 10 redirect uris and a fleet has up to 90 hosts, so the
+	// whole fleet logs in through one broker at the apex. QUERY_PARAM_AUTH_BYPASS turns discord auth off
+	// entirely: a username is the whole identity, taken either from `?login=` or from the form on '/'. There is
+	// no oauth app to talk to in either case, so the flow isn't registered at all rather than left to fail
+	// against whatever credentials happen to be configured.
+	if (ENV.DEMO_LOGIN_TOKEN_PUBKEY) {
+		registerBrokerLogin(ENV.DEMO_LOGIN_TOKEN_PUBKEY)
+	} else if (ENV.QUERY_PARAM_AUTH_BYPASS) {
 		await registerNoAuthLogin()
 	} else {
 		await registerDiscordOauth()
@@ -159,6 +174,67 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			}
 			await Sessions.logInWithoutAuth(buildHttpRequestContext(req, reply), parsed.data.username)
 			return reply.redirect(AR.route('/'), 302)
+		})
+	}
+
+	// The instance's whole side of the fleet's login: bounce to the broker, and accept what it signs. It holds no
+	// client secret and no bot token, so a token it can verify with a public key is the entire trust relationship.
+	function registerBrokerLogin(publicKeyDer: string) {
+		const publicKey = DemoToken.importPublic(publicKeyDer)
+		const spentNonces = new DemoToken.NonceSet()
+		const homeGuildId = ENV.DISCORD_HOME_GUILD_ID.toString()
+		log.info('logging users in through the demo fleet broker at %s', ENV.DEMO_BROKER_URL)
+
+		instance.get(AR.route('/login'), async (_req, reply) => {
+			if (!ENV.DEMO_BROKER_URL) return reply.status(500).send('DEMO_LOGIN_TOKEN_PUBKEY is set without DEMO_BROKER_URL')
+			return reply.redirect(`${ENV.DEMO_BROKER_URL}/go/${homeGuildId}`, 302)
+		})
+
+		instance.get(AR.route('/login/token'), async (req, reply) => {
+			const token = (req.query as { t?: unknown }).t
+			if (typeof token !== 'string') return reply.status(400).send('Missing login token')
+
+			const verified = DemoToken.verify(publicKey, token)
+			if (verified.code !== 'ok') {
+				log.warn('rejected a broker login token: %s', verified.code)
+				return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
+			}
+			// the signature says the broker minted it; these three say it was minted for this instance, once
+			if (verified.payload.guildId !== homeGuildId) {
+				log.warn('rejected a broker login token minted for guild %s', verified.payload.guildId)
+				return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
+			}
+			if (!spentNonces.claim(verified.payload.nonce, verified.payload.exp)) {
+				log.warn('rejected a replayed broker login token')
+				return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
+			}
+
+			const discordId = BigInt(verified.payload.discordId)
+			const ctx = { ...getPatchedCtx(req), user: { discordId } }
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('site:authorized'))
+			if (denyRes) {
+				switch (denyRes.code) {
+					case 'err:permission-denied':
+						return sendHtmlPage(reply, Landing.forbiddenHtml(req.headers['accept-language']), 403)
+					default:
+						assertNever(denyRes.code)
+				}
+			}
+
+			await Sessions.logInUser(buildHttpRequestContext(req, reply), { username: verified.payload.username, id: discordId })
+			return reply.redirect(AR.route('/'), 302)
+		})
+	}
+
+	// Gateway events the control plane forwarded, because a proxy-mode instance has no gateway. Loopback-only in
+	// practice, but authenticated all the same: the secret is the same one this instance calls out with.
+	if (ENV.DISCORD_MODE === 'proxy') {
+		instance.post(AR.route(DP.EVENT_INGEST_PATH), async (req, reply) => {
+			if (req.headers[DP.SECRET_HEADER] !== ENV.DISCORD_PROXY_SECRET) return reply.status(401).send()
+			const parsed = DP.RbacEventSchema.safeParse(req.query)
+			if (!parsed.success) return reply.status(400).send()
+			Discord.ingestRbacEvent(parsed.data)
+			return reply.status(204).send()
 		})
 	}
 
@@ -267,12 +343,21 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		if (req.headers['if-none-match'] === etag) {
 			return res.code(304).send()
 		}
+		// streamed off disk rather than out of a retained Buffer: see the note on layer-data.server's exports
+		const gzip = !!LayerData.gzipPath && !!req.headers['accept-encoding']?.includes('gzip')
+		const filePath = gzip ? LayerData.gzipPath! : LayerData.path
+		const sent = await send(req.raw, encodeURI(path.basename(filePath)), {
+			root: path.dirname(filePath),
+			// the etag above is what the client caches on, and the gzip's mtime is whenever this instance happened
+			// to write it. send's own validators would only add a second, weaker answer to the same question.
+			etag: false,
+			lastModified: false,
+			cacheControl: false,
+		})
+		res.code(sent.statusCode).headers(sent.headers)
 		res.header('Content-Type', 'application/json')
-		if (req.headers['accept-encoding']?.includes('gzip')) {
-			res.header('Content-Encoding', 'gzip')
-			return res.send(LayerData.gzipped)
-		}
-		return res.send(LayerData.raw)
+		if (gzip) res.header('Content-Encoding', 'gzip')
+		return res.send(sent.stream)
 	})
 
 	instance.get(AR.route('/check-auth'), async (req, res) => {

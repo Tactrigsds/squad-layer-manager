@@ -2,7 +2,7 @@
 // Creates this repo's worktrees under WORKTREE_ROOT instead of `.claude/worktrees`, so a worktree is a plain
 // directory outside the repo rather than one sitting inside a path the repo itself excludes. Claude Code
 // reaches it through the WorktreeCreate/WorktreeRemove hooks in .claude/settings.json, humans through
-// `pnpm worktree`. See docs/dev_instances.md.
+// `pnpm worktree`. See dev_docs/dev_instances.md.
 //
 // Plain node with no dependencies on purpose: it runs as a hook from an arbitrary cwd, and it runs against a
 // worktree that has no node_modules yet.

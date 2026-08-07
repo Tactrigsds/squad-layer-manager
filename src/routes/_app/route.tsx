@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useMatch } from '@tanstack/react-router'
 import React from 'react'
 
+import DemoFleetRoleSetup from '@/components/demo-fleet-role-setup'
 import NavBar from '@/components/nav-bar'
 import { orUndef } from '@/lib/types'
 import * as ConfigClient from '@/systems/config.client'
@@ -27,6 +28,7 @@ function RouteComponent() {
 			<div className="flex flex-1 min-h-0 p-4 overflow-hidden">
 				<Outlet />
 			</div>
+			<DemoFleetRoleSetup />
 		</div>
 	)
 }

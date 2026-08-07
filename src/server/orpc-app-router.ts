@@ -1,6 +1,7 @@
 import * as Config from '@/server/config.server'
 import * as AppEvents from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
+import * as DemoFleet from '@/systems/demo-fleet.server'
 import * as Discord from '@/systems/discord.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
@@ -38,4 +39,5 @@ export const orpcAppRouter = {
 	timeouts: Timeouts.router,
 	sandbox: Sandbox.orpcRouter,
 	serverConsole: ServerConsole.orpcRouter,
+	demoFleet: DemoFleet.orpcRouter,
 }

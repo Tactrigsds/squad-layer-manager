@@ -18,10 +18,15 @@ If you find an issue with the app, it's recommended that you submit an issue fir
 
 ## Getting your bearings
 
-[docs/architecture.md](docs/architecture.md) describes the shape of the app and the patterns that recur
+[dev_docs/architecture.md](dev_docs/architecture.md) describes the shape of the app and the patterns that recur
 throughout it: the layering, the conventions it leans on (context composition, result codes, namespace imports,
 schema-first models), the server and client state machinery, and the layer engine. Worth a skim before your
 first change. [CLAUDE.md](CLAUDE.md) states the rules it gives the reasoning for.
+
+The rest of `dev_docs/` is the same audience: [dev_instances.md](dev_docs/dev_instances.md) for running several
+worktrees side by side, [brand.md](dev_docs/brand.md) for the mark and where it is rendered from, and
+[demo_fleet.md](dev_docs/demo_fleet.md) for the control plane that runs the public demo instances. `docs/` is the
+other half, and is written for somebody running SLM rather than changing it.
 
 ## Prerequisites
 
@@ -69,7 +74,7 @@ pnpm dev:emu    # the emulated squad server
 pnpm dev        # the app + client
 ```
 
-See [docs/dev_instances.md](docs/dev_instances.md).
+See [dev_docs/dev_instances.md](dev_docs/dev_instances.md).
 
 ## Tests
 
@@ -85,7 +90,7 @@ Both the integration and e2e suites spawn a real app instance (child process, ep
 an emulated squad server, so they need no external services, but they are slow relative to the unit tests.
 
 `test:e2e:firefox` needs firefox installed once (`pnpm exec playwright install firefox`), and `check:compat`
-needs a client build to read. See [Browser support](docs/architecture.md#browser-support) for what each covers
+needs a client build to read. See [Browser support](dev_docs/architecture.md#browser-support) for what each covers
 and where the supported-browser floor is set.
 
 ## The server agent

@@ -1,10 +1,12 @@
 import * as Schema from '$root/drizzle/schema.ts'
+import * as DF from '@/models/demo-fleet.models'
 import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SB from '@/models/sandbox.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as C from '@/server/context.ts'
+import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 
 // What a database with nothing in it starts life as. A fresh install boots straight into a working pool rather
@@ -16,6 +18,9 @@ import { initModule } from '@/server/logger'
 
 const module = initModule('seed')
 let log!: ReturnType<typeof module.getLogger>
+
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.demo })
+let ENV!: ReturnType<typeof envBuilder>
 
 // The filters ship without an administrator to own them, so they are owned by SLM itself. A discord snowflake
 // is far larger than this, so it can never collide with a real user.
@@ -177,8 +182,10 @@ const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons']
 // loadGlobalSettings). Anything here would otherwise have to be a schema prefault, which existing installs
 // missing the field would pick up on their next boot; this only ever reaches a database with no settings row.
 export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): SETTINGS.GlobalSettings {
+	const demoFleetRoles = ENV.DEMO_LOGIN_TOKEN_PUBKEY ? DF.initialRoles() : {}
 	return {
 		...defaults,
+		rbac: { ...defaults.rbac, roles: { ...defaults.rbac.roles, ...demoFleetRoles } },
 		adminActionReasons: SEEDED_ADMIN_ACTION_REASONS,
 		// the sandbox this same boot creates seeds its admin list with exactly these groups, so the teams panel and
 		// the stats breakdown have something to say about it before anyone configures anything
@@ -194,6 +201,7 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 // which is what an empty globalSettings table means (settings.server writes that row on the same boot).
 export async function setup(ctx: C.Db) {
 	log = module.getLogger()
+	ENV = envBuilder()
 	const configured = await ctx.db().select({ id: Schema.globalSettings.id }).from(Schema.globalSettings).limit(1)
 	if (configured.length > 0) return
 

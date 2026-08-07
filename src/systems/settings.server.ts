@@ -85,6 +85,62 @@ async function loadGlobalSettings(ctx: C.Db) {
 	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
 }
 
+// A patch merged over the current global settings, validated and diffed but not yet applied. Split from the commit
+// below because the two callers authorize differently: an ordinary settings edit is checked against the paths it
+// touches, and the demo fleet's one-time role pick against Manage Guild in the discord server it belongs to.
+function prepareGlobalSettingsPatch(patch: Record<string, unknown>) {
+	const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, ...patch })
+	if (!parseRes.success) {
+		return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
+	}
+	return { code: 'ok' as const, settings: parseRes.data, changes: diffSettings(GLOBAL_SETTINGS, parseRes.data) }
+}
+
+async function commitGlobalSettings(ctx: C.Db & USR.Ctx & CS.AbortSignal, settings: SETTINGS.GlobalSettings, changes: SettingChange[]) {
+	GLOBAL_SETTINGS = settings
+
+	// make sure the admin list is invalidated if any of the admin list-affecting fields are changed
+	outer: for (const field of ADMIN_LIST_AFFECTING_FIELDS) {
+		for (const change of changes) {
+			if (change.path.includes(field)) {
+				AdminList.invalidateAll(ctx)
+				break outer
+			}
+		}
+	}
+
+	await ctx
+		.db({ redactParams: true })
+		.update(Schema.globalSettings)
+		.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
+
+	Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
+	// admin-list field edits flush rbac via AdminList.changed$ once the list refetches; the rbac subtree
+	// (roles/assignments/grants) has no other signal, so flush here when it actually changed
+	if (changes.some((c) => c.path === 'rbac' || c.path.startsWith('rbac.'))) Rbac.invalidateAll()
+	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.SettingsUpdated>({
+			type: 'SETTINGS_UPDATED',
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+			changes: auditableSettingChanges(changes),
+		}),
+	)
+}
+
+// For a caller that has authorized the write itself. The only one is the demo fleet's first-login role pick,
+// whose picker holds Manage Guild rather than any SLM permission (see demo-fleet.server).
+export async function applyGlobalSettings(ctx: C.Db & USR.Ctx & CS.AbortSignal, patch: Record<string, unknown>) {
+	const prepared = prepareGlobalSettingsPatch(patch)
+	if (prepared.code !== 'ok') return prepared
+	await commitGlobalSettings(ctx, prepared.settings, prepared.changes)
+	return { code: 'ok' as const, changes: prepared.changes }
+}
+
 // what the audit log is allowed to remember about a settings change: everything except the values of the rcon/sftp
 // credentials. toRow redacts these again on the way to the table; doing it here as well keeps the in-flight event
 // (which gets logged and traced) clean too.
@@ -483,51 +539,15 @@ const globalRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.record(z.string(), z.unknown()))
 		.handler(async ({ context: ctx, input }) => {
-			const merged = { ...GLOBAL_SETTINGS, ...input }
-			const parseRes = SETTINGS.parseGlobalSettings(merged)
-			if (!parseRes.success) {
-				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
-			}
+			const prepared = prepareGlobalSettingsPatch(input)
+			if (prepared.code !== 'ok') return prepared
 
-			const changes = diffSettings(GLOBAL_SETTINGS, parseRes.data)
-
-			const changePaths = changes.map((c) => [c.path])
+			const changePaths = prepared.changes.map((c) => [c.path])
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeGlobalSettingsPaths(changePaths))
 			if (denyRes) return denyRes
-			GLOBAL_SETTINGS = parseRes.data
 
-			// make sure the admin list is invalidated if any of the admin list-affecting fields are changed
-			outer: for (const field of ADMIN_LIST_AFFECTING_FIELDS) {
-				for (const change of changes) {
-					if (change.path.includes(field)) {
-						AdminList.invalidateAll(ctx)
-						break outer
-					}
-				}
-			}
-
-			await ctx
-				.db({ redactParams: true })
-				.update(Schema.globalSettings)
-				.set(superjsonify(Schema.globalSettings, { settings: SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS) }))
-
-			Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
-			// admin-list field edits flush rbac via AdminList.changed$ once the list refetches; the rbac subtree
-			// (roles/assignments/grants) has no other signal, so flush here when it actually changed
-			if (changes.some((c) => c.path === 'rbac' || c.path.startsWith('rbac.'))) Rbac.invalidateAll()
-			settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
-			await AppEventsSys.persistAppEvent(
-				ctx,
-				AppEvents.create<AppEvents.SettingsUpdated>({
-					type: 'SETTINGS_UPDATED',
-					actor: { type: 'slm-user', userId: ctx.user.discordId },
-					serverId: null,
-					matchId: null,
-					causeId: null,
-					changes: auditableSettingChanges(changes),
-				}),
-			)
-			return { code: 'ok' as const, changes }
+			await commitGlobalSettings(ctx, prepared.settings, prepared.changes)
+			return { code: 'ok' as const, changes: prepared.changes }
 		}),
 
 	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold

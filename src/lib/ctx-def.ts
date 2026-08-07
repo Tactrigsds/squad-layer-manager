@@ -2,7 +2,7 @@
  * Contexts stay pure types. Alongside each one sits a `def`: a runtime value listing that context's
  * properties, from which merging, projection and collision checking are derived.
  *
- * See docs/architecture.md, "Context as duck-typed dependency injection".
+ * See dev_docs/architecture.md, "Context as duck-typed dependency injection".
  */
 // The brand lives here rather than in context-shared, so that this module is a leaf. Every context
 // module now holds defs, which are values, so a def module importing the brand's home and that home

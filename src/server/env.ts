@@ -71,6 +71,31 @@ export const groups = {
 					'runs the app as a throwaway demo: every other variable below gets a working default, the discord integration is off, anyone can sign in as any username from a form on the front page, and a fresh database is seeded with example data. Everything it holds is disposable, and it refuses to boot alongside anything that is not.',
 				envExample: { include: 'commented' },
 			}),
+
+		// The three below are what a demo-fleet instance is configured with, and nothing else sets them. They are
+		// independent of DEMO: a guild instance runs with DEMO off, because it has real identities and real rbac
+		// and only its squad server is emulated. See dev_docs/demo_fleet.md.
+		DEMO_WORLDS: z
+			.stringbool()
+			.optional()
+			.meta({
+				description:
+					'populates the emulated squad server with made-up players and a match in progress at boot. Defaults to whatever DEMO is.',
+				envExample: { include: 'omit' },
+			}),
+		DEMO_BROKER_URL: ZodUtils.NormedUrl.optional().meta({
+			description: 'the demo fleet login broker this instance sends `/login` to.',
+			envExample: { include: 'omit' },
+		}),
+		DEMO_LOGIN_TOKEN_PUBKEY: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				description:
+					'the base64 ed25519 public key of the broker above. Setting it is what replaces the discord oauth flow with the broker handoff, so it is also the switch that makes this instance part of a fleet.',
+				envExample: { include: 'omit' },
+			}),
 	},
 
 	general: {
@@ -329,6 +354,14 @@ export const groups = {
 	},
 
 	discord: {
+		DISCORD_MODE: z
+			.enum(['gateway', 'proxy', 'off'])
+			.default('gateway')
+			.meta({
+				description:
+					'where guild members, roles and emojis are read from. `gateway` is a bot token of your own, which is what an install wants. `off` is DISCORD_ENABLED=false. `proxy` is the demo fleet: the instance holds no credentials and asks a control plane for its one guild (see dev_docs/demo_fleet.md). Left unset it follows DISCORD_ENABLED.',
+				envExample: { include: 'omit', dev: { include: 'omit' } },
+			}),
 		DISCORD_ENABLED: z
 			.stringbool()
 			.default(true)
@@ -351,6 +384,21 @@ export const groups = {
 		DISCORD_HOME_GUILD_ID: ZodUtils.ParsedBigIntSchema.meta({
 			description: "the guild SLM resolves users and roles against, i.e. your org's discord server.",
 		}),
+
+		DISCORD_PROXY_URL: ZodUtils.NormedUrl.optional().meta({
+			description: 'DISCORD_MODE=proxy only: the control plane this instance reads its guild through.',
+			envExample: { include: 'omit' },
+		}),
+		DISCORD_PROXY_SECRET: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				secret: true,
+				description:
+					"DISCORD_MODE=proxy only: identifies this instance to the control plane, which is what scopes every answer to this instance's own guild.",
+				envExample: { include: 'omit' },
+			}),
 	},
 
 	httpServer: {
@@ -610,6 +658,7 @@ const DEMO_DEFAULTS: Record<string, string> = {
 	QUERY_PARAM_AUTH_BYPASS: 'true',
 	SETTINGS_ENCRYPTION_KEY: INSECURE_DEV_ENCRYPTION_KEY,
 	OTEL_ENABLED: 'false',
+	DISCORD_MODE: 'off',
 	DISCORD_ENABLED: 'false',
 	DISCORD_CLIENT_ID: 'demo',
 	DISCORD_CLIENT_SECRET: 'demo',
@@ -640,6 +689,12 @@ const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; r
 		keys: ['DISCORD_ENABLED'],
 		conflicts: (value) => groups.discord.DISCORD_ENABLED.safeParse(value).data === true,
 		reason: 'a demo runs with the discord integration off',
+	},
+	{
+		keys: ['DISCORD_MODE'],
+		conflicts: (value) => value !== 'off',
+		reason:
+			'a demo runs with the discord integration off. A demo-fleet guild instance reads its guild through a proxy, but it is not a DEMO: it runs with real identities and real permissions',
 	},
 	{
 		keys: ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN', 'DISCORD_HOME_GUILD_ID'],
@@ -686,6 +741,32 @@ function assertDemoIsUncontradicted() {
 	)
 }
 
+// DISCORD_MODE is the finer-grained form of DISCORD_ENABLED, added for the demo fleet's third mode. Neither is
+// derived from the other in only one direction: an existing install sets the boolean and has never heard of the
+// mode, and a fleet instance sets the mode and never sets the boolean. Set both to opposite things and it is a
+// contradiction rather than a precedence question.
+//
+// `proxy` also fills in the credentials it makes unnecessary, so an instance can hold none of them, and refuses a
+// bot token outright: an instance running discord.server's gateway driver against a fleet-wide token would make
+// the app leave every other guild it is installed in (see leaveForeignGuild).
+function resolveDiscordMode() {
+	const modeIsOff = rawEnv.DISCORD_MODE === 'off'
+	const enabledIsFalse = discordIsTurnedOff()
+	if (rawEnv.DISCORD_MODE !== undefined && rawEnv.DISCORD_ENABLED !== undefined && modeIsOff !== enabledIsFalse) {
+		throw new Error(`DISCORD_MODE=${rawEnv.DISCORD_MODE} and DISCORD_ENABLED=${rawEnv.DISCORD_ENABLED} contradict each other.`)
+	}
+	rawEnv.DISCORD_MODE ??= enabledIsFalse ? 'off' : 'gateway'
+	rawEnv.DISCORD_ENABLED ??= String(rawEnv.DISCORD_MODE !== 'off')
+
+	if (rawEnv.DISCORD_MODE !== 'proxy') return
+	if (rawEnv.DISCORD_BOT_TOKEN !== undefined) {
+		throw new Error('DISCORD_MODE=proxy holds no gateway session, so DISCORD_BOT_TOKEN must not be set.')
+	}
+	rawEnv.DISCORD_CLIENT_ID ??= 'proxy'
+	rawEnv.DISCORD_CLIENT_SECRET ??= 'proxy'
+	rawEnv.DISCORD_BOT_TOKEN = 'proxy'
+}
+
 // The default path is a convention rather than a requirement: a checkout and the test harness pass their
 // secrets in the environment and have no file. A path asked for explicitly does have to be there, since
 // booting without the secrets someone pointed us at is never what they meant.
@@ -727,6 +808,8 @@ export function ensureEnvSetup() {
 			rawEnv[key] ??= value
 		}
 	}
+
+	resolveDiscordMode()
 
 	// Battlemetrics has no switch of its own for an install to leave alone, so an install that never configured it
 	// says so by omission. Reaching for the api anyway is a 401 per player, against a third party, forever.

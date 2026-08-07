@@ -1,4 +1,4 @@
-// The SLM mark, as geometry. docs/brand.md is the spec; every rendition of the logo (the nav bar tile, the
+// The SLM mark, as geometry. dev_docs/brand.md is the spec; every rendition of the logo (the nav bar tile, the
 // landing lockup, the served favicons) draws these shapes so they cannot drift apart.
 
 export const VIEW_BOX = 100
@@ -11,7 +11,7 @@ const ACCENT_GAP = 7
 
 // "SLM" in Roboto Condensed 800, letter-spacing -0.01em, outlined at font-size 43 of the 100-unit tile. The
 // cap-box top sits at y=0 and the ink is centred on x=0, so the letters are positioned by translating alone.
-// Outlines rather than text because the favicon renders where the webfont does not load; docs/brand.md says
+// Outlines rather than text because the favicon renders where the webfont does not load; dev_docs/brand.md says
 // how to regenerate them.
 const LETTERS =
 	'M-22.31 22.49L-22.31 22.49Q-22.31 21.71-22.46 21.09Q-22.60 20.47-23.02 19.94Q-23.44 19.40-24.28 18.85Q-25.12 18.31-26.49 17.72L-26.49 17.72Q-28.17 17.03-29.75 16.20Q-31.34 15.37-32.60 14.27Q-33.86 13.16-34.61 11.66Q-35.37 10.16-35.37 8.15L-35.37 8.15Q-35.37 6.19-34.63 4.61Q-33.90 3.02-32.58 1.90Q-31.25 0.78-29.45 0.18Q-27.64-0.42-25.48-0.42L-25.48-0.42Q-22.56-0.42-20.38 0.77Q-18.19 1.95-16.98 4.08Q-15.76 6.21-15.76 9.05L-15.76 9.05L-22.39 9.05Q-22.39 7.81-22.73 6.88Q-23.06 5.94-23.77 5.41Q-24.47 4.87-25.61 4.87L-25.61 4.87Q-26.65 4.87-27.35 5.31Q-28.04 5.75-28.38 6.51Q-28.71 7.26-28.71 8.19L-28.71 8.19Q-28.71 8.92-28.37 9.49Q-28.02 10.06-27.42 10.54Q-26.82 11.02-25.99 11.46Q-25.16 11.90-24.20 12.30L-24.20 12.30Q-22.14 13.12-20.53 14.09Q-18.93 15.05-17.85 16.26Q-16.77 17.47-16.21 18.99Q-15.65 20.51-15.65 22.44L-15.65 22.44Q-15.65 24.42-16.32 26Q-17 27.59-18.25 28.70Q-19.50 29.81-21.28 30.40Q-23.06 30.99-25.27 30.99L-25.27 30.99Q-27.35 30.99-29.28 30.39Q-31.21 29.79-32.71 28.55Q-34.21 27.32-35.10 25.38Q-35.98 23.45-35.98 20.79L-35.98 20.79L-29.30 20.79Q-29.30 22.15-29.06 23.11Q-28.82 24.06-28.30 24.63Q-27.79 25.20-27.02 25.46Q-26.26 25.72-25.19 25.72L-25.19 25.72Q-24.09 25.72-23.46 25.28Q-22.83 24.84-22.57 24.11Q-22.31 23.39-22.31 22.49ZM-7.73 25.17L5.06 25.17L5.06 30.57L-7.73 30.57L-7.73 25.17ZM-12.20 0L-5.52 0L-5.52 30.57L-12.20 30.57L-12.20 0ZM19.62 30.57L10.82 0L16.43 0L21.97 21.04L27.49 0L32.76 0L24.30 30.57L19.62 30.57ZM7.95 30.57L7.95 0L13.55 0L14.50 21.73L14.50 30.57L7.95 30.57ZM29.43 21.73L30.37 0L35.98 0L35.98 30.57L29.43 30.57L29.43 21.73Z'

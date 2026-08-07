@@ -123,7 +123,7 @@ function toSlot(worktree: string, entry: RegistryEntry): Slot {
 
 // The one address for an instance: the vite dev server, which proxies everything else to the app, carrying the
 // query-param login so a browser opening it is signed in on arrival. There is deliberately no second url to
-// know about -- see docs/dev_instances.md.
+// know about -- see dev_docs/dev_instances.md.
 export function instanceUrl(slot: Slot, urlPath = '/'): string {
 	const url = new URL(urlPath, `http://localhost:${slot.ports.client}`)
 	if (slot.login) url.searchParams.set('login', slot.login)

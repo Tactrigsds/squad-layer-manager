@@ -95,7 +95,7 @@ export const noScores = def('No scores available')
 // -------- one team's details --------
 
 // A team named for a reader rather than for a slot. Which scheme applies is the caller's: 'A'/'B' are normalized
-// across the swap, 1/2 are the raw slot (see docs/architecture.md). The faction rides in parentheses where the
+// across the swap, 1/2 are the raw slot (see dev_docs/architecture.md). The faction rides in parentheses where the
 // layer is known, since a slot name alone does not say who the reader is looking at. `isCurrent` qualifies it as
 // the faction of the match in progress, which a surface spanning several matches has to say out loud.
 //

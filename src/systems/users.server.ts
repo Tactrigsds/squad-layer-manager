@@ -12,7 +12,6 @@ import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
-import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
@@ -28,12 +27,8 @@ const module = initModule('users')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
-const envBuilder = Env.getEnvBuilder({ ...Env.groups.discord })
-let ENV!: ReturnType<typeof envBuilder>
-
 export function setup() {
 	log = module.getLogger()
-	ENV = envBuilder()
 	// reuse this channel to push rbac perm changes to clients: 'user' scope targets the one session, 'all' broadcasts
 	Rbac.invalidation$.subscribe((e) => invalidateUsers$.next(e.scope === 'user' ? { discordId: e.discordId } : {}))
 }
@@ -226,9 +221,9 @@ export const orpcRouter = {
 				return { code: 'err:invalid-discord-id' as const, discordId: input.discordId }
 			}
 
-			const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, discordId)
+			const memberRes = await Discord.fetchMember(discordId)
 			if (memberRes.code !== 'ok') return { code: 'err:not-a-guild-member' as const, discordId: input.discordId }
-			const username = memberRes.member.user.username
+			const username = memberRes.member.username
 
 			const steam64Id = BigInt(steam.data)
 			const res = await DB.runTransaction(context, async (context) => {
@@ -416,7 +411,7 @@ function selectBestDisplayName(options: (string | null | undefined)[]): string {
 export type DbUser = Schema.User & { username: string }
 
 export async function buildUser(dbUser: DbUser): Promise<USR.User> {
-	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, dbUser.discordId)
+	const memberRes = await Discord.fetchMember(dbUser.discordId)
 	if (memberRes.code !== 'ok') {
 		// falling back to the db is what an install without discord does for every user it ever builds, which is
 		// a line at boot rather than one per lookup
@@ -433,15 +428,9 @@ export async function buildUser(dbUser: DbUser): Promise<USR.User> {
 	const member = memberRes.member
 	return {
 		...dbUser,
-		displayName: selectBestDisplayName([
-			dbUser.nickname,
-			member.displayName,
-			member.user.globalName,
-			member.user.username,
-			dbUser.username,
-		]),
-		avatarUrl: member.displayAvatarURL({ size: 128 }),
-		displayHexColor: member.displayHexColor ?? member.user.hexAccentColor,
+		displayName: selectBestDisplayName([dbUser.nickname, member.displayName, member.globalName, member.username, dbUser.username]),
+		avatarUrl: member.avatarUrl,
+		displayHexColor: member.displayHexColor,
 	}
 }
 

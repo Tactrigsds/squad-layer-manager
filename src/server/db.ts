@@ -149,7 +149,7 @@ async function acquireTxLock(): Promise<() => void> {
 
 // Only queries may be awaited inside a transaction: the lock above is process-wide, so a callback that waits on
 // anything else stalls every other write in the process for as long as it waits (and whatever it waited on is not
-// rolled back with the transaction anyway). See docs/architecture.md.
+// rolled back with the transaction anyway). See dev_docs/architecture.md.
 //
 // That property is detectable rather than merely conventional. better-sqlite3 is synchronous, so an awaited drizzle
 // query settles on a microtask, and the microtask queue always drains before the loop reaches the check phase --
@@ -191,7 +191,7 @@ function reportAsyncTx(callSite: Error): void {
 	const msg =
 		'transaction callback yielded to the event loop: only queries may be awaited inside runTransaction, ' +
 		'because the transaction lock is process-wide. Hoist the call above runTransaction if the write needs its ' +
-		'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/architecture.md.'
+		'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See dev_docs/architecture.md.'
 	switch (ENV.NODE_ENV) {
 		// a violation is a latency bug rather than a correctness one, and rolling a transaction back over it in prod
 		// would turn slow writes into failed ones
