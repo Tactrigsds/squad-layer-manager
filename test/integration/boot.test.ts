@@ -111,7 +111,7 @@ describe('app boot against emulator', () => {
 })
 
 // The engine is loaded at boot and held for the life of the process: a load costs 110-125MB of RSS while it runs,
-// against ~64MB to hold it flat. See "The layer engine" in docs/architecture.md.
+// against ~64MB to hold it flat. See "The layer engine" in dev_docs/architecture.md.
 describe('the server holds its layer engine for the life of the process', () => {
 	const LOADED = /Loaded the layer engine/
 

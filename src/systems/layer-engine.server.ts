@@ -46,7 +46,7 @@ export async function getEngine(): Promise<LayerEngine> {
 
 // Called once, from setup. A load holds the artifact more than once over on the way into wasm memory, costing
 // 110-125MB of RSS while it runs, so the engine is held rather than dropped and reloaded. See "The layer engine" in
-// docs/architecture.md.
+// dev_docs/architecture.md.
 async function load(): Promise<void> {
 	const fileBytes = await fs.promises.readFile(loadPath)
 

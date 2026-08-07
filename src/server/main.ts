@@ -12,6 +12,7 @@ import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
+import * as DemoFleet from '@/systems/demo-fleet.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
@@ -93,6 +94,7 @@ await Instr.spanOp('main', { module }, async () => {
 	CoreRcon.setup()
 	FetchAdminLists.setup()
 	Commands.setup()
+	DemoFleet.setup()
 	LayerQueries.setup()
 	LayerQueue.setup()
 	UserPresence.setup()
@@ -136,7 +138,7 @@ await Instr.spanOp('main', { module }, async () => {
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 
 	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
-	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()
+	if (DEMO_ENV.DEMO_WORLDS ?? DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()
 
 	// after adminlist + settings + discord: rbac observes the admin list (whose fetch reads settings) and the discord gateway
 	Rbac.wireInvalidationSources()

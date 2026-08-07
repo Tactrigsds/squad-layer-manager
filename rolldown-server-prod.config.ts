@@ -28,6 +28,10 @@ console.log('External modules (not bundled):', externalModules)
 export default defineConfig({
 	input: {
 		'main-instrumented': 'src/server/main-instrumented.ts',
+		// The demo fleet's control plane, which spawns instances of the bundle beside it. Built from the same
+		// image and the same command as the app, so a fleet can never be running a different build of SLM than
+		// the one it provisions. See dev_docs/demo_fleet.md.
+		'demo-control': 'src/demo-control/main.ts',
 		// Schema (.sql) + data (.ts) migration runner. Bundled so the statically-imported
 		// .ts migration registry ships in the slim prod image; .sql files are read at
 		// runtime from the copied drizzle-sqlite/ folder.

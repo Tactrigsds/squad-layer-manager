@@ -6,7 +6,7 @@ import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
 // message anyway because it is spelled out in five places and a rename should touch one.
 export const productName = def('Squad Layer Manager')
 
-// Part of the brand voice (docs/brand.md): always the full sentence, "and other things also" included.
+// Part of the brand voice (dev_docs/brand.md): always the full sentence, "and other things also" included.
 export const tagline = def('A tool to manage the upcoming layers of a squad server, and other things also.')
 
 // what was copied goes in the description, since the title is the same wherever the app copies something

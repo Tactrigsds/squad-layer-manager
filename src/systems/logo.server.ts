@@ -11,7 +11,7 @@ export type Kind = 'favicon.ico' | 'favicon.svg' | 'apple-touch-icon.png'
 
 export type Artifact = { body: Buffer | string; contentType: string; etag: string }
 
-/** The .ico carries both so browser chrome and the Windows shell each get an exact size; see docs/brand.md. */
+/** The .ico carries both so browser chrome and the Windows shell each get an exact size; see dev_docs/brand.md. */
 const ICO_SIZES = [32, 48]
 const APPLE_TOUCH_SIZE = 180
 

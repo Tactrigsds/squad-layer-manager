@@ -147,7 +147,7 @@ export const PathSegment = z
 //
 // Only reach for these where the parsed value is **retained**: cached events, settings, layer data. Validating a
 // request body that is then thrown away pays ~20% more parse time for nothing. See "Interning at parse boundaries"
-// in docs/architecture.md.
+// in dev_docs/architecture.md.
 //
 // `overwrite` rather than `transform` because it returns the same schema class: a transformed literal becomes a
 // ZodPipe, which `z.discriminatedUnion` can no longer read a discriminator out of.

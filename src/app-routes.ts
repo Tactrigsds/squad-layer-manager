@@ -40,6 +40,12 @@ export const routes = [
 	defRoute('/login/callback', [], 'custom', { authed: false }),
 	// the username form the no-auth login portal posts to; only registered when discord auth is off
 	defRoute('/login/no-auth', [], 'custom', { authed: false }),
+	// where a demo fleet's login broker hands a signed identity back; only registered when DEMO_LOGIN_TOKEN_PUBKEY
+	// names the key to check it with
+	defRoute('/login/token', [], 'custom', { authed: false }),
+	// gateway events a demo fleet's control plane forwards in, since a proxy-mode instance has no gateway of its
+	// own. Authed by the same per-instance secret this instance calls out with, not by a session.
+	defRoute('/_fleet/discord-event', [], 'custom', { authed: false }),
 	// authed:false so a signed-in but unauthorized user (shown the 403 page) can still log out to switch accounts
 	defRoute('/logout', [], 'custom', { authed: false }),
 	// the mark is rendered from the instance's topBarColor rather than served out of dist/, and is unauthed so it

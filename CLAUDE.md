@@ -15,7 +15,7 @@ src/lib/type-guards.ts, so adding a member raises a type error.
 Use namespace imports for all nontrivial modules, unless that module has an established convention against it. Each
 namespace must be consistent and unique across the app, except for special cases like the imports in context.ts and
 context-shared.ts. Use convenient abbreviations or acronyms for commonly used lib modules, model modules and
-packages. The lib vocabulary is in docs/architecture.md under "Namespace imports everywhere".
+packages. The lib vocabulary is in dev_docs/architecture.md under "Namespace imports everywhere".
 
 Never import rxjs, zustand or react-rxjs directly. Each is reached through its wrapper in `src/lib` (`Rx`, `Zus`,
 `ReactRx`), which re-exports the package alongside our own additions. Import other packages directly, since a
@@ -29,7 +29,7 @@ on, and why. Everything else is noise. Default to no comment.
 Before writing one, try to make it unnecessary. A precise name is almost always better than a comment explaining a
 vague one: `DOCS_SOURCE_REPO` needs no comment where `DOCS` needs three lines. Rationale that belongs to a
 particular piece of code stays with it, in a comment, however long it has to be. Only the high-level shape of the
-app belongs in docs/architecture.md.
+app belongs in dev_docs/architecture.md.
 
 Never write a comment that:
 
@@ -59,8 +59,9 @@ interchangeable side, which is roughly the opposite of what it denotes, and be a
 between A/B and 1/2 will read as driving the `displayTeamsNormalized` setting. Use "one side" and "the other side"
 when you need a side with no identity.
 
-docs/ and the README are user-facing. Keep implementation detail out of them, except in docs/architecture.md, which
-is for contributors.
+docs/ and the README are user-facing: what somebody running SLM for their community needs, and nothing else. Keep
+implementation detail out of them. dev_docs/ is the other half, for contributors and for whoever operates the
+project's own infrastructure. A doc that only makes sense with a checkout in front of you belongs there.
 
 # Editing
 
@@ -70,7 +71,7 @@ Once a goal or feature is complete, run `pnpm run lint:fix` and fix all lint err
 
 # Running the app in a worktree
 
-Full details in docs/dev_instances.md.
+Full details in dev_docs/dev_instances.md.
 
 From a worktree, do not run `pnpm server:dev` or `pnpm client:dev`, and do not use ports 3000/5173. Those belong to
 the main checkout, and an app you reach there is not running your changes. Each worktree runs its own instance
@@ -105,7 +106,7 @@ Pass commonly used state via the ctx object. It is always the first argument, or
 element of the observable's data tuple. A domain's contexts live in that domain's models file (`V.Ctx`, `MH.Ctx`,
 ...), with the runtime object it carries at `Ctx.Payload`. Check the domain's models file first, then
 context-shared.ts for the shared primitives, then server/context.ts for server infrastructure. Every context has a
-`CtxDef` beside it; see docs/architecture.md, "Context as duck-typed dependency injection".
+`CtxDef` beside it; see dev_docs/architecture.md, "Context as duck-typed dependency injection".
 
 A function's ctx parameter type should name the minimum context it needs.
 

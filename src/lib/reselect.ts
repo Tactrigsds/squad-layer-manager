@@ -2,7 +2,7 @@ import { createSelectorCreator, weakMapMemoize } from 'reselect'
 
 import * as Obj from '@/lib/object-utils'
 
-// Module-level memoized selectors for zustand stores (see "Sel and Actions" in docs/architecture.md).
+// Module-level memoized selectors for zustand stores (see "Sel and Actions" in dev_docs/architecture.md).
 //
 // Selectors built with these helpers return identity-stable results, so components can
 // subscribe with a bare `Zus.useStore(store, Sel.foo)` -- no useShallow/useDeep wrapper --

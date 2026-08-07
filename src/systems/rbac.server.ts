@@ -166,11 +166,16 @@ async function fetchIsSuperUser(userId: bigint): Promise<boolean> {
 	// nothing worth protecting, so everyone administers it
 	if (ENV.DEMO) return true
 	if (superUserIds.has(userId)) return true
-	if (superRoleIds.size === 0) return false
-	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
+	// A demo-fleet guild instance is nobody's deployment: it was provisioned by an install, and the bootstrap
+	// above was never set on it. Whoever administers the guild administers the instance, which is also what keeps
+	// the first-login role pick from locking its own picker out of the role they just chose.
+	const guildAdminsAreSuper = !!ENV.DEMO_LOGIN_TOKEN_PUBKEY
+	if (!guildAdminsAreSuper && superRoleIds.size === 0) return false
+	const memberRes = await Discord.fetchMember(userId)
 	if (memberRes.code !== 'ok') return false
+	if (guildAdminsAreSuper && memberRes.member.holdsManageGuild) return true
 	for (const roleId of superRoleIds) {
-		if (memberRes.member.roles.cache.has(roleId.toString())) return true
+		if (memberRes.member.roleIds.has(roleId.toString())) return true
 	}
 	return false
 }
@@ -321,7 +326,7 @@ async function resolveAdminListAssignments(ctx: C.Db & CS.AbortSignal, allIds: S
 
 async function resolveDiscordAssignments(ctx: CS.Ctx, userId: bigint) {
 	const roles: RBAC.Role[] = []
-	const memberRes = await Discord.fetchMember(ENV.DISCORD_HOME_GUILD_ID, userId)
+	const memberRes = await Discord.fetchMember(userId)
 	for (const assignment of roleAssignments) {
 		if (assignment.type === 'discord-user' && assignment.discordUserId === userId) {
 			RBAC.Role.push(roles, assignment.role)
@@ -332,11 +337,8 @@ async function resolveDiscordAssignments(ctx: CS.Ctx, userId: bigint) {
 			}
 		}
 		if (assignment.type === 'discord-role') {
-			if (memberRes.code === 'ok') {
-				const member = memberRes.member
-				if (member.roles.cache.has(assignment.discordRoleId.toString())) {
-					RBAC.Role.push(roles, assignment.role)
-				}
+			if (memberRes.code === 'ok' && memberRes.member.roleIds.has(assignment.discordRoleId.toString())) {
+				RBAC.Role.push(roles, assignment.role)
 			}
 		}
 	}

@@ -17,6 +17,7 @@ and this document disagree, the code wins. Individual modules document their own
 - [The layer engine (rust/wasm)](#the-layer-engine-rustwasm)
 - [Data and persistence](#data-and-persistence)
 - [Observability](#observability)
+- [The demo fleet](#the-demo-fleet)
 - [Testing](#testing)
 - [Browser support](#browser-support)
 
@@ -33,7 +34,7 @@ Two Rust components sit alongside the TypeScript:
   page over the wire.
 - **The server agent**, an optional binary installed next to a game server. It streams that server's logs to SLM and
   proxies its RCON, so SLM never holds the RCON password and never needs to reach the RCON port. It is not required
-  to run SLM. See [server_agent.md](server_agent.md).
+  to run SLM. See [server_agent.md](../docs/server_agent.md).
 
 The tree, in layering order:
 
@@ -558,7 +559,7 @@ The browser runs the engine for everything the UI does, so the server's copy exi
 autogen, the force-write pool check, backburner template probes and one route. The server loads it at boot and never
 drops it, because loading costs considerably more resident memory than holding it does.
 
-The data it reads is a versioned pair of artifacts. See [layer_data.md](layer_data.md).
+The data it reads is a versioned pair of artifacts. See [layer_data.md](../docs/layer_data.md).
 
 ## Data and persistence
 
@@ -608,6 +609,37 @@ One call produces a span, a structured log line and an op-duration histogram sam
 **`durableSub`** is its RxJS counterpart, and it **owns all error handling**: neither a failing source nor a
 torn-down task ever reaches the subscriber. These are always-on server pipelines subscribed with a bare
 `.subscribe()`, where RxJS's default of an uncaught error killing the subscription would take down the process.
+
+## The demo fleet
+
+`src/demo-control` is a **second program in this repo**, built from the same bundle. It is not an SLM instance: it
+spawns them, one child process per instance, and routes to them by Host header. Read
+[demo_fleet.md](demo_fleet.md) for what it is for; what matters here is where the seam runs.
+
+The two sides share exactly three files, and the direction of the dependency is the point. The control plane
+imports from `src/lib` and `src/models`, never from `src/systems`; the app imports nothing of the control plane's.
+
+| Shared file                      | What crosses                                               |
+| -------------------------------- | ---------------------------------------------------------- |
+| `lib/demo-login-token.ts`        | the broker signs, the instance verifies                    |
+| `models/discord-proxy.models.ts` | the guild-scoped Discord API's request and response shapes |
+| `models/demo-fleet.models.ts`    | the two rbac roles a fleet instance is seeded with         |
+
+Everything else the fleet needs from the app is an environment variable the spawner sets, so an instance is
+configured rather than modified. Three of those are the whole of it:
+
+- **`DISCORD_MODE`** picks one of `discord.server.ts`'s three drivers. `gateway` is a bot token of the install's
+  own (what a self-hosted SLM runs), `off` is no Discord at all, and `proxy` is the fleet: no credentials, one
+  HTTP call per lookup. Every export of that module is driver-neutral, which is why `fetchMember` returns a
+  `GuildMember` of ours rather than discord.js's.
+- **`DEMO_LOGIN_TOKEN_PUBKEY`** replaces the OAuth flow in `fastify.server.ts` with the broker handoff, and is
+  also the flag that means "this instance is somebody's guild rather than somebody's deployment" -- which is what
+  makes Manage Server in Discord the anti-lockout in place of `SUPER_USERS`.
+- **`DEMO_WORLDS`** is the emulated-players seeding, split out of `DEMO` so a fleet guild instance can have the
+  fake squad server without also having the no-auth login portal and the everyone-is-an-admin rbac.
+
+`DEMO` itself is unchanged and still means one self-contained throwaway. Anonymous fleet instances are exactly
+that; guild instances deliberately are not.
 
 ## Testing
 
