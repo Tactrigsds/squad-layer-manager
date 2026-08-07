@@ -1,6 +1,8 @@
 import * as Http from 'node:http'
 import type * as Net from 'node:net'
 
+import { assertNever } from '@/lib/type-guards'
+
 import * as ControlEnv from './env.ts'
 import * as GuildApi from './guild-api.ts'
 import * as HttpUtil from './http-util.ts'
@@ -73,8 +75,17 @@ async function onRequest(req: Http.IncomingMessage, res: Http.ServerResponse) {
 				return await Portal.handle(req, res, url)
 			case 'instance': {
 				const awake = await Proxy.ensureAwake(route.instance)
-				if (awake.code === 'err:broken') return HttpUtil.sendHtml(res, 503, Pages.broken())
-				return Proxy.forwardHttp(req, res, route.instance)
+				switch (awake.code) {
+					case 'ok':
+						return Proxy.forwardHttp(req, res, route.instance)
+					case 'err:start-failed':
+						return HttpUtil.sendHtml(res, 503, Pages.startFailed())
+					case 'err:broken':
+						return HttpUtil.sendHtml(res, 503, Pages.broken())
+					default:
+						assertNever(awake)
+				}
+				return
 			}
 			case 'unknown-host':
 			case 'no-such-instance':
@@ -95,12 +106,16 @@ function onUpgrade(req: Http.IncomingMessage, socket: Net.Socket, head: Buffer) 
 		return
 	}
 	void Proxy.ensureAwake(route.instance).then((awake) => {
-		if (awake.code === 'err:broken') return socket.destroy()
+		if (awake.code !== 'ok') return socket.destroy()
 		Proxy.forwardUpgrade(req, socket, head, route.instance)
 	})
 }
 
 export async function close() {
 	if (!server) return
-	await new Promise<void>((resolve) => server!.close(() => resolve()))
+	const closed = new Promise<void>((resolve) => server!.close(() => resolve()))
+	// close() alone waits for every open connection, and an open websocket is a browser tab someone parked: cut
+	// them, or a shutdown with any tab open never reaches the children
+	server.closeAllConnections()
+	await closed
 }

@@ -130,6 +130,10 @@ export type AppFixtureOptions = {
 	reserveAdmins?: string[]
 	// skip spawning; useful to test seeding in isolation
 	spawn?: boolean
+	// false leaves the globalSettings table empty, so the app's own fresh-install seeding runs (see seed.server
+	// applyInitialGlobalSettings). The test timings and the globalSettings hook are skipped with it, so only a
+	// test whose subject is that seeding wants this.
+	seedGlobalSettings?: boolean
 	// how the app reaches the emulated server. 'local' (default) tails the SquadGame.log directly and dials
 	// RCON directly; 'server-agent' runs the real rust server agent (server-agent/agent), which tails that
 	// same file and proxies RCON, streaming both to the app over the /server-agent websocket. Exercises the
@@ -354,23 +358,25 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	// command config they depend on (settings.server only inserts defaults when the row is absent)
 	// parseGlobalSettings, not the schema directly: command configs have no schema-level defaults (their strings
 	// depend on defaultPrefix), so they're seeded before the parse
-	const parsedSettings = SETTINGS.parseGlobalSettings({})
-	if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
-	const globalSettings = parsedSettings.data
-	applyTestTimings(globalSettings)
-	// admin lists are named and per-server (see migration 0092); the harness defines one and every test server uses it,
-	// set before the hook so a test can override
-	globalSettings.adminLists = {
-		[TEST_ADMIN_LIST]: { source: { type: 'local', source: adminsCfgPath }, adminIdentifyingPermissions: [ADMIN_PERM] },
+	if (opts.seedGlobalSettings !== false) {
+		const parsedSettings = SETTINGS.parseGlobalSettings({})
+		if (!parsedSettings.success) throw new Error(`default global settings do not parse: ${parsedSettings.error}`)
+		const globalSettings = parsedSettings.data
+		applyTestTimings(globalSettings)
+		// admin lists are named and per-server (see migration 0092); the harness defines one and every test server uses it,
+		// set before the hook so a test can override
+		globalSettings.adminLists = {
+			[TEST_ADMIN_LIST]: { source: { type: 'local', source: adminsCfgPath }, adminIdentifyingPermissions: [ADMIN_PERM] },
+		}
+		// A fresh install seeds a sandbox, which is a whole second squad server: its own in-process emulator, its own RCON
+		// connection and its own polling loops, all running for the life of every test app. Nothing here drives it, and the
+		// RCON traffic it adds is what the poll intervals above have to leave room for. A test that wants one turns it back on.
+		globalSettings.seedSandboxServer = false
+		opts.globalSettings?.(globalSettings)
+		await db
+			.insert(Schema.globalSettings)
+			.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }))
 	}
-	// A fresh install seeds a sandbox, which is a whole second squad server: its own in-process emulator, its own RCON
-	// connection and its own polling loops, all running for the life of every test app. Nothing here drives it, and the
-	// RCON traffic it adds is what the poll intervals above have to leave room for. A test that wants one turns it back on.
-	globalSettings.seedSandboxServer = false
-	opts.globalSettings?.(globalSettings)
-	await db
-		.insert(Schema.globalSettings)
-		.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }))
 
 	// -------- server --------
 	// the emulator writes its log to a file and the app tails it, the same `local` path a
