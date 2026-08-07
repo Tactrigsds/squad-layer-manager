@@ -4,7 +4,7 @@ import * as FB from '@/models/filter-builders'
 import type * as F from '@/models/filter.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SB from '@/models/sandbox.models'
-import type * as SETTINGS from '@/models/settings.models'
+import * as SETTINGS from '@/models/settings.models'
 import type * as C from '@/server/context.ts'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
@@ -183,7 +183,9 @@ const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons']
 // missing the field would pick up on their next boot; this only ever reaches a database with no settings row.
 export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): SETTINGS.GlobalSettings {
 	const demoFleetRoles = ENV.DEMO_LOGIN_TOKEN_PUBKEY ? DF.initialRoles() : {}
-	return {
+	// re-parsed rather than returned as merged: the seeded values are schema input (prefaulted fields absent), and
+	// everything downstream -- encode() on the way to the db first of all -- only takes the parsed shape
+	const res = SETTINGS.parseGlobalSettings({
 		...defaults,
 		rbac: { ...defaults.rbac, roles: { ...defaults.rbac.roles, ...demoFleetRoles } },
 		adminActionReasons: SEEDED_ADMIN_ACTION_REASONS,
@@ -194,7 +196,9 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 			{ label: 'SLM on GitHub', url: DOCS_BASE },
 			{ label: 'Installing SLM', url: `${DOCS_BASE}/blob/main/docs/installing.md` },
 		],
-	}
+	})
+	if (!res.success) throw new Error('Seeded initial global settings failed schema validation', { cause: res.error })
+	return res.data
 }
 
 // Runs before anything reads the filters table, and only against a database that has never been configured --

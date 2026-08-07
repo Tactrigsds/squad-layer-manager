@@ -206,6 +206,7 @@ export async function completeInstall(req: Http.IncomingMessage, res: Http.Serve
 	// awaited rather than backgrounded: the login token below is good for a minute, and handing it to a browser
 	// that then has to wait out a cold boot is how it expires in flight
 	const started = await Spawner.start(provisioned.instance)
+	if (started.code === 'err:start-failed') return HttpUtil.sendHtml(res, 503, Pages.startFailed())
 	if (started.code === 'err:broken') return HttpUtil.sendHtml(res, 503, Pages.broken())
 
 	log.info({ guildId, discordId: identity.discordId, guildName: token.guild.name }, 'installer landed on their new instance')

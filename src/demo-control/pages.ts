@@ -84,6 +84,16 @@ export function notFound(): string {
 	)
 }
 
+// a start that failed but has not hit the crash limit: distinct from broken(), whose "no longer retried" would
+// be wrong here
+export function startFailed(): string {
+	return page(
+		'This demo did not start',
+		`<h1>This demo did not start</h1><p>Something went wrong bringing it up. Reload to try again.</p>
+		<div class="actions"><a class="button" href="/">Back to the portal</a></div>`,
+	)
+}
+
 export function broken(): string {
 	return page(
 		'This demo stopped',

@@ -33,7 +33,12 @@ async function sessionCookie(app: AppFixture, user: TestUser): Promise<string> {
 }
 
 export async function createOrpcClient(app: AppFixture, user: TestUser = ADMIN_USER): Promise<TestOrpcClient> {
-	const cookie = await sessionCookie(app, user)
+	return await createOrpcClientWithCookie(app, await sessionCookie(app, user))
+}
+
+// For an app whose login is not the query-param bypass (e.g. a demo-fleet guild instance, where the session
+// comes from a broker token): the caller obtains the cookie however that app's login works.
+export async function createOrpcClientWithCookie(app: AppFixture, cookie: string): Promise<TestOrpcClient> {
 	const wsUrl = `${app.appUrl.replace(/^http/, 'ws')}${AR.route('/orpc')}`
 	// the browser sends the session cookie automatically; here it has to be set on the upgrade request
 	const websocket = new WebSocket(wsUrl, { headers: { cookie } })

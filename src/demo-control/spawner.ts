@@ -117,7 +117,9 @@ function buildEnv(instance: Registry.Instance, dir: string): NodeJS.ProcessEnv {
 	}
 }
 
-export type StartResult = { code: 'ok' } | { code: 'err:broken' }
+// err:start-failed is a start that did not take but will be retried on the next request; err:broken is one the
+// crash limit has retired.
+export type StartResult = { code: 'ok' } | { code: 'err:start-failed' } | { code: 'err:broken' }
 
 export function start(instance: Registry.Instance): Promise<StartResult> {
 	const inFlight = starting.get(instance.id)
@@ -177,7 +179,7 @@ async function doStart(instance: Registry.Instance): Promise<StartResult> {
 			const crashes = Registry.recordCrash(instance.id)
 			if (crashes >= CRASH_LIMIT) Registry.setState(instance.id, 'broken')
 		}
-		return { code: 'err:broken' }
+		return Registry.byId(instance.id)?.state === 'broken' ? { code: 'err:broken' } : { code: 'err:start-failed' }
 	}
 	Registry.setState(instance.id, 'running')
 	Registry.clearCrashes(instance.id)

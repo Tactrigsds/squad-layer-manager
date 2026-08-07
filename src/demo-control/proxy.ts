@@ -18,7 +18,7 @@ export function setup() {
 	log = Log.forModule('proxy')
 }
 
-export async function ensureAwake(instance: Registry.Instance): Promise<{ code: 'ok' } | { code: 'err:broken' }> {
+export async function ensureAwake(instance: Registry.Instance): Promise<Spawner.StartResult> {
 	if (Spawner.isRunning(instance.id) && instance.state === 'running') return { code: 'ok' }
 	if (instance.state === 'broken') return { code: 'err:broken' }
 	log.info({ instanceId: instance.id }, 'waking %s on request', Registry.host(instance))
