@@ -221,6 +221,8 @@ describe('the match descriptors a UnitMatchup repeat rule produces', () => {
 describe('the match descriptors a Faction repeat rule produces', () => {
 	const fieldsFor = (rule: LQY.RepeatRule, layerId: string) =>
 		(getRepeatRuleMatchDescriptors(list, 1, 'rule', rule, layerId) ?? []).map((d) => d.field)
+	const fieldPairsFor = (rule: LQY.RepeatRule, layerId: string) =>
+		(getRepeatRuleMatchDescriptors(list, 1, 'rule', rule, layerId) ?? []).map((d) => [d.field, d.sourceField])
 
 	const rule: LQY.RepeatRule = { label: 'Faction', field: 'Faction', within: 3 }
 	const crossTeamRule: LQY.RepeatRule = { ...rule, crossTeam: true }
@@ -233,15 +235,28 @@ describe('the match descriptors a Faction repeat rule produces', () => {
 		expect(fieldsFor(crossTeamRule, SIDES_SWAPPED)).toEqual(['Faction_A', 'Faction_B'])
 	})
 
+	it('points each crossTeam descriptor at the source team that actually played the faction', () => {
+		expect(fieldPairsFor(crossTeamRule, SIDES_SWAPPED)).toEqual([
+			['Faction_A', 'Faction_B'],
+			['Faction_B', 'Faction_A'],
+		])
+	})
+
 	it('reports one descriptor per team when both teams repeat their own faction', () => {
 		expect(fieldsFor(rule, SAME_SIDES)).toEqual(['Faction_A', 'Faction_B'])
 		expect(fieldsFor(crossTeamRule, SAME_SIDES)).toEqual(['Faction_A', 'Faction_B'])
+		expect(fieldPairsFor(crossTeamRule, SAME_SIDES)).toEqual([
+			['Faction_A', 'Faction_A'],
+			['Faction_B', 'Faction_B'],
+		])
 	})
 })
 
 describe('the match descriptors a Unit repeat rule produces', () => {
 	const fieldsFor = (rule: LQY.RepeatRule, layerId: string) =>
 		(getRepeatRuleMatchDescriptors(unitList, 1, 'rule', rule, layerId) ?? []).map((d) => d.field)
+	const fieldPairsFor = (rule: LQY.RepeatRule, layerId: string) =>
+		(getRepeatRuleMatchDescriptors(unitList, 1, 'rule', rule, layerId) ?? []).map((d) => [d.field, d.sourceField])
 
 	const rule: LQY.RepeatRule = { label: 'Unit', field: 'Unit', within: 3 }
 	const crossTeamRule: LQY.RepeatRule = { ...rule, crossTeam: true }
@@ -254,9 +269,34 @@ describe('the match descriptors a Unit repeat rule produces', () => {
 		expect(fieldsFor(crossTeamRule, PREVIOUS_UNITS)).toEqual(['Unit_A', 'Unit_B'])
 	})
 
+	it('points each crossTeam descriptor at the source team that actually ran the unit', () => {
+		expect(fieldPairsFor(crossTeamRule, PREVIOUS_UNITS)).toEqual([
+			['Unit_A', 'Unit_B'],
+			['Unit_B', 'Unit_A'],
+		])
+	})
+
 	it('reports only the repeating team when one side keeps its unit', () => {
 		expect(fieldsFor(rule, UNITS_ONE_SIDE)).toEqual(['Unit_A'])
 		expect(fieldsFor(crossTeamRule, UNITS_ONE_SIDE)).toEqual(['Unit_A'])
+		expect(fieldPairsFor(crossTeamRule, UNITS_ONE_SIDE)).toEqual([['Unit_A', 'Unit_A']])
+	})
+})
+
+describe('reading a repeat match descriptor from the source item', () => {
+	const rule: LQY.RepeatRule = { label: 'Faction', field: 'Faction', within: 3, crossTeam: true }
+
+	it('swaps both ends, so the source highlights the team that played the faction', () => {
+		const [descriptor] = getRepeatRuleMatchDescriptors(list, 1, 'rule', rule, SIDES_SWAPPED, 2)!
+		expect(LQY.repeatDescriptorFromSourcePerspective(descriptor as LQY.RepeatMatchDescriptor & { itemId: LQY.ItemId })).toEqual({
+			...descriptor,
+			field: 'Faction_B',
+			layerId: PREVIOUS,
+			itemId: 1,
+			sourceField: 'Faction_A',
+			sourceLayerId: SIDES_SWAPPED,
+			sourceItemId: 2,
+		})
 	})
 })
 
