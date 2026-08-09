@@ -587,30 +587,27 @@ function ScoreGrid({
 	return (
 		<div className="grid gap-2">
 			{zScoreTypes.length > 0 && (
-				<div className="flex justify-between items-center mb-2 text-xs">
-					<div className="text-blue-500 font-medium">
-						{tr.richText(
-							L_Msgs.teamScoreHeading(
-								tr.text(L_Msgs.team1()),
-								team1Role,
-								layerDetails?.layer.Faction_1 ?? '',
-								layerDetails?.layer.Unit_1 ?? '',
-							),
-						)}
-					</div>
-					<div className="text-red-500 font-medium">
-						{tr.richText(
-							L_Msgs.teamScoreHeading(
-								tr.text(L_Msgs.team2()),
-								team2Role,
-								layerDetails?.layer.Faction_2 ?? '',
-								layerDetails?.layer.Unit_2 ?? '',
-							),
-						)}
-					</div>
-				</div>
+				<ZScoreChart
+					scoreTypes={zScoreTypes}
+					scores={scores}
+					team1Heading={tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team1()),
+							team1Role,
+							layerDetails?.layer.Faction_1 ?? '',
+							layerDetails?.layer.Unit_1 ?? '',
+						),
+					)}
+					team2Heading={tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team2()),
+							team2Role,
+							layerDetails?.layer.Faction_2 ?? '',
+							layerDetails?.layer.Unit_2 ?? '',
+						),
+					)}
+				/>
 			)}
-			{zScoreTypes.length > 0 && <ZScoreChart scoreTypes={zScoreTypes} scores={scores} />}
 			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
 				<div className="mt-2 pt-2 border-t border-muted space-y-1">
 					{scores.diffs['Balance_Differential'] !== undefined && (
@@ -636,7 +633,11 @@ function ScoreGrid({
 // A z-score can reach ±3 but almost never does, so the axis is fitted to the layer instead of fixed there. It
 // is drawn at a constant number of pixels per unit, which keeps two layers' charts comparable by eye even
 // though their axes differ, and lets a tame layer take a fraction of the height.
-const Z_PIXELS_PER_UNIT = 30
+const Z_PIXELS_PER_UNIT = 40
+
+// A column is only as wide as the row of numbers under it needs, so the two stems stay close enough together to
+// compare. Stretching them across the container is what wastes the space.
+const Z_COLUMN_WIDTH = 116
 
 type ZAxis = ReturnType<typeof zAxis>
 
@@ -654,15 +655,39 @@ function zAxis(scoreTypes: string[], scores: LC.PartitionedScores) {
 }
 
 // Both teams' markers share one dimension's axis, so the pair can be compared by height rather than by sign.
-function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.PartitionedScores }) {
+function ZScoreChart({
+	scoreTypes,
+	scores,
+	team1Heading,
+	team2Heading,
+}: {
+	scoreTypes: string[]
+	scores: LC.PartitionedScores
+	team1Heading: React.ReactNode
+	team2Heading: React.ReactNode
+}) {
 	const axis = zAxis(scoreTypes, scores)
 	return (
-		// the labels take their two rows from this grid, so a name that wraps in one column moves every column's
-		// values down together rather than leaving a ragged edge
+		// heading, name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves
+		// every column's chart down together rather than leaving a ragged edge
 		<div
-			className="grid gap-x-3"
-			style={{ gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, 1fr))`, gridTemplateRows: 'auto auto auto' }}
+			className="grid justify-center gap-x-4"
+			style={{
+				gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, ${Z_COLUMN_WIDTH}px))`,
+				gridTemplateRows: 'auto auto auto auto',
+			}}
 		>
+			<div />
+			<div className="mb-2 flex justify-between text-xs font-medium" style={{ gridColumn: `2 / span ${scoreTypes.length}` }}>
+				<span className="text-blue-500">{team1Heading}</span>
+				<span className="text-red-500">{team2Heading}</span>
+			</div>
+			<div />
+			{scoreTypes.map((scoreType) => (
+				<div key={scoreType} className="mb-0.5 text-center text-xs font-medium leading-tight">
+					{scoreType.replace(/_/g, ' ')}
+				</div>
+			))}
 			<svg width="18" height={axis.height} className="overflow-visible">
 				{axis.markers.map((marker) => (
 					<text key={marker} x="18" y={axis.y(marker)} dy="0.32em" textAnchor="end" fontSize="10" className="fill-muted-foreground/50">
@@ -673,11 +698,10 @@ function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.
 			{scoreTypes.map((scoreType) => (
 				<ZScoreColumn key={scoreType} axis={axis} team1Score={scores.team1[scoreType]} team2Score={scores.team2[scoreType]} />
 			))}
-			<div className="row-span-2" />
+			<div />
 			{scoreTypes.map((scoreType) => (
-				<ZScoreLabel
+				<ZScoreValues
 					key={scoreType}
-					scoreType={scoreType}
 					team1Score={scores.team1[scoreType]}
 					team2Score={scores.team2[scoreType]}
 					diff={scores.diffs[scoreType]}
@@ -723,36 +747,20 @@ function ZScoreMarker({ axis, score, x, className }: { axis: ZAxis; score?: numb
 	)
 }
 
-function ZScoreLabel({
-	scoreType,
-	team1Score,
-	team2Score,
-	diff,
-}: {
-	scoreType: string
-	team1Score?: number
-	team2Score?: number
-	diff: number
-}) {
+function ZScoreValues({ team1Score, team2Score, diff }: { team1Score?: number; team2Score?: number; diff: number }) {
 	return (
-		<div className="row-span-2 grid grid-rows-subgrid mt-0.5 text-center leading-tight">
-			<div className="text-xs font-medium">
-				{scoreType.replace(/_/g, ' ')}{' '}
-				<span className="text-[10px] font-light">
-					{tr.richText(
-						L_Msgs.scoreDiff(
-							<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
-								{Math.abs(diff).toFixed(2)}
-							</span>,
-						),
-					)}
-				</span>
-			</div>
-			{/* the values sit under the stems they belong to, which also keeps them clear of the next column's */}
-			<div className="flex justify-around text-[10px]">
-				<span className="text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
-				<span className="text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
-			</div>
+		<div className="mt-0.5 flex items-baseline justify-between px-0.5 text-[10px] leading-tight">
+			<span className="text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
+			<span className="font-light">
+				{tr.richText(
+					L_Msgs.scoreDiff(
+						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+							{Math.abs(diff).toFixed(2)}
+						</span>,
+					),
+				)}
+			</span>
+			<span className="text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 		</div>
 	)
 }
