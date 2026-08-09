@@ -361,9 +361,9 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 // meaning left and right carry here: team 1 on the left, team 2 on the right.
 const PLOT_HEIGHT = 200
 
-// x offsets within a gauge svg, in px. The svg is sized by its container and has no viewBox, so user units are
-// css px and only the right edge is unknown.
-const GAUGE = { tickTextX: 32, tickLineX: 35, barX: 40, barWidth: 22, cutoffX1: 36, cutoffX2: 76, cutoffTextX: 80 }
+// x offsets within a gauge svg, in px. The svg has no viewBox, so user units are css px. Its width only has to
+// hold the widest cutoff label; anything past it overflows into the gap between gauges.
+const GAUGE = { width: 200, tickTextX: 28, tickLineX: 34, barX: 40, barWidth: 22, cutoffX1: 36, cutoffX2: 76, cutoffTextX: 80 }
 
 type ScoreRange = { min: number; max: number; field: string; poolCutoff?: number; logarithmic?: boolean }
 
@@ -381,7 +381,7 @@ function VerticalGauge({
 	children?: React.ReactNode
 }) {
 	return (
-		<svg width="100%" height={PLOT_HEIGHT} className="overflow-visible">
+		<svg width={GAUGE.width} height={PLOT_HEIGHT} className="overflow-visible">
 			<rect x={GAUGE.barX} y="0" width={GAUGE.barWidth} height={PLOT_HEIGHT} rx="4" fill="currentColor" className="text-muted" />
 			{ticks.map((tick) => {
 				const y = plotY(tick.fraction)
@@ -418,15 +418,19 @@ function VerticalGauge({
 	)
 }
 
+// The min height reserves the second line a caption takes when the gauges are narrow, so a caption that wraps
+// does not push its gauge out of line with the one beside it.
 function GaugeCaption({ title, value, logarithmic }: { title: string; value: number; logarithmic?: boolean }) {
 	return (
-		<figcaption className="text-center text-sm font-medium">
-			{title}{' '}
-			<span className="text-xs text-muted-foreground">
-				({value > 0 ? '+' : ''}
-				{value.toFixed(2)})
+		<figcaption className="flex min-h-10 items-end justify-center">
+			<span className="text-center text-sm font-medium">
+				{title}{' '}
+				<span className="text-xs text-muted-foreground">
+					({value > 0 ? '+' : ''}
+					{value.toFixed(2)})
+				</span>
+				{logarithmic && <span className="text-xs font-normal text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
 			</span>
-			{logarithmic && <span className="text-xs font-normal text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
 		</figcaption>
 	)
 }
@@ -472,7 +476,7 @@ function OtherScoreGauge({ scoreType, score, scoreRange }: { scoreType: string; 
 	const valueY = plotY(fraction(score))
 
 	return (
-		<figure className="space-y-1">
+		<figure className="flex flex-col items-center space-y-1">
 			<GaugeCaption title={scoreType.replace(/_/g, ' ')} value={score} logarithmic={scoreRange?.logarithmic} />
 			<VerticalGauge
 				ticks={tickValues.map((value) => ({ fraction: fraction(value), label: tickLabel(value) }))}
@@ -542,7 +546,7 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 		)
 
 	return (
-		<figure className="space-y-1">
+		<figure className="flex flex-col items-center space-y-1">
 			<GaugeCaption title={tr.text(L_Msgs.balanceDifferential())} value={diff} logarithmic />
 			<VerticalGauge
 				ticks={ticks}
