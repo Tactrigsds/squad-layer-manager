@@ -18,16 +18,19 @@ function mutations(sets: Partial<Record<ItemMut.MutType, string[]>>): ItemMut.Mu
 	return muts
 }
 
-type RepeatOpts = { field?: LQY.RepeatMatchDescriptor['field']; offset?: number; rule?: string }
+type RepeatOpts = { field?: LQY.RepeatMatchDescriptorField; offset?: number; rule?: string }
 
 function descriptor(sourceItemId: LQY.ItemId, opts?: RepeatOpts): LQY.RepeatMatchDescriptor {
+	const field = opts?.field ?? 'Map'
 	return {
 		type: 'repeat-rule',
 		constraintId: `layer-pool:main:${opts?.rule ?? 'Map'}`,
-		field: opts?.field ?? 'Map',
+		field,
 		layerId: 'L1',
 		repeatOffset: opts?.offset ?? 1,
 		sourceItemId,
+		sourceLayerId: 'L1',
+		sourceField: field,
 	}
 }
 
