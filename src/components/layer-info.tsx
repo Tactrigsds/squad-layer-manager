@@ -586,6 +586,24 @@ function ScoreGrid({
 
 	return (
 		<div className="grid gap-2">
+			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
+				<div className="mb-2 pb-2 border-b border-muted space-y-1">
+					{scores.diffs['Balance_Differential'] !== undefined && (
+						<BalanceDifferentialGauge
+							diff={scores.diffs['Balance_Differential']}
+							scoreRange={scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as ScoreRange | undefined}
+						/>
+					)}
+					{otherScores.map((scoreType) => (
+						<OtherScoreGauge
+							key={scoreType}
+							scoreType={scoreType}
+							score={scores.other[scoreType] || 0}
+							scoreRange={scoreRanges.regular.find((range) => range.field === scoreType) as ScoreRange | undefined}
+						/>
+					))}
+				</div>
+			)}
 			{zScoreTypes.length > 0 && (
 				<ZScoreChart
 					scoreTypes={zScoreTypes}
@@ -608,51 +626,22 @@ function ScoreGrid({
 					)}
 				/>
 			)}
-			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
-				<div className="mt-2 pt-2 border-t border-muted space-y-1">
-					{scores.diffs['Balance_Differential'] !== undefined && (
-						<BalanceDifferentialGauge
-							diff={scores.diffs['Balance_Differential']}
-							scoreRange={scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as ScoreRange | undefined}
-						/>
-					)}
-					{otherScores.map((scoreType) => (
-						<OtherScoreGauge
-							key={scoreType}
-							scoreType={scoreType}
-							score={scores.other[scoreType] || 0}
-							scoreRange={scoreRanges.regular.find((range) => range.field === scoreType) as ScoreRange | undefined}
-						/>
-					))}
-				</div>
-			)}
 		</div>
 	)
 }
 
-// A z-score can reach ±3 but almost never does, so the axis is fitted to the layer instead of fixed there. It
-// is drawn at a constant number of pixels per unit, which keeps two layers' charts comparable by eye even
-// though their axes differ, and lets a tame layer take a fraction of the height.
-const Z_PIXELS_PER_UNIT = 40
+// Z-scores cover 99.7% of the data within three standard deviations, so the axis is fixed and symmetric rather
+// than fitted to the layer: every layer's chart reads at the same scale.
+const Z_MIN = -3
+const Z_MAX = 3
+const Z_HEIGHT = 150
+const Z_MARKERS = [3, 2, 1, 0, -1, -2, -3]
 
 // A column is only as wide as the row of numbers under it needs, so the two stems stay close enough together to
 // compare. Stretching them across the container is what wastes the space.
 const Z_COLUMN_WIDTH = 116
 
-type ZAxis = ReturnType<typeof zAxis>
-
-function zAxis(scoreTypes: string[], scores: LC.PartitionedScores) {
-	const values = scoreTypes.flatMap((type) => [scores.team1[type], scores.team2[type]]).filter((v): v is number => v !== undefined)
-	// ±1 is the floor, so a layer whose scores all sit on top of zero is not blown up to fill the chart
-	const upper = Math.max(1, ...values.map(Math.ceil))
-	const lower = Math.min(-1, ...values.map(Math.floor))
-	const height = (upper - lower) * Z_PIXELS_PER_UNIT
-
-	const markers: number[] = []
-	for (let marker = upper; marker >= lower; marker--) markers.push(marker)
-
-	return { markers, height, y: (score: number) => ((upper - score) / (upper - lower)) * height }
-}
+const zY = (score: number) => ((Z_MAX - Math.max(Z_MIN, Math.min(Z_MAX, score))) / (Z_MAX - Z_MIN)) * Z_HEIGHT
 
 // Both teams' markers share one dimension's axis, so the pair can be compared by height rather than by sign.
 function ZScoreChart({
@@ -666,7 +655,6 @@ function ZScoreChart({
 	team1Heading: React.ReactNode
 	team2Heading: React.ReactNode
 }) {
-	const axis = zAxis(scoreTypes, scores)
 	return (
 		// heading, name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves
 		// every column's chart down together rather than leaving a ragged edge
@@ -688,15 +676,15 @@ function ZScoreChart({
 					{scoreType.replace(/_/g, ' ')}
 				</div>
 			))}
-			<svg width="18" height={axis.height} className="overflow-visible">
-				{axis.markers.map((marker) => (
-					<text key={marker} x="18" y={axis.y(marker)} dy="0.32em" textAnchor="end" fontSize="10" className="fill-muted-foreground/50">
+			<svg width="18" height={Z_HEIGHT} className="overflow-visible">
+				{Z_MARKERS.map((marker) => (
+					<text key={marker} x="18" y={zY(marker)} dy="0.32em" textAnchor="end" fontSize="10" className="fill-muted-foreground/50">
 						{marker}
 					</text>
 				))}
 			</svg>
 			{scoreTypes.map((scoreType) => (
-				<ZScoreColumn key={scoreType} axis={axis} team1Score={scores.team1[scoreType]} team2Score={scores.team2[scoreType]} />
+				<ZScoreColumn key={scoreType} team1Score={scores.team1[scoreType]} team2Score={scores.team2[scoreType]} />
 			))}
 			<div />
 			{scoreTypes.map((scoreType) => (
@@ -711,11 +699,11 @@ function ZScoreChart({
 	)
 }
 
-function ZScoreColumn({ axis, team1Score, team2Score }: { axis: ZAxis; team1Score?: number; team2Score?: number }) {
+function ZScoreColumn({ team1Score, team2Score }: { team1Score?: number; team2Score?: number }) {
 	return (
-		<svg width="100%" height={axis.height} className="overflow-visible">
-			{axis.markers.map((marker) => {
-				const y = axis.y(marker)
+		<svg width="100%" height={Z_HEIGHT} className="overflow-visible">
+			{Z_MARKERS.map((marker) => {
+				const y = zY(marker)
 				const isZero = marker === 0
 				return (
 					<line
@@ -730,18 +718,18 @@ function ZScoreColumn({ axis, team1Score, team2Score }: { axis: ZAxis; team1Scor
 					/>
 				)
 			})}
-			<ZScoreMarker axis={axis} score={team1Score} x="25%" className="text-blue-500" />
-			<ZScoreMarker axis={axis} score={team2Score} x="75%" className="text-red-500" />
+			<ZScoreMarker score={team1Score} x="25%" className="text-blue-500" />
+			<ZScoreMarker score={team2Score} x="75%" className="text-red-500" />
 		</svg>
 	)
 }
 
-function ZScoreMarker({ axis, score, x, className }: { axis: ZAxis; score?: number; x: string; className: string }) {
+function ZScoreMarker({ score, x, className }: { score?: number; x: string; className: string }) {
 	if (score === undefined) return null
-	const y = axis.y(score)
+	const y = zY(score)
 	return (
 		<g className={className}>
-			<line x1={x} y1={axis.y(0)} x2={x} y2={y} stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+			<line x1={x} y1={zY(0)} x2={x} y2={y} stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
 			<circle cx={x} cy={y} r="4" fill="currentColor" />
 		</g>
 	)
