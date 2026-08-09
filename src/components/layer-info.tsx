@@ -414,13 +414,13 @@ function HorizontalGauge({
 
 function GaugeCaption({ title, value, logarithmic }: { title: string; value: number; logarithmic?: boolean }) {
 	return (
-		<figcaption className="text-center text-sm font-medium">
+		<figcaption className="text-center text-xs font-medium">
 			{title}{' '}
-			<span className="text-xs text-muted-foreground">
+			<span className="text-[10px] font-light text-muted-foreground">
 				({value > 0 ? '+' : ''}
 				{value.toFixed(2)})
 			</span>
-			{logarithmic && <span className="text-xs font-normal text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
+			{logarithmic && <span className="text-[10px] font-light text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
 		</figcaption>
 	)
 }
