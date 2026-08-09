@@ -1,3 +1,4 @@
+import type { Attributes } from '@opentelemetry/api'
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
@@ -5,7 +6,13 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { logs, NodeSDK, tracing } from '@opentelemetry/sdk-node'
-import { ATTR_SERVICE_INSTANCE_ID, ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
+import {
+	ATTR_SERVICE_INSTANCE_ID,
+	ATTR_SERVICE_NAME,
+	ATTR_SERVICE_VERSION,
+	ATTR_URL_FULL,
+	ATTR_URL_QUERY,
+} from '@opentelemetry/semantic-conventions'
 import { ORPCInstrumentation } from '@orpc/otel'
 import { randomBytes } from 'crypto'
 
@@ -28,6 +35,18 @@ const PRODUCTION_TRACE_SAMPLE_RATIO = 0.25
 const traceSampleRatio = () => ENV.OTEL_TRACE_SAMPLE_RATIO ?? (ENV.NODE_ENV === 'production' ? PRODUCTION_TRACE_SAMPLE_RATIO : 1)
 
 export let sdk!: NodeSDK
+
+function redactKeyQueryParam(request: { origin: string; path: string }): Attributes {
+	let url: URL
+	try {
+		url = new URL(request.path, request.origin)
+	} catch {
+		return {}
+	}
+	if (!url.searchParams.has('key')) return {}
+	url.searchParams.set('key', 'REDACTED')
+	return { [ATTR_URL_FULL]: url.toString(), [ATTR_URL_QUERY]: url.search }
+}
 
 // a unique id for this SLM process (otel's service.instance.id). exported so app events can record which instance
 // emitted them, and so restart detection can correlate by instance rather than by timestamp.
@@ -76,6 +95,10 @@ export function setupOtel() {
 				// export every record twice; leaving its correlation on would re-add trace ids plus a
 				// trace_flags field that showLogEvent doesn't know about, so it prints on every line.
 				'@opentelemetry/instrumentation-pino': { disableLogSending: true, disableLogCorrelation: true },
+				// The steam web api authenticates with a `key` query param and nothing else, and this
+				// instrumentation records the url it was called with. Redacted here because the callsite cannot
+				// reach the span, and a credential must not be what a trace carries to a collector.
+				'@opentelemetry/instrumentation-undici': { startSpanHook: redactKeyQueryParam },
 			}),
 			new ORPCInstrumentation(),
 		],
