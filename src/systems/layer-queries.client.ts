@@ -336,7 +336,10 @@ export function useLayerItemStatusData(
 					hoveredConstraintItemId !== itemId &&
 					filterAndReportInvalidDescriptors(
 						queriedConstraints,
-						allMatchDescriptors.get(hoveredConstraintItemId)?.filter((vd) => vd.type === 'repeat-rule' && vd.sourceItemId === itemId),
+						allMatchDescriptors
+							.get(hoveredConstraintItemId)
+							?.filter((vd) => vd.type === 'repeat-rule' && vd.sourceItemId === itemId && vd.itemId !== undefined)
+							.map((vd) => LQY.repeatDescriptorFromSourcePerspective(vd as LQY.RepeatMatchDescriptor & { itemId: LQY.ItemId })),
 					)) ||
 				undefined
 
