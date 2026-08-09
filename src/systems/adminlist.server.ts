@@ -140,14 +140,6 @@ export function invalidateAll(ctx: CS.Ctx & CS.AbortSignal) {
 	for (const resource of resources.values()) resource.invalidate(ctx)
 }
 
-// Lists are global, so this refreshes whatever the given server happens to name, and another server naming the same
-// list gets the refresh too. A list nothing has fetched yet has no resource and so nothing to invalidate.
-export function invalidateForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string) {
-	for (const listId of listIdsForServer(serverId)) {
-		resources.get(listId)?.invalidate(ctx)
-	}
-}
-
 // One list. Returns null rather than throwing when the name is not configured: a server or role assignment naming a
 // deleted list is a configuration mistake to survive, not a reason to deny every permission check on that server.
 export async function getList(ctx: CS.Ctx & CS.AbortSignal, listId: SM.AdminListId, opts?: { ttl?: number }): Promise<SM.AdminList | null> {
