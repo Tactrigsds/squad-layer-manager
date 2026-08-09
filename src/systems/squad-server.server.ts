@@ -893,6 +893,11 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		)
 		.subscribe()
 
+	// The Squad server re-reads its Admins.cfg on every new game, so refetch at the same moment rather than waiting out
+	// the hourly TTL: from the roll onwards the file's current contents are what the server enforces in-game, and SLM
+	// answering permission checks from an older copy disagrees with it for up to an hour.
+	server.event$.pipe(Rx.filter(([, event]) => event.type === 'NEW_GAME')).subscribe(() => AdminList.invalidateAll(ctx))
+
 	// kick-timeout enforcement: fresh connects and full roster reseeds. PLAYER_RECONCILED (roster backfill of an
 	// already-present player) is deliberately excluded. RESET fires on every roll, doubling as a periodic sweep.
 	server.event$
