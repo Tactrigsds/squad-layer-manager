@@ -359,13 +359,9 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 
 // The paired z-scores plot both teams against one axis, so that axis has to be the vertical: left and right
 // already mean team 1 and team 2 there. The two gauges below carry a single value each and stay horizontal.
-const PLOT_HEIGHT = 140
-
 const GAUGE_HEIGHT = 46
 
 type ScoreRange = { min: number; max: number; field: string; poolCutoff?: number; logarithmic?: boolean }
-
-const plotY = (fraction: number) => Math.max(0, Math.min(1, fraction)) * PLOT_HEIGHT
 
 const plotX = (fraction: number) => `${Math.max(0, Math.min(1, fraction)) * 100}%`
 
@@ -637,36 +633,47 @@ function ScoreGrid({
 	)
 }
 
-// Z-scores cover 99.7% of the data within three standard deviations, so the axis is fixed rather than fitted.
-const Z_MARKERS = [3, 2, 1, 0, -1, -2, -3]
-const Z_MIN = -3
-const Z_MAX = 3
+// A z-score can reach ±3 but almost never does, so the axis is fitted to the layer instead of fixed there. It
+// is drawn at a constant number of pixels per unit, which keeps two layers' charts comparable by eye even
+// though their axes differ, and lets a tame layer take a fraction of the height.
+const Z_PIXELS_PER_UNIT = 30
 
-const zFraction = (score: number) => (Z_MAX - Math.max(Z_MIN, Math.min(Z_MAX, score))) / (Z_MAX - Z_MIN)
+type ZAxis = ReturnType<typeof zAxis>
+
+function zAxis(scoreTypes: string[], scores: LC.PartitionedScores) {
+	const values = scoreTypes.flatMap((type) => [scores.team1[type], scores.team2[type]]).filter((v): v is number => v !== undefined)
+	// ±1 is the floor, so a layer whose scores all sit on top of zero is not blown up to fill the chart
+	const upper = Math.max(1, ...values.map(Math.ceil))
+	const lower = Math.min(-1, ...values.map(Math.floor))
+	const height = (upper - lower) * Z_PIXELS_PER_UNIT
+
+	const markers: number[] = []
+	for (let marker = upper; marker >= lower; marker--) markers.push(marker)
+
+	return { markers, height, y: (score: number) => ((upper - score) / (upper - lower)) * height }
+}
 
 // Both teams' markers share one dimension's axis, so the pair can be compared by height rather than by sign.
 function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.PartitionedScores }) {
+	const axis = zAxis(scoreTypes, scores)
 	return (
-		<div className="grid gap-x-1" style={{ gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, 1fr))` }}>
-			<svg width="20" height={PLOT_HEIGHT} className="overflow-visible">
-				{Z_MARKERS.map((marker) => (
-					<text
-						key={marker}
-						x="20"
-						y={plotY(zFraction(marker))}
-						dy="0.32em"
-						textAnchor="end"
-						fontSize="10"
-						className="fill-muted-foreground/50"
-					>
+		// the labels take their two rows from this grid, so a name that wraps in one column moves every column's
+		// values down together rather than leaving a ragged edge
+		<div
+			className="grid gap-x-3"
+			style={{ gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, 1fr))`, gridTemplateRows: 'auto auto auto' }}
+		>
+			<svg width="18" height={axis.height} className="overflow-visible">
+				{axis.markers.map((marker) => (
+					<text key={marker} x="18" y={axis.y(marker)} dy="0.32em" textAnchor="end" fontSize="10" className="fill-muted-foreground/50">
 						{marker}
 					</text>
 				))}
 			</svg>
 			{scoreTypes.map((scoreType) => (
-				<ZScoreColumn key={scoreType} team1Score={scores.team1[scoreType]} team2Score={scores.team2[scoreType]} />
+				<ZScoreColumn key={scoreType} axis={axis} team1Score={scores.team1[scoreType]} team2Score={scores.team2[scoreType]} />
 			))}
-			<div />
+			<div className="row-span-2" />
 			{scoreTypes.map((scoreType) => (
 				<ZScoreLabel
 					key={scoreType}
@@ -680,11 +687,11 @@ function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.
 	)
 }
 
-function ZScoreColumn({ team1Score, team2Score }: { team1Score?: number; team2Score?: number }) {
+function ZScoreColumn({ axis, team1Score, team2Score }: { axis: ZAxis; team1Score?: number; team2Score?: number }) {
 	return (
-		<svg width="100%" height={PLOT_HEIGHT} className="overflow-visible">
-			{Z_MARKERS.map((marker) => {
-				const y = plotY(zFraction(marker))
+		<svg width="100%" height={axis.height} className="overflow-visible">
+			{axis.markers.map((marker) => {
+				const y = axis.y(marker)
 				const isZero = marker === 0
 				return (
 					<line
@@ -699,18 +706,18 @@ function ZScoreColumn({ team1Score, team2Score }: { team1Score?: number; team2Sc
 					/>
 				)
 			})}
-			<ZScoreMarker score={team1Score} x="25%" className="text-blue-500" />
-			<ZScoreMarker score={team2Score} x="75%" className="text-red-500" />
+			<ZScoreMarker axis={axis} score={team1Score} x="25%" className="text-blue-500" />
+			<ZScoreMarker axis={axis} score={team2Score} x="75%" className="text-red-500" />
 		</svg>
 	)
 }
 
-function ZScoreMarker({ score, x, className }: { score?: number; x: string; className: string }) {
+function ZScoreMarker({ axis, score, x, className }: { axis: ZAxis; score?: number; x: string; className: string }) {
 	if (score === undefined) return null
-	const y = plotY(zFraction(score))
+	const y = axis.y(score)
 	return (
 		<g className={className}>
-			<line x1={x} y1={plotY(zFraction(0))} x2={x} y2={y} stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+			<line x1={x} y1={axis.y(0)} x2={x} y2={y} stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
 			<circle cx={x} cy={y} r="4" fill="currentColor" />
 		</g>
 	)
@@ -728,20 +735,23 @@ function ZScoreLabel({
 	diff: number
 }) {
 	return (
-		<div className="mt-1 text-center leading-tight">
-			<div className="text-xs font-medium">{scoreType.replace(/_/g, ' ')}</div>
+		<div className="row-span-2 grid grid-rows-subgrid mt-0.5 text-center leading-tight">
+			<div className="text-xs font-medium">
+				{scoreType.replace(/_/g, ' ')}{' '}
+				<span className="text-[10px] font-light">
+					{tr.richText(
+						L_Msgs.scoreDiff(
+							<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+								{Math.abs(diff).toFixed(2)}
+							</span>,
+						),
+					)}
+				</span>
+			</div>
+			{/* the values sit under the stems they belong to, which also keeps them clear of the next column's */}
 			<div className="flex justify-around text-[10px]">
 				<span className="text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 				<span className="text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
-			</div>
-			<div className="text-[10px] font-light">
-				{tr.richText(
-					L_Msgs.scoreDiff(
-						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
-							{Math.abs(diff).toFixed(2)}
-						</span>,
-					),
-				)}
 			</div>
 		</div>
 	)
