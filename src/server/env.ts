@@ -60,6 +60,7 @@ const BigIntListSchema = z
 // named rather than inlined into BM_HOST because the DEMO conflict check asks whether that is where we point
 const BATTLEMETRICS_API = 'https://api.battlemetrics.com'
 const SQUADBROWSER_API = 'https://api.squadbrowser.app'
+const STEAM_API = 'https://api.steampowered.com'
 
 export const groups = {
 	demo: {
@@ -491,6 +492,33 @@ Leave it empty if you have no battlemetrics org: the integration turns itself of
 					"squad browser API key, which starts with `sqb_`. It resolves a server's name into the join link behind the dashboard's join button. Leave it empty if you have no key: the integration turns itself off (see SQUADBROWSER_ENABLED) and the button is hidden.",
 			}),
 	},
+
+	steam: {
+		// resolved from STEAM_API_KEY and STEAM_HOST when left unset, in ensureEnvSetup
+		STEAM_ENABLED: z
+			.stringbool()
+			.default(false)
+			.meta({
+				description:
+					'disables the steam integration entirely. It backs up the squad browser behind the dashboard join button, building a link out of the steam lobby a player in game reports. Defaults to off when there is no STEAM_API_KEY and STEAM_HOST is the real api, since there is nothing to authenticate with.',
+				envExample: { include: 'commented', dev: { include: 'commented' } },
+			}),
+
+		STEAM_HOST: z.url().prefault(STEAM_API).meta({
+			description: 'the steam web api.',
+		}),
+
+		STEAM_API_KEY: z
+			.string()
+			.min(1)
+			.optional()
+			.meta({
+				secret: true,
+				envExample: { include: 'set' },
+				description:
+					'steam web api key, from https://steamcommunity.com/dev/apikey. It reads the lobby of a player in game, which is the half of a join link the squad browser is otherwise asked for. Leave it empty if you have no key: the integration turns itself off (see STEAM_ENABLED).',
+			}),
+	},
 } satisfies { [key: string]: Record<string, z.ZodType> }
 
 // section headers in the example env files. A group whose vars are all omitted never shows up.
@@ -525,6 +553,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	},
 	battlemetrics: { title: 'Battlemetrics' },
 	squadbrowser: { title: 'Squad Browser' },
+	steam: { title: 'Steam' },
 }
 
 export function isSecret(schema: z.ZodType): boolean {
@@ -629,6 +658,7 @@ const DEMO_DEFAULTS: Record<string, string> = {
 const discordIsTurnedOff = () => groups.discord.DISCORD_ENABLED.safeParse(rawEnv.DISCORD_ENABLED).data === false
 const battlemetricsIsAStub = () => (rawEnv.BM_HOST ?? BATTLEMETRICS_API) !== BATTLEMETRICS_API
 const squadbrowserIsAStub = () => (rawEnv.SQUADBROWSER_HOST ?? SQUADBROWSER_API) !== SQUADBROWSER_API
+const steamIsAStub = () => (rawEnv.STEAM_HOST ?? STEAM_API) !== STEAM_API
 
 const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; reason: string }[] = [
 	{
@@ -668,6 +698,17 @@ const DEMO_CONFLICTS: { keys: string[]; conflicts: (value: string) => boolean; r
 		keys: ['SQUADBROWSER_ENABLED'],
 		conflicts: (value) => groups.squadbrowser.SQUADBROWSER_ENABLED.safeParse(value).data === true && !squadbrowserIsAStub(),
 		reason: 'a demo has no real server to hand anyone a join link for. A SQUADBROWSER_HOST pointed at a stub is accepted',
+	},
+	{
+		keys: ['STEAM_API_KEY'],
+		conflicts: () => !steamIsAStub(),
+		reason:
+			"a demo's players are made up, so the key would be spent asking steam about accounts that were never on a server. A STEAM_HOST pointed at a stub is accepted",
+	},
+	{
+		keys: ['STEAM_ENABLED'],
+		conflicts: (value) => groups.steam.STEAM_ENABLED.safeParse(value).data === true && !steamIsAStub(),
+		reason: 'a demo has no real server to hand anyone a join link for. A STEAM_HOST pointed at a stub is accepted',
 	},
 ]
 
@@ -733,6 +774,8 @@ export function ensureEnvSetup() {
 	rawEnv.BM_ENABLED ??= String(rawEnv.BM_PAT !== undefined || battlemetricsIsAStub())
 	// same bargain for the squad browser: without a key every join-link lookup is a 401 against a third party
 	rawEnv.SQUADBROWSER_ENABLED ??= String(rawEnv.SQUADBROWSER_API_KEY !== undefined || squadbrowserIsAStub())
+	// and for steam, where the request carries the key in the query string
+	rawEnv.STEAM_ENABLED ??= String(rawEnv.STEAM_API_KEY !== undefined || steamIsAStub())
 
 	const toValidate = buildForValidation()
 	// both of these are what DEMO deliberately does, so they only guard a real deployment

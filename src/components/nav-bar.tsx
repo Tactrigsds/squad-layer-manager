@@ -354,13 +354,17 @@ export default function NavBar() {
 	)
 }
 
-// A button rather than a link: the url is fetched on the click (the api rate-limits the lookup per server), so
-// there is nothing to put in an href beforehand. Shown whenever the integration is configured, since finding out
-// that a server is unlisted costs the same request the click would spend.
+// A button rather than a link: the url is fetched on the click (the lookups are rate-limited per server), so
+// there is nothing to put in an href beforehand. Shown whenever an integration is configured, since finding out
+// that a server cannot be resolved costs the same request the click would spend.
 function JoinServerButton(props: { serverId: string }) {
-	const squadBrowserEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.squadBrowserEnabled)
+	const joinLinkEnabled = Zus.useStore(ConfigClient.Store, ConfigClient.Sel.joinLinkEnabled)
+	const isSandbox = Zus.useStore(
+		SettingsClient.PublicSettingsStore,
+		(s) => !!s?.servers.find((server) => server.id === props.serverId)?.sandbox,
+	)
 	const joinServer = SquadServerClient.useJoinServer()
-	if (!squadBrowserEnabled) return null
+	if (!joinLinkEnabled || isSandbox) return null
 
 	const label = tr.text(SS_Msgs.joinServer())
 	return (

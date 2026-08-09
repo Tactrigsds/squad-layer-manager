@@ -69,6 +69,7 @@ import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
+import * as Steam from '@/systems/steam.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
@@ -373,10 +374,19 @@ export const orpcRouter = {
 		const ctxRes = await tryCtx(_ctx, input.serverId)
 		if (ctxRes.code !== 'ok') return ctxRes
 		const ctx = ctxRes.ctx
+		// nothing to join: a sandbox is emulated in-process, and its players are made up
+		if (Sandbox.getInstance(ctx.serverId)) return { code: 'err:disabled' as const }
 		const serverInfoRes = await ctx.squadRcon.serverInfo.get(ctx)
 		if (serverInfoRes.code !== 'ok') return serverInfoRes
 		const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-		return await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name, currentMatch.historyEntryId)
+		const browserRes = await SquadBrowser.getJoinLink(ctx, serverInfoRes.data.name, currentMatch.historyEntryId)
+		if (browserRes.code === 'ok') return browserRes
+
+		const steamRes = await getSteamJoinLink(ctx)
+		// wherever the browser was actually asked, its refusal names a condition an admin can act on ("not
+		// listed", "try again in a minute") where steam's only says nobody happens to be sharing a lobby
+		if (steamRes.code !== 'ok' && browserRes.code !== 'err:disabled') return browserRes
+		return steamRes
 	}),
 
 	warnPlayers: orpcBase
@@ -621,6 +631,16 @@ export const orpcRouter = {
 			await renameSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId })
 			return { code: 'ok' as const }
 		}),
+}
+
+async function getSteamJoinLink(ctx: SR.Ctx & CS.AbortSignal): Promise<Steam.JoinLinkRes> {
+	if (!Steam.isEnabled()) return { code: 'err:disabled' }
+	const teamsRes = await ctx.squadRcon.teams.get(ctx)
+	if (teamsRes.code !== 'ok') return { code: 'err:request-failed', msg: 'Could not read the player list' }
+	return await Steam.getJoinLink(
+		ctx,
+		teamsRes.players.flatMap((player) => (player.ids.steam ? [player.ids.steam] : [])),
+	)
 }
 
 export async function setup() {

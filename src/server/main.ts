@@ -36,6 +36,7 @@ import * as Settings from '@/systems/settings.server'
 import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as Steam from '@/systems/steam.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
@@ -118,6 +119,7 @@ await Instr.spanOp('main', { module }, async () => {
 	PersistedCache.setup()
 	await Battlemetrics.setup()
 	SquadBrowser.setup()
+	Steam.setup()
 	Rbac.setup()
 	void Sessions.setup()
 	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

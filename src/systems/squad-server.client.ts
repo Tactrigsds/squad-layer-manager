@@ -89,6 +89,9 @@ async function joinServer(serverId: string) {
 		case 'err:rate-limited':
 			toast.error(...tr.toast(SS_Msgs.joinLinkRateLimited()))
 			return
+		case 'err:no-lobby':
+			toast.error(...tr.toast(SS_Msgs.joinLinkNoLobby()))
+			return
 		case 'err:disabled':
 		case 'err:request-failed':
 		case 'err:rcon':
