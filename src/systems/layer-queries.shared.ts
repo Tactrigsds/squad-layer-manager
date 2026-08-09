@@ -926,7 +926,10 @@ export function getRepeatRuleMatchDescriptors(
 		const layerTeamParity = MH.getTeamParityForOffset({ ordinal: list.firstLayerItemParity }, i)
 		const layerItem = previousLayers[i]
 		const layer = L.toLayer(layerItem.layerId)
-		const getViolationDescriptor = (field: LQY.RepeatMatchDescriptor['field']): LQY.RepeatMatchDescriptor => ({
+		const getViolationDescriptor = (
+			field: LQY.RepeatMatchDescriptorField,
+			sourceField: LQY.RepeatMatchDescriptorField = field,
+		): LQY.RepeatMatchDescriptor => ({
 			type: 'repeat-rule',
 			itemId: targetItemId,
 			layerId: targetLayerId,
@@ -934,6 +937,8 @@ export function getRepeatRuleMatchDescriptors(
 			field: field,
 			repeatOffset: Math.abs(cursorIndex - i),
 			sourceItemId: layerItem.itemId,
+			sourceLayerId: layerItem.layerId,
+			sourceField,
 		})
 
 		switch (rule.field) {
@@ -955,12 +960,13 @@ export function getRepeatRuleMatchDescriptors(
 				for (const team of ['A', 'B'] as const) {
 					const targetValue = targetLayer[LQY.teamNormalizedRepeatRuleProp(rule.field, targetLayerTeamParity, team)]
 					if (!targetValue) continue
-					// under crossTeam a target team can match either previous team, but it still yields a single descriptor
-					const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? ['A', 'B'] : [team]
+					// under crossTeam a target team can match either previous team, but it still yields a single descriptor.
+					// the team it matched is the source's own side, so prefer the target's side when both would match.
+					const previousTeams: readonly MH.NormedTeamId[] = rule.crossTeam ? [team, team === 'A' ? 'B' : 'A'] : [team]
 					for (const previousTeam of previousTeams) {
 						const previousValue = layer[LQY.teamNormalizedRepeatRuleProp(rule.field, layerTeamParity, previousTeam)]
 						if (previousValue !== targetValue || LQY.valueFilteredByTargetValues(rule, previousValue)) continue
-						descriptors.push(getViolationDescriptor(`${rule.field}_${team}`))
+						descriptors.push(getViolationDescriptor(`${rule.field}_${team}`, `${rule.field}_${previousTeam}`))
 						break
 					}
 				}
