@@ -334,28 +334,48 @@ export function getEditFilterPageBaseInput(filter: F.FilterNode): BaseQueryInput
 	return { constraints: [CB.filterAnon('edited-filter', filter)] }
 }
 
+export type RepeatMatchDescriptorField =
+	| 'Map'
+	| 'Gamemode'
+	| 'Layer'
+	| 'Size'
+	| 'Faction_A'
+	| 'Faction_B'
+	| 'Unit_A'
+	| 'Unit_B'
+	| 'UnitMatchup_A'
+	| 'UnitMatchup_B'
+	| 'Alliance_A'
+	| 'Alliance_B'
+
 // describes how a repeat rules has been violated. an item can possibly violate multiple repeat rules.
+// written from the described item's point of view: `field`/`layerId` are its own, `source*` belong to the earlier
+// item it repeats. under crossTeam the two ends can sit on opposite normalized teams, so the source carries its own
+// field rather than borrowing the described item's.
 export type RepeatMatchDescriptor = {
 	type: 'repeat-rule'
 	constraintId: string
-	field:
-		| 'Map'
-		| 'Gamemode'
-		| 'Layer'
-		| 'Size'
-		| 'Faction_A'
-		| 'Faction_B'
-		| 'Unit_A'
-		| 'Unit_B'
-		| 'UnitMatchup_A'
-		| 'UnitMatchup_B'
-		| 'Alliance_A'
-		| 'Alliance_B'
+	field: RepeatMatchDescriptorField
 	itemId?: ItemId
 	layerId: string
 	repeatOffset: number
 	// the previous itemId that caused this repeat rule to be violated
 	sourceItemId: ItemId
+	sourceLayerId: string
+	sourceField: RepeatMatchDescriptorField
+}
+
+// the same match, told from the source item's side, so a consumer highlighting that item reads its own field.
+export function repeatDescriptorFromSourcePerspective(descriptor: RepeatMatchDescriptor & { itemId: ItemId }): RepeatMatchDescriptor {
+	return {
+		...descriptor,
+		field: descriptor.sourceField,
+		layerId: descriptor.sourceLayerId,
+		itemId: descriptor.sourceItemId,
+		sourceField: descriptor.field,
+		sourceLayerId: descriptor.layerId,
+		sourceItemId: descriptor.itemId,
+	}
 }
 
 // shows whether a filter entity has been matched or not
