@@ -98,6 +98,8 @@ export const joinLinkNotIndexed = def(() => ({ toast: [t('The squad browser does
 
 export const joinLinkRateLimited = def(() => ({ toast: [t('Too many join link requests. Try again in a minute.')] }))
 
+export const joinLinkNoLobby = def(() => ({ toast: [t('Nobody on the server is sharing a joinable lobby')] }))
+
 export const joinLinkFailed = def(() => ({ toast: [t('Could not get a join link')] }))
 
 export const endMatchLabel = def('End Match')

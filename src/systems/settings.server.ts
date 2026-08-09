@@ -104,6 +104,8 @@ export type ServerEntry = {
 	// mirrored out of this server's settings so that "which admin lists speak for this server" can be answered without a
 	// db read: it is asked on every roster poll and every in-game permission check
 	adminLists: readonly SM.AdminListId[]
+	// there is no real squad server behind a sandbox, so the client hides what only a real one can answer for
+	sandbox: boolean
 }
 
 const serverRegistry = new Map<SS.ServerId, ServerEntry>()
@@ -175,6 +177,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			defaultServer: row.defaultServer,
 			broken,
 			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
+			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
 		})
 	}
 	settings$.next({ scope: 'registry' })
@@ -217,6 +220,7 @@ export async function createServerEntry(
 		defaultServer: false,
 		broken: false,
 		adminLists: newServer.settings.adminLists,
+		sandbox: newServer.settings.connections.type === 'sandbox',
 	})
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s created', newServer.id)
@@ -796,6 +800,7 @@ const adminRouter = {
 			const changes = diffSettings(priorSettings ?? {}, parseRes.data)
 
 			entry.broken = false
+			entry.sandbox = parseRes.data.connections.type === 'sandbox'
 			settings$.next({ scope: 'registry' })
 			log.info(wasBroken ? 'Server %s settings repaired' : 'Server %s settings updated', serverId)
 
