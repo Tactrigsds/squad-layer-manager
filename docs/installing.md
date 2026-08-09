@@ -81,6 +81,7 @@ Every credential SLM reads lives in `.env.secrets`. The rest of the configuratio
 | `DISCORD_BOT_TOKEN`                  | the discord bot token                                               |
 | `BM_PAT`                             | the battlemetrics personal access token                             |
 | `SQUADBROWSER_API_KEY`               | the squad browser api key, for the dashboard's join button          |
+| `STEAM_API_KEY`                      | the steam web api key, the join button's other source               |
 | `BACKUP_SFTP_PASSWORD`               | if backups upload to an sftp host                                   |
 | `BACKUP_SFTP_PRIVATE_KEY_PASSPHRASE` | if that host authenticates with an encrypted key                    |
 
@@ -150,17 +151,24 @@ The integration is optional. Leave `BM_PAT` unset and it turns itself off: nothi
 profiles are read, and the parts of the app that show them are hidden rather than failing. Set `BM_ENABLED=false` to
 turn it off while keeping the token configured.
 
-#### 3.6. Squad browser
+#### 3.6. Join button
 
-The server dashboard can offer a button that joins the server you are looking at. SLM resolves the link through
-the squad browser, which identifies a server by the name it reports over RCON, so nothing needs configuring per
-server.
+The server dashboard can offer a button that joins the server you are looking at. There are two ways SLM can
+resolve the link, and neither needs configuring per server. Configure either one, or both.
 
-Set `SQUADBROWSER_API_KEY` (in `.env.secrets`, it is a credential) to a squad browser api key. Keys start with
-`sqb_`.
+The squad browser identifies a server by the name it reports over RCON. It answers for a server whether or not
+anyone is playing on it. Set `SQUADBROWSER_API_KEY` (in `.env.secrets`, it is a credential) to a squad browser
+api key. Keys start with `sqb_`.
 
-The integration is optional. Leave it unset and the button is hidden rather than failing. Set
-`SQUADBROWSER_ENABLED=false` to hide it while keeping the key configured.
+Steam answers from the lobby a player in game is in, so it only works while someone is on the server, and only
+for players whose steam profile makes their game details public. Set `STEAM_API_KEY` (also a credential) to a
+key from https://steamcommunity.com/dev/apikey.
+
+With both configured the squad browser is asked first, and steam covers the servers it does not list. Both are
+optional: leave both keys unset and the button is hidden rather than failing. `SQUADBROWSER_ENABLED=false` and
+`STEAM_ENABLED=false` turn each off while keeping its key configured.
+
+The button never appears for a sandbox server, which SLM emulates in-process and nobody can join.
 
 #### 3.7. Backups
 

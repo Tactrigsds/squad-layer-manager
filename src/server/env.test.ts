@@ -201,6 +201,16 @@ describe('DEMO', () => {
 		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_stub-key\n', { DEMO: '1', SQUADBROWSER_HOST: 'http://127.0.0.1:3123' })
 		expect(() => Env.ensureEnvSetup()).not.toThrow()
 	})
+
+	it('refuses to boot with a steam key, which a demo has no real players to spend on', async () => {
+		const Env = await loadEnv('STEAM_API_KEY=real-key\n', { DEMO: '1' })
+		expect(() => Env.ensureEnvSetup()).toThrow(/STEAM_API_KEY/)
+	})
+
+	it('accepts a steam key there is only a stub to spend on', async () => {
+		const Env = await loadEnv('STEAM_API_KEY=stub-key\n', { DEMO: '1', STEAM_HOST: 'http://127.0.0.1:3124' })
+		expect(() => Env.ensureEnvSetup()).not.toThrow()
+	})
 })
 
 // same bargain as BM_ENABLED: an install that never configured the squad browser says so by omission, and the
@@ -222,6 +232,27 @@ describe('SQUADBROWSER_ENABLED', () => {
 		const Env = await loadEnv('SQUADBROWSER_API_KEY=sqb_real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY, SQUADBROWSER_ENABLED: 'false' })
 		Env.ensureEnvSetup()
 		expect(Env.rawVar('SQUADBROWSER_ENABLED')).toBe('false')
+	})
+})
+
+// the same, for the steam lobby the join button falls back to when the squad browser cannot resolve the server
+describe('STEAM_ENABLED', () => {
+	it('is off when there is no key and only the real api to spend one on', async () => {
+		const Env = await loadEnv('', { DEMO: '1' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('STEAM_ENABLED')).toBe('false')
+	})
+
+	it('is on for an install that configured a key', async () => {
+		const Env = await loadEnv('STEAM_API_KEY=real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('STEAM_ENABLED')).toBe('true')
+	})
+
+	it('leaves an explicit answer alone', async () => {
+		const Env = await loadEnv('STEAM_API_KEY=real-key\n', { SETTINGS_ENCRYPTION_KEY: KEY, STEAM_ENABLED: 'false' })
+		Env.ensureEnvSetup()
+		expect(Env.rawVar('STEAM_ENABLED')).toBe('false')
 	})
 })
 

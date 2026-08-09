@@ -19,6 +19,7 @@ const envBuilder = Env.getEnvBuilder({
 	DISCORD_ENABLED: Env.groups.discord.DISCORD_ENABLED,
 	BM_ENABLED: Env.groups.battlemetrics.BM_ENABLED,
 	SQUADBROWSER_ENABLED: Env.groups.squadbrowser.SQUADBROWSER_ENABLED,
+	STEAM_ENABLED: Env.groups.steam.STEAM_ENABLED,
 })
 export let ENV!: ReturnType<typeof envBuilder>
 
@@ -46,7 +47,7 @@ export type PublicConfig = {
 	// reads it back. e2e is the case where none ever does: playwright gives every test a fresh browser profile.
 	cacheLayerArtifact: boolean
 	// what this deployment is wired up to, so the client hides the affordances that would resolve to nothing
-	integrations: { battlemetrics: boolean; discord: boolean; squadBrowser: boolean }
+	integrations: { battlemetrics: boolean; discord: boolean; squadBrowser: boolean; steam: boolean }
 }
 
 export type PublicConfigForClient = PublicConfig & { wsClientId: string }
@@ -67,7 +68,12 @@ export function pushPublicConfig() {
 		layersVersion: LayerEngine.layersVersion,
 		// a dev instance is reloaded against the same profile all day, so it wants the cache; only e2e does not
 		cacheLayerArtifact: ENV.NODE_ENV !== 'test',
-		integrations: { battlemetrics: ENV.BM_ENABLED, discord: ENV.DISCORD_ENABLED, squadBrowser: ENV.SQUADBROWSER_ENABLED },
+		integrations: {
+			battlemetrics: ENV.BM_ENABLED,
+			discord: ENV.DISCORD_ENABLED,
+			squadBrowser: ENV.SQUADBROWSER_ENABLED,
+			steam: ENV.STEAM_ENABLED,
+		},
 	})
 }
 
