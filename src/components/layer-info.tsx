@@ -357,46 +357,44 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 	)
 }
 
-// Every score chart puts its value axis on the vertical, because a horizontal one competes with the only other
-// meaning left and right carry here: team 1 on the left, team 2 on the right.
-const PLOT_HEIGHT = 200
+// The paired z-scores plot both teams against one axis, so that axis has to be the vertical: left and right
+// already mean team 1 and team 2 there. The two gauges below carry a single value each and stay horizontal.
+const PLOT_HEIGHT = 140
 
-// x offsets within a gauge svg, in px. The svg has no viewBox, so user units are css px. Its width only has to
-// hold the widest cutoff label; anything past it overflows into the gap between gauges.
-const GAUGE = { width: 200, tickTextX: 28, tickLineX: 34, barX: 40, barWidth: 22, cutoffX1: 36, cutoffX2: 76, cutoffTextX: 80 }
+const GAUGE_HEIGHT = 46
 
 type ScoreRange = { min: number; max: number; field: string; poolCutoff?: number; logarithmic?: boolean }
 
-type GaugeTick = { fraction: number; label: string; acrossBar?: boolean }
-
 const plotY = (fraction: number) => Math.max(0, Math.min(1, fraction)) * PLOT_HEIGHT
 
-function VerticalGauge({
+const plotX = (fraction: number) => `${Math.max(0, Math.min(1, fraction)) * 100}%`
+
+function HorizontalGauge({
 	ticks,
 	cutoffs,
 	children,
 }: {
-	ticks: GaugeTick[]
+	ticks: { fraction: number; label: string; acrossBar?: boolean }[]
 	cutoffs: { fraction: number; label: string }[]
 	children?: React.ReactNode
 }) {
 	return (
-		<svg width={GAUGE.width} height={PLOT_HEIGHT} className="overflow-visible">
-			<rect x={GAUGE.barX} y="0" width={GAUGE.barWidth} height={PLOT_HEIGHT} rx="4" fill="currentColor" className="text-muted" />
+		<svg width="100%" height={GAUGE_HEIGHT} className="overflow-visible">
+			<rect x="0" y="4" width="100%" height="8" rx="4" fill="currentColor" className="text-muted" />
 			{ticks.map((tick) => {
-				const y = plotY(tick.fraction)
+				const x = plotX(tick.fraction)
 				return (
 					<g key={tick.label}>
 						<line
-							x1={GAUGE.tickLineX}
-							y1={y}
-							x2={tick.acrossBar ? GAUGE.barX + GAUGE.barWidth : GAUGE.barX}
-							y2={y}
+							x1={x}
+							y1={tick.acrossBar ? '2' : '14'}
+							x2={x}
+							y2={tick.acrossBar ? '14' : '19'}
 							stroke="currentColor"
 							strokeWidth={tick.acrossBar ? '2' : '1'}
 							className={tick.acrossBar ? 'text-foreground/40' : 'text-muted-foreground/30'}
 						/>
-						<text x={GAUGE.tickTextX} y={y} dy="0.32em" textAnchor="end" fontSize="9" className="fill-muted-foreground/50">
+						<text x={x} y="29" textAnchor="middle" fontSize="9" className="fill-muted-foreground/50">
 							{tick.label}
 						</text>
 					</g>
@@ -404,11 +402,11 @@ function VerticalGauge({
 			})}
 			{children}
 			{cutoffs.map((cutoff) => {
-				const y = plotY(cutoff.fraction)
+				const x = plotX(cutoff.fraction)
 				return (
 					<g key={cutoff.label}>
-						<line x1={GAUGE.cutoffX1} y1={y} x2={GAUGE.cutoffX2} y2={y} stroke="white" strokeWidth="2" />
-						<text x={GAUGE.cutoffTextX} y={y} dy="0.32em" fontSize="10" fill="white" className="font-medium">
+						<line x1={x} y1="0" x2={x} y2="16" stroke="white" strokeWidth="2" />
+						<text x={x} y="42" textAnchor="middle" fontSize="10" fill="white" className="font-medium">
 							{cutoff.label}
 						</text>
 					</g>
@@ -418,19 +416,15 @@ function VerticalGauge({
 	)
 }
 
-// The min height reserves the second line a caption takes when the gauges are narrow, so a caption that wraps
-// does not push its gauge out of line with the one beside it.
 function GaugeCaption({ title, value, logarithmic }: { title: string; value: number; logarithmic?: boolean }) {
 	return (
-		<figcaption className="flex min-h-10 items-end justify-center">
-			<span className="text-center text-sm font-medium">
-				{title}{' '}
-				<span className="text-xs text-muted-foreground">
-					({value > 0 ? '+' : ''}
-					{value.toFixed(2)})
-				</span>
-				{logarithmic && <span className="text-xs font-normal text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
+		<figcaption className="text-center text-sm font-medium">
+			{title}{' '}
+			<span className="text-xs text-muted-foreground">
+				({value > 0 ? '+' : ''}
+				{value.toFixed(2)})
 			</span>
+			{logarithmic && <span className="text-xs font-normal text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
 		</figcaption>
 	)
 }
@@ -458,27 +452,25 @@ function niceTickValues(min: number, max: number, targetCount: number): number[]
 const tickLabel = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2))
 
 function OtherScoreGauge({ scoreType, score, scoreRange }: { scoreType: string; score: number; scoreRange?: ScoreRange }) {
-	const logFraction = (value: number, min: number, max: number) => 1 - (Math.log(value) - Math.log(min)) / (Math.log(max) - Math.log(min))
+	const logFraction = (value: number, min: number, max: number) => (Math.log(value) - Math.log(min)) / (Math.log(max) - Math.log(min))
 
 	let fraction: (value: number) => number
 	let tickValues: number[]
 	if (!scoreRange) {
-		fraction = (value) => 1 - Math.min(Math.abs(value) * 0.1, 1)
+		fraction = (value) => Math.min(Math.abs(value) * 0.1, 1)
 		tickValues = []
 	} else if (scoreRange.logarithmic) {
 		fraction = (value) => logFraction(Math.max(value, scoreRange.min), scoreRange.min, scoreRange.max)
 		tickValues = [1, 2, 5, 10, 20, 30].filter((v) => v >= scoreRange.min && v <= scoreRange.max)
 	} else {
-		fraction = (value) => 1 - (value - scoreRange.min) / (scoreRange.max - scoreRange.min)
+		fraction = (value) => (value - scoreRange.min) / (scoreRange.max - scoreRange.min)
 		tickValues = niceTickValues(scoreRange.min, scoreRange.max, 8)
 	}
 
-	const valueY = plotY(fraction(score))
-
 	return (
-		<figure className="flex flex-col items-center space-y-1">
+		<figure>
 			<GaugeCaption title={scoreType.replace(/_/g, ' ')} value={score} logarithmic={scoreRange?.logarithmic} />
-			<VerticalGauge
+			<HorizontalGauge
 				ticks={tickValues.map((value) => ({ fraction: fraction(value), label: tickLabel(value) }))}
 				cutoffs={
 					scoreRange?.poolCutoff === undefined
@@ -487,15 +479,15 @@ function OtherScoreGauge({ scoreType, score, scoreRange }: { scoreType: string; 
 				}
 			>
 				<rect
-					x={GAUGE.barX}
-					y={valueY}
-					width={GAUGE.barWidth}
-					height={PLOT_HEIGHT - valueY}
+					x="0"
+					y="4"
+					width={plotX(fraction(score))}
+					height="8"
 					rx="4"
 					fill="currentColor"
 					className="text-muted-foreground transition-all duration-200"
 				/>
-			</VerticalGauge>
+			</HorizontalGauge>
 		</figure>
 	)
 }
@@ -521,8 +513,8 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 	const min = scoreRange?.min ?? -30
 	const max = scoreRange?.max ?? 30
 
-	// A log scale on the absolute value, mirrored around 0 at the middle of the plot. Team 1's advantage is
-	// positive and reads upwards, team 2's is negative and reads downwards.
+	// A log scale on the absolute value, mirrored around 0 at the centre. A positive differential favours team 1
+	// and runs left, towards the team 1 heading, so the axis agrees with the columns above it.
 	const fraction = (value: number) => {
 		if (value === 0) return 0.5
 		const maxAbs = Math.max(Math.abs(min), Math.abs(max))
@@ -530,13 +522,10 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 		return value > 0 ? 0.5 - halfRange : 0.5 + halfRange
 	}
 
-	const zeroY = plotY(0.5)
-	const valueY = plotY(fraction(diff))
-
 	const maxAbs = Math.max(Math.abs(min), Math.abs(max))
 	const ticks = [0, 1, 2, 5, 10, 20, 30]
 		.filter((v) => v <= maxAbs)
-		.flatMap((value): GaugeTick[] =>
+		.flatMap((value) =>
 			value === 0
 				? [{ fraction: 0.5, label: '0', acrossBar: true }]
 				: [
@@ -545,10 +534,12 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 					],
 		)
 
+	const valueX = fraction(diff)
+
 	return (
-		<figure className="flex flex-col items-center space-y-1">
+		<figure>
 			<GaugeCaption title={tr.text(L_Msgs.balanceDifferential())} value={diff} logarithmic />
-			<VerticalGauge
+			<HorizontalGauge
 				ticks={ticks}
 				cutoffs={
 					scoreRange?.poolCutoff === undefined
@@ -560,21 +551,21 @@ function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRan
 				}
 			>
 				<rect
-					x={GAUGE.barX}
-					y={Math.min(zeroY, valueY)}
-					width={GAUGE.barWidth}
-					height={Math.abs(valueY - zeroY)}
+					x={plotX(Math.min(0.5, valueX))}
+					y="4"
+					width={plotX(Math.abs(valueX - 0.5))}
+					height="8"
 					fill="currentColor"
 					className={`transition-all duration-200 ${diff > 0 ? 'text-blue-500' : 'text-red-500'}`}
 				/>
 				<circle
-					cx={GAUGE.barX + GAUGE.barWidth / 2}
-					cy={valueY}
+					cx={plotX(valueX)}
+					cy="8"
 					r="5"
 					fill="currentColor"
 					className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
 				/>
-			</VerticalGauge>
+			</HorizontalGauge>
 		</figure>
 	)
 }
@@ -625,7 +616,7 @@ function ScoreGrid({
 			)}
 			{zScoreTypes.length > 0 && <ZScoreChart scoreTypes={zScoreTypes} scores={scores} />}
 			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
-				<div className="mt-3 pt-3 border-t border-muted grid grid-cols-2 gap-x-2 gap-y-4">
+				<div className="mt-2 pt-2 border-t border-muted space-y-1">
 					{scores.diffs['Balance_Differential'] !== undefined && (
 						<BalanceDifferentialGauge
 							diff={scores.diffs['Balance_Differential']}
