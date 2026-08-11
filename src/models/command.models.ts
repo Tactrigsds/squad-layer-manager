@@ -6,6 +6,7 @@ import * as Templating from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as LP from '@/models/labeled-presets.models'
+import { t, type TString } from '@/models/messages.models'
 import type * as SM from '@/models/squad.models.ts'
 import type * as RBAC from '@/rbac.models'
 
@@ -109,7 +110,7 @@ export function commandsInSection(section: CommandSection): CommandId[] {
 // `sample` overrides the token the generated examples fill this arg with. Kinds whose values are drawn from live
 // settings (reason) or are self-evident (player, duration) sample themselves; set this for `string` and
 // `int` args, whose name is all the generator would otherwise have to go on.
-type ArgCommon = { name: string; describe?: string; sample?: string }
+type ArgCommon = { name: string; describe?: TString; sample?: string }
 export type ArgDef =
 	// single token, passed through as-is
 	| (ArgCommon & { kind: 'string'; optional?: true })
@@ -119,6 +120,8 @@ export type ArgDef =
 	| (ArgCommon & { kind: 'duration'; optional?: true })
 	// single token, resolved to a unique player by id or username substring
 	| (ArgCommon & { kind: 'player'; optional?: true })
+	// single token naming a team: 1|2|A|B|faction of the current layer
+	| (ArgCommon & { kind: 'team'; optional?: true })
 	// 1-2 tokens: [team] <squad>; team = 1|2|A|B|faction, caller's team when omitted
 	| (ArgCommon & { kind: 'squad' })
 	// rest: raw remainder joined with spaces
@@ -165,6 +168,10 @@ function declareCommand<Id extends string, const Args extends readonly ArgDef[]>
 	} as { [K in Id]: { id: Id; section: CommandSection; permission: CommandPermission; defaults: CommandConfig; args: Args } }
 }
 
+const SWAP_DESTINATION_HELP = t(
+	'Where to send them. The other team when omitted. Name it to avoid accidental duplicate swaps: anyone already on that team is left alone.',
+)
+
 // `quickReference` seeds the default cheat sheet: the handful of commands an admin reaches for in a normal shift,
 // which is what a bare `!help` in the middle of a match should answer with. Admins re-pick it per installation.
 export const COMMAND_DECLARATIONS = {
@@ -177,9 +184,10 @@ export const COMMAND_DECLARATIONS = {
 				name: 'section',
 				optional: true,
 				sample: 'moderation',
-				describe:
-					`One of ${COMMAND_SECTION_IDS.join(', ')}, or "${ALL_SECTIONS_TOKEN}" for every command. ` +
-					'Lists the quick reference when omitted.',
+				describe: t('One of {sections}, or "{allToken}" for every command. Lists the quick reference when omitted.', {
+					sections: COMMAND_SECTION_IDS.join(', '),
+					allToken: ALL_SECTIONS_TOKEN,
+				}),
 			},
 		],
 		defaults: {
@@ -199,7 +207,7 @@ export const COMMAND_DECLARATIONS = {
 				name: 'number',
 				optional: true,
 				sample: '2.1',
-				describe: 'A queue item number like 2 or 2.1. Defaults to the next item.',
+				describe: t('A queue item number like 2 or 2.1. Defaults to the next item.'),
 			},
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['feedback', 'fb'], enabled: true, quickReference: false },
@@ -259,9 +267,9 @@ export const COMMAND_DECLARATIONS = {
 				kind: 'text',
 				name: 'request',
 				sample: 'goro adf pla',
-				describe:
-					'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; ' +
-					'everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
+				describe: t(
+					'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
+				),
 			},
 		],
 		defaults: {
@@ -286,7 +294,7 @@ export const COMMAND_DECLARATIONS = {
 				name: 'number',
 				optional: true,
 				sample: '2',
-				describe: 'The request number from the list. Removes your newest request when omitted.',
+				describe: t('The request number from the list. Removes your newest request when omitted.'),
 			},
 		],
 		defaults: { allowedChats: ['admin', 'public'], triggers: ['unreqlayer', 'rmreq'], enabled: true, quickReference: false },
@@ -294,25 +302,37 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('swapNow', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapnow'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapNext', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapnext'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapSquadNow', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'squad', name: 'squad' }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnow'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapSquadNext', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'squad', name: 'squad' }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnext'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swaps', {
@@ -332,12 +352,12 @@ export const COMMAND_DECLARATIONS = {
 		permission: 'battlemetrics:write-flags',
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag in your organization.' },
+			{ kind: 'string', name: 'flag', sample: 'cheater', describe: t('The name of a BattleMetrics flag in your organization.') },
 			{
 				kind: 'text',
 				name: 'reason',
 				optional: true,
-				describe: "Posted as a note on the player's BM profile. Some flags require one.",
+				describe: t("Posted as a note on the player's BM profile. Some flags require one."),
 			},
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['flag'], enabled: true, quickReference: true },
@@ -347,22 +367,22 @@ export const COMMAND_DECLARATIONS = {
 		permission: 'battlemetrics:write-flags',
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'string', name: 'flag', sample: 'cheater', describe: 'The name of a BattleMetrics flag currently on the player.' },
-			{ kind: 'text', name: 'reason', optional: true, describe: "Posted as a note on the player's BM profile." },
+			{ kind: 'string', name: 'flag', sample: 'cheater', describe: t('The name of a BattleMetrics flag currently on the player.') },
+			{ kind: 'text', name: 'reason', optional: true, describe: t("Posted as a note on the player's BM profile.") },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['removeFlag', 'rf'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('listFlags', {
 		section: 'flags',
 		permission: null,
-		args: [{ kind: 'player', name: 'player', optional: true, describe: 'Lists every flag in the organization when omitted.' }],
+		args: [{ kind: 'player', name: 'player', optional: true, describe: t('Lists every flag in the organization when omitted.') }],
 		defaults: { enabled: true, allowedChats: ['admin'], triggers: ['listflags', 'lf'], quickReference: false },
 	}),
 	...declareCommand('pingAdmins', {
 		section: 'moderation',
 		permission: 'ping-admins',
 		defaults: { enabled: true, allowedChats: ['public', 'admin'], triggers: ['admin'], quickReference: true },
-		args: [{ kind: 'text', name: 'message', describe: 'The message you want to send to the admins.' }],
+		args: [{ kind: 'text', name: 'message', describe: t('The message you want to send to the admins.') }],
 	}),
 	...declareCommand('warn', {
 		section: 'moderation',
@@ -486,7 +506,7 @@ export const COMMAND_DECLARATIONS = {
 				kind: 'string',
 				name: 'player',
 				sample: 'Alice',
-				describe: 'A player id, or a username substring matched against players with an active timeout.',
+				describe: t('A player id, or a username substring matched against players with an active timeout.'),
 			},
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['cleartimeout', 'ct'], enabled: true, quickReference: false },
@@ -586,15 +606,17 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
 			? number
 			: D extends { kind: 'player' }
 				? SM.Player
-				: D extends { kind: 'squad' }
-					? ResolvedSquadArg
-					: D extends { kind: 'text' }
-						? string
-						: D extends { kind: 'reason' }
-							? ResolvedReasonArg
-							: D extends { kind: 'preset-reason' }
-								? AAR.AdminActionReason
-								: never
+				: D extends { kind: 'team' }
+					? SM.TeamId
+					: D extends { kind: 'squad' }
+						? ResolvedSquadArg
+						: D extends { kind: 'text' }
+							? string
+							: D extends { kind: 'reason' }
+								? ResolvedReasonArg
+								: D extends { kind: 'preset-reason' }
+									? AAR.AdminActionReason
+									: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
 	[D in Args[number] as D['name']]: D extends { optional: true } ? ArgValue<D> | undefined : ArgValue<D>
@@ -672,6 +694,7 @@ export function assignArgTokens(
 			case 'int':
 			case 'duration':
 			case 'player':
+			case 'team':
 			case 'preset-reason': {
 				if (rem.length === 0) {
 					if (!def.optional) return { code: 'err:missing-arg', argName: def.name }
