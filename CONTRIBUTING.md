@@ -107,7 +107,7 @@ pnpm setup:hooks    # git config core.hooksPath .githooks
 pnpm remove:hooks   # undo
 ```
 
-All of the same checks are run in CI on PRs and pushes to main, so I would recommend installing the hooks to catch issues early.
+All of the same checks are run in CI, so I would recommend installing the hooks to catch issues early. E2e/integration tests are skipped due to run length. CI runs those on every pull request and on pushes to main.
 
 To skip it for a push:
 

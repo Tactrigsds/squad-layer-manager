@@ -12,7 +12,7 @@ Disable with:
 pnpm remove:hooks
 ```
 
-`pre-push` runs the full suite (format, typecheck, lint, unit, integration, e2e) on every branch. Branch
+`pre-push` runs everything but integration/e2e tests (format, typecheck, lint, unit) on every branch. Branch
 deletions are skipped. See [CONTRIBUTING.md](../CONTRIBUTING.md#the-pre-push-hook) for the details.
 
 **Bypass:** `git push --no-verify`

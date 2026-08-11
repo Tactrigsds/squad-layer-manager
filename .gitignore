@@ -73,6 +73,7 @@ docker/squad-dedicated
 # preference or claude code's own runtime state
 .claude/*
 !.claude/settings.json
+!.claude/skills
 
 dist-server/
 
