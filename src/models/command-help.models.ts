@@ -29,6 +29,12 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 			'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one ' +
 			'player, so use enough of it to be unambiguous.',
 	},
+	team: {
+		syntax: '1 | 2 | A | B | faction',
+		description:
+			'A team: 1 or 2 for the in-game slot, A or B for the side that stays the same across map changes, or the name of that ' +
+			"team's faction in the current layer.",
+	},
 	squad: {
 		syntax: '[team] squad',
 		description:
@@ -213,6 +219,8 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 			return { token: '2h' }
 		case 'player':
 			return { token: 'Alice' }
+		case 'team':
+			return { token: 'B' }
 		case 'squad':
 			return { token: '3', alt: { token: '2 3', note: "Targeting the other team's squad" } }
 		case 'text':

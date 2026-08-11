@@ -264,6 +264,59 @@ describe('teamswaps', () => {
 		expect(warnsTo(app, otherAdmin)).toHaveLength(0)
 	})
 
+	// The optional destination team is what makes the swap commands safe to run twice: without it they always mean
+	// "the other team", so a repeat undoes the first run.
+	it(cmd('swapnow with a destination leaves a player already on it alone'), async () => {
+		const settled = makePlayer({ name: ' swap_settled', teamId: 1 })
+		app.emu.world.connectPlayer(settled)
+		await app.waitForRosterSync()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnow swap_settled 1'))
+
+		await app.waitFor(() => warnsToAdmin().some((w) => /is already on/i.test(w)), {
+			label: 'the no-op reply to the admin',
+			timeoutMs: 20_000,
+		})
+		expect(forceChangesFor(settled.eos)).toHaveLength(0)
+		expect(settled.teamId).toBe(1)
+
+		// naming the other team still moves him, so the destination is being read rather than ignored
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnow swap_settled 2'))
+		await app.waitFor(() => forceChangesFor(settled.eos).length > 0, {
+			label: 'AdminForceTeamChange for the target',
+			timeoutMs: 20_000,
+		})
+		expect(settled.teamId).toBe(2)
+	})
+
+	it(cmd('swapnext with a destination reports a repeat instead of failing on it'), async () => {
+		const twice = makePlayer({ name: ' swap_twice', teamId: 1 })
+		app.emu.world.connectPlayer(twice)
+		await app.waitForRosterSync()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnext swap_twice 2'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /^AdminWarn \S+ Queued /.test(w)), {
+			label: 'the swap queued',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('swapnext swap_twice 2'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /is already queued to swap/i.test(w)), {
+			label: 'the repeat reported as already queued',
+			timeoutMs: 20_000,
+		})
+		expect(warnsToAdmin().join('\n')).not.toMatch(/already marked/i)
+		expect(forceChangesFor(twice.eos)).toHaveLength(0)
+
+		// the roll test below queues its own swap and reads what the roll executed, so this one is not left standing
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('clearswaps'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /Cleared/i.test(w)), { label: 'the queue cleared', timeoutMs: 20_000 })
+	})
+
 	it(cmd('swapnext holds the swap until the map rolls, then applies it'), async () => {
 		const held = makePlayer({ name: ' swap_later', teamId: 2 })
 		app.emu.world.connectPlayer(held)
