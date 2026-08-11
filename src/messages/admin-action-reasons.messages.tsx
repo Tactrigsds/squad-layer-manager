@@ -47,6 +47,9 @@ export const previewTimeout = def('Timeout')
 
 export const previewTimeoutExpired = def('Timeout (expired)')
 
+// shown only when {{squadName}} makes the squad form of an action render differently
+export const previewSquadVariant = def('{action} (squad)', (action: string) => ({ action }))
+
 // Stand-ins so the preview shows the message shape while a row is still being written. Angle brackets are the
 // placeholder convention rather than prose, so they are values rather than patterns.
 export const previewMissingLabel = def(() => ({ text: raw('<label>') }))

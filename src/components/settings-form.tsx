@@ -206,25 +206,25 @@ function emptyValue(node: Node): unknown {
 // granted permissions include the "*" wildcard; denials are stored with a "!" prefix but edited without it in a separate select
 // -------- rbac cross-field wiring --------
 
-// the draft's custom message variables (rbac-style sibling read), so the reason preview can render templates
-const MessageVarsContext = React.createContext<Record<string, string>>({})
+// the draft's custom message variable definitions (rbac-style sibling read), unresolved so the reason preview can
+// re-resolve them per entry with the standard variables (duration, squadName) that entry is showing
+const MessageVarsContext = React.createContext<Templating.TemplateVarDef[]>([])
 
-function readMessageVars(v: any): Record<string, string> {
-	const defs = ((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) =>
+function readMessageVarDefs(v: any): Templating.TemplateVarDef[] {
+	return ((v?.messageVariables ?? []) as { name?: string; value?: string }[]).flatMap((mv) =>
 		mv.name ? [{ name: mv.name, value: mv.value ?? '' }] : [],
 	)
-	return Templating.resolveTemplateVars(defs)
 }
 
-// This one feeds a context at the form root, so it must hold its identity while the contents match: a fresh object
+// This one feeds a context at the form root, so it must hold its identity while the contents match: a fresh array
 // per draft change would re-render the whole form on every keystroke. The selector is memoized per form instance
 // rather than at module scope because the settings page mounts one form per section.
-function useMessageVars(value$: ValueState): Record<string, string> {
+function useMessageVars(value$: ValueState): Templating.TemplateVarDef[] {
 	const read = React.useMemo(() => {
-		let prev: Record<string, string> = {}
+		let prev: Templating.TemplateVarDef[] = []
 		return (v: any) => {
-			const next = readMessageVars(v)
-			const same = Object.keys(prev).length === Object.keys(next).length && Object.entries(next).every(([k, val]) => prev[k] === val)
+			const next = readMessageVarDefs(v)
+			const same = prev.length === next.length && next.every((d, i) => prev[i].name === d.name && prev[i].value === d.value)
 			if (!same) prev = next
 			return prev
 		}
@@ -1825,31 +1825,56 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 	)
 }
 
+// the sample squad name the preview substitutes for {{squadName}} in squad-targeted contexts
+const PREVIEW_SQUAD_NAME = 'Squad1'
+
 // the verbatim rendered text each applicable context delivers in-game (squad contexts get the @Squad1 tag),
-// with the given custom message variables applied. timeouts are shown with a 2h sample duration, and again with
-// the remaining duration (what enforcement re-renders on rejoin) so {{#duration}} sections can be checked both ways
-function reasonPreviewEntries(reason: AAR.AdminActionReason, customVars: Record<string, string>): { context: string; text: string }[] {
-	const applied = (action: AAR.AdminActionType, opts?: { audienceTag?: string; duration?: string }) =>
+// with the given custom message variables applied. Standard variables (duration, squadName) are resolved per
+// entry so custom variables referencing them render as they would at action time. timeouts are shown with a 2h
+// sample duration, and again with the remaining duration (what enforcement re-renders on rejoin) so
+// {{#duration}} sections can be checked both ways.
+function reasonPreviewEntries(reason: AAR.AdminActionReason, varDefs: Templating.TemplateVarDef[]): { context: string; text: string }[] {
+	const applied = (action: AAR.AdminActionType, opts?: { audienceTag?: string; extraVars?: Record<string, string> }) =>
 		AAR.formatAppliedReason(action, reason, {
 			audienceTag: opts?.audienceTag,
-			vars: { ...customVars, ...(action === 'timeout' ? { duration: opts?.duration ?? '' } : {}) },
+			vars: Templating.resolveTemplateVars(varDefs, { squadName: '', ...opts?.extraVars }),
 		})
 	const entries: { context: string; text: string }[] = []
+	// kill/kick/timeout have squad forms delivering the same action text with {{squadName}} set, so a squad entry
+	// is added only when it actually renders differently
+	const pushSquadVariant = (action: AAR.AdminActionType, extraVars?: Record<string, string>) => {
+		const base = applied(action, { extraVars })
+		const squad = applied(action, { extraVars: { ...extraVars, squadName: PREVIEW_SQUAD_NAME } })
+		if (squad !== base) {
+			entries.push({ context: tr.text(AAR_Msgs.previewSquadVariant(AAR.ADMIN_ACTIONS[action].displayName)), text: squad })
+		}
+	}
 	// one entry per action the reason carries text for; squad-directed actions get the @Squad1 tag
 	for (const action of AAR.ADMIN_ACTION_TYPE.options) {
 		if (reason.actionTexts[action] === undefined) continue
 		if (action === 'warn') {
 			entries.push({ context: tr.text(AAR_Msgs.previewWarn()), text: applied('warn') })
-			entries.push({ context: tr.text(AAR_Msgs.previewWarnSquad()), text: applied('warn', { audienceTag: '@Squad1' }) })
+			entries.push({
+				context: tr.text(AAR_Msgs.previewWarnSquad()),
+				text: applied('warn', { audienceTag: '@Squad1', extraVars: { squadName: PREVIEW_SQUAD_NAME } }),
+			})
 			continue
 		}
 		if (action === 'timeout') {
-			entries.push({ context: tr.text(AAR_Msgs.previewTimeout()), text: applied('timeout', { duration: '2h' }) })
-			entries.push({ context: tr.text(AAR_Msgs.previewTimeoutExpired()), text: applied('timeout', { duration: '' }) })
+			entries.push({ context: tr.text(AAR_Msgs.previewTimeout()), text: applied('timeout', { extraVars: { duration: '2h' } }) })
+			pushSquadVariant('timeout', { duration: '2h' })
+			entries.push({ context: tr.text(AAR_Msgs.previewTimeoutExpired()), text: applied('timeout', { extraVars: { duration: '' } }) })
 			continue
 		}
-		const audienceTag = AAR.ADMIN_ACTIONS[action].targetKind === 'squad' ? '@Squad1' : undefined
-		entries.push({ context: AAR.ADMIN_ACTIONS[action].displayName, text: applied(action, { audienceTag }) })
+		const squadTargeted = AAR.ADMIN_ACTIONS[action].targetKind === 'squad'
+		entries.push({
+			context: AAR.ADMIN_ACTIONS[action].displayName,
+			text: applied(action, {
+				audienceTag: squadTargeted ? '@Squad1' : undefined,
+				extraVars: squadTargeted ? { squadName: PREVIEW_SQUAD_NAME } : undefined,
+			}),
+		})
+		if (action === 'kill' || action === 'kick') pushSquadVariant(action)
 	}
 	return entries
 }
@@ -1878,7 +1903,7 @@ function TemplateSyntaxHint() {
 
 function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Subject<void> }) {
 	const raw = useFieldValue(row$) as Partial<AAR.AdminActionReason> | undefined
-	const customVars = React.useContext(MessageVarsContext)
+	const varDefs = React.useContext(MessageVarsContext)
 	// tolerate incomplete draft rows so the preview shows the message shape while it's being written
 	const actionTexts = Object.fromEntries(
 		Object.entries(raw?.actionTexts ?? {}).map(([action, text]) => [
@@ -1901,7 +1926,7 @@ function ReasonPreviewButton({ row$, reset$ }: { row$: ValueState; reset$: Rx.Su
 			<PopoverContent className="w-96 space-y-2" align="end">
 				<p className="text-xs text-muted-foreground">{tr.text(AAR_Msgs.previewBlurb())}</p>
 				<TemplateSyntaxHint />
-				{reasonPreviewEntries(reason, customVars).map((entry) => (
+				{reasonPreviewEntries(reason, varDefs).map((entry) => (
 					<div key={entry.context} className="space-y-1">
 						<p className="text-xs font-medium">{entry.context}</p>
 						<MessagePreviewBox>{entry.text}</MessagePreviewBox>
