@@ -12,84 +12,27 @@ jobs:
    build:
       runs-on: ubuntu-latest
       outputs:
-         image-tag: ${{ steps.branch.outputs.IMAGE_TAG }}
-         test-image: ${{ steps.branch.outputs.TEST_IMAGE_REPO }}@${{ steps.test-image.outputs.digest }}
+         image-tag: ${{ steps.tags.outputs.IMAGE_TAG }}
+         test-image: ${{ steps.tags.outputs.IMAGE_REPO }}@${{ steps.test-image.outputs.digest }}
       steps:
          - uses: actions/checkout@v4
 
-         - name: Get branches and generate tags
-           id: branch
+         # Images are identified by commit sha only. `:latest` is added after the gates pass (see tag-latest),
+         # and everything downstream consumes the test image by digest.
+         - name: Generate image tags
+           id: tags
            run: |
-              if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
-                BRANCH_NAME=$(echo ${GITHUB_HEAD_REF})
-              else
-                BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
-              fi
-
-              if [[ "$BRANCH_NAME" =~ [A-Z] ]]; then
-                echo "Error: Branch name must be lowercase"
-                exit 1
-              fi
-
-              echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
-              # Get all branches that contain the current commit
-              git fetch --all
-              ALL_BRANCHES=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ',' | sed 's/,$//')
-              echo "ALL_BRANCHES=$ALL_BRANCHES" >> $GITHUB_OUTPUT
-
-              # Create colon-delimited list for GIT_BRANCH build arg
-              BRANCHES_LIST=$(git branch -r --contains ${{ github.sha }} | grep -v HEAD | sed 's/origin\///' | tr '\n' ':' | sed 's/:$//')
-              echo "BRANCHES_LIST=$BRANCHES_LIST" >> $GITHUB_OUTPUT
-
-              # Generate tags for all branches
               OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
               COMMIT_SHA="${{ github.sha }}"
               SHORT_SHA="${COMMIT_SHA:0:7}"
-              CURRENT_BRANCH="$BRANCH_NAME"
+              REPO="ghcr.io/$OWNER/squad-layer-manager"
 
-              TAGS=""
-
-              # Always add commit tag
-              TAGS="ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA"
-
-              # Don't add latest tag here - will be added after quality checks pass
-
-              # Add tag for each branch containing this commit
-              IFS=',' read -ra BRANCH_ARRAY <<< "$ALL_BRANCHES"
-              for branch in "${BRANCH_ARRAY[@]}"; do
-                # Skip empty entries and clean up whitespace
-                branch=$(echo "$branch" | xargs)
-                if [[ -n "$branch" && "$branch" != "main" ]]; then
-                  TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$branch"
-                fi
-              done
-
-              # Add tag for current branch if it's different and not already covered
-              if [[ "$CURRENT_BRANCH" != "main" && "$ALL_BRANCHES" != *"$CURRENT_BRANCH"* ]]; then
-                TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:branch-$CURRENT_BRANCH"
-              fi
-
-              # Handle pull request tags
-              if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-                TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:latest-$CURRENT_BRANCH"
-              fi
-
-              # Handle tag releases
-              if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-                TAG_NAME="${{ github.ref_name }}"
-                TAGS="$TAGS,ghcr.io/$OWNER/squad-layer-manager:$TAG_NAME"
-              fi
-
-              echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
-
-              # Export the commit-specific tag for quality checks
-              echo "IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:commit-$SHORT_SHA" >> $GITHUB_OUTPUT
+              echo "IMAGE_REPO=$REPO" >> $GITHUB_OUTPUT
+              echo "IMAGE_TAG=$REPO:commit-$SHORT_SHA" >> $GITHUB_OUTPUT
 
               # The test image is handed to the integration suite by digest, so this tag only exists to keep the
-              # version reachable in GHCR; one per branch rather than one per commit.
-              echo "TEST_IMAGE_REPO=ghcr.io/$OWNER/squad-layer-manager" >> $GITHUB_OUTPUT
-              echo "TEST_IMAGE_TAG=ghcr.io/$OWNER/squad-layer-manager:test-$BRANCH_NAME" >> $GITHUB_OUTPUT
+              # version reachable in GHCR; one moving tag rather than one per commit.
+              echo "TEST_IMAGE_TAG=$REPO:test-main" >> $GITHUB_OUTPUT
 
          - name: Set up Docker Buildx
            uses: docker/setup-buildx-action@v3
@@ -112,8 +55,8 @@ jobs:
               cache-from: type=gha
               build-args: |
                  GIT_SHA=${{ github.sha }}
-                 GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-              tags: ${{ steps.branch.outputs.TAGS }}
+                 GIT_BRANCH=${{ github.ref_name }}
+              tags: ${{ steps.tags.outputs.IMAGE_TAG }}
 
          # The test stage is `FROM runtime`, so building it here costs only the layers the tests add: the runtime
          # graph is already in this builder. The integration suite then pulls it by digest instead of rebuilding
@@ -130,8 +73,8 @@ jobs:
               cache-to: type=gha,mode=max
               build-args: |
                  GIT_SHA=${{ github.sha }}
-                 GIT_BRANCH=${{ steps.branch.outputs.BRANCHES_LIST }}
-              tags: ${{ steps.branch.outputs.TEST_IMAGE_TAG }}
+                 GIT_BRANCH=${{ github.ref_name }}
+              tags: ${{ steps.tags.outputs.TEST_IMAGE_TAG }}
 
    quality-checks:
       runs-on: ubuntu-latest
@@ -163,10 +106,54 @@ jobs:
          - name: Run tests
            run: pnpm run test
 
+   # Decides whether the integration suite already ran green on this exact content: if the merged commit's tree
+   # is identical to the PR head's tree (a squash of an up-to-date branch, or a merge where main hadn't moved),
+   # the PR's green run covers it. Every failure mode falls through to skip=false, so the suite runs.
+   #
+   # Known limit: the pull_request run executes the PR's own workflow file, so a PR that neuters the suite can
+   # present a green check. The workflow diff is visible in review; this gate trusts review.
+   skip-gate:
+      runs-on: ubuntu-latest
+      outputs:
+         skip: ${{ steps.gate.outputs.SKIP }}
+      steps:
+         - name: Check for a green PR run on an identical tree
+           id: gate
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           run: |
+              # no set -e: this job must never fail, only decline to skip
+              REPO="${{ github.repository }}"
+              SKIP=false
+
+              MERGE=$(gh api "repos/$REPO/git/commits/${{ github.sha }}" 2>/dev/null)
+              MERGE_TREE=$(jq -r '.tree.sha // empty' <<<"$MERGE")
+              # merge commit: the second parent is the PR head. Squash commit: look up the associated PR.
+              HEAD_SHA=$(jq -r '.parents[1].sha // empty' <<<"$MERGE")
+              if [[ -z "$HEAD_SHA" ]]; then
+                HEAD_SHA=$(gh api "repos/$REPO/commits/${{ github.sha }}/pulls" --jq '.[0].head.sha // empty' 2>/dev/null)
+              fi
+
+              if [[ -n "$HEAD_SHA" && -n "$MERGE_TREE" ]]; then
+                HEAD_TREE=$(gh api "repos/$REPO/git/commits/$HEAD_SHA" --jq '.tree.sha // empty' 2>/dev/null)
+                if [[ "$HEAD_TREE" == "$MERGE_TREE" ]]; then
+                  CONCLUSION=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=integration-tests" \
+                    --jq '.check_runs[0].conclusion // empty' 2>/dev/null)
+                  if [[ "$CONCLUSION" == "success" ]]; then
+                    SKIP=true
+                    echo "::notice::integration suite already green on $HEAD_SHA with an identical tree; skipping"
+                  fi
+                fi
+              fi
+
+              echo "SKIP=$SKIP" >> $GITHUB_OUTPUT
+
    # the integration/e2e suites, called as a job so that tagging and deploying can gate on them. Runs the test
    # image the build job already produced rather than building its own.
    integration-tests:
-      needs: build
+      needs: [build, skip-gate]
+      # a failed skip-gate has empty outputs, so the suite runs
+      if: ${{ !cancelled() && needs.build.result == 'success' && needs.skip-gate.outputs.skip != 'true' }}
       uses: ./.github/workflows/integration-tests.yml
       permissions:
          contents: read
@@ -177,7 +164,11 @@ jobs:
    tag-latest:
       runs-on: ubuntu-latest
       needs: [build, quality-checks, integration-tests]
-      if: github.ref == 'refs/heads/main'
+      # integration-tests may be skipped by the gate; that counts as passed, a failure or a cancel does not
+      if: ${{ !cancelled() && github.ref == 'refs/heads/main'
+         && needs.build.result == 'success'
+         && needs.quality-checks.result == 'success'
+         && contains(fromJSON('["success", "skipped"]'), needs.integration-tests.result) }}
       outputs:
          is-current: ${{ steps.tip.outputs.IS_CURRENT }}
       steps:
@@ -217,7 +208,8 @@ jobs:
    deploy:
       runs-on: ubuntu-latest
       needs: [build, quality-checks, integration-tests, tag-latest]
-      if: github.ref == 'refs/heads/main' && needs.tag-latest.outputs.is-current == 'true'
+      # tag-latest succeeding implies the other gates passed or were legitimately skipped
+      if: ${{ !cancelled() && needs.tag-latest.result == 'success' && needs.tag-latest.outputs.is-current == 'true' }}
       steps:
          - name: Run deployment script from variable
            env:
