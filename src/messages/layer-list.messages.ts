@@ -232,6 +232,10 @@ export const notNextLayerUnsavedBlurb = def(
 // the SlmUpdatesDisabled alert above the queue already explains why, so this badge carries no tooltip
 export const notNextLayerBlocked = def('Not Next Layer: Unable To Set')
 
+export const settingNextLayer = def('Setting Next Layer')
+
+export const settingNextLayerBlurb = def('SLM is writing this layer to the game server.')
+
 export const pasteRotationTitle = def('Paste Rotation')
 
 // -------- the queue panel --------
