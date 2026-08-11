@@ -138,7 +138,7 @@ function CommandDetails({
 								</dt>
 								{!fixed && (
 									<dd className="text-xs text-muted-foreground pt-0.5">
-										{arg.description}
+										{tr.text(arg.description)}
 										{arg.presets.length > 0 && (
 											<span className="flex flex-wrap items-center gap-1 pt-1">
 												<span>{tr.text(CMD_Msgs.configuredPresets())}</span>
@@ -162,7 +162,7 @@ function CommandDetails({
 					{examples.map((example) => (
 						<div key={example.command} className="flex flex-wrap items-center gap-2">
 							<CopyableCommand cmdString={example.command} chatCommand={chatCommand} />
-							<span className="text-xs text-muted-foreground">{example.note}</span>
+							<span className="text-xs text-muted-foreground">{tr.text(example.note)}</span>
 						</div>
 					))}
 				</div>
