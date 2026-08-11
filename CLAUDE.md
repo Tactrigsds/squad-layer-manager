@@ -1,3 +1,27 @@
+# Domain Glossary
+
+Here are some common terms/phrase that you may find in SLM and their meanings
+
+- Squad : the online team-based tactical fps that this program is made to serve
+- Game Server : a gameserver that players can connect to to play Squad
+- Faction : a military organization that's playable in the game, like CAF, RGF, USMC
+- Unit : A particular configuration of vehicles and weapons for a particular faction and map
+- Map : a particular environment that squad matches can be played in
+- Layer : the configuration available to administrators for a match of squad, including map, gamemode, version, and factions/units for both teams. Example: Gorodok_RAAS_v1 USA+Motorized RGF+Armored
+- Team 1/2 : the two teams in a match of squad. players on each time switch sides between 1/2 on consecutive matches
+- Team A/B : a persistent group of players across multiple matches
+- Player : someone who is currently in a match of squad. Admins are also considered players for our purposes
+- User : Someone who is signed in to SLM.
+
+# Common locations
+
+- src/lib - generic utility code that doesn't relate to what our app is about directly
+- src/models - assumed to be stateless side-effectless types, schemas and logic related to a particular topic
+- src/systems - both client and server-side code which may be side-effectful and which may hold module-level state
+- src/frames and src/frame-partials - similar to systems but client-only and zustand-based, and have well-defined lifecycle hooks. "partials" are potentially reusable across frames
+- src/components - react components. Ideally fairly dumb, delegating most of their logic to models/systems.
+- src/messages - contains all of the prose/copy used in the app
+
 # General
 
 Flag any breaking change to persisted data structures or configuration, so the user can deal with it. That covers
@@ -5,7 +29,7 @@ the frontend (localStorage) and the backend (database, config, environment varia
 
 Prefer copy-on-write unless mutation is proven safe or the code is a hot path.
 
-Async functions should take a cancellation signal by default. For non-lib functions, pass it via the ctx object (see
+Async functions which kick off async work and which return a promise or async iterable should take a cancellation signal by default. For non-lib functions, pass it via the ctx object (see
 src/models/context-shared.ts). The client is not converted to this pattern yet, so use judgement about when to
 upgrade a function. Never leave a dangling promise.
 
@@ -42,8 +66,7 @@ Keep the ones that survive no longer than their point needs. Most are one line.
 
 # Documentation, prose and app text
 
-Write plain technical English. Short declarative sentences, one idea each. State the fact, then the reason if the
-reason is needed.
+Short declarative sentences, one idea each. State the fact, then the reason if the reason is needed.
 
 Do not use emdashes.
 
@@ -173,11 +196,7 @@ Arrange through the harness, not inline: seeding via createAppFixture options, b
 (queue, filter, role, ...), db and RCON readers in test/harness/inspect.ts (savedQueue, warnsTo, latestMatch, ...).
 Do not re-implement these in a test file.
 
-Two traps in tests that share an app. Draft edit-session state (queue ops, backburner edits) is not guaranteed to
-outlive the page that made it: a test that leaves a draft must commit it, or the test after it must read its
-starting state dynamically instead of assuming counts. And a save clicked before the page has hydrated can commit
-clobbered state (see the rename test in test/e2e/filter-editor.test.ts), so a test whose save is incidental runs
-after the tests that read what it saves.
+Whenever we add or modify integration/e2e tests, or behavior which may affect one or more existing tests integration/e2e tests, let's take extra care that we have not introduced any flaky/race condition behaviors, in either the test itself or the excercized logic. Run the relevant tests multiple times to catch any potential flakiness.
 
 # Migrations
 
