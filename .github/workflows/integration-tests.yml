@@ -6,8 +6,11 @@ name: SLM Integration Tests
 
 # On pushes to main this runs as a called job of the Docker CI workflow, so that tagging :latest and
 # deploying can depend on it (`needs` can't cross workflow boundaries). There the caller has already built the
-# test image alongside the runtime one and passes it in, so this job only pulls it. Run by hand on a branch it
-# builds the image itself, which takes the best part of an hour; nothing triggers that automatically.
+# test image alongside the runtime one and passes it in, so this job only pulls it. On a pull request, and by
+# hand, it builds the image itself off the cache main's build exported; cold, that takes the best part of an hour.
+
+# A fork's pull request runs the fork's code, so this workflow gets a read-only token and no secrets. Nothing
+# added here may push to a registry or take a secret, and it must never move to `pull_request_target`.
 on:
    workflow_call:
       inputs:
@@ -16,15 +19,22 @@ on:
             required: false
             type: string
             default: ''
+   pull_request:
    workflow_dispatch:
 
 permissions:
    contents: read
 
+concurrency:
+   # keyed on the run id off a pull request, so that main's runs, which gate the deploy, never queue behind each other
+   group: integration-tests-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
    integration-tests:
       runs-on: ubuntu-latest
-      timeout-minutes: 45
+      # generous because a run that builds its own image pays for that build before a test starts
+      timeout-minutes: 90
       steps:
          - uses: actions/checkout@v4
 
@@ -46,6 +56,8 @@ jobs:
 
          # The layer artifacts are checked in (assets/layers) and baked into the image, so there is nothing to
          # download, cache or mount here: the tests run against the same pair production does.
+         # Reads the cache main's build exported but never writes one: a pull request's cache is scoped to its own
+         # branch, so all it could do is evict main's entries out of the repo's shared quota.
          - name: Build test image
            if: ${{ !inputs.test-image }}
            uses: docker/build-push-action@v6
@@ -55,7 +67,6 @@ jobs:
               load: true
               tags: slm-test:ci
               cache-from: type=gha
-              cache-to: type=gha,mode=max
 
          - name: Run integration and e2e tests
            run: |
