@@ -211,7 +211,26 @@ export const defaultChoice = def('Default')
 
 export const selectedChoice = def('Selected')
 
+// -------- whether the queue head is what the server will actually play next --------
+// Shown on the head item, or for a vote on whichever choice would win right now.
+
+export const isNextLayer = def('Next Layer')
+
+export const isNextLayerBlurb = def('This is the posted next layer on the server.')
+
+export const notNextLayer = def('Not Next Layer')
+
 export const notCurrentNextLayer = def('Not current next layer on server')
+
+export const notNextLayerUnsaved = def('Not Next Layer: Unsaved')
+
+export const notNextLayerUnsavedBlurb = def(
+	'The next layer set on the server is still {layer}. Save the changes to set this layer instead. If someone has forgotten to save their changes, use force save:',
+	(layer: string) => ({ layer }),
+)
+
+// the SlmUpdatesDisabled alert above the queue already explains why, so this badge carries no tooltip
+export const notNextLayerBlocked = def('Not Next Layer: Unable To Set')
 
 export const pasteRotationTitle = def('Paste Rotation')
 
