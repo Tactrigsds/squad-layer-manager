@@ -357,208 +357,134 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 	)
 }
 
-function OtherScoreRow({
-	scoreType,
-	score,
-	scoreRange,
+// The paired z-scores plot both teams against one axis, so that axis has to be the vertical: left and right
+// already mean team 1 and team 2 there. The two gauges below carry a single value each and stay horizontal.
+const GAUGE_HEIGHT = 46
+
+type ScoreRange = { min: number; max: number; field: string; poolCutoff?: number; logarithmic?: boolean }
+
+const plotX = (fraction: number) => `${Math.max(0, Math.min(1, fraction)) * 100}%`
+
+function HorizontalGauge({
+	ticks,
+	cutoffs,
+	children,
 }: {
-	scoreType: string
-	score: number
-	scoreRange?: { min: number; max: number; field: string; poolCutoff?: number; logarithmic?: boolean }
+	ticks: { fraction: number; label: string; acrossBar?: boolean }[]
+	cutoffs: { fraction: number; label: string }[]
+	children?: React.ReactNode
 }) {
-	// Helper function to convert value to logarithmic scale
-	const getLogPercentage = (value: number, min: number, max: number): number => {
-		const logMin = Math.log(min)
-		const logMax = Math.log(max)
-		const logValue = Math.log(value)
-		return ((logValue - logMin) / (logMax - logMin)) * 100
+	return (
+		<svg width="100%" height={GAUGE_HEIGHT} className="overflow-visible">
+			<rect x="0" y="4" width="100%" height="8" rx="4" fill="currentColor" className="text-muted" />
+			{ticks.map((tick) => {
+				const x = plotX(tick.fraction)
+				return (
+					<g key={tick.label}>
+						<line
+							x1={x}
+							y1={tick.acrossBar ? '2' : '14'}
+							x2={x}
+							y2={tick.acrossBar ? '14' : '19'}
+							stroke="currentColor"
+							strokeWidth={tick.acrossBar ? '2' : '1'}
+							className={tick.acrossBar ? 'text-foreground/40' : 'text-muted-foreground/30'}
+						/>
+						<text x={x} y="29" textAnchor="middle" fontSize="9" className="fill-muted-foreground/50">
+							{tick.label}
+						</text>
+					</g>
+				)
+			})}
+			{children}
+			{cutoffs.map((cutoff) => {
+				const x = plotX(cutoff.fraction)
+				return (
+					<g key={cutoff.label}>
+						<line x1={x} y1="0" x2={x} y2="16" stroke="white" strokeWidth="2" />
+						<text x={x} y="42" textAnchor="middle" fontSize="10" fill="white" className="font-medium">
+							{cutoff.label}
+						</text>
+					</g>
+				)
+			})}
+		</svg>
+	)
+}
+
+function GaugeCaption({ title, value, logarithmic }: { title: string; value: number; logarithmic?: boolean }) {
+	return (
+		<figcaption className="text-center text-xs font-medium">
+			{title}{' '}
+			<span className="text-[10px] font-light text-muted-foreground">
+				({value > 0 ? '+' : ''}
+				{value.toFixed(2)})
+			</span>
+			{logarithmic && <span className="text-[10px] font-light text-muted-foreground"> {tr.text(L_Msgs.logarithmicScale())}</span>}
+		</figcaption>
+	)
+}
+
+function niceTickValues(min: number, max: number, targetCount: number): number[] {
+	const range = max - min
+	if (range <= 0) return [min]
+	let step = Math.max(1, Math.round(range / targetCount))
+	if (step > 1) {
+		const magnitude = Math.pow(10, Math.floor(Math.log10(step)))
+		const normalized = step / magnitude
+		if (normalized <= 1) step = magnitude
+		else if (normalized <= 2) step = 2 * magnitude
+		else if (normalized <= 5) step = 5 * magnitude
+		else step = 10 * magnitude
 	}
 
-	// Calculate percentage based on actual score range
-	let percentage = 0
-	if (scoreRange) {
-		if (scoreRange.logarithmic) {
-			percentage = getLogPercentage(Math.max(score, scoreRange.min), scoreRange.min, scoreRange.max)
-		} else {
-			const range = scoreRange.max - scoreRange.min
-			const normalizedScore = Math.abs(score - scoreRange.min)
-			percentage = range > 0 ? (normalizedScore / range) * 100 : 0
-		}
+	const values: number[] = []
+	for (let value = Math.ceil(min / step) * step; value <= max; value += step) values.push(value)
+	if (!values.includes(min)) values.unshift(min)
+	if (!values.includes(max)) values.push(max)
+	return values
+}
+
+const tickLabel = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2))
+
+function OtherScoreGauge({ scoreType, score, scoreRange }: { scoreType: string; score: number; scoreRange?: ScoreRange }) {
+	const logFraction = (value: number, min: number, max: number) => (Math.log(value) - Math.log(min)) / (Math.log(max) - Math.log(min))
+
+	let fraction: (value: number) => number
+	let tickValues: number[]
+	if (!scoreRange) {
+		fraction = (value) => Math.min(Math.abs(value) * 0.1, 1)
+		tickValues = []
+	} else if (scoreRange.logarithmic) {
+		fraction = (value) => logFraction(Math.max(value, scoreRange.min), scoreRange.min, scoreRange.max)
+		tickValues = [1, 2, 5, 10, 20, 30].filter((v) => v >= scoreRange.min && v <= scoreRange.max)
 	} else {
-		percentage = Math.min(Math.abs(score) * 10, 100)
-	}
-
-	// Calculate pool cutoff position if it exists
-	let cutoffPercentage = 0
-	if (scoreRange && scoreRange.poolCutoff !== undefined) {
-		if (scoreRange.logarithmic) {
-			cutoffPercentage = getLogPercentage(scoreRange.poolCutoff, scoreRange.min, scoreRange.max)
-		} else {
-			const range = scoreRange.max - scoreRange.min
-			const normalizedCutoff = scoreRange.poolCutoff - scoreRange.min
-			cutoffPercentage = range > 0 ? (normalizedCutoff / range) * 100 : 0
-		}
+		fraction = (value) => (value - scoreRange.min) / (scoreRange.max - scoreRange.min)
+		tickValues = niceTickValues(scoreRange.min, scoreRange.max, 8)
 	}
 
 	return (
-		<div className="space-y-1">
-			<div className="flex justify-center items-center">
-				<span className="text-sm font-medium">
-					{scoreType.replace(/_/g, ' ')}{' '}
-					<span className="text-xs text-muted-foreground">
-						({score > 0 ? '+' : ''}
-						{score.toFixed(2)})
-					</span>
-					{scoreRange?.logarithmic && (
-						<>
-							{' '}
-							<span className="text-xs text-muted-foreground">{tr.text(L_Msgs.logarithmicScale())}</span>
-						</>
-					)}
-				</span>
-			</div>
-			{scoreRange && scoreRange.poolCutoff !== undefined ? (
-				<div className="space-y-1">
-					<svg width="100%" height="56" className="overflow-visible">
-						{/* Background bar */}
-						<rect x="0" y="4" width="100%" height="8" rx="4" fill="currentColor" className="text-muted" />
-						{/* Score bar */}
-						<rect
-							x="0"
-							y="4"
-							width={`${Math.min(percentage, 100)}%`}
-							height="8"
-							rx="4"
-							fill="currentColor"
-							className="text-muted-foreground transition-all duration-200"
-						/>
-
-						{/* Scale markers */}
-						{scoreRange.logarithmic
-							? (() => {
-									const logMin = Math.log(scoreRange.min)
-									const logMax = Math.log(scoreRange.max)
-									// Generate tick marks at reasonable intervals for log scale
-									const tickValues = [1, 2, 5, 10, 20, 30].filter((v) => v >= scoreRange.min && v <= scoreRange.max)
-
-									return tickValues.map((tickValue) => {
-										const tickPercentage = ((Math.log(tickValue) - logMin) / (logMax - logMin)) * 100
-										return (
-											<g key={tickValue}>
-												<line
-													x1={`${tickPercentage}%`}
-													y1="20"
-													x2={`${tickPercentage}%`}
-													y2="28"
-													stroke="currentColor"
-													strokeWidth="1"
-													className="text-muted-foreground/30"
-												/>
-												<text
-													x={`${tickPercentage}%`}
-													y="48"
-													textAnchor="middle"
-													fontSize="9"
-													className="fill-muted-foreground/50"
-												>
-													{tickValue}
-												</text>
-											</g>
-										)
-									})
-								})()
-							: (() => {
-									// Linear scale markers
-									// Target approximately 1 marking per 50px (assuming typical chart width of ~300-500px)
-									const range = scoreRange.max - scoreRange.min
-									const targetMarkingCount = Math.max(2, Math.floor(400 / 50)) // Assume ~400px width, minimum 2 markings
-
-									// Calculate step size to get whole numbers
-									const idealStep = range / targetMarkingCount
-									let step = Math.max(1, Math.round(idealStep))
-
-									// Round step to nice numbers (1, 2, 5, 10, 20, 50, etc.)
-									if (step > 1) {
-										const magnitude = Math.pow(10, Math.floor(Math.log10(step)))
-										const normalized = step / magnitude
-										if (normalized <= 1) step = magnitude
-										else if (normalized <= 2) step = 2 * magnitude
-										else if (normalized <= 5) step = 5 * magnitude
-										else step = 10 * magnitude
-									}
-
-									const tickValues: number[] = []
-									const startValue = Math.ceil(scoreRange.min / step) * step
-
-									for (let value = startValue; value <= scoreRange.max; value += step) {
-										tickValues.push(value)
-									}
-
-									// Always include min and max values
-									if (!tickValues.includes(scoreRange.min)) {
-										tickValues.unshift(scoreRange.min)
-									}
-									if (!tickValues.includes(scoreRange.max)) {
-										tickValues.push(scoreRange.max)
-									}
-
-									// Determine if min/max are whole numbers
-									const minIsWhole = Number.isInteger(scoreRange.min)
-									const maxIsWhole = Number.isInteger(scoreRange.max)
-									const useDecimals = minIsWhole && maxIsWhole
-
-									return tickValues.map((tickValue) => {
-										const tickPercentage = ((tickValue - scoreRange.min) / range) * 100
-										// Format: if using decimals and this is a whole number, show 1 decimal, otherwise show 2
-										let label: string
-										if (Number.isInteger(tickValue)) {
-											label = useDecimals ? tickValue.toFixed(1) : tickValue.toString()
-										} else {
-											label = tickValue.toFixed(2)
-										}
-
-										return (
-											<g key={tickValue}>
-												<line
-													x1={`${tickPercentage}%`}
-													y1="20"
-													x2={`${tickPercentage}%`}
-													y2="28"
-													stroke="currentColor"
-													strokeWidth="1"
-													className="text-muted-foreground/30"
-												/>
-												<text
-													x={`${tickPercentage}%`}
-													y="48"
-													textAnchor="middle"
-													fontSize="9"
-													className="fill-muted-foreground/50"
-												>
-													{label}
-												</text>
-											</g>
-										)
-									})
-								})()}
-
-						{/* Pool cutoff line */}
-						<line x1={`${cutoffPercentage}%`} y1="0" x2={`${cutoffPercentage}%`} y2="16" stroke="white" strokeWidth="2" />
-						{/* Pool cutoff label */}
-						<text x={`${cutoffPercentage}%`} y="32" textAnchor="middle" fontSize="10" fill="white" className="font-medium">
-							{tr.text(L_Msgs.poolCutoff(String(scoreRange.poolCutoff)))}
-						</text>
-					</svg>
-				</div>
-			) : (
-				<div className="h-1 rounded-full bg-muted">
-					<div
-						className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
-						style={{ width: `${Math.min(percentage, 100)}%` }}
-					/>
-				</div>
-			)}
-		</div>
+		<figure>
+			<GaugeCaption title={scoreType.replace(/_/g, ' ')} value={score} logarithmic={scoreRange?.logarithmic} />
+			<HorizontalGauge
+				ticks={tickValues.map((value) => ({ fraction: fraction(value), label: tickLabel(value) }))}
+				cutoffs={
+					scoreRange?.poolCutoff === undefined
+						? []
+						: [{ fraction: fraction(scoreRange.poolCutoff), label: tr.text(L_Msgs.poolCutoff(String(scoreRange.poolCutoff))) }]
+				}
+			>
+				<rect
+					x="0"
+					y="4"
+					width={plotX(fraction(score))}
+					height="8"
+					rx="4"
+					fill="currentColor"
+					className="text-muted-foreground transition-all duration-200"
+				/>
+			</HorizontalGauge>
+		</figure>
 	)
 }
 
@@ -579,203 +505,64 @@ function LayerConfigInfo({ layerConfig }: { layerConfig: L.LayerConfig }) {
 	)
 }
 
-function BalanceDifferentialRow({
-	diff,
-	scoreRange,
-}: {
-	diff: number
-	scoreRange?: { min: number; max: number; field: string; poolCutoff?: number }
-}) {
-	// Helper function to convert value to logarithmic scale for symmetric centered display
-	// Maps values from [min, max] to [0, 100] using log scale centered at 0
-	const getLogPercentageSymmetric = (value: number, min: number, max: number): number => {
-		// For a symmetric scale centered at 0, we need to handle positive and negative separately
-		// Scale range should be symmetric (e.g., -30 to +30)
+function BalanceDifferentialGauge({ diff, scoreRange }: { diff: number; scoreRange?: ScoreRange }) {
+	const min = scoreRange?.min ?? -30
+	const max = scoreRange?.max ?? 30
+
+	// A log scale on the absolute value, mirrored around 0 at the centre. A positive differential favours team 1
+	// and runs left, towards the team 1 heading, so the axis agrees with the columns above it.
+	const fraction = (value: number) => {
+		if (value === 0) return 0.5
 		const maxAbs = Math.max(Math.abs(min), Math.abs(max))
-
-		if (value === 0) return 50
-
-		// Use log scale for the absolute value, then map to appropriate side
-		const absValue = Math.abs(value)
-		const logValue = Math.log(absValue + 1) // +1 to handle log(0)
-		const logMax = Math.log(maxAbs + 1)
-
-		// Map to 0-50 range, then offset based on sign
-		const halfRangePercentage = (logValue / logMax) * 50
-
-		// Positive values go left (inverted), negative values go right
-		return value > 0 ? 50 - halfRangePercentage : 50 + halfRangePercentage
+		const halfRange = Math.log(Math.abs(value) + 1) / Math.log(maxAbs + 1) / 2
+		return value > 0 ? 0.5 - halfRange : 0.5 + halfRange
 	}
 
-	// Calculate percentage based on actual score range using logarithmic scale
-	// For Balance_Differential, 0 is centered, negative means Team 2 advantage, positive means Team 1 advantage
-	// Invert so positive (Team 1) goes LEFT and negative (Team 2) goes RIGHT
-	let diffPercentage = 50
-	if (scoreRange) {
-		diffPercentage = getLogPercentageSymmetric(diff, scoreRange.min, scoreRange.max)
-	} else {
-		// Fallback: assume range of -30 to 30
-		diffPercentage = getLogPercentageSymmetric(diff, -30, 30)
-	}
+	const maxAbs = Math.max(Math.abs(min), Math.abs(max))
+	const ticks = [0, 1, 2, 5, 10, 20, 30]
+		.filter((v) => v <= maxAbs)
+		.flatMap((value) =>
+			value === 0
+				? [{ fraction: 0.5, label: '0', acrossBar: true }]
+				: [
+						{ fraction: fraction(value), label: `+${value}` },
+						{ fraction: fraction(-value), label: `-${value}` },
+					],
+		)
 
-	// Calculate pool cutoff positions if they exist using logarithmic scale
-	// The cutoff represents the maximum acceptable absolute differential (both positive and negative)
-	// Inverted: positive cutoff (Team 1) on LEFT, negative cutoff (Team 2) on RIGHT
-	let poolCutoffPositivePercentage = 0
-	let poolCutoffNegativePercentage = 0
-	if (scoreRange && scoreRange.poolCutoff !== undefined) {
-		// Positive cutoff (Team 1 advantage) - inverted so it's on the left
-		poolCutoffPositivePercentage = getLogPercentageSymmetric(scoreRange.poolCutoff, scoreRange.min, scoreRange.max)
-		// Negative cutoff (Team 2 advantage) - inverted so it's on the right
-		poolCutoffNegativePercentage = getLogPercentageSymmetric(-scoreRange.poolCutoff, scoreRange.min, scoreRange.max)
-	}
+	const valueX = fraction(diff)
 
 	return (
-		<div className="space-y-1">
-			<div className="flex justify-center items-center">
-				<span className="text-sm font-medium">
-					{tr.text(L_Msgs.balanceDifferential())}{' '}
-					<span className={`text-xs ${diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-						({diff > 0 ? '+' : ''}
-						{diff.toFixed(2)})
-					</span>{' '}
-					<span className="text-xs text-muted-foreground">{tr.text(L_Msgs.logarithmicScale())}</span>
-				</span>
-			</div>
-			{scoreRange && scoreRange.poolCutoff !== undefined ? (
-				<div className="space-y-1">
-					<svg width="100%" height="56" className="overflow-visible">
-						{/* Background bar */}
-						<rect x="0" y="4" width="100%" height="8" rx="4" fill="currentColor" className="text-muted" />
-
-						{/* Differential indicator - show blue extending left if positive (Team 1 advantage), red extending right if negative (Team 2 advantage) */}
-						{diff > 0 ? (
-							<rect
-								x={`${diffPercentage}%`}
-								y="4"
-								width={`${Math.min(Math.abs(50 - diffPercentage), 50)}%`}
-								height="8"
-								rx="4"
-								fill="currentColor"
-								className="text-blue-500 transition-all duration-200"
-							/>
-						) : diff < 0 ? (
-							<rect
-								x="50%"
-								y="4"
-								width={`${Math.min(Math.abs(diffPercentage - 50), 50)}%`}
-								height="8"
-								rx="4"
-								fill="currentColor"
-								className="text-red-500 transition-all duration-200"
-							/>
-						) : null}
-
-						{/* Scale markers - logarithmic */}
-						{scoreRange &&
-							(() => {
-								const markers = []
-								const maxAbs = Math.max(Math.abs(scoreRange.min), Math.abs(scoreRange.max))
-
-								// Generate logarithmically spaced markers
-								// Common intervals: 0, ±1, ±2, ±5, ±10, ±20, ±30, etc.
-								const tickValues = [0, 1, 2, 5, 10, 20, 30].filter((v) => v <= maxAbs)
-
-								// Add positive values (going left from center)
-								for (const value of tickValues) {
-									if (value === 0) {
-										markers.push({ value: 0, position: 50, isCenter: true })
-									} else if (value <= maxAbs) {
-										const position = getLogPercentageSymmetric(value, scoreRange.min, scoreRange.max)
-										markers.push({ value, position, isCenter: false })
-										// Add corresponding negative value (going right from center)
-										const negPosition = getLogPercentageSymmetric(-value, scoreRange.min, scoreRange.max)
-										markers.push({ value: -value, position: negPosition, isCenter: false })
-									}
-								}
-
-								return markers.map(({ value, position, isCenter }) => (
-									<g key={value}>
-										<line
-											x1={`${position}%`}
-											y1={isCenter ? '16' : '20'}
-											x2={`${position}%`}
-											y2={isCenter ? '32' : '28'}
-											stroke="currentColor"
-											strokeWidth={isCenter ? '2' : '1'}
-											className={isCenter ? 'text-foreground/40' : 'text-muted-foreground/30'}
-										/>
-										<text x={`${position}%`} y="48" textAnchor="middle" fontSize="9" className="fill-muted-foreground/50">
-											{value > 0 ? `+${value}` : value}
-										</text>
-									</g>
-								))
-							})()}
-
-						{/* Positive pool cutoff line */}
-						<line
-							x1={`${poolCutoffPositivePercentage}%`}
-							y1="0"
-							x2={`${poolCutoffPositivePercentage}%`}
-							y2="16"
-							stroke="white"
-							strokeWidth="2"
-						/>
-						{/* Positive pool cutoff label */}
-						<text
-							x={`${poolCutoffPositivePercentage}%`}
-							y="32"
-							textAnchor="middle"
-							fontSize="10"
-							fill="white"
-							className="font-medium"
-						>
-							{tr.text(L_Msgs.poolCutoff(`+${scoreRange.poolCutoff}`))}
-						</text>
-
-						{/* Negative pool cutoff line */}
-						<line
-							x1={`${poolCutoffNegativePercentage}%`}
-							y1="0"
-							x2={`${poolCutoffNegativePercentage}%`}
-							y2="16"
-							stroke="white"
-							strokeWidth="2"
-						/>
-						{/* Negative pool cutoff label */}
-						<text
-							x={`${poolCutoffNegativePercentage}%`}
-							y="32"
-							textAnchor="middle"
-							fontSize="10"
-							fill="white"
-							className="font-medium"
-						>
-							{tr.text(L_Msgs.poolCutoff(`-${scoreRange.poolCutoff}`))}
-						</text>
-
-						{/* Current value indicator */}
-						<circle
-							cx={`${diffPercentage}%`}
-							cy="8"
-							r="5"
-							fill="currentColor"
-							className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
-						/>
-					</svg>
-				</div>
-			) : (
-				<div className="h-1 rounded-full bg-muted">
-					<div
-						className="h-full rounded-full transition-all duration-200 bg-muted-foreground"
-						style={{
-							width: `${Math.min(Math.abs(diffPercentage - 50), 50)}%`,
-							marginLeft: diff >= 0 ? '50%' : `${diffPercentage}%`,
-						}}
-					/>
-				</div>
-			)}
-		</div>
+		<figure>
+			<GaugeCaption title={tr.text(L_Msgs.balanceDifferential())} value={diff} logarithmic />
+			<HorizontalGauge
+				ticks={ticks}
+				cutoffs={
+					scoreRange?.poolCutoff === undefined
+						? []
+						: [
+								{ fraction: fraction(scoreRange.poolCutoff), label: tr.text(L_Msgs.poolCutoff(`+${scoreRange.poolCutoff}`)) },
+								{ fraction: fraction(-scoreRange.poolCutoff), label: tr.text(L_Msgs.poolCutoff(`-${scoreRange.poolCutoff}`)) },
+							]
+				}
+			>
+				<rect
+					x={plotX(Math.min(0.5, valueX))}
+					y="4"
+					width={plotX(Math.abs(valueX - 0.5))}
+					height="8"
+					fill="currentColor"
+					className={`transition-all duration-200 ${diff > 0 ? 'text-blue-500' : 'text-red-500'}`}
+				/>
+				<circle
+					cx={plotX(valueX)}
+					cy="8"
+					r="5"
+					fill="currentColor"
+					className={diff > 0 ? 'text-blue-400' : diff < 0 ? 'text-red-400' : 'text-muted-foreground'}
+				/>
+			</HorizontalGauge>
+		</figure>
 	)
 }
 
@@ -799,194 +586,169 @@ function ScoreGrid({
 
 	return (
 		<div className="grid gap-2">
-			{zScoreTypes.length > 0 && (
-				<div className="flex justify-between items-center mb-2 text-xs">
-					<div className="text-blue-500 font-medium">
-						{tr.richText(
-							L_Msgs.teamScoreHeading(
-								tr.text(L_Msgs.team1()),
-								team1Role,
-								layerDetails?.layer.Faction_1 ?? '',
-								layerDetails?.layer.Unit_1 ?? '',
-							),
-						)}
-					</div>
-					<div className="text-red-500 font-medium">
-						{tr.richText(
-							L_Msgs.teamScoreHeading(
-								tr.text(L_Msgs.team2()),
-								team2Role,
-								layerDetails?.layer.Faction_2 ?? '',
-								layerDetails?.layer.Unit_2 ?? '',
-							),
-						)}
-					</div>
-				</div>
-			)}
-			{zScoreTypes.map((scoreType, index) => {
-				return (
-					<div key={scoreType}>
-						{index > 0 && <div className="border-t border-muted/30 my-2" />}
-						<ZScoreRow
-							scoreType={scoreType}
-							team1Score={scores.team1[scoreType]}
-							team2Score={scores.team2[scoreType]}
-							diff={scores.diffs[scoreType]}
-						/>
-					</div>
-				)
-			})}
 			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
-				<div className="mt-3 pt-3 border-t border-muted space-y-2">
+				<div className="mb-2 pb-2 border-b border-muted space-y-1">
 					{scores.diffs['Balance_Differential'] !== undefined && (
-						<BalanceDifferentialRow
+						<BalanceDifferentialGauge
 							diff={scores.diffs['Balance_Differential']}
-							scoreRange={
-								scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as
-									| {
-											min: number
-											max: number
-											field: string
-											poolCutoff?: number
-									  }
-									| undefined
-							}
+							scoreRange={scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as ScoreRange | undefined}
 						/>
 					)}
-					{otherScores.map((scoreType) => {
-						const scoreRange = scoreRanges.regular.find((range) => range.field === scoreType) as
-							| {
-									min: number
-									max: number
-									field: string
-									poolCutoff?: number
-									logarithmic?: boolean
-							  }
-							| undefined
-						return (
-							<OtherScoreRow key={scoreType} scoreType={scoreType} score={scores.other[scoreType] || 0} scoreRange={scoreRange} />
-						)
-					})}
+					{otherScores.map((scoreType) => (
+						<OtherScoreGauge
+							key={scoreType}
+							scoreType={scoreType}
+							score={scores.other[scoreType] || 0}
+							scoreRange={scoreRanges.regular.find((range) => range.field === scoreType) as ScoreRange | undefined}
+						/>
+					))}
 				</div>
+			)}
+			{zScoreTypes.length > 0 && (
+				<ZScoreChart
+					scoreTypes={zScoreTypes}
+					scores={scores}
+					team1Heading={tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team1()),
+							team1Role,
+							layerDetails?.layer.Faction_1 ?? '',
+							layerDetails?.layer.Unit_1 ?? '',
+						),
+					)}
+					team2Heading={tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team2()),
+							team2Role,
+							layerDetails?.layer.Faction_2 ?? '',
+							layerDetails?.layer.Unit_2 ?? '',
+						),
+					)}
+				/>
 			)}
 		</div>
 	)
 }
 
-function ZScoreRow({
-	scoreType,
-	team1Score,
-	team2Score,
-	diff,
+// Z-scores cover 99.7% of the data within three standard deviations, so the axis is fixed and symmetric rather
+// than fitted to the layer: every layer's chart reads at the same scale.
+const Z_MIN = -3
+const Z_MAX = 3
+const Z_HEIGHT = 150
+const Z_MARKERS = [3, 2, 1, 0, -1, -2, -3]
+
+// A column is only as wide as the row of numbers under it needs, so the two stems stay close enough together to
+// compare. Stretching them across the container is what wastes the space.
+const Z_COLUMN_WIDTH = 116
+
+const zY = (score: number) => ((Z_MAX - Math.max(Z_MIN, Math.min(Z_MAX, score))) / (Z_MAX - Z_MIN)) * Z_HEIGHT
+
+// Both teams' markers share one dimension's axis, so the pair can be compared by height rather than by sign.
+function ZScoreChart({
+	scoreTypes,
+	scores,
+	team1Heading,
+	team2Heading,
 }: {
-	scoreType: string
-	team1Score?: number
-	team2Score?: number
-	diff: number
+	scoreTypes: string[]
+	scores: LC.PartitionedScores
+	team1Heading: React.ReactNode
+	team2Heading: React.ReactNode
 }) {
-	// Z-scores typically range from -3 to 3 (covering 99.7% of data)
-	const Z_MIN = -3
-	const Z_MAX = 3
-	const Z_RANGE = Z_MAX - Z_MIN
-
-	// Convert z-score to percentage position on the scale (0-100%)
-	const getPosition = (score: number | undefined): number => {
-		if (score === undefined) return 50
-		// Clamp to visible range
-		const clampedScore = Math.max(Z_MIN, Math.min(Z_MAX, score))
-		return ((clampedScore - Z_MIN) / Z_RANGE) * 100
-	}
-
-	const team1Position = getPosition(team1Score)
-	const team2Position = getPosition(team2Score)
-
-	// Standard deviation markers
-	const stdMarkers = [-3, -2, -1, 0, 1, 2, 3]
-
 	return (
-		<div className="space-y-2">
-			<div className="flex justify-between items-center">
-				<span className="text-xs text-blue-500">
-					{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}
-				</span>
-				<span className="text-sm font-medium">
-					{scoreType.replace(/_/g, ' ')}
-					<span className="text-xs font-light">
-						{tr.richText(
-							L_Msgs.scoreDiff(
-								<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
-									{Math.abs(diff).toFixed(2)}
-								</span>,
-							),
-						)}
-					</span>
-				</span>
-				<span className="text-xs text-red-500">
-					{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}
-				</span>
+		// heading, name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves
+		// every column's chart down together rather than leaving a ragged edge
+		<div
+			className="grid justify-center gap-x-4"
+			style={{
+				gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, ${Z_COLUMN_WIDTH}px))`,
+				gridTemplateRows: 'auto auto auto auto',
+			}}
+		>
+			<div />
+			<div className="mb-2 flex justify-between text-xs font-medium" style={{ gridColumn: `2 / span ${scoreTypes.length}` }}>
+				<span className="text-blue-500">{team1Heading}</span>
+				<span className="text-red-500">{team2Heading}</span>
 			</div>
-
-			{/* SVG visualization */}
-			<svg width="100%" height="48" className="overflow-visible">
-				{/* Main axis line */}
-				<line x1="0" y1="24" x2="100%" y2="24" stroke="currentColor" strokeWidth="2" className="text-muted" />
-
-				{/* Standard deviation markers */}
-				{stdMarkers.map((marker) => {
-					const position = ((marker - Z_MIN) / Z_RANGE) * 100
-					const isZero = marker === 0
-					return (
-						<g key={marker}>
-							<line
-								x1={`${position}%`}
-								y1={isZero ? '16' : '20'}
-								x2={`${position}%`}
-								y2={isZero ? '32' : '28'}
-								stroke="currentColor"
-								strokeWidth={isZero ? '2' : '1'}
-								className={isZero ? 'text-foreground/40' : 'text-muted-foreground/30'}
-							/>
-							<text x={`${position}%`} y="42" textAnchor="middle" fontSize="10" className="fill-muted-foreground/50">
-								{marker}
-							</text>
-						</g>
-					)
-				})}
-
-				{/* Team 1 score marker (blue) */}
-				{team1Score !== undefined && (
-					<g>
-						<line
-							x1={`${team1Position}%`}
-							y1="8"
-							x2={`${team1Position}%`}
-							y2="24"
-							stroke="currentColor"
-							strokeWidth="3"
-							className="text-blue-500"
-							strokeLinecap="round"
-						/>
-						<circle cx={`${team1Position}%`} cy="8" r="4" fill="currentColor" className="text-blue-500" />
-					</g>
-				)}
-
-				{/* Team 2 score marker (red) */}
-				{team2Score !== undefined && (
-					<g>
-						<line
-							x1={`${team2Position}%`}
-							y1="24"
-							x2={`${team2Position}%`}
-							y2="40"
-							stroke="currentColor"
-							strokeWidth="3"
-							className="text-red-500"
-							strokeLinecap="round"
-						/>
-						<circle cx={`${team2Position}%`} cy="40" r="4" fill="currentColor" className="text-red-500" />
-					</g>
-				)}
+			<div />
+			{scoreTypes.map((scoreType) => (
+				<div key={scoreType} className="mb-0.5 text-center text-xs font-medium leading-tight">
+					{scoreType.replace(/_/g, ' ')}
+				</div>
+			))}
+			<svg width="18" height={Z_HEIGHT} className="overflow-visible">
+				{Z_MARKERS.map((marker) => (
+					<text key={marker} x="18" y={zY(marker)} dy="0.32em" textAnchor="end" fontSize="10" className="fill-muted-foreground/50">
+						{marker}
+					</text>
+				))}
 			</svg>
+			{scoreTypes.map((scoreType) => (
+				<ZScoreColumn key={scoreType} team1Score={scores.team1[scoreType]} team2Score={scores.team2[scoreType]} />
+			))}
+			<div />
+			{scoreTypes.map((scoreType) => (
+				<ZScoreValues
+					key={scoreType}
+					team1Score={scores.team1[scoreType]}
+					team2Score={scores.team2[scoreType]}
+					diff={scores.diffs[scoreType]}
+				/>
+			))}
+		</div>
+	)
+}
+
+function ZScoreColumn({ team1Score, team2Score }: { team1Score?: number; team2Score?: number }) {
+	return (
+		<svg width="100%" height={Z_HEIGHT} className="overflow-visible">
+			{Z_MARKERS.map((marker) => {
+				const y = zY(marker)
+				const isZero = marker === 0
+				return (
+					<line
+						key={marker}
+						x1="0"
+						y1={y}
+						x2="100%"
+						y2={y}
+						stroke="currentColor"
+						strokeWidth={isZero ? '2' : '1'}
+						className={isZero ? 'text-foreground/40' : 'text-muted-foreground/20'}
+					/>
+				)
+			})}
+			<ZScoreMarker score={team1Score} x="25%" className="text-blue-500" />
+			<ZScoreMarker score={team2Score} x="75%" className="text-red-500" />
+		</svg>
+	)
+}
+
+function ZScoreMarker({ score, x, className }: { score?: number; x: string; className: string }) {
+	if (score === undefined) return null
+	const y = zY(score)
+	return (
+		<g className={className}>
+			<line x1={x} y1={zY(0)} x2={x} y2={y} stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+			<circle cx={x} cy={y} r="4" fill="currentColor" />
+		</g>
+	)
+}
+
+function ZScoreValues({ team1Score, team2Score, diff }: { team1Score?: number; team2Score?: number; diff: number }) {
+	return (
+		<div className="mt-0.5 flex items-baseline justify-between px-0.5 text-[10px] leading-tight">
+			<span className="text-blue-500">{team1Score !== undefined ? team1Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
+			<span className="font-light">
+				{tr.richText(
+					L_Msgs.scoreDiff(
+						<span className={diff > 0 ? 'text-blue-500' : diff < 0 ? 'text-red-500' : 'text-muted-foreground'}>
+							{Math.abs(diff).toFixed(2)}
+						</span>,
+					),
+				)}
+			</span>
+			<span className="text-red-500">{team2Score !== undefined ? team2Score.toFixed(2) : tr.text(L_Msgs.scoreUnavailable())}</span>
 		</div>
 	)
 }
