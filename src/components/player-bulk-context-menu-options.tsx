@@ -149,7 +149,13 @@ export default function PlayerBulkContextMenuOptions({
 				content: (
 					<div className="grid gap-3 py-2">
 						{selectedPlayerList()}
-						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
+						<ReasonPicker
+							action="kill"
+							presetRef={presetReasonRef}
+							customRef={customReasonRef}
+							required={killReasonRequired}
+							squadName={fullSquad?.squadName}
+						/>
 					</div>
 				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
@@ -163,7 +169,7 @@ export default function PlayerBulkContextMenuOptions({
 			})
 			if (!input) return
 			// awaited inside withPlayerDialogue so the presence dialogue stays open until the kill settles
-			const res = await killMutation.mutateAsync({ serverId, playerIds, ...input })
+			const res = await killMutation.mutateAsync({ serverId, playerIds, squadName: fullSquad?.squadName, ...input })
 			if (res.code !== 'ok') {
 				toast.error(...tr.toast(SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
@@ -184,7 +190,13 @@ export default function PlayerBulkContextMenuOptions({
 				content: (
 					<div className="grid gap-3 py-2">
 						{selectedPlayerList()}
-						<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={kickReasonRequired} />
+						<ReasonPicker
+							action="kick"
+							presetRef={presetReasonRef}
+							customRef={customReasonRef}
+							required={kickReasonRequired}
+							squadName={fullSquad?.squadName}
+						/>
 					</div>
 				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
@@ -197,7 +209,7 @@ export default function PlayerBulkContextMenuOptions({
 				customRef: customReasonRef,
 			})
 			if (!input) return
-			const res = await kickMutation.mutateAsync({ serverId, playerIds, ...input })
+			const res = await kickMutation.mutateAsync({ serverId, playerIds, squadName: fullSquad?.squadName, ...input })
 			if (res.code !== 'ok') {
 				toast.error(...tr.toast(SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
@@ -225,6 +237,7 @@ export default function PlayerBulkContextMenuOptions({
 							presetReasonRef={presetReasonRef}
 							maxTimeout={maxTimeout}
 							required={timeoutReasonRequired}
+							squadName={fullSquad?.squadName}
 						/>
 					</div>
 				),
@@ -243,6 +256,7 @@ export default function PlayerBulkContextMenuOptions({
 				playerIds,
 				durationText: timeoutDurationRef.current,
 				maxTimeout,
+				squadName: fullSquad?.squadName,
 				...input,
 			})
 		})
@@ -299,7 +313,7 @@ export default function PlayerBulkContextMenuOptions({
 			description: msg.description,
 			content: (
 				<div className="grid gap-3 py-2">
-					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
+					<ReasonPicker action="warn" presetRef={presetReasonRef} required squadName={fullSquad?.squadName} />
 					{selectedPlayerList()}
 				</div>
 			),

@@ -194,6 +194,15 @@ text per action, where an action is a warn, a broadcast, a kick, a timeout, and 
 Write the texts as [mustache](https://mustache.github.io/mustache.5.html) templates. _Message Variables_ in the
 same section holds reusable snippets. You can use one in several texts, or inside another message variable.
 
+When an action targets a whole squad, `{{squadName}}` holds the squad's name. For a single player it is empty, so
+a section can switch the wording:
+
+```
+{{#squadName}}Your squad has been warned for{{/squadName}}{{^squadName}}You have been warned for{{/squadName}} teamkilling.
+```
+
+Put the section inside a message variable to reuse it across reasons.
+
 _Require a Reason_ makes a reason mandatory for the actions you name:
 
 ![actions_requiring_reason](configuring_screenshots/actions_requiring_reason.png)

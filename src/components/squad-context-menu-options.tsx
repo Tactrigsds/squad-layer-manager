@@ -148,7 +148,7 @@ export function SquadMenuItems({
 			description: msg.description,
 			content: (
 				<div className="grid gap-3 py-2">
-					<ReasonPicker action="warn" presetRef={presetReasonRef} required />
+					<ReasonPicker action="warn" presetRef={presetReasonRef} required squadName={squad.squadName} />
 				</div>
 			),
 			buttons: [{ id: 'confirm', label: msg.confirmLabel }],
@@ -181,7 +181,13 @@ export function SquadMenuItems({
 				description: msg.description,
 				content: (
 					<div className="grid gap-3 py-2">
-						<ReasonPicker action="kill" presetRef={presetReasonRef} customRef={customReasonRef} required={killReasonRequired} />
+						<ReasonPicker
+							action="kill"
+							presetRef={presetReasonRef}
+							customRef={customReasonRef}
+							required={killReasonRequired}
+							squadName={squad.squadName}
+						/>
 					</div>
 				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
@@ -195,7 +201,7 @@ export function SquadMenuItems({
 			})
 			if (!input) return
 			// awaited inside withPlayerDialogue so the presence dialogue stays open until the kill settles
-			const res = await killMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, ...input })
+			const res = await killMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, squadName: squad.squadName, ...input })
 			if (res.code !== 'ok') {
 				toast.error(...tr.toast(SM_Msgs.killFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
@@ -216,7 +222,13 @@ export function SquadMenuItems({
 				description: msg.description,
 				content: (
 					<div className="grid gap-3 py-2">
-						<ReasonPicker action="kick" presetRef={presetReasonRef} customRef={customReasonRef} required={kickReasonRequired} />
+						<ReasonPicker
+							action="kick"
+							presetRef={presetReasonRef}
+							customRef={customReasonRef}
+							required={kickReasonRequired}
+							squadName={squad.squadName}
+						/>
 					</div>
 				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
@@ -229,7 +241,7 @@ export function SquadMenuItems({
 				customRef: customReasonRef,
 			})
 			if (!input) return
-			const res = await kickMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, ...input })
+			const res = await kickMutation.mutateAsync({ serverId, playerIds: squadPlayerIds, squadName: squad.squadName, ...input })
 			if (res.code !== 'ok') {
 				toast.error(...tr.toast(SM_Msgs.kickFailed('msg' in res && res.msg ? res.msg : res.code)))
 				return
@@ -256,6 +268,7 @@ export function SquadMenuItems({
 						presetReasonRef={presetReasonRef}
 						maxTimeout={maxTimeout}
 						required={timeoutReasonRequired}
+						squadName={squad.squadName}
 					/>
 				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
@@ -273,6 +286,7 @@ export function SquadMenuItems({
 				playerIds: squadPlayerIds,
 				durationText: timeoutDurationRef.current,
 				maxTimeout,
+				squadName: squad.squadName,
 				...input,
 			})
 		})
@@ -286,7 +300,14 @@ export function SquadMenuItems({
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
-				content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
+				content: (
+					<ReasonPicker
+						action="disband-squad"
+						presetRef={presetReasonRef}
+						required={disbandReasonRequired}
+						squadName={squad.squadName}
+					/>
+				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return

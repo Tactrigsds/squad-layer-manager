@@ -73,6 +73,8 @@ export function ReasonPicker(props: {
 	required?: boolean
 	// for timeouts: the currently-entered duration, so the preview can resolve {{duration}} live
 	durationMs?: number
+	// for squad-targeted actions: the target squad's name, so the preview can resolve {{squadName}}
+	squadName?: string
 	// mount with the preset dropdown already open. Off for dialogs whose first field is something else.
 	autoOpen?: boolean
 }) {
@@ -158,6 +160,7 @@ export function ReasonPicker(props: {
 				reason={selectedReason}
 				customText={customVisible ? customText : undefined}
 				durationMs={props.durationMs}
+				squadName={props.squadName}
 			/>
 		</div>
 	)
@@ -172,12 +175,13 @@ export function ReasonMessagePreview(props: {
 	reason?: AAR.AdminActionReason
 	customText?: string
 	durationMs?: number
+	squadName?: string
 }) {
 	const messageVariables = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.messageVariables ?? [])
 	const custom = props.customText?.trim()
 	if (!props.reason && !custom) return null
 
-	const base: Record<string, string> = {}
+	const base: Record<string, string> = { squadName: props.squadName ?? '' }
 	if (props.action === 'timeout')
 		base.duration = props.durationMs && props.durationMs > 0 ? ZodUtils.formatHumanTime(props.durationMs) : ''
 	const vars = Templating.resolveTemplateVars(messageVariables, base)

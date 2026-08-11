@@ -1506,6 +1506,7 @@
 	"weights": "weights",
 	"who sent this warning and who received it": "who sent this warning and who received it",
 	"within {within}": "within {within}",
+	"{action} (squad)": "{action} (squad)",
 	"{actor} aborted the vote": "{actor} aborted the vote",
 	"{actor} broadcast \"{message}\"": "{actor} broadcast \"{message}\"",
 	"{actor} cancelled {target}'s timeout": "{actor} cancelled {target}'s timeout",
