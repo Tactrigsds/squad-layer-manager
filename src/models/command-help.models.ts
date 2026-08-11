@@ -12,44 +12,45 @@ import { assertNever } from '@/lib/type-guards'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as CMD from '@/models/command.models'
 import * as LP from '@/models/labeled-presets.models'
-import { t, type TString } from '@/models/messages.models'
+import { join, t, type TString } from '@/models/messages.models'
 
-// what an arg kind accepts, explained once for every arg that uses it. `syntax` is the shape of the token(s);
-// `description` is the prose shown beside it.
-export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; description: string }> = {
-	string: { syntax: 'word', description: 'A single word. Matching is case-insensitive.' },
-	int: { syntax: 'number', description: 'A whole number.' },
+// what an arg kind accepts, explained once for every arg that uses it. `syntax` is the shape of the token(s), which is
+// typed rather than read; `description` is the prose shown beside it.
+export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; description: TString }> = {
+	string: { syntax: 'word', description: t('A single word. Matching is case-insensitive.') },
+	int: { syntax: 'number', description: t('A whole number.') },
 	duration: {
 		syntax: '30m | 2h | 1d',
-		description: 'A length of time: a number followed by s, m, h, d or w.',
+		description: t('A length of time: a number followed by s, m, h, d or w.'),
 	},
 	player: {
 		syntax: 'name | id',
-		description:
-			'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one ' +
-			'player, so use enough of it to be unambiguous.',
+		description: t(
+			'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one player, so use enough of it to be unambiguous.',
+		),
 	},
 	team: {
 		syntax: '1 | 2 | A | B | faction',
-		description:
-			'A team: 1 or 2 for the in-game slot, A or B for the side that stays the same across map changes, or the name of that ' +
-			"team's faction in the current layer.",
+		description: t(
+			"A team: 1 or 2 for the in-game slot, A or B for the side that stays the same across map changes, or the name of that team's faction in the current layer.",
+		),
 	},
 	squad: {
 		syntax: '[team] squad',
-		description:
-			'A squad by its in-game number, or "cmd" for the command squad. Prefix it with a team (1, 2, A, B, or the team\'s ' +
-			'faction) to target the other team; without one, your own team is used.',
+		description: t(
+			'A squad by its in-game number, or "cmd" for the command squad. Prefix it with a team (1, 2, A, B, or the team\'s faction) to target the other team; without one, your own team is used.',
+		),
 	},
-	text: { syntax: 'free text', description: 'Everything you type after this point, as-is.' },
+	text: { syntax: 'free text', description: t('Everything you type after this point, as-is.') },
 	reason: {
 		syntax: 'preset | free text',
-		description:
+		description: t(
 			'A single word picks a configured reason by one of its keywords. Two or more words are sent verbatim as a custom reason.',
+		),
 	},
 	'preset-reason': {
 		syntax: 'preset',
-		description: 'A configured reason, by one of its keywords. Custom text is not accepted here.',
+		description: t('A configured reason, by one of its keywords. Custom text is not accepted here.'),
 	},
 }
 
@@ -62,7 +63,7 @@ export type ExampleSeeds = {
 export type ArgHelp = {
 	name: string
 	syntax: string
-	description: string
+	description: TString
 	optional: boolean
 	// the configured reasons this arg accepts, when it draws on them
 	presets: string[]
@@ -144,7 +145,7 @@ export function describeArgs(
 			name: def.name,
 			syntax: kindHelp.syntax,
 			// the kind explains the general shape; `describe` says what this arg means for this command
-			description: def.describe ? `${def.describe} ${kindHelp.description}` : kindHelp.description,
+			description: def.describe ? join([def.describe, kindHelp.description], ' ') : kindHelp.description,
 			optional: argOptional(def, requiredReasonActions),
 			presets: argPresets(def, seeds).map(LP.describePreset),
 			fixed,
@@ -199,14 +200,15 @@ export function triggerGroups(
 export type CommandExample = {
 	command: string
 	// what this example demonstrates over the previous one, e.g. "with a custom reason"
-	note: string
+	note: TString
 }
 
-// the token(s) an arg is filled with in an example. `token` is the arg's ordinary form. `alt` is a second form worth demonstrating in its own right -- free text where
-// the ordinary form is a preset lookup, or an explicit team on a squad -- and carries the note explaining it, since
-// what makes it worth showing differs by kind. `token` is absent when nothing can fill the arg (a reason on an
-// installation with none configured for that action).
-type Sample = { token?: string; alt?: { token: string; note: string } }
+// the token(s) an arg is filled with in an example. `token` is the arg's ordinary form. `alt` is a second form worth
+// demonstrating in its own right -- free text where the ordinary form is a preset lookup, an explicit team on a squad,
+// a faction where the ordinary form is a team number -- and carries the note explaining it, since what makes it worth
+// showing differs by kind. `token` is absent when nothing can fill the arg (a reason on an installation with none
+// configured for that action).
+type Sample = { token?: string; alt?: { token: string; note: TString } }
 
 function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 	if (def.sample) return { token: def.sample }
@@ -220,9 +222,9 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 		case 'player':
 			return { token: 'Alice' }
 		case 'team':
-			return { token: 'B' }
+			return { token: '2', alt: { token: 'CAF', note: t('Naming the team by its faction') } }
 		case 'squad':
-			return { token: '3', alt: { token: '2 3', note: "Targeting the other team's squad" } }
+			return { token: '3', alt: { token: '2 3', note: t("Targeting the other team's squad") } }
 		case 'text':
 			return { token: 'some text' }
 		case 'reason':
@@ -231,7 +233,7 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 			const token = firstPresetToken(AAR.reasonsForAction(seeds.reasons, def.action))
 			// `preset-reason` takes presets only, so it has no free-text form to demonstrate
 			if (def.kind === 'preset-reason') return { token }
-			return { token, alt: { token: 'stop doing that', note: 'With a custom reason' } }
+			return { token, alt: { token: 'stop doing that', note: t('With a custom reason') } }
 		}
 		default:
 			assertNever(def)
@@ -273,15 +275,16 @@ function exampleSlots(
 	}))
 }
 
-// how far down the slot list an example fills. Examples are built by walking the slots in order, so a variant is a
-// cutoff plus whether the last filled slot takes its alternate form; anything past the cutoff is left off.
-type Variant = { note: string; upTo: number; useAlt?: true }
+// how far down the slot list an example fills, and which slot if any takes its alternate form. Examples are built by
+// walking the slots in order, so a variant is a cutoff plus at most one slot demonstrating its second form; anything
+// past the cutoff is left off.
+type Variant = { note: TString; upTo: number; altAt?: number }
 
 function renderExample(cmdString: string, slots: Slot[], seeds: ExampleSeeds, variant: Variant): string | undefined {
 	const tokens: string[] = []
 	for (let i = 0; i < variant.upTo; i++) {
 		const sample = sampleTokens(slots[i].def, seeds)
-		const token = variant.useAlt && i === variant.upTo - 1 ? sample.alt?.token : sample.token
+		const token = i === variant.altAt ? sample.alt?.token : sample.token
 		// nothing to fill this slot with, so the example would be a lie about what the command accepts. The alternate
 		// form usually still renders, and covers the slot on its own
 		if (token === undefined) return undefined
@@ -290,10 +293,9 @@ function renderExample(cmdString: string, slots: Slot[], seeds: ExampleSeeds, va
 	return [cmdString, ...tokens].join(' ')
 }
 
-// Worked examples for a command, in escalating order: the shortest form that runs, then one adding each optional word,
-// then the last word's alternate form. Only the last one can have one (the kinds that take free text must be declared
-// last, and it's the distinction admins trip on: one word means "look this preset up", two or more means "send it
-// verbatim"). Duplicates collapse, so a command taking nothing gets exactly one example.
+// Worked examples for a command, in escalating order: the shortest form that runs, then one adding each optional word.
+// A slot with a second form worth showing gets an example of its own, placed at the shortest length that reaches it so
+// it demonstrates one thing at a time. Duplicates collapse, so a command taking nothing gets exactly one example.
 //
 // The examples are of the primary trigger, so they show what that trigger takes rather than what the command
 // declares: an argument it pins is already filled, and copying an example that supplies one anyway would run
@@ -314,12 +316,21 @@ export function buildExamples(
 	const firstOptional = slots.findIndex((slot) => slot.optional)
 	const minimal = firstOptional === -1 ? slots.length : firstOptional
 
-	const variants: Variant[] = [{ note: slots.length === 0 ? 'Run it' : 'The shortest form', upTo: minimal }]
-	for (let i = minimal + 1; i <= slots.length; i++) {
-		variants.push({ note: `With ${slots[i - 1].name}`, upTo: i })
+	// an alternate form rides along with the shortest example that reaches its slot, so it lands next to the plain
+	// example it varies rather than at the end, where it would read as a further argument
+	const alts = slots
+		.map((slot, i) => {
+			const alt = sampleTokens(slot.def, seeds).alt
+			return alt && { note: alt.note, upTo: Math.max(minimal, i + 1), altAt: i }
+		})
+		.filter((variant) => !!variant)
+
+	const variants: Variant[] = []
+	for (let upTo = minimal; upTo <= slots.length; upTo++) {
+		if (upTo === minimal) variants.push({ note: slots.length === 0 ? t('Run it') : t('The shortest form'), upTo })
+		else variants.push({ note: t('With {arg}', { arg: slots[upTo - 1].name }), upTo })
+		variants.push(...alts.filter((variant) => variant.upTo === upTo))
 	}
-	const alt = slots.length > 0 ? sampleTokens(slots[slots.length - 1].def, seeds).alt : undefined
-	if (alt) variants.push({ note: alt.note, upTo: slots.length, useAlt: true })
 
 	const examples: CommandExample[] = []
 	for (const variant of variants) {
