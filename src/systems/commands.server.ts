@@ -296,6 +296,13 @@ function resolveTeamToken(currentMatch: MH.MatchDetails, token: string): SM.Team
 	return null
 }
 
+// how a team is named back to a caller whose team token didn't resolve, by its faction where the layer has one
+function describeTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): string {
+	const layer = L.toLayer(currentMatch.layerId)
+	const faction = teamId === 1 ? layer.Faction_1 : layer.Faction_2
+	return faction ? `Team ${teamId} (${faction})` : `Team ${teamId}`
+}
+
 type TeamsState = { players: SM.Player[]; squads: SM.Squad[] }
 
 // A failure the caller can fix by picking one of `choices`, as against retyping. `msg` is what they see when
@@ -333,8 +340,6 @@ function resolveSquadArg(
 	} else {
 		rawTeamId = resolveTeamToken(currentMatch, teamInput)
 		if (!rawTeamId) {
-			const layer = L.toLayer(currentMatch.layerId)
-			const factions = [layer.Faction_1, layer.Faction_2]
 			return nearMiss({
 				// both teams are always offered, so telling the caller how to name one is a line spent on advice the
 				// prompt underneath makes unnecessary
@@ -344,7 +349,7 @@ function resolveSquadArg(
 				// the squad token is carried through, so picking a team only replaces the team half of the window
 				choices: ([1, 2] as const).map((teamId) => ({
 					tokens: [String(teamId), squadInput],
-					label: factions[teamId - 1] ? `Team ${teamId} (${factions[teamId - 1]})` : `Team ${teamId}`,
+					label: describeTeam(currentMatch, teamId),
 				})),
 			})
 		}
@@ -453,8 +458,9 @@ async function resolveArgDefs(
 		const teamsRes = await ctx.squadRcon.teams.get(ctx)
 		if (teamsRes.code !== 'ok') return { code: 'err', msg: 'Failed to fetch the current teams (RCON error)' }
 		teamsState = teamsRes
-		currentMatch = await MatchHistory.getCurrentMatch(ctx)
 	}
+	// a team token is read against the current layer's factions and ordinal, which the roster doesn't carry
+	if (teamsState || defs.some((d) => d.kind === 'team')) currentMatch = await MatchHistory.getCurrentMatch(ctx)
 
 	const preds: CMD.AssignPredicates = {
 		isTeamToken: (t) => (currentMatch ? resolveTeamToken(currentMatch, t) !== null : false),
@@ -517,6 +523,22 @@ async function resolveArgDefs(
 				out[def.name] = res.matched
 				break
 			}
+			case 'team': {
+				const teamId = resolveTeamToken(currentMatch!, window[0])
+				if (teamId === null) {
+					const hard = collect(def, {
+						code: 'err:near-miss',
+						msg: `Unknown team "${window[0]}"`,
+						typed: window[0],
+						cause: 'no-match',
+						choices: ([1, 2] as const).map((id) => ({ tokens: [String(id)], label: describeTeam(currentMatch!, id) })),
+					})
+					if (hard) return hard
+					break
+				}
+				out[def.name] = teamId
+				break
+			}
 			case 'squad': {
 				const res = resolveSquadArg(teamsState!, currentMatch!, sender, window)
 				if (res.code === 'err:near-miss') {
@@ -563,6 +585,17 @@ function ingameActor(sender: SM.Player): { type: 'ingame-user'; playerId: SM.Pla
 // swapping players to the other team is expressed relative to the current match ordinal
 function oppositeNormedTeam(currentMatch: MH.MatchDetails, teamId: SM.TeamId): MH.NormedTeamId {
 	return MH.getNormedTeamId(teamId, currentMatch.ordinal) === 'A' ? 'B' : 'A'
+}
+
+// where a swap command sends its targets: the team the caller named, or the one they are not on
+function swapDestination(currentMatch: MH.MatchDetails, fromTeamId: SM.TeamId, toTeam: SM.TeamId | undefined): MH.NormedTeamId {
+	return toTeam === undefined ? oppositeNormedTeam(currentMatch, fromTeamId) : MH.getNormedTeamId(toTeam, currentMatch.ordinal)
+}
+
+// A named destination makes the swap commands repeatable: a player already queued for that team is done rather than
+// in conflict with the queue, which is what a bare already-marked would report.
+function queuedTo(ctx: TSW.Ctx, playerId: SM.PlayerId, toTeam: MH.NormedTeamId): boolean {
+	return ctx.teamswaps.session.state.savedSwaps.get(playerId)?.toTeam === toTeam
 }
 
 // A flag is named by one chat token, so one with whitespace is offered back with it stripped out: matching folds
@@ -693,7 +726,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const target = args.player
 		if (!target.teamId) return await h.error('no-team', h.ctx.tr.text(CMD_Msgs.playerNotOnTeam(target.ids.username)))
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
-		const toTeam = oppositeNormedTeam(currentMatch, target.teamId)
+		const toTeam = swapDestination(currentMatch, target.teamId, args.toTeam)
+		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
+		if (MH.getNormedTeamId(target.teamId, currentMatch.ordinal) === toTeam) {
+			await h.reply(CMD_Msgs.alreadyOnTeam(target.ids.username, destination))
+			return { code: 'ok' }
+		}
 		const playerId = SM.PlayerIds.getPlayerId(target.ids)
 		const errors = await Teamswaps.dispatchSwapNow(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]), h.user)
 		if (errors.length > 0) {
@@ -702,7 +740,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('currently-swapping', h.ctx.tr.text(CMD_Msgs.swapInProgress()))
 			}
 		}
-		await h.reply(CMD_Msgs.swappingNow(target.ids.username, TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))))
+		await h.reply(CMD_Msgs.swappingNow(target.ids.username, destination))
 		return { code: 'ok' }
 	},
 
@@ -710,7 +748,12 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const target = args.player
 		if (!target.teamId) return await h.error('no-team', h.ctx.tr.text(CMD_Msgs.playerNotOnTeam(target.ids.username)))
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
-		const toTeam = oppositeNormedTeam(currentMatch, target.teamId)
+		const toTeam = swapDestination(currentMatch, target.teamId, args.toTeam)
+		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
+		if (MH.getNormedTeamId(target.teamId, currentMatch.ordinal) === toTeam) {
+			await h.reply(CMD_Msgs.alreadyOnTeam(target.ids.username, destination))
+			return { code: 'ok' }
+		}
 		const playerId = SM.PlayerIds.getPlayerId(target.ids)
 		const errors = await Teamswaps.dispatchSwapNext(h.ctx, new Map([[playerId, { toTeam, source: h.user }]]))
 		if (errors.length > 0) {
@@ -719,21 +762,31 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('currently-swapping', h.ctx.tr.text(CMD_Msgs.swapInProgress()))
 			}
 			if (err.code === 'err:already-marked') {
+				if (args.toTeam !== undefined && queuedTo(h.ctx, playerId, toTeam)) {
+					await h.reply(CMD_Msgs.alreadyQueuedForTeam(target.ids.username, destination))
+					return { code: 'ok' }
+				}
 				return await h.error('already-marked', h.ctx.tr.text(CMD_Msgs.alreadyMarkedForSwap(target.ids.username)))
 			}
 		}
-		await h.reply(CMD_Msgs.queuedSwapNext(target.ids.username))
+		await h.reply(CMD_Msgs.queuedSwapNext(target.ids.username, destination))
 		return { code: 'ok' }
 	},
 
 	swapSquadNow: async (h, args) => {
-		const { squad, players } = args.squad
+		const { squad, players, teamId } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
-		const swaps: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map()
-		for (const p of players) {
-			swaps.set(SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user })
+		const toTeam = swapDestination(currentMatch, teamId, args.toTeam)
+		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
+		// the squad's members are all on its team, so it is either entirely at the destination already or entirely away
+		if (MH.getNormedTeamId(teamId, currentMatch.ordinal) === toTeam) {
+			await h.reply(CMD_Msgs.squadAlreadyOnTeam(squad.squadName, destination))
+			return { code: 'ok' }
 		}
+		const swaps: Map<SM.PlayerId, { toTeam: MH.NormedTeamId; source: USR.GuiOrChatUserId }> = new Map(
+			players.map((p) => [SM.PlayerIds.getPlayerId(p.ids), { toTeam, source: h.user }] as const),
+		)
 		const errors = await Teamswaps.dispatchSwapNow(h.ctx, swaps, h.user)
 		if (errors.length > 0) {
 			const err = errors[0] as TSW.OpError
@@ -741,29 +794,37 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('currently-swapping', h.ctx.tr.text(CMD_Msgs.swapInProgress()))
 			}
 		}
-		await h.reply(CMD_Msgs.swappingSquadNow(players.length, squad.squadName))
+		await h.reply(CMD_Msgs.swappingSquadNow(players.length, squad.squadName, destination))
 		return { code: 'ok' }
 	},
 
 	swapSquadNext: async (h, args) => {
-		const { squad, players } = args.squad
+		const { squad, players, teamId } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
 		const currentMatch = await MatchHistory.getCurrentMatch(h.ctx)
+		const toTeam = swapDestination(currentMatch, teamId, args.toTeam)
+		const destination = TSW_Msgs.destination(toTeam, MH.getNormedTeamFaction(currentMatch, toTeam))
+		if (MH.getNormedTeamId(teamId, currentMatch.ordinal) === toTeam) {
+			await h.reply(CMD_Msgs.squadAlreadyOnTeam(squad.squadName, destination))
+			return { code: 'ok' }
+		}
 		const nextSwaps: TSW.TeamswapCollection = new Map(
-			players.map(
-				(p) => [SM.PlayerIds.getPlayerId(p.ids), { toTeam: oppositeNormedTeam(currentMatch, p.teamId!), source: h.user }] as const,
-			),
+			players.map((p) => [SM.PlayerIds.getPlayerId(p.ids), { toTeam, source: h.user }] as const),
 		)
 		const errors = await Teamswaps.dispatchSwapNext(h.ctx, nextSwaps)
 		const alreadyMarked = errors.filter((e) => (e as TSW.OpError).code === 'err:already-marked').length
 		if (alreadyMarked === nextSwaps.size) {
+			if (args.toTeam !== undefined && Array.from(nextSwaps.keys()).every((id) => queuedTo(h.ctx, id, toTeam))) {
+				await h.reply(CMD_Msgs.squadAlreadyQueuedForTeam(squad.squadName, destination))
+				return { code: 'ok' }
+			}
 			return await h.error('already-marked', h.ctx.tr.text(CMD_Msgs.squadAlreadyMarkedForSwap(squad.squadName)))
 		}
 		if (errors.some((e) => (e as TSW.OpError).code === 'err:currently-swapping')) {
 			return await h.error('currently-swapping', h.ctx.tr.text(CMD_Msgs.swapInProgress()))
 		}
 		const queued = nextSwaps.size - alreadyMarked
-		await h.reply(CMD_Msgs.queuedSquadSwapNext(queued, squad.squadName))
+		await h.reply(CMD_Msgs.queuedSquadSwapNext(queued, squad.squadName, destination))
 		return { code: 'ok' }
 	},
 

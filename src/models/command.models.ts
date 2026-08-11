@@ -119,6 +119,8 @@ export type ArgDef =
 	| (ArgCommon & { kind: 'duration'; optional?: true })
 	// single token, resolved to a unique player by id or username substring
 	| (ArgCommon & { kind: 'player'; optional?: true })
+	// single token naming a team: 1|2|A|B|faction of the current layer
+	| (ArgCommon & { kind: 'team'; optional?: true })
 	// 1-2 tokens: [team] <squad>; team = 1|2|A|B|faction, caller's team when omitted
 	| (ArgCommon & { kind: 'squad' })
 	// rest: raw remainder joined with spaces
@@ -164,6 +166,9 @@ function declareCommand<Id extends string, const Args extends readonly ArgDef[]>
 		},
 	} as { [K in Id]: { id: Id; section: CommandSection; permission: CommandPermission; defaults: CommandConfig; args: Args } }
 }
+
+const SWAP_DESTINATION_HELP =
+	'Where to send them. The other team when omitted. Naming it makes the command safe to repeat, since anyone already there is left alone.'
 
 // `quickReference` seeds the default cheat sheet: the handful of commands an admin reaches for in a normal shift,
 // which is what a bare `!help` in the middle of a match should answer with. Admins re-pick it per installation.
@@ -294,25 +299,37 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('swapNow', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapnow'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapNext', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'player', name: 'player' }],
+		args: [
+			{ kind: 'player', name: 'player' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapnext'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('swapSquadNow', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'squad', name: 'squad' }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnow'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swapSquadNext', {
 		section: 'teamswaps',
 		permission: 'squad-server:manage-players',
-		args: [{ kind: 'squad', name: 'squad' }],
+		args: [
+			{ kind: 'squad', name: 'squad' },
+			{ kind: 'team', name: 'toTeam', optional: true, describe: SWAP_DESTINATION_HELP },
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['swapsquadnext'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('swaps', {
@@ -586,15 +603,17 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
 			? number
 			: D extends { kind: 'player' }
 				? SM.Player
-				: D extends { kind: 'squad' }
-					? ResolvedSquadArg
-					: D extends { kind: 'text' }
-						? string
-						: D extends { kind: 'reason' }
-							? ResolvedReasonArg
-							: D extends { kind: 'preset-reason' }
-								? AAR.AdminActionReason
-								: never
+				: D extends { kind: 'team' }
+					? SM.TeamId
+					: D extends { kind: 'squad' }
+						? ResolvedSquadArg
+						: D extends { kind: 'text' }
+							? string
+							: D extends { kind: 'reason' }
+								? ResolvedReasonArg
+								: D extends { kind: 'preset-reason' }
+									? AAR.AdminActionReason
+									: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
 	[D in Args[number] as D['name']]: D extends { optional: true } ? ArgValue<D> | undefined : ArgValue<D>
@@ -672,6 +691,7 @@ export function assignArgTokens(
 			case 'int':
 			case 'duration':
 			case 'player':
+			case 'team':
 			case 'preset-reason': {
 				if (rem.length === 0) {
 					if (!def.optional) return { code: 'err:missing-arg', argName: def.name }

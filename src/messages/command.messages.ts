@@ -108,9 +108,9 @@ export const descriptions = {
 	flag: t("Flag a player's BM profile, optionally with a reason (some flags require one)"),
 	removeFlag: t("Remove a flag from a player's BM profile"),
 	listFlags: t('List BM flags for a player, or all org flags if no player is given'),
-	swapNow: t('Swap a player to the opposite team immediately'),
+	swapNow: t('Swap a player to the other team immediately, or to a team you name'),
 	swapNext: t('Queue a player to swap teams on the next map'),
-	swapSquadNow: t('Swap an entire squad to the opposite team immediately'),
+	swapSquadNow: t('Swap an entire squad to the other team immediately, or to a team you name'),
 	swapSquadNext: t('Queue an entire squad to swap teams on the next map'),
 	swaps: t('Show a summary of queued team swaps'),
 	clearSwaps: t('Clear all queued teamswaps'),
@@ -303,11 +303,14 @@ export const swappingNow = def('Swapping {username} to {toTeam} now', (username:
 
 export const alreadyMarkedForSwap = def('{username} is already marked to swap teams', (username?: string) => ({ username }))
 
-export const queuedSwapNext = def('Queued {username} to swap teams on next map', (username?: string) => ({ username }))
+export const queuedSwapNext = def('Queued {username} to swap to {toTeam} on next map', (username: string | undefined, toTeam: TString) => ({
+	username,
+	toTeam,
+}))
 
 export const swappingSquadNow = def(
-	'Swapping {count, plural, one {# player} other {# players}} from "{squadName}" to the opposite team now',
-	(count: number, squadName: string) => ({ count, squadName }),
+	'Swapping {count, plural, one {# player} other {# players}} from "{squadName}" to {toTeam} now',
+	(count: number, squadName: string, toTeam: TString) => ({ count, squadName, toTeam }),
 )
 
 export const squadAlreadyMarkedForSwap = def('All players in "{squadName}" are already marked to swap teams', (squadName: string) => ({
@@ -315,8 +318,30 @@ export const squadAlreadyMarkedForSwap = def('All players in "{squadName}" are a
 }))
 
 export const queuedSquadSwapNext = def(
-	'Queued {count, plural, one {# player} other {# players}} from "{squadName}" to swap teams on next map',
-	(count: number, squadName: string) => ({ count, squadName }),
+	'Queued {count, plural, one {# player} other {# players}} from "{squadName}" to swap to {toTeam} on next map',
+	(count: number, squadName: string, toTeam: TString) => ({ count, squadName, toTeam }),
+)
+
+// what a swap command with an explicit destination answers when there is nothing left to do
+
+export const alreadyOnTeam = def('{username} is already on {toTeam}', (username: string | undefined, toTeam: TString) => ({
+	username,
+	toTeam,
+}))
+
+export const alreadyQueuedForTeam = def(
+	'{username} is already queued to swap to {toTeam} on next map',
+	(username: string | undefined, toTeam: TString) => ({ username, toTeam }),
+)
+
+export const squadAlreadyOnTeam = def('All players in "{squadName}" are already on {toTeam}', (squadName: string, toTeam: TString) => ({
+	squadName,
+	toTeam,
+}))
+
+export const squadAlreadyQueuedForTeam = def(
+	'All players in "{squadName}" are already queued to swap to {toTeam} on next map',
+	(squadName: string, toTeam: TString) => ({ squadName, toTeam }),
 )
 
 export const noSwapsQueued = def('No swaps queued')
