@@ -254,6 +254,8 @@ export const router = {
 					durationMs: z.number().int().positive(),
 					reason: z.string().trim().min(1).optional(),
 					presetReasonLabel: z.string().min(1).optional(),
+					// set when the target is being timed out as part of a whole squad; exposed to reason templates as {{squadName}}
+					squadName: z.string().min(1).optional(),
 				})
 				.refine((i) => !(i.reason && i.presetReasonLabel), { error: 'At most one of reason or presetReasonLabel may be provided' }),
 		)
@@ -263,7 +265,10 @@ export const router = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.satisfyingTimeout(ctx.serverId, input.durationMs))
 			if (denyRes) return denyRes
-			const reasonRes = SquadServer.resolveReasonInput('timeout', input, { duration: ZodUtils.formatHumanTime(input.durationMs) })
+			const reasonRes = SquadServer.resolveReasonInput('timeout', input, {
+				duration: ZodUtils.formatHumanTime(input.durationMs),
+				...(input.squadName ? { squadName: input.squadName } : {}),
+			})
 			if (reasonRes.code !== 'ok') return reasonRes
 			const teamsRes = await ctx.squadRcon.teams.get(ctx)
 			if (teamsRes.code !== 'ok') return teamsRes

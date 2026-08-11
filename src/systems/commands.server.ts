@@ -993,7 +993,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
 		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
-		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars())
+		const applied = CMD.applyResolvedReason('warn', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
 		// squad warns carry the same @Squad tag the web squad warn box prepends
 		const message = AAR.renderAppliedReason(applied, { audienceTag: SM.squadWarnTag(squad) })
 		await SquadServer.warnPlayers(h.ctx, targetIds, message, ingameActor(h.sender), { reasonLabel: applied.label })
@@ -1021,7 +1021,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'kill', !!args.reason)
 		if (g) return g
 		const targetIds = players.map((p) => SM.PlayerIds.getPlayerId(p.ids))
-		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars())
+		const applied = args.reason && CMD.applyResolvedReason('kill', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
 		const reason = applied && AAR.renderAppliedReason(applied)
 		await SquadServer.killPlayersAction(h.ctx, targetIds, ingameActor(h.sender), reason, applied?.label)
 		await h.reply(
@@ -1047,7 +1047,8 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const g = await requireReasonGuard(h, 'disband-squad', !!args.reason)
 		if (g) return g
 		const { squad, teamLabel } = args.squad
-		const applied = args.reason && CMD.applyResolvedReason('disband-squad', args.reason, SquadServer.messageVars())
+		const applied =
+			args.reason && CMD.applyResolvedReason('disband-squad', args.reason, SquadServer.messageVars({ squadName: squad.squadName }))
 		await SquadServer.disbandSquadAction(h.ctx, args.squad.teamId, squad.squadId, ingameActor(h.sender), applied || undefined)
 		await h.reply(CMD_Msgs.disbandedSquad(squad.squadName, teamLabel, applied?.label))
 		return { code: 'ok' }
@@ -1077,7 +1078,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	kickSquad: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
-		return await executeKick(h, players, args.reason, squadSubjectLabel(squad.squadName, players.length))
+		return await executeKick(h, players, args.reason, squadSubjectLabel(squad.squadName, players.length), squad.squadName)
 	},
 
 	timeout: async (h, args) => {
@@ -1087,7 +1088,14 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	timeoutSquad: async (h, args) => {
 		const { squad, players } = args.squad
 		if (players.length === 0) return await h.error('empty-squad', h.ctx.tr.text(CMD_Msgs.squadHasNoPlayers(squad.squadName)))
-		return await executeTimeout(h, players, args.duration, args.reason, squadSubjectLabel(squad.squadName, players.length))
+		return await executeTimeout(
+			h,
+			players,
+			args.duration,
+			args.reason,
+			squadSubjectLabel(squad.squadName, players.length),
+			squad.squadName,
+		)
 	},
 
 	clearTimeout: async (h, args) => {
@@ -1230,10 +1238,12 @@ async function executeKick(
 	targets: SM.Player[],
 	resolvedReason: CMD.ResolvedReasonArg | undefined,
 	subjectLabel: string,
+	squadName?: string,
 ): Promise<HandlerResult> {
 	const g = await requireReasonGuard(h, 'kick', !!resolvedReason)
 	if (g) return g
-	const reason = resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, SquadServer.messageVars())
+	const reason =
+		resolvedReason && CMD.applyResolvedReason('kick', resolvedReason, SquadServer.messageVars(squadName ? { squadName } : undefined))
 	await SquadServer.kickPlayersAction(
 		h.ctx,
 		targets.map((t) => SM.PlayerIds.getPlayerId(t.ids)),
@@ -1251,12 +1261,16 @@ async function executeTimeout(
 	durationMs: number,
 	resolvedReason: CMD.ResolvedReasonArg | undefined,
 	subjectLabel: string,
+	squadName?: string,
 ): Promise<HandlerResult> {
 	const g = await requireReasonGuard(h, 'timeout', !!resolvedReason)
 	if (g) return g
 	const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, SM.Grants.satisfyingTimeout(h.ctx.serverId, durationMs))
 	if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
-	const vars = SquadServer.messageVars({ duration: ZodUtils.formatHumanTime(durationMs) })
+	const vars = SquadServer.messageVars({
+		duration: ZodUtils.formatHumanTime(durationMs),
+		...(squadName ? { squadName } : {}),
+	})
 	const reason = resolvedReason && CMD.applyResolvedReason('timeout', resolvedReason, vars)
 	const skipped: string[] = []
 	let lastErrMsg = ''

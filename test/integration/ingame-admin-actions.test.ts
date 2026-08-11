@@ -35,7 +35,9 @@ const REASONS = [
 		label: 'Toxicity',
 		keywords: ['tox'],
 		actionTexts: {
-			warn: 'Cut out the toxicity',
+			// the squadName section exercises the standard {{squadName}} variable: set for squad-targeted
+			// actions, empty (so the section drops out) for player targets
+			warn: 'Cut out the toxicity{{#squadName}} ({{squadName}}){{/squadName}}',
 			kick: 'Kicked for toxicity',
 			kill: 'Killed for toxicity',
 		},
@@ -122,8 +124,10 @@ describe('admin actions from in-game chat', () => {
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('warn squad_member tox'))
 
 		await app.waitFor(() => warnsTo(member).length > 0, { label: 'a warn to the player', timeoutMs: 20_000 })
-		// the reason's warn text is what the player is told, verbatim
+		// the reason's warn text is what the player is told, verbatim; {{squadName}} is empty for a player target,
+		// so its section dropped out
 		expect(warnsTo(member)[0]).toContain('Cut out the toxicity')
+		expect(warnsTo(member)[0]).not.toContain('ALPHA')
 		// and nobody else was warned for it
 		expect(warnsTo(leader)).toHaveLength(0)
 	})
@@ -165,6 +169,8 @@ describe('admin actions from in-game chat', () => {
 				warnsTo(member).some((w) => w.includes('Cut out the toxicity')),
 			{ label: 'a warn to each member of the squad', timeoutMs: 20_000 },
 		)
+		// a squad target resolves {{squadName}} to the squad's name
+		expect(warnsTo(member).find((w) => w.includes('Cut out the toxicity'))).toContain('(ALPHA)')
 		// ...and only them: a player on the same team but outside the squad is untouched. (The admin does
 		// get a copy, as the command's feedback.)
 		expect(warnsTo(bystander)).toHaveLength(0)
