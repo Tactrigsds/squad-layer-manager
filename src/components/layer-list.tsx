@@ -51,6 +51,7 @@ import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
+import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -502,6 +503,8 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
 	const voteCount = isVoteChoice && voteState ? tally?.totals?.get(item.itemId) : undefined
 	const updatesDisabled = Zus.useStore(props.stores.squadServer, (s) => s.settings.saved.updatesToSquadServerDisabled)
+	const committing = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.committing)
+	const nextLayerSyncState = LayerQueueClient.useNextLayerSyncState(props.stores.squadServer.serverId)
 	// the row whose layer the server should be holding as next: the head of the queue, or for a vote at the head,
 	// whichever choice would win right now
 	const isNextLayerCandidate =
@@ -552,7 +555,22 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					</TooltipContent>
 				</Tooltip>,
 			)
-		} else if (serverNextLayer) {
+		} else if (committing || nextLayerSyncState.code === 'syncing' || !serverNextLayer) {
+			// committing is this save's own round trip; syncing is a write SLM started for another reason, such as
+			// another admin's save. No next layer at all means SLM has yet to write one, which a roll and a status
+			// read we have not made yet both look like: pending, not wrong.
+			badges.push(
+				<Tooltip key="next-layer">
+					<TooltipTrigger>
+						<Badge variant="secondary" className="gap-1">
+							<Icons.LoaderCircle className="h-3 w-3 animate-spin" />
+							{tr.text(LL_Msgs.settingNextLayer())}
+						</Badge>
+					</TooltipTrigger>
+					<TooltipContent>{tr.text(LL_Msgs.settingNextLayerBlurb())}</TooltipContent>
+				</Tooltip>,
+			)
+		} else {
 			badges.push(
 				<Tooltip key="next-layer">
 					<TooltipTrigger>

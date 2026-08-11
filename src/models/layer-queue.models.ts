@@ -19,9 +19,20 @@ export type IngameVote = {
 	startedAt: number
 }
 
+// What became of SLM's last attempt to write the queue head to the game server over RCON. 'syncing' is the window
+// between issuing the write and reading it back, and is the one time the queue head and the server's next layer are
+// expected to disagree.
+export type NextLayerSyncState =
+	| { code: 'synced' }
+	| { code: 'syncing' }
+	| { code: 'disabled' }
+	| { code: 'err:rcon' }
+	// the server kept a different layer, either refusing ours or holding one somebody else set
+	| { code: 'err:refused'; actualLayerId: L.LayerId }
+
 export namespace Ctx {
 	export type Payload = {
-		unexpectedNextLayerSet$: Rx.BehaviorSubject<L.LayerId | null>
+		nextLayerSyncState$: Rx.BehaviorSubject<NextLayerSyncState>
 		ingameVote$: Rx.BehaviorSubject<IngameVote | null>
 
 		// TODO we should fold this into the server events

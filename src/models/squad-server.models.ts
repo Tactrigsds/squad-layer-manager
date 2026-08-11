@@ -9,14 +9,11 @@ import type * as CS from '@/models/context-shared'
 import type * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
 import * as SR from '@/models/squad-rcon.models'
-import type * as SM from '@/models/squad.models'
 
 export type Ctx = CS.Ctx & { server: Ctx.Payload } & SR.Ctx
 
 export namespace Ctx {
 	export type Payload = {
-		layersStatusExt$: Rx.Observable<SM.LayersStatusResExt>
-
 		postRollEventsSub: Rx.Subscription | null
 
 		serverRolling$: Rx.BehaviorSubject<number | null>
