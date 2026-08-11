@@ -273,7 +273,8 @@ export const GlobalSettingsSchema = z
 		adminActionReasons: AAR.AdminActionReasonsSchema.describe(
 			'Preset reasons admins can pick when acting against players. A reason is offered for an action only where it has text for that ' +
 				'action, so every reason needs at least one. The text reaches the player verbatim and takes {{label}}, {{duration}} ' +
-				'(timeouts only) and any Message Variables below.',
+				"(timeouts only), {{squadName}} (the target squad's name when the action targets a whole squad, empty otherwise) " +
+				'and any Message Variables below.',
 		),
 		requireReasonFor: z
 			.array(AAR.REQUIRABLE_ADMIN_ACTION_TYPE)
