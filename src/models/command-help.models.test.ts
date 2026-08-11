@@ -32,14 +32,20 @@ function withTimeoutTriggers(triggers: CMD.CommandTrigger[]): CMD.CommandConfig 
 	return { ...configs.timeout, triggers }
 }
 
+// the help models hand back TStrings; these resolve them, so an assertion reads as the text an admin is shown
+const examplesOf = (...args: Parameters<typeof CMDH.buildExamples>) =>
+	CMDH.buildExamples(...args).map((example) => ({ ...example, note: I18n.ambient.text(example.note) }))
+const argsOf = (...args: Parameters<typeof CMDH.describeArgs>) =>
+	CMDH.describeArgs(...args).map((arg) => ({ ...arg, description: I18n.ambient.text(arg.description) }))
+
 describe('buildExamples', () => {
 	it('gives an argless command exactly one example', () => {
-		expect(CMDH.buildExamples('swaps', configs.swaps, seeds)).toEqual([{ command: `${P}swaps`, note: 'Run it' }])
+		expect(examplesOf('swaps', configs.swaps, seeds)).toEqual([{ command: `${P}swaps`, note: 'Run it' }])
 	})
 
 	it('escalates from the required args to each optional one, then the free-text form', () => {
 		// timeout is <player> <duration> [reason], and reason has both a preset and a custom form
-		expect(CMDH.buildExamples('timeout', configs.timeout, seeds)).toEqual([
+		expect(examplesOf('timeout', configs.timeout, seeds)).toEqual([
 			{ command: `${P}timeout Alice 2h`, note: 'The shortest form' },
 			{ command: `${P}timeout Alice 2h toxicity`, note: 'With reason' },
 			{ command: `${P}timeout Alice 2h stop doing that`, note: 'With a custom reason' },
@@ -48,19 +54,19 @@ describe('buildExamples', () => {
 
 	it('fills reason args from the configured reasons applicable to the action', () => {
 		// teamkilling is warn-only, so kick must not offer it
-		const [, withReason] = CMDH.buildExamples('kick', configs.kick, seeds)
+		const [, withReason] = examplesOf('kick', configs.kick, seeds)
 		expect(withReason.command).toBe(`${P}kick Alice toxicity`)
 	})
 
 	it('omits the preset example when the installation has no applicable reasons configured', () => {
-		expect(CMDH.buildExamples('kick', configs.kick, noSeeds)).toEqual([
+		expect(examplesOf('kick', configs.kick, noSeeds)).toEqual([
 			{ command: `${P}kick Alice`, note: 'The shortest form' },
 			{ command: `${P}kick Alice stop doing that`, note: 'With a custom reason' },
 		])
 	})
 
 	it('treats a reason as required when the installation requires one for that action', () => {
-		const examples = CMDH.buildExamples('kick', configs.kick, seeds, ['kick'])
+		const examples = examplesOf('kick', configs.kick, seeds, ['kick'])
 		expect(examples[0]).toEqual({ command: `${P}kick Alice toxicity`, note: 'The shortest form' })
 		expect(examples.every((e) => e.command !== `${P}kick Alice`)).toBe(true)
 	})
@@ -72,27 +78,27 @@ describe('buildExamples', () => {
 			...seeds,
 			reasons: [{ ...reason('No SLKit', ['warn']), keywords: ['slkit'] }],
 		}
-		expect(CMDH.buildExamples('warn', configs.warn, multiWord)[0].command).toBe(`${P}warn Alice slkit`)
+		expect(examplesOf('warn', configs.warn, multiWord)[0].command).toBe(`${P}warn Alice slkit`)
 	})
 
 	it('uses the declared sample token for string args', () => {
-		expect(CMDH.buildExamples('flag', configs.flag, seeds)[0].command).toBe(`${P}flag Alice cheater`)
+		expect(examplesOf('flag', configs.flag, seeds)[0].command).toBe(`${P}flag Alice cheater`)
 	})
 
 	it('follows the command string an admin actually configured', () => {
-		expect(CMDH.buildExamples('swaps', { ...configs.swaps, triggers: ['.showswaps'] }, seeds)[0].command).toBe('.showswaps')
+		expect(examplesOf('swaps', { ...configs.swaps, triggers: ['.showswaps'] }, seeds)[0].command).toBe('.showswaps')
 	})
 
 	it('shows only what the primary trigger takes when it pins the rest', () => {
 		// !to pins the duration and passes no reason on, so both would be words the trigger throws away
-		expect(CMDH.buildExamples('timeout', withTimeoutTriggers([pinned45m('!to')]), seeds)).toEqual([
+		expect(examplesOf('timeout', withTimeoutTriggers([pinned45m('!to')]), seeds)).toEqual([
 			{ command: '!to Alice', note: 'The shortest form' },
 		])
 	})
 
 	it('takes an optional word from the placeholder default that fills its argument', () => {
 		const config = { ...configs.warn, triggers: [{ string: '!warnsp', args: '{{arg1}} {{^rest2}}spam{{/rest2}}{{rest2}}' }] }
-		expect(CMDH.buildExamples('warn', config, seeds)).toEqual([
+		expect(examplesOf('warn', config, seeds)).toEqual([
 			{ command: '!warnsp Alice', note: 'The shortest form' },
 			{ command: '!warnsp Alice toxicity', note: 'With reason' },
 			{ command: '!warnsp Alice stop doing that', note: 'With a custom reason' },
@@ -101,39 +107,39 @@ describe('buildExamples', () => {
 
 	it('gives no examples for a trigger whose placeholder part-fills an argument', () => {
 		const config = { ...configs.broadcast, triggers: [{ string: '!eta', args: 'Round ends in {{arg1}} minutes' }] }
-		expect(CMDH.buildExamples('broadcast', config, seeds)).toEqual([])
+		expect(examplesOf('broadcast', config, seeds)).toEqual([])
 	})
 })
 
 describe('describeArgs', () => {
 	it('lists the configured presets a reason arg accepts, scoped to its action', () => {
-		const [, reasonArg] = CMDH.describeArgs('warn', configs.warn, seeds)
+		const [, reasonArg] = argsOf('warn', configs.warn, seeds)
 		expect(reasonArg.presets).toEqual(['toxicity', 'teamkilling'])
-		expect(CMDH.describeArgs('kick', configs.kick, seeds)[1].presets).toEqual(['toxicity'])
+		expect(argsOf('kick', configs.kick, seeds)[1].presets).toEqual(['toxicity'])
 	})
 
 	it("names every section in the help command's section arg", () => {
-		const [sectionArg] = CMDH.describeArgs('help', configs.help, seeds)
+		const [sectionArg] = argsOf('help', configs.help, seeds)
 		for (const token of CMD.sectionTokens()) expect(sectionArg.description).toContain(token)
 	})
 
 	it('prepends the per-arg note to its kind description', () => {
-		const [flagArg] = CMDH.describeArgs('listFlags', configs.listFlags, seeds)
+		const [flagArg] = argsOf('listFlags', configs.listFlags, seeds)
 		expect(flagArg.description).toContain('Lists every flag in the organization when omitted.')
-		expect(flagArg.description).toContain(CMDH.ARG_KIND_HELP.player.description)
+		expect(flagArg.description).toContain(I18n.ambient.text(CMDH.ARG_KIND_HELP.player.description))
 	})
 
 	it('keeps an argument described as typed while any trigger takes it', () => {
 		// the shortcut pins the duration, but !timeout still asks for one
 		const config = withTimeoutTriggers(['!timeout', pinned45m('!to')])
-		const [player, duration, reason] = CMDH.describeArgs('timeout', config, seeds)
+		const [player, duration, reason] = argsOf('timeout', config, seeds)
 		expect([player.name, duration.name, reason.name]).toEqual(['player', 'duration', 'reason'])
 		expect(duration.fixed).toEqual([])
 	})
 
 	it('describes an argument every trigger pins by the value they pin it to', () => {
 		const config = withTimeoutTriggers([pinned45m('!to'), pinned45m('!timeout')])
-		const [player, duration, ...rest] = CMDH.describeArgs('timeout', config, seeds)
+		const [player, duration, ...rest] = argsOf('timeout', config, seeds)
 		expect(player.fixed).toEqual([])
 		expect(duration.fixed).toEqual([{ value: '45m', triggers: ['!to', '!timeout'] }])
 		// no trigger passes a reason on, so there is no way to give one
@@ -142,7 +148,7 @@ describe('describeArgs', () => {
 
 	it('names the trigger behind each value where the triggers pin different ones', () => {
 		const config = withTimeoutTriggers([pinned45m('!to'), { string: '!to2h', args: '{{arg1}} 2h' }])
-		const [, duration] = CMDH.describeArgs('timeout', config, seeds)
+		const [, duration] = argsOf('timeout', config, seeds)
 		expect(duration.fixed).toEqual([
 			{ value: '45m', triggers: ['!to'] },
 			{ value: '2h', triggers: ['!to2h'] },
