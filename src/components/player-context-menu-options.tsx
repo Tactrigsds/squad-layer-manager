@@ -181,12 +181,15 @@ export function TimeoutDialogContent({
 	presetReasonRef,
 	maxTimeout,
 	required,
+	squadName,
 }: {
 	durationRef: React.MutableRefObject<string>
 	customReasonRef: React.MutableRefObject<string>
 	presetReasonRef: React.MutableRefObject<string>
 	maxTimeout: number | null | undefined
 	required?: boolean
+	// for squad timeouts: the target squad's name, forwarded to the reason preview
+	squadName?: string
 }) {
 	const [durationText, setDurationText] = React.useState(() => durationRef.current)
 	const durationMs = ZodUtils.tryParseHumanTimeToken(durationText.trim())
@@ -213,6 +216,7 @@ export function TimeoutDialogContent({
 				customRef={customReasonRef}
 				required={required}
 				durationMs={durationMs}
+				squadName={squadName}
 				autoOpen={false}
 			/>
 		</div>
@@ -531,7 +535,14 @@ export function PlayerMenuItems({
 			const result = await openDialog({
 				title: msg.title,
 				description: msg.description,
-				content: <ReasonPicker action="disband-squad" presetRef={presetReasonRef} required={disbandReasonRequired} />,
+				content: (
+					<ReasonPicker
+						action="disband-squad"
+						presetRef={presetReasonRef}
+						required={disbandReasonRequired}
+						squadName={squadName ?? undefined}
+					/>
+				),
 				buttons: [{ id: 'confirm', label: msg.confirmLabel }],
 			})
 			if (result !== 'confirm') return

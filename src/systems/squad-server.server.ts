@@ -421,7 +421,7 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:warn-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const reasonRes = resolveReasonInput('warn', input)
+			const reasonRes = resolveReasonInput('warn', input, input.taggedSquad ? { squadName: input.taggedSquad.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the input refine guarantees a reason was provided; narrow without asserting
 			if (!reasonRes.applied) return { code: 'err:reason-required' as const, msg: 'A reason is required to warn.' }
@@ -535,7 +535,8 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const reasonRes = resolveReasonInput('disband-squad', input)
+			const squad = getCurrTeams(ctx)?.squads.find((s) => s.teamId === input.teamId && s.squadId === input.squadId)
+			const reasonRes = resolveReasonInput('disband-squad', input, squad ? { squadName: squad.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await disbandSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
 			return { code: 'ok' as const }
@@ -582,6 +583,8 @@ export const orpcRouter = {
 				playerIds: z.array(SM.PlayerIdSchema).min(1),
 				reason: z.string().trim().min(1).optional(),
 				presetReasonLabel: z.string().min(1).optional(),
+				// set when the targets are a whole squad; exposed to reason templates as {{squadName}}
+				squadName: z.string().min(1).optional(),
 			}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
@@ -590,7 +593,7 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const reasonRes = resolveReasonInput('kill', input)
+			const reasonRes = resolveReasonInput('kill', input, input.squadName ? { squadName: input.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			// the kill notify delivers the rendered reason verbatim (see SquadRcon.killPlayers / ctx.tr.warn(SM_Msgs.notifyKilled()))
 			const reason = reasonRes.applied && AAR.renderAppliedReason(reasonRes.applied)
@@ -606,6 +609,8 @@ export const orpcRouter = {
 				playerIds: z.array(SM.PlayerIdSchema).min(1),
 				reason: z.string().trim().min(1).optional(),
 				presetReasonLabel: z.string().min(1).optional(),
+				// set when the targets are a whole squad; exposed to reason templates as {{squadName}}
+				squadName: z.string().min(1).optional(),
 			}),
 		)
 		.handler(async ({ context: _ctx, input }) => {
@@ -614,7 +619,7 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:kick-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const reasonRes = resolveReasonInput('kick', input)
+			const reasonRes = resolveReasonInput('kick', input, input.squadName ? { squadName: input.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await kickPlayersAction(ctx, input.playerIds, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
 			return { code: 'ok' as const }
@@ -1186,9 +1191,11 @@ export function resolvePresetReason(action: AAR.AdminActionType, presetReasonLab
 }
 
 // the variable context for reason/broadcast message templates: the admin-configured custom variables, expanded
-// against each other, overlaid with any per-call standard variables (e.g. duration)
+// against each other, overlaid with any per-call standard variables (e.g. duration). squadName is a standard
+// variable too: the target squad's name when the action targets a whole squad, empty otherwise, so
+// {{#squadName}} sections drop out for player targets.
 export function messageVars(extra?: Record<string, string>): Record<string, string> {
-	return Templating.resolveTemplateVars(Settings.GLOBAL_SETTINGS.messageVariables, extra)
+	return Templating.resolveTemplateVars(Settings.GLOBAL_SETTINGS.messageVariables, { squadName: '', ...extra })
 }
 
 // enforces the per-action "require a reason" setting; returns an error result when the action needs a reason

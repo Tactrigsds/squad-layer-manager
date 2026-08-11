@@ -24,7 +24,14 @@ export function useCancelTimeoutMutation() {
 }
 
 type TimeoutResult = { code: string }
-type TimeoutInput = { serverId: string; playerId: SM.PlayerId; durationMs: number; reason?: string; presetReasonLabel?: string }
+type TimeoutInput = {
+	serverId: string
+	playerId: SM.PlayerId
+	durationMs: number
+	reason?: string
+	presetReasonLabel?: string
+	squadName?: string
+}
 
 // the timeout endpoint is single-target, so bulk/squad timeouts fan out one call per player. Validates the shared
 // duration once (mirroring the single-player dialog) and reports the outcome via toast. Individual failures are
@@ -38,6 +45,8 @@ export async function timeoutPlayers(
 		maxTimeout: number | null | undefined
 		reason?: string
 		presetReasonLabel?: string
+		// set when the targets are a whole squad; exposed to reason templates as {{squadName}}
+		squadName?: string
 	},
 ): Promise<void> {
 	const durationMs = ZodUtils.tryParseHumanTimeToken(opts.durationText.trim())
@@ -51,7 +60,14 @@ export async function timeoutPlayers(
 	}
 	const results = await Promise.allSettled(
 		opts.playerIds.map((playerId) =>
-			mutateAsync({ serverId: opts.serverId, playerId, durationMs, reason: opts.reason, presetReasonLabel: opts.presetReasonLabel }),
+			mutateAsync({
+				serverId: opts.serverId,
+				playerId,
+				durationMs,
+				reason: opts.reason,
+				presetReasonLabel: opts.presetReasonLabel,
+				squadName: opts.squadName,
+			}),
 		),
 	)
 	let timedOut = 0

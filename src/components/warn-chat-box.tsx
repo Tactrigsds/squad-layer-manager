@@ -48,7 +48,7 @@ export default function WarnChatBox({
 	const [prefixName, setPrefixName] = React.useState(false)
 	// null follows the server's admin-target rule; set once the admin ticks the box either way
 	const [notifyAdmins, setNotifyAdmins] = React.useState<boolean | null>(null)
-	const draft = WarnChat.useAdminReasonDraft('warn')
+	const draft = WarnChat.useAdminReasonDraft('warn', taggedSquad ? { squadName: taggedSquad.squadName } : undefined)
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
 	WarnChat.useWarnFocusRequest(
