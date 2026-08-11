@@ -1296,7 +1296,7 @@ function CommandTriggersField({ value$, reset$, onChange, cmdId }: OverrideProps
 							<>
 								<div className="min-w-0 flex-1">
 									<TextInputField
-										value$={mapValue(trigger$, (t) => CMD.triggerArgs(t) ?? '')}
+										value$={mapValue(trigger$, (t) => CMD.triggerArgs(t ?? '') ?? '')}
 										reset$={reset$}
 										numeric={false}
 										placeholder={tr.text(CMD_Msgs.pinnedArgsPlaceholder())}
