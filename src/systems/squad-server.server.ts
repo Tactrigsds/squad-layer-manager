@@ -159,46 +159,34 @@ export const orpcRouter = {
 		yield* Rx.Ext.toAsyncGenerator(obs)
 	}),
 
+	// nextLayer comes from the rcon read, not from eventState.nextLayerId: eventState only learns of a set-next once
+	// the MAP_SET log line has been tailed and parsed, seconds after setNextLayer already read the new value back.
+	// The rcon resource is observed for the managed server's whole lifetime anyway (see the in-game vote inference in
+	// layer-queue.server.ts) and setNextLayer refreshes it on the spot, so this is both free and immediate.
 	watchLayersStatus: orpcBase
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = stream$(
-				context.wsClientId,
-				input.serverId,
-				(serverCtx) =>
-					new Rx.Observable<SM.LayersStatusResExt>((subscriber) => {
-						const ac = new AbortController()
-						;(async () => {
-							const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
-							const nextLayerId = serverCtx.server.eventState.nextLayerId
-							subscriber.next({
-								code: 'ok',
-								data: {
-									currentLayer: L.toLayer(currentMatch.layerId),
-									nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
-									currentMatch,
-								},
-							})
-							const event$ = serverCtx.server.event$.pipe(Rx.Ext.withAbortSignal(ac.signal))
-							for await (const [, event] of Rx.Ext.toAsyncGenerator(event$)) {
-								if (!['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)) continue
-								const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
-								const nextLayerId = serverCtx.server.eventState.nextLayerId
-								subscriber.next({
-									code: 'ok',
-									data: {
-										currentLayer: L.toLayer(currentMatch.layerId),
-										nextLayer: nextLayerId ? L.toLayer(nextLayerId) : null,
-										currentMatch,
-									},
-								})
-							}
-							subscriber.complete()
-						})().catch((err) => subscriber.error(err))
-						return () => ac.abort()
-					}),
-			).pipe(Rx.Ext.withAbortSignal(signal!))
+			const obs = stream$(context.wsClientId, input.serverId, (serverCtx) => {
+				const read = async (): Promise<SM.LayersStatusResExt> => {
+					const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
+					const statusRes = await serverCtx.squadRcon.layersStatus.get(serverCtx)
+					return {
+						code: 'ok',
+						data: {
+							currentLayer: L.toLayer(currentMatch.layerId),
+							nextLayer: statusRes.code === 'ok' ? statusRes.data.nextLayer : null,
+							currentMatch,
+						},
+					}
+				}
+				const event$ = serverCtx.server.event$.pipe(Rx.filter(([, event]) => ['NEW_GAME', 'MAP_SET', 'RESET'].includes(event.type)))
+				return Rx.merge(serverCtx.squadRcon.layersStatus.observe(serverCtx), event$).pipe(
+					Rx.startWith(null),
+					Rx.switchMap(() => read()),
+					Rx.Ext.distinctDeepEquals(),
+				)
+			}).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),
 
@@ -751,8 +739,6 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	cleanup.push(() => ServerConsole.recordSlm(serverId, 'info', 'Server stopped'))
 	cleanup.push(() => CommandPrompts.disposeFor(serverId))
 
-	const layersStatusExt$: SQS.Ctx.Payload['layersStatusExt$'] = getLayersStatusExt$(serverId)
-
 	// a resource that keeps failing after retries means the managed server can't do its job -- tear the managed server down instead of
 	// letting the error escalate to an unhandled rejection and crash the process.
 	//
@@ -812,8 +798,6 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	})
 
 	const server: SQS.Ctx.Payload = {
-		layersStatusExt$,
-
 		postRollEventsSub: null,
 
 		serverRolling$: new Rx.BehaviorSubject(null as number | null),
@@ -1684,51 +1668,6 @@ async function collectEvents(ctx: SQS.Ctx & C.Db & CS.AbortSignal, addEventsCb: 
 		})
 		ctx.server.event$.emit(event)
 	}
-}
-
-function getLayersStatusExt$(serverId: string) {
-	return new Rx.Observable<SM.LayersStatusResExt>((s) => {
-		const ctx = { ...getBaseCtx(), ...globalState.managedServers.get(serverId)! }
-		const sub = new Rx.Subscription()
-		sub.add(
-			ctx.squadRcon.layersStatus.observe(ctx).subscribe({
-				next: async () => {
-					s.next(await fetchLayersStatusExt(ctx))
-				},
-				error: (err) => s.error(err),
-
-				// this is what causes the observable to be completed when a server is destroyed
-				complete: () => s.complete(),
-			}),
-		)
-		sub.add(
-			ctx.matchHistory.update$.subscribe({
-				next: async () => {
-					s.next(await fetchLayersStatusExt(ctx))
-				},
-				error: (err) => s.error(err),
-				complete: () => s.complete(),
-			}),
-		)
-		return () => sub.unsubscribe()
-	}).pipe(Rx.Ext.distinctDeepEquals(), Rx.share())
-}
-
-async function fetchLayersStatusExt(ctx: SQS.Ctx & SR.Ctx.Rcon & MH.Ctx & CS.AbortSignal) {
-	const statusRes = await ctx.squadRcon.layersStatus.get(ctx)
-	if (statusRes.code !== 'ok') return statusRes
-	return buildServerStatusRes(statusRes.data, await MatchHistory.getCurrentMatch(ctx))
-}
-
-function buildServerStatusRes(rconStatus: SM.LayersStatus, currentMatch: MH.MatchDetails) {
-	const res: SM.LayersStatusResExt = {
-		code: 'ok' as const,
-		data: { ...rconStatus },
-	}
-	if (currentMatch && L.areLayersCompatible(currentMatch.layerId, rconStatus.currentLayer)) {
-		res.data.currentMatch = currentMatch
-	}
-	return res
 }
 
 // resolves a default server id for a request given the route and a previously stored default server id

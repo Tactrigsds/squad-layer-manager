@@ -196,8 +196,6 @@ export namespace Sel {
 
 	export const queueItemIds = RSel.createDeepSelector([layerList], (list) => list.map((item) => item.itemId))
 
-	export const nextLayerId = RSel.createDeepSelector([layerList], (list) => LL.getNextLayerId(list))
-
 	export type ItemEntry = {
 		index: LL.ItemIndex
 		item: LL.Item

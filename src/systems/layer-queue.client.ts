@@ -6,18 +6,17 @@ import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
-import type * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import type * as LQ from '@/models/layer-queue.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 
-export const [useUnexpectedNextLayer, unexpectedNextLayer$] = ReactRx.bindWithDefault(
+export const [useNextLayerSyncState, nextLayerSyncState$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
-		RPC.observe('layerQueue.watchUnexpectedNextLayer', () => RPC.orpc.layerQueue.watchUnexpectedNextLayer.call({ serverId })).pipe(
+		RPC.observe('layerQueue.watchNextLayerSyncState', () => RPC.orpc.layerQueue.watchNextLayerSyncState.call({ serverId })).pipe(
 			RPC.dropServerNotLoaded(),
 		),
-	null as L.LayerId | null,
+	{ code: 'synced' } as LQ.NextLayerSyncState,
 )
 
 export const [useIngameVote, ingameVote$] = ReactRx.bindWithDefault(
@@ -47,7 +46,7 @@ export const [useLayerItemsState, layerItemsState$] = ReactRx.bind('layerQueue.l
 })
 
 export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
-	cleanup.push(unexpectedNextLayer$(serverId).subscribe())
+	cleanup.push(nextLayerSyncState$(serverId).subscribe())
 	cleanup.push(ingameVote$(serverId).subscribe())
 	cleanup.push(layerItemsState$(serverId).pipe(ReactRx.retryHot()).subscribe())
 }
