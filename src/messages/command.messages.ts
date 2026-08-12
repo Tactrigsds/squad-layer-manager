@@ -114,6 +114,8 @@ export const descriptions = {
 	swapSquadNext: t('Queue an entire squad to swap teams on the next map'),
 	swaps: t('Show a summary of queued team swaps'),
 	clearSwaps: t('Clear all queued teamswaps'),
+	requestSwitch: t('Ask to switch teams: you swap immediately when the balance allows it, and queue up otherwise'),
+	cancelSwitch: t('Cancel your pending switch request'),
 	pingAdmins: t('Request support from the admins'),
 	warn: t('Warn a player'),
 	listWarnReasons: t('List the configured admin action reasons and their keywords'),

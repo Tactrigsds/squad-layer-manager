@@ -11,6 +11,7 @@ import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerConsole from '@/systems/server-console.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as UserPresence from '@/systems/user-presence.server'
@@ -34,6 +35,7 @@ export const orpcAppRouter = {
 	rbac: Rbac.orpcRouter,
 	users: Users.orpcRouter,
 	teamswaps: Teamswaps.orpcRouter,
+	switchRequests: SwitchRequests.orpcRouter,
 	appEvents: AppEvents.router,
 	timeouts: Timeouts.router,
 	sandbox: Sandbox.orpcRouter,

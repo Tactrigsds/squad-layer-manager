@@ -69,6 +69,7 @@ export const COMMAND_SECTIONS = {
 	votes: { label: 'Votes & SLM Updates' },
 	layerRequests: { label: 'Layer Requests' },
 	teamswaps: { label: 'Teamswaps' },
+	switchRequests: { label: 'Switch Requests' },
 	flags: { label: 'Player Flags' },
 	moderation: { label: 'Moderation' },
 	messaging: { label: 'Messaging' },
@@ -346,6 +347,18 @@ export const COMMAND_DECLARATIONS = {
 		permission: 'squad-server:manage-players',
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['clearswaps'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('requestSwitch', {
+		section: 'switchRequests',
+		permission: null,
+		args: [],
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['switch'], enabled: true, quickReference: true },
+	}),
+	...declareCommand('cancelSwitch', {
+		section: 'switchRequests',
+		permission: null,
+		args: [],
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['cancelswitch'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('flag', {
 		section: 'flags',
