@@ -98,47 +98,70 @@ type State = {
 const log = baseLogger.child({ [ATTRS.Module.NAME]: 'layer-queries.worker' })
 
 const mutex = new Mutex()
-let state!: State
+let state: State | undefined
 
-onmessage = withErrorResponse(async (e) => {
-	using _lock = await Prom.acquireInBlock(mutex)
+// empty in a dedicated worker, where broadcasts fall back to the global postMessage
+const ports = new Set<MessagePort>()
+function broadcast(msg: SignalLoadingLayersStarted) {
+	if (ports.size === 0) return postMessage(msg)
+	for (const port of ports) port.postMessage(msg)
+}
 
-	const msg = e.data as RequestInner & Sequenced & Prioritized
-	function post(response: ResponseInner) {
-		postMessage({ ...response, seqId: msg.seqId })
-	}
-	if (msg.type === 'init') {
-		await init(msg)
-		post({ type: 'init' })
-		return
-	}
-	if (msg.type === 'filter-update') {
-		state.filters = msg.input
-		post({ type: 'filter-update' })
-		return
-	}
-	if (msg.type === 'generation-update') {
-		state.ctx = { ...state.ctx, generationConfig: msg.input }
-		post({ type: 'generation-update' })
-		return
-	}
+function makeMessageHandler(reply: (msg: unknown) => void) {
+	return withErrorResponse(reply, async (e) => {
+		using _lock = await Prom.acquireInBlock(mutex)
 
-	const queryCtx = {
-		...state.ctx,
-		filters: state.filters,
-	}
-	if (msg.type === 'queryLayers') {
-		for await (const packet of queryLayersStreamed({ ctx: queryCtx, input: msg.input })) {
-			post({ type: 'queryLayers', payload: packet })
+		const msg = e.data as RequestInner & Sequenced & Prioritized
+		function post(response: ResponseInner) {
+			reply({ ...response, seqId: msg.seqId })
 		}
-		post({ type: 'queryLayers', payload: { code: 'end' } })
-		return
-	}
-	const payload = await queries[msg.type]({ ctx: queryCtx, input: msg.input as any })
-	post({ type: msg.type, payload } as unknown as OtherQueryResponse)
-})
+		if (msg.type === 'init') {
+			// in a shared worker every tab sends init; the first one wins and the rest are acks
+			if (!state) state = await init(msg)
+			post({ type: 'init' })
+			return
+		}
+		if (!state) throw new Error(`received ${msg.type} before init`)
+		if (msg.type === 'filter-update') {
+			state.filters = msg.input
+			post({ type: 'filter-update' })
+			return
+		}
+		if (msg.type === 'generation-update') {
+			state.ctx = { ...state.ctx, generationConfig: msg.input }
+			post({ type: 'generation-update' })
+			return
+		}
 
-async function init(initRequest: InitRequest) {
+		const queryCtx = {
+			...state.ctx,
+			filters: state.filters,
+		}
+		if (msg.type === 'queryLayers') {
+			for await (const packet of queryLayersStreamed({ ctx: queryCtx, input: msg.input })) {
+				post({ type: 'queryLayers', payload: packet })
+			}
+			post({ type: 'queryLayers', payload: { code: 'end' } })
+			return
+		}
+		const payload = await queries[msg.type]({ ctx: queryCtx, input: msg.input as any })
+		post({ type: msg.type, payload } as unknown as OtherQueryResponse)
+	})
+}
+
+// the same entry runs as a shared worker, or as a dedicated worker where SharedWorker is unavailable
+if ('onconnect' in self) {
+	;(self as { onconnect: (e: MessageEvent) => void }).onconnect = (e) => {
+		const port = e.ports[0]
+		ports.add(port)
+		// assigning onmessage starts the port implicitly
+		port.onmessage = makeMessageHandler((msg) => port.postMessage(msg))
+	}
+} else {
+	onmessage = makeMessageHandler((msg) => postMessage(msg))
+}
+
+async function init(initRequest: InitRequest): Promise<State> {
 	L.setLayerData(initRequest.input.layerData)
 
 	const [wasm, artifact] = await Promise.all([
@@ -148,7 +171,7 @@ async function init(initRequest: InitRequest) {
 	const engine = await LayerEngine.create(wasm, new Uint8Array(artifact))
 	log.info('layer engine ready: %s layers', engine.rowCount)
 
-	state = {
+	return {
 		ctx: {
 			...CS.init(),
 			effectiveColsConfig: LC.getEffectiveColumnConfig(),
@@ -160,7 +183,10 @@ async function init(initRequest: InitRequest) {
 	}
 }
 
-function withErrorResponse<Msg extends { type: string } & Sequenced>(cb: (e: { data: Msg }) => Promise<void>) {
+function withErrorResponse<Msg extends { type: string } & Sequenced>(
+	reply: (msg: unknown) => void,
+	cb: (e: { data: Msg }) => Promise<void>,
+) {
 	return async (e: { data: Msg }) => {
 		try {
 			return await cb(e)
@@ -173,88 +199,90 @@ function withErrorResponse<Msg extends { type: string } & Sequenced>(cb: (e: { d
 				errorMessage = String(error)
 			}
 			console.error(error)
-			postMessage({ type: e.data.type, error: errorMessage, seqId: e.data.seqId })
+			reply({ type: 'worker-error', error: errorMessage, seqId: e.data.seqId })
 		}
 	}
 }
 
 async function fetchLayerArtifact(cache: boolean) {
+	// Nothing will read the copy back (see cacheLayerArtifact in config.server.ts), so skip OPFS entirely rather
+	// than pay a 235MB write -- which costs more than the fetch and the inflate together -- to fill a directory
+	// that is discarded when this profile is.
+	if (!cache) return await inflateArtifact(await fetch(AR.link('/layers.bin.gz')))
+
 	try {
-		// Check if SharedArrayBuffer is available
-		if (typeof SharedArrayBuffer === 'undefined') {
-			throw new Error('SharedArrayBuffer is not available. This requires a secure context (HTTPS) and appropriate headers.')
-		}
-
-		// Nothing will read the copy back (see cacheLayerArtifact in config.server.ts), so skip OPFS entirely rather
-		// than pay a 235MB write -- which costs more than the fetch and the inflate together -- to fill a directory
-		// that is discarded when this profile is.
-		if (!cache) return await inflateArtifact(await fetch(AR.link('/layers.bin.gz')))
-
-		const opfsRoot = await navigator.storage.getDirectory()
-		const artifactFileName = 'layers.bin'
-		const hashFileName = 'layers.bin.hash'
-
-		let dbHandle: FileSystemFileHandle
-		let hashHandle: FileSystemFileHandle
-		let storedHash: string | null = null
-
-		try {
-			const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then((handle) => {
-				return handle
-			})
-			const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then((handle) => {
-				return handle
-			})
-			const storedHashPromise = hashHandlePromise
-				.then((hashHandle) => hashHandle.getFile())
-				.then((hashFile) => hashFile.text())
-				.then((text) => {
-					return text
-				})
-			;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
-		} catch {
-			;[dbHandle, hashHandle] = await Promise.all([
-				opfsRoot.getFileHandle(artifactFileName, { create: true }),
-				opfsRoot.getFileHandle(hashFileName, { create: true }),
-			])
-		}
-
-		const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
-
-		const res = await fetch(AR.link('/layers.bin.gz'), { headers })
-
-		let buffer: ArrayBuffer
-
-		if (res.status === 304) {
-			const cachedFile = await dbHandle.getFile()
-			buffer = await cachedFile.arrayBuffer()
-		} else {
-			buffer = await inflateArtifact(res)
-
-			// Store in OPFS
-			const writable = await dbHandle.createWritable()
-			await writable.write(buffer)
-			await writable.close()
-
-			// Store hash
-			const etag = res.headers.get('ETag')
-			if (etag) {
-				const hashWritable = await hashHandle.createWritable()
-				await hashWritable.write(etag)
-				await hashWritable.close()
-			}
-		}
-
-		// Convert to SharedArrayBuffer to minimize cloning overhead
-		return buffer
-	} finally {
+		return await fetchLayerArtifactViaOpfs()
+	} catch (error) {
+		// OPFS handles are lock-contended across contexts (e.g. an older worker instance mid-write); the cache is
+		// optional, the artifact is not
+		log.warn('layer artifact OPFS cache unavailable, fetching directly: %s', error)
+		return await inflateArtifact(await fetch(AR.link('/layers.bin.gz')))
 	}
+}
+
+async function fetchLayerArtifactViaOpfs() {
+	const opfsRoot = await navigator.storage.getDirectory()
+	const artifactFileName = 'layers.bin'
+	const hashFileName = 'layers.bin.hash'
+
+	let dbHandle: FileSystemFileHandle
+	let hashHandle: FileSystemFileHandle
+	let storedHash: string | null = null
+
+	try {
+		const dbHandlePromise = opfsRoot.getFileHandle(artifactFileName).then((handle) => {
+			return handle
+		})
+		const hashHandlePromise = opfsRoot.getFileHandle(hashFileName).then((handle) => {
+			return handle
+		})
+		const storedHashPromise = hashHandlePromise
+			.then((hashHandle) => hashHandle.getFile())
+			.then((hashFile) => hashFile.text())
+			.then((text) => {
+				return text
+			})
+		;[dbHandle, hashHandle, storedHash] = await Promise.all([dbHandlePromise, hashHandlePromise, storedHashPromise])
+	} catch {
+		;[dbHandle, hashHandle] = await Promise.all([
+			opfsRoot.getFileHandle(artifactFileName, { create: true }),
+			opfsRoot.getFileHandle(hashFileName, { create: true }),
+		])
+	}
+
+	const headers = storedHash ? { 'If-None-Match': storedHash } : undefined
+
+	const res = await fetch(AR.link('/layers.bin.gz'), { headers })
+
+	let buffer: ArrayBuffer
+
+	if (res.status === 304) {
+		const cachedFile = await dbHandle.getFile()
+		buffer = await cachedFile.arrayBuffer()
+	} else {
+		buffer = await inflateArtifact(res)
+
+		// Store in OPFS
+		const writable = await dbHandle.createWritable()
+		await writable.write(buffer)
+		await writable.close()
+
+		// Store hash
+		const etag = res.headers.get('ETag')
+		if (etag) {
+			const hashWritable = await hashHandle.createWritable()
+			await hashWritable.write(etag)
+			await hashWritable.close()
+		}
+	}
+
+	return buffer
 }
 
 // the endpoint always serves gzip, and inflating it here rather than letting the browser decode a
 // Content-Encoding is what leaves the decompressed artifact to store in OPFS
 async function inflateArtifact(res: Response) {
-	postMessage({ type: 'layer-download-started' })
+	broadcast({ type: 'layer-download-started' })
 	if (!res.body) throw new Error('No body on the layer artifact response')
 	return await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
 }
