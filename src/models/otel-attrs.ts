@@ -74,6 +74,8 @@ export namespace SquadLogs {
 	export const LINES = 'slm.squad_logs.lines'
 	export const IO = 'slm.squad_logs.io'
 	export const EVENTS = 'slm.squad_logs.events'
+	export const LAG = 'slm.squad_logs.lag'
+	export const MIN_SAFE_LEAD = 'slm.squad_logs.min_safe_lead'
 }
 
 // Server events are the app's own domain events, downstream of both log parsing and rcon polling, so
