@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import * as Arr from '@/lib/array-utils'
+import * as ExpHist from '@/lib/exp-histogram'
 import * as Gen from '@/lib/generator-utils'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
@@ -54,6 +55,29 @@ function sameAdminGroups(a: string[] | undefined, b: string[] | undefined): bool
 // synthesize the event from poll data. Must comfortably exceed ordinary log-vs-poll lag (the driver already holds
 // back TEAMS_UPDATE processing by minSafeLeadTimeForOtherEventsSinceLog, so this is extra margin on a heuristic).
 export const UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD = 3
+
+// --- adaptive tuning of minSafeLeadTimeForOtherEventsSinceLog ---
+// The hold-back only has to cover log delivery lag: receive time minus the line's log timestamp, which bundles
+// transport delay, the parser's idle-flush hold, and clock skew between the game server's clock and ours. The
+// static prior derived from transport config assumes zero skew and worst-case polling, so we measure instead.
+// An out-of-order processing is only possible when a single line's lag exceeds the threshold (a non-log event is
+// released after aging `threshold`, so a log line that reorders it must have arrived with at least that much lag),
+// which reduces tuning to upper-bounding observed lag. One sample per second of log activity (the worst lag seen
+// that second, so a burst-delivered poll doesn't flood the window with correlated lines), and the threshold
+// follows the rolling P99 with margin: the quantile sheds outliers (a reconnect delivering backlog) so one
+// incident doesn't set the operating point, and the margin absorbs bucket resolution and skew drift.
+export const LOG_LAG_SAMPLE_WINDOW_MS = 1000
+// generations are half-windows: quantiles span two, so a sample influences the threshold for 30-60min
+export const LOG_LAG_GENERATION_MS = 30 * 60_000
+export const LOG_LAG_WARMUP_SAMPLES = 300
+export const LOG_LAG_QUANTILE = 0.99
+export const LOG_LAG_MARGIN = 1.5
+// only retune on a >20% move, so quantile jitter doesn't thrash the threshold
+export const LOG_LAG_HYSTERESIS = 0.2
+export const MIN_SAFE_LEAD_FLOOR_MS = 250
+// well under the 45s stale-event cutoff and the margin UNKNOWN_SQUAD_SYNTHESIS_THRESHOLD relies on; every ms
+// here is added latency on non-log events that lead the log stream
+export const MIN_SAFE_LEAD_CEILING_MS = 10_000
 
 // how long we tolerate being stuck mid-sync ('syncing'/'rolling') before the watchdog force-resyncs from RCON. A
 // normal roll/sync completes within seconds (first teamed poll after the boundary), so this only fires when the
@@ -170,6 +194,19 @@ export type State = {
 	// if we receive a non-log event and we haven't received a log event in this amount of time since the time of the received event, we can assume that there are no log events older than this time that we have yet to receive
 	minSafeLeadTimeForOtherEventsSinceLog: number
 
+	// retunes minSafeLeadTimeForOtherEventsSinceLog from measured log lag (see observeLogLag). null when init got
+	// no finite static prior to improve on (tests, callers without a log transport).
+	logLagTuner: {
+		hist: ExpHist.ExpHistogram
+		// never tune below this; a transport whose static prior is already tighter (the in-process emulator) keeps it
+		floorMs: number
+		// worst lag seen in the sample window currently accumulating, committed as one sample when the window closes
+		sampleMax: number
+		sampleWindowEnd: number
+		lastFlipAt: number
+		appliedMs: number | null
+	} | null
+
 	debug__ticketOutcome?: { team1: number; team2: number }
 }
 
@@ -196,6 +233,7 @@ export function init(opts: {
 	log: State['log']
 	minSafeLogLeadTimeForOtherEvents?: State['minSafeLeadTimeForOtherEventsSinceLog']
 }): State {
+	const staticLead = opts.minSafeLogLeadTimeForOtherEvents ?? Infinity
 	return {
 		lastKnownLogEventTime: null,
 		admins: new Set(),
@@ -222,8 +260,60 @@ export function init(opts: {
 		log: opts.log,
 		hooks: opts.hooks,
 		isFirstConnection: null,
-		minSafeLeadTimeForOtherEventsSinceLog: opts.minSafeLogLeadTimeForOtherEvents ?? Infinity,
+		minSafeLeadTimeForOtherEventsSinceLog: staticLead,
+		logLagTuner: Number.isFinite(staticLead)
+			? {
+					// ~50 buckets at 25% resolution over 1ms-60s; two Uint32 generations, well under 1KB
+					hist: ExpHist.create({ min: 1, max: 60_000, growth: 1.25 }),
+					floorMs: Math.min(MIN_SAFE_LEAD_FLOOR_MS, staticLead),
+					sampleMax: 0,
+					sampleWindowEnd: 0,
+					lastFlipAt: 0,
+					appliedMs: null,
+				}
+			: null,
 	}
+}
+
+// Feed one log event's delivery lag into the tuner; called at ingestion for every parsed log event. `now` closes
+// sample windows and paces generation flips, so retuning only advances while logs actually flow -- a quiet server
+// keeps its last threshold rather than aging data out on no evidence.
+export function observeLogLag(state: State, logEventTime: number, now: number) {
+	const tuner = state.logLagTuner
+	if (!tuner) return
+	const lag = now - logEventTime
+	if (tuner.sampleWindowEnd === 0) {
+		tuner.sampleWindowEnd = now + LOG_LAG_SAMPLE_WINDOW_MS
+		tuner.sampleMax = lag
+		tuner.lastFlipAt = now
+		return
+	}
+	if (now < tuner.sampleWindowEnd) {
+		if (lag > tuner.sampleMax) tuner.sampleMax = lag
+		return
+	}
+	ExpHist.record(tuner.hist, tuner.sampleMax)
+	tuner.sampleWindowEnd = now + LOG_LAG_SAMPLE_WINDOW_MS
+	tuner.sampleMax = lag
+	if (now - tuner.lastFlipAt >= LOG_LAG_GENERATION_MS) {
+		ExpHist.flip(tuner.hist)
+		tuner.lastFlipAt = now
+	}
+	if (ExpHist.count(tuner.hist) < LOG_LAG_WARMUP_SAMPLES) return
+	const q99 = ExpHist.quantile(tuner.hist, LOG_LAG_QUANTILE)!
+	const suggested = Math.round(Math.min(MIN_SAFE_LEAD_CEILING_MS, Math.max(tuner.floorMs, q99 * LOG_LAG_MARGIN)))
+	const current = tuner.appliedMs ?? state.minSafeLeadTimeForOtherEventsSinceLog
+	if (Math.abs(suggested - current) <= current * LOG_LAG_HYSTERESIS) return
+	state.log.info(
+		'retuning minSafeLeadTimeForOtherEventsSinceLog %dms -> %dms (lag p50=%dms p99=%dms n=%d)',
+		current,
+		suggested,
+		ExpHist.quantile(tuner.hist, 0.5)!,
+		q99,
+		ExpHist.count(tuner.hist),
+	)
+	state.minSafeLeadTimeForOtherEventsSinceLog = suggested
+	tuner.appliedMs = suggested
 }
 
 export function pushAttribution(state: State, attribution: Omit<Attribution, 'time'>) {
