@@ -279,8 +279,8 @@ async function fetchLayerArtifactViaOpfs() {
 	return buffer
 }
 
-// the endpoint always serves gzip, and inflating it here rather than letting the browser decode a
-// Content-Encoding is what leaves the decompressed artifact to store in OPFS
+// the endpoint serves the pre-gzipped file as opaque bytes rather than a Content-Encoding (see the
+// /layers.bin.gz route for why), so the browser does not decode the body and inflating falls to us
 async function inflateArtifact(res: Response) {
 	broadcast({ type: 'layer-download-started' })
 	if (!res.body) throw new Error('No body on the layer artifact response')
