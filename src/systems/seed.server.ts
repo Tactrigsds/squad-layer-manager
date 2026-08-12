@@ -122,6 +122,13 @@ export function applyInitialPoolConfig(settings: SETTINGS.ServerSettings): SETTI
 
 const DOCS_BASE = 'https://github.com/Tactrigsds/squad-layer-manager'
 
+// warn, kill, kick and timeout all have squad forms, so the wording of anything addressed to the target has to
+// switch on {{squadName}}. Seeding the switch as a variable is the shape we want installs to copy: edit it once
+// and every reason follows.
+const SEEDED_MESSAGE_VARIABLES: SETTINGS.GlobalSettings['messageVariables'] = [
+	{ name: 'hasBeen', value: '{{#squadName}}Your squad has been{{/squadName}}{{^squadName}}You have been{{/squadName}}' },
+]
+
 // Enough of a starting set that the reason picker is not empty and `/warn <player> tk` works out of the box. The
 // text reaches the player verbatim, so it is addressed to them; keywords are what an admin types in chat, and are
 // matched as a single token (never whitespace).
@@ -131,9 +138,9 @@ const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons']
 		keywords: ['tk', 'teamkill'],
 		actionTexts: {
 			warn: 'Do not team kill.',
-			kill: 'Killed for team killing.',
-			kick: 'Kicked for team killing.',
-			timeout: 'Team killing. You can rejoin in {{duration}}.',
+			kill: '{{hasBeen}} killed for team killing.',
+			kick: '{{hasBeen}} kicked for team killing.',
+			timeout: '{{hasBeen}} kicked for team killing. Able to rejoin in {{duration}}.',
 		},
 	},
 	{
@@ -141,8 +148,8 @@ const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons']
 		keywords: ['abuse', 'toxicity'],
 		actionTexts: {
 			warn: 'Keep it civil.',
-			kick: 'Kicked for abusive behaviour.',
-			timeout: 'Abusive behaviour. You can rejoin in {{duration}}.',
+			kick: '{{hasBeen}} kicked for abusive behaviour.',
+			timeout: '{{hasBeen}} kicked for abusive behaviour. Able to rejoin in {{duration}}.',
 		},
 	},
 	{
@@ -150,16 +157,16 @@ const SEEDED_ADMIN_ACTION_REASONS: SETTINGS.GlobalSettings['adminActionReasons']
 		keywords: ['assetwaste'],
 		actionTexts: {
 			warn: 'Stop wasting assets.',
-			kick: 'Kicked for wasting assets.',
+			kick: '{{hasBeen}} kicked for wasting assets.',
 		},
 	},
 	{
 		label: 'Not Leading',
 		keywords: ['notleading'],
 		actionTexts: {
-			warn: 'Lead your squad or hand it to someone who will.',
+			warn: '{{#squadName}}Your squad needs a leader who will lead it.{{/squadName}}{{^squadName}}Lead your squad or hand it to someone who will.{{/squadName}}',
 			'remove-from-squad': 'Removed from your squad, which needs a leader who will lead it.',
-			'disband-squad': 'Squad disbanded: nobody was leading it.',
+			'disband-squad': 'Squad {{squadName}} disbanded: nobody was leading it.',
 			'demote-commander': 'Demoted: the commander slot needs someone actively leading.',
 		},
 	},
@@ -180,6 +187,7 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 	return {
 		...defaults,
 		adminActionReasons: SEEDED_ADMIN_ACTION_REASONS,
+		messageVariables: SEEDED_MESSAGE_VARIABLES,
 		// the sandbox this same boot creates seeds its admin list with exactly these groups, so the teams panel and
 		// the stats breakdown have something to say about it before anyone configures anything
 		playerGroupings: { [PG.SEEDED_GROUPING_ID]: PG.adminListGrouping(SB.SEEDED_ADMIN_GROUPS) },
