@@ -951,7 +951,8 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		)
 	}
 
-	// PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / PLAYER_KILLED / PLAYER_KICKED: "{actor} {verb} {targets}{suffix}"
+	// PLAYER_REMOVED_FROM_SQUAD / TEAM_CHANGE_FORCED / SWITCH_REQUESTS_FULFILLED / PLAYER_KILLED / PLAYER_KICKED:
+	// "{actor} {verb} {targets}{suffix}"
 	const count = appEvent.targets.length
 	let verb: AppEvents_Msgs.TargetVerb
 	let icon: React.ReactNode
@@ -968,6 +969,10 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		verb = 'killed'
 		icon = <Icons.Skull className="h-4 w-4 text-red-500 shrink-0" />
 		suffix = appEvent.reason ? tr.text(AppEvents_Msgs.killReasonSuffix(appEvent.reason)) : null
+	} else if (appEvent.type === 'SWITCH_REQUESTS_FULFILLED') {
+		verb = 'swapped'
+		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-amber-500 shrink-0" />
+		suffix = tr.text(AppEvents_Msgs.switchRequestFulfilledSuffix())
 	} else {
 		verb = 'swapped'
 		icon = <Icons.ArrowLeftRight className="h-4 w-4 text-blue-500 shrink-0" />

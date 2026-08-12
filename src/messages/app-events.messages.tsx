@@ -280,6 +280,8 @@ export const killReasonSuffix = def(': "{reason}"', (reason: string) => ({ reaso
 
 export const swappedTeamsSuffix = def(' to the other team')
 
+export const switchRequestFulfilledSuffix = def(' to the other team (switch request)')
+
 export const targetVerbs = { removed: 'removed', kicked: 'kicked', killed: 'killed', swapped: 'swapped' }
 
 export type TargetVerb = keyof typeof targetVerbs
@@ -338,6 +340,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return `removed ${players(e.targets.length)} from squad${forReason(e.reason)}`
 		case 'TEAM_CHANGE_FORCED':
 			return `swapped ${players(e.targets.length)} to the other team`
+		case 'SWITCH_REQUESTS_FULFILLED':
+			return `switched ${players(e.targets.length)} at their request${e.movedConnector ? ', moving a connecting player aside' : ''}`
 		case 'PLAYER_KILLED':
 			// preset-reason kills embed the label in the delivered reason, so it isn't repeated here
 			return `killed ${players(e.targets.length)}${e.reason ? `: "${e.reason}"` : ''}`

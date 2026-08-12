@@ -881,6 +881,20 @@ export const PublicServerSettingsSchema = z.object({
 		.boolean()
 		.prefault(true)
 		.describe('Whether this server sends admins the recurring nudges: post-roll announcements, queue reminders, and vote reminders.'),
+	switchRequests: z
+		.object({
+			instantSwapLead: z
+				.number()
+				.int()
+				.min(0)
+				.prefault(1)
+				.describe(
+					"How many players larger a /switch sender's own team must be than the other for the switch to happen immediately. " +
+						'Requests that do not meet this are queued, and the queue drains by the same rule (or by pairing waiters from both ' +
+						'sides). 0 lets even teams switch instantly; higher values queue more.',
+				),
+		})
+		.prefault({}),
 	rconCacheTTL: z
 		.object({
 			layersStatus: ZodUtils.HumanTime.prefault('5s').describe(

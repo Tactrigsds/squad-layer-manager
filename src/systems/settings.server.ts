@@ -207,6 +207,7 @@ export async function createServerEntry(
 		layerQueue: [],
 		teamswaps: null,
 		backburner: [],
+		switchRequests: null,
 		settings: settingsRes.data,
 	}
 	await ctx

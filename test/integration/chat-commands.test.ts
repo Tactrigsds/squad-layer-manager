@@ -387,3 +387,239 @@ describe('teamswaps', () => {
 		expect(fs.readFileSync(app.logFile, 'utf8')).not.toContain('tearing the server down')
 	})
 })
+
+// The player-initiated switch queue. /switch swaps the sender immediately when their team can spare them, and
+// queues them otherwise; the queue drains by mutual swaps, by the population rule, or by moving a fresh connect
+// aside. One journey drives it: each test leaves the queue empty for the next, and the roll test runs last.
+describe('switch requests', () => {
+	let fillerCounter = 0
+
+	function teamCount(teamId: 1 | 2) {
+		return app.emu.world.playerList().filter((p) => p.teamId === teamId).length
+	}
+
+	// tops up the smaller team with filler players. Only safe while the queue is empty: a fresh connect while
+	// someone is waiting is a connector, which is its own test below.
+	async function evenTeams() {
+		while (teamCount(1) !== teamCount(2)) {
+			const smaller = teamCount(1) < teamCount(2) ? 1 : 2
+			app.emu.world.connectPlayer(makePlayer({ name: `srq_filler_${fillerCounter++}`, teamId: smaller }))
+		}
+		await app.waitForRosterSync()
+	}
+
+	function forceChangesFor(eosId: string) {
+		return app.emu.rcon.commandLog.filter((c) => c.body === `AdminForceTeamChange ${eosId}`)
+	}
+
+	function savedSwitchRequests(): string | null {
+		const db = app.readDb()
+		try {
+			const row = db.prepare(`SELECT switchRequests FROM servers`).get() as { switchRequests: string | null } | undefined
+			return row?.switchRequests ?? null
+		} finally {
+			db.close()
+		}
+	}
+
+	it(cmd('switch swaps immediately when the sender team is larger'), async () => {
+		await evenTeams()
+		const switcher = app.emu.world.connectPlayer(makePlayer({ name: 'srq_now', teamId: 1 }))
+		await app.waitForRosterSync()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(switcher, 'ChatAll', cmd('switch'))
+
+		await app.waitFor(() => forceChangesFor(switcher.eos).length > 0, {
+			label: 'the immediate switch',
+			timeoutMs: 20_000,
+		})
+		expect(switcher.teamId).toBe(2)
+		await app.waitFor(() => appEventTypes(app, latestMatch(app).id).includes('SWITCH_REQUESTS_FULFILLED'), {
+			label: 'the fulfillment recorded',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it(cmd('switch queues on even teams, telling the player their spot and how to cancel'), async () => {
+		await evenTeams()
+		const waiter = app.emu.world.connectPlayer(makePlayer({ name: 'srq_waiter', teamId: 1 }))
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(waiter, 'ChatAll', cmd('switch'))
+
+		await app.waitFor(() => warnsTo(app, waiter).some((w) => w.includes('#1 in line')), {
+			label: 'the queue confirmation',
+			timeoutMs: 20_000,
+		})
+		const confirmation = warnsTo(app, waiter).find((w) => w.includes('#1 in line'))!
+		expect(confirmation).toContain(cmd('cancelswitch'))
+		expect(forceChangesFor(waiter.eos)).toHaveLength(0)
+
+		// the queue survives an SLM restart, so it is persisted as it changes
+		await app.waitFor(() => (savedSwitchRequests() ?? '').includes(waiter.eos), {
+			label: 'the request persisted',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it('pairs a waiter from each side into a mutual swap', async () => {
+		// srq_waiter is still queued from the previous test. The opposite-side player must not be a fresh
+		// connect (that is the connector rule); a filler from evenTeams has been on team 2 long enough.
+		const waiter = app.emu.world.findPlayer('srq_waiter')!
+		const opposite = app.emu.world.playerList().find((p) => p.teamId === 2 && p.name.startsWith('srq_filler'))!
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(opposite, 'ChatAll', cmd('switch'))
+
+		await app.waitFor(() => forceChangesFor(waiter.eos).length > 0 && forceChangesFor(opposite.eos).length > 0, {
+			label: 'both sides of the mutual swap',
+			timeoutMs: 20_000,
+		})
+		expect(waiter.teamId).toBe(2)
+		expect(opposite.teamId).toBe(1)
+	})
+
+	it(cmd('cancelswitch drops the request, moving everyone behind up a spot'), async () => {
+		await evenTeams()
+		const first = app.emu.world.connectPlayer(makePlayer({ name: 'srq_cancel_a', teamId: 1 }))
+		const second = app.emu.world.connectPlayer(makePlayer({ name: 'srq_cancel_b', teamId: 1 }))
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(first, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, first).some((w) => w.includes('#1 in line')), { label: 'first queued', timeoutMs: 20_000 })
+		app.emu.world.chat(second, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, second).some((w) => w.includes('#2 in line')), { label: 'second queued', timeoutMs: 20_000 })
+
+		app.emu.world.chat(first, 'ChatAll', cmd('cancelswitch'))
+		await app.waitFor(() => warnsTo(app, first).some((w) => /has been cancelled/.test(w)), {
+			label: 'the cancellation confirmed',
+			timeoutMs: 20_000,
+		})
+		await app.waitFor(() => warnsTo(app, second).some((w) => /moved up: now #1/.test(w)), {
+			label: 'the second waiter promoted',
+			timeoutMs: 20_000,
+		})
+		expect(forceChangesFor(first.eos)).toHaveLength(0)
+		expect(forceChangesFor(second.eos)).toHaveLength(0)
+
+		// leave the queue empty for the next test
+		app.emu.world.chat(second, 'ChatAll', cmd('cancelswitch'))
+		await app.waitFor(() => warnsTo(app, second).some((w) => /has been cancelled/.test(w)), {
+			label: 'the cleanup cancellation',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it('drops a waiter who disconnects, promoting the one behind them', async () => {
+		await evenTeams()
+		const leaver = app.emu.world.connectPlayer(makePlayer({ name: 'srq_leaver', teamId: 1 }))
+		const stays = app.emu.world.connectPlayer(makePlayer({ name: 'srq_stays', teamId: 1 }))
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(leaver, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, leaver).some((w) => w.includes('#1 in line')), { label: 'leaver queued', timeoutMs: 20_000 })
+		app.emu.world.chat(stays, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, stays).some((w) => w.includes('#2 in line')), { label: 'stays queued', timeoutMs: 20_000 })
+
+		app.emu.world.disconnectPlayer(leaver)
+
+		await app.waitFor(() => warnsTo(app, stays).some((w) => /moved up: now #1/.test(w)), {
+			label: 'the remaining waiter promoted',
+			timeoutMs: 20_000,
+		})
+
+		// the leaver was on the waiter's own team, so the disconnect made that team the smaller one: the
+		// promotion changes nothing about whether the waiter may switch
+		await app.waitForRosterSync()
+		expect(forceChangesFor(stays.eos)).toHaveLength(0)
+		expect(stays.teamId).toBe(1)
+
+		app.emu.world.chat(stays, 'ChatAll', cmd('cancelswitch'))
+		await app.waitFor(() => warnsTo(app, stays).some((w) => /has been cancelled/.test(w)), {
+			label: 'the cleanup cancellation',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it('moves a fresh connect aside to make room for a waiter', async () => {
+		await evenTeams()
+		const waiter = app.emu.world.connectPlayer(makePlayer({ name: 'srq_conn_waiter', teamId: 1 }))
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(waiter, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, waiter).some((w) => w.includes('#1 in line')), { label: 'the waiter queued', timeoutMs: 20_000 })
+
+		// a fresh player lands on the waiter's target team, which would otherwise block the queue forever
+		const fresh = app.emu.world.connectPlayer(makePlayer({ name: 'srq_fresh', teamId: 2 }))
+
+		await app.waitFor(() => forceChangesFor(fresh.eos).length > 0 && forceChangesFor(waiter.eos).length > 0, {
+			label: 'the connector moved and the waiter fulfilled',
+			timeoutMs: 25_000,
+		})
+		expect(fresh.teamId).toBe(1)
+		expect(waiter.teamId).toBe(2)
+	})
+
+	it('never yanks a rejoining player to make room', async () => {
+		// the disconnect happens before anyone queues, so it can't hand its slot to the queue
+		const rejoiner = app.emu.world.connectPlayer(makePlayer({ name: 'srq_rejoiner', teamId: 2 }))
+		await app.waitForRosterSync()
+		app.emu.world.disconnectPlayer(rejoiner)
+		await evenTeams()
+
+		const waiter = app.emu.world.connectPlayer(makePlayer({ name: 'srq_rejoin_waiter', teamId: 1 }))
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(waiter, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, waiter).some((w) => w.includes('#1 in line')), { label: 'the waiter queued', timeoutMs: 20_000 })
+
+		// he disconnected this match, so his rejoin onto the waiter's target team is not a free slot
+		rejoiner.teamId = 2
+		app.emu.world.connectPlayer(rejoiner)
+		await app.waitForRosterSync()
+		await app.waitForRosterSync()
+
+		expect(forceChangesFor(rejoiner.eos)).toHaveLength(0)
+		expect(forceChangesFor(waiter.eos)).toHaveLength(0)
+
+		app.emu.world.chat(waiter, 'ChatAll', cmd('cancelswitch'))
+		await app.waitFor(() => warnsTo(app, waiter).some((w) => /has been cancelled/.test(w)), {
+			label: 'the cleanup cancellation',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it('resets the queue when the map rolls', async () => {
+		await evenTeams()
+		const waiter = app.emu.world.connectPlayer(makePlayer({ name: 'srq_roll_waiter', teamId: 1 }))
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+
+		app.emu.world.chat(waiter, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, waiter).some((w) => w.includes('#1 in line')), { label: 'the waiter queued', timeoutMs: 20_000 })
+
+		app.emu.world.endMatch()
+		app.emu.world.startNewGame()
+		await app.waitForRosterSync()
+
+		await app.waitFor(() => savedSwitchRequests() === null || !savedSwitchRequests()!.includes(waiter.eos), {
+			label: 'the persisted queue cleared',
+			timeoutMs: 25_000,
+		})
+
+		// a fresh request starts at the front, so nothing of the old queue survived
+		await evenTeams()
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(waiter, 'ChatAll', cmd('switch'))
+		await app.waitFor(() => warnsTo(app, waiter).some((w) => w.includes('#1 in line')), {
+			label: 'a fresh #1 after the roll',
+			timeoutMs: 20_000,
+		})
+	})
+})

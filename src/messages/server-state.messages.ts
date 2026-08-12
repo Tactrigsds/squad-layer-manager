@@ -21,6 +21,7 @@ export const stateUpdateSource = def((source: SS.LQStateUpdate['source']) => {
 		'ended-early': t('Vote ended early'),
 		'teamswap-execution-completed': t('Teamswaps Executed'),
 		'teamswaps-saved': t('Teamswaps Saved'),
+		'switch-requests-saved': t('Switch requests updated'),
 		'backburner-updated': t('Layer requests updated'),
 	}
 

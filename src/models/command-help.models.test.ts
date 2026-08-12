@@ -226,7 +226,7 @@ describe('resolveHelpListing', () => {
 		if (listing.code !== 'ok') throw new Error('expected ok')
 		expect(I18n.ambient.text(listing.title)).toBe('Commands')
 		expect(I18n.ambient.text(listing.hint!)).toBe(
-			`More: ${P}help <section> -- general, votes, layerRequests, teamswaps, flags, moderation, messaging, all`,
+			`More: ${P}help <section> -- general, votes, layerRequests, teamswaps, switchRequests, flags, moderation, messaging, all`,
 		)
 	})
 

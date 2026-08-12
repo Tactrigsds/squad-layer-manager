@@ -70,6 +70,7 @@ import * as Settings from '@/systems/settings.server'
 import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as Steam from '@/systems/steam.server'
+import * as SwitchRequestsSys from '@/systems/switch-requests.server'
 import * as TeamswapsSys from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
@@ -847,6 +848,14 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		matchEventsCache: MatchEventsCache.initMatchEventsCacheContext(),
 
 		teamswaps: TeamswapsSys.initContext({
+			...ctx,
+			serverId,
+			cleanup,
+			rcon,
+			squadRcon,
+			server,
+		}),
+		switchRequests: SwitchRequestsSys.initContext({
 			...ctx,
 			serverId,
 			cleanup,

@@ -5,6 +5,7 @@ export const WINDOW_ID = z.enum([
 	'layer-info',
 	'squad-details',
 	'teamswaps-help',
+	'switch-requests',
 	'timeouts',
 	'pool-config',
 	'sandbox-control',

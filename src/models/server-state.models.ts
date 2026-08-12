@@ -3,6 +3,7 @@ import { z } from 'zod'
 import * as BB from '@/models/backburner.models'
 import * as LL from '@/models/layer-list.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as SRQ from '@/models/switch-requests.models'
 import * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models'
 
@@ -14,6 +15,14 @@ export const SavedTeamswapsSchema = z.object({
 	matchHistoryEntryId: z.number().int(),
 })
 export type SavedTeamswaps = z.infer<typeof SavedTeamswapsSchema>
+
+// the switch-request queue is match-scoped, so what's restored is keyed to the match it was saved during
+export const SavedSwitchRequestsSchema = z.object({
+	requests: z.array(SRQ.SwitchRequestSchema),
+	disconnected: z.array(z.string()),
+	matchHistoryEntryId: z.number().int(),
+})
+export type SavedSwitchRequests = z.infer<typeof SavedSwitchRequestsSchema>
 
 export const ServerStateSchema = z.object({
 	id: ServerIdSchema,
@@ -30,6 +39,7 @@ export const ServerStateSchema = z.object({
 		)
 		.prefault(null),
 	backburner: BB.BackburnerListSchema.prefault([]),
+	switchRequests: SavedSwitchRequestsSchema.nullable().prefault(null),
 	settings: SETTINGS.ServerSettingsSchema,
 })
 
@@ -55,6 +65,7 @@ export type LQStateUpdate = {
 					| 'updates-to-squad-server-toggled'
 					| 'ingame-vote-detected'
 					| 'teamswaps-saved'
+					| 'switch-requests-saved'
 					| 'teamswap-execution-completed'
 					| 'backburner-updated'
 		  }
