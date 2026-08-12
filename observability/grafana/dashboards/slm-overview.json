@@ -198,7 +198,7 @@
 			"title": "Log lines parsed",
 			"description": "Lines ingested per second against events successfully parsed out of them. Both sources (sftp poll and server-agent push) are counted at the same point, so the numbers mean the same thing either way. Lines far outrunning events is normal (most lines are not events); events dropping to zero while lines keep flowing is not.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
 			"targets": [
 				{
 					"refId": "A",
@@ -222,7 +222,7 @@
 			"title": "Log ingest throughput",
 			"description": "Bytes of squad log data read per second, by server and source.",
 			"datasource": { "type": "prometheus", "uid": "prometheus" },
-			"gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
 			"targets": [
 				{
 					"refId": "A",
@@ -233,6 +233,44 @@
 			"fieldConfig": {
 				"defaults": { "min": 0, "unit": "Bps", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 1 } },
 				"overrides": []
+			},
+			"options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true } }
+		},
+		{
+			"type": "timeseries",
+			"title": "Log delivery lag",
+			"description": "How far behind the log stream runs: receive time minus the line's log timestamp (clock skew included), sampled as each second's worst case. Plotted against the hold-back applied to non-log events, which the tuner keeps at 1.5x the rolling p99 once warmed up. Lag crossing the hold-back means event ordering was at risk; the hold-back should follow within a couple of retunes.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.5, sum by (le, slm_squad_server_id) (rate(slm_squad_logs_lag_milliseconds_bucket{slm_squad_server_id=~\"$server\"}[$__rate_interval])))",
+					"legendFormat": "p50 {{slm_squad_server_id}}"
+				},
+				{
+					"refId": "B",
+					"expr": "histogram_quantile(0.99, sum by (le, slm_squad_server_id) (rate(slm_squad_logs_lag_milliseconds_bucket{slm_squad_server_id=~\"$server\"}[$__rate_interval])))",
+					"legendFormat": "p99 {{slm_squad_server_id}}"
+				},
+				{
+					"refId": "C",
+					"expr": "max by (slm_squad_server_id) (slm_squad_logs_min_safe_lead_milliseconds{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "hold-back {{slm_squad_server_id}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "min": 0, "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1 } },
+				"overrides": [
+					{
+						"matcher": { "id": "byRegexp", "options": "^hold-back.*" },
+						"properties": [
+							{ "id": "custom.lineInterpolation", "value": "stepAfter" },
+							{ "id": "custom.lineWidth", "value": 2 },
+							{ "id": "custom.fillOpacity", "value": 0 }
+						]
+					}
+				]
 			},
 			"options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true } }
 		},
