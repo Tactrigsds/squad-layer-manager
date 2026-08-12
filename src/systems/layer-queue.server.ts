@@ -79,7 +79,7 @@ export function setup() {
 export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverState: SS.ServerState) {
 	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
 	const payload: LQ.Ctx.Payload = {
-		unexpectedNextLayerSet$: new IsolatedBehaviorSubject<L.LayerId | null>(null),
+		nextLayerSyncState$: new IsolatedBehaviorSubject<LQ.NextLayerSyncState>({ code: 'synced' }),
 		ingameVote$: new IsolatedBehaviorSubject<LQ.IngameVote | null>(null),
 		update$: new IsolatedReplaySubject(1),
 
@@ -88,7 +88,7 @@ export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverSta
 		updateLayerMtx: new Mutex(),
 	}
 
-	ctx.cleanup.push(payload.update$, payload.unexpectedNextLayerSet$, payload.ingameVote$, payload.op$, payload.updateLayerMtx)
+	ctx.cleanup.push(payload.update$, payload.nextLayerSyncState$, payload.ingameVote$, payload.op$, payload.updateLayerMtx)
 
 	return payload
 }
@@ -145,13 +145,13 @@ export const setupInstance = Instr.spanOp(
 		}
 
 		// -------- when SLM is not able to set a layer on the server, notify admins.
-		ctx.layerQueue.unexpectedNextLayerSet$
+		ctx.layerQueue.nextLayerSyncState$
 			.pipe(
-				Rx.switchMap((unexpectedNextLayer) => {
-					if (unexpectedNextLayer) {
+				Rx.switchMap((syncState) => {
+					if (syncState.code === 'err:refused') {
 						return Rx.interval(ZodUtils.HumanTime.parse('2m')).pipe(
 							Rx.startWith(0),
-							Rx.map(() => unexpectedNextLayer),
+							Rx.map(() => syncState.actualLayerId),
 						)
 					}
 					return Rx.EMPTY
@@ -656,25 +656,38 @@ export const syncNextLayerToServer = Instr.spanOp(
 		// react to a non-SLM set and get a feed entry. absent -> no MAP_SET app event (still attributes the server event).
 		mapSetCause?: { reason: 'queue-updated'; causeId: string } | { reason: 'override'; overrode?: AppEvents.MapSet['overrode'] },
 	) => {
-		if (settings.updatesToSquadServerDisabled) return
+		const syncState$ = ctx.layerQueue.nextLayerSyncState$
+		if (settings.updatesToSquadServerDisabled) {
+			syncState$.next({ code: 'disabled' })
+			return
+		}
 		const currentStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
-		if (currentStatusRes.code !== 'ok') return currentStatusRes
-		if (currentStatusRes.data.nextLayer && L.areLayersCompatible(currentStatusRes.data.nextLayer.id, nextQueuedLayerId)) return
+		if (currentStatusRes.code !== 'ok') {
+			syncState$.next({ code: 'err:rcon' })
+			return currentStatusRes
+		}
+		if (currentStatusRes.data.nextLayer && L.areLayersCompatible(currentStatusRes.data.nextLayer.id, nextQueuedLayerId)) {
+			syncState$.next({ code: 'synced' })
+			return
+		}
+		// the write and the read-back that verifies it are a round trip each, so the queue head and the server
+		// legitimately disagree until setNextLayer returns. Clients spin on this rather than calling it out of sync.
+		syncState$.next({ code: 'syncing' })
 		const res = await SquadRcon.setNextLayer(ctx, nextQueuedLayerId)
 		// we do this so we can stay in this async context so we hold on to the mutex that we acquired
 		switch (res.code) {
 			case 'err:unable-to-set-next-layer':
-				ctx.layerQueue.unexpectedNextLayerSet$.next(res.unexpectedLayerId)
+				syncState$.next({ code: 'err:refused', actualLayerId: res.unexpectedLayerId })
 				break
 			case 'err:rcon':
-				ctx.layerQueue.unexpectedNextLayerSet$.next(null)
+				syncState$.next({ code: 'err:rcon' })
 				// deliberately detached (see below): observe the rejection instead of awaiting
 				SquadServer.pushAttribution(ctx, { type: 'MAP_SET_ATTRIBUTION', itemId, layerId: nextQueuedLayerId }).catch((err) => {
 					if (!Prom.isAbortError(err)) log.error(err)
 				})
 				break
 			case 'ok': {
-				ctx.layerQueue.unexpectedNextLayerSet$.next(null)
+				syncState$.next({ code: 'synced' })
 				// SLM actually set the layer -> record a MAP_SET app event (SLM-originated only), and link the resulting
 				// MAP_SET server event to it via the attribution
 				let mapSetAppEventId: string | undefined
@@ -752,9 +765,9 @@ export async function toggleUpdatesToSquadServer({
 
 	if (turnedIngameVotingOff) await SquadRcon.setIngameVotingEnabled(ctx, false)
 
-	// only syncNextLayerToServer clears this, and it returns before reaching that point while disabled, so an
-	// out-of-sync next layer already flagged would otherwise keep warning admins every 2 minutes forever.
-	if (input.disabled) ctx.layerQueue.unexpectedNextLayerSet$.next(null)
+	// only syncNextLayerToServer moves this off err:refused, and it returns before reaching that point while
+	// disabled, so a next layer already flagged would otherwise keep warning admins every 2 minutes forever.
+	if (input.disabled) ctx.layerQueue.nextLayerSyncState$.next({ code: 'disabled' })
 
 	const notification = byVote
 		? SS_Msgs.ingameVoteDisabledUpdates(input.disabled?.type === 'ingame-vote' && input.disabled.inferred)
@@ -794,11 +807,14 @@ function getBaseCtx() {
 
 // -------- setup router --------
 export const router = {
-	watchUnexpectedNextLayer: orpcBase
+	watchNextLayerSyncState: orpcBase
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
-			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.unexpectedNextLayerSet$).pipe(
+			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (ctx) => ctx.layerQueue.nextLayerSyncState$).pipe(
+				// every sync ends by re-announcing its outcome, so without this a save that changed nothing still
+				// pushes a fresh object to every client
+				Rx.Ext.distinctDeepEquals(),
 				Rx.Ext.withAbortSignal(signal!),
 			)
 			yield* Rx.Ext.toAsyncGenerator(obs)

@@ -29,6 +29,7 @@ import type * as GenVoteFrame from '@/frames/gen-vote.frame.ts'
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import { useIsMobile } from '@/hooks/use-is-mobile.ts'
+import * as DH from '@/lib/display-helpers'
 import * as Obj from '@/lib/object-utils'
 import { inline, useStableValue } from '@/lib/react.ts'
 import * as ST from '@/lib/state-tree.ts'
@@ -50,6 +51,7 @@ import * as V from '@/models/vote.models.ts'
 import * as RPC from '@/orpc.client.ts'
 import * as RBAC from '@/rbac.models'
 import * as DndKit from '@/systems/dndkit.client'
+import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -500,8 +502,13 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const itemChoiceTallyPercentage = isVoteChoice && voteState ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
 	const voteCount = isVoteChoice && voteState ? tally?.totals?.get(item.itemId) : undefined
-	const nextLayerId = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.nextLayerId)
-	const isFirstQueuedLayer = index.innerIndex === 0 && nextLayerId === item.layerId
+	const updatesDisabled = Zus.useStore(props.stores.squadServer, (s) => s.settings.saved.updatesToSquadServerDisabled)
+	const committing = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.committing)
+	const nextLayerSyncState = LayerQueueClient.useNextLayerSyncState(props.stores.squadServer.serverId)
+	// the row whose layer the server should be holding as next: the head of the queue, or for a vote at the head,
+	// whichever choice would win right now
+	const isNextLayerCandidate =
+		index.outerIndex === 0 && (parentItem ? LL.getChosenItem(parentItem).itemId === item.itemId : index.innerIndex === null)
 
 	if (index.innerIndex === 0 && voteState?.code !== 'ended:winner') {
 		badges.unshift(
@@ -518,21 +525,61 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 		)
 	}
 
-	if (
-		!isModified &&
-		layersStatus?.nextLayer &&
-		isFirstQueuedLayer &&
-		voteState?.code !== 'in-progress' &&
-		!L.areLayersCompatible(item.layerId, layersStatus.nextLayer, true)
-	) {
-		badges.push(
-			<Tooltip key="not current next">
-				<TooltipTrigger>
-					<Badge variant="destructive">?</Badge>
-				</TooltipTrigger>
-				<TooltipContent>{tr.text(LL_Msgs.notCurrentNextLayer())}</TooltipContent>
-			</Tooltip>,
-		)
+	// a running vote is still deciding the next layer, so nothing said here would hold for long
+	if (isNextLayerCandidate && voteState?.code !== 'in-progress') {
+		const serverNextLayer = layersStatus?.nextLayer
+		if (updatesDisabled) {
+			badges.push(
+				<Badge key="next-layer" variant="destructive">
+					{tr.text(LL_Msgs.notNextLayerBlocked())}
+				</Badge>,
+			)
+		} else if (serverNextLayer && L.areLayersCompatible(item.layerId, serverNextLayer, true)) {
+			badges.push(
+				<Tooltip key="next-layer">
+					<TooltipTrigger>
+						<Badge variant="added">{tr.text(LL_Msgs.isNextLayer())}</Badge>
+					</TooltipTrigger>
+					<TooltipContent>{tr.text(LL_Msgs.isNextLayerBlurb())}</TooltipContent>
+				</Tooltip>,
+			)
+		} else if (serverNextLayer && isModified) {
+			badges.push(
+				<Tooltip key="next-layer">
+					<TooltipTrigger>
+						<Badge variant="edited">{tr.text(LL_Msgs.notNextLayerUnsaved())}</Badge>
+					</TooltipTrigger>
+					<TooltipContent className="max-w-xs">
+						{tr.text(LL_Msgs.notNextLayerUnsavedBlurb(DH.toShortLayerNameFromId(serverNextLayer.id)))}
+						<Icons.Sword className="ml-1 inline h-3 w-3" />
+					</TooltipContent>
+				</Tooltip>,
+			)
+		} else if (committing || nextLayerSyncState.code === 'syncing' || !serverNextLayer) {
+			// committing is this save's own round trip; syncing is a write SLM started for another reason, such as
+			// another admin's save. No next layer at all means SLM has yet to write one, which a roll and a status
+			// read we have not made yet both look like: pending, not wrong.
+			badges.push(
+				<Tooltip key="next-layer">
+					<TooltipTrigger>
+						<Badge variant="secondary" className="gap-1">
+							<Icons.LoaderCircle className="h-3 w-3 animate-spin" />
+							{tr.text(LL_Msgs.settingNextLayer())}
+						</Badge>
+					</TooltipTrigger>
+					<TooltipContent>{tr.text(LL_Msgs.settingNextLayerBlurb())}</TooltipContent>
+				</Tooltip>,
+			)
+		} else {
+			badges.push(
+				<Tooltip key="next-layer">
+					<TooltipTrigger>
+						<Badge variant="destructive">{tr.text(LL_Msgs.notNextLayer())}</Badge>
+					</TooltipTrigger>
+					<TooltipContent>{tr.text(LL_Msgs.notCurrentNextLayer())}</TooltipContent>
+				</Tooltip>,
+			)
+		}
 	}
 
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
