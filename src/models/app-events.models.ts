@@ -329,6 +329,15 @@ export const TeamswapsUpdatedSchema = event('TEAMSWAPS_UPDATED', {
 })
 export type TeamswapsUpdated = z.infer<typeof TeamswapsUpdatedSchema>
 
+// switch requests fulfilled: the targets asked to change teams (/switch) and were force-switched, by the queue
+// draining (system actor), an immediate /switch (ingame-user), or the window's "switch now" (slm-user)
+export const SwitchRequestsFulfilledSchema = event('SWITCH_REQUESTS_FULFILLED', {
+	targets: z.array(SM.PlayerIdSchema),
+	// a just-connected player moved to the other team to make room, when the fulfillment used one
+	movedConnector: SM.PlayerIdSchema.optional(),
+})
+export type SwitchRequestsFulfilled = z.infer<typeof SwitchRequestsFulfilledSchema>
+
 // a layer template was pushed onto the backburner (/reqlayer or the layer-requests panel)
 export const LayerRequestAddedSchema = event('LAYER_REQUEST_ADDED', {
 	itemId: z.string(),
@@ -388,6 +397,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteAbortedSchema,
 	QueueUpdatedSchema,
 	TeamswapsUpdatedSchema,
+	SwitchRequestsFulfilledSchema,
 	LayerRequestAddedSchema,
 	LayerRequestRemovedSchema,
 	LayerRequestConsumedSchema,
@@ -459,6 +469,8 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 			return [e.playerId]
 		case 'TEAMSWAPS_UPDATED':
 			return summarizeTeamswapChanges(e).map((c) => c.playerId)
+		case 'SWITCH_REQUESTS_FULFILLED':
+			return e.movedConnector ? [...e.targets, e.movedConnector] : e.targets
 		case 'MAP_SET':
 			return e.overrode?.type === 'player' ? [e.overrode.playerId] : []
 	}

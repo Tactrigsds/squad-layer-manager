@@ -272,6 +272,7 @@ export const servers = sqliteTable('servers', {
 	layerQueue: json('layerQueue').notNull().default(superjson.serialize([])),
 	teamswaps: json('teamswaps').notNull().default(superjson.serialize(new Map())),
 	backburner: json('backburner').notNull().default(superjson.serialize([])),
+	switchRequests: json('switchRequests').default(superjson.serialize(null)),
 	settings: json('settings').default(superjson.serialize({})),
 })
 

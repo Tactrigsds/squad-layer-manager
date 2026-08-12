@@ -1,6 +1,7 @@
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import * as SwitchRequestsPrt from '@/frame-partials/switch-requests.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as TeamswapsPrt from '@/frame-partials/teamswaps.partial'
 import type * as FRM from '@/lib/frame'
@@ -21,6 +22,7 @@ import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
+import * as SwitchRequestsClient from '@/systems/switch-requests.client'
 import * as VoteClient from '@/systems/vote.client'
 
 import { frameManager } from './frame-manager'
@@ -31,6 +33,7 @@ export type State = ChatPrt.Store &
 	ServerSettingsPrt.Store &
 	LayerQueuePrt.Store &
 	TeamswapsPrt.Store &
+	SwitchRequestsPrt.Store &
 	TeamsPanelPrt.Store & {
 		layerItemsState: LQY.LayerItemsState
 		layerItemStatuses: LQY.LayerItemStatuses | null
@@ -77,6 +80,7 @@ export const frame = frameManager.createFrame<Types>({
 		ServerSettingsPrt.initServerSettings(args)
 		LayerQueuePrt.initLayerQueue(args)
 		TeamswapsPrt.initTeamswaps(args)
+		SwitchRequestsPrt.initSwitchRequests(args)
 
 		// keeps the read-only, per-server oRPC streams (serverInfo/serverRolling/layersStatus, vote state,
 		// match history, unexpected-next-layer) hot for the lifetime of this frame instance
@@ -356,6 +360,10 @@ export namespace Actions {
 				.filter((p) => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
 				.map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
+	}
+
+	export function selectAllSwitchRequesters(stores: KeyProp, teamId?: SM.TeamId) {
+		selectPlayers(stores, SwitchRequestsClient.switchRequesterIds(Zus.getState(stores.squadServer!), teamId))
 	}
 
 	export function selectAllWithRole(stores: KeyProp, role: string, teamId?: SM.TeamId) {

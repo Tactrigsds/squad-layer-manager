@@ -13,6 +13,7 @@ import * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as SQS from '@/models/squad-server.models'
+import * as SRQ from '@/models/switch-requests.models'
 import * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models.ts'
 import * as V from '@/models/vote.models'
@@ -113,6 +114,7 @@ export type ManagedServer = CS.Ctx &
 	MH.Ctx &
 	MEC.Ctx &
 	TSW.Ctx &
+	SRQ.Ctx &
 	SETTINGS.Ctx &
 	// resolves against the server's own locale setting, read live
 	Msgs.Ctx &
@@ -128,6 +130,7 @@ export const ManagedServerDef = CD.mergeDefs(
 		MH.CtxDef,
 		MEC.CtxDef,
 		TSW.CtxDef,
+		SRQ.CtxDef,
 		SETTINGS.CtxDef,
 		TranslatorDef,
 		ManagedServerCleanupDef,

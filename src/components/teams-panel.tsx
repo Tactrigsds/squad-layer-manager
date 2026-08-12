@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
@@ -37,6 +38,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as SRQClient from '@/systems/switch-requests.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -48,6 +50,7 @@ import SquadContextMenuOptions from './squad-context-menu-options'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { SquadDisplay } from './squad-display'
 import { StickyGroup } from './sticky-group.tsx'
+import type { SwitchRequestsWindowProps } from './switch-requests-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
 import type { TeamswapsHelpWindowProps } from './teamswaps-help-window.helpers'
 import type { TimeoutsWindowProps } from './timeouts-window.helpers'
@@ -77,6 +80,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 
 void import('@/components/squad-details-window')
+void import('@/components/switch-requests-window')
 void import('@/components/teamswaps-help-window')
 void import('@/components/timeouts-window')
 
@@ -208,7 +212,7 @@ export default function TeamsPanel(props: { className?: string; stores: SquadSer
 							</Badge>
 						)}
 					</div>
-					<ControlPanel />
+					<ControlPanel stores={props.stores} />
 				</div>
 			</div>
 			<StickyGroup stickyRef={headerRef}>
@@ -260,11 +264,12 @@ function TeamPlayerCounts(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Norm
 	)
 }
 
-function ControlPanel() {
+function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = React.useMemo(() => (playerGroupings ? PG.getGroupingIds(playerGroupings) : []), [playerGroupings])
 	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
+	const switchRequestCount = Zus.useStore(stores.squadServer!, SRQClient.Sel.requestCount)
 	// distinct players with an active timeout; the expiry check trims rows the server hasn't swept yet
 	const timedOutCount = new Set(
 		TimeoutsClient.useActiveTimeouts()
@@ -274,6 +279,22 @@ function ControlPanel() {
 
 	return (
 		<div className="flex justify-end items-center gap-1">
+			<OpenWindowInteraction
+				windowId={WINDOW_ID.enum['switch-requests']}
+				windowProps={{ serverId: stores.squadServer!.serverId } satisfies SwitchRequestsWindowProps}
+				preload="intent"
+				render={({ ref, ...props }: { ref?: React.Ref<HTMLButtonElement> } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+					<Button ref={ref} variant="ghost" size="sm" className="h-7" title={tr.text(SRQ_Msgs.switchRequestsTabHint())} {...props}>
+						<Icons.ArrowLeftRight className="h-3.5 w-3.5" />
+						{tr.text(SRQ_Msgs.switchRequestsTab())}
+						{switchRequestCount > 0 && (
+							<Badge className="ml-0.5 h-4 min-w-4 justify-center bg-amber-500 px-1 text-[10px] leading-none text-black">
+								{switchRequestCount}
+							</Badge>
+						)}
+					</Button>
+				)}
+			/>
 			<OpenWindowInteraction
 				windowId={WINDOW_ID.enum['timeouts']}
 				windowProps={{} satisfies TimeoutsWindowProps}
@@ -334,6 +355,34 @@ function SelectOrSpinner({
 				<Checkbox checked={checked} onCheckedChange={onCheckedChange} aria-label={tr.text(SM_Msgs.selectRow())} />
 			)}
 		</div>
+	)
+}
+
+// the amber arrows beside a name: this player asked to switch teams (/switch). Rendered per-row so only queued
+// rows subscribe-and-rerender when the queue changes.
+function SwitchRequestIcon({
+	playerId,
+	teamId,
+	stores,
+}: {
+	playerId: SM.PlayerId
+	teamId: SM.TeamId | null
+	stores: SquadServerFrame.KeyProp
+}) {
+	const queued = Zus.useStore(stores.squadServer!, SRQClient.Sel.isQueued(playerId))
+	if (!queued) return null
+	return (
+		<span
+			title={tr.text(SRQ_Msgs.iconHint())}
+			onClickCapture={(e) => {
+				if (!e.shiftKey) return
+				e.preventDefault()
+				e.stopPropagation()
+				SquadServerFrame.Actions.selectAllSwitchRequesters(stores, e.ctrlKey ? undefined : (teamId ?? undefined))
+			}}
+		>
+			<Icons.ArrowLeftRight className="h-3 w-3 text-amber-500 shrink-0" />
+		</span>
 	)
 }
 
@@ -679,6 +728,7 @@ function nameColumn<T extends TeamsPanelModels.EnrichedPlayer>(helper: ColumnHel
 			return (
 				<span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1">
 					<PlayerDisplay stores={meta.stores} player={row.original} matchId={meta.matchId} disableContextMenu />
+					<SwitchRequestIcon playerId={SM.PlayerIds.getPlayerId(row.original.ids)} teamId={row.original.teamId} stores={meta.stores} />
 					{row.original.inAdminCam && (
 						<span
 							title={tr.text(SM_Msgs.adminCamHint())}

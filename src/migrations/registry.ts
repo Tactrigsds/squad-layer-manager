@@ -52,6 +52,7 @@ import * as m0094 from './0094_command_allowed_chats'
 import * as m0095 from './0095_slm_updates_disabled_reason'
 import * as m0096 from './0096_discord_accounts_and_link_provenance'
 import * as m0097 from './0097_community_collection_into_owi'
+import * as m0098 from './0098_switch_requests_column'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -88,4 +89,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0095_slm_updates_disabled_reason', up: m0095.up },
 	{ name: '0096_discord_accounts_and_link_provenance', up: m0096.up },
 	{ name: '0097_community_collection_into_owi', up: m0097.up },
+	{ name: '0098_switch_requests_column', up: m0098.up },
 ]
