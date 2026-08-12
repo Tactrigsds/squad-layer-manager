@@ -97,6 +97,16 @@ const logEventCounter = meter.createCounter(ATTRS.SquadLogs.EVENTS, {
 const serverEventCounter = meter.createCounter(ATTRS.ServerEvent.EMITTED, {
 	description: 'Server events emitted on event$, by server and event type',
 })
+
+const logLagHistogram = meter.createHistogram(ATTRS.SquadLogs.LAG, {
+	description:
+		'Log delivery lag (receive time minus log timestamp, incl. clock skew): the per-second worst-case samples the lead-time tuner acts on, by server and log source',
+	unit: 'ms',
+	advice: {
+		// sized around the tuner's operating range: floor 250ms, ceiling 10s, with the 45s stale cutoff as tail
+		explicitBucketBoundaries: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 45000],
+	},
+})
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 
@@ -794,7 +804,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			},
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up:
-		// one delivery, and the parser's wait for the tick it is accumulating to go quiet
+		// one delivery, and the parser's wait for the tick it is accumulating to go quiet. A static prior only:
+		// once measured log lag warms up, LogLagTuner retunes it (clock skew makes any static value drift).
 		minSafeLogLeadTimeForOtherEvents: logDeliveryMs + logIdleFlushMs,
 	})
 
@@ -1032,6 +1043,14 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			}
 
 			logEventCounter.add(1, { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource })
+			const lagSampleMs = PendingEvents.LogLagTuner.observe(ctx.server.eventState, event.time, Date.now())
+			if (lagSampleMs !== null) {
+				// clock skew can push a lag negative; the tuner keeps the sign, the metric clamps to stay a valid histogram value
+				logLagHistogram.record(Math.max(0, lagSampleMs), {
+					[ATTRS.SquadServer.ID]: serverId,
+					[ATTRS.SquadLogs.SOURCE]: logSource,
+				})
+			}
 
 			await collectEvents(ctx, () => {
 				PendingEvents.onLogEvent(ctx.server.eventState, event)
