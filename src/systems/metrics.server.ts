@@ -55,6 +55,18 @@ export function setup() {
 		})
 
 	meter
+		.createObservableGauge(ATTRS.SquadLogs.MIN_SAFE_LEAD, {
+			description: 'Hold-back applied to non-log events to keep ordering safe against log delivery lag; retuned from measured lag',
+			unit: 'ms',
+		})
+		.addCallback((result) => {
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				const ms = managedServer.server.eventState.minSafeLeadTimeForOtherEventsSinceLog
+				if (Number.isFinite(ms)) result.observe(ms, { [ATTRS.SquadServer.ID]: serverId })
+			}
+		})
+
+	meter
 		.createObservableGauge(ATTRS.Vote.IN_PROGRESS, {
 			description: 'Whether a layer vote is currently running on this squad server',
 		})

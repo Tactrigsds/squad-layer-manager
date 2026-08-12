@@ -277,33 +277,35 @@ export function init(opts: {
 
 // Feed one log event's delivery lag into the tuner; called at ingestion for every parsed log event. `now` closes
 // sample windows and paces generation flips, so retuning only advances while logs actually flow -- a quiet server
-// keeps its last threshold rather than aging data out on no evidence.
-export function observeLogLag(state: State, logEventTime: number, now: number) {
+// keeps its last threshold rather than aging data out on no evidence. Returns the sample this call committed (a
+// closed window's worst lag) when it closed one, so the caller can mirror exactly what the tuner saw into metrics.
+export function observeLogLag(state: State, logEventTime: number, now: number): number | null {
 	const tuner = state.logLagTuner
-	if (!tuner) return
+	if (!tuner) return null
 	const lag = now - logEventTime
 	if (tuner.sampleWindowEnd === 0) {
 		tuner.sampleWindowEnd = now + LOG_LAG_SAMPLE_WINDOW_MS
 		tuner.sampleMax = lag
 		tuner.lastFlipAt = now
-		return
+		return null
 	}
 	if (now < tuner.sampleWindowEnd) {
 		if (lag > tuner.sampleMax) tuner.sampleMax = lag
-		return
+		return null
 	}
-	ExpHist.record(tuner.hist, tuner.sampleMax)
+	const sample = tuner.sampleMax
+	ExpHist.record(tuner.hist, sample)
 	tuner.sampleWindowEnd = now + LOG_LAG_SAMPLE_WINDOW_MS
 	tuner.sampleMax = lag
 	if (now - tuner.lastFlipAt >= LOG_LAG_GENERATION_MS) {
 		ExpHist.flip(tuner.hist)
 		tuner.lastFlipAt = now
 	}
-	if (ExpHist.count(tuner.hist) < LOG_LAG_WARMUP_SAMPLES) return
+	if (ExpHist.count(tuner.hist) < LOG_LAG_WARMUP_SAMPLES) return sample
 	const q99 = ExpHist.quantile(tuner.hist, LOG_LAG_QUANTILE)!
 	const suggested = Math.round(Math.min(MIN_SAFE_LEAD_CEILING_MS, Math.max(tuner.floorMs, q99 * LOG_LAG_MARGIN)))
 	const current = tuner.appliedMs ?? state.minSafeLeadTimeForOtherEventsSinceLog
-	if (Math.abs(suggested - current) <= current * LOG_LAG_HYSTERESIS) return
+	if (Math.abs(suggested - current) <= current * LOG_LAG_HYSTERESIS) return sample
 	state.log.info(
 		'retuning minSafeLeadTimeForOtherEventsSinceLog %dms -> %dms (lag p50=%dms p99=%dms n=%d)',
 		current,
@@ -314,6 +316,7 @@ export function observeLogLag(state: State, logEventTime: number, now: number) {
 	)
 	state.minSafeLeadTimeForOtherEventsSinceLog = suggested
 	tuner.appliedMs = suggested
+	return sample
 }
 
 export function pushAttribution(state: State, attribution: Omit<Attribution, 'time'>) {
