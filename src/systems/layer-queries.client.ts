@@ -22,6 +22,8 @@ import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
 import type * as WorkerTypes from '@/systems/layer-queries.worker'
 // oxlint-disable-next-line import/default
+import LQSharedWorker from '@/systems/layer-queries.worker?sharedworker'
+// oxlint-disable-next-line import/default
 import LQWorker from '@/systems/layer-queries.worker?worker'
 
 export type Store = {
@@ -462,7 +464,9 @@ function getSeqId() {
 	return seqIdCounter.next().value
 }
 
-let worker!: Worker
+// a MessagePort into the shared worker, or a dedicated worker where SharedWorker is unavailable
+// (notably Chrome for Android); both expose the same postMessage/message surface
+let worker!: Worker | MessagePort
 
 async function sendWorkerRequest<T extends WorkerTypes.ToWorker['type']>(
 	type: T,
@@ -564,7 +568,28 @@ export async function ensureFullSetup() {
 }
 
 async function setup() {
-	worker = new LQWorker({ name: 'layer-queries-worker' })
+	if (typeof SharedWorker !== 'undefined') {
+		const sharedWorker = new LQSharedWorker({ name: 'layer-queries-worker' })
+		// Rx.fromEvent listens via addEventListener, which does not start the port on its own
+		sharedWorker.port.start()
+		worker = sharedWorker.port
+	} else {
+		worker = new LQWorker({ name: 'layer-queries-worker' })
+	}
+
+	// subscribe before any await so a download already in flight in the shared worker still surfaces its status
+	Rx.fromEvent(worker, 'message')
+		.pipe(
+			Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
+			Rx.tap((message) => {
+				if (message.type !== 'layer-download-started') return
+				const store = Store.getState()
+				if (store.status !== 'initializing') return
+				store.setStatus('downloading-layers')
+			}),
+			Rx.takeWhile((msg) => msg.type !== 'init'),
+		)
+		.subscribe()
 
 	const config = await ConfigClient.fetchConfig()
 
@@ -578,20 +603,6 @@ async function setup() {
 		layerData,
 		cacheLayerArtifact: config.cacheLayerArtifact,
 	}
-
-	// set downloading-layers status when the worker signals that it has started a download
-	Rx.fromEvent(worker, 'message')
-		.pipe(
-			Rx.map((event: any) => event.data as WorkerTypes.FromWorker),
-			Rx.tap((message) => {
-				if (message.type !== 'layer-download-started') return
-				const store = Store.getState()
-				if (store.status !== 'initializing') return
-				store.setStatus('downloading-layers')
-			}),
-			Rx.takeWhile((msg) => msg.type !== 'init'),
-		)
-		.subscribe()
 
 	const initPromise = sendWorkerRequest('init', ctx)
 	// the follwing depends on the initPromise messages already having been sent during workerPool.initialize, otherwise we may send context-updates before initialization
