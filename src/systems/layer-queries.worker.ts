@@ -206,8 +206,7 @@ function withErrorResponse<Msg extends { type: string } & Sequenced>(
 
 async function fetchLayerArtifact(cache: boolean) {
 	// Nothing will read the copy back (see cacheLayerArtifact in config.server.ts), so skip OPFS entirely rather
-	// than pay a 235MB write -- which costs more than the fetch and the inflate together -- to fill a directory
-	// that is discarded when this profile is.
+	// than write the whole artifact into a directory that is discarded when this profile is.
 	if (!cache) return await inflateArtifact(await fetch(AR.link('/layers.bin.gz')))
 
 	try {
