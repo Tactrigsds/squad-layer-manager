@@ -7,6 +7,7 @@ import * as BB_Msgs from '@/messages/backburner.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
+import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
@@ -34,6 +35,7 @@ import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
 import * as Users from '@/systems/users.server'
@@ -894,6 +896,33 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		return { code: 'ok' }
 	},
 
+	requestSwitch: async (h) => {
+		const res = await SwitchRequests.requestSwitch(h.ctx, h.sender)
+		switch (res.code) {
+			case 'ok:switching':
+				// the fire path already warned them (SRQ_Msgs.notifySwitched)
+				return { code: 'ok' }
+			case 'ok:queued':
+				await h.reply(SRQ_Msgs.queued(res.position, cancelSwitchCommand()))
+				return { code: 'ok' }
+			case 'err:already-queued':
+				await h.reply(SRQ_Msgs.alreadyQueued(res.position, cancelSwitchCommand()))
+				return { code: 'ok' }
+			case 'err:no-team':
+				return await h.error('no-team', h.ctx.tr.text(SRQ_Msgs.noTeam()))
+			case 'err:swap-pending':
+				return await h.error('swap-pending', h.ctx.tr.text(SRQ_Msgs.swapPending()))
+			default:
+				assertNever(res)
+		}
+	},
+
+	cancelSwitch: async (h) => {
+		const res = await SwitchRequests.cancelSwitch(h.ctx, SM.PlayerIds.getPlayerId(h.sender.ids))
+		await h.reply(res.code === 'ok' ? SRQ_Msgs.cancelled() : SRQ_Msgs.notQueued())
+		return { code: 'ok' }
+	},
+
 	flag: async (h, args) => {
 		if (!Battlemetrics.isEnabled()) return await h.error('battlemetrics-disabled', h.ctx.tr.text(CMD_Msgs.battlemetricsDisabled()))
 		const target = args.player
@@ -1274,6 +1303,13 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		await h.reply(BB_Msgs.removed(BB.describeTemplate(target.filter, LayerQueue.backburnerFilterName)))
 		return { code: 'ok' }
 	},
+}
+
+// how the cancel command is named back to a queued player, read from live config so a renamed trigger or prefix
+// stays accurate (stored trigger strings carry their prefix)
+function cancelSwitchCommand(): string {
+	const trigger = CMD.primaryTrigger(Settings.GLOBAL_SETTINGS.commands.cancelSwitch)
+	return trigger ? CMD.triggerString(trigger) : 'the cancel command'
 }
 
 // the sender's identity for backburner ownership checks: their steam id plus their linked account, when one

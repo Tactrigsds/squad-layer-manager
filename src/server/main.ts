@@ -37,6 +37,7 @@ import * as SquadBrowser from '@/systems/squad-browser.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as Steam from '@/systems/steam.server'
+import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
@@ -102,6 +103,7 @@ await Instr.spanOp('main', { module }, async () => {
 	MatchHistory.setup()
 	ServerConsole.setup()
 	SquadRcon.setup()
+	SwitchRequests.setup()
 	Teamswaps.setup()
 	Users.setup()
 	Vote.setup()
