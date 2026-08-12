@@ -156,6 +156,26 @@ test.describe('layer tags and notes', { tag: '@firefox' }, () => {
 	})
 })
 
+// two tabs in one browser context ride a single SharedWorker query engine; a routing or second-init
+// regression shows up as the second tab's queries hanging or erroring
+test.describe('shared query engine', () => {
+	test('a second tab in the same session gets a working layer table', async ({ page }) => {
+		const pageB = await page.context().newPage()
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: /^Queue/ })).toBeVisible({ timeout: 25_000 })
+			await pageB.goto(app.loginUrl())
+			await expect(pageB.getByRole('tab', { name: /^Queue/ })).toBeVisible({ timeout: 25_000 })
+			for (const p of [page, pageB]) {
+				await p.getByRole('button', { name: 'Explore Layers' }).click()
+				await expect(p.getByText(/[\d,]+ matched layers/)).toBeVisible({ timeout: 25_000 })
+			}
+		} finally {
+			await pageB.close()
+		}
+	})
+})
+
 test.describe('collaborative queue editing', () => {
 	test("one editor sees the other's edits live, and the save commits both", async ({ page, browser }) => {
 		const second = await browser.newContext()
