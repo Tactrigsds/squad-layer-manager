@@ -794,7 +794,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			},
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up:
-		// one delivery, and the parser's wait for the tick it is accumulating to go quiet
+		// one delivery, and the parser's wait for the tick it is accumulating to go quiet. A static prior only:
+		// once measured log lag warms up, observeLogLag retunes it (clock skew makes any static value drift).
 		minSafeLogLeadTimeForOtherEvents: logDeliveryMs + logIdleFlushMs,
 	})
 
@@ -1032,6 +1033,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			}
 
 			logEventCounter.add(1, { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource })
+			PendingEvents.observeLogLag(ctx.server.eventState, event.time, Date.now())
 
 			await collectEvents(ctx, () => {
 				PendingEvents.onLogEvent(ctx.server.eventState, event)
