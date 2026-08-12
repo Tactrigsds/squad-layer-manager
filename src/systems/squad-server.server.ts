@@ -805,7 +805,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		},
 		// how far a non-log event may lead the log stream before we stop waiting for the log to catch up:
 		// one delivery, and the parser's wait for the tick it is accumulating to go quiet. A static prior only:
-		// once measured log lag warms up, observeLogLag retunes it (clock skew makes any static value drift).
+		// once measured log lag warms up, LogLagTuner retunes it (clock skew makes any static value drift).
 		minSafeLogLeadTimeForOtherEvents: logDeliveryMs + logIdleFlushMs,
 	})
 
@@ -1043,7 +1043,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			}
 
 			logEventCounter.add(1, { [ATTRS.SquadServer.ID]: serverId, [ATTRS.SquadLogs.SOURCE]: logSource })
-			const lagSampleMs = PendingEvents.observeLogLag(ctx.server.eventState, event.time, Date.now())
+			const lagSampleMs = PendingEvents.LogLagTuner.observe(ctx.server.eventState, event.time, Date.now())
 			if (lagSampleMs !== null) {
 				// clock skew can push a lag negative; the tuner keeps the sign, the metric clamps to stay a valid histogram value
 				logLagHistogram.record(Math.max(0, lagSampleMs), {
