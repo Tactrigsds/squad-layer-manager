@@ -1,4 +1,3 @@
-import stringifyCompact from 'json-stringify-pretty-compact'
 import React from 'react'
 
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
@@ -8,6 +7,7 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import * as Typo from '@/lib/typography'
+import * as Yaml from '@/lib/yaml'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
@@ -18,6 +18,8 @@ import type { FilterTextEditorProps } from './filter-text-editor.types'
 export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const viewRef = React.useRef<CM.EditorView | null>(null)
+	// the filter the buffer currently represents, so the editor's own edits don't come back as a re-serialization
+	const lastEmittedRef = React.useRef<F.EditableFilterNode | null>(null)
 	const [errorText, setErrorText] = React.useState('')
 
 	const getState = () => Zus.getState(props.stores.filterEditor)
@@ -26,24 +28,28 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		(value: string) => {
 			let obj: any
 			try {
-				obj = JSON.parse(value)
+				obj = Yaml.parse(value)
 			} catch (err) {
-				if (err instanceof SyntaxError) setErrorText(stringifyCompact(err.message))
+				// a YAMLParseError message already carries the line, column and a code frame
+				setErrorText(err instanceof Error ? err.message : String(err))
 				return
 			}
 			const res = F.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
-				setErrorText(stringifyCompact(res.error.issues))
+				setErrorText(Yaml.stringifyCompact(res.error.issues))
 				return
 			}
 			if (!F.isBlockType(res.data.type)) {
-				setErrorText(stringifyCompact(`root node must be a block node: (${F.BLOCK_TYPES.join(', ')})`))
+				setErrorText(`root node must be a block node: (${F.BLOCK_TYPES.join(', ')})`)
 				return
 			}
 
 			setErrorText('')
 			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(getState().tree))
-			if (valueChanged) EditFrame.Actions.updateRoot(props.stores, res.data)
+			if (valueChanged) {
+				lastEmittedRef.current = res.data
+				EditFrame.Actions.updateRoot(props.stores, res.data)
+			}
 		},
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 		[props.stores],
@@ -57,11 +63,12 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	// -------- setup editor, sync from store, handle change events --------
 	React.useEffect(() => {
 		const schemaJson = CM.toJsonSchema(F.FilterNodeSchema)
+		lastEmittedRef.current = F.treeToFilterNode(getState().tree)
 		const view = new CM.EditorView({
 			parent: editorEltRef.current!,
-			doc: stringifyCompact(F.treeToFilterNode(getState().tree)),
+			doc: Yaml.stringifyCompact(lastEmittedRef.current),
 			extensions: [
-				...CM.jsonEditorExtensions(schemaJson),
+				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
 					if (u.docChanged) onChangeDebounced(u.state.doc.toString())
 				}),
@@ -74,11 +81,14 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			if (!document.hidden) view.requestMeasure()
 		})
 
-		let first = true
 		const unsub = Zus.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
-			if (!first && frameState.tree === prevFrameState.tree) return
-			first = false
-			CM.setDoc(view, stringifyCompact(F.treeToFilterNode(frameState.tree)))
+			if (frameState.tree === prevFrameState.tree) return
+			const node = F.treeToFilterNode(frameState.tree)
+			// an edit here round-trips through the frame and comes back as a new tree. Re-serializing on that would
+			// rewrite the buffer under the cursor, which YAML's significant indentation makes worse than it was in JSON.
+			if (Obj.deepEqual(node, lastEmittedRef.current)) return
+			lastEmittedRef.current = node
+			CM.setDoc(view, Yaml.stringifyCompact(node))
 		})
 
 		return () => {
@@ -95,14 +105,14 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			const view = viewRef.current!
 			let obj: any
 			try {
-				obj = JSON.parse(view.state.doc.toString())
+				obj = Yaml.parse(view.state.doc.toString())
 			} catch (err) {
-				if (err instanceof SyntaxError) {
+				if (err instanceof Error) {
 					toast.error(...tr.toast(F_Msgs.formatFailed(err.message)))
 				}
 				return
 			}
-			CM.setDoc(view, stringifyCompact(obj))
+			CM.setDoc(view, Yaml.stringifyCompact(obj))
 		},
 		focus: () => viewRef.current!.focus(),
 	}))

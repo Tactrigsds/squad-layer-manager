@@ -122,7 +122,7 @@ export const cyclicalReference = def((cycle: string[]) => ({
 export const cyclicalReferenceBlurb = def('Filters cannot reference each other in a loop: {cycle}', (cycle: string) => ({ cycle }))
 
 export const formatFailed = def((reason: string) => ({
-	toast: [t('Unable to format: invalid json'), { description: raw(reason) }],
+	toast: [t('Unable to format: invalid YAML'), { description: raw(reason) }],
 }))
 
 // Someone else's edit landing on a filter you have open.

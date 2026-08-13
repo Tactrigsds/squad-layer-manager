@@ -1,4 +1,3 @@
-import stringifyCompact from 'json-stringify-pretty-compact'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -10,13 +9,14 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as Yaml from '@/lib/yaml'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 
-import type { SchemaJsonEditorProps } from './schema-json-editor.types'
+import type { SchemaYamlEditorProps } from './schema-yaml-editor.types'
 
-export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEditorProps<TOut, TIn>) {
+export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEditorProps<TOut, TIn>) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const viewRef = React.useRef<CM.EditorView | null>(null)
 	const lastValidRef = React.useRef<TOut | null>(null)
@@ -34,16 +34,17 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 	const onChange = React.useCallback((value: string) => {
 		let obj: any
 		try {
-			obj = JSON.parse(value)
+			obj = Yaml.parse(value)
 		} catch (err) {
-			if (err instanceof SyntaxError) setErrorText(stringifyCompact(err.message))
+			// a YAMLParseError message already carries the line, column and a code frame
+			setErrorText(err instanceof Error ? err.message : String(err))
 			lastValidRef.current = null
 			onValidChangeRef.current(null)
 			return
 		}
 		const res = schemaRef.current.safeParse(obj)
 		if (!res.success) {
-			setErrorText(stringifyCompact(res.error.issues))
+			setErrorText(Yaml.stringifyCompact(res.error.issues))
 			lastValidRef.current = null
 			onValidChangeRef.current(null)
 			return
@@ -64,9 +65,9 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		const schemaJson = CM.toJsonSchema(schemaRef.current)
 		const view = new CM.EditorView({
 			parent: editorEltRef.current!,
-			doc: stringifyCompact(lastSyncedValueRef.current),
+			doc: Yaml.stringifyCompact(lastSyncedValueRef.current),
 			extensions: [
-				...CM.jsonEditorExtensions(schemaJson),
+				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
 					if (u.docChanged) onChangeDebounced(u.state.doc.toString())
 				}),
@@ -96,7 +97,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		lastSyncedValueRef.current = props.value
 		const parseRes = schemaRef.current.safeParse(props.value)
 		lastValidRef.current = parseRes.success ? parseRes.data : null
-		if (viewRef.current) CM.setDoc(viewRef.current, stringifyCompact(props.value))
+		if (viewRef.current) CM.setDoc(viewRef.current, Yaml.stringifyCompact(props.value))
 		setErrorText('')
 	}, [props.value])
 
@@ -118,18 +119,18 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 			const view = viewRef.current!
 			let obj: any
 			try {
-				obj = JSON.parse(view.state.doc.toString())
+				obj = Yaml.parse(view.state.doc.toString())
 			} catch {
 				return
 			}
-			CM.setDoc(view, stringifyCompact(obj))
+			CM.setDoc(view, Yaml.stringifyCompact(obj))
 		},
 		focus: () => viewRef.current!.focus(),
 		reset: () => {
 			const view = viewRef.current!
 			const parseRes = schemaRef.current.safeParse(lastSyncedValueRef.current)
 			lastValidRef.current = parseRes.success ? parseRes.data : null
-			CM.setDoc(view, stringifyCompact(lastSyncedValueRef.current))
+			CM.setDoc(view, Yaml.stringifyCompact(lastSyncedValueRef.current))
 			setErrorText('')
 			onValidChangeRef.current(lastValidRef.current)
 		},
@@ -172,7 +173,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
 					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
-						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.jsonErrors())}</h3>
+						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.yamlErrors())}</h3>
 						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
 							{errorText}
 						</pre>

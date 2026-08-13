@@ -1289,7 +1289,7 @@
 	"Type a name or id to search members.": "Type a name or id to search members.",
 	"Ultralight transport vehicle": "Ultralight transport vehicle",
 	"Unable To connect to RCON server": "Unable To connect to RCON server",
-	"Unable to format: invalid json": "Unable to format: invalid json",
+	"Unable to format: invalid YAML": "Unable to format: invalid YAML",
 	"Unable to resolve player \"{username}\" in battlemetrics": "Unable to resolve player \"{username}\" in battlemetrics",
 	"Unable to save: Filter Not Found": "Unable to save: Filter Not Found",
 	"Unarmed or lightly armed troop transports.": "Unarmed or lightly armed troop transports.",

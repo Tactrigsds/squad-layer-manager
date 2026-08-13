@@ -34,7 +34,7 @@ import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import type { SettingsGroup } from '@/lib/settings-groups'
-import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_JSON_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
+import { HIDDEN_GLOBAL_SETTINGS_KEYS, LOCAL_YAML_EDITOR_PATHS, splitAdvanced, splitByGroups } from '@/lib/settings-groups'
 import { humanize, settingLabel } from '@/lib/settings-labels'
 import * as SettingsNav from '@/lib/settings-nav'
 import * as Templating from '@/lib/templating'
@@ -73,7 +73,7 @@ import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
-import type SchemaJsonEditorComponent from './schema-json-editor'
+import type SchemaYamlEditorComponent from './schema-yaml-editor'
 import { MessagePreviewBox } from './warn-reasons-sub'
 
 // The form is driven off the JSON-Schema projection of a Zod schema (input mode), edited in the encoded/input shape
@@ -244,7 +244,7 @@ const RootValueContext = React.createContext<ValueState | null>(null)
 // uses it to propagate a prefix rename across every command string / timeout alias that uses that prefix.
 const RootOnChangeContext = React.createContext<((next: any) => void) | null>(null)
 
-// the zod schema of the whole document, so a field can resolve the sub-schema at its own path for its scoped JSON
+// the zod schema of the whole document, so a field can resolve the sub-schema at its own path for its scoped YAML
 // editor (the json-schema projection the form walks can't be handed back to zod for parsing)
 const RootSchemaContext = React.createContext<z.ZodType | null>(null)
 
@@ -4006,34 +4006,34 @@ function AdvancedDisclosure({ paths, children }: { paths: string[]; children: Re
 	)
 }
 
-// -------- scoped json editor --------
+// -------- scoped yaml editor --------
 
-// lazily loaded so a settings visit that never opens a JSON editor doesn't pay for the CodeMirror bundle. The `as`
+// lazily loaded so a settings visit that never opens a YAML editor doesn't pay for the CodeMirror bundle. The `as`
 // casts restore the generic component signature React.lazy erases (same as the page-level editor in routes/settings).
-const SchemaJsonEditor = React.lazy(
-	() => import('@/components/schema-json-editor') as unknown as Promise<{ default: React.FC<any> }>,
-) as unknown as typeof SchemaJsonEditorComponent
+const SchemaYamlEditor = React.lazy(
+	() => import('@/components/schema-yaml-editor') as unknown as Promise<{ default: React.FC<any> }>,
+) as unknown as typeof SchemaYamlEditorComponent
 
-// which editor a field with a scoped JSON editor is currently showing, mirroring the page-level section modes
-type FieldMode = 'gui' | 'json'
+// which editor a field with a scoped YAML editor is currently showing, mirroring the page-level section modes
+type FieldMode = 'gui' | 'yaml'
 
-// the sub-schema for this field's scoped JSON editor, or undefined when it doesn't offer one
-function useLocalJsonSchema(pathStr: string): z.ZodType | undefined {
+// the sub-schema for this field's scoped YAML editor, or undefined when it doesn't offer one
+function useLocalEditorSchema(pathStr: string): z.ZodType | undefined {
 	const rootSchema = React.useContext(RootSchemaContext)
 	return React.useMemo(
 		// splitting pathStr rather than taking the path array keeps this memo stable: the array is rebuilt every render.
 		// Only the declared paths are split, and those have no dots inside a segment.
-		() => (rootSchema && LOCAL_JSON_EDITOR_PATHS.has(pathStr) ? ZodUtils.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
+		() => (rootSchema && LOCAL_YAML_EDITOR_PATHS.has(pathStr) ? ZodUtils.schemaAtPath(rootSchema, pathStr.split('.')) : undefined),
 		[rootSchema, pathStr],
 	)
 }
 
-// the GUI/JSON segmented control the settings-page section headers use, scaled down to sit in a field's header row.
+// the GUI/YAML segmented control the settings-page section headers use, scaled down to sit in a field's header row.
 // `ml-auto` pins it to the right end of that row, where the page-level control sits in its own header.
 function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
 	return (
 		<div className="ml-auto flex items-center rounded-md border p-0.5">
-			{(['gui', 'json'] as const).map((option) => (
+			{(['gui', 'yaml'] as const).map((option) => (
 				<Button
 					key={option}
 					type="button"
@@ -4042,7 +4042,7 @@ function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next:
 					className="h-5 px-1.5 text-[10px]"
 					onClick={() => onSelect(option)}
 				>
-					{option === 'gui' ? 'GUI' : 'JSON'}
+					{option === 'gui' ? 'GUI' : 'YAML'}
 				</Button>
 			))}
 		</div>
@@ -4060,12 +4060,12 @@ function toInputShape(schema: z.ZodType, decoded: unknown): unknown {
 	}
 }
 
-// A JSON editor over one subtree of the form, swapped in for that field's widget. The editor owns its buffer while
+// A YAML editor over one subtree of the form, swapped in for that field's widget. The editor owns its buffer while
 // open: handing our own edits straight back as `value` would re-sync the document mid-keystroke, so it's only re-seeded
 // on reset$, which is exactly the programmatic-change signal the uncontrolled inputs re-read on. Re-seeding remounts it
 // rather than passing a new `value`, because the editor re-syncs only when `value` differs from what it last synced,
 // and a reset typically restores the very value it was seeded with (leaving the user's edits sitting in the buffer).
-function LocalJsonField({
+function LocalYamlField({
 	schema,
 	label,
 	domId,
@@ -4088,7 +4088,7 @@ function LocalJsonField({
 		onChange(toInputShape(schema, v))
 	}
 	// only the first mount scrolls: re-seeding after a reset remounts the editor, and yanking the viewport for that
-	// would be a surprise. This component only exists while the field is in JSON mode, so the ref resets on reopen.
+	// would be a surprise. This component only exists while the field is in YAML mode, so the ref resets on reopen.
 	const broughtIntoView = React.useRef(false)
 	const onReady = () => {
 		if (broughtIntoView.current) return
@@ -4097,7 +4097,7 @@ function LocalJsonField({
 	}
 	return (
 		<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-			<SchemaJsonEditor
+			<SchemaYamlEditor
 				key={seed.nonce}
 				schema={schema}
 				value={seed.value}
@@ -4140,7 +4140,7 @@ function SectionField({
 	const SectionExtra = sectionExtraFor(path)
 	// leaves dim themselves individually; the section only needs its own bulk-reset controls neutralized
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
-	const jsonSchema = useLocalJsonSchema(pathStr)
+	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
 	return (
 		<fieldset
@@ -4169,8 +4169,8 @@ function SectionField({
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
 				{SectionExtra && <SectionExtra />}
 				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
-				{jsonSchema && mode === 'json' ? (
-					<LocalJsonField
+				{jsonSchema && mode === 'yaml' ? (
+					<LocalYamlField
 						schema={jsonSchema}
 						label={settingLabel(path, name)}
 						domId={domId}
@@ -4216,7 +4216,7 @@ function LeafField({
 	// loose overlap: a grant pointing inside this field's subtree still permits editing part of it, so the field stays
 	// active and the save panel's exact per-path check flags anything outside the grant
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
-	const jsonSchema = useLocalJsonSchema(pathStr)
+	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
 	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
 	const showDefaultLabel = !hasOverride && isScalarNode(inner)
@@ -4267,8 +4267,8 @@ function LeafField({
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
 				{isBoolean && controls}
-				{jsonSchema && mode === 'json' ? (
-					<LocalJsonField
+				{jsonSchema && mode === 'yaml' ? (
+					<LocalYamlField
 						schema={jsonSchema}
 						label={settingLabel(path, name)}
 						domId={domId}

@@ -39,7 +39,7 @@ export const loadingEditor = def('Loading editor…')
 
 export const loadFailed = def('Failed to load settings: {reason}', (reason: string) => ({ reason }))
 
-// the GUI/JSON switch, one per section, each named so a screen reader (or a test) can tell them apart
+// the GUI/YAML switch, one per section, each named so a screen reader (or a test) can tell them apart
 export const serverEditorModeLabel = def('Server settings editor mode')
 
 export const newServerEditorModeLabel = def('New server editor mode')
@@ -107,7 +107,7 @@ export const displayNameLabel = def('Display Name')
 
 export const displayNamePlaceholder = def('My Squad Server')
 
-// -------- the save panel and the json toolbar --------
+// -------- the save panel and the yaml toolbar --------
 
 export const save = def('Save')
 
@@ -439,7 +439,7 @@ export const fullscreen = def('Fullscreen')
 
 export const exitFullscreen = def('Exit fullscreen (Esc)')
 
-export const jsonErrors = def('Errors')
+export const yamlErrors = def('Errors')
 
 // -------- the pool config window --------
 

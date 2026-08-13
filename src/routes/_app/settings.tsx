@@ -4,8 +4,8 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
-import type SchemaJsonEditorComponent from '@/components/schema-json-editor'
-import type { SchemaJsonEditorHandle } from '@/components/schema-json-editor.types'
+import type SchemaYamlEditorComponent from '@/components/schema-yaml-editor'
+import type { SchemaYamlEditorHandle } from '@/components/schema-yaml-editor.types'
 import { useOpenServerConsoleWindow } from '@/components/server-console-window.helpers'
 import SettingsForm from '@/components/settings-form'
 import { SettingsChangeList, SettingsSavePanel } from '@/components/settings-save-panel'
@@ -56,9 +56,9 @@ const NO_SERVERS: never[] = []
 
 // lazily loaded so the CodeMirror editor bundle isn't paid for until an editor is actually shown.
 // the `as` casts restore the generic component signature that React.lazy erases.
-const SchemaJsonEditor = React.lazy(
-	() => import('@/components/schema-json-editor') as unknown as Promise<{ default: React.FC<any> }>,
-) as unknown as typeof SchemaJsonEditorComponent
+const SchemaYamlEditor = React.lazy(
+	() => import('@/components/schema-yaml-editor') as unknown as Promise<{ default: React.FC<any> }>,
+) as unknown as typeof SchemaYamlEditorComponent
 
 export const Route = createFileRoute('/_app/settings')({
 	head: () => ({
@@ -327,16 +327,16 @@ function AuditLogEntry({
 	)
 }
 
-// Format/Reset/Save for a JSON-mode section. Lives in the editor's own header row (SchemaJsonEditor's `toolbar` slot)
+// Format/Reset/Save for a YAML-mode section. Lives in the editor's own header row (SchemaYamlEditor's `toolbar` slot)
 // rather than below it, so it stays reachable once the editor goes fullscreen and covers the page.
-function JsonEditorToolbar({
+function YamlEditorToolbar({
 	editorRef,
 	deniedPaths,
 	canSave,
 	saving,
 	onSave,
 }: {
-	editorRef: React.RefObject<SchemaJsonEditorHandle | null>
+	editorRef: React.RefObject<SchemaYamlEditorHandle | null>
 	deniedPaths: string[]
 	canSave: boolean
 	saving: boolean
@@ -708,8 +708,8 @@ function ServerRow({
 	)
 }
 
-// GUI/JSON editor for the settings of whichever server is selected in the list above. GUI mode routes save/reset
-// through the shared bottom panel; JSON mode keeps its own inline toolbar (a power-user escape hatch). Server settings
+// GUI/YAML editor for the settings of whichever server is selected in the list above. GUI mode routes save/reset
+// through the shared bottom panel; YAML mode keeps its own inline toolbar (a power-user escape hatch). Server settings
 // have no codec transforms, so the edit/input shape equals the stored shape (no encode step). All editing state lives
 // in the section's settings-editor frame; this component is a view over it.
 function ServerSettingsSection({
@@ -730,7 +730,7 @@ function ServerSettingsSection({
 	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
 	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
-	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
+	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	const openDialog = useAlertDialog()
 
@@ -756,7 +756,7 @@ function ServerSettingsSection({
 		if (result === 'save') void SettingsEditorFrame.Actions.save({ settingsEditor: key })
 	}
 
-	function switchMode(next: 'gui' | 'json') {
+	function switchMode(next: 'gui' | 'yaml') {
 		SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, next)
 	}
 
@@ -799,8 +799,8 @@ function ServerSettingsSection({
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
-							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>
-								JSON
+							<Button size="sm" variant={mode === 'yaml' ? 'secondary' : 'ghost'} onClick={() => switchMode('yaml')}>
+								YAML
 							</Button>
 						</div>
 					</div>
@@ -826,16 +826,16 @@ function ServerSettingsSection({
 						/>
 					) : (
 						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-							<SchemaJsonEditor
+							<SchemaYamlEditor
 								ref={editorRef}
 								schema={schema}
 								value={draft}
-								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
 								minHeightPx={350}
 								label={tr.text(SETTINGS_Msgs.serverSettings())}
 								toolbar={
-									<JsonEditorToolbar
+									<YamlEditorToolbar
 										editorRef={editorRef}
 										deniedPaths={deniedPaths}
 										canSave={changes.length > 0 && valid && deniedPaths.length === 0}
@@ -863,7 +863,7 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
 	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
-	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
+	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const idRes = SS.ServerIdSchema.safeParse(newId)
@@ -892,10 +892,10 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 								</Button>
 								<Button
 									size="sm"
-									variant={mode === 'json' ? 'secondary' : 'ghost'}
-									onClick={() => SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, 'json')}
+									variant={mode === 'yaml' ? 'secondary' : 'ghost'}
+									onClick={() => SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, 'yaml')}
 								>
-									JSON
+									YAML
 								</Button>
 							</div>
 							<Button size="sm" variant="outline" onClick={onCancel}>
@@ -940,11 +940,11 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 						/>
 					) : (
 						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-							<SchemaJsonEditor
+							<SchemaYamlEditor
 								ref={editorRef}
 								schema={SETTINGS.ServerSettingsSchema}
 								value={draft}
-								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
 								minHeightPx={350}
 								label={tr.text(SETTINGS_Msgs.serverSettings())}
@@ -969,7 +969,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 	const value$ = SettingsEditorFrame.draftValueState(key)
 	const reset$ = state.reset$
 	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
-	const editorRef = React.useRef<SchemaJsonEditorHandle>(null)
+	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
 	// the card header pins to the top of the scroll column; the form's section headers stack beneath it
 	const cardHeaderRef = React.useRef<HTMLDivElement>(null)
 	const openDialog = useAlertDialog()
@@ -1001,7 +1001,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 		if (result === 'save') void SettingsEditorFrame.Actions.save({ settingsEditor: key })
 	}
 
-	function switchMode(next: 'gui' | 'json') {
+	function switchMode(next: 'gui' | 'yaml') {
 		SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, next)
 	}
 
@@ -1039,8 +1039,8 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 							<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
 								GUI
 							</Button>
-							<Button size="sm" variant={mode === 'json' ? 'secondary' : 'ghost'} onClick={() => switchMode('json')}>
-								JSON
+							<Button size="sm" variant={mode === 'yaml' ? 'secondary' : 'ghost'} onClick={() => switchMode('yaml')}>
+								YAML
 							</Button>
 						</div>
 					</div>
@@ -1059,18 +1059,18 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 							writeAccess={writeAccess}
 						/>
 					) : (
-						// GUI mode uses the shared bottom control panel; JSON mode keeps its own toolbar, inside the editor
+						// GUI mode uses the shared bottom control panel; YAML mode keeps its own toolbar, inside the editor
 						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-							<SchemaJsonEditor
+							<SchemaYamlEditor
 								ref={editorRef}
 								schema={SETTINGS.GlobalSettingsSchema}
 								value={draft}
-								onValidChange={(v: any) => SettingsEditorFrame.Actions.setJsonValid({ settingsEditor: key }, v)}
+								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
 								onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
 								minHeightPx={450}
 								label={tr.text(SETTINGS_Msgs.globalSettings())}
 								toolbar={
-									<JsonEditorToolbar
+									<YamlEditorToolbar
 										editorRef={editorRef}
 										deniedPaths={deniedPaths}
 										canSave={changes.length > 0 && valid && deniedPaths.length === 0}
