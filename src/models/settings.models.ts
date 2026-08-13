@@ -711,6 +711,15 @@ export const SandboxConnectionSchema = z.object({
 	type: z.literal('sandbox'),
 	serverName: z.string().min(1).prefault('SLM Sandbox').describe('The name the emulated server reports over RCON.'),
 	maxPlayers: z.int().min(2).max(200).prefault(100).describe('The player slot count the emulated server reports.'),
+	// Pacing overrides for scenario-driven sandboxes (tutorials). Absent means the emulator's realistic defaults:
+	// a ~30s post-match wait and constant tick chatter. A tutorial turns the wait down so a staged roll is quick
+	// and silences the chatter so the narrated log stays legible.
+	postMatchDelayMs: z
+		.int()
+		.min(0)
+		.optional()
+		.describe('ms in WaitingPostMatch before the next world comes up. Omit for the realistic 30s.'),
+	tickChatter: z.boolean().optional().describe('Whether the emulated server emits its periodic tick-rate log lines. Omit to keep them.'),
 })
 
 // How SLM reaches a squad server, as four mutually-exclusive modes:

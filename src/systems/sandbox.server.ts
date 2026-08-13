@@ -90,6 +90,10 @@ export async function ensureInstance(serverId: string, conn: SettingsModels.Sand
 		// per-server salt so two sandboxes connecting the same fabricated name mint distinct player ids rather than
 		// collide on the shared players table (keyed by eos id, not server)
 		idSalt: serverId,
+		// scenario pacing, when set: a tutorial turns the post-match wait down and silences tick chatter. Undefined
+		// leaves the emulator on its realistic defaults for the seeded/demo sandbox.
+		postMatchDelayMs: conn.postMatchDelayMs,
+		tickRateIntervalMs: conn.tickChatter === false ? 0 : undefined,
 	})
 	await emu.start({ rconPort: 0 })
 	const list = SB.initAdminList()
