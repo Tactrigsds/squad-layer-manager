@@ -274,6 +274,10 @@ export const servers = sqliteTable('servers', {
 	backburner: json('backburner').notNull().default(superjson.serialize([])),
 	switchRequests: json('switchRequests').default(superjson.serialize(null)),
 	settings: json('settings').default(superjson.serialize({})),
+	// 'scoped' entries are visible and usable only to their owner (ownerDiscordId); tutorials spin up per-user
+	// emulated servers this way. 'public' (the default) is every server that existed before this column.
+	visibility: text('visibility').notNull().default('public'),
+	ownerDiscordId: bigintText('ownerDiscordId'),
 })
 
 export const globalSettings = sqliteTable('globalSettings', {
