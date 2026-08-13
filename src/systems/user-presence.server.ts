@@ -267,10 +267,11 @@ export function setup() {
 	// dispatches an op that both updates the set and collapses any presence sitting on that server to null
 	const enabledServersSub = SettingsSys.publicSettings$
 		.pipe(
-			// scoped servers stay out of presence entirely: a scoped server is a solo tutorial, so there is nobody to be
-			// present to, and keeping it out of enabledServers makes gateActivityToEnabled collapse any activity on it to
-			// null rather than broadcast the owner (and the scoped server id) to everyone.
-			Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken && s.visibility !== 'scoped').map((s) => s.id)),
+			// scoped servers are included like any other: presence is what the owner's own queue editing runs on (the
+			// EDITING_QUEUE activity and its item locks), so dropping them here would collapse that activity to null and
+			// leave the queue read-only. Not broadcasting a scoped server's presence to non-owners is a separate concern,
+			// handled where scoped servers actually exist rather than by hiding them from presence.
+			Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken).map((s) => s.id)),
 			Rx.distinctUntilChanged((a, b) => a.length === b.length && a.every((id) => b.includes(id))),
 		)
 		.subscribe((serverIds) => {

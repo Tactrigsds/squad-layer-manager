@@ -76,3 +76,21 @@ describe('scoped server access', () => {
 		expect(first.code).toBe('ok')
 	})
 })
+
+describe('scoped server presence', () => {
+	// presence drives the owner's own queue editing (the EDITING_QUEUE activity and its item locks), and
+	// gateActivityToEnabled collapses any activity on a server not in enabledServers -- so a scoped server missing from
+	// the set would leave its queue read-only. This asserts it is in the set, which is what keeps the tutorial editable.
+	it('keeps the scoped server in the presence enabled set', async () => {
+		const enabled = await app.waitFor(
+			async () => {
+				const first = await firstYield((signal) => ownerClient.userPresence.watchUpdates(undefined, { signal }), {
+					label: 'presence init',
+				})
+				return first.code === 'init' && [...first.state.enabledServers].includes(SCOPED_ID) ? first.state.enabledServers : null
+			},
+			{ label: 'the scoped server to reach the presence enabled set' },
+		)
+		expect([...enabled]).toContain(SCOPED_ID)
+	})
+})
