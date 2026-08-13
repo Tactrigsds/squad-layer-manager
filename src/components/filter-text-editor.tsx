@@ -137,7 +137,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
 			<div className="mb-2 ml-[45px] flex items-center gap-3">
 				<h3 className={Typo.Small}>{tr.text(F_Msgs.filterHeading())}</h3>
-				<YamlCompactSwitch compact={compact} disabled={!parsable} onChange={switchCompact} />
+				<YamlCompactSwitch className="ml-auto" compact={compact} disabled={!parsable} onChange={switchCompact} />
 			</div>
 			<h3 className={Typo.Small + 'mb-2'}>{tr.text(F_Msgs.errorsHeading())}</h3>
 			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
