@@ -140,6 +140,13 @@ export function invalidateAll(ctx: CS.Ctx & CS.AbortSignal) {
 	for (const resource of resources.values()) resource.invalidate(ctx)
 }
 
+// Invalidate only the lists a given server recognises, for when one server signals its Admins.cfg may have changed (a
+// roll) rather than a global settings edit. Re-reading every other server's lists on every roll is wasted work, and a
+// fast-rolling sandbox makes it a lot of it. A list with no live resource yet has nothing cached to drop.
+export function invalidateForServer(ctx: CS.Ctx & CS.AbortSignal, serverId: string) {
+	for (const listId of listIdsForServer(serverId)) resources.get(listId)?.invalidate(ctx)
+}
+
 // One list. Returns null rather than throwing when the name is not configured: a server or role assignment naming a
 // deleted list is a configuration mistake to survive, not a reason to deny every permission check on that server.
 export async function getList(ctx: CS.Ctx & CS.AbortSignal, listId: SM.AdminListId, opts?: { ttl?: number }): Promise<SM.AdminList | null> {
