@@ -237,4 +237,26 @@ test.describe('the filter text editor', () => {
 		// the column keeps its own name in the picker, and the value editor beside it offers nothing to pick
 		await expect(page.getByRole('combobox', { name: 'Column' })).toContainText('Gamemod')
 	})
+
+	test('the compact switch re-renders the buffer, and goes out of reach while it will not parse', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		const compact = page.getByRole('switch', { name: 'Compact' })
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		// the seeded filter is one condition, which compact keeps on a single flow line
+		await expect(editor).toContainText('{ type: eq')
+
+		await compact.click()
+		await expect(compact).not.toBeChecked()
+		await expect(editor).not.toContainText('{ type: eq')
+		await expect(editor).toContainText('Gamemode')
+
+		// switching back means parsing the buffer, so an unparsable one has to take the switch out of reach
+		await editor.fill('type: and\nchildren: [')
+		await expect(compact).toBeDisabled()
+		await editor.fill('type: and\nchildren: []')
+		await expect(compact).toBeEnabled()
+	})
 })

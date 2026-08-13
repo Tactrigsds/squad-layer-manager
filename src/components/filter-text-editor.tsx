@@ -14,6 +14,7 @@ import * as F from '@/models/filter.models'
 import { tr } from '@/systems/messages.client'
 
 import type { FilterTextEditorProps } from './filter-text-editor.types'
+import YamlCompactSwitch from './yaml-compact-switch'
 
 export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
@@ -21,6 +22,12 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	// the filter the buffer currently represents, so the editor's own edits don't come back as a re-serialization
 	const lastEmittedRef = React.useRef<F.EditableFilterNode | null>(null)
 	const [errorText, setErrorText] = React.useState('')
+	// re-rendering the buffer means parsing it first, so the switch is only offered while that can succeed
+	const [parsable, setParsable] = React.useState(true)
+	const [compact, setCompact] = React.useState(true)
+	// the editor is built once; the store subscription below reads the current mode without tearing it down
+	const compactRef = React.useRef(compact)
+	compactRef.current = compact
 
 	const getState = () => Zus.getState(props.stores.filterEditor)
 
@@ -32,11 +39,13 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			} catch (err) {
 				// a YAMLParseError message already carries the line, column and a code frame
 				setErrorText(err instanceof Error ? err.message : String(err))
+				setParsable(false)
 				return
 			}
+			setParsable(true)
 			const res = F.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
-				setErrorText(Yaml.stringifyCompact(res.error.issues))
+				setErrorText(Yaml.stringifyDoc(res.error.issues))
 				return
 			}
 			if (!F.isBlockType(res.data.type)) {
@@ -66,7 +75,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		lastEmittedRef.current = F.treeToFilterNode(getState().tree)
 		const view = new CM.EditorView({
 			parent: editorEltRef.current!,
-			doc: Yaml.stringifyCompact(lastEmittedRef.current),
+			doc: Yaml.stringifyDoc(lastEmittedRef.current, compactRef.current),
 			extensions: [
 				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
@@ -88,7 +97,7 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			// rewrite the buffer under the cursor, which YAML's significant indentation makes worse than it was in JSON.
 			if (Obj.deepEqual(node, lastEmittedRef.current)) return
 			lastEmittedRef.current = node
-			CM.setDoc(view, Yaml.stringifyCompact(node))
+			CM.setDoc(view, Yaml.stringifyDoc(node, compactRef.current))
 		})
 
 		return () => {
@@ -99,6 +108,13 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [onChangeDebounced, props.stores])
+
+	function switchCompact(next: boolean) {
+		setCompact(next)
+		const view = viewRef.current
+		if (!view) return
+		CM.setDoc(view, Yaml.stringifyDoc(Yaml.parse(view.state.doc.toString()), next))
+	}
 
 	React.useImperativeHandle(props.ref, () => ({
 		format: () => {
@@ -112,14 +128,17 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 				}
 				return
 			}
-			CM.setDoc(view, Yaml.stringifyCompact(obj))
+			CM.setDoc(view, Yaml.stringifyDoc(obj, compactRef.current))
 		},
 		focus: () => viewRef.current!.focus(),
 	}))
 
 	return (
 		<div className="grid h-[500px] w-full grid-cols-[auto_600px] grid-rows-[min-content_minmax(0,1fr)] gap-2 rounded-md">
-			<h3 className={Typo.Small + 'mb-2 ml-[45px]'}>{tr.text(F_Msgs.filterHeading())}</h3>
+			<div className="mb-2 ml-[45px] flex items-center gap-3">
+				<h3 className={Typo.Small}>{tr.text(F_Msgs.filterHeading())}</h3>
+				<YamlCompactSwitch compact={compact} disabled={!parsable} onChange={switchCompact} />
+			</div>
 			<h3 className={Typo.Small + 'mb-2'}>{tr.text(F_Msgs.errorsHeading())}</h3>
 			<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">

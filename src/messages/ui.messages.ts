@@ -75,3 +75,8 @@ export const loading = def('Loading')
 export const loadingEllipsis = def('Loading...')
 
 export const invertHint = def('Ctrl+Click to invert')
+
+// the text editors' block/compact switch: compact collapses short maps and lists onto one line
+export const compact = def('Compact')
+
+export const compactHint = def('Collapse short maps and lists onto one line')

@@ -1,4 +1,4 @@
-// `yaml` itself, plus the compact renderer the text-mode editors format with.
+// `yaml` itself, plus the renderer the text-mode editors format with.
 // WARNING: only import this from lazily-loaded (React.lazy'd) components -- it statically pulls in the whole `yaml`
 // package, which we don't want in the initial/route chunk.
 import type { YAMLMap, YAMLSeq } from 'yaml'
@@ -10,10 +10,12 @@ export * from 'yaml'
 const FLOW_WIDTH = 100
 
 // Block YAML gives every scalar its own line, which spreads a filter's `{ type: column, column: Layer }` leaf over
-// three. Collapsing the collections that fit keeps the documents about a third the length of the block form.
-export function stringifyCompact(value: unknown): string {
+// three. Compact collapses the collections that fit, keeping documents about a third the length of the block form;
+// block is the one to reach for when a document is being diffed or read a line at a time.
+export function stringifyDoc(value: unknown, compact = true): string {
 	const doc = new Document(value)
-	visit(doc, { Map: collapseIfShort, Seq: collapseIfShort })
+	if (compact) visit(doc, { Map: collapseIfShort, Seq: collapseIfShort })
+	// the default 80-column fold breaks long scalars (a mustache template, a url) across lines
 	return doc.toString({ lineWidth: 0 })
 }
 
