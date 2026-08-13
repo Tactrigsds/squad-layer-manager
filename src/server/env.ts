@@ -180,6 +180,16 @@ export const groups = {
 			.meta({
 				description: 'where the exporters send to. docker-compose points this at its own collector service.',
 			}),
+		OTEL_METRIC_EXPORT_INTERVAL: z.coerce
+			.number()
+			.int()
+			.min(1000)
+			.default(60_000)
+			.meta({
+				description:
+					'how often metrics are exported, in milliseconds. This is the resolution of every gauge on the dashboards: lowering it makes short-lived state (a switch queue that drains in seconds) visible at the cost of more samples to store.',
+				envExample: { include: 'commented' },
+			}),
 		OTEL_TRACE_SAMPLE_RATIO: z.coerce
 			.number()
 			.min(0)
