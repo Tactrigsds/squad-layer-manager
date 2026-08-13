@@ -36,15 +36,15 @@ export type SettingsEditor = {
 	sub: Rx.Subscription
 	kind: Kind
 	serverId: string | null
-	mode: 'gui' | 'json'
-	// tells the form's uncontrolled inputs to re-read after a programmatic draft change (reset, json->gui carry-over)
+	mode: 'gui' | 'yaml'
+	// tells the form's uncontrolled inputs to re-read after a programmatic draft change (reset, yaml->gui carry-over)
 	reset$: Rx.Subject<void>
 
 	// encoded/input-shape values; draft is what the GUI form edits, saved is the reset/diff baseline
 	saved?: any
 	draft?: any
-	// the latest valid, decoded value from the JSON editor while in JSON mode; null while the buffer is invalid
-	jsonValid: any
+	// the latest valid, decoded value from the YAML editor while in YAML mode; null while the buffer is invalid
+	yamlValid: any
 
 	loading: boolean
 	loadFailed: string | null
@@ -109,7 +109,7 @@ function nextEncoded(state: SettingsEditor, value: any): any {
 
 // A form always edits the encoded/input shape, so a HumanTime reads "5s" rather than 5000 whichever settings scope it
 // belongs to. Global settings are already stored that way; server settings are stored decoded, so they're encoded on
-// load. Settings that don't parse are the repair flow: hand those through untouched for the JSON editor to fix.
+// load. Settings that don't parse are the repair flow: hand those through untouched for the YAML editor to fix.
 function toEditShape(schema: z.ZodType<any>, raw: unknown): unknown {
 	const parsed = schema.safeParse(raw)
 	if (!parsed.success) return raw
@@ -120,9 +120,9 @@ function toEditShape(schema: z.ZodType<any>, raw: unknown): unknown {
 	}
 }
 
-// the decoded value a save would submit (null when invalid): the gui draft parsed, or the JSON editor's latest valid value
+// the decoded value a save would submit (null when invalid): the gui draft parsed, or the YAML editor's latest valid value
 function validValue(state: SettingsEditor): any {
-	if (state.mode === 'json') return state.jsonValid
+	if (state.mode === 'yaml') return state.yamlValid
 	if (state.draft === undefined) return null
 	const res = editSchema(state).safeParse(state.draft)
 	return res.success ? res.data : null
@@ -131,7 +131,7 @@ function validValue(state: SettingsEditor): any {
 export function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'changes' | 'issues' | 'valid'> {
 	const guiRes = state.mode === 'gui' && state.draft !== undefined ? editSchema(state).safeParse(state.draft) : undefined
 	const issues = guiRes && !guiRes.success ? guiRes.error.issues : NO_ISSUES
-	const value = state.mode === 'json' ? state.jsonValid : guiRes?.success ? guiRes.data : null
+	const value = state.mode === 'yaml' ? state.yamlValid : guiRes?.success ? guiRes.data : null
 	if (state.kind === 'new-server') {
 		return {
 			changes: diffSettings({}, { id: state.newId, displayName: state.newDisplayName, ...(value ?? {}) }),
@@ -161,7 +161,7 @@ const setup: Frame['setup'] = (args) => {
 		reset$: new Rx.Subject<void>(),
 		saved: isNew ? NEW_SERVER_DRAFT : undefined,
 		draft: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : undefined,
-		jsonValid: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : null,
+		yamlValid: isNew ? Obj.deepClone(NEW_SERVER_DRAFT) : null,
 		loading: input.kind === 'server',
 		loadFailed: null,
 		denied: false,
@@ -180,7 +180,7 @@ const setup: Frame['setup'] = (args) => {
 		args.update$.subscribe(([state, prev]) => {
 			if (
 				state.draft !== prev.draft ||
-				state.jsonValid !== prev.jsonValid ||
+				state.yamlValid !== prev.yamlValid ||
 				state.mode !== prev.mode ||
 				state.saved !== prev.saved ||
 				state.sensitiveOmitted !== prev.sensitiveOmitted ||
@@ -265,12 +265,12 @@ export namespace Sel {
 		return { newServerCreated, anyDirty }
 	}
 
-	// the per-section editor modes the table of contents keys off: a JSON-mode section renders no per-field anchors,
+	// the per-section editor modes the table of contents keys off: a YAML-mode section renders no per-field anchors,
 	// so it collapses to a single leaf there
 	export function tocModes(...states: SettingsEditor[]) {
-		const serverModes: Record<string, 'gui' | 'json'> = {}
-		let globalMode: 'gui' | 'json' = 'gui'
-		let newServerMode: 'gui' | 'json' = 'gui'
+		const serverModes: Record<string, 'gui' | 'yaml'> = {}
+		let globalMode: 'gui' | 'yaml' = 'gui'
+		let newServerMode: 'gui' | 'yaml' = 'gui'
 		let creatingServer = false
 		for (const s of states) {
 			if (s.kind === 'server') serverModes[s.serverId!] = s.mode
@@ -313,8 +313,8 @@ export namespace Actions {
 		store(stores).setState({ draft })
 	}
 
-	export function setJsonValid(stores: KeyProp, jsonValid: any) {
-		store(stores).setState({ jsonValid })
+	export function setYamlValid(stores: KeyProp, yamlValid: any) {
+		store(stores).setState({ yamlValid })
 	}
 
 	export function setNewServerFields(stores: KeyProp, fields: { id?: string; displayName?: string }) {
@@ -324,18 +324,18 @@ export namespace Actions {
 		})
 	}
 
-	export function setMode(stores: KeyProp, next: 'gui' | 'json') {
+	export function setMode(stores: KeyProp, next: 'gui' | 'yaml') {
 		const s = store(stores)
 		const state = s.getState()
 		if (state.mode === next) return
-		if (next === 'json') {
-			// seed the JSON editor's notion of validity from the current gui draft
+		if (next === 'yaml') {
+			// seed the YAML editor's notion of validity from the current gui draft
 			const parsed = state.draft !== undefined ? editSchema(state).safeParse(state.draft) : undefined
-			s.setState({ mode: 'json', jsonValid: parsed?.success ? parsed.data : null })
+			s.setState({ mode: 'yaml', yamlValid: parsed?.success ? parsed.data : null })
 		} else {
-			if (state.jsonValid !== null) {
-				// carry JSON edits back into the gui draft (re-encode to the input shape); reset$ makes the gui re-read
-				const enc = editSchema(state).encode(state.jsonValid)
+			if (state.yamlValid !== null) {
+				// carry YAML edits back into the gui draft (re-encode to the input shape); reset$ makes the gui re-read
+				const enc = editSchema(state).encode(state.yamlValid)
 				s.setState({ mode: 'gui', draft: enc })
 				state.reset$.next()
 			} else {
@@ -350,7 +350,7 @@ export namespace Actions {
 		if (state.kind === 'new-server') {
 			s.setState({
 				draft: Obj.deepClone(NEW_SERVER_DRAFT),
-				jsonValid: Obj.deepClone(NEW_SERVER_DRAFT),
+				yamlValid: Obj.deepClone(NEW_SERVER_DRAFT),
 				newId: '',
 				newDisplayName: '',
 			})
