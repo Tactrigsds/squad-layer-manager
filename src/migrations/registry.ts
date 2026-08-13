@@ -12,11 +12,8 @@ import type { TsMigration } from '@/server/migrate'
 // of them in filename order, so `name` MUST match the file's numeric prefix and be
 // unique across both `.sql` and `.ts` migrations.
 //
-// A migration must not import app models (they describe the CURRENT shape, which is
-// exactly what the migration is moving away from), but `superjson` itself is fair game:
-// the JSON columns are superjson-wrapped ({ json, meta }), and a migration touching
-// values that `meta` actually references should deserialize/reserialize with superjson
-// rather than editing the wrapper by hand.
+// The rules a migration itself must follow -- no app imports, superjson for the JSON
+// columns, no transaction of its own -- are in src/migrations/_template.ts.
 import * as m0062 from './0062_filter_nodes_operator_model'
 import * as m0063 from './0063_filter_team_scopes_to_and_or'
 import * as m0064 from './0064_rbac_roles_rename_and_flatten_member_roles'
