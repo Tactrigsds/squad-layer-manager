@@ -259,4 +259,26 @@ test.describe('the filter text editor', () => {
 		await editor.fill('type: and\nchildren: []')
 		await expect(compact).toBeEnabled()
 	})
+
+	test('tab indents by two spaces instead of leaving the editor', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		await editor.fill('type: and\nchildren: []')
+		await editor.click()
+		await page.keyboard.press('ControlOrMeta+End')
+
+		// the raw text of the line, because toContainText normalizes whitespace and so cannot tell two spaces
+		// from the tab character YAML rejects as indentation
+		const indented = () => editor.locator('.cm-line').nth(1).textContent()
+
+		await page.keyboard.press('Tab')
+		await expect(editor).toBeFocused()
+		await expect.poll(indented).toBe('  children: []')
+
+		await page.keyboard.press('Shift+Tab')
+		await expect.poll(indented).toBe('children: []')
+	})
 })
