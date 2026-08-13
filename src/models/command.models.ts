@@ -198,6 +198,21 @@ export const COMMAND_DECLARATIONS = {
 			quickReference: true,
 		},
 	}),
+	// Public chat as well as admin: proving you own a steam account is what earns admin here, so requiring admin to
+	// do it would leave everyone who has not linked yet unable to.
+	...declareCommand('linkSteamAccount', {
+		section: 'general',
+		permission: null,
+		args: [
+			{
+				kind: 'string',
+				name: 'code',
+				sample: 'K7M2QP',
+				describe: t('The code shown on the SLM website.'),
+			},
+		],
+		defaults: { allowedChats: ['admin', 'public'], triggers: ['link'], enabled: true, quickReference: false },
+	}),
 	...declareCommand('requestFeedback', {
 		section: 'general',
 		permission: null,

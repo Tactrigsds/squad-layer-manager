@@ -1,4 +1,5 @@
 import * as E from 'drizzle-orm'
+import * as crypto from 'node:crypto'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema.ts'
@@ -56,6 +57,82 @@ async function recordUserAccount(
 			causeId: null,
 		}),
 	)
+}
+
+// Claiming a steam account is claiming whatever it is an admin for, so the claim has to be proven rather than
+// asserted. The browser mints a code, the player sends it from in game, and the steam id is read off the RCON sender
+// instead of typed: the one thing a web session cannot fake is being in the server as that account.
+//
+// Held in memory, keyed by the code. A restart drops the pending ones, which costs a re-mint and nothing else.
+const VERIFICATION_TTL_MS = 5 * 60_000
+// No vowels (so a code cannot come out as a word) and no 0/O/1/I, which are the pairs people mistype reading a code
+// off one screen and onto another.
+const CODE_ALPHABET = '23456789BCDFGHJKMNPQRSTVWXZ'
+const CODE_LENGTH = 6
+const pendingVerifications = new Map<string, { discordId: bigint; expiresAt: number }>()
+
+function sweepVerifications(now: number) {
+	for (const [code, pending] of pendingVerifications) {
+		if (pending.expiresAt <= now) pendingVerifications.delete(code)
+	}
+}
+
+function mintVerificationCode(discordId: bigint): { code: string; expiresAt: number } {
+	const now = Date.now()
+	sweepVerifications(now)
+	// one live code per user: minting again is how somebody who lost the first one recovers, and leaving the old one
+	// standing would keep a usable code alive that nobody is watching for
+	for (const [code, pending] of pendingVerifications) {
+		if (pending.discordId === discordId) pendingVerifications.delete(code)
+	}
+	let code = ''
+	for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]
+	const expiresAt = now + VERIFICATION_TTL_MS
+	pendingVerifications.set(code, { discordId, expiresAt })
+	return { code, expiresAt }
+}
+
+// A code is spent the instant it reaches chat, which is what makes it safe to type somewhere public -- but only
+// while SLM is there to read it. One sent while rcon was down stays unspent and sits in the scrollback, so
+// reconnecting voids every outstanding code rather than trusting that none of them were said out loud.
+export function invalidatePendingSteamLinkCodes() {
+	pendingVerifications.clear()
+}
+
+// Links the sender's steam account to whoever minted `code`. Called from the chat command, so the steam id is the
+// one the game server reports for the message, not one anybody chose.
+export async function consumeSteamLinkCode(ctx: C.Db & CS.AbortSignal, input: { code: string; steamId: bigint }) {
+	const now = Date.now()
+	sweepVerifications(now)
+	const code = input.code.trim().toUpperCase()
+	const pending = pendingVerifications.get(code)
+	if (!pending) return { code: 'err:invalid-code' as const }
+	const discordId = pending.discordId
+
+	const res = await DB.runTransaction(ctx, async (ctx) => {
+		const [existing] = await ctx
+			.db()
+			.select({ discordId: Schema.linkedSteamAccounts.discordId })
+			.from(Schema.linkedSteamAccounts)
+			.where(E.eq(Schema.linkedSteamAccounts.steam64Id, input.steamId))
+		// left live deliberately: the caller can retry once an admin has removed the other link, and burning the code
+		// on a failure they cannot act on from in game just sends them back to the website for nothing
+		if (existing && existing.discordId !== discordId) return { code: 'err:steam-already-linked' as const }
+		if (existing) return { code: 'ok' as const, discordId }
+
+		await ctx
+			.db()
+			.insert(Schema.linkedSteamAccounts)
+			.values({ steam64Id: input.steamId, discordId, origin: 'self-serve' as const, linkedBy: discordId })
+		await recordUserAccount(ctx, discordId, 'steam-linked', { steamIds: [input.steamId.toString()] })
+		return { code: 'ok' as const, discordId }
+	})
+
+	if (res.code !== 'ok') return res
+	pendingVerifications.delete(code)
+	Rbac.invalidateUser(discordId)
+	PlayerDiscordRoles.invalidate()
+	return { code: 'ok' as const, displayName: await resolveDisplayName(ctx, discordId, 'your account') }
 }
 
 function selectLinks(ctx: C.Db) {
@@ -118,7 +195,15 @@ export const orpcRouter = {
 		return { code: 'ok' as const, links: await resolveLinkActors(context, links) }
 	}),
 
-	// replaces the caller's full set of linked steam ids; rejects any id already owned by another discord user
+	// Starts the in-game proof of ownership. Unauthenticated in the sense that it needs no permission: it grants
+	// nothing on its own, and the code is worthless to anybody who cannot send it from the account being claimed.
+	beginSteamLinkVerification: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
+		const { code, expiresAt } = mintVerificationCode(context.user.discordId)
+		return { code: 'ok' as const, verificationCode: code, expiresAt }
+	}),
+
+	// Replaces the caller's full set of linked steam ids. Additions are refused: a steam id arrives here only once
+	// it has been proven in game (see consumeSteamLinkCode), so everything this still does is removals.
 	updateLinkedSteamAccounts: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.array(z.string()))
@@ -134,23 +219,6 @@ export const orpcRouter = {
 			}
 			const res = await DB.runTransaction(context, async (context) => {
 				const discordId = context.user.discordId
-				if (parsed.length > 0) {
-					const [taken] = await context
-						.db()
-						.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
-						.from(Schema.linkedSteamAccounts)
-						.where(
-							E.and(E.inArray(Schema.linkedSteamAccounts.steam64Id, parsed), E.ne(Schema.linkedSteamAccounts.discordId, discordId)),
-						)
-						.limit(1)
-					if (taken) {
-						return {
-							code: 'err:steam-already-linked' as const,
-							steamId: taken.steam64Id.toString(),
-							msg: `Steam ID ${taken.steam64Id} is already linked to another account`,
-						}
-					}
-				}
 				const currentRows = await context
 					.db()
 					.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
@@ -161,6 +229,10 @@ export const orpcRouter = {
 				const added = parsed.filter((id) => !current.has(id))
 				const removed = [...current].filter((id) => !next.has(id))
 
+				if (added.length > 0) {
+					return { code: 'err:verification-required' as const, steamId: added[0].toString() }
+				}
+
 				if (removed.length > 0) {
 					await context
 						.db()
@@ -168,15 +240,6 @@ export const orpcRouter = {
 						.where(
 							E.and(E.eq(Schema.linkedSteamAccounts.discordId, discordId), E.inArray(Schema.linkedSteamAccounts.steam64Id, removed)),
 						)
-				}
-				if (added.length > 0) {
-					await context
-						.db()
-						.insert(Schema.linkedSteamAccounts)
-						.values(added.map((steam64Id) => ({ steam64Id, discordId, origin: 'self-serve' as const, linkedBy: discordId })))
-				}
-				if (added.length > 0) {
-					await recordUserAccount(context, discordId, 'steam-linked', { steamIds: added.map((id) => id.toString()) })
 				}
 				if (removed.length > 0) {
 					await recordUserAccount(context, discordId, 'steam-unlinked', { steamIds: removed.map((id) => id.toString()) })
@@ -231,6 +294,8 @@ export const orpcRouter = {
 			const username = memberRes.member.user.username
 
 			const steam64Id = BigInt(steam.data)
+			const escalationRes = await Rbac.tryDenySteamLinkEscalation(context, discordId, steam64Id)
+			if (escalationRes) return escalationRes
 			const res = await DB.runTransaction(context, async (context) => {
 				const [existing] = await context
 					.db()
@@ -276,6 +341,18 @@ export const orpcRouter = {
 			if (!steam.success) return { code: 'err:invalid-steam-id' as const, steamId: input.steamId }
 
 			const steam64Id = BigInt(steam.data)
+			const [linked] = await context
+				.db()
+				.select({ discordId: Schema.linkedSteamAccounts.discordId })
+				.from(Schema.linkedSteamAccounts)
+				.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steam64Id))
+			// Removing a link revokes exactly what adding it granted, so it takes the same standing. Read outside the
+			// transaction because the check itself reads the linked set, which the transaction is about to change.
+			if (linked) {
+				const escalationRes = await Rbac.tryDenySteamLinkEscalation(context, linked.discordId, steam64Id)
+				if (escalationRes) return escalationRes
+			}
+
 			const res = await DB.runTransaction(context, async (context) => {
 				const [existing] = await context
 					.db()

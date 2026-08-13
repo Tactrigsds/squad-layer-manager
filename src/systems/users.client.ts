@@ -155,6 +155,10 @@ export function useUpdateLinkedSteamAccountsMutation() {
 	)
 }
 
+export function useBeginSteamLinkVerificationMutation() {
+	return useMutation(RPC.orpc.users.beginSteamLinkVerification.mutationOptions({}))
+}
+
 // the link on one player's steam account. Behind users:manage-steam-links server-side, so callers gate the UI on
 // the same permission rather than rendering a section that always errors.
 export function useSteamAccountLink(steamId: string | undefined) {

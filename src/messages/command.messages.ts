@@ -131,6 +131,7 @@ export const descriptions = {
 	timeout: t('Kick a player with a timeout (e.g. 2h); they are re-kicked on any SLM server until it expires'),
 	timeoutSquad: t('Kick every member of a squad with a timeout (e.g. 2h)'),
 	clearTimeout: t("Cancel a player's active timeout (works for offline players)"),
+	linkSteamAccount: t('Link the Steam account you are playing on to your SLM account, using a code from the website'),
 	requestLayer: t('Request a layer: autogeneration satisfies queued requests when it picks the next layer'),
 	listLayerRequests: t('List the queued layer requests'),
 	removeLayerRequest: t('Remove a layer request (your newest, or by number from the list)'),
