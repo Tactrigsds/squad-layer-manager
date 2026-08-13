@@ -3,7 +3,7 @@
 // any group render ungrouped after the groups (so newly added settings surface automatically).
 
 // A `passthrough` group emits no header of its own: it exists only to place a single field that already renders its
-// own section header (carrying that section's reset controls, anchor and JSON toggle), where a second header above it
+// own section header (carrying that section's reset controls, anchor and YAML toggle), where a second header above it
 // would just repeat the name.
 export type SettingsGroup = { slug: string; label: string; keys: string[]; passthrough?: true }
 
@@ -65,10 +65,10 @@ export const ADVANCED_SERVER_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 ])
 
 // Subtrees whose GUI editor is elaborate enough that bulk edits (reordering, copying a role between installs, pasting a
-// block from a diff) are easier as text. Their field header gets a GUI/JSON toggle that swaps just that subtree for a
-// schema-checked JSON editor, so the rest of the form stays as it is. Matched on the field's dotted path; only paths
+// block from a diff) are easier as text. Their field header gets a GUI/YAML toggle that swaps just that subtree for a
+// schema-checked YAML editor, so the rest of the form stays as it is. Matched on the field's dotted path; only paths
 // whose schema is statically addressable (see Zod.schemaAtPath) can be listed, and nothing holding a secret should be.
-export const LOCAL_JSON_EDITOR_PATHS: ReadonlySet<string> = new Set([
+export const LOCAL_YAML_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	// global
 	'rbac',
 	'commands',

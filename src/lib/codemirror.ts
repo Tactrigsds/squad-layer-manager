@@ -1,12 +1,13 @@
-// Shared CodeMirror 6 setup for JSON editors with zod-derived JSON-schema autocomplete + hover.
+// Shared CodeMirror 6 setup for YAML editors with zod-derived JSON-schema autocomplete + hover.
 // WARNING: only import this from lazily-loaded (React.lazy'd) components -- it statically pulls in the
 // whole CodeMirror + codemirror-json-schema bundle, which we don't want in the initial/route chunk.
-import { json, jsonLanguage } from '@codemirror/lang-json'
+import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
 import type { Extension } from '@codemirror/state'
 import { EditorState } from '@codemirror/state'
 import { EditorView, hoverTooltip } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
-import { jsonCompletion, jsonSchemaHover, stateExtensions, updateSchema } from 'codemirror-json-schema'
+import { stateExtensions, updateSchema } from 'codemirror-json-schema'
+import { yamlCompletion, yamlSchemaHover } from 'codemirror-json-schema/yaml'
 import type { JSONSchema7 } from 'json-schema'
 import { dracula } from 'thememirror'
 import { z } from 'zod'
@@ -33,15 +34,15 @@ const heightTheme = EditorView.theme({
 	'.cm-scroller': { overflow: 'auto' },
 })
 
-// Base extensions for a JSON editor: editing affordances, JSON syntax, dracula theme, line wrapping, and --
+// Base extensions for a YAML editor: editing affordances, YAML syntax, dracula theme, line wrapping, and --
 // when a schema is provided -- schema-driven autocompletion and hover tooltips (descriptions come from
 // `.describe()` annotations on the zod schema).
-export function jsonEditorExtensions(schema: JsonSchema | undefined): Extension[] {
+export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[] {
 	return [
 		basicSetup,
-		json(),
-		jsonLanguage.data.of({ autocomplete: jsonCompletion() }),
-		hoverTooltip(jsonSchemaHover()),
+		yaml(),
+		yamlLanguage.data.of({ autocomplete: yamlCompletion() }),
+		hoverTooltip(yamlSchemaHover()),
 		stateExtensions(schema),
 		dracula,
 		EditorView.lineWrapping,

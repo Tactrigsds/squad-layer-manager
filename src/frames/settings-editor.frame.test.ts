@@ -14,7 +14,7 @@ import * as Editor from './settings-editor.frame'
 const baseline: any = SETTINGS.GlobalSettingsSchema.encode(SETTINGS.parseGlobalSettings({}).data!)
 
 function globalState(draft: any): Editor.SettingsEditor {
-	return { kind: 'global', mode: 'gui', saved: baseline, draft, jsonValid: null } as Editor.SettingsEditor
+	return { kind: 'global', mode: 'gui', saved: baseline, draft, yamlValid: null } as Editor.SettingsEditor
 }
 
 function withRole(roleId: string, cfg: any) {

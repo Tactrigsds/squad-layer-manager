@@ -1,18 +1,18 @@
 import type React from 'react'
 import type { z } from 'zod'
 
-export type SchemaJsonEditorHandle = {
+export type SchemaYamlEditorHandle = {
 	format: () => void
 	focus: () => void
 	reset: () => void
 }
 
-export interface SchemaJsonEditorProps<TOut, TIn = TOut> {
+export interface SchemaYamlEditorProps<TOut, TIn = TOut> {
 	// TOut/TIn diverge for codec schemas (e.g. Zod.HumanTime): TIn is what's displayed/edited (e.g. '5m'), TOut is what onValidChange receives (e.g. 300000)
 	schema: z.ZodType<TOut, TIn>
 	// authoritative value to sync the editor's contents from; only re-syncs when it changes by value, so in-progress edits aren't clobbered by unrelated re-renders
 	value: TIn
-	// called (debounced) whenever the editor's contents change; null while the contents don't parse as JSON or fail schema validation
+	// called (debounced) whenever the editor's contents change; null while the contents don't parse as YAML or fail schema validation
 	onValidChange: (value: TOut | null) => void
 	label?: string
 	minHeightPx?: number
@@ -21,5 +21,5 @@ export interface SchemaJsonEditorProps<TOut, TIn = TOut> {
 	// fired once the editor is mounted and laid out. The bundle is lazy-loaded, so a caller that wants to bring the
 	// editor into view has to wait for this rather than acting on the click that selected it.
 	onReady?: () => void
-	ref?: React.Ref<SchemaJsonEditorHandle>
+	ref?: React.Ref<SchemaYamlEditorHandle>
 }

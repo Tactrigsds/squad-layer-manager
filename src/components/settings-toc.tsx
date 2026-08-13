@@ -299,10 +299,10 @@ export default function SettingsToc({
 		return map
 	}, [perms, servers])
 
-	// the field anchors only exist in the GUI editor; in JSON mode a section collapses to a single leaf
+	// the field anchors only exist in the GUI editor; in YAML mode a section collapses to a single leaf
 	const globalChildren = React.useMemo(
 		() =>
-			globalMode === 'json'
+			globalMode === 'yaml'
 				? []
 				: groupTocNodes(buildChildren(globalJsonSchema, [], 'setting:', globalWrite), GLOBAL_SETTINGS_GROUPS, 'setting:'),
 		[globalMode, globalWrite],
@@ -316,7 +316,7 @@ export default function SettingsToc({
 				label: s.displayName,
 				path: '',
 				writable: write.kind !== 'none',
-				children: (serverModes[s.id] ?? 'gui') === 'json' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
+				children: (serverModes[s.id] ?? 'gui') === 'yaml' ? [] : buildChildren(serverJsonSchema, [], `setting:server:${s.id}:`, write),
 			}
 		})
 		if (creatingServer) {
@@ -325,7 +325,7 @@ export default function SettingsToc({
 				label: tr.text(SETTINGS_Msgs.newManagedServer()),
 				path: '',
 				writable: true,
-				children: newServerMode === 'json' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:', WRITE_ALL),
+				children: newServerMode === 'yaml' ? [] : buildChildren(serverJsonSchema, [], 'setting:server:__new__:', WRITE_ALL),
 			})
 		}
 		return nodes
@@ -369,7 +369,7 @@ export default function SettingsToc({
 	const forceOpen = q.length > 0
 	const visible = q ? nodes.map((n) => filterNode(n, q)).filter((n): n is TocNode => n !== null) : nodes
 
-	// re-run scroll-spy when the anchor set changes (gui/json switch, servers added/removed, per-server mode)
+	// re-run scroll-spy when the anchor set changes (gui/yaml switch, servers added/removed, per-server mode)
 	const anchorSetSig = `${globalMode}|${servers.map((s) => `${s.id}:${serverModes[s.id] ?? 'gui'}`).join(',')}|${
 		creatingServer ? newServerMode : ''
 	}`
