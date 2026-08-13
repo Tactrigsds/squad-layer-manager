@@ -1,0 +1,326 @@
+{
+	"uid": "slm-switch-requests",
+	"title": "SLM / Switch requests",
+	"description": "The player-initiated team switch queue: how much is asked for, how it drains, and how long players wait. Backed by the counters and wait histogram in src/systems/switch-requests.server.ts and the gauges in src/systems/metrics.server.ts.",
+	"tags": ["slm"],
+	"timezone": "browser",
+	"editable": true,
+	"schemaVersion": 39,
+	"refresh": "30s",
+	"time": {
+		"from": "now-6h",
+		"to": "now"
+	},
+	"templating": {
+		"list": [
+			{
+				"name": "server",
+				"label": "Squad server",
+				"type": "query",
+				"datasource": {
+					"type": "prometheus",
+					"uid": "prometheus"
+				},
+				"query": "label_values(slm_rcon_connected, slm_squad_server_id)",
+				"refresh": 2,
+				"includeAll": true,
+				"multi": true,
+				"current": {
+					"text": "All",
+					"value": "$__all"
+				}
+			}
+		]
+	},
+	"panels": [
+		{
+			"type": "row",
+			"title": "Queue",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+		},
+		{
+			"type": "stat",
+			"title": "Queued now",
+			"description": "Players currently waiting to switch. Sustained non-zero means the queue is not draining on its own.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 5, "w": 5, "x": 0, "y": 1 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum (slm_switch_request_queued{slm_squad_server_id=~\"$server\"})",
+					"instant": true
+				}
+			],
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+				"colorMode": "value",
+				"graphMode": "area"
+			},
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{ "color": "green", "value": null },
+							{ "color": "yellow", "value": 4 },
+							{ "color": "orange", "value": 8 }
+						]
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Switches in flight",
+			"description": "Forced team changes issued and not yet seen in the roster. Anything but a brief blip means switches are not landing.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 5, "w": 5, "x": 5, "y": 1 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum (slm_switch_request_switching{slm_squad_server_id=~\"$server\"})",
+					"instant": true
+				}
+			],
+			"options": {
+				"reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+				"colorMode": "value",
+				"graphMode": "area"
+			},
+			"fieldConfig": { "defaults": { "min": 0 }, "overrides": [] }
+		},
+		{
+			"type": "timeseries",
+			"title": "Queue depth by direction",
+			"description": "Waiters on each side, by the team they are asking to leave. Depth on both sides at once drains immediately as mutual swaps, so a queue that persists is nearly always one-sided: everyone wants off the same team.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 5, "w": 14, "x": 10, "y": 1 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max by (slm_squad_server_id, slm_switch_request_from_team) (slm_switch_request_queued{slm_squad_server_id=~\"$server\"})",
+					"legendFormat": "{{slm_squad_server_id}} leaving team {{slm_switch_request_from_team}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"lineInterpolation": "stepAfter",
+						"fillOpacity": 10,
+						"lineWidth": 2
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "row",
+			"title": "Throughput",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+		},
+		{
+			"type": "timeseries",
+			"title": "Requests by outcome",
+			"description": "What /switch did for the player who typed it. A rising share of 'queued' against 'immediate' is the signal that instantSwapLead is set too high for how the teams actually sit.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 0, "y": 7 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_switch_request_outcome) (rate(slm_switch_request_received_total{slm_squad_server_id=~\"$server\"}[$__rate_interval]))",
+					"legendFormat": "{{slm_switch_request_outcome}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "reqps",
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 20,
+						"lineWidth": 1,
+						"stacking": { "mode": "normal" }
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Fulfilled by rule",
+			"description": "Which drain rule moved each player: paired with someone going the other way (mutual), their team large enough to spare them (capacity), a fresh connect moved aside (connector), or an admin's switch-now (admin).",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 8, "y": 7 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_switch_request_via) (rate(slm_switch_request_fulfilled_total{slm_squad_server_id=~\"$server\"}[$__rate_interval]))",
+					"legendFormat": "{{slm_switch_request_via}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "reqps",
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 20,
+						"lineWidth": 1,
+						"stacking": { "mode": "normal" }
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Dropped by reason",
+			"description": "Requests that left the queue unfulfilled. 'new-game' is the ordinary reset at a roll and is expected; 'failed' means a forced switch never landed after three attempts and is worth investigating.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 8, "x": 16, "y": 7 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_switch_request_reason) (rate(slm_switch_request_dropped_total{slm_squad_server_id=~\"$server\"}[$__rate_interval]))",
+					"legendFormat": "{{slm_switch_request_reason}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "reqps",
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 20,
+						"lineWidth": 1,
+						"stacking": { "mode": "normal" }
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "row",
+			"title": "Wait",
+			"gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }
+		},
+		{
+			"type": "timeseries",
+			"title": "Wait quantiles",
+			"description": "How long fulfilled requests spent queued. An immediate switch is one poll; anything above a few minutes is a player who asked and then waited through the match.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.5, sum by (le) (rate(slm_switch_request_wait_seconds_bucket{slm_squad_server_id=~\"$server\"}[$__rate_interval])))",
+					"legendFormat": "p50"
+				},
+				{
+					"refId": "B",
+					"expr": "histogram_quantile(0.9, sum by (le) (rate(slm_switch_request_wait_seconds_bucket{slm_squad_server_id=~\"$server\"}[$__rate_interval])))",
+					"legendFormat": "p90"
+				},
+				{
+					"refId": "C",
+					"expr": "histogram_quantile(0.99, sum by (le) (rate(slm_switch_request_wait_seconds_bucket{slm_squad_server_id=~\"$server\"}[$__rate_interval])))",
+					"legendFormat": "p99"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "s",
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"lineWidth": 1
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Wait p90 by rule",
+			"description": "The same wait split by what drained it. Capacity and connector waits are what a player actually sits through; mutual pairs usually resolve as soon as someone on the other side asks.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.9, sum by (le, slm_switch_request_via) (rate(slm_switch_request_wait_seconds_bucket{slm_squad_server_id=~\"$server\"}[$__rate_interval])))",
+					"legendFormat": "{{slm_switch_request_via}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"min": 0,
+					"unit": "s",
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"lineWidth": 1
+					}
+				},
+				"overrides": []
+			}
+		},
+		{
+			"type": "table",
+			"title": "Switch activity by server (last 6h)",
+			"description": "Totals per server over the dashboard window, for comparing installs at a glance.",
+			"datasource": { "type": "prometheus", "uid": "prometheus" },
+			"gridPos": { "h": 7, "w": 24, "x": 0, "y": 24 },
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (slm_squad_server_id) (increase(slm_switch_request_received_total{slm_squad_server_id=~\"$server\"}[$__range]))",
+					"format": "table",
+					"instant": true,
+					"legendFormat": "requested"
+				},
+				{
+					"refId": "B",
+					"expr": "sum by (slm_squad_server_id) (increase(slm_switch_request_fulfilled_total{slm_squad_server_id=~\"$server\"}[$__range]))",
+					"format": "table",
+					"instant": true,
+					"legendFormat": "fulfilled"
+				},
+				{
+					"refId": "C",
+					"expr": "sum by (slm_squad_server_id) (increase(slm_switch_request_dropped_total{slm_squad_server_id=~\"$server\"}[$__range]))",
+					"format": "table",
+					"instant": true,
+					"legendFormat": "dropped"
+				}
+			],
+			"transformations": [
+				{
+					"id": "joinByField",
+					"options": { "byField": "slm_squad_server_id", "mode": "outer" }
+				},
+				{
+					"id": "organize",
+					"options": {
+						"excludeByName": { "Time 1": true, "Time 2": true, "Time 3": true },
+						"renameByName": {
+							"slm_squad_server_id": "Server",
+							"Value #A": "Requested",
+							"Value #B": "Fulfilled",
+							"Value #C": "Dropped"
+						}
+					}
+				}
+			],
+			"fieldConfig": {
+				"defaults": { "decimals": 0 },
+				"overrides": []
+			}
+		}
+	]
+}

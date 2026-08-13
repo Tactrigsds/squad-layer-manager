@@ -2,6 +2,7 @@
 // funnels through pass(): apply a mutation, sweep in-flight switches, plan against the live roster, fire what the
 // plan allows, then persist and notify. The queue is persisted per match in the servers table so an SLM restart
 // mid-match keeps it; it resets on every roll.
+import * as Otel from '@opentelemetry/api'
 import { Mutex } from 'async-mutex'
 import { z } from 'zod'
 
@@ -12,6 +13,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
 import * as PendingEvents from '@/models/pending-events.models'
 import * as SE from '@/models/server-events.models'
 import type * as SR from '@/models/squad-rcon.models'
@@ -37,6 +39,33 @@ let log!: CS.Logger
 export function setup() {
 	log = module.getLogger()
 }
+
+// What the queue did, for the dashboard. The counters answer "how much of this is happening and how is it
+// resolving"; the wait histogram answers "how long does asking actually cost a player", which is the number that
+// says whether instantSwapLead is set sensibly. Queue depth is a gauge, in metrics.server.ts.
+const meter = Otel.metrics.getMeter('switch-requests')
+
+const receivedCounter = meter.createCounter(ATTRS.SwitchRequest.RECEIVED, {
+	description: 'Switch requests received, by how the command answered them',
+})
+
+const fulfilledCounter = meter.createCounter(ATTRS.SwitchRequest.FULFILLED, {
+	description: 'Switch requests fulfilled, by the rule that drained them',
+})
+
+const droppedCounter = meter.createCounter(ATTRS.SwitchRequest.DROPPED, {
+	description: 'Queued switch requests that left the queue without being fulfilled, by reason',
+})
+
+const waitHistogram = meter.createHistogram(ATTRS.SwitchRequest.WAIT, {
+	description: 'How long a fulfilled switch request waited in the queue',
+	unit: 's',
+	advice: {
+		// a wait spans an immediate swap (sub-second, one poll) to most of a match for a queue that never
+		// drains, so the boundaries are spread over minutes rather than the SDK's millisecond-shaped defaults
+		explicitBucketBoundaries: [1, 5, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600],
+	},
+})
 
 // how hard the roster is polled while requests are waiting; the default cadence (rconCacheTTL.teams) applies otherwise
 const ACTIVE_POLL_TTL_MS = 1_000
@@ -87,7 +116,11 @@ export function initContext(ctx: SQS.Ctx & SR.Ctx & C.Db & C.ManagedServerCleanu
 							mutate: (state) => {
 								state.disconnectedThisMatch.add(e.player)
 								const index = state.requests.findIndex((r) => r.playerId === e.player)
-								if (index >= 0) state.requests.splice(index, 1)
+								if (index < 0) return
+								state.requests.splice(index, 1)
+								// dropping it here rather than leaving it to the planner's prune means the planner never
+								// sees it, so this is the only place the departure can be counted
+								droppedCounter.add(1, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.REASON]: 'disconnected' })
 							},
 						})
 					} else if (e.type === 'NEW_GAME') {
@@ -175,6 +208,14 @@ const pass = Instr.spanOp(
 	(ctx: PassCtx, opts?: PassOpts) => passLocked(ctx, opts),
 )
 
+function recordWait(ctx: SRQ.Ctx, requestedAt: number | undefined, now: number, via: ATTRS.SwitchRequest.Via) {
+	if (requestedAt === undefined) return
+	waitHistogram.record(Math.max(0, now - requestedAt) / 1000, {
+		[ATTRS.SquadServer.ID]: ctx.serverId,
+		[ATTRS.SwitchRequest.VIA]: via,
+	})
+}
+
 // the single reconcile step, mutex held by the caller
 async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 	const sr = ctx.switchRequests
@@ -225,6 +266,9 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 		sr.state.requests = planned.requests
 	}
 
+	// requestedAt is only on the pre-plan queue, so the wait of anything fulfilled or dropped below is read here
+	const requestedAt = new Map(requestsBefore.map((r) => [r.playerId, r.requestedAt]))
+
 	let movedConnector: SM.PlayerId | undefined
 	if (planned && planned.swaps.length > 0) {
 		const targets = planned.swaps.map((s) => s.playerId)
@@ -242,6 +286,10 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 		await SquadServer.armTeamChangeAttribution(ctx, targets, appEvent.id)
 		for (const swap of planned.swaps) {
 			sr.swapping.set(swap.playerId, { toTeam: swap.toTeam, via: swap.via, firedAt: now, attempts: 1, causeId: appEvent.id })
+			// the connector's own move is not a fulfilled request, so it is not counted as one
+			if (!planned.fulfilled.includes(swap.playerId)) continue
+			fulfilledCounter.add(1, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.VIA]: swap.via })
+			recordWait(ctx, requestedAt.get(swap.playerId), now, swap.via)
 		}
 		await SquadRcon.switchPlayers(ctx, targets)
 	}
@@ -254,6 +302,13 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 			ctx,
 			refires.map((r) => r.playerId),
 		)
+	}
+
+	for (const removal of planned?.removed ?? []) {
+		droppedCounter.add(1, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.REASON]: removal.reason })
+	}
+	if (failed.length > 0) {
+		droppedCounter.add(failed.length, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.REASON]: 'failed' })
 	}
 
 	const requestsChanged =
@@ -290,6 +345,9 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 const clearForNewGame = Instr.spanOp('clearForNewGame', { module, mutexes: (ctx) => ctx.switchRequests.mutex }, async (ctx: PassCtx) => {
 	const sr = ctx.switchRequests
 	const hadState = sr.state.requests.length > 0 || sr.state.disconnectedThisMatch.size > 0
+	if (sr.state.requests.length > 0) {
+		droppedCounter.add(sr.state.requests.length, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.REASON]: 'new-game' })
+	}
 	sr.state = SRQ.initState()
 	sr.swapping.clear()
 	sr.pendingPlacement.clear()
@@ -314,11 +372,23 @@ export const requestSwitch = Instr.spanOp(
 	{ module, mutexes: (ctx) => ctx.switchRequests.mutex },
 	async (ctx: PassCtx, sender: SM.Player): Promise<RequestSwitchResult> => {
 		const sr = ctx.switchRequests
-		if (sender.teamId === null) return { code: 'err:no-team' }
+		const countReceived = (outcome: ATTRS.SwitchRequest.Outcome) =>
+			receivedCounter.add(1, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.OUTCOME]: outcome })
+
+		if (sender.teamId === null) {
+			countReceived('no-team')
+			return { code: 'err:no-team' }
+		}
 		const playerId = SM.PlayerIds.getPlayerId(sender.ids)
-		if (TSW.isSwapPending(ctx.teamswaps.session.state, playerId) || sr.swapping.has(playerId)) return { code: 'err:swap-pending' }
+		if (TSW.isSwapPending(ctx.teamswaps.session.state, playerId) || sr.swapping.has(playerId)) {
+			countReceived('swap-pending')
+			return { code: 'err:swap-pending' }
+		}
 		const existing = SRQ.position(sr.state.requests, playerId)
-		if (existing !== null) return { code: 'err:already-queued', position: existing }
+		if (existing !== null) {
+			countReceived('already-queued')
+			return { code: 'err:already-queued', position: existing }
+		}
 
 		const fromTeam = sender.teamId
 		await passLocked(ctx, {
@@ -326,7 +396,12 @@ export const requestSwitch = Instr.spanOp(
 			actor: { type: 'ingame-user', playerId },
 		})
 		const position = SRQ.position(sr.state.requests, playerId)
-		if (position === null) return { code: 'ok:switching' }
+		if (position === null) {
+			// the pass fired it on the spot, and already counted the fulfillment it drained through
+			countReceived('immediate')
+			return { code: 'ok:switching' }
+		}
+		countReceived('queued')
 		return { code: 'ok:queued', position }
 	},
 )
@@ -337,6 +412,7 @@ export const cancelSwitch = Instr.spanOp(
 	async (ctx: PassCtx, playerId: SM.PlayerId): Promise<{ code: 'ok' } | { code: 'err:not-queued' }> => {
 		const sr = ctx.switchRequests
 		if (!SRQ.requestFor(sr.state.requests, playerId)) return { code: 'err:not-queued' }
+		droppedCounter.add(1, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.REASON]: 'cancelled' })
 		await passLocked(ctx, {
 			mutate: (state) => {
 				const index = state.requests.findIndex((r) => r.playerId === playerId)
@@ -366,13 +442,16 @@ export const switchNow = Instr.spanOp(
 		})
 		await SquadServer.emitAppEvent(ctx, appEvent)
 		await SquadServer.armTeamChangeAttribution(ctx, [playerId], appEvent.id)
+		const firedAt = Date.now()
 		sr.swapping.set(playerId, {
 			toTeam: SM.oppositeTeamId(request.fromTeam),
 			via: 'capacity',
-			firedAt: Date.now(),
+			firedAt,
 			attempts: 1,
 			causeId: appEvent.id,
 		})
+		fulfilledCounter.add(1, { [ATTRS.SquadServer.ID]: ctx.serverId, [ATTRS.SwitchRequest.VIA]: 'admin' })
+		recordWait(ctx, request.requestedAt, firedAt, 'admin')
 		await SquadRcon.switchPlayers(ctx, [playerId])
 		// drop the fulfilled request; everyone behind them moves up and pass() reports the new positions
 		await passLocked(ctx, {

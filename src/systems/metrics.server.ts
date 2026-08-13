@@ -95,4 +95,32 @@ export function setup() {
 				result.observe(managedServer.teamswaps.session.state.swapping ? 1 : 0, { [ATTRS.SquadServer.ID]: serverId })
 			}
 		})
+
+	// split by the team players are asking to leave: a queue that is deep on one side only is an imbalance
+	// nobody can drain, where the same depth on both sides pairs off into mutual swaps immediately
+	meter
+		.createObservableGauge(ATTRS.SwitchRequest.QUEUED, {
+			description: 'Players queued for a team switch, by the team they are asking to leave',
+		})
+		.addCallback((result) => {
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				const requests = managedServer.switchRequests.state.requests
+				for (const fromTeam of [1, 2] as const) {
+					result.observe(requests.filter((r) => r.fromTeam === fromTeam).length, {
+						[ATTRS.SquadServer.ID]: serverId,
+						[ATTRS.SwitchRequest.FROM_TEAM]: fromTeam,
+					})
+				}
+			}
+		})
+
+	meter
+		.createObservableGauge(ATTRS.SwitchRequest.SWITCHING, {
+			description: 'Switch requests whose forced team change is in flight',
+		})
+		.addCallback((result) => {
+			for (const [serverId, managedServer] of SquadServer.globalState.managedServers) {
+				result.observe(managedServer.switchRequests.swapping.size, { [ATTRS.SquadServer.ID]: serverId })
+			}
+		})
 }
