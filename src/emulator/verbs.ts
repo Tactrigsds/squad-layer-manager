@@ -37,7 +37,7 @@ export function nextDefaultName(host: SandboxHost): string {
 export function joinPlayer(host: SandboxHost, name: string): EmuPlayer {
 	if (host.players.has(name)) throw new Error(`${name} is already connected`)
 	if (host.players.size >= SB.MAX_PLAYERS) throw new Error(`the server is full (${SB.MAX_PLAYERS} players)`)
-	const player = host.emu.world.connectPlayer(makePlayer({ name, teamId: host.players.size % 2 === 0 ? 1 : 2 }))
+	const player = host.emu.world.connectPlayer(makePlayer({ name, teamId: host.players.size % 2 === 0 ? 1 : 2 }, host.emu.world.idSalt))
 	host.players.set(name, player)
 	host.onPlayerJoined?.(player)
 	return player
