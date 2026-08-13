@@ -6,6 +6,10 @@ import type { MigrationDriver } from '@/server/migrate'
 // Rules for migrations — they are frozen in time:
 //  - Import NOTHING from the rest of the app (no schema, env, models). A later refactor
 //    must never be able to change what this migration did. Inline any constants/shapes.
+//  - `superjson` is the exception, and the way to read and write a JSON column: they hold a
+//    superjson wrapper ({ json, meta }), and `meta` describes values (Dates, Maps, bigints)
+//    that JSON.parse alone reduces to their encoded form. `superjson.parse` gives the plain
+//    object to edit; `superjson.stringify` puts it back with `meta` recomputed to match.
 //  - `db` is the raw better-sqlite3 driver. Use db.prepare()/db.exec() directly, or wrap
 //    with `drizzle(db)` locally if you want a query builder — but only against literal SQL
 //    or a schema snapshot copied into this file, never the live app schema.

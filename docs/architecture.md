@@ -588,7 +588,8 @@ latency bug and failing the write would be worse.
 `.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence. Two constraints shape it:
 
 - **Migrations are frozen in time.** A `.ts` migration gets only the raw driver and must not import from the rest of
-  the codebase, so a later refactor can never retroactively change what a historical migration meant.
+  the codebase, so a later refactor can never retroactively change what a historical migration meant. `superjson` is
+  the one exception, and is how a JSON column is read and written; see `src/migrations/_template.ts`.
 - **The prod server is bundled**, so `.ts` migrations cannot be globbed at runtime and are statically imported
   through `src/migrations/registry.ts`.
 
