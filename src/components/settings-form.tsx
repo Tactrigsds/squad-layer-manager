@@ -1043,13 +1043,6 @@ function HelpTip({ text, links }: { text: string; links?: { label: string; ancho
 	)
 }
 
-// which allowed prefix an inline command string uses: the longest one it starts with (so "!!" wins over "!")
-function prefixUsedBy(str: string, prefixes: string[]): string | undefined {
-	let best: string | undefined
-	for (const p of prefixes) if (p && str.startsWith(p) && (best === undefined || p.length > best.length)) best = p
-	return best
-}
-
 // re-point an inline string from `oldPrefix` to `newPrefix`
 function repointPrefix(str: string, oldPrefix: string, newPrefix: string): string {
 	return newPrefix + str.slice(oldPrefix.length)
@@ -1073,16 +1066,20 @@ function PrefixRow({
 	prefix,
 	isDefault,
 	usage,
+	replyToUnknown,
 	onCommit,
 	onSetDefault,
+	onSetReplyToUnknown,
 	onRemove,
 }: {
 	index: number
 	prefix: string
 	isDefault: boolean
 	usage: number
+	replyToUnknown: boolean
 	onCommit: (next: string) => void
 	onSetDefault: () => void
+	onSetReplyToUnknown: (next: boolean) => void
 	onRemove: () => void
 }) {
 	const [draft, setDraft] = React.useState(prefix)
@@ -1118,6 +1115,13 @@ function PrefixRow({
 				<input type="radio" checked={isDefault} onChange={onSetDefault} aria-label={tr.text(CMD_Msgs.makePrefixDefault(index + 1))} />
 				{tr.text(CMD_Msgs.defaultPrefix())}
 			</label>
+			<label
+				className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"
+				title={tr.text(CMD_Msgs.replyToUnknownHint())}
+			>
+				<Checkbox checked={replyToUnknown} onCheckedChange={(v) => onSetReplyToUnknown(v === true)} className="h-3.5 w-3.5" />
+				{tr.text(CMD_Msgs.replyToUnknown())}
+			</label>
 			<span className="whitespace-nowrap text-xs text-muted-foreground">{tr.text(CMD_Msgs.prefixUses(usage))}</span>
 			<Button
 				type="button"
@@ -1144,9 +1148,9 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
 	const rootOnChange = React.useContext(RootOnChangeContext)
 	const root = (useFieldValue(root$) as { defaultPrefix?: string; commands?: CommandsMap } | undefined) ?? {}
-	const prefixes = (useFieldValue(value$) as string[] | undefined) ?? []
+	const prefixes = (useFieldValue(value$) as CMD.PrefixConfig[] | undefined) ?? []
 	const commands = root.commands ?? {}
-	const defaultPrefix = root.defaultPrefix ?? prefixes[0] ?? ''
+	const defaultPrefix = root.defaultPrefix ?? prefixes[0]?.prefix ?? ''
 
 	const [newPrefix, setNewPrefix] = React.useState('')
 
@@ -1159,18 +1163,18 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 	function usageOf(prefix: string): number {
 		let n = 0
 		for (const cmd of Object.values(commands)) {
-			for (const t of cmd?.triggers ?? []) if (prefixUsedBy(CMD.triggerString(t), prefixes) === prefix) n++
+			for (const t of cmd?.triggers ?? []) if (CMD.prefixUsedBy(prefixes, CMD.triggerString(t))?.prefix === prefix) n++
 		}
 		return n
 	}
 
 	function commitEdit(idx: number, next: string) {
-		const oldPrefix = prefixes[idx]
+		const oldPrefix = prefixes[idx].prefix
 		if (!next || next === oldPrefix || !CMD.isValidPrefix(next)) return
-		const nextPrefixes = prefixes.map((p, i) => (i === idx ? next : p))
+		const nextPrefixes = prefixes.map((p, i) => (i === idx ? { ...p, prefix: next } : p))
 		// target by the OLD prefix list so longest-match stays stable while rewriting
 		const nextCommands = mapTriggerStrings(commands, (s) =>
-			prefixUsedBy(s, prefixes) === oldPrefix ? repointPrefix(s, oldPrefix, next) : s,
+			CMD.prefixUsedBy(prefixes, s)?.prefix === oldPrefix ? repointPrefix(s, oldPrefix, next) : s,
 		)
 		writeRoot({
 			allowedPrefixes: nextPrefixes,
@@ -1181,16 +1185,16 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 
 	const newTrimmed = newPrefix.trim()
 	const newInvalid = newTrimmed !== '' && !CMD.isValidPrefix(newTrimmed)
-	const newDuplicate = newTrimmed !== '' && prefixes.includes(newTrimmed)
+	const newDuplicate = newTrimmed !== '' && prefixes.some((p) => p.prefix === newTrimmed)
 	function addPrefix() {
 		if (!newTrimmed || newInvalid || newDuplicate) return
-		writeRoot({ allowedPrefixes: [...prefixes, newTrimmed] })
+		writeRoot({ allowedPrefixes: [...prefixes, { prefix: newTrimmed, replyToUnknown: true }] })
 		setNewPrefix('')
 	}
 
 	function removePrefix(idx: number) {
-		const p = prefixes[idx]
-		if (p === defaultPrefix || usageOf(p) > 0) return
+		const { prefix } = prefixes[idx]
+		if (prefix === defaultPrefix || usageOf(prefix) > 0) return
 		writeRoot({ allowedPrefixes: prefixes.filter((_, i) => i !== idx) })
 	}
 
@@ -1202,13 +1206,17 @@ function AllowedPrefixesField({ value$, reset$ }: OverrideProps) {
 					<PrefixRow
 						// key carries the committed value so the row's uncontrolled draft re-seeds on external change; idx keeps it unique across duplicate prefixes
 						// oxlint-disable-next-line no-array-index-key
-						key={`${idx}:${p}`}
+						key={`${idx}:${p.prefix}`}
 						index={idx}
-						prefix={p}
-						isDefault={p === defaultPrefix}
-						usage={usageOf(p)}
+						prefix={p.prefix}
+						isDefault={p.prefix === defaultPrefix}
+						usage={usageOf(p.prefix)}
+						replyToUnknown={p.replyToUnknown}
 						onCommit={(next) => commitEdit(idx, next)}
-						onSetDefault={() => writeRoot({ defaultPrefix: p })}
+						onSetDefault={() => writeRoot({ defaultPrefix: p.prefix })}
+						onSetReplyToUnknown={(next) =>
+							writeRoot({ allowedPrefixes: prefixes.map((q, i) => (i === idx ? { ...q, replyToUnknown: next } : q)) })
+						}
 						onRemove={() => removePrefix(idx)}
 					/>
 				))}

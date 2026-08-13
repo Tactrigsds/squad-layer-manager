@@ -323,9 +323,10 @@ describe('parseCommand', () => {
 		[id]: { ...configs[id], triggers: [...configs[id].triggers, trigger] },
 	})
 	const msg = (message: string) => ({ message, channelType: 'ChatAdmin' }) as any
+	const prefixes = [{ prefix: '!', replyToUnknown: true }]
 
 	it('passes the words through for a plain trigger', () => {
-		expect(CMD.parseCommand(msg('!timeout Alice 2h griefing hard'), configs)).toMatchObject({
+		expect(CMD.parseCommand(msg('!timeout Alice 2h griefing hard'), configs, prefixes)).toMatchObject({
 			code: 'ok',
 			cmd: 'timeout',
 			tokens: ['Alice', '2h', 'griefing', 'hard'],
@@ -335,21 +336,28 @@ describe('parseCommand', () => {
 	// what a command alias used to do, now reached without a second lookup or a precedence rule
 	it('feeds the words through a trigger that pins arguments', () => {
 		const cfgs = withTrigger('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest2}}' })
-		expect(CMD.parseCommand(msg('!to2h Alice spamming chat'), cfgs)).toMatchObject({
+		expect(CMD.parseCommand(msg('!to2h Alice spamming chat'), cfgs, prefixes)).toMatchObject({
 			code: 'ok',
 			cmd: 'timeout',
 			tokens: ['Alice', '2h', 'spamming', 'chat'],
 		})
-		expect(CMD.parseCommand(msg('!to2h Alice'), cfgs)).toMatchObject({ code: 'ok', tokens: ['Alice', '2h'] })
+		expect(CMD.parseCommand(msg('!to2h Alice'), cfgs, prefixes)).toMatchObject({ code: 'ok', tokens: ['Alice', '2h'] })
 	})
 
 	it('matches triggers case-insensitively and tolerates surrounding whitespace', () => {
-		expect(CMD.parseCommand(msg('  !TIMEOUT   Alice  2h  '), configs)).toMatchObject({ code: 'ok', cmd: 'timeout' })
+		expect(CMD.parseCommand(msg('  !TIMEOUT   Alice  2h  '), configs, prefixes)).toMatchObject({ code: 'ok', cmd: 'timeout' })
 	})
 
 	it('suggests a near miss for an unknown command', () => {
-		const res = CMD.parseCommand(msg('!timeuot Alice'), configs)
+		const res = CMD.parseCommand(msg('!timeuot Alice'), configs, prefixes)
 		expect(res.code).toBe('err:unknown-command')
+		expect(res.msg).toContain('!timeout')
+	})
+
+	// a prefix another bot answers on: its commands are not ours to correct
+	it('offers nothing for an unknown command under a prefix that does not reply', () => {
+		const res = CMD.parseCommand(msg('!timeuot Alice'), configs, [{ prefix: '!', replyToUnknown: false }])
+		expect(res).toEqual({ code: 'err:unknown-command', msg: undefined })
 	})
 })
 
