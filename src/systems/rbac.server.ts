@@ -262,7 +262,9 @@ export const getRbacForPlayer = Instr.spanOp(
 
 		cache.players.set(cacheKey, rbacPromise)
 		if (discordId) {
-			cache.users.set(discordId, rbacPromise)
+			// index the player under its discord id so invalidateUser can drop it, but do not seed the user cache: this
+			// answer resolves admin lists for ctx.serverId only, and handing it to getRbacForDiscordUser would let one
+			// server's admin list (a sandbox's included) speak for the user everywhere.
 			let linked = userPlayerIndex.get(discordId)
 			if (!linked) {
 				linked = new Set()
