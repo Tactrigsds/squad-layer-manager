@@ -87,6 +87,9 @@ export async function ensureInstance(serverId: string, conn: SettingsModels.Sand
 		serverName: conn.serverName,
 		maxPlayers: conn.maxPlayers,
 		password: RCON_PASSWORD,
+		// per-server salt so two sandboxes connecting the same fabricated name mint distinct player ids rather than
+		// collide on the shared players table (keyed by eos id, not server)
+		idSalt: serverId,
 	})
 	await emu.start({ rconPort: 0 })
 	const list = SB.initAdminList()
