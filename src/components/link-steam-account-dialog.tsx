@@ -3,20 +3,15 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
-import * as ZodUtils from '@/lib/zod-utils'
+import * as Zus from '@/lib/zustand'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as USR_Msgs from '@/messages/users.messages'
+import * as CMD from '@/models/command.models'
 import type * as USR from '@/models/users.models'
 import { tr } from '@/systems/messages.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
-
-// keeps a trailing empty slot so the list auto-expands as the user fills the last input
-function withTrailingBlank(ids: string[]): string[] {
-	if (ids.length === 0 || ids[ids.length - 1].trim() !== '') return [...ids, '']
-	return ids
-}
 
 export default function LinkSteamAccountDialog(props: {
 	children: React.ReactNode
@@ -33,9 +28,6 @@ export default function LinkSteamAccountDialog(props: {
 					<DialogDescription>{tr.text(USR_Msgs.steamDialogBlurb())}</DialogDescription>
 				</DialogHeader>
 				{linkedQuery.data?.code === 'ok' ? (
-					// mounts once per dialog open (DialogContent unmounts on close), seeding the draft from the query in
-					// the state initializer: a background refetch (e.g. on window refocus, likely while the user tabs to
-					// Steam to copy their ID) must not clobber their in-progress edits
 					<LinkedSteamAccountsEditor links={linkedQuery.data.links} onClose={() => props.onOpenChange?.(false)} />
 				) : (
 					<p className="text-sm text-muted-foreground">{tr.text(UI_Msgs.loadingEllipsis())}</p>
@@ -45,92 +37,149 @@ export default function LinkSteamAccountDialog(props: {
 	)
 }
 
+function formatRemaining(ms: number): string {
+	const total = Math.max(0, Math.ceil(ms / 1000))
+	return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
 function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.SteamAccountLink[]; onClose: () => void }) {
 	const updateMutation = UsersClient.useUpdateLinkedSteamAccountsMutation()
-	const [ids, setIds] = React.useState<string[]>(() => withTrailingBlank(links.map((l) => l.steamId)))
-	// who assigned each link, for the ones somebody else made. Keyed by the id rather than by row, since rows move.
-	const assignedBy = new Map(links.flatMap((l) => (l.origin === 'assigned' ? [[l.steamId, l.linkedBy?.displayName ?? 'an admin']] : [])))
+	const beginMutation = UsersClient.useBeginSteamLinkVerificationMutation()
+	// the trigger as this installation actually spells it, so a renamed command or a different prefix is what we show
+	const command = Zus.useStore(SettingsClient.PublicSettingsStore, (settings) => {
+		const config = settings?.commands.linkSteamAccount
+		if (!config?.enabled) return null
+		const primary = CMD.primaryTrigger(config)
+		return primary ? CMD.triggerString(primary) : null
+	})
 
-	function setId(idx: number, value: string) {
-		setIds((prev) => withTrailingBlank(prev.map((v, i) => (i === idx ? value : v))))
-	}
-	function removeId(idx: number) {
-		setIds((prev) => withTrailingBlank(prev.filter((_, i) => i !== idx)))
-	}
+	// `linkCount` is what tells us the code was used: the game never answers the browser, but the link landing
+	// invalidates this query, so the list growing is the confirmation
+	const [session, setSession] = React.useState<{ code: string; expiresAt: number; linkCount: number } | null>(null)
+	const [now, setNow] = React.useState(() => Date.now())
+	const landed = session !== null && links.length > session.linkCount
+	const expired = session !== null && now >= session.expiresAt
+	const awaiting = session !== null && !landed && !expired
 
-	const nonEmpty = ids.map((v) => v.trim()).filter(Boolean)
-	const rowError = (value: string): string | null => {
-		const v = value.trim()
-		if (!v) return null
-		if (!ZodUtils.Steam64IdSchema.safeParse(v).success) return 'Must be a 17-digit Steam64 ID'
-		if (nonEmpty.filter((o) => o === v).length > 1) return 'Duplicate'
-		return null
-	}
-	const hasErrors = ids.some((v) => rowError(v) !== null)
+	React.useEffect(() => {
+		if (!awaiting) return
+		const handle = setInterval(() => setNow(Date.now()), 1000)
+		return () => clearInterval(handle)
+	}, [awaiting])
 
-	async function handleSave() {
-		if (hasErrors) return
-		const res = await updateMutation.mutateAsync([...new Set(nonEmpty)])
-		if (res.code === 'ok') {
-			toast(...tr.toast(USR_Msgs.steamAccountsUpdated()))
-			onClose()
-		} else if (res.code === 'err:steam-already-linked') {
-			toast.error(...tr.toast(USR_Msgs.steamIdAlreadyLinked(res.steamId)))
-		} else {
-			toast.error(...tr.toast(USR_Msgs.steamUpdateFailed(res.msg)))
+	async function handleBegin() {
+		const res = await beginMutation.mutateAsync({})
+		if (res.code !== 'ok') {
+			toast.error(...tr.toast(USR_Msgs.linkCodeMintFailed()))
+			return
 		}
+		setNow(Date.now())
+		setSession({ code: res.verificationCode, expiresAt: res.expiresAt, linkCount: links.length })
 	}
+
+	async function handleRemove(steamId: string) {
+		const res = await updateMutation.mutateAsync(links.filter((link) => link.steamId !== steamId).map((link) => link.steamId))
+		if (res.code === 'ok') toast(...tr.toast(USR_Msgs.steamAccountsUpdated()))
+		else toast.error(...tr.toast(USR_Msgs.steamLinkFailed()))
+	}
+
+	const pending = updateMutation.isPending || beginMutation.isPending
 
 	return (
 		<>
-			<div className="space-y-2">
-				{ids.map((value, idx) => {
-					const error = rowError(value)
-					const isTrailingBlank = idx === ids.length - 1 && value.trim() === ''
-					return (
-						// list rows have no stable id; index is the pragmatic key
-						// oxlint-disable-next-line no-array-index-key
-						<div key={idx} className="space-y-1">
-							<div className="flex items-center gap-2">
-								<Input
-									autoComplete="off"
-									inputMode="numeric"
-									placeholder={tr.text(USR_Msgs.steamIdPlaceholder())}
-									value={value}
-									onChange={(e) => setId(idx, e.target.value)}
-									disabled={updateMutation.isPending}
-								/>
-								<Button
-									type="button"
-									size="icon"
-									variant="ghost"
-									className="h-8 w-8 text-destructive shrink-0"
-									disabled={isTrailingBlank || updateMutation.isPending}
-									onClick={() => removeId(idx)}
-								>
-									<Icons.X className="h-4 w-4" />
-								</Button>
+			<div className="space-y-1.5">
+				{links.map((link) => (
+					<div key={link.steamId} className="flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-2">
+						<div className="min-w-0 flex-1">
+							<div className="font-mono text-sm">{link.steamId}</div>
+							<div className="text-xs text-muted-foreground">
+								{link.origin === 'assigned'
+									? tr.text(USR_Msgs.steamLinkedByAdmin(link.linkedBy?.displayName ?? 'an admin'))
+									: tr.text(USR_Msgs.selfLinked())}
 							</div>
-							{error && <p className="text-xs text-destructive pl-1">{error}</p>}
-							{!error && assignedBy.has(value.trim()) && (
-								<p className="pl-1 text-xs text-muted-foreground">
-									{tr.text(USR_Msgs.steamLinkedByAdmin(assignedBy.get(value.trim())!))}
-								</p>
-							)}
 						</div>
-					)
-				})}
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="h-8 w-8 shrink-0 text-destructive"
+							disabled={pending}
+							onClick={() => void handleRemove(link.steamId)}
+						>
+							<Icons.X className="h-4 w-4" />
+						</Button>
+					</div>
+				))}
 			</div>
 
-			<DialogFooter className="flex flex-col sm:flex-row gap-2">
-				<Button variant="outline" onClick={onClose} disabled={updateMutation.isPending}>
-					{tr.text(UI_Msgs.cancel())}
-				</Button>
-				<Button onClick={handleSave} disabled={hasErrors || updateMutation.isPending}>
-					{updateMutation.isPending && <Icons.Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-					{updateMutation.isPending ? tr.text(USR_Msgs.saving()) : tr.text(USR_Msgs.save())}
+			{command !== null && (
+				<div>
+					{awaiting ? (
+						<CodePanel command={command} code={session.code} remaining={session.expiresAt - now} onCancel={() => setSession(null)} />
+					) : (
+						<Button
+							type="button"
+							variant="outline"
+							className="w-full border-dashed"
+							disabled={pending}
+							onClick={() => void handleBegin()}
+						>
+							{expired ? <Icons.RotateCcw className="mr-2 h-4 w-4" /> : <Icons.Plus className="mr-2 h-4 w-4" />}
+							{expired ? tr.text(USR_Msgs.linkCodeRetry()) : tr.text(USR_Msgs.linkAccountAction())}
+						</Button>
+					)}
+					{expired && <p className="mt-1.5 text-xs text-muted-foreground">{tr.text(USR_Msgs.linkCodeExpired())}</p>}
+				</div>
+			)}
+
+			<DialogFooter>
+				<Button variant="outline" onClick={onClose}>
+					{tr.text(UI_Msgs.close())}
 				</Button>
 			</DialogFooter>
 		</>
+	)
+}
+
+function CodePanel({ command, code, remaining, onCancel }: { command: string; code: string; remaining: number; onCancel: () => void }) {
+	const [copied, setCopied] = React.useState(false)
+	const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>(null)
+	const line = `${command} ${code}`
+
+	React.useEffect(
+		() => () => {
+			if (timeoutRef.current) clearTimeout(timeoutRef.current)
+		},
+		[],
+	)
+
+	function handleCopy() {
+		void navigator.clipboard.writeText(line)
+		setCopied(true)
+		if (timeoutRef.current) clearTimeout(timeoutRef.current)
+		timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+	}
+
+	return (
+		<div className="rounded-md border border-border bg-background/60 px-3 py-3">
+			<div className="text-[11px] uppercase tracking-wide text-muted-foreground">{tr.text(USR_Msgs.linkCodeSendLabel())}</div>
+			<div className="mt-2 flex items-center gap-2">
+				<span className="min-w-0 flex-1 break-all font-mono text-lg font-semibold tracking-wide">{line}</span>
+				<Button type="button" size="sm" variant="outline" className="shrink-0" onClick={handleCopy}>
+					{copied ? <Icons.Check className="mr-1.5 h-3.5 w-3.5" /> : <Icons.Copy className="mr-1.5 h-3.5 w-3.5" />}
+					{tr.text(USR_Msgs.linkCodeCopy())}
+				</Button>
+			</div>
+			<div className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
+				<Icons.Loader2 className="h-3.5 w-3.5 animate-spin" />
+				{tr.text(USR_Msgs.linkCodeWaiting())}
+			</div>
+			<div className="mt-2 flex items-center justify-between">
+				<span className="text-xs text-muted-foreground">{tr.text(USR_Msgs.linkCodeExpiresIn(formatRemaining(remaining)))}</span>
+				<Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={onCancel}>
+					{tr.text(UI_Msgs.cancel())}
+				</Button>
+			</div>
+		</div>
 	)
 }

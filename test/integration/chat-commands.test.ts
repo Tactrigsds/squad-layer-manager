@@ -6,6 +6,7 @@ import { makePlayer } from '@/emulator'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, LAYERS, queue, voteQueueItem } from '../harness/arrange'
 import { appEventTypes, latestMatch, savedQueue, warnsTo } from '../harness/inspect'
+import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
 
 // In-game admin commands: the emulator sends chat as a player, the app parses it, authorizes the
 // sender, and acts back over RCON. This is the path the fixture's arrangement API exists for
@@ -621,5 +622,55 @@ describe('switch requests', () => {
 			label: 'a fresh #1 after the roll',
 			timeoutMs: 20_000,
 		})
+	})
+})
+
+// Linking is the one command a player runs before they are anybody: it turns the account they are playing on into
+// the account SLM knows. The test never tells the app which steam id to link, which is the point -- it reads it off
+// the chat sender.
+describe('linking a steam account', () => {
+	const LINK_STEAM_ID = '76561198000000077'
+	const linker = makePlayer({ name: 'link_test_player', steam: LINK_STEAM_ID, teamId: 1 })
+	let orpc: TestOrpcClient
+
+	beforeAll(async () => {
+		orpc = await createOrpcClient(app)
+		app.emu.world.connectPlayer(linker)
+		await app.waitForRosterSync()
+	}, 60_000)
+
+	async function myLinkedSteamIds(): Promise<string[]> {
+		const res = await orpc.users.getMyLinkedSteamAccounts()
+		return res.code === 'ok' ? res.links.map((link) => link.steamId) : []
+	}
+
+	it('refuses a code nobody minted', async () => {
+		app.emu.world.chat(linker, 'ChatAll', cmd('link ZZZZZZ'))
+		await app.waitFor(() => warnsTo(app, linker).some((w) => w.includes('not valid')), {
+			label: 'a rejection of the made-up code',
+			timeoutMs: 20_000,
+		})
+		expect(await myLinkedSteamIds()).not.toContain(LINK_STEAM_ID)
+	})
+
+	it('links the sender of a minted code, and spends it', async () => {
+		const minted = await orpc.users.beginSteamLinkVerification()
+		expect(minted.code).toBe('ok')
+
+		app.emu.world.chat(linker, 'ChatAll', cmd(`link ${minted.verificationCode}`))
+		await app.waitFor(async () => (await myLinkedSteamIds()).includes(LINK_STEAM_ID), {
+			label: 'the sender steam id linked to the caller',
+			timeoutMs: 20_000,
+		})
+
+		const before = warnsTo(app, linker).length
+		app.emu.world.chat(linker, 'ChatAll', cmd(`link ${minted.verificationCode}`))
+		await app.waitFor(
+			() => {
+				const warns = warnsTo(app, linker)
+				return warns.length > before && warns.at(-1)!.includes('not valid')
+			},
+			{ label: 'the second use of the same code refused', timeoutMs: 20_000 },
+		)
 	})
 })

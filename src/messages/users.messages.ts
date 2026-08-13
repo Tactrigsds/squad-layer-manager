@@ -99,6 +99,45 @@ export const steamLinkNotAGuildMember = def((discordId: string) => ({
 
 export const steamLinkFailed = def(() => ({ toast: [t('Failed to update the link')] }))
 
+// Refuses a change that would hand somebody permissions the caller does not hold. Worded for either direction:
+// removing a link takes away exactly what adding it granted, and both take the same standing.
+export const steamLinkWouldEscalate = def(() => ({
+	toast: [t('Not allowed'), { description: t('This link carries permissions you do not have yourself.') }],
+}))
+
+// -------- proving ownership of a steam account in game --------
+
+export const linkCodeInvalid = def('That code is not valid. Codes expire after a few minutes, so start again from the SLM website.')
+
+export const linkCodeSteamTaken = def('This Steam account is already linked to somebody else. An admin has to remove that link first.')
+
+export const linkCodeAccepted = def((discordName: string) => ({
+	warn: t('Steam account linked to {discordName}.', { discordName }),
+}))
+
+export const linkAccountAction = def('Link a Steam account')
+
+export const linkCodeSendLabel = def('Send this in any in-game chat')
+
+// The website never hears back from the game. The dialog waits on the new link showing up in the list, which the
+// rbac invalidation push already drives, so this is all there is to say while it waits.
+export const linkCodeWaiting = def('Waiting for you to send it in game...')
+
+export const linkCodeExpiresIn = def('Expires in {time}', (time: string) => ({ time }))
+
+export const linkCodeExpired = def('That code has expired.')
+
+export const linkCodeRetry = def('Get a new code')
+
+export const linkCodeCopy = def('Copy')
+
+export const linkCodeMintFailed = def(() => ({ toast: [t('Could not start linking')] }))
+
+// self-serve additions go through the in-game code now; the endpoint still takes removals
+export const steamAddNeedsVerification = def((steamId: string) => ({
+	toast: [t('Steam ID must be verified'), { description: t('Link {steamId} by sending a code in game instead.', { steamId }) }],
+}))
+
 // One toast for the whole condition, kept alive and updated in place while it holds, so its id, its infinite
 // duration and its action handler stay at the call site.
 export const otherSessionsActive = def((count: number) => ({
@@ -147,7 +186,7 @@ export const saving = def('Saving...')
 export const steamDialogTitle = def('Linked Steam Accounts')
 
 export const steamDialogBlurb = def(
-	'Link your Steam64 IDs so in-game admin commands (like /kick) recognize you. Add as many as you need. Links an admin made on your behalf are listed here too, and you can remove them.',
+	'Linking a Steam account lets in-game admin commands recognize you. Add as many as you need. Links an admin made on your behalf are listed here too, and you can remove them.',
 )
 
 export const steamIdPlaceholder = def('17-digit Steam64 ID')
