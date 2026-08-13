@@ -2,7 +2,10 @@ import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { makePlayer } from '@/emulator'
+
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { cmd } from '../harness/arrange'
 
 // A failing test is much easier to read as a trace than as a log tail, so the app under test can
 // export its telemetry labelled with the test that produced it (SLM_TEST_OTEL=1, see the README).
@@ -56,5 +59,26 @@ describe('telemetry from the app under test', () => {
 		expect(body).toContain('telemetry > carries the labels')
 		expect(body).toContain(app.otelLabels['slm.test.run_id'])
 		expect(body).toContain(app.serverId)
+	})
+
+	// The switch-request dashboard is only as real as the instruments behind it, and a metric that is
+	// never recorded looks exactly like a metric nobody has triggered yet. Driving one /switch through
+	// the same export path the collector reads is what tells the two apart.
+	it('carries the switch request instruments once the queue has been used', async () => {
+		const a = app.emu.world.connectPlayer(makePlayer({ name: 'otel_switcher', teamId: 1 }))
+		app.emu.world.connectPlayer(makePlayer({ name: 'otel_filler', teamId: 2 }))
+		await app.waitForRosterSync()
+
+		app.emu.world.chat(a, 'ChatAll', cmd('switch'))
+
+		// even teams, so the request queues rather than firing: the gauge has something to report and the
+		// counter has an outcome to attribute
+		await app.waitFor(() => received.join('\n').includes('slm.switch_request.received'), {
+			label: 'the switch request counter exported',
+			timeoutMs: 30_000,
+		})
+		const body = received.join('\n')
+		expect(body).toContain('slm.switch_request.queued')
+		expect(body).toContain('slm.switch_request.outcome')
 	})
 })
