@@ -7,10 +7,10 @@ import type { AppFixture } from './app-fixture'
 // fresh read-only connection, so it sees the app's latest committed write rather than a held snapshot.
 
 // the layerQueue column is superjson-encoded, so the payload sits under `.json`
-export function savedQueue(app: AppFixture): { type: string; itemId: string; layerId?: string }[] {
+export function savedQueue(app: AppFixture, serverId: string = app.serverId): { type: string; itemId: string; layerId?: string }[] {
 	const db = app.readDb()
 	try {
-		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(app.serverId) as { layerQueue: string }
+		const row = db.prepare(`SELECT layerQueue FROM servers WHERE id = ?`).get(serverId) as { layerQueue: string }
 		return JSON.parse(row.layerQueue).json
 	} finally {
 		db.close()

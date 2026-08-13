@@ -217,6 +217,9 @@ export async function createServerEntry(
 		// this way. Omitted = a normal public server.
 		visibility?: SS.ServerVisibility
 		ownerDiscordId?: bigint | null
+		// the saved queue the server boots with. Tutorials seed a scenario's starting queue here rather than
+		// dispatching ops after enable: at creation there is no client, no vote and no sync to reproduce.
+		layerQueue?: SS.ServerState['layerQueue']
 	},
 ) {
 	if (serverRegistry.has(input.id)) {
@@ -234,7 +237,7 @@ export async function createServerEntry(
 		displayName: input.displayName,
 		enabled: false,
 		defaultServer: false,
-		layerQueue: [],
+		layerQueue: input.layerQueue ?? [],
 		teamswaps: null,
 		backburner: [],
 		switchRequests: null,
