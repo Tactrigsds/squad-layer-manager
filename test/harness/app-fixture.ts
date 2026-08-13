@@ -142,6 +142,9 @@ export type AppFixtureOptions = {
 	// servers. Off by default: it costs a second emulator and a second slice, and every other test would rather
 	// have one server whose state it fully controls.
 	secondServer?: boolean | { id?: string; displayName?: string }
+	// scoped servers to seed, each an enabled in-process sandbox owned by a user. A scoped server is delivered to and
+	// usable by only its owner (see ServerVisibility), which is what these exercise.
+	scopedServers?: { id: string; displayName?: string; owner: TestUser }[]
 }
 
 export type AppFixture = {
@@ -438,6 +441,26 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				layerQueue: [],
 				backburner: [],
 				settings: secondSettings,
+			}),
+		)
+	}
+
+	// scoped servers are in-process sandboxes (no external emulator), so they cost far less than secondServer
+	for (const scoped of opts.scopedServers ?? []) {
+		const scopedSettings = SETTINGS.ServerSettingsSchema.parse({ connections: { type: 'sandbox' } })
+		applyTestServerTimings(scopedSettings)
+		scopedSettings.adminLists = [TEST_ADMIN_LIST]
+		await db.insert(Schema.servers).values(
+			superjsonify(Schema.servers, {
+				id: scoped.id,
+				displayName: scoped.displayName ?? scoped.id,
+				enabled: true,
+				defaultServer: false,
+				layerQueue: [],
+				backburner: [],
+				visibility: 'scoped',
+				ownerDiscordId: scoped.owner.discordId,
+				settings: scopedSettings,
 			}),
 		)
 	}
