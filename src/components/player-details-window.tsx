@@ -353,6 +353,8 @@ function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
 			toast.error(...tr.toast(USR_Msgs.steamLinkNotAGuildMember(discordId)))
 		} else if (res.code === 'err:steam-already-linked') {
 			toast.error(...tr.toast(USR_Msgs.steamIdAlreadyLinked(steamId)))
+		} else if (res.code === 'err:permission-denied') {
+			toast.error(...tr.toast(USR_Msgs.steamLinkWouldEscalate()))
 		} else {
 			toast.error(...tr.toast(USR_Msgs.steamLinkFailed()))
 		}
@@ -362,6 +364,7 @@ function PlayerDiscordLink({ steamId }: { steamId: string | undefined }) {
 		if (!steamId) return
 		const res = await remove.mutateAsync({ steamId })
 		if (res.code === 'ok') toast(...tr.toast(USR_Msgs.steamLinkRemoved()))
+		else if (res.code === 'err:permission-denied') toast.error(...tr.toast(USR_Msgs.steamLinkWouldEscalate()))
 		else toast.error(...tr.toast(USR_Msgs.steamLinkFailed()))
 	}
 
