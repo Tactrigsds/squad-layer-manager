@@ -1058,7 +1058,7 @@ export function Comparison(props: {
 					allowedValues={props.allowedEnumValues}
 					onSetAllValuesAllowed={props.onSetAllValuesAllowed}
 					onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
-					column={optionsColumn as LC.EnumColumn}
+					column={optionsColumn}
 					value={value as string | undefined | null}
 					setValue={(v) => setSlotValue(index, v)}
 				/>,
@@ -1125,7 +1125,7 @@ export function Comparison(props: {
 					<InListConfig
 						className={componentStyles}
 						ref={valueBoxRef as React.ForwardedRef<ComboBoxHandle>}
-						column={optionsColumn as LC.EnumColumn}
+						column={optionsColumn}
 						allowedEnumValues={props.allowedEnumValues}
 						restrictValueSize={restrictValueSize}
 						items={items}
@@ -1231,7 +1231,9 @@ function enumOptionExtras(column: LC.EnumColumn, value: string): Partial<ComboBo
 
 export function StringEqConfig<T extends string | null>(props: {
 	value: T | undefined
-	column: LC.EnumColumn
+	// a plain string, because a filter's column arg is free text: a hand-edited or stale filter can name a
+	// column that resolves to nothing, and the editor then offers no options rather than throwing
+	column: string | undefined
 	allowedValues?: T[]
 	onSetAllValuesAllowed?: () => void
 	onSetAllValuesAllowedLabel?: string
@@ -1246,9 +1248,11 @@ export function StringEqConfig<T extends string | null>(props: {
 	onSetAllValuesAllowedRef.current = props.onSetAllValuesAllowed
 	const hasUnlockAction = !!props.onSetAllValuesAllowed
 	const options = React.useMemo(() => {
+		const column = LC.isEnumColumn(props.column) ? props.column : undefined
+		if (!column) return []
 		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
 		const options: ComboBoxOption<string | null>[] = []
-		for (const value of LC.groupByColumnDefaultValues(props.column)) {
+		for (const value of LC.groupByColumnDefaultValues(column)) {
 			const matched = allowedSet?.has(value as T) ?? true
 			// null is a real enum value for some columns (e.g. LayerVersion "no version"); surface it
 			if (value === null) {
@@ -1281,7 +1285,7 @@ export function StringEqConfig<T extends string | null>(props: {
 			}
 			options.push({
 				label,
-				...enumOptionExtras(props.column, value),
+				...enumOptionExtras(column, value),
 				value,
 				disabled: !matched && !hasUnlockAction,
 				sortLast: !matched,
@@ -1294,11 +1298,11 @@ export function StringEqConfig<T extends string | null>(props: {
 			ref={props.ref}
 			allowEmpty
 			className={props.className}
-			title={LC.getColumnDef(props.column)?.displayName ?? props.column}
+			title={(props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
 			disabled={lockOnSingleOption && options.length === 1}
 			value={lockOnSingleOption && options.length === 1 ? options[0].value : props.value}
 			options={options}
-			groupings={enumGroupings(props.column)}
+			groupings={LC.isEnumColumn(props.column) ? enumGroupings(props.column) : []}
 			onSelect={(v) => props.setValue(v as T | undefined)}
 		/>
 	)
@@ -1306,7 +1310,7 @@ export function StringEqConfig<T extends string | null>(props: {
 
 function StringInConfig(props: {
 	values: (string | null)[]
-	column: LC.EnumColumn
+	column: string | undefined
 	allowedValues?: (string | null)[]
 	setValues: React.Dispatch<React.SetStateAction<(string | null)[]>>
 	className?: string
@@ -1317,26 +1321,28 @@ function StringInConfig(props: {
 	emptyLabel?: string
 }) {
 	const options = React.useMemo(() => {
+		const column = LC.isEnumColumn(props.column) ? props.column : undefined
+		if (!column) return []
 		const allowedSet = props.allowedValues ? new Set(props.allowedValues) : null
 		const options: ComboBoxOption<string | null>[] = []
-		for (const value of LC.groupByColumnDefaultValues(props.column)) {
+		for (const value of LC.groupByColumnDefaultValues(column)) {
 			const matched = allowedSet?.has(value) ?? true
 			if (value === null) {
 				options.push({ label: '(none)', value: null, disabled: !matched })
 				continue
 			}
-			options.push({ label: value, ...enumOptionExtras(props.column, value), value, disabled: !matched })
+			options.push({ label: value, ...enumOptionExtras(column, value), value, disabled: !matched })
 		}
 		return options
 	}, [props.column, props.allowedValues])
 	return (
 		<ComboBoxMulti
-			title={props.title ?? LC.getColumnDef(props.column)?.displayName ?? props.column}
+			title={props.title ?? (props.column && LC.getColumnDef(props.column)?.displayName) ?? props.column ?? ''}
 			emptyLabel={props.emptyLabel}
 			ref={props.ref}
 			values={props.values}
 			options={options}
-			groupings={enumGroupings(props.column)}
+			groupings={LC.isEnumColumn(props.column) ? enumGroupings(props.column) : []}
 			onSelect={props.setValues}
 			className={props.className}
 			restrictValueSize={props.restrictValueSize}
@@ -1480,7 +1486,7 @@ function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; n
 function InListConfig(props: {
 	items: F.InListItem[]
 	setItems: (update: React.SetStateAction<F.InListItem[]>) => void
-	column: LC.EnumColumn
+	column: string | undefined
 	allowedEnumValues?: string[]
 	comparableColumns: ComboBoxOption<string>[]
 	allowColumns: boolean

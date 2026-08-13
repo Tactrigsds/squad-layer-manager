@@ -1,4 +1,3 @@
-import stringifyCompact from 'json-stringify-pretty-compact'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -10,19 +9,27 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
+import * as Yaml from '@/lib/yaml'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { BaseZIndexContext, ZI_OFFSETS } from '@/models/zindex'
 import { tr } from '@/systems/messages.client'
 
-import type { SchemaJsonEditorProps } from './schema-json-editor.types'
+import type { SchemaYamlEditorProps } from './schema-yaml-editor.types'
+import YamlCompactSwitch from './yaml-compact-switch'
 
-export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEditorProps<TOut, TIn>) {
+export default function SchemaYamlEditor<TOut, TIn = TOut>(props: SchemaYamlEditorProps<TOut, TIn>) {
 	const editorEltRef = React.useRef<HTMLDivElement>(null)
 	const viewRef = React.useRef<CM.EditorView | null>(null)
 	const lastValidRef = React.useRef<TOut | null>(null)
 	const lastSyncedValueRef = React.useRef<TIn>(props.value)
 	const [errorText, setErrorText] = React.useState('')
 	const [isFullscreen, setIsFullscreen] = React.useState(false)
+	// re-rendering the buffer means parsing it first, so the switch is only offered while that can succeed
+	const [parsable, setParsable] = React.useState(true)
+	const [compact, setCompact] = React.useState(true)
+	// the editor is built once; the effects below read the current mode without tearing it down
+	const compactRef = React.useRef(compact)
+	compactRef.current = compact
 
 	const schemaRef = React.useRef(props.schema)
 	schemaRef.current = props.schema
@@ -34,16 +41,19 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 	const onChange = React.useCallback((value: string) => {
 		let obj: any
 		try {
-			obj = JSON.parse(value)
+			obj = Yaml.parse(value)
 		} catch (err) {
-			if (err instanceof SyntaxError) setErrorText(stringifyCompact(err.message))
+			// a YAMLParseError message already carries the line, column and a code frame
+			setErrorText(err instanceof Error ? err.message : String(err))
+			setParsable(false)
 			lastValidRef.current = null
 			onValidChangeRef.current(null)
 			return
 		}
+		setParsable(true)
 		const res = schemaRef.current.safeParse(obj)
 		if (!res.success) {
-			setErrorText(stringifyCompact(res.error.issues))
+			setErrorText(Yaml.stringifyDoc(res.error.issues))
 			lastValidRef.current = null
 			onValidChangeRef.current(null)
 			return
@@ -64,9 +74,9 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		const schemaJson = CM.toJsonSchema(schemaRef.current)
 		const view = new CM.EditorView({
 			parent: editorEltRef.current!,
-			doc: stringifyCompact(lastSyncedValueRef.current),
+			doc: Yaml.stringifyDoc(lastSyncedValueRef.current, compactRef.current),
 			extensions: [
-				...CM.jsonEditorExtensions(schemaJson),
+				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
 					if (u.docChanged) onChangeDebounced(u.state.doc.toString())
 				}),
@@ -96,7 +106,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		lastSyncedValueRef.current = props.value
 		const parseRes = schemaRef.current.safeParse(props.value)
 		lastValidRef.current = parseRes.success ? parseRes.data : null
-		if (viewRef.current) CM.setDoc(viewRef.current, stringifyCompact(props.value))
+		if (viewRef.current) CM.setDoc(viewRef.current, Yaml.stringifyDoc(props.value, compactRef.current))
 		setErrorText('')
 	}, [props.value])
 
@@ -113,23 +123,30 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 		return () => document.removeEventListener('keydown', onKeyDown, true)
 	}, [isFullscreen])
 
+	function switchCompact(next: boolean) {
+		setCompact(next)
+		const view = viewRef.current
+		if (!view) return
+		CM.setDoc(view, Yaml.stringifyDoc(Yaml.parse(view.state.doc.toString()), next))
+	}
+
 	React.useImperativeHandle(props.ref, () => ({
 		format: () => {
 			const view = viewRef.current!
 			let obj: any
 			try {
-				obj = JSON.parse(view.state.doc.toString())
+				obj = Yaml.parse(view.state.doc.toString())
 			} catch {
 				return
 			}
-			CM.setDoc(view, stringifyCompact(obj))
+			CM.setDoc(view, Yaml.stringifyDoc(obj, compactRef.current))
 		},
 		focus: () => viewRef.current!.focus(),
 		reset: () => {
 			const view = viewRef.current!
 			const parseRes = schemaRef.current.safeParse(lastSyncedValueRef.current)
 			lastValidRef.current = parseRes.success ? parseRes.data : null
-			CM.setDoc(view, stringifyCompact(lastSyncedValueRef.current))
+			CM.setDoc(view, Yaml.stringifyDoc(lastSyncedValueRef.current, compactRef.current))
 			setErrorText('')
 			onValidChangeRef.current(lastValidRef.current)
 		},
@@ -150,7 +167,11 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 				{/* pr-9 keeps the toolbar clear of the fullscreen toggle pinned to the container's corner */}
 				<div className="flex min-h-7 items-center gap-2 pr-9">
 					<h3 className={cn(Typo.Small, 'ml-[45px]')}>{props.label ?? 'Settings'}</h3>
-					{props.toolbar && <div className="ml-auto flex min-w-0 items-center gap-2">{props.toolbar}</div>}
+					{/* the switch sits last so it lands in the same place whether or not the caller gave us a toolbar */}
+					<div className="ml-auto flex min-w-0 items-center gap-2">
+						{props.toolbar}
+						<YamlCompactSwitch compact={compact} disabled={!parsable} onChange={switchCompact} />
+					</div>
 				</div>
 				<Tooltip>
 					<TooltipTrigger asChild>
@@ -172,7 +193,7 @@ export default function SchemaJsonEditor<TOut, TIn = TOut>(props: SchemaJsonEdit
 				<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
 					<div ref={editorEltRef} className="min-h-0 overflow-hidden rounded-md border"></div>
 					<div className="flex min-h-0 flex-col gap-2">
-						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.jsonErrors())}</h3>
+						<h3 className={Typo.Small}>{tr.text(SETTINGS_Msgs.yamlErrors())}</h3>
 						<pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive">
 							{errorText}
 						</pre>

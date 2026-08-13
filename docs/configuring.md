@@ -13,7 +13,7 @@ Use the table of contents on the left to move between sections:
 
 ![toc](configuring_screenshots/toc.png)
 
-Each setting has a _GUI_ / _JSON_ toggle, so you can also edit it as JSON. Settings that most installs never
+Each setting has a _GUI_ / _YAML_ toggle, so you can also edit it as YAML. Settings that most installs never
 change sit in a collapsed _Advanced_ disclosure at the bottom of their section. The table of contents still lists
 them, and navigating to one opens the disclosure it sits in.
 

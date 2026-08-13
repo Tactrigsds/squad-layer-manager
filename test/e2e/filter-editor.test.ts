@@ -19,6 +19,8 @@ test.beforeAll(async () => {
 			filter('raas-harju', 'RAAS on Harju', FB.and([FB.includedIn('raas-only'), FB.eq('Map', 'Harju')])),
 			// named so it sorts first alphabetically: the pool filter has to jump ahead of it on its own merit
 			filter('unused', 'AAS Only', FB.and([FB.eq('Gamemode', 'AAS')])),
+			// its own filter, because the text-mode test runs after `unused` has been deleted out from under it
+			filter('text-mode', 'Text Mode', FB.and([FB.eq('Gamemode', 'AAS')])),
 		],
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
@@ -212,5 +214,71 @@ test.describe('option groupings', () => {
 		await page.keyboard.press('Escape')
 		await expect(facet).toBeVisible()
 		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
+	})
+})
+
+// The builder stays mounted behind the text tab, so it re-renders on every keystroke the text editor accepts.
+// A column name is free-form text, which means a half-typed one is a schema-valid filter the builder has to
+// survive; it used to reach an enum lookup keyed on the closed column set and take the whole page down.
+test.describe('the filter text editor', () => {
+	test('a column name that resolves to nothing does not take the page down', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		await editor.fill(
+			'type: and\nchildren: [ { type: eq, neg: false, args: [ { type: column, column: Gamemod }, { type: value, value: AAS } ] } ]',
+		)
+		await expect(editor).toContainText('Gamemod')
+
+		await page.getByRole('button', { name: 'Builder', exact: true }).click()
+		await expect(page.getByText('This page failed')).toHaveCount(0)
+		// the column keeps its own name in the picker, and the value editor beside it offers nothing to pick
+		await expect(page.getByRole('combobox', { name: 'Column' })).toContainText('Gamemod')
+	})
+
+	test('the compact switch re-renders the buffer, and goes out of reach while it will not parse', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		const compact = page.getByRole('switch', { name: 'Compact' })
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		// the seeded filter is one condition, which compact keeps on a single flow line
+		await expect(editor).toContainText('{ type: eq')
+
+		await compact.click()
+		await expect(compact).not.toBeChecked()
+		await expect(editor).not.toContainText('{ type: eq')
+		await expect(editor).toContainText('Gamemode')
+
+		// switching back means parsing the buffer, so an unparsable one has to take the switch out of reach
+		await editor.fill('type: and\nchildren: [')
+		await expect(compact).toBeDisabled()
+		await editor.fill('type: and\nchildren: []')
+		await expect(compact).toBeEnabled()
+	})
+
+	test('tab indents by two spaces instead of leaving the editor', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		await editor.fill('type: and\nchildren: []')
+		await editor.click()
+		await page.keyboard.press('ControlOrMeta+End')
+
+		// the raw text of the line, because toContainText normalizes whitespace and so cannot tell two spaces
+		// from the tab character YAML rejects as indentation
+		const indented = () => editor.locator('.cm-line').nth(1).textContent()
+
+		await page.keyboard.press('Tab')
+		await expect(editor).toBeFocused()
+		await expect.poll(indented).toBe('  children: []')
+
+		await page.keyboard.press('Shift+Tab')
+		await expect.poll(indented).toBe('children: []')
 	})
 })
