@@ -9,6 +9,7 @@ import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SRQ_Msgs from '@/messages/switch-requests.messages'
 import * as TSW_Msgs from '@/messages/teamswaps.messages'
+import * as USR_Msgs from '@/messages/users.messages'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as BB from '@/models/backburner.models'
@@ -709,6 +710,21 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const res = await LayerQueue.getSlmUpdatesEnabled(h.ctx)
 		await h.reply(SS_Msgs.slmUpdatesStatus(res.enabled, res.disabledByIngameVote))
 		return { code: 'ok' }
+	},
+
+	linkSteamAccount: async (h, args) => {
+		const res = await Users.consumeSteamLinkCode(h.ctx, { code: args.code, steamId: BigInt(h.sender.ids.steam!) })
+		switch (res.code) {
+			case 'err:invalid-code':
+				return await h.error('invalid-code', h.ctx.tr.text(USR_Msgs.linkCodeInvalid()))
+			case 'err:steam-already-linked':
+				return await h.error('steam-already-linked', h.ctx.tr.text(USR_Msgs.linkCodeSteamTaken()))
+			case 'ok':
+				await h.reply(USR_Msgs.linkCodeAccepted(res.displayName))
+				return { code: 'ok' }
+			default:
+				assertNever(res)
+		}
 	},
 
 	requestFeedback: async (h, args) => {

@@ -189,21 +189,7 @@ export const getRbacForDiscordUser = Instr.spanOp(
 		if (cached) return await cached
 		const playerIds = await User.findUserPlayerIds(ctx, discordUserId)
 
-		const userRbacPromise = (async () => {
-			const ingameRolesPromise = (async () => {
-				return resolveAdminListAssignments(ctx, playerIds, await AdminList.getAllLists(ctx))
-			})()
-			const discordRolesPromise = resolveDiscordAssignments(ctx, discordUserId)
-			const baseRoles = RBAC.Role.merge(await ingameRolesPromise, await discordRolesPromise)
-			const inferredRoles = await resolveInferredRoleAssignments(ctx, baseRoles, discordUserId)
-			const roles = RBAC.Role.merge(baseRoles, inferredRoles)
-			const perms = permsFromRoles(roles)
-			if (discordUserId) {
-				const superUserPerms = await resolveSuperUserPerms(discordUserId)
-				RBAC.addTracedPerms(perms, ...superUserPerms)
-			}
-			return { roles, perms }
-		})()
+		const userRbacPromise = resolveUserRbac(ctx, discordUserId, playerIds)
 
 		cache.users.set(discordUserId, userRbacPromise)
 		// The linked players are indexed (so invalidating this user drops their entries) but no longer seeded with this
@@ -287,6 +273,56 @@ export const getRbacForPlayer = Instr.spanOp(
 		return await rbacPromise
 	},
 )
+
+// What a discord identity resolves to from a given set of linked players. Takes the ids rather than reading them,
+// so a set that is not (yet) the stored one can be resolved: tryDenySteamLinkEscalation asks what a link would do.
+async function resolveUserRbac(
+	ctx: C.Db & CS.AbortSignal,
+	discordUserId: bigint,
+	playerIds: SM.PlayerIds.IdQuery<'steam'>[],
+): Promise<RBAC.UserRbac> {
+	const ingameRolesPromise = (async () => {
+		return resolveAdminListAssignments(ctx, playerIds, await AdminList.getAllLists(ctx))
+	})()
+	const discordRolesPromise = resolveDiscordAssignments(ctx, discordUserId)
+	const baseRoles = RBAC.Role.merge(await ingameRolesPromise, await discordRolesPromise)
+	const inferredRoles = await resolveInferredRoleAssignments(ctx, baseRoles, discordUserId)
+	const roles = RBAC.Role.merge(baseRoles, inferredRoles)
+	const perms = permsFromRoles(roles)
+	const superUserPerms = await resolveSuperUserPerms(discordUserId)
+	RBAC.addTracedPerms(perms, ...superUserPerms)
+	return { roles, perms }
+}
+
+// Linking somebody else's steam account to their discord account is a grant of whatever that steam id is an admin
+// for, so it has to be held by whoever makes it. Weighed against what the link *changes* rather than everything the
+// subject holds, so an admin can still fix a link on somebody who outranks them for unrelated reasons.
+//
+// Linking and unlinking move the same set of permissions in opposite directions, which is why there is one check and
+// no direction argument: the delta is the same either way, and neither handing it over nor taking it away is
+// something a caller who does not hold it may do.
+export async function tryDenySteamLinkEscalation(
+	ctx: C.Db & USR.Ctx.Id & CS.AbortSignal,
+	subjectDiscordId: bigint,
+	steamId: bigint,
+): Promise<RBAC.PermissionDeniedResponse | undefined> {
+	const steam = steamId.toString()
+	const linked = await User.findUserPlayerIds(ctx, subjectDiscordId)
+	const without = linked.filter((ids) => ids.steam !== steam)
+	const withLink = [...without, { steam }]
+
+	const [withoutPerms, withPerms] = await Promise.all([
+		resolveUserRbac(ctx, subjectDiscordId, without).then((rbac) => RBAC.fromTracedPermissions(rbac.perms)),
+		resolveUserRbac(ctx, subjectDiscordId, withLink).then((rbac) => RBAC.fromTracedPermissions(rbac.perms)),
+	])
+	const delta = withPerms.filter((perm) => !RBAC.permSubsumedBy(perm, withoutPerms))
+	if (delta.length === 0) return
+
+	const actorPerms = await getUserPermissions(ctx)
+	const failures = delta.filter((perm) => !RBAC.permSubsumedBy(perm, actorPerms)).map((perm) => RBAC.describePermit(perm))
+	if (failures.length === 0) return
+	return { code: 'err:permission-denied', checkType: 'all', failures }
+}
 
 // Resolved against a named set of lists rather than "the admin list". The two callers ask different questions: a
 // player is on one server, so only that server's lists may speak for them -- that is what keeps a sandbox's admins

@@ -1067,6 +1067,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 					let layerStatus: SM.LayersStatusResExt | undefined
 					let layersData: SM.LayersStatusExt | undefined
 					if (connected) {
+						Users.invalidatePendingSteamLinkCodes()
 						layerStatus = await ctx.squadRcon.layersStatus.get({ ...ctx, rcon })
 						if (layerStatus.code !== 'ok') return layerStatus
 						layersData = layerStatus.data
