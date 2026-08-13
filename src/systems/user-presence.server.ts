@@ -267,7 +267,10 @@ export function setup() {
 	// dispatches an op that both updates the set and collapses any presence sitting on that server to null
 	const enabledServersSub = SettingsSys.publicSettings$
 		.pipe(
-			Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken).map((s) => s.id)),
+			// scoped servers stay out of presence entirely: a scoped server is a solo tutorial, so there is nobody to be
+			// present to, and keeping it out of enabledServers makes gateActivityToEnabled collapse any activity on it to
+			// null rather than broadcast the owner (and the scoped server id) to everyone.
+			Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken && s.visibility !== 'scoped').map((s) => s.id)),
 			Rx.distinctUntilChanged((a, b) => a.length === b.length && a.every((id) => b.includes(id))),
 		)
 		.subscribe((serverIds) => {

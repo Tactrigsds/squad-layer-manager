@@ -1157,16 +1157,16 @@ export namespace Grants {
 		const hasSensitivePaths = dottedPaths.some(isSensitive)
 
 		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('all', [
-			(perms) => {
-				const access = RBAC.serverSettingsWriteAccess(perms, serverId)
+			(perms, scoped) => {
+				const access = RBAC.serverSettingsWriteAccess(perms, serverId, scoped)
 				const missing = nonSensitivePaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
 				if (missing.length === 0) return
 				return `server-settings:write missing paths: ${missing.join(', ')}`
 			},
 			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
 			hasSensitivePaths
-				? (perms) => {
-						if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
+				? (perms, scoped) => {
+						if (RBAC.canWriteSensitiveServerSettings(perms, serverId, scoped)) return
 						return `server-settings:write-sensitive on ${serverId}`
 					}
 				: undefined,

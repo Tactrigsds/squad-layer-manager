@@ -24,7 +24,7 @@ export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	// loose overlap check: the panel stays editable if any path under its pool subtree is writable (individual
 	// out-of-grant edits are still rejected server-side)
-	const access = RBAC.serverSettingsWriteAccess(perms, serverId)
+	const access = RBAC.serverSettingsWriteAccess(perms, serverId, RBAC.NO_SCOPED_SERVERS)
 	const writeDenied = RBAC.settingsPathOverlaps(access, base)
 		? null
 		: RBAC.permissionDenied('all', [`server-settings:write on ${RBAC.dottedSettingsPath(base)}`])

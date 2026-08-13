@@ -10,6 +10,11 @@ import type * as USR from '@/models/users.models'
 export const ServerIdSchema = z.string().min(1).max(256)
 export type ServerId = z.infer<typeof ServerIdSchema>
 
+// A 'scoped' server is delivered to and usable by only its owner (ownerDiscordId); tutorials create one emulated
+// server per user this way. 'public' is every other server. See RBAC scoping in rbac.models/rbac.server.
+export const ServerVisibilitySchema = z.enum(['public', 'scoped'])
+export type ServerVisibility = z.infer<typeof ServerVisibilitySchema>
+
 export const SavedTeamswapsSchema = z.object({
 	swaps: TSW.TeamswapCollectionSchema,
 	matchHistoryEntryId: z.number().int(),
@@ -40,6 +45,8 @@ export const ServerStateSchema = z.object({
 		.prefault(null),
 	backburner: BB.BackburnerListSchema.prefault([]),
 	switchRequests: SavedSwitchRequestsSchema.nullable().prefault(null),
+	visibility: ServerVisibilitySchema.prefault('public'),
+	ownerDiscordId: z.bigint().nullable().prefault(null),
 	settings: SETTINGS.ServerSettingsSchema,
 })
 
