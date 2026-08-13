@@ -135,10 +135,10 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 
 	// the trigger that matched decides the arguments: a plain one takes them as typed, one with an args template
 	// pins some of them and feeds the rest through its placeholders (see CMD.parseCommand)
-	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands)
+	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.allowedPrefixes)
 	if (parseRes.code === 'err:unknown-command') {
-		// just don't respond to unknown commands from non-admins
-		if (!sender.isAdmin) return
+		// nothing to say to a non-admin, or under a prefix whose unknown commands we stay quiet about
+		if (!sender.isAdmin || !parseRes.msg) return
 		return await chat.error('unknown-command', parseRes.msg)
 	}
 

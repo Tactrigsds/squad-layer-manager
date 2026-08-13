@@ -546,6 +546,27 @@ export function isValidPrefix(s: string): boolean {
 }
 export const PrefixSchema = z.string().min(1).regex(ASCII_SPECIAL, PREFIX_ERROR)
 
+export const PrefixConfigSchema = z.object({
+	prefix: PrefixSchema,
+	replyToUnknown: z
+		.boolean()
+		.prefault(true)
+		.describe(
+			'Tell an admin who types an unrecognised command with this prefix that it is unrecognised. Turn it off for a prefix another ' +
+				"bot also answers on: there an unrecognised command is usually that bot's, not a typo of one of ours.",
+		),
+})
+export type PrefixConfig = z.infer<typeof PrefixConfigSchema>
+
+// which allowed prefix a command string uses: the longest one it starts with, so "!!" wins over "!"
+export function prefixUsedBy<T extends { prefix: string }>(prefixes: readonly T[], str: string): T | undefined {
+	let best: T | undefined
+	for (const p of prefixes) {
+		if (p.prefix && str.startsWith(p.prefix) && (best === undefined || p.prefix.length > best.prefix.length)) best = p
+	}
+	return best
+}
+
 // declared triggers are bare (`help`); the stored ones carry a prefix (`!help`), which is attached by
 // seedCommandConfigs using the installation's configured defaultPrefix
 function prefixed(prefix: string, config: CommandConfig): CommandConfig {
@@ -641,13 +662,18 @@ export type CommandArgs<Id extends CommandId> = ResolvedArgs<CommandDeclaration<
 // Trigger strings carry their own prefix (`!help`), so the whole first word is matched as-is. A trigger with an args
 // template feeds the words after it through that template; a plain one passes them straight through, which is the
 // same thing with nothing pinned.
-export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs) {
+export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs, prefixes: readonly PrefixConfig[]) {
 	const words = msg.message
 		.trim()
 		.split(/\s+/)
 		.filter((w) => w !== '')
 	const match = matchCommandText(configs, words[0] ?? '')
 	if (!match) {
+		// a prefix shared with another bot has nothing to say about a word we don't recognise: it is far more likely
+		// to be that bot's command than a typo of ours
+		if (prefixUsedBy(prefixes, words[0] ?? '')?.replyToUnknown === false) {
+			return { code: 'err:unknown-command' as const, msg: undefined }
+		}
 		const allTriggerStrings = Obj.objValues(configs)
 			.filter((c) => chatAllowed(c.allowedChats, msg.channelType))
 			.flatMap((c) => c.triggers.map(triggerString))

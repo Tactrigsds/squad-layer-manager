@@ -172,6 +172,12 @@ export const defaultPrefix = def('Default')
 
 export const prefixUses = def('{count, plural, one {# use} other {# uses}}', (count: number) => ({ count }))
 
+export const replyToUnknown = def('Reply to unknown')
+
+export const replyToUnknownHint = def(
+	'Warn an admin who types an unrecognised command with this prefix. Turn it off for a prefix another bot also answers on.',
+)
+
 // why the remove button is disabled, in the two ways it can be
 export const defaultPrefixNotRemovable = def('The default prefix cannot be removed')
 
