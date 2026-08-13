@@ -808,6 +808,9 @@ export const PublicServerSettingsSchema = z.object({
 				'"de". Falls back to English wherever a message has not been translated. Does not affect the web app, which follows each ' +
 				"viewer's own browser.",
 		),
+	navLinks: NavLinkSchema.prefault([]).describe(
+		'Links shown in the navbar links dropdown while this server is selected, below the global ones.',
+	),
 	adminLists: z
 		.array(SM.AdminListIdSchema)
 		.prefault([])
@@ -936,7 +939,6 @@ export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 			'tailing the log over SFTP and dialing RCON over the network. Server agent: slm-server-agent runs next to the server and ' +
 			"handles both, so the RCON password lives in the agent's config rather than here.",
 	),
-	navLinks: NavLinkSchema.optional().describe('Server-specific links to display in the navbar dropdown menu'),
 })
 
 export type ServerSettings = z.infer<typeof ServerSettingsSchema>
