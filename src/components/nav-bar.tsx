@@ -101,6 +101,7 @@ export default function NavBar() {
 				: undefined,
 		[selectedServer],
 	)
+	const serverNavLinks = Zus.useStore(squadServerKey, (s) => s?.settings.saved.navLinks)
 
 	const showSettingsLink = Zus.useStore_Susp(
 		UsersClient.loggedInUserQueryOptions,
@@ -293,7 +294,7 @@ export default function NavBar() {
 				)}
 				{isOnServerDashboard && squadServerKey && <ServerActionsDropdown stores={{ squadServer: squadServerKey }} />}
 				{isOnServerDashboard && squadServerKey && <JoinServerButton serverId={squadServerKey.serverId} />}
-				{settings && <NavLinksDropdown globalLinks={settings.navLinks} />}
+				{settings && <NavLinksDropdown globalLinks={settings.navLinks} serverLinks={serverNavLinks} />}
 				{isOnServerDashboard &&
 					selectedServer &&
 					settings &&
