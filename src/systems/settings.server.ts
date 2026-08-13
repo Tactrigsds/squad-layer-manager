@@ -264,6 +264,21 @@ export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	return { code: 'ok' as const }
 }
 
+// refreshes the fields ServerEntry mirrors out of a server's settings. Runs on every settings write, not just at load:
+// the mirror is read on paths that never touch the db, so a missed refresh serves the boot value for the rest of the process.
+function syncServerEntry(serverId: SS.ServerId, settings: SETTINGS.ServerSettings) {
+	const entry = serverRegistry.get(serverId)
+	if (!entry) return
+	const adminListsChanged = !Obj.deepEqual(entry.adminLists, settings.adminLists)
+	const sandbox = settings.connections.type === 'sandbox'
+	if (!adminListsChanged && entry.sandbox === sandbox) return
+	entry.adminLists = settings.adminLists
+	entry.sandbox = sandbox
+	// permissions resolved against the lists this server used to name are cached per player
+	if (adminListsChanged) Rbac.invalidateAll()
+	settings$.next({ scope: 'registry' })
+}
+
 // ============================== per-server settings ==============================
 
 export type SettingsUpdate = Readonly<[SETTINGS.PublicServerSettings, SS.LQStateUpdate['source'] | null]>
@@ -379,7 +394,10 @@ export async function updateServerSettings(
 		.set(superjsonify(Schema.servers, { settings: sealConnections(newSettings) }))
 		.where(E.eq(Schema.servers.id, ctx.serverId))
 
-	ctx.tx.unlockTasks.push(() => settings$.next({ scope: 'server', serverId: ctx.serverId, settings: newSettings, source }))
+	ctx.tx.unlockTasks.push(() => {
+		syncServerEntry(ctx.serverId, newSettings)
+		settings$.next({ scope: 'server', serverId: ctx.serverId, settings: newSettings, source })
+	})
 }
 
 // reads the raw, unvalidated settings blob so an admin can repair it if it fails schema validation (e.g. after a breaking change)
@@ -389,12 +407,9 @@ export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
 	return { code: 'ok' as const, settings: unsuperjsonify(Schema.servers, row).settings }
 }
 
-// settings fields that are baked into a running managed server at setup time and never refreshed afterwards. `connections` requires a full
-// destroy+init restart to take effect; the admin-list fields only need the adminList resource invalidated (see
-// SquadServer.invalidateAdminList) since it now reads them fresh on every fetch.
+// global settings fields whose edit makes an already-fetched admin list wrong (its source, or the permissions that mark
+// an admin in it), so the lists have to be refetched rather than just re-selected
 const ADMIN_LIST_AFFECTING_FIELDS = ['adminLists'] as const
-
-export async function updateRawServerSettings(ctx: C.Db & USR.Ctx & CS.AbortSignal, serverId: SS.ServerId, rawSettings: unknown) {}
 
 // ============================== unified settings bus ==============================
 
@@ -800,9 +815,12 @@ const adminRouter = {
 			// a repair has no valid prior state to diff against, so every field reads as newly set
 			const changes = diffSettings(priorSettings ?? {}, parseRes.data)
 
-			entry.broken = false
-			entry.sandbox = parseRes.data.connections.type === 'sandbox'
-			settings$.next({ scope: 'registry' })
+			// the settings-derived fields of the entry are mirrored by updateServerSettings above; `broken` is not one of
+			// them, and this is the only path that can clear it
+			if (wasBroken) {
+				entry.broken = false
+				settings$.next({ scope: 'registry' })
+			}
 			log.info(wasBroken ? 'Server %s settings repaired' : 'Server %s settings updated', serverId)
 
 			if (connectionsChanged) {
