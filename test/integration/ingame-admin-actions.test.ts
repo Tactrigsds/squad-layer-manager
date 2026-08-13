@@ -6,6 +6,7 @@ import * as FB from '@/models/filter-builders'
 import { type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
 import { warnsTo as warnsFrom } from '../harness/inspect'
+import { createOrpcClient } from '../harness/orpc-client'
 
 // Everything an in-game admin does through chat, and everything that stops them. One roster of admins
 // and targets carries both halves: the action commands (warn/kick and their templated triggers, squad
@@ -299,5 +300,28 @@ describe('shownext warnings', () => {
 
 		await app.waitFor(() => warnsTo(bystander).length > 0, { label: 'a reply to shownext', timeoutMs: 20_000 })
 		expect(warnsTo(bystander).join('\n')).not.toContain('Gorodok is discouraged')
+	})
+})
+
+// Last, because it takes the server's admin lists away and nothing after it would still have an in-game admin.
+describe("editing the server's admin lists", () => {
+	// which lists speak for a server is mirrored onto its registry entry, so an in-game permission check never reads the
+	// db for it. The mirror was written only at boot, so an edit here did not take effect until the process restarted --
+	// and the permissions already resolved against the old lists are cached per player.
+	it('takes effect without a restart', async () => {
+		const client = await createOrpcClient(app)
+		const res = await client.settings.server.updateSettings({ serverId: app.serverId, ops: [{ path: ['adminLists'], value: [] }] })
+		// the handler returns a result only on failure
+		expect(res).toBeUndefined()
+
+		// the same command the ingame admin was granted above, now reaching them through no list at all
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(ingameAdmin, 'ChatAdmin', cmd('timeout target_reserve 30m'))
+
+		await app.waitFor(() => warnsTo(ingameAdmin).some((w) => w.includes('Permission denied')), {
+			label: 'the permission-denied warn to the ingame admin',
+			timeoutMs: 20_000,
+		})
+		expect(app.emu.world.players.has(targetReserve.eos)).toBe(true)
 	})
 })
