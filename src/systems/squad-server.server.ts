@@ -1107,7 +1107,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 									message: event.message,
 									time: event.time,
 								})
-								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some((prefix) => event.message.startsWith(prefix))) {
+								if (Settings.GLOBAL_SETTINGS.allowedPrefixes.some(({ prefix }) => event.message.startsWith(prefix))) {
 									opts.push(
 										Commands.handleCommand(ctx, event).then((res) => {
 											if (res && res?.code !== 'ok') log.error(res)

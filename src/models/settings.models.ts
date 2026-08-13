@@ -352,9 +352,9 @@ export const GlobalSettingsSchema = z
 		),
 		warnOnSlmStart: z.boolean().prefault(false).describe('Warn all in-game admins when SLM starts or restarts.'),
 		allowedPrefixes: z
-			.array(CMD.PrefixSchema)
+			.array(CMD.PrefixConfigSchema)
 			.min(1)
-			.prefault([CMD.DEFAULT_PREFIX])
+			.prefault([{ prefix: CMD.DEFAULT_PREFIX, replyToUnknown: true }])
 			.describe('Prefixes an in-game command may start with. Every command trigger must begin with one of these.'),
 		defaultPrefix: CMD.PrefixSchema.prefault(CMD.DEFAULT_PREFIX).describe(
 			'The allowed prefix that commands introduced by future SLM versions are seeded with',
@@ -412,29 +412,30 @@ export const GlobalSettingsSchema = z
 		),
 	})
 	.superRefine((val, ctx) => {
-		const allowedPrefixes = val.allowedPrefixes ?? [CMD.DEFAULT_PREFIX]
+		const allowedPrefixes = val.allowedPrefixes ?? [{ prefix: CMD.DEFAULT_PREFIX, replyToUnknown: true }]
+		const prefixList = allowedPrefixes.map((p) => p.prefix).join(', ')
 		const seenPrefix = new Set<string>()
-		allowedPrefixes.forEach((p, i) => {
-			if (seenPrefix.has(p)) {
-				ctx.addIssue({ code: 'custom', message: `Duplicate prefix "${p}"`, path: ['allowedPrefixes', i] })
+		allowedPrefixes.forEach(({ prefix }, i) => {
+			if (seenPrefix.has(prefix)) {
+				ctx.addIssue({ code: 'custom', message: `Duplicate prefix "${prefix}"`, path: ['allowedPrefixes', i, 'prefix'] })
 			}
-			seenPrefix.add(p)
+			seenPrefix.add(prefix)
 		})
 		// commands seeded for future SLM versions take defaultPrefix, so it has to be one an admin actually accepts;
 		// otherwise the next release's new commands would fail this schema on load and refuse to boot
 		const defaultPrefix = val.defaultPrefix ?? CMD.DEFAULT_PREFIX
-		if (!allowedPrefixes.includes(defaultPrefix)) {
+		if (!seenPrefix.has(defaultPrefix)) {
 			ctx.addIssue({
 				code: 'custom',
-				message: `Default prefix "${defaultPrefix}" must be one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
+				message: `Default prefix "${defaultPrefix}" must be one of the allowed prefixes (${prefixList})`,
 				path: ['defaultPrefix'],
 			})
 		}
-		const hasAllowedPrefix = (s: string) => allowedPrefixes.some((p) => s.startsWith(p))
+		const hasAllowedPrefix = (s: string) => allowedPrefixes.some((p) => s.startsWith(p.prefix))
 		const prefixIssue = (s: string, noun: string, path: (string | number)[]) => {
 			ctx.addIssue({
 				code: 'custom',
-				message: `${noun} "${s}" must start with one of the allowed prefixes (${allowedPrefixes.join(', ')})`,
+				message: `${noun} "${s}" must start with one of the allowed prefixes (${prefixList})`,
 				path,
 			})
 		}
