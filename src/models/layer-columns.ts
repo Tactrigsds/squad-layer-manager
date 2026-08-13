@@ -239,6 +239,12 @@ export type GroupByColumn = (typeof GROUP_BY_COLUMNS)[number]
 // virtual vehicle columns
 export type EnumColumn = GroupByColumn | VehicleColumn
 
+// a filter's column arg is free-form text, so anything reading a column out of filter data has to narrow before
+// handing it to the enum helpers below, all of which take the closed set
+export function isEnumColumn(column: string | undefined): column is EnumColumn {
+	return !!column && ((GROUP_BY_COLUMNS as readonly string[]).includes(column) || (VEHICLE_COLUMNS as readonly string[]).includes(column))
+}
+
 export function groupByColumnDefaultValues(column: EnumColumn, components = L.StaticLayerComponents) {
 	switch (column) {
 		case 'Vehicle_1':
