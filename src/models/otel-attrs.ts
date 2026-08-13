@@ -107,6 +107,24 @@ export namespace Teamswap {
 	export const FAILURE_REASON = 'slm.teamswap.failure_reason'
 }
 
+export namespace SwitchRequest {
+	export const QUEUED = 'slm.switch_request.queued'
+	export const SWITCHING = 'slm.switch_request.switching'
+	export const RECEIVED = 'slm.switch_request.received'
+	export const FULFILLED = 'slm.switch_request.fulfilled'
+	export const DROPPED = 'slm.switch_request.dropped'
+	export const WAIT = 'slm.switch_request.wait'
+	// how a /switch was answered: swapped on the spot, queued, or turned away
+	export const OUTCOME = 'slm.switch_request.outcome'
+	export type Outcome = 'immediate' | 'queued' | 'already-queued' | 'no-team' | 'swap-pending'
+	// which drain rule fulfilled a request. 'admin' is the dashboard's switch-now, which is not a rule
+	export const VIA = 'slm.switch_request.via'
+	export type Via = 'mutual' | 'capacity' | 'connector' | 'admin'
+	export const REASON = 'slm.switch_request.reason'
+	export type Reason = 'cancelled' | 'disconnected' | 'fulfilled-externally' | 'failed' | 'new-game'
+	export const FROM_TEAM = 'slm.switch_request.from_team'
+}
+
 export namespace UserPresence {
 	export const OP_CODE = 'slm.user_presence.op.code'
 	export const OP_ID = 'slm.user_presence.op.id'

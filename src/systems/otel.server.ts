@@ -85,7 +85,10 @@ export function setupOtel() {
 		}),
 		traceExporter: traceExporter,
 		spanProcessor: new tracing.BatchSpanProcessor(traceExporter),
-		metricReader: new PeriodicExportingMetricReader({ exporter: metricExporter }),
+		metricReader: new PeriodicExportingMetricReader({
+			exporter: metricExporter,
+			exportIntervalMillis: ENV.OTEL_METRIC_EXPORT_INTERVAL,
+		}),
 		logRecordProcessors: [new logs.BatchLogRecordProcessor({ exporter: logExporter })],
 		instrumentations: [
 			getNodeAutoInstrumentations({

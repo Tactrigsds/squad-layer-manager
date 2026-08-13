@@ -73,6 +73,9 @@ holds fewer than two samples, so every `rate()` panel renders No data while the 
   runtime health (event loop, heap, GC). It is backed by the `slm.op.duration` histogram recorded in
   `spanOp`'s `finally` block (`src/server/instrumentation.ts`), so **a new `spanOp` appears here with
   no extra wiring**.
+- **SLM / Switch requests** (`slm-switch-requests`) is the `/switch` queue: depth by direction, request
+  outcomes, which rule drained each fulfilment, and how long players waited. Backed by the counters and
+  wait histogram in `src/systems/switch-requests.server.ts`.
 - **SLM / Logs** (`slm-logs`) is the log view: volume by severity, and a log panel filtered by severity
   and module.
 

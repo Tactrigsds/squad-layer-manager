@@ -103,7 +103,7 @@ export type AppFixtureOptions = {
 	label?: string
 	// export telemetry for this app regardless of SLM_TEST_OTEL, optionally somewhere other than the
 	// configured collector
-	otel?: { endpoint?: string }
+	otel?: { endpoint?: string; metricIntervalMs?: number }
 	// extra users to seed beyond the default admin; only the admin gets superuser perms
 	users?: TestUser[]
 	// steam ids linked to the seeded admin, so an in-game player sending a chat command resolves to
@@ -500,6 +500,9 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				OTLP_COLLECTOR_ENDPOINT: opts.otel?.endpoint ?? process.env.OTLP_COLLECTOR_ENDPOINT ?? 'http://localhost:4318',
 				// a test is short and rare: sample everything, or the one trace you want won't be there
 				OTEL_TRACE_SAMPLE_RATIO: '1',
+				// the 60s default is longer than most tests live, so a test that asserts on a metric would
+				// always time out before the first export
+				OTEL_METRIC_EXPORT_INTERVAL: String(opts.otel?.metricIntervalMs ?? 2000),
 				OTEL_RESOURCE_ATTRIBUTES: Object.entries(otelLabels)
 					.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
 					.join(','),
