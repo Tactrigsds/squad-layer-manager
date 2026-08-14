@@ -448,11 +448,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 				setShowWarnings={setShowWarnings}
 				stores={props.stores}
 			/>
-			<CardHeader
-				data-tour="queue-panel"
-				ref={headerRef}
-				className={cn('flex flex-row items-center justify-between bg-background', props.className)}
-			>
+			<CardHeader ref={headerRef} className={cn('flex flex-row items-center justify-between bg-background', props.className)}>
 				<span className="flex items-center space-x-1 w-full">
 					<span className="flex flex-col gap-0.5">
 						<span className="flex items-center space-x-1">
