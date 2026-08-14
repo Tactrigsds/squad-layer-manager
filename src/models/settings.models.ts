@@ -720,6 +720,10 @@ export const SandboxConnectionSchema = z.object({
 		.optional()
 		.describe('ms in WaitingPostMatch before the next world comes up. Omit for the realistic 30s.'),
 	tickChatter: z.boolean().optional().describe('Whether the emulated server emits its periodic tick-rate log lines. Omit to keep them.'),
+	// The layer the emulated server should hold as next at boot. A scenario-seeded sandbox sets this to its queue
+	// head so SLM's first reconcile sees the head already staged, rather than the emulator's default seed -- which
+	// it would otherwise pull into the queue as an external layer change and displace what the scenario seeded.
+	nextLayerId: z.string().optional().describe('Layer id the emulated server holds as next at boot. Omit for the emulator default.'),
 })
 
 // How SLM reaches a squad server, as four mutually-exclusive modes:

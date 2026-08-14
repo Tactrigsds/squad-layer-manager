@@ -5,6 +5,7 @@ import { Emulator, type EmuPlayer } from '@/emulator'
 import * as Verbs from '@/emulator/verbs'
 import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
+import * as L from '@/models/layer'
 import * as SB from '@/models/sandbox.models'
 import * as SettingsModels from '@/models/settings.models'
 import { SandboxConnectionSchema } from '@/models/settings.models'
@@ -96,6 +97,9 @@ export async function ensureInstance(serverId: string, conn: SettingsModels.Sand
 		tickRateIntervalMs: conn.tickChatter === false ? 0 : undefined,
 	})
 	await emu.start({ rconPort: 0 })
+	// hold the requested layer as next before SLM's first reconcile, so a scenario-seeded queue head is not
+	// displaced by the emulator default (see nextLayerId on SandboxConnectionSchema)
+	if (conn.nextLayerId) emu.world.handleCommand(L.getLayerCommand(conn.nextLayerId as L.LayerId, 'set-next'))
 	const list = SB.initAdminList()
 	const changed$ = new Rx.Subject<void>()
 	const instance: SandboxInstance = {

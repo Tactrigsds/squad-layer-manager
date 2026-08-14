@@ -1,9 +1,10 @@
 import { Mutex } from 'async-mutex'
 import { z } from 'zod'
 
+import * as Verbs from '@/emulator/verbs'
 import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
-import type * as L from '@/models/layer'
+import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
@@ -56,11 +57,47 @@ function defScenario<S extends string>(d: ScenarioDef<S>): ScenarioDef<S> {
 
 // ============================== staging helpers ==============================
 
-// hold until the game server holds the saved queue's head as its next layer. Every path that later ends a match
-// waits on this first, so a roll lands on the intended layer rather than the emulator's default seed.
-export async function waitForNextLayerSynced(ctx: LQ.Ctx & CS.AbortSignal) {
-	await Rx.Ext.firstValueFrom(ctx.layerQueue.nextLayerSyncState$.pipe(Rx.filter((s) => s.code === 'synced')), ctx.signal)
+type SyncCtx = LQ.Ctx & CS.AbortSignal & { sandbox: Sandbox.SandboxInstance }
+
+// whether the emulated server is actually holding the queue's head as its next layer. The ground truth is the
+// emulator's own nextLayer (as the harness checks), not nextLayerSyncState$: that subject initializes optimistically
+// to 'synced', so a freshly booted server would report synced before its first real sync has set anything.
+function serverHoldsQueueHead(ctx: SyncCtx): boolean {
+	const headLayerId = LL.getNextLayerId(ctx.layerQueue.session.state.savedList)
+	if (!headLayerId) return true
+	return ctx.sandbox.emu.world.nextLayer?.layer === L.getLayerCommand(headLayerId, 'none').split(' ')[0]
 }
+
+// hold until the emulated server holds the saved queue's head as its next layer. Every path that later ends a match
+// waits on this first, so a roll lands on the intended layer rather than the emulator's default seed. Driven by the
+// sync-state subject as the push signal, but gated on the emulator ground truth so the optimistic initial 'synced'
+// cannot slip a stale pass through.
+export async function waitForNextLayerSynced(ctx: SyncCtx) {
+	await Rx.Ext.firstValueFrom(ctx.layerQueue.nextLayerSyncState$.pipe(Rx.filter(() => serverHoldsQueueHead(ctx))), ctx.signal)
+}
+
+// hold until a roll started by ending a match has been fully processed: the match row written, the queue head
+// shifted, generation landed. serverRolling$ carries the timestamp while that runs and drops back to null once it
+// has all committed, so a non-null -> null edge is the settled signal. distinctUntilChanged collapses repeats; the
+// BehaviorSubject replays its current null on subscribe, which pairwise then pairs with the roll's timestamp.
+export async function waitForRolled(ctx: SQS.Ctx & CS.AbortSignal) {
+	await Rx.Ext.firstValueFrom(
+		ctx.server.serverRolling$.pipe(
+			Rx.distinctUntilChanged(),
+			Rx.pairwise(),
+			Rx.filter(([prev, curr]) => prev !== null && curr === null),
+		),
+		ctx.signal,
+	)
+}
+
+// sync the head as next, end the match decisively, and wait for the roll to finish. The only way a scenario should
+// advance a match: ending without the sync-first guard can roll onto the emulator's default seed instead of the head.
+export const playMatch = Instr.spanOp('tutorials.playMatch', { module }, async (ctx: StageCtx, opts?: { winnerTeamId?: 1 | 2 }) => {
+	await waitForNextLayerSynced(ctx)
+	await Verbs.execute(ctx.sandbox, 'end', { winnerTeamId: opts?.winnerTeamId ?? 1 })
+	await waitForRolled(ctx)
+})
 
 // ============================== scenarios ==============================
 
@@ -70,13 +107,17 @@ const LQB_QUEUE: L.LayerId[] = ['GD-RAAS-V1:USA-CA:RGF-CA', 'HJ-RAAS-V1:RGF-MZ:P
 const layerQueueBasics = defScenario({
 	id: 'layer-queue-basics',
 	// a short post-match wait so a staged roll does not stall the tour; no tick chatter so the narrated log stays legible
-	pacing: { postMatchDelayMs: 4000, tickChatter: false },
+	pacing: { postMatchDelayMs: 2000, tickChatter: false },
 	initialQueue: (owner) =>
 		LQB_QUEUE.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
 	setup: async () => {},
 	stages: {
 		welcome: async (ctx) => {
 			await waitForNextLayerSynced(ctx)
+			return { code: 'ok' }
+		},
+		'play-a-match': async (ctx) => {
+			await playMatch(ctx)
 			return { code: 'ok' }
 		},
 	},
@@ -135,7 +176,7 @@ function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string): StageCtx {
 	return { ...SquadServer.resolveCtx(base, serverId), sandbox }
 }
 
-function buildSandboxSettings(pacing: ScenarioDef<string>['pacing']) {
+function buildSandboxSettings(pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
 	return Seed.applyInitialPoolConfig({
 		...SettingsModels.PublicServerSettingsSchema.parse({}),
 		connections: SettingsModels.SandboxConnectionSchema.parse({
@@ -143,6 +184,9 @@ function buildSandboxSettings(pacing: ScenarioDef<string>['pacing']) {
 			serverName: 'SLM Tutorial',
 			postMatchDelayMs: pacing.postMatchDelayMs,
 			tickChatter: pacing.tickChatter,
+			// boot the emulator holding the queue head as next, or SLM's reconcile pulls the emulator's default
+			// seed into the queue and displaces the scenario's seeded head
+			nextLayerId: nextLayerId ?? undefined,
 		}),
 	})
 }
@@ -194,13 +238,14 @@ const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.
 	runChanged$.next()
 	try {
 		const scenario = SCENARIOS[scenarioId]
+		const initialQueue = scenario.initialQueue(owner)
 		const created = await Settings.createServerEntry(ctx, {
 			id: serverId,
 			displayName: DISPLAY_NAME,
-			settings: buildSandboxSettings(scenario.pacing),
+			settings: buildSandboxSettings(scenario.pacing, LL.getNextLayerId(initialQueue)),
 			visibility: 'scoped',
 			ownerDiscordId: owner,
-			layerQueue: scenario.initialQueue(owner),
+			layerQueue: initialQueue,
 		})
 		if (created.code !== 'ok') throw new Error(`could not create tutorial server: ${created.code}`)
 		const enabled = await SquadServer.enableServer(serverId)
