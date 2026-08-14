@@ -29,7 +29,22 @@ export const openEditor = {
 
 export const pickLayer = {
 	title: def('Add a layer'),
-	body: def('Browse the pool and add any layer you like. It shows up in the queue the moment you add it.'),
+	body: def('Open Add Layers, browse the pool, and add one. It joins the queue the moment you pick it.'),
+}
+
+export const removeLayer = {
+	title: def('Remove a layer'),
+	body: def('Drop a layer from the queue with the X on its row.'),
+}
+
+export const swapFactions = {
+	title: def('Swap the factions'),
+	body: def('Flip which faction plays each side of this layer. The teams switch, the map stays.'),
+}
+
+export const reorderLayer = {
+	title: def('Reorder the queue'),
+	body: def('Drag a layer by its handle to move it. The layer at the top is what plays next.'),
 }
 
 export const saveQueue = {
@@ -85,6 +100,6 @@ export const tally = {
 export const wrapUp = {
 	title: def("That's the tour"),
 	body: def(
-		'You queued a layer, saved it, generated one, rolled a match and ran a vote. Keep this server to play with, or pick another tutorial.',
+		'You added a layer, removed one, swapped its factions and reordered the queue, then saved. Keep this server to play with, or pick another tutorial.',
 	),
 }

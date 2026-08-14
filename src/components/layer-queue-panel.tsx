@@ -273,6 +273,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</TooltipContent>
 				</Tooltip>
 				<StartActivityInteraction
+					data-tour="queue-add"
 					loaderName="selectLayers"
 					createActivity={UP.createEditingQueueVariant({
 						_tag: 'leaf',

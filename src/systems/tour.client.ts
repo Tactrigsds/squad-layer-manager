@@ -75,6 +75,16 @@ export type Advance =
 	| { type: 'next' } // explicit Next button on the card
 	| { type: 'anchor' } // user activates the anchored element
 	| ({ type: 'state' } & StateSelector<boolean>) // advances the first time select turns true
+	// advances when a sampled value differs from its value at step entry. For operations whose completion is a
+	// change rather than a predicate: a layer added (the list grew) or reordered (the order changed), where "done"
+	// only means "different from where you started". sample is captured on entry; advanced compares it to each later
+	// sample.
+	| {
+			type: 'change'
+			inputs: (run: RunStores) => Zus.AnyInput<any>[]
+			sample: (...states: any[]) => unknown
+			advanced: (baseline: any, current: any) => boolean
+	  }
 
 // static data-tour value, or a dynamic one (null = not present yet, the overlay waits)
 export type AnchorRef = string | ((run: RunStores) => string | null)
@@ -287,6 +297,18 @@ function wireStep(step: Step, idx: number) {
 				.subscribe(() => {
 					if (Sel.stepIdx(Store.getState()) === idx) doNext()
 				}),
+		)
+	}
+
+	if (step.advance.type === 'change') {
+		const adv = step.advance
+		const inputs = adv.inputs(run)
+		const baseline = adv.sample(...inputs.map(readInput))
+		const sample$ = inputs.length === 0 ? Rx.of([]) : Rx.combineLatest(inputs.map(toObs))
+		stepSub.add(
+			sample$.pipe(Rx.map((states) => adv.sample(...states))).subscribe((cur) => {
+				if (adv.advanced(baseline, cur) && Sel.stepIdx(Store.getState()) === idx) doNext()
+			}),
 		)
 	}
 
