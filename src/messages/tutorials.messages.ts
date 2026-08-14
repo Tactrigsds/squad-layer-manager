@@ -27,9 +27,24 @@ export const openEditor = {
 	body: def('Open the editor to change the queue. Your edits stay local to you until you save them.'),
 }
 
-export const pickLayer = {
+export const openAdd = {
 	title: def('Add a layer'),
-	body: def('Open Add Layers, browse the pool, and add one. It joins the queue the moment you pick it.'),
+	body: def('Open Add Layers to browse the full pool of maps and factions.'),
+}
+
+export const addFilters = {
+	title: def('Narrow the pool'),
+	body: def('Filter by map, gamemode, faction and more to find the layer you want.'),
+}
+
+export const addPick = {
+	title: def('Pick your layers'),
+	body: def('Check any rows you want to queue. Flip Show Selected to review your picks.'),
+}
+
+export const addSubmit = {
+	title: def('Add them to the queue'),
+	body: def('Submit adds your picks to the queue and closes the pool.'),
 }
 
 export const removeLayer = {

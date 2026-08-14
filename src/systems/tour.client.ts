@@ -109,7 +109,11 @@ export function defineSteps(steps: Step[]): Step[] {
 // ============================== selector plumbing ==============================
 
 function isObservable(input: unknown): input is Rx.Observable<unknown> {
-	return !!input && typeof (input as { subscribe?: unknown }).subscribe === 'function'
+	// A Zus/Zustand store also has a .subscribe, but its Zustand-native signature is not one rxjs can consume as a
+	// source. Route stores (anything exposing getState) through Zus.toObservable instead; only real observables and
+	// BehaviorSubjects, which have no getState, are returned as-is.
+	const o = input as { subscribe?: unknown; getState?: unknown }
+	return !!input && typeof o.subscribe === 'function' && typeof o.getState !== 'function'
 }
 
 function toObs(input: Zus.AnyInput<any>): Rx.Observable<unknown> {
