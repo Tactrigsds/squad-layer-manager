@@ -34,6 +34,10 @@ const queueOrder = (s: any) => s.queue.layerList.map((it: any) => it.itemId).joi
 export const steps = Tour.defineSteps([
 	{ id: 'welcome', msg: TUT_Msgs.welcome, advance: { type: 'next' } },
 	{ id: 'queue-panel', anchor: 'queue-panel', msg: TUT_Msgs.queuePanel, advance: { type: 'next' } },
+	// read-only tour of the head item's display, before any editing
+	{ id: 'team-slots', anchor: 'queue-layer-name', msg: TUT_Msgs.teamSlots, advance: { type: 'next' } },
+	{ id: 'team-normalize', anchor: 'queue-layer-name', msg: TUT_Msgs.teamNormalize, advance: { type: 'next' } },
+	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: TUT_Msgs.nextBadge, advance: { type: 'next' } },
 	{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: TUT_Msgs.openEditor, advance: { type: 'anchor' } },
 	{
 		id: 'open-add',
@@ -60,9 +64,20 @@ export const steps = Tour.defineSteps([
 		premise: addDialogOpen,
 		advance: { type: 'change', inputs: (run) => [run.squadServer], sample: queueLength, advanced: (from, to) => to > from },
 	},
+	// the layer just added is the new head: green mutation border, and now out of sync with the server
+	{ id: 'added-highlight', anchor: 'queue-item', msg: TUT_Msgs.addedHighlight, premise: editingQueue, advance: { type: 'next' } },
+	{
+		id: 'not-next-badge',
+		anchor: 'queue-next-badge',
+		spotlight: 'queue-item',
+		msg: TUT_Msgs.notNextBadge,
+		premise: editingQueue,
+		advance: { type: 'next' },
+	},
 	{
 		id: 'remove-layer',
 		anchor: 'queue-delete',
+		spotlight: 'queue-item',
 		interact: 'anchor-only',
 		msg: TUT_Msgs.removeLayer,
 		premise: editingQueue,
@@ -71,6 +86,7 @@ export const steps = Tour.defineSteps([
 	{
 		id: 'swap-factions',
 		anchor: 'queue-swap',
+		spotlight: 'queue-item',
 		interact: 'anchor-only',
 		msg: TUT_Msgs.swapFactions,
 		premise: editingQueue,
@@ -79,6 +95,7 @@ export const steps = Tour.defineSteps([
 	{
 		id: 'reorder',
 		anchor: 'queue-reorder',
+		spotlight: 'queue-panel',
 		interact: 'free',
 		msg: TUT_Msgs.reorderLayer,
 		premise: editingQueue,

@@ -92,7 +92,11 @@ export type AnchorRef = string | ((run: RunStores) => string | null)
 export type Step = {
 	id: string
 	msg: StepMsg | StateSelector<RenderedStep>
-	anchor?: AnchorRef // absent = centered card
+	anchor?: AnchorRef // the outlined element (spotlight ring). absent = centered card
+	// the region left undimmed, if larger than the outlined element: the whole queue while reordering, the whole item
+	// while pointing at one of its buttons. Defaults to anchor. The ring stays on anchor; only the dim cutout and the
+	// card placement widen to this.
+	spotlight?: AnchorRef
 	stage?: string // server stage requested on entry, before narration
 	interact?: 'block' | 'anchor-only' | 'free' // absent = 'block'
 	// whether this step still makes sense. Absent = the default premise (route matches, anchor resolves). Explicit
