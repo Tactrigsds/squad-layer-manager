@@ -1,0 +1,309 @@
+import * as React from 'react'
+import { createPortal } from 'react-dom'
+
+import * as Zus from '@/lib/zustand'
+import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
+import { rootRouter } from '@/root-router'
+import * as Tour from '@/systems/tour.client'
+
+// The tutorial tour overlay: a root portal that dims the dashboard, spotlights the anchored element, and shows the
+// coachmark card. Renders Tour.Store and calls Tour.Actions. Visual per the approved mock: medium dim + 2px ring +
+// glow cutout, a card with a numbered badge, a top progress bar and "Step N of M", and a Restart control that
+// re-requests the current step's stage (promoted to the primary Retry when a stage is not ready).
+
+const ACCENT = '#3b82f6'
+const GAP = 12 // px between the anchor and the card
+
+// ---- reactive anchor measurement (no ready-made hook; getBoundingClientRect on a rAF loop, per the house pattern) ----
+
+function useAnchorEl(tourId: string | null): Element | null {
+	const [el, setEl] = React.useState<Element | null>(null)
+	React.useEffect(() => {
+		if (!tourId) {
+			setEl(null)
+			return
+		}
+		const sub = Tour.domInput(tourId).subscribe(setEl)
+		return () => sub.unsubscribe()
+	}, [tourId])
+	return el
+}
+
+function sameRect(a: DOMRect, b: DOMRect) {
+	return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
+}
+
+function useRect(el: Element | null): DOMRect | null {
+	const [rect, setRect] = React.useState<DOMRect | null>(null)
+	React.useEffect(() => {
+		if (!el) {
+			setRect(null)
+			return
+		}
+		let raf = 0
+		const tick = () => {
+			const next = el.getBoundingClientRect()
+			setRect((prev) => (prev && sameRect(prev, next) ? prev : next))
+			raf = requestAnimationFrame(tick)
+		}
+		raf = requestAnimationFrame(tick)
+		return () => cancelAnimationFrame(raf)
+	}, [el])
+	return rect
+}
+
+function useRenderedMsg(run: Tour.RunStores, msg: Tour.Step['msg']): Tour.RenderedStep {
+	const [rendered, setRendered] = React.useState<Tour.RenderedStep>(() => Tour.renderMsg(run, msg))
+	React.useEffect(() => {
+		const sub = Tour.renderMsg$(run, msg).subscribe(setRendered)
+		return () => sub.unsubscribe()
+	}, [run, msg])
+	return rendered
+}
+
+// ---- entry ----
+
+export function TourOverlay() {
+	const state = Zus.useStore(Tour.Store, Tour.Sel.state)
+	if (state.code === 'idle') return import.meta.env.DEV ? <TourLauncher /> : null
+	return <TourActive state={state} />
+}
+
+// Provisional dev-only launch affordance so the tour can be started and verified; the real entry point is the
+// tutorials index page (Phase 6).
+function TourLauncher() {
+	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
+	return (
+		<button
+			type="button"
+			className="fixed bottom-3 right-3 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 shadow-lg hover:bg-zinc-800"
+			style={{ zIndex }}
+			onClick={() => void Tour.Actions.start('layer-queue-basics')}
+		>
+			Start tutorial
+		</button>
+	)
+}
+
+function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }> }) {
+	const zIndex = useZIndex(ZI_OFFSETS.TOUR)
+	const run = Tour.activeRun()
+	const step = Tour.stepAt(state.scenarioId, state.stepIdx)
+	if (!run || !step) return null
+
+	const body =
+		state.code === 'paused' ? (
+			<DockedCard serverId={run.serverId} />
+		) : (
+			<AnchoredStep state={state} step={step} run={run} total={Tour.stepCount(state.scenarioId)} />
+		)
+
+	return createPortal(
+		<BaseZIndexContext.Provider value={zIndex}>
+			<div style={{ position: 'fixed', inset: 0, zIndex, pointerEvents: 'none' }}>{body}</div>
+		</BaseZIndexContext.Provider>,
+		document.body,
+	)
+}
+
+// ---- the anchored / centered step ----
+
+function AnchoredStep(props: {
+	state: Extract<Tour.TourState, { code: 'staging' | 'narrating' | 'stage-not-ready' | 'stage-failed' }>
+	step: Tour.Step
+	run: Tour.RunStores
+	total: number
+}) {
+	const { state, step, run, total } = props
+	const anchorId = Tour.resolveAnchor(run, step.anchor)
+	const el = useAnchorEl(anchorId)
+	const rect = useRect(el)
+	const rendered = useRenderedMsg(run, step.msg)
+	const interact = step.interact ?? 'block'
+
+	// advance:'anchor' — advance when the user activates the anchored element
+	React.useEffect(() => {
+		if (state.code !== 'narrating' || step.advance.type !== 'anchor' || !el) return
+		const onClick = () => Tour.Actions.next()
+		el.addEventListener('click', onClick, { capture: true })
+		return () => el.removeEventListener('click', onClick, { capture: true } as EventListenerOptions)
+	}, [state.code, step.advance.type, el])
+
+	// anchored but the element has not mounted yet: wait with a plain dim, no cutout
+	const spotlight = anchorId !== null && rect !== null
+
+	return (
+		<>
+			{spotlight ? <Cutout rect={rect} /> : <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.66)' }} />}
+			<Blockers interact={interact} rect={spotlight ? rect : null} />
+			<Card state={state} step={step} rendered={rendered} rect={spotlight ? rect : null} total={total} />
+		</>
+	)
+}
+
+function Cutout({ rect }: { rect: DOMRect }) {
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				top: rect.top - 6,
+				left: rect.left - 6,
+				width: rect.width + 12,
+				height: rect.height + 12,
+				borderRadius: 12,
+				pointerEvents: 'none',
+				boxShadow: `0 0 0 2px ${ACCENT}, 0 0 22px 2px rgba(59,130,246,0.42), 0 0 0 9999px rgba(0,0,0,0.66)`,
+			}}
+		/>
+	)
+}
+
+// Pointer control. block = capture everything; anchor-only = frame the anchor so only it stays live; free = nothing.
+function Blockers({ interact, rect }: { interact: 'block' | 'anchor-only' | 'free'; rect: DOMRect | null }) {
+	const cap: React.CSSProperties = { position: 'fixed', pointerEvents: 'auto' }
+	if (interact === 'free') return null
+	if (interact === 'block' || !rect) return <div style={{ ...cap, inset: 0 }} />
+	// four rectangles around the anchor, leaving its box open
+	return (
+		<>
+			<div style={{ ...cap, top: 0, left: 0, right: 0, height: Math.max(0, rect.top - 6) }} />
+			<div style={{ ...cap, top: rect.bottom + 6, left: 0, right: 0, bottom: 0 }} />
+			<div style={{ ...cap, top: rect.top - 6, left: 0, width: Math.max(0, rect.left - 6), height: rect.height + 12 }} />
+			<div style={{ ...cap, top: rect.top - 6, left: rect.right + 6, right: 0, height: rect.height + 12 }} />
+		</>
+	)
+}
+
+// ---- the card ----
+
+const CARD_W = 264
+
+function placeCard(rect: DOMRect | null): React.CSSProperties {
+	if (!rect) {
+		return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+	}
+	const belowRoom = window.innerHeight - rect.bottom
+	const left = Math.min(Math.max(12, rect.left), window.innerWidth - CARD_W - 12)
+	if (belowRoom > 180) return { top: rect.bottom + GAP, left }
+	return { bottom: window.innerHeight - rect.top + GAP, left }
+}
+
+function Card(props: { state: AnchoredStepState; step: Tour.Step; rendered: Tour.RenderedStep; rect: DOMRect | null; total: number }) {
+	const { state, step, rendered, rect, total } = props
+	const stepNo = state.stepIdx + 1
+	const isLast = state.stepIdx === total - 1
+	const notReady = state.code === 'stage-not-ready'
+	const failed = state.code === 'stage-failed'
+	const staging = state.code === 'staging'
+	const accent = notReady || failed ? 'bg-amber-500' : 'bg-blue-600'
+	const centered = rect === null
+
+	return (
+		<div
+			className="absolute w-[264px] rounded-lg border border-zinc-700 bg-zinc-900 p-3.5 pt-4 text-zinc-100 shadow-2xl"
+			style={{ pointerEvents: 'auto', ...placeCard(rect) }}
+		>
+			<div
+				className={`absolute -left-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${accent}`}
+			>
+				{stepNo}
+			</div>
+			<div className="mb-0.5 text-[11px] text-zinc-500">
+				Step {stepNo} of {total}
+			</div>
+			<div className="mb-2.5 h-[3px] overflow-hidden rounded-full bg-zinc-800">
+				<div className={`h-full ${accent}`} style={{ width: `${(stepNo / Math.max(1, total)) * 100}%` }} />
+			</div>
+			<h3 className={`text-sm font-semibold ${notReady || failed ? 'text-amber-400' : ''}`}>
+				{failed ? 'Something went wrong' : rendered.title}
+			</h3>
+			<p className="mt-1.5 text-xs leading-relaxed text-zinc-300">
+				{failed ? 'That step could not be set up. Retry, or exit the tutorial.' : notReady ? state.msg : rendered.body}
+			</p>
+			<div className="mt-3 flex items-center justify-between gap-2">
+				<button
+					type="button"
+					className="rounded px-1 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+					onClick={() => void Tour.Actions.exit()}
+				>
+					Exit
+				</button>
+				<div className="flex items-center gap-1.5">
+					<CardActions
+						state={state}
+						step={step}
+						isLast={isLast}
+						centered={centered}
+						staging={staging}
+						notReady={notReady}
+						failed={failed}
+					/>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function CardActions(props: {
+	state: AnchoredStepState
+	step: Tour.Step
+	isLast: boolean
+	centered: boolean
+	staging: boolean
+	notReady: boolean
+	failed: boolean
+}) {
+	const { step, isLast, centered, staging, notReady, failed } = props
+	if (notReady || failed) {
+		return (
+			<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.restartStep()}>
+				Retry
+			</button>
+		)
+	}
+	if (staging) {
+		return <span className="px-1 text-xs text-zinc-500">Preparing…</span>
+	}
+	// Restart is available on any step with server staging to recover (centered intro/outro steps drop it).
+	const showRestart = !centered && !!step.stage
+	return (
+		<>
+			{showRestart && (
+				<button
+					type="button"
+					className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+					onClick={() => Tour.Actions.restartStep()}
+				>
+					Restart
+				</button>
+			)}
+			{step.advance.type === 'next' && (
+				<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>
+					{isLast ? 'Finish' : 'Next'}
+				</button>
+			)}
+		</>
+	)
+}
+
+function DockedCard({ serverId }: { serverId: string }) {
+	return (
+		<div
+			className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2.5 rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-zinc-100 shadow-2xl"
+			style={{ pointerEvents: 'auto' }}
+		>
+			<div className="text-xs text-zinc-300">
+				<span className="font-semibold text-white">Tutorial paused.</span> Return to the dashboard to continue where you left off.
+			</div>
+			<button
+				type="button"
+				className="whitespace-nowrap rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white"
+				onClick={() => void rootRouter.navigate({ to: '/servers/$serverId', params: { serverId } })}
+			>
+				Back to dashboard
+			</button>
+		</div>
+	)
+}
+
+type AnchoredStepState = Extract<Tour.TourState, { code: 'staging' | 'narrating' | 'stage-not-ready' | 'stage-failed' }>
