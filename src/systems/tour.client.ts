@@ -132,6 +132,17 @@ export function renderMsg(run: RunStores, msg: Step['msg']): RenderedStep {
 	return { title: tr.text(msg.title()), body: tr.text(msg.body()) }
 }
 
+// reactive copy, for branching messages that track live state
+export function renderMsg$(run: RunStores, msg: Step['msg']): Rx.Observable<RenderedStep> {
+	if ('inputs' in msg) return watchSelector(run, msg)
+	return Rx.of(renderMsg(run, msg))
+}
+
+export function resolveAnchor(run: RunStores, anchor: AnchorRef | undefined): string | null {
+	if (anchor === undefined) return null
+	return typeof anchor === 'function' ? anchor(run) : anchor
+}
+
 // ============================== DOM inputs (tier-2 presentational state) ==============================
 
 // A Zus input for a data-tour element, driven by one shared MutationObserver. Steps read presentational state the
@@ -207,6 +218,18 @@ let runSub = new Rx.Subscription() // router pause watcher, lives for the run
 const scenarios = new Map<TUT.ScenarioId, Step[]>()
 export function registerScenario(scenarioId: TUT.ScenarioId, steps: Step[]) {
 	scenarios.set(scenarioId, steps)
+}
+
+// accessors for the overlay: the run's data sources and the step being narrated. Not reactive themselves; the
+// overlay re-reads them whenever Store changes.
+export function activeRun(): RunStores | null {
+	return active?.run ?? null
+}
+export function stepAt(scenarioId: TUT.ScenarioId, stepIdx: number): Step | undefined {
+	return scenarios.get(scenarioId)?.[stepIdx]
+}
+export function stepCount(scenarioId: TUT.ScenarioId): number {
+	return scenarios.get(scenarioId)?.length ?? 0
 }
 
 function isOnDashboard(serverId: string): boolean {

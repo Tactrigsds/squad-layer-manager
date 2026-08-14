@@ -42,10 +42,10 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 				   The floors are what the panels' own content asks for: measured, so they move if the content does.
 				   Capped and centered so ultrawide gutters rather than stretching the panels past a readable width. */
 				<div className="grid gap-2 h-full min-h-0 w-full max-w-[2050px] mx-auto grid-cols-[minmax(950px,1.6fr)_minmax(400px,1fr)]">
-					<div className="flex flex-col gap-2 min-h-0 min-w-0">
+					<div className="flex flex-col gap-2 min-h-0 min-w-0" data-tour="queue-panel">
 						<PrimaryPanel stores={props.stores} />
 					</div>
-					<div className="flex min-h-0 min-w-0">
+					<div className="flex min-h-0 min-w-0" data-tour="server-activity">
 						<SecondaryPanel stores={props.stores} />
 					</div>
 				</div>
