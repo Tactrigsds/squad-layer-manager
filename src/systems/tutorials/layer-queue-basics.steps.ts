@@ -48,6 +48,14 @@ export const steps = Tour.defineSteps([
 		advance: { type: 'state', ...addDialogOpen },
 	},
 	{
+		id: 'applied-filter',
+		anchor: 'applied-filters',
+		interact: 'free',
+		msg: TUT_Msgs.appliedFilter,
+		premise: addDialogOpen,
+		advance: { type: 'next' },
+	},
+	{
 		id: 'add-filters',
 		anchor: 'add-filters',
 		interact: 'free',
