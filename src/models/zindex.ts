@@ -28,6 +28,9 @@ export const ZI_OFFSETS = {
 	DRAGGABLE_WINDOW_FLOOR: 70,
 	DRAGGABLE_WINDOW_CEILING: 170,
 	DIALOG: 180,
+	// the tutorial tour overlay: narrates the live dashboard, so it sits above dialogs (a step can anchor a control
+	// inside one) and everything else
+	TOUR: 190,
 }
 
 /** How many windows can be stacked within one context before ordering degrades. */
