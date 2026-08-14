@@ -118,11 +118,15 @@ function AnchoredStep(props: {
 	const anchorId = Tour.resolveAnchor(run, step.anchor)
 	const el = useAnchorEl(anchorId)
 	const rect = useRect(el)
+	// the undimmed region, wider than the outline when a step sets it; otherwise the anchor itself
+	const spotlightId = Tour.resolveAnchor(run, step.spotlight ?? step.anchor)
+	const spotEl = useAnchorEl(spotlightId)
+	const spotRect = useRect(spotEl)
 	const rendered = useRenderedMsg(run, step.msg)
 	const interact = step.interact ?? 'block'
 
-	// bring the spotlighted element into view when a step's anchor resolves, so it is never dimmed off-screen or
-	// behind an overflow scroll. The rAF rect loop tracks it as the scroll settles.
+	// bring the outlined element into view when it resolves, so it is never dimmed off-screen or behind an overflow
+	// scroll. The rAF rect loop tracks it as the scroll settles.
 	React.useEffect(() => {
 		el?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
 	}, [el])
@@ -135,19 +139,24 @@ function AnchoredStep(props: {
 		return () => el.removeEventListener('click', onClick, { capture: true } as EventListenerOptions)
 	}, [state.code, step.advance.type, el])
 
-	// anchored but the element has not mounted yet: wait with a plain dim, no cutout
-	const spotlight = anchorId !== null && rect !== null
+	// anchored but the spotlight element has not mounted yet: wait with a plain dim, no cutout
+	const hasSpotlight = spotlightId !== null && spotRect !== null
+	const hasOutline = anchorId !== null && rect !== null
+	const cardRect = spotRect ?? rect
 
 	return (
 		<>
-			{spotlight ? <Cutout rect={rect} /> : <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.66)' }} />}
-			<Blockers interact={interact} rect={spotlight ? rect : null} />
-			<Card state={state} step={step} rendered={rendered} rect={spotlight ? rect : null} total={total} />
+			{hasSpotlight ? <Scrim rect={spotRect} /> : <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.66)' }} />}
+			{hasOutline && <Outline rect={rect} />}
+			<Blockers interact={interact} rect={hasOutline ? rect : null} />
+			<Card state={state} step={step} rendered={rendered} rect={cardRect} total={total} />
 		</>
 	)
 }
 
-function Cutout({ rect }: { rect: DOMRect }) {
+// The dark scrim with a hole cut for the undimmed region. Just the dim; the ring is drawn separately so it can sit on
+// a smaller element than the hole.
+function Scrim({ rect }: { rect: DOMRect }) {
 	return (
 		<div
 			style={{
@@ -158,7 +167,25 @@ function Cutout({ rect }: { rect: DOMRect }) {
 				height: rect.height + 12,
 				borderRadius: 12,
 				pointerEvents: 'none',
-				boxShadow: `0 0 0 2px ${ACCENT}, 0 0 22px 2px rgba(59,130,246,0.42), 0 0 0 9999px rgba(0,0,0,0.66)`,
+				boxShadow: '0 0 0 9999px rgba(0,0,0,0.66)',
+			}}
+		/>
+	)
+}
+
+// The highlight ring around the outlined element. No dim of its own.
+function Outline({ rect }: { rect: DOMRect }) {
+	return (
+		<div
+			style={{
+				position: 'fixed',
+				top: rect.top - 6,
+				left: rect.left - 6,
+				width: rect.width + 12,
+				height: rect.height + 12,
+				borderRadius: 12,
+				pointerEvents: 'none',
+				boxShadow: `0 0 0 2px ${ACCENT}, 0 0 22px 2px rgba(59,130,246,0.42)`,
 			}}
 		/>
 	)

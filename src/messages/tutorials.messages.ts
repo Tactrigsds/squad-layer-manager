@@ -22,6 +22,35 @@ export const queuePanel = {
 	body: def("This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map."),
 }
 
+export const teamSlots = {
+	title: def('The two sides'),
+	body: def(
+		'Each layer pits two factions against each other. (1) and (2) mark the raw slots, Team 1 and Team 2. Players swap between them every round.',
+	),
+}
+
+export const teamNormalize = {
+	title: def('Team A and Team B'),
+	body: def(
+		'Since the slots swap each round, SLM can track a persistent Team A and Team B that follow each side across the swap. Normalize Teams in the top menu toggles the labels.',
+	),
+}
+
+export const nextBadge = {
+	title: def('The Next Layer badge'),
+	body: def("This badge means SLM has posted this layer as the server's next map. The layer at the top of the queue is what plays next."),
+}
+
+export const addedHighlight = {
+	title: def('Your added layers'),
+	body: def('Layers you add show a green border until you save. It marks an unsaved change to the queue.'),
+}
+
+export const notNextBadge = {
+	title: def('Not the next layer yet'),
+	body: def('Your new layer is not posted on the server yet. Save the queue to set it as the next map.'),
+}
+
 export const openEditor = {
 	title: def('Edit the queue'),
 	body: def('Open the editor to change the queue. Your edits stay local to you until you save them.'),
