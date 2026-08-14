@@ -585,6 +585,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 	const beforeItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'before', itemId: item.itemId }]
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 
+	// the tutorial tour spotlights one row's controls; the head row stands in for "a layer"
+	const isTourRow = LL.isLocallyFirstIndex(index)
+
 	return (
 		<>
 			{LL.isLocallyFirstIndex(index) && <QueueItemSeparator links={beforeItemLinks} isAfterLast={false} disabled={!canEdit} />}
@@ -604,7 +607,13 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<span data-mobile={isMobile} className="min-w-[4ch] text-right font-mono text-muted-foreground data-[mobile=true]:hidden">
 							{LL.getItemNumber(index)}
 						</span>
-						<Button ref={dragProps.handleRef} variant="ghost" size="icon" {...editButtonProps('data-[can-edit=true]:cursor-grab')}>
+						<Button
+							ref={dragProps.handleRef}
+							variant="ghost"
+							size="icon"
+							data-tour={isTourRow ? 'queue-reorder' : undefined}
+							{...editButtonProps('data-[can-edit=true]:cursor-grab')}
+						>
 							<Icons.GripVertical />
 						</Button>
 					</span>
@@ -685,6 +694,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
+						data-tour={isTourRow ? 'queue-swap' : undefined}
 						title={tr.text(LL_Msgs.swapFactions())}
 						disabled={!canEdit || !L.swapFactions(item.layerId)}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
@@ -694,6 +704,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
+						data-tour={isTourRow ? 'queue-delete' : undefined}
 						title={tr.text(LL_Msgs.deleteItem())}
 						disabled={!canEdit}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
