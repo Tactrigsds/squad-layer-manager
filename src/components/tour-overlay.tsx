@@ -121,6 +121,12 @@ function AnchoredStep(props: {
 	const rendered = useRenderedMsg(run, step.msg)
 	const interact = step.interact ?? 'block'
 
+	// bring the spotlighted element into view when a step's anchor resolves, so it is never dimmed off-screen or
+	// behind an overflow scroll. The rAF rect loop tracks it as the scroll settles.
+	React.useEffect(() => {
+		el?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
+	}, [el])
+
 	// advance:'anchor' — advance when the user activates the anchored element
 	React.useEffect(() => {
 		if (state.code !== 'narrating' || step.advance.type !== 'anchor' || !el) return
