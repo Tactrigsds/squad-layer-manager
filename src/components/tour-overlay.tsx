@@ -183,15 +183,24 @@ function Blockers({ interact, rect }: { interact: 'block' | 'anchor-only' | 'fre
 // ---- the card ----
 
 const CARD_W = 264
+const CARD_H = 180 // estimate for placement math; the card runs ~160-190px
 
+// Place the card below the anchor, then above, then beside it -- whichever first keeps the whole card on screen. A
+// container-sized anchor (the filter column runs nearly the full viewport) has no room above or below, so it lands
+// beside, vertically clamped, instead of off the top edge.
 function placeCard(rect: DOMRect | null): React.CSSProperties {
 	if (!rect) {
 		return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
 	}
-	const belowRoom = window.innerHeight - rect.bottom
-	const left = Math.min(Math.max(12, rect.left), window.innerWidth - CARD_W - 12)
-	if (belowRoom > 180) return { top: rect.bottom + GAP, left }
-	return { bottom: window.innerHeight - rect.top + GAP, left }
+	const vw = window.innerWidth
+	const vh = window.innerHeight
+	const clampX = (x: number) => Math.min(Math.max(12, x), vw - CARD_W - 12)
+	const clampY = (y: number) => Math.min(Math.max(12, y), vh - CARD_H - 12)
+	if (vh - rect.bottom >= CARD_H + GAP) return { top: rect.bottom + GAP, left: clampX(rect.left) }
+	if (rect.top >= CARD_H + GAP) return { bottom: vh - rect.top + GAP, left: clampX(rect.left) }
+	if (vw - rect.right >= CARD_W + GAP) return { top: clampY(rect.top), left: rect.right + GAP }
+	if (rect.left >= CARD_W + GAP) return { top: clampY(rect.top), left: rect.left - GAP - CARD_W }
+	return { top: clampY(rect.top), left: clampX(rect.left) }
 }
 
 function Card(props: { state: AnchoredStepState; step: Tour.Step; rendered: Tour.RenderedStep; rect: DOMRect | null; total: number }) {

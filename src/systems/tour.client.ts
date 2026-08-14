@@ -167,7 +167,16 @@ let domObserver: MutationObserver | null = null
 
 function queryAnchor(tourId: string): Element | null {
 	if (typeof document === 'undefined') return null
-	return document.querySelector(`[data-tour="${CSS.escape(tourId)}"]`)
+	// the same anchor can be mounted more than once: an inactive selectLayers dialog keeps a hidden, zero-size copy of
+	// the pool controls. Prefer a laid-out node over the first in document order, or the spotlight lands on nothing.
+	const nodes = document.querySelectorAll(`[data-tour="${CSS.escape(tourId)}"]`)
+	let fallback: Element | null = null
+	for (const node of nodes) {
+		fallback ??= node
+		const r = node.getBoundingClientRect()
+		if (r.width > 0 || r.height > 0) return node
+	}
+	return fallback
 }
 
 function ensureDomObserver() {
