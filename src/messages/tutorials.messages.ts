@@ -19,7 +19,9 @@ export const nowPlaying = {
 
 export const queuePanel = {
 	title: def('The queue'),
-	body: def('This is what plays next, in order. It is empty right now. SLM generates a layer when the queue runs dry, but let us fill it ourselves first.'),
+	body: def(
+		'This is what plays next, in order. It is empty right now. SLM generates a layer when the queue runs dry, but let us fill it ourselves first.',
+	),
 }
 
 export const openEditor = {
@@ -84,5 +86,7 @@ export const tally = {
 
 export const wrapUp = {
 	title: def("That's the tour"),
-	body: def('You queued a layer, saved it, generated one, rolled a match and ran a vote. Keep this server to play with, or pick another tutorial.'),
+	body: def(
+		'You queued a layer, saved it, generated one, rolled a match and ran a vote. Keep this server to play with, or pick another tutorial.',
+	),
 }
