@@ -1283,7 +1283,7 @@
 	"This is taking longer than expected": "This is taking longer than expected",
 	"This is the match running on the server right now: its map, its factions, and who is in it.": "This is the match running on the server right now: its map, its factions, and who is in it.",
 	"This is the posted next layer on the server.": "This is the posted next layer on the server.",
-	"This is what plays next, in order. It is empty right now. SLM generates a layer when the queue runs dry, but let us fill it ourselves first.": "This is what plays next, in order. It is empty right now. SLM generates a layer when the queue runs dry, but let us fill it ourselves first.",
+	"This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map.": "This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map.",
 	"This layer is unknown and was not able to be fully parsed:": "This layer is unknown and was not able to be fully parsed:",
 	"This link carries permissions you do not have yourself.": "This link carries permissions you do not have yourself.",
 	"This page": "This page",

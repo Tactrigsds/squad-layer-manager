@@ -19,9 +19,7 @@ export const nowPlaying = {
 
 export const queuePanel = {
 	title: def('The queue'),
-	body: def(
-		'This is what plays next, in order. It is empty right now. SLM generates a layer when the queue runs dry, but let us fill it ourselves first.',
-	),
+	body: def("This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map."),
 }
 
 export const openEditor = {
