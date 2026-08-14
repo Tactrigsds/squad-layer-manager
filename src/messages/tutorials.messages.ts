@@ -53,7 +53,7 @@ export const notNextBadge = {
 
 export const openEditor = {
 	title: def('Edit the queue'),
-	body: def('Open the editor to change the queue. Your edits stay local to you until you save them.'),
+	body: def('Open the editor to change the queue. Your changes only reach the game server when you save.'),
 }
 
 export const openAdd = {
@@ -93,7 +93,7 @@ export const reorderLayer = {
 
 export const saveQueue = {
 	title: def('Save your changes'),
-	body: def('Save to commit the queue. Until you do, your edits are yours alone and the server does not see them.'),
+	body: def('Save to commit your changes. Until then they live in a shared draft that other editors see, not on the game server.'),
 }
 
 export const watchSync = {
