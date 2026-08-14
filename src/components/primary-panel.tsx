@@ -156,6 +156,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 						    `invisible` alone does neither, so its buttons stayed focusable */}
 						<div
 							role="tabpanel"
+							data-tour="queue-panel"
 							id={tabPanelId('queue')}
 							aria-labelledby={tabId('queue')}
 							inert={tab !== 'queue'}
