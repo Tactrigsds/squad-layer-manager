@@ -61,6 +61,11 @@ export const openAdd = {
 	body: def('Open Add Layers to browse the full pool of maps and factions.'),
 }
 
+export const appliedFilter = {
+	title: def('The applied filter'),
+	body: def('Add Layers is already filtered to the layers your pool allows. This shows which filter is applied.'),
+}
+
 export const addFilters = {
 	title: def('Narrow the pool'),
 	body: def('Filter by map, gamemode, faction and more to find the layer you want.'),
