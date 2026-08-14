@@ -343,6 +343,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</div>
 					<PermissionDeniedTooltip denied={startEditingDenied}>
 						<Button
+							data-tour="queue-edit"
 							className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 							variant="outline"
 							disabled={!!startEditingDenied}
@@ -375,6 +376,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
+											data-tour="queue-save"
 											className="min-w-37.5"
 											variant={forceSave ? 'destructive' : 'default'}
 											onClick={() => setEditing(false)}
