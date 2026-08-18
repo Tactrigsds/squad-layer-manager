@@ -52,12 +52,29 @@ export const nextBadge = {
 
 export const addedHighlight = {
 	title: def('Your added layers'),
-	body: def('Layers you add show a green border until you save. It marks an unsaved change to the queue.'),
+	body: def('Layers you add show a green border. It marks an unsaved change in the draft.'),
 }
 
 export const notNextBadge = {
 	title: def('Not the next layer yet'),
-	body: def('Your new layer is not posted on the server yet. Save the queue to set it as the next map.'),
+	body: def('Your draft now disagrees with the server: the old next layer is still the one posted. More on that at the end.'),
+}
+
+export const clearQueue = {
+	title: def('Run the queue dry'),
+	body: def('What happens when the queue runs out? Find out: clear every layer with the trash button.'),
+}
+
+export const queueEmpty = {
+	title: def('The queue ran out'),
+	body: def(
+		'Only your draft is empty; the server is untouched. And even a saved empty queue never leaves the server bare: SLM generates a layer from the pool to fill it.',
+	),
+}
+
+export const resetQueue = {
+	title: def('Reset the draft'),
+	body: def('Reset throws away every unsaved change and restores the last saved queue. Use it to undo the damage.'),
 }
 
 export const openEditor = {
@@ -161,6 +178,6 @@ export const tally = {
 export const wrapUp = {
 	title: def("That's the tour"),
 	body: def(
-		'You added a layer, removed one, swapped its factions and reordered the queue, then saved. Keep this server to play with, or pick another tutorial.',
+		'You ran the queue dry and reset it, added a layer, removed one, swapped factions and reordered, then saved. Keep this server to play with, or pick another tutorial.',
 	),
 }

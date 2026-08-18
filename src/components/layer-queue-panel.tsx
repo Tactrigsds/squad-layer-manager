@@ -259,6 +259,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							data-tour="queue-clear"
 							disabled={!isEditing}
 							className="not-group-data-[status=editing]:invisible"
 							variant="secondary"
@@ -323,6 +324,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							data-tour="queue-reset"
 							size="icon"
 							disabled={!isModified}
 							onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
