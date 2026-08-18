@@ -78,6 +78,30 @@ export const steps = Tour.defineSteps([
 	{ id: 'team-normalize', anchor: { all: 'queue-item' }, msg: TUT_Msgs.teamNormalize, advance: { type: 'next' } },
 	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: TUT_Msgs.nextBadge, advance: { type: 'next' } },
 	{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: TUT_Msgs.openEditor, advance: { type: 'anchor' } },
+	// the clear -> empty -> reset arc runs before any real edits exist, so Reset discards nothing the user built
+	{
+		id: 'clear-queue',
+		anchor: 'queue-clear',
+		interact: 'anchor-only',
+		msg: TUT_Msgs.clearQueue,
+		premise: editingQueue,
+		advance: { type: 'state', inputs: (run) => [run.squadServer], select: (s: any) => queueLength(s) === 0 },
+	},
+	{
+		id: 'queue-empty',
+		anchor: 'queue-panel',
+		msg: TUT_Msgs.queueEmpty,
+		premise: editingQueue,
+		advance: { type: 'next' },
+	},
+	{
+		id: 'reset-queue',
+		anchor: 'queue-reset',
+		interact: 'anchor-only',
+		msg: TUT_Msgs.resetQueue,
+		premise: editingQueue,
+		advance: { type: 'state', inputs: (run) => [run.squadServer], select: (s: any) => queueLength(s) > 0 },
+	},
 	{
 		id: 'open-add',
 		anchor: 'queue-add',
