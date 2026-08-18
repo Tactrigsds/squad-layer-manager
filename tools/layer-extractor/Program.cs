@@ -31,7 +31,7 @@ var gameDir = TakeOpt("--game")
 var outPath = TakeOpt("--out");
 var vanilla = argv.Remove("--vanilla");
 var plan = argv.Remove("--plan");
-var command = argv.FirstOrDefault(a => a.StartsWith("list:") || a.StartsWith("dump:"));
+var command = argv.FirstOrDefault(a => a.StartsWith("list:") || a.StartsWith("dump:") || a.StartsWith("textures:"));
 var modDir = argv.FirstOrDefault(a => a != command);
 if (modDir == null && (plan || !vanilla))
 {
@@ -203,6 +203,88 @@ if (command != null && command.StartsWith("dump:"))
 	var dumped = LoadExports(file)?.ToString(Formatting.Indented) ?? "null";
 	if (outPath != null) File.WriteAllText(outPath, dumped);
 	else Console.WriteLine(dumped);
+	return;
+}
+
+// textures:<substring> writes every matching Texture2D's top mip to <out>/<name>.dds, as the raw block-compressed
+// payload under a DDS header. The UI icons this is for are single-format and small, and any image tool reads DDS,
+// which keeps the decoders out of here.
+if (command != null && command.StartsWith("textures:"))
+{
+	var needle = command["textures:".Length..];
+	var dir = outPath ?? ".";
+	Directory.CreateDirectory(dir);
+	var written = 0;
+	foreach (
+		var file in searchKeys.Where(k => k.EndsWith(".uasset") && k.Contains(needle, StringComparison.OrdinalIgnoreCase))
+			.OrderBy(k => k, StringComparer.Ordinal)
+	)
+	{
+		CUE4Parse.UE4.Assets.Exports.Texture.UTexture2D? texture;
+		try
+		{
+			texture = provider.LoadPackage(file).GetExports()
+				.OfType<CUE4Parse.UE4.Assets.Exports.Texture.UTexture2D>().FirstOrDefault();
+		}
+		catch (Exception e)
+		{
+			Console.Error.WriteLine($"warn: failed to load {file}: {e.Message}");
+			continue;
+		}
+		var mip = texture?.GetFirstMip();
+		if (texture == null || mip?.BulkData.Data == null)
+		{
+			Console.Error.WriteLine($"warn: no texture mip in {file}");
+			continue;
+		}
+		var format = texture.Format.ToString();
+		var fourCc = format switch
+		{
+			"PF_DXT1" => "DXT1",
+			"PF_DXT3" => "DXT3",
+			"PF_DXT5" => "DXT5",
+			_ => null,
+		};
+		if (fourCc == null && format != "PF_B8G8R8A8")
+		{
+			Console.Error.WriteLine($"warn: {BaseName(file)} is {format}, only DXT1/3/5 and B8G8R8A8 are written");
+			continue;
+		}
+		var target = Path.Combine(dir, Path.GetFileNameWithoutExtension(file) + ".dds");
+		using var stream = File.Create(target);
+		using var writer = new BinaryWriter(stream);
+		writer.Write(0x20534444); // "DDS "
+		writer.Write(124); // header size
+		writer.Write(0x1 | 0x2 | 0x4 | 0x1000 | 0x80000); // caps|height|width|pixelformat|linearsize
+		writer.Write(mip.SizeY);
+		writer.Write(mip.SizeX);
+		writer.Write(mip.BulkData.Data.Length);
+		writer.Write(0); // depth
+		writer.Write(0); // mipmap count
+		for (var i = 0; i < 11; i++) writer.Write(0); // reserved
+		writer.Write(32); // pixel format size
+		if (fourCc != null)
+		{
+			writer.Write(0x4); // DDPF_FOURCC
+			writer.Write(System.Text.Encoding.ASCII.GetBytes(fourCc));
+			for (var i = 0; i < 5; i++) writer.Write(0); // bit counts and masks, unused for fourcc
+		}
+		else
+		{
+			writer.Write(0x1 | 0x40); // DDPF_ALPHAPIXELS | DDPF_RGB
+			writer.Write(0); // no fourcc
+			writer.Write(32); // bits per pixel
+			writer.Write(0x00ff0000); // red mask, BGRA byte order
+			writer.Write(0x0000ff00);
+			writer.Write(0x000000ff);
+			writer.Write(unchecked((int)0xff000000));
+		}
+		writer.Write(0x1000); // DDSCAPS_TEXTURE
+		for (var i = 0; i < 4; i++) writer.Write(0); // remaining caps and reserved
+		writer.Write(mip.BulkData.Data);
+		written++;
+	}
+	Console.Error.WriteLine($"wrote {written} texture(s) to {dir}");
 	return;
 }
 
