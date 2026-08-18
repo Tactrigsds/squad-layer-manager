@@ -1,3 +1,5 @@
+import * as React from 'react'
+
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Rx from '@/lib/rxjs'
@@ -60,8 +62,11 @@ function releaseRun(run: RunStores) {
 type TextMsg = Msgs.Variants.Textable
 // a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape.
 export type StepMsg = { title: () => TextMsg; body: () => TextMsg }
-// what the overlay renders: resolved strings.
-export type RenderedStep = { title: string; body: string }
+// a rich body for cards that need markup a plain string cannot carry (the team color legend). The component keeps
+// its strings in TUT_Msgs and lives in a .tsx (tour-step-bodies.tsx).
+export type RichStepMsg = { title: () => TextMsg; Body: React.ComponentType }
+// what the overlay renders: a resolved title and a body node.
+export type RenderedStep = { title: string; body: React.ReactNode }
 
 // one shape for everything a step derives from live state: advancement, premises, dynamic copy. inputs picks the
 // Zus.AnyInputs, select reads their states.
@@ -91,7 +96,7 @@ export type AnchorRef = string | ((run: RunStores) => string | null)
 
 export type Step = {
 	id: string
-	msg: StepMsg | StateSelector<RenderedStep>
+	msg: StepMsg | RichStepMsg | StateSelector<RenderedStep>
 	anchor?: AnchorRef // the outlined element (spotlight ring). absent = centered card
 	// the region left undimmed, if larger than the outlined element: the whole queue while reordering, the whole item
 	// while pointing at one of its buttons. Defaults to anchor. The ring stays on anchor; only the dim cutout and the
@@ -147,6 +152,7 @@ function readSelector<T>(run: RunStores, sel: StateSelector<T>): T {
 // Resolve a step's copy against current state. The overlay re-renders on the sources it subscribes to.
 export function renderMsg(run: RunStores, msg: Step['msg']): RenderedStep {
 	if ('inputs' in msg) return readSelector(run, msg)
+	if ('Body' in msg) return { title: tr.text(msg.title()), body: React.createElement(msg.Body) }
 	return { title: tr.text(msg.title()), body: tr.text(msg.body()) }
 }
 

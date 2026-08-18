@@ -9,7 +9,7 @@ import { def } from '@/models/messages.models'
 
 export const welcome = {
 	title: def('Welcome'),
-	body: def('This server is emulated and yours alone. Nothing you do here reaches a real server or a real player.'),
+	body: def("Welcome to the layer queue tutorial. Here, we'll learn the basics of editing SLM's layer queue"),
 }
 
 export const nowPlaying = {
@@ -22,19 +22,25 @@ export const queuePanel = {
 	body: def("This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map."),
 }
 
-export const teamSlots = {
-	title: def('The two sides'),
-	body: def(
-		'Each layer pits two factions against each other. (1) and (2) mark the raw slots, Team 1 and Team 2. Players swap between them every round.',
-	),
-}
+// team-slots and team-normalize render rich bodies (tour-step-bodies.tsx) so the color coding can be shown, not
+// described. These defs are the strings those bodies compose around the colored marks.
+export const teamSlotsTitle = def('Team 1 and Team 2')
+export const teamSlotsIntro = def(
+	'A layer names its two factions in order: the first plays as Team 1, the second as Team 2. Each slot has a fixed color, used everywhere in SLM:',
+)
+export const teamSlotsTeam1 = def('Team 1, the first faction in the layer name')
+export const teamSlotsTeam2 = def('Team 2, the second faction')
+export const teamSlotsSwap = def('The slots are seats, not groups of players: everyone switches sides after every match.')
 
-export const teamNormalize = {
-	title: def('Team A and Team B'),
-	body: def(
-		'Since the slots swap each round, SLM can track a persistent Team A and Team B that follow each side across the swap. Normalize Teams in the top menu toggles the labels.',
-	),
-}
+export const teamNormalizeTitle = def('Team A and Team B')
+export const teamNormalizeIntro = def(
+	'Because everyone switches slots each match, SLM also tracks two persistent teams that stay with their players across the swap:',
+)
+export const teamNormalizeOutro = def(
+	'By default faction names are colored this way, so a team keeps its color from match to match. Normalize Teams in the top menu toggles it.',
+)
+export const teamALabel = def('Team A')
+export const teamBLabel = def('Team B')
 
 export const nextBadge = {
 	title: def('The Next Layer badge'),
@@ -53,12 +59,12 @@ export const notNextBadge = {
 
 export const openEditor = {
 	title: def('Edit the queue'),
-	body: def('Open the editor to change the queue. Your changes only reach the game server when you save.'),
+	body: def('Open the editor to signal to others that you are editing the queue.'),
 }
 
 export const openAdd = {
 	title: def('Add a layer'),
-	body: def('Open Add Layers to browse the full pool of maps and factions.'),
+	body: def('When you want to add a layer to the queue, click'),
 }
 
 export const appliedFilter = {
