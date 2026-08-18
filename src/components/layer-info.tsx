@@ -597,8 +597,31 @@ function ScoreGrid({
 	const team1Role = layerDetails?.layerConfig?.teams[0]?.role
 	const team2Role = layerDetails?.layerConfig?.teams[1]?.role
 
+	// blue and red mean team 1 and team 2 in every gauge and column below, so the pair is named once, first
 	return (
 		<div className="grid gap-2">
+			<div className="flex justify-between text-xs font-medium">
+				<span className="text-blue-500">
+					{tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team1()),
+							team1Role,
+							layerDetails?.layer.Faction_1 ?? '',
+							layerDetails?.layer.Unit_1 ?? '',
+						),
+					)}
+				</span>
+				<span className="text-red-500">
+					{tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team2()),
+							team2Role,
+							layerDetails?.layer.Faction_2 ?? '',
+							layerDetails?.layer.Unit_2 ?? '',
+						),
+					)}
+				</span>
+			</div>
 			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
 				<div className="mb-2 pb-2 border-b border-muted space-y-1">
 					{scores.diffs['Balance_Differential'] !== undefined && (
@@ -617,28 +640,7 @@ function ScoreGrid({
 					))}
 				</div>
 			)}
-			{zScoreTypes.length > 0 && (
-				<ZScoreChart
-					scoreTypes={zScoreTypes}
-					scores={scores}
-					team1Heading={tr.richText(
-						L_Msgs.teamScoreHeading(
-							tr.text(L_Msgs.team1()),
-							team1Role,
-							layerDetails?.layer.Faction_1 ?? '',
-							layerDetails?.layer.Unit_1 ?? '',
-						),
-					)}
-					team2Heading={tr.richText(
-						L_Msgs.teamScoreHeading(
-							tr.text(L_Msgs.team2()),
-							team2Role,
-							layerDetails?.layer.Faction_2 ?? '',
-							layerDetails?.layer.Unit_2 ?? '',
-						),
-					)}
-				/>
-			)}
+			{zScoreTypes.length > 0 && <ZScoreChart scoreTypes={zScoreTypes} scores={scores} />}
 		</div>
 	)
 }
@@ -657,32 +659,17 @@ const Z_COLUMN_WIDTH = 116
 const zY = (score: number) => ((Z_MAX - Math.max(Z_MIN, Math.min(Z_MAX, score))) / (Z_MAX - Z_MIN)) * Z_HEIGHT
 
 // Both teams' markers share one dimension's axis, so the pair can be compared by height rather than by sign.
-function ZScoreChart({
-	scoreTypes,
-	scores,
-	team1Heading,
-	team2Heading,
-}: {
-	scoreTypes: string[]
-	scores: LC.PartitionedScores
-	team1Heading: React.ReactNode
-	team2Heading: React.ReactNode
-}) {
+function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.PartitionedScores }) {
 	return (
-		// heading, name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves
-		// every column's chart down together rather than leaving a ragged edge
+		// name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves every
+		// column's chart down together rather than leaving a ragged edge
 		<div
 			className="grid justify-center gap-x-4"
 			style={{
 				gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, ${Z_COLUMN_WIDTH}px))`,
-				gridTemplateRows: 'auto auto auto auto',
+				gridTemplateRows: 'auto auto auto',
 			}}
 		>
-			<div />
-			<div className="mb-2 flex justify-between text-xs font-medium" style={{ gridColumn: `2 / span ${scoreTypes.length}` }}>
-				<span className="text-blue-500">{team1Heading}</span>
-				<span className="text-red-500">{team2Heading}</span>
-			</div>
 			<div />
 			{scoreTypes.map((scoreType) => (
 				<div key={scoreType} className="mb-0.5 text-center text-xs font-medium leading-tight">
