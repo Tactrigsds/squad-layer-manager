@@ -77,7 +77,10 @@ export const appliedFilter = {
 
 export const addFilters = {
 	title: def('Narrow the pool'),
-	body: def('Filter by map, gamemode, faction and more to find the layer you want.'),
+	body: def(
+		'Use the filters to pick out a layer: set Map to {map}, and set {faction} as the faction on either team.',
+		(map: string, faction: string) => ({ map, faction }),
+	),
 }
 
 export const addPick = {
