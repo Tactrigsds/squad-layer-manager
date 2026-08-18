@@ -40,7 +40,7 @@ export const teamNormalize = {
 	title: def('Normalized for display'),
 	body: def(() => ({
 		richText: rt(
-			'Each layer here is shown with <ta>Team A</ta> on the left and <tb>Team B</tb> on the right, whatever order its command says. Watch the <m1>(1)</m1> and <m2>(2)</m2> marks alternate down the queue: the teams switch slots every match, and SLM flips the printed order so each side keeps its column. Turn off Normalize Teams in the top menu to see raw command order instead.',
+			'By default SLM normalizes the display: every layer is shown with <ta>Team A</ta> on the left and <tb>Team B</tb> on the right, whatever order its command says. Watch the <m1>(1)</m1> and <m2>(2)</m2> marks alternate down the queue: the teams switch slots every match, and SLM flips the printed order so each side keeps its column. Turn off Normalize Teams in the top menu to see raw command order instead.',
 		),
 	})),
 }
