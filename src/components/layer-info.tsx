@@ -6,6 +6,7 @@ import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Zus from '@/lib/zustand'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
@@ -31,6 +32,7 @@ import {
 import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import VehicleIcon from './vehicle-icon.tsx'
 
 type LayerInfoProps = {
 	// expected to be known layer id
@@ -232,9 +234,6 @@ function LayerDetailsDisplay({
 }: {
 	layerDetails: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
 }) {
-	const team1Vehicles = layerDetails.team1?.vehicles || []
-	const team2Vehicles = layerDetails.team2?.vehicles || []
-
 	return (
 		<div className="space-y-3 border-b pb-3">
 			{/* 2x2 Grid Layout */}
@@ -256,8 +255,8 @@ function LayerDetailsDisplay({
 				/>
 
 				{/* Vehicles Row */}
-				<VehiclesOnly title={tr.text(L_Msgs.team1Vehicles())} vehicles={team1Vehicles} />
-				<VehiclesOnly title={tr.text(L_Msgs.team2Vehicles())} vehicles={team2Vehicles} />
+				<VehiclesOnly title={tr.text(L_Msgs.team1Vehicles())} unit={layerDetails.team1} />
+				<VehiclesOnly title={tr.text(L_Msgs.team2Vehicles())} unit={layerDetails.team2} />
 			</div>
 		</div>
 	)
@@ -303,7 +302,10 @@ function TeamInfoOnly({
 	)
 }
 
-function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicle[] }) {
+function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfig | undefined }) {
+	const vehicles = unit?.vehicles ?? []
+	// the class the vehicle filters use, which splits the source's own by running gear and corrects its mislabels
+	const types = React.useMemo(() => (unit ? LC.vehicleTypesForUnitRecord(unit) : []), [unit])
 	return (
 		<section className="space-y-1">
 			<h4 className="text-sm font-medium">{title}</h4>
@@ -316,7 +318,7 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 						<TooltipProvider>
 							<Tooltip>
 								<TooltipTrigger>
-									<Icons.Info size={16} className="text-blue-400 hover:text-blue-300 cursor-pointer" />
+									<Icons.Timer size={16} className="text-muted-foreground" />
 								</TooltipTrigger>
 								<TooltipContent>{tr.text(L_Msgs.vehicleDelayRespawn())}</TooltipContent>
 							</Tooltip>
@@ -325,7 +327,7 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 					<div className="flex items-center font-medium" role="columnheader">
 						<Tooltip>
 							<TooltipTrigger>
-								<Icons.Car size={16} className="text-green-400" />
+								<Icons.Car size={16} className="text-muted-foreground" />
 							</TooltipTrigger>
 							<TooltipContent>{tr.text(L_Msgs.vehicleType())}</TooltipContent>
 						</Tooltip>
@@ -333,8 +335,8 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 					<div className="font-medium" role="columnheader">
 						{tr.text(L_Msgs.vehicleName())}
 					</div>
-					{vehicles.map((vehicle) => (
-						<IndividualVehicleRow key={vehicle.name} vehicle={vehicle} />
+					{vehicles.map((vehicle, index) => (
+						<IndividualVehicleRow key={vehicle.name} vehicle={vehicle} type={types[index]} />
 					))}
 				</div>
 			)}
@@ -342,8 +344,9 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 	)
 }
 
-function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
+function IndividualVehicleRow({ vehicle, type }: { vehicle: SLL.Vehicle; type: string | undefined }) {
 	const delayRespawnInfo = `${vehicle.delay}/${vehicle.respawnTime}`
+	const label = type ? LC_Msgs.vehicleTypeLabels[type] : undefined
 
 	return (
 		<>
@@ -351,7 +354,17 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 				{vehicle.count}
 			</div>
 			<div role="cell">{delayRespawnInfo}</div>
-			<div role="cell">{vehicle.vehType}</div>
+			<div role="cell">
+				<Tooltip>
+					<TooltipTrigger className="flex items-center gap-1.5">
+						<VehicleIcon icon={vehicle.icon} size={18} />
+						<span className="font-mono text-xs rounded-sm border px-1 py-px">
+							{type ? LC.vehicleTypeShortCode(type) : vehicle.vehType}
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>{label ? tr.text(label) : (type ?? vehicle.vehType)}</TooltipContent>
+				</Tooltip>
+			</div>
 			<div role="cell">{vehicle.name}</div>
 		</>
 	)
