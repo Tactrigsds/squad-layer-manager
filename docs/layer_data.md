@@ -58,3 +58,17 @@ Steam account is needed. The base game must still be installed; mods reference i
 Every source's layers are in the pool of every query. The Collection column tells them apart: a server that only
 runs vanilla should carry a `Collection == OWI` term in its pool filter, and generated votes draw whatever the pool
 filter admits.
+
+## Vehicle icons
+
+The layer details panel draws each vehicle with the map icon the game gives it. Those are textures in the base
+game, checked in under `src/assets/vehicle-icons` and rebuilt when Squad changes them:
+
+```sh
+cd tools/layer-extractor
+dotnet run -- --vanilla textures:VehicleMapIcons --out /tmp/squad-icons
+cd ../.. && pnpm build:vehicle-icons /tmp/squad-icons
+```
+
+Mod vehicles name icons that ship in the mod's own paks, and those are not extracted: `fetch-workshop-mod.sh`
+pulls the dedicated-server cook, which strips art. Their rows show the class without an icon.

@@ -21,6 +21,7 @@
 		"test:integration": "node scripts/test-server-bundle.mjs vitest run --config vitest.integration.config.ts",
 		"test:integration:src": "vitest run --config vitest.integration.config.ts",
 		"build:client": "vite build",
+		"build:vehicle-icons": "tsx --tsconfig tsconfig.node.json src/scripts/build-vehicle-icons.ts",
 		"build:landing-css": "tsx --tsconfig tsconfig.node.json src/scripts/build-landing-css.ts",
 		"precompress:dist": "tsx --tsconfig tsconfig.node.json src/scripts/precompress-dist.ts",
 		"build:server": "rolldown build -c rolldown-server-prod.config.ts",
