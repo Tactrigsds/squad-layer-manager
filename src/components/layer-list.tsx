@@ -426,8 +426,11 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const user = UsersClient.useLoggedInUser()
 
-	// the tutorial tour spotlights one row; the head row stands in for "a layer"
+	// the tutorial tour spotlights one row's controls; the head row stands in for "a layer". The first few rows all
+	// carry the queue-item anchor: a plain 'queue-item' anchor still resolves to the head (first laid-out match), and
+	// { all: 'queue-item' } bounds the run of rows, which the normalization step highlights as a sequence.
 	const isTourRow = LL.isLocallyFirstIndex(index)
+	const isTourSeqRow = index.innerIndex === null && index.outerIndex < 3
 
 	const isVoteChoice = !!parentItem
 
@@ -605,7 +608,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						'group/single-item flex data-[is-voting=true]:border-added data-[is-voting=true]:bg-secondary w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background border-2 border-transparent data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-white data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible rounded-md cursor-default data-[is-hovered=true]:outline-solid',
 					)}
 					data-mutation={displayedMutation}
-					data-tour={isTourRow ? 'queue-item' : undefined}
+					data-tour={isTourSeqRow ? 'queue-item' : undefined}
 					data-is-dragging={dragProps.isDragging}
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}

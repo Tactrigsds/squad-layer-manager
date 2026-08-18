@@ -22,22 +22,25 @@ export const queuePanel = {
 	body: def("This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map."),
 }
 
-// The team steps show the color coding instead of describing it: the tags color their chunks with the real team
-// colors (renderers in tour.client.ts), so each sentence stays one translatable pattern.
-export const teamSlots = {
-	title: def('Team 1 and Team 2'),
-	body: def(() => ({
+// Grounds the queue in what an item actually is: the AdminSetNextLayer command SLM runs for it. The args carry the
+// real command for the spotlighted head item, split so the pattern can color the faction arguments; the tags color
+// their chunks with the real team colors (renderers in tour.client.ts), so each sentence stays one translatable
+// pattern.
+export const layerCommand = {
+	title: def('A queue item is a command'),
+	body: def((prefix: string, team1: string, team2: string) => ({
 		richText: rt(
-			'A layer names its two factions in order: the first plays as <t1>Team 1</t1>, the second as <t2>Team 2</t2>. The <m1>(1)</m1> and <m2>(2)</m2> marks carry the slot colors, used everywhere in SLM. The slots are seats, not groups of players: everyone switches sides after every match.',
+			'Each item in the queue defines a command. When the item reaches the top, SLM runs it on the game server to set the next layer:<br></br><code>{prefix} <t1>{team1}</t1> <t2>{team2}</t2></code><br></br>The faction listed first plays as <t1>Team 1</t1> <m1>(1)</m1>, the second as <t2>Team 2</t2> <m2>(2)</m2>. Everyone switches sides after every match, so SLM also tracks two persistent teams, <ta>Team A</ta> and <tb>Team B</tb>, that stay with their players.',
+			{ prefix, team1, team2 },
 		),
 	})),
 }
 
 export const teamNormalize = {
-	title: def('Team A and Team B'),
+	title: def('Normalized for display'),
 	body: def(() => ({
 		richText: rt(
-			'Because everyone switches slots each match, SLM also tracks two persistent teams, <ta>Team A</ta> and <tb>Team B</tb>, that stay with their players across the swap. By default faction names are colored this way, so a team keeps its color from match to match. Normalize Teams in the top menu toggles it.',
+			'Each layer here is shown with <ta>Team A</ta> on the left and <tb>Team B</tb> on the right, whatever order its command says. Watch the <m1>(1)</m1> and <m2>(2)</m2> marks alternate down the queue: the teams switch slots every match, and SLM flips the printed order so each side keeps its column. Turn off Normalize Teams in the top menu to see raw command order instead.',
 		),
 	})),
 }

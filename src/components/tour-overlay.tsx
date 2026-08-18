@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
+import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { rootRouter } from '@/root-router'
@@ -16,39 +17,77 @@ const GAP = 12 // px between the anchor and the card
 
 // ---- reactive anchor measurement (no ready-made hook; getBoundingClientRect on a rAF loop, per the house pattern) ----
 
-function useAnchorEl(tourId: string | null): Element | null {
-	const [el, setEl] = React.useState<Element | null>(null)
-	React.useEffect(() => {
-		if (!tourId) {
-			setEl(null)
-			return
-		}
-		const sub = Tour.domInput(tourId).subscribe(setEl)
-		return () => sub.unsubscribe()
-	}, [tourId])
-	return el
+const isLaidOut = (el: Element) => {
+	const r = el.getBoundingClientRect()
+	return r.width > 0 || r.height > 0
 }
 
-function sameRect(a: DOMRect, b: DOMRect) {
+// The elements an anchor target resolves to: every laid-out match for `{ all }`, else the first laid-out match
+// (the id may be mounted more than once, hidden copies included).
+function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
+	const [els, setEls] = React.useState<Element[]>([])
+	const id = target === null ? null : typeof target === 'string' ? target : target.all
+	const all = target !== null && typeof target === 'object'
+	React.useEffect(() => {
+		if (!id) {
+			setEls([])
+			return
+		}
+		const pick = (list: Element[]) => {
+			if (all) return list.filter(isLaidOut)
+			const first = list.find(isLaidOut) ?? list[0]
+			return first ? [first] : []
+		}
+		const sub = Tour.domInput(id)
+			.pipe(Rx.map(pick))
+			.subscribe((next) => setEls((prev) => (prev.length === next.length && prev.every((el, i) => el === next[i]) ? prev : next)))
+		return () => sub.unsubscribe()
+	}, [id, all])
+	return els
+}
+
+type Rect = { top: number; left: number; width: number; height: number; bottom: number; right: number }
+
+function sameRect(a: Rect, b: Rect) {
 	return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
 }
 
-function useRect(el: Element | null): DOMRect | null {
-	const [rect, setRect] = React.useState<DOMRect | null>(null)
+// the minimum rect containing every laid-out element; null while none is
+function useUnionRect(els: Element[]): Rect | null {
+	const [rect, setRect] = React.useState<Rect | null>(null)
 	React.useEffect(() => {
-		if (!el) {
+		if (els.length === 0) {
 			setRect(null)
 			return
 		}
 		let raf = 0
 		const tick = () => {
-			const next = el.getBoundingClientRect()
-			setRect((prev) => (prev && sameRect(prev, next) ? prev : next))
+			let next: Rect | null = null
+			for (const el of els) {
+				const r = el.getBoundingClientRect()
+				if (r.width <= 0 && r.height <= 0) continue
+				next =
+					next === null
+						? { top: r.top, left: r.left, bottom: r.bottom, right: r.right, width: r.width, height: r.height }
+						: {
+								top: Math.min(next.top, r.top),
+								left: Math.min(next.left, r.left),
+								bottom: Math.max(next.bottom, r.bottom),
+								right: Math.max(next.right, r.right),
+								width: 0,
+								height: 0,
+							}
+			}
+			if (next) {
+				next.width = next.right - next.left
+				next.height = next.bottom - next.top
+			}
+			setRect((prev) => (prev === next || (prev && next && sameRect(prev, next)) ? prev : next))
 			raf = requestAnimationFrame(tick)
 		}
 		raf = requestAnimationFrame(tick)
 		return () => cancelAnimationFrame(raf)
-	}, [el])
+	}, [els])
 	return rect
 }
 
@@ -115,33 +154,36 @@ function AnchoredStep(props: {
 	total: number
 }) {
 	const { state, step, run, total } = props
-	const anchorId = Tour.resolveAnchor(run, step.anchor)
-	const el = useAnchorEl(anchorId)
-	const rect = useRect(el)
+	const anchorTarget = Tour.resolveAnchor(run, step.anchor)
+	const els = useAnchorEls(anchorTarget)
+	const rect = useUnionRect(els)
 	// the undimmed region, wider than the outline when a step sets it; otherwise the anchor itself
-	const spotlightId = Tour.resolveAnchor(run, step.spotlight ?? step.anchor)
-	const spotEl = useAnchorEl(spotlightId)
-	const spotRect = useRect(spotEl)
+	const spotlightTarget = Tour.resolveAnchor(run, step.spotlight ?? step.anchor)
+	const spotEls = useAnchorEls(spotlightTarget)
+	const spotRect = useUnionRect(spotEls)
 	const rendered = useRenderedMsg(run, step.msg)
 	const interact = step.interact ?? 'block'
 
-	// bring the outlined element into view when it resolves, so it is never dimmed off-screen or behind an overflow
+	// bring the outlined zone into view when it resolves, so it is never dimmed off-screen or behind an overflow
 	// scroll. The rAF rect loop tracks it as the scroll settles.
+	const firstEl = els[0] ?? null
 	React.useEffect(() => {
-		el?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
-	}, [el])
+		firstEl?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
+	}, [firstEl])
 
-	// advance:'anchor' — advance when the user activates the anchored element
+	// advance:'anchor' — advance when the user activates any anchored element
 	React.useEffect(() => {
-		if (state.code !== 'narrating' || step.advance.type !== 'anchor' || !el) return
+		if (state.code !== 'narrating' || step.advance.type !== 'anchor' || els.length === 0) return
 		const onClick = () => Tour.Actions.next()
-		el.addEventListener('click', onClick, { capture: true })
-		return () => el.removeEventListener('click', onClick, { capture: true } as EventListenerOptions)
-	}, [state.code, step.advance.type, el])
+		for (const el of els) el.addEventListener('click', onClick, { capture: true })
+		return () => {
+			for (const el of els) el.removeEventListener('click', onClick, { capture: true } as EventListenerOptions)
+		}
+	}, [state.code, step.advance.type, els])
 
-	// anchored but the spotlight element has not mounted yet: wait with a plain dim, no cutout
-	const hasSpotlight = spotlightId !== null && spotRect !== null
-	const hasOutline = anchorId !== null && rect !== null
+	// anchored but the spotlight elements have not mounted yet: wait with a plain dim, no cutout
+	const hasSpotlight = spotlightTarget !== null && spotRect !== null
+	const hasOutline = anchorTarget !== null && rect !== null
 	const cardRect = spotRect ?? rect
 
 	return (
@@ -156,7 +198,7 @@ function AnchoredStep(props: {
 
 // The dark scrim with a hole cut for the undimmed region. Just the dim; the ring is drawn separately so it can sit on
 // a smaller element than the hole.
-function Scrim({ rect }: { rect: DOMRect }) {
+function Scrim({ rect }: { rect: Rect }) {
 	return (
 		<div
 			style={{
@@ -174,7 +216,7 @@ function Scrim({ rect }: { rect: DOMRect }) {
 }
 
 // The highlight ring around the outlined element. No dim of its own.
-function Outline({ rect }: { rect: DOMRect }) {
+function Outline({ rect }: { rect: Rect }) {
 	return (
 		<div
 			style={{
@@ -192,7 +234,7 @@ function Outline({ rect }: { rect: DOMRect }) {
 }
 
 // Pointer control. block = capture everything; anchor-only = frame the anchor so only it stays live; free = nothing.
-function Blockers({ interact, rect }: { interact: 'block' | 'anchor-only' | 'free'; rect: DOMRect | null }) {
+function Blockers({ interact, rect }: { interact: 'block' | 'anchor-only' | 'free'; rect: Rect | null }) {
 	const cap: React.CSSProperties = { position: 'fixed', pointerEvents: 'auto' }
 	if (interact === 'free') return null
 	if (interact === 'block' || !rect) return <div style={{ ...cap, inset: 0 }} />
@@ -215,7 +257,7 @@ const CARD_H = 180 // estimate for placement math; the card runs ~160-190px
 // Place the card below the anchor, then above, then beside it -- whichever first keeps the whole card on screen. A
 // container-sized anchor (the filter column runs nearly the full viewport) has no room above or below, so it lands
 // beside, vertically clamped, instead of off the top edge.
-function placeCard(rect: DOMRect | null): React.CSSProperties {
+function placeCard(rect: Rect | null): React.CSSProperties {
 	if (!rect) {
 		return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
 	}
@@ -230,7 +272,7 @@ function placeCard(rect: DOMRect | null): React.CSSProperties {
 	return { top: clampY(rect.top), left: clampX(rect.left) }
 }
 
-function Card(props: { state: AnchoredStepState; step: Tour.Step; rendered: Tour.RenderedStep; rect: DOMRect | null; total: number }) {
+function Card(props: { state: AnchoredStepState; step: Tour.Step; rendered: Tour.RenderedStep; rect: Rect | null; total: number }) {
 	const { state, step, rendered, rect, total } = props
 	const stepNo = state.stepIdx + 1
 	const isLast = state.stepIdx === total - 1
