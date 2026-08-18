@@ -1,4 +1,3 @@
-import * as TourBodies from '@/components/tour-step-bodies'
 import * as TUT_Msgs from '@/messages/tutorials.messages'
 import * as Tour from '@/systems/tour.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -36,18 +35,8 @@ export const steps = Tour.defineSteps([
 	{ id: 'welcome', msg: TUT_Msgs.welcome, advance: { type: 'next' } },
 	{ id: 'queue-panel', anchor: 'queue-panel', msg: TUT_Msgs.queuePanel, advance: { type: 'next' } },
 	// read-only tour of the head item's display, before any editing
-	{
-		id: 'team-slots',
-		anchor: 'queue-layer-name',
-		msg: { title: TUT_Msgs.teamSlotsTitle, Body: TourBodies.TeamSlotsBody },
-		advance: { type: 'next' },
-	},
-	{
-		id: 'team-normalize',
-		anchor: 'queue-layer-name',
-		msg: { title: TUT_Msgs.teamNormalizeTitle, Body: TourBodies.TeamNormalizeBody },
-		advance: { type: 'next' },
-	},
+	{ id: 'team-slots', anchor: 'queue-layer-name', msg: TUT_Msgs.teamSlots, advance: { type: 'next' } },
+	{ id: 'team-normalize', anchor: 'queue-layer-name', msg: TUT_Msgs.teamNormalize, advance: { type: 'next' } },
 	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: TUT_Msgs.nextBadge, advance: { type: 'next' } },
 	{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: TUT_Msgs.openEditor, advance: { type: 'anchor' } },
 	{

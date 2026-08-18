@@ -1,4 +1,4 @@
-import { def } from '@/models/messages.models'
+import { def, rt } from '@/models/messages.models'
 
 // Copy for the in-app tutorial tour. Each step's card shows a title and a body; a step references one bundled
 // entry here. Branching steps (sync, roll) export the alternative under its own name; the step's msg selector
@@ -22,25 +22,25 @@ export const queuePanel = {
 	body: def("This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map."),
 }
 
-// team-slots and team-normalize render rich bodies (tour-step-bodies.tsx) so the color coding can be shown, not
-// described. These defs are the strings those bodies compose around the colored marks.
-export const teamSlotsTitle = def('Team 1 and Team 2')
-export const teamSlotsIntro = def(
-	'A layer names its two factions in order: the first plays as Team 1, the second as Team 2. Each slot has a fixed color, used everywhere in SLM:',
-)
-export const teamSlotsTeam1 = def('Team 1, the first faction in the layer name')
-export const teamSlotsTeam2 = def('Team 2, the second faction')
-export const teamSlotsSwap = def('The slots are seats, not groups of players: everyone switches sides after every match.')
+// The team steps show the color coding instead of describing it: the tags color their chunks with the real team
+// colors (renderers in tour.client.ts), so each sentence stays one translatable pattern.
+export const teamSlots = {
+	title: def('Team 1 and Team 2'),
+	body: def(() => ({
+		richText: rt(
+			'A layer names its two factions in order: the first plays as <t1>Team 1</t1>, the second as <t2>Team 2</t2>. The <m1>(1)</m1> and <m2>(2)</m2> marks carry the slot colors, used everywhere in SLM. The slots are seats, not groups of players: everyone switches sides after every match.',
+		),
+	})),
+}
 
-export const teamNormalizeTitle = def('Team A and Team B')
-export const teamNormalizeIntro = def(
-	'Because everyone switches slots each match, SLM also tracks two persistent teams that stay with their players across the swap:',
-)
-export const teamNormalizeOutro = def(
-	'By default faction names are colored this way, so a team keeps its color from match to match. Normalize Teams in the top menu toggles it.',
-)
-export const teamALabel = def('Team A')
-export const teamBLabel = def('Team B')
+export const teamNormalize = {
+	title: def('Team A and Team B'),
+	body: def(() => ({
+		richText: rt(
+			'Because everyone switches slots each match, SLM also tracks two persistent teams, <ta>Team A</ta> and <tb>Team B</tb>, that stay with their players across the swap. By default faction names are colored this way, so a team keeps its color from match to match. Normalize Teams in the top menu toggles it.',
+		),
+	})),
+}
 
 export const nextBadge = {
 	title: def('The Next Layer badge'),

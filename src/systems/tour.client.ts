@@ -2,6 +2,7 @@ import * as React from 'react'
 
 import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as DH from '@/lib/display-helpers'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import type * as Msgs from '@/models/messages.models'
@@ -60,11 +61,30 @@ function releaseRun(run: RunStores) {
 // ============================== step model ==============================
 
 type TextMsg = Msgs.Variants.Textable
-// a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape.
-export type StepMsg = { title: () => TextMsg; body: () => TextMsg }
-// a rich body for cards that need markup a plain string cannot carry (the team color legend). The component keeps
-// its strings in TUT_Msgs and lives in a .tsx (tour-step-bodies.tsx).
-export type RichStepMsg = { title: () => TextMsg; Body: React.ComponentType }
+
+// the custom tags a step body may use, coloring their chunks with the real team colors: team names (t1/t2 raw
+// slots, ta/tb normalized) and the monospace (1)/(2) slot marks
+export type TourTag = 't1' | 't2' | 'ta' | 'tb' | 'm1' | 'm2'
+const teamName =
+	(color: string): Msgs.TagRenderer =>
+	(chunks) =>
+		React.createElement('span', { style: { color } }, ...chunks)
+const teamMark =
+	(color: string): Msgs.TagRenderer =>
+	(chunks) =>
+		React.createElement('span', { className: 'font-mono', style: { color } }, ...chunks)
+const tourTr = tr.withTags({
+	t1: teamName(DH.TEAM_COLORS.team1),
+	t2: teamName(DH.TEAM_COLORS.team2),
+	ta: teamName(DH.TEAM_COLORS.teamA),
+	tb: teamName(DH.TEAM_COLORS.teamB),
+	m1: teamMark(DH.TEAM_COLORS.team1),
+	m2: teamMark(DH.TEAM_COLORS.team2),
+})
+
+// a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape; a body may be rich
+// (def(() => ({ richText: rt(...) }))) using the tour tags above.
+export type StepMsg = { title: () => TextMsg; body: () => TextMsg | Msgs.Variants.TRichTextable<TourTag> }
 // what the overlay renders: a resolved title and a body node.
 export type RenderedStep = { title: string; body: React.ReactNode }
 
@@ -96,7 +116,7 @@ export type AnchorRef = string | ((run: RunStores) => string | null)
 
 export type Step = {
 	id: string
-	msg: StepMsg | RichStepMsg | StateSelector<RenderedStep>
+	msg: StepMsg | StateSelector<RenderedStep>
 	anchor?: AnchorRef // the outlined element (spotlight ring). absent = centered card
 	// the region left undimmed, if larger than the outlined element: the whole queue while reordering, the whole item
 	// while pointing at one of its buttons. Defaults to anchor. The ring stays on anchor; only the dim cutout and the
@@ -152,8 +172,7 @@ function readSelector<T>(run: RunStores, sel: StateSelector<T>): T {
 // Resolve a step's copy against current state. The overlay re-renders on the sources it subscribes to.
 export function renderMsg(run: RunStores, msg: Step['msg']): RenderedStep {
 	if ('inputs' in msg) return readSelector(run, msg)
-	if ('Body' in msg) return { title: tr.text(msg.title()), body: React.createElement(msg.Body) }
-	return { title: tr.text(msg.title()), body: tr.text(msg.body()) }
+	return { title: tr.text(msg.title()), body: tourTr.richText(msg.body()) }
 }
 
 // reactive copy, for branching messages that track live state
