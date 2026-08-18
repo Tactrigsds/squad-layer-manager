@@ -62,9 +62,9 @@ function releaseRun(run: RunStores) {
 
 type TextMsg = Msgs.Variants.Textable
 
-// the custom tags a step body may use, coloring their chunks with the real team colors: team names (t1/t2 raw
-// slots, ta/tb normalized) and the monospace (1)/(2) slot marks
-export type TourTag = 't1' | 't2' | 'ta' | 'tb' | 'm1' | 'm2'
+// the custom tags a step body may use: team names (t1/t2 raw slots, ta/tb normalized) and the monospace (1)/(2)
+// slot marks color their chunks with the real team colors; br is a line break for bodies with a display line
+export type TourTag = 't1' | 't2' | 'ta' | 'tb' | 'm1' | 'm2' | 'br'
 const teamName =
 	(color: string): Msgs.TagRenderer =>
 	(chunks) =>
@@ -80,6 +80,7 @@ const tourTr = tr.withTags({
 	tb: teamName(DH.TEAM_COLORS.teamB),
 	m1: teamMark(DH.TEAM_COLORS.team1),
 	m2: teamMark(DH.TEAM_COLORS.team2),
+	br: () => React.createElement('br'),
 })
 
 // a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape; a body may be rich
@@ -111,8 +112,12 @@ export type Advance =
 			advanced: (baseline: any, current: any) => boolean
 	  }
 
-// static data-tour value, or a dynamic one (null = not present yet, the overlay waits)
-export type AnchorRef = string | ((run: RunStores) => string | null)
+// what an anchor points at: one data-tour element, or `{ all }` for every laid-out element carrying the id, whose
+// zone is the minimum rect containing them (a run of queue rows). A plain string resolves to the first laid-out
+// match, so an id shared by several elements still works as a single anchor.
+export type AnchorTarget = string | { all: string }
+// static target, or a dynamic one (null = not present yet, the overlay waits)
+export type AnchorRef = AnchorTarget | ((run: RunStores) => AnchorTarget | null)
 
 export type Step = {
 	id: string
@@ -169,6 +174,11 @@ function readSelector<T>(run: RunStores, sel: StateSelector<T>): T {
 	return sel.select(...sel.inputs(run).map(readInput))
 }
 
+// render a message through the tour's tag set, for StateSelector msgs that build their RenderedStep by hand
+export function richText(msg: TextMsg | Msgs.Variants.TRichTextable<TourTag>): React.ReactNode {
+	return tourTr.richText(msg)
+}
+
 // Resolve a step's copy against current state. The overlay re-renders on the sources it subscribes to.
 export function renderMsg(run: RunStores, msg: Step['msg']): RenderedStep {
 	if ('inputs' in msg) return readSelector(run, msg)
@@ -181,39 +191,38 @@ export function renderMsg$(run: RunStores, msg: Step['msg']): Rx.Observable<Rend
 	return Rx.of(renderMsg(run, msg))
 }
 
-export function resolveAnchor(run: RunStores, anchor: AnchorRef | undefined): string | null {
+export function resolveAnchor(run: RunStores, anchor: AnchorRef | undefined): AnchorTarget | null {
 	if (anchor === undefined) return null
 	return typeof anchor === 'function' ? anchor(run) : anchor
 }
 
 // ============================== DOM inputs (tier-2 presentational state) ==============================
 
-// A Zus input for a data-tour element, driven by one shared MutationObserver. Steps read presentational state the
-// house does not push into a store (data-state="open", aria-expanded) off the DOM, the same contract the e2e suite
-// and screen readers use. Consumed through StateSelector like any other input.
-const domInputs = new Map<string, Rx.BehaviorSubject<Element | null>>()
+// A Zus input for a data-tour id's elements, driven by one shared MutationObserver. Steps read presentational
+// state the house does not push into a store (data-state="open", aria-expanded) off the DOM, the same contract the
+// e2e suite and screen readers use. Consumed through StateSelector like any other input.
+//
+// Emits every matching element in document order; the consumer picks. The same anchor can be mounted more than
+// once, laid-out and not: an inactive selectLayers dialog keeps a hidden, zero-size copy of the pool controls, and
+// a `{ all }` anchor deliberately tags a run of elements. The overlay filters to laid-out nodes at measure time.
+const domInputs = new Map<string, Rx.BehaviorSubject<Element[]>>()
 let domObserver: MutationObserver | null = null
 
-function queryAnchor(tourId: string): Element | null {
-	if (typeof document === 'undefined') return null
-	// the same anchor can be mounted more than once: an inactive selectLayers dialog keeps a hidden, zero-size copy of
-	// the pool controls. Prefer a laid-out node over the first in document order, or the spotlight lands on nothing.
-	const nodes = document.querySelectorAll(`[data-tour="${CSS.escape(tourId)}"]`)
-	let fallback: Element | null = null
-	for (const node of nodes) {
-		fallback ??= node
-		const r = node.getBoundingClientRect()
-		if (r.width > 0 || r.height > 0) return node
-	}
-	return fallback
+function queryAnchors(tourId: string): Element[] {
+	if (typeof document === 'undefined') return []
+	return [...document.querySelectorAll(`[data-tour="${CSS.escape(tourId)}"]`)]
+}
+
+function sameElements(a: Element[], b: Element[]): boolean {
+	return a.length === b.length && a.every((el, i) => el === b[i])
 }
 
 function ensureDomObserver() {
 	if (domObserver || typeof document === 'undefined') return
 	domObserver = new MutationObserver(() => {
 		for (const [id, subj] of domInputs) {
-			const el = queryAnchor(id)
-			if (el !== subj.getValue()) subj.next(el)
+			const els = queryAnchors(id)
+			if (!sameElements(els, subj.getValue())) subj.next(els)
 		}
 	})
 	domObserver.observe(document.body, {
@@ -224,10 +233,10 @@ function ensureDomObserver() {
 	})
 }
 
-export function domInput(tourId: string): Rx.BehaviorSubject<Element | null> {
+export function domInput(tourId: string): Rx.BehaviorSubject<Element[]> {
 	let subj = domInputs.get(tourId)
 	if (!subj) {
-		subj = new Rx.BehaviorSubject<Element | null>(queryAnchor(tourId))
+		subj = new Rx.BehaviorSubject<Element[]>(queryAnchors(tourId))
 		domInputs.set(tourId, subj)
 		ensureDomObserver()
 	}
