@@ -184,14 +184,20 @@ function AnchoredStep(props: {
 	// anchored but the spotlight elements have not mounted yet: wait with a plain dim, no cutout
 	const hasSpotlight = spotlightTarget !== null && spotRect !== null
 	const hasOutline = anchorTarget !== null && rect !== null
-	const cardRect = spotRect ?? rect
 
 	return (
 		<>
 			{hasSpotlight ? <Scrim rect={spotRect} /> : <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.66)' }} />}
 			{hasOutline && <Outline rect={rect} />}
 			<Blockers interact={interact} rect={hasOutline ? rect : null} />
-			<Card state={state} step={step} rendered={rendered} rect={cardRect} total={total} />
+			<Card
+				state={state}
+				step={step}
+				rendered={rendered}
+				anchorRect={hasOutline ? rect : null}
+				spotRect={hasSpotlight ? spotRect : null}
+				total={total}
+			/>
 		</>
 	)
 }
@@ -252,40 +258,75 @@ function Blockers({ interact, rect }: { interact: 'block' | 'anchor-only' | 'fre
 // ---- the card ----
 
 const CARD_W = 264
-const CARD_H = 180 // estimate for placement math; the card runs ~160-190px
+const CARD_H = 180 // pre-measure fallback for placement math; replaced by the card's real height once rendered
 
-// Place the card below the anchor, then above, then beside it -- whichever first keeps the whole card on screen. A
-// container-sized anchor (the filter column runs nearly the full viewport) has no room above or below, so it lands
-// beside, vertically clamped, instead of off the top edge.
-function placeCard(rect: Rect | null): React.CSSProperties {
-	if (!rect) {
+function intersects(a: Rect, b: Rect, margin: number): boolean {
+	return a.left < b.right + margin && a.right > b.left - margin && a.top < b.bottom + margin && a.bottom > b.top - margin
+}
+
+// The card hugs the outlined anchor, never covers the undimmed spotlight zone, and stays on screen. Candidates
+// adjacent to the anchor come first (below, above, right, left), then adjacent to the spotlight but aligned toward
+// the anchor, then a clamped fallback for a zone that fills the screen. Above-placements pin the card's bottom
+// edge, so a card taller than measured grows away from the element rather than over it.
+function placeCard(anchor: Rect | null, spotlight: Rect | null, cardH: number): React.CSSProperties {
+	if (!anchor && !spotlight) {
 		return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
 	}
+	const a = anchor ?? spotlight!
+	const zone = spotlight ?? anchor!
 	const vw = window.innerWidth
 	const vh = window.innerHeight
 	const clampX = (x: number) => Math.min(Math.max(12, x), vw - CARD_W - 12)
-	const clampY = (y: number) => Math.min(Math.max(12, y), vh - CARD_H - 12)
-	if (vh - rect.bottom >= CARD_H + GAP) return { top: rect.bottom + GAP, left: clampX(rect.left) }
-	if (rect.top >= CARD_H + GAP) return { bottom: vh - rect.top + GAP, left: clampX(rect.left) }
-	if (vw - rect.right >= CARD_W + GAP) return { top: clampY(rect.top), left: rect.right + GAP }
-	if (rect.left >= CARD_W + GAP) return { top: clampY(rect.top), left: rect.left - GAP - CARD_W }
-	return { top: clampY(rect.top), left: clampX(rect.left) }
+	const clampY = (y: number) => Math.min(Math.max(12, y), vh - cardH - 12)
+	const candidates: { top: number; left: number; pinBottom?: boolean }[] = [
+		{ top: a.bottom + GAP, left: clampX(a.left) },
+		{ top: a.top - GAP - cardH, left: clampX(a.left), pinBottom: true },
+		{ top: clampY(a.top), left: a.right + GAP },
+		{ top: clampY(a.top), left: a.left - GAP - CARD_W },
+		{ top: zone.bottom + GAP, left: clampX(a.left) },
+		{ top: zone.top - GAP - cardH, left: clampX(a.left), pinBottom: true },
+		{ top: clampY(a.top), left: zone.right + GAP },
+		{ top: clampY(a.top), left: zone.left - GAP - CARD_W },
+	]
+	for (const c of candidates) {
+		const box: Rect = { top: c.top, left: c.left, width: CARD_W, height: cardH, bottom: c.top + cardH, right: c.left + CARD_W }
+		if (box.top < 12 || box.left < 12 || box.bottom > vh - 12 || box.right > vw - 12) continue
+		if (intersects(box, zone, GAP / 2)) continue
+		if (anchor && intersects(box, anchor, GAP / 2)) continue
+		return c.pinBottom ? { bottom: vh - box.bottom, left: c.left } : { top: c.top, left: c.left }
+	}
+	return { top: clampY(zone.top), left: clampX(zone.left) }
 }
 
-function Card(props: { state: AnchoredStepState; step: Tour.Step; rendered: Tour.RenderedStep; rect: Rect | null; total: number }) {
-	const { state, step, rendered, rect, total } = props
+function Card(props: {
+	state: AnchoredStepState
+	step: Tour.Step
+	rendered: Tour.RenderedStep
+	anchorRect: Rect | null
+	spotRect: Rect | null
+	total: number
+}) {
+	const { state, step, rendered, anchorRect, spotRect, total } = props
 	const stepNo = state.stepIdx + 1
 	const isLast = state.stepIdx === total - 1
 	const notReady = state.code === 'stage-not-ready'
 	const failed = state.code === 'stage-failed'
 	const staging = state.code === 'staging'
 	const accent = notReady || failed ? 'bg-amber-500' : 'bg-blue-600'
-	const centered = rect === null
+	const centered = anchorRect === null && spotRect === null
+
+	// the card's real height, so placement math holds for bodies far from the estimate (the rich team cards)
+	const cardRef = React.useRef<HTMLDivElement>(null)
+	const [cardH, setCardH] = React.useState(CARD_H)
+	React.useLayoutEffect(() => {
+		if (cardRef.current) setCardH(cardRef.current.offsetHeight)
+	}, [rendered, state])
 
 	return (
 		<div
+			ref={cardRef}
 			className="absolute w-[264px] rounded-lg border border-zinc-700 bg-zinc-900 p-3.5 pt-4 text-zinc-100 shadow-2xl"
-			style={{ pointerEvents: 'auto', ...placeCard(rect) }}
+			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, cardH) }}
 		>
 			<div
 				className={`absolute -left-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${accent}`}
