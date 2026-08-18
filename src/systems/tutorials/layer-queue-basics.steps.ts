@@ -1,3 +1,4 @@
+import * as Zus from '@/lib/zustand'
 import * as TUT_Msgs from '@/messages/tutorials.messages'
 import * as L from '@/models/layer'
 import { tr } from '@/systems/messages.client'
@@ -22,12 +23,30 @@ const editingQueue: Tour.StateSelector<boolean> = {
 
 // the Add Layers pool dialog is open: an active `selectLayers` loader for the ADDING_ITEM activity. The in-dialog
 // steps depend on it, so closing the dialog regresses the tour to the step that opens it.
+const isAddDialogEntry = (e: any) => e.name === 'selectLayers' && e.active && e.data?.activity?.id === 'ADDING_ITEM'
 const addDialogOpen: Tour.StateSelector<boolean> = {
 	inputs: () => [UPClient.Store],
-	select: (upState) =>
-		UPClient.Sel.loadedActivities(upState).some(
-			(e: any) => e.name === 'selectLayers' && e.active && e.data?.activity?.id === 'ADDING_ITEM',
-		),
+	select: (upState) => UPClient.Sel.loadedActivities(upState).some(isAddDialogEntry),
+}
+
+// the select-layers frame behind the open dialog. Resolved when a gated step wires up, which is after open-add has
+// advanced on the dialog opening; the UPClient.Store fallback makes the selector read false rather than throw if
+// the dialog is gone (the addDialogOpen premise then regresses the step anyway).
+function addDialogFrame(): Zus.AnyInput<any> {
+	const entry = UPClient.Sel.loadedActivities(Zus.getState(UPClient.Store)).find(isAddDialogEntry) as any
+	return entry?.data?.selectLayersFrame ?? UPClient.Store
+}
+
+// the layer the add walkthrough asks for. Must be in the seeded sandbox pool; the scenario's own queue head is a
+// Gorodok USA layer, so this pair is.
+const ADD_TARGET = { map: 'Gorodok', faction: 'USA' }
+
+// whether the filter menu comparison currently selects `value`, whichever comp shape the menu item holds
+function compSelects(node: any, value: string): boolean {
+	if (!node || node.neg) return false
+	return (node.args ?? []).some(
+		(a: any) => (a.type === 'value' && a.value === value) || (a.type === 'values' && (a.values ?? []).includes(value)),
+	)
 }
 
 const queueLength = (s: any) => s.queue.layerList.length as number
@@ -79,11 +98,33 @@ export const steps = Tour.defineSteps([
 		id: 'add-filters',
 		anchor: 'add-filters',
 		interact: 'free',
-		msg: TUT_Msgs.addFilters,
+		msg: { title: TUT_Msgs.addFilters.title, body: () => TUT_Msgs.addFilters.body(ADD_TARGET.map, ADD_TARGET.faction) },
 		premise: addDialogOpen,
-		advance: { type: 'next' },
+		advance: {
+			type: 'state',
+			inputs: () => [addDialogFrame()],
+			select: (s: any) => {
+				const menu = s?.filterMenu?.menuItems
+				if (!menu) return false
+				return (
+					compSelects(menu.Map, ADD_TARGET.map) &&
+					(compSelects(menu.Faction_1, ADD_TARGET.faction) || compSelects(menu.Faction_2, ADD_TARGET.faction))
+				)
+			},
+		},
 	},
-	{ id: 'add-pick', anchor: 'add-pick', interact: 'free', msg: TUT_Msgs.addPick, premise: addDialogOpen, advance: { type: 'next' } },
+	{
+		id: 'add-pick',
+		anchor: 'add-pick',
+		interact: 'free',
+		msg: TUT_Msgs.addPick,
+		premise: addDialogOpen,
+		advance: {
+			type: 'state',
+			inputs: () => [addDialogFrame()],
+			select: (s: any) => (s?.layerTable?.selected?.length ?? 0) > 0,
+		},
+	},
 	{
 		id: 'add-submit',
 		anchor: 'add-submit',
