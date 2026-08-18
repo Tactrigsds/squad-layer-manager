@@ -19,7 +19,16 @@ export const nowPlaying = {
 
 export const queuePanel = {
 	title: def('The queue'),
-	body: def("This is what plays next, in order. The layer at the top is the one SLM keeps set as the game server's next map."),
+	body: def("This is the layer queue. The layer at the top is the one SLM keeps set as the game server's next map."),
+}
+
+export const layerAnatomy = {
+	title: def('Anatomy of a queue item'),
+	body: def(() => ({
+		richText: rt(
+			'A <strong>Queue Item</strong> occupies a slot in the queue. When it is the "next layer" of the queue, SLM will automatically run <code>AdminSetNextLayer</code> to include those layers.',
+		),
+	})),
 }
 
 // Grounds the queue in what an item actually is: the AdminSetNextLayer command SLM runs for it. The args carry the
