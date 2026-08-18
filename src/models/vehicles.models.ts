@@ -41,6 +41,62 @@ export function vehicleIdsForTypes(typeIds: ReadonlySet<number>, components: Veh
 	return out
 }
 
+// Which canonical vehicle a unit record's rows each are. Preprocess clusters records app-wide and ships only the
+// vehicle set per unit record, so the row-to-vehicle link is rebuilt here: within one record the display name
+// identifies the vehicle, because no record holds two canonical vehicles whose names normalize alike (asserted in
+// vehicles.models.test.ts, over every row of the artifact). A row that matches no vehicle, or more than one, is
+// left undefined for the caller to fall back on.
+export function canonicalVehiclesForUnitRecord(
+	unitRecordName: string,
+	rows: readonly SLL.Vehicle[],
+	components: VehicleComponents,
+): (number | undefined)[] {
+	const recordId = unitRecordIndex(components).get(unitRecordName)
+	if (recordId === undefined) return rows.map(() => undefined)
+	const inRecord = new Set(components.unitRecordVehicles[recordId])
+	const byName = canonicalNameIndex(components)
+	return rows.map((row) => {
+		const candidates = byName.get(normalizeVehicleName(vehicleDisplayName(row)))?.filter((id) => inRecord.has(id))
+		return candidates?.length === 1 ? candidates[0] : undefined
+	})
+}
+
+export function vehicleTypeName(vehicleId: number, components: VehicleComponents): string {
+	return components.vehicleTypes[components.vehicleTypeIds[vehicleId]]
+}
+
+const unitRecordIndexCache = new WeakMap<readonly string[], Map<string, number>>()
+
+function unitRecordIndex(components: VehicleComponents): Map<string, number> {
+	let index = unitRecordIndexCache.get(components.unitRecords)
+	if (!index) {
+		index = new Map(components.unitRecords.map((name, id) => [name, id]))
+		unitRecordIndexCache.set(components.unitRecords, index)
+	}
+	return index
+}
+
+const canonicalNameIndexCache = new WeakMap<readonly string[], Map<string, number[]>>()
+
+// canonical names of split clusters carry a disambiguating suffix the source name never had, so each vehicle is
+// indexed under its bare name too
+function canonicalNameIndex(components: VehicleComponents): Map<string, number[]> {
+	let index = canonicalNameIndexCache.get(components.vehicles)
+	if (!index) {
+		index = new Map()
+		components.vehicles.forEach((name, id) => {
+			const bare = name.replace(/\s*\([^)]*\)$/, '').replace(/ \d+$/, '')
+			for (const key of new Set([normalizeVehicleName(name), normalizeVehicleName(bare)])) {
+				const ids = index!.get(key)
+				if (ids) ids.push(id)
+				else index!.set(key, [id])
+			}
+		})
+		canonicalNameIndexCache.set(components.vehicles, index)
+	}
+	return index
+}
+
 // ---------------------------- preprocess: the merge pass ----------------------------
 // Query identity = normalized display name, guarded by loadout signals (class + weapon tags). Within a
 // name group, records whose faction/cosmetic-stripped blueprint models overlap are the same loadout and
@@ -175,6 +231,13 @@ const NAME_MERGES: Record<string, string> = {
 	transportmodernpickup: 'Transport Pickup Truck',
 	pickuptruck: 'Transport Pickup Truck',
 	simirlogi: 'Logistics Light Vehicle',
+}
+
+// the name a vehicle record is known by, after the tables above correct it. An empty display name falls back to
+// the rowName; those records are each their own vehicle.
+export function vehicleDisplayName(vehicle: SLL.Vehicle): string {
+	const rawName = vehicle.name !== '' ? vehicle.name : vehicle.rowName
+	return ROW_NAME_OVERRIDES[vehicle.rowName] ?? NAME_MERGES[normalizeVehicleName(rawName)] ?? rawName
 }
 
 // classes for records whose cooked Setting omits the default-valued VehicleType (GC starfighters)
@@ -329,9 +392,7 @@ export function buildVehicleTables(factionUnits: Record<string, SLL.Unit>): Vehi
 	for (const [unitName, unit] of Object.entries(factionUnits)) {
 		const keys: string[] = []
 		for (const vehicle of unit.vehicles) {
-			// an empty display name falls back to the rowName; those records are each their own vehicle
-			const rawName = vehicle.name !== '' ? vehicle.name : vehicle.rowName
-			const overridden = ROW_NAME_OVERRIDES[vehicle.rowName] ?? NAME_MERGES[normalizeVehicleName(rawName)] ?? rawName
+			const overridden = vehicleDisplayName(vehicle)
 			const normName = normalizeVehicleName(overridden)
 			const weaponTags = vehicle.tags
 				.filter((tag) => WEAPON_TAGS.has(tag))

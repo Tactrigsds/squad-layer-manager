@@ -6,6 +6,8 @@ import * as CD from '@/lib/ctx-def'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as CS from '@/models/context-shared'
+import type * as SLL from '@/models/squad-layer-list.models'
+import * as VEH from '@/models/vehicles.models'
 
 import * as L from './layer'
 export const COLUMN_TYPE = z.enum(['float', 'string', 'integer', 'boolean'])
@@ -174,6 +176,24 @@ export function vehicleTypeForVehicle(vehicle: string, components = L.StaticLaye
 		vehicleTypeIndexCache.set(vehicles, index)
 	}
 	return index.get(vehicle)
+}
+
+// the class of each of a unit's vehicle rows, in the unit's own order. Undefined per row where the artifact
+// predates the vehicle tables, or where the row matched no single canonical vehicle.
+export function vehicleTypesForUnitRecord(unit: SLL.Unit, components = L.StaticLayerComponents): (string | undefined)[] {
+	if (!VEH.hasVehicleData(components)) return unit.vehicles.map(() => undefined)
+	return VEH.canonicalVehiclesForUnitRecord(unit.unitObjectName, unit.vehicles, components).map((id) =>
+		id === undefined ? undefined : VEH.vehicleTypeName(id, components),
+	)
+}
+
+const LOCOMOTION_INITIALS: Record<string, string> = { TRACKED: 'T', WHEELED: 'W', BOAT: 'B', OTHER: 'O' }
+
+// the class as a chip: short enough for a table cell, and still the value the filter menu groups by
+export function vehicleTypeShortCode(type: string): string {
+	const [base, locomotion] = type.split('_')
+	const initial = LOCOMOTION_INITIALS[locomotion]
+	return initial ? `${base}·${initial}` : type
 }
 
 // the layer-identity columns, offered together as one restricted subject group in the filter editor's
