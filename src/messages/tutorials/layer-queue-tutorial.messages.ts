@@ -349,6 +349,11 @@ export const collaborativeEditing = {
 	),
 }
 
+export const forceSaveEdit = {
+	title: def('Make a change'),
+	body: def(rt('Force save needs a save to force, and the queue was just saved. Remove an item with <remove></remove>:')),
+}
+
 export const forceSave = {
 	title: def('Force save'),
 	body: def(
