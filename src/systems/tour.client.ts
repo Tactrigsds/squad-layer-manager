@@ -5,8 +5,10 @@ import { frameManager } from '@/frames/frame-manager'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import * as Rx from '@/lib/rxjs'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
+import type * as CS from '@/models/context-shared'
 import type * as Msgs from '@/models/messages.models'
 import * as TUT from '@/models/tutorial.models'
 import { rootRouter } from '@/root-router'
@@ -15,6 +17,7 @@ import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as TutorialsClient from '@/systems/tutorials.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as VoteClient from '@/systems/vote.client'
 
 // The tour engine: a global state machine that narrates the live dashboard during a tutorial run. Steps are data
@@ -172,21 +175,39 @@ export type StateSelector<T> = {
 	select: (...states: any[]) => T
 }
 
-// what a step waits on to advance. Covered with assertNever in the engine.
-export type Advance =
-	| { type: 'next' } // explicit Next button on the card
-	| { type: 'anchor' } // user activates the anchored element
-	| ({ type: 'state' } & StateSelector<boolean>) // advances the first time select turns true
-	// advances when a sampled value differs from its value at step entry. For operations whose completion is a
-	// change rather than a predicate: a layer added (the list grew) or reordered (the order changed), where "done"
-	// only means "different from where you started". sample is captured on entry; advanced compares it to each later
-	// sample.
+// How the user gets TO a step from the one before it. Lives on the destination step (advanceFromPrevious), so the
+// condition for arriving somewhere sits with the step it produces -- which is also exactly the state a jump has to
+// reconstruct. Covered with assertNever in the engine.
+export type Transition =
+	| { type: 'next' } // explicit Next button on the previous step's card
+	| { type: 'anchor' } // user activates the previous step's anchored element
+	| ({ type: 'state' } & StateSelector<boolean>) // arrives the first time select turns true
+	// arrives when a sampled value differs from its value when the transition armed (the previous step being
+	// entered). For operations whose completion is a change rather than a predicate: a layer added (the list grew)
+	// or reordered (the order changed), where "done" only means "different from where you started".
 	| {
 			type: 'change'
 			inputs: (run: RunStores) => Zus.AnyInput<any>[]
 			sample: (...states: any[]) => unknown
 			advanced: (baseline: any, current: any) => boolean
 	  }
+
+export type SimulateCtx = CS.AbortSignal & { run: RunStores }
+
+export type AdvanceFromPrevious = Transition & {
+	// Reproduce the state this transition's user action would have produced, so a jump can fast-forward through it.
+	// Sync by contract -- a store or handle write, never a DOM click -- and must be idempotent, since a jump may
+	// replay it over state a checkpoint already installed. Async is the declared exception (a server round trip) and
+	// must respect ctx.signal. Absent = the transition carries no state a later step observes (pure narration, or a
+	// transient interaction like a hover).
+	simulate?: (ctx: SimulateCtx) => void | Promise<void>
+}
+
+// A step a jump can restore server state at: `stage` names an idempotent server checkpoint stage that RESETS the
+// run (saved queue, edit sessions, the peer editor) to how it stands on arrival at this step. `ready` is awaited
+// after the stage RPC, for state that reaches the client by subscription rather than in the response. Jumping to
+// any step runs the nearest checkpoint at or before it, then replays the simulates in between.
+export type Checkpoint = { stage: string; ready?: StateSelector<boolean> }
 
 // what an anchor points at: one data-tour element, or `{ all }` for every laid-out element carrying the id, whose
 // zone is the minimum rect containing them (a run of queue rows). A plain string resolves to the first laid-out
@@ -208,7 +229,14 @@ export type Step = {
 	// whether this step still makes sense. Absent = the default premise (route matches, anchor resolves). Explicit
 	// premises go on journey steps whose subject can be dismissed (an open dialog, an edit session, a running vote).
 	premise?: StateSelector<boolean>
-	advance: Advance
+	checkpoint?: Checkpoint
+	// absent = { type: 'next' }. Step 0's is never consulted: nothing precedes it.
+	advanceFromPrevious?: AdvanceFromPrevious
+}
+
+// the transition into steps[idx]; past-the-end reads as a Next so the last step's card shows Finish
+export function transitionInto(steps: Step[], idx: number): AdvanceFromPrevious {
+	return steps[idx]?.advanceFromPrevious ?? { type: 'next' }
 }
 
 // identity helper; a place to later pin S to the server scenario's stage names (mock Q5). Loose for now.
@@ -362,15 +390,19 @@ export namespace Sel {
 
 // ============================== engine ==============================
 
-type Active = { scenarioId: TUT.ScenarioId; steps: Step[]; run: RunStores }
+type Active = { scenarioId: TUT.ScenarioId; steps: Step[]; resetClient?: (run: RunStores) => void; run: RunStores }
 let active: Active | null = null
 let stepSub = new Rx.Subscription() // advance + premise watchers for the current step
 let runSub = new Rx.Subscription() // router pause watcher, lives for the run
 
-// the scenario registry: each scenario's steps, keyed by id. Registered by the steps files at import.
-const scenarios = new Map<TUT.ScenarioId, Step[]>()
-export function registerScenario(scenarioId: TUT.ScenarioId, steps: Step[]) {
-	scenarios.set(scenarioId, steps)
+// A scenario's client half: the steps, plus resetClient, which synchronously closes every piece of UI a step may
+// have opened (dialogs, draggable windows) so a jump starts from a known screen.
+export type ScenarioClientDef = { steps: Step[]; resetClient?: (run: RunStores) => void }
+
+// the scenario registry, keyed by id. Registered by the steps files at import.
+const scenarios = new Map<TUT.ScenarioId, ScenarioClientDef>()
+export function registerScenario(scenarioId: TUT.ScenarioId, def: ScenarioClientDef) {
+	scenarios.set(scenarioId, def)
 }
 
 // accessors for the overlay: the run's data sources and the step being narrated. Not reactive themselves; the
@@ -379,10 +411,18 @@ export function activeRun(): RunStores | null {
 	return active?.run ?? null
 }
 export function stepAt(scenarioId: TUT.ScenarioId, stepIdx: number): Step | undefined {
-	return scenarios.get(scenarioId)?.[stepIdx]
+	return scenarios.get(scenarioId)?.steps[stepIdx]
+}
+export function stepsOf(scenarioId: TUT.ScenarioId): Step[] {
+	return scenarios.get(scenarioId)?.steps ?? []
 }
 export function stepCount(scenarioId: TUT.ScenarioId): number {
-	return scenarios.get(scenarioId)?.length ?? 0
+	return scenarios.get(scenarioId)?.steps.length ?? 0
+}
+// the transition out of stepIdx, which under the inversion is the next step's advanceFromPrevious. What the
+// overlay consults for the Next button and the anchor-click listener.
+export function transitionOutOf(scenarioId: TUT.ScenarioId, stepIdx: number): AdvanceFromPrevious {
+	return transitionInto(stepsOf(scenarioId), stepIdx + 1)
 }
 
 function isOnDashboard(serverId: string): boolean {
@@ -431,28 +471,37 @@ async function enterStep(idx: number) {
 
 function wireStep(step: Step, idx: number) {
 	if (!active) return
-	const { run } = active
+	const { steps, run } = active
+	// entering a step arms the transition into the NEXT one; 'change' samples its baseline now
+	const next = transitionInto(steps, idx + 1)
 
-	if (step.advance.type === 'state') {
-		stepSub.add(
-			watchSelector(run, step.advance)
-				.pipe(Rx.filter(Boolean))
-				.subscribe(() => {
-					if (Sel.stepIdx(Store.getState()) === idx) doNext()
+	switch (next.type) {
+		case 'next':
+		case 'anchor':
+			// the Next button and the anchor-click listener live in the overlay
+			break
+		case 'state':
+			stepSub.add(
+				watchSelector(run, next)
+					.pipe(Rx.filter(Boolean))
+					.subscribe(() => {
+						if (Sel.stepIdx(Store.getState()) === idx) doNext()
+					}),
+			)
+			break
+		case 'change': {
+			const inputs = next.inputs(run)
+			const baseline = next.sample(...inputs.map(readInput))
+			const sample$ = inputs.length === 0 ? Rx.of([]) : Rx.combineLatest(inputs.map(toObs))
+			stepSub.add(
+				sample$.pipe(Rx.map((states) => next.sample(...states))).subscribe((cur) => {
+					if (next.advanced(baseline, cur) && Sel.stepIdx(Store.getState()) === idx) doNext()
 				}),
-		)
-	}
-
-	if (step.advance.type === 'change') {
-		const adv = step.advance
-		const inputs = adv.inputs(run)
-		const baseline = adv.sample(...inputs.map(readInput))
-		const sample$ = inputs.length === 0 ? Rx.of([]) : Rx.combineLatest(inputs.map(toObs))
-		stepSub.add(
-			sample$.pipe(Rx.map((states) => adv.sample(...states))).subscribe((cur) => {
-				if (adv.advanced(baseline, cur) && Sel.stepIdx(Store.getState()) === idx) doNext()
-			}),
-		)
+			)
+			break
+		}
+		default:
+			assertNever(next)
 	}
 
 	if (step.premise) {
@@ -490,6 +539,7 @@ function reconcilePause() {
 	if (!active || s.code === 'idle') return
 	const onDash = isOnDashboard(active.run.serverId)
 	if (!onDash && s.code !== 'paused') {
+		abortJump()
 		clearStepWatchers()
 		set({ code: 'paused', scenarioId: active.scenarioId, stepIdx: s.stepIdx })
 	} else if (onDash && s.code === 'paused') {
@@ -499,14 +549,16 @@ function reconcilePause() {
 
 async function doStart(scenarioId: TUT.ScenarioId) {
 	if (active) await doExit()
-	const steps = scenarios.get(scenarioId)
-	if (!steps) throw new Error(`no steps registered for tutorial ${scenarioId}`)
+	const def = scenarios.get(scenarioId)
+	if (!def) throw new Error(`no steps registered for tutorial ${scenarioId}`)
 	const res = await TutorialsClient.Actions.start(scenarioId)
 	if (res.code !== 'ok') return res
-	active = { scenarioId, steps, run: acquireRun(res.serverId) }
+	const run = acquireRun(res.serverId)
+	active = { scenarioId, steps: def.steps, resetClient: def.resetClient, run }
 	runSub = new Rx.Subscription()
 	runSub.add(rootRouter.subscribe('onResolved', reconcilePause))
 	await rootRouter.navigate({ to: DASHBOARD_TO, params: { serverId: res.serverId } })
+	await ensurePresenceOnDashboard(run, new AbortController().signal)
 	await enterStep(0)
 	return res
 }
@@ -517,10 +569,121 @@ function doNext() {
 	void enterStep(s.stepIdx + 1)
 }
 
-// re-request the current step's stage: the recovery path behind the Restart/Retry button
-function doRestart() {
+// ============================== jumps ==============================
+
+const JUMP_READY_TIMEOUT_MS = 5000
+
+let jumpCtl: AbortController | null = null
+
+function abortJump() {
+	jumpCtl?.abort()
+	jumpCtl = null
+}
+
+// resolves true when the selector holds, false on abort or after timeoutMs. Exported for async simulates that
+// dispatch a round trip and then wait for its state to land.
+export function awaitSelector(run: RunStores, sel: StateSelector<boolean>, signal: AbortSignal, timeoutMs: number): Promise<boolean> {
+	if (readSelector(run, sel)) return Promise.resolve(true)
+	return new Promise((resolve) => {
+		const sub = new Rx.Subscription()
+		const done = (ok: boolean) => {
+			sub.unsubscribe()
+			resolve(ok)
+		}
+		sub.add(
+			watchSelector(run, sel)
+				.pipe(Rx.filter(Boolean))
+				.subscribe(() => done(true)),
+		)
+		const timer = setTimeout(() => done(false), timeoutMs)
+		sub.add(() => clearTimeout(timer))
+		const onAbort = () => done(false)
+		signal.addEventListener('abort', onAbort, { once: true })
+		sub.add(() => signal.removeEventListener('abort', onAbort))
+	})
+}
+
+// The dashboard route dispatches enter-server-dashboard once on mount, but at tour start that races the new
+// server's appearance in enabledServers, and a gated presence update is dropped rather than retried -- leaving the
+// reader's presence rooted on the PREVIOUS server, where every per-server presence op then lands. The tour
+// re-asserts it: at start, and before every jump's simulates.
+async function ensurePresenceOnDashboard(run: RunStores, signal: AbortSignal) {
+	await awaitSelector(
+		run,
+		{
+			inputs: () => [UPClient.Store],
+			select: (s: any) => s.session.localState.enabledServers.has(run.serverId),
+		},
+		signal,
+		JUMP_READY_TIMEOUT_MS,
+	)
+	UPClient.Actions.ensureViewingPanel(run.serverId, 'VIEWING_QUEUE')
+}
+
+// Jump to an arbitrary step: reset the client UI, restore server state via the nearest checkpoint at or before the
+// target, then replay the simulates in between. Sync simulates run back-to-back in one task; only the checkpoint
+// (and any simulate that declares itself async) is awaited, under a signal a newer jump, pause or exit aborts.
+// A checkpoint must subsume the effects of every `stage` in its region -- the loop does not replay stages.
+// whether every transition strictly between the two steps (in either direction) is pure narration, i.e. crossing
+// them changes no state
+function pureNarrationPath(steps: Step[], from: number, to: number): boolean {
+	const [lo, hi] = from < to ? [from, to] : [to, from]
+	for (let i = lo + 1; i <= hi; i++) {
+		if (transitionInto(steps, i).type !== 'next') return false
+	}
+	return true
+}
+
+async function doJump(target: number) {
+	if (!active) return
+	const { scenarioId, steps, resetClient, run } = active
+	if (target < 0 || target >= steps.length) return
+	// a hop across nothing but Next transitions needs no provisioning: the state here IS the state there
+	const cur = Store.getState().state
+	if (cur.code === 'narrating' && pureNarrationPath(steps, cur.stepIdx, target)) {
+		abortJump()
+		return enterStep(target)
+	}
+	abortJump()
+	const ctl = new AbortController()
+	jumpCtl = ctl
+	clearStepWatchers()
+	set({ code: 'staging', scenarioId, stepIdx: target })
+	resetClient?.(run)
+	await ensurePresenceOnDashboard(run, ctl.signal)
+	if (ctl.signal.aborted) return
+
+	let cpIdx = target
+	while (cpIdx > 0 && !steps[cpIdx].checkpoint) cpIdx--
+	const checkpoint = steps[cpIdx].checkpoint
+	if (checkpoint) {
+		const res = await TutorialsClient.Actions.stage(scenarioId, checkpoint.stage)
+		if (ctl.signal.aborted) return
+		if (res.code === 'err:not-ready') return set({ code: 'stage-not-ready', scenarioId, stepIdx: target, msg: res.msg })
+		if (res.code !== 'ok') return set({ code: 'stage-failed', scenarioId, stepIdx: target })
+		if (checkpoint.ready && !(await awaitSelector(run, checkpoint.ready, ctl.signal, JUMP_READY_TIMEOUT_MS))) {
+			if (ctl.signal.aborted) return
+			return set({ code: 'stage-failed', scenarioId, stepIdx: target })
+		}
+	}
+
+	for (let i = cpIdx + 1; i <= target; i++) {
+		const t = steps[i].advanceFromPrevious
+		if (!t?.simulate) continue
+		// a state transition whose condition already holds needs no reproducing
+		if (t.type === 'state' && readSelector(run, t)) continue
+		await t.simulate({ run, signal: ctl.signal })
+		if (ctl.signal.aborted) return
+	}
+	if (ctl.signal.aborted) return
+	jumpCtl = null
+	await enterStep(target)
+}
+
+// re-provision the current step: the recovery path behind the Reset/Retry buttons
+function doReset() {
 	const idx = Sel.stepIdx(Store.getState())
-	if (idx !== undefined) void enterStep(idx)
+	if (idx !== undefined) void doJump(idx)
 }
 
 async function doExit() {
@@ -538,12 +701,17 @@ function doComplete() {
 export namespace Actions {
 	export const start = doStart
 	export const next = doNext
-	export const restartStep = doRestart
+	export const jump = doJump
+	export const reset = doReset
 	export const exit = doExit
 	export const complete = doComplete
 }
 
+// console access for dev-instance verification; the launcher button is the UI equivalent
+if (import.meta.env.DEV && typeof window !== 'undefined') (window as any).__tourActions = Actions
+
 function teardown() {
+	abortJump()
 	clearStepWatchers()
 	runSub.unsubscribe()
 	runSub = new Rx.Subscription()

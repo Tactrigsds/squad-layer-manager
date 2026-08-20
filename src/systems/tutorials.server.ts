@@ -12,18 +12,24 @@ import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import * as SettingsModels from '@/models/settings.models'
+import * as SLL from '@/models/shared-layer-list'
+import type * as SR from '@/models/squad-rcon.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as TUT from '@/models/tutorial.models'
+import type * as V from '@/models/vote.models'
 import type * as C from '@/server/context'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as LayerQueueSys from '@/systems/layer-queue.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresence from '@/systems/user-presence.server'
+import * as WSSessionSys from '@/systems/ws-session.server'
 
 // The tutorial runtime. A run is one scoped, ephemeral emulated server (src/emulator, via sandbox.server) staged
 // for a scenario, with a coachmark tour narrating the real dashboard on top of it. This file is the server half:
@@ -35,9 +41,18 @@ const module = initModule('tutorials')
 const orpcBase = getOrpcBase(module)
 let log!: CS.Logger
 
-// what a stage runs against: the managed server's usual surface plus the sandbox instance it drives. A helper
-// needing less narrows, per the minimum-ctx rule.
-export type StageCtx = C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & CS.AbortSignal & { sandbox: Sandbox.SandboxInstance }
+// what a stage runs against: the managed server's usual surface plus the sandbox instance it drives and the run's
+// owner. Wide enough to feed LayerQueueSys.dispatchOp (its SideEffectCtx); resolveCtx supplies the whole managed
+// server at runtime. A helper needing less narrows, per the minimum-ctx rule.
+export type StageCtx = C.Db &
+	SQS.Ctx &
+	LQ.Ctx &
+	MH.Ctx &
+	V.Ctx &
+	SR.Ctx.Rcon &
+	SettingsModels.Ctx &
+	Msgs.Ctx &
+	CS.AbortSignal & { sandbox: Sandbox.SandboxInstance; owner: bigint }
 
 type ScenarioDef<S extends string> = {
 	id: TUT.ScenarioId
@@ -104,17 +119,87 @@ export const playMatch = Instr.spanOp('tutorials.playMatch', { module }, async (
 	await waitForRolled(ctx)
 })
 
+// ============================== checkpoints ==============================
+
+// A checkpoint stage RESETS the run's server state to a named point in the tour, so a jump can land anywhere. All
+// state changes go through real queue/presence ops -- never a direct session write, which live clients would not
+// see -- and the whole thing is idempotent: a reset to the state the run is already in dispatches nothing heavy.
+type ResetSpec = {
+	// the saved queue to install, or 'generated': an empty save, which triggers real queue-item generation -- the
+	// only way a generated-source item can exist, since the add op stamps every item with its actor as the source
+	saved: L.LayerId[] | 'generated'
+	// unsaved edits prepended to the draft, as if the reader had just added them
+	draftPrepend?: L.LayerId[]
+	// fabricate an editing session for the owner's live clients, so the region's editing premise holds on arrival
+	readerEditing?: boolean
+}
+
+const resetTo = Instr.spanOp('tutorials.resetTo', { module }, async (ctx: StageCtx, spec: ResetSpec): Promise<TUT.StageResult> => {
+	const owner = ctx.owner
+	// sessions and the peer go first: whatever editors the target region wants are installed at the end, over a
+	// clean slate
+	UserPresence.dispatchEndAllLayerQueueEditing(ctx.serverId)
+	UserPresence.dispatchFabricatedDisconnect(peerClientId(ctx.serverId))
+
+	const state = () => ctx.layerQueue.session.state
+	// save/reset bump editWindowSeqId, so every op reads it fresh; a stale value silently skips the op
+	const opBase = () => ({ opId: SLL.createOpId(), userId: owner, editWindowSeqId: state().editWindowSeqId })
+
+	if (SLL.hasMutations(state())) await LayerQueueSys.dispatchOp(ctx, { op: 'reset-to-saved', ...opBase() })
+
+	const alreadyThere =
+		spec.saved === 'generated'
+			? state().savedList.length === 1 && state().savedList[0].source.type === 'generated'
+			: state()
+					.savedList.map((it) => it.layerId)
+					.join() === spec.saved.join()
+	if (!alreadyThere) {
+		const itemIds = state().list.map((it) => it.itemId)
+		if (itemIds.length > 0) await LayerQueueSys.dispatchOp(ctx, { op: 'clear', itemIds, ...opBase() })
+		if (spec.saved !== 'generated') {
+			await LayerQueueSys.dispatchOp(ctx, {
+				op: 'add',
+				items: spec.saved.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
+				index: { outerIndex: 0, innerIndex: null },
+				...opBase(),
+			})
+		}
+		// saving an empty list requests generation instead of persisting; the client's ready selector waits for
+		// the generated head to land
+		await LayerQueueSys.dispatchOp(ctx, { op: 'save', ...opBase() })
+	}
+
+	if (spec.draftPrepend?.length) {
+		await LayerQueueSys.dispatchOp(ctx, {
+			op: 'add',
+			items: spec.draftPrepend.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
+			index: { outerIndex: 0, innerIndex: null },
+			...opBase(),
+		})
+	}
+
+	if (spec.readerEditing) {
+		for (const clientId of ownerClientIds(owner)) UserPresence.dispatchFabricatedEditor(ctx.serverId, owner, clientId)
+	}
+	return { code: 'ok' as const }
+})
+
+// the owner's live browser clients. Editing is fabricated for all of them, since presence cannot tell which tab is
+// on the dashboard; an owner realistically has one.
+function ownerClientIds(owner: bigint): string[] {
+	return [...WSSessionSys.wsSessions.values()].filter((s) => s.user.discordId === owner).map((s) => s.wsClientId)
+}
+
 // ============================== scenarios ==============================
 
-// valid layer ids from the layer db that ships with the app, so they survive a round trip through its queries
-const LQB_QUEUE: L.LayerId[] = ['GD-RAAS-V1:USA-CA:RGF-CA', 'HJ-RAAS-V1:RGF-MZ:PLA-AA', 'NV-RAAS-V1:USA-CA:RGF-CA']
+const LAYERS = TUT.LQ_TUTORIAL_LAYERS
 
 const layerQueue = defScenario({
 	id: 'layer-queue',
 	// a short post-match wait so a staged roll does not stall the tour; no tick chatter so the narrated log stays legible
 	pacing: { postMatchDelayMs: 2000, tickChatter: false },
 	initialQueue: (owner) =>
-		LQB_QUEUE.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
+		LAYERS.initial.map((layerId) => LL.createItem({ type: 'single-list-item', layerId }, { type: 'manual', userId: owner })),
 	setup: async () => {},
 	stages: {
 		welcome: async (ctx) => {
@@ -131,6 +216,19 @@ const layerQueue = defScenario({
 			UserPresence.dispatchFabricatedEditor(ctx.serverId, PEER_USER_ID, peerClientId(ctx.serverId))
 			return { code: 'ok' }
 		},
+		// Checkpoints, one per region of the tour whose server state differs. The canonical lists mirror what a
+		// linear reader produces: two picks added at the head, the last seed removed before saving, the head removed
+		// again by the force save.
+		'cp-fresh': (ctx) => resetTo(ctx, { saved: [...LAYERS.initial] }),
+		'cp-edited': (ctx) =>
+			resetTo(ctx, {
+				saved: [...LAYERS.initial],
+				draftPrepend: [LAYERS.picks.chora, LAYERS.picks.yehorivka],
+				readerEditing: true,
+			}),
+		'cp-saved': (ctx) => resetTo(ctx, { saved: [LAYERS.picks.chora, LAYERS.picks.yehorivka, LAYERS.initial[0], LAYERS.initial[1]] }),
+		'cp-post-force': (ctx) => resetTo(ctx, { saved: [LAYERS.picks.yehorivka, LAYERS.initial[0], LAYERS.initial[1]] }),
+		'cp-generated': (ctx) => resetTo(ctx, { saved: 'generated' }),
 	},
 })
 
@@ -181,10 +279,10 @@ function runStateFor(owner: bigint): TUT.RunState {
 	return { code: 'active', scenarioId: run.scenarioId, serverId: run.serverId }
 }
 
-function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string): StageCtx {
+function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string, owner: bigint): StageCtx {
 	const sandbox = Sandbox.getInstance(serverId)
 	if (!sandbox) throw new Error(`tutorial sandbox ${serverId} is not running`)
-	return { ...SquadServer.resolveCtx(base, serverId), sandbox }
+	return { ...SquadServer.resolveCtx(base, serverId), sandbox, owner }
 }
 
 function buildSandboxSettings(owner: bigint, pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
@@ -373,7 +471,7 @@ const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.
 		if (created.code !== 'ok') throw new Error(`could not create tutorial server: ${created.code}`)
 		const enabled = await SquadServer.enableServer(serverId)
 		if (enabled.code !== 'ok') throw new Error(`could not enable tutorial server: ${enabled.code}`)
-		await scenario.setup(stageCtxFor(ctx, serverId))
+		await scenario.setup(stageCtxFor(ctx, serverId, owner))
 		runs.set(owner, { scenarioId, serverId, owner, phase: 'active' })
 		runChanged$.next()
 		return { code: 'ok' as const, serverId }
@@ -415,7 +513,7 @@ export const orpcRouter = {
 			if (!run || run.scenarioId !== input.scenarioId || run.phase !== 'active') return { code: 'err:no-active-run' as const }
 			const stage = SCENARIOS[run.scenarioId].stages[input.stageId]
 			if (!stage) return { code: 'err:unknown-stage' as const }
-			return await runStage(owner, input.stageId, () => stage(stageCtxFor(context, run.serverId)))
+			return await runStage(owner, input.stageId, () => stage(stageCtxFor(context, run.serverId, owner)))
 		}),
 
 	abandon: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {

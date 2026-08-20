@@ -5,6 +5,7 @@ import React, { useRef } from 'react'
 import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
+import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
@@ -12,6 +13,7 @@ import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
 import * as LC from '@/models/layer-columns.ts'
 import type * as SLL from '@/models/squad-layer-list.models'
+import * as TUT from '@/models/tutorial.models'
 import * as RPC from '@/orpc.client'
 import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
@@ -86,7 +88,7 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 }
 
 function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
-	const [tab, setTab] = React.useState<LayerInfoDialogClient.Tab>(initialTab || 'details')
+	const [tab, setTab] = useState_withGlobalHandle<LayerInfoDialogClient.Tab>(TUT.TOUR_HANDLES.layerInfoTab, initialTab || 'details')
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 
@@ -102,7 +104,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 		if (!hasScores && tab === 'scores') {
 			setTab('details')
 		}
-	}, [hasScores, tab])
+	}, [hasScores, tab, setTab])
 
 	return (
 		<div data-tour="layer-details-window" className="min-w-0 min-h-0 flex flex-col">

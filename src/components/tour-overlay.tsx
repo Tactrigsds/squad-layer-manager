@@ -1,3 +1,4 @@
+import * as Icons from 'lucide-react'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
@@ -166,14 +167,17 @@ function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }
 		state.code === 'paused' ? (
 			<DockedCard serverId={run.serverId} />
 		) : (
-			<AnchoredStep
-				state={state}
-				step={step}
-				run={run}
-				anchorTarget={anchorTarget}
-				anchorEls={anchorEls}
-				total={Tour.stepCount(state.scenarioId)}
-			/>
+			<>
+				<AnchoredStep
+					state={state}
+					step={step}
+					run={run}
+					anchorTarget={anchorTarget}
+					anchorEls={anchorEls}
+					total={Tour.stepCount(state.scenarioId)}
+				/>
+				<NavPanel state={state} run={run} />
+			</>
 		)
 
 	return createPortal(
@@ -217,15 +221,16 @@ function AnchoredStep(props: {
 		firstEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
 	}, [firstEl, step.id])
 
-	// advance:'anchor' — advance when the user activates any anchored element
+	// an 'anchor' transition out of this step: advance when the user activates any anchored element
+	const outType = Tour.transitionOutOf(state.scenarioId, state.stepIdx).type
 	React.useEffect(() => {
-		if (state.code !== 'narrating' || step.advance.type !== 'anchor' || els.length === 0) return
+		if (state.code !== 'narrating' || outType !== 'anchor' || els.length === 0) return
 		const onClick = () => Tour.Actions.next()
 		for (const el of els) el.addEventListener('click', onClick, { capture: true })
 		return () => {
 			for (const el of els) el.removeEventListener('click', onClick, { capture: true } as EventListenerOptions)
 		}
-	}, [state.code, step.advance.type, els])
+	}, [state.code, outType, els])
 
 	// anchored but the spotlight elements have not mounted yet: wait with a plain dim, no cutout
 	const hasSpotlight = spotlightTarget !== null && spotRect !== null
@@ -457,10 +462,10 @@ function CardActions(props: {
 	notReady: boolean
 	failed: boolean
 }) {
-	const { step, isLast, centered, staging, notReady, failed } = props
+	const { state, isLast, staging, notReady, failed } = props
 	if (notReady || failed) {
 		return (
-			<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.restartStep()}>
+			<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.reset()}>
 				Retry
 			</button>
 		)
@@ -468,25 +473,107 @@ function CardActions(props: {
 	if (staging) {
 		return <span className="px-1 text-xs text-zinc-500">Preparing…</span>
 	}
-	// Restart is available on any step with server staging to recover (centered intro/outro steps drop it).
-	const showRestart = !centered && !!step.stage
+	// the button belongs to the transition OUT of this step; the last step always finishes on a button
+	const showNext = isLast || Tour.transitionOutOf(state.scenarioId, state.stepIdx).type === 'next'
+	if (!showNext) return null
 	return (
-		<>
-			{showRestart && (
+		<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>
+			{isLast ? 'Finish' : 'Next'}
+		</button>
+	)
+}
+
+// ---- the bottom-left navigation panel + table of contents ----
+
+const NAV_BTN =
+	'flex h-7 w-7 items-center justify-center rounded text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-300'
+
+function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStores }) {
+	const [tocOpen, setTocOpen] = React.useState(false)
+	const idx = state.stepIdx
+	const total = Tour.stepCount(state.scenarioId)
+	return (
+		<div className="absolute bottom-3 left-3" style={{ pointerEvents: 'auto' }}>
+			{tocOpen && <Toc state={state} run={run} onPick={() => setTocOpen(false)} />}
+			<div className="flex items-center gap-0.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-2xl">
 				<button
 					type="button"
-					className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
-					onClick={() => Tour.Actions.restartStep()}
+					title="Contents"
+					className={`${NAV_BTN} ${tocOpen ? 'bg-zinc-800 text-white' : ''}`}
+					onClick={() => setTocOpen((open) => !open)}
 				>
-					Restart
+					<Icons.List className="h-4 w-4" />
 				</button>
-			)}
-			{step.advance.type === 'next' && (
-				<button type="button" className="rounded-md bg-blue-600 px-2.5 py-1 text-xs text-white" onClick={() => Tour.Actions.next()}>
-					{isLast ? 'Finish' : 'Next'}
+				<button
+					type="button"
+					title="Previous step"
+					className={NAV_BTN}
+					disabled={idx === 0}
+					onClick={() => void Tour.Actions.jump(idx - 1)}
+				>
+					<Icons.ChevronLeft className="h-4 w-4" />
 				</button>
-			)}
-		</>
+				<button type="button" title="Reset this step" className={NAV_BTN} onClick={() => Tour.Actions.reset()}>
+					<Icons.RotateCcw className="h-3.5 w-3.5" />
+				</button>
+				<button
+					type="button"
+					title="Next step"
+					className={NAV_BTN}
+					disabled={idx >= total - 1}
+					onClick={() => void Tour.Actions.jump(idx + 1)}
+				>
+					<Icons.ChevronRight className="h-4 w-4" />
+				</button>
+			</div>
+		</div>
+	)
+}
+
+function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () => void }) {
+	const { state, run, onPick } = props
+	const steps = Tour.stepsOf(state.scenarioId)
+	const [query, setQuery] = React.useState('')
+	const currentRef = React.useRef<HTMLButtonElement>(null)
+	React.useEffect(() => {
+		currentRef.current?.scrollIntoView({ block: 'center' })
+	}, [])
+	const q = query.trim().toLowerCase()
+	const items = steps
+		.map((step, i) => ({ step, i, title: Tour.renderMsg(run, step.msg).title }))
+		.filter((item) => !q || item.title.toLowerCase().includes(q))
+	return (
+		<div className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
+			<input
+				type="search"
+				placeholder="Search steps"
+				autoFocus
+				className="m-2 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+				onChange={(event) => setQuery(event.currentTarget.value)}
+			/>
+			<div className="max-h-[50vh] overflow-y-auto pb-1">
+				{items.map(({ step, i, title }) => {
+					const current = i === state.stepIdx
+					return (
+						<button
+							key={step.id}
+							ref={current ? currentRef : undefined}
+							type="button"
+							onClick={() => {
+								onPick()
+								void Tour.Actions.jump(i)
+							}}
+							className={`flex w-full items-baseline gap-2 px-2.5 py-1 text-left text-xs hover:bg-zinc-800 ${current ? 'bg-zinc-800 text-white' : 'text-zinc-300'}`}
+						>
+							<span className={`w-6 shrink-0 text-right font-mono text-[10px] ${current ? 'text-blue-400' : 'text-zinc-500'}`}>
+								{i + 1}
+							</span>
+							<span className="truncate">{title}</span>
+						</button>
+					)
+				})}
+			</div>
+		</div>
 	)
 }
 
