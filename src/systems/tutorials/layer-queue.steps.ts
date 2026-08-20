@@ -243,6 +243,7 @@ export const steps = Tour.defineSteps([
 		id: 'results-sorting',
 		anchor: 'table-sort',
 		spotlight: 'add-pick',
+		interact: 'anchor-only',
 		msg: M.AddLayersSequence.sorting,
 		premise: addDialogOpen,
 		advance: { type: 'next' },
@@ -252,6 +253,7 @@ export const steps = Tour.defineSteps([
 		id: 'results-randomization',
 		anchor: { all: 'table-randomize' },
 		spotlight: 'add-pick',
+		interact: 'anchor-only',
 		msg: M.AddLayersSequence.randomization,
 		premise: addDialogOpen,
 		advance: { type: 'next' },
@@ -409,8 +411,18 @@ export const steps = Tour.defineSteps([
 		premise: editingQueue,
 		advance: { type: 'next' },
 	},
-	// a fresh sandbox holds only the in-progress match, so there is no finished row to point at
-	{ id: 'replay-layer', anchor: { all: 'match-history' }, msg: M.replayLayer, premise: editingQueue, advance: { type: 'next' } },
+	{
+		// The ring is on the history, which is where the drag starts, but the queue is where it has to land: leaving
+		// it dimmed and behind a blocker makes the instruction impossible to follow. A fresh sandbox holds only the
+		// in-progress match, so the anchor is the whole history rather than a finished row.
+		id: 'replay-layer',
+		anchor: { all: 'match-history' },
+		spotlight: { css: '[data-tour="match-history"], [data-tour="queue-panel"]', all: true },
+		interact: 'free',
+		msg: M.replayLayer,
+		premise: editingQueue,
+		advance: { type: 'next' },
+	},
 	{
 		id: 'add-tag',
 		anchor: 'queue-item-display',
@@ -432,9 +444,27 @@ export const steps = Tour.defineSteps([
 
 	// saving, and what saving depends on
 	{ id: 'collaborative-editing', anchor: 'queue-save', msg: M.collaborativeEditing, premise: editingQueue, advance: { type: 'next' } },
-	{ id: 'warnings-on-save', anchor: 'queue-save', msg: M.warningsOnSave, premise: editingQueue, advance: { type: 'next' } },
-	{ id: 'force-save', anchor: 'queue-force-save', msg: M.forceSave, premise: editingQueue, advance: { type: 'next' } },
+	{
+		id: 'force-save',
+		anchor: 'queue-force-save',
+		interact: 'anchor-only',
+		msg: M.forceSave,
+		premise: editingQueue,
+		advance: { type: 'next' },
+	},
+	// Saving comes before the warnings card rather than after it: the first press does not save, it surfaces the
+	// warnings the reader's own additions caused, and the card then has something on screen to point at.
 	{ id: 'save', anchor: 'queue-save', interact: 'anchor-only', msg: M.save, premise: editingQueue, advance: { type: 'anchor' } },
+	{
+		id: 'warnings-on-save',
+		anchor: 'save-warnings',
+		spotlight: { css: '[data-tour="save-warnings"], [data-tour="queue-save"]', all: true },
+		interact: 'free',
+		msg: M.warningsOnSave,
+		// the alert clears when the save goes through, which is the reader pressing the button a second time. No
+		// editing premise here: the point of the step is the edit session ending.
+		advance: { type: 'state', ...domPresent('save-warnings', false) },
+	},
 
 	// generation, which needs an empty saved queue
 	{ id: 'autogen-intro', anchor: 'queue-panel', msg: M.Autogen.intro, advance: { type: 'next' } },

@@ -83,7 +83,7 @@ function ValidationWarningsDisplay(props: {
 	return (
 		<>
 			{repeatWarnings.length > 0 && (
-				<Alert variant="repeat-violation" className="mx-4 my-2 w-auto">
+				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
 					<AlertTitle>{tr.text(LL_Msgs.repeatsDetected())}</AlertTitle>
 					<AlertDescription>
@@ -130,7 +130,7 @@ function ValidationWarningsDisplay(props: {
 				</Alert>
 			)}
 			{filterWarnings.size > 0 && (
-				<Alert variant="warning" className="mx-4 my-2 w-auto">
+				<Alert data-tour="save-warnings" variant="warning" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
 					<AlertTitle>{tr.text(LL_Msgs.filterWarnings())}</AlertTitle>
 					<AlertDescription>
