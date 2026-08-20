@@ -15,6 +15,7 @@ import type * as C from '@/server/context'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as FilterEntity from '@/systems/filter-entity.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Seed from '@/systems/seed.server'
 import * as Settings from '@/systems/settings.server'
@@ -176,8 +177,8 @@ function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string): StageCtx {
 	return { ...SquadServer.resolveCtx(base, serverId), sandbox }
 }
 
-function buildSandboxSettings(pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
-	return Seed.applyInitialPoolConfig({
+async function buildSandboxSettings(ctx: C.Db, pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
+	const settings = Seed.applyInitialPoolConfig({
 		...SettingsModels.PublicServerSettingsSchema.parse({}),
 		connections: SettingsModels.SandboxConnectionSchema.parse({
 			type: 'sandbox',
@@ -189,6 +190,22 @@ function buildSandboxSettings(pacing: ScenarioDef<string>['pacing'], nextLayerId
 			nextLayerId: nextLayerId ?? undefined,
 		}),
 	})
+	return { ...settings, queue: { ...settings.queue, mainPool: await prunePoolConfig(ctx, settings.queue.mainPool) } }
+}
+
+// The seeded pool config names the filters a fresh install gets, and an install that never had them (or deleted
+// one) leaves this server pointing at a filter that does not exist. That is not a soft failure: lowering the
+// constraint fails, the layer-status query errors out whole, and every queue row then renders with no indicators
+// and a "layer does not exist" badge. Keep only what this install actually has.
+async function prunePoolConfig(ctx: C.Db, pool: SettingsModels.PoolConfiguration): Promise<SettingsModels.PoolConfiguration> {
+	const present = await FilterEntity.selectFilterIds(ctx)
+	const pruned = { ...pool, poolFilter: pool.poolFilter && present.has(pool.poolFilter.filterId) ? pool.poolFilter : null }
+	for (const key of SettingsModels.SECONDARY_LIST_KEYS) {
+		pruned[key] = (pool[key] as { filterId: string }[]).filter((entry) =>
+			present.has(typeof entry === 'string' ? entry : entry.filterId),
+		) as never
+	}
+	return pruned
 }
 
 // drops the caller's run and its server. Idempotent: deleteServer no-ops on a server that is not running and
@@ -242,7 +259,7 @@ const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.
 		const created = await Settings.createServerEntry(ctx, {
 			id: serverId,
 			displayName: DISPLAY_NAME,
-			settings: buildSandboxSettings(scenario.pacing, LL.getNextLayerId(initialQueue)),
+			settings: await buildSandboxSettings(ctx, scenario.pacing, LL.getNextLayerId(initialQueue)),
 			visibility: 'scoped',
 			ownerDiscordId: owner,
 			layerQueue: initialQueue,

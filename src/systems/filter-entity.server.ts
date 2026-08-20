@@ -92,6 +92,10 @@ async function recordFilterContributor(
 	)
 }
 
+export async function selectFilterIds(ctx: C.Db): Promise<Set<F.FilterEntityId>> {
+	return new Set((await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters)).map((row) => row.id))
+}
+
 async function selectFilters(ctx: C.Db) {
 	return (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
 }
