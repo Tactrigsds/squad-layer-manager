@@ -86,7 +86,7 @@ export default function LayerInfoDialog(props: LayerInfoProps) {
 }
 
 function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
-	const [tab, setTab] = React.useState<LayerInfoDialogClient.Tab>(initialTab || 'details')
+	const [selectedTab, setTab] = React.useState<LayerInfoDialogClient.Tab>(initialTab || 'details')
 	const layerRes = useQuery(LayerQueriesClient.getLayerInfoQueryOptions(layerId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 
@@ -98,11 +98,8 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 
 	const hasScores = scores && Object.values(scores).some((type) => Object.values(type).some((score) => typeof score === 'number'))
 
-	React.useEffect(() => {
-		if (!hasScores && tab === 'scores') {
-			setTab('details')
-		}
-	}, [hasScores, tab])
+	// the scores tab has nothing to show for a layer without scores, so fall back rather than render it empty
+	const tab = !hasScores && selectedTab === 'scores' ? 'details' : selectedTab
 
 	return (
 		<div className="min-w-0 min-h-0 flex flex-col">

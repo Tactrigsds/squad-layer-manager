@@ -91,17 +91,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	)
 
 	// Track which items are being regenerated (undefined = all, number = specific index)
-	const [regeneratingIndex, setRegeneratingIndex] = React.useState<number | undefined | 'all'>()
+	const [requestedRegenIndex, setRegeneratingIndex] = React.useState<number | undefined | 'all'>()
 
 	// Which choice is being manually edited via EditLayerDialog
 	const [editingChoiceIndex, setEditingChoiceIndex] = React.useState<number>()
 
-	// Sync regenerating state
-	React.useEffect(() => {
-		if (!generating) {
-			setRegeneratingIndex(undefined)
-		}
-	}, [generating])
+	// the spinner it drives only means anything while a generation is in flight
+	const regeneratingIndex = generating ? requestedRegenIndex : undefined
 	const handleToggleUniqueConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
 		const state = Zus.getState(frameKey)
 		if (state.uniqueConstraints.includes(key)) {

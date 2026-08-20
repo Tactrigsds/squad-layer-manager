@@ -29,7 +29,7 @@ export function StoredParentNode(props: NodeMapProps) {
 export function NodePortal(props: { nodeId: NodeMap.NodeId; store: Zus.StoreApi<NodeMap.NodeMapStore>; children: React.ReactNode }) {
 	let node = NodeMap.useNode(props.nodeId, props.store)
 
-	node ??= allocated.get(props.nodeId)
+	node = node ?? allocated.get(props.nodeId)
 	if (!node) {
 		node = document.createElement('div')
 		node.classList.add(props.nodeId.toString())

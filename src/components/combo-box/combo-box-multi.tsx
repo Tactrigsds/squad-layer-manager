@@ -66,7 +66,8 @@ export type ComboBoxMultiProps<T extends string | null = string | null> = {
 }
 
 export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMultiProps<T>) {
-	const NULL = useRef('__null__' + Math.floor(Math.random() * 2000))
+	// stands in for a null option value, where a react key or a cmdk value has to be a string
+	const NULL = React.useId()
 	const { values, selectionLimit, disabled, onSelect: _onSelect = () => {}, selectOnClose = false, reset } = props
 	const useInternalState = selectOnClose || !!props.confirm
 	const [open, _setOpen] = useState(false)
@@ -85,13 +86,6 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		}
 	}, [selectOnClose])
 
-	// Initialize internal values when component mounts or values prop changes
-	useEffect(() => {
-		if (useInternalState) {
-			setInternalValues(values)
-		}
-	}, [values, useInternalState])
-
 	const setOpen = React.useCallback(
 		(value: boolean) => {
 			if (value) {
@@ -99,8 +93,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 				setDrillInto(null)
 				setDrillQuery('')
 				setQuery('')
-				// When opening with confirm mode, reset internal state to current prop values
-				if (props.confirm) {
+				// reseed the working copy from the props on each open. While open it is the source of truth, so an
+				// incoming `values` change must not clobber a selection in progress.
+				if (useInternalState) {
 					setInternalValues(values)
 				}
 				// When opening, store the initial values for potential reset (only if reset is true, not an array)
@@ -115,7 +110,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 			}
 			_setOpen(value)
 		},
-		[_onSelect, internalValues, selectOnClose, useInternalState, reset, values, props.confirm, props.defaultGroups],
+		[_onSelect, internalValues, selectOnClose, useInternalState, reset, values, props.defaultGroups],
 	)
 
 	// opt-in, as the name says: an unset prop leaves the trigger free to use the width its container
@@ -269,9 +264,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	}
 	const showChips = chipDisplay && displayValues.length > 0
 	const trigger = (
-		<PopoverTrigger asChild>
+		<PopoverTrigger asChild data-combobox-trigger="">
 			{React.isValidElement(props.children) ? (
-				React.cloneElement(props.children as React.ReactElement<Record<string, unknown>>, { 'data-combobox-trigger': '' })
+				props.children
 			) : (
 				<Button
 					data-combobox-trigger=""
@@ -302,7 +297,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 								const label = option ? (option.chipLabel ?? option.label ?? option.value) : value
 								return (
 									<span
-										key={value === null ? NULL.current : value}
+										key={value === null ? NULL : value}
 										className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-xs font-normal"
 									>
 										<PrefixedLabel
@@ -482,7 +477,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 												{run.options.map((option) => (
 													<CommandItem
 														key={option.value}
-														value={option.value === null ? NULL.current : option.value}
+														value={option.value === null ? NULL : option.value}
 														keywords={option.keywords}
 														onMouseEnter={() => showDescription(option.value)}
 														onMouseLeave={hideDescription}

@@ -151,13 +151,15 @@ export function StackedBarChart(props: {
 }
 
 function useMeasuredWidth(el: HTMLElement | null) {
-	const [width, setWidth] = React.useState(0)
-	React.useEffect(() => {
-		if (!el) return
-		const observer = new ResizeObserver(() => setWidth(el.clientWidth))
-		observer.observe(el)
-		setWidth(el.clientWidth)
-		return () => observer.disconnect()
-	}, [el])
-	return width
+	const subscribe = React.useCallback(
+		(onResize: () => void) => {
+			if (!el) return () => {}
+			const observer = new ResizeObserver(onResize)
+			observer.observe(el)
+			return () => observer.disconnect()
+		},
+		[el],
+	)
+	const getSnapshot = React.useCallback(() => el?.clientWidth ?? 0, [el])
+	return React.useSyncExternalStore(subscribe, getSnapshot, () => 0)
 }
