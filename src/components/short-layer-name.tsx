@@ -25,6 +25,7 @@ export default function ShortLayerName({
 	matchDescriptors,
 	allowShowInfo: _allowShowInfo,
 	normalized,
+	tourId,
 	ref,
 	className,
 }: {
@@ -35,6 +36,7 @@ export default function ShortLayerName({
 	allowShowInfo?: boolean
 	// overrides the global displayTeamsNormalized setting; see TeamFactionDisplay
 	normalized?: boolean
+	tourId?: string
 	className?: string
 	ref?: React.Ref<HTMLDivElement>
 }) {
@@ -106,7 +108,7 @@ export default function ShortLayerName({
 	// flex-wrap so a long "Map_Gamemode_v1 . FactionA vs FactionB" can break across lines in a narrow
 	// container; each segment stays intact because it carries its own nowrap
 	const content = (
-		<span className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
+		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
 			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
 			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
 				<>
