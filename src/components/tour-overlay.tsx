@@ -257,8 +257,16 @@ function Blockers({ interact, rect }: { interact: 'block' | 'anchor-only' | 'fre
 
 // ---- the card ----
 
-const CARD_W = 264
-const CARD_H = 180 // pre-measure fallback for placement math; replaced by the card's real height once rendered
+// Estimates for the first frame only. The card sizes itself from its copy (see MEASURE below) and both values are
+// replaced with what it actually measured, so nothing here is a width the layout has to honour.
+const CARD_W_ESTIMATE = 320
+const CARD_H_ESTIMATE = 180
+
+// What decides the card's width: the copy is held to a comfortable line length and the card takes its size from
+// that (`w-max`). Stated in `ch` of the body's own type size, because a reading measure is the real constraint --
+// a one-line card stays small, a long one wraps where it is still readable, and the placement math measures the
+// result instead of being told a number that has to agree with the CSS.
+const BODY_MEASURE = 'min-w-[26ch] max-w-[min(56ch,calc(100vw-3rem))]'
 
 function intersects(a: Rect, b: Rect, margin: number): boolean {
 	return a.left < b.right + margin && a.right > b.left - margin && a.top < b.bottom + margin && a.bottom > b.top - margin
@@ -268,7 +276,7 @@ function intersects(a: Rect, b: Rect, margin: number): boolean {
 // adjacent to the anchor come first (below, above, right, left), then adjacent to the spotlight but aligned toward
 // the anchor, then a clamped fallback for a zone that fills the screen. Above-placements pin the card's bottom
 // edge, so a card taller than measured grows away from the element rather than over it.
-function placeCard(anchor: Rect | null, spotlight: Rect | null, cardH: number): React.CSSProperties {
+function placeCard(anchor: Rect | null, spotlight: Rect | null, cardW: number, cardH: number): React.CSSProperties {
 	if (!anchor && !spotlight) {
 		return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
 	}
@@ -276,26 +284,35 @@ function placeCard(anchor: Rect | null, spotlight: Rect | null, cardH: number): 
 	const zone = spotlight ?? anchor!
 	const vw = window.innerWidth
 	const vh = window.innerHeight
-	const clampX = (x: number) => Math.min(Math.max(12, x), vw - CARD_W - 12)
+	const clampX = (x: number) => Math.min(Math.max(12, x), vw - cardW - 12)
 	const clampY = (y: number) => Math.min(Math.max(12, y), vh - cardH - 12)
 	const candidates: { top: number; left: number; pinBottom?: boolean }[] = [
 		{ top: a.bottom + GAP, left: clampX(a.left) },
 		{ top: a.top - GAP - cardH, left: clampX(a.left), pinBottom: true },
 		{ top: clampY(a.top), left: a.right + GAP },
-		{ top: clampY(a.top), left: a.left - GAP - CARD_W },
+		{ top: clampY(a.top), left: a.left - GAP - cardW },
 		{ top: zone.bottom + GAP, left: clampX(a.left) },
 		{ top: zone.top - GAP - cardH, left: clampX(a.left), pinBottom: true },
 		{ top: clampY(a.top), left: zone.right + GAP },
-		{ top: clampY(a.top), left: zone.left - GAP - CARD_W },
+		{ top: clampY(a.top), left: zone.left - GAP - cardW },
 	]
 	for (const c of candidates) {
-		const box: Rect = { top: c.top, left: c.left, width: CARD_W, height: cardH, bottom: c.top + cardH, right: c.left + CARD_W }
+		const box: Rect = { top: c.top, left: c.left, width: cardW, height: cardH, bottom: c.top + cardH, right: c.left + cardW }
 		if (box.top < 12 || box.left < 12 || box.bottom > vh - 12 || box.right > vw - 12) continue
 		if (intersects(box, zone, GAP / 2)) continue
 		if (anchor && intersects(box, anchor, GAP / 2)) continue
 		return c.pinBottom ? { bottom: vh - box.bottom, left: c.left } : { top: c.top, left: c.left }
 	}
-	return { top: clampY(zone.top), left: clampX(zone.left) }
+	// Nothing fits beside the zone, because it fills the screen. Take the side with the most room and clamp in, so
+	// the card covers as little of the zone as the viewport allows rather than landing on top of it.
+	const sides = [
+		{ space: vh - zone.bottom, top: zone.bottom + GAP, left: clampX(a.left) },
+		{ space: zone.top, top: zone.top - GAP - cardH, left: clampX(a.left) },
+		{ space: vw - zone.right, top: clampY(a.top), left: zone.right + GAP },
+		{ space: zone.left, top: clampY(a.top), left: zone.left - GAP - cardW },
+	]
+	const roomiest = sides.reduce((best, side) => (side.space > best.space ? side : best))
+	return { top: clampY(roomiest.top), left: clampX(roomiest.left) }
 }
 
 function Card(props: {
@@ -315,18 +332,19 @@ function Card(props: {
 	const accent = notReady || failed ? 'bg-amber-500' : 'bg-blue-600'
 	const centered = anchorRect === null && spotRect === null
 
-	// the card's real height, so placement math holds for bodies far from the estimate (the rich team cards)
+	// the card's real size, so the placement math works off what the copy actually rendered to rather than a guess
 	const cardRef = React.useRef<HTMLDivElement>(null)
-	const [cardH, setCardH] = React.useState(CARD_H)
+	const [card, setCard] = React.useState({ w: CARD_W_ESTIMATE, h: CARD_H_ESTIMATE })
 	React.useLayoutEffect(() => {
-		if (cardRef.current) setCardH(cardRef.current.offsetHeight)
+		const el = cardRef.current
+		if (el) setCard({ w: el.offsetWidth, h: el.offsetHeight })
 	}, [rendered, state])
 
 	return (
 		<div
 			ref={cardRef}
-			className="absolute w-[264px] rounded-lg border border-zinc-700 bg-zinc-900 p-3.5 pt-4 text-zinc-100 shadow-2xl"
-			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, cardH) }}
+			className="absolute w-max rounded-lg border border-zinc-700 bg-zinc-900 p-3.5 pt-4 text-zinc-100 shadow-2xl"
+			style={{ pointerEvents: 'auto', ...placeCard(anchorRect, spotRect, card.w, card.h) }}
 		>
 			<div
 				className={`absolute -left-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${accent}`}
@@ -344,7 +362,9 @@ function Card(props: {
 			</h3>
 			{/* a block, not a <p>: step copy marks its own paragraphs and lists, and the spacing rules here are what
 			    give an unmarked single-paragraph body and a multi-paragraph one the same top margin */}
-			<div className="mt-1.5 text-xs leading-relaxed text-zinc-300 [&_a]:text-blue-400 [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4">
+			<div
+				className={`mt-1.5 ${BODY_MEASURE} break-words text-xs leading-relaxed text-zinc-300 [&_a]:text-blue-400 [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4`}
+			>
 				{failed ? 'That step could not be set up. Retry, or exit the tutorial.' : notReady ? state.msg : rendered.body}
 			</div>
 			<div className="mt-3 flex items-center justify-between gap-2">
