@@ -344,7 +344,7 @@ function Card(props: {
 			</h3>
 			{/* a block, not a <p>: step copy marks its own paragraphs and lists, and the spacing rules here are what
 			    give an unmarked single-paragraph body and a multi-paragraph one the same top margin */}
-			<div className="mt-1.5 text-xs leading-relaxed text-zinc-300 [&_a]:text-blue-400 [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4">
+			<div className="mt-1.5 text-xs leading-relaxed text-zinc-300 [&_a]:text-blue-400 [&_code]:text-[11px] [&_li]:mt-0.5 [&_p+p]:mt-2 [&_ul+p]:mt-2 [&_ul]:mt-1.5 [&_ul]:list-disc [&_ul]:pl-4">
 				{failed ? 'That step could not be set up. Retry, or exit the tutorial.' : notReady ? state.msg : rendered.body}
 			</div>
 			<div className="mt-3 flex items-center justify-between gap-2">
