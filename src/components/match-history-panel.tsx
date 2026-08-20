@@ -176,7 +176,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 
 	return (
 		<>
-			<CardHeader className="flex flex-row justify-between items-start">
+			<CardHeader data-tour="match-history" className="flex flex-row justify-between items-start">
 				<CardTitle>{tr.text(MH_Msgs.title())}</CardTitle>
 				<div className="flex items-center gap-1">
 					<div className="flex items-center">
@@ -536,7 +536,6 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 		<ContextMenu key={entry.historyEntryId}>
 			<ContextMenuTrigger asChild>
 				<TableRow
-					data-tour={entry.isCurrentMatch ? 'current-match' : undefined}
 					title={tr.text(MH_Msgs.rowActions())}
 					// dnd-kit's accessibility plugin stamps role="button" on any draggable that has no role of
 					// its own, which would make this <tr> a button wrapping <td> cells: invalid, and it drops the
