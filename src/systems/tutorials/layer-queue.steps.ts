@@ -473,6 +473,17 @@ export const steps = Tour.defineSteps([
 		advance: { type: 'next' },
 	},
 	{
+		// with nothing to save, force save ends the reader's own session and kicks nobody: the copy promises more
+		// than that, so the arc gives it something to override
+		id: 'force-save-edit',
+		anchor: 'queue-delete',
+		spotlight: 'queue-item',
+		interact: 'anchor-only',
+		msg: M.forceSaveEdit,
+		premise: editingQueue,
+		advance: { type: 'anchor' },
+	},
+	{
 		id: 'force-save',
 		anchor: 'queue-force-save',
 		spotlight: { css: '[data-tour="queue-force-save"], [data-tour="queue-save"]', all: true },
