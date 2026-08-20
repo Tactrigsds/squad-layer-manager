@@ -105,7 +105,7 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 	}, [hasScores, tab])
 
 	return (
-		<div className="min-w-0 min-h-0 flex flex-col">
+		<div data-tour="layer-details-window" className="min-w-0 min-h-0 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>{DH.displayLayer(layerId)}</DraggableWindowTitle>
 				<span data-tour="layer-info-tabs">

@@ -251,8 +251,9 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				return
 			}
 			// popovers, combo boxes and dialogs render in portals at body level, outside the window's DOM node;
-			// a mousedown inside one of them is not a click on the page behind the window
-			if (target.closest?.('[data-radix-popper-content-wrapper], [role="dialog"]')) {
+			// a mousedown inside one of them is not a click on the page behind the window. The tutorial tour's
+			// overlay is the same case: it narrates the window, so pressing Next on its card must not dismiss it.
+			if (target.closest?.('[data-radix-popper-content-wrapper], [role="dialog"], [data-tour-overlay]')) {
 				return
 			}
 
