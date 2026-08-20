@@ -48,4 +48,18 @@ describe('vehicle classes', () => {
 		const unlabelled = L.StaticLayerComponents.vehicleTypes!.filter((type) => !LC_Msgs.vehicleTypeLabels[type])
 		expect(unlabelled).toEqual([])
 	})
+
+	// what the layer details panel rests on: it has a unit's rows and the artifact's per-record vehicle set, and
+	// recovers the row's vehicle from its name. A record holding two canonical vehicles under one name, or one
+	// whose rows the tables never clustered, would show that row the source's class instead.
+	it('resolves every vehicle row of every unit record', () => {
+		const unresolved: string[] = []
+		for (const unit of Object.values(L.StaticFactionunitConfigs)) {
+			const types = LC.vehicleTypesForUnitRecord(unit)
+			unit.vehicles.forEach((vehicle, i) => {
+				if (!types[i]) unresolved.push(`${unit.unitObjectName}: ${vehicle.name || vehicle.rowName}`)
+			})
+		}
+		expect(unresolved).toEqual([])
+	})
 })
