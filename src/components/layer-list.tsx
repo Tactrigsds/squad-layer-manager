@@ -762,7 +762,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		create: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		match: React.useCallback(
 			(state) => {
-				const node = state ? UP.Trans.editingQueue(state.opts.serverId).match(state)?.chosen : null
+				const node = UP.editingQueueNode(state)?.chosen
 				return node?.id === 'CONFIGURING_VOTE' && node.opts.itemId === item.itemId
 			},
 			[item.itemId],
