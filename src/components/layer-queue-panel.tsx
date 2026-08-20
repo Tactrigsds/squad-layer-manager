@@ -14,12 +14,14 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
+import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as SETTINGS from '@/models/settings.models'
+import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -438,12 +440,12 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const warnings = useQueueWarnings(props.stores)
-	const [showWarnings, setShowWarnings] = React.useState(false)
+	const [showWarnings, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
 	React.useEffect(() => {
 		if (!warnings) {
 			setShowWarnings(false)
 		}
-	}, [warnings])
+	}, [warnings, setShowWarnings])
 
 	return (
 		<>

@@ -10,6 +10,23 @@ export const TUTORIAL_FILTERS = {
 	large: { name: 'Large Layers', emoji: '🗺️' },
 } as const
 
+// Global-handle ids (src/lib/use-state-with-global-handle.ts) for the component-local state a tour jump has to
+// drive. Here so the owning components and the steps files share one vocabulary.
+export const TOUR_HANDLES = {
+	poolConfigTab: 'pool-config-tab',
+	layerInfoTab: 'layer-info-tab',
+	queueSaveWarnings: 'queue-save-warnings',
+} as const
+
+// The layer-queue scenario's canonical layers, shared by the server checkpoints and the client simulates so both
+// halves reconstruct the same states. Every id must exist in the layer data that ships with the app. The picks are
+// what the add walkthrough asks for: Chora is Medium (in pool, no Large indicator), Yehorivka is Large, and both
+// carry CAF so the reader's additions repeat a faction within the pool's warn rule.
+export const LQ_TUTORIAL_LAYERS = {
+	initial: ['GD-RAAS-V1:USA-CA:RGF-CA', 'HJ-RAAS-V1:RGF-MZ:PLA-AA', 'NV-RAAS-V1:USA-CA:RGF-CA'],
+	picks: { chora: 'CH-TC-V1:CAF-CA:MEI-CA', yehorivka: 'YH-TC-V1:CAF-CA:RGF-CA' },
+} as const
+
 export const ScenarioIdSchema = z.enum(['layer-queue'])
 export type ScenarioId = z.infer<typeof ScenarioIdSchema>
 

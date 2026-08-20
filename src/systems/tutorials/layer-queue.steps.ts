@@ -1,27 +1,50 @@
+import * as Im from 'immer'
 import React from 'react'
+import { flushSync } from 'react-dom'
 
 import ShortLayerName from '@/components/short-layer-name'
+import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
+import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
+import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
+import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
+import * as SquadServerFrame from '@/frames/squad-server.frame'
+import { setGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as M from '@/messages/tutorials/layer-queue-tutorial.messages'
+import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LL from '@/models/layer-list.models'
+import * as LNote from '@/models/layer-notes.models'
+import * as TUT from '@/models/tutorial.models'
+import * as UP from '@/models/user-presence'
+import * as ConfigClient from '@/systems/config.client'
+import { DraggableWindowStore, openOrFocusWindow } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 import * as UPClient from '@/systems/user-presence.client'
-import * as UsersClient from '@/systems/users.client'
 
 // The client half of the layer queue tutorial: the step list the tour walks against the live dashboard. The order
 // is the curriculum -- read the queue, then edit it, then see what configures it -- and the copy is in
 // @/messages/tutorials/layer-queue-tutorial.messages. Importing this file registers the scenario.
 //
-// A step advances on whatever "done" means for it: a click on its own anchor (interact:'anchor-only'), a piece of
-// state turning true, or a sampled value changing. Steps whose subject can be dismissed -- an open dialog, an edit
-// session, a draggable window -- carry the premise that keeps them honest, and the tour walks back when it is lost.
+// Each step's advanceFromPrevious is the transition INTO it: what the user does on the previous step to arrive
+// here, plus (as simulate) the programmatic equivalent a jump replays. Steps at server-state boundaries carry a
+// checkpoint; jumping anywhere runs the nearest checkpoint at or before the target and replays the simulates in
+// between. Steps whose subject can be dismissed -- an open dialog, an edit session, a draggable window -- carry
+// the premise that keeps them honest, and the tour walks back when it is lost.
 
-// the queue edits only make sense while the local client holds an editing session; if the user saves or exits, the
-// tour regresses to the nearest step without this premise
+// The queue edits only make sense while the local client holds an editing session; if the user saves or exits, the
+// tour regresses to the nearest step without this premise. Deliberately the OWN CLIENT's activity, not
+// Sel.isEditing: that set is user-level across every server, so it also passes on a session another tab holds on
+// another dashboard. The tour pauses whenever this route is left, so own-client editing is editing the run's server.
 const editingQueue: Tour.StateSelector<boolean> = {
 	inputs: () => [UPClient.Store],
-	select: (upState) => !!UsersClient.loggedInUserId && !!UPClient.Sel.isEditing(UsersClient.loggedInUserId)(upState),
+	select: (upState) => {
+		const clientId = ConfigClient.getConfig()?.wsClientId
+		const activity = clientId ? upState.presence.get(clientId)?.activityState : null
+		return !!activity?.child?.EDITING_QUEUE
+	},
 }
 
 // the Add Layers pool dialog is open: an active `selectLayers` loader for the ADDING_ITEM activity
@@ -38,6 +61,15 @@ function addDialogFrame(): Zus.AnyInput<any> {
 	return entry?.data?.selectLayersFrame ?? UPClient.Store
 }
 
+// the dialog is open AND its frame has loaded, which is what a simulate that writes frame state has to wait for
+const addDialogFrameReady: Tour.StateSelector<boolean> = {
+	inputs: () => [UPClient.Store],
+	select: (upState) => {
+		const entry = UPClient.Sel.loadedActivities(upState).find(isAddDialogEntry) as any
+		return entry?.data?.selectLayersFrame != null
+	},
+}
+
 // presentational state the house does not push into a store: whether a window, dialog or menu carrying this
 // data-tour id is currently laid out. The engine's DOM input is the same contract the e2e suite reads.
 function domPresent(target: Tour.AnchorTarget, present = true): Tour.StateSelector<boolean> {
@@ -52,6 +84,7 @@ const ADD_TARGET = { map: 'Chora', gamemode: 'TC', faction: 'CAF' }
 // the gamemode and faction from ADD_TARGET are still set when this step runs, so the second map has to carry
 // layers for them: AlBasrah has no TC layers at all, which left the step with an empty table
 const ADD_SECOND = { map: 'Yehorivka' }
+const LAYERS = TUT.LQ_TUTORIAL_LAYERS
 
 // whether the filter menu comparison currently selects `value`, whichever comp shape the menu item holds
 function compSelects(node: any, value: string): boolean {
@@ -81,15 +114,211 @@ const filterMenu = (s: any) => s?.filterMenu?.menuItems
 // the layer details window, for selectors scoping a shared control to this one
 const WINDOW = '[data-tour="layer-details-window"]'
 
+// ============================== simulates ==============================
+// The programmatic equivalents of the user actions transitions wait for: store and op writes, never DOM clicks.
+// Sync unless a round trip is unavoidable; every one is safe to replay over state a checkpoint installed.
+
+const queueStores = (run: Tour.RunStores) => ({ queue: run.squadServer })
+const list = (run: Tour.RunStores) => Zus.getState(run.squadServer).queue.layerList as any[]
+
+const TUTORIAL_TAG = 'Tutorial:tut001'
+
+async function simStartEditing(ctx: Tour.SimulateCtx) {
+	UPClient.Actions.ensureEditingQueue(ctx.run.serverId)
+	await Tour.awaitSelector(ctx.run, editingQueue, ctx.signal, 3000)
+}
+
+async function simOpenAddDialog(ctx: Tour.SimulateCtx) {
+	UPClient.Actions.updateActivity(
+		UP.createEditingQueueVariant({
+			_tag: 'leaf',
+			id: 'ADDING_ITEM',
+			opts: { cursor: { type: 'start' }, variant: 'toggle-position', action: 'add' },
+		})(),
+	)
+	await Tour.awaitSelector(ctx.run, addDialogFrameReady, ctx.signal, 3000)
+}
+
+// select a value on a filter menu field the way the menu inputs do, preserving the comp's value/values shape
+function selectFilterValue(field: string, value: string) {
+	LayerFilterMenuPrt.Actions.setComparison({ filterMenu: addDialogFrame() } as any, field, (prev) =>
+		Im.produce(prev, (draft) => {
+			const valuesArg = draft.args.find((arg): arg is F.EditableValuesArg => arg?.type === 'values')
+			if (valuesArg) valuesArg.values = [value]
+			else F.setCompValue(draft, value)
+		}),
+	)
+}
+
+function simSetAddFilters() {
+	selectFilterValue('Map', ADD_TARGET.map)
+	selectFilterValue('Gamemode', ADD_TARGET.gamemode)
+	selectFilterValue('Faction_1', ADD_TARGET.faction)
+}
+
+function simToggleHideRepeats() {
+	PoolCheckboxesPrt.Actions.setCheckbox({ poolCheckboxes: addDialogFrame() } as any, 'dnr', 'regular')
+}
+
+function simSelect(layerId: string) {
+	LayerTablePrt.Actions.setSelected({ layerTable: addDialogFrame() } as any, (prev) =>
+		prev.includes(layerId as L.LayerId) ? prev : [...prev, layerId as L.LayerId],
+	)
+}
+
+function simShowSelected() {
+	LayerTablePrt.Actions.setShowSelectedLayers({ layerTable: addDialogFrame() } as any, true)
+}
+
+function simReorder(ctx: Tour.SimulateCtx) {
+	const items = list(ctx.run)
+	if (items.length < 2) return
+	const last = items[items.length - 1]
+	const prev = items[items.length - 2]
+	LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, last.itemId, {
+		op: 'move',
+		cursor: { type: 'item-relative', itemId: prev.itemId, position: 'before' },
+		newFirstItemId: LL.createItemId(),
+	})
+}
+
+// the canonical removal is the last seed layer, so the CAF picks that trip the save warning stay in the draft
+function simRemoveSeed(ctx: Tour.SimulateCtx) {
+	const items = list(ctx.run)
+	const target = items.find((it) => it.layerId === LAYERS.initial[2]) ?? items[items.length - 1]
+	if (target) LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, { op: 'delete' })
+}
+
+function simSwapHead(ctx: Tour.SimulateCtx) {
+	const target = head(Zus.getState(ctx.run.squadServer))
+	if (target) LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, { op: 'swap-factions' })
+}
+
+function simRemoveHead(ctx: Tour.SimulateCtx) {
+	const target = head(Zus.getState(ctx.run.squadServer))
+	if (target) LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, { op: 'delete' })
+}
+
+async function simOpenEditLayer(ctx: Tour.SimulateCtx) {
+	const target = head(Zus.getState(ctx.run.squadServer))
+	if (!target) return
+	UPClient.Actions.updateActivity(
+		UP.createEditingQueueVariant({
+			_tag: 'leaf',
+			id: 'EDITING_ITEM',
+			opts: { itemId: target.itemId, cursor: { type: 'item-relative', itemId: target.itemId, position: 'on' } },
+		})(),
+	)
+	await Tour.awaitSelector(ctx.run, domPresent('edit-layer-dialog'), ctx.signal, 3000)
+}
+
+function simCloseQueueSubActivity() {
+	UPClient.Actions.updateActivity(UP.toEditingQueueIdleOrNone())
+}
+
+function simAddTag(ctx: Tour.SimulateCtx) {
+	const target = head(Zus.getState(ctx.run.squadServer))
+	if (!target || target.tags?.includes(TUTORIAL_TAG)) return
+	LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, { op: 'add-tag', tagId: TUTORIAL_TAG })
+}
+
+function simAddNote(ctx: Tour.SimulateCtx) {
+	const target = head(Zus.getState(ctx.run.squadServer))
+	if (!target || (target.notes?.length ?? 0) > 0) return
+	LayerQueuePrt.Actions.dispatchItemOp(queueStores(ctx.run) as any, target.itemId, {
+		op: 'add-note',
+		noteId: LNote.createNoteId(),
+		text: 'Tutorial note',
+	})
+}
+
+// the first save press: surface the warnings the draft causes, without saving. The flag is component state behind
+// a global handle; the warnings must have computed first or the panel's own effect clears it again.
+async function simShowSaveWarnings(ctx: Tour.SimulateCtx) {
+	await SquadServerFrame.awaitCurrentStatuses(ctx.run.squadServer)
+	await SquadServerFrame.refreshSavedQueueWarnings(ctx.run.squadServer)
+	if (ctx.signal.aborted) return
+	setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, true)
+}
+
+async function simOpenLayerDetails(ctx: Tour.SimulateCtx) {
+	const target = head(Zus.getState(ctx.run.squadServer))
+	if (!target) return
+	// the window definition registers on module import; flushSync commits the mount so the tab handle below is
+	// settable on the next line of a jump
+	await import('@/components/layer-info')
+	flushSync(() => openOrFocusWindow(WINDOW_ID.enum['layer-info'], { layerId: target.layerId }))
+}
+
+function simShowLayerScores() {
+	setGlobalHandle(TUT.TOUR_HANDLES.layerInfoTab, 'scores')
+}
+
+function simCloseLayerDetails() {
+	const store = DraggableWindowStore.getState()
+	for (const w of store.windows.filter((w) => w.type === WINDOW_ID.enum['layer-info'])) store.closeWindow(w.id)
+}
+
+async function simOpenPoolConfig(ctx: Tour.SimulateCtx) {
+	await import('@/components/pool-config-window')
+	if (ctx.signal.aborted) return
+	flushSync(() => openOrFocusWindow(WINDOW_ID.enum['pool-config'], { stores: { squadServer: ctx.run.squadServer } }))
+}
+
+function simShowRepeatRules() {
+	setGlobalHandle(TUT.TOUR_HANDLES.poolConfigTab, 'repeatRules')
+}
+
+// Close every window a step may have opened and clear stale handle state. Presence-driven dialogs are deliberately
+// NOT closed here: the checkpoint's end-all-editing clears the whole activity subtree server-side, and a client op
+// would race it -- toEditingQueueIdleOrNone also ASSERTS an editing session, so losing that race leaves the reader
+// spuriously editing after a jump into a non-editing region.
+function resetClient(run: Tour.RunStores) {
+	const store = DraggableWindowStore.getState()
+	for (const w of [...store.windows]) store.closeWindow(w.id)
+	setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
+	void run
+}
+
+// ============================== checkpoints ==============================
+// One per region of the tour whose server state differs; the stage ids are the scenario's cp-* stages. `ready`
+// pins the state the client must observe before replaying simulates on top of it.
+
+function cpReady(opts: { head: string; length: number; editing: boolean }): Tour.StateSelector<boolean> {
+	return {
+		inputs: (run) => [run.squadServer, UPClient.Store],
+		select: (s: any, upState: any) => {
+			const items = s.queue.layerList
+			return items.length === opts.length && items[0]?.layerId === opts.head && editingQueue.select(upState) === opts.editing
+		},
+	}
+}
+
+const CP = {
+	fresh: { stage: 'cp-fresh', ready: cpReady({ head: LAYERS.initial[0], length: 3, editing: false }) },
+	edited: { stage: 'cp-edited', ready: cpReady({ head: LAYERS.picks.chora, length: 5, editing: true }) },
+	saved: { stage: 'cp-saved', ready: cpReady({ head: LAYERS.picks.chora, length: 4, editing: false }) },
+	postForce: { stage: 'cp-post-force', ready: cpReady({ head: LAYERS.picks.yehorivka, length: 3, editing: false }) },
+	generated: {
+		stage: 'cp-generated',
+		ready: {
+			inputs: (run) => [run.squadServer],
+			select: (s: any) => queueLength(s) === 1 && headIsGenerated(s),
+		} as Tour.StateSelector<boolean>,
+	},
+} satisfies Record<string, Tour.Checkpoint>
+
+// ============================== steps ==============================
+
 export const steps = Tour.defineSteps([
-	{ id: 'welcome', msg: M.welcome, advance: { type: 'next' } },
-	{ id: 'sandbox', anchor: 'server-name', msg: M.sandbox, advance: { type: 'next' } },
-	{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory, advance: { type: 'next' } },
-	{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel, advance: { type: 'next' } },
+	{ id: 'welcome', msg: M.welcome, checkpoint: CP.fresh },
+	{ id: 'sandbox', anchor: 'server-name', msg: M.sandbox },
+	{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory },
+	{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel },
 
 	// reading the queue, before any editing
-	{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems, advance: { type: 'next' } },
-	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge, advance: { type: 'next' } },
+	{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems },
+	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge },
 	{
 		id: 'layer-anatomy',
 		anchor: 'queue-layer-name',
@@ -103,7 +332,6 @@ export const steps = Tour.defineSteps([
 				}
 			},
 		},
-		advance: { type: 'next' },
 	},
 	{
 		// the whole run of tagged rows, so the alternating (1)/(2) marks down the queue are visible in one zone. The
@@ -121,7 +349,6 @@ export const steps = Tour.defineSteps([
 				),
 			}),
 		},
-		advance: { type: 'next' },
 	},
 	// both cards tell the reader to hover the indicator, so the anchor has to stay reachable: the default
 	// interact blocks the whole page, which leaves the instruction doing nothing
@@ -131,7 +358,6 @@ export const steps = Tour.defineSteps([
 		spotlight: 'queue-item',
 		interact: 'anchor-only',
 		msg: M.filterIndicators,
-		advance: { type: 'next' },
 	},
 	{
 		id: 'repeat-indicators',
@@ -139,7 +365,6 @@ export const steps = Tour.defineSteps([
 		spotlight: 'queue-item',
 		interact: 'anchor-only',
 		msg: M.repeatIndicators,
-		advance: { type: 'next' },
 	},
 
 	// the layer details window
@@ -148,28 +373,26 @@ export const steps = Tour.defineSteps([
 		anchor: 'queue-layer-name',
 		interact: 'anchor-only',
 		msg: M.LayerDetails.openLayerDetails,
-		advance: { type: 'state', ...domPresent('layer-details') },
 	},
 	{
 		id: 'layer-details',
 		anchor: 'layer-details-window',
 		msg: M.LayerDetails.layerDetails,
 		premise: domPresent('layer-details'),
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'state', ...domPresent('layer-details'), simulate: simOpenLayerDetails },
 	},
 	{
 		id: 'open-layer-scores',
 		anchor: 'layer-info-tabs',
 		interact: 'anchor-only',
 		msg: M.LayerDetails.openLayerScores,
-		advance: { type: 'state', ...domPresent('layer-scores') },
 	},
 	{
 		id: 'layer-scores',
 		anchor: 'layer-details-window',
 		msg: M.LayerDetails.layerScores,
 		premise: domPresent('layer-scores'),
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'state', ...domPresent('layer-scores'), simulate: simShowLayerScores },
 	},
 	{
 		// a draggable window outlives the step that opened it, and it sits over the queue the next steps narrate
@@ -177,13 +400,24 @@ export const steps = Tour.defineSteps([
 		anchor: { css: `${WINDOW} [data-window-control="close"]` },
 		interact: 'anchor-only',
 		msg: M.closeLayerDetails,
-		advance: { type: 'state', ...domPresent('layer-details-window', false) },
 	},
-	{ id: 'layer-context-menu', anchor: 'queue-layer-name', interact: 'free', msg: M.layerContextMenu, advance: { type: 'next' } },
+	{
+		id: 'layer-context-menu',
+		anchor: 'queue-layer-name',
+		interact: 'free',
+		msg: M.layerContextMenu,
+		advanceFromPrevious: { type: 'state', ...domPresent('layer-details-window', false), simulate: simCloseLayerDetails },
+	},
 
 	// editing
-	{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing, advance: { type: 'anchor' } },
-	{ id: 'queue-editors', anchor: 'queue-editors', msg: M.queueUserPresence, premise: editingQueue, advance: { type: 'next' } },
+	{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
+	{
+		id: 'queue-editors',
+		anchor: 'queue-editors',
+		msg: M.queueUserPresence,
+		premise: editingQueue,
+		advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
+	},
 
 	// the layer selection dialog
 	{
@@ -192,14 +426,13 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.AddLayersSequence.addLayersButton,
 		premise: editingQueue,
-		advance: { type: 'state', ...addDialogOpen },
 	},
 	{
 		id: 'add-dialog-tour',
 		anchor: 'add-dialog',
 		msg: M.AddLayersSequence.addLayersDialogTour,
 		premise: addDialogOpen,
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'state', ...addDialogOpen, simulate: simOpenAddDialog },
 	},
 	{
 		id: 'layer-filter-menu',
@@ -210,7 +443,13 @@ export const steps = Tour.defineSteps([
 			body: () => M.AddLayersSequence.layerFilterMenu.body(ADD_TARGET.map, ADD_TARGET.gamemode, ADD_TARGET.faction),
 		},
 		premise: addDialogOpen,
-		advance: {
+	},
+	{
+		id: 'results-table',
+		anchor: 'add-pick',
+		msg: M.AddLayersSequence.resultsTable,
+		premise: addDialogOpen,
+		advanceFromPrevious: {
 			type: 'state',
 			inputs: () => [addDialogFrame()],
 			select: (s: any) => {
@@ -222,14 +461,8 @@ export const steps = Tour.defineSteps([
 					(compSelects(menu.Faction_1, ADD_TARGET.faction) || compSelects(menu.Faction_2, ADD_TARGET.faction))
 				)
 			},
+			simulate: simSetAddFilters,
 		},
-	},
-	{
-		id: 'results-table',
-		anchor: 'add-pick',
-		msg: M.AddLayersSequence.resultsTable,
-		premise: addDialogOpen,
-		advance: { type: 'next' },
 	},
 	{
 		id: 'results-pagination',
@@ -237,7 +470,6 @@ export const steps = Tour.defineSteps([
 		spotlight: 'add-pick',
 		msg: M.AddLayersSequence.pagination,
 		premise: addDialogOpen,
-		advance: { type: 'next' },
 	},
 	{
 		id: 'results-sorting',
@@ -246,7 +478,6 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.AddLayersSequence.sorting,
 		premise: addDialogOpen,
-		advance: { type: 'next' },
 	},
 	{
 		// the dice and the toggle that reveals it, as one zone
@@ -256,7 +487,6 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.AddLayersSequence.randomization,
 		premise: addDialogOpen,
-		advance: { type: 'next' },
 	},
 	{
 		id: 'applied-filters',
@@ -265,9 +495,8 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.AddLayersSequence.appliedFiltersToolbar,
 		premise: addDialogOpen,
-		advance: { type: 'next' },
 	},
-	{ id: 'results-repeats', anchor: 'add-pick', msg: M.AddLayersSequence.repeats, premise: addDialogOpen, advance: { type: 'next' } },
+	{ id: 'results-repeats', anchor: 'add-pick', msg: M.AddLayersSequence.repeats, premise: addDialogOpen },
 	{
 		id: 'hide-repeats',
 		anchor: 'table-hide-repeats',
@@ -275,12 +504,6 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.AddLayersSequence.hideRepeats,
 		premise: addDialogOpen,
-		advance: {
-			type: 'change',
-			inputs: () => [addDialogFrame()],
-			sample: (s: any) => s?.poolCheckboxes?.checkboxesState?.dnr ?? null,
-			advanced: (from, to) => from !== to,
-		},
 	},
 	{
 		id: 'click-to-select',
@@ -288,10 +511,12 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.AddLayersSequence.clickToSelect,
 		premise: addDialogOpen,
-		advance: {
-			type: 'state',
+		advanceFromPrevious: {
+			type: 'change',
 			inputs: () => [addDialogFrame()],
-			select: (s: any) => (s?.layerTable?.selected?.length ?? 0) > 0,
+			sample: (s: any) => s?.poolCheckboxes?.checkboxesState?.dnr ?? null,
+			advanced: (from, to) => from !== to,
+			simulate: simToggleHideRepeats,
 		},
 	},
 	{
@@ -300,7 +525,12 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.AddLayersSequence.rightClick,
 		premise: addDialogOpen,
-		advance: { type: 'next' },
+		advanceFromPrevious: {
+			type: 'state',
+			inputs: () => [addDialogFrame()],
+			select: (s: any) => (s?.layerTable?.selected?.length ?? 0) > 0,
+			simulate: () => simSelect(LAYERS.picks.chora),
+		},
 	},
 	{
 		// the reader edits the filters and picks from the results, so both regions are the subject
@@ -309,13 +539,6 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: { title: M.AddLayersSequence.addAnother.title, body: () => M.AddLayersSequence.addAnother.body(ADD_SECOND.map) },
 		premise: addDialogOpen,
-		advance: {
-			type: 'state',
-			inputs: () => [addDialogFrame()],
-			// a count would also pass on the layer picked two steps ago, and the next step is about seeing a selection
-			// the filters have hidden, which only reads as that if the second pick really is from the second map
-			select: (s: any) => ((s?.layerTable?.selected ?? []) as L.LayerId[]).some((id) => L.toLayer(id).Map === ADD_SECOND.map),
-		},
 	},
 	{
 		id: 'see-selection',
@@ -323,10 +546,13 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.AddLayersSequence.seeSelection,
 		premise: addDialogOpen,
-		advance: {
+		advanceFromPrevious: {
 			type: 'state',
 			inputs: () => [addDialogFrame()],
-			select: (s: any) => s?.layerTable?.showSelectedLayers === true,
+			// a count would also pass on the layer picked two steps ago, and this step is about seeing a selection
+			// the filters have hidden, which only reads as that if the second pick really is from the second map
+			select: (s: any) => ((s?.layerTable?.selected ?? []) as L.LayerId[]).some((id) => L.toLayer(id).Map === ADD_SECOND.map),
+			simulate: () => simSelect(LAYERS.picks.yehorivka),
 		},
 	},
 	{
@@ -336,7 +562,12 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.AddLayersSequence.submit,
 		premise: addDialogOpen,
-		advance: { type: 'change', inputs: (run) => [run.squadServer], sample: queueLength, advanced: (from, to) => to > from },
+		advanceFromPrevious: {
+			type: 'state',
+			inputs: () => [addDialogFrame()],
+			select: (s: any) => s?.layerTable?.showSelectedLayers === true,
+			simulate: simShowSelected,
+		},
 	},
 
 	// what the edit looks like in the queue
@@ -347,7 +578,8 @@ export const steps = Tour.defineSteps([
 		anchor: { css: '[data-tour="queue-panel"] li[data-mutation="added"]', all: true },
 		msg: M.addedHighlight,
 		premise: editingQueue,
-		advance: { type: 'next' },
+		checkpoint: CP.edited,
+		advanceFromPrevious: { type: 'change', inputs: (run) => [run.squadServer], sample: queueLength, advanced: (from, to) => to > from },
 	},
 	{
 		id: 'layer-attribution',
@@ -355,7 +587,6 @@ export const steps = Tour.defineSteps([
 		spotlight: 'queue-item',
 		msg: M.layerAttribution,
 		premise: editingQueue,
-		advance: { type: 'next' },
 	},
 
 	// the rest of the item actions
@@ -366,7 +597,6 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.reorderLayer,
 		premise: editingQueue,
-		advance: { type: 'change', inputs: (run) => [run.squadServer], sample: queueOrder, advanced: (from, to) => from !== to },
 	},
 	{
 		id: 'remove-layer',
@@ -375,7 +605,13 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.removeLayer,
 		premise: editingQueue,
-		advance: { type: 'anchor' },
+		advanceFromPrevious: {
+			type: 'change',
+			inputs: (run) => [run.squadServer],
+			sample: queueOrder,
+			advanced: (from, to) => from !== to,
+			simulate: simReorder,
+		},
 	},
 	{
 		id: 'swap-teams',
@@ -384,7 +620,7 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.swapTeams,
 		premise: editingQueue,
-		advance: { type: 'anchor' },
+		advanceFromPrevious: { type: 'anchor', simulate: simRemoveSeed },
 	},
 	{
 		id: 'edit-layer',
@@ -393,14 +629,14 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.editLayer,
 		premise: editingQueue,
-		advance: { type: 'state', ...domPresent('edit-layer-dialog') },
+		advanceFromPrevious: { type: 'anchor', simulate: simSwapHead },
 	},
 	{
 		id: 'edit-layer-dialog',
 		anchor: 'edit-layer-dialog',
 		interact: 'free',
 		msg: M.editLayerSelection,
-		advance: { type: 'state', ...domPresent('edit-layer-dialog', false) },
+		advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog'), simulate: simOpenEditLayer },
 	},
 	{
 		id: 'item-menu',
@@ -409,7 +645,7 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.layerItemEllipsis,
 		premise: editingQueue,
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog', false), simulate: simCloseQueueSubActivity },
 	},
 	{
 		// The ring is on the history, which is where the drag starts, but the queue is where it has to land: leaving
@@ -421,7 +657,6 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.replayLayer,
 		premise: editingQueue,
-		advance: { type: 'next' },
 	},
 	{
 		id: 'add-tag',
@@ -430,7 +665,6 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.addTag,
 		premise: editingQueue,
-		advance: { type: 'change', inputs: (run) => [run.squadServer], sample: headTagCount, advanced: (from, to) => to > from },
 	},
 	{
 		id: 'add-note',
@@ -439,7 +673,13 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.notes,
 		premise: editingQueue,
-		advance: { type: 'change', inputs: (run) => [run.squadServer], sample: headNoteCount, advanced: (from, to) => to > from },
+		advanceFromPrevious: {
+			type: 'change',
+			inputs: (run) => [run.squadServer],
+			sample: headTagCount,
+			advanced: (from, to) => to > from,
+			simulate: simAddTag,
+		},
 	},
 
 	// saving, and what saving depends on
@@ -448,21 +688,41 @@ export const steps = Tour.defineSteps([
 	//
 	// Saving comes before the warnings card rather than after it, because the first press does not save -- it
 	// surfaces the warnings the reader's own additions caused, and the card then has something to point at.
-	{ id: 'save', anchor: 'queue-save', interact: 'anchor-only', msg: M.save, premise: editingQueue, advance: { type: 'anchor' } },
+	{
+		id: 'save',
+		anchor: 'queue-save',
+		interact: 'anchor-only',
+		msg: M.save,
+		premise: editingQueue,
+		advanceFromPrevious: {
+			type: 'change',
+			inputs: (run) => [run.squadServer],
+			sample: headNoteCount,
+			advanced: (from, to) => to > from,
+			simulate: simAddNote,
+		},
+	},
 	{
 		id: 'warnings-on-save',
 		anchor: 'save-warnings',
 		spotlight: { css: '[data-tour="save-warnings"], [data-tour="queue-save"]', all: true },
 		interact: 'free',
 		msg: M.warningsOnSave,
-		// the alert clears when the save goes through, which is the reader pressing the button a second time. No
-		// editing premise here: the point of the step is the edit session ending.
-		advance: { type: 'state', ...domPresent('save-warnings', false) },
+		// no editing premise here: the point of the step is the edit session ending on the second press
+		advanceFromPrevious: { type: 'anchor', simulate: simShowSaveWarnings },
 	},
 
 	// The force-save arc needs an editing session of its own with a second editor in it, since force save only
 	// overrides something while somebody else holds the queue.
-	{ id: 'force-save-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing, advance: { type: 'anchor' } },
+	{
+		id: 'force-save-editing',
+		anchor: 'queue-edit',
+		interact: 'anchor-only',
+		msg: M.startEditing,
+		checkpoint: CP.saved,
+		// arrives when the second save press goes through and ends the reader's session
+		advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
+	},
 	{
 		id: 'collaborative-editing',
 		stage: 'second-editor',
@@ -470,7 +730,7 @@ export const steps = Tour.defineSteps([
 		spotlight: { css: '[data-tour="queue-editors"], [data-tour="queue-save"]', all: true },
 		msg: M.collaborativeEditing,
 		premise: editingQueue,
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
 	},
 	{
 		// with nothing to save, force save ends the reader's own session and kicks nobody: the copy promises more
@@ -481,7 +741,6 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.forceSaveEdit,
 		premise: editingQueue,
-		advance: { type: 'anchor' },
 	},
 	{
 		id: 'force-save',
@@ -490,13 +749,19 @@ export const steps = Tour.defineSteps([
 		interact: 'free',
 		msg: M.forceSave,
 		premise: editingQueue,
-		// armed and pressed: done once the queue is no longer the reader's to edit
-		advance: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
+		advanceFromPrevious: { type: 'anchor', simulate: simRemoveHead },
 	},
 
 	// generation, which needs an empty saved queue
-	{ id: 'autogen-intro', anchor: 'queue-panel', msg: M.Autogen.intro, advance: { type: 'next' } },
-	{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing, advance: { type: 'anchor' } },
+	{
+		id: 'autogen-intro',
+		anchor: 'queue-panel',
+		msg: M.Autogen.intro,
+		checkpoint: CP.postForce,
+		// armed and pressed: done once the queue is no longer the reader's to edit
+		advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
+	},
+	{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
 	{
 		// one step for both halves of the instruction: empty the queue, then save. Done is a generated head.
 		id: 'autogen-try',
@@ -504,9 +769,16 @@ export const steps = Tour.defineSteps([
 		spotlight: 'queue-panel',
 		interact: 'free',
 		msg: M.Autogen.tryItOut,
-		advance: { type: 'state', inputs: (run) => [run.squadServer], select: headIsGenerated },
+		advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
 	},
-	{ id: 'autogen-item', anchor: 'queue-item-source', spotlight: 'queue-item', msg: M.Autogen.generatedItem, advance: { type: 'next' } },
+	{
+		id: 'autogen-item',
+		anchor: 'queue-item-source',
+		spotlight: 'queue-item',
+		msg: M.Autogen.generatedItem,
+		checkpoint: CP.generated,
+		advanceFromPrevious: { type: 'state', inputs: (run) => [run.squadServer], select: headIsGenerated },
+	},
 
 	// what configures all of it
 	{
@@ -514,35 +786,31 @@ export const steps = Tour.defineSteps([
 		anchor: 'pool-settings',
 		interact: 'anchor-only',
 		msg: M.PoolSettings.showPoolSettings,
-		advance: { type: 'state', ...domPresent('pool-config-body') },
 	},
 	{
 		id: 'pool-settings',
 		anchor: 'pool-config-body',
 		msg: M.PoolSettings.poolSettings,
 		premise: domPresent('pool-config-body'),
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'state', ...domPresent('pool-config-body'), simulate: simOpenPoolConfig },
 	},
 	{
 		id: 'pool-filter',
 		anchor: 'pool-filter',
 		msg: M.PoolSettings.poolFilter,
 		premise: domPresent('pool-config-body'),
-		advance: { type: 'next' },
 	},
 	{
 		id: 'indicate-matches',
 		anchor: 'pool-list-indicateMatches',
 		msg: M.PoolSettings.indicateMatchesAndMisses,
 		premise: domPresent('pool-config-body'),
-		advance: { type: 'next' },
 	},
 	{
 		id: 'default-select',
 		anchor: 'pool-list-defaultSelectable',
 		msg: M.PoolSettings.defaultSelect,
 		premise: domPresent('pool-config-body'),
-		advance: { type: 'next' },
 	},
 	{
 		id: 'view-repeat-rules',
@@ -550,21 +818,19 @@ export const steps = Tour.defineSteps([
 		interact: 'anchor-only',
 		msg: M.PoolSettings.viewRepeatRules,
 		premise: domPresent('pool-config-body'),
-		advance: { type: 'state', ...domPresent('pool-repeat-rules') },
 	},
 	{
 		id: 'repeat-rules',
 		anchor: 'pool-repeat-rules',
 		msg: M.PoolSettings.repeatRulesOverview,
 		premise: domPresent('pool-repeat-rules'),
-		advance: { type: 'next' },
+		advanceFromPrevious: { type: 'state', ...domPresent('pool-repeat-rules'), simulate: simShowRepeatRules },
 	},
 	{
 		id: 'repeat-rule',
 		anchor: 'pool-repeat-rules',
 		msg: M.PoolSettings.repeatRule,
 		premise: domPresent('pool-repeat-rules'),
-		advance: { type: 'next' },
 	},
 	{
 		id: 'target-values',
@@ -572,7 +838,6 @@ export const steps = Tour.defineSteps([
 		spotlight: 'pool-repeat-rules',
 		msg: M.PoolSettings.targetValues,
 		premise: domPresent('pool-repeat-rules'),
-		advance: { type: 'next' },
 	},
 	{
 		id: 'warns-and-autogen',
@@ -580,8 +845,7 @@ export const steps = Tour.defineSteps([
 		spotlight: 'pool-repeat-rules',
 		msg: M.PoolSettings.warnsAndAutogen,
 		premise: domPresent('pool-repeat-rules'),
-		advance: { type: 'next' },
 	},
 ])
 
-Tour.registerScenario('layer-queue', steps)
+Tour.registerScenario('layer-queue', { steps, resetClient })
