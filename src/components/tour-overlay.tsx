@@ -205,12 +205,17 @@ function AnchoredStep(props: {
 	const rendered = useRenderedMsg(run, step.msg)
 	const interact = step.interact ?? 'block'
 
-	// bring the outlined zone into view when it resolves, so it is never dimmed off-screen or behind an overflow
-	// scroll. The rAF rect loop tracks it as the scroll settles.
+	// Bring the outlined zone into view once, when the step's anchor first resolves, so it is never dimmed
+	// off-screen or behind an overflow scroll. Deliberately not on every change of element: an id that follows a
+	// moving target (the reorder handle sits on whichever row is first) would otherwise scroll the page out from
+	// under the reader mid-drag. The rAF rect loop tracks the zone from there.
 	const firstEl = els[0] ?? null
+	const scrolledFor = React.useRef<string | null>(null)
 	React.useEffect(() => {
-		firstEl?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
-	}, [firstEl])
+		if (!firstEl || scrolledFor.current === step.id) return
+		scrolledFor.current = step.id
+		firstEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' })
+	}, [firstEl, step.id])
 
 	// advance:'anchor' — advance when the user activates any anchored element
 	React.useEffect(() => {
