@@ -443,17 +443,11 @@ export const steps = Tour.defineSteps([
 	},
 
 	// saving, and what saving depends on
-	{ id: 'collaborative-editing', anchor: 'queue-save', msg: M.collaborativeEditing, premise: editingQueue, advance: { type: 'next' } },
-	{
-		id: 'force-save',
-		anchor: 'queue-force-save',
-		interact: 'anchor-only',
-		msg: M.forceSave,
-		premise: editingQueue,
-		advance: { type: 'next' },
-	},
-	// Saving comes before the warnings card rather than after it: the first press does not save, it surfaces the
-	// warnings the reader's own additions caused, and the card then has something on screen to point at.
+	// Warnings first, and alone: arming force save skips the warning prompt entirely (see setEditing in
+	// layer-queue-panel), so the two cannot be shown in the same pass. This pass saves the queue for real.
+	//
+	// Saving comes before the warnings card rather than after it, because the first press does not save -- it
+	// surfaces the warnings the reader's own additions caused, and the card then has something to point at.
 	{ id: 'save', anchor: 'queue-save', interact: 'anchor-only', msg: M.save, premise: editingQueue, advance: { type: 'anchor' } },
 	{
 		id: 'warnings-on-save',
@@ -464,6 +458,29 @@ export const steps = Tour.defineSteps([
 		// the alert clears when the save goes through, which is the reader pressing the button a second time. No
 		// editing premise here: the point of the step is the edit session ending.
 		advance: { type: 'state', ...domPresent('save-warnings', false) },
+	},
+
+	// The force-save arc needs an editing session of its own with a second editor in it, since force save only
+	// overrides something while somebody else holds the queue.
+	{ id: 'force-save-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing, advance: { type: 'anchor' } },
+	{
+		id: 'collaborative-editing',
+		stage: 'second-editor',
+		anchor: 'queue-editors',
+		spotlight: { css: '[data-tour="queue-editors"], [data-tour="queue-save"]', all: true },
+		msg: M.collaborativeEditing,
+		premise: editingQueue,
+		advance: { type: 'next' },
+	},
+	{
+		id: 'force-save',
+		anchor: 'queue-force-save',
+		spotlight: { css: '[data-tour="queue-force-save"], [data-tour="queue-save"]', all: true },
+		interact: 'free',
+		msg: M.forceSave,
+		premise: editingQueue,
+		// armed and pressed: done once the queue is no longer the reader's to edit
+		advance: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
 	},
 
 	// generation, which needs an empty saved queue

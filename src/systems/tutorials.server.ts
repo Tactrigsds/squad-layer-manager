@@ -23,6 +23,7 @@ import * as FilterEntity from '@/systems/filter-entity.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
+import * as UserPresence from '@/systems/user-presence.server'
 
 // The tutorial runtime. A run is one scoped, ephemeral emulated server (src/emulator, via sandbox.server) staged
 // for a scenario, with a coachmark tour narrating the real dashboard on top of it. This file is the server half:
@@ -122,6 +123,12 @@ const layerQueue = defScenario({
 		},
 		'play-a-match': async (ctx) => {
 			await playMatch(ctx)
+			return { code: 'ok' }
+		},
+		// a second editor, so the queue stops saving on its own and force save has something to override
+		'second-editor': async (ctx) => {
+			await ensurePeerUser(ctx)
+			UserPresence.dispatchFabricatedEditor(ctx.serverId, PEER_USER_ID, peerClientId(ctx.serverId))
 			return { code: 'ok' }
 		},
 	},
@@ -230,6 +237,26 @@ function filterIdsFor(owner: bigint) {
 	return { pool: `${prefix}pool`, indicator: `${prefix}large`, all: [`${prefix}pool`, `${prefix}large`] }
 }
 
+// The second editor a run stands up so the force-save step has something to override. One identity shared by every
+// run rather than one each: presence is keyed by client, so concurrent runs get their own editor from the clientId
+// alone, and a per-run user row would have to be deleted while another run might still be pointing at it. The id is
+// far below any discord snowflake, so it cannot collide with a person; boot deletes it, when no run holds one.
+const PEER_USER_ID = 2n
+const PEER_USERNAME = 'Tutorial Admin'
+// derived from the server rather than the owner, so a stage can name it from the ctx it already has
+function peerClientId(serverId: string) {
+	return `${serverId}-peer`
+}
+
+async function ensurePeerUser(ctx: C.Db) {
+	await ctx
+		.db()
+		.insert(Schema.discordAccounts)
+		.values({ discordId: PEER_USER_ID, username: PEER_USERNAME, updatedAt: new Date(0) })
+		.onConflictDoNothing()
+	await ctx.db().insert(Schema.users).values({ discordId: PEER_USER_ID }).onConflictDoNothing()
+}
+
 // What a run's rows look like, so a sweep matches only those. The prefix alone is not enough: an owner is a
 // discord snowflake, and `tutorial-` is a name a person, or a test fixture, may reasonably give something else.
 const TUTORIAL_SERVER_ID = /^tutorial-\d+$/
@@ -273,6 +300,8 @@ function buildTutorialFilters(owner: bigint): F.FilterEntity[] {
 async function teardown(ctx: C.Db, owner: bigint) {
 	runs.delete(owner)
 	runChanged$.next()
+	// before the server goes, so the fabricated editor leaves the way a real client would
+	UserPresence.dispatchFabricatedDisconnect(peerClientId(serverIdFor(owner)))
 	await SquadServer.deleteServer(serverIdFor(owner))
 	await FilterEntity.deleteRuntimeFilters(ctx, filterIdsFor(owner).all)
 }
@@ -318,6 +347,8 @@ export async function setup(ctx: C.Db) {
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_FILTER_ID.test(id))
 	const filters = await FilterEntity.deleteRuntimeFilters(ctx, filterIds)
+	// no run holds the second editor at boot, so its identity goes with them; the user row cascades from the account
+	await ctx.db().delete(Schema.discordAccounts).where(E.eq(Schema.discordAccounts.discordId, PEER_USER_ID))
 	if (servers.length || filters) log.info('swept %d tutorial servers and %d filters left by an earlier run', servers.length, filters)
 }
 
