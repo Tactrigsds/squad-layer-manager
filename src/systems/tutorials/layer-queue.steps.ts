@@ -173,7 +173,6 @@ export const steps = Tour.defineSteps([
 		// a draggable window outlives the step that opened it, and it sits over the queue the next steps narrate
 		id: 'close-layer-details',
 		anchor: { css: `${WINDOW} [data-window-control="close"]` },
-		spotlight: 'layer-details-window',
 		interact: 'anchor-only',
 		msg: M.closeLayerDetails,
 		advance: { type: 'state', ...domPresent('layer-details-window', false) },
