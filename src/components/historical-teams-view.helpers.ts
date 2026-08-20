@@ -91,12 +91,10 @@ export namespace Sel {
 				return teamDisplays.map((display, teamIdx): HistoricalTeam => {
 					const group = groups[teamIdx]
 					const squads: HistoricalSquadGroup[] = [...group.entries()]
-						.map(
-							([squadId, members]): HistoricalSquadGroup => ({
-								squad: squadId === null ? null : (squadsById.get(squadId) ?? null),
-								members: members.toSorted(byName),
-							}),
-						)
+						.map(([squadId, members]): HistoricalSquadGroup => ({
+							squad: squadId === null ? null : (squadsById.get(squadId) ?? null),
+							members: members.toSorted(byName),
+						}))
 						.sort((a, b) => (a.squad === null ? 1 : b.squad === null ? -1 : a.squad.squadId - b.squad.squadId))
 					return { display, playerCount: [...group.values()].reduce((n, members) => n + members.length, 0), squads }
 				}) as [HistoricalTeam, HistoricalTeam]
