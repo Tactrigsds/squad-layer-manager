@@ -7,4 +7,4 @@ export const viewportSizeWarning = def('Your SLM window is a bit small. Make it 
 
 export const deviceWarning = def('The tutorials are best followed on a desktop, with a mouse and keyboard.')
 
-export const tutorialComplete = def((tutorial: string) => ({ richText: rt('Tutorial <em>{tutorial}</em> is complete!', { tutorial }) }))
+export const tutorialComplete = def((tutorial: string) => rt('Tutorial <em>{tutorial}</em> is complete!', { tutorial }))

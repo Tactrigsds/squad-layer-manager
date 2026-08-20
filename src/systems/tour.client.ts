@@ -147,7 +147,7 @@ const tourTr = tr.withTags({
 })
 
 // a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape; a body may be rich
-// (def(() => ({ richText: rt(...) }))) using the tour tags above.
+// (def(rt(...))) using the tour tags above.
 export type StepMsg = { title: () => TextMsg; body: () => TextMsg | Msgs.Variants.TRichTextable<TourTag> }
 // what the overlay renders: a resolved title and a body node.
 export type RenderedStep = { title: string; body: React.ReactNode }
