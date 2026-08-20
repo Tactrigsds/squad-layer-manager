@@ -141,7 +141,7 @@ await Instr.spanOp('main', { module }, async () => {
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
 
-	Tutorials.setup()
+	await Tutorials.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
 	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()

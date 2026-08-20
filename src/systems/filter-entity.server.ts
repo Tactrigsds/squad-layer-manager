@@ -92,8 +92,46 @@ async function recordFilterContributor(
 	)
 }
 
-export async function selectFilterIds(ctx: C.Db): Promise<Set<F.FilterEntityId>> {
-	return new Set((await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters)).map((row) => row.id))
+// Filters the runtime owns rather than a person: the tutorial stands its own up alongside its scoped server,
+// because no particular filter is guaranteed to exist in an install and a pool config naming one that does not
+// fails every layer-status query for that server. Deliberately not the oRPC handlers above -- those enforce RBAC
+// and the reference index for a human editing the filter index, neither of which applies to a row the runtime
+// creates and deletes within one run. Both emit on filterMutation$ so open clients see the change.
+export async function putRuntimeFilters(ctx: C.Db, filters: F.FilterEntity[]) {
+	if (filters.length === 0) return
+	await ctx.db().insert(Schema.filters).values(filters)
+	for (const filter of filters) {
+		filterMutation$.next([
+			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
+			{ type: 'add', key: filter.id, userId: filter.owner, value: filter },
+		])
+	}
+}
+
+// Deletes the named rows, ignoring any that are already gone. Takes explicit ids rather than a prefix: which ids
+// a runtime owns is the caller's to know, and a prefix wide enough to sweep every run would also match a filter a
+// person (or a test fixture) happened to name that way.
+export async function deleteRuntimeFilters(ctx: C.Db, ids: F.FilterEntityId[]) {
+	if (ids.length === 0) return 0
+	const rows = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, ids))
+	if (rows.length === 0) return 0
+	await ctx
+		.db()
+		.delete(Schema.filters)
+		.where(
+			E.inArray(
+				Schema.filters.id,
+				rows.map((row) => row.id),
+			),
+		)
+	for (const row of rows) {
+		const filter = F.FilterEntitySchema.parse(row)
+		filterMutation$.next([
+			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
+			{ type: 'delete', key: filter.id, userId: filter.owner, value: filter },
+		])
+	}
+	return rows.length
 }
 
 async function selectFilters(ctx: C.Db) {
