@@ -1,9 +1,13 @@
 import { Mutex } from 'async-mutex'
+import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
+import * as Schema from '$root/drizzle/schema.ts'
 import * as Verbs from '@/emulator/verbs'
 import * as Rx from '@/lib/rxjs'
 import type * as CS from '@/models/context-shared'
+import * as FB from '@/models/filter-builders'
+import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
 import * as LL from '@/models/layer-list.models'
 import type * as LQ from '@/models/layer-queue.models'
@@ -17,7 +21,6 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as Sandbox from '@/systems/sandbox.server'
-import * as Seed from '@/systems/seed.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
@@ -177,9 +180,11 @@ function stageCtxFor(base: C.Db & CS.AbortSignal, serverId: string): StageCtx {
 	return { ...SquadServer.resolveCtx(base, serverId), sandbox }
 }
 
-async function buildSandboxSettings(ctx: C.Db, pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
-	const settings = Seed.applyInitialPoolConfig({
-		...SettingsModels.PublicServerSettingsSchema.parse({}),
+function buildSandboxSettings(owner: bigint, pacing: ScenarioDef<string>['pacing'], nextLayerId: L.LayerId | null) {
+	const settings = SettingsModels.PublicServerSettingsSchema.parse({})
+	const ids = filterIdsFor(owner)
+	return {
+		...settings,
 		connections: SettingsModels.SandboxConnectionSchema.parse({
 			type: 'sandbox',
 			serverName: 'SLM Tutorial',
@@ -189,31 +194,78 @@ async function buildSandboxSettings(ctx: C.Db, pacing: ScenarioDef<string>['paci
 			// seed into the queue and displaces the scenario's seeded head
 			nextLayerId: nextLayerId ?? undefined,
 		}),
-	})
-	return { ...settings, queue: { ...settings.queue, mainPool: await prunePoolConfig(ctx, settings.queue.mainPool) } }
+		queue: {
+			...settings.queue,
+			mainPool: {
+				...settings.queue.mainPool,
+				poolFilter: { filterId: ids.pool, mode: 'include' as const },
+				indicateMatches: [ids.indicator],
+			},
+		},
+	}
 }
 
-// The seeded pool config names the filters a fresh install gets, and an install that never had them (or deleted
-// one) leaves this server pointing at a filter that does not exist. That is not a soft failure: lowering the
-// constraint fails, the layer-status query errors out whole, and every queue row then renders with no indicators
-// and a "layer does not exist" badge. Keep only what this install actually has.
-async function prunePoolConfig(ctx: C.Db, pool: SettingsModels.PoolConfiguration): Promise<SettingsModels.PoolConfiguration> {
-	const present = await FilterEntity.selectFilterIds(ctx)
-	const pruned = { ...pool, poolFilter: pool.poolFilter && present.has(pool.poolFilter.filterId) ? pool.poolFilter : null }
-	for (const key of SettingsModels.SECONDARY_LIST_KEYS) {
-		pruned[key] = (pool[key] as { filterId: string }[]).filter((entry) =>
-			present.has(typeof entry === 'string' ? entry : entry.filterId),
-		) as never
-	}
-	return pruned
+// ============================== the scenario's own filters ==============================
+
+// A run names filters in its pool config, and a pool config naming a filter the install does not have is not a
+// soft failure: lowering that constraint fails, which fails the whole layer-status query for the server, so every
+// queue row loses its indicators and is badged as a layer that does not exist. Rather than depend on what a given
+// install happens to have, a run creates the two filters it narrates and deletes them again afterwards.
+//
+// Ids carry the owner, so concurrent runs never share a row and one run's teardown cannot delete a filter another
+// run's server still points at. TUTORIAL_FILTER_PREFIX covers every run's, which is what boot sweeps.
+const TUTORIAL_FILTER_PREFIX = 'tutorial-'
+
+function filterIdsFor(owner: bigint) {
+	const prefix = `${TUTORIAL_FILTER_PREFIX}${owner}-`
+	return { pool: `${prefix}pool`, indicator: `${prefix}large`, all: [`${prefix}pool`, `${prefix}large`] }
+}
+
+// What a run's rows look like, so a sweep matches only those. The prefix alone is not enough: an owner is a
+// discord snowflake, and `tutorial-` is a name a person, or a test fixture, may reasonably give something else.
+const TUTORIAL_SERVER_ID = /^tutorial-\d+$/
+const TUTORIAL_FILTER_ID = /^tutorial-\d+-(?:pool|large)$/
+
+// Chosen against the seeded queue: every layer it holds is OWI and Large, so the pool never warns during the walk
+// and the indicator is on every row the tour points at. The layer the add walkthrough asks for is OWI but Medium,
+// so it lands in pool without the indicator, which is the distinction those two steps exist to draw.
+function buildTutorialFilters(owner: bigint): F.FilterEntity[] {
+	const ids = filterIdsFor(owner)
+	return [
+		{
+			id: ids.pool,
+			name: 'Tutorial Pool',
+			description: 'The layers this tutorial server plays: everything an unmodded Squad server can run.',
+			filter: FB.eq('Collection', 'OWI'),
+			owner,
+			emoji: '✅',
+			alertMessage: 'In the tutorial pool',
+			invertedEmoji: '⛔',
+			invertedAlertMessage: 'Not in the tutorial pool',
+		},
+		{
+			id: ids.indicator,
+			name: 'Large Layers',
+			description: 'Layers built for a full server. Worth knowing about before setting one on a quiet night.',
+			filter: FB.eq('Size', 'Large'),
+			owner,
+			emoji: '🗺️',
+			alertMessage: 'A large layer',
+			invertedEmoji: null,
+			invertedAlertMessage: null,
+		},
+	]
 }
 
 // drops the caller's run and its server. Idempotent: deleteServer no-ops on a server that is not running and
 // reports err:server-not-found on one that was never created, which a teardown does not care about.
-async function teardown(owner: bigint) {
+// the server goes first: deleting a filter its settings still name would leave exactly the dangling reference
+// these per-run filters exist to avoid
+async function teardown(ctx: C.Db, owner: bigint) {
 	runs.delete(owner)
 	runChanged$.next()
 	await SquadServer.deleteServer(serverIdFor(owner))
+	await FilterEntity.deleteRuntimeFilters(ctx, filterIdsFor(owner).all)
 }
 
 // ============================== stage execution ==============================
@@ -243,23 +295,37 @@ async function runStage(owner: bigint, stageId: string, run: () => Promise<TUT.S
 
 // ============================== lifecycle ==============================
 
-export function setup() {
+// A run's server and its filters are created together and only make sense together, so boot sweeps both: a
+// process killed mid-run leaves the server row enabled and its filters behind, and clearing one without the other
+// would leave a server pointing at a filter that no longer exists. Nothing else owns this id prefix.
+export async function setup(ctx: C.Db) {
 	log = module.getLogger()
+	const like = `${TUTORIAL_FILTER_PREFIX}%`
+	const servers = (await ctx.db().select({ id: Schema.servers.id }).from(Schema.servers).where(E.like(Schema.servers.id, like)))
+		.map(({ id }) => id)
+		.filter((id) => TUTORIAL_SERVER_ID.test(id))
+	for (const id of servers) await SquadServer.deleteServer(id)
+	const filterIds = (await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.like(Schema.filters.id, like)))
+		.map(({ id }) => id)
+		.filter((id) => TUTORIAL_FILTER_ID.test(id))
+	const filters = await FilterEntity.deleteRuntimeFilters(ctx, filterIds)
+	if (servers.length || filters) log.info('swept %d tutorial servers and %d filters left by an earlier run', servers.length, filters)
 }
 
 const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.AbortSignal, owner: bigint, scenarioId: TUT.ScenarioId) => {
 	const serverId = serverIdFor(owner)
 	// clear any prior run (and any stale server a crashed run left behind) before standing up the new one
-	await teardown(owner)
+	await teardown(ctx, owner)
 	runs.set(owner, { scenarioId, serverId, owner, phase: 'starting' })
 	runChanged$.next()
 	try {
 		const scenario = SCENARIOS[scenarioId]
 		const initialQueue = scenario.initialQueue(owner)
+		await FilterEntity.putRuntimeFilters(ctx, buildTutorialFilters(owner))
 		const created = await Settings.createServerEntry(ctx, {
 			id: serverId,
 			displayName: DISPLAY_NAME,
-			settings: await buildSandboxSettings(ctx, scenario.pacing, LL.getNextLayerId(initialQueue)),
+			settings: buildSandboxSettings(owner, scenario.pacing, LL.getNextLayerId(initialQueue)),
 			visibility: 'scoped',
 			ownerDiscordId: owner,
 			layerQueue: initialQueue,
@@ -273,7 +339,7 @@ const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.
 		return { code: 'ok' as const, serverId }
 	} catch (err) {
 		log.error(err, 'tutorial start failed for %s', serverId)
-		await teardown(owner)
+		await teardown(ctx, owner)
 		return { code: 'err:start-failed' as const }
 	}
 })
@@ -314,7 +380,7 @@ export const orpcRouter = {
 
 	abandon: orpcBase.meta({ type: 'mutation' }).handler(async ({ context }) => {
 		const owner = context.user.discordId
-		await startMtxFor(owner).runExclusive(() => teardown(owner))
+		await startMtxFor(owner).runExclusive(() => teardown(context, owner))
 		return { code: 'ok' as const }
 	}),
 }
