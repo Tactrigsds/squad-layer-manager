@@ -26,10 +26,10 @@ const isLaidOut = (el: Element) => {
 // (the id may be mounted more than once, hidden copies included).
 function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
 	const [els, setEls] = React.useState<Element[]>([])
-	const id = target === null ? null : typeof target === 'string' ? target : target.all
-	const all = target !== null && typeof target === 'object'
+	const selector = target === null ? null : Tour.anchorSelector(target)
+	const all = target !== null && Tour.anchorsAll(target)
 	React.useEffect(() => {
-		if (!id) {
+		if (!selector) {
 			setEls([])
 			return
 		}
@@ -38,11 +38,11 @@ function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
 			const first = list.find(isLaidOut) ?? list[0]
 			return first ? [first] : []
 		}
-		const sub = Tour.domInput(id)
+		const sub = Tour.domInput(selector)
 			.pipe(Rx.map(pick))
 			.subscribe((next) => setEls((prev) => (prev.length === next.length && prev.every((el, i) => el === next[i]) ? prev : next)))
 		return () => sub.unsubscribe()
-	}, [id, all])
+	}, [selector, all])
 	return els
 }
 
@@ -91,6 +91,25 @@ function useUnionRect(els: Element[]): Rect | null {
 	return rect
 }
 
+// The z-index the overlay layers at: one above the highest z among the anchor's ancestors, floored so that page
+// content lands under POPOVER. Recomputed only when the anchor element changes, since that is the only thing that
+// moves it. With no anchor there is nothing to layer against, so it sits at the top of the stack.
+function useStackZIndex(el: Element | null): number {
+	const top = useZIndex(ZI_OFFSETS.TOUR)
+	const floor = useZIndex(ZI_OFFSETS.TOUR_FLOOR)
+	const [z, setZ] = React.useState(top)
+	React.useEffect(() => {
+		if (!el) return setZ(top)
+		let highest = 0
+		for (let node: Element | null = el; node; node = node.parentElement) {
+			const value = Number.parseInt(window.getComputedStyle(node).zIndex, 10)
+			if (Number.isFinite(value)) highest = Math.max(highest, value)
+		}
+		setZ(Math.max(floor, highest + 1))
+	}, [el, top, floor])
+	return z
+}
+
 function useRenderedMsg(run: Tour.RunStores, msg: Tour.Step['msg']): Tour.RenderedStep {
 	const [rendered, setRendered] = React.useState<Tour.RenderedStep>(() => Tour.renderMsg(run, msg))
 	React.useEffect(() => {
@@ -125,16 +144,26 @@ function TourLauncher() {
 }
 
 function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }> }) {
-	const zIndex = useZIndex(ZI_OFFSETS.TOUR)
 	const run = Tour.activeRun()
 	const step = Tour.stepAt(state.scenarioId, state.stepIdx)
+	// resolved here rather than in AnchoredStep because the portal's own layer is derived from it
+	const anchorTarget = run && step ? Tour.resolveAnchor(run, step.anchor) : null
+	const anchorEls = useAnchorEls(anchorTarget)
+	const zIndex = useStackZIndex(anchorEls[0] ?? null)
 	if (!run || !step) return null
 
 	const body =
 		state.code === 'paused' ? (
 			<DockedCard serverId={run.serverId} />
 		) : (
-			<AnchoredStep state={state} step={step} run={run} total={Tour.stepCount(state.scenarioId)} />
+			<AnchoredStep
+				state={state}
+				step={step}
+				run={run}
+				anchorTarget={anchorTarget}
+				anchorEls={anchorEls}
+				total={Tour.stepCount(state.scenarioId)}
+			/>
 		)
 
 	return createPortal(
@@ -153,11 +182,11 @@ function AnchoredStep(props: {
 	state: Extract<Tour.TourState, { code: 'staging' | 'narrating' | 'stage-not-ready' | 'stage-failed' }>
 	step: Tour.Step
 	run: Tour.RunStores
+	anchorTarget: Tour.AnchorTarget | null
+	anchorEls: Element[]
 	total: number
 }) {
-	const { state, step, run, total } = props
-	const anchorTarget = Tour.resolveAnchor(run, step.anchor)
-	const els = useAnchorEls(anchorTarget)
+	const { state, step, run, anchorTarget, anchorEls: els, total } = props
 	const rect = useUnionRect(els)
 	// the undimmed region, wider than the outline when a step sets it; otherwise the anchor itself
 	const spotlightTarget = Tour.resolveAnchor(run, step.spotlight ?? step.anchor)
@@ -276,8 +305,13 @@ function intersects(a: Rect, b: Rect, margin: number): boolean {
 
 // The card hugs the outlined anchor, never covers the undimmed spotlight zone, and stays on screen. Candidates
 // adjacent to the anchor come first (below, above, right, left), then adjacent to the spotlight but aligned toward
-// the anchor, then a clamped fallback for a zone that fills the screen. Above-placements pin the card's bottom
-// edge, so a card taller than measured grows away from the element rather than over it.
+// the anchor. Above-placements pin the card's bottom edge, so a card taller than measured grows away from the
+// element rather than over it.
+//
+// A zone that fills the screen leaves nowhere outside it, so the candidates are tried a second time allowing the
+// zone to be covered. Covering part of a lit region is a much smaller cost than covering the anchor, which is the
+// one thing the step is pointing at -- and clamping a zone-adjacent candidate back into the viewport lands on the
+// anchor surprisingly often.
 function placeCard(anchor: Rect | null, spotlight: Rect | null, cardW: number, cardH: number): React.CSSProperties {
 	if (!anchor && !spotlight) {
 		return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
@@ -298,12 +332,18 @@ function placeCard(anchor: Rect | null, spotlight: Rect | null, cardW: number, c
 		{ top: clampY(a.top), left: zone.right + GAP },
 		{ top: clampY(a.top), left: zone.left - GAP - cardW },
 	]
-	for (const c of candidates) {
+	const place = (c: { top: number; left: number; pinBottom?: boolean }, avoidZone: boolean) => {
 		const box: Rect = { top: c.top, left: c.left, width: cardW, height: cardH, bottom: c.top + cardH, right: c.left + cardW }
-		if (box.top < 12 || box.left < 12 || box.bottom > vh - 12 || box.right > vw - 12) continue
-		if (intersects(box, zone, GAP / 2)) continue
-		if (anchor && intersects(box, anchor, GAP / 2)) continue
+		if (box.top < 12 || box.left < 12 || box.bottom > vh - 12 || box.right > vw - 12) return null
+		if (avoidZone && intersects(box, zone, GAP / 2)) return null
+		if (anchor && intersects(box, anchor, GAP / 2)) return null
 		return c.pinBottom ? { bottom: vh - box.bottom, left: c.left } : { top: c.top, left: c.left }
+	}
+	for (const avoidZone of [true, false]) {
+		for (const c of candidates) {
+			const placed = place(c, avoidZone)
+			if (placed) return placed
+		}
 	}
 	// Nothing fits beside the zone, because it fills the screen. Take the side with the most room and clamp in, so
 	// the card covers as little of the zone as the viewport allows rather than landing on top of it.

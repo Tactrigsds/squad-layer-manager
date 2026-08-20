@@ -589,10 +589,13 @@ export function DraggableWindowClose({ className, onClick, ref, ...props }: Drag
 		[close, onClick],
 	)
 
+	// data-window-control is a stable hook for whoever needs to point at this control. Not data-tour: the component
+	// is shared, so that would tag every window at once, and a selector can scope to the one window it means.
 	return (
 		<button
 			ref={ref}
 			type="button"
+			data-window-control="close"
 			onClick={handleClick}
 			className={cn(
 				'rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',

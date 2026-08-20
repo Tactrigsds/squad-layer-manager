@@ -13,7 +13,7 @@ export default function PoolCheckboxes(props: { stores: PoolCheckboxesPrt.KeyPro
 	const checkboxes = Zus.useStore(props.stores.poolCheckboxes, PoolCheckboxesPrt.Sel.checkboxesState)
 
 	return (
-		<div className="flex items-center flex-nowrap whitespace-nowrap space-x-1">
+		<div data-tour="table-hide-repeats" className="flex items-center flex-nowrap whitespace-nowrap space-x-1">
 			<TriStateCheckbox
 				title={tr.text(F_Msgs.hideRepeatsHint())}
 				size="sm"

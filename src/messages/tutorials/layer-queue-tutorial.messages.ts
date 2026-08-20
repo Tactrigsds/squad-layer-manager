@@ -41,7 +41,7 @@ export const queueItems = {
 	title: def('Queue items'),
 	body: def(
 		rt(
-			'A <strong>queue item</strong> occupies one slot in the queue. Once an item is the <strong>next layer</strong>, SLM runs <code>AdminSetNextLayer</code> over RCON with the <strong>layer configuration</strong> that item holds.',
+			'A <strong>queue item</strong> occupies one slot in the queue. Once an item reaches the top of the queue, SLM runs <code>AdminSetNextLayer</code> over RCON with the <strong>layer configuration</strong> that item holds.',
 		),
 	),
 }
@@ -62,7 +62,7 @@ export const layerAnatomy = {
 		return rt(
 			`A layer configuration is made up of:
 <ul>
-    <li>the map, gamemode and layer version, written as one name: <code>{layerName}</code></li>
+    <li>the map, gamemode and layer version: <code>{layerName}</code></li>
     <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>
 </ul>
 <p>For this layer, the RCON command that will be run on the server is <code>{command}</code>.</p>`,
@@ -77,9 +77,9 @@ export const teamNormalize = {
 	// rather than being asked to picture it
 	body: def((denormalized: React.ReactNode) =>
 		rt(
-			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll, so neither slot belongs to one group of players.</p>
-<p>To keep the queue and the match history readable, SLM <strong>normalizes</strong> the display: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>
-<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2></p>
+			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.
+<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>
+<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>
 <p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>`,
 			{ denormalized },
 		),
@@ -90,7 +90,7 @@ export const filterIndicators = {
 	title: def('Filter indicators'),
 	body: def(
 		rt(
-			'Your SLM install can define rules that categorize layers, called <strong>layer filters</strong>. A filter can show an emoji <strong>indicator</strong> on the layers it matches. Hover an indicator to see which filter put it there. Filters live on the <filtersPage>filters page</filtersPage>.',
+			"Your SLM install can define rules that categorize layers, called <strong>layer filters</strong>. A filter can show an emoji <strong>indicator</strong> on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: Tutorial Pool <tutorialPoolIcon></tutorialPoolIcon> and Large Layers <largeLayersIcon></largeLayersIcon>.",
 		),
 	),
 }
@@ -199,16 +199,19 @@ export namespace AddLayersSequence {
 		title: def('Applied filters toolbar'),
 		body: def(
 			rt(
-				'By default your results are limited to <strong>in-pool</strong> layers: whichever layer filter defines the pool starts checked here. Uncheck it to search wider, or ctrl+click it to <strong>invert</strong> it, so the results are only the layers that filter excludes. Add more filters to the toolbar with <addFilter></addFilter>.',
+				'By default your results are limited to <strong>in-pool</strong> layers: whichever layer filter defines the pool starts checked here. Uncheck to widen the search, or ctrl+click it to <strong>invert</strong> it, so the results are only the layers that filter excludes. Add more filters to the toolbar with <addFilter></addFilter>.',
 			),
 		),
 	}
 
 	export const repeats = {
 		title: def('Repeats in the results'),
-		body: def(
-			rt('Results that repeat something played recently carry <repeat></repeat> here too, so you can see them before you add them.'),
-		),
+		body: def(rt('Results that repeat something played recently carry <repeat></repeat> indicators.')),
+	}
+
+	export const hideRepeats = {
+		title: def('Hide repeats'),
+		body: def(rt('Click <hideRepeats></hideRepeats> to filter out layer configurations with repeated elements.')),
 	}
 
 	export const clickToSelect = {
