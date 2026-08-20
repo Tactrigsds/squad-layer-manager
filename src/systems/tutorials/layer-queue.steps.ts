@@ -49,7 +49,9 @@ function domPresent(target: Tour.AnchorTarget, present = true): Tour.StateSelect
 
 // the layer the add walkthrough asks for, and the map it then switches to. Both have to be in the sandbox pool.
 const ADD_TARGET = { map: 'Chora', gamemode: 'TC', faction: 'CAF' }
-const ADD_SECOND = { map: 'AlBasrah' }
+// the gamemode and faction from ADD_TARGET are still set when this step runs, so the second map has to carry
+// layers for them: AlBasrah has no TC layers at all, which left the step with an empty table
+const ADD_SECOND = { map: 'Yehorivka' }
 
 // whether the filter menu comparison currently selects `value`, whichever comp shape the menu item holds
 function compSelects(node: any, value: string): boolean {
@@ -299,8 +301,9 @@ export const steps = Tour.defineSteps([
 		advance: { type: 'next' },
 	},
 	{
+		// the reader edits the filters and picks from the results, so both regions are the subject
 		id: 'add-another',
-		anchor: 'add-filters',
+		anchor: { css: '[data-tour="add-filters"], [data-tour="add-pick"]', all: true },
 		interact: 'free',
 		msg: { title: M.AddLayersSequence.addAnother.title, body: () => M.AddLayersSequence.addAnother.body(ADD_SECOND.map) },
 		premise: addDialogOpen,
