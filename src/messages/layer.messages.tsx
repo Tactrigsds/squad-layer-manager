@@ -60,9 +60,7 @@ export const rawLayerPlaceholder = def('Ex: Narva_RAAS_v1 RGF USMC or a layer id
 export const layerFound = def('Layer exists in the database')
 
 // the count is emphasised, which is part of the sentence; the readout styles `strong` itself
-export const matchedLayers = def((count: string) => ({
-	richText: rt('<strong>{count}</strong> matched layers', { count }),
-}))
+export const matchedLayers = def((count: string) => rt('<strong>{count}</strong> matched layers', { count }))
 
 export const noLayersMatched = def('No layers matched')
 
@@ -128,26 +126,26 @@ export const team2Vehicles = def('Team 2 Vehicles')
 export const startingTickets = def('Starting Tickets:')
 
 // the faction line under a team heading: `<team> (<role>) - <faction> (<unit type>)`
-export const teamFactionLine = def((team: string, role: string | undefined, faction: string, unitType: string) => ({
-	richText: rt('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} ({unitType})', {
+export const teamFactionLine = def((team: string, role: string | undefined, faction: string, unitType: string) =>
+	rt('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} ({unitType})', {
 		team,
 		role,
 		hasRole: role ? 'yes' : 'no',
 		faction,
 		unitType,
 	}),
-}))
+)
 
 // the same heading in the score grid, where the unit is named rather than typed
-export const teamScoreHeading = def((team: string, role: string | undefined, faction: string, unit: string) => ({
-	richText: rt('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} {unit}', {
+export const teamScoreHeading = def((team: string, role: string | undefined, faction: string, unit: string) =>
+	rt('<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} {unit}', {
 		team,
 		role,
 		hasRole: role ? 'yes' : 'no',
 		faction,
 		unit,
 	}),
-}))
+)
 
 export const unknownUnit = def('Unknown')
 
@@ -168,9 +166,7 @@ export const poolCutoff = def('Pool Cutoff ({value})', (value: string) => ({ val
 
 // The number is coloured by which team the difference favours, which no single class on the container can
 // express, so the caller renders it and the message positions it.
-export const scoreDiff = def((value: React.ReactNode) => ({
-	richText: rt('(diff: {value})', { value }),
-}))
+export const scoreDiff = def((value: React.ReactNode) => rt('(diff: {value})', { value }))
 
 export const scoreUnavailable = def('N/A')
 

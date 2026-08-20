@@ -48,23 +48,23 @@ export const acknowledgementsHeading = def('Acknowledgements')
 // Prose rather than a label per person, so who is credited and what for reads as sentences a translator can rearrange.
 // Each stays one string literal however long it runs: the extractor keys a message by a literal, and a concatenation
 // leaves it out of the catalogue. The names below are the whole content of the section; edit them here.
-export const acknowledgementsIntro = def(() => ({
-	richText: rt(
+export const acknowledgementsIntro = def(
+	rt(
 		'SLM is built and maintained by <strong>grey275</strong>, but it exists because of the <strong>TacTrig</strong> community. These are the people who made significant contributions to it.',
 	),
-}))
+)
 
-export const acknowledgementsZero = def(() => ({
-	richText: rt(
+export const acknowledgementsZero = def(
+	rt(
 		"<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring system that is integral to SLM. Our discussions also shaped much of the early feature set, which became some of SLM's defining characteristics. Without his effort this project wouldn't have been feasible.",
 	),
-}))
+)
 
-export const acknowledgementsRandyNewman = def(() => ({
-	richText: rt(
+export const acknowledgementsRandyNewman = def(
+	rt(
 		'<strong>Randy Newman</strong>, instrumental in getting SLM into the TacTrig admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn.',
 	),
-}))
+)
 
 export const acknowledgementsContributorsIntro = def(
 	"Thank you to everyone below, who helped me not just with bugs but with feature requests and suggestions too. You had a real hand in shaping SLM's feature set.",

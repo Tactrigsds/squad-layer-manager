@@ -193,12 +193,12 @@ export const whyOnlyNull = def('Why only null?')
 
 // The operators named in it are the syntax being explained, so they are part of the prose; the caller renders
 // them as code.
-export const floatEqNullOnly = def(() => ({
-	richText: rt(
+export const floatEqNullOnly = def(
+	rt(
 		"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>{lt}</code>/<code>{gt}</code> to compare magnitudes; <code>=</code> only checks whether the value is null.",
 		{ lt: '<', gt: '>' },
 	),
-}))
+)
 
 // between the two bounds of an inrange comparison
 export const rangeTo = def('to')
@@ -345,14 +345,10 @@ export const matchingFiltersLabel = def('Matching Filters:')
 
 // Why a layer violates a repeat rule. `value` and `offset` are already rendered (the panel bolds them), so the
 // message positions them rather than formatting them.
-export const repeatDescriptor = def((value: React.ReactNode, offset: React.ReactNode, matchCount: number) => ({
-	richText: rt('{value} was played {offset} {matchCount, plural, one {match} other {matches}} prior', { value, offset, matchCount }),
-}))
+export const repeatDescriptor = def((value: React.ReactNode, offset: React.ReactNode, matchCount: number) =>
+	rt('{value} was played {offset} {matchCount, plural, one {match} other {matches}} prior', { value, offset, matchCount }),
+)
 
-export const repeatShouldBeOver = def((within: React.ReactNode) => ({
-	richText: rt('Should be > {within}', { within }),
-}))
+export const repeatShouldBeOver = def((within: React.ReactNode) => rt('Should be > {within}', { within }))
 
-export const repeatWithin = def((within: React.ReactNode) => ({
-	richText: rt('within {within}', { within }),
-}))
+export const repeatWithin = def((within: React.ReactNode) => rt('within {within}', { within }))

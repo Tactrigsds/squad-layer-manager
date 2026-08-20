@@ -135,9 +135,9 @@ export const errorCount = def('{count, plural, one {# error} other {# errors}}',
 export const deniedCount = def('{count} not permitted', (count: number) => ({ count }))
 
 // the count is emphasised, which is part of the sentence; the panel styles `strong` itself
-export const changedCount = def((count: number) => ({
-	richText: rt('<strong>{count}</strong> {count, plural, one {setting} other {settings}} changed', { count }),
-}))
+export const changedCount = def((count: number) =>
+	rt('<strong>{count}</strong> {count, plural, one {setting} other {settings}} changed', { count }),
+)
 
 // -------- the pool filter --------
 
