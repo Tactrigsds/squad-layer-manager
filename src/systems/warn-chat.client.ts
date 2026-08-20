@@ -11,13 +11,13 @@ import * as SettingsClient from '@/systems/settings.client'
 // extraVars carries per-target standard variables (e.g. squadName for a squad warn box); squadName always
 // resolves, defaulting to empty so {{#squadName}} sections drop out for player targets, mirroring the server.
 export function useAdminReasonDraft(action: AAR.AdminActionType, extraVars?: Record<string, string>) {
-	const [pickedLabel, setPickedLabel] = React.useState<string | null>(null)
+	const [picked, setPicked] = React.useState<{ action: AAR.AdminActionType; label: string } | null>(null)
 	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => (s ? AAR.reasonsForAction(s.adminActionReasons, action) : []))
 	const vars = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
 		Templating.resolveTemplateVars(s?.messageVariables ?? [], { squadName: '', ...extraVars }),
 	)
 	// a pick doesn't survive a change of action -- a warn preset is not a broadcast preset
-	React.useEffect(() => setPickedLabel(null), [action])
+	const pickedLabel = picked?.action === action ? picked.label : null
 
 	// untagged: the server prepends the "@..." audience tag to whatever it's given
 	const render = (reason: AAR.AdminActionReason) => AAR.formatAppliedReason(action, reason, { vars }).trim()
@@ -25,13 +25,13 @@ export function useAdminReasonDraft(action: AAR.AdminActionType, extraVars?: Rec
 		reasons,
 		render,
 		pick(reason: AAR.AdminActionReason) {
-			setPickedLabel(reason.label)
+			setPicked({ action, label: reason.label })
 			return render(reason)
 		},
-		reset: () => setPickedLabel(null),
+		reset: () => setPicked(null),
 		match(text: string) {
-			const picked = reasons.find((r) => r.label === pickedLabel)
-			return picked && text === render(picked) ? picked : undefined
+			const reason = reasons.find((r) => r.label === pickedLabel)
+			return reason && text === render(reason) ? reason : undefined
 		},
 	}
 }

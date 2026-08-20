@@ -220,14 +220,13 @@ function readMessageVarDefs(v: any): Templating.TemplateVarDef[] {
 // per draft change would re-render the whole form on every keystroke. The selector is memoized per form instance
 // rather than at module scope because the settings page mounts one form per section.
 function useMessageVars(value$: ValueState): Templating.TemplateVarDef[] {
-	const read = React.useMemo(() => {
-		let prev: Templating.TemplateVarDef[] = []
-		return (v: any) => {
-			const next = readMessageVarDefs(v)
-			const same = prev.length === next.length && next.every((d, i) => prev[i].name === d.name && prev[i].value === d.value)
-			if (!same) prev = next
-			return prev
-		}
+	const prevRef = React.useRef<Templating.TemplateVarDef[]>([])
+	const read = React.useCallback((v: any) => {
+		const prev = prevRef.current
+		const next = readMessageVarDefs(v)
+		const same = prev.length === next.length && next.every((d, i) => prev[i].name === d.name && prev[i].value === d.value)
+		if (!same) prevRef.current = next
+		return prevRef.current
 	}, [])
 	return Zus.useStore(value$, read)
 }
@@ -739,12 +738,10 @@ function RuleRow({
 					title={tr.text(PG_Msgs.groupPicker())}
 					value={rule.group || undefined}
 					options={[
-						...groupNames.map(
-							(name): ComboBoxOption<string> => ({
-								value: name,
-								label: <span style={{ color: groupColors[name] }}>{name}</span>,
-							}),
-						),
+						...groupNames.map((name): ComboBoxOption<string> => ({
+							value: name,
+							label: <span style={{ color: groupColors[name] }}>{name}</span>,
+						})),
 						{
 							value: ADD_NEW_GROUP,
 							label: <span className="text-muted-foreground">{tr.text(PG_Msgs.addNewGroup())}</span>,
@@ -2040,22 +2037,14 @@ function setAtPath(root: any, path: Path, value: unknown): any {
 	return copy
 }
 
-// current value at a nested path of value$. The selector is keyed on the path's contents rather than its identity,
-// since callers build the array inline.
-function usePathValue(value$: ValueState, path: Path): unknown {
-	const key = JSON.stringify(path)
-	const select = (root: any) => getAtPath(root, JSON.parse(key) as Path)
-	return Zus.useStore(value$, select)
-}
-
 // PoolConfigApi over the form's draft observable, so the settings page renders the same pool-configuration UI as the
 // dashboard popover. Paths are relative to the pool object this override is mounted on (queue.mainPool).
 function usePoolConfigApi({ value$, reset$, onChange }: OverrideProps): PoolConfigApi {
 	const [resetKey, setResetKey] = React.useState(0)
 	useReset(reset$, () => setResetKey((k) => k + 1))
 	return {
-		// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components
-		useValue: (path) => usePathValue(value$, path),
+		source: value$,
+		read: (root, path) => getAtPath(root, path),
 		getValue: (path) => getAtPath(value$.getValue(), path),
 		set: (path, value) => onChange(setAtPath(value$.getValue(), path, value)),
 		// the settings page gates edit access via the server-settings:* perms; out-of-grant writes are rejected server-side
@@ -2401,11 +2390,9 @@ function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx
 	const roleIds = Object.keys(rbac.roles ?? {})
 	const issues = React.useContext(ValidationContext).filter((i) => i.path.startsWith('rbac.'))
 
-	const [selected, setSelected] = React.useState<string | null>(roleIds[0] ?? null)
-	React.useEffect(() => {
-		if (selected && roleIds.includes(selected)) return
-		setSelected(roleIds[0] ?? null)
-	}, [selected, roleIds])
+	// falls back to the first role while the requested one does not exist, so a rename or delete cannot strand it
+	const [requestedRole, setSelected] = React.useState<string | null>(null)
+	const selected = requestedRole && roleIds.includes(requestedRole) ? requestedRole : (roleIds[0] ?? null)
 
 	// `quiet` skips reset$: use it for edits driven by an uncontrolled input (the timeout duration field), where re-emitting
 	// would clobber an in-flight keystroke. Structural edits (add/remove/rename/toggles) leave it off so inputs re-seed.
@@ -3415,6 +3402,7 @@ function FieldControl({
 	onChange: (v: any) => void
 }) {
 	const Override = overrideFor(path, node)
+	// oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here
 	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} />
 
 	// the whole rbac subtree renders as one consolidated per-role editor (kept inside the standard section shell so its
@@ -4167,6 +4155,7 @@ function SectionField({
 					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
 				</div>
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
+				{/* oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here */}
 				{SectionExtra && <SectionExtra />}
 				<FieldIssues issues={sectionIssues} pathStr={pathStr} />
 				{jsonSchema && mode === 'yaml' ? (

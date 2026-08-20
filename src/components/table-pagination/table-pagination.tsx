@@ -29,35 +29,19 @@ export interface TablePaginationProps {
 
 export function TablePagination({ pageIndex, pageCount, onPageChange, disabled = false }: TablePaginationProps) {
 	const currentPage = pageIndex + 1
-	const [inputValue, setInputValue] = React.useState(String(currentPage))
+	// uncontrolled, keyed on pageIndex so a page change from anywhere else reseeds the field by remounting it
+	const inputRef = React.useRef<HTMLInputElement>(null)
 
-	// Update input when pageIndex changes externally
-	React.useEffect(() => {
-		setInputValue(String(pageIndex + 1))
-	}, [pageIndex])
-
-	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		setInputValue(e.target.value)
-	}
-
-	const handleInputBlur = () => {
-		let newPage = parseInt(inputValue, 10)
-		newPage = Math.max(1, Math.min(newPage, pageCount))
-		if (!isNaN(newPage) && newPage > 0 && newPage <= pageCount) {
-			onPageChange(newPage - 1)
-			setInputValue(String(newPage))
-		} else {
-			// Reset to current page if invalid
-			setInputValue(String(currentPage))
-		}
+	const commit = () => {
+		const parsed = parseInt(inputRef.current?.value ?? '', 10)
+		const newPage = Math.max(1, Math.min(parsed, pageCount))
+		if (!isNaN(newPage) && newPage > 0 && newPage <= pageCount) onPageChange(newPage - 1)
+		if (inputRef.current) inputRef.current.value = String(isNaN(newPage) ? currentPage : newPage)
 	}
 
 	const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-		if (e.key === 'Enter') {
-			handleInputBlur()
-		} else if (e.key === 'Escape') {
-			setInputValue(String(currentPage))
-		}
+		if (e.key === 'Enter') commit()
+		else if (e.key === 'Escape' && inputRef.current) inputRef.current.value = String(currentPage)
 	}
 
 	const handleFirst = () => {
@@ -113,12 +97,13 @@ export function TablePagination({ pageIndex, pageCount, onPageChange, disabled =
 
 			<div className="flex items-center gap-1 whitespace-nowrap">
 				<Input
+					key={pageIndex}
+					ref={inputRef}
 					type="number"
 					min="1"
 					max={pageCount}
-					value={inputValue}
-					onChange={handleInputChange}
-					onBlur={handleInputBlur}
+					defaultValue={String(currentPage)}
+					onBlur={commit}
 					onKeyDown={handleInputKeyDown}
 					disabled={disabled}
 					className="h-8 w-16 text-center"

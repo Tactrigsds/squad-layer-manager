@@ -741,15 +741,11 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		['data-can-edit']: canEdit,
 	})
 
-	const manageVoteButtonProps = (opts?: { className?: string; hideWhenNotHovering?: boolean }) => {
-		opts ??= {}
-		opts.hideWhenNotHovering ??= true
-		return {
-			['data-mobile']: isMobile,
-			disabled: !!manageVoteDenied,
-			className: opts?.className,
-		}
-	}
+	const manageVoteButtonProps = (opts?: { className?: string }) => ({
+		['data-mobile']: isMobile,
+		disabled: !!manageVoteDenied,
+		className: opts?.className,
+	})
 
 	const dropdownProps = {
 		open: dropdownOpen && canEdit,
@@ -934,7 +930,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 														variant="ghost"
 														size="icon"
 														onClick={endVoteEarly}
-														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+														{...manageVoteButtonProps()}
 													>
 														<Icons.CheckCheck />
 													</Button>
@@ -947,7 +943,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 														variant="ghost"
 														size="icon"
 														onClick={abortVote}
-														{...manageVoteButtonProps({ hideWhenNotHovering: false })}
+														{...manageVoteButtonProps()}
 													>
 														<Icons.Pause />
 													</Button>
