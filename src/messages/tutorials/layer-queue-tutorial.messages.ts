@@ -29,7 +29,7 @@ export const sandbox = {
 
 export const matchHistory = {
 	title: def('Match history'),
-	body: def('This is the match history panel. Right now, it only contains one entry -- the current match.'),
+	body: def('This is the match history panel. Right now, it only contains one entry — the current match.'),
 }
 
 export const queuePanel = {
