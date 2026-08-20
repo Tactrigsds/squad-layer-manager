@@ -114,19 +114,19 @@ describe('rendering rich text tags', () => {
 	const html = (node: ReactNode) => renderToStaticMarkup(createElement(Fragment, null, node))
 
 	test('the standard formatting tags render without being provided', () => {
-		const msg = def({ richText: rt('press <strong>{key}</strong> to <code>save</code>', { key: 'S' }) })
+		const msg = def(rt('press <strong>{key}</strong> to <code>save</code>', { key: 'S' }))
 		expect(html(tr.richText(msg()))).toBe('press <strong>S</strong> to <code>save</code>')
 	})
 
 	test('withTags derives a translator that renders a custom tag', () => {
-		const msg = def({ richText: rt('edited by <user>{name}</user>', { name: 'Alice' }) })
+		const msg = def(rt('edited by <user>{name}</user>', { name: 'Alice' }))
 		const derived = tr.withTags({ user: (chunks) => createElement('a', { href: '#u' }, ...chunks) })
 		expect(html(derived.richText(msg()))).toBe('edited by <a href="#u">Alice</a>')
 	})
 
 	test('a nested rich target renders with the outer translator&apos;s tags', () => {
 		const inner = rt('<when>today</when>')
-		const msg = def({ richText: rt('review: <verdict>{inner}</verdict>', { inner }) })
+		const msg = def(rt('review: <verdict>{inner}</verdict>', { inner }))
 		const derived = tr.withTags({
 			verdict: (chunks) => createElement('em', null, ...chunks),
 			when: (chunks) => createElement('time', null, ...chunks),
@@ -135,13 +135,13 @@ describe('rendering rich text tags', () => {
 	})
 
 	test('an empty tag pair carries a void element, the ICU spelling of a self-closing tag', () => {
-		const msg = def({ richText: rt('one<br></br>two') })
+		const msg = def(rt('one<br></br>two'))
 		const derived = tr.withTags({ br: () => createElement('br') })
 		expect(html(derived.richText(msg()))).toBe('one<br/>two')
 	})
 
 	test('rich text tags do not emit React key warnings', () => {
-		const msg = def({ richText: rt('review: <verdict>{inner}</verdict>', { inner: rt('<when>today</when>') }) })
+		const msg = def(rt('review: <verdict>{inner}</verdict>', { inner: rt('<when>today</when>') }))
 		const derived = tr.withTags({
 			verdict: (chunks) => createElement('em', null, ...chunks),
 			when: (chunks) => createElement('time', null, ...chunks),

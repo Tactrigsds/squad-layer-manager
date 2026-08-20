@@ -6,6 +6,7 @@ import scoreRanges from '$root/assets/score-ranges.json'
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
 import * as DH from '@/lib/display-helpers.ts'
 import * as Zus from '@/lib/zustand'
+import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer'
@@ -31,6 +32,7 @@ import {
 import { Spinner } from './ui/spinner.tsx'
 import TabsList from './ui/tabs-list.tsx'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import VehicleIcon from './vehicle-icon.tsx'
 
 type LayerInfoProps = {
 	// expected to be known layer id
@@ -239,9 +241,6 @@ function LayerDetailsDisplay({
 }: {
 	layerDetails: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
 }) {
-	const team1Vehicles = layerDetails.team1?.vehicles || []
-	const team2Vehicles = layerDetails.team2?.vehicles || []
-
 	return (
 		<div className="space-y-3 border-b pb-3">
 			{/* 2x2 Grid Layout */}
@@ -263,8 +262,8 @@ function LayerDetailsDisplay({
 				/>
 
 				{/* Vehicles Row */}
-				<VehiclesOnly title={tr.text(L_Msgs.team1Vehicles())} vehicles={team1Vehicles} />
-				<VehiclesOnly title={tr.text(L_Msgs.team2Vehicles())} vehicles={team2Vehicles} />
+				<VehiclesOnly title={tr.text(L_Msgs.team1Vehicles())} unit={layerDetails.team1} />
+				<VehiclesOnly title={tr.text(L_Msgs.team2Vehicles())} unit={layerDetails.team2} />
 			</div>
 		</div>
 	)
@@ -310,7 +309,10 @@ function TeamInfoOnly({
 	)
 }
 
-function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicle[] }) {
+function VehiclesOnly({ title, unit }: { title: string; unit: L.FactionUnitConfig | undefined }) {
+	const vehicles = unit?.vehicles ?? []
+	// the class the vehicle filters use, which splits the source's own by running gear and corrects its mislabels
+	const types = React.useMemo(() => (unit ? LC.vehicleTypesForUnitRecord(unit) : []), [unit])
 	return (
 		<section className="space-y-1">
 			<h4 className="text-sm font-medium">{title}</h4>
@@ -323,7 +325,7 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 						<TooltipProvider>
 							<Tooltip>
 								<TooltipTrigger>
-									<Icons.Info size={16} className="text-blue-400 hover:text-blue-300 cursor-pointer" />
+									<Icons.Timer size={16} className="text-muted-foreground" />
 								</TooltipTrigger>
 								<TooltipContent>{tr.text(L_Msgs.vehicleDelayRespawn())}</TooltipContent>
 							</Tooltip>
@@ -332,7 +334,7 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 					<div className="flex items-center font-medium" role="columnheader">
 						<Tooltip>
 							<TooltipTrigger>
-								<Icons.Car size={16} className="text-green-400" />
+								<Icons.Car size={16} className="text-muted-foreground" />
 							</TooltipTrigger>
 							<TooltipContent>{tr.text(L_Msgs.vehicleType())}</TooltipContent>
 						</Tooltip>
@@ -340,8 +342,8 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 					<div className="font-medium" role="columnheader">
 						{tr.text(L_Msgs.vehicleName())}
 					</div>
-					{vehicles.map((vehicle) => (
-						<IndividualVehicleRow key={vehicle.name} vehicle={vehicle} />
+					{vehicles.map((vehicle, index) => (
+						<IndividualVehicleRow key={vehicle.name} vehicle={vehicle} type={types[index]} />
 					))}
 				</div>
 			)}
@@ -349,8 +351,9 @@ function VehiclesOnly({ title, vehicles }: { title: string; vehicles: SLL.Vehicl
 	)
 }
 
-function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
+function IndividualVehicleRow({ vehicle, type }: { vehicle: SLL.Vehicle; type: string | undefined }) {
 	const delayRespawnInfo = `${vehicle.delay}/${vehicle.respawnTime}`
+	const label = type ? LC_Msgs.vehicleTypeLabels[type] : undefined
 
 	return (
 		<>
@@ -358,7 +361,17 @@ function IndividualVehicleRow({ vehicle }: { vehicle: SLL.Vehicle }) {
 				{vehicle.count}
 			</div>
 			<div role="cell">{delayRespawnInfo}</div>
-			<div role="cell">{vehicle.vehType}</div>
+			<div role="cell">
+				<Tooltip>
+					<TooltipTrigger className="flex items-center gap-1.5">
+						<VehicleIcon icon={vehicle.icon} size={18} />
+						<span className="font-mono text-xs rounded-sm border px-1 py-px">
+							{type ? LC.vehicleTypeShortCode(type) : vehicle.vehType}
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>{label ? tr.text(label) : (type ?? vehicle.vehType)}</TooltipContent>
+				</Tooltip>
+			</div>
 			<div role="cell">{vehicle.name}</div>
 		</>
 	)
@@ -591,8 +604,31 @@ function ScoreGrid({
 	const team1Role = layerDetails?.layerConfig?.teams[0]?.role
 	const team2Role = layerDetails?.layerConfig?.teams[1]?.role
 
+	// blue and red mean team 1 and team 2 in every gauge and column below, so the pair is named once, first
 	return (
 		<div className="grid gap-2">
+			<div className="flex justify-between text-xs font-medium">
+				<span className="text-blue-500">
+					{tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team1()),
+							team1Role,
+							layerDetails?.layer.Faction_1 ?? '',
+							layerDetails?.layer.Unit_1 ?? '',
+						),
+					)}
+				</span>
+				<span className="text-red-500">
+					{tr.richText(
+						L_Msgs.teamScoreHeading(
+							tr.text(L_Msgs.team2()),
+							team2Role,
+							layerDetails?.layer.Faction_2 ?? '',
+							layerDetails?.layer.Unit_2 ?? '',
+						),
+					)}
+				</span>
+			</div>
 			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
 				<div className="mb-2 pb-2 border-b border-muted space-y-1">
 					{scores.diffs['Balance_Differential'] !== undefined && (
@@ -611,28 +647,7 @@ function ScoreGrid({
 					))}
 				</div>
 			)}
-			{zScoreTypes.length > 0 && (
-				<ZScoreChart
-					scoreTypes={zScoreTypes}
-					scores={scores}
-					team1Heading={tr.richText(
-						L_Msgs.teamScoreHeading(
-							tr.text(L_Msgs.team1()),
-							team1Role,
-							layerDetails?.layer.Faction_1 ?? '',
-							layerDetails?.layer.Unit_1 ?? '',
-						),
-					)}
-					team2Heading={tr.richText(
-						L_Msgs.teamScoreHeading(
-							tr.text(L_Msgs.team2()),
-							team2Role,
-							layerDetails?.layer.Faction_2 ?? '',
-							layerDetails?.layer.Unit_2 ?? '',
-						),
-					)}
-				/>
-			)}
+			{zScoreTypes.length > 0 && <ZScoreChart scoreTypes={zScoreTypes} scores={scores} />}
 		</div>
 	)
 }
@@ -651,32 +666,17 @@ const Z_COLUMN_WIDTH = 116
 const zY = (score: number) => ((Z_MAX - Math.max(Z_MIN, Math.min(Z_MAX, score))) / (Z_MAX - Z_MIN)) * Z_HEIGHT
 
 // Both teams' markers share one dimension's axis, so the pair can be compared by height rather than by sign.
-function ZScoreChart({
-	scoreTypes,
-	scores,
-	team1Heading,
-	team2Heading,
-}: {
-	scoreTypes: string[]
-	scores: LC.PartitionedScores
-	team1Heading: React.ReactNode
-	team2Heading: React.ReactNode
-}) {
+function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.PartitionedScores }) {
 	return (
-		// heading, name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves
-		// every column's chart down together rather than leaving a ragged edge
+		// name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves every
+		// column's chart down together rather than leaving a ragged edge
 		<div
 			className="grid justify-center gap-x-4"
 			style={{
 				gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, ${Z_COLUMN_WIDTH}px))`,
-				gridTemplateRows: 'auto auto auto auto',
+				gridTemplateRows: 'auto auto auto',
 			}}
 		>
-			<div />
-			<div className="mb-2 flex justify-between text-xs font-medium" style={{ gridColumn: `2 / span ${scoreTypes.length}` }}>
-				<span className="text-blue-500">{team1Heading}</span>
-				<span className="text-red-500">{team2Heading}</span>
-			</div>
 			<div />
 			{scoreTypes.map((scoreType) => (
 				<div key={scoreType} className="mb-0.5 text-center text-xs font-medium leading-tight">
