@@ -92,6 +92,7 @@ export type TourTag =
 	| 'gear'
 	| 'sword'
 	| 'repeat'
+	| 'addFilter'
 	| 'filtersPage'
 	| 'scoresDocs'
 
@@ -140,6 +141,7 @@ const tourTr = tr.withTags({
 	gear: icon(Icons.Settings),
 	sword: icon(Icons.Sword),
 	repeat: icon(Icons.Repeat, 'text-repeat-violation'),
+	addFilter: icon(Icons.Edit),
 	filtersPage: link('/filters'),
 	scoresDocs: link(SCORES_DOCS_URL),
 })

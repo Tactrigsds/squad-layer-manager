@@ -168,13 +168,30 @@ export namespace AddLayersSequence {
 
 	export const resultsTable = {
 		title: def('The results'),
+		body: def('Layers matching your search show up here.'),
+	}
+
+	export const pagination = {
+		title: def('Paging the results'),
+		body: def('A search usually matches more layers than fit on one page. Page through them here.'),
+	}
+
+	export const sorting = {
+		title: def('Sorting the results'),
+		body: def('Click a column header to sort the results by that column.'),
+	}
+
+	export const randomization = {
+		title: def('Randomized results'),
+		body: def({ richText: rt('Results are randomized by default. Click <dice></dice> to reroll them.') }),
+	}
+
+	export const appliedFiltersToolbar = {
+		title: def('Applied filters toolbar'),
 		body: def({
-			richText: rt(`Layers matching your search show up here.
-<ul>
-<li>page through them with the controls below the table</li>
-<li>click a column header to sort by that column</li>
-<li>results are randomized by default; click <dice></dice> to reroll them</li>
-</ul>`),
+			richText: rt(
+				'By default your results are limited to <strong>in-pool</strong> layers: whichever layer filter defines the pool starts checked here. Uncheck it to search wider, or ctrl+click it to <strong>invert</strong> it, so the results are only the layers that filter excludes. Add more filters to the toolbar with <addFilter></addFilter>.',
+			),
 		}),
 	}
 
