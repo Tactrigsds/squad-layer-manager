@@ -182,14 +182,17 @@ export function isMsg(value: unknown): value is Msg {
 }
 
 // distributes, so a builder returning different shapes from different branches promotes each
-type Promote<B> = B extends TString ? { $msg: 'msg'; text: B } : B & { $msg: 'msg' }
+type Promote<B> = B extends TString ? { $msg: 'msg'; text: B }
+	: B extends TRichText ? { $msg: 'msg'; richText: B }
+	: B & { $msg: 'msg' }
 
 function mkText(original: string, args?: TArgs, context?: string): Variants.Textable {
 	return { $msg: 'msg', text: { $msg: 'string', original, args, context } }
 }
 
-function promote(built: MsgInput | TString): Msg {
+function promote(built: MsgInput | TTarget): Msg {
 	if (isTString(built)) return { $msg: 'msg', text: built }
+	if (isTRichText(built)) return { $msg: 'msg', richText: built }
 	return { ...built, $msg: 'msg' }
 }
 
@@ -205,11 +208,14 @@ function promote(built: MsgInput | TString): Msg {
 //     (count: number) => ({ count }),
 //   )
 //
+// A bare target stands for the surface it is: `def(rt('...'))` and `def((n: number) => t('{n} left', { n }))`
+// declare a rich-text-only and a text-only message, with no surface object to write.
+//
 // The builder overloads come first, and infer their result as `const`: without that the declared surface types are
 // the body's contextual type, so every message would carry every surface as optional and `toast` returning an
 // array literal would infer as an array rather than as a tuple.
-export function def<A extends readonly unknown[], const B extends MsgInput | TString>(build: (...args: A) => B): (...args: A) => Promote<B>
-export function def<const B extends MsgInput>(build: B): () => Promote<B>
+export function def<A extends readonly unknown[], const B extends MsgInput | TTarget>(build: (...args: A) => B): (...args: A) => Promote<B>
+export function def<const B extends MsgInput | TTarget>(build: B): () => Promote<B>
 export function def<A extends readonly unknown[], S extends string, C extends string = string>(
 	icu: S & Literal<S> & NoTags<S>,
 	values: (...args: A) => TArgs,
@@ -217,7 +223,7 @@ export function def<A extends readonly unknown[], S extends string, C extends st
 ): (...args: A) => Variants.Textable
 export function def<S extends string, C extends string = string>(text: S & Literal<S> & NoTags<S>, opts?: TOpts<C>): () => Variants.Textable
 export function def(
-	build: string | MsgInput | ((...args: never[]) => MsgInput | TString),
+	build: string | MsgInput | TTarget | ((...args: never[]) => MsgInput | TTarget),
 	values?: ((...args: never[]) => TArgs) | TOpts,
 	opts?: TOpts,
 ) {
@@ -229,7 +235,7 @@ export function def(
 		return () => msg
 	}
 	if (typeof build === 'function') {
-		return (...args: unknown[]) => promote((build as (...args: unknown[]) => MsgInput | TString)(...args))
+		return (...args: unknown[]) => promote((build as (...args: unknown[]) => MsgInput | TTarget)(...args))
 	}
 	const msg = promote(build)
 	return () => msg
