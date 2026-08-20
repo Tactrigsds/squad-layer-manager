@@ -45,7 +45,7 @@ async function runState() {
 describe('tutorial runtime', () => {
 	it('advertises the available scenarios', async () => {
 		const metas = await client.tutorials.list()
-		expect(metas.map((m) => m.id)).toContain('layer-queue-basics')
+		expect(metas.map((m) => m.id)).toContain('layer-queue')
 	})
 
 	it('reports no run before one is started', async () => {
@@ -54,10 +54,10 @@ describe('tutorial runtime', () => {
 	})
 
 	it('stands up a scoped server seeded with the scenario queue', async () => {
-		const res = await client.tutorials.start({ scenarioId: 'layer-queue-basics' })
+		const res = await client.tutorials.start({ scenarioId: 'layer-queue' })
 		expect(res).toEqual({ code: 'ok', serverId: SERVER_ID })
 
-		expect(await runState()).toEqual({ code: 'active', scenarioId: 'layer-queue-basics', serverId: SERVER_ID })
+		expect(await runState()).toEqual({ code: 'active', scenarioId: 'layer-queue', serverId: SERVER_ID })
 		// the scenario's starting queue booted with the server, so the dashboard opens on a populated queue
 		expect(savedQueue(app, SERVER_ID)).toHaveLength(3)
 		// scoped to its owner: delivered to them alongside the public server
@@ -67,8 +67,8 @@ describe('tutorial runtime', () => {
 	})
 
 	it('runs a stage green and rejects an unknown one', async () => {
-		expect(await client.tutorials.stage({ scenarioId: 'layer-queue-basics', stageId: 'welcome' })).toEqual({ code: 'ok' })
-		expect(await client.tutorials.stage({ scenarioId: 'layer-queue-basics', stageId: 'no-such-stage' })).toEqual({
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toEqual({ code: 'ok' })
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'no-such-stage' })).toEqual({
 			code: 'err:unknown-stage',
 		})
 	})
@@ -77,7 +77,7 @@ describe('tutorial runtime', () => {
 		// the play-a-match stage syncs the head as next, ends the match, and waits for the roll to settle. The head
 		// becomes the current match and shifts off, so the saved queue drops from 3 to 2 -- proof the roll landed on
 		// the queued layer rather than the emulator's default seed (which would leave the queue untouched).
-		expect(await client.tutorials.stage({ scenarioId: 'layer-queue-basics', stageId: 'play-a-match' })).toEqual({ code: 'ok' })
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'play-a-match' })).toEqual({ code: 'ok' })
 		// match creation is log-driven and can lag the stage's return slightly, so poll for the consumed head
 		await app.waitFor(() => savedQueue(app, SERVER_ID).length === 2 || null, { label: 'the played head consumed from the queue' })
 	})
@@ -87,6 +87,6 @@ describe('tutorial runtime', () => {
 		expect(await runState()).toEqual({ code: 'none' })
 		expect(await deliveredServerIds()).not.toContain(SERVER_ID)
 		// no active run: a stage now reports it rather than acting
-		expect(await client.tutorials.stage({ scenarioId: 'layer-queue-basics', stageId: 'welcome' })).toEqual({ code: 'err:no-active-run' })
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toEqual({ code: 'err:no-active-run' })
 	})
 })

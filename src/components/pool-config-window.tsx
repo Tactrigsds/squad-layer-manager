@@ -80,19 +80,21 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						)}
 					</span>
 				</DraggableWindowTitle>
-				<TabsList
-					options={[
-						{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
-						{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
-						{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
-					]}
-					active={tab}
-					setActive={setTab}
-				/>
+				<span data-tour="pool-config-tabs">
+					<TabsList
+						options={[
+							{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
+							{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
+							{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
+						]}
+						active={tab}
+						setActive={setTab}
+					/>
+				</span>
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
+			<div data-tour="pool-config-body" className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
 				{tab === 'filters' ? (
 					<PoolFiltersPanel api={mainPoolApi} />
 				) : tab === 'repeatRules' ? (

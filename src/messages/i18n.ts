@@ -131,6 +131,7 @@ export function translateNode(source: string, values?: MessageValues, locale?: s
 // the formatting vocabulary every translator renders unasked; custom tags come in through Translator.withTags
 export const STANDARD_TAGS: Msgs.TagRenderers<Msgs.StandardTag> = {
 	strong: (chunks) => React.createElement('strong', null, ...chunks),
+	em: (chunks) => React.createElement('em', null, ...chunks),
 	code: (chunks) => React.createElement('code', null, ...chunks),
 }
 

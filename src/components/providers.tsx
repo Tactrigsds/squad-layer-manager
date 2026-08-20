@@ -1,5 +1,5 @@
-// registers the layer-queue-basics scenario with the tour engine
-import '@/systems/tutorials/layer-queue-basics.steps'
+// registers the layer-queue scenario with the tour engine
+import '@/systems/tutorials/layer-queue.steps'
 
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'

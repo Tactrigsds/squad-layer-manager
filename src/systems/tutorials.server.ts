@@ -104,8 +104,8 @@ export const playMatch = Instr.spanOp('tutorials.playMatch', { module }, async (
 // valid layer ids from the layer db that ships with the app, so they survive a round trip through its queries
 const LQB_QUEUE: L.LayerId[] = ['GD-RAAS-V1:USA-CA:RGF-CA', 'HJ-RAAS-V1:RGF-MZ:PLA-AA', 'NV-RAAS-V1:USA-CA:RGF-CA']
 
-const layerQueueBasics = defScenario({
-	id: 'layer-queue-basics',
+const layerQueue = defScenario({
+	id: 'layer-queue',
 	// a short post-match wait so a staged roll does not stall the tour; no tick chatter so the narrated log stays legible
 	pacing: { postMatchDelayMs: 2000, tickChatter: false },
 	initialQueue: (owner) =>
@@ -125,9 +125,9 @@ const layerQueueBasics = defScenario({
 
 // annotated (not `satisfies`) so a stage lookup by the wire's string id resolves; defScenario still infers each
 // scenario's own stage keys for authoring, and assigning to the wider type keeps that check
-const SCENARIOS: Record<TUT.ScenarioId, ScenarioDef<string>> = { 'layer-queue-basics': layerQueueBasics }
+const SCENARIOS: Record<TUT.ScenarioId, ScenarioDef<string>> = { 'layer-queue': layerQueue }
 
-const SCENARIO_METAS: TUT.ScenarioMeta[] = [{ id: 'layer-queue-basics', minutes: 3 }]
+const SCENARIO_METAS: TUT.ScenarioMeta[] = [{ id: 'layer-queue', minutes: 10 }]
 
 // scoped, so only the owner ever sees it in the picker; internal enough that the label need not be a message
 const DISPLAY_NAME = 'Tutorial'
