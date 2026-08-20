@@ -391,7 +391,7 @@ export const steps = Tour.defineSteps([
 	{ id: 'replay-layer', anchor: { all: 'match-history' }, msg: M.replayLayer, premise: editingQueue, advance: { type: 'next' } },
 	{
 		id: 'add-tag',
-		anchor: 'queue-layer-name',
+		anchor: 'queue-item-display',
 		spotlight: 'queue-item',
 		interact: 'free',
 		msg: M.addTag,
@@ -400,7 +400,7 @@ export const steps = Tour.defineSteps([
 	},
 	{
 		id: 'add-note',
-		anchor: 'queue-layer-name',
+		anchor: 'queue-item-display',
 		spotlight: 'queue-item',
 		interact: 'free',
 		msg: M.notes,

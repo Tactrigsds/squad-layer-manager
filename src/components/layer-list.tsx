@@ -627,10 +627,11 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 							<Icons.GripVertical />
 						</Button>
 					</span>
-					<span data-tour={isTourRow ? 'queue-layer-name' : undefined} className="rounded flex space-y-1 w-full flex-col">
+					<span data-tour={isTourRow ? 'queue-item-display' : undefined} className="rounded flex space-y-1 w-full flex-col">
 						<LayerDisplay
 							stores={props.stores}
 							droppable={true}
+							layerNameTourId={isTourRow ? 'queue-layer-name' : undefined}
 							indicatorsTourId={isTourRow ? 'layer-indicators' : undefined}
 							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 							badges={badges}

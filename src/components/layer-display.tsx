@@ -29,7 +29,9 @@ export default function LayerDisplay(props: {
 	backfillLayerId?: L.LayerId
 	allowShowInfo?: boolean
 	droppable?: boolean
-	// data-tour for the indicator cluster, so the tour can point at it on the one row it is narrating
+	// data-tour for the layer name and for the indicator cluster, so the tour can point at either on the one row
+	// it is narrating
+	layerNameTourId?: string
 	indicatorsTourId?: string
 	className?: string
 	ref?: React.Ref<HTMLDivElement>
@@ -111,6 +113,7 @@ export default function LayerDisplay(props: {
 						className="flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-nowrap"
 					>
 						<ShortLayerName
+							tourId={props.layerNameTourId}
 							ref={(props.droppable && dropOnAttrs.ref) || undefined}
 							className={dropOnAttrs.isDropTarget ? 'bg-secondary' : undefined}
 							layerId={props.item.layerId}
