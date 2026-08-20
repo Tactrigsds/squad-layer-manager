@@ -59,17 +59,13 @@ export const previewMissingActionText = def(() => ({ text: raw('<action text>') 
 // The reference is Mustache's, not Handlebars': the two share {{variable}} and {{#section}}, but Handlebars' block
 // helpers are not available here. Which words are the link is part of the prose; how it looks is not, so the
 // caller styles `a`.
-export const templateSyntaxHint = def(() => ({
-	richText: rt('Supports <link>Mustache {syntax} syntax</link>.', { syntax: '{{variable}}' }),
-}))
+export const templateSyntaxHint = def(rt('Supports <link>Mustache {syntax} syntax</link>.', { syntax: '{{variable}}' }))
 
 // -------- the reason field, wherever an action or a flag asks for one --------
 
 // Whether a reason is required is coloured differently in each case, which no single class on the container can
 // express, so the caller renders the qualifier and the message positions it.
-export const reasonLabel = def((qualifier: React.ReactNode) => ({
-	richText: rt('Reason {qualifier}', { qualifier }),
-}))
+export const reasonLabel = def((qualifier: React.ReactNode) => rt('Reason {qualifier}', { qualifier }))
 
 export const reasonRequired = def('(required)')
 

@@ -15,27 +15,19 @@ export const helpTitle = def('Team Swaps Help')
 
 export const helpIntro = def('Queue players to be moved to the opposite team, either at the start of the next round or immediately.')
 
-export const helpStepQueue = def(() => ({
-	richText: rt('Right-click a player and choose <strong>Swap Next</strong> to queue them.'),
-}))
+export const helpStepQueue = def(rt('Right-click a player and choose <strong>Swap Next</strong> to queue them.'))
 
-export const helpStepSave = def(() => ({
-	richText: rt(
+export const helpStepSave = def(
+	rt(
 		'Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.',
 	),
-}))
+)
 
-export const helpStepSwapNow = def(() => ({
-	richText: rt('Click <strong>Swap Now</strong> to immediately execute all saved swaps.'),
-}))
+export const helpStepSwapNow = def(rt('Click <strong>Swap Now</strong> to immediately execute all saved swaps.'))
 
-export const helpRevert = def(() => ({
-	richText: rt('<strong>Revert</strong> discards unsaved edits back to the last saved state.'),
-}))
+export const helpRevert = def(rt('<strong>Revert</strong> discards unsaved edits back to the last saved state.'))
 
-export const helpClearTeam = def(() => ({
-	richText: rt('The <strong>trash icon</strong> on a team column clears all for that team.'),
-}))
+export const helpClearTeam = def(rt('The <strong>trash icon</strong> on a team column clears all for that team.'))
 
 export const notifyPlayerOfUpcomingTeamswap = def(
 	'You have been marked for a team swap on mapchange. Thank you for helping with team balance and contact admins if you have issues.',
