@@ -11,6 +11,7 @@ import * as ST from '@/lib/state-tree'
 import { assertNever } from '@/lib/type-guards'
 import type { DistributiveOmit } from '@/lib/types'
 import type * as CS from '@/models/context-shared'
+import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as SS from '@/models/server-state.models'
@@ -21,8 +22,13 @@ export const DISCONNECT_TIMEOUT = 5_000
 // export const INTERACT_TIMEOUT = 5_000
 export const INTERACT_TIMEOUT = 30_000
 
-export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
+// A client is present in one place at a time, and the places have nothing in common: a server dashboard is
+// scoped by serverId, a filter page by filterId. So the root is a union rather than one tree -- read it
+// through dashRoot/filterRoot rather than reaching for opts.
+export const [DASH_ACTIVITIES, FILTER_ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 	const { variant, leaf, branch } = ST.Def
+
+	const FILTER_ACTIVITIES = branch('ON_FILTER', { filterId: F.FilterEntityIdSchema }, [leaf('EDITING_FILTER')]) satisfies ST.Def.Node
 
 	const ACTIVITIES = branch('ON_DASHBOARD', { serverId: SS.ServerIdSchema }, [
 		variant('EDITING_QUEUE', [
@@ -70,6 +76,8 @@ export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 
 	const ACTIVITIES_FLATTENED = {
 		ON_DASHBOARD: ACTIVITIES,
+		ON_FILTER: FILTER_ACTIVITIES,
+		EDITING_FILTER: FILTER_ACTIVITIES.child.EDITING_FILTER,
 
 		EDITING_QUEUE: editingQueue,
 		IDLE: editingQueue.child.IDLE,
@@ -99,10 +107,34 @@ export const [ACTIVITIES, ACTIVITIES_FLATTENED] = (() => {
 		DEMOTING_COMMANDER: playerDialogue.child.DEMOTING_COMMANDER,
 	}
 
-	return [ACTIVITIES, ACTIVITIES_FLATTENED] as const
+	return [ACTIVITIES, FILTER_ACTIVITIES, ACTIVITIES_FLATTENED] as const
 })()
 
-export const UserPresenceActivitySchema = ST.MatchUtils.createMatchSchema(ACTIVITIES)
+export const UserPresenceActivitySchema = z.union([
+	ST.MatchUtils.createMatchSchema(DASH_ACTIVITIES),
+	ST.MatchUtils.createMatchSchema(FILTER_ACTIVITIES),
+]) as z.ZodType<RootActivity>
+
+export type DashboardActivity = ST.Match.Node<typeof DASH_ACTIVITIES>
+export type FilterActivity = ST.Match.Node<typeof FILTER_ACTIVITIES>
+export type RootActivity = DashboardActivity | FilterActivity
+
+export function dashRoot(activity: RootActivity | null | undefined): DashboardActivity | null {
+	return activity?.id === 'ON_DASHBOARD' ? activity : null
+}
+
+export function filterRoot(activity: RootActivity | null | undefined): FilterActivity | null {
+	return activity?.id === 'ON_FILTER' ? activity : null
+}
+
+// the server whose dashboard the client is on, or undefined if they are somewhere else entirely
+export function activityServerId(activity: RootActivity | null | undefined): string | undefined {
+	return dashRoot(activity)?.opts.serverId
+}
+
+export function activityFilterId(activity: RootActivity | null | undefined): F.FilterEntityId | undefined {
+	return filterRoot(activity)?.opts.filterId
+}
 
 export function getDefaultDashActivity(serverId: string): RootActivity {
 	return {
@@ -187,6 +219,21 @@ export const OpSchema = z.discriminatedUnion('code', [
 		serverId: z.string(),
 	}),
 
+	// a filter's shared draft was saved, so nobody is editing it anymore. Scoped to that filter: clients
+	// on any other filter are untouched
+	z.object({
+		...serverOpBase,
+		code: z.literal('filter:end-all-editing'),
+		filterId: F.FilterEntityIdSchema,
+	}),
+
+	// the filter was deleted, so there is nothing left to be present on
+	z.object({
+		...serverOpBase,
+		code: z.literal('filter:removed'),
+		filterId: F.FilterEntityIdSchema,
+	}),
+
 	// the socket dropped without a clean close -- hold the client's activity (and locks) so a
 	// reconnecting client can steal it; a spinner is shown until it resolves
 	z.object({
@@ -262,8 +309,8 @@ function applyActivityUpdateToClient(state: State, clientId: string, update: Act
 	const prevActivity = clientState.activityState ?? null
 	const newActivity = gateActivityToEnabled(applyActivityUpdate(prevActivity, update), state.enabledServers)
 	if (newActivity === prevActivity) return
-	const prevEditingSll = prevActivity ? Trans.editingQueue(prevActivity.opts.serverId).match(prevActivity) : null
-	const sllEditNode = newActivity ? Trans.editingQueue(newActivity.opts.serverId).match(newActivity) : null
+	const prevEditingSll = editingQueueNode(prevActivity)
+	const sllEditNode = editingQueueNode(newActivity)
 	if (!sllEditNode && prevEditingSll) {
 		MapUtils.deleteByValue(state.itemLocks, clientId)
 	} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
@@ -272,9 +319,11 @@ function applyActivityUpdateToClient(state: State, clientId: string, update: Act
 	state.presence.set(clientId, { ...clientState, activityState: newActivity })
 }
 
-// collapses an activity to null when its server isn't currently enabled -- users can't be present on a server with no live managed server
+// collapses a dashboard activity to null when its server isn't currently enabled -- users can't be present on
+// a server with no live managed server. A filter page has no server to be gated by.
 function gateActivityToEnabled(activity: RootActivity | null, enabledServers: Set<string>): RootActivity | null {
-	if (activity && !enabledServers.has(activity.opts.serverId)) return null
+	const serverId = activityServerId(activity)
+	if (serverId !== undefined && !enabledServers.has(serverId)) return null
 	return activity
 }
 
@@ -329,7 +378,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				// the queue that was just saved belongs to one server, so only its editors are done editing and only
 				// their item locks are stale. clients editing another server's queue keep their activity and locks
 				for (const [clientId, clientState] of state.presence.entries()) {
-					if (clientState.activityState?.opts.serverId !== op.serverId) continue
+					if (activityServerId(clientState.activityState) !== op.serverId) continue
 					MapUtils.deleteByValue(state.itemLocks, clientId)
 					state.presence.set(clientId, { ...clientState, activityState: clearQueueEditingActivity(clientState.activityState) })
 				}
@@ -338,7 +387,7 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 				// editedSwaps is shared, so resolving it (save, revert, clear, execute) resolves it for every client
 				// on that server at once, and none of them have pending edits left to be editing
 				for (const [clientId, clientState] of state.presence.entries()) {
-					if (clientState.activityState?.opts.serverId !== op.serverId) continue
+					if (activityServerId(clientState.activityState) !== op.serverId) continue
 					state.presence.set(clientId, {
 						...clientState,
 						activityState: clearTeamswapEditingActivity(clientState.activityState),
@@ -348,11 +397,27 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 			} else if (op.code === 'layer-requests:end-all-editing') {
 				// the backburner draft is shared, so resolving it (save, reset) resolves it for every client on that server
 				for (const [clientId, clientState] of state.presence.entries()) {
-					if (clientState.activityState?.opts.serverId !== op.serverId) continue
+					if (activityServerId(clientState.activityState) !== op.serverId) continue
 					state.presence.set(clientId, {
 						...clientState,
 						activityState: clearLayerRequestsEditingActivity(clientState.activityState),
 					})
+				}
+				success = true
+			} else if (op.code === 'filter:end-all-editing') {
+				// the filter's draft is shared, so saving it resolves it for every client editing that filter at once
+				for (const [clientId, clientState] of state.presence.entries()) {
+					if (activityFilterId(clientState.activityState) !== op.filterId) continue
+					state.presence.set(clientId, {
+						...clientState,
+						activityState: clearFilterEditingActivity(clientState.activityState),
+					})
+				}
+				success = true
+			} else if (op.code === 'filter:removed') {
+				for (const [clientId, clientState] of state.presence.entries()) {
+					if (activityFilterId(clientState.activityState) !== op.filterId) continue
+					state.presence.set(clientId, { ...clientState, activityState: null })
 				}
 				success = true
 			} else if (op.code === 'set-enabled-servers') {
@@ -441,8 +506,8 @@ export const reducer: ODSM.Reducer<Op, State, SideEffects> = (prevState, ops, _p
 						// gate here so any op that would put the client ON_DASHBOARD of a non-enabled server collapses to null instead
 						const newActivity = gateActivityToEnabled(applyActivityUpdate(prevActivity, op.update), state.enabledServers)
 
-						const prevEditingSll = prevActivity ? Trans.editingQueue(prevActivity.opts.serverId).match(prevActivity) : null
-						const sllEditNode = newActivity ? Trans.editingQueue(newActivity.opts.serverId).match(newActivity) : null
+						const prevEditingSll = editingQueueNode(prevActivity)
+						const sllEditNode = editingQueueNode(newActivity)
 						if (!sllEditNode && prevEditingSll) {
 							MapUtils.deleteByValue(state.itemLocks, op.clientId)
 						} else if (sllEditNode && !isItemOwnedActivity(sllEditNode.chosen)) {
@@ -515,14 +580,14 @@ export function anyLocksInaccessible(locks: ItemLocks, ids: LL.ItemId[], wsClien
 	return false
 }
 
-const _editingQueueVariants = ACTIVITIES.child.EDITING_QUEUE.child
+const _editingQueueVariants = DASH_ACTIVITIES.child.EDITING_QUEUE.child
 type EditingQueueVariant = (typeof _editingQueueVariants)[keyof typeof _editingQueueVariants]['id']
 
 export type QueueEditingActivity<K extends EditingQueueVariant = EditingQueueVariant> = ST.Match.Node<
 	Extract<(typeof _editingQueueVariants)[keyof typeof _editingQueueVariants], { id: K }>
 >
 
-const _playerDialogueVariants = ACTIVITIES.child.ON_PRIMARY_PANEL.child.VIEWING_TEAMS.child.PLAYER_DIALOGUE.child
+const _playerDialogueVariants = DASH_ACTIVITIES.child.ON_PRIMARY_PANEL.child.VIEWING_TEAMS.child.PLAYER_DIALOGUE.child
 export const PLAYER_DIALOGUE_ID = z.enum([
 	'SWITCHING_PLAYERS',
 	'WARNING_PLAYERS',
@@ -559,6 +624,10 @@ export const ActivityUpdateSchema = z.discriminatedUnion('code', [
 	z.object({ code: z.literal('clear-viewing-queue-settings') }),
 	z.object({ code: z.literal('set-changing-queue-settings') }),
 	z.object({ code: z.literal('clear-changing-queue-settings') }),
+	z.object({ code: z.literal('enter-filter'), filterId: F.FilterEntityIdSchema }),
+	z.object({ code: z.literal('leave-filter') }),
+	z.object({ code: z.literal('set-editing-filter') }),
+	z.object({ code: z.literal('clear-editing-filter') }),
 ])
 export type ActivityUpdate = z.infer<typeof ActivityUpdateSchema>
 
@@ -581,16 +650,41 @@ export type Resolver<T = any> = (root: RootActivity | undefined | null) => T
 // transitions
 export namespace Trans {
 	export const onDashboard = (serverId: string): ActivityTransitions => ({
-		match: (root: RootActivity | undefined | null) => root?.opts.serverId === serverId,
+		match: (root: RootActivity | undefined | null) => activityServerId(root) === serverId,
 		create: () => ({ code: 'enter-server-dashboard', serverId }),
 		destroy: () => ({ code: 'leave-server-dashboard' }),
 	})
 
+	// the dashboard root, but only when it is the one for `serverId`. An empty serverId matches any dashboard,
+	// which is what the panels rendering outside a server scope rely on.
+	const dashFor = (serverId: string) => (root: RootActivity | undefined | null) => {
+		const dash = dashRoot(root)
+		if (!dash) return null
+		if (serverId && dash.opts.serverId !== serverId) return null
+		return dash
+	}
+
+	export const onFilter = (filterId: F.FilterEntityId): ActivityTransitions => ({
+		match: (root: RootActivity | undefined | null) => activityFilterId(root) === filterId,
+		create: () => ({ code: 'enter-filter', filterId }),
+		destroy: () => ({ code: 'leave-filter' }),
+	})
+
+	export const editingFilter = (filterId: F.FilterEntityId) =>
+		({
+			match: (root: RootActivity | undefined | null) => {
+				const filter = filterRoot(root)
+				if (!filter || (filterId && filter.opts.filterId !== filterId)) return null
+				return filter.child.EDITING_FILTER ?? null
+			},
+			create: (): ActivityUpdate => ({ code: 'set-editing-filter' }),
+			destroy: (): ActivityUpdate => ({ code: 'clear-editing-filter' }),
+		}) satisfies ActivityTransitions
+
 	export const viewingQueue = (serverId: string) =>
 		({
 			match: (root: RootActivity | undefined | null) => {
-				if (serverId && !onDashboard(serverId).match(root)) return null
-				const primaryPanelChoice = root?.child.ON_PRIMARY_PANEL?.chosen
+				const primaryPanelChoice = dashFor(serverId)(root)?.child.ON_PRIMARY_PANEL?.chosen
 				if (primaryPanelChoice?.id === 'VIEWING_QUEUE') return primaryPanelChoice
 				return null
 			},
@@ -601,8 +695,7 @@ export namespace Trans {
 	export const viewingTeams = (serverId: string) =>
 		({
 			match: (root: RootActivity | undefined | null) => {
-				if (serverId && !onDashboard(serverId).match(root)) return null
-				const primaryPanelChoice = root?.child.ON_PRIMARY_PANEL?.chosen
+				const primaryPanelChoice = dashFor(serverId)(root)?.child.ON_PRIMARY_PANEL?.chosen
 				if (primaryPanelChoice?.id === 'VIEWING_TEAMS') return primaryPanelChoice
 				return null
 			},
@@ -612,30 +705,21 @@ export namespace Trans {
 
 	export const editingTeamswaps = (serverId: string) =>
 		({
-			match: (root: RootActivity | undefined | null) => {
-				if (serverId && !onDashboard(serverId).match(root)) return null
-				return root?.child.EDITING_TEAMSWAPS ?? null
-			},
+			match: (root: RootActivity | undefined | null) => dashFor(serverId)(root)?.child.EDITING_TEAMSWAPS ?? null,
 			create: (): ActivityUpdate => ({ code: 'set-editing-teamswaps' }),
 			destroy: (): ActivityUpdate => ({ code: 'clear-editing-teamswaps' }),
 		}) satisfies ActivityTransitions
 
 	export const editingLayerRequests = (serverId: string) =>
 		({
-			match: (root: RootActivity | undefined | null) => {
-				if (serverId && !onDashboard(serverId).match(root)) return null
-				return root?.child.EDITING_LAYER_REQUESTS ?? null
-			},
+			match: (root: RootActivity | undefined | null) => dashFor(serverId)(root)?.child.EDITING_LAYER_REQUESTS ?? null,
 			create: (): ActivityUpdate => ({ code: 'set-editing-layer-requests' }),
 			destroy: (): ActivityUpdate => ({ code: 'clear-editing-layer-requests' }),
 		}) satisfies ActivityTransitions
 
 	export const editingQueue = (serverId: string) =>
 		({
-			match: (root: RootActivity | undefined | null) => {
-				if (serverId && !onDashboard(serverId).match(root)) return null
-				return root?.child.EDITING_QUEUE ?? null
-			},
+			match: (root: RootActivity | undefined | null) => dashFor(serverId)(root)?.child.EDITING_QUEUE ?? null,
 			create: (): ActivityUpdate => ({
 				code: 'set-editing-queue',
 				variant: ST.Match.leaf('IDLE', {}) as QueueEditingActivity<'IDLE'>,
@@ -662,21 +746,60 @@ export namespace Trans {
 		}) satisfies ActivityTransitions
 }
 
-function getServerId(activity: RootActivity) {
-	return activity.opts.serverId
+// the editing node of whatever place the activity is in, without having to name the server or filter first.
+// `Trans.editingX(id)` is for asking about a specific one.
+export function editingQueueNode(activity: RootActivity | null | undefined) {
+	return dashRoot(activity)?.child.EDITING_QUEUE ?? null
 }
 
+export function editingTeamswapsNode(activity: RootActivity | null | undefined) {
+	return dashRoot(activity)?.child.EDITING_TEAMSWAPS ?? null
+}
+
+export function editingLayerRequestsNode(activity: RootActivity | null | undefined) {
+	return dashRoot(activity)?.child.EDITING_LAYER_REQUESTS ?? null
+}
+
+export function editingFilterNode(activity: RootActivity | null | undefined) {
+	return filterRoot(activity)?.child.EDITING_FILTER ?? null
+}
+
+// updates aimed at a place the client is not in do nothing: the two roots share no sub-activities, so a
+// dashboard update reaching a client sitting on a filter page has nothing to apply.
+type FilterUpdate = Extract<ActivityUpdate, { code: 'enter-filter' | 'leave-filter' | 'set-editing-filter' | 'clear-editing-filter' }>
+type DashboardUpdate = Exclude<ActivityUpdate, FilterUpdate | { code: 'enter-server-dashboard' }>
+
 export function applyActivityUpdate(_activity: RootActivity | null, update: ActivityUpdate): RootActivity | null {
-	let activity = _activity
-	if (update.code === 'enter-server-dashboard') {
-		if (activity && activity.opts.serverId === update.serverId) return activity
-		return {
-			_tag: 'branch',
-			id: 'ON_DASHBOARD',
-			opts: { serverId: update.serverId },
-			child: {},
+	switch (update.code) {
+		// entering a place replaces whichever place the client was in before
+		case 'enter-server-dashboard': {
+			const dash = dashRoot(_activity)
+			if (dash && dash.opts.serverId === update.serverId) return dash
+			return { _tag: 'branch', id: 'ON_DASHBOARD', opts: { serverId: update.serverId }, child: {} }
 		}
+		case 'enter-filter': {
+			const filter = filterRoot(_activity)
+			if (filter && filter.opts.filterId === update.filterId) return filter
+			return { _tag: 'branch', id: 'ON_FILTER', opts: { filterId: update.filterId }, child: {} }
+		}
+		case 'leave-filter':
+			return filterRoot(_activity) ? null : _activity
+		case 'set-editing-filter':
+		case 'clear-editing-filter': {
+			const filter = filterRoot(_activity)
+			if (!filter) return _activity
+			return Im.produce(filter, (draft) => {
+				if (update.code === 'set-editing-filter') draft.child.EDITING_FILTER = ST.Match.leaf('EDITING_FILTER', {})
+				else delete draft.child.EDITING_FILTER
+			})
+		}
+		default:
+			return applyDashboardUpdate(_activity, update)
 	}
+}
+
+function applyDashboardUpdate(_activity: RootActivity | null, update: DashboardUpdate): RootActivity | null {
+	let activity = dashRoot(_activity)
 	checkActivity: if (!activity) {
 		if (update.code === 'set-primary-panel' && update.serverId) {
 			activity = {
@@ -687,9 +810,9 @@ export function applyActivityUpdate(_activity: RootActivity | null, update: Acti
 			}
 			break checkActivity
 		}
-		return null
+		return _activity
 	}
-	const serverId = getServerId(activity)
+	const serverId = activity.opts.serverId
 	switch (update.code) {
 		case 'leave-server-dashboard': {
 			return null
@@ -806,10 +929,17 @@ export function applyActivityUpdate(_activity: RootActivity | null, update: Acti
 // re-establish presence after a websocket reconnect, where a fresh wsClientId is minted and our
 // prior activity is only known client-side.
 export function activityToUpdates(activity: RootActivity): ActivityUpdate[] {
-	const serverId = activity.opts.serverId
+	const filter = filterRoot(activity)
+	if (filter) {
+		const updates: ActivityUpdate[] = [{ code: 'enter-filter', filterId: filter.opts.filterId }]
+		if (filter.child.EDITING_FILTER) updates.push({ code: 'set-editing-filter' })
+		return updates
+	}
+	const dash = dashRoot(activity)!
+	const serverId = dash.opts.serverId
 	const updates: ActivityUpdate[] = [{ code: 'enter-server-dashboard', serverId }]
 
-	const primaryPanel = activity.child.ON_PRIMARY_PANEL?.chosen
+	const primaryPanel = dash.child.ON_PRIMARY_PANEL?.chosen
 	if (primaryPanel?.id === 'VIEWING_QUEUE') {
 		updates.push({ code: 'set-primary-panel', to: 'VIEWING_QUEUE', serverId })
 		if (primaryPanel.child.VIEWING_QUEUE_SETTINGS) {
@@ -824,21 +954,20 @@ export function activityToUpdates(activity: RootActivity): ActivityUpdate[] {
 		if (dialogue) updates.push({ code: 'set-player-dialogue', dialog: dialogue.id })
 	}
 
-	if (activity.child.EDITING_QUEUE) {
-		updates.push({ code: 'set-editing-queue', variant: activity.child.EDITING_QUEUE.chosen })
+	if (dash.child.EDITING_QUEUE) {
+		updates.push({ code: 'set-editing-queue', variant: dash.child.EDITING_QUEUE.chosen })
 	}
-	if (activity.child.EDITING_LAYER_REQUESTS) {
+	if (dash.child.EDITING_LAYER_REQUESTS) {
 		updates.push({ code: 'set-editing-layer-requests' })
 	}
-	if (activity.child.EDITING_TEAMSWAPS) {
+	if (dash.child.EDITING_TEAMSWAPS) {
 		updates.push({ code: 'set-editing-teamswaps' })
 	}
 
 	return updates
 }
 
-export type ActivityCode = ST.Def.NodeIds<typeof ACTIVITIES>
-export type RootActivity = ST.Match.Node<typeof ACTIVITIES>
+export type ActivityCode = ST.Def.NodeIds<typeof DASH_ACTIVITIES> | ST.Def.NodeIds<typeof FILTER_ACTIVITIES>
 
 export const ITEM_OWNED_ACTIVITY_CODE = z.enum(['EDITING_ITEM', 'CONFIGURING_VOTE', 'MOVING_ITEM'])
 type ItemOwnedActivityId = z.infer<typeof ITEM_OWNED_ACTIVITY_CODE>
@@ -910,22 +1039,37 @@ export function resolveUserPresence(state: PresenceState) {
 
 export function clearQueueEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
 	if (!activity) return null
-	return Im.produce(activity, (draft) => {
+	const dash = dashRoot(activity)
+	if (!dash) return activity
+	return Im.produce(dash, (draft) => {
 		delete draft.child.EDITING_QUEUE
 	})
 }
 
 export function clearTeamswapEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
 	if (!activity) return null
-	return Im.produce(activity, (draft) => {
+	const dash = dashRoot(activity)
+	if (!dash) return activity
+	return Im.produce(dash, (draft) => {
 		delete draft.child.EDITING_TEAMSWAPS
 	})
 }
 
 export function clearLayerRequestsEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
 	if (!activity) return null
-	return Im.produce(activity, (draft) => {
+	const dash = dashRoot(activity)
+	if (!dash) return activity
+	return Im.produce(dash, (draft) => {
 		delete draft.child.EDITING_LAYER_REQUESTS
+	})
+}
+
+export function clearFilterEditingActivity(activity: RootActivity | null | undefined): RootActivity | null {
+	if (!activity) return null
+	const filter = filterRoot(activity)
+	if (!filter) return activity
+	return Im.produce(filter, (draft) => {
+		delete draft.child.EDITING_FILTER
 	})
 }
 
@@ -937,7 +1081,7 @@ export function* iterActivities(state: PresenceState) {
 }
 
 export function itemsToLockForActivity(list: LL.List, activity: RootActivity): LL.ItemId[] {
-	const dialogActivity = Trans.editingQueue(getServerId(activity)).match(activity)?.chosen
+	const dialogActivity = editingQueueNode(activity)?.chosen
 	if (!dialogActivity || !isItemOwnedActivity(dialogActivity)) return []
 	const itemId = dialogActivity.opts.itemId
 	const item = LL.findItemById(list, itemId)?.item
@@ -985,6 +1129,7 @@ const fmt = <K extends keyof typeof ACTIVITIES_FLATTENED>(
 
 // lower index -> higher priority
 export const ACTIVITY_MESSAGE_FORMATS: ActivityMessageFormat[] = [
+	fmt('EDITING_FILTER', 'Editing Filter'),
 	fmt('EDITING_TEAMSWAPS', 'Editing Scheduled Teamswaps'),
 	fmt('EDITING_LAYER_REQUESTS', 'Editing Layer Requests'),
 	fmt('SWITCHING_PLAYERS', 'Switching players Now'),

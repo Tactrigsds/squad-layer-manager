@@ -101,11 +101,11 @@ function countEditingClients(state: UP.State): EditorCounts {
 	const counts: EditorCounts = { queue: new Map(), 'layer-requests': new Map() }
 	for (const client of state.presence.values()) {
 		const activity = client.activityState
-		if (!activity) continue
-		const serverId = activity.opts.serverId
+		const serverId = UP.activityServerId(activity)
+		if (!serverId) continue
 		const bump = (scope: UP.Ctx.DraftScope) => counts[scope].set(serverId, (counts[scope].get(serverId) ?? 0) + 1)
-		if (UP.Trans.editingQueue(serverId).match(activity)) bump('queue')
-		if (UP.Trans.editingLayerRequests(serverId).match(activity)) bump('layer-requests')
+		if (UP.editingQueueNode(activity)) bump('queue')
+		if (UP.editingLayerRequestsNode(activity)) bump('layer-requests')
 	}
 	return counts
 }
