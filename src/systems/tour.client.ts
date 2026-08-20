@@ -191,7 +191,7 @@ export type Advance =
 // what an anchor points at: one data-tour element, or `{ all }` for every laid-out element carrying the id, whose
 // zone is the minimum rect containing them (a run of queue rows). A plain string resolves to the first laid-out
 // match, so an id shared by several elements still works as a single anchor.
-export type AnchorTarget = string | { all: string } | { css: string }
+export type AnchorTarget = string | { all: string } | { css: string; all?: boolean }
 // static target, or a dynamic one (null = not present yet, the overlay waits)
 export type AnchorRef = AnchorTarget | ((run: RunStores) => AnchorTarget | null)
 
@@ -298,9 +298,11 @@ export function anchorSelector(target: AnchorTarget): string {
 	return `[data-tour="${CSS.escape(target.all)}"]`
 }
 
-// whether the target unions every laid-out match rather than resolving to the first
+// whether the target unions every laid-out match rather than resolving to the first. A `{ all }` id says so by
+// being that shape; a selector has to ask, since most selectors mean one element.
 export function anchorsAll(target: AnchorTarget): boolean {
-	return typeof target === 'object' && 'all' in target
+	if (typeof target !== 'object') return false
+	return 'css' in target ? !!target.all : true
 }
 
 function sameElements(a: Element[], b: Element[]): boolean {
