@@ -310,7 +310,9 @@ export const steps = Tour.defineSteps([
 		advance: {
 			type: 'state',
 			inputs: () => [addDialogFrame()],
-			select: (s: any) => compSelects(filterMenu(s)?.Map, ADD_SECOND.map) && (s?.layerTable?.selected?.length ?? 0) > 1,
+			// a count would also pass on the layer picked two steps ago, and the next step is about seeing a selection
+			// the filters have hidden, which only reads as that if the second pick really is from the second map
+			select: (s: any) => ((s?.layerTable?.selected ?? []) as L.LayerId[]).some((id) => L.toLayer(id).Map === ADD_SECOND.map),
 		},
 	},
 	{
@@ -326,14 +328,6 @@ export const steps = Tour.defineSteps([
 		},
 	},
 	{
-		id: 'selection-context-menu',
-		anchor: 'add-pick',
-		interact: 'free',
-		msg: M.AddLayersSequence.layerSelectionContextMenu,
-		premise: addDialogOpen,
-		advance: { type: 'next' },
-	},
-	{
 		id: 'add-submit',
 		anchor: 'add-submit',
 		spotlight: 'add-dialog',
@@ -344,7 +338,15 @@ export const steps = Tour.defineSteps([
 	},
 
 	// what the edit looks like in the queue
-	{ id: 'added-highlight', anchor: 'queue-item', msg: M.addedHighlight, premise: editingQueue, advance: { type: 'next' } },
+	{
+		// every row the reader just added, whichever positions they landed in: the union runs from the first to the
+		// last. data-mutation is on the row already, and the queue-panel scope keeps other lists out of it.
+		id: 'added-highlight',
+		anchor: { css: '[data-tour="queue-panel"] li[data-mutation="added"]', all: true },
+		msg: M.addedHighlight,
+		premise: editingQueue,
+		advance: { type: 'next' },
+	},
 	{
 		id: 'layer-attribution',
 		anchor: 'queue-item-source',

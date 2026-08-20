@@ -145,12 +145,14 @@ export const layerContextMenu = {
 
 export const startEditing = {
 	title: def('Start editing'),
-	body: def(rt("Let's edit the queue. Click <em>Start Editing</em> to signal to everyone else that you are editing it:")),
+	body: def(
+		rt("Let's edit the queue. Click <em>Start Editing</em> to communicate to other users that you intend to make changes to the queue:"),
+	),
 }
 
 export const queueUserPresence = {
-	title: def('Who else is editing'),
-	body: def('While you are editing, everyone else sees it here:'),
+	title: def('Checking for other editors'),
+	body: def('Whether you are editing, and what you are currently doing, is shown here to everyone:'),
 }
 
 export namespace AddLayersSequence {
@@ -223,7 +225,7 @@ export namespace AddLayersSequence {
 		title: def('The context menu, again'),
 		body: def(
 			rt(
-				'The layer context menu is available in the results too, as long as only one layer is selected. Click <em>Show Details</em> to see that layer in full.',
+				"The right-click context menu is available for layer configurations in the results, too. If you right click any selected layer while multiple are selected, it's possible to perform actions for all selected layers.",
 			),
 		),
 	}
@@ -243,13 +245,6 @@ export namespace AddLayersSequence {
 			rt(
 				'Changing the filters hid the layer you selected first, but it is still selected. Click <em>Show Selected</em> to see everything you have picked so far:',
 			),
-		),
-	}
-
-	export const layerSelectionContextMenu = {
-		title: def('Acting on a selection'),
-		body: def(
-			'With more than one layer selected the context menu offers different actions, like copying every selected layer to the clipboard.',
 		),
 	}
 
@@ -300,7 +295,9 @@ export const editLayerSelection = {
 
 export const layerItemEllipsis = {
 	title: def('The rest of the item actions'),
-	body: def(rt('The remaining actions are on the layer item itself: right click it, or click <ellipsis></ellipsis>.')),
+	body: def(
+		rt('Some additional actions are available by clicking the <ellipsis></ellipsis>, or by right clicking anywhere on the queue item.'),
+	),
 }
 
 export const replayLayer = {
