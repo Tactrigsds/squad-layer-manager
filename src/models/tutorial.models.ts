@@ -3,6 +3,13 @@ import { z } from 'zod'
 // Mirrors sandbox.models.ts: schemas and metas only, so this stays importable from the client.
 // The executor (setup and stages) is src/systems/tutorials.server.ts.
 
+// How the filters a run creates for itself present. Here rather than with the rows in tutorials.server because
+// the tour's copy shows the same emoji the indicator does, and the two drifting would make the card wrong.
+export const TUTORIAL_FILTERS = {
+	pool: { name: 'Tutorial Pool', emoji: '✅', invertedEmoji: '⛔' },
+	large: { name: 'Large Layers', emoji: '🗺️' },
+} as const
+
 export const ScenarioIdSchema = z.enum(['layer-queue'])
 export type ScenarioId = z.infer<typeof ScenarioIdSchema>
 

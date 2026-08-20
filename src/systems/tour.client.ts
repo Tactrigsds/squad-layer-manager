@@ -6,8 +6,9 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import type * as Msgs from '@/models/messages.models'
-import type * as TUT from '@/models/tutorial.models'
+import * as TUT from '@/models/tutorial.models'
 import { rootRouter } from '@/root-router'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
@@ -93,6 +94,9 @@ export type TourTag =
 	| 'sword'
 	| 'repeat'
 	| 'addFilter'
+	| 'hideRepeats'
+	| 'tutorialPoolIcon'
+	| 'largeLayersIcon'
 	| 'filtersPage'
 	| 'scoresDocs'
 
@@ -142,6 +146,15 @@ const tourTr = tr.withTags({
 	sword: icon(Icons.Sword),
 	repeat: icon(Icons.Repeat, 'text-repeat-violation'),
 	addFilter: icon(Icons.Edit),
+	tutorialPoolIcon: () => TUT.TUTORIAL_FILTERS.pool.emoji,
+	largeLayersIcon: () => TUT.TUTORIAL_FILTERS.large.emoji,
+	hideRepeats: () =>
+		React.createElement(
+			'span',
+			{ className: 'whitespace-nowrap' },
+			React.createElement(Icons.Square, { className: 'inline h-3.5 w-3.5 align-text-bottom' }),
+			` ${tr.text(F_Msgs.hideRepeats())}`,
+		),
 	filtersPage: link('/filters'),
 	scoresDocs: link(SCORES_DOCS_URL),
 })
@@ -178,7 +191,7 @@ export type Advance =
 // what an anchor points at: one data-tour element, or `{ all }` for every laid-out element carrying the id, whose
 // zone is the minimum rect containing them (a run of queue rows). A plain string resolves to the first laid-out
 // match, so an id shared by several elements still works as a single anchor.
-export type AnchorTarget = string | { all: string }
+export type AnchorTarget = string | { all: string } | { css: string }
 // static target, or a dynamic one (null = not present yet, the overlay waits)
 export type AnchorRef = AnchorTarget | ((run: RunStores) => AnchorTarget | null)
 
@@ -261,7 +274,7 @@ export function resolveAnchor(run: RunStores, anchor: AnchorRef | undefined): An
 
 // ============================== DOM inputs (tier-2 presentational state) ==============================
 
-// A Zus input for a data-tour id's elements, driven by one shared MutationObserver. Steps read presentational
+// A Zus input for a selector's elements, driven by one shared MutationObserver. Steps read presentational
 // state the house does not push into a store (data-state="open", aria-expanded) off the DOM, the same contract the
 // e2e suite and screen readers use. Consumed through StateSelector like any other input.
 //
@@ -271,9 +284,23 @@ export function resolveAnchor(run: RunStores, anchor: AnchorRef | undefined): An
 const domInputs = new Map<string, Rx.BehaviorSubject<Element[]>>()
 let domObserver: MutationObserver | null = null
 
-function queryAnchors(tourId: string): Element[] {
+function queryAnchors(selector: string): Element[] {
 	if (typeof document === 'undefined') return []
-	return [...document.querySelectorAll(`[data-tour="${CSS.escape(tourId)}"]`)]
+	return [...document.querySelectorAll(selector)]
+}
+
+// The CSS an anchor resolves to. A bare id is the common case and reads as one; `css` is the escape hatch for an
+// element the tour cannot tag, because the component is shared and tagging it would tag every instance -- scope
+// such a selector to something the tour does own, or it will match the wrong copy.
+export function anchorSelector(target: AnchorTarget): string {
+	if (typeof target === 'string') return `[data-tour="${CSS.escape(target)}"]`
+	if ('css' in target) return target.css
+	return `[data-tour="${CSS.escape(target.all)}"]`
+}
+
+// whether the target unions every laid-out match rather than resolving to the first
+export function anchorsAll(target: AnchorTarget): boolean {
+	return typeof target === 'object' && 'all' in target
 }
 
 function sameElements(a: Element[], b: Element[]): boolean {
@@ -283,8 +310,8 @@ function sameElements(a: Element[], b: Element[]): boolean {
 function ensureDomObserver() {
 	if (domObserver || typeof document === 'undefined') return
 	domObserver = new MutationObserver(() => {
-		for (const [id, subj] of domInputs) {
-			const els = queryAnchors(id)
+		for (const [selector, subj] of domInputs) {
+			const els = queryAnchors(selector)
 			if (!sameElements(els, subj.getValue())) subj.next(els)
 		}
 	})
@@ -296,11 +323,11 @@ function ensureDomObserver() {
 	})
 }
 
-export function domInput(tourId: string): Rx.BehaviorSubject<Element[]> {
-	let subj = domInputs.get(tourId)
+export function domInput(selector: string): Rx.BehaviorSubject<Element[]> {
+	let subj = domInputs.get(selector)
 	if (!subj) {
-		subj = new Rx.BehaviorSubject<Element[]>(queryAnchors(tourId))
-		domInputs.set(tourId, subj)
+		subj = new Rx.BehaviorSubject<Element[]>(queryAnchors(selector))
+		domInputs.set(selector, subj)
 		ensureDomObserver()
 	}
 	return subj

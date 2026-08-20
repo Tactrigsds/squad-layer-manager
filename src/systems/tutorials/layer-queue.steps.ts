@@ -40,9 +40,9 @@ function addDialogFrame(): Zus.AnyInput<any> {
 
 // presentational state the house does not push into a store: whether a window, dialog or menu carrying this
 // data-tour id is currently laid out. The engine's DOM input is the same contract the e2e suite reads.
-function domPresent(tourId: string, present = true): Tour.StateSelector<boolean> {
+function domPresent(target: Tour.AnchorTarget, present = true): Tour.StateSelector<boolean> {
 	return {
-		inputs: () => [Tour.domInput(tourId)],
+		inputs: () => [Tour.domInput(Tour.anchorSelector(target))],
 		select: (els: Element[]) => els.some((el) => el.getClientRects().length > 0) === present,
 	}
 }
@@ -75,6 +75,9 @@ function headLayer(s: any): L.KnownLayer | null {
 }
 
 const filterMenu = (s: any) => s?.filterMenu?.menuItems
+
+// the layer details window, for selectors scoping a shared control to this one
+const WINDOW = '[data-tour="layer-details-window"]'
 
 export const steps = Tour.defineSteps([
 	{ id: 'welcome', msg: M.welcome, advance: { type: 'next' } },
@@ -169,10 +172,11 @@ export const steps = Tour.defineSteps([
 	{
 		// a draggable window outlives the step that opened it, and it sits over the queue the next steps narrate
 		id: 'close-layer-details',
-		anchor: 'layer-info-tabs',
-		interact: 'free',
+		anchor: { css: `${WINDOW} [data-window-control="close"]` },
+		spotlight: 'layer-details-window',
+		interact: 'anchor-only',
 		msg: M.closeLayerDetails,
-		advance: { type: 'state', ...domPresent('layer-info-tabs', false) },
+		advance: { type: 'state', ...domPresent('layer-details-window', false) },
 	},
 	{ id: 'layer-context-menu', anchor: 'queue-layer-name', interact: 'free', msg: M.layerContextMenu, advance: { type: 'next' } },
 
@@ -261,6 +265,20 @@ export const steps = Tour.defineSteps([
 		advance: { type: 'next' },
 	},
 	{ id: 'results-repeats', anchor: 'add-pick', msg: M.AddLayersSequence.repeats, premise: addDialogOpen, advance: { type: 'next' } },
+	{
+		id: 'hide-repeats',
+		anchor: 'table-hide-repeats',
+		spotlight: 'add-pick',
+		interact: 'free',
+		msg: M.AddLayersSequence.hideRepeats,
+		premise: addDialogOpen,
+		advance: {
+			type: 'change',
+			inputs: () => [addDialogFrame()],
+			sample: (s: any) => s?.poolCheckboxes?.checkboxesState?.dnr ?? null,
+			advanced: (from, to) => from !== to,
+		},
+	},
 	{
 		id: 'click-to-select',
 		anchor: 'add-pick',
