@@ -78,6 +78,7 @@ const filterMenu = (s: any) => s?.filterMenu?.menuItems
 
 export const steps = Tour.defineSteps([
 	{ id: 'welcome', msg: M.welcome, advance: { type: 'next' } },
+	{ id: 'sandbox', anchor: 'server-name', msg: M.sandbox, advance: { type: 'next' } },
 	{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory, advance: { type: 'next' } },
 	{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel, advance: { type: 'next' } },
 

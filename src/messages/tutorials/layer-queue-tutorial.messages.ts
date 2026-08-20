@@ -1,6 +1,5 @@
 import type React from 'react'
 
-import * as DH from '@/lib/display-helpers'
 import * as L from '@/models/layer'
 import { def, rt } from '@/models/messages.models'
 
@@ -22,6 +21,12 @@ export const welcome = {
 	title: def('Welcome'),
 	body: def("Welcome to the layer queue tutorial. Here we'll learn the basics of editing SLM's layer queue."),
 }
+
+export const sandbox = {
+	title: def('Sandbox'),
+	body: def(rt('This tutorial is run in a <em>sandbox</em> environment, so we can experiment without affecting the server.')),
+}
+
 export const matchHistory = {
 	title: def('Match history'),
 	body: def('This is the match history panel. Right now, it only contains one entry -- the current match.'),
@@ -60,8 +65,8 @@ export const layerAnatomy = {
     <li>the map, gamemode and layer version, written as one name: <code>{layerName}</code></li>
     <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>
 </ul>
-<p>SLM displays this one as <strong>{display}</strong>. Its <code>AdminSetNextLayer</code> syntax is <code>{command}</code>.</p>`,
-			{ layerName, team1, team2, display: DH.toShortLayerName(layer), command },
+<p>For this layer, the RCON command that will be run on the server is <code>{command}</code>.</p>`,
+			{ layerName, team1, team2, command },
 		)
 	}),
 }

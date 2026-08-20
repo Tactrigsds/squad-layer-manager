@@ -301,11 +301,13 @@ export default function NavBar() {
 					(() => {
 						const servers = settings.servers
 						return servers.length <= 1 ? (
-							<div className="font-medium text-sm">{selectedServer.displayName}</div>
+							<div data-tour="server-name" className="font-medium text-sm">
+								{selectedServer.displayName}
+							</div>
 						) : (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
-									<Button variant="outline">
+									<Button data-tour="server-name" variant="outline">
 										{selectedServer.displayName}
 										<Icons.ChevronDown className="ml-2 h-4 w-4" />
 									</Button>
