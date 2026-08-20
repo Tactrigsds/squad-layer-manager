@@ -3,7 +3,7 @@ import { z } from 'zod'
 // Mirrors sandbox.models.ts: schemas and metas only, so this stays importable from the client.
 // The executor (setup and stages) is src/systems/tutorials.server.ts.
 
-export const ScenarioIdSchema = z.enum(['layer-queue-basics'])
+export const ScenarioIdSchema = z.enum(['layer-queue'])
 export type ScenarioId = z.infer<typeof ScenarioIdSchema>
 
 // the wire carries stage ids as strings; the scenario validates them on arrival, as sandbox

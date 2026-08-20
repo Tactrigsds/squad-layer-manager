@@ -686,7 +686,7 @@ export function LayerTableControlPanel(props: {
 					<Separator orientation="vertical" className="h-full min-h-0" />
 
 					{/*--------- show selected ---------*/}
-					<div className="flex items-center space-x-1">
+					<div data-tour="table-show-selected" className="flex items-center space-x-1">
 						<Switch
 							id={showSelectedId}
 							checked={frameState.showSelectedLayers}

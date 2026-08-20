@@ -56,6 +56,7 @@ export function getTeamsDisplay(
 				layer={_partialLayer}
 				team={team}
 				showAltTeamIndicator={true}
+				normalized={displayLayersNormalized}
 				extraStyles={extraStyles}
 			/>
 		)
@@ -73,8 +74,11 @@ export function TeamFactionDisplay(props: {
 	// the live roster, which is what makes "current" true.
 	leadWithTeamName?: boolean
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>
+	// overrides the global displayTeamsNormalized setting, for a surface showing what the other rendering looks like
+	normalized?: boolean
 }) {
-	const displayTeamsNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const globalNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const displayTeamsNormalized = props.normalized ?? globalNormalized
 	const [partialLayer, error] = withThrown(() => (typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer))
 
 	if (error || !partialLayer) {

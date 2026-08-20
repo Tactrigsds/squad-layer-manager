@@ -631,6 +631,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<LayerDisplay
 							stores={props.stores}
 							droppable={true}
+							indicatorsTourId={isTourRow ? 'layer-indicators' : undefined}
 							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 							badges={badges}
 							tags={
@@ -685,7 +686,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					{sourceDisplay && (
 						<>
 							<Separator orientation="vertical" />
-							{sourceDisplay}
+							<span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>
 						</>
 					)}
 					<StartActivityInteraction
@@ -694,6 +695,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
 						preload="viewport"
 						render={Button}
+						data-tour={isTourRow ? 'queue-item-edit' : undefined}
 						variant="ghost"
 						size="icon"
 						title={tr.text(LL_Msgs.editItem())}
@@ -722,7 +724,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<Icons.X />
 					</Button>
 					<ItemDropdown {...dropdownProps}>
-						<Button {...editButtonProps()} variant="ghost" size="icon">
+						<Button {...editButtonProps()} data-tour={isTourRow ? 'queue-item-menu' : undefined} variant="ghost" size="icon">
 							<Icons.EllipsisVertical />
 						</Button>
 					</ItemDropdown>

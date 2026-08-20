@@ -367,6 +367,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 											// icon-only, so it needs a name of its own: the tooltip is not one
 											aria-label={tr.text(LL_Msgs.toggleForceSave())}
 											aria-pressed={forceSave}
+											data-tour="queue-force-save"
 											onClick={() => setForceSave(!forceSave)}
 										>
 											<Icons.Sword />
@@ -414,6 +415,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					})()}
 				</div>
 				<Button
+					data-tour="pool-settings"
 					size="icon"
 					variant="ghost"
 					title={tr.text(LL_Msgs.poolConfiguration())}

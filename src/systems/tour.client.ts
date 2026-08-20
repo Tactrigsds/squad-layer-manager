@@ -1,3 +1,4 @@
+import * as Icons from 'lucide-react'
 import * as React from 'react'
 
 import { frameManager } from '@/frames/frame-manager'
@@ -62,25 +63,85 @@ function releaseRun(run: RunStores) {
 
 type TextMsg = Msgs.Variants.Textable
 
-// the custom tags a step body may use: team names (t1/t2 raw slots, ta/tb normalized) and the monospace (1)/(2)
-// slot marks color their chunks with the real team colors; br is a line break for bodies with a display line
-export type TourTag = 't1' | 't2' | 'ta' | 'tb' | 'm1' | 'm2' | 'br'
+// The custom tags a step body may use, on top of the standard strong/em/code. Three groups:
+//   structure  p, ul, li, br -- the card body is a block, so multi-paragraph copy marks its own paragraphs
+//   teams      team1/team2 (raw slots) and teamA/teamB (normalized), plus mark1/mark2 for the (1)/(2) marks,
+//              all carrying the app's real team colours so the card matches what the queue renders
+//   icons      the icon of the control the copy is describing, rendered inline at text size, so the reader
+//              matches the sentence to the screen by shape. Written <grip></grip>: ICU has no self-closing tags.
+//   links      the in-app filters page and the layer data docs, both opened in a new tab so the tour, which
+//              pauses whenever the dashboard route is left, keeps running.
+export type TourTag =
+	| 'p'
+	| 'ul'
+	| 'li'
+	| 'br'
+	| 'team1'
+	| 'team2'
+	| 'teamA'
+	| 'teamB'
+	| 'mark1'
+	| 'mark2'
+	| 'grip'
+	| 'remove'
+	| 'swap'
+	| 'pencil'
+	| 'ellipsis'
+	| 'trash'
+	| 'dice'
+	| 'gear'
+	| 'sword'
+	| 'repeat'
+	| 'filtersPage'
+	| 'scoresDocs'
+
+const SCORES_DOCS_URL = 'https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/layer_data.md'
+
 const teamName =
 	(color: string): Msgs.TagRenderer =>
 	(chunks) =>
-		React.createElement('span', { style: { color } }, ...chunks)
+		React.createElement('span', { className: 'font-semibold', style: { color } }, ...chunks)
 const teamMark =
 	(color: string): Msgs.TagRenderer =>
 	(chunks) =>
 		React.createElement('span', { className: 'font-mono', style: { color } }, ...chunks)
+const block =
+	(tag: string): Msgs.TagRenderer =>
+	(chunks) =>
+		React.createElement(tag, null, ...chunks)
+// an icon tag carries no content; its chunks are the empty pair the ICU parser needs
+const icon =
+	(Component: React.ComponentType<{ className?: string }>, className?: string): Msgs.TagRenderer =>
+	() =>
+		React.createElement(Component, { className: `inline h-3.5 w-3.5 align-text-bottom ${className ?? ''}` })
+const link =
+	(href: string): Msgs.TagRenderer =>
+	(chunks) =>
+		React.createElement('a', { href, target: '_blank', rel: 'noopener noreferrer', className: 'underline' }, ...chunks)
+
 const tourTr = tr.withTags({
-	t1: teamName(DH.TEAM_COLORS.team1),
-	t2: teamName(DH.TEAM_COLORS.team2),
-	ta: teamName(DH.TEAM_COLORS.teamA),
-	tb: teamName(DH.TEAM_COLORS.teamB),
-	m1: teamMark(DH.TEAM_COLORS.team1),
-	m2: teamMark(DH.TEAM_COLORS.team2),
+	p: block('p'),
+	ul: block('ul'),
+	li: block('li'),
 	br: () => React.createElement('br'),
+	team1: teamName(DH.TEAM_COLORS.team1),
+	team2: teamName(DH.TEAM_COLORS.team2),
+	teamA: teamName(DH.TEAM_COLORS.teamA),
+	teamB: teamName(DH.TEAM_COLORS.teamB),
+	mark1: teamMark(DH.TEAM_COLORS.team1),
+	mark2: teamMark(DH.TEAM_COLORS.team2),
+	grip: icon(Icons.GripVertical),
+	remove: icon(Icons.X),
+	swap: icon(Icons.ArrowLeftRight),
+	pencil: icon(Icons.Pencil),
+	ellipsis: icon(Icons.EllipsisVertical),
+	trash: icon(Icons.Trash),
+	dice: icon(Icons.Dices),
+	gear: icon(Icons.Settings),
+	sword: icon(Icons.Sword),
+	repeat: icon(Icons.Repeat, 'text-repeat-violation'),
+	filtersPage: link('/filters'),
+	scoresDocs: link(SCORES_DOCS_URL),
 })
 
 // a step's card copy: a title and a body. Bundled defs from TUT_Msgs are exactly this shape; a body may be rich

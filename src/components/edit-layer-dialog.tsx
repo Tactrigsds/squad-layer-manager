@@ -76,7 +76,7 @@ const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function 
 	}
 
 	return (
-		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
+		<HeadlessDialogContent data-tour="edit-layer-dialog" className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
 			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
 					<HeadlessDialogTitle>{tr.text(L_Msgs.editLayerTitle())}</HeadlessDialogTitle>

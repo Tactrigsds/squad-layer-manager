@@ -29,6 +29,8 @@ export default function LayerDisplay(props: {
 	backfillLayerId?: L.LayerId
 	allowShowInfo?: boolean
 	droppable?: boolean
+	// data-tour for the indicator cluster, so the tour can point at it on the one row it is narrating
+	indicatorsTourId?: string
 	className?: string
 	ref?: React.Ref<HTMLDivElement>
 	// only available when rendered within a servers/$serverId context (e.g. teams/queue/match-history panels) -- omit
@@ -55,6 +57,7 @@ export default function LayerDisplay(props: {
 				layerItem={props.item}
 				matchDescriptors={statusData.matchingDescriptors}
 				itemParity={teamParity}
+				tourId={props.indicatorsTourId}
 			/>,
 		)
 	}

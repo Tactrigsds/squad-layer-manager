@@ -106,15 +106,17 @@ function LayerInfoWindow({ layerId, tab: initialTab }: LayerInfoWindowProps) {
 		<div className="min-w-0 min-h-0 flex flex-col">
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>{DH.displayLayer(layerId)}</DraggableWindowTitle>
-				<TabsList
-					options={[
-						{ value: 'details', label: 'Details' },
-						{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
-					]}
-					active={tab}
-					setActive={setTab}
-					className="h-7 ml-2"
-				/>
+				<span data-tour="layer-info-tabs">
+					<TabsList
+						options={[
+							{ value: 'details', label: 'Details' },
+							{ value: 'scores', label: 'Scores', disabled: !hasScores && 'Scores are not available for this layer' },
+						]}
+						active={tab}
+						setActive={setTab}
+						className="h-7 ml-2"
+					/>
+				</span>
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
@@ -177,7 +179,12 @@ export function LayerInfo(props: LayerInfoContentProps) {
 	}
 
 	return (
-		<div ref={contentRef} className="space-y-3 data-[tab=scores]:max-w-200 data-[tab=details]:max-w-200 mx-auto" data-tab={activeTab}>
+		<div
+			ref={contentRef}
+			data-tour={activeTab === 'scores' ? 'layer-scores' : 'layer-details'}
+			className="space-y-3 data-[tab=scores]:max-w-200 data-[tab=details]:max-w-200 mx-auto"
+			data-tab={activeTab}
+		>
 			<div className="flex justify-between items-center space-x-2">
 				<div className="flex items-center gap-3">
 					{!props.hideLayerName && <MapLayerDisplay layer={L.toLayer(props.layerId).Layer} extraLayerStyles={undefined} />}

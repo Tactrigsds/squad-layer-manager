@@ -94,7 +94,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							{
 								value: 'queue',
 								label: (
-									<div className="flex justify-between">
+									<div data-tour="queue-editors" className="flex justify-between">
 										<span>{tr.text(APP_Msgs.queueTab(queueLength))}</span>
 										<UserPresencePanel
 											stores={props.stores}
