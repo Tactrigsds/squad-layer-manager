@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
-import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import { rootRouter } from '@/root-router'
@@ -33,15 +32,26 @@ function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
 			setEls([])
 			return
 		}
-		const pick = (list: Element[]) => {
-			if (all) return list.filter(isLaidOut)
-			const first = list.find(isLaidOut) ?? list[0]
-			return first ? [first] : []
+		// Which of the matches is laid out is a question about layout, and the DOM input only reports when the set of
+		// matching ELEMENTS changes. A dialog mounts its visible copy alongside a hidden one and lays it out a frame
+		// later: picking once on that mutation locks onto the hidden copy, whose rect is 0x0, and nothing ever moves
+		// it -- the step then renders with no ring and a centred card. So re-pick every frame and let the choice
+		// follow the layout rather than the mutation that preceded it.
+		let list: Element[] = []
+		let raf = 0
+		const pick = () => {
+			const next = all ? list.filter(isLaidOut) : ([list.find(isLaidOut) ?? list[0]].filter(Boolean) as Element[])
+			setEls((prev) => (prev.length === next.length && prev.every((el, i) => el === next[i]) ? prev : next))
+			raf = requestAnimationFrame(pick)
 		}
-		const sub = Tour.domInput(selector)
-			.pipe(Rx.map(pick))
-			.subscribe((next) => setEls((prev) => (prev.length === next.length && prev.every((el, i) => el === next[i]) ? prev : next)))
-		return () => sub.unsubscribe()
+		const sub = Tour.domInput(selector).subscribe((next) => {
+			list = next
+		})
+		raf = requestAnimationFrame(pick)
+		return () => {
+			sub.unsubscribe()
+			cancelAnimationFrame(raf)
+		}
 	}, [selector, all])
 	return els
 }
