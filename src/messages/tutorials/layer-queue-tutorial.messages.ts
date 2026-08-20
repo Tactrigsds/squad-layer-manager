@@ -20,10 +20,9 @@ export const welcome = {
 	title: def('Welcome'),
 	body: def("Welcome to the layer queue tutorial. Here we'll learn the basics of editing SLM's layer queue."),
 }
-
-export const nowPlaying = {
-	title: def("What's playing now"),
-	body: def('This is the match running on the server right now: its map, its factions, and who is in it.'),
+export const matchHistory = {
+	title: def('Match history'),
+	body: def('This is the match history panel. Right now, it only contains one entry -- the current match.'),
 }
 
 export const queuePanel = {

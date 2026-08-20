@@ -69,11 +69,11 @@ const filterMenu = (s: any) => s?.filterMenu?.menuItems
 
 export const steps = Tour.defineSteps([
 	{ id: 'welcome', msg: M.welcome, advance: { type: 'next' } },
-	{ id: 'now-playing', anchor: 'current-match', msg: M.nowPlaying, advance: { type: 'next' } },
+	{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory, advance: { type: 'next' } },
 	{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel, advance: { type: 'next' } },
 
 	// reading the queue, before any editing
-	{ id: 'queue-items', anchor: 'queue-layer-name', spotlight: 'queue-item', msg: M.queueItems, advance: { type: 'next' } },
+	{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems, advance: { type: 'next' } },
 	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge, advance: { type: 'next' } },
 	{ id: 'layer-anatomy', anchor: 'queue-layer-name', msg: M.layerAnatomy, advance: { type: 'next' } },
 	{
@@ -359,8 +359,8 @@ export const steps = Tour.defineSteps([
 		premise: editingQueue,
 		advance: { type: 'next' },
 	},
-	// the whole history, not one row: a fresh sandbox has only the in-progress match, and past rows arrive later
-	{ id: 'replay-layer', anchor: 'match-history', msg: M.replayLayer, premise: editingQueue, advance: { type: 'next' } },
+	// a fresh sandbox holds only the in-progress match, so there is no finished row to point at
+	{ id: 'replay-layer', anchor: { all: 'match-history' }, msg: M.replayLayer, premise: editingQueue, advance: { type: 'next' } },
 	{
 		id: 'add-tag',
 		anchor: 'queue-layer-name',
