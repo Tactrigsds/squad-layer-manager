@@ -182,9 +182,7 @@ export function isMsg(value: unknown): value is Msg {
 }
 
 // distributes, so a builder returning different shapes from different branches promotes each
-type Promote<B> = B extends TString ? { $msg: 'msg'; text: B }
-	: B extends TRichText ? { $msg: 'msg'; richText: B }
-	: B & { $msg: 'msg' }
+type Promote<B> = B extends TString ? { $msg: 'msg'; text: B } : B extends TRichText ? { $msg: 'msg'; richText: B } : B & { $msg: 'msg' }
 
 function mkText(original: string, args?: TArgs, context?: string): Variants.Textable {
 	return { $msg: 'msg', text: { $msg: 'string', original, args, context } }
