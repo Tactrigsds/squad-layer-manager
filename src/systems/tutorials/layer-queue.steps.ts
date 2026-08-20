@@ -118,10 +118,13 @@ export const steps = Tour.defineSteps([
 		},
 		advance: { type: 'next' },
 	},
+	// both cards tell the reader to hover the indicator, so the anchor has to stay reachable: the default
+	// interact blocks the whole page, which leaves the instruction doing nothing
 	{
 		id: 'filter-indicators',
 		anchor: 'layer-indicators',
 		spotlight: 'queue-item',
+		interact: 'anchor-only',
 		msg: M.filterIndicators,
 		advance: { type: 'next' },
 	},
@@ -129,6 +132,7 @@ export const steps = Tour.defineSteps([
 		id: 'repeat-indicators',
 		anchor: 'layer-indicators',
 		spotlight: 'queue-item',
+		interact: 'anchor-only',
 		msg: M.repeatIndicators,
 		advance: { type: 'next' },
 	},
@@ -143,7 +147,7 @@ export const steps = Tour.defineSteps([
 	},
 	{
 		id: 'layer-details',
-		anchor: 'layer-details',
+		anchor: 'layer-details-window',
 		msg: M.LayerDetails.layerDetails,
 		premise: domPresent('layer-details'),
 		advance: { type: 'next' },
@@ -157,7 +161,7 @@ export const steps = Tour.defineSteps([
 	},
 	{
 		id: 'layer-scores',
-		anchor: 'layer-scores',
+		anchor: 'layer-details-window',
 		msg: M.LayerDetails.layerScores,
 		premise: domPresent('layer-scores'),
 		advance: { type: 'next' },

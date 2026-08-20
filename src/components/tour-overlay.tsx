@@ -139,7 +139,9 @@ function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }
 
 	return createPortal(
 		<BaseZIndexContext.Provider value={zIndex}>
-			<div style={{ position: 'fixed', inset: 0, zIndex, pointerEvents: 'none' }}>{body}</div>
+			<div data-tour-overlay="" style={{ position: 'fixed', inset: 0, zIndex, pointerEvents: 'none' }}>
+				{body}
+			</div>
 		</BaseZIndexContext.Provider>,
 		document.body,
 	)
