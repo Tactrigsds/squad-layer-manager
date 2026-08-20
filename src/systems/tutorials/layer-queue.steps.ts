@@ -3,6 +3,7 @@ import React from 'react'
 import ShortLayerName from '@/components/short-layer-name'
 import * as Zus from '@/lib/zustand'
 import * as M from '@/messages/tutorials/layer-queue-tutorial.messages'
+import * as L from '@/models/layer'
 import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -64,6 +65,14 @@ const head = (s: any) => s.queue.layerList[0]
 const headTagCount = (s: any) => (head(s)?.tags?.length ?? 0) as number
 const headNoteCount = (s: any) => (head(s)?.notes?.length ?? 0) as number
 const headIsGenerated = (s: any) => head(s)?.source?.type === 'generated'
+// the head as a parsed layer, for the cards whose examples are read off it. A raw layer id has no configuration to
+// take apart, so those cards render without their example rather than guessing one.
+function headLayer(s: any): L.KnownLayer | null {
+	const item = head(s)
+	if (!item) return null
+	const layer = L.toLayer(item.layerId)
+	return L.isKnownLayer(layer) ? layer : null
+}
 
 const filterMenu = (s: any) => s?.filterMenu?.menuItems
 
@@ -75,7 +84,21 @@ export const steps = Tour.defineSteps([
 	// reading the queue, before any editing
 	{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems, advance: { type: 'next' } },
 	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge, advance: { type: 'next' } },
-	{ id: 'layer-anatomy', anchor: 'queue-layer-name', msg: M.layerAnatomy, advance: { type: 'next' } },
+	{
+		id: 'layer-anatomy',
+		anchor: 'queue-layer-name',
+		msg: {
+			inputs: (run) => [run.squadServer],
+			select: (s: any) => {
+				const layer = headLayer(s)
+				return {
+					title: tr.text(M.layerAnatomy.title()),
+					body: layer ? Tour.richText(M.layerAnatomy.body(layer)) : null,
+				}
+			},
+		},
+		advance: { type: 'next' },
+	},
 	{
 		// the whole run of tagged rows, so the alternating (1)/(2) marks down the queue are visible in one zone. The
 		// card's example is the queue's own head layer rendered with normalization off, beside the normalized one.

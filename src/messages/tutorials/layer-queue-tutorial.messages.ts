@@ -1,5 +1,7 @@
 import type React from 'react'
 
+import * as DH from '@/lib/display-helpers'
+import * as L from '@/models/layer'
 import { def, rt } from '@/models/messages.models'
 
 // Copy for the layer queue tutorial. Each entry is one step's card: a title and a body, both message factories,
@@ -44,15 +46,24 @@ export const nextBadge = {
 	body: def("This badge means SLM has already set this layer configuration as the server's next layer."),
 }
 
+// Every example is read off the layer the card points at. The per-team tokens come out of the command rather than
+// off the layer, so the bullets and the command line cannot disagree: the command resolves a team's default unit
+// and rewrites FRAAS to RAAS, and a hand-built `Faction+Unit` would show neither.
 export const layerAnatomy = {
 	title: def('Anatomy of a layer configuration'),
-	body: def(
-		rt(`A layer configuration is made up of:
+	body: def((layer: L.KnownLayer) => {
+		const command = L.getLayerCommand(layer, 'set-next')
+		const [, layerName, team1, team2] = command.split(' ')
+		return rt(
+			`A layer configuration is made up of:
 <ul>
-<li>the map, gamemode and layer version, written as one name: <code>Gorodok_RAAS_v1</code></li>
-<li>the faction and unit (subfaction) for each team</li>
-</ul>`),
-	),
+    <li>the map, gamemode and layer version, written as one name: <code>{layerName}</code></li>
+    <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>
+</ul>
+<p>SLM displays this one as <strong>{display}</strong>. Its <code>AdminSetNextLayer</code> syntax is <code>{command}</code>.</p>`,
+			{ layerName, team1, team2, display: DH.toShortLayerName(layer), command },
+		)
+	}),
 }
 
 export const teamNormalize = {
@@ -63,7 +74,7 @@ export const teamNormalize = {
 		rt(
 			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll, so neither slot belongs to one group of players.</p>
 <p>To keep the queue and the match history readable, SLM <strong>normalizes</strong> the display: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>
-<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team say which raw slot that team holds in this match.</p>
+<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2></p>
 <p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>`,
 			{ denormalized },
 		),
