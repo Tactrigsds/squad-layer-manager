@@ -200,6 +200,15 @@ function buildSandboxSettings(owner: bigint, pacing: ScenarioDef<string>['pacing
 				...settings.queue.mainPool,
 				poolFilter: { filterId: ids.pool, mode: 'include' as const },
 				indicateMatches: [ids.indicator],
+				// The add walkthrough asks for one faction on both of its picks, so the reader's own additions repeat it
+				// within three. That is what the warnings-on-save step demonstrates: a queue that already violated a
+				// rule before the edit session warns about nothing, since only new violations stop a save. crossTeam,
+				// because consecutive items swap sides and the repeat would otherwise fall on the other persistent team.
+				repeatRules: [
+					{ label: 'Map', field: 'Map' as const, within: 4, autogen: true },
+					{ label: 'Layer', field: 'Layer' as const, within: 7, autogen: true },
+					{ label: 'Faction', field: 'Faction' as const, within: 3, autogen: true, warn: true, crossTeam: true },
+				],
 			},
 		},
 	}
