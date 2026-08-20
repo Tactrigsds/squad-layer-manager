@@ -631,12 +631,10 @@ export function parseRawLayerText(rawLayerText: string, components = StaticLayer
 		;[faction1, faction2] = parsedLayer.extraFactions.map((f): ParsedFaction => ({ faction: f, unit: 'CombinedArms' }))
 	} else if (config && !faction1String && !faction2String && config.Gamemode === 'Training') {
 		// training commands carry no faction arguments; the config's default factions are the factions
-		;[faction1, faction2] = config.teams.map(
-			(team): ParsedFaction => ({
-				faction: team.defaultFaction,
-				unit: lookupDefaultUnit(layerString, team.defaultFaction, components) ?? 'CombinedArms',
-			}),
-		)
+		;[faction1, faction2] = config.teams.map((team): ParsedFaction => ({
+			faction: team.defaultFaction,
+			unit: lookupDefaultUnit(layerString, team.defaultFaction, components) ?? 'CombinedArms',
+		}))
 	} else {
 		;[faction1, faction2] = parseLayerFactions(layerString, faction1String, faction2String, components)
 	}

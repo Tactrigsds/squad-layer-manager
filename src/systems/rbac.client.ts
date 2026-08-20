@@ -137,23 +137,17 @@ export namespace Sel {
 		RBAC.fromTracedPermissions(user.perms),
 	)
 
-	export const globalSettingsAccess = RSel.createDeepSelector(
-		[loggedInUserPerms],
-		(perms): GlobalSettingsAccess => ({
-			canRead: RBAC.canReadGlobalSettings(perms),
-			write: RBAC.globalSettingsWriteAccess(perms),
-		}),
-	)
+	export const globalSettingsAccess = RSel.createDeepSelector([loggedInUserPerms], (perms): GlobalSettingsAccess => ({
+		canRead: RBAC.canReadGlobalSettings(perms),
+		write: RBAC.globalSettingsWriteAccess(perms),
+	}))
 
 	export const serverSettingsAccess = RSel.memoizeFactory((serverId: string) =>
-		RSel.createDeepSelector(
-			[loggedInUserPerms],
-			(perms): ServerSettingsAccess => ({
-				canRead: RBAC.canReadServerSettings(perms, serverId),
-				write: RBAC.serverSettingsWriteAccess(perms, serverId),
-				sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
-			}),
-		),
+		RSel.createDeepSelector([loggedInUserPerms], (perms): ServerSettingsAccess => ({
+			canRead: RBAC.canReadServerSettings(perms, serverId),
+			write: RBAC.serverSettingsWriteAccess(perms, serverId),
+			sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
+		})),
 	)
 
 	// the simulation switch on its own, so a consumer that only offers to turn it off doesn't re-render on every

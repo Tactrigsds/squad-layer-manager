@@ -791,8 +791,8 @@ export function Comparison(props: {
 			const type = keepOp ? c.type : F.defaultCompType(newDomain)
 			const neg = keepOp ? c.neg : false
 			const slots = F.COMP_TYPE_DEFS[type].argSlots
-			const args = slots.map(
-				(slot, i): F.EditableArg => (i === 0 ? newAnchor : slot === 'values' ? { type: 'values' } : { type: 'value' }),
+			const args = slots.map((slot, i): F.EditableArg =>
+				i === 0 ? newAnchor : slot === 'values' ? { type: 'values' } : { type: 'value' },
 			)
 			return { type, neg, args }
 		})

@@ -5,8 +5,8 @@ import path from 'node:path'
 import { z } from 'zod'
 
 import * as Paths from '../../paths.ts'
-import * as ZodUtils from '../lib/zod-utils'
-import * as Cli from '../systems/cli.server'
+import * as ZodUtils from '../lib/zod-utils.ts'
+import * as Cli from '../systems/cli.server.ts'
 
 // how a var is written into the example env files, which are regenerated from this file on every dev boot
 // (see env-example.ts). `description` is a plain GlobalMeta field and becomes the comment above the var.

@@ -233,11 +233,10 @@ function collectMigrations(sqlDir: string, tsMigrations: TsMigration[]): Migrati
 			.map((f) => f.slice(0, -'.sql'.length)),
 	)
 	const tsByName = new Map(tsMigrations.map((m) => [m.name, m]))
-	return ordered.map(
-		(name): Migration =>
-			sqlNames.has(name)
-				? { name, kind: 'sql', sql: fs.readFileSync(path.join(sqlDir, `${name}.sql`), 'utf8') }
-				: { name, kind: 'ts', up: tsByName.get(name)!.up },
+	return ordered.map((name): Migration =>
+		sqlNames.has(name)
+			? { name, kind: 'sql', sql: fs.readFileSync(path.join(sqlDir, `${name}.sql`), 'utf8') }
+			: { name, kind: 'ts', up: tsByName.get(name)!.up },
 	)
 }
 
