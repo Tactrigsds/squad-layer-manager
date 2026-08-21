@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as Obj from '@/lib/object-utils'
 import * as FB from '@/models/filter-builders'
 import * as FE from '@/models/filter-edit.models'
-import type * as F from '@/models/filter.models'
+import * as F from '@/models/filter.models'
 
 // The reducer is copy-on-write, and ODSM replays it against several base states that share structure with
 // each other -- the optimistic one, the synced one, and on the server the authoritative one. A mutation of
@@ -15,6 +15,12 @@ const USER = 900000000000000001n
 
 function baseState(): FE.State {
 	return FE.localState('collab', FB.and([FB.eq('Gamemode', 'RAAS'), FB.eq('Map', 'Harju')]) as F.EditableFilterNode)
+}
+
+// a block with children of its own, so a clone has to carry more than one node
+function nestedState(): FE.State {
+	const filter = FB.and([FB.eq('Gamemode', 'RAAS'), FB.or([FB.eq('Map', 'Harju'), FB.eq('Map', 'Skorpo')])])
+	return FE.localState('collab', filter as F.EditableFilterNode)
 }
 
 // the tree mints its own node ids, so ops are aimed by position instead
@@ -36,6 +42,8 @@ const EVERY_OP: Array<(state: FE.State) => FE.NewClientOp> = [
 	(s) => ({ code: 'update-node', nodeId: idAt(s, [0]), node: { type: 'and' } }),
 	(s) => ({ code: 'set-comment', nodeId: idAt(s, [0]), comment: 'why this is here' }),
 	(s) => ({ code: 'move-node', nodeId: idAt(s, [1]), parentId: idAt(s, []), index: 0 }),
+	(s) => ({ code: 'add-node', parentId: idAt(s, []), nodeId: FE.createNodeId(), node: { type: 'and' }, index: 0 }),
+	(s) => ({ code: 'clone-node', nodeId: idAt(s, [1]), subtree: F.copySubtree(s.draft.tree, idAt(s, [1]))! }),
 	() => ({ code: 'set-meta', patch: { name: 'renamed' } }),
 	() => ({ code: 'save' }),
 ]
@@ -77,6 +85,39 @@ describe('the filter draft reducer', () => {
 		// a reference comparison -- so an op that re-sets a value it already holds has to return `state` itself
 		expect(() => apply(state, { code: 'set-comment', nodeId: id, comment: 'a note' })).toThrow(/operation rejected/)
 		expect(() => apply(state, { code: 'update-node', nodeId: id, node: state.draft.tree.nodes.get(id)! })).toThrow(/operation rejected/)
+	})
+
+	it('inserts at a position, shifting only the siblings after it', () => {
+		const start = baseState()
+		const first = idAt(start, [0])
+		const second = idAt(start, [1])
+		const inserted = FE.createNodeId()
+
+		const next = apply(start, { code: 'add-node', parentId: idAt(start, []), nodeId: inserted, node: { type: 'and' }, index: 1 })
+		expect(next.draft.tree.paths.get(inserted)).toEqual([1])
+		expect(next.draft.tree.paths.get(first)).toEqual([0])
+		expect(next.draft.tree.paths.get(second)).toEqual([2])
+	})
+
+	it('clones a subtree in below the original, with ids of its own', () => {
+		const start = nestedState()
+		const blockId = idAt(start, [1])
+		const subtree = F.copySubtree(start.draft.tree, blockId)!
+		expect(subtree.nodes.size).toBe(3)
+		for (const id of subtree.nodes.keys()) {
+			expect(start.draft.tree.nodes.has(id)).toBe(false)
+		}
+
+		// the copy is the original one place along: same shape, same nodes, under the new ids
+		const next = apply(start, { code: 'clone-node', nodeId: blockId, subtree })
+		expect(next.draft.tree.paths.get(blockId)).toEqual([1])
+		for (const [copiedId, relPath] of subtree.paths) {
+			expect(next.draft.tree.paths.get(copiedId)).toEqual([2, ...relPath])
+			expect(next.draft.tree.nodes.get(copiedId)).toEqual(start.draft.tree.nodes.get(idAt(start, [1, ...relPath])))
+		}
+
+		// an op carrying ids the tree already holds would overwrite live nodes, so it is refused
+		expect(() => apply(next, { code: 'clone-node', nodeId: blockId, subtree })).toThrow(/clone-node skipped/)
 	})
 
 	it('saves by adopting the draft, and resets by adopting the baseline', () => {

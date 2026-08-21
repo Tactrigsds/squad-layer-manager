@@ -217,12 +217,14 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	return (
 		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId} stores={props.stores}>
 			<BlockNodeControlPanel nodeId={props.nodeId} stores={props.stores} />
-			{immediateChildren.map((id) => {
+			{immediateChildren.map((id, index) => {
 				const dragItem: DND.DragItem = { type: 'filter-node', id }
 				return (
 					<React.Fragment key={id}>
 						<ChildNodeSeparator
 							item={{ type: 'relative-to-drag-item', slots: [{ position: 'before', dragItem }] }}
+							parentId={props.nodeId}
+							index={index}
 							stores={props.stores}
 						/>
 						<StoredParentNode store={nodeMapStore} nodeId={id} />
@@ -231,6 +233,8 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 			})}
 			<ChildNodeSeparator
 				item={{ type: 'relative-to-drag-item', slots: [{ position: 'on', dragItem: { id: props.nodeId, type: 'filter-node' } }] }}
+				parentId={props.nodeId}
+				index={immediateChildren.length}
 				stores={props.stores}
 			/>
 		</NodeWrapper>
@@ -239,19 +243,73 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 
 type InlineAddAction = { label: React.ReactNode; onSelect: () => void } | 'separator'
 
+// collapse only once focus has left the whole control, not when moving between its buttons
+function collapseOnFocusLeave(e: React.FocusEvent<HTMLElement>, collapse: () => void) {
+	if (!e.currentTarget.contains(e.relatedTarget as Node | null)) collapse()
+}
+
+// the kinds of node a block can hold. The block's own add button and the insert points between its
+// children share the list and differ only in where the new node lands.
+function blockAddActions(actions: EditFrame.BlockNodeActions, index?: number): InlineAddAction[] {
+	return [
+		{ label: 'condition block', onSelect: () => actions.addChild('and', index) },
+		'separator',
+		{ label: 'map', onSelect: () => actions.addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }, index) },
+		{ label: 'layer', onSelect: () => actions.addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }, index) },
+		{
+			label: 'gamemode',
+			onSelect: () => actions.addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }, index),
+		},
+		{
+			label: 'collection',
+			onSelect: () => actions.addSeeded(EFB.inValues('Collection'), { group: 'layer-identity', focus: 'operator' }, index),
+		},
+		{ label: 'matchup', onSelect: () => actions.addChild('allow-matchups', index) },
+		{ label: 'faction/unit', onSelect: () => actions.addSeeded(EFB.inValues(), { group: 'team' }, index) },
+		{
+			label: 'vehicle',
+			onSelect: () => actions.addSeeded(EFB.inValuesForTeamColumn('Vehicle'), { group: 'team', focus: 'values' }, index),
+		},
+		{ label: 'scores', onSelect: () => actions.addSeeded(EFB.comp(), { group: 'extra' }, index) },
+		{ label: 'select layers', onSelect: () => actions.addSeeded(EFB.inValues('id'), { autoOpenLayers: true }, index) },
+		'separator',
+		{ label: 'apply existing filter', onSelect: () => actions.addChild('included-in', index) },
+	]
+}
+
+function AddActionStrip(props: { actions: InlineAddAction[]; onSelected: () => void }) {
+	return (
+		<div className="flex items-center space-x-1 overflow-x-auto">
+			{props.actions.map((action, i) => {
+				// actions are a static, non-reordered config; a positional key is stable here
+				const key = action === 'separator' ? `sep-${i}` : typeof action.label === 'string' ? action.label : `action-${i}`
+				if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
+				return (
+					<Button
+						key={key}
+						size="sm"
+						variant="outline"
+						className="whitespace-nowrap"
+						onClick={() => {
+							action.onSelect()
+							props.onSelected()
+						}}
+					>
+						{action.label}
+					</Button>
+				)
+			})}
+		</div>
+	)
+}
+
 // a "+" button that reveals its actions inline to the right when opened, and collapses once focus
 // leaves the widget. replaces a popover/dropdown so a freshly added node's auto-opened editor isn't
 // slammed shut by the menu's focus-restore.
 function InlineAddButton(props: { actions: InlineAddAction[]; className?: string }) {
 	const [expanded, setExpanded] = React.useState(false)
 	return (
-		<div
-			className={cn('flex items-center space-x-1', props.className)}
-			onBlur={(e) => {
-				// collapse only once focus has left the whole control, not when moving between its buttons
-				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setExpanded(false)
-			}}
-		>
+		<div className={cn('flex items-center space-x-1', props.className)} onBlur={(e) => collapseOnFocusLeave(e, () => setExpanded(false))}>
 			<Button
 				className="min-h-0"
 				size="icon"
@@ -262,29 +320,7 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 			>
 				<Plus />
 			</Button>
-			{expanded && (
-				<div className="flex items-center space-x-1 overflow-x-auto">
-					{props.actions.map((action, i) => {
-						// actions are a static, non-reordered config; a positional key is stable here
-						const key = action === 'separator' ? `sep-${i}` : typeof action.label === 'string' ? action.label : `action-${i}`
-						if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
-						return (
-							<Button
-								key={key}
-								size="sm"
-								variant="outline"
-								className="whitespace-nowrap"
-								onClick={() => {
-									action.onSelect()
-									setExpanded(false)
-								}}
-							>
-								{action.label}
-							</Button>
-						)
-					})}
-				</div>
-			)}
+			{expanded && <AddActionStrip actions={props.actions} onSelected={() => setExpanded(false)} />}
 		</div>
 	)
 }
@@ -296,7 +332,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const isRootNode = nodePath.length === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
-	const { addChild, addSeeded, setBlockType } = actions.block
+	const { setBlockType } = actions.block
 	const blockTypeOptions = F.BLOCK_TYPES.map((type) => ({
 		value: type,
 		label: tr.text(F_Msgs.blockTypeNames[type]),
@@ -311,46 +347,33 @@ function BlockNodeControlPanel(props: NodeProps) {
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
 			/>
-			<InlineAddButton
-				actions={[
-					{ label: 'condition block', onSelect: () => addChild('and') },
-					'separator',
-					{ label: 'map', onSelect: () => addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }) },
-					{ label: 'layer', onSelect: () => addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }) },
-					{
-						label: 'gamemode',
-						onSelect: () => addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }),
-					},
-					{
-						label: 'collection',
-						onSelect: () => addSeeded(EFB.inValues('Collection'), { group: 'layer-identity', focus: 'operator' }),
-					},
-					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
-					{ label: 'faction/unit', onSelect: () => addSeeded(EFB.inValues(), { group: 'team' }) },
-					{ label: 'vehicle', onSelect: () => addSeeded(EFB.inValuesForTeamColumn('Vehicle'), { group: 'team', focus: 'values' }) },
-					{ label: 'scores', onSelect: () => addSeeded(EFB.comp(), { group: 'extra' }) },
-					{ label: 'select layers', onSelect: () => addSeeded(EFB.inValues('id'), { autoOpenLayers: true }) },
-					'separator',
-					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
-				]}
-			/>
+			<InlineAddButton actions={blockAddActions(actions.block)} />
 			<CommentButton nodeId={props.nodeId} stores={props.stores} />
 			{!isRootNode && (
-				<Button size="icon" variant="ghost" onClick={deleteNode}>
-					<Minus color="hsl(var(--destructive))" />
-				</Button>
+				<>
+					<DuplicateButton onClick={actions.common.duplicate} />
+					<Button size="icon" variant="ghost" onClick={deleteNode}>
+						<Minus color="hsl(var(--destructive))" />
+					</Button>
+				</>
 			)}
 		</div>
 	)
 }
 
+// The gap between two children: a drop target during a drag, and otherwise a place to add a node at
+// that exact position rather than at the end of the block. It grows while a drag is in flight, since
+// aiming at 6px of dead space is the hard part of reordering.
 function ChildNodeSeparator(props: {
 	// null means we're before the first item in the list
 	item: DND.DropItem
+	parentId: string
+	index: number
 	stores: EditFrame.KeyProp
 }) {
 	const dropProps = DndKit.useDroppable(props.item)
 	const activeItem = DndKit.useDragging()
+	const [expanded, setExpanded] = React.useState(false)
 	const activePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
 	const slot = props.item.slots[0]
 	const itemPath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString()))) ?? null
@@ -369,15 +392,46 @@ function ChildNodeSeparator(props: {
 		console.debug('item', props.item, 'Drop target', dropProps.isDropTarget, 'itemPath', itemPath, 'activePath', activePath)
 	}, [dropProps.isDropTarget, itemPath, activePath, props.item])
 
+	if (expanded) {
+		return (
+			<div className="flex min-w-0 items-center py-1" onBlur={(e) => collapseOnFocusLeave(e, () => setExpanded(false))}>
+				<AddActionStrip
+					actions={blockAddActions(EditFrame.getNodeActions(props.stores, props.parentId).block, props.index)}
+					onSelected={() => setExpanded(false)}
+				/>
+			</div>
+		)
+	}
+
+	const dragging = !!activeItem
 	return (
-		<Separator
-			ref={dropProps.ref}
-			className={cn(
-				Obj.deref('background', depthColors)[depth % depthColors.length],
-				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
-			)}
-			data-is-over={dropProps.isDropTarget && isValid}
-		/>
+		<div className="relative h-3 w-full min-w-0">
+			<button
+				type="button"
+				ref={dropProps.ref}
+				aria-label={tr.text(F_Msgs.insertCondition())}
+				onClick={() => setExpanded(true)}
+				data-is-over={dropProps.isDropTarget && isValid}
+				className={cn(
+					'group absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center gap-1',
+					// while dragging the target grows over the rows either side rather than pushing them apart,
+					// which would move the row the pointer is already aiming at. livePointerIntersection measures
+					// this element's live rect, so the bigger box counts immediately.
+					dragging ? 'h-7' : 'h-3',
+				)}
+			>
+				<Plus className={cn('size-3 shrink-0 text-muted-foreground opacity-0', !dragging && 'group-hover:opacity-100')} />
+				<span
+					className={cn(
+						Obj.deref('background', depthColors)[depth % depthColors.length],
+						'h-1.5 w-full min-w-0 rounded-full transition-opacity',
+						// dim while dragging so every landing spot is visible, solid once this one is the target
+						dragging ? 'opacity-30' : 'opacity-0 group-hover:opacity-60',
+						'group-data-[is-over=true]:opacity-100',
+					)}
+				/>
+			</button>
+		</div>
 	)
 }
 
@@ -517,6 +571,23 @@ function CommentButton(props: NodeProps) {
 	)
 }
 
+// on a block this copies the whole subtree, and the copy lands directly below the original
+function DuplicateButton(props: { onClick: () => void }) {
+	const label = tr.text(F_Msgs.duplicateNode())
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button size="icon" variant="ghost" aria-label={label} onClick={props.onClick}>
+					<Icons.Copy color="hsl(var(--muted-foreground))" />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p>{label}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
 export function LeafFilterNode(props: NodeProps) {
 	const editedFilterId = Zus.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
@@ -528,6 +599,7 @@ export function LeafFilterNode(props: NodeProps) {
 	const opCluster = depth > 0 && (
 		<>
 			<CommentButton nodeId={props.nodeId} stores={props.stores} />
+			<DuplicateButton onClick={actions.common.duplicate} />
 			<Button
 				size="icon"
 				variant="ghost"
