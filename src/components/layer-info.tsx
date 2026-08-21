@@ -21,7 +21,7 @@ import type * as LayerInfoDialogClient from '@/systems/layer-info-dialog.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
-import type { LayerInfoWindowProps } from './layer-info-window.helpers'
+import { type LayerInfoWindowProps, pairedScoreDimensions } from './layer-info-window.helpers'
 import MapLayerDisplay from './map-layer-display.tsx'
 import { Button, buttonVariants } from './ui/button.tsx'
 import {
@@ -595,11 +595,7 @@ function ScoreGrid({
 	scores: LC.PartitionedScores
 	layerDetails?: { layer: L.KnownLayer; team1?: L.FactionUnitConfig; team2?: L.FactionUnitConfig; layerConfig?: L.LayerConfig }
 }) {
-	// Only render dimensions defined in score-ranges.json paired section
-	const pairedFields = new Set(scoreRanges.paired.map((range) => range.field))
-	const zScoreTypes = Object.keys(scores.diffs)
-		.filter((score) => score !== 'Balance_Differential' && pairedFields.has(score))
-		.sort()
+	const zScoreTypes = pairedScoreDimensions(scores)
 	const otherScores = Object.keys(scores.other)
 
 	// Get team roles for headers
@@ -676,6 +672,7 @@ function ZScoreChart({ scoreTypes, scores }: { scoreTypes: string[]; scores: LC.
 		// name, chart and numbers are rows of one grid, so a name that wraps in a narrow column moves every
 		// column's chart down together rather than leaving a ragged edge
 		<div
+			data-tour="layer-score-categories"
 			className="grid justify-center gap-x-4"
 			style={{
 				gridTemplateColumns: `auto repeat(${scoreTypes.length}, minmax(0, ${Z_COLUMN_WIDTH}px))`,

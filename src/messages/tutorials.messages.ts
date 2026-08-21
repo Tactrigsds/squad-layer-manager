@@ -21,6 +21,18 @@ export const completed = def('Completed')
 export const inProgress = def('In progress')
 export const noneAvailable = def('No tutorials are available on this install.')
 
+// The dialog a page opens with the tutorials it recommends. Dismissing it is per user and permanent, so the
+// wording has to be clear that this is the last time it asks.
+export const recommendedTitle = def((page: string) => t('Tutorials for the {page}', { page }))
+export const recommendedBlurb = def("It's recommended that you complete these tutorials:")
+export const dontShowAgain = def("Don't show this again")
+export const notNow = def('Not now')
+
+// What a page is called in that dialog's title, keyed by surface id.
+export const surfaces = {
+	'server-dashboard': def('server dashboard'),
+}
+
 // A tutorial's name and its one-line summary, keyed by scenario id. The server advertises which scenarios exist
 // and how long each takes; what they are called is copy, so it lives here.
 export const scenarios = {
