@@ -68,8 +68,9 @@ function createActivityLoaderConfig<Name extends string, Key extends ST.Match.No
 
 export const ACTIVITY_LOADER_CONFIGS = [
 	createActivityLoaderConfig('selectLayers', (s) => {
-		const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
-		if (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM') return { serverId: s.opts.serverId, ...node }
+		const serverId = UP.activityServerId(s)
+		const node = UP.editingQueueNode(s)?.chosen
+		if (serverId && (node?.id === 'ADDING_ITEM' || node?.id === 'EDITING_ITEM')) return { serverId, ...node }
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -102,8 +103,9 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('genVote', (s) => {
-		const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
-		if (node?.id === 'GENERATING_VOTE') return { serverId: s.opts.serverId, ...node }
+		const serverId = UP.activityServerId(s)
+		const node = UP.editingQueueNode(s)?.chosen
+		if (serverId && node?.id === 'GENERATING_VOTE') return { serverId, ...node }
 		return undefined
 	})({
 		unloadOnLeave: true,
@@ -119,7 +121,7 @@ export const ACTIVITY_LOADER_CONFIGS = [
 		},
 	}),
 	createActivityLoaderConfig('pasteRotation', (s) => {
-		const node = UP.Trans.editingQueue(s.opts.serverId).match(s)?.chosen
+		const node = UP.editingQueueNode(s)?.chosen
 		if (node?.id === 'PASTE_ROTATION') return node
 		return undefined
 	})({
@@ -194,15 +196,9 @@ function createPresenceStore() {
 				const layerRequestEditors = new Set<USR.UserId>()
 				for (const client of presence.values()) {
 					const activity = client.activityState
-					if (activity && UP.Trans.editingQueue(activity.opts.serverId).match(activity)) {
-						editors.add(client.userId)
-					}
-					if (activity && UP.Trans.editingTeamswaps(activity.opts.serverId).match(activity)) {
-						teamswapEditors.add(client.userId)
-					}
-					if (activity && UP.Trans.editingLayerRequests(activity.opts.serverId).match(activity)) {
-						layerRequestEditors.add(client.userId)
-					}
+					if (UP.editingQueueNode(activity)) editors.add(client.userId)
+					if (UP.editingTeamswapsNode(activity)) teamswapEditors.add(client.userId)
+					if (UP.editingLayerRequestsNode(activity)) layerRequestEditors.add(client.userId)
 				}
 				if (!Obj.deepEqual(editors, state.editors)) {
 					toUpdate.editors = editors
@@ -336,10 +332,26 @@ export namespace Actions {
 		if (updates.length > 0) updateActivity(...updates)
 	}
 
+	// Establishes the local client's presence on a filter page. Idempotent, so a re-render or a navigation
+	// back to a filter already being edited doesn't clear the editing session.
+	export function ensureOnFilter(filterId: string) {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+		if (UP.Trans.onFilter(filterId).match(activity)) return
+		updateActivity({ code: 'enter-filter', filterId })
+	}
+
 	// Registers the local client as editing, so an edit made without pressing "Start Editing" still claims
 	// an editing session. Idempotent, so they never clobber a sub-activity already in progress.
 	export function ensureEditingQueue(serverId: string) {
 		ensureEditing(UP.Trans.editingQueue(serverId))
+	}
+
+	// Holding an editing session is what keeps a filter's shared draft alive: once the last one goes away the
+	// server discards it (see editingFilterAbandoned$).
+	export function ensureEditingFilter(filterId: string) {
+		ensureEditing(UP.Trans.editingFilter(filterId))
 	}
 
 	export function ensureEditingLayerRequests(serverId: string) {
@@ -384,15 +396,13 @@ export function useItemPresence(itemId: LL.ItemId) {
 		Store,
 		Zus.useDeep((state) => {
 			const res = MapUtils.find(state.presence, (_, v) => {
-				const root = v.activityState
-				const activity = root ? UP.Trans.editingQueue(root.opts.serverId).match(root)?.chosen : null
+				const activity = UP.editingQueueNode(v.activityState)?.chosen
 				return !!activity && UP.isItemOwnedActivity(activity) && activity.opts.itemId === itemId
 			})
 			if (!res) return [undefined, undefined] as const
-			const root = res[1].activityState!
 			const presence = {
 				...res?.[1],
-				itemActivity: UP.Trans.editingQueue(root.opts.serverId).match(root)!.chosen as UP.ItemOwnedActivity,
+				itemActivity: UP.editingQueueNode(res[1].activityState)!.chosen as UP.ItemOwnedActivity,
 			}
 			if (!presence) return [undefined, undefined] as const
 			const hovered = state.hoveredActivityUserId === presence.userId
@@ -453,9 +463,7 @@ export namespace Sel {
 	}
 
 	export const isEditing = (userId: USR.UserId) => (store: Store) => {
-		const presence = userPresence(userId)(store)
-		const activity = presence?.activityState
-		return activity ? UP.Trans.editingQueue(activity.opts.serverId).match(activity) : null
+		return UP.editingQueueNode(userPresence(userId)(store)?.activityState)
 	}
 
 	export const activityPresent = (targetActivity: UP.RootActivity) => (state: Store) => {
@@ -594,9 +602,8 @@ export async function setup() {
 	settingsModified$.pipe(Rx.withLatestFrom(wsClientId$)).subscribe(([modified, wsClientId]) => {
 		try {
 			const currentActivity = Store.getState().presence.get(wsClientId)?.activityState
-			const inChangingSettingsActivity = !!(
-				currentActivity && UP.Trans.changingQueueSettings(currentActivity.opts.serverId).match(currentActivity)
-			)
+			const currentServerId = UP.activityServerId(currentActivity)
+			const inChangingSettingsActivity = !!(currentServerId && UP.Trans.changingQueueSettings(currentServerId).match(currentActivity))
 			if (!modified && inChangingSettingsActivity) {
 				Actions.updateActivity({ code: 'clear-changing-queue-settings' })
 			}
