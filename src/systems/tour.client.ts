@@ -709,8 +709,14 @@ export namespace Actions {
 	export const complete = doComplete
 }
 
-// console access for dev-instance verification; the launcher button is the UI equivalent
-if (import.meta.env.DEV && typeof window !== 'undefined') (window as any).__tourActions = Actions
+// console access for dev-instance verification: the tour's controls and the run's data sources
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+	;(window as any).__tourActions = Actions
+	;(window as any).__tourRun = () => {
+		const run = activeRun()
+		return run && { run, squadServer: frameManager.getState(run.squadServer) }
+	}
+}
 
 function teardown() {
 	abortJump()
