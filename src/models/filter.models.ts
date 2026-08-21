@@ -307,6 +307,32 @@ export type EditableFilterNode =
 
 export type ShallowEditableFilterNode = EditableFilterNodeCommon | { type: BlockType; comment?: string }
 
+export const EditableApplyFilterNodeSchema = z.object({
+	type: z.enum(APPLY_FILTER_TYPES),
+	filterId: z.lazy(() => FilterEntityIdSchema).optional(),
+	comment: CommentSchema,
+}) satisfies z.ZodType<EditableApplyFilterNode, unknown>
+
+export const EditableMatchupNodeSchema = z.discriminatedUnion('type', [AllowMatchupsNodeSchema, DisallowMatchupsNodeSchema])
+
+// the editable tree crosses the wire as filter-edit ops, so the partial forms need schemas of their own:
+// FilterNodeSchema rejects the half-filled nodes an editing session is mostly made of
+export const ShallowEditableFilterNodeSchema = z.union([
+	EditableCompNodeSchema,
+	EditableApplyFilterNodeSchema,
+	EditableMatchupNodeSchema,
+	z.object({ type: z.enum(BLOCK_TYPES), comment: CommentSchema }),
+]) satisfies z.ZodType<ShallowEditableFilterNode, unknown>
+
+export const EditableFilterNodeSchema: z.ZodType<EditableFilterNode> = z.lazy(() =>
+	z.union([
+		EditableCompNodeSchema,
+		EditableApplyFilterNodeSchema,
+		EditableMatchupNodeSchema,
+		z.object({ type: z.enum(BLOCK_TYPES), children: z.array(EditableFilterNodeSchema), comment: CommentSchema }),
+	]),
+) as z.ZodType<EditableFilterNode>
+
 export type ShallowEditableFilterNodeOfType<T extends NodeType> = Extract<ShallowEditableFilterNode, { type: T }>
 export type EditableFilterNodeOfType<T extends NodeType> = Extract<EditableFilterNode, { type: T }>
 export type EditableBlockNode = Extract<EditableFilterNode, { type: BlockType }>
@@ -840,6 +866,11 @@ export type FilterNodeTree = {
 	nodes: Map<string, ShallowEditableFilterNode>
 	paths: Map<string, Sparse.NodePath>
 }
+
+export const FilterNodeTreeSchema = z.object({
+	nodes: z.map(z.string(), ShallowEditableFilterNodeSchema),
+	paths: z.map(z.string(), z.array(z.number().int().min(0))),
+}) satisfies z.ZodType<FilterNodeTree, unknown>
 
 export function* iterChildIdsForPath(tree: FilterNodeTree, targetPath: Sparse.NodePath) {
 	for (const [id, path] of tree.paths.entries()) {
