@@ -31,6 +31,7 @@
 		]
 	],
 	" with {weapon}": [" with ", ["weapon"]],
+	"'{{arg1}}' 2h '{{rest2}}'": "{{arg1}} 2h {{rest2}}",
 	"(diff: {value})": ["(diff: ", ["value"], ")"],
 	"({action} {source}{nextLayer})": ["(", ["action"], " ", ["source"], ["nextLayer"], ")"],
 	"({actor} warned {warnee})": ["(", ["actor"], " warned ", ["warnee"], ")"],
@@ -182,6 +183,7 @@
 		", but no reasons are configured for it (see Admin Action Reasons in settings)."
 	],
 	"A reason is required for {actionName}.": ["A reason is required for ", ["actionName"], "."],
+	"A template over the words typed after the trigger, and the numbers count those words: '{{arg1}}' is the first one typed, '{{rest2}}' the second onwards. Pinned text is never typed, so no placeholder refers to it. '{{^arg2}}'default'{{/arg2}}' fills a word in when it is left out.": "A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, {{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. {{^arg2}}default{{/arg2}} fills a word in when it is left out.",
 	"Add BattleMetrics flags to {targetSubject}.": ["Add BattleMetrics flags to ", ["targetSubject"], "."],
 	"Add {column} value": ["Add ", ["column"], " value"],
 	"AdminPing from [T:{teamId} {playerName}]: {message}": ["AdminPing from [T:", ["teamId"], " ", ["playerName"], "]: ", ["message"]],
