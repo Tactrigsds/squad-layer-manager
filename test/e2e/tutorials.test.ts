@@ -27,6 +27,7 @@ const STEP = {
 	addedLayers: 'Your added layers',
 	removeItem: 'Remove an item',
 	swapTeams: 'Swap the teams',
+	warningsOnSave: 'Warnings on save',
 }
 
 // the two layers the add walkthrough asks for, which a jump into the editing region installs as unsaved additions
@@ -138,6 +139,14 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		await overlay(page).getByRole('button', { name: 'Reset this step' }).click()
 		await onStep(page, STEP.removeItem)
 		await expect(page.getByRole('tab', { name: 'Queue (5)' })).toBeVisible()
+	})
+
+	await test.step('the save-warnings step surfaces warnings the reader caused', async () => {
+		// The one step whose subject is computed rather than installed: the picks the checkpoint adds repeat a
+		// faction, and the card has nothing to point at unless the statuses have caught up and the panel agrees
+		// the edit session introduced them.
+		await jumpTo(page, STEP.warningsOnSave)
+		await expect(page.locator('[data-tour="save-warnings"]').first()).toBeVisible()
 	})
 
 	await test.step('a backward jump undoes what the later steps set up', async () => {
