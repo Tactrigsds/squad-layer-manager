@@ -17,7 +17,6 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Obj from '@/lib/object-utils'
-import { useRefConstructor } from '@/lib/react'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
 import type * as L from '@/models/layer'
@@ -52,13 +51,13 @@ type GenVoteDialogContentProps = {
 }
 
 const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenVoteDialogContent(props) {
-	const frameInputRef = useRefConstructor(() => {
+	const [frameInput] = React.useState(() => {
 		if (props.stores.genVote) return undefined
 		return GenVoteFrame.createInput({ cursor: props.cursor, server: props.stores.squadServer })
 	})
 	const frameKey = useFrameLifecycle(GenVoteFrame.frame, {
 		frameKey: props.stores.genVote,
-		input: frameInputRef.current,
+		input: frameInput,
 		equalityFn: Obj.deepEqual,
 	})
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider

@@ -75,7 +75,7 @@ function RouteComponent() {
 	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
 	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
-	const pageId = useRefConstructor(() => createId(4)).current
+	const [pageId] = React.useState(() => createId(4))
 	// non-null while the new-server form is open; a fresh nonce per "Add Managed Server" click yields a clean frame instance
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
