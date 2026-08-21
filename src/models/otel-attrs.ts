@@ -134,6 +134,7 @@ export namespace UserPresence {
 export namespace Filter {
 	export const ID = 'slm.filter.id'
 	export const OUTCOME = 'slm.filter.outcome'
+	export const EDIT_OP_CODES = 'slm.filter.edit_op_codes'
 }
 
 export namespace MatchHistory {

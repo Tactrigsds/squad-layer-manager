@@ -1228,6 +1228,8 @@ export type Ctx = CS.Ctx & {
 		session: ODSM.Server.Session<Op, State>
 		op$: IsolatedSubject<ODSM.Server.Dispatched<Op, Rejection>>
 		abandoned$: IsolatedSubject<{ serverId: string; scope: Ctx.DraftScope }>
+		// filter drafts are keyed by filter rather than by server, so they get their own signal
+		filterAbandoned$: IsolatedSubject<string>
 	}
 }
 
