@@ -64,17 +64,18 @@ const formatFloat = (value: number) => {
 type CellDisplayCtx = { teamParity: number; displayLayersNormalized: boolean }
 const LayerTableCellCtx = React.createContext<CellDisplayCtx>({ teamParity: 0, displayLayersNormalized: false })
 
-function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTablePrt.KeyProp) {
-	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
+function useTableFrame<O>(stores: LayerTablePrt.KeyProp, selector: (table: LayerTablePrt.LayerTable) => O): O {
+	return Zus.useStore(stores.layerTable, (s) => selector(s.layerTable))
+}
 
+function buildColumn(colDef: LC.ColumnDef, isNumeric: boolean, stores: LayerTablePrt.KeyProp) {
 	return columnHelper.accessor(colDef.name, {
 		enableHiding: true,
 		enableSorting: false, // Disable default sorting, we'll handle it manually
 		size: LayerTablePrt.getColumnSize(colDef.name, isNumeric),
 		minSize: colDef.name === 'Layer' ? 150 : undefined,
 		header: function ValueColHeader() {
-			const sortingState = useTableFrame((table) => table.sort)
+			const sortingState = useTableFrame(stores, (table) => table.sort)
 			const sort = sortingState?.type === 'column' && sortingState.sortBy === colDef.name ? sortingState : null
 
 			const handleClick = () => {
@@ -338,10 +339,8 @@ export default function LayerTable(props: {
 	// hide all but LayerTablePrt.COMPACT_VISIBLE_COLUMNS without touching stored visibility prefs
 	compact?: boolean
 }) {
-	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
-
 	const frameState = useTableFrame(
+		props.stores,
 		Zus.useShallow((table) => ({
 			colConfig: table.colConfig,
 			showSelectedLayers: table.showSelectedLayers,
@@ -358,7 +357,7 @@ export default function LayerTable(props: {
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	const onPaginationChange = React.useCallback(LayerTablePrt.Actions.onPaginationChange(props.stores), [props.stores])
 
-	const page = useTableFrame((table) => table.pageData)
+	const page = useTableFrame(props.stores, (table) => table.pageData)
 
 	// shared display state for all cells -- see LayerTableCellCtx
 	const displayLayersNormalized = Zus.useStore(GlobalSettings.GlobalSettingsStore, (state) => state.displayTeamsNormalized)
@@ -561,9 +560,8 @@ const LayerTableRow = React.memo(function LayerTableRow(props: {
 })
 
 export function LayerTableContextMenuItems(props: { layerId: L.LayerId; stores: LayerTablePrt.KeyProp }) {
-	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
 	const selectedForCopy = useTableFrame(
+		props.stores,
 		Zus.useShallow((table) => {
 			if (!table.selected.includes(props.layerId)) {
 				return [props.layerId]
@@ -784,7 +782,6 @@ function SetRawLayerDialog(props: {
 	const [validLayerDebounced, setValidLayerDebounced] = React.useState<L.UnvalidatedLayer | null>(null)
 	const [validLayer, setValidLayer] = useDebouncedState<L.UnvalidatedLayer | null>(null, { onChange: setValidLayerDebounced, delay: 400 })
 	const [multiSetLayerDialogOpen, setMultiSetLayerDialogOpen] = React.useState<boolean>(false)
-	const [layerFound, setLayerFound] = React.useState<boolean>(false)
 	const layerIds = validLayerDebounced ? [validLayerDebounced.id] : []
 	const layersKnownRes = LayerQueriesClient.useLayerExists(layerIds, { enabled: !!validLayerDebounced })
 
@@ -814,14 +811,6 @@ function SetRawLayerDialog(props: {
 		[setInputText],
 	)
 
-	React.useLayoutEffect(() => {
-		if (layersKnownRes.data) {
-			setLayerFound(layersKnownRes.data[0].exists)
-		} else {
-			setLayerFound(false)
-		}
-	}, [layersKnownRes.data])
-
 	return (
 		props.open && (
 			<div
@@ -846,7 +835,7 @@ function SetRawLayerDialog(props: {
 						<div className="flex space-x-1 items-center">
 							<Label
 								title={tr.text(L_Msgs.layerFound())}
-								data-layerFound={validLayerDebounced && layerFound}
+								data-layerFound={validLayerDebounced && (layersKnownRes.data?.[0].exists ?? false)}
 								className="invisible data-[layerFound=true]:visible"
 							>
 								<Icons.CheckSquare className="text-info" />
@@ -883,14 +872,12 @@ function SetRawLayerDialog(props: {
 }
 
 function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; table: CoreTable<LayerQueriesClient.RowData> }) {
-	const useTableFrame = <O,>(selector: (table: LayerTablePrt.LayerTable) => O) =>
-		Zus.useStore(props.stores.layerTable, (s) => selector(s.layerTable))
-
 	const initStatus = Zus.useStore(
 		LayerQueriesClient.Store,
 		Zus.useShallow((s) => ({ status: s.status, errorMessage: s.errorMessage })),
 	)
 	const frameState = useTableFrame(
+		props.stores,
 		Zus.useShallow((table) => ({
 			pageSize: table.pageSize,
 			pageIndex: table.pageIndex,

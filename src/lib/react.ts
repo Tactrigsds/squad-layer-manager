@@ -18,11 +18,19 @@ export function useClosureRef<T extends object>(obj: T) {
 }
 
 /**
- * For when the psychic damage of whatever you set as the starting value of the ref being reevaluated on every render is too great. Also useful if you only want to run something exactly once
+ * A ref built once per mount, for when reevaluating the starting value on every render is too much psychic damage.
+ *
+ * Only reach for this when the box itself is written to. To construct a value once and read it,
+ * `React.useState(() => value)[0]` is the same guarantee without a ref, and reading `.current` during render costs
+ * the whole component its React Compiler optimization.
+ *
+ * Name the result `<something>Ref`. React Compiler recognizes refs by identifier, not by type, so a differently
+ * named binding is treated as an ordinary hook return and writing through its `.current` trips `react/immutability`.
  */
 export function useRefConstructor<T>(constructor: () => T) {
-	const ref = React.useRef<T>(null)
-	if (!ref.current) {
+	// `=== null` rather than a falsy check, so a constructor returning 0, '' or undefined still runs exactly once
+	const ref = React.useRef<T | null>(null)
+	if (ref.current === null) {
 		ref.current = constructor()
 	}
 	return ref as React.RefObject<T>
@@ -92,4 +100,24 @@ export function useStableValue<Deps extends [] | [unknown, ...unknown[]], O>(
 // iife syntax sugar
 export function inline<O>(cb: () => O) {
 	return cb()
+}
+
+/**
+ * A timestamp that advances on an interval, for UI that goes stale on its own: an expiring timeout, a presence
+ * window. Reading `Date.now()` during render instead leaves the value frozen until something unrelated re-renders,
+ * and React Compiler refuses to memoize around it.
+ *
+ * The snapshot is quantized to `intervalMs` so it holds still between ticks, which is what useSyncExternalStore
+ * needs to avoid re-rendering on every read.
+ */
+export function useNow(intervalMs: number) {
+	const subscribe = React.useCallback(
+		(onTick: () => void) => {
+			const id = setInterval(onTick, intervalMs)
+			return () => clearInterval(id)
+		},
+		[intervalMs],
+	)
+	const getSnapshot = React.useCallback(() => Math.floor(Date.now() / intervalMs) * intervalMs, [intervalMs])
+	return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

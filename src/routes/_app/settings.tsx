@@ -75,7 +75,7 @@ function RouteComponent() {
 	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
 	const canCreateServers = React.useMemo(() => RBAC.canCreateServers(loggedInPerms), [loggedInPerms])
 	// scopes this visit's frame instances: a fresh pageId per mount means fresh drafts + a fresh raw-settings fetch
-	const pageId = useRefConstructor(() => createId(4)).current
+	const [pageId] = React.useState(() => createId(4))
 	// non-null while the new-server form is open; a fresh nonce per "Add Managed Server" click yields a clean frame instance
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
@@ -107,8 +107,9 @@ function RouteComponent() {
 	// fresh instances via pageId). Tear down everything this visit accumulated when the page unmounts. The teardown is
 	// deferred to an idle callback and cancelled on re-setup so StrictMode's simulated remount doesn't kill instances
 	// the still-mounted page references.
-	const teardownCtl = useRefConstructor(() => ({ keys: new Set<SettingsEditorFrame.Key>(), pending: null as number | null })).current
+	const teardownCtlRef = useRefConstructor(() => ({ keys: new Set<SettingsEditorFrame.Key>(), pending: null as number | null }))
 	React.useEffect(() => {
+		const teardownCtl = teardownCtlRef.current
 		if (teardownCtl.pending !== null) {
 			cancelIdleCallback(teardownCtl.pending)
 			teardownCtl.pending = null
@@ -121,7 +122,7 @@ function RouteComponent() {
 				teardownCtl.keys.clear()
 			})
 		}
-	}, [sectionKeys, teardownCtl])
+	}, [sectionKeys, teardownCtlRef])
 
 	const sectionStates = SettingsEditorFrame.useSectionStates(sectionKeys)
 	const { newServerCreated, anyDirty } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.pageStatus)
@@ -150,20 +151,20 @@ function RouteComponent() {
 	// the fragment to scroll to on load, captured once. Handled lazily below once its owning section has rendered, since
 	// the sections load async (per-server fetch, global-settings Suspense) and a `setting:*` field only exists after its
 	// section mounts.
-	const initialAnchor = useRefConstructor(() => ({ id: SettingsNav.currentAnchor(), handled: false }))
+	const initialAnchorRef = useRefConstructor(() => ({ id: SettingsNav.currentAnchor(), handled: false }))
 
 	// initial page-load fragment: gate on the owning section actually being in the DOM (re-checked as sections stream in
 	// via sectionStates), then hand off to the exact same navigateToAnchor path a TOC click uses. `handled` latches so
 	// later sectionStates changes (form edits) don't re-trigger it; the settle loop self-terminates on unmount.
 	React.useEffect(() => {
-		const st = initialAnchor.current
-		if (st.handled || !st.id) return
-		const section = SettingsNav.sectionForAnchor(st.id)
+		if (initialAnchorRef.current.handled || !initialAnchorRef.current.id) return
+		const id = initialAnchorRef.current.id
+		const section = SettingsNav.sectionForAnchor(id)
 		// wait until the owning section has rendered; an unrecognized anchor (section === null) is handled immediately
 		if (section && !document.getElementById(section)) return
-		st.handled = true
-		SettingsNav.navigateToAnchor(st.id)
-	}, [sectionStates, initialAnchor])
+		initialAnchorRef.current.handled = true
+		SettingsNav.navigateToAnchor(id)
+	}, [sectionStates, initialAnchorRef])
 
 	// later hash changes from a pasted/edited link (in-app clicks use replaceState, which fires no hashchange, so no
 	// double-scroll) route through the same path
@@ -469,36 +470,26 @@ function ServersSection({
 		stoppingId: disableMutation.isPending ? disableMutation.variables?.serverId : undefined,
 	}
 
-	const [selected, setSelected] = React.useState<string | null>(() => pickDefaultSelection(servers))
-	// keep the selection valid as servers stream in / are deleted, and follow the create flow in and out of the new-server form
+	// the TOC (and page-load fragments) navigate to a server's anchor, but only the selected server is mounted, so the
+	// request is seeded from the page-load fragment and then updated by live navigations. It stays a request rather than
+	// the answer: the server it names may not have streamed in yet, and may be deleted later.
+	const [requestedSelection, setSelected] = React.useState<string | null>(() => {
+		const anchor = SettingsNav.currentAnchor()
+		const serverId = anchor && SettingsNav.serverForAnchor(anchor)
+		return serverId && serverId !== NEW_SERVER_SELECTION ? serverId : null
+	})
 	React.useEffect(() => {
-		if (creating) {
-			setSelected(NEW_SERVER_SELECTION)
-			return
-		}
-		setSelected((cur) => (cur && cur !== NEW_SERVER_SELECTION && servers.some((s) => s.id === cur) ? cur : pickDefaultSelection(servers)))
-	}, [creating, servers])
-
-	// the TOC (and page-load fragments) navigate to a server's anchor, but only the selected server is mounted; select
-	// whichever server an anchor points at so its section exists for the settle-scroll to land on. Live navigations always
-	// win; the page-load fragment is applied only once (once its server has streamed in), so it can't later clobber a
-	// manual selection when the server list updates.
-	const initialAnchorSelected = React.useRef(false)
-	React.useEffect(() => {
-		const selectFromAnchor = (id: string) => {
+		return SettingsNav.onAnchorNavigate((id) => {
 			const serverId = SettingsNav.serverForAnchor(id)
-			if (serverId && serverId !== NEW_SERVER_SELECTION && servers.some((s) => s.id === serverId)) setSelected(serverId)
-		}
-		if (!initialAnchorSelected.current) {
-			const anchor = SettingsNav.currentAnchor()
-			const serverId = anchor && SettingsNav.serverForAnchor(anchor)
-			if (serverId && serverId !== NEW_SERVER_SELECTION && servers.some((s) => s.id === serverId)) {
-				setSelected(serverId)
-				initialAnchorSelected.current = true
-			}
-		}
-		return SettingsNav.onAnchorNavigate(selectFromAnchor)
-	}, [servers])
+			if (serverId && serverId !== NEW_SERVER_SELECTION) setSelected(serverId)
+		})
+	}, [])
+
+	const selected = creating
+		? NEW_SERVER_SELECTION
+		: requestedSelection && requestedSelection !== NEW_SERVER_SELECTION && servers.some((s) => s.id === requestedSelection)
+			? requestedSelection
+			: pickDefaultSelection(servers)
 
 	async function handleDelete(server: PublicServer) {
 		const msg = tr.confirm(SETTINGS_Msgs.confirmDeleteServer(server.displayName, server.id))

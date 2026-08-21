@@ -189,9 +189,10 @@ const UnitSchemaBase = z.object({
 export type Unit = z.infer<typeof UnitSchemaBase> & { type: string | null }
 
 export function createRootSchema(vocab: ReadonlySet<string>, overrides: Record<string, string> = {}) {
-	const UnitSchema = UnitSchemaBase.transform(
-		(unit): Unit => ({ ...unit, type: parseUnitName(unit.unitObjectName, vocab, overrides).unit }),
-	)
+	const UnitSchema = UnitSchemaBase.transform((unit): Unit => ({
+		...unit,
+		type: parseUnitName(unit.unitObjectName, vocab, overrides).unit,
+	}))
 	return z.object({
 		Maps: z
 			.array(z.any())

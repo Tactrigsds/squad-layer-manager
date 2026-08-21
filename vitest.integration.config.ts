@@ -16,8 +16,8 @@ const WORKERS = Math.max(4, Math.min(6, Math.floor(os.cpus().length / 2)))
 export default defineConfig({
 	resolve: {
 		alias: {
-			'@': path.resolve(__dirname, 'src'),
-			$root: path.resolve(__dirname),
+			'@': path.resolve(import.meta.dirname, 'src'),
+			$root: path.resolve(import.meta.dirname),
 		},
 	},
 	test: {

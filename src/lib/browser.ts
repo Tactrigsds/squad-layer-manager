@@ -54,20 +54,21 @@ export const userIsActive$ = (function createPageActivityObservable(): Rx.Observ
 	)
 })()
 
+// Read through useSyncExternalStore rather than seeding state and re-syncing in an effect: the first render already
+// matches the viewport. A `useState(false)` seed paints the mobile layout for one frame on every desktop load, then
+// snaps -- visible, and it churns any layout keyed off the result (the navbar's dashboard tab switcher mounts then
+// unmounts).
 function useMediaQuery(query: string) {
-	// Lazy init off matchMedia so the first render already matches the viewport. A `useState(false)` seed
-	// paints the mobile layout for one frame on every desktop load, then snaps -- visible, and it churns any
-	// layout keyed off the result (the navbar's dashboard tab switcher mounts then unmounts).
-	const [matches, setMatches] = React.useState(() => isBrowser() && window.matchMedia(query).matches)
-
-	React.useEffect(() => {
-		const mediaQuery = window.matchMedia(query)
-		setMatches(mediaQuery.matches)
-		const handleChange = (e: MediaQueryListEvent) => setMatches(e.matches)
-		mediaQuery.addEventListener('change', handleChange)
-		return () => mediaQuery.removeEventListener('change', handleChange)
-	}, [query])
-	return matches
+	const subscribe = React.useCallback(
+		(onChange: () => void) => {
+			const mediaQuery = window.matchMedia(query)
+			mediaQuery.addEventListener('change', onChange)
+			return () => mediaQuery.removeEventListener('change', onChange)
+		},
+		[query],
+	)
+	const getSnapshot = React.useCallback(() => window.matchMedia(query).matches, [query])
+	return React.useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
 
 export function useIsDesktopSize() {
