@@ -134,24 +134,8 @@ function useRenderedMsg(run: Tour.RunStores, msg: Tour.Step['msg']): Tour.Render
 
 export function TourOverlay() {
 	const state = Zus.useStore(Tour.Store, Tour.Sel.state)
-	if (state.code === 'idle') return import.meta.env.DEV ? <TourLauncher /> : null
+	if (state.code === 'idle') return null
 	return <TourActive state={state} />
-}
-
-// Provisional dev-only launch affordance so the tour can be started and verified; the real entry point is the
-// tutorials index page (Phase 6).
-function TourLauncher() {
-	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
-	return (
-		<button
-			type="button"
-			className="fixed bottom-3 right-3 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 shadow-lg hover:bg-zinc-800"
-			style={{ zIndex }}
-			onClick={() => void Tour.Actions.start('layer-queue')}
-		>
-			Start tutorial
-		</button>
-	)
 }
 
 function TourActive({ state }: { state: Exclude<Tour.TourState, { code: 'idle' }> }) {
