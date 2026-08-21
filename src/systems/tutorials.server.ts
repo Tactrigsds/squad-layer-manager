@@ -482,8 +482,47 @@ const start = Instr.spanOp('tutorials.start', { module }, async (ctx: C.Db & CS.
 	}
 })
 
+// ============================== progress ==============================
+
+// A user's place in each tutorial, which outlives the run: the server a run stands up is ephemeral and gets
+// reaped, but where the reader got to is theirs. Written on every step, so it is one upsert of a tiny row.
+async function readProgress(ctx: C.Db, userId: bigint): Promise<TUT.Progress[]> {
+	const rows = await ctx.db().select().from(Schema.tutorialProgress).where(E.eq(Schema.tutorialProgress.userId, userId))
+	return rows
+		.filter((row): row is typeof row & { scenarioId: TUT.ScenarioId } => TUT.ScenarioIdSchema.safeParse(row.scenarioId).success)
+		.map((row) => ({ scenarioId: row.scenarioId, stepId: row.stepId, completed: row.completedAt !== null }))
+}
+
+async function writeProgress(ctx: C.Db, userId: bigint, progress: TUT.Progress) {
+	const completedAt = progress.completed ? new Date() : null
+	await ctx
+		.db()
+		.insert(Schema.tutorialProgress)
+		.values({ userId, scenarioId: progress.scenarioId, stepId: progress.stepId, completedAt, updatedAt: new Date() })
+		.onConflictDoUpdate({
+			target: [Schema.tutorialProgress.userId, Schema.tutorialProgress.scenarioId],
+			// completion is not undone by starting the tutorial again, so it only ever goes from null to a date
+			set: {
+				stepId: progress.stepId,
+				updatedAt: new Date(),
+				...(completedAt ? { completedAt } : {}),
+			},
+		})
+}
+
 export const orpcRouter = {
 	list: orpcBase.handler(async () => SCENARIO_METAS),
+
+	// the caller's own progress, like watchRun: per-user by construction, so there is no rbac check to make
+	getProgress: orpcBase.handler(async ({ context }) => readProgress(context, context.user.discordId)),
+
+	saveProgress: orpcBase
+		.meta({ type: 'mutation', logLevel: 'trace' })
+		.input(TUT.ProgressSchema)
+		.handler(async ({ context, input }) => {
+			await writeProgress(context, context.user.discordId, input)
+			return { code: 'ok' as const }
+		}),
 
 	// the caller's own run; per-user by construction, so there is no rbac check to make
 	watchRun: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context, signal }) {

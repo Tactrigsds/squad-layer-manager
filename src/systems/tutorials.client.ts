@@ -13,7 +13,17 @@ export const [useRunState, runState$] = ReactRx.bindWithDefault(
 	{ code: 'none' } as TUT.RunState,
 )
 
+// the run state outside a component, for the engine deciding whether it has a server to reuse. Bound with a
+// default, so this answers 'none' rather than throwing before the stream has connected.
+export function runState(): TUT.RunState {
+	return runState$().getValue()
+}
+
 export const scenariosQueryOptions = RPC.orpc.tutorials.list.queryOptions()
+
+// The caller's place in each tutorial. Per user rather than per browser, so it survives a reload, a new tab and a
+// different machine. Invalidated by Actions.saveProgress, which is the only thing that writes it.
+export const progressQueryOptions = RPC.orpc.tutorials.getProgress.queryOptions()
 
 export namespace Actions {
 	export function start(scenarioId: TUT.ScenarioId) {
@@ -24,5 +34,9 @@ export namespace Actions {
 	}
 	export function abandon() {
 		return RPC.orpc.tutorials.abandon.call()
+	}
+	export async function saveProgress(progress: TUT.Progress) {
+		await RPC.orpc.tutorials.saveProgress.call(progress)
+		await RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.tutorials.getProgress.key() })
 	}
 }

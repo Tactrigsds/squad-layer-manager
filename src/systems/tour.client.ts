@@ -12,7 +12,6 @@ import type * as CS from '@/models/context-shared'
 import type * as Msgs from '@/models/messages.models'
 import * as TUT from '@/models/tutorial.models'
 import { rootRouter } from '@/root-router'
-import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -478,7 +477,20 @@ async function enterStep(idx: number) {
 	}
 
 	set({ code: 'narrating', scenarioId, stepIdx: idx })
+	recordProgress(scenarioId, step.id)
 	wireStep(step, idx)
+}
+
+// Where the reader is, saved per user so the tutorial can be picked up later or elsewhere. Written as the step is
+// entered rather than on a timer: the step someone leaves on is exactly the one a debounce drops, since closing
+// the tab or walking away is what ends the window. Steps change at human speed and the row is tiny, so the only
+// thing worth suppressing is re-saving a position already saved -- a premise walking back and forth, say.
+let lastSaved: string | undefined
+function recordProgress(scenarioId: TUT.ScenarioId, stepId: string | null, completed = false) {
+	const mark = `${scenarioId}:${stepId}:${completed}`
+	if (mark === lastSaved) return
+	lastSaved = mark
+	void TutorialsClient.Actions.saveProgress({ scenarioId, stepId, completed }).catch((err) => console.error(err))
 }
 
 function wireStep(step: Step, idx: number) {
@@ -559,21 +571,49 @@ function reconcilePause() {
 	}
 }
 
-async function doStart(scenarioId: TUT.ScenarioId) {
-	if (active) await doExit()
+// Attach the engine to a run's server and put the reader on its dashboard. Everything a run needs that is not the
+// server itself: the resolved step list, the pause watcher, the presence the dashboard route races.
+async function attach(scenarioId: TUT.ScenarioId, serverId: string) {
 	const def = scenarios.get(scenarioId)
 	if (!def) throw new Error(`no steps registered for tutorial ${scenarioId}`)
-	const res = await TutorialsClient.Actions.start(scenarioId)
-	if (res.code !== 'ok') return res
-	const run = acquireRun(res.serverId)
+	const run = acquireRun(serverId)
 	const steps = typeof def.steps === 'function' ? await def.steps() : def.steps
 	active = { scenarioId, steps, resetClient: def.resetClient, run }
 	runSub = new Rx.Subscription()
 	runSub.add(rootRouter.subscribe('onResolved', reconcilePause))
-	await rootRouter.navigate({ to: DASHBOARD_TO, params: { serverId: res.serverId } })
+	await rootRouter.navigate({ to: DASHBOARD_TO, params: { serverId } })
 	await ensurePresenceOnDashboard(run, new AbortController().signal)
+}
+
+async function doStart(scenarioId: TUT.ScenarioId) {
+	if (active) await doExit()
+	const res = await TutorialsClient.Actions.start(scenarioId)
+	if (res.code !== 'ok') return res
+	await attach(scenarioId, res.serverId)
 	await enterStep(0)
 	return res
+}
+
+// Pick a tutorial up where the reader left it. The server is stood up again only if there isn't one already: a run
+// outlives the tour that was narrating it, so a reload finds its server still there and reuses it. From there the
+// jump does the work, and does as little of it as it can -- a checkpoint whose queue already matches dispatches
+// nothing, and a simulate whose state already holds is skipped.
+async function doResume(scenarioId: TUT.ScenarioId, stepId: string) {
+	const existing = TutorialsClient.runState()
+	const reuse = existing.code === 'active' && existing.scenarioId === scenarioId ? existing.serverId : null
+	if (reuse) {
+		if (active?.scenarioId !== scenarioId) {
+			teardown()
+			await attach(scenarioId, reuse)
+		}
+	} else {
+		const res = await doStart(scenarioId)
+		if (res.code !== 'ok') return res
+	}
+	const idx = active?.steps.findIndex((step) => step.id === stepId) ?? -1
+	// a step id from before the curriculum changed points at nothing; starting over beats landing somewhere arbitrary
+	await doJump(idx === -1 ? 0 : idx)
+	return { code: 'ok' as const }
 }
 
 function doNext() {
@@ -713,12 +753,13 @@ async function doExit() {
 
 // Complete keeps the sandbox alive (the idle reaper collects it); only the tour tears down.
 function doComplete() {
-	if (active) ClientOnlySettings.Actions.markTutorialComplete(active.scenarioId)
+	if (active) recordProgress(active.scenarioId, null, true)
 	teardown()
 }
 
 export namespace Actions {
 	export const start = doStart
+	export const resume = doResume
 	export const next = doNext
 	export const jump = doJump
 	export const reset = doReset
@@ -736,6 +777,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 }
 
 function teardown() {
+	lastSaved = undefined
 	abortJump()
 	clearStepWatchers()
 	runSub.unsubscribe()

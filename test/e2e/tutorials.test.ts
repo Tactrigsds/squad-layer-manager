@@ -94,6 +94,9 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 	// a run creates a server and every jump rebuilds its state, so this is minutes of real work
 	test.setTimeout(300_000)
 
+	page.on('console', (m) => {
+		if (m.text().includes('[progress]')) console.log(m.text().slice(0, 200))
+	})
 	await test.step('the index page starts a run', async () => {
 		await page.goto(app.loginUrl(USER, '/tutorials'))
 		await expect(page.getByRole('heading', { name: 'Tutorials' })).toBeVisible({ timeout: 20_000 })
@@ -164,13 +167,25 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		await expect(overlay(page).getByRole('heading', { name: STEP.startEditing, exact: true })).toBeHidden()
 	})
 
-	await test.step('exiting ends the run, and the index page offers it again', async () => {
+	await test.step('a reload loses the tour, and resume rebuilds where the reader left off', async () => {
+		// progress is per user, not per browser, so the page that comes back has nothing of its own to go on
+		const before = await overlay(page).getByRole('heading').first().innerText()
+		await page.goto(app.loginUrl(USER, '/tutorials'))
+		const entry = page.getByRole('listitem').filter({ hasText: TUTORIAL })
+		await entry.getByRole('button', { name: 'Resume' }).click({ timeout: 20_000 })
+		await onStep(page, before)
+		// and the state that step is about came back with it
+		await expectEditing(page, true)
+	})
+
+	await test.step('exiting ends the run but keeps the place', async () => {
 		await overlay(page).getByRole('button', { name: 'Exit' }).click()
 		await expect(overlay(page)).toHaveCount(0)
 
 		await page.goto(app.loginUrl(USER, '/tutorials'))
 		const entry = page.getByRole('listitem').filter({ hasText: TUTORIAL })
-		await expect(entry.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 20_000 })
+		// the run is gone, so there is nothing left to leave; where the reader got to is theirs and survives it
+		await expect(entry.getByRole('button', { name: 'Resume' })).toBeVisible({ timeout: 20_000 })
 		await expect(entry.getByRole('button', { name: 'Leave' })).toHaveCount(0)
 	})
 })

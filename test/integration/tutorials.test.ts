@@ -82,6 +82,23 @@ describe('tutorial runtime', () => {
 		await app.waitFor(() => savedQueue(app, SERVER_ID).length === 2 || null, { label: 'the played head consumed from the queue' })
 	})
 
+	it('remembers where the user got to, and that they finished', async () => {
+		expect(await client.tutorials.getProgress()).toEqual([])
+
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'queue-items', completed: false })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'queue-items', completed: false }])
+
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'save', completed: false })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'save', completed: false }])
+
+		// finishing clears the place and marks the tutorial done, and starting it again does not un-finish it
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: null, completed: true })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: null, completed: true }])
+
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'welcome', completed: false })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'welcome', completed: true }])
+	})
+
 	it('tears the server down on abandon', async () => {
 		expect(await client.tutorials.abandon()).toEqual({ code: 'ok' })
 		expect(await runState()).toEqual({ code: 'none' })

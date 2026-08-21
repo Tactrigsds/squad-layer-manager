@@ -48,6 +48,16 @@ export const RunStateSchema = z.discriminatedUnion('code', [
 ])
 export type RunState = z.infer<typeof RunStateSchema>
 
+// Where a user is in a tutorial. `stepId` is the step's own id rather than its index, because the step list is
+// built per run from what the install supports. A step id that no longer exists resolves to nothing, and the
+// reader starts over rather than landing somewhere arbitrary.
+export const ProgressSchema = z.object({
+	scenarioId: ScenarioIdSchema,
+	stepId: z.string().nullable(),
+	completed: z.boolean(),
+})
+export type Progress = z.infer<typeof ProgressSchema>
+
 // what a stage answers. err:not-ready means the user has not done their part yet: an ordinary
 // answer the card renders as guidance, against err:stage-failed which is a real fault.
 export type StageResult = { code: 'ok' } | { code: 'err:not-ready'; msg: string }
