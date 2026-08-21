@@ -67,8 +67,14 @@ function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; complet
 			<div className="min-w-0 grow">
 				<div className="flex flex-wrap items-center gap-2">
 					<span className="font-medium">{tr.text(copy.name())}</span>
-					{active && <Badge variant="info">{tr.text(TUT_Msgs.inProgress())}</Badge>}
-					{!active && completed && <Badge variant="secondary">{tr.text(TUT_Msgs.completed())}</Badge>}
+					{/* having finished it is the durable fact and wins the badge: a run outlives the last step, so the
+					    reader who just pressed Finish would otherwise be told they are still in progress. That the
+					    practice server is still up is what the buttons beside it say. */}
+					{completed ? (
+						<Badge variant="secondary">{tr.text(TUT_Msgs.completed())}</Badge>
+					) : (
+						active && <Badge variant="info">{tr.text(TUT_Msgs.inProgress())}</Badge>
+					)}
 				</div>
 				<p className="text-sm text-muted-foreground">{tr.text(copy.summary())}</p>
 				<p className="text-xs text-muted-foreground">{tr.text(TUT_Msgs.duration(meta.minutes))}</p>
@@ -86,7 +92,7 @@ function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; complet
 								: void Tour.Actions.start(meta.id)
 						}
 					>
-						{tr.text(narrating ? TUT_Msgs.resume() : TUT_Msgs.startOver())}
+						{tr.text(narrating ? TUT_Msgs.resume() : TUT_Msgs.replay())}
 					</Button>
 				</>
 			) : (
