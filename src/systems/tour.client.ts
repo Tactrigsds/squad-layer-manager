@@ -686,10 +686,12 @@ function doReset() {
 	if (idx !== undefined) void doJump(idx)
 }
 
+// Ends the run, not just the narration. The two come apart on a reload: the tour is in memory and the run is on
+// the server, so a reader who refreshes has a run and no tour, and that is exactly when the index page's Leave
+// is the only way to get rid of it. Abandoning a run that is already gone is a no-op.
 async function doExit() {
-	const wasActive = active
 	teardown()
-	if (wasActive) await TutorialsClient.Actions.abandon()
+	await TutorialsClient.Actions.abandon()
 }
 
 // Complete keeps the sandbox alive (the idle reaper collects it); only the tour tears down.
