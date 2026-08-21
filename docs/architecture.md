@@ -481,12 +481,26 @@ export const addLayers = Msgs.def('{count, plural, =0 {Add Layers} one {Add # La
 ```
 
 A message with more than a string to say returns a **target map** instead, whose shared logic lives in the factory's
-closure. The targets are `text`, `toast`, `react`, `confirm`, `warn` and `broadcast`. A message offers whichever it
+closure. The targets are `text`, `toast`, `richText`, `confirm`, `warn` and `broadcast`. A message offers whichever it
 has something sensible to say on, and the compiler rejects the others.
 
 Messages are **keyed by their own English**, so no message declares an id. Two messages whose English is identical
 but whose translations differ are told apart by a `context`, which is part of the key and never rendered. Catalogues
 live in `src/messages/locales/`.
+
+**Patterns are compiled, not parsed.** `pnpm i18n:extract` resolves each pattern's structure ahead of time into
+`<locale>.compiled.json`, which `src/messages/icu.ts` defines and walks. A message with no arguments compiles to its
+own text and is left out of the file entirely, so 1,314 of 1,696 resolve by handing the key back. Nothing parses ICU
+at runtime: holding a parsed AST and its formatter per message cost 2.4 MB against 170 KB for the compiled form.
+
+The consequence to know about: **a message interpolates its arguments only if the extractor saw it.** One defined
+where the extractor does not read, a test file for instance, renders its pattern verbatim until it registers a
+compiled form of its own. `pnpm i18n:lint` holds that guarantee across `src`, and the unit suite fails when a
+catalogue on disk no longer matches the source.
+
+English is not registered the way other locales are. `@/messages/i18n` carries it built in, so no boot path can miss
+it, and value formatting (`{n, number}`, `{d, date}`) is rejected at build time: format the value at the call site
+and interpolate the result, as `src/messages/format.ts` does.
 
 **Who supplies the locale depends on who is reading.** In the browser there is one viewer per tab, so the locale is
 ambient and negotiated once at startup. `warn` and `broadcast` render for a game server and one of its players
