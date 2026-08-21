@@ -25,6 +25,10 @@ export const scenariosQueryOptions = RPC.orpc.tutorials.list.queryOptions()
 // different machine. Invalidated by Actions.saveProgress, which is the only thing that writes it.
 export const progressQueryOptions = RPC.orpc.tutorials.getProgress.queryOptions()
 
+// Pages the caller has told to stop offering tutorials. Per user like progress, so dismissing on one machine
+// holds on the next. Invalidated by Actions.dismissPrompt, which is the only thing that writes it.
+export const dismissedPromptsQueryOptions = RPC.orpc.tutorials.getDismissedPrompts.queryOptions()
+
 export namespace Actions {
 	export function start(scenarioId: TUT.ScenarioId) {
 		return RPC.orpc.tutorials.start.call({ scenarioId })
@@ -34,6 +38,10 @@ export namespace Actions {
 	}
 	export function abandon() {
 		return RPC.orpc.tutorials.abandon.call()
+	}
+	export async function dismissPrompt(surfaceId: TUT.SurfaceId) {
+		await RPC.orpc.tutorials.dismissPrompt.call({ surfaceId })
+		await RPC.queryClient.invalidateQueries({ queryKey: RPC.orpc.tutorials.getDismissedPrompts.key() })
 	}
 	export async function saveProgress(progress: TUT.Progress) {
 		await RPC.orpc.tutorials.saveProgress.call(progress)

@@ -53,6 +53,7 @@ import * as m0098 from './0098_switch_requests_column'
 import * as m0099 from './0099_prefix_reply_to_unknown'
 import * as m0100 from './0100_scoped_server_entries'
 import * as m0101 from './0101_tutorial_progress'
+import * as m0102 from './0102_tutorial_prompt_dismissals'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -93,4 +94,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0099_prefix_reply_to_unknown', up: m0099.up },
 	{ name: '0100_scoped_server_entries', up: m0100.up },
 	{ name: '0101_tutorial_progress', up: m0101.up },
+	{ name: '0102_tutorial_prompt_dismissals', up: m0102.up },
 ]

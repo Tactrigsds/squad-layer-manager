@@ -58,6 +58,15 @@ export const ProgressSchema = z.object({
 })
 export type Progress = z.infer<typeof ProgressSchema>
 
+// A page that offers tutorials when it opens, and which ones. Adding a page is an entry here plus mounting the
+// dialog on that route; the dialog itself is the same everywhere.
+export const SurfaceIdSchema = z.enum(['server-dashboard'])
+export type SurfaceId = z.infer<typeof SurfaceIdSchema>
+
+export const RECOMMENDED_TUTORIALS: Record<SurfaceId, ScenarioId[]> = {
+	'server-dashboard': ['layer-queue'],
+}
+
 // what a stage answers. err:not-ready means the user has not done their part yet: an ordinary
 // answer the card renders as guidance, against err:stage-failed which is a real fault.
 export type StageResult = { code: 'ok' } | { code: 'err:not-ready'; msg: string }

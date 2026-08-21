@@ -38,6 +38,8 @@ let app: AppFixture
 test.beforeAll(async () => {
 	app = await createAppFixture({
 		users: [USER],
+		// this file is the one that asserts on the prompt, and on the tour keeping it out of its own way
+		tutorialPrompts: true,
 		globalSettings: (settings) => {
 			// site access only: starting a tutorial is per-user by construction, not a granted role
 			settings.rbac.roles['tutorial-user'] = role(['site:authorized'], { users: [USER] })
@@ -90,13 +92,36 @@ async function jumpTo(page: Page, title: string) {
 	await onStep(page, title)
 }
 
-test('the layer queue tutorial, started and navigated out of order', async ({ page }) => {
+test('the layer queue tutorial, started and navigated out of order', async ({ page, browser }) => {
 	// a run creates a server and every jump rebuilds its state, so this is minutes of real work
 	test.setTimeout(300_000)
 
 	page.on('console', (m) => {
 		if (m.text().includes('[progress]')) console.log(m.text().slice(0, 200))
 	})
+	await test.step('the dashboard offers the tutorial until it is told not to', async () => {
+		// Its own context, as the admin: the prompt needs a dashboard the reader can actually see, and this
+		// file's tutorial user holds site access and nothing on that server. ?login= does not switch a session
+		// that already exists, so sharing the journey's page would leave the tour running as the wrong user.
+		const promptCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+		const promptPage = await promptCtx.newPage()
+		try {
+			await promptPage.goto(app.loginUrl(app.adminUser, `/servers/${app.serverId}`))
+			const prompt = promptPage.getByRole('dialog').filter({ hasText: TUTORIAL })
+			await expect(prompt).toBeVisible({ timeout: 60_000 })
+
+			// dismissing is per user rather than per browser, so a reload does not bring it back
+			await prompt.getByRole('checkbox', { name: "Don't show this again" }).click()
+			await prompt.getByRole('button', { name: 'Not now' }).click()
+			await promptPage.reload()
+			// the queue is behind the modal's aria-hidden while it is open, so reaching it is also proof it closed
+			await expect(promptPage.getByRole('tab', { name: /^Queue/ })).toBeVisible({ timeout: 60_000 })
+			await expect(prompt).toHaveCount(0)
+		} finally {
+			await promptCtx.close()
+		}
+	})
+
 	await test.step('the index page starts a run', async () => {
 		await page.goto(app.loginUrl(USER, '/tutorials'))
 		await expect(page.getByRole('heading', { name: 'Tutorials' })).toBeVisible({ timeout: 20_000 })

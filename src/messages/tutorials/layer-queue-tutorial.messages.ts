@@ -142,8 +142,8 @@ export namespace LayerDetails {
 		title: def('Layer scores'),
 		body: def(
 			rt(
-				`These are precomputed "Scores" for layers based on a set of heuristics which are used to determine the relative "fairness" of the layer. These are SLM's default scores, and they only exist for RAAS,FRAAS,AAS, and TC. These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.
-                the two most important scores are the <em>Balance Score(Balance Differential)</em> and the <em>Asymmetry Score</em>:
+				`<p>These are precomputed "Scores" for layers based on a set of heuristics which are used to determine the relative "fairness" of the layer. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important scores are the <em>Balance Score(Balance Differential)</em> and the <em>Asymmetry Score</em>.</p>
+<p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>
 				`,
 			),
 		),
@@ -164,6 +164,12 @@ export namespace LayerDetails {
 			),
 		),
 	}
+
+	export const categorySpecificScores = {
+		title: def('Category specific scores'),
+		body: def(rt(`These are scores that are specific to a particular category for each team. Larger is better.`)),
+	}
+
 	export const layerScoresNonstandard = {
 		title: def('Layer scores'),
 		body: def(

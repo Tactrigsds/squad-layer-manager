@@ -18,6 +18,8 @@ let client: TestOrpcClient
 beforeAll(async () => {
 	app = await createAppFixture({
 		users: [USER],
+		// the prompt's own dismissal is what this file asserts on, so it starts undismissed here
+		tutorialPrompts: true,
 		globalSettings: (settings) => {
 			// site access only: starting a tutorial is per-user by construction, not a granted role
 			settings.rbac.roles['tutorial-user'] = role(['site:authorized'], { users: [USER] })
@@ -97,6 +99,17 @@ describe('tutorial runtime', () => {
 
 		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'welcome', completed: false })
 		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'welcome', completed: true }])
+	})
+
+	it('remembers a dismissed page prompt', async () => {
+		expect(await client.tutorials.getDismissedPrompts()).toEqual([])
+
+		await client.tutorials.dismissPrompt({ surfaceId: 'server-dashboard' })
+		expect(await client.tutorials.getDismissedPrompts()).toEqual(['server-dashboard'])
+
+		// dismissing twice is the same dismissal, not a second row
+		await client.tutorials.dismissPrompt({ surfaceId: 'server-dashboard' })
+		expect(await client.tutorials.getDismissedPrompts()).toEqual(['server-dashboard'])
 	})
 
 	it('tears the server down on abandon', async () => {

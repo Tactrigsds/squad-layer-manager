@@ -376,6 +376,24 @@ export const persistedCache = sqliteTable(
 // another machine. stepId is the step's own id, not its index: the step list is built per run from what the
 // install supports, so an index means something different elsewhere. Null stepId with a completedAt is a finished
 // tutorial; both null is one that was started and abandoned at the very beginning.
+// A page's tutorial prompt, once the user has told it to stop. A row exists only for a dismissal, so the absence
+// of one is the default.
+export const tutorialPromptDismissals = sqliteTable(
+	'tutorialPromptDismissals',
+	{
+		userId: bigintText('userId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		surfaceId: text('surfaceId').notNull(),
+		dismissedAt: timestamp('dismissedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.userId, table.surfaceId] }),
+	}),
+)
+
 export const tutorialProgress = sqliteTable(
 	'tutorialProgress',
 	{

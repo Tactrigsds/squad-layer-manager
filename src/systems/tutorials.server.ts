@@ -510,8 +510,35 @@ async function writeProgress(ctx: C.Db, userId: bigint, progress: TUT.Progress) 
 		})
 }
 
+// ============================== page prompts ==============================
+
+// Which pages the user has told to stop offering their tutorials. A row per dismissal, so nothing is written for
+// the ordinary case of never having dismissed one.
+async function readDismissedPrompts(ctx: C.Db, userId: bigint): Promise<TUT.SurfaceId[]> {
+	const rows = await ctx.db().select().from(Schema.tutorialPromptDismissals).where(E.eq(Schema.tutorialPromptDismissals.userId, userId))
+	return rows
+		.map((row) => TUT.SurfaceIdSchema.safeParse(row.surfaceId))
+		.filter((parsed) => parsed.success)
+		.map((parsed) => parsed.data)
+}
+
 export const orpcRouter = {
 	list: orpcBase.handler(async () => SCENARIO_METAS),
+
+	// as with progress: the caller's own, so there is no rbac check to make
+	getDismissedPrompts: orpcBase.handler(async ({ context }) => readDismissedPrompts(context, context.user.discordId)),
+
+	dismissPrompt: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ surfaceId: TUT.SurfaceIdSchema }))
+		.handler(async ({ context, input }) => {
+			await context
+				.db()
+				.insert(Schema.tutorialPromptDismissals)
+				.values({ userId: context.user.discordId, surfaceId: input.surfaceId, dismissedAt: new Date() })
+				.onConflictDoNothing()
+			return { code: 'ok' as const }
+		}),
 
 	// the caller's own progress, like watchRun: per-user by construction, so there is no rbac check to make
 	getProgress: orpcBase.handler(async ({ context }) => readProgress(context, context.user.discordId)),

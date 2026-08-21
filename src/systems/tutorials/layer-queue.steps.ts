@@ -2,6 +2,7 @@ import * as Im from 'immer'
 import React from 'react'
 import { flushSync } from 'react-dom'
 
+import { pairedScoreDimensions } from '@/components/layer-info-window.helpers'
 import ShortLayerName from '@/components/short-layer-name'
 import * as LayerFilterMenuPrt from '@/frame-partials/layer-filter-menu.partial'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
@@ -293,7 +294,7 @@ function resetClient(run: Tour.RunStores) {
 //
 // Read off the seeded head layer rather than the queue, because the queue is not loaded yet when the run starts,
 // and that layer is a constant of the scenario.
-async function scoreSupport(): Promise<{ any: boolean; builtin: boolean }> {
+async function scoreSupport(): Promise<{ any: boolean; builtin: boolean; categories: boolean }> {
 	try {
 		const layer = await LayerQueriesClient.fetchLayerInfo(LAYERS.initial[0])
 		const scores = LC.partitionScores(layer, LC.getEffectiveColumnConfig())
@@ -301,11 +302,13 @@ async function scoreSupport(): Promise<{ any: boolean; builtin: boolean }> {
 			any: Object.values(scores).some((group) => Object.values(group).some((score) => typeof score === 'number')),
 			// the two the copy actually explains; a value can only be here if the column is defined
 			builtin: typeof scores.diffs['Balance_Differential'] === 'number' && typeof scores.other['Asymmetry_Score'] === 'number',
+			// the per-team chart under them, which is only drawn for dimensions score-ranges.json pairs
+			categories: pairedScoreDimensions(scores).length > 0,
 		}
 	} catch (error) {
 		// nothing provable about the scores is a reason to leave the arc out, not to narrate it and hope
 		console.error("tour: could not read the tutorial layer's scores, leaving the scores steps out", error)
-		return { any: false, builtin: false }
+		return { any: false, builtin: false, categories: false }
 	}
 }
 
@@ -461,6 +464,17 @@ export async function buildSteps() {
 						msg: M.LayerDetails.asymmetryScore,
 						premise: domPresent('layer-scores'),
 					},
+					...(scores.categories
+						? [
+								{
+									id: 'category-scores',
+									anchor: 'layer-score-categories',
+									spotlight: 'layer-details-window',
+									msg: M.LayerDetails.categorySpecificScores,
+									premise: domPresent('layer-scores'),
+								},
+							]
+						: []),
 				]
 			: scores.any
 				? [
