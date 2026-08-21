@@ -102,7 +102,7 @@ export function initState(entity: F.FilterEntity): State {
 		},
 		tree: F.upsertFilterNodeTreeInPlace(entity.filter),
 	}
-	return { filterId: entity.id, draft: Obj.deepClone(saved), saved }
+	return { filterId: entity.id, draft: saved, saved }
 }
 
 // A filter that has no entity behind it yet (the "new filter" page) runs the same reducer against the same
@@ -112,7 +112,7 @@ export function localState(filterId: F.FilterEntityId, filter: F.EditableFilterN
 		meta: { name: '', description: null, alertMessage: null, emoji: null, invertedAlertMessage: null, invertedEmoji: null, ...meta },
 		tree: toTree(filter),
 	}
-	return { filterId, draft: Obj.deepClone(saved), saved }
+	return { filterId, draft: saved, saved }
 }
 
 // A tree built from a bare filter node gets fresh ids from createId, so it can only be built where one
@@ -123,6 +123,8 @@ export function toTree(filter: F.EditableFilterNode): F.FilterNodeTree {
 }
 
 export function isModified(state: State): boolean {
+	// a draft that has never diverged is the saved object itself, which is the common case by far
+	if (state.draft === state.saved) return false
 	return !Obj.deepEqual(state.draft, state.saved)
 }
 
@@ -131,87 +133,104 @@ export function draftFilter(state: State): F.EditableFilterNode {
 }
 
 export const reducer: ODSM.Reducer<Op, State, SideEffect> = (oldState, ops, _prevOps) => {
-	const state = Obj.deepClone(oldState)
+	let state = oldState
 	const sideEffects: SideEffect[] = []
 	const emit = (se: SideEffect) => sideEffects.push(se)
 	for (const op of ops) {
-		const success = applyOp(state, op, emit)
-		emit({ code: 'op-outcome', op, success })
+		const next = applyOp(state, op, emit)
+		emit({ code: 'op-outcome', op, success: next !== null })
 		// ops in a batch are dependent, so one skipped op rejects the whole batch rather than applying part of it
-		if (!success) throw new ODSM.RejectedError<Rejection>({ code: 'op-skipped', op }, { message: `filter-edit op ${op.code} skipped` })
+		if (next === null) {
+			throw new ODSM.RejectedError<Rejection>({ code: 'op-skipped', op }, { message: `filter-edit op ${op.code} skipped` })
+		}
+		state = next
 	}
-	if (Obj.deepEqual(state, oldState)) throw new ODSM.RejectedError<Rejection>({ code: 'noop' })
+	// an op that changed nothing hands back the state it was given, so this is a reference check rather than a
+	// walk of the whole draft
+	if (state === oldState) throw new ODSM.RejectedError<Rejection>({ code: 'noop' })
 	return [state, sideEffects]
 }
 
-// returns whether the op applied (as opposed to being skipped against this base state)
-function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): boolean {
+// Copy-on-write, and the reducer replays against several base states (optimistic, synced, authoritative) that
+// share structure with each other -- so nothing reachable from `state` may be mutated. Each op rebuilds only
+// what lies between the state root and what it changed: an edit to one node leaves every other node, the
+// paths, and the whole saved baseline shared with the state before it.
+//
+// Returns null when the op is skipped against this base state.
+function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): State | null {
 	const tree = state.draft.tree
 	switch (op.code) {
 		case 'add-node': {
 			const parentPath = tree.paths.get(op.parentId)
-			if (!parentPath || tree.nodes.has(op.nodeId)) return false
-			tree.nodes.set(op.nodeId, op.node)
-			tree.paths.set(op.nodeId, [...parentPath, nextChildIndex(tree, parentPath)])
-			return true
+			if (!parentPath || tree.nodes.has(op.nodeId)) return null
+			const nodes = new Map(tree.nodes).set(op.nodeId, op.node)
+			const paths = new Map(tree.paths).set(op.nodeId, [...parentPath, nextChildIndex(tree, parentPath)])
+			return withTree(state, { nodes, paths })
 		}
 		case 'delete-node': {
-			if (!tree.paths.has(op.nodeId)) return false
+			const path = tree.paths.get(op.nodeId)
 			// the root has no parent to be removed from
-			if (tree.paths.get(op.nodeId)!.length === 0) return false
-			F.deleteTreeNode(tree, op.nodeId)
-			return true
+			if (!path || path.length === 0) return null
+			// deleteTreeNode rewrites the maps in place, so it gets copies to work on. The node objects they
+			// hold are untouched either way, and stay shared.
+			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
+			F.deleteTreeNode(next, op.nodeId)
+			return withTree(state, next)
 		}
 		case 'update-node': {
-			if (!tree.nodes.has(op.nodeId)) return false
-			tree.nodes.set(op.nodeId, op.node)
-			return true
+			const existing = tree.nodes.get(op.nodeId)
+			if (!existing) return null
+			if (Obj.deepEqual(existing, op.node)) return state
+			// only the nodes map moves; every path is still where it was
+			return withTree(state, { nodes: new Map(tree.nodes).set(op.nodeId, op.node), paths: tree.paths })
 		}
 		case 'set-comment': {
-			const node = tree.nodes.get(op.nodeId)
-			if (!node) return false
+			const existing = tree.nodes.get(op.nodeId)
+			if (!existing) return null
+			if ((existing.comment ?? null) === op.comment) return state
+			const node = { ...existing }
 			if (op.comment) node.comment = op.comment
 			else delete node.comment
-			return true
+			return withTree(state, { nodes: new Map(tree.nodes).set(op.nodeId, node), paths: tree.paths })
 		}
 		case 'move-node': {
 			const sourcePath = tree.paths.get(op.nodeId)
 			const parentPath = tree.paths.get(op.parentId)
-			if (!sourcePath || !parentPath) return false
-			F.moveTreeNodeInPlace(tree, sourcePath, [...parentPath, op.index])
-			return true
+			if (!sourcePath || !parentPath) return null
+			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
+			F.moveTreeNodeInPlace(next, sourcePath, [...parentPath, op.index])
+			return withTree(state, next)
 		}
-		case 'replace-tree': {
-			state.draft.tree = op.tree
-			return true
-		}
+		case 'replace-tree':
+			return withTree(state, op.tree)
 		case 'set-meta': {
-			state.draft.meta = { ...state.draft.meta, ...Obj.trimUndefined(op.patch) }
-			return true
+			const meta = { ...state.draft.meta, ...Obj.trimUndefined(op.patch) }
+			if (Obj.deepEqual(meta, state.draft.meta)) return state
+			// the tree is untouched, so the draft keeps pointing at the same one
+			return { ...state, draft: { ...state.draft, meta } }
 		}
 		case 'save': {
-			if (!isModified(state)) return false
+			if (!isModified(state)) return null
 			const filter = draftFilter(state)
 			// a half-filled tree is a normal state to be editing in but not one to persist. Checked here rather
 			// than at the dispatcher so every replica agrees on which saves are refused.
-			if (!F.isValidFilterNode(filter)) return false
-			state.saved = Obj.deepClone(state.draft)
-			emit({ code: 'request-filter-save', opId: op.opId, filterId: state.filterId, meta: state.saved.meta, filter, userId: op.userId })
-			return true
+			if (!F.isValidFilterNode(filter)) return null
+			emit({ code: 'request-filter-save', opId: op.opId, filterId: state.filterId, meta: state.draft.meta, filter, userId: op.userId })
+			// the baseline becomes the draft itself rather than a copy of it -- neither is ever mutated
+			return { ...state, saved: state.draft }
 		}
-		case 'reset-to-saved': {
-			if (!isModified(state)) return false
-			state.draft = Obj.deepClone(state.saved)
-			return true
-		}
+		case 'reset-to-saved':
 		case 'discard-abandoned-edits': {
-			if (!isModified(state)) return false
-			state.draft = Obj.deepClone(state.saved)
-			return true
+			if (!isModified(state)) return null
+			return { ...state, draft: state.saved }
 		}
 		default:
 			assertNever(op)
 	}
+}
+
+function withTree(state: State, tree: F.FilterNodeTree): State {
+	return { ...state, draft: { ...state.draft, tree } }
 }
 
 // the index a new child of `parentPath` takes. Descendants deeper than a direct child share their

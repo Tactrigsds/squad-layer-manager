@@ -193,6 +193,8 @@ const setup: Frame['setup'] = (args) => {
 // modified flag from another
 function commitSession(set: Zus.Setter<FilterEditor>, session: ODSM.Client.Session<FE.Op, FE.State>) {
 	const state = session.localState
+	// no reconciling here: the reducer is copy-on-write, so an op that left the tree or the meta alone hands
+	// back the same objects and the selectors reading them never fire
 	set({
 		session,
 		tree: state.draft.tree,
