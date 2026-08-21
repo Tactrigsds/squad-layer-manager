@@ -5,10 +5,12 @@ import * as path from 'node:path'
 // Collects every translatable message into a catalogue template, keyed the way the runtime keys them: by the
 // message's own English, plus a context where two messages share one. Run with `pnpm i18n:extract`.
 //
-// `pnpm i18n:lint` runs the same visitor as a check instead: a message is only translatable when its source is
-// written at the call site, so a t/rt call whose first argument is not a string literal, or a non-literal
-// `context`, is an error. This is the lexical half of the guarantee; the type-level half is `Literal` in
-// src/models/messages.models.ts.
+// `pnpm i18n:lint` runs the same visitor as a check instead, and fails on two things. First, a message is only
+// translatable when its source is written at the call site, so a t/rt call whose first argument is not a string
+// literal, or a non-literal `context`, is an error. This is the lexical half of the guarantee; the type-level
+// half is `Literal` in src/models/messages.models.ts. Second, the committed catalogue has to match what the
+// source would produce right now: nothing else notices when a message is edited and en.json is not regenerated,
+// and every gate keeps passing while the reader is shown a key that no longer exists.
 //
 // Prose still built in JavaScript inside a def body is not translatable either; the summary counts those so the
 // remaining conversion work stays visible rather than looking like an empty catalogue.
@@ -193,16 +195,6 @@ function unwrappedProse(defPath: babel.NodePath, resolver: Resolver) {
 	return n
 }
 
-if (mode === 'lint') {
-	for (const d of diagnostics) console.log(`${d.file}:${d.line}:${d.col}  ${d.message}`)
-	if (diagnostics.length) {
-		console.log(`\n${diagnostics.length} message sources are not extractable`)
-		process.exit(1)
-	}
-	console.log('all message sources are extractable')
-	process.exit(0)
-}
-
 const byKey = new Map<string, Entry[]>()
 for (const entry of entries) {
 	const key = entry.context ? `${entry.source} [${entry.context}]` : entry.source
@@ -211,10 +203,37 @@ for (const entry of entries) {
 
 const collisions = [...byKey].filter(([, group]) => group.length > 1 && new Set(group.map((e) => e.from)).size > 1)
 
-fs.mkdirSync(OUT_DIR, { recursive: true })
 const template: Record<string, string> = {}
 for (const key of [...byKey.keys()].sort()) template[key] = byKey.get(key)![0].source
-fs.writeFileSync(path.join(OUT_DIR, 'en.json'), JSON.stringify(template, null, '\t') + '\n')
+const templateFile = path.join(OUT_DIR, 'en.json')
+const serialized = JSON.stringify(template, null, '\t') + '\n'
+
+if (mode === 'lint') {
+	for (const d of diagnostics) console.log(`${d.file}:${d.line}:${d.col}  ${d.message}`)
+	if (diagnostics.length) console.log(`\n${diagnostics.length} message sources are not extractable`)
+
+	const onDisk = fs.existsSync(templateFile) ? fs.readFileSync(templateFile, 'utf8') : ''
+	const stale = onDisk !== serialized
+	if (stale) {
+		const current: Record<string, string> = onDisk ? JSON.parse(onDisk) : {}
+		const added = Object.keys(template).filter((k) => !(k in current))
+		const removed = Object.keys(current).filter((k) => !(k in template))
+		console.log(`\n${templateFile} is stale: ${added.length} to add, ${removed.length} to remove`)
+		for (const key of [...added.slice(0, 10)]) console.log(`  + ${JSON.stringify(key)}`)
+		for (const key of [...removed.slice(0, 10)]) console.log(`  - ${JSON.stringify(key)}`)
+		if (added.length + removed.length > 20) console.log(`  ...and ${added.length + removed.length - 20} more`)
+		// identical key sets and a different file means the ordering or the formatting drifted, which the
+		// runtime does not care about but a diff does
+		if (added.length === 0 && removed.length === 0) console.log('  the keys match; the file itself differs')
+		console.log('\nrun `pnpm i18n:extract` and commit the result')
+	}
+	if (diagnostics.length || stale) process.exit(1)
+	console.log('all message sources are extractable, and the catalogue is up to date')
+	process.exit(0)
+}
+
+fs.mkdirSync(OUT_DIR, { recursive: true })
+fs.writeFileSync(templateFile, serialized)
 
 const existing = fs.readdirSync(OUT_DIR).filter((f) => f.endsWith('.json') && f !== 'en.json')
 console.log(`extracted ${entries.length} translatable messages into ${byKey.size} keys`)
