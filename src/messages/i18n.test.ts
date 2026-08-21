@@ -4,6 +4,23 @@ import { describe, expect, test, vi } from 'vitest'
 
 import * as I18n from '@/messages/i18n'
 import { def, rt } from '@/models/messages.models'
+import { compile } from '@/scripts/compile-messages'
+
+// A message defined in a test file is not extracted, so the runtime has no compiled form for it and would render
+// its pattern verbatim. Registering one here is what `pnpm i18n:extract` does for every message in src.
+function english(...patterns: string[]) {
+	I18n.registerCatalogue(I18n.DEFAULT_LOCALE, Object.fromEntries(patterns.map((p) => [p, compile(p)])))
+}
+
+english(
+	'{count, plural, =0 {Add Layers} one {Add 1 Layer} other {Add # Layers}}',
+	'{team, select, A {Team A} other {Team B}}{faction, select, none {} other { ({faction})}}',
+	'press <strong>{key}</strong> to <code>save</code>',
+	'edited by <user>{name}</user>',
+	'<when>today</when>',
+	'review: <verdict>{inner}</verdict>',
+	'one<br></br>two',
+)
 
 describe('resolving a message against a locale', () => {
 	test('a message with no catalogue is its own English', () => {
@@ -44,8 +61,9 @@ describe('messages that take arguments', () => {
 
 	test('a translation may use its own plural rules', () => {
 		I18n.registerCatalogue('pl-PL', {
-			'{count, plural, =0 {Add Layers} one {Add 1 Layer} other {Add # Layers}}':
+			'{count, plural, =0 {Add Layers} one {Add 1 Layer} other {Add # Layers}}': compile(
 				'{count, plural, one {# warstwa} few {# warstwy} other {# warstw}}',
+			),
 		})
 		expect(I18n.translatorFor('pl-PL').text(addLayers(1))).toBe('1 warstwa')
 		expect(I18n.translatorFor('pl-PL').text(addLayers(3))).toBe('3 warstwy')

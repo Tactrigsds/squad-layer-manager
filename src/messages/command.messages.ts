@@ -219,7 +219,7 @@ export const pinArgs = def('Pin args')
 
 export const pinArgsHint = def("Pin some of this command's arguments, so the trigger becomes a shortcut")
 
-export const pinnedArgsPlaceholder = def('{{arg1}} 2h {{rest2}}')
+export const pinnedArgsPlaceholder = def("'{{arg1}}' 2h '{{rest2}}'")
 
 export const unpinArgs = def('Unpin')
 
@@ -235,9 +235,9 @@ export const takesNoArguments = def('This command takes no arguments, so pinned 
 export const takesArguments = def('Takes')
 
 // The placeholders are the syntax being explained, so they are part of the prose rather than examples the caller
-// substitutes in.
+// substitutes in. ICU reads a brace as an argument, so each placeholder is quoted.
 export const argTemplateHelp = def(
-	'A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, {{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. {{^arg2}}default{{/arg2}} fills a word in when it is left out.',
+	"A template over the words typed after the trigger, and the numbers count those words: '{{arg1}}' is the first one typed, '{{rest2}}' the second onwards. Pinned text is never typed, so no placeholder refers to it. '{{^arg2}}'default'{{/arg2}}' fills a word in when it is left out.",
 )
 
 // -------- the commands page --------
