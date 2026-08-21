@@ -126,6 +126,23 @@ export function translateNode(source: string, values?: MessageValues, locale?: s
 	)
 }
 
+// A run of literal tokens -- command triggers, ids, filenames -- dropped into a sentence. Two things this gets
+// right that `join(', ')` does not: the separators and the final conjunction come from the locale, and each token
+// is wrapped in a `bdi`, which isolates its direction. Without that isolation an LTR token like `!shownext` in an
+// RTL sentence reorders around the neighbouring punctuation, and the reader is shown a command they cannot type.
+export function tokenList(
+	tokens: string[],
+	locale: string,
+	opts?: { type?: 'conjunction' | 'disjunction'; tag?: string },
+): React.ReactNode {
+	const parts = new Intl.ListFormat(locale, { type: opts?.type ?? 'conjunction', style: 'short' }).formatToParts(tokens)
+	return parts.map((part, index) =>
+		part.type === 'element'
+			? React.createElement('bdi', { key: index }, opts?.tag ? React.createElement(opts.tag, null, part.value) : part.value)
+			: React.createElement(React.Fragment, { key: index }, part.value),
+	)
+}
+
 // -------- resolving Msg values (see @/models/messages.models) --------
 
 // the formatting vocabulary every translator renders unasked; custom tags come in through Translator.withTags

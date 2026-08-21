@@ -10,7 +10,9 @@ import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { setGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
+import * as I18n from '@/messages/i18n'
 import * as M from '@/messages/tutorials/layer-queue-tutorial.messages'
+import * as CMD from '@/models/command.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -23,6 +25,7 @@ import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore, openOrFocusWindow } from '@/systems/draggable-window.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
+import * as SettingsClient from '@/systems/settings.client'
 import * as Tour from '@/systems/tour.client'
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -347,7 +350,27 @@ export async function buildSteps() {
 
 		// reading the queue, before any editing
 		{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems },
-		{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge },
+		{
+			id: 'next-badge',
+			anchor: 'queue-next-badge',
+			spotlight: 'queue-item',
+			msg: {
+				inputs: () => [SettingsClient.PublicSettingsStore],
+				select: (settings: any) => {
+					const cmd = settings?.commands?.showNext
+					// already prefixed by the settings seed, so these are what a player types verbatim
+					const triggers: string[] = cmd?.enabled === false ? [] : (cmd?.triggers ?? []).map(CMD.triggerString)
+					return {
+						title: tr.text(M.nextBadge.title()),
+						body: Tour.richText(
+							M.nextBadge.body(
+								triggers.length === 0 ? null : I18n.tokenList(triggers, tr.locale, { type: 'disjunction', tag: 'code' }),
+							),
+						),
+					}
+				},
+			},
+		},
 		{
 			id: 'layer-anatomy',
 			anchor: 'queue-layer-name',
