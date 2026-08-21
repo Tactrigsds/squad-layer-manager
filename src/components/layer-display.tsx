@@ -39,13 +39,10 @@ export default function LayerDisplay(props: {
 	// elsewhere (e.g. the filter editor) and queue-status badges/parity are simply not shown
 	stores?: Partial<SquadServerFrame.KeyProp>
 }) {
+	const item = props.item
 	const teamParity =
-		Zus.useStore(
-			props.stores?.squadServer,
-			React.useCallback(
-				(s: SquadServerFrame.State | undefined) => (s ? LQY.getParityForLayerItem(s.layerItemsState, props.item) : 0),
-				[props.item],
-			),
+		Zus.useStore(props.stores?.squadServer, (s: SquadServerFrame.State | undefined) =>
+			s ? LQY.getParityForLayerItem(s.layerItemsState, item) : 0,
 		) ?? 0
 
 	const statusData = LQYClient.useLayerItemStatusData(props.item, props.stores?.squadServer)

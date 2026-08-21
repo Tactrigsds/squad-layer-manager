@@ -12,7 +12,6 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object-utils'
-import { useRefConstructor } from '@/lib/react.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
@@ -43,20 +42,21 @@ type EditLayerDialogContentProps = {
 }
 
 const EditLayerDialogContent = React.memo<EditLayerDialogContentProps>(function EditLayerDialogContent(props) {
-	const defaultLayerIdRef = React.useRef(props.layerId)
-	const frameInputRef = useRefConstructor(() =>
-		SelectLayersFrame.createInput({
+	// the initializer runs once, so it captures the layer this dialog opened on without a ref holding it
+	const [frameInput] = React.useState(() => {
+		const defaultLayerId = props.layerId
+		return SelectLayersFrame.createInput({
 			cursor: props.cursor,
-			initialEditedLayerId: defaultLayerIdRef.current,
-			selected: defaultLayerIdRef.current ? [defaultLayerIdRef.current] : [],
+			initialEditedLayerId: defaultLayerId,
+			selected: defaultLayerId ? [defaultLayerId] : [],
 			maxSelected: 1,
-			minSelected: defaultLayerIdRef.current ? 1 : 0,
+			minSelected: defaultLayerId ? 1 : 0,
 			squadServer: props.stores?.squadServer,
-		}),
-	)
+		})
+	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
 		frameKey: props.stores?.selectLayers,
-		input: frameInputRef.current,
+		input: frameInput,
 		equalityFn: Obj.deepEqual,
 	})
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider

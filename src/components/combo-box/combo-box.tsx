@@ -259,9 +259,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				props.onOpenChange?.(next)
 			}}
 		>
-			<PopoverTrigger asChild>
+			<PopoverTrigger asChild data-combobox-trigger="">
 				{React.isValidElement(props.children) ? (
-					React.cloneElement(props.children as React.ReactElement<Record<string, unknown>>, { 'data-combobox-trigger': '' })
+					props.children
 				) : (
 					<Button
 						data-combobox-trigger=""

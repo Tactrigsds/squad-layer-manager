@@ -368,27 +368,11 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 	}, [])
 	const statusData = LayerQueriesClient.useLayerItemStatusData(entry.historyEntryId, stores.squadServer)
 
-	// Mock balance triggers for debug mode
-	let effectiveBalanceTriggerEvents = balanceTriggerEvents
-	if (debug__showBalanceTriggers) {
-		const triggerLevels: BAL.TriggerWarnLevel[] = ['violation', 'warn', 'info']
-		const mockLevel = triggerLevels[Math.abs(currentMatchOffset) % triggerLevels.length]
-		const mockEvent: BAL.BalanceTriggerEvent = {
-			id: Math.abs(currentMatchOffset) * 1000 + entry.historyEntryId,
-			level: mockLevel,
-			matchTriggeredId: entry.historyEntryId,
-			triggerId: 'mock-trigger',
-			triggerVersion: 1,
-			strongerTeam: 'teamA',
-			evaluationResult: {
-				code: 'triggered',
-				strongerTeam: 'teamA',
-				messageTemplate: `Mock ${mockLevel} trigger for testing`,
-				relevantInput: [],
-			},
-		}
-		effectiveBalanceTriggerEvents = [mockEvent]
-	}
+	const historyEntryId = entry.historyEntryId
+	const effectiveBalanceTriggerEvents = React.useMemo(
+		() => (debug__showBalanceTriggers ? [mockBalanceTriggerEvent(currentMatchOffset, historyEntryId)] : balanceTriggerEvents),
+		[debug__showBalanceTriggers, currentMatchOffset, historyEntryId, balanceTriggerEvents],
+	)
 
 	// Get trigger info for this entry
 	const triggerLevel = BAL.getHighestPriorityTriggerEvent(effectiveBalanceTriggerEvents)?.level
@@ -672,4 +656,23 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 			<span className="text-muted-foreground">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
 		</span>
 	)
+}
+
+function mockBalanceTriggerEvent(currentMatchOffset: number, historyEntryId: number): BAL.BalanceTriggerEvent {
+	const triggerLevels: BAL.TriggerWarnLevel[] = ['violation', 'warn', 'info']
+	const level = triggerLevels[Math.abs(currentMatchOffset) % triggerLevels.length]
+	return {
+		id: Math.abs(currentMatchOffset) * 1000 + historyEntryId,
+		level,
+		matchTriggeredId: historyEntryId,
+		triggerId: 'mock-trigger',
+		triggerVersion: 1,
+		strongerTeam: 'teamA',
+		evaluationResult: {
+			code: 'triggered',
+			strongerTeam: 'teamA',
+			messageTemplate: `Mock ${level} trigger for testing`,
+			relevantInput: [],
+		},
+	}
 }

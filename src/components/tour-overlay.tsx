@@ -22,17 +22,19 @@ const isLaidOut = (el: Element) => {
 	return r.width > 0 || r.height > 0
 }
 
+// A measurement carries the input it was taken for, so a target that has changed since reads as "not measured
+// yet" during render. The alternative -- clearing the state from the effect that notices the change -- is a
+// synchronous setState in an effect, which costs the hook its compilation.
+const NO_ELS: Element[] = []
+
 // The elements an anchor target resolves to: every laid-out match for `{ all }`, else the first laid-out match
 // (the id may be mounted more than once, hidden copies included).
 function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
-	const [els, setEls] = React.useState<Element[]>([])
+	const [measured, setMeasured] = React.useState<{ selector: string | null; els: Element[] }>({ selector: null, els: NO_ELS })
 	const selector = target === null ? null : Tour.anchorSelector(target)
 	const all = target !== null && Tour.anchorsAll(target)
 	React.useEffect(() => {
-		if (!selector) {
-			setEls([])
-			return
-		}
+		if (!selector) return
 		// Which of the matches is laid out is a question about layout, and the DOM input only reports when the set of
 		// matching ELEMENTS changes. A dialog mounts its visible copy alongside a hidden one and lays it out a frame
 		// later: picking once on that mutation locks onto the hidden copy, whose rect is 0x0, and nothing ever moves
@@ -42,7 +44,11 @@ function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
 		let raf = 0
 		const pick = () => {
 			const next = all ? list.filter(isLaidOut) : ([list.find(isLaidOut) ?? list[0]].filter(Boolean) as Element[])
-			setEls((prev) => (prev.length === next.length && prev.every((el, i) => el === next[i]) ? prev : next))
+			setMeasured((prev) =>
+				prev.selector === selector && prev.els.length === next.length && prev.els.every((el, i) => el === next[i])
+					? prev
+					: { selector, els: next },
+			)
 			raf = requestAnimationFrame(pick)
 		}
 		const sub = Tour.domInput(selector).subscribe((next) => {
@@ -54,7 +60,7 @@ function useAnchorEls(target: Tour.AnchorTarget | null): Element[] {
 			cancelAnimationFrame(raf)
 		}
 	}, [selector, all])
-	return els
+	return measured.selector === selector ? measured.els : NO_ELS
 }
 
 type Rect = { top: number; left: number; width: number; height: number; bottom: number; right: number }
@@ -65,12 +71,9 @@ function sameRect(a: Rect, b: Rect) {
 
 // the minimum rect containing every laid-out element; null while none is
 function useUnionRect(els: Element[]): Rect | null {
-	const [rect, setRect] = React.useState<Rect | null>(null)
+	const [measured, setMeasured] = React.useState<{ els: Element[]; rect: Rect | null }>({ els: NO_ELS, rect: null })
 	React.useEffect(() => {
-		if (els.length === 0) {
-			setRect(null)
-			return
-		}
+		if (els.length === 0) return
 		let raf = 0
 		const tick = () => {
 			let next: Rect | null = null
@@ -93,13 +96,15 @@ function useUnionRect(els: Element[]): Rect | null {
 				next.width = next.right - next.left
 				next.height = next.bottom - next.top
 			}
-			setRect((prev) => (prev === next || (prev && next && sameRect(prev, next)) ? prev : next))
+			setMeasured((prev) =>
+				prev.els === els && (prev.rect === next || (prev.rect && next && sameRect(prev.rect, next))) ? prev : { els, rect: next },
+			)
 			raf = requestAnimationFrame(tick)
 		}
 		raf = requestAnimationFrame(tick)
 		return () => cancelAnimationFrame(raf)
 	}, [els])
-	return rect
+	return measured.els === els ? measured.rect : null
 }
 
 // The z-index the overlay layers at: one above the highest z among the anchor's ancestors, floored so that page
@@ -108,17 +113,23 @@ function useUnionRect(els: Element[]): Rect | null {
 function useStackZIndex(el: Element | null): number {
 	const top = useZIndex(ZI_OFFSETS.TOUR)
 	const floor = useZIndex(ZI_OFFSETS.TOUR_FLOOR)
-	const [z, setZ] = React.useState(top)
+	const [measured, setMeasured] = React.useState<{ el: Element; z: number } | null>(null)
+	// measured on the next frame rather than in the effect body, both to keep the read off the render path and
+	// because an anchor that has only just mounted has not had its own styles applied yet. Until it lands the
+	// overlay sits at the top of the band, which is the safe end to be wrong at.
 	React.useEffect(() => {
-		if (!el) return setZ(top)
-		let highest = 0
-		for (let node: Element | null = el; node; node = node.parentElement) {
-			const value = Number.parseInt(window.getComputedStyle(node).zIndex, 10)
-			if (Number.isFinite(value)) highest = Math.max(highest, value)
-		}
-		setZ(Math.max(floor, highest + 1))
-	}, [el, top, floor])
-	return z
+		if (!el) return
+		const raf = requestAnimationFrame(() => {
+			let highest = 0
+			for (let node: Element | null = el; node; node = node.parentElement) {
+				const value = Number.parseInt(window.getComputedStyle(node).zIndex, 10)
+				if (Number.isFinite(value)) highest = Math.max(highest, value)
+			}
+			setMeasured({ el, z: Math.max(floor, highest + 1) })
+		})
+		return () => cancelAnimationFrame(raf)
+	}, [el, floor])
+	return measured?.el === el ? measured.z : top
 }
 
 function useRenderedMsg(run: Tour.RunStores, msg: Tour.Step['msg']): Tour.RenderedStep {

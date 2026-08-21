@@ -440,12 +440,9 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const warnings = useQueueWarnings(props.stores)
-	const [showWarnings, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
-	React.useEffect(() => {
-		if (!warnings) {
-			setShowWarnings(false)
-		}
-	}, [warnings, setShowWarnings])
+	const [warningsRequested, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
+	// nothing to show once the warnings clear, so the toggle falls closed with them
+	const showWarnings = !!warnings && warningsRequested
 
 	return (
 		<>

@@ -16,7 +16,6 @@ import * as RequestFrame from '@/frames/backburner-request.frame'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { useRefConstructor } from '@/lib/react.ts'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
@@ -302,10 +301,10 @@ function QueueDropDialog(props: StoresProp & { drop: QueueDrop | null; onCommit:
 
 function QueueDropDialogContent(props: StoresProp & { drop: QueueDrop; onCommit: (items: LL.NewItem[]) => void; onClose: () => void }) {
 	// createInput mints an instanceId, so it has to run once per mount rather than once per render
-	const frameInputRef = useRefConstructor(() =>
+	const [frameInput] = React.useState(() =>
 		SelectLayersFrame.createInput({ startingTemplate: props.drop.filter, squadServer: props.stores.squadServer }),
 	)
-	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input: frameInputRef.current })
+	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, { input: frameInput })
 	useFrameTeardownOnUnmount(frameKey)
 
 	return (
@@ -567,14 +566,14 @@ function BackburnerItemDialog(props: StoresProp & { open: boolean; itemId: strin
 }
 
 function BackburnerItemDialogBody(props: StoresProp & { itemId: string | null; onClose: () => void }) {
-	const frameInputRef = useRefConstructor(() => {
+	const [frameInput] = React.useState(() => {
 		// the item is captured on open, so later live updates can't reseed the form mid-edit
 		const item = props.itemId
 			? Zus.getState(props.stores.squadServer!).queue.backburner.find((i) => i.itemId === props.itemId)
 			: undefined
 		return RequestFrame.createInput({ startingFilter: item?.filter, squadServer: props.stores.squadServer })
 	})
-	const frameKey = useFrameLifecycle(RequestFrame.frame, { input: frameInputRef.current })
+	const frameKey = useFrameLifecycle(RequestFrame.frame, { input: frameInput })
 	useFrameTeardownOnUnmount(frameKey)
 
 	function save() {

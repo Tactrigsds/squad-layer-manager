@@ -24,7 +24,7 @@ import EmojiDisplay from './emoji-display.tsx'
 import { enumGroupings, enumOptionGroups } from './enum-options.helpers.ts'
 import FilterEntitySelect, { FilterEntityLink } from './filter-entity-select.tsx'
 import { LayerTags } from './layer-tags.tsx'
-import type { PoolConfigApi } from './pool-config-panels.helpers.ts'
+import { type PoolConfigApi, usePoolValue } from './pool-config-panels.helpers.ts'
 import { Alert, AlertDescription } from './ui/alert.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 import { Input } from './ui/input.tsx'
@@ -123,7 +123,7 @@ function MissingIndicatorWarning({ entity, kind }: { entity: F.FilterEntity; kin
 // autogeneration). The filter entity's emoji/alertMessage pair indicates matches; invertedEmoji/invertedAlertMessage
 // indicates misses -- the pool filter needs all four configured.
 export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
-	const poolFilter = (api.useValue(['poolFilter']) as SETTINGS.PoolFilterSetting | null) ?? null
+	const poolFilter = (usePoolValue(api, ['poolFilter']) as SETTINGS.PoolFilterSetting | null) ?? null
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const entity = poolFilter ? filterEntities.get(poolFilter.filterId) : undefined
 
@@ -196,7 +196,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 	const config = SECONDARY_LISTS[listKey]
 	const title = tr.text(SETTINGS_Msgs.secondaryListTitles[listKey])
 	const path = [listKey]
-	const rawValue = (api.useValue(path) as (string | SETTINGS.AppliedFilterSetting | SETTINGS.SelectableFilterSetting)[] | null) ?? []
+	const rawValue = (usePoolValue(api, path) as (string | SETTINGS.AppliedFilterSetting | SETTINGS.SelectableFilterSetting)[] | null) ?? []
 	const entries = rawValue.map((v) => (typeof v === 'string' ? { filterId: v, applyAs: undefined } : v))
 	const filterEntities = FilterEntityClient.useFilterEntities()
 	const memberIds = entries.map((e) => e.filterId)
@@ -321,7 +321,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 // queued deliberately in spite of the pool.
 function SkipWarningsForTagsSection({ api }: { api: PoolConfigApi }) {
 	const path = ['skipWarningsForTags']
-	const tags = (api.useValue(path) as LTag.TagId[] | null) ?? []
+	const tags = (usePoolValue(api, path) as LTag.TagId[] | null) ?? []
 	return (
 		<section aria-label={tr.text(SETTINGS_Msgs.skipWarningsFor())} className="space-y-2">
 			<span className="flex items-center gap-1">
@@ -375,7 +375,7 @@ export function PoolFiltersPanel({ api }: { api: PoolConfigApi }) {
 
 function BooleanSettingRow({ api, label, description }: { api: PoolConfigApi; label: string; description: string }) {
 	const id = React.useId()
-	const checked = api.useValue([]) === true
+	const checked = usePoolValue(api, []) === true
 	return (
 		<div className="flex items-start gap-2.5">
 			<PermissionDeniedTooltip denied={api.writeDenied}>
@@ -425,7 +425,7 @@ function RepeatRuleRow(props: {
 	const rulesPath = ['repeatRules']
 	const rulePath = [...rulesPath, index]
 
-	const rule = api.useValue(rulePath) as SETTINGS.PoolRepeatRuleConfig
+	const rule = usePoolValue(api, rulePath) as SETTINGS.PoolRepeatRuleConfig
 
 	const setLabel = useDebounced({
 		onChange: (label: string) => api.set([...rulePath, 'label'], label),
@@ -606,7 +606,7 @@ function RepeatRuleRow(props: {
 export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi }) {
 	const { api } = props
 	const rulesPath = ['repeatRules']
-	const rulesLength = ((api.useValue(rulesPath) as LQY.RepeatRule[] | null) ?? []).length
+	const rulesLength = ((usePoolValue(api, rulesPath) as LQY.RepeatRule[] | null) ?? []).length
 	// remounts the uncontrolled rows after edits that shift or rewrite their seeded values
 	const [structuralKey, setStructuralKey] = React.useState(0)
 	const onStructural = () => setStructuralKey((k) => k + 1)

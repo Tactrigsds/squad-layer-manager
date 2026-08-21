@@ -263,9 +263,8 @@ export async function generateVote(input: LQY.GenVote.Input) {
 
 export function useLayerComponents(
 	input: LQY.LayerComponentInput,
-	options?: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> },
+	options: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> } = {},
 ) {
-	options ??= {}
 	return useQuery({
 		...options,
 		queryKey: ['layers', 'queryLayerComponents', useDepKey(input)],
@@ -393,11 +392,10 @@ export async function fetchLayerItemStatuses(input: LQY.LayerItemStatusesInput):
 	return res.statuses
 }
 
-export function useLayerExists(input?: LQY.LayerExistsInput, options?: { enabled?: boolean; usePlaceholderData?: boolean }) {
-	options ??= {}
+export function useLayerExists(input?: LQY.LayerExistsInput, options: { enabled?: boolean; usePlaceholderData?: boolean } = {}) {
 	return useQuery({
-		enabled: input && options?.enabled !== false,
-		placeholderData: options?.usePlaceholderData ? (d) => d : undefined,
+		enabled: input && options.enabled !== false,
+		placeholderData: options.usePlaceholderData ? (d) => d : undefined,
 		queryKey: ['layers', 'layerExists', useDepKey(input)],
 		queryFn: async () => {
 			const res = await sendWorkerRequest('layerExists', input!)

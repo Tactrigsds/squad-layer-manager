@@ -9,8 +9,9 @@ import * as RbacClient from '@/systems/rbac.client'
 // settings page's draft BehaviorSubject (SettingsForm override). Paths are relative to the pool object
 // (queue.mainPool).
 export type PoolConfigApi = {
-	// hook: subscribes to the value at `path`, re-rendering when it changes
-	useValue: (path: SETTINGS.SettingsPath) => unknown
+	// the substrate the panels read from, plus how to project a pool-relative path out of its state
+	source: Zus.AnyInput<any>
+	read: (state: any, path: SETTINGS.SettingsPath) => unknown
 	getValue: (path: SETTINGS.SettingsPath) => unknown
 	set: (path: SETTINGS.SettingsPath, value: unknown) => void
 	writeDenied: RBAC.PermissionDeniedResponse | null
@@ -29,12 +30,20 @@ export function useStorePoolConfigApi(key: ServerSettingsPrt.Key, base: SETTINGS
 		? null
 		: RBAC.permissionDenied('all', [`server-settings:write on ${RBAC.dottedSettingsPath(base)}`])
 	return {
-		useValue: (path) =>
-			// oxlint-disable-next-line rules-of-hooks -- stable call site inside the panel components
-			Zus.useStore(key, (s) => SETTINGS.derefSettingsValue(s.settings.edited, [...base, ...path])),
+		source: key,
+		read: (s, path) => SETTINGS.derefSettingsValue(s.settings.edited, [...base, ...path]),
 		getValue: (path) => SETTINGS.derefSettingsValue(Zus.getState(key).settings.edited, [...base, ...path]),
 		set: (path, value) => ServerSettingsPrt.Actions.set({ settings: key }, { path: [...base, ...path], value }),
 		writeDenied,
 		resetKey: 0,
 	}
+}
+
+// subscribes to the value at `path`, re-rendering when it changes. A module-scope hook rather than a method on the
+// api object: React Compiler only treats a call as a hook when it resolves to the same function on every render, so
+// a per-render closure hanging off `api` bails out every panel that reads through it.
+export function usePoolValue(api: PoolConfigApi, path: SETTINGS.SettingsPath): unknown {
+	// callers build the path inline, so key the selector on the path's contents rather than its identity
+	const key = JSON.stringify(path)
+	return Zus.useStore(api.source, (s) => api.read(s, JSON.parse(key) as SETTINGS.SettingsPath))
 }

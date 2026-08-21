@@ -1,10 +1,9 @@
 /// <reference types="vitest/config" />
-import babel from '@rolldown/plugin-babel'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
-import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
-import type { CommonServerOptions, UserConfig } from 'vite'
+import type { CommonServerOptions, Plugin, UserConfig } from 'vite'
 import { defineConfig } from 'vite'
 import { ViteEjsPlugin } from 'vite-plugin-ejs'
 
@@ -24,8 +23,7 @@ export default defineConfig({
 		ViteEjsPlugin({
 			NODE_ENV: ENV.NODE_ENV,
 		}),
-		react(),
-		babel({ presets: [reactCompilerPreset()] }),
+		quietCompilerBailouts(react({ compiler: true })),
 		{
 			name: 'html-proxy-middleware',
 			configureServer(server) {
@@ -97,8 +95,8 @@ export default defineConfig({
 	// },
 	resolve: {
 		alias: {
-			'@': path.resolve(__dirname, 'src'),
-			$root: path.resolve(__dirname),
+			'@': path.resolve(import.meta.dirname, 'src'),
+			$root: path.resolve(import.meta.dirname),
 		},
 	},
 	test: {
@@ -109,6 +107,21 @@ export default defineConfig({
 		exclude: ['**/node_modules/**', 'test/integration/**', 'test/e2e/**', '.claude/**'],
 	},
 })
+
+// React Compiler warns once per function it declines to optimize, which is ~290 codeframes on every build, dev
+// boot and vitest run. oxlint reports the same bailouts as `react/*` rules, so the linter owns them and the build
+// stays readable. A fatal transform error still comes through `this.error`.
+function quietCompilerBailouts(plugins: Plugin[]): Plugin[] {
+	for (const plugin of plugins) {
+		if (plugin.name !== 'vite:react-compiler' || typeof plugin.transform !== 'object') continue
+		const transform = plugin.transform
+		const handler = transform.handler
+		transform.handler = function (...args) {
+			return handler.apply(Object.create(this, { warn: { value: () => {} } }), args)
+		}
+	}
+	return plugins
+}
 
 // Headers.get('set-cookie') joins multiple cookies into one comma-separated header, which a browser reads as a
 // single cookie with garbage attributes: logging in through this port set the session and silently dropped
