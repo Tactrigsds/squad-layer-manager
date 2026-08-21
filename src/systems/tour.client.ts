@@ -28,6 +28,9 @@ import * as VoteClient from '@/systems/vote.client'
 // layout is pathless, so the URL drops it)
 const DASHBOARD_ROUTE_ID = '/_app/servers/$serverId'
 const DASHBOARD_TO = '/servers/$serverId'
+// where a run started, and where the reader goes when it ends: the server they are looking at is about to stop
+// existing, and the index is the one page that can still say something useful about the tutorial
+const TUTORIALS_TO = '/tutorials'
 // premise loss must persist across a few frames before it regresses: Radix dismiss-and-reopen churn can unmount an
 // anchor for a frame during a legitimate transition, and regressing on that would make the tour twitchy
 const PREMISE_LOSS_GRACE_MS = 150
@@ -700,7 +703,11 @@ function doReset() {
 // the server, so a reader who refreshes has a run and no tour, and that is exactly when the index page's Leave
 // is the only way to get rid of it. Abandoning a run that is already gone is a no-op.
 async function doExit() {
+	// Off the dashboard before the server goes, not after. Abandoning deletes it, and a reader left standing on
+	// its route is shown a "Server not found" page for a server they just chose to leave.
+	const serverId = active?.run.serverId
 	teardown()
+	if (serverId && isOnDashboard(serverId)) await rootRouter.navigate({ to: TUTORIALS_TO })
 	await TutorialsClient.Actions.abandon()
 }
 
