@@ -11,7 +11,6 @@ export const tutorialComplete = def((tutorial: string) => rt('Tutorial <em>{tuto
 
 // The index page: the list of tutorials and the controls for starting, resuming and leaving a run.
 export const pageTitle = def('Tutorials')
-export const sandboxNotice = def('Tutorials run on a private practice server that only you can see. Nothing you do reaches a live server.')
 export const duration = def((minutes: number) => t('{minutes} min', { minutes }))
 export const start = def('Start')
 export const startAgain = def('Start again')
@@ -27,6 +26,6 @@ export const noneAvailable = def('No tutorials are available on this install.')
 export const scenarios = {
 	'layer-queue': {
 		name: def('The layer queue'),
-		summary: def('Read and edit the queue, then see what the pool settings do.'),
+		summary: def('Learn the basics of queue editing.'),
 	},
 }

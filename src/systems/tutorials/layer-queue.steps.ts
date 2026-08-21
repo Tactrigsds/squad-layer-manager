@@ -14,12 +14,14 @@ import * as M from '@/messages/tutorials/layer-queue-tutorial.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
+import * as LC from '@/models/layer-columns'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence'
 import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore, openOrFocusWindow } from '@/systems/draggable-window.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -280,6 +282,31 @@ function resetClient(run: Tour.RunStores) {
 	void run
 }
 
+// ============================== what this install can teach ==============================
+
+// Whether the tutorial's own head layer carries scores, and whether they are the ones SLM ships. An install can
+// define its own scoring columns, or none at all, and the scores arc has to say something different in each case
+// -- including nothing, since the Scores tab is disabled for a layer with no scores and the step asking the
+// reader to open it could never be completed.
+//
+// Read off the seeded head layer rather than the queue, because the queue is not loaded yet when the run starts,
+// and that layer is a constant of the scenario.
+async function scoreSupport(): Promise<{ any: boolean; builtin: boolean }> {
+	try {
+		const layer = await LayerQueriesClient.fetchLayerInfo(LAYERS.initial[0])
+		const scores = LC.partitionScores(layer, LC.getEffectiveColumnConfig())
+		return {
+			any: Object.values(scores).some((group) => Object.values(group).some((score) => typeof score === 'number')),
+			// the two the copy actually explains; a value can only be here if the column is defined
+			builtin: typeof scores.diffs['Balance_Differential'] === 'number' && typeof scores.other['Asymmetry_Score'] === 'number',
+		}
+	} catch (error) {
+		// nothing provable about the scores is a reason to leave the arc out, not to narrate it and hope
+		console.error("tour: could not read the tutorial layer's scores, leaving the scores steps out", error)
+		return { any: false, builtin: false }
+	}
+}
+
 // ============================== checkpoints ==============================
 // One per region of the tour whose server state differs; the stage ids are the scenario's cp-* stages. `ready`
 // pins the state the client must observe before replaying simulates on top of it.
@@ -310,542 +337,585 @@ const CP = {
 
 // ============================== steps ==============================
 
-export const steps = Tour.defineSteps([
-	{ id: 'welcome', msg: M.welcome, checkpoint: CP.fresh },
-	{ id: 'sandbox', anchor: 'server-name', msg: M.sandbox },
-	{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory },
-	{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel },
+export async function buildSteps() {
+	const scores = await scoreSupport()
+	return Tour.defineSteps([
+		{ id: 'welcome', msg: M.welcome, checkpoint: CP.fresh },
+		{ id: 'sandbox', anchor: 'server-name', msg: M.sandbox },
+		{ id: 'match-history', anchor: { all: 'match-history' }, msg: M.matchHistory },
+		{ id: 'queue-panel', anchor: 'queue-panel', msg: M.queuePanel },
 
-	// reading the queue, before any editing
-	{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems },
-	{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge },
-	{
-		id: 'layer-anatomy',
-		anchor: 'queue-layer-name',
-		msg: {
-			inputs: (run) => [run.squadServer],
-			select: (s: any) => {
-				const layer = headLayer(s)
-				return {
-					title: tr.text(M.layerAnatomy.title()),
-					body: layer ? Tour.richText(M.layerAnatomy.body(layer)) : null,
-				}
+		// reading the queue, before any editing
+		{ id: 'queue-items', anchor: 'queue-item', msg: M.queueItems },
+		{ id: 'next-badge', anchor: 'queue-next-badge', spotlight: 'queue-item', msg: M.nextBadge },
+		{
+			id: 'layer-anatomy',
+			anchor: 'queue-layer-name',
+			msg: {
+				inputs: (run) => [run.squadServer],
+				select: (s: any) => {
+					const layer = headLayer(s)
+					return {
+						title: tr.text(M.layerAnatomy.title()),
+						body: layer ? Tour.richText(M.layerAnatomy.body(layer)) : null,
+					}
+				},
 			},
 		},
-	},
-	{
-		// the whole run of tagged rows, so the alternating (1)/(2) marks down the queue are visible in one zone. The
-		// card's example is the queue's own head layer rendered with normalization off, beside the normalized one.
-		id: 'team-normalize',
-		anchor: { all: 'queue-item' },
-		msg: {
-			inputs: (run) => [run.squadServer],
-			select: (s: any) => ({
-				title: tr.text(M.teamNormalize.title()),
-				body: Tour.richText(
-					M.teamNormalize.body(
-						head(s) ? React.createElement(ShortLayerName, { layerId: head(s).layerId, teamParity: 0, normalized: false }) : null,
+		{
+			// the whole run of tagged rows, so the alternating (1)/(2) marks down the queue are visible in one zone. The
+			// card's example is the queue's own head layer rendered with normalization off, beside the normalized one.
+			id: 'team-normalize',
+			anchor: { all: 'queue-item' },
+			msg: {
+				inputs: (run) => [run.squadServer],
+				select: (s: any) => ({
+					title: tr.text(M.teamNormalize.title()),
+					body: Tour.richText(
+						M.teamNormalize.body(
+							head(s) ? React.createElement(ShortLayerName, { layerId: head(s).layerId, teamParity: 0, normalized: false }) : null,
+						),
 					),
-				),
-			}),
-		},
-	},
-	// both cards tell the reader to hover the indicator, so the anchor has to stay reachable: the default
-	// interact blocks the whole page, which leaves the instruction doing nothing
-	{
-		id: 'filter-indicators',
-		anchor: 'layer-indicators',
-		spotlight: 'queue-item',
-		interact: 'anchor-only',
-		msg: M.filterIndicators,
-	},
-	{
-		id: 'repeat-indicators',
-		anchor: 'layer-indicators',
-		spotlight: 'queue-item',
-		interact: 'anchor-only',
-		msg: M.repeatIndicators,
-	},
-
-	// the layer details window
-	{
-		id: 'open-layer-details',
-		anchor: 'queue-layer-name',
-		interact: 'anchor-only',
-		msg: M.LayerDetails.openLayerDetails,
-	},
-	{
-		id: 'layer-details',
-		anchor: 'layer-details-window',
-		msg: M.LayerDetails.layerDetails,
-		premise: domPresent('layer-details'),
-		advanceFromPrevious: { type: 'state', ...domPresent('layer-details'), simulate: simOpenLayerDetails },
-	},
-	{
-		id: 'open-layer-scores',
-		anchor: 'layer-info-tabs',
-		interact: 'anchor-only',
-		msg: M.LayerDetails.openLayerScores,
-	},
-	{
-		id: 'layer-scores',
-		anchor: 'layer-details-window',
-		msg: M.LayerDetails.layerScores,
-		premise: domPresent('layer-scores'),
-		advanceFromPrevious: { type: 'state', ...domPresent('layer-scores'), simulate: simShowLayerScores },
-	},
-	{
-		// a draggable window outlives the step that opened it, and it sits over the queue the next steps narrate
-		id: 'close-layer-details',
-		anchor: { css: `${WINDOW} [data-window-control="close"]` },
-		interact: 'anchor-only',
-		msg: M.closeLayerDetails,
-	},
-	{
-		id: 'layer-context-menu',
-		anchor: 'queue-layer-name',
-		interact: 'free',
-		msg: M.layerContextMenu,
-		advanceFromPrevious: { type: 'state', ...domPresent('layer-details-window', false), simulate: simCloseLayerDetails },
-	},
-
-	// editing
-	{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
-	{
-		id: 'queue-editors',
-		anchor: 'queue-editors',
-		msg: M.queueUserPresence,
-		premise: editingQueue,
-		advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
-	},
-
-	// the layer selection dialog
-	{
-		id: 'add-layers-button',
-		anchor: 'queue-add',
-		interact: 'anchor-only',
-		msg: M.AddLayersSequence.addLayersButton,
-		premise: editingQueue,
-	},
-	{
-		id: 'add-dialog-tour',
-		anchor: 'add-dialog',
-		msg: M.AddLayersSequence.addLayersDialogTour,
-		premise: addDialogOpen,
-		advanceFromPrevious: { type: 'state', ...addDialogOpen, simulate: simOpenAddDialog },
-	},
-	{
-		id: 'layer-filter-menu',
-		anchor: 'add-filters',
-		interact: 'free',
-		msg: {
-			title: M.AddLayersSequence.layerFilterMenu.title,
-			body: () => M.AddLayersSequence.layerFilterMenu.body(ADD_TARGET.map, ADD_TARGET.gamemode, ADD_TARGET.faction),
-		},
-		premise: addDialogOpen,
-	},
-	{
-		id: 'results-table',
-		anchor: 'add-pick',
-		msg: M.AddLayersSequence.resultsTable,
-		premise: addDialogOpen,
-		advanceFromPrevious: {
-			type: 'state',
-			inputs: () => [addDialogFrame()],
-			select: (s: any) => {
-				const menu = filterMenu(s)
-				if (!menu) return false
-				return (
-					compSelects(menu.Map, ADD_TARGET.map) &&
-					compSelects(menu.Gamemode, ADD_TARGET.gamemode) &&
-					(compSelects(menu.Faction_1, ADD_TARGET.faction) || compSelects(menu.Faction_2, ADD_TARGET.faction))
-				)
+				}),
 			},
-			simulate: simSetAddFilters,
 		},
-	},
-	{
-		id: 'results-pagination',
-		anchor: 'table-pagination',
-		spotlight: 'add-pick',
-		msg: M.AddLayersSequence.pagination,
-		premise: addDialogOpen,
-	},
-	{
-		id: 'results-sorting',
-		anchor: 'table-sort',
-		spotlight: 'add-pick',
-		interact: 'anchor-only',
-		msg: M.AddLayersSequence.sorting,
-		premise: addDialogOpen,
-	},
-	{
-		// the dice and the toggle that reveals it, as one zone
-		id: 'results-randomization',
-		anchor: { all: 'table-randomize' },
-		spotlight: 'add-pick',
-		interact: 'anchor-only',
-		msg: M.AddLayersSequence.randomization,
-		premise: addDialogOpen,
-	},
-	{
-		id: 'applied-filters',
-		anchor: 'applied-filters',
-		spotlight: 'add-dialog',
-		interact: 'free',
-		msg: M.AddLayersSequence.appliedFiltersToolbar,
-		premise: addDialogOpen,
-	},
-	{ id: 'results-repeats', anchor: 'add-pick', msg: M.AddLayersSequence.repeats, premise: addDialogOpen },
-	{
-		id: 'hide-repeats',
-		anchor: 'table-hide-repeats',
-		spotlight: 'add-pick',
-		interact: 'free',
-		msg: M.AddLayersSequence.hideRepeats,
-		premise: addDialogOpen,
-	},
-	{
-		id: 'click-to-select',
-		anchor: 'add-pick',
-		interact: 'free',
-		msg: M.AddLayersSequence.clickToSelect,
-		premise: addDialogOpen,
-		advanceFromPrevious: {
-			type: 'change',
-			inputs: () => [addDialogFrame()],
-			sample: (s: any) => s?.poolCheckboxes?.checkboxesState?.dnr ?? null,
-			advanced: (from, to) => from !== to,
-			simulate: simToggleHideRepeats,
+		// both cards tell the reader to hover the indicator, so the anchor has to stay reachable: the default
+		// interact blocks the whole page, which leaves the instruction doing nothing
+		{
+			id: 'filter-indicators',
+			anchor: 'layer-indicators',
+			spotlight: 'queue-item',
+			interact: 'anchor-only',
+			msg: M.filterIndicators,
 		},
-	},
-	{
-		id: 'results-context-menu',
-		anchor: 'add-pick',
-		interact: 'free',
-		msg: M.AddLayersSequence.rightClick,
-		premise: addDialogOpen,
-		advanceFromPrevious: {
-			type: 'state',
-			inputs: () => [addDialogFrame()],
-			select: (s: any) => (s?.layerTable?.selected?.length ?? 0) > 0,
-			simulate: () => simSelect(LAYERS.picks.chora),
+		{
+			id: 'repeat-indicators',
+			anchor: 'layer-indicators',
+			spotlight: 'queue-item',
+			interact: 'anchor-only',
+			msg: M.repeatIndicators,
 		},
-	},
-	{
-		// the reader edits the filters and picks from the results, so both regions are the subject
-		id: 'add-another',
-		anchor: { css: '[data-tour="add-filters"], [data-tour="add-pick"]', all: true },
-		interact: 'free',
-		msg: { title: M.AddLayersSequence.addAnother.title, body: () => M.AddLayersSequence.addAnother.body(ADD_SECOND.map) },
-		premise: addDialogOpen,
-	},
-	{
-		id: 'see-selection',
-		anchor: 'table-show-selected',
-		interact: 'free',
-		msg: M.AddLayersSequence.seeSelection,
-		premise: addDialogOpen,
-		advanceFromPrevious: {
-			type: 'state',
-			inputs: () => [addDialogFrame()],
-			// a count would also pass on the layer picked two steps ago, and this step is about seeing a selection
-			// the filters have hidden, which only reads as that if the second pick really is from the second map
-			select: (s: any) => ((s?.layerTable?.selected ?? []) as L.LayerId[]).some((id) => L.toLayer(id).Map === ADD_SECOND.map),
-			simulate: () => simSelect(LAYERS.picks.yehorivka),
-		},
-	},
-	{
-		id: 'add-submit',
-		anchor: 'add-submit',
-		spotlight: 'add-dialog',
-		interact: 'free',
-		msg: M.AddLayersSequence.submit,
-		premise: addDialogOpen,
-		advanceFromPrevious: {
-			type: 'state',
-			inputs: () => [addDialogFrame()],
-			select: (s: any) => s?.layerTable?.showSelectedLayers === true,
-			simulate: simShowSelected,
-		},
-	},
 
-	// what the edit looks like in the queue
-	{
-		// every row the reader just added, whichever positions they landed in: the union runs from the first to the
-		// last. data-mutation is on the row already, and the queue-panel scope keeps other lists out of it.
-		id: 'added-highlight',
-		anchor: { css: '[data-tour="queue-panel"] li[data-mutation="added"]', all: true },
-		msg: M.addedHighlight,
-		premise: editingQueue,
-		checkpoint: CP.edited,
-		advanceFromPrevious: { type: 'change', inputs: (run) => [run.squadServer], sample: queueLength, advanced: (from, to) => to > from },
-	},
-	{
-		id: 'layer-attribution',
-		anchor: 'queue-item-source',
-		spotlight: 'queue-item',
-		msg: M.layerAttribution,
-		premise: editingQueue,
-	},
-
-	// the rest of the item actions
-	{
-		id: 'reorder',
-		anchor: 'queue-reorder',
-		spotlight: 'queue-panel',
-		interact: 'free',
-		msg: M.reorderLayer,
-		premise: editingQueue,
-	},
-	{
-		id: 'remove-layer',
-		anchor: 'queue-delete',
-		spotlight: 'queue-item',
-		interact: 'anchor-only',
-		msg: M.removeLayer,
-		premise: editingQueue,
-		advanceFromPrevious: {
-			type: 'change',
-			inputs: (run) => [run.squadServer],
-			sample: queueOrder,
-			advanced: (from, to) => from !== to,
-			simulate: simReorder,
+		// the layer details window
+		{
+			id: 'open-layer-details',
+			anchor: 'queue-layer-name',
+			interact: 'anchor-only',
+			msg: M.LayerDetails.openLayerDetails,
 		},
-	},
-	{
-		id: 'swap-teams',
-		anchor: 'queue-swap',
-		spotlight: 'queue-item',
-		interact: 'anchor-only',
-		msg: M.swapTeams,
-		premise: editingQueue,
-		advanceFromPrevious: { type: 'anchor', simulate: simRemoveSeed },
-	},
-	{
-		id: 'edit-layer',
-		anchor: 'queue-item-edit',
-		spotlight: 'queue-item',
-		interact: 'anchor-only',
-		msg: M.editLayer,
-		premise: editingQueue,
-		advanceFromPrevious: { type: 'anchor', simulate: simSwapHead },
-	},
-	{
-		id: 'edit-layer-dialog',
-		anchor: 'edit-layer-dialog',
-		interact: 'free',
-		msg: M.editLayerSelection,
-		advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog'), simulate: simOpenEditLayer },
-	},
-	{
-		id: 'item-menu',
-		anchor: 'queue-item-menu',
-		spotlight: 'queue-item',
-		interact: 'free',
-		msg: M.layerItemEllipsis,
-		premise: editingQueue,
-		advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog', false), simulate: simCloseQueueSubActivity },
-	},
-	{
-		// The ring is on the history, which is where the drag starts, but the queue is where it has to land: leaving
-		// it dimmed and behind a blocker makes the instruction impossible to follow. A fresh sandbox holds only the
-		// in-progress match, so the anchor is the whole history rather than a finished row.
-		id: 'replay-layer',
-		anchor: { all: 'match-history' },
-		spotlight: { css: '[data-tour="match-history"], [data-tour="queue-panel"]', all: true },
-		interact: 'free',
-		msg: M.replayLayer,
-		premise: editingQueue,
-	},
-	{
-		id: 'add-tag',
-		anchor: 'queue-item-display',
-		spotlight: 'queue-item',
-		interact: 'free',
-		msg: M.addTag,
-		premise: editingQueue,
-	},
-	{
-		id: 'add-note',
-		anchor: 'queue-item-display',
-		spotlight: 'queue-item',
-		interact: 'free',
-		msg: M.notes,
-		premise: editingQueue,
-		advanceFromPrevious: {
-			type: 'change',
-			inputs: (run) => [run.squadServer],
-			sample: headTagCount,
-			advanced: (from, to) => to > from,
-			simulate: simAddTag,
+		{
+			id: 'layer-details',
+			anchor: 'layer-details-window',
+			msg: M.LayerDetails.layerDetails,
+			premise: domPresent('layer-details'),
+			advanceFromPrevious: { type: 'state', ...domPresent('layer-details'), simulate: simOpenLayerDetails },
 		},
-	},
-
-	// saving, and what saving depends on
-	// Warnings first, and alone: arming force save skips the warning prompt entirely (see setEditing in
-	// layer-queue-panel), so the two cannot be shown in the same pass. This pass saves the queue for real.
-	//
-	// Saving comes before the warnings card rather than after it, because the first press does not save -- it
-	// surfaces the warnings the reader's own additions caused, and the card then has something to point at.
-	{
-		id: 'save',
-		anchor: 'queue-save',
-		interact: 'anchor-only',
-		msg: M.save,
-		premise: editingQueue,
-		advanceFromPrevious: {
-			type: 'change',
-			inputs: (run) => [run.squadServer],
-			sample: headNoteCount,
-			advanced: (from, to) => to > from,
-			simulate: simAddNote,
+		// The scores arc, or nothing. An install can ship SLM's scores, its own, or none; with none the Scores tab
+		// is disabled and asking the reader to open it would strand them. Whichever card comes first here is
+		// entered by opening the tab, so both carry that transition.
+		...(scores.any
+			? [
+					{
+						id: 'open-layer-scores',
+						anchor: 'layer-info-tabs',
+						interact: 'anchor-only' as const,
+						msg: M.LayerDetails.openLayerScores,
+					},
+				]
+			: []),
+		...(scores.builtin
+			? [
+					{
+						id: 'layer-scores',
+						anchor: 'layer-details-window',
+						msg: M.LayerDetails.layerScores,
+						premise: domPresent('layer-scores'),
+						advanceFromPrevious: { type: 'state' as const, ...domPresent('layer-scores'), simulate: simShowLayerScores },
+					},
+					{
+						id: 'balance-score',
+						anchor: 'layer-score-Balance_Differential',
+						spotlight: 'layer-details-window',
+						msg: M.LayerDetails.balanceScore,
+						premise: domPresent('layer-scores'),
+					},
+					{
+						id: 'asymmetry-score',
+						anchor: 'layer-score-Asymmetry_Score',
+						spotlight: 'layer-details-window',
+						msg: M.LayerDetails.asymmetryScore,
+						premise: domPresent('layer-scores'),
+					},
+				]
+			: scores.any
+				? [
+						{
+							id: 'layer-scores-nonstandard',
+							anchor: 'layer-details-window',
+							msg: M.LayerDetails.layerScoresNonstandard,
+							premise: domPresent('layer-scores'),
+							advanceFromPrevious: { type: 'state' as const, ...domPresent('layer-scores'), simulate: simShowLayerScores },
+						},
+					]
+				: []),
+		{
+			// a draggable window outlives the step that opened it, and it sits over the queue the next steps narrate
+			id: 'close-layer-details',
+			anchor: { css: `${WINDOW} [data-window-control="close"]` },
+			interact: 'anchor-only',
+			msg: M.closeLayerDetails,
 		},
-	},
-	{
-		id: 'warnings-on-save',
-		anchor: 'save-warnings',
-		spotlight: { css: '[data-tour="save-warnings"], [data-tour="queue-save"]', all: true },
-		interact: 'free',
-		msg: M.warningsOnSave,
-		// no editing premise here: the point of the step is the edit session ending on the second press
-		advanceFromPrevious: { type: 'anchor', simulate: simShowSaveWarnings },
-	},
+		{
+			id: 'layer-context-menu',
+			anchor: 'queue-layer-name',
+			interact: 'free',
+			msg: M.layerContextMenu,
+			advanceFromPrevious: { type: 'state', ...domPresent('layer-details-window', false), simulate: simCloseLayerDetails },
+		},
 
-	// The force-save arc needs an editing session of its own with a second editor in it, since force save only
-	// overrides something while somebody else holds the queue.
-	{
-		id: 'force-save-editing',
-		anchor: 'queue-edit',
-		interact: 'anchor-only',
-		msg: M.startEditing,
-		checkpoint: CP.saved,
-		// arrives when the second save press goes through and ends the reader's session
-		advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
-	},
-	{
-		id: 'collaborative-editing',
-		stage: 'second-editor',
-		anchor: 'queue-editors',
-		spotlight: { css: '[data-tour="queue-editors"], [data-tour="queue-save"]', all: true },
-		msg: M.collaborativeEditing,
-		premise: editingQueue,
-		advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
-	},
-	{
-		// with nothing to save, force save ends the reader's own session and kicks nobody: the copy promises more
-		// than that, so the arc gives it something to override
-		id: 'force-save-edit',
-		anchor: 'queue-delete',
-		spotlight: 'queue-item',
-		interact: 'anchor-only',
-		msg: M.forceSaveEdit,
-		premise: editingQueue,
-	},
-	{
-		id: 'force-save',
-		anchor: 'queue-force-save',
-		spotlight: { css: '[data-tour="queue-force-save"], [data-tour="queue-save"]', all: true },
-		interact: 'free',
-		msg: M.forceSave,
-		premise: editingQueue,
-		advanceFromPrevious: { type: 'anchor', simulate: simRemoveHead },
-	},
+		// editing
+		{ id: 'start-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
+		{
+			id: 'queue-editors',
+			anchor: 'queue-editors',
+			msg: M.queueUserPresence,
+			premise: editingQueue,
+			advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
+		},
 
-	// generation, which needs an empty saved queue
-	{
-		id: 'autogen-intro',
-		anchor: 'queue-panel',
-		msg: M.Autogen.intro,
-		checkpoint: CP.postForce,
-		// armed and pressed: done once the queue is no longer the reader's to edit
-		advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
-	},
-	{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
-	{
-		// one step for both halves of the instruction: empty the queue, then save. Done is a generated head.
-		id: 'autogen-try',
-		anchor: 'queue-clear',
-		spotlight: 'queue-panel',
-		interact: 'free',
-		msg: M.Autogen.tryItOut,
-		advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
-	},
-	{
-		id: 'autogen-item',
-		anchor: 'queue-item-source',
-		spotlight: 'queue-item',
-		msg: M.Autogen.generatedItem,
-		checkpoint: CP.generated,
-		advanceFromPrevious: { type: 'state', inputs: (run) => [run.squadServer], select: headIsGenerated },
-	},
+		// the layer selection dialog
+		{
+			id: 'add-layers-button',
+			anchor: 'queue-add',
+			interact: 'anchor-only',
+			msg: M.AddLayersSequence.addLayersButton,
+			premise: editingQueue,
+		},
+		{
+			id: 'add-dialog-tour',
+			anchor: 'add-dialog',
+			msg: M.AddLayersSequence.addLayersDialogTour,
+			premise: addDialogOpen,
+			advanceFromPrevious: { type: 'state', ...addDialogOpen, simulate: simOpenAddDialog },
+		},
+		{
+			id: 'layer-filter-menu',
+			anchor: 'add-filters',
+			interact: 'free',
+			msg: {
+				title: M.AddLayersSequence.layerFilterMenu.title,
+				body: () => M.AddLayersSequence.layerFilterMenu.body(ADD_TARGET.map, ADD_TARGET.gamemode, ADD_TARGET.faction),
+			},
+			premise: addDialogOpen,
+		},
+		{
+			id: 'results-table',
+			anchor: 'add-pick',
+			msg: M.AddLayersSequence.resultsTable,
+			premise: addDialogOpen,
+			advanceFromPrevious: {
+				type: 'state',
+				inputs: () => [addDialogFrame()],
+				select: (s: any) => {
+					const menu = filterMenu(s)
+					if (!menu) return false
+					return (
+						compSelects(menu.Map, ADD_TARGET.map) &&
+						compSelects(menu.Gamemode, ADD_TARGET.gamemode) &&
+						(compSelects(menu.Faction_1, ADD_TARGET.faction) || compSelects(menu.Faction_2, ADD_TARGET.faction))
+					)
+				},
+				simulate: simSetAddFilters,
+			},
+		},
+		{
+			id: 'results-pagination',
+			anchor: 'table-pagination',
+			spotlight: 'add-pick',
+			msg: M.AddLayersSequence.pagination,
+			premise: addDialogOpen,
+		},
+		{
+			id: 'results-sorting',
+			anchor: 'table-sort',
+			spotlight: 'add-pick',
+			interact: 'anchor-only',
+			msg: M.AddLayersSequence.sorting,
+			premise: addDialogOpen,
+		},
+		{
+			// the dice and the toggle that reveals it, as one zone
+			id: 'results-randomization',
+			anchor: { all: 'table-randomize' },
+			spotlight: 'add-pick',
+			interact: 'anchor-only',
+			msg: M.AddLayersSequence.randomization,
+			premise: addDialogOpen,
+		},
+		{
+			id: 'applied-filters',
+			anchor: 'applied-filters',
+			spotlight: 'add-dialog',
+			interact: 'free',
+			msg: M.AddLayersSequence.appliedFiltersToolbar,
+			premise: addDialogOpen,
+		},
+		{ id: 'results-repeats', anchor: 'add-pick', msg: M.AddLayersSequence.repeats, premise: addDialogOpen },
+		{
+			id: 'hide-repeats',
+			anchor: 'table-hide-repeats',
+			spotlight: 'add-pick',
+			interact: 'free',
+			msg: M.AddLayersSequence.hideRepeats,
+			premise: addDialogOpen,
+		},
+		{
+			id: 'click-to-select',
+			anchor: 'add-pick',
+			interact: 'free',
+			msg: M.AddLayersSequence.clickToSelect,
+			premise: addDialogOpen,
+			advanceFromPrevious: {
+				type: 'change',
+				inputs: () => [addDialogFrame()],
+				sample: (s: any) => s?.poolCheckboxes?.checkboxesState?.dnr ?? null,
+				advanced: (from, to) => from !== to,
+				simulate: simToggleHideRepeats,
+			},
+		},
+		{
+			id: 'results-context-menu',
+			anchor: 'add-pick',
+			interact: 'free',
+			msg: M.AddLayersSequence.rightClick,
+			premise: addDialogOpen,
+			advanceFromPrevious: {
+				type: 'state',
+				inputs: () => [addDialogFrame()],
+				select: (s: any) => (s?.layerTable?.selected?.length ?? 0) > 0,
+				simulate: () => simSelect(LAYERS.picks.chora),
+			},
+		},
+		{
+			// the reader edits the filters and picks from the results, so both regions are the subject
+			id: 'add-another',
+			anchor: { css: '[data-tour="add-filters"], [data-tour="add-pick"]', all: true },
+			interact: 'free',
+			msg: { title: M.AddLayersSequence.addAnother.title, body: () => M.AddLayersSequence.addAnother.body(ADD_SECOND.map) },
+			premise: addDialogOpen,
+		},
+		{
+			id: 'see-selection',
+			anchor: 'table-show-selected',
+			interact: 'free',
+			msg: M.AddLayersSequence.seeSelection,
+			premise: addDialogOpen,
+			advanceFromPrevious: {
+				type: 'state',
+				inputs: () => [addDialogFrame()],
+				// a count would also pass on the layer picked two steps ago, and this step is about seeing a selection
+				// the filters have hidden, which only reads as that if the second pick really is from the second map
+				select: (s: any) => ((s?.layerTable?.selected ?? []) as L.LayerId[]).some((id) => L.toLayer(id).Map === ADD_SECOND.map),
+				simulate: () => simSelect(LAYERS.picks.yehorivka),
+			},
+		},
+		{
+			id: 'add-submit',
+			anchor: 'add-submit',
+			spotlight: 'add-dialog',
+			interact: 'free',
+			msg: M.AddLayersSequence.submit,
+			premise: addDialogOpen,
+			advanceFromPrevious: {
+				type: 'state',
+				inputs: () => [addDialogFrame()],
+				select: (s: any) => s?.layerTable?.showSelectedLayers === true,
+				simulate: simShowSelected,
+			},
+		},
 
-	// what configures all of it
-	{
-		id: 'open-pool-settings',
-		anchor: 'pool-settings',
-		interact: 'anchor-only',
-		msg: M.PoolSettings.showPoolSettings,
-	},
-	{
-		id: 'pool-settings',
-		anchor: 'pool-config-body',
-		msg: M.PoolSettings.poolSettings,
-		premise: domPresent('pool-config-body'),
-		advanceFromPrevious: { type: 'state', ...domPresent('pool-config-body'), simulate: simOpenPoolConfig },
-	},
-	{
-		id: 'pool-filter',
-		anchor: 'pool-filter',
-		msg: M.PoolSettings.poolFilter,
-		premise: domPresent('pool-config-body'),
-	},
-	{
-		id: 'indicate-matches',
-		anchor: 'pool-list-indicateMatches',
-		msg: M.PoolSettings.indicateMatchesAndMisses,
-		premise: domPresent('pool-config-body'),
-	},
-	{
-		id: 'default-select',
-		anchor: 'pool-list-defaultSelectable',
-		msg: M.PoolSettings.defaultSelect,
-		premise: domPresent('pool-config-body'),
-	},
-	{
-		id: 'view-repeat-rules',
-		anchor: 'pool-config-tabs',
-		interact: 'anchor-only',
-		msg: M.PoolSettings.viewRepeatRules,
-		premise: domPresent('pool-config-body'),
-	},
-	{
-		id: 'repeat-rules',
-		anchor: 'pool-repeat-rules',
-		msg: M.PoolSettings.repeatRulesOverview,
-		premise: domPresent('pool-repeat-rules'),
-		advanceFromPrevious: { type: 'state', ...domPresent('pool-repeat-rules'), simulate: simShowRepeatRules },
-	},
-	{
-		id: 'repeat-rule',
-		anchor: 'pool-repeat-rules',
-		msg: M.PoolSettings.repeatRule,
-		premise: domPresent('pool-repeat-rules'),
-	},
-	{
-		id: 'target-values',
-		anchor: 'repeat-rule-targets',
-		spotlight: 'pool-repeat-rules',
-		msg: M.PoolSettings.targetValues,
-		premise: domPresent('pool-repeat-rules'),
-	},
-	{
-		id: 'warns-and-autogen',
-		anchor: { all: 'repeat-rule-flags' },
-		spotlight: 'pool-repeat-rules',
-		msg: M.PoolSettings.warnsAndAutogen,
-		premise: domPresent('pool-repeat-rules'),
-	},
-])
+		// what the edit looks like in the queue
+		{
+			// every row the reader just added, whichever positions they landed in: the union runs from the first to the
+			// last. data-mutation is on the row already, and the queue-panel scope keeps other lists out of it.
+			id: 'added-highlight',
+			anchor: { css: '[data-tour="queue-panel"] li[data-mutation="added"]', all: true },
+			msg: M.addedHighlight,
+			premise: editingQueue,
+			checkpoint: CP.edited,
+			advanceFromPrevious: {
+				type: 'change',
+				inputs: (run) => [run.squadServer],
+				sample: queueLength,
+				advanced: (from, to) => to > from,
+			},
+		},
+		{
+			id: 'layer-attribution',
+			anchor: 'queue-item-source',
+			spotlight: 'queue-item',
+			msg: M.layerAttribution,
+			premise: editingQueue,
+		},
 
-Tour.registerScenario('layer-queue', { steps, resetClient })
+		// the rest of the item actions
+		{
+			id: 'reorder',
+			anchor: 'queue-reorder',
+			spotlight: 'queue-panel',
+			interact: 'free',
+			msg: M.reorderLayer,
+			premise: editingQueue,
+		},
+		{
+			id: 'remove-layer',
+			anchor: 'queue-delete',
+			spotlight: 'queue-item',
+			interact: 'anchor-only',
+			msg: M.removeLayer,
+			premise: editingQueue,
+			advanceFromPrevious: {
+				type: 'change',
+				inputs: (run) => [run.squadServer],
+				sample: queueOrder,
+				advanced: (from, to) => from !== to,
+				simulate: simReorder,
+			},
+		},
+		{
+			id: 'swap-teams',
+			anchor: 'queue-swap',
+			spotlight: 'queue-item',
+			interact: 'anchor-only',
+			msg: M.swapTeams,
+			premise: editingQueue,
+			advanceFromPrevious: { type: 'anchor', simulate: simRemoveSeed },
+		},
+		{
+			id: 'edit-layer',
+			anchor: 'queue-item-edit',
+			spotlight: 'queue-item',
+			interact: 'anchor-only',
+			msg: M.editLayer,
+			premise: editingQueue,
+			advanceFromPrevious: { type: 'anchor', simulate: simSwapHead },
+		},
+		{
+			id: 'edit-layer-dialog',
+			anchor: 'edit-layer-dialog',
+			interact: 'free',
+			msg: M.editLayerSelection,
+			advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog'), simulate: simOpenEditLayer },
+		},
+		{
+			id: 'item-menu',
+			anchor: 'queue-item-menu',
+			spotlight: 'queue-item',
+			interact: 'free',
+			msg: M.layerItemEllipsis,
+			premise: editingQueue,
+			advanceFromPrevious: { type: 'state', ...domPresent('edit-layer-dialog', false), simulate: simCloseQueueSubActivity },
+		},
+		{
+			// The ring is on the history, which is where the drag starts, but the queue is where it has to land: leaving
+			// it dimmed and behind a blocker makes the instruction impossible to follow. A fresh sandbox holds only the
+			// in-progress match, so the anchor is the whole history rather than a finished row.
+			id: 'replay-layer',
+			anchor: { all: 'match-history' },
+			spotlight: { css: '[data-tour="match-history"], [data-tour="queue-panel"]', all: true },
+			interact: 'free',
+			msg: M.replayLayer,
+			premise: editingQueue,
+		},
+		{
+			id: 'add-tag',
+			anchor: 'queue-item-display',
+			spotlight: 'queue-item',
+			interact: 'free',
+			msg: M.addTag,
+			premise: editingQueue,
+		},
+		{
+			id: 'add-note',
+			anchor: 'queue-item-display',
+			spotlight: 'queue-item',
+			interact: 'free',
+			msg: M.notes,
+			premise: editingQueue,
+			advanceFromPrevious: {
+				type: 'change',
+				inputs: (run) => [run.squadServer],
+				sample: headTagCount,
+				advanced: (from, to) => to > from,
+				simulate: simAddTag,
+			},
+		},
+
+		// saving, and what saving depends on
+		// Warnings first, and alone: arming force save skips the warning prompt entirely (see setEditing in
+		// layer-queue-panel), so the two cannot be shown in the same pass. This pass saves the queue for real.
+		//
+		// Saving comes before the warnings card rather than after it, because the first press does not save -- it
+		// surfaces the warnings the reader's own additions caused, and the card then has something to point at.
+		{
+			id: 'save',
+			anchor: 'queue-save',
+			interact: 'anchor-only',
+			msg: M.save,
+			premise: editingQueue,
+			advanceFromPrevious: {
+				type: 'change',
+				inputs: (run) => [run.squadServer],
+				sample: headNoteCount,
+				advanced: (from, to) => to > from,
+				simulate: simAddNote,
+			},
+		},
+		{
+			id: 'warnings-on-save',
+			anchor: 'save-warnings',
+			spotlight: { css: '[data-tour="save-warnings"], [data-tour="queue-save"]', all: true },
+			interact: 'free',
+			msg: M.warningsOnSave,
+			// no editing premise here: the point of the step is the edit session ending on the second press
+			advanceFromPrevious: { type: 'anchor', simulate: simShowSaveWarnings },
+		},
+
+		// The force-save arc needs an editing session of its own with a second editor in it, since force save only
+		// overrides something while somebody else holds the queue.
+		{
+			id: 'force-save-editing',
+			anchor: 'queue-edit',
+			interact: 'anchor-only',
+			msg: M.startEditing,
+			checkpoint: CP.saved,
+			// arrives when the second save press goes through and ends the reader's session
+			advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
+		},
+		{
+			id: 'collaborative-editing',
+			stage: 'second-editor',
+			anchor: 'queue-editors',
+			spotlight: { css: '[data-tour="queue-editors"], [data-tour="queue-save"]', all: true },
+			msg: M.collaborativeEditing,
+			premise: editingQueue,
+			advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
+		},
+		{
+			// with nothing to save, force save ends the reader's own session and kicks nobody: the copy promises more
+			// than that, so the arc gives it something to override
+			id: 'force-save-edit',
+			anchor: 'queue-delete',
+			spotlight: 'queue-item',
+			interact: 'anchor-only',
+			msg: M.forceSaveEdit,
+			premise: editingQueue,
+		},
+		{
+			id: 'force-save',
+			anchor: 'queue-force-save',
+			spotlight: { css: '[data-tour="queue-force-save"], [data-tour="queue-save"]', all: true },
+			interact: 'free',
+			msg: M.forceSave,
+			premise: editingQueue,
+			advanceFromPrevious: { type: 'anchor', simulate: simRemoveHead },
+		},
+
+		// generation, which needs an empty saved queue
+		{
+			id: 'autogen-intro',
+			anchor: 'queue-panel',
+			msg: M.Autogen.intro,
+			checkpoint: CP.postForce,
+			// armed and pressed: done once the queue is no longer the reader's to edit
+			advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
+		},
+		{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
+		{
+			// one step for both halves of the instruction: empty the queue, then save. Done is a generated head.
+			id: 'autogen-try',
+			anchor: 'queue-clear',
+			spotlight: 'queue-panel',
+			interact: 'free',
+			msg: M.Autogen.tryItOut,
+			advanceFromPrevious: { type: 'anchor', simulate: simStartEditing },
+		},
+		{
+			id: 'autogen-item',
+			anchor: 'queue-item-source',
+			spotlight: 'queue-item',
+			msg: M.Autogen.generatedItem,
+			checkpoint: CP.generated,
+			advanceFromPrevious: { type: 'state', inputs: (run) => [run.squadServer], select: headIsGenerated },
+		},
+
+		// what configures all of it
+		{
+			id: 'open-pool-settings',
+			anchor: 'pool-settings',
+			interact: 'anchor-only',
+			msg: M.PoolSettings.showPoolSettings,
+		},
+		{
+			id: 'pool-settings',
+			anchor: 'pool-config-body',
+			msg: M.PoolSettings.poolSettings,
+			premise: domPresent('pool-config-body'),
+			advanceFromPrevious: { type: 'state', ...domPresent('pool-config-body'), simulate: simOpenPoolConfig },
+		},
+		{
+			id: 'pool-filter',
+			anchor: 'pool-filter',
+			msg: M.PoolSettings.poolFilter,
+			premise: domPresent('pool-config-body'),
+		},
+		{
+			id: 'indicate-matches',
+			anchor: 'pool-list-indicateMatches',
+			msg: M.PoolSettings.indicateMatchesAndMisses,
+			premise: domPresent('pool-config-body'),
+		},
+		{
+			id: 'default-select',
+			anchor: 'pool-list-defaultSelectable',
+			msg: M.PoolSettings.defaultSelect,
+			premise: domPresent('pool-config-body'),
+		},
+		{
+			id: 'view-repeat-rules',
+			anchor: 'pool-config-tabs',
+			interact: 'anchor-only',
+			msg: M.PoolSettings.viewRepeatRules,
+			premise: domPresent('pool-config-body'),
+		},
+		{
+			id: 'repeat-rules',
+			anchor: 'pool-repeat-rules',
+			msg: M.PoolSettings.repeatRulesOverview,
+			premise: domPresent('pool-repeat-rules'),
+			advanceFromPrevious: { type: 'state', ...domPresent('pool-repeat-rules'), simulate: simShowRepeatRules },
+		},
+		{
+			id: 'repeat-rule',
+			anchor: 'pool-repeat-rules',
+			msg: M.PoolSettings.repeatRule,
+			premise: domPresent('pool-repeat-rules'),
+		},
+		{
+			id: 'target-values',
+			anchor: 'repeat-rule-targets',
+			spotlight: 'pool-repeat-rules',
+			msg: M.PoolSettings.targetValues,
+			premise: domPresent('pool-repeat-rules'),
+		},
+		{
+			id: 'warns-and-autogen',
+			anchor: { all: 'repeat-rule-flags' },
+			spotlight: 'pool-repeat-rules',
+			msg: M.PoolSettings.warnsAndAutogen,
+			premise: domPresent('pool-repeat-rules'),
+		},
+	])
+}
+
+Tour.registerScenario('layer-queue', { steps: buildSteps, resetClient })

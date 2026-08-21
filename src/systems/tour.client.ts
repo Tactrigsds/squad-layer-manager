@@ -397,7 +397,12 @@ let runSub = new Rx.Subscription() // router pause watcher, lives for the run
 
 // A scenario's client half: the steps, plus resetClient, which synchronously closes every piece of UI a step may
 // have opened (dialogs, draggable windows) so a jump starts from a known screen.
-export type ScenarioClientDef = { steps: Step[]; resetClient?: (run: RunStores) => void }
+//
+// `steps` may be a builder, for a curriculum whose shape depends on what the install can support (whether its
+// layers carry scores, say). It is called once, when the run starts, and never again: a step's index is the
+// engine's identity for it -- the store, the jumps, the contents list and the checkpoint walk are all indexes --
+// so the list has to stop changing shape before any of them exist.
+export type ScenarioClientDef = { steps: Step[] | (() => Step[] | Promise<Step[]>); resetClient?: (run: RunStores) => void }
 
 // the scenario registry, keyed by id. Registered by the steps files at import.
 const scenarios = new Map<TUT.ScenarioId, ScenarioClientDef>()
@@ -410,14 +415,18 @@ export function registerScenario(scenarioId: TUT.ScenarioId, def: ScenarioClient
 export function activeRun(): RunStores | null {
 	return active?.run ?? null
 }
-export function stepAt(scenarioId: TUT.ScenarioId, stepIdx: number): Step | undefined {
-	return scenarios.get(scenarioId)?.steps[stepIdx]
-}
+// The active run's resolved list, which is the one every index refers to. Falls back to the authored list for a
+// scenario that is not running, where nothing holds an index into it yet.
 export function stepsOf(scenarioId: TUT.ScenarioId): Step[] {
-	return scenarios.get(scenarioId)?.steps ?? []
+	if (active?.scenarioId === scenarioId) return active.steps
+	const authored = scenarios.get(scenarioId)?.steps
+	return typeof authored === 'function' ? [] : (authored ?? [])
+}
+export function stepAt(scenarioId: TUT.ScenarioId, stepIdx: number): Step | undefined {
+	return stepsOf(scenarioId)[stepIdx]
 }
 export function stepCount(scenarioId: TUT.ScenarioId): number {
-	return scenarios.get(scenarioId)?.steps.length ?? 0
+	return stepsOf(scenarioId).length
 }
 // the transition out of stepIdx, which under the inversion is the next step's advanceFromPrevious. What the
 // overlay consults for the Next button and the anchor-click listener.
@@ -554,7 +563,8 @@ async function doStart(scenarioId: TUT.ScenarioId) {
 	const res = await TutorialsClient.Actions.start(scenarioId)
 	if (res.code !== 'ok') return res
 	const run = acquireRun(res.serverId)
-	active = { scenarioId, steps: def.steps, resetClient: def.resetClient, run }
+	const steps = typeof def.steps === 'function' ? await def.steps() : def.steps
+	active = { scenarioId, steps, resetClient: def.resetClient, run }
 	runSub = new Rx.Subscription()
 	runSub.add(rootRouter.subscribe('onResolved', reconcilePause))
 	await rootRouter.navigate({ to: DASHBOARD_TO, params: { serverId: res.serverId } })
