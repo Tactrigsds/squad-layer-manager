@@ -178,6 +178,11 @@ export const filterPicker = def('Filter')
 // the "+" that reveals the kinds of condition a block can take
 export const addCondition = def('Add condition')
 
+// the "+" on the gap between two conditions, which adds one at that position rather than at the end
+export const insertCondition = def('Insert condition here')
+
+export const duplicateNode = def('Duplicate')
+
 export const nodeComment = def('Node comment')
 
 export const nodeCommentPlaceholder = def('Comment. Links are clickable.')

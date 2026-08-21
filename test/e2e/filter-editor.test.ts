@@ -24,6 +24,8 @@ test.beforeAll(async () => {
 			filter('text-mode', 'Text Mode', FB.and([FB.eq('Gamemode', 'AAS')])),
 			// the collaborative journey leaves its draft to be discarded, so it never writes to this one
 			filter('collab', 'Collab Draft', FB.and([FB.eq('Gamemode', 'RAAS')])),
+			// a block with a child of its own, so that cloning it has to carry a subtree rather than one node
+			filter('nested', 'Nested Block', FB.and([FB.eq('Gamemode', 'RAAS'), FB.or([FB.eq('Map', 'Harju')])])),
 		],
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
@@ -251,6 +253,32 @@ test.describe('option groupings', () => {
 		await page.keyboard.press('Escape')
 		await expect(facet).toBeVisible()
 		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
+	})
+})
+
+// A condition goes in where it is wanted rather than at the end of its block, and a node is cloned along with
+// everything under it. Against a real filter, so the ops go through the shared draft on the server; the draft is
+// left unsaved and dies with the page.
+test.describe('inserting and cloning nodes', () => {
+	test('inserts above the first condition, and clones a block with its child', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
+		// the editor is only live once the table has been constrained to the filter; editing before that races
+		// the frame's setup
+		await expect(page.getByRole('row').filter({ hasText: 'Harju' }).first()).toBeVisible({ timeout: 20_000 })
+
+		// a condition's column picker shows the bare column name, where the layer table's pickers below show
+		// "Select Map..." and the like, so this reads the tree top to bottom
+		const columns = page.locator('button[role="combobox"]').filter({ hasText: /^(Gamemode|Layer|Map)$/ })
+		await expect(columns).toHaveText(['Gamemode', 'Map'])
+
+		// the gap above the first condition, where the block's own add button would append
+		await page.getByRole('button', { name: 'Insert condition here' }).first().click()
+		await page.getByRole('button', { name: 'layer', exact: true }).click()
+		await expect(columns).toHaveText(['Layer', 'Gamemode', 'Map'])
+
+		// the third duplicate button belongs to the block: Layer, Gamemode, the block, then the block's own child
+		await page.getByRole('button', { name: 'Duplicate' }).nth(2).click()
+		await expect(columns).toHaveText(['Layer', 'Gamemode', 'Map', 'Map'])
 	})
 })
 

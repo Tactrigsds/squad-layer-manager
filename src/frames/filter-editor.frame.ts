@@ -246,14 +246,16 @@ export namespace Sel {
 
 export type CommonNodeActions = {
 	delete(): void
+	duplicate(): void
 	setComment(comment: string | null): void
 	setCommentEdited(edited: boolean): void
 }
 
+// an omitted index appends, which is what the block header's own add button does
 export type BlockNodeActions = {
 	setBlockType: (type: F.BlockType) => void
-	addChild: (type: F.NodeType) => void
-	addSeeded: (seed: F.EditableFilterNode, hint?: CreateHint) => void
+	addChild: (type: F.NodeType, index?: number) => void
+	addSeeded: (seed: F.EditableFilterNode, hint?: CreateHint, index?: number) => void
 }
 
 export type CompNodeActions = {
@@ -360,16 +362,22 @@ export namespace Actions {
 		s.setState({ editedComments })
 	}
 
-	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType) {
-		addSeededChild(stores, parentId, EFB.nodeOfType(type))
+	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType, index?: number) {
+		addSeededChild(stores, parentId, EFB.nodeOfType(type), undefined, index)
 	}
 
-	export function addSeededChild(stores: KeyProp, parentId: string, seed: F.EditableFilterNode, hint?: CreateHint) {
+	export function addSeededChild(stores: KeyProp, parentId: string, seed: F.EditableFilterNode, hint?: CreateHint, index?: number) {
 		const s = store(stores)
 		const nodeId = FE.createNodeId()
-		dispatch(stores, { code: 'add-node', parentId, nodeId, node: F.toShallowNode(seed) })
+		dispatch(stores, { code: 'add-node', parentId, nodeId, node: F.toShallowNode(seed), index })
 		// the hint is one-shot chrome for whoever added the node, so it stays on this client
 		if (hint) s.setState({ createHints: new Map(s.getState().createHints).set(nodeId, hint) })
+	}
+
+	export function duplicateNode(stores: KeyProp, id: string) {
+		const subtree = F.copySubtree(store(stores).getState().tree, id)
+		if (!subtree) return
+		dispatch(stores, { code: 'clone-node', nodeId: id, subtree })
 	}
 
 	export function setMeta(stores: KeyProp, patch: Partial<FE.Meta>) {
@@ -391,6 +399,7 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 	return {
 		common: {
 			delete: () => Actions.deleteNode(stores, id),
+			duplicate: () => Actions.duplicateNode(stores, id),
 			setComment: (comment) => Actions.setNodeComment(stores, id, comment),
 			setCommentEdited: (edited) => Actions.setCommentEdited(stores, id, edited),
 		},
@@ -400,11 +409,11 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 					draft.type = type
 				})
 			},
-			addChild: (type: F.NodeType) => {
-				Actions.addChild(stores, id, type)
+			addChild: (type: F.NodeType, index?: number) => {
+				Actions.addChild(stores, id, type, index)
 			},
-			addSeeded: (seed, hint) => {
-				Actions.addSeededChild(stores, id, seed, hint)
+			addSeeded: (seed, hint, index) => {
+				Actions.addSeededChild(stores, id, seed, hint, index)
 			},
 		},
 		comp: {
