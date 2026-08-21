@@ -371,3 +371,25 @@ export const persistedCache = sqliteTable(
 		updatedAtIndex: index('persistedCacheUpdatedAtIndex').on(table.updatedAt),
 	}),
 )
+
+// Where a user is in each tutorial. Per user rather than per browser, so a run can be picked up later or from
+// another machine. stepId is the step's own id, not its index: the step list is built per run from what the
+// install supports, so an index means something different elsewhere. Null stepId with a completedAt is a finished
+// tutorial; both null is one that was started and abandoned at the very beginning.
+export const tutorialProgress = sqliteTable(
+	'tutorialProgress',
+	{
+		userId: bigintText('userId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		scenarioId: text('scenarioId').notNull(),
+		stepId: text('stepId'),
+		completedAt: timestamp('completedAt'),
+		updatedAt: timestamp('updatedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.userId, table.scenarioId] }),
+	}),
+)

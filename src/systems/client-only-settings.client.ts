@@ -14,9 +14,6 @@ export type ClientOnlySettingsStore = {
 	// rather than command strings so a pin survives an admin renaming the command; ids for commands that no longer
 	// exist are ignored on read rather than pruned, since a downgrade shouldn't silently drop them.
 	pinnedCommands: string[]
-	// tutorial scenarios the user has finished, held as ScenarioIds (string to keep this module dependency-free, as
-	// pinnedCommands does). Additive: absent from older persisted state, so it merges to [] on read.
-	completedTutorials: string[]
 }
 
 export const Store = Zus.createStore<ClientOnlySettingsStore>()(
@@ -27,7 +24,6 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 			chartTimeInterval: 5,
 			primaryPanelTab: 'VIEWING_QUEUE',
 			pinnedCommands: [],
-			completedTutorials: [],
 		}),
 		{
 			name: 'settings:v1',
@@ -54,10 +50,6 @@ export namespace Actions {
 		Store.setState({
 			pinnedCommands: pinned.includes(commandId) ? pinned.filter((id) => id !== commandId) : [...pinned, commandId],
 		})
-	}
-	export function markTutorialComplete(scenarioId: string) {
-		const done = Store.getState().completedTutorials
-		if (!done.includes(scenarioId)) Store.setState({ completedTutorials: [...done, scenarioId] })
 	}
 }
 

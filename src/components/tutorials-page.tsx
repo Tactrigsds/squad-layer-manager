@@ -10,7 +10,6 @@ import { useIsDesktopSize, useIsSmallViewport } from '@/lib/browser'
 import * as Zus from '@/lib/zustand'
 import * as TUT_Msgs from '@/messages/tutorials.messages'
 import type * as TUT from '@/models/tutorial.models'
-import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
 import * as Tour from '@/systems/tour.client'
 import * as TutorialsClient from '@/systems/tutorials.client'
@@ -22,7 +21,7 @@ import * as TutorialsClient from '@/systems/tutorials.client'
 export default function TutorialsPage() {
 	const scenarios = useQuery(TutorialsClient.scenariosQueryOptions)
 	const run = TutorialsClient.useRunState()
-	const completed = Zus.useStore(ClientOnlySettings.Store, (s) => s.completedTutorials)
+	const progress = useQuery(TutorialsClient.progressQueryOptions)
 	const smallViewport = useIsSmallViewport()
 	const desktopSize = useIsDesktopSize()
 
@@ -40,7 +39,7 @@ export default function TutorialsPage() {
 				<ul>
 					{listed.map((meta) => (
 						<li key={meta.id} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
-							<TutorialRow meta={meta} run={run} completed={completed.includes(meta.id)} />
+							<TutorialRow meta={meta} run={run} progress={(progress.data ?? []).find((p) => p.scenarioId === meta.id)} />
 						</li>
 					))}
 				</ul>
@@ -52,13 +51,16 @@ export default function TutorialsPage() {
 	)
 }
 
-function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; completed: boolean }) {
-	const { meta, run, completed } = props
+function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; progress?: TUT.Progress }) {
+	const { meta, run, progress } = props
+	const completed = !!progress?.completed
+	// somewhere to go back to: a place was saved, and it is not the tutorial's own beginning
+	const resumeAt = !completed && progress?.stepId ? progress.stepId : null
 	const copy = TUT_Msgs.scenarios[meta.id]
 	const active = run.code === 'active' && run.scenarioId === meta.id
 	const starting = run.code === 'starting' && run.scenarioId === meta.id
-	// Whether this tab still holds the tour. The run outlives it -- a reload leaves the server standing with no
-	// narration to return to -- so the control offers to start the tutorial over rather than to resume nothing.
+	// whether this tab still holds the tour, which is the difference between going back to a narration in progress
+	// and rebuilding one from the reader's saved place
 	const narrating = Zus.useStore(Tour.Store, (s) => s.state.code !== 'idle')
 	const navigate = TSR.useNavigate()
 
@@ -79,25 +81,31 @@ function TutorialRow(props: { meta: TUT.ScenarioMeta; run: TUT.RunState; complet
 				<p className="text-sm text-muted-foreground">{tr.text(copy.summary())}</p>
 				<p className="text-xs text-muted-foreground">{tr.text(TUT_Msgs.duration(meta.minutes))}</p>
 			</div>
-			{active ? (
+			{active && (
+				<Button variant="ghost" size="sm" onClick={() => void Tour.Actions.exit()}>
+					{tr.text(TUT_Msgs.leave())}
+				</Button>
+			)}
+			{resumeAt ? (
 				<>
-					<Button variant="ghost" size="sm" onClick={() => void Tour.Actions.exit()}>
-						{tr.text(TUT_Msgs.leave())}
+					<Button variant="outline" size="sm" onClick={() => void Tour.Actions.start(meta.id)}>
+						{tr.text(TUT_Msgs.replay())}
 					</Button>
 					<Button
 						size="sm"
+						disabled={starting}
 						onClick={() =>
-							narrating
+							narrating && active
 								? void navigate({ to: '/servers/$serverId', params: { serverId: run.serverId } })
-								: void Tour.Actions.start(meta.id)
+								: void Tour.Actions.resume(meta.id, resumeAt)
 						}
 					>
-						{tr.text(narrating ? TUT_Msgs.resume() : TUT_Msgs.replay())}
+						{tr.text(TUT_Msgs.resume())}
 					</Button>
 				</>
 			) : (
 				<Button size="sm" disabled={starting} onClick={() => void Tour.Actions.start(meta.id)}>
-					{tr.text(completed ? TUT_Msgs.startAgain() : TUT_Msgs.start())}
+					{tr.text(completed || active ? TUT_Msgs.replay() : TUT_Msgs.start())}
 				</Button>
 			)}
 		</>
