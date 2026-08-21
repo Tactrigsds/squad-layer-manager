@@ -38,6 +38,7 @@ const ALLOWED: Record<string, string> = {
 	Highlight: 'subtree-find checks CSS.highlights and Highlight (lib/subtree-find.ts, isSupported)',
 	'css:selector:::highlight': 'the same guard; without the api the find bar still finds and scrolls, it just paints nothing',
 	'Document.startViewTransition': "tanstack router tests `'startViewTransition' in document` and falls back to a plain navigation",
+	'ViewTransition.updateCallbackDone': 'awaited on the transition that call returns, so it sits behind the same guard',
 	'Navigator.scheduling': "react's scheduler reads navigator.scheduling?.isInputPending and falls back to a time slice",
 	'Scheduling.isInputPending': 'the same read',
 	'Navigator.connection': 'read behind `navigator.connection &&` to estimate bandwidth',

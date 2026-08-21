@@ -44,7 +44,7 @@ export default function ShortLayerName({
 	const backfilledStyle = 'text-gray-500'
 
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	let partialLayer = Obj.trimUndefined(L.toLayer(layerId))
+	const partialLayer = Obj.trimUndefined(L.toLayer(layerId))
 	let backfillLayer: Partial<L.KnownLayer> | undefined
 	if (backfillLayerId) {
 		backfillLayer = L.toLayer(backfillLayerId)
@@ -92,14 +92,13 @@ export default function ShortLayerName({
 	const backfilledLayer = React.useMemo(() => ({ ...(backfillLayer ?? {}), ...partialLayer }), [backfillLayer, partialLayer])
 
 	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)
-	partialLayer = backfilledLayer
 
 	let leftTeamElt: React.ReactNode | undefined
 	let rightTeamElt: React.ReactNode | undefined
 
-	if (partialLayer.Faction_1 && partialLayer.Faction_2) {
+	if (backfilledLayer.Faction_1 && backfilledLayer.Faction_2) {
 		;[leftTeamElt, rightTeamElt] = getTeamsDisplay(
-			partialLayer,
+			backfilledLayer,
 			teamParity ?? 0,
 			normalized ?? globalSettings.displayTeamsNormalized,
 			extraStyles,
@@ -109,8 +108,8 @@ export default function ShortLayerName({
 	// container; each segment stays intact because it carries its own nowrap
 	const content = (
 		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
-			{partialLayer.Layer && <MapLayerDisplay layer={partialLayer.Layer} extraLayerStyles={extraStyles} />}
-			{partialLayer.Faction_1 && partialLayer.Faction_2 && (
+			{backfilledLayer.Layer && <MapLayerDisplay layer={backfilledLayer.Layer} extraLayerStyles={extraStyles} />}
+			{backfilledLayer.Faction_1 && backfilledLayer.Faction_2 && (
 				<>
 					<Icons.Dot className="self-center" width={20} height={20} />
 					{leftTeamElt}

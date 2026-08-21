@@ -50,7 +50,7 @@ function ServerChatEvents(props: {
 	)
 
 	const { scrollAreaRef, contentRef: eventsContainerRef, showScrollButton, scrollToBottom } = useTailingScroll()
-	const [newMessageCount, setNewMessageCount] = React.useState(0)
+	const [unseenMessageCount, setNewMessageCount] = React.useState(0)
 	const synced = props.synced
 	const connectionError = props.connectionError
 
@@ -74,12 +74,8 @@ function ServerChatEvents(props: {
 		prevSelectedMatchOrdinal.current = selectedMatchOrdinal
 	}, [selectedMatchOrdinal, scrollToBottom])
 
-	// Reset new message count when scrolled to bottom
-	React.useEffect(() => {
-		if (!showScrollButton) {
-			setNewMessageCount(0)
-		}
-	}, [showScrollButton])
+	// the count only means anything while the feed is scrolled away from the bottom
+	const newMessageCount = showScrollButton ? unseenMessageCount : 0
 	// the loading overlay covers the scroll affordance, not the other way round
 	const loaderZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const scrollToBottomZIndex = loaderZIndex - 1

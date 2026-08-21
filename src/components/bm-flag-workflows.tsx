@@ -39,6 +39,7 @@ function FlagRow(props: {
 	onToggle: () => void
 }) {
 	const removing = props.change === 'removing'
+	const reasonsRef = props.reasonsRef
 	return (
 		<li className="grid gap-1.5 rounded border px-2 py-1.5">
 			<div className="flex items-center justify-between gap-2">
@@ -82,9 +83,9 @@ function FlagRow(props: {
 						autoComplete="off"
 						className="h-7"
 						placeholder={removing ? tr.text(BM_Msgs.whyRemoving()) : tr.text(BM_Msgs.whyApplying())}
-						defaultValue={props.reasonsRef.current[props.id] ?? ''}
+						defaultValue={reasonsRef.current[props.id] ?? ''}
 						onChange={(e) => {
-							props.reasonsRef.current[props.id] = e.target.value
+							reasonsRef.current[props.id] = e.target.value
 						}}
 					/>
 				</div>
@@ -99,13 +100,14 @@ export function ManageFlagsDialogContent(props: {
 	removeRef: React.MutableRefObject<string[]>
 	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
+	const { addRef, removeRef } = props
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const requiringNote = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
 	// read live so the refresh kicked off when the dialog opened lands here without reopening it
 	const currentFlagIds = BattlemetricsClient.usePlayerFlagIds(props.playerId) ?? []
 	// staged rather than applied on click: a misclick on a destructive action stays undoable while the dialog is open
-	const [staged, setStaged] = React.useState<string[]>(() => props.removeRef.current)
-	const [pending, setPending] = React.useState<string[]>(() => props.addRef.current)
+	const [staged, setStaged] = React.useState<string[]>(() => removeRef.current)
+	const [pending, setPending] = React.useState<string[]>(() => addRef.current)
 	// while true the add button is replaced by the picker it summoned
 	const [picking, setPicking] = React.useState(false)
 
@@ -114,19 +116,19 @@ export function ManageFlagsDialogContent(props: {
 	function toggleStaged(id: string) {
 		const next = staged.includes(id) ? staged.filter((f) => f !== id) : [...staged, id]
 		setStaged(next)
-		props.removeRef.current = next
+		removeRef.current = next
 	}
 
 	function dropPending(id: string) {
 		const next = pending.filter((f) => f !== id)
 		setPending(next)
-		props.addRef.current = next
+		addRef.current = next
 	}
 
 	function addPending(id: string) {
 		const next = [...pending, id]
 		setPending(next)
-		props.addRef.current = next
+		addRef.current = next
 		setPicking(false)
 	}
 
@@ -198,9 +200,10 @@ export function AddFlagsDialogContent(props: {
 	addRef: React.MutableRefObject<string[]>
 	reasonsRef: React.MutableRefObject<Record<string, string>>
 }) {
+	const { addRef } = props
 	const orgFlags = BattlemetricsClient.useOrgFlags()
 	const requiringNote = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.playerFlagsRequiringNote ?? [])
-	const [pending, setPending] = React.useState<string[]>(() => props.addRef.current)
+	const [pending, setPending] = React.useState<string[]>(() => addRef.current)
 	// while true the add button is replaced by the picker it summoned
 	const [picking, setPicking] = React.useState(false)
 
@@ -209,13 +212,13 @@ export function AddFlagsDialogContent(props: {
 	function dropPending(id: string) {
 		const next = pending.filter((f) => f !== id)
 		setPending(next)
-		props.addRef.current = next
+		addRef.current = next
 	}
 
 	function addPending(id: string) {
 		const next = [...pending, id]
 		setPending(next)
-		props.addRef.current = next
+		addRef.current = next
 		setPicking(false)
 	}
 

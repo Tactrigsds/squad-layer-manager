@@ -60,7 +60,6 @@ export function FilterEdit(props: {
 	const stores = props.stores
 	// fix refetches wiping out edited state, probably via fast deep equals or w/e
 	const frameState = () => Zus.getState(stores.filterEditor)
-	const useFrame = <O,>(selector: (table: EditFrame.FilterEditor) => O) => Zus.useStore(stores.filterEditor, selector)
 
 	const navigate = useNavigate()
 	const router = useRouter()
@@ -153,7 +152,10 @@ export function FilterEdit(props: {
 
 	const permitEdit = !canEditRes?.code
 
-	const [filterValid, filterModified] = useFrame(Zus.useShallow((state) => [state.valid, state.modified]))
+	const [filterValid, filterModified] = Zus.useStore(
+		stores.filterEditor,
+		Zus.useShallow((state) => [state.valid, state.modified]),
+	)
 
 	useBlocker({
 		enableBeforeUnload: filterModified || form.state.isDirty,
@@ -210,7 +212,7 @@ export function FilterEdit(props: {
 		[stores, deleteBtn, saveBtn],
 	)
 
-	const _nodeMapStore = useFrame((s) => s.nodeMapStore)
+	const _nodeMapStore = Zus.useStore(stores.filterEditor, (s) => s.nodeMapStore)
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">

@@ -124,13 +124,11 @@ export function DiscordMemberSelect({
 		...(value ? [{ value, label: selectedLabel(), keywords: [value] }] : []),
 		...results
 			.filter((m) => m.id !== value)
-			.map(
-				(m): ComboBoxOption<string> => ({
-					value: m.id,
-					label: <MemberLabel member={m} />,
-					keywords: [m.displayName, m.username],
-				}),
-			),
+			.map((m): ComboBoxOption<string> => ({
+				value: m.id,
+				label: <MemberLabel member={m} />,
+				keywords: [m.displayName, m.username],
+			})),
 	]
 
 	// before any query is typed there's nothing to show, so the picker would otherwise read "No member found." as if it

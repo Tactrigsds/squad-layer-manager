@@ -28,6 +28,49 @@
 		"react-hooks/rules-of-hooks": "error",
 		"react-hooks/exhaustive-deps": "warn",
 
+		// React Compiler's own analysis, which oxlint runs as lint rules. Some (immutability, hooks) are validations
+		// the compiler enables by default, where a violation costs the enclosing function its memoization; the rest
+		// are checks it ships but leaves off. Named individually because they are spread across categories, several
+		// of which are off above.
+		"react/capitalized-calls": "error",
+		"react/error-boundaries": "error",
+		"react/globals": "error",
+		"react/hooks": "error",
+		"react/immutability": "error",
+		"react/invariant": "error",
+		"react/memo-dependencies": "error",
+		"react/no-clone-element": "error",
+		"react/no-deriving-state-in-effects": "error",
+		"react/no-react-children": "error",
+		"react/preserve-manual-memoization": "error",
+		"react/purity": "error",
+		"react/set-state-in-effect": "error",
+		"react/set-state-in-render": "error",
+		"react/static-components": "error",
+		"react/syntax": "error",
+		"react/unsupported-syntax": "error",
+		"react/use-memo": "error",
+		"react/void-use-memo": "error",
+
+		// 225 hits, effectively all of them safe: `useRefConstructor`'s lazy init, dnd-kit's `ref` props, and the
+		// latest-ref idiom. The compiler still bails on those functions; the rule just cannot say which are real.
+		"react/refs": "off",
+		// an eslint-disable of a react-hooks rule opts the whole enclosing function out of compilation. 16 sites do
+		// this today, so it is off until they are worked through rather than silently accepted per-site.
+		"react/rule-suppression": "off",
+		// constructs React Compiler itself has not implemented, so the bailout is upstream and not ours to fix.
+		// 10 sites: getters in object literals, `try`/`finally` without `catch`, and spread in a hook argument.
+		"react/todo": "off",
+		// fires on @tanstack/react-table's `useReactTable`, which hands back functions the compiler will not memoize.
+		// The two table components it covers stay uncompiled either way, so the rule reports a fact about the library
+		// rather than anything the code can act on.
+		"react/incompatible-library": "off",
+		// contradicts react-hooks/exhaustive-deps above, which it would replace: it counts a ref in a dep array as
+		// extra where the older rule counts it as missing. It also rejects a dep listed purely to re-run an effect,
+		// which is how useForwardWheelToScroller re-binds. The compiler leaves this validation off by default, so
+		// none of it costs memoization.
+		"react/exhaustive-effect-dependencies": "off",
+
 		"@typescript-eslint/consistent-type-imports": "error",
 		"react/jsx-no-useless-fragment": "error",
 		"react/jsx-curly-brace-presence": "warn",
