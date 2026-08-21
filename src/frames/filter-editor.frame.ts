@@ -65,6 +65,9 @@ type FilterEditorBase = {
 	createHints: Map<string, CreateHint>
 	// nodes whose comment is open for editing rather than displayed
 	editedComments: Set<string>
+	// the one node showing its editor instead of its compact form. A node has to be asked for by name, so
+	// opening one closes whichever was open, and a node that goes away takes its editor with it.
+	editingNodeId: string | null
 
 	validatedFilter: F.FilterNode | null
 	// the apply-filter loop this edit would create, if any. A loop has no fixed point once the referenced
@@ -131,6 +134,7 @@ const setup: Frame['setup'] = (args) => {
 		presenceEvent$,
 		createHints: new Map(),
 		editedComments: new Set(),
+		editingNodeId: null,
 
 		validatedFilter: null,
 		referenceCycle: null,
@@ -242,6 +246,8 @@ export namespace Sel {
 			state.tree.nodes.get(id)?.comment
 
 	export const commentEdited = (id: string) => (state: FilterEditor) => state.editedComments.has(id)
+
+	export const nodeEditing = (id: string) => (state: FilterEditor) => state.editingNodeId === id
 }
 
 export type CommonNodeActions = {
@@ -249,6 +255,7 @@ export type CommonNodeActions = {
 	duplicate(): void
 	setComment(comment: string | null): void
 	setCommentEdited(edited: boolean): void
+	setEditing(editing: boolean): void
 }
 
 // an omitted index appends, which is what the block header's own add button does
@@ -333,7 +340,11 @@ export namespace Actions {
 
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
 		dispatch(stores, { code: 'replace-tree', tree: FE.toTree(filter) })
-		store(stores).setState({ createHints: new Map(), editedComments: new Set() })
+		store(stores).setState({ createHints: new Map(), editedComments: new Set(), editingNodeId: null })
+	}
+
+	export function setNodeEditing(stores: KeyProp, id: string | null) {
+		store(stores).setState({ editingNodeId: id })
 	}
 
 	export function setNodeComment(stores: KeyProp, id: string, comment: string | null) {
@@ -357,9 +368,11 @@ export namespace Actions {
 	export function deleteNode(stores: KeyProp, id: string) {
 		dispatch(stores, { code: 'delete-node', nodeId: id })
 		const s = store(stores)
-		const tree = s.getState().tree
-		const editedComments = new Set([...s.getState().editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
-		s.setState({ editedComments })
+		const state = s.getState()
+		const tree = state.tree
+		const editedComments = new Set([...state.editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
+		const editingNodeId = state.editingNodeId && tree.nodes.has(state.editingNodeId) ? state.editingNodeId : null
+		s.setState({ editedComments, editingNodeId })
 	}
 
 	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType, index?: number) {
@@ -370,6 +383,9 @@ export namespace Actions {
 		const s = store(stores)
 		const nodeId = FE.createNodeId()
 		dispatch(stores, { code: 'add-node', parentId, nodeId, node: F.toShallowNode(seed), index })
+		if (!s.getState().tree.nodes.has(nodeId)) return
+		// a new node has nothing to read yet, so it opens as its editor rather than as a compact row
+		s.setState({ editingNodeId: nodeId })
 		// the hint is one-shot chrome for whoever added the node, so it stays on this client
 		if (hint) s.setState({ createHints: new Map(s.getState().createHints).set(nodeId, hint) })
 	}
@@ -402,6 +418,7 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 			duplicate: () => Actions.duplicateNode(stores, id),
 			setComment: (comment) => Actions.setNodeComment(stores, id, comment),
 			setCommentEdited: (edited) => Actions.setCommentEdited(stores, id, edited),
+			setEditing: (editing) => Actions.setNodeEditing(stores, editing ? id : null),
 		},
 		block: {
 			setBlockType(type) {

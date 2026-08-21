@@ -1,3 +1,5 @@
+import type { Locator, Page } from '@playwright/test'
+
 import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
@@ -256,29 +258,67 @@ test.describe('option groupings', () => {
 	})
 })
 
-// A condition goes in where it is wanted rather than at the end of its block, and a node is cloned along with
-// everything under it. Against a real filter, so the ops go through the shared draft on the server; the draft is
-// left unsaved and dies with the page.
-test.describe('inserting and cloning nodes', () => {
+// Every node renders as one readable row until it is asked to open, which is what lets these read the tree as a
+// list of strings. A condition goes in where it is wanted rather than at the end of its block, and a node is
+// cloned along with everything under it. Against a real filter, so the ops go through the shared draft on the
+// server; the draft is left unsaved and dies with the page.
+test.describe('reading and editing the tree', () => {
+	// one entry per node, in tree order, each the node as it reads
+	const rowsOf = (scope: Page | Locator) => scope.locator('[data-node-summary]')
+
+	test('reads as compact rows, and opens one node at a time', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
+		const rows = rowsOf(page)
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'], { timeout: 20_000 })
+		await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(0)
+
+		// the row is replaced by the comparison's own pickers, the first of which is its column
+		await page.getByRole('button', { name: 'Gamemode = RAAS', exact: true }).click()
+		await expect(page.getByRole('combobox').filter({ hasText: /^Gamemode$/ })).toHaveCount(1)
+
+		// opening a second node hands the editor over rather than leaving two open
+		await page.getByRole('button', { name: 'Map = Harju', exact: true }).click()
+		await expect(page.getByRole('button', { name: 'Gamemode = RAAS', exact: true })).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(1)
+
+		await page.keyboard.press('Escape')
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
+	})
+
 	test('inserts above the first condition, and clones a block with its child', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
+		const rows = rowsOf(page)
 		// the editor is only live once the table has been constrained to the filter; editing before that races
 		// the frame's setup
 		await expect(page.getByRole('row').filter({ hasText: 'Harju' }).first()).toBeVisible({ timeout: 20_000 })
-
-		// a condition's column picker shows the bare column name, where the layer table's pickers below show
-		// "Select Map..." and the like, so this reads the tree top to bottom
-		const columns = page.locator('button[role="combobox"]').filter({ hasText: /^(Gamemode|Layer|Map)$/ })
-		await expect(columns).toHaveText(['Gamemode', 'Map'])
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
 
 		// the gap above the first condition, where the block's own add button would append
 		await page.getByRole('button', { name: 'Insert condition here' }).first().click()
 		await page.getByRole('button', { name: 'layer', exact: true }).click()
-		await expect(columns).toHaveText(['Layer', 'Gamemode', 'Map'])
+		// a node with nothing to read yet opens as its editor, so it takes a Done to read the tree again
+		await page.getByRole('button', { name: 'Done' }).click()
+		await expect(rows).toHaveText(['all of', 'Layer is any of incomplete', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
 
-		// the third duplicate button belongs to the block: Layer, Gamemode, the block, then the block's own child
-		await page.getByRole('button', { name: 'Duplicate' }).nth(2).click()
-		await expect(columns).toHaveText(['Layer', 'Gamemode', 'Map', 'Map'])
+		const block = page.getByRole('button', { name: 'any of', exact: true }).locator('xpath=..')
+		await block.getByRole('button', { name: 'Duplicate' }).click()
+		await expect(rows).toHaveText([
+			'all of',
+			'Layer is any of incomplete',
+			'Gamemode = RAAS',
+			'any of',
+			'Map = Harju',
+			'any of',
+			'Map = Harju',
+		])
+		// the copy brought its child rather than landing as an empty block beside the original
+		await expect(rowsOf(page.locator('.filter-node-display').last())).toHaveText(['any of', 'Map = Harju'])
+
+		// a clone shares its args with the original, which used to render as a YAML alias whose anchor sat on a
+		// sibling -- unresolvable once the compact pass rendered that node on its own, and it took the tab down
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+		await expect(page.locator('.cm-content')).toContainText('Harju')
+		await expect(page.getByText('This page failed')).toHaveCount(0)
 	})
 })
 
@@ -299,7 +339,11 @@ test.describe('the filter text editor', () => {
 
 		await page.getByRole('button', { name: 'Builder', exact: true }).click()
 		await expect(page.getByText('This page failed')).toHaveCount(0)
-		// the column keeps its own name in the picker, and the value editor beside it offers nothing to pick
+		// the compact row falls back to the column's own name, and so does the picker behind it
+		const row = page.getByRole('button', { name: 'Gamemod = AAS', exact: true })
+		await expect(row).toBeVisible()
+		await row.click()
+		// the value editor beside it offers nothing to pick, which is the lookup that used to throw
 		await expect(page.getByRole('combobox', { name: 'Column' })).toContainText('Gamemod')
 	})
 
