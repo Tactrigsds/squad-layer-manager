@@ -14,7 +14,6 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import type * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as Obj from '@/lib/object-utils'
-import { useRefConstructor } from '@/lib/react.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import type * as L from '@/models/layer'
@@ -64,13 +63,13 @@ type SelectLayersDialogContentProps = {
 }
 
 const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(function SelectLayersDialogContent(props) {
-	const frameInputRef = useRefConstructor(() => {
+	const [frameInput] = React.useState(() => {
 		if (props.stores?.selectLayers) return undefined
 		return SelectLayersFrame.createInput({ cursor: props.cursor })
 	})
 	const frameKey = useFrameLifecycle(SelectLayersFrame.frame, {
 		frameKey: props.stores?.selectLayers,
-		input: frameInputRef.current,
+		input: frameInput,
 		equalityFn: Obj.deepEqual,
 	})
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider

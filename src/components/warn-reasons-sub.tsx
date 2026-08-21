@@ -81,10 +81,11 @@ export function ReasonPicker(props: {
 	const reasons = Zus.useStore(SettingsClient.PublicSettingsStore, (s) =>
 		s ? AAR.reasonsForAction(s.adminActionReasons, props.action) : [],
 	)
-	const allowCustom = !!props.customRef
-	const [selected, setSelected] = React.useState(() => props.presetRef.current || CUSTOM)
+	const { presetRef, customRef } = props
+	const allowCustom = !!customRef
+	const [selected, setSelected] = React.useState(() => presetRef.current || CUSTOM)
 	// mirror the custom input into state so the message preview updates as the admin types
-	const [customText, setCustomText] = React.useState(() => props.customRef?.current ?? '')
+	const [customText, setCustomText] = React.useState(() => customRef?.current ?? '')
 	const autoOpen = (props.autoOpen ?? true) && reasons.length > 0
 	const given = selected !== CUSTOM || (allowCustom && customText.trim().length > 0)
 	const comboRef = React.useRef<ComboBoxHandle>(null)
@@ -140,7 +141,7 @@ export function ReasonPicker(props: {
 					onSelect={(value) => {
 						const next = value ?? CUSTOM
 						setSelected(next)
-						props.presetRef.current = next === CUSTOM ? '' : next
+						presetRef.current = next === CUSTOM ? '' : next
 					}}
 				/>
 			)}
@@ -148,9 +149,9 @@ export function ReasonPicker(props: {
 				<Input
 					autoComplete="off"
 					placeholder={tr.text(AAR_Msgs.enterReason())}
-					defaultValue={props.customRef!.current}
+					defaultValue={customRef!.current}
 					onChange={(e) => {
-						props.customRef!.current = e.target.value
+						customRef!.current = e.target.value
 						setCustomText(e.target.value)
 					}}
 				/>

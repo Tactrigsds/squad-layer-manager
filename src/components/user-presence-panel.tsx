@@ -4,6 +4,7 @@ import React from 'react'
 
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import { useNow } from '@/lib/react.ts'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -281,8 +282,9 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 	}, [usersRes.data])
 
 	// Sort clients based on presence priority
+	const now = useNow(1000)
 	const sortedClientPresence = React.useMemo(() => {
-		const oldestLastSeenToDisplay = Date.now() - UP.DISPLAYED_AWAY_PRESENCE_WINDOW
+		const oldestLastSeenToDisplay = now - UP.DISPLAYED_AWAY_PRESENCE_WINDOW
 		const clientList = Array.from(matchingClientPresence.entries())
 			.map(([clientId, presence]) => {
 				const user = userMap.get(presence.userId)
@@ -297,7 +299,7 @@ export default function UserPresencePanel(props: UserPresencePanelProps) {
 			})
 
 		return props.sourcePresenceFn ? clientList.sort(props.sourcePresenceFn) : clientList
-	}, [matchingClientPresence, userMap, props.sourcePresenceFn])
+	}, [matchingClientPresence, userMap, now, props.sourcePresenceFn])
 
 	// publish the clients this panel is showing to the shared registry, and read back the count of each
 	// user's clients across ALL panels -- a user with more than one visible (even split across panels)

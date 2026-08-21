@@ -20,6 +20,7 @@ import { useDebounced } from '@/hooks/use-debounce'
 import { useIsDesktopSize } from '@/lib/browser'
 import * as DH from '@/lib/display-helpers'
 import * as MapUtils from '@/lib/map-utils'
+import { useNow } from '@/lib/react.ts'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
@@ -271,9 +272,10 @@ function ControlPanel({ stores }: { stores: SquadServerFrame.KeyProp }) {
 	const activeGroupingId = Zus.useStore(BattlemetricsClient.Store, BattlemetricsClient.Sel.activeGroupingId(groupingIds))
 	const switchRequestCount = Zus.useStore(stores.squadServer!, SRQClient.Sel.requestCount)
 	// distinct players with an active timeout; the expiry check trims rows the server hasn't swept yet
+	const now = useNow(1000)
 	const timedOutCount = new Set(
 		TimeoutsClient.useActiveTimeouts()
-			.filter((t) => !t.cancelled && t.expiresAt.getTime() > Date.now())
+			.filter((t) => !t.cancelled && t.expiresAt.getTime() > now)
 			.map((t) => t.playerId),
 	).size
 
@@ -1502,11 +1504,12 @@ function CombinedPlayerTable(props: { className?: string; stores: SquadServerFra
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 
+	const layerId = match?.layerId
 	const layer = React.useMemo(() => {
-		if (!match?.layerId) return null
-		const l = L.toLayer(match.layerId)
+		if (!layerId) return null
+		const l = L.toLayer(layerId)
 		return L.isKnownLayer(l) ? l : null
-	}, [match?.layerId])
+	}, [layerId])
 	const teamAIsTeam1 = ordinal % 2 === 0
 
 	const getFaction = React.useCallback(

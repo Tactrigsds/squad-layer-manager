@@ -18,6 +18,13 @@ function maxScrollTop(viewport: HTMLElement) {
 	return viewport.scrollHeight - viewport.clientHeight
 }
 
+// the viewport lives in state so the effects below can depend on it, which makes React Compiler treat it as a
+// value that must not be mutated. scrolling a DOM node is a side effect on the document, not a state write, so
+// it goes through here rather than being written inline.
+function scrollTo(viewport: HTMLElement, top: number) {
+	viewport.scrollTop = top
+}
+
 /**
  * Keeps a Radix ScrollArea pinned to the bottom as content grows, and lets go only when the user
  * deliberately scrolls away.
@@ -50,7 +57,7 @@ export function useTailingScroll() {
 	const scrollToBottom = React.useCallback(() => {
 		tailing.current = true
 		prependAnchor.current = null
-		if (viewport) viewport.scrollTop = maxScrollTop(viewport)
+		if (viewport) scrollTo(viewport, maxScrollTop(viewport))
 	}, [viewport])
 
 	// captures the pre-growth metrics so the next content growth can be offset by the added height,
@@ -70,10 +77,10 @@ export function useTailingScroll() {
 				// wait for the growth we anchored for; unrelated resizes must not consume the anchor
 				if (viewport.scrollHeight === anchor.scrollHeight) return
 				prependAnchor.current = null
-				viewport.scrollTop = anchor.scrollTop + (viewport.scrollHeight - anchor.scrollHeight)
+				scrollTo(viewport, anchor.scrollTop + (viewport.scrollHeight - anchor.scrollHeight))
 				return
 			}
-			if (tailing.current) viewport.scrollTop = maxScrollTop(viewport)
+			if (tailing.current) scrollTo(viewport, maxScrollTop(viewport))
 		}
 
 		// content growth, viewport resize (panel/window) and clamping all need the same correction

@@ -51,13 +51,11 @@ export function FlagLabel({ id, flags }: { id: string; flags: BM.PlayerFlag[] | 
 function useFlagOptions(): ComboBoxOption<string>[] | typeof LOADING {
 	const orgFlags = useOrgFlags()
 	if (!orgFlags) return LOADING
-	return orgFlags.map(
-		(flag): ComboBoxOption<string> => ({
-			value: flag.id,
-			label: <FlagBadge flag={flag} />,
-			keywords: [flag.name, ...(flag.description ? [flag.description] : [])],
-		}),
-	)
+	return orgFlags.map((flag): ComboBoxOption<string> => ({
+		value: flag.id,
+		label: <FlagBadge flag={flag} />,
+		keywords: [flag.name, ...(flag.description ? [flag.description] : [])],
+	}))
 }
 
 function toArrayUpdate<T>(prev: T[], next: React.SetStateAction<T[]>): T[] {

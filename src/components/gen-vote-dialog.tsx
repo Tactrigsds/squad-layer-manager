@@ -17,7 +17,6 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as GenVoteFrame from '@/frames/gen-vote.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Obj from '@/lib/object-utils'
-import { useRefConstructor } from '@/lib/react'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
 import type * as L from '@/models/layer'
@@ -52,13 +51,13 @@ type GenVoteDialogContentProps = {
 }
 
 const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenVoteDialogContent(props) {
-	const frameInputRef = useRefConstructor(() => {
+	const [frameInput] = React.useState(() => {
 		if (props.stores.genVote) return undefined
 		return GenVoteFrame.createInput({ cursor: props.cursor, server: props.stores.squadServer })
 	})
 	const frameKey = useFrameLifecycle(GenVoteFrame.frame, {
 		frameKey: props.stores.genVote,
-		input: frameInputRef.current,
+		input: frameInput,
 		equalityFn: Obj.deepEqual,
 	})
 	// a frame this dialog provisioned itself dies with it; one handed in via stores belongs to its provider
@@ -91,17 +90,13 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 	)
 
 	// Track which items are being regenerated (undefined = all, number = specific index)
-	const [regeneratingIndex, setRegeneratingIndex] = React.useState<number | undefined | 'all'>()
+	const [requestedRegenIndex, setRegeneratingIndex] = React.useState<number | undefined | 'all'>()
 
 	// Which choice is being manually edited via EditLayerDialog
 	const [editingChoiceIndex, setEditingChoiceIndex] = React.useState<number>()
 
-	// Sync regenerating state
-	React.useEffect(() => {
-		if (!generating) {
-			setRegeneratingIndex(undefined)
-		}
-	}, [generating])
+	// the spinner it drives only means anything while a generation is in flight
+	const regeneratingIndex = generating ? requestedRegenIndex : undefined
 	const handleToggleUniqueConstraint = (key: V.GenVote.ChoiceConstraintKey) => {
 		const state = Zus.getState(frameKey)
 		if (state.uniqueConstraints.includes(key)) {

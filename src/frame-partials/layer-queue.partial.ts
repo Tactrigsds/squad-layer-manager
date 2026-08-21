@@ -267,14 +267,11 @@ export namespace Sel {
 	// everything a queue row renders about itself: structural position, the vote item it belongs to, and the
 	// mutation it displays as
 	export const itemDisplay = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector(
-			[itemEntry(itemId), itemState(itemId)],
-			(entry, state): ItemDisplay => ({
-				...state,
-				parentItem: entry?.parentItem,
-				displayedMutation: ItemMut.getDisplayedMutation(state.mutationState),
-			}),
-		),
+		RSel.createDeepSelector([itemEntry(itemId), itemState(itemId)], (entry, state): ItemDisplay => ({
+			...state,
+			parentItem: entry?.parentItem,
+			displayedMutation: ItemMut.getDisplayedMutation(state.mutationState),
+		})),
 	)
 
 	// whether a vote on this item could be started right now, given who may vote and what else is going on.
@@ -314,14 +311,12 @@ export namespace Sel {
 	export const backburnerItem = RSel.memoizeFactory((itemId: string) =>
 		RSel.createDeepSelector([backburner], (items): BB.BackburnerItem | undefined => items.find((item) => item.itemId === itemId)),
 	)
-	const backburnerMutations = RSel.createDeepSelector(
-		[backburner, savedBackburner],
-		(draft, saved): ItemMut.Mutations => BB.diffMutations(draft, saved),
+	const backburnerMutations = RSel.createDeepSelector([backburner, savedBackburner], (draft, saved): ItemMut.Mutations =>
+		BB.diffMutations(draft, saved),
 	)
 	export const backburnerItemMutation = RSel.memoizeFactory((itemId: string) =>
-		RSel.createDeepSelector(
-			[backburnerMutations],
-			(mutations): ItemMut.ItemMutationState => ItemMut.toItemMutationState(mutations, itemId),
+		RSel.createDeepSelector([backburnerMutations], (mutations): ItemMut.ItemMutationState =>
+			ItemMut.toItemMutationState(mutations, itemId),
 		),
 	)
 	export const backburnerItemDisplayedMutation = RSel.memoizeFactory((itemId: string) =>

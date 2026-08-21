@@ -1,16 +1,15 @@
 import React from 'react'
 
-import { useRefConstructor } from '@/lib/react'
 import * as Rx from '@/lib/rxjs'
 
 export function useDebounced<T>(ops: { mode?: 'debounce' | 'throttle'; delay: number; onChange: (value: T) => void }) {
 	// a plain Subject on purpose: a BehaviorSubject would replay the last value into the new subscription
 	// when onChange changes identity, delivering a stale value to a consumer that never saw it produced
-	const subRef = useRefConstructor(() => new Rx.Subject<T>())
+	const [sub] = React.useState(() => new Rx.Subject<T>())
 
 	React.useEffect(() => {
 		const subscription = new Rx.Subscription()
-		const debounced$ = subRef.current.pipe(
+		const debounced$ = sub.pipe(
 			Rx.observeOn(Rx.asyncScheduler),
 			ops.mode === 'throttle' ? Rx.throttleTime(ops.delay) : Rx.debounceTime(ops.delay),
 		)
@@ -19,8 +18,7 @@ export function useDebounced<T>(ops: { mode?: 'debounce' | 'throttle'; delay: nu
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ops.delay, ops.onChange])
 
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	return React.useCallback((value: T) => subRef.current.next(value), [])
+	return React.useCallback((value: T) => sub.next(value), [sub])
 }
 
 // for when you still want to rerender immediately when state is set but you have some expensive side-effect you would like to compute asynchronously. defaultValue is expected to be referentially stable
