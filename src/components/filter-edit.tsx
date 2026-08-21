@@ -28,6 +28,7 @@ import * as ValidationErrors from '@/lib/validation-errors'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
+import * as UP from '@/models/user-presence'
 import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -50,6 +51,7 @@ import { Label } from './ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
+import UserPresencePanel, { sortEditingPresence } from './user-presence-panel'
 
 export function FilterEdit(props: {
 	entity: F.FilterEntity
@@ -65,6 +67,7 @@ export function FilterEdit(props: {
 
 	const [editingDetails, setEditingDetails] = useState(false)
 	const meta = Zus.useStore(stores.filterEditor, (s) => s.meta)
+	const presenceEvent$ = Zus.useStore(stores.filterEditor, (s) => s.presenceEvent$)
 	const form = Form.useForm({
 		defaultValues: {
 			name: meta.name,
@@ -212,6 +215,13 @@ export function FilterEdit(props: {
 								</Button>
 							</span>
 							<span className="flex h-min items-center space-x-2 self-end">
+								<UserPresencePanel
+									sourcePresenceFn={sortEditingPresence}
+									matchActivity={UP.Trans.onFilter(props.entity.id).match}
+									matchActivityForStatusText={(root) => UP.editingFilterNode(root) ?? undefined}
+									event$={presenceEvent$}
+									className="min-w-0"
+								/>
 								{loggedInUserRole === 'owner' && permitEdit && (
 									<Badge variant="outline" className="text-nowrap border-2 border-primary">
 										{tr.text(F_Msgs.accessOwner())}
