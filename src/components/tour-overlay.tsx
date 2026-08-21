@@ -495,10 +495,15 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 	return (
 		<div className="absolute bottom-3 left-3" style={{ pointerEvents: 'auto' }}>
 			{tocOpen && <Toc state={state} run={run} onPick={() => setTocOpen(false)} />}
-			<div className="flex items-center gap-0.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-2xl">
+			<div
+				role="group"
+				aria-label="Tutorial navigation"
+				className="flex items-center gap-0.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
+			>
 				<button
 					type="button"
 					title="Contents"
+					aria-label="Contents"
 					className={`${NAV_BTN} ${tocOpen ? 'bg-zinc-800 text-white' : ''}`}
 					onClick={() => setTocOpen((open) => !open)}
 				>
@@ -507,18 +512,26 @@ function NavPanel({ state, run }: { state: AnchoredStepState; run: Tour.RunStore
 				<button
 					type="button"
 					title="Previous step"
+					aria-label="Previous step"
 					className={NAV_BTN}
 					disabled={idx === 0}
 					onClick={() => void Tour.Actions.jump(idx - 1)}
 				>
 					<Icons.ChevronLeft className="h-4 w-4" />
 				</button>
-				<button type="button" title="Reset this step" className={NAV_BTN} onClick={() => Tour.Actions.reset()}>
+				<button
+					type="button"
+					title="Reset this step"
+					aria-label="Reset this step"
+					className={NAV_BTN}
+					onClick={() => Tour.Actions.reset()}
+				>
 					<Icons.RotateCcw className="h-3.5 w-3.5" />
 				</button>
 				<button
 					type="button"
 					title="Next step"
+					aria-label="Next step"
 					className={NAV_BTN}
 					disabled={idx >= total - 1}
 					onClick={() => void Tour.Actions.jump(idx + 1)}
@@ -543,9 +556,13 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 		.map((step, i) => ({ step, i, title: Tour.renderMsg(run, step.msg).title }))
 		.filter((item) => !q || item.title.toLowerCase().includes(q))
 	return (
-		<div className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
+		<nav
+			aria-label="Tutorial contents"
+			className="absolute bottom-full left-0 mb-2 flex w-80 flex-col rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl"
+		>
 			<input
 				type="search"
+				aria-label="Search steps"
 				placeholder="Search steps"
 				autoFocus
 				className="m-2 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
@@ -573,7 +590,7 @@ function Toc(props: { state: AnchoredStepState; run: Tour.RunStores; onPick: () 
 					)
 				})}
 			</div>
-		</div>
+		</nav>
 	)
 }
 
