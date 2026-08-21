@@ -105,6 +105,16 @@ export function initState(entity: F.FilterEntity): State {
 	return { filterId: entity.id, draft: Obj.deepClone(saved), saved }
 }
 
+// A filter that has no entity behind it yet (the "new filter" page) runs the same reducer against the same
+// shape; its session simply never leaves the client that owns it.
+export function localState(filterId: F.FilterEntityId, filter: F.EditableFilterNode, meta?: Partial<Meta>): State {
+	const saved: Draft = {
+		meta: { name: '', description: null, alertMessage: null, emoji: null, invertedAlertMessage: null, invertedEmoji: null, ...meta },
+		tree: toTree(filter),
+	}
+	return { filterId, draft: Obj.deepClone(saved), saved }
+}
+
 // A tree built from a bare filter node gets fresh ids from createId, so it can only be built where one
 // replica decides for all of them: session setup on the server, or the originating client of a
 // replace-tree op. Never inside the reducer.

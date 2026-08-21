@@ -332,10 +332,26 @@ export namespace Actions {
 		if (updates.length > 0) updateActivity(...updates)
 	}
 
+	// Establishes the local client's presence on a filter page. Idempotent, so a re-render or a navigation
+	// back to a filter already being edited doesn't clear the editing session.
+	export function ensureOnFilter(filterId: string) {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+		if (UP.Trans.onFilter(filterId).match(activity)) return
+		updateActivity({ code: 'enter-filter', filterId })
+	}
+
 	// Registers the local client as editing, so an edit made without pressing "Start Editing" still claims
 	// an editing session. Idempotent, so they never clobber a sub-activity already in progress.
 	export function ensureEditingQueue(serverId: string) {
 		ensureEditing(UP.Trans.editingQueue(serverId))
+	}
+
+	// Holding an editing session is what keeps a filter's shared draft alive: once the last one goes away the
+	// server discards it (see editingFilterAbandoned$).
+	export function ensureEditingFilter(filterId: string) {
+		ensureEditing(UP.Trans.editingFilter(filterId))
 	}
 
 	export function ensureEditingLayerRequests(serverId: string) {
