@@ -1,6 +1,6 @@
 import * as Form from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
-import { useBlocker, useRouter } from '@tanstack/react-router'
+import { useBlocker } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
@@ -58,72 +58,42 @@ export function FilterEdit(props: {
 	stores: EditFrame.KeyProp
 }) {
 	const stores = props.stores
-	// fix refetches wiping out edited state, probably via fast deep equals or w/e
-	const frameState = () => Zus.getState(stores.filterEditor)
 
 	const navigate = useNavigate()
-	const router = useRouter()
 
-	const updateFilterMutation = FilterEntityClient.useFilterUpdate()
 	const deleteFilterMutation = FilterEntityClient.useFilterDelete()
 
 	const [editingDetails, setEditingDetails] = useState(false)
+	const meta = Zus.useStore(stores.filterEditor, (s) => s.meta)
 	const form = Form.useForm({
 		defaultValues: {
-			name: props.entity.name,
-			description: props.entity.description,
-			alertMessage: props.entity.alertMessage,
-			emoji: props.entity.emoji,
-			invertedAlertMessage: props.entity.invertedAlertMessage,
-			invertedEmoji: props.entity.invertedEmoji,
+			name: meta.name,
+			description: meta.description,
+			alertMessage: meta.alertMessage,
+			emoji: meta.emoji,
+			invertedAlertMessage: meta.invertedAlertMessage,
+			invertedEmoji: meta.invertedEmoji,
 		},
-		onSubmit: async ({ value, formApi }) => {
-			const description = value.description?.trim() || null
-
-			const res = await updateFilterMutation.mutateAsync([
-				props.entity.id,
+		// the details and the tree are one draft and one save: both go out as a single dependent batch, so
+		// the meta the server persists is the meta this form is showing
+		onSubmit: ({ value, formApi }) => {
+			EditFrame.Actions.dispatch(
+				stores,
 				{
-					...value,
-					description,
-					emoji: value.emoji ?? null,
-					alertMessage: value.alertMessage ?? null,
-					invertedEmoji: value.invertedEmoji ?? null,
-					invertedAlertMessage: value.invertedAlertMessage ?? null,
-					filter: frameState().validatedFilter ?? undefined,
+					code: 'set-meta',
+					patch: {
+						...value,
+						description: value.description?.trim() || null,
+						emoji: value.emoji ?? null,
+						alertMessage: value.alertMessage ?? null,
+						invertedEmoji: value.invertedEmoji ?? null,
+						invertedAlertMessage: value.invertedAlertMessage ?? null,
+					},
 				},
-			])
-			switch (res.code) {
-				case 'err:permission-denied':
-					RbacClient.handlePermissionDenied(res)
-					break
-
-				case 'err:not-found':
-					toast(...tr.toast(F_Msgs.notFound()))
-					break
-
-				case 'err:cyclical-reference':
-					toast.error(...tr.toast(F_Msgs.cyclicalReference(res.cycle)))
-					break
-
-				case 'ok':
-					toast(...tr.toast(F_Msgs.saved()))
-					EditFrame.Actions.reset(stores, res.filter.filter)
-					void router.invalidate()
-					formApi.reset({
-						name: res.filter.name,
-						description: res.filter.description,
-						emoji: res.filter.emoji,
-						alertMessage: res.filter.alertMessage,
-						invertedEmoji: res.filter.invertedEmoji,
-						invertedAlertMessage: res.filter.invertedAlertMessage,
-					})
-					setEditingDetails(false)
-
-					break
-
-				default:
-					assertNever(res)
-			}
+				{ code: 'save' },
+			)
+			formApi.reset(value)
+			setEditingDetails(false)
 		},
 	})
 
@@ -221,13 +191,13 @@ export function FilterEdit(props: {
 					<div className="flex w-full flex-col space-y-2">
 						<div className="flex items-center justify-between">
 							<span className="flex items-center space-x-4">
-								{props.entity.emoji && (
+								{meta.emoji && (
 									<>
-										<EmojiDisplay emoji={props.entity.emoji} className="text-3xl" />
+										<EmojiDisplay emoji={meta.emoji} className="text-3xl" />
 										<Icons.Dot />
 									</>
 								)}
-								<h3 className={Typo.H3}>{props.entity.name}</h3>
+								<h3 className={Typo.H3}>{meta.name}</h3>
 								<Icons.Dot />
 								<small className="font-light">{tr.text(F_Msgs.ownerLine(props.owner.displayName))}</small>
 								<Icons.Dot />
@@ -272,7 +242,7 @@ export function FilterEdit(props: {
 							</span>
 						</div>
 						<Separator orientation="horizontal" />
-						<DescriptionDisplay description={props.entity.description} />
+						<DescriptionDisplay description={meta.description} />
 						<FilterReferences filterId={props.entity.id} />
 					</div>
 				) : (

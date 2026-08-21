@@ -1208,6 +1208,8 @@ export const PRESENCE_EVENT_ACTIONS = [
 	'combined-layer-requests',
 	'saved-layer-requests',
 	'discarded-layer-request-edits',
+	'saved-filter',
+	'discarded-filter-edits',
 ] as const
 export type PresenceEventAction = (typeof PRESENCE_EVENT_ACTIONS)[number]
 export type PresenceEvent = { userId: USR.UserId; action: PresenceEventAction }

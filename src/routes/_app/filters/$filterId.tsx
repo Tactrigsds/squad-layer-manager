@@ -15,11 +15,34 @@ import { rootRouter } from '@/root-router'
 import * as ConfigClient from '@/systems/config.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
-// editor frames minted by the loader, per filter id. Each loader run creates a fresh instance (and a post-save
-// router.invalidate() re-runs the loader), so several can accumulate before the route is left; onLeave sweeps them.
+// editor frames minted by the loader, per filter id. Each loader run creates a fresh instance, so several can
+// accumulate before the route is left; onLeave sweeps them.
 const activeFrameKeys = new Map<string, EditFrame.Key[]>()
+
+// A frame holds this filter's shared-draft subscription open, which is what keeps the session provisioned on
+// the server -- so a speculative preload that is never visited has to be swept on its own. Entering the route
+// cancels the sweep; onLeave takes over from there.
+const PRELOAD_TTL = 60_000
+const preloadSweeps = new Map<string, ReturnType<typeof setTimeout>>()
+
+function cancelPreloadSweep(filterId: string) {
+	const timer = preloadSweeps.get(filterId)
+	if (timer === undefined) return
+	clearTimeout(timer)
+	preloadSweeps.delete(filterId)
+}
+
+function sweepFrameKeys(filterId: string) {
+	const keys = activeFrameKeys.get(filterId)
+	if (!keys) return
+	activeFrameKeys.delete(filterId)
+	void requestIdleCallback(() => {
+		for (const k of keys) frameManager.dropKey(k)
+	})
+}
 
 export const Route = createFileRoute('/_app/filters/$filterId')({
 	component: RouteComponent,
@@ -35,14 +58,11 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 	preloadStaleTime: Infinity,
 	// the match param is typed explicitly: letting it infer makes the route type (and thus loaderData) circular
 	onLeave: (match: { params: { filterId: F.FilterEntityId } }) => {
-		const keys = activeFrameKeys.get(match.params.filterId)
-		if (!keys) return
-		activeFrameKeys.delete(match.params.filterId)
-		void requestIdleCallback(() => {
-			for (const k of keys) frameManager.dropKey(k)
-		})
+		UPClient.Actions.dispatch({ code: 'navigated-away' })
+		cancelPreloadSweep(match.params.filterId)
+		sweepFrameKeys(match.params.filterId)
 	},
-	loader: async ({ params }) => {
+	loader: async ({ params, preload }) => {
 		const filterContributorsRes = await RPC.queryClient.fetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId))
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		const filterEntity = filterEntities.get(params.filterId)
@@ -53,6 +73,15 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 		const frameInput = EditFrame.createInput({ editedFilterId: params.filterId, startingFilter: filterEntity.filter, colConfig })
 		const frameKey = frameManager.ensureSetup(EditFrame.frame, frameInput)
 		activeFrameKeys.set(params.filterId, [...(activeFrameKeys.get(params.filterId) ?? []), frameKey])
+		if (preload && !preloadSweeps.has(params.filterId)) {
+			preloadSweeps.set(
+				params.filterId,
+				setTimeout(() => {
+					preloadSweeps.delete(params.filterId)
+					sweepFrameKeys(params.filterId)
+				}, PRELOAD_TTL),
+			)
+		}
 
 		return {
 			entity: filterEntity,
@@ -90,6 +119,12 @@ function RouteComponent() {
 	const loaderData = Route.useLoaderData()
 	const params = Route.useParams()
 	const frameKey = useLiveFrameKey(params.filterId, loaderData?.frameKey, loaderData?.frameInput)
+
+	// the page was actually opened, so the preloaded frame is in use and its sweep no longer applies
+	React.useEffect(() => {
+		cancelPreloadSweep(params.filterId)
+		UPClient.Actions.ensureOnFilter(params.filterId)
+	}, [params.filterId])
 
 	React.useEffect(() => {
 		const sub = FilterEntityClient.filterMutation$.pipe().subscribe({
