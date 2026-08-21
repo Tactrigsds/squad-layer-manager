@@ -48,7 +48,16 @@ export const queueItems = {
 
 export const nextBadge = {
 	title: def('The Next Layer badge'),
-	body: def("This badge means SLM has already set this layer configuration as the server's next layer."),
+	// The triggers come from the install's command config and are already prefixed, so the sentence has to be
+	// built around whatever is configured -- including nothing, when the command is disabled or unbound.
+	body: def((showNextCommands: React.ReactNode | null) =>
+		showNextCommands === null
+			? rt("This badge means SLM has already set this layer configuration as the server's next layer.")
+			: rt(
+					"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type {showNextCommands} to check what layers are next",
+					{ showNextCommands },
+				),
+	),
 }
 
 // Every example is read off the layer the card points at. The per-team tokens come out of the command rather than
