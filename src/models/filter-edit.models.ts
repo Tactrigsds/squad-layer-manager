@@ -182,6 +182,9 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): boo
 		case 'save': {
 			if (!isModified(state)) return false
 			const filter = draftFilter(state)
+			// a half-filled tree is a normal state to be editing in but not one to persist. Checked here rather
+			// than at the dispatcher so every replica agrees on which saves are refused.
+			if (!F.isValidFilterNode(filter)) return false
 			state.saved = Obj.deepClone(state.draft)
 			emit({ code: 'request-filter-save', opId: op.opId, filterId: state.filterId, meta: state.saved.meta, filter, userId: op.userId })
 			return true
