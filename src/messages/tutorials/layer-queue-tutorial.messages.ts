@@ -103,7 +103,7 @@ export const filterIndicators = {
 	title: def('Filter indicators'),
 	body: def(
 		rt(
-			"Your SLM install can define rules that categorize layers, called <strong>layer filters</strong>. A filter can show an emoji <strong>indicator</strong> on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: Tutorial Pool <tutorialPoolIcon></tutorialPoolIcon> and Large Layers <largeLayersIcon></largeLayersIcon>.",
+			"Your SLM install can define rules that categorize layers, called <strong>layer filters</strong>. A filter can show an emoji <strong>indicator</strong> on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: <em>Tutorial Pool</em> <tutorialPoolIcon></tutorialPoolIcon> and <em>Large Layers</em> <largeLayersIcon></largeLayersIcon>.",
 		),
 	),
 }
