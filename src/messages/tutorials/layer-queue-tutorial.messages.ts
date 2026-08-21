@@ -1,5 +1,6 @@
 import type React from 'react'
 
+import * as I18n from '@/messages/i18n'
 import * as L from '@/models/layer'
 import { def, rt } from '@/models/messages.models'
 
@@ -48,16 +49,19 @@ export const queueItems = {
 
 export const nextBadge = {
 	title: def('The Next Layer badge'),
-	// The triggers come from the install's command config and are already prefixed, so the sentence has to be
-	// built around whatever is configured -- including nothing, when the command is disabled or unbound.
-	body: def((showNextCommands: React.ReactNode | null) =>
-		showNextCommands === null
-			? rt("This badge means SLM has already set this layer configuration as the server's next layer.")
-			: rt(
-					"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type {showNextCommands} to check what layers are next",
-					{ showNextCommands },
-				),
-	),
+	// The triggers come from the install's command config, already carrying their prefix, so the sentence is built
+	// around whatever is configured -- including nothing, when the command is disabled or unbound. Formatting the
+	// list needs the locale, which is what the surface function hands us: the separators and the conjunction are
+	// the reader's, and each trigger is isolated so an LTR command in an RTL sentence keeps its punctuation.
+	body: def((triggers: string[]) => ({
+		richText: ({ locale }) =>
+			triggers.length === 0
+				? rt("This badge means SLM has already set this layer configuration as the server's next layer.")
+				: rt(
+						"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type {showNextCommands} to check what layers are next",
+						{ showNextCommands: I18n.tokenList(triggers, locale, { type: 'disjunction', tag: 'code' }) },
+					),
+	})),
 }
 
 // Every example is read off the layer the card points at. The per-team tokens come out of the command rather than
