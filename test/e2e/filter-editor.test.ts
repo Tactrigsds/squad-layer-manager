@@ -7,7 +7,8 @@ import { expect, test } from './fixtures'
 // The filter pages, against one app: the entity form (the only tanstack-form surface, so where a
 // form-library upgrade breaks first), the reference graph a filter cannot be deleted out of, and the
 // cycle refusal. The tests read the seeded graph before they mutate it: the reference assertions run
-// before the rename, and the cycle test leaves its unsaved edit to die with the page.
+// before the rename, and the cycle test leaves its unsaved edit to die with the page -- which now means the
+// server discarding the draft once the closing page was the last client editing it.
 
 let app: AppFixture
 
@@ -21,6 +22,8 @@ test.beforeAll(async () => {
 			filter('unused', 'AAS Only', FB.and([FB.eq('Gamemode', 'AAS')])),
 			// its own filter, because the text-mode test runs after `unused` has been deleted out from under it
 			filter('text-mode', 'Text Mode', FB.and([FB.eq('Gamemode', 'AAS')])),
+			// the collaborative journey leaves its draft to be discarded, so it never writes to this one
+			filter('collab', 'Collab Draft', FB.and([FB.eq('Gamemode', 'RAAS')])),
 		],
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
@@ -171,6 +174,40 @@ test.describe('filter references', () => {
 			},
 			{ label: 'renamed filter persisted' },
 		)
+	})
+})
+
+// The filter's draft lives on the server, one session per filter entity, so two clients on the same page are
+// two replicas of it rather than two private copies. The draft outlives neither of them: once nobody is left
+// editing it, it is discarded rather than saved.
+test.describe('collaborative filter editing', () => {
+	test("one editor's edit shows up in the other, and an abandoned draft is discarded", async ({ page }) => {
+		const pageB = await page.context().newPage()
+		try {
+			await page.goto(app.loginUrl(app.adminUser, '/filters/collab'))
+			await pageB.goto(app.loginUrl(app.adminUser, '/filters/collab'))
+			for (const p of [page, pageB]) {
+				await expect(p.getByRole('button', { name: 'Add comment' }).first()).toBeVisible({ timeout: 25_000 })
+			}
+
+			// A annotates a node; B is a replica of the same draft, so B is looking at the comment too
+			await page.getByRole('button', { name: 'Add comment' }).first().click()
+			await page.getByRole('textbox', { name: 'Node comment' }).fill('a shared draft, not a private copy')
+			// the builder renders the comment and the text mirror repeats it, so match the first
+			await expect(pageB.getByText('a shared draft, not a private copy').first()).toBeVisible({ timeout: 20_000 })
+
+			// A leaves without saving, and was the only one editing -- so there is nobody left to commit the
+			// draft, and B is returned to the filter as it is stored
+			page.once('dialog', (dialog) => void dialog.accept())
+			await page.getByRole('link', { name: 'Filters', exact: true }).click()
+			await page.waitForURL('**/filters')
+			await expect(pageB.getByText('a shared draft, not a private copy')).toHaveCount(0, { timeout: 20_000 })
+
+			const stored = app.readDb().prepare('select name from filters where id = ?').get('collab') as { name: string }
+			expect(stored.name).toBe('Collab Draft')
+		} finally {
+			await pageB.close()
+		}
 	})
 })
 

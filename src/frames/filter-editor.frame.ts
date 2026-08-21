@@ -20,6 +20,7 @@ import * as LQY from '@/models/layer-queries.models'
 import type * as UP from '@/models/user-presence'
 import * as FilterEditClient from '@/systems/filter-edit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -301,7 +302,19 @@ export namespace Actions {
 		// an edit made without pressing anything still claims an editing session, which is what keeps the
 		// shared draft alive. A save ends everyone's session, so it must not re-open one.
 		if (!ops.some((op) => op.code === 'save')) UPClient.Actions.ensureEditingFilter(state.editedFilterId)
-		void FilterEditClient.dispatchOps(state.editedFilterId, ops)
+		void FilterEditClient.dispatchOps(state.editedFilterId, ops).then((res) => {
+			if (res.code === 'ok') return
+			// the server never applied these, and a pending op that is never acked doesn't just lose its own
+			// edit: until pendingOps drains, no later server update reaches localState at all
+			const dropped = ODSM.Client.dropPendingOps(
+				s.getState().session,
+				ops.map((op) => op.opId),
+				FE.reducer,
+			)
+			commitSession(s.setState, dropped)
+			if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else console.error('filter ops refused by the server:', res.code)
+		})
 	}
 
 	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
