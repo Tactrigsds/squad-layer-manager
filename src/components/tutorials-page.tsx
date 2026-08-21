@@ -31,9 +31,6 @@ export default function TutorialsPage() {
 	return (
 		<div className="mx-auto w-full max-w-2xl space-y-3 py-6">
 			<h1 className="text-xl font-semibold">{tr.text(TUT_Msgs.pageTitle())}</h1>
-			<Alert>
-				<AlertDescription>{tr.text(TUT_Msgs.sandboxNotice())}</AlertDescription>
-			</Alert>
 			{!desktopSize && (
 				<Alert variant="warning">
 					<AlertDescription>{tr.text(smallViewport ? TUT_Msgs.deviceWarning() : TUT_Msgs.viewportSizeWarning())}</AlertDescription>

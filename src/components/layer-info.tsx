@@ -634,18 +634,21 @@ function ScoreGrid({
 			{(otherScores.length > 0 || scores.diffs['Balance_Differential'] !== undefined) && (
 				<div className="mb-2 pb-2 border-b border-muted space-y-1">
 					{scores.diffs['Balance_Differential'] !== undefined && (
-						<BalanceDifferentialGauge
-							diff={scores.diffs['Balance_Differential']}
-							scoreRange={scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as ScoreRange | undefined}
-						/>
+						<div data-tour="layer-score-Balance_Differential">
+							<BalanceDifferentialGauge
+								diff={scores.diffs['Balance_Differential']}
+								scoreRange={scoreRanges.regular.find((range) => range.field === 'Balance_Differential') as ScoreRange | undefined}
+							/>
+						</div>
 					)}
 					{otherScores.map((scoreType) => (
-						<OtherScoreGauge
-							key={scoreType}
-							scoreType={scoreType}
-							score={scores.other[scoreType] || 0}
-							scoreRange={scoreRanges.regular.find((range) => range.field === scoreType) as ScoreRange | undefined}
-						/>
+						<div key={scoreType} data-tour={`layer-score-${scoreType}`}>
+							<OtherScoreGauge
+								scoreType={scoreType}
+								score={scores.other[scoreType] || 0}
+								scoreRange={scoreRanges.regular.find((range) => range.field === scoreType) as ScoreRange | undefined}
+							/>
+						</div>
 					))}
 				</div>
 			)}

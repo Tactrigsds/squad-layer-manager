@@ -77,7 +77,7 @@ export const teamNormalize = {
 	// rather than being asked to picture it
 	body: def((denormalized: React.ReactNode) =>
 		rt(
-			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.
+			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>
 <p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>
 <p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>
 <p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>`,
@@ -127,7 +127,35 @@ export namespace LayerDetails {
 	}
 	export const layerScores = {
 		title: def('Layer scores'),
-		body: def(rt('Which scores exist depends on your install. The defaults are documented <scoresDocs>here</scoresDocs>.')),
+		body: def(
+			rt(
+				`These are precomputed "Scores" for layers based on a set of heuristics which are used to determine the relative "fairness" of the layer. These are SLM's default scores, and they only exist for RAAS,FRAAS,AAS, and TC. These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.
+                the two most important scores are the <em>Balance Score(Balance Differential)</em> and the <em>Asymmetry Score</em>:
+				`,
+			),
+		),
+	}
+	export const balanceScore = {
+		title: def('Balance score'),
+		body: def(
+			rt(
+				`This is a composite score calculated by weighting the following factors for each matchup: Armour, Transport, Anti-Infantry capability, and Logistics. Positive numbers mean Team 1 is favoured and negative numbers mean Team 2 is favoured. For example, in the map setting interface, you can see that ADF Combined Arms versus AFU Combined Arms has a balance score of -0.24. This means that Team 2, AFU Combined Arms is slightly favoured.`,
+			),
+		),
+	}
+	export const asymmetryScore = {
+		title: def('Asymmetry score'),
+		body: def(
+			rt(
+				`This score is meant to give you an idea of the “asymmetry” of the matchup. Generally, similar <em>unit types</em> will be more symmetric (e.g. Combined Arms versus Combined Arms or Support versus Support and so on. This is because similar unit types get similar vehicle loadouts. The third entry in the map setting interface example, ADF Combined Arms versus AFU Light Infantry favours the ADF slightly in terms of balance but is quite asymmetric (though not asymmetric enough to be out of the main pool entirely). In general, when looking at these scores, you should focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.`,
+			),
+		),
+	}
+	export const layerScoresNonstandard = {
+		title: def('Layer scores'),
+		body: def(
+			rt(`These from your organization's custom layer scoring system. Consult your internal documentation for more information.`),
+		),
 	}
 }
 
@@ -152,7 +180,9 @@ export const startEditing = {
 
 export const queueUserPresence = {
 	title: def('Checking for other editors'),
-	body: def('Whether you are editing, and what you are currently doing, is shown here to everyone:'),
+	body: def(
+		"All current editors and what they're currently working on is shown here. Avatars that are greyed out but are still shown as editing have been idle for an extended period. Mouse over them to see how long they've been idle.",
+	),
 }
 
 export namespace AddLayersSequence {
