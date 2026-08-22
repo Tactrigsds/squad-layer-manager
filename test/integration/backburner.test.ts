@@ -44,7 +44,7 @@ beforeAll(async () => {
 		},
 		serverSettings: (s) => {
 			s.queue.mainPool.constrainGeneration = [{ filterId: 'gen-pool', applyAs: 'regular' }]
-			s.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true }]
+			s.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
 		},
 	})
 	app.emu.world.connectPlayer(admin)

@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
+import * as Arr from '@/lib/array-utils'
 import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
@@ -829,7 +830,7 @@ function GroupingCard({
 			const to = parseRuleDragId(String(slot.dragItem.id))
 			const { groupingId, onUpdate } = stateRef.current
 			if (from.groupingId !== groupingId || to.groupingId !== groupingId) return
-			onUpdate(groupingId, (g) => ({ ...g, rules: PG.moveRule(g.rules, from.idx, to.idx, position) }))
+			onUpdate(groupingId, (g) => ({ ...g, rules: Arr.moveItem(g.rules, from.idx, to.idx, position) }))
 		}, []),
 	)
 

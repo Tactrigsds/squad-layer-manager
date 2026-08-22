@@ -550,22 +550,23 @@ describe('queryLayers and getLayerItemStatuses resolving the same slot', () => {
 })
 
 describe('the constraints each path builds from the same settings', () => {
-	const withWarn = (warn: boolean | undefined) => {
+	const withOptions = (options: { warn: boolean; indicate: boolean }) => {
 		const settings = SETTINGS.PublicServerSettingsSchema.parse({})
-		settings.queue.mainPool.repeatRules = settings.queue.mainPool.repeatRules.map((rule) => ({ ...rule, warn }))
+		settings.queue.mainPool.repeatRules = settings.queue.mainPool.repeatRules.map((rule) => ({ ...rule, ...options }))
 		return settings
 	}
-	const warnFlags = (constraints: LQY.Constraint[]) =>
-		constraints.filter((c) => c.type === 'do-not-repeat').map((c) => `${c.id}:${c.warn}`)
+	const flags = (constraints: LQY.Constraint[]) =>
+		constraints.filter((c) => c.type === 'do-not-repeat').map((c) => `${c.id}:${c.warn}:${c.showIndicator}`)
 
-	// the Warn checkbox writes `warn || undefined`, so true and undefined are the only states it can produce
-	for (const warn of [true, undefined]) {
-		it(`carry the same warn flag with the checkbox ${warn ? 'ticked' : 'unticked'}`, () => {
-			const settings = withWarn(warn)
-			expect(warnFlags(SETTINGS.getSettingsConstraints(settings))).toEqual(
-				warnFlags(PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, 'disabled')),
-			)
-		})
+	for (const warn of [true, false]) {
+		for (const indicate of [true, false]) {
+			it(`carry the same warn/indicate flags with warn ${warn} and indicate ${indicate}`, () => {
+				const settings = withOptions({ warn, indicate })
+				expect(flags(SETTINGS.getSettingsConstraints(settings))).toEqual(
+					flags(PoolCheckboxesPrt.getToggledRepeatRuleConstraints(settings, 'disabled')),
+				)
+			})
+		}
 	}
 })
 
