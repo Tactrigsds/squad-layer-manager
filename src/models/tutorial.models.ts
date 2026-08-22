@@ -22,8 +22,13 @@ export const TOUR_HANDLES = {
 // halves reconstruct the same states. Every id must exist in the layer data that ships with the app. The picks are
 // what the add walkthrough asks for: Chora is Medium (in pool, no Large indicator), Yehorivka is Large, and both
 // carry CAF so the reader's additions repeat a faction within the pool's warn rule.
+//
+// The head is the layer the scores arc reads its examples off, so its matchup is load-bearing copy: ADF Combined
+// Arms against AFU Light Infantry is slightly in ADF's favor and visibly asymmetric without leaving the pool,
+// which is what those two cards say. It is on Harju, the map the emulator opens on, so the head still carries a
+// repeat indicator for the step that points at one. Changing it means rechecking both.
 export const LQ_TUTORIAL_LAYERS = {
-	initial: ['GD-RAAS-V1:USA-CA:RGF-CA', 'HJ-RAAS-V1:RGF-MZ:PLA-AA', 'NV-RAAS-V1:USA-CA:RGF-CA'],
+	initial: ['HJ-AAS-V1:ADF-CA:AFU-LI', 'HJ-RAAS-V1:RGF-MZ:PLA-AA', 'NV-RAAS-V1:USA-CA:RGF-CA'],
 	picks: { chora: 'CH-TC-V1:CAF-CA:MEI-CA', yehorivka: 'YH-TC-V1:CAF-CA:RGF-CA' },
 } as const
 
