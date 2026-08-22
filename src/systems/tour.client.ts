@@ -397,8 +397,9 @@ let active: Active | null = null
 let stepSub = new Rx.Subscription() // advance + premise watchers for the current step
 let runSub = new Rx.Subscription() // router pause watcher, lives for the run
 
-// A scenario's client half: the steps, plus resetClient, which synchronously closes every piece of UI a step may
-// have opened (dialogs, draggable windows) so a jump starts from a known screen.
+// A scenario's client half: the steps, plus resetClient, which synchronously puts the screen in the state the
+// scenario's first step expects: no dialog or draggable window a step may have opened, and whatever presentational
+// state it depends on. It runs when a run attaches and again before every jump.
 //
 // `steps` may be a builder, for a curriculum whose shape depends on what the install can support (whether its
 // layers carry scores, say). It is called once, when the run starts, and never again: a step's index is the
@@ -579,6 +580,8 @@ async function attach(scenarioId: TUT.ScenarioId, serverId: string) {
 	const run = acquireRun(serverId)
 	const steps = typeof def.steps === 'function' ? await def.steps() : def.steps
 	active = { scenarioId, steps, resetClient: def.resetClient, run }
+	// jumps reset the screen themselves; this covers the run's first step, which is not reached by one
+	def.resetClient?.(run)
 	runSub = new Rx.Subscription()
 	runSub.add(rootRouter.subscribe('onResolved', reconcilePause))
 	await rootRouter.navigate({ to: DASHBOARD_TO, params: { serverId } })
