@@ -44,6 +44,12 @@ process.stdin.on('end', () => {
 		execSync('pnpm run docs:lint', { stdio: 'inherit' })
 		console.log('✅ Doc links passed\n')
 
+		// nothing else notices a message edited without re-extracting: every other check passes while the
+		// catalogue names a string the source no longer has
+		console.log('🌐 Checking message catalogue...')
+		execSync('pnpm run i18n:lint', { stdio: 'inherit' })
+		console.log('✅ Message catalogue up to date\n')
+
 		console.log('🧪 Running unit tests...')
 		execSync('pnpm run test', { stdio: 'inherit' })
 		console.log('✅ Unit tests passed\n')

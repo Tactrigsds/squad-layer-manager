@@ -1,0 +1,122 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { role } from '../harness/arrange'
+import { savedQueue } from '../harness/inspect'
+import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
+
+// The tutorial runtime, end to end at the oRPC level: starting a run stands up a scoped, ephemeral emulated server
+// seeded for the scenario, delivered only to its owner; abandoning it tears the server down again. The tour client
+// (Phase 5) narrates on top of this, and its own journey is an e2e test (Phase 6).
+
+const USER: TestUser = { discordId: 900000000000000062n, username: 'test-tutorial-user' }
+const SERVER_ID = `tutorial-${USER.discordId}`
+
+let app: AppFixture
+let client: TestOrpcClient
+
+beforeAll(async () => {
+	app = await createAppFixture({
+		users: [USER],
+		// the prompt's own dismissal is what this file asserts on, so it starts undismissed here
+		tutorialPrompts: true,
+		globalSettings: (settings) => {
+			// site access only: starting a tutorial is per-user by construction, not a granted role
+			settings.rbac.roles['tutorial-user'] = role(['site:authorized'], { users: [USER] })
+		},
+	})
+	client = await createOrpcClient(app, USER)
+}, 120_000)
+
+afterAll(async () => {
+	await app?.dispose()
+})
+
+async function deliveredServerIds(): Promise<string[]> {
+	const settings = await firstYield((signal) => client.settings.public.watchPublicSettings(undefined, { signal }), {
+		label: 'public settings',
+	})
+	return settings.servers.map((s) => s.id)
+}
+
+async function runState() {
+	return await firstYield((signal) => client.tutorials.watchRun(undefined, { signal }), { label: 'run state' })
+}
+
+// ordered: each test hands its state to the next, with the destructive teardown last
+describe('tutorial runtime', () => {
+	it('advertises the available scenarios', async () => {
+		const metas = await client.tutorials.list()
+		expect(metas.map((m) => m.id)).toContain('layer-queue')
+	})
+
+	it('reports no run before one is started', async () => {
+		expect(await runState()).toEqual({ code: 'none' })
+		expect(await deliveredServerIds()).not.toContain(SERVER_ID)
+	})
+
+	it('stands up a scoped server seeded with the scenario queue', async () => {
+		const res = await client.tutorials.start({ scenarioId: 'layer-queue' })
+		expect(res).toEqual({ code: 'ok', serverId: SERVER_ID })
+
+		expect(await runState()).toEqual({ code: 'active', scenarioId: 'layer-queue', serverId: SERVER_ID })
+		// the scenario's starting queue booted with the server, so the dashboard opens on a populated queue
+		expect(savedQueue(app, SERVER_ID)).toHaveLength(3)
+		// scoped to its owner: delivered to them alongside the public server
+		const ids = await deliveredServerIds()
+		expect(ids).toContain(SERVER_ID)
+		expect(ids).toContain(app.serverId)
+	})
+
+	it('runs a stage green and rejects an unknown one', async () => {
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toEqual({ code: 'ok' })
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'no-such-stage' })).toEqual({
+			code: 'err:unknown-stage',
+		})
+	})
+
+	it('rolls the seeded queue head when a stage plays a match', async () => {
+		// the play-a-match stage syncs the head as next, ends the match, and waits for the roll to settle. The head
+		// becomes the current match and shifts off, so the saved queue drops from 3 to 2 -- proof the roll landed on
+		// the queued layer rather than the emulator's default seed (which would leave the queue untouched).
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'play-a-match' })).toEqual({ code: 'ok' })
+		// match creation is log-driven and can lag the stage's return slightly, so poll for the consumed head
+		await app.waitFor(() => savedQueue(app, SERVER_ID).length === 2 || null, { label: 'the played head consumed from the queue' })
+	})
+
+	it('remembers where the user got to, and that they finished', async () => {
+		expect(await client.tutorials.getProgress()).toEqual([])
+
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'queue-items', completed: false })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'queue-items', completed: false }])
+
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'save', completed: false })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'save', completed: false }])
+
+		// finishing clears the place and marks the tutorial done, and starting it again does not un-finish it
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: null, completed: true })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: null, completed: true }])
+
+		await client.tutorials.saveProgress({ scenarioId: 'layer-queue', stepId: 'welcome', completed: false })
+		expect(await client.tutorials.getProgress()).toEqual([{ scenarioId: 'layer-queue', stepId: 'welcome', completed: true }])
+	})
+
+	it('remembers a dismissed page prompt', async () => {
+		expect(await client.tutorials.getDismissedPrompts()).toEqual([])
+
+		await client.tutorials.dismissPrompt({ surfaceId: 'server-dashboard' })
+		expect(await client.tutorials.getDismissedPrompts()).toEqual(['server-dashboard'])
+
+		// dismissing twice is the same dismissal, not a second row
+		await client.tutorials.dismissPrompt({ surfaceId: 'server-dashboard' })
+		expect(await client.tutorials.getDismissedPrompts()).toEqual(['server-dashboard'])
+	})
+
+	it('tears the server down on abandon', async () => {
+		expect(await client.tutorials.abandon()).toEqual({ code: 'ok' })
+		expect(await runState()).toEqual({ code: 'none' })
+		expect(await deliveredServerIds()).not.toContain(SERVER_ID)
+		// no active run: a stage now reports it rather than acting
+		expect(await client.tutorials.stage({ scenarioId: 'layer-queue', stageId: 'welcome' })).toEqual({ code: 'err:no-active-run' })
+	})
+})

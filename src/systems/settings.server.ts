@@ -106,6 +106,10 @@ export type ServerEntry = {
 	adminLists: readonly SM.AdminListId[]
 	// there is no real squad server behind a sandbox, so the client hides what only a real one can answer for
 	sandbox: boolean
+	// 'scoped' entries are delivered to and usable by only their owner (ownerDiscordId); see ServerVisibility and the
+	// RBAC scoping in rbac.server. 'public' is every other server. ownerDiscordId is null for public entries.
+	visibility: SS.ServerVisibility
+	ownerDiscordId: bigint | null
 }
 
 const serverRegistry = new Map<SS.ServerId, ServerEntry>()
@@ -122,6 +126,21 @@ export function hasServerEntry(serverId: SS.ServerId): boolean {
 	return serverRegistry.has(serverId)
 }
 
+// The scoped server ids, for the RBAC matcher that keeps wildcard grants off them (see rbac.models). Read here for this
+// module's own server-settings checks, and pushed into rbac.server (which cannot import this module) on every registry
+// change via pushScopedServersToRbac.
+export function scopedServerIds(): ReadonlySet<SS.ServerId> {
+	const ids = new Set<SS.ServerId>()
+	for (const entry of serverRegistry.values()) if (entry.visibility === 'scoped') ids.add(entry.id)
+	return ids
+}
+
+function pushScopedServersToRbac() {
+	const map = new Map<SS.ServerId, bigint | null>()
+	for (const entry of serverRegistry.values()) if (entry.visibility === 'scoped') map.set(entry.id, entry.ownerDiscordId)
+	Rbac.applyScopedServers(map)
+}
+
 async function loadServerRegistry(ctx: C.Db) {
 	const rows = await ctx.db().select().from(Schema.servers)
 	for (const rawRow of rows) {
@@ -130,6 +149,8 @@ async function loadServerRegistry(ctx: C.Db) {
 			displayName: string
 			enabled: boolean
 			defaultServer: boolean
+			visibility: SS.ServerVisibility
+			ownerDiscordId: bigint | null
 			settings: unknown
 		}
 		const settingsRes = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
@@ -178,8 +199,11 @@ async function loadServerRegistry(ctx: C.Db) {
 			broken,
 			adminLists: settingsRes.success ? settingsRes.data.adminLists : [],
 			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
+			visibility: row.visibility,
+			ownerDiscordId: row.ownerDiscordId,
 		})
 	}
+	pushScopedServersToRbac()
 	settings$.next({ scope: 'registry' })
 }
 
@@ -189,6 +213,13 @@ export async function createServerEntry(
 		id: SS.ServerId
 		displayName: string
 		settings: unknown
+		// a scoped server is delivered to and usable by only its owner; tutorials create one emulated server per user
+		// this way. Omitted = a normal public server.
+		visibility?: SS.ServerVisibility
+		ownerDiscordId?: bigint | null
+		// the saved queue the server boots with. Tutorials seed a scenario's starting queue here rather than
+		// dispatching ops after enable: at creation there is no client, no vote and no sync to reproduce.
+		layerQueue?: SS.ServerState['layerQueue']
 	},
 ) {
 	if (serverRegistry.has(input.id)) {
@@ -199,15 +230,19 @@ export async function createServerEntry(
 		return { code: 'err:invalid-settings' as const, message: settingsRes.error.message }
 	}
 
+	const visibility = input.visibility ?? 'public'
+	const ownerDiscordId = input.ownerDiscordId ?? null
 	const newServer: SS.ServerState = {
 		id: input.id,
 		displayName: input.displayName,
 		enabled: false,
 		defaultServer: false,
-		layerQueue: [],
+		layerQueue: input.layerQueue ?? [],
 		teamswaps: null,
 		backburner: [],
 		switchRequests: null,
+		visibility,
+		ownerDiscordId,
 		settings: settingsRes.data,
 	}
 	await ctx
@@ -222,7 +257,10 @@ export async function createServerEntry(
 		broken: false,
 		adminLists: newServer.settings.adminLists,
 		sandbox: newServer.settings.connections.type === 'sandbox',
+		visibility,
+		ownerDiscordId,
 	})
+	pushScopedServersToRbac()
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s created', newServer.id)
 	return { code: 'ok' as const }
@@ -234,6 +272,7 @@ export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	serverRegistry.delete(serverId)
 	// the console outlives a stopped server, so deleting the server is what finally drops its tail
 	ServerConsole.disposeFor(serverId)
+	pushScopedServersToRbac()
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s deleted', serverId)
 	return { code: 'ok' as const }
@@ -424,12 +463,16 @@ export const settings$ = new Rx.Subject<SettingsEvent>()
 
 // ============================== public settings (safe for any connected client; no connection details) ==============================
 
+// what a client sees of a server. ownerDiscordId is deliberately dropped: a scoped server only reaches its owner (the
+// handler filters), so the owner id would disclose nothing the recipient doesn't know and is never worth broadcasting.
+export type PublicServerEntry = Omit<ServerEntry, 'ownerDiscordId'>
+
 export type PublicSettings = {
 	topBarColor: SETTINGS.GlobalSettings['topBarColor']
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
-	servers: ServerEntry[]
+	servers: PublicServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	teamAttribution: SETTINGS.GlobalSettings['teamAttribution']
 	playerFlagsRequiringNote: SETTINGS.GlobalSettings['playerFlagsRequiringNote']
@@ -449,7 +492,7 @@ function buildPublicSettings(): PublicSettings {
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
-		servers: listServerEntries(),
+		servers: listServerEntries().map(({ ownerDiscordId: _ownerDiscordId, ...entry }) => entry),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		teamAttribution: GLOBAL_SETTINGS.teamAttribution,
 		playerFlagsRequiringNote: GLOBAL_SETTINGS.playerFlagsRequiringNote,
@@ -458,6 +501,16 @@ function buildPublicSettings(): PublicSettings {
 		adminActionReasons: GLOBAL_SETTINGS.adminActionReasons,
 		requireReasonFor: GLOBAL_SETTINGS.requireReasonFor,
 		messageVariables: GLOBAL_SETTINGS.messageVariables,
+	}
+}
+
+// what one session may see: scoped servers are dropped unless the caller owns them. Ownership is read from the live
+// registry rather than the payload (which never carries it). Fast-paths the common case of no scoped servers at all.
+export function publicSettingsForUser(ps: PublicSettings, discordId: bigint | undefined): PublicSettings {
+	if (!ps.servers.some((s) => s.visibility === 'scoped')) return ps
+	return {
+		...ps,
+		servers: ps.servers.filter((s) => s.visibility !== 'scoped' || getServerEntry(s.id)?.ownerDiscordId === discordId),
 	}
 }
 
@@ -474,8 +527,13 @@ publicSettings$.subscribe()
 
 // safe for any connected client: no connection details, no per-server admin-only settings
 const publicRouter = {
-	watchPublicSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
-		yield* Rx.Ext.toAsyncGenerator(publicSettings$.pipe(Rx.Ext.withAbortSignal(signal!)))
+	watchPublicSettings: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ context: ctx }) {
+		yield* Rx.Ext.toAsyncGenerator(
+			publicSettings$.pipe(
+				Rx.map((ps) => publicSettingsForUser(ps, ctx.user.discordId)),
+				Rx.Ext.withAbortSignal(ctx.signal),
+			),
+		)
 	}),
 }
 
@@ -717,7 +775,7 @@ const adminRouter = {
 			// creating a server means supplying its connection details, so it additionally requires a
 			// write-sensitive grant covering the new server id
 			const perms = await Rbac.getUserPermissions(ctx)
-			if (!RBAC.canWriteSensitiveServerSettings(perms, input.id)) {
+			if (!RBAC.canWriteSensitiveServerSettings(perms, input.id, scopedServerIds())) {
 				return RBAC.permissionDenied('all', [`server-settings:write-sensitive on ${input.id}`])
 			}
 			const res = await createServerEntry(ctx, input)
@@ -757,7 +815,7 @@ const adminRouter = {
 		const res = await getRawServerSettings(ctx, input.serverId)
 		if (res.code !== 'ok') return res
 		const settings = res.settings
-		if (!RBAC.canWriteSensitiveServerSettings(perms, input.serverId)) {
+		if (!RBAC.canWriteSensitiveServerSettings(perms, input.serverId, scopedServerIds())) {
 			if (settings && typeof settings === 'object') delete (settings as Record<string, unknown>).connections
 			return { code: 'ok' as const, settings, sensitiveOmitted: true as const }
 		}

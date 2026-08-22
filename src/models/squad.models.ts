@@ -1847,8 +1847,8 @@ export namespace Grants {
 	// a null serverId (a timeout whose issuing server is gone) can only be satisfied by an all-servers grant
 	export function anyTimeout(serverId: string | null) {
 		return RBAC.permReq('all', [
-			(perms) => {
-				if (RBAC.maxTimeoutDurationMs(perms, serverId) !== undefined) return
+			(perms, scoped) => {
+				if (RBAC.maxTimeoutDurationMs(perms, serverId, scoped) !== undefined) return
 				return `squad-server:timeout-players on ${serverId ?? 'all servers'}`
 			},
 		])
@@ -1856,8 +1856,8 @@ export namespace Grants {
 
 	export function satisfyingTimeout(serverId: string, timeoutMs: number) {
 		return RBAC.permReq('all', [
-			(perms) => {
-				const max = RBAC.maxTimeoutDurationMs(perms, serverId)
+			(perms, scoped) => {
+				const max = RBAC.maxTimeoutDurationMs(perms, serverId, scoped)
 				if (max === null) return
 				if (max !== undefined && max >= timeoutMs) return
 				return `squad-server:timeout-players on ${serverId} where maxDurationMs >= ${ZodUtils.formatHumanTime(timeoutMs)}. Max found: ${

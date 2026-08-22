@@ -30,6 +30,7 @@ export type ConstraintEvalTooltipProps = {
 	layerId?: string
 	itemParity?: number
 	height?: number
+	tourId?: string
 }
 
 export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
@@ -133,6 +134,7 @@ export function ConstraintEvalTooltip(props: ConstraintEvalTooltipProps) {
 				type="button"
 				// the trigger is a row of emoji/icons, so it has no text of its own to be named by
 				aria-label={tr.text(F_Msgs.layerIndicators())}
+				data-tour={props.tourId}
 				className={cn('flex -space-x-2 items-center flex-nowrap overflow-hidden', props.className)}
 				style={{ height: `${height}px` }}
 				onMouseOver={itemId ? onMouseOver : undefined}

@@ -155,7 +155,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 		setSelectedLayers(props.defaultSelected)
 	}, [props.defaultSelected, setSelectedLayers])
 	return (
-		<HeadlessDialogContent className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
+		<HeadlessDialogContent data-tour="add-dialog" className="max-h-[95vh] w-max max-w-[95vw] flex flex-col overflow-auto">
 			<HeadlessDialogHeader className="flex flex-row whitespace-nowrap items-center justify-between mr-4">
 				<div className="flex items-center">
 					<HeadlessDialogTitle>{props.title}</HeadlessDialogTitle>
@@ -167,10 +167,10 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 			</HeadlessDialogHeader>
 
 			<div className="flex shrink-0 items-start space-x-2 ">
-				<div ref={filterMenuRef} className="shrink-0">
+				<div ref={filterMenuRef} data-tour="add-filters" className="shrink-0">
 					<LayerFilterMenu stores={{ filterMenu: frameKey }} />
 				</div>
-				<div className="flex flex-col space-y-2 justify-between h-full">
+				<div data-tour="add-pick" className="flex flex-col space-y-2 justify-between h-full">
 					<div className="flex h-full">
 						<LayerTable
 							extraPanelItems={showPoolCheckboxes ? <PoolCheckboxes stores={{ poolCheckboxes: frameKey }} /> : undefined}
@@ -199,7 +199,7 @@ const SelectLayersDialogContent = React.memo<SelectLayersDialogContentProps>(fun
 					)}
 					{props.footerBeforeSubmit}
 					{submit && (
-						<Button disabled={!canSubmit} onClick={submit}>
+						<Button data-tour="add-submit" disabled={!canSubmit} onClick={submit}>
 							{tr.text(L_Msgs.submit())}
 						</Button>
 					)}
