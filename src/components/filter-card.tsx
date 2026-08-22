@@ -17,10 +17,12 @@ import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand.ts'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
+import * as L_Msgs from '@/messages/layer.messages'
 import type * as DND from '@/models/dndkit.models.ts'
 import * as EFB from '@/models/editable-filter-builders'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns'
+import type * as LQY from '@/models/layer-queries.models'
 import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -100,10 +102,24 @@ export default function FilterCard(props: FilterCardProps & { children: React.Re
 		EditFrame.Actions.moveNode(props.stores, sourcePath, targetPath)
 	})
 
-	const [nodeStore, modified] = Zus.useStore(
+	const [nodeStore, modified, editingNodeId] = Zus.useStore(
 		props.stores.filterEditor,
-		Zus.useShallow((s) => [s.nodeMapStore, s.modified]),
+		Zus.useShallow((s) => [s.nodeMapStore, s.modified, s.editingNodeId] as const),
 	)
+
+	// Escape returns the open node to its compact form. It listens on the document because clicking a
+	// compact row destroys the button that was focused, leaving focus on the body; a popover or dialog
+	// gets the key first, so the first press dismisses that and the second closes the editor.
+	React.useEffect(() => {
+		if (!editingNodeId) return
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape' || e.defaultPrevented) return
+			if ((e.target as Element | null)?.closest('[data-radix-popper-content-wrapper],[role="dialog"]')) return
+			EditFrame.Actions.setNodeEditing(props.stores, null)
+		}
+		document.addEventListener('keydown', onKeyDown)
+		return () => document.removeEventListener('keydown', onKeyDown)
+	}, [editingNodeId, props.stores])
 	const rootNodeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.idByPath([]))!
 	const allNodeIds = Zus.useStore(
 		props.stores.filterEditor,
@@ -217,12 +233,14 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	return (
 		<NodeWrapper className="filter-node-display relative flex flex-col" path={nodePath} nodeId={props.nodeId} stores={props.stores}>
 			<BlockNodeControlPanel nodeId={props.nodeId} stores={props.stores} />
-			{immediateChildren.map((id) => {
+			{immediateChildren.map((id, index) => {
 				const dragItem: DND.DragItem = { type: 'filter-node', id }
 				return (
 					<React.Fragment key={id}>
 						<ChildNodeSeparator
 							item={{ type: 'relative-to-drag-item', slots: [{ position: 'before', dragItem }] }}
+							parentId={props.nodeId}
+							index={index}
 							stores={props.stores}
 						/>
 						<StoredParentNode store={nodeMapStore} nodeId={id} />
@@ -231,6 +249,8 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 			})}
 			<ChildNodeSeparator
 				item={{ type: 'relative-to-drag-item', slots: [{ position: 'on', dragItem: { id: props.nodeId, type: 'filter-node' } }] }}
+				parentId={props.nodeId}
+				index={immediateChildren.length}
 				stores={props.stores}
 			/>
 		</NodeWrapper>
@@ -239,21 +259,75 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 
 type InlineAddAction = { label: React.ReactNode; onSelect: () => void } | 'separator'
 
+// collapse only once focus has left the whole control, not when moving between its buttons
+function collapseOnFocusLeave(e: React.FocusEvent<HTMLElement>, collapse: () => void) {
+	if (!e.currentTarget.contains(e.relatedTarget as Node | null)) collapse()
+}
+
+// the kinds of node a block can hold. The block's own add button and the insert points between its
+// children share the list and differ only in where the new node lands.
+function blockAddActions(actions: EditFrame.BlockNodeActions, index?: number): InlineAddAction[] {
+	return [
+		{ label: 'condition block', onSelect: () => actions.addChild('and', index) },
+		'separator',
+		{ label: 'map', onSelect: () => actions.addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }, index) },
+		{ label: 'layer', onSelect: () => actions.addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }, index) },
+		{
+			label: 'gamemode',
+			onSelect: () => actions.addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }, index),
+		},
+		{
+			label: 'collection',
+			onSelect: () => actions.addSeeded(EFB.inValues('Collection'), { group: 'layer-identity', focus: 'operator' }, index),
+		},
+		{ label: 'matchup', onSelect: () => actions.addChild('allow-matchups', index) },
+		{ label: 'faction/unit', onSelect: () => actions.addSeeded(EFB.inValues(), { group: 'team' }, index) },
+		{
+			label: 'vehicle',
+			onSelect: () => actions.addSeeded(EFB.inValuesForTeamColumn('Vehicle'), { group: 'team', focus: 'values' }, index),
+		},
+		{ label: 'scores', onSelect: () => actions.addSeeded(EFB.comp(), { group: 'extra' }, index) },
+		{ label: 'select layers', onSelect: () => actions.addSeeded(EFB.inValues('id'), { autoOpenLayers: true }, index) },
+		'separator',
+		{ label: 'apply existing filter', onSelect: () => actions.addChild('included-in', index) },
+	]
+}
+
+function AddActionStrip(props: { actions: InlineAddAction[]; onSelected: () => void }) {
+	return (
+		<div className="flex items-center space-x-1 overflow-x-auto">
+			{props.actions.map((action, i) => {
+				// actions are a static, non-reordered config; a positional key is stable here
+				const key = action === 'separator' ? `sep-${i}` : typeof action.label === 'string' ? action.label : `action-${i}`
+				if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
+				return (
+					<Button
+						key={key}
+						size="sm"
+						variant="outline"
+						className="whitespace-nowrap"
+						onClick={() => {
+							action.onSelect()
+							props.onSelected()
+						}}
+					>
+						{action.label}
+					</Button>
+				)
+			})}
+		</div>
+	)
+}
+
 // a "+" button that reveals its actions inline to the right when opened, and collapses once focus
 // leaves the widget. replaces a popover/dropdown so a freshly added node's auto-opened editor isn't
 // slammed shut by the menu's focus-restore.
-function InlineAddButton(props: { actions: InlineAddAction[]; className?: string }) {
+function InlineAddButton(props: { actions: InlineAddAction[]; className?: string; compact?: boolean }) {
 	const [expanded, setExpanded] = React.useState(false)
 	return (
-		<div
-			className={cn('flex items-center space-x-1', props.className)}
-			onBlur={(e) => {
-				// collapse only once focus has left the whole control, not when moving between its buttons
-				if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setExpanded(false)
-			}}
-		>
+		<div className={cn('flex items-center space-x-1', props.className)} onBlur={(e) => collapseOnFocusLeave(e, () => setExpanded(false))}>
 			<Button
-				className="min-h-0"
+				className={cn('min-h-0', props.compact && 'size-6 [&_svg]:size-3.5')}
 				size="icon"
 				variant="outline"
 				aria-label={tr.text(F_Msgs.addCondition())}
@@ -262,29 +336,7 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 			>
 				<Plus />
 			</Button>
-			{expanded && (
-				<div className="flex items-center space-x-1 overflow-x-auto">
-					{props.actions.map((action, i) => {
-						// actions are a static, non-reordered config; a positional key is stable here
-						const key = action === 'separator' ? `sep-${i}` : typeof action.label === 'string' ? action.label : `action-${i}`
-						if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
-						return (
-							<Button
-								key={key}
-								size="sm"
-								variant="outline"
-								className="whitespace-nowrap"
-								onClick={() => {
-									action.onSelect()
-									setExpanded(false)
-								}}
-							>
-								{action.label}
-							</Button>
-						)
-					})}
-				</div>
-			)}
+			{expanded && <AddActionStrip actions={props.actions} onSelected={() => setExpanded(false)} />}
 		</div>
 	)
 }
@@ -292,16 +344,44 @@ function InlineAddButton(props: { actions: InlineAddAction[]; className?: string
 function BlockNodeControlPanel(props: NodeProps) {
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId)) as F.ShallowEditableFilterNodeOfType<F.BlockType>
 	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))
+	const editing = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeEditing(props.nodeId))
 	if (!F.isBlockType(node.type) || !nodePath) return null
 	const isRootNode = nodePath.length === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
-	const { addChild, addSeeded, setBlockType } = actions.block
+	const { setBlockType } = actions.block
 	const blockTypeOptions = F.BLOCK_TYPES.map((type) => ({
 		value: type,
 		label: tr.text(F_Msgs.blockTypeNames[type]),
 		description: tr.text(F_Msgs.blockTypeDescriptions[type]),
 	}))
+	const opCluster = (
+		<>
+			<CommentButton nodeId={props.nodeId} stores={props.stores} />
+			{!isRootNode && (
+				<>
+					<DuplicateButton onClick={actions.common.duplicate} />
+					<Button size="icon" variant="ghost" onClick={deleteNode}>
+						<Minus color="hsl(var(--destructive))" />
+					</Button>
+				</>
+			)}
+		</>
+	)
+
+	// the add button stays put in both modes: an empty block whose only way forward is hidden is a dead end
+	if (!editing) {
+		return (
+			<div className="group/row flex items-center space-x-1">
+				<NodeSummaryButton onClick={() => actions.common.setEditing(true)}>
+					<NodeSummary node={node} />
+				</NodeSummaryButton>
+				<InlineAddButton compact actions={blockAddActions(actions.block)} />
+				<CompactOpCluster>{opCluster}</CompactOpCluster>
+			</div>
+		)
+	}
+
 	return (
 		<div className="flex items-center space-x-1">
 			<ComboBox
@@ -311,46 +391,26 @@ function BlockNodeControlPanel(props: NodeProps) {
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
 			/>
-			<InlineAddButton
-				actions={[
-					{ label: 'condition block', onSelect: () => addChild('and') },
-					'separator',
-					{ label: 'map', onSelect: () => addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }) },
-					{ label: 'layer', onSelect: () => addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }) },
-					{
-						label: 'gamemode',
-						onSelect: () => addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }),
-					},
-					{
-						label: 'collection',
-						onSelect: () => addSeeded(EFB.inValues('Collection'), { group: 'layer-identity', focus: 'operator' }),
-					},
-					{ label: 'matchup', onSelect: () => addChild('allow-matchups') },
-					{ label: 'faction/unit', onSelect: () => addSeeded(EFB.inValues(), { group: 'team' }) },
-					{ label: 'vehicle', onSelect: () => addSeeded(EFB.inValuesForTeamColumn('Vehicle'), { group: 'team', focus: 'values' }) },
-					{ label: 'scores', onSelect: () => addSeeded(EFB.comp(), { group: 'extra' }) },
-					{ label: 'select layers', onSelect: () => addSeeded(EFB.inValues('id'), { autoOpenLayers: true }) },
-					'separator',
-					{ label: 'apply existing filter', onSelect: () => addChild('included-in') },
-				]}
-			/>
-			<CommentButton nodeId={props.nodeId} stores={props.stores} />
-			{!isRootNode && (
-				<Button size="icon" variant="ghost" onClick={deleteNode}>
-					<Minus color="hsl(var(--destructive))" />
-				</Button>
-			)}
+			<InlineAddButton actions={blockAddActions(actions.block)} />
+			{opCluster}
+			<DoneButton onClick={() => actions.common.setEditing(false)} />
 		</div>
 	)
 }
 
+// The gap between two children: a drop target during a drag, and otherwise a place to add a node at
+// that exact position rather than at the end of the block. It grows while a drag is in flight, since
+// aiming at 6px of dead space is the hard part of reordering.
 function ChildNodeSeparator(props: {
 	// null means we're before the first item in the list
 	item: DND.DropItem
+	parentId: string
+	index: number
 	stores: EditFrame.KeyProp
 }) {
 	const dropProps = DndKit.useDroppable(props.item)
 	const activeItem = DndKit.useDragging()
+	const [expanded, setExpanded] = React.useState(false)
 	const activePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(activeItem?.id?.toString()))) ?? null
 	const slot = props.item.slots[0]
 	const itemPath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(slot.dragItem.id?.toString()))) ?? null
@@ -369,27 +429,62 @@ function ChildNodeSeparator(props: {
 		console.debug('item', props.item, 'Drop target', dropProps.isDropTarget, 'itemPath', itemPath, 'activePath', activePath)
 	}, [dropProps.isDropTarget, itemPath, activePath, props.item])
 
+	if (expanded) {
+		return (
+			<div className="flex min-w-0 items-center py-1" onBlur={(e) => collapseOnFocusLeave(e, () => setExpanded(false))}>
+				<AddActionStrip
+					actions={blockAddActions(EditFrame.getNodeActions(props.stores, props.parentId).block, props.index)}
+					onSelected={() => setExpanded(false)}
+				/>
+			</div>
+		)
+	}
+
+	const dragging = !!activeItem
 	return (
-		<Separator
-			ref={dropProps.ref}
-			className={cn(
-				Obj.deref('background', depthColors)[depth % depthColors.length],
-				'w-full min-w-0 h-1.5 data-[is-over=false]:invisible',
-			)}
-			data-is-over={dropProps.isDropTarget && isValid}
-		/>
+		<div className="relative h-3 w-full min-w-0">
+			<button
+				type="button"
+				ref={dropProps.ref}
+				aria-label={tr.text(F_Msgs.insertCondition())}
+				onClick={() => setExpanded(true)}
+				data-is-over={dropProps.isDropTarget && isValid}
+				className={cn(
+					'group absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center gap-1',
+					// while dragging the target grows over the rows either side rather than pushing them apart,
+					// which would move the row the pointer is already aiming at. livePointerIntersection measures
+					// this element's live rect, so the bigger box counts immediately.
+					dragging ? 'h-7' : 'h-3',
+				)}
+			>
+				<Plus className={cn('size-3 shrink-0 text-muted-foreground opacity-0', !dragging && 'group-hover:opacity-100')} />
+				<span
+					className={cn(
+						Obj.deref('background', depthColors)[depth % depthColors.length],
+						'h-1.5 w-full min-w-0 rounded-full transition-opacity',
+						// dim while dragging so every landing spot is visible, solid once this one is the target
+						dragging ? 'opacity-30' : 'opacity-0 group-hover:opacity-60',
+						'group-data-[is-over=true]:opacity-100',
+					)}
+				/>
+			</button>
+		</div>
 	)
 }
 
 const NodeWrapper = ({
 	children,
 	className,
+	compact,
 	path,
 	nodeId,
 	stores,
 }: {
 	children: React.ReactNode
 	className?: string
+	// a compact row is barely taller than the grip is wide, so the grip narrows to match rather than
+	// taking a third of the row
+	compact?: boolean
 	path: Sparse.NodePath
 	nodeId: string
 	stores: EditFrame.KeyProp
@@ -414,6 +509,7 @@ const NodeWrapper = ({
 						className={cn(
 							Obj.deref('background', depthColors)[depth % depthColors.length],
 							'cursor-grab rounded',
+							compact && 'w-3 [&_svg]:size-3',
 							depth === 0 && 'hidden',
 						)}
 					>
@@ -517,10 +613,250 @@ function CommentButton(props: NodeProps) {
 	)
 }
 
+// on a block this copies the whole subtree, and the copy lands directly below the original
+function DuplicateButton(props: { onClick: () => void }) {
+	const label = tr.text(F_Msgs.duplicateNode())
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button size="icon" variant="ghost" aria-label={label} onClick={props.onClick}>
+					<Icons.Copy color="hsl(var(--muted-foreground))" />
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<p>{label}</p>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
+// -------- the compact node view --------
+
+// A node reads as one line until it is the node being edited. Values carry the emphasis: a filter is read
+// by scanning for them, where today every part of a node is a control of equal weight.
+
+type ColConfig = LQY.EffectiveColumnAndTableConfig | undefined
+
+// how many of an `in` list's values fit before the rest becomes a count
+const SUMMARY_VALUE_LIMIT = 4
+
+function columnLabel(column: string | undefined, cfg: ColConfig) {
+	if (!column) return undefined
+	return LC.getColumnDef(column, cfg)?.displayName ?? column
+}
+
+function valueText(value: F.Value) {
+	return value === null ? tr.text(F_Msgs.nullValue()) : String(value)
+}
+
+// Each part carries the space that follows it. A flex gap is not whitespace, so a row laid out with one
+// reads as "Gamemode=RAAS" when it is copied or read aloud; the trailing space at the end of a row
+// collapses in inline flow, so nothing shows for it.
+function ValueChip(props: { children: React.ReactNode }) {
+	return (
+		<>
+			<span className="rounded-sm bg-muted px-1 py-px font-mono text-xs text-foreground">{props.children}</span>{' '}
+		</>
+	)
+}
+
+function OpWord(props: { children: React.ReactNode }) {
+	return (
+		<>
+			<span className="text-muted-foreground">{props.children}</span>{' '}
+		</>
+	)
+}
+
+function ColumnWord(props: { children: React.ReactNode }) {
+	return (
+		<>
+			<span className="font-medium">{props.children}</span>{' '}
+		</>
+	)
+}
+
+function Incomplete() {
+	return (
+		<>
+			<span className="italic text-muted-foreground">{tr.text(F_Msgs.incompleteNode())}</span>{' '}
+		</>
+	)
+}
+
+function SubjectSummary(props: { arg: F.EditableScalarArg | undefined; cfg: ColConfig }) {
+	const arg = props.arg
+	if (arg?.type === 'team-column' && arg.column) {
+		const quantifier = tr.text(F_Msgs.teamQuantifierNames[arg.quantifier ?? 'either'])
+		return <ColumnWord>{`${F.TEAM_COLUMN_LABELS[arg.column]} (${quantifier})`}</ColumnWord>
+	}
+	const label = arg?.type === 'column' ? columnLabel(arg.column, props.cfg) : undefined
+	return label ? <ColumnWord>{label}</ColumnWord> : <Incomplete />
+}
+
+function ScalarSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig }) {
+	const arg = props.arg
+	if (arg?.type === 'column') {
+		const label = columnLabel(arg.column, props.cfg)
+		return label ? <ColumnWord>{label}</ColumnWord> : <Incomplete />
+	}
+	if (arg?.type === 'value' && arg.value !== undefined) return <ValueChip>{valueText(arg.value)}</ValueChip>
+	return <Incomplete />
+}
+
+function ValuesSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig }) {
+	const items = (props.arg?.type === 'values' ? props.arg.values : undefined) ?? []
+	// keyed by what the item renders as, which also collapses the repeat a hand-written filter can carry
+	const parts = new Map<string, React.ReactNode>()
+	for (const item of items) {
+		if (F.isColumnListItem(item)) {
+			parts.set(`col:${item.column}`, <ColumnWord>{columnLabel(item.column, props.cfg) ?? item.column}</ColumnWord>)
+		} else {
+			parts.set(`val:${valueText(item)}`, <ValueChip>{valueText(item)}</ValueChip>)
+		}
+	}
+	if (parts.size === 0) return <Incomplete />
+	const overflow = parts.size - SUMMARY_VALUE_LIMIT
+	return (
+		<>
+			{Array.from(parts)
+				.slice(0, SUMMARY_VALUE_LIMIT)
+				.map(([key, part]) => (
+					<React.Fragment key={key}>{part}</React.Fragment>
+				))}
+			{overflow > 0 && <OpWord>{tr.text(F_Msgs.moreValues(overflow))}</OpWord>}
+		</>
+	)
+}
+
+function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig }) {
+	const node = props.node
+	const subject = node.args[0] as F.EditableScalarArg | undefined
+	// `id` is reachable only through the "select layers" node, whose list is a set of layer ids: a count
+	// says more about it than four truncated ids would
+	if (subject?.type === 'column' && subject.column === 'id') {
+		const values = (node.args[1]?.type === 'values' ? node.args[1].values : undefined) ?? []
+		return (
+			<>
+				<OpWord>{node.neg ? F_Msgs.inSetNames.notin : F_Msgs.inSetNames.in}</OpWord>
+				<ValueChip>{tr.text(F_Msgs.layerSetSize(values.length))}</ValueChip>
+			</>
+		)
+	}
+	const op = F_Msgs.compTypeReadableNames[node.type]
+	return (
+		<>
+			<SubjectSummary arg={subject} cfg={props.cfg} />
+			<OpWord>{tr.text(node.neg ? op.negated : op.plain)}</OpWord>
+			{node.type === 'in' && <ValuesSummary arg={node.args[1]} cfg={props.cfg} />}
+			{node.type === 'inrange' && (
+				<>
+					<ScalarSummary arg={node.args[1]} cfg={props.cfg} />
+					<OpWord>{tr.text(F_Msgs.rangeTo())}</OpWord>
+					<ScalarSummary arg={node.args[2]} cfg={props.cfg} />
+				</>
+			)}
+			{node.type !== 'in' && node.type !== 'inrange' && <ScalarSummary arg={node.args[1]} cfg={props.cfg} />}
+		</>
+	)
+}
+
+// the dimensions are flattened into one run of values: which column a faction or a unit came from is
+// already clear from the value, and keeping them apart is what makes the editor's version tall
+function TeamSpecSummary(props: { spec: F.MatchupTeamSpec }) {
+	const values = F.TEAM_COLUMNS.flatMap((column) => (props.spec[column] ?? []).map((value) => ({ column, value })))
+	if (values.length === 0) return <OpWord>{tr.text(F_Msgs.anyTeam())}</OpWord>
+	return (
+		<>
+			{values.map(({ column, value }) => (
+				<ValueChip key={`${column}:${valueText(value)}`}>{valueText(value)}</ValueChip>
+			))}
+		</>
+	)
+}
+
+function MatchupSummary(props: { node: F.EditableMatchupNode }) {
+	const node = props.node
+	return (
+		<>
+			{node.type === 'disallow-matchups' && <OpWord>{tr.text(F_Msgs.matchupTypeNames['disallow-matchups'])}</OpWord>}
+			{node.locked && <OpWord>{F_Msgs.matchupSideLabels.lockedLeft}</OpWord>}
+			<TeamSpecSummary spec={node.teams[0]} />
+			<OpWord>{tr.text(L_Msgs.versus())}</OpWord>
+			{node.locked && <OpWord>{F_Msgs.matchupSideLabels.lockedRight}</OpWord>}
+			<TeamSpecSummary spec={node.teams[1]} />
+		</>
+	)
+}
+
+function ApplyFilterSummary(props: { node: F.EditableApplyFilterNode }) {
+	const filters = FilterEntityClient.useFilterEntities()
+	const entity = props.node.filterId ? filters.get(props.node.filterId) : undefined
+	return (
+		<>
+			<OpWord>{tr.text(F_Msgs.applyFilterTypeNames[props.node.type])}</OpWord>
+			{entity ? (
+				<FilterEntityLabel filter={entity} />
+			) : props.node.filterId ? (
+				<ValueChip>{props.node.filterId}</ValueChip>
+			) : (
+				<Incomplete />
+			)}
+		</>
+	)
+}
+
+function NodeSummary(props: { node: F.ShallowEditableFilterNode; cfg?: ColConfig }) {
+	const node = props.node
+	if (F.isBlockType(node.type)) return <span className="font-semibold">{tr.text(F_Msgs.blockTypeShortNames[node.type])}</span>
+	if (F.isCompNode(node)) return <CompSummary node={node as F.EditableCompNode} cfg={props.cfg} />
+	if (F.isMatchupNode(node)) return <MatchupSummary node={node as F.EditableMatchupNode} />
+	if (F.isApplyFilterNode(node)) return <ApplyFilterSummary node={node as F.EditableApplyFilterNode} />
+	return null
+}
+
+// the compact row itself. Its own text is its accessible name, so it carries no label of its own.
+function NodeSummaryButton(props: { onClick: () => void; children: React.ReactNode }) {
+	return (
+		<button
+			type="button"
+			data-node-summary=""
+			onClick={props.onClick}
+			className="min-w-0 rounded-sm px-1 text-left text-sm leading-6 hover:bg-accent"
+		>
+			{props.children}
+		</button>
+	)
+}
+
+// move/copy/delete stay reachable on a compact row, but stay out of the way until it is pointed at: the
+// point of the row is that it can be read. They keep their box either way, so nothing shifts.
+function CompactOpCluster(props: { children: React.ReactNode }) {
+	return (
+		<div
+			// the buttons are what a row's height actually is, so they shrink with it. Overriding them here
+			// rather than threading a size through each one keeps the compact sizing in one place.
+			className="flex items-center opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100 [&_button]:size-6 [&_svg]:size-3.5"
+		>
+			{props.children}
+		</div>
+	)
+}
+
+function DoneButton(props: { onClick: () => void }) {
+	return (
+		<Button size="sm" variant="outline" onClick={props.onClick}>
+			{tr.text(F_Msgs.doneEditing())}
+		</Button>
+	)
+}
+
 export function LeafFilterNode(props: NodeProps) {
 	const editedFilterId = Zus.useStore(props.stores.filterEditor, (state) => state.editedFilterId)
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
 	const nodePath = Zus.useStore(props.stores.filterEditor, Zus.useShallow(EditFrame.Sel.nodePath(props.nodeId)))!
+	const editing = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeEditing(props.nodeId))
+	const cfg = ConfigClient.useEffectiveColConfig()
 	if (F.isBlockType(node.type)) return null
 	const depth = nodePath.length
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
@@ -528,6 +864,7 @@ export function LeafFilterNode(props: NodeProps) {
 	const opCluster = depth > 0 && (
 		<>
 			<CommentButton nodeId={props.nodeId} stores={props.stores} />
+			<DuplicateButton onClick={actions.common.duplicate} />
 			<Button
 				size="icon"
 				variant="ghost"
@@ -540,6 +877,27 @@ export function LeafFilterNode(props: NodeProps) {
 		</>
 	)
 
+	if (!editing) {
+		return (
+			<NodeWrapper
+				compact
+				path={nodePath}
+				className="group/row flex flex-wrap items-center gap-1"
+				nodeId={props.nodeId}
+				stores={props.stores}
+			>
+				<NodeSummaryButton onClick={() => actions.common.setEditing(true)}>
+					<NodeSummary node={node} cfg={cfg} />
+				</NodeSummaryButton>
+				{/* the link is an anchor, so it cannot live inside the summary button */}
+				{F.isApplyFilterNode(node) && <ApplyFilterLink filterId={(node as F.EditableApplyFilterNode).filterId} />}
+				<CompactOpCluster>{opCluster}</CompactOpCluster>
+			</NodeWrapper>
+		)
+	}
+
+	const doneButton = <DoneButton onClick={() => actions.common.setEditing(false)} />
+
 	if (F.isCompNode(node)) {
 		const subject = node.args[0]
 		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
@@ -551,6 +909,7 @@ export function LeafFilterNode(props: NodeProps) {
 					<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				)}
 				{opCluster}
+				{doneButton}
 			</NodeWrapper>
 		)
 	}
@@ -559,6 +918,7 @@ export function LeafFilterNode(props: NodeProps) {
 			<NodeWrapper path={nodePath} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				{opCluster}
+				{doneButton}
 			</NodeWrapper>
 		)
 	}
@@ -581,20 +941,27 @@ export function LeafFilterNode(props: NodeProps) {
 					editedFilterId={editedFilterId}
 					setFilterId={(id) => actions.applyFilter.setFilterId(id)}
 				/>
-				<Link
-					to="/filters/$filterId"
-					params={{ filterId: node.filterId ?? '' }}
-					target="_blank"
-					className={cn(!node.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
-				>
-					<ExternalLink color="hsl(var(--primary))" />
-				</Link>
+				<ApplyFilterLink filterId={node.filterId} />
 				{opCluster}
+				{doneButton}
 			</NodeWrapper>
 		)
 	}
 	// block nodes are rendered by BlockNodeControlPanel, not here
 	return null
+}
+
+function ApplyFilterLink(props: { filterId: string | undefined }) {
+	return (
+		<Link
+			to="/filters/$filterId"
+			params={{ filterId: props.filterId ?? '' }}
+			target="_blank"
+			className={cn(!props.filterId ? 'invisible' : '', buttonVariants({ variant: 'ghost', size: 'icon' }), 'font-light')}
+		>
+			<ExternalLink color="hsl(var(--primary))" />
+		</Link>
+	)
 }
 
 function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {

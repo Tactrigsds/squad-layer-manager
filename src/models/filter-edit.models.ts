@@ -47,7 +47,12 @@ export const OpSchema = z.discriminatedUnion('code', [
 		parentId: z.string(),
 		nodeId: z.string(),
 		node: F.ShallowEditableFilterNodeSchema,
+		// omitted means append, which is what the block header's own add button does
+		index: z.number().int().min(0).optional(),
 	}),
+	// carries the copy rather than making one, for the same reason replace-tree carries a tree: the copy
+	// needs a fresh id per node, and a reducer minting them would give every replica a different subtree
+	z.object({ ...clientProps, code: z.literal('clone-node'), nodeId: z.string(), subtree: F.FilterNodeTreeSchema }),
 	z.object({ ...clientProps, code: z.literal('delete-node'), nodeId: z.string() }),
 	// the whole shallow node, not a patch: an operator change rewrites a comparison's arguments wholesale
 	z.object({ ...clientProps, code: z.literal('update-node'), nodeId: z.string(), node: F.ShallowEditableFilterNodeSchema }),
@@ -71,6 +76,7 @@ type DistributiveOmitOpFields<T> = T extends unknown ? Omit<T, 'opId' | 'userId'
 
 export const CLIENT_OP_CODE = z.enum([
 	'add-node',
+	'clone-node',
 	'delete-node',
 	'update-node',
 	'set-comment',
@@ -163,9 +169,28 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): Sta
 		case 'add-node': {
 			const parentPath = tree.paths.get(op.parentId)
 			if (!parentPath || tree.nodes.has(op.nodeId)) return null
-			const nodes = new Map(tree.nodes).set(op.nodeId, op.node)
-			const paths = new Map(tree.paths).set(op.nodeId, [...parentPath, nextChildIndex(tree, parentPath)])
-			return withTree(state, { nodes, paths })
+			if (op.index === undefined) {
+				// appending moves no sibling, so the new path is the only one that changes
+				const nodes = new Map(tree.nodes).set(op.nodeId, op.node)
+				const paths = new Map(tree.paths).set(op.nodeId, [...parentPath, nextChildIndex(tree, parentPath)])
+				return withTree(state, { nodes, paths })
+			}
+			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
+			const inserted: F.FilterNodeTree = { nodes: new Map([[op.nodeId, op.node]]), paths: new Map([[op.nodeId, []]]) }
+			F.insertTreeSubtreeInPlace(next, parentPath, op.index, inserted)
+			return withTree(state, next)
+		}
+		case 'clone-node': {
+			const sourcePath = tree.paths.get(op.nodeId)
+			// the root has no parent for the copy to sit beside
+			if (!sourcePath || sourcePath.length === 0) return null
+			if (!isGraftableSubtree(op.subtree)) return null
+			for (const id of op.subtree.nodes.keys()) {
+				if (tree.nodes.has(id)) return null
+			}
+			const next = { nodes: new Map(tree.nodes), paths: new Map(tree.paths) }
+			F.insertTreeSubtreeInPlace(next, sourcePath.slice(0, -1), sourcePath[sourcePath.length - 1] + 1, op.subtree)
+			return withTree(state, next)
 		}
 		case 'delete-node': {
 			const path = tree.paths.get(op.nodeId)
@@ -227,6 +252,18 @@ function applyOp(state: State, op: Op, emit: ODSM.OnSideEffect<SideEffect>): Sta
 		default:
 			assertNever(op)
 	}
+}
+
+// a subtree can only be grafted in if it has exactly one root and a node behind every path, which the
+// schema alone does not guarantee
+function isGraftableSubtree(subtree: F.FilterNodeTree): boolean {
+	if (subtree.nodes.size !== subtree.paths.size) return false
+	let roots = 0
+	for (const [id, path] of subtree.paths) {
+		if (!subtree.nodes.has(id)) return false
+		if (path.length === 0) roots++
+	}
+	return roots === 1
 }
 
 function withTree(state: State, tree: F.FilterNodeTree): State {

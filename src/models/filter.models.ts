@@ -1041,6 +1041,37 @@ export function moveTreeNodeInPlace(tree: Pick<FilterNodeTree, 'paths'>, sourceP
 	upsertTreeInPlaceFromSparse(sparseTree, commonAncestor, tree)
 }
 
+// grafts `subtree` (a tree of its own, rooted at path []) in as a child of `parentPath`, shifting the
+// siblings from `index` on along to make room. In place, like the other tree helpers here.
+export function insertTreeSubtreeInPlace(tree: FilterNodeTree, parentPath: Sparse.NodePath, index: number, subtree: FilterNodeTree) {
+	for (const [id, node] of subtree.nodes) {
+		tree.nodes.set(id, node)
+	}
+	const sparseTree = treeToSparseTree(tree, parentPath)
+	sparseTree.children ??= []
+	// past the end would leave a hole, which walkNodes cannot traverse
+	sparseTree.children.splice(Math.min(index, sparseTree.children.length), 0, treeToSparseTree(subtree))
+	upsertTreeInPlaceFromSparse(sparseTree, parentPath, tree)
+}
+
+// The subtree at `targetId` as a standalone tree rooted at path [], with a fresh id for every node.
+// Callers mint the copy so that every replica applies the same one: a reducer that called this would
+// give each replica different ids. Node objects are shared, never mutated.
+export function copySubtree(tree: FilterNodeTree, targetId: string): FilterNodeTree | null {
+	const rootPath = tree.paths.get(targetId)
+	if (!rootPath) return null
+	const copy: FilterNodeTree = { nodes: new Map(), paths: new Map() }
+	for (const [id, path] of tree.paths) {
+		if (!Sparse.isOwnedPath(rootPath, path)) continue
+		const node = tree.nodes.get(id)
+		if (!node) continue
+		const copiedId = createId(4)
+		copy.nodes.set(copiedId, node)
+		copy.paths.set(copiedId, path.slice(rootPath.length))
+	}
+	return copy
+}
+
 export function deleteTreeNode(tree: FilterNodeTree, targetId: string): void {
 	const targetPath = tree.paths.get(targetId)!
 	const parentPath = targetPath.slice(0, -1)
