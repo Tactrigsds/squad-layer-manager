@@ -123,6 +123,15 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 	})
 
 	await test.step('the index page starts a run', async () => {
+		// A reader who last left the dashboard on the Teams tab arrives here on it, since the tab is a persisted
+		// preference. Seeded through storage because this file's user has no dashboard to click it on. Guarded so
+		// the later navigations in this journey do not re-apply it over the tab the tour selects.
+		await page.addInitScript(() => {
+			const key = 'settings:v1'
+			if (!localStorage.getItem(key)) {
+				localStorage.setItem(key, JSON.stringify({ state: { primaryPanelTab: 'VIEWING_TEAMS' }, version: 0 }))
+			}
+		})
 		await page.goto(app.loginUrl(USER, '/tutorials'))
 		await expect(page.getByRole('heading', { name: 'Tutorials' })).toBeVisible({ timeout: 20_000 })
 		const entry = page.getByRole('listitem').filter({ hasText: TUTORIAL })
@@ -132,6 +141,8 @@ test('the layer queue tutorial, started and navigated out of order', async ({ pa
 		await expect(page).toHaveURL(new RegExp(`/servers/tutorial-${USER.discordId}`), { timeout: 60_000 })
 		await onStep(page, STEP.welcome)
 		await expect(overlay(page).getByText('Step 1 of')).toBeVisible()
+		// both panels stay mounted in one grid cell, so a tour left on Teams would narrate a queue nothing shows
+		await expect(page.getByRole('tab', { name: /^Queue/ })).toHaveAttribute('aria-selected', 'true')
 	})
 
 	await test.step('the card button advances', async () => {
