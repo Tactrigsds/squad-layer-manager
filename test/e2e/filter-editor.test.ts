@@ -2,8 +2,8 @@ import type { Locator, Page } from '@playwright/test'
 
 import * as FB from '@/models/filter-builders'
 
-import { type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, queue } from '../harness/arrange'
+import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { filter, LAYERS, queue, role } from '../harness/arrange'
 import { expect, test } from './fixtures'
 
 // The filter pages, against one app: the entity form (the only tanstack-form surface, so where a
@@ -13,6 +13,14 @@ import { expect, test } from './fixtures'
 // server discarding the draft once the closing page was the last client editing it.
 
 let app: AppFixture
+
+// two of them, because the contributors query used to join users and roles onto the same row: with one of
+// each the cross product is invisible, and with two users the single role came back twice
+const CONTRIBUTORS: TestUser[] = [
+	{ discordId: 900000000000000101n, username: 'test-contributor-a' },
+	{ discordId: 900000000000000102n, username: 'test-contributor-b' },
+]
+const CONTRIBUTOR_ROLE = 'filter-editors'
 
 test.beforeAll(async () => {
 	app = await createAppFixture({
@@ -28,9 +36,14 @@ test.beforeAll(async () => {
 			filter('collab', 'Collab Draft', FB.and([FB.eq('Gamemode', 'RAAS')])),
 			// a block with a child of its own, so that cloning it has to carry a subtree rather than one node
 			filter('nested', 'Nested Block', FB.and([FB.eq('Gamemode', 'RAAS'), FB.or([FB.eq('Map', 'Harju')])])),
+			filter('contributors', 'Contributors', FB.and([FB.eq('Gamemode', 'RAAS')])),
 		],
+		users: CONTRIBUTORS,
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
+		},
+		globalSettings: (settings) => {
+			settings.rbac.roles[CONTRIBUTOR_ROLE] = role([], {})
 		},
 	})
 })
@@ -389,5 +402,37 @@ test.describe('the filter text editor', () => {
 
 		await page.keyboard.press('Shift+Tab')
 		await expect.poll(indented).toBe('children: []')
+	})
+})
+
+test.describe('contributors', { tag: '@firefox' }, () => {
+	test('a contributor added or removed shows up without a reload', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/contributors'))
+		await page.getByRole('button', { name: 'Show Contributors' }).click({ timeout: 20_000 })
+
+		const popover = page.locator('[data-radix-popper-content-wrapper]').filter({ hasText: 'Contributors' })
+		const users = popover.locator('#users li')
+		const roles = popover.locator('#roles li')
+		await expect(users).toHaveCount(0)
+		await expect(roles).toHaveCount(0)
+
+		for (const contributor of CONTRIBUTORS) {
+			await popover.locator('#users').getByRole('button').click()
+			await page.getByRole('option', { name: contributor.username }).click()
+			await expect(popover.locator('#users')).toContainText(contributor.username)
+		}
+		await expect(users).toHaveCount(CONTRIBUTORS.length)
+
+		await popover.locator('#roles').getByRole('button').click()
+		await page.getByRole('option', { name: CONTRIBUTOR_ROLE }).click()
+		await expect(roles).toHaveText([CONTRIBUTOR_ROLE])
+		await expect(users).toHaveCount(CONTRIBUTORS.length)
+
+		await roles.locator('svg').click()
+		await expect(roles).toHaveCount(0)
+		for (let remaining = CONTRIBUTORS.length - 1; remaining >= 0; remaining--) {
+			await users.first().locator('svg').click()
+			await expect(users).toHaveCount(remaining)
+		}
 	})
 })
