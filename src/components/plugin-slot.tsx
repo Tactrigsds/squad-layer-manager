@@ -5,10 +5,7 @@ import * as PluginsClient from '@/systems/plugins.client'
 
 // Renders whatever plugins registered at an anchor. Each registration is boundary-wrapped so one
 // plugin's render error cannot take the page down with it.
-export function PluginSlot<A extends PluginsClient.SlotAnchorId>(props: {
-	anchor: A
-	anchorProps: PluginsClient.SlotAnchors[A]
-}) {
+export function PluginSlot<A extends PluginsClient.SlotAnchorId>(props: { anchor: A; anchorProps: PluginsClient.SlotAnchors[A] }) {
 	const version = Zus.useStore(PluginsClient.Store, (s) => s.version)
 	const regs = PluginsClient.getSlotRegs(props.anchor)
 	if (regs.length === 0) return null

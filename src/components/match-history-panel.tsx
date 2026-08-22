@@ -24,8 +24,8 @@ import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import * as PluginsClient from '@/systems/plugins.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UPClient from '@/systems/user-presence.client'
 
@@ -426,7 +426,6 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 
 	const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal, globalSettings.displayTeamsNormalized, extraLayerStyles)
 
-	const TintIcon = rowTint && TINT_DISPLAY[rowTint].icon
 
 	const gameRuntime =
 		entry.startTime && entry.status === 'post-game' && entry.endTime !== 'unknown'
@@ -519,17 +518,21 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 
 					<TableCell className="text-center">
 						<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
-							{TintIcon && rowTint && (
+							{rowTint && (
 								<Tooltip delayDuration={0}>
 									<TooltipTrigger asChild>
 										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${TINT_DISPLAY[rowTint].text}`}>
-											<TintIcon className="h-4 w-4" />
+											{React.createElement(TINT_DISPLAY[rowTint].icon, { className: 'h-4 w-4' })}
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent side="right" className="w-auto flex flex-col gap-1">
 										{decorations.map((deco, i) => (
 											<span key={i}>
-												{deco.badge && <Badge variant="outline" className="mr-1">{deco.badge}</Badge>}
+												{deco.badge && (
+													<Badge variant="outline" className="mr-1">
+														{deco.badge}
+													</Badge>
+												)}
 												{deco.title}
 											</span>
 										))}

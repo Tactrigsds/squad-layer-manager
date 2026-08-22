@@ -31,10 +31,12 @@ const orpcBase = getOrpcBase(module)
 
 export type PluginRef<M extends PLG.Manifest<any> = PLG.Manifest> = { id: PLG.PluginId; manifest: M }
 
-export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log & C.Db & CS.AbortSignal & {
-	plugin: PluginRef<M>
-	cleanup: Cleanup.Tasks
-}
+export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log &
+	C.Db &
+	CS.AbortSignal & {
+		plugin: PluginRef<M>
+		cleanup: Cleanup.Tasks
+	}
 
 export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & C.ManagedServer
 
@@ -73,7 +75,7 @@ type Runtime = {
 	// as stored: the encoded z.input shape
 	configInput: Record<string, unknown>
 	// decoded via the manifest schema; null while the stored config doesn't parse
-	config: unknown | null
+	config: unknown
 	cleanup: Cleanup.Tasks
 	abort: AbortController | null
 	serverSetups: ServerSetupFn[]
@@ -109,7 +111,10 @@ export async function setup(ctx: C.Db, installed: InstalledPlugin[]) {
 		let row = rows.get(id)
 		if (!row) {
 			row = { id, enabled: false, config: {} }
-			await ctx.db().insert(Schema.plugins).values(superjsonify(Schema.plugins, { id, enabled: false, config: {} }))
+			await ctx
+				.db()
+				.insert(Schema.plugins)
+				.values(superjsonify(Schema.plugins, { id, enabled: false, config: {} }))
 		}
 		plugins.set(id, {
 			entry,

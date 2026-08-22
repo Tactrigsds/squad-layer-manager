@@ -35,7 +35,6 @@
 	"(diff: {value})": ["(diff: ", ["value"], ")"],
 	"({action} {source}{nextLayer})": ["(", ["action"], " ", ["source"], ["nextLayer"], ")"],
 	"({actor} warned {warnee})": ["(", ["actor"], " warned ", ["warnee"], ")"],
-	"({length} wins)": ["(", ["length"], " wins)"],
 	"({step}/{total}) {msg}": ["(", ["step"], "/", ["total"], ") ", ["msg"]],
 	"+{added}": ["+", ["added"]],
 	"+{count} more": ["+", ["count"], " more"],
@@ -1905,6 +1904,8 @@
 	],
 	"{name} cleared all queued teamswaps for next map.": [["name"], " cleared all queued teamswaps for next map."],
 	"{name} cleared the saved teamswaps.": [["name"], " cleared the saved teamswaps."],
+	"{name} configuration saved": [["name"], " configuration saved"],
+	"{name} enabled": [["name"], " enabled"],
 	"{name} queued {added, plural, one {# teamswap} other {# teamswaps}} and cancelled {removed}{colon, select, yes {:} other {}}": [
 		["name"],
 		" queued ",
@@ -2188,7 +2189,6 @@
 	"{time} on this team": [["time"], " on this team"],
 	"{title}:": [["title"], ":"],
 	"{title}: none.": [["title"], ": none."],
-	"{triggerName} level": [["triggerName"], " level"],
 	"{updated, select, yes {Next Layer changed} other {Next Layer}} (Chosen via vote)\n{layer}": [
 		[
 			"updated",

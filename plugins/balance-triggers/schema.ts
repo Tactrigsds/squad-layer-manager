@@ -1,4 +1,5 @@
 import * as D from 'drizzle-orm/sqlite-core'
+
 import { defineTables } from 'slm/plugin'
 
 import manifest from './plugin.ts'

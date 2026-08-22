@@ -35,7 +35,7 @@ export async function up(db: MigrationDriver): Promise<void> {
 		levels: {
 			'150x2': old['150x2'] ?? 'off',
 			'200x2': old['200x2'] ?? 'off',
-			'RWS5': old['RWS5'] ?? 'off',
+			RWS5: old['RWS5'] ?? 'off',
 			'RAM3+': old['RAM3+'] ?? 'off',
 		},
 		postRollReminder: true,

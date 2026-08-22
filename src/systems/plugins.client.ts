@@ -16,10 +16,7 @@ export type ClientCtx<M extends PLG.Manifest<any> = PLG.Manifest> = {
 
 export type ClientModule = { manifest: PLG.Manifest; setup: (ctx: ClientCtx<any>) => void }
 
-export function definePluginClient<M extends PLG.Manifest<any>>(
-	manifest: M,
-	setupFn: (ctx: ClientCtx<M>) => void,
-): ClientModule {
+export function definePluginClient<M extends PLG.Manifest<any>>(manifest: M, setupFn: (ctx: ClientCtx<M>) => void): ClientModule {
 	return { manifest, setup: setupFn as ClientModule['setup'] }
 }
 
@@ -106,14 +103,40 @@ export function queryStore<Args extends unknown[], T = unknown>(
 	ctx: ClientCtx<any>,
 	name: string,
 	keyFn: (...args: Args) => { serverId: string; input?: unknown },
-): (...args: Args) => ReactRx.StateObservable<T | undefined> {
+): (...args: Args) => Zus.ValueObservable<T | undefined> {
 	const [, family$] = ReactRx.bind(`plugins.${ctx.plugin.id}.${name}`, (...args: Args) => {
 		const { serverId, input } = keyFn(...args)
 		return RPC.observe(`plugins.rpcStream:${ctx.plugin.id}.${name}`, () =>
 			RPC.orpc.plugins.rpcStream.call({ pluginId: ctx.plugin.id, name, serverId, input: input ?? {} }),
 		).pipe(Rx.map((res) => (res && typeof res === 'object' && 'code' in res && res.code === 'ok' ? (res.data as T) : undefined)))
 	})
-	return family$
+	// Wrapped so getValue is total: a raw StateObservable throws NoSubscribersError before its first
+	// subscriber and hands back a StatePromise before its first value, and consumers (selectors, the
+	// decoration snapshot) read "no value yet" for both. Cached per underlying instance so deep-equal
+	// args keep sharing one store.
+	const safeCache = new WeakMap<object, Zus.ValueObservable<T | undefined>>()
+	return (...args: Args) => {
+		const obs = family$(...args)
+		let safe = safeCache.get(obs)
+		if (!safe) {
+			safe = Object.assign(new Rx.Observable<T | undefined>((subscriber) => obs.subscribe(subscriber)), {
+				getValue: (): T | undefined => {
+					try {
+						const v = obs.getValue()
+						return isThenable(v) ? undefined : (v as T | undefined)
+					} catch {
+						return undefined
+					}
+				},
+			})
+			safeCache.set(obs, safe)
+		}
+		return safe
+	}
+}
+
+function isThenable(v: unknown): boolean {
+	return typeof (v as { then?: unknown } | null | undefined)?.then === 'function'
 }
 
 export async function call<T = unknown>(ctx: ClientCtx<any>, name: string, input?: unknown) {
@@ -133,9 +156,14 @@ function subscribeInput(input: Zus.AnyInput<any>, onChange: () => void): () => v
 function readInput(input: Zus.AnyInput<any>): unknown {
 	const anyInput = input as any
 	if (typeof anyInput.getValue === 'function') {
-		const v = anyInput.getValue()
-		// a StateObservable with no value yet hands back a StatePromise
-		return v instanceof Promise ? undefined : v
+		// no value yet reads as undefined: a StateObservable hands back a StatePromise once subscribed,
+		// and throws NoSubscribersError before that (getSnapshot runs before subscribe on first render)
+		try {
+			const v = anyInput.getValue()
+			return v instanceof Promise ? undefined : v
+		} catch {
+			return undefined
+		}
 	}
 	if (typeof anyInput.getState === 'function') return anyInput.getState()
 	return undefined

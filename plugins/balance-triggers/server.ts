@@ -1,4 +1,6 @@
 import { desc, inArray } from 'drizzle-orm'
+import * as z from 'zod'
+
 import * as Rx from 'slm/lib/rxjs'
 import * as MH from 'slm/models/match-history'
 import type * as P from 'slm/plugin'
@@ -11,9 +13,8 @@ import * as AppEventsSys from 'slm/systems/app-events'
 import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
 import * as SquadRcon from 'slm/systems/squad-rcon'
-import * as z from 'zod'
 
-import manifest from './plugin.ts'
+import type manifest from './plugin.ts'
 import * as S from './schema.ts'
 import * as TR from './triggers.ts'
 
@@ -51,7 +52,8 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		Rx.merge(Rx.of(sctx.serverId), update$).pipe(
 			Rx.filter((serverId) => serverId === sctx.serverId),
 			Rx.switchMap(() => activeEvents(sctx)),
-		))
+		),
+	)
 }
 
 async function evaluate(ctx: Ctx, matchId: number | null) {
@@ -67,15 +69,18 @@ async function evaluate(ctx: Ctx, matchId: number | null) {
 		try {
 			const result = trigger.evaluate({ history })
 			if (!result) continue
-			await ctx.db().insert(S.triggerEvents).values({
-				matchTriggeredId: matchId,
-				triggerId: trigger.id,
-				triggerVersion: trigger.version,
-				level,
-				strongerTeam: result.strongerTeam,
-				input: result.relevantInput.history.map((m) => m.historyEntryId),
-				time: new Date(),
-			})
+			await ctx
+				.db()
+				.insert(S.triggerEvents)
+				.values({
+					matchTriggeredId: matchId,
+					triggerId: trigger.id,
+					triggerVersion: trigger.version,
+					level,
+					strongerTeam: result.strongerTeam,
+					input: result.relevantInput.history.map((m) => m.historyEntryId),
+					time: new Date(),
+				})
 			await AppEventsSys.emit(
 				ctx,
 				'trigger-fired',

@@ -92,7 +92,6 @@ export type PluginMigration = {
 export function defineTables(manifest: Pick<Manifest, 'id'>) {
 	const prefix = tablePrefix(manifest.id)
 	return {
-		table: <Cols extends Record<string, D.SQLiteColumnBuilderBase>>(name: string, columns: Cols) =>
-			D.sqliteTable(prefix + name, columns),
+		table: <Cols extends Record<string, D.SQLiteColumnBuilderBase>>(name: string, columns: Cols) => D.sqliteTable(prefix + name, columns),
 	}
 }
