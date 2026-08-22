@@ -229,7 +229,7 @@ export const filters = sqliteTable('filters', {
 	owner: bigintText('owner').references(() => users.discordId, { onDelete: 'set null' }),
 	alertMessage: text('alertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
-	emoji: text('emoji').unique(),
+	emoji: text('emoji'),
 	invertedAlertMessage: text('invertedAlertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
 	invertedEmoji: text('invertedEmoji'),
