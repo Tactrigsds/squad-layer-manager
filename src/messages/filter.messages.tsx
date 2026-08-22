@@ -178,6 +178,11 @@ export const filterPicker = def('Filter')
 // the "+" that reveals the kinds of condition a block can take
 export const addCondition = def('Add condition')
 
+// the "+" on the gap between two conditions, which adds one at that position rather than at the end
+export const insertCondition = def('Insert condition here')
+
+export const duplicateNode = def('Duplicate')
+
 export const nodeComment = def('Node comment')
 
 export const nodeCommentPlaceholder = def('Comment. Links are clickable.')
@@ -213,6 +218,50 @@ export const inSetDescriptions = {
 export const selectLayers = def('Select Layers')
 
 export const editLayers = def('Edit Layers')
+
+// -------- the compact node view --------
+
+// A node reads as one line until it is the node being edited. The vocabulary below is that reading form;
+// the editor's own selects keep the terser operator names beside it.
+
+// the editor's select names the operation too ("all of (and)"), which the reading form has no use for
+export const blockTypeShortNames: Record<F.BlockType, TString> = {
+	and: t('all of'),
+	or: t('any of'),
+	nor: t('none of'),
+	nand: t('not all of'),
+}
+
+// The pair is asymmetric on purpose: "=" is read correctly by everyone, where a glyph for its negation is
+// exactly the character that gets missed at a glance. The ordered comparisons stay symbolic, matching the
+// operator select.
+export const compTypeReadableNames: Record<F.CompType, { plain: TString; negated: TString }> = {
+	eq: { plain: t('='), negated: t('is not') },
+	in: { plain: t('is any of'), negated: t('is none of') },
+	lt: { plain: t('<'), negated: t('>=') },
+	gt: { plain: t('>'), negated: t('<=') },
+	inrange: { plain: t('in range'), negated: t('not in range') },
+}
+
+// suffixed to the column, as the column picker labels the same choice
+export const teamQuantifierNames: Record<F.TeamQuantifier, TString> = {
+	either: t('either'),
+	both: t('both'),
+}
+
+// a matchup side with no dimension set matches anything
+export const anyTeam = def('any team')
+
+// the layer set behind a "select layers" node, which is a count rather than a list of ids
+export const layerSetSize = def('{count, plural, one {# layer} other {# layers}}', (count: number) => ({ count }))
+
+export const moreValues = def('+{count} more', (count: number) => ({ count }))
+
+// stands in for a column or value a half-built node does not have yet, so it still reads as a row
+export const incompleteNode = def('incomplete')
+
+// closes the editor a node was opened into, returning it to its compact form
+export const doneEditing = def('Done')
 
 // -------- matchups --------
 

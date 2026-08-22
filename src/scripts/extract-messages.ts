@@ -2,14 +2,17 @@ import * as babel from '@babel/core'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
+import type * as ICU from '@/messages/icu'
+import { compile, UnsupportedPatternError } from '@/scripts/compile-messages'
+
 // Collects every translatable message into a catalogue template, keyed the way the runtime keys them: by the
 // message's own English, plus a context where two messages share one. Run with `pnpm i18n:extract`.
 //
 // `pnpm i18n:lint` runs the same visitor as a check instead, and fails on two things. First, a message is only
 // translatable when its source is written at the call site, so a t/rt call whose first argument is not a string
 // literal, or a non-literal `context`, is an error. This is the lexical half of the guarantee; the type-level
-// half is `Literal` in src/models/messages.models.ts. Second, the committed catalogue has to match what the
-// source would produce right now: nothing else notices when a message is edited and en.json is not regenerated,
+// half is `Literal` in src/models/messages.models.ts. Second, the committed catalogues have to match what the
+// source would produce right now: nothing else notices when a message is edited and they are not regenerated,
 // and every gate keeps passing while the reader is shown a key that no longer exists.
 //
 // Prose still built in JavaScript inside a def body is not translatable either; the summary counts those so the
@@ -17,6 +20,11 @@ import * as path from 'node:path'
 
 const SRC_DIR = 'src'
 const OUT_DIR = 'src/messages/locales'
+const COMPILED_SUFFIX = '.compiled.json'
+
+function serialize(value: unknown) {
+	return JSON.stringify(value, null, '\t') + '\n'
+}
 
 // the message vocabulary modules and the functions of each that take a source string first
 const MSG_MODULES: Record<string, string[]> = {
@@ -26,7 +34,9 @@ const MSG_MODULES: Record<string, string[]> = {
 const mode = process.argv[2] === 'lint' ? 'lint' : 'extract'
 
 type Entry = { source: string; context?: string; icu: boolean; from: string }
-type Diagnostic = { file: string; line: number; col: number; message: string }
+// `at` is a source location for a message the extractor cannot read, and the message's own key for one it can
+// read but cannot compile
+type Diagnostic = { at: string; message: string }
 
 function parse(file: string) {
 	return babel.parseSync(fs.readFileSync(file, 'utf8'), {
@@ -129,7 +139,7 @@ for (const full of files()) {
 	if (resolver.ns.size === 0 && resolver.named.size === 0) continue
 
 	const report = (message: string, at: babel.types.Node) => {
-		diagnostics.push({ file: full, line: at.loc?.start.line ?? 0, col: (at.loc?.start.column ?? 0) + 1, message })
+		diagnostics.push({ at: `${full}:${at.loc?.start.line ?? 0}:${(at.loc?.start.column ?? 0) + 1}`, message })
 	}
 
 	babel.traverse(ast, {
@@ -201,44 +211,87 @@ for (const entry of entries) {
 	byKey.set(key, [...(byKey.get(key) ?? []), entry])
 }
 
-const collisions = [...byKey].filter(([, group]) => group.length > 1 && new Set(group.map((e) => e.from)).size > 1)
-
 const template: Record<string, string> = {}
 for (const key of [...byKey.keys()].sort()) template[key] = byKey.get(key)![0].source
-const templateFile = path.join(OUT_DIR, 'en.json')
-const serialized = JSON.stringify(template, null, '\t') + '\n'
+
+// Prose that ICU cannot parse, which reaches a reader unchanged. Reported rather than compiled, because a brace in
+// a sentence is usually a quoting mistake, and because a translator will hit the same parse error.
+const malformed: string[] = []
+
+// Resolves a catalogue's patterns to the form the runtime walks. English omits a message that compiles to its own
+// source, since the runtime hands the source back when a key is absent; a translated catalogue keeps every entry,
+// because its fallback is the English rather than itself.
+function compileCatalogue(catalogue: Record<string, string>, isSource: boolean) {
+	const out: Record<string, ICU.Entry> = {}
+	for (const [key, pattern] of Object.entries(catalogue)) {
+		let entry: ICU.Entry
+		try {
+			entry = compile(pattern)
+		} catch (error) {
+			// value formatting is a deliberate omission and has to be fixed; anything else is prose ICU rejects,
+			// and it renders verbatim, which is what the runtime does with it today
+			if (error instanceof UnsupportedPatternError) {
+				diagnostics.push({ at: describeKey(key), message: error.message })
+				continue
+			}
+			malformed.push(`${describeKey(key)}  ${(error as Error).message}`)
+			entry = pattern
+		}
+		if (!isSource || entry !== pattern) out[key] = entry
+	}
+	return out
+}
+
+function describeKey(key: string) {
+	return JSON.stringify(key.length > 60 ? key.slice(0, 60) + '...' : key)
+}
+
+const catalogueFiles = fs.existsSync(OUT_DIR)
+	? fs.readdirSync(OUT_DIR).filter((f) => f.endsWith('.json') && !f.endsWith(COMPILED_SUFFIX) && f !== 'en.json')
+	: []
+const compiled: Record<string, Record<string, ICU.Entry>> = { en: compileCatalogue(template, true) }
+for (const file of catalogueFiles) {
+	const locale = path.basename(file, '.json')
+	compiled[locale] = compileCatalogue(JSON.parse(fs.readFileSync(path.join(OUT_DIR, file), 'utf8')), false)
+}
 
 if (mode === 'lint') {
-	for (const d of diagnostics) console.log(`${d.file}:${d.line}:${d.col}  ${d.message}`)
-	if (diagnostics.length) console.log(`\n${diagnostics.length} message sources are not extractable`)
-
-	const onDisk = fs.existsSync(templateFile) ? fs.readFileSync(templateFile, 'utf8') : ''
-	const stale = onDisk !== serialized
-	if (stale) {
-		const current: Record<string, string> = onDisk ? JSON.parse(onDisk) : {}
-		const added = Object.keys(template).filter((k) => !(k in current))
-		const removed = Object.keys(current).filter((k) => !(k in template))
-		console.log(`\n${templateFile} is stale: ${added.length} to add, ${removed.length} to remove`)
-		for (const key of [...added.slice(0, 10)]) console.log(`  + ${JSON.stringify(key)}`)
-		for (const key of [...removed.slice(0, 10)]) console.log(`  - ${JSON.stringify(key)}`)
-		if (added.length + removed.length > 20) console.log(`  ...and ${added.length + removed.length - 20} more`)
-		// identical key sets and a different file means the ordering or the formatting drifted, which the
-		// runtime does not care about but a diff does
-		if (added.length === 0 && removed.length === 0) console.log('  the keys match; the file itself differs')
-		console.log('\nrun `pnpm i18n:extract` and commit the result')
+	for (const d of diagnostics) console.log(`${d.at}  ${d.message}`)
+	if (diagnostics.length) {
+		console.log(`\n${diagnostics.length} messages are not extractable or do not compile`)
+		process.exit(1)
 	}
-	if (diagnostics.length || stale) process.exit(1)
-	console.log('all message sources are extractable, and the catalogue is up to date')
+	// content, not bytes: oxfmt reformats these after they are written, and its layout is the better one
+	const stale = ['en.json', ...Object.keys(compiled).map((l) => l + COMPILED_SUFFIX)].filter((f) => {
+		const at = path.join(OUT_DIR, f)
+		if (!fs.existsSync(at)) return true
+		const want = f === 'en.json' ? template : compiled[path.basename(f, COMPILED_SUFFIX)]
+		return JSON.stringify(JSON.parse(fs.readFileSync(at, 'utf8'))) !== JSON.stringify(want)
+	})
+	for (const f of stale) console.log(`${path.join(OUT_DIR, f)} is out of date`)
+	if (stale.length) {
+		console.log(`\nrun \`pnpm i18n:extract\``)
+		process.exit(1)
+	}
+	for (const m of malformed) console.log(`ICU cannot parse ${m}; it renders verbatim`)
+	console.log('all message sources are extractable, compile, and their catalogues are up to date')
 	process.exit(0)
 }
 
-fs.mkdirSync(OUT_DIR, { recursive: true })
-fs.writeFileSync(templateFile, serialized)
+const collisions = [...byKey].filter(([, group]) => group.length > 1 && new Set(group.map((e) => e.from)).size > 1)
 
-const existing = fs.readdirSync(OUT_DIR).filter((f) => f.endsWith('.json') && f !== 'en.json')
+fs.mkdirSync(OUT_DIR, { recursive: true })
+fs.writeFileSync(path.join(OUT_DIR, 'en.json'), serialize(template))
+for (const [locale, catalogue] of Object.entries(compiled)) {
+	fs.writeFileSync(path.join(OUT_DIR, locale + COMPILED_SUFFIX), serialize(catalogue))
+}
+
+const existing = catalogueFiles
 console.log(`extracted ${entries.length} translatable messages into ${byKey.size} keys`)
 console.log(`  ${entries.filter((e) => e.icu).length} take arguments, ${entries.filter((e) => !e.icu).length} do not`)
 console.log(`  ${untranslated} strings inside a message body are still built in JavaScript`)
+for (const d of diagnostics) console.log(`  does not compile: ${d.at}  ${d.message}`)
+for (const m of malformed) console.log(`  ICU cannot parse ${m}; it renders verbatim`)
 
 for (const [key, group] of collisions) {
 	console.log(`  shared key ${JSON.stringify(key)}: ${group.map((e) => e.from).join(', ')}`)

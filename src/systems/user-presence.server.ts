@@ -101,11 +101,22 @@ function countEditingClients(state: UP.State): EditorCounts {
 	const counts: EditorCounts = { queue: new Map(), 'layer-requests': new Map() }
 	for (const client of state.presence.values()) {
 		const activity = client.activityState
-		if (!activity) continue
-		const serverId = activity.opts.serverId
+		const serverId = UP.activityServerId(activity)
+		if (!serverId) continue
 		const bump = (scope: UP.Ctx.DraftScope) => counts[scope].set(serverId, (counts[scope].get(serverId) ?? 0) + 1)
-		if (UP.Trans.editingQueue(serverId).match(activity)) bump('queue')
-		if (UP.Trans.editingLayerRequests(serverId).match(activity)) bump('layer-requests')
+		if (UP.editingQueueNode(activity)) bump('queue')
+		if (UP.editingLayerRequestsNode(activity)) bump('layer-requests')
+	}
+	return counts
+}
+
+// the same accounting for filter drafts, which are keyed by filter rather than by server
+function countFilterEditingClients(state: UP.State): Map<string, number> {
+	const counts = new Map<string, number>()
+	for (const client of state.presence.values()) {
+		const filterId = UP.activityFilterId(client.activityState)
+		if (!filterId || !UP.editingFilterNode(client.activityState)) continue
+		counts.set(filterId, (counts.get(filterId) ?? 0) + 1)
 	}
 	return counts
 }
@@ -113,8 +124,15 @@ function countEditingClients(state: UP.State): EditorCounts {
 // a save or an explicit "finish editing" ends the session on purpose, and commits (or has nothing to commit)
 // alongside it. Only an unannounced exit -- navigating off, disconnecting, timing out -- abandons the draft.
 function endsEditingDeliberately(op: UP.Op) {
-	if (op.code === 'sll:end-all-editing' || op.code === 'layer-requests:end-all-editing') return true
-	return op.code === 'update-activity' && (op.update.code === 'clear-editing-queue' || op.update.code === 'clear-editing-layer-requests')
+	if (op.code === 'sll:end-all-editing' || op.code === 'layer-requests:end-all-editing' || op.code === 'filter:end-all-editing') {
+		return true
+	}
+	if (op.code !== 'update-activity') return false
+	return (
+		op.update.code === 'clear-editing-queue' ||
+		op.update.code === 'clear-editing-layer-requests' ||
+		op.update.code === 'clear-editing-filter'
+	)
 }
 
 const dispatchOp = Instr.spanOp(
@@ -122,6 +140,7 @@ const dispatchOp = Instr.spanOp(
 	{ module, extraText: (ops) => ops.map((o) => o.code + (o.code === 'update-activity' ? ` (${o.update.code})` : '')).join(',') },
 	async (ops: UP.Op[], opts?: Omit<DispatchedOps, 'ops' | 'rejection'>) => {
 		const editorsBefore = countEditingClients(globalUserPresence.session.state)
+		const filterEditorsBefore = countFilterEditingClients(globalUserPresence.session.state)
 		const applied = ODSM.Server.applyOps(globalUserPresence.session, ops, UP.reducer)
 		globalUserPresence.session = applied.session
 		if (applied.rejected) {
@@ -139,6 +158,11 @@ const dispatchOp = Instr.spanOp(
 					if ((editorsAfter[scope].get(serverId) ?? 0) > 0) continue
 					globalUserPresence.abandoned$.next({ serverId, scope })
 				}
+			}
+			const filterEditorsAfter = countFilterEditingClients(globalUserPresence.session.state)
+			for (const filterId of filterEditorsBefore.keys()) {
+				if ((filterEditorsAfter.get(filterId) ?? 0) > 0) continue
+				globalUserPresence.filterAbandoned$.next(filterId)
 			}
 		}
 		for (const se of applied.sideEffects) {
@@ -239,6 +263,23 @@ export function dispatchEndAllLayerRequestEditing(serverId: string) {
 	]).catch((error) => log.error(error))
 }
 
+// the filter drafts whose last editing client went away without saving. Whoever owns the draft discards it:
+// nobody is left to commit it, and the next editor would inherit edits they never made.
+export function editingFilterAbandoned$(filterId: string): Rx.Observable<void> {
+	return globalUserPresence.filterAbandoned$.pipe(
+		Rx.filter((id) => id === filterId),
+		Rx.map(() => undefined),
+	)
+}
+
+export function dispatchEndAllFilterEditing(filterId: string) {
+	dispatchOp([{ code: 'filter:end-all-editing', opId: UP.createOpId(), time: Date.now(), filterId }]).catch((error) => log.error(error))
+}
+
+export function dispatchFilterRemoved(filterId: string) {
+	dispatchOp([{ code: 'filter:removed', opId: UP.createOpId(), time: Date.now(), filterId }]).catch((error) => log.error(error))
+}
+
 export function dispatchEndAllLayerQueueEditing(serverId: string) {
 	dispatchOp([
 		{
@@ -276,10 +317,12 @@ export function setup() {
 		session: ODSM.Server.initSession(UP.initState()),
 		op$: new IsolatedSubject<DispatchedOps>(),
 		abandoned$: new IsolatedSubject<{ serverId: string; scope: UP.Ctx.DraftScope }>(),
+		filterAbandoned$: new IsolatedSubject<string>(),
 	}
 	CleanupSys.register(() => {
 		globalUserPresence.op$.complete()
 		globalUserPresence.abandoned$.complete()
+		globalUserPresence.filterAbandoned$.complete()
 	})
 
 	// keep the presence state's notion of enabled servers in sync with the registry; disabling/removing a server

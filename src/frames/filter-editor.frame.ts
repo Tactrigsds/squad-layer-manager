@@ -7,15 +7,22 @@ import { createId } from '@/lib/id'
 import * as MapUtils from '@/lib/map-utils'
 import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object-utils'
+import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as Sparse from '@/lib/sparse-tree'
 import * as Zus from '@/lib/zustand'
 import * as EFB from '@/models/editable-filter-builders'
+import * as FE from '@/models/filter-edit.models'
 import * as FR from '@/models/filter-references.models'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
+import type * as UP from '@/models/user-presence'
+import * as FilterEditClient from '@/systems/filter-edit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as RbacClient from '@/systems/rbac.client'
+import * as UPClient from '@/systems/user-presence.client'
+import * as UsersClient from '@/systems/users.client'
 
 import { frameManager } from './frame-manager'
 
@@ -48,11 +55,19 @@ export type CreateHint = {
 
 type FilterEditorBase = {
 	editedFilterId?: string
-	savedFilter: F.EditableFilterNode
+	// the shared draft this editor is a replica of. A filter that has not been created yet has no entity to
+	// share, so its session stays local and its ops are never sent (see dispatch).
+	session: ODSM.Client.Session<FE.Op, FE.State>
+	shared: boolean
 	tree: F.FilterNodeTree
+	meta: FE.Meta
+	presenceEvent$: Rx.Subject<UP.PresenceEvent>
 	createHints: Map<string, CreateHint>
 	// nodes whose comment is open for editing rather than displayed
 	editedComments: Set<string>
+	// the one node showing its editor instead of its compact form. A node has to be asked for by name, so
+	// opening one closes whichever was open, and a node that goes away takes its editor with it.
+	editingNodeId: string | null
 
 	validatedFilter: F.FilterNode | null
 	// the apply-filter loop this edit would create, if any. A loop has no fixed point once the referenced
@@ -98,18 +113,28 @@ const setup: Frame['setup'] = (args) => {
 	const get = args.get
 	const set = args.set
 
-	const editedFilterEntity = args.input.editedFilterId ? FilterEntityClient.filterEntities.get(args.input.editedFilterId) : null
-	const savedFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.and()
+	const filterId = args.input.editedFilterId
+	const editedFilterEntity = filterId ? FilterEntityClient.filterEntities.get(filterId) : null
+	const startingFilter: F.EditableFilterNode = args.input.startingFilter ?? editedFilterEntity?.filter ?? EFB.and()
+	// a placeholder until the server's init snapshot lands; for a filter that doesn't exist yet it is the
+	// whole session
+	const session = ODSM.Client.initSession<FE.Op, FE.State>(FE.localState(filterId ?? '', startingFilter, editedFilterEntity ?? undefined))
+	const presenceEvent$ = new Rx.Subject<UP.PresenceEvent>()
+	args.cleanup.push(presenceEvent$)
 
 	set({
 		errors: [],
 		setErrors: (errors) => set({ errors }),
 
-		editedFilterId: args.input.editedFilterId,
-		savedFilter: savedFilter,
-		tree: F.upsertFilterNodeTreeInPlace(savedFilter),
+		editedFilterId: filterId,
+		session,
+		shared: !!filterId,
+		tree: session.localState.draft.tree,
+		meta: session.localState.draft.meta,
+		presenceEvent$,
 		createHints: new Map(),
 		editedComments: new Set(),
+		editingNodeId: null,
 
 		validatedFilter: null,
 		referenceCycle: null,
@@ -131,7 +156,6 @@ const setup: Frame['setup'] = (args) => {
 			referenceCycle,
 			baseQueryInput,
 			valid: validatedFilter !== null && !referenceCycle,
-			modified: !Obj.deepEqual(filter, state.savedFilter),
 		})
 	}
 	void Prom.sleep(0).then(() => validate(get()))
@@ -145,7 +169,49 @@ const setup: Frame['setup'] = (args) => {
 		})
 	args.cleanup.push(validateSub)
 
+	if (filterId) {
+		args.cleanup.push(
+			FilterEditClient.watchUpdates$(filterId).subscribe((update) => {
+				const prev = get().session
+				const next = ODSM.Client.applyUpdate(prev, update, FE.reducer, {
+					onSideEffects: (ses) => {
+						for (const se of ses) emitPresenceEvent(presenceEvent$, se)
+					},
+					onDiverged: (phase, error) =>
+						console.error(`${phase === 'op' ? 'incoming' : 'acked'} filter ops diverged from the server:`, error.data),
+					// a 'noop' rejection changed nothing on the local timeline and has nothing to report
+					onRejected: (reason) => {
+						if (reason !== 'noop') console.error('filter ops rejected by the server:', reason)
+					},
+					onUnknownAcks: (opIds) => console.warn('received ack for unknown filter ops', opIds),
+				})
+				if (next !== prev) commitSession(set, next)
+			}),
+		)
+	}
+
 	LayerTablePrt.initLayerTable(args)
+}
+
+// the draft and everything read straight off it, written together so no render sees a tree from one op and a
+// modified flag from another
+function commitSession(set: Zus.Setter<FilterEditor>, session: ODSM.Client.Session<FE.Op, FE.State>) {
+	const state = session.localState
+	// no reconciling here: the reducer is copy-on-write, so an op that left the tree or the meta alone hands
+	// back the same objects and the selectors reading them never fire
+	set({
+		session,
+		tree: state.draft.tree,
+		meta: state.draft.meta,
+		modified: FE.isModified(state),
+	})
+}
+
+function emitPresenceEvent(presenceEvent$: Rx.Subject<UP.PresenceEvent>, se: FE.SideEffect) {
+	if (se.code !== 'op-outcome' || !se.success) return
+	if (!('userId' in se.op)) return
+	if (se.op.code === 'save') presenceEvent$.next({ userId: se.op.userId, action: 'saved-filter' })
+	if (se.op.code === 'reset-to-saved') presenceEvent$.next({ userId: se.op.userId, action: 'discarded-filter-edits' })
 }
 
 export const frame = frameManager.createFrame<Types>({
@@ -180,18 +246,23 @@ export namespace Sel {
 			state.tree.nodes.get(id)?.comment
 
 	export const commentEdited = (id: string) => (state: FilterEditor) => state.editedComments.has(id)
+
+	export const nodeEditing = (id: string) => (state: FilterEditor) => state.editingNodeId === id
 }
 
 export type CommonNodeActions = {
 	delete(): void
+	duplicate(): void
 	setComment(comment: string | null): void
 	setCommentEdited(edited: boolean): void
+	setEditing(editing: boolean): void
 }
 
+// an omitted index appends, which is what the block header's own add button does
 export type BlockNodeActions = {
 	setBlockType: (type: F.BlockType) => void
-	addChild: (type: F.NodeType) => void
-	addSeeded: (seed: F.EditableFilterNode, hint?: CreateHint) => void
+	addChild: (type: F.NodeType, index?: number) => void
+	addSeeded: (seed: F.EditableFilterNode, hint?: CreateHint, index?: number) => void
 }
 
 export type CompNodeActions = {
@@ -225,24 +296,59 @@ export namespace Actions {
 		return Zus.resolveStore<FilterEditor>(stores.filterEditor)
 	}
 
-	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
-		store(stores).setState((state) => {
-			const tree = Obj.deepClone(state.tree)
-			F.moveTreeNodeInPlace(tree, sourcePath, targetPath)
-			return { tree }
+	// authors ops on the local timeline and sends them on, exactly as the queue does. A batch the reducer
+	// refuses against local state is dropped here rather than sent -- see ODSM.Client.processOutgoingOps.
+	export function dispatch(stores: KeyProp, ...newOps: FE.NewClientOp[]) {
+		const userId = UsersClient.loggedInUserId
+		if (!userId) return
+		const s = store(stores)
+		const ops = newOps.map((op) => ({ ...op, opId: FE.createOpId(), userId }) as FE.Op)
+		const prev = s.getState().session
+		const res = ODSM.Client.processOutgoingOps(prev, ops, FE.reducer)
+		if (res.rejected) return
+		commitSession(s.setState, res.session)
+		const state = s.getState()
+		// a filter that has not been created yet has no session on the server to dispatch to
+		if (!state.shared || !state.editedFilterId) return
+		// an edit made without pressing anything still claims an editing session, which is what keeps the
+		// shared draft alive. A save ends everyone's session, so it must not re-open one.
+		if (!ops.some((op) => op.code === 'save')) UPClient.Actions.ensureEditingFilter(state.editedFilterId)
+		void FilterEditClient.dispatchOps(state.editedFilterId, ops).then((res) => {
+			if (res.code === 'ok') return
+			// the server never applied these, and a pending op that is never acked doesn't just lose its own
+			// edit: until pendingOps drains, no later server update reaches localState at all
+			const dropped = ODSM.Client.dropPendingOps(
+				s.getState().session,
+				ops.map((op) => op.opId),
+				FE.reducer,
+			)
+			commitSession(s.setState, dropped)
+			if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
+			else console.error('filter ops refused by the server:', res.code)
 		})
+	}
+
+	export function moveNode(stores: KeyProp, sourcePath: Sparse.NodePath, targetPath: Sparse.NodePath) {
+		const tree = store(stores).getState().tree
+		// ops address nodes by id: a path resolved on one replica means something else on another once a
+		// concurrent insert has shifted it
+		const nodeId = MapUtils.revLookup(tree.paths, sourcePath, Sparse.serializeNodePath)
+		const parentId = MapUtils.revLookup(tree.paths, targetPath.slice(0, -1), Sparse.serializeNodePath)
+		if (!nodeId || !parentId) return
+		dispatch(stores, { code: 'move-node', nodeId, parentId, index: targetPath[targetPath.length - 1] })
 	}
 
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
-		store(stores).setState({ tree: F.upsertFilterNodeTreeInPlace(filter), createHints: new Map(), editedComments: new Set() })
+		dispatch(stores, { code: 'replace-tree', tree: FE.toTree(filter) })
+		store(stores).setState({ createHints: new Map(), editedComments: new Set(), editingNodeId: null })
+	}
+
+	export function setNodeEditing(stores: KeyProp, id: string | null) {
+		store(stores).setState({ editingNodeId: id })
 	}
 
 	export function setNodeComment(stores: KeyProp, id: string, comment: string | null) {
-		const trimmed = comment?.trim()
-		updateNode(stores, id, (draft) => {
-			if (trimmed) draft.comment = trimmed
-			else delete draft.comment
-		})
+		dispatch(stores, { code: 'set-comment', nodeId: id, comment: comment?.trim() || null })
 	}
 
 	export function setCommentEdited(stores: KeyProp, id: string, edited: boolean) {
@@ -254,56 +360,52 @@ export namespace Actions {
 	}
 
 	export function updateNode(stores: KeyProp, id: string, cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) {
-		const s = store(stores)
-		s.setState({
-			tree: Im.produce(s.getState().tree, (draft) => {
-				cb(draft.nodes.get(id)!)
-			}),
-		})
+		const current = store(stores).getState().tree.nodes.get(id)
+		if (!current) return
+		dispatch(stores, { code: 'update-node', nodeId: id, node: Im.produce(current, cb) })
 	}
 
 	export function deleteNode(stores: KeyProp, id: string) {
+		dispatch(stores, { code: 'delete-node', nodeId: id })
 		const s = store(stores)
-		const tree = Im.produce(s.getState().tree, (draft) => {
-			F.deleteTreeNode(draft, id)
-		})
-		const editedComments = new Set([...s.getState().editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
-		s.setState({ tree, editedComments })
+		const state = s.getState()
+		const tree = state.tree
+		const editedComments = new Set([...state.editedComments].filter((nodeId) => tree.nodes.has(nodeId)))
+		const editingNodeId = state.editingNodeId && tree.nodes.has(state.editingNodeId) ? state.editingNodeId : null
+		s.setState({ editedComments, editingNodeId })
 	}
 
-	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType) {
-		addSeededChild(stores, parentId, EFB.nodeOfType(type))
+	export function addChild(stores: KeyProp, parentId: string, type: F.NodeType, index?: number) {
+		addSeededChild(stores, parentId, EFB.nodeOfType(type), undefined, index)
 	}
 
-	export function addSeededChild(stores: KeyProp, parentId: string, seed: F.EditableFilterNode, hint?: CreateHint) {
+	export function addSeededChild(stores: KeyProp, parentId: string, seed: F.EditableFilterNode, hint?: CreateHint, index?: number) {
 		const s = store(stores)
-		const id = createId(4)
-		const tree = Im.produce(s.getState().tree, (draft) => {
-			const node: F.ShallowEditableFilterNode = F.toShallowNode(seed)
-			const parentPath = draft.paths.get(parentId)!
-			let last: number = -1
-			for (const path of draft.paths.values()) {
-				if (!Sparse.isChildPath(parentPath, path)) continue
-				last = Math.max(last, path[parentPath.length])
-			}
-
-			const newPath = [...parentPath, last + 1]
-			draft.paths.set(id, newPath)
-			draft.nodes.set(id, node)
-		})
-		if (hint) s.setState({ tree, createHints: new Map(s.getState().createHints).set(id, hint) })
-		else s.setState({ tree })
+		const nodeId = FE.createNodeId()
+		dispatch(stores, { code: 'add-node', parentId, nodeId, node: F.toShallowNode(seed), index })
+		if (!s.getState().tree.nodes.has(nodeId)) return
+		// a new node has nothing to read yet, so it opens as its editor rather than as a compact row
+		s.setState({ editingNodeId: nodeId })
+		// the hint is one-shot chrome for whoever added the node, so it stays on this client
+		if (hint) s.setState({ createHints: new Map(s.getState().createHints).set(nodeId, hint) })
 	}
 
-	export function reset(stores: KeyProp, filter?: F.EditableFilterNode) {
-		const s = store(stores)
-		filter ??= s.getState().savedFilter
-		s.setState({
-			savedFilter: filter,
-			tree: F.upsertFilterNodeTreeInPlace(filter),
-			createHints: new Map(),
-			editedComments: new Set(),
-		})
+	export function duplicateNode(stores: KeyProp, id: string) {
+		const subtree = F.copySubtree(store(stores).getState().tree, id)
+		if (!subtree) return
+		dispatch(stores, { code: 'clone-node', nodeId: id, subtree })
+	}
+
+	export function setMeta(stores: KeyProp, patch: Partial<FE.Meta>) {
+		dispatch(stores, { code: 'set-meta', patch })
+	}
+
+	export function save(stores: KeyProp) {
+		dispatch(stores, { code: 'save' })
+	}
+
+	export function reset(stores: KeyProp) {
+		dispatch(stores, { code: 'reset-to-saved' })
 	}
 }
 
@@ -313,8 +415,10 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 	return {
 		common: {
 			delete: () => Actions.deleteNode(stores, id),
+			duplicate: () => Actions.duplicateNode(stores, id),
 			setComment: (comment) => Actions.setNodeComment(stores, id, comment),
 			setCommentEdited: (edited) => Actions.setCommentEdited(stores, id, edited),
+			setEditing: (editing) => Actions.setNodeEditing(stores, editing ? id : null),
 		},
 		block: {
 			setBlockType(type) {
@@ -322,11 +426,11 @@ export function getNodeActions(stores: KeyProp, id: string): NodeActions {
 					draft.type = type
 				})
 			},
-			addChild: (type: F.NodeType) => {
-				Actions.addChild(stores, id, type)
+			addChild: (type: F.NodeType, index?: number) => {
+				Actions.addChild(stores, id, type, index)
 			},
-			addSeeded: (seed, hint) => {
-				Actions.addSeededChild(stores, id, seed, hint)
+			addSeeded: (seed, hint, index) => {
+				Actions.addSeededChild(stores, id, seed, hint, index)
 			},
 		},
 		comp: {

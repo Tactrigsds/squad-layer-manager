@@ -27,6 +27,8 @@ export const presenceEventText: Record<UP.PresenceEventAction, TString> = {
 	'combined-layer-requests': t('Combined layer requests'),
 	'saved-layer-requests': t('Saved layer requests'),
 	'discarded-layer-request-edits': t('Discarded layer request edits'),
+	'saved-filter': t('Saved the filter'),
+	'discarded-filter-edits': t('Discarded filter edits'),
 }
 
 // -------- the presence panel --------
