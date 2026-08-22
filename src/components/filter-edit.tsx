@@ -1,5 +1,5 @@
 import * as Form from '@tanstack/react-form'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useBlocker } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
@@ -53,12 +53,7 @@ import { Separator } from './ui/separator'
 import { Textarea } from './ui/textarea'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel'
 
-export function FilterEdit(props: {
-	entity: F.FilterEntity
-	contributors: { users: USR.User[]; roles: string[] }
-	owner: USR.User
-	stores: EditFrame.KeyProp
-}) {
+export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User; stores: EditFrame.KeyProp }) {
 	const stores = props.stores
 
 	const navigate = useNavigate()
@@ -244,7 +239,6 @@ export function FilterEdit(props: {
 								)}
 								<FilterContributors
 									filterId={props.entity.id}
-									contributors={props.contributors}
 									canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
 								>
 									<Button variant="outline">{tr.text(F_Msgs.showContributors())}</Button>
@@ -459,11 +453,13 @@ export function FilterEdit(props: {
 
 function FilterContributors(props: {
 	filterId: F.FilterEntityId
-	contributors: { users: USR.User[]; roles: string[] }
 	// managing contributors is an ownership concern; contributors can view the list but not edit it
 	canManage: boolean
 	children: React.ReactNode
 }) {
+	// read live rather than through the route loader, whose data the add/remove mutations cannot invalidate
+	const contributorsRes = useQuery(FilterEntityClient.getFilterContributorsBase(props.filterId))
+	const contributors = contributorsRes.data
 	const addMutation = useMutation(
 		RPC.orpc.filters.addFilterContributor.mutationOptions({
 			onSuccess: (res) => {
@@ -514,7 +510,7 @@ function FilterContributors(props: {
 					<CardDescription>{tr.text(F_Msgs.contributorsBlurb())}</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div>
+					<div id="users">
 						<div className="flex items-center space-x-2">
 							<h4 className="leading-none">{tr.text(F_Msgs.usersHeading())}</h4>
 							{props.canManage && (
@@ -526,7 +522,7 @@ function FilterContributors(props: {
 							)}
 						</div>
 						<ul>
-							{props.contributors.users.map((user) => (
+							{contributors?.users.map((user) => (
 								<li key={user.discordId} className="flex items-center space-x-1">
 									{props.canManage && (
 										<Icons.Minus
@@ -553,7 +549,7 @@ function FilterContributors(props: {
 							)}
 						</div>
 						<ul>
-							{props.contributors.roles.map((role) => (
+							{contributors?.roles.map((role) => (
 								<li key={role} className="flex items-center space-x-1">
 									{props.canManage && (
 										<Icons.Minus
