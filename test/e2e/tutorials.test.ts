@@ -82,8 +82,8 @@ function onStep(page: Page, title: string) {
 }
 
 // Jump through the table of contents, the way a reader would. Searching first both narrows the list to one row
-// and covers the search box; several steps share a title (three of them say "Start editing"), so the first match
-// is the one a reader would also click.
+// and covers the search box. Three steps open an edit session and their titles all begin "Start editing", so the
+// first match is the one a reader searching for it would also click.
 async function jumpTo(page: Page, title: string) {
 	await overlay(page).getByRole('button', { name: 'Contents' }).click()
 	const contents = overlay(page).getByRole('navigation', { name: 'Tutorial contents' })

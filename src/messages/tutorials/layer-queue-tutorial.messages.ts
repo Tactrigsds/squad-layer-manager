@@ -197,6 +197,19 @@ export const startEditing = {
 	),
 }
 
+// The reader opens an edit session three times, because saving ends one. The first press is where it is
+// explained; these two only have to say why they are being asked again, and their titles have to tell the
+// contents apart.
+export const startEditingAgain = {
+	title: def('Start editing again'),
+	body: def('Saving ended your editing session. Start another one:'),
+}
+
+export const startEditingToClear = {
+	title: def('Start editing to clear the queue'),
+	body: def('Saving ended your editing session again. Start one more:'),
+}
+
 export const queueUserPresence = {
 	title: def('Checking for other editors'),
 	body: def(
