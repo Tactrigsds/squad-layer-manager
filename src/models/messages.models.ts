@@ -27,7 +27,7 @@ export type TagRenderer = (chunks: React.ReactNode[]) => React.ReactNode
 export type TagRenderers<T extends string = string> = Record<T, TagRenderer>
 
 // rendered by every translator unasked; the renderers live in @/messages/i18n (STANDARD_TAGS), typed against this
-export type StandardTag = 'strong' | 'code'
+export type StandardTag = 'strong' | 'em' | 'code'
 
 // The tag names a pattern uses, read from its literal type. A closing tag, an empty "<>", or a "<" followed by
 // whitespace (prose like "a < b") is not a name. `a<b` with no spaces still reads as a tag; quote the "<" per ICU

@@ -424,7 +424,9 @@ export type PermissionDeniedResponse = {
 	failures: string[]
 }
 
-export type PermitCheckerCallback = (perms: Permission[]) => string | undefined
+// `scoped` is the scoped-server set from the check that evaluates this callback (see tryDenyPermissions): a callback
+// that consults a server-scoped matcher must pass it through, exactly as the equality-matched path does.
+export type PermitCheckerCallback = (perms: Permission[], scoped: ReadonlySet<string>) => string | undefined
 
 // permissions whose args carry a serverId. The bare-string permit form matches on type alone, which for these would
 // mean "holds this on *some* server" -- a sandbox-only grant would satisfy a check against a production server. So
@@ -449,14 +451,16 @@ export function describePermit<T extends PermissionType>(permit: Permission<T> |
 export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
 	user: UserWithRbac,
 	req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+	scoped: ReadonlySet<string>,
 ): PermissionDeniedResponse | null {
 	const perms = fromTracedPermissions(user.perms)
-	return tryDenyPermissions(perms, req)
+	return tryDenyPermissions(perms, req, scoped)
 }
 
 export function tryDenyPermissions<T extends PermissionType>(
 	_userPerms: Permission[],
 	_req: PermitChecker<T> | PermitChecker<T>[] | PermissionReq<T>,
+	scoped: ReadonlySet<string>,
 ) {
 	// just in case
 	const userPerms = fromTracedPermissions(_userPerms as unknown as TracedPermission[])
@@ -471,13 +475,15 @@ export function tryDenyPermissions<T extends PermissionType>(
 
 	for (const reqPerm of req.permits) {
 		if (typeof reqPerm === 'function') {
-			const errorMessage = reqPerm(userPerms)
+			const errorMessage = reqPerm(userPerms, scoped)
 			if (errorMessage) {
 				failures.push(errorMessage)
 			}
 		} else {
 			const hasPerm =
-				typeof reqPerm === 'string' ? userPerms.some((userPerm) => userPerm.type === reqPerm) : permSubsumedBy(reqPerm, userPerms)
+				typeof reqPerm === 'string'
+					? userPerms.some((userPerm) => userPerm.type === reqPerm)
+					: permSubsumedBy(reqPerm, userPerms, scoped)
 			if (!hasPerm) {
 				failures.push(describePermit(reqPerm))
 			}
@@ -539,12 +545,12 @@ export function getManagePermReqForFilterEntity(id: F.FilterEntityId): Permissio
 // the effective max kick-timeout duration a set of perms grants on `serverId`: undefined = no grant at all,
 // null = unlimited, number = max ms. Deliberately not routed through arePermsEqual: "up to N" is a
 // comparator, not an equality match.
-export function maxTimeoutDurationMs(perms: Permission[], serverId: string | null): number | null | undefined {
+export function maxTimeoutDurationMs(perms: Permission[], serverId: string | null, scoped: ReadonlySet<string>): number | null | undefined {
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'squad-server:timeout-players') continue
 		const args = p.args
-		if (!args || !grantAppliesTo(args, serverId)) continue
+		if (!args || !grantAppliesTo(args, serverId, scoped)) continue
 		if (args.maxDurationMs === null) return null
 		if (max === undefined || args.maxDurationMs > max) max = args.maxDurationMs
 	}
@@ -553,12 +559,12 @@ export function maxTimeoutDurationMs(perms: Permission[], serverId: string | nul
 
 // the effective max concurrent layer requests a set of perms grants on `serverId`: undefined = no grant at all,
 // null = unlimited, number = max items. A comparator like maxTimeoutDurationMs, not an equality match.
-export function maxLayerRequests(perms: Permission[], serverId: string | null): number | null | undefined {
+export function maxLayerRequests(perms: Permission[], serverId: string | null, scoped: ReadonlySet<string>): number | null | undefined {
 	let max: number | undefined = undefined
 	for (const p of perms) {
 		if (p.type !== 'queue:request-layers') continue
 		const args = p.args
-		if (!args || !grantAppliesTo(args, serverId)) continue
+		if (!args || !grantAppliesTo(args, serverId, scoped)) continue
 		if (args.maxQueued === null) return null
 		if (max === undefined || args.maxQueued > max) max = args.maxQueued
 	}
@@ -568,8 +574,8 @@ export function maxLayerRequests(perms: Permission[], serverId: string | null): 
 // Whether the dashboard for `serverId` is visible. Any server-scoped permission implies it: you cannot kick a player
 // or edit a queue you are not allowed to look at, so requiring both would just be a grant every role has to remember.
 // squad-server:view on its own is therefore the read-only grant.
-export function canViewServer(perms: Permission[], serverId: string): boolean {
-	return perms.some((p) => isServerScoped(p.type) && serverIdMatches(p.args as { serverId: string | null } | undefined, serverId))
+export function canViewServer(perms: Permission[], serverId: string, scoped: ReadonlySet<string>): boolean {
+	return perms.some((p) => isServerScoped(p.type) && serverIdMatches(p.args as { serverId: string | null } | undefined, serverId, scoped))
 }
 
 // "holds this on at least one server", for the two client affordances that have no server in scope: the layer
@@ -583,8 +589,8 @@ export function hasPermOnAnyServer(perms: Permission[], type: ServerPermissionTy
 // "holds any layer-request grant on this server". A comparator perm, so it can't ride the equality-matched
 // permission path (and its bare-string form is barred, which is the point: it would ignore the server).
 export function anyLayerRequestGrant(serverId: string): PermitCheckerCallback {
-	return (perms) => {
-		if (maxLayerRequests(perms, serverId) !== undefined) return
+	return (perms, scoped) => {
+		if (maxLayerRequests(perms, serverId, scoped) !== undefined) return
 		return `queue:request-layers on ${serverId}`
 	}
 }
@@ -603,24 +609,32 @@ export function dottedSettingsPath(path: string | (string | number)[]): string {
 	return typeof path === 'string' ? path : path.join('.')
 }
 
-function serverIdMatches(args: { serverId: string | null } | undefined, serverId: string): boolean {
+// The scoped server ids (see ServerVisibility). A scoped server is reachable only through a grant that names it
+// explicitly, so an unrestricted (all-servers) grant does not cover it -- that is how a scoped server stays invisible
+// to everyone but its owner, who holds an implicit grant naming it. Pass NO_SCOPED_SERVERS where the caller has no
+// authority to answer scoping (the client, permission simulation): it never asks about a server it cannot already see.
+export const NO_SCOPED_SERVERS: ReadonlySet<string> = new Set()
+
+function serverIdMatches(args: { serverId: string | null } | undefined, serverId: string, scoped: ReadonlySet<string>): boolean {
+	if (scoped.has(serverId)) return args?.serverId === serverId
 	// missing args = a legacy/defensive grant; treat as unrestricted
 	return !args || args.serverId === null || args.serverId === serverId
 }
 
 // Does a grant apply to the server being asked about? A null `serverId` asks for the grant that holds on *every*
-// server, which only an unrestricted grant satisfies; a concrete one is also satisfied by an unrestricted grant.
-function grantAppliesTo(args: { serverId: string | null } | undefined, serverId: string | null): boolean {
+// server, which only an unrestricted grant satisfies; a concrete one is also satisfied by an unrestricted grant
+// (unless it is scoped: see serverIdMatches).
+function grantAppliesTo(args: { serverId: string | null } | undefined, serverId: string | null, scoped: ReadonlySet<string>): boolean {
 	if (serverId === null) return (args?.serverId ?? null) === null
-	return serverIdMatches(args, serverId)
+	return serverIdMatches(args, serverId, scoped)
 }
 
 // Every plain server-scoped permission subsumes the same way, so this is one branch rather than a case per
 // permission: adding a server-scoped permission needs no change here.
-function serverScopedSubsumedBy(perm: Permission, perms: Permission[]): boolean {
+function serverScopedSubsumedBy(perm: Permission, perms: Permission[], scoped: ReadonlySet<string>): boolean {
 	const args = perm.args as { serverId: string | null } | undefined
 	return perms.some(
-		(p) => p.type === perm.type && grantAppliesTo(p.args as { serverId: string | null } | undefined, args?.serverId ?? null),
+		(p) => p.type === perm.type && grantAppliesTo(p.args as { serverId: string | null } | undefined, args?.serverId ?? null, scoped),
 	)
 }
 
@@ -648,19 +662,19 @@ export function canReadGlobalSettings(perms: Permission[]): boolean {
 	return perms.some((p) => p.type === 'global-settings:read') || globalSettingsWriteAccess(perms).kind !== 'none'
 }
 
-export function serverSettingsWriteAccess(perms: Permission[], serverId: string): SettingsWriteAccess {
+export function serverSettingsWriteAccess(perms: Permission[], serverId: string, scoped: ReadonlySet<string>): SettingsWriteAccess {
 	const pathSets: (string[] | null)[] = []
 	for (const p of perms) {
 		if (p.type !== 'server-settings:write') continue
 		const args = p.args
-		if (!serverIdMatches(args, serverId)) continue
+		if (!serverIdMatches(args, serverId, scoped)) continue
 		pathSets.push(args ? args.paths : null)
 	}
 	return collectWriteAccess(pathSets)
 }
 
-export function canWriteSensitiveServerSettings(perms: Permission[], serverId: string): boolean {
-	return perms.some((p) => p.type === 'server-settings:write-sensitive' && serverIdMatches(p.args, serverId))
+export function canWriteSensitiveServerSettings(perms: Permission[], serverId: string, scoped: ReadonlySet<string>): boolean {
+	return perms.some((p) => p.type === 'server-settings:write-sensitive' && serverIdMatches(p.args, serverId, scoped))
 }
 
 // creating a server means supplying its connection details, which is gated by write-sensitive. A grant scoped to a
@@ -669,11 +683,11 @@ export function canCreateServers(perms: Permission[]): boolean {
 	return perms.some((p) => p.type === 'server-settings:write-sensitive' && (p.args?.serverId ?? null) === null)
 }
 
-export function canReadServerSettings(perms: Permission[], serverId: string): boolean {
-	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args, serverId))) {
+export function canReadServerSettings(perms: Permission[], serverId: string, scoped: ReadonlySet<string>): boolean {
+	if (perms.some((p) => p.type === 'server-settings:read' && serverIdMatches(p.args, serverId, scoped))) {
 		return true
 	}
-	return serverSettingsWriteAccess(perms, serverId).kind !== 'none' || canWriteSensitiveServerSettings(perms, serverId)
+	return serverSettingsWriteAccess(perms, serverId, scoped).kind !== 'none' || canWriteSensitiveServerSettings(perms, serverId, scoped)
 }
 
 // strict check used for enforcement: the written path must sit at or below one of the granted prefixes
@@ -695,11 +709,11 @@ export function settingsPathOverlaps(access: SettingsWriteAccess, path: string |
 
 // does `perms` already grant everything `perm` grants? The scoped permissions ("up to N ms", "these paths on these
 // servers") are comparators rather than equality matches, so they're covered scope-by-scope here.
-export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
+export function permSubsumedBy(perm: Permission, perms: Permission[], scoped: ReadonlySet<string>): boolean {
 	switch (perm.type) {
 		case 'squad-server:timeout-players': {
 			const args = perm.args
-			const max = maxTimeoutDurationMs(perms, args?.serverId ?? null)
+			const max = maxTimeoutDurationMs(perms, args?.serverId ?? null, scoped)
 			if (max === undefined) return false
 			if (max === null) return true
 			if (!args || args.maxDurationMs === null) return false
@@ -707,7 +721,7 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 		}
 		case 'queue:request-layers': {
 			const args = perm.args
-			const max = maxLayerRequests(perms, args?.serverId ?? null)
+			const max = maxLayerRequests(perms, args?.serverId ?? null, scoped)
 			if (max === undefined) return false
 			if (max === null) return true
 			if (!args || args.maxQueued === null) return false
@@ -725,8 +739,8 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 				return perms.some((p) => p.type === perm.type && (p.args?.serverId ?? null) === null)
 			}
 			return perm.type === 'server-settings:read'
-				? canReadServerSettings(perms, serverId)
-				: canWriteSensitiveServerSettings(perms, serverId)
+				? canReadServerSettings(perms, serverId, scoped)
+				: canWriteSensitiveServerSettings(perms, serverId, scoped)
 		}
 		case 'server-settings:write': {
 			const args = perm.args
@@ -739,10 +753,10 @@ export function permSubsumedBy(perm: Permission, perms: Permission[]): boolean {
 				})
 				return pathsCoveredBy(args ? args.paths : null, collectWriteAccess(allServerPathSets))
 			}
-			return pathsCoveredBy(args ? args.paths : null, serverSettingsWriteAccess(perms, serverId))
+			return pathsCoveredBy(args ? args.paths : null, serverSettingsWriteAccess(perms, serverId, scoped))
 		}
 		default:
-			if (isServerScoped(perm.type)) return serverScopedSubsumedBy(perm, perms)
+			if (isServerScoped(perm.type)) return serverScopedSubsumedBy(perm, perms, scoped)
 			return perms.some((p) => arePermsEqual(p, perm))
 	}
 }

@@ -295,9 +295,9 @@ export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission
 	}
 	// connections paths are gated by write-sensitive, not by path grants; a sensitive user's connection edits are always
 	// allowed (and connections can't appear in the diff at all without it, since they're redacted on read)
-	const write = RBAC.serverSettingsWriteAccess(perms, state.serverId!)
+	const write = RBAC.serverSettingsWriteAccess(perms, state.serverId!, RBAC.NO_SCOPED_SERVERS)
 	if (write.kind === 'all') return NO_PATHS
-	const sensitive = RBAC.canWriteSensitiveServerSettings(perms, state.serverId!)
+	const sensitive = RBAC.canWriteSensitiveServerSettings(perms, state.serverId!, RBAC.NO_SCOPED_SERVERS)
 	const isConnection = (p: string) => p === 'connections' || p.startsWith('connections.')
 	const paths = state.changes.map((c) => c.path).filter((p) => !(sensitive && isConnection(p)))
 	if (write.kind === 'none') return paths

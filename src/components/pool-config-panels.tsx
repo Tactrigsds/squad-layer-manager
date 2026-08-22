@@ -140,7 +140,7 @@ export function PoolFilterSection({ api }: { api: PoolConfigApi }) {
 	const missingIndicators = entity ? [...getMissingIndicatorFields(entity, 'match'), ...getMissingIndicatorFields(entity, 'miss')] : []
 
 	return (
-		<div className="space-y-3">
+		<div data-tour="pool-filter" className="space-y-3">
 			<span className="flex items-center gap-1">
 				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.poolFilter())}</h4>
 				<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutPoolFilter())}>
@@ -231,7 +231,7 @@ function SecondaryFilterList({ api, listKey }: { api: PoolConfigApi; listKey: SE
 	}
 
 	return (
-		<div className="space-y-2">
+		<div data-tour={`pool-list-${listKey}`} className="space-y-2">
 			<div className="flex items-center justify-between">
 				<h4
 					className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}
@@ -681,7 +681,7 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 	)
 
 	return (
-		<div className={cn('space-y-3', props.className)}>
+		<div data-tour="pool-repeat-rules" className={cn('space-y-3', props.className)}>
 			<div className="flex items-center justify-between">
 				<span className="flex items-center gap-2">
 					<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.repeatRules())}</h4>
@@ -700,8 +700,8 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 					<span>{tr.text(SETTINGS_Msgs.repeatRuleLabel())}</span>
 					<span>{tr.text(SETTINGS_Msgs.repeatRuleField())}</span>
 					<span>{tr.text(SETTINGS_Msgs.repeatRuleWithin())}</span>
-					<span>{tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}</span>
-					<span>{tr.text(SETTINGS_Msgs.repeatRuleOptions())}</span>
+					<span data-tour="repeat-rule-targets">{tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}</span>
+					<span data-tour="repeat-rule-options">{tr.text(SETTINGS_Msgs.repeatRuleOptions())}</span>
 					<span />
 				</div>
 				{/* Rules; keyed on resetKey/structuralKey too so uncontrolled inputs re-seed after structural changes/resets */}

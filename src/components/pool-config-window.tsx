@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
+import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
@@ -65,7 +67,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 	// the save/reset affordances disappear (this is all public data, so viewing stays available)
 	const readOnly = !!mainPoolApi.writeDenied && Object.values(nextLayerApis).every((api) => !!api.writeDenied)
 
-	const [tab, setTab] = React.useState<'filters' | 'repeatRules' | 'nextLayer'>('filters')
+	const [tab, setTab] = useState_withGlobalHandle<'filters' | 'repeatRules' | 'nextLayer'>(TUT.TOUR_HANDLES.poolConfigTab, 'filters')
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
@@ -80,19 +82,21 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 						)}
 					</span>
 				</DraggableWindowTitle>
-				<TabsList
-					options={[
-						{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
-						{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
-						{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
-					]}
-					active={tab}
-					setActive={setTab}
-				/>
+				<span data-tour="pool-config-tabs">
+					<TabsList
+						options={[
+							{ label: tr.text(SETTINGS_Msgs.poolFiltersTab()), value: 'filters' },
+							{ label: tr.text(SETTINGS_Msgs.repeatRules()), value: 'repeatRules' },
+							{ label: tr.text(SETTINGS_Msgs.nextLayer()), value: 'nextLayer' },
+						]}
+						active={tab}
+						setActive={setTab}
+					/>
+				</span>
 				<DraggableWindowPinToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
-			<div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
+			<div data-tour="pool-config-body" className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-6">
 				{tab === 'filters' ? (
 					<PoolFiltersPanel api={mainPoolApi} />
 				) : tab === 'repeatRules' ? (

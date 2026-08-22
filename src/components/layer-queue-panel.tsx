@@ -14,12 +14,14 @@ import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame.ts'
 import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
+import { useState_withGlobalHandle } from '@/lib/use-state-with-global-handle'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as SETTINGS from '@/models/settings.models'
+import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence'
 import * as RBAC from '@/rbac.models.ts'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
@@ -83,7 +85,7 @@ function ValidationWarningsDisplay(props: {
 	return (
 		<>
 			{repeatWarnings.length > 0 && (
-				<Alert variant="repeat-violation" className="mx-4 my-2 w-auto">
+				<Alert data-tour="save-warnings" variant="repeat-violation" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
 					<AlertTitle>{tr.text(LL_Msgs.repeatsDetected())}</AlertTitle>
 					<AlertDescription>
@@ -130,7 +132,7 @@ function ValidationWarningsDisplay(props: {
 				</Alert>
 			)}
 			{filterWarnings.size > 0 && (
-				<Alert variant="warning" className="mx-4 my-2 w-auto">
+				<Alert data-tour="save-warnings" variant="warning" className="mx-4 my-2 w-auto">
 					<Icons.AlertTriangle className="h-4 w-4" />
 					<AlertTitle>{tr.text(LL_Msgs.filterWarnings())}</AlertTitle>
 					<AlertDescription>
@@ -259,6 +261,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							data-tour="queue-clear"
 							disabled={!isEditing}
 							className="not-group-data-[status=editing]:invisible"
 							variant="secondary"
@@ -273,6 +276,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</TooltipContent>
 				</Tooltip>
 				<StartActivityInteraction
+					data-tour="queue-add"
 					loaderName="selectLayers"
 					createActivity={UP.createEditingQueueVariant({
 						_tag: 'leaf',
@@ -322,6 +326,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
+							data-tour="queue-reset"
 							size="icon"
 							disabled={!isModified}
 							onClick={() => LayerQueuePrt.Actions.dispatch({ queue: props.stores.squadServer! }, { op: 'reset-to-saved' })}
@@ -343,6 +348,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					</div>
 					<PermissionDeniedTooltip denied={startEditingDenied}>
 						<Button
+							data-tour="queue-edit"
 							className="col-start-2 row-start-1 invisible group-data-[status=idle]:visible"
 							variant="outline"
 							disabled={!!startEditingDenied}
@@ -363,6 +369,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 											// icon-only, so it needs a name of its own: the tooltip is not one
 											aria-label={tr.text(LL_Msgs.toggleForceSave())}
 											aria-pressed={forceSave}
+											data-tour="queue-force-save"
 											onClick={() => setForceSave(!forceSave)}
 										>
 											<Icons.Sword />
@@ -375,6 +382,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<Button
+											data-tour="queue-save"
 											className="min-w-37.5"
 											variant={forceSave ? 'destructive' : 'default'}
 											onClick={() => setEditing(false)}
@@ -409,6 +417,7 @@ function QueueControlPanel(props: QueueControlPanelProps) {
 					})()}
 				</div>
 				<Button
+					data-tour="pool-settings"
 					size="icon"
 					variant="ghost"
 					title={tr.text(LL_Msgs.poolConfiguration())}
@@ -431,7 +440,7 @@ export function QueuePanelContent(props: { className?: string; stores: SquadServ
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const warnings = useQueueWarnings(props.stores)
-	const [warningsRequested, setShowWarnings] = React.useState(false)
+	const [warningsRequested, setShowWarnings] = useState_withGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
 	// nothing to show once the warnings clear, so the toggle falls closed with them
 	const showWarnings = !!warnings && warningsRequested
 

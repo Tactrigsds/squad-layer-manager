@@ -291,6 +291,25 @@ export function dispatchEndAllLayerQueueEditing(serverId: string) {
 	]).catch((error) => log.error(error))
 }
 
+// Presence for a client the runtime fabricates rather than a browser holds. The tutorial needs a second editor on
+// its own scoped server, because force save only has anything to override while someone else is editing.
+//
+// Deliberately not the oRPC handler above: that authenticates every op against the caller's own clientId and
+// userId, which is exactly what this is not. Nothing here is reachable from a request -- the caller names the
+// server, and the tutorial only ever names the scoped one it created.
+export function dispatchFabricatedEditor(serverId: string, userId: bigint, clientId: string) {
+	const base = { clientId, userId, time: Date.now() }
+	dispatchOp([
+		{ ...base, code: 'update-activity', opId: UP.createOpId(), update: { code: 'enter-server-dashboard', serverId } },
+		{ ...base, code: 'update-activity', opId: UP.createOpId(), update: UP.toEditingQueueIdleOrNone() },
+	]).catch((error) => log.error(error))
+}
+
+// the same client going away, which is how a fabricated editor leaves: identical to a real socket closing
+export function dispatchFabricatedDisconnect(clientId: string) {
+	dispatchOp([{ code: 'client-disconnected', clientId, opId: UP.createOpId(), time: Date.now() }]).catch((error) => log.error(error))
+}
+
 export function setup() {
 	log = module.getLogger()
 
@@ -310,6 +329,10 @@ export function setup() {
 	// dispatches an op that both updates the set and collapses any presence sitting on that server to null
 	const enabledServersSub = SettingsSys.publicSettings$
 		.pipe(
+			// scoped servers are included like any other: presence is what the owner's own queue editing runs on (the
+			// EDITING_QUEUE activity and its item locks), so dropping them here would collapse that activity to null and
+			// leave the queue read-only. Not broadcasting a scoped server's presence to non-owners is a separate concern,
+			// handled where scoped servers actually exist rather than by hiding them from presence.
 			Rx.map((settings) => settings.servers.filter((s) => s.enabled && !s.broken).map((s) => s.id)),
 			Rx.distinctUntilChanged((a, b) => a.length === b.length && a.every((id) => b.includes(id))),
 		)

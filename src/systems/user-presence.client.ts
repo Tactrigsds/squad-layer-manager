@@ -161,6 +161,9 @@ const [_usePresenceUpdate, presenceUpdate$] = ReactRx.bind<UP.PresenceUpdate>(
 
 export const Store = createPresenceStore()
 
+// console access for dev-instance verification of presence state
+if (import.meta.env.DEV && typeof window !== 'undefined') (window as any).__upStore = Store
+
 function createPresenceStore() {
 	const store = Zus.createStore<Store>((set, get, store) => {
 		loaderCtx = {

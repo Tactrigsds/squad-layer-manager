@@ -55,6 +55,186 @@
 	", switching to {layer}": [", switching to ", ["layer"]],
 	": \"{reason}\"": [": \"", ["reason"], "\""],
 	": {layer} won": [": ", ["layer"], " won"],
+	"<p><em>Options</em> is what the rule does when it matches. <em>Indicate</em> marks the item in the queue and the match history, <em>Warn</em> warns you when a save would introduce the repeat, and <em>Autogen</em> applies the rule when SLM generates a layer.</p>\n<p><em>Cross-team</em> lives here too, and can only be set on a per-team field.</p>": [
+		[
+			"p",
+			"tag",
+			[
+				["em", "tag", ["Options"]],
+				" is what the rule does when it matches. ",
+				["em", "tag", ["Indicate"]],
+				" marks the item in the queue and the match history, ",
+				["em", "tag", ["Warn"]],
+				" warns you when a save would introduce the repeat, and ",
+				["em", "tag", ["Autogen"]],
+				" applies the rule when SLM generates a layer."
+			]
+		],
+		"\n",
+		["p", "tag", [["em", "tag", ["Cross-team"]], " lives here too, and can only be set on a per-team field."]]
+	],
+	"<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about a queue item.</p>\n<p>Try adding one now:</p>": [
+		["p", "tag", [["strong", "tag", ["Tags"]], " are a simple way of communicating with your fellow admins about a queue item."]],
+		"\n",
+		["p", "tag", ["Try adding one now:"]]
+	],
+	"<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>\n<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colors mean the same thing everywhere in the app.</p>\n<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>\n<p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>": [
+		[
+			"p",
+			"tag",
+			[
+				"A Squad server swaps every player between ",
+				["team1", "tag", ["Team 1"]],
+				" and ",
+				["team2", "tag", ["Team 2"]],
+				" on each map roll."
+			]
+		],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"To make the queue and the match history more easily scannable, SLM ",
+				["strong", "tag", ["normalizes"]],
+				" the teams: the two persistent teams are named ",
+				["teamA", "tag", ["Team A"]],
+				" and ",
+				["teamB", "tag", ["Team B"]],
+				", and ",
+				["teamA", "tag", ["Team A"]],
+				" is always shown on the left. These colors mean the same thing everywhere in the app."
+			]
+		],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"The ",
+				["mark1", "tag", ["(1)"]],
+				" and ",
+				["mark2", "tag", ["(2)"]],
+				" beside each team indicate which team is ",
+				["team1", "tag", ["Team 1"]],
+				" and which is ",
+				["team2", "tag", ["Team 2"]],
+				"."
+			]
+		],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"Turn normalization off with ",
+				["em", "tag", ["Normalize Teams"]],
+				" in the avatar menu, top right. The same layer then reads: ",
+				["denormalized"]
+			]
+		]
+	],
+	"<p>A repeat rule has a <em>Label</em>, a <em>Field</em> and a <em>Within</em> value. It matches an item in the queue or the match history when that item's <em>Field</em> -- map, gamemode, faction, and so on -- has already been played <em>Within</em> the configured range.</p>\n<p>For per-team fields like <em>Faction</em>, only repeats by the same persistent team (<teamA>Team A</teamA> or <teamB>Team B</teamB>) count, unless the rule has <em>Cross-team</em> enabled.</p>": [
+		[
+			"p",
+			"tag",
+			[
+				"A repeat rule has a ",
+				["em", "tag", ["Label"]],
+				", a ",
+				["em", "tag", ["Field"]],
+				" and a ",
+				["em", "tag", ["Within"]],
+				" value. It matches an item in the queue or the match history when that item's ",
+				["em", "tag", ["Field"]],
+				" -- map, gamemode, faction, and so on -- has already been played ",
+				["em", "tag", ["Within"]],
+				" the configured range."
+			]
+		],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"For per-team fields like ",
+				["em", "tag", ["Faction"]],
+				", only repeats by the same persistent team (",
+				["teamA", "tag", ["Team A"]],
+				" or ",
+				["teamB", "tag", ["Team B"]],
+				") count, unless the rule has ",
+				["em", "tag", ["Cross-team"]],
+				" enabled."
+			]
+		]
+	],
+	"<p>SLM precomputes <strong>scores</strong> for a layer from a set of heuristics, as a rough measure of how fair the matchup is. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important are the <em>Balance Differential</em> and the <em>Asymmetry Score</em>.</p>\n<p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>\n\t\t\t\t": [
+		[
+			"p",
+			"tag",
+			[
+				"SLM precomputes ",
+				["strong", "tag", ["scores"]],
+				" for a layer from a set of heuristics, as a rough measure of how fair the matchup is. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important are the ",
+				["em", "tag", ["Balance Differential"]],
+				" and the ",
+				["em", "tag", ["Asymmetry Score"]],
+				"."
+			]
+		],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See ",
+				["scoresDocs", "tag", ["layer_data.md"]],
+				" for more."
+			]
+		],
+		"\n\t\t\t\t"
+	],
+	"<p>Several people can edit the queue at once. While anyone else is still editing, the queue is not saved, and the save button reads <em>Finish Editing</em> instead of <em>Save</em>. It reads <em>Finish Editing</em> for you as well until you have actually changed something.</p>\n<p>If everyone leaves the editing session by closing the page, the changes are discarded after a short delay.</p>\n<p>If the map rolls while you are editing, your edits are discarded.</p>": [
+		[
+			"p",
+			"tag",
+			[
+				"Several people can edit the queue at once. While anyone else is still editing, the queue is not saved, and the save button reads ",
+				["em", "tag", ["Finish Editing"]],
+				" instead of ",
+				["em", "tag", ["Save"]],
+				". It reads ",
+				["em", "tag", ["Finish Editing"]],
+				" for you as well until you have actually changed something."
+			]
+		],
+		"\n",
+		["p", "tag", ["If everyone leaves the editing session by closing the page, the changes are discarded after a short delay."]],
+		"\n",
+		["p", "tag", ["If the map rolls while you are editing, your edits are discarded."]]
+	],
+	"<p>This is where you search for a layer configuration with a particular map, gamemode, faction and so on.</p>\n<p>Try searching for layers with a <em>Map</em> of <strong>{map}</strong>, a <em>Gamemode</em> of <strong>{gamemode}</strong>, and <strong>{faction}</strong> on either team.</p>": [
+		["p", "tag", ["This is where you search for a layer configuration with a particular map, gamemode, faction and so on."]],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"Try searching for layers with a ",
+				["em", "tag", ["Map"]],
+				" of ",
+				["strong", "tag", [["map"]]],
+				", a ",
+				["em", "tag", ["Gamemode"]],
+				" of ",
+				["strong", "tag", [["gamemode"]]],
+				", and ",
+				["strong", "tag", [["faction"]]],
+				" on either team."
+			]
+		]
+	],
 	"<strong>Randy Newman</strong>, instrumental in getting SLM into the TacTrig admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn.": [
 		["strong", "tag", ["Randy Newman"]],
 		", instrumental in getting SLM into the TacTrig admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn."
@@ -163,6 +343,15 @@
 			}
 		]
 	],
+	"A <strong>queue item</strong> occupies one slot in the queue. Once an item reaches the top of the queue, SLM runs <code>AdminSetNextLayer</code> over RCON with the <strong>layer configuration</strong> that item holds.": [
+		"A ",
+		["strong", "tag", ["queue item"]],
+		" occupies one slot in the queue. Once an item reaches the top of the queue, SLM runs ",
+		["code", "tag", ["AdminSetNextLayer"]],
+		" over RCON with the ",
+		["strong", "tag", ["layer configuration"]],
+		" that item holds."
+	],
 	"A Vote is pending{autostart, select, yes { and will be run in {formattedTime}} other {}}. Run {showNextCmd} to preview the vote": [
 		"A Vote is pending",
 		[
@@ -177,14 +366,51 @@
 		["showNextCmd"],
 		" to preview the vote"
 	],
+	"A layer configuration is made up of:\n<ul>\n    <li>the map, gamemode and layer version: <code>{layerName}</code></li>\n    <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>\n</ul>\n<p>For this layer, the RCON command that will be run on the server is <code>{command}</code>.</p>": [
+		"A layer configuration is made up of:\n",
+		[
+			"ul",
+			"tag",
+			[
+				"\n    ",
+				["li", "tag", ["the map, gamemode and layer version: ", ["code", "tag", [["layerName"]]]]],
+				"\n    ",
+				[
+					"li",
+					"tag",
+					["the faction and unit (subfaction) for each team: ", ["code", "tag", [["team1"]]], " and ", ["code", "tag", [["team2"]]]]
+				],
+				"\n"
+			]
+		],
+		"\n",
+		["p", "tag", ["For this layer, the RCON command that will be run on the server is ", ["code", "tag", [["command"]]], "."]]
+	],
+	"A layer you added is <strong>attributed</strong> to you here.": [
+		"A layer you added is ",
+		["strong", "tag", ["attributed"]],
+		" to you here."
+	],
 	"A reason is required for {actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).": [
 		"A reason is required for ",
 		["actionName"],
 		", but no reasons are configured for it (see Admin Action Reasons in settings)."
 	],
 	"A reason is required for {actionName}.": ["A reason is required for ", ["actionName"], "."],
+	"A rule can also carry a set of <em>Target Values</em>, and then only matches when the field is one of them. That is how you space out niche maps, gamemodes and factions so they are not played too often.": [
+		"A rule can also carry a set of ",
+		["em", "tag", ["Target Values"]],
+		", and then only matches when the field is one of them. That is how you space out niche maps, gamemodes and factions so they are not played too often."
+	],
 	"A template over the words typed after the trigger, and the numbers count those words: '{{arg1}}' is the first one typed, '{{rest2}}' the second onwards. Pinned text is never typed, so no placeholder refers to it. '{{^arg2}}'default'{{/arg2}}' fills a word in when it is left out.": "A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, {{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. {{^arg2}}default{{/arg2}} fills a word in when it is left out.",
 	"Add BattleMetrics flags to {targetSubject}.": ["Add BattleMetrics flags to ", ["targetSubject"], "."],
+	"Add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:": [
+		"Add one more. Change the ",
+		["em", "tag", ["Map"]],
+		" filter to ",
+		["strong", "tag", [["map"]]],
+		" and pick a layer from the results:"
+	],
 	"Add {column} value": ["Add ", ["column"], " value"],
 	"AdminPing from [T:{teamId} {playerName}]: {message}": ["AdminPing from [T:", ["teamId"], " ", ["playerName"], "]: ", ["message"]],
 	"Admins.cfg: {serverId}": ["Admins.cfg: ", ["serverId"]],
@@ -203,9 +429,30 @@
 	],
 	"Also constrained by {extras} (kept as-is).": ["Also constrained by ", ["extras"], " (kept as-is)."],
 	"Also played {time} on the other team": ["Also played ", ["time"], " on the other team"],
+	"An overview of the different <em>groups</em> of players can be seen here. Mouse over a group to see a list of all players in that group, and Click on a group to filter the table to show only that group.": [
+		"An overview of the different ",
+		["em", "tag", ["groups"]],
+		" of players can be seen here. Mouse over a group to see a list of all players in that group, and Click on a group to filter the table to show only that group."
+	],
 	"Another tag is already labeled \"{label}\"": ["Another tag is already labeled \"", ["label"], "\""],
 	"App Version: {appVersion}": ["App Version: ", ["appVersion"]],
 	"Are you sure you want to end the match for {serverName}?": ["Are you sure you want to end the match for ", ["serverName"], "?"],
+	"By default your results are limited to <strong>in-pool</strong> layers: whichever layer filter defines the pool starts checked here. Uncheck to widen the search, or ctrl+click it to <strong>invert</strong> it, so the results are only the layers that filter excludes. Add more filters to the toolbar with <addFilter></addFilter>.": [
+		"By default your results are limited to ",
+		["strong", "tag", ["in-pool"]],
+		" layers: whichever layer filter defines the pool starts checked here. Uncheck to widen the search, or ctrl+click it to ",
+		["strong", "tag", ["invert"]],
+		" it, so the results are only the layers that filter excludes. Add more filters to the toolbar with ",
+		["addFilter", "tag", []],
+		"."
+	],
+	"By default, the table is sorted by <em>Squad</em>. In this mode, you can <em>select</em> ": [
+		"By default, the table is sorted by ",
+		["em", "tag", ["Squad"]],
+		". In this mode, you can ",
+		["em", "tag", ["select"]],
+		" "
+	],
 	"Cancelled {count, plural, one {the timeout} other {# timeouts}} for {username}": [
 		"Cancelled ",
 		[
@@ -220,6 +467,42 @@
 		" for ",
 		["username"]
 	],
+	"Change an item's layer with <pencil></pencil>:": ["Change an item's layer with ", ["pencil", "tag", []], ":"],
+	"Changing the filters hid the layer you selected first, but it is still selected. Click <em>Show Selected</em> to see everything you have picked so far:": [
+		"Changing the filters hid the layer you selected first, but it is still selected. Click ",
+		["em", "tag", ["Show Selected"]],
+		" to see everything you have picked so far:"
+	],
+	"Choose <em>Play After</em> to add these layers to the end of the queue instead of the front. When you're happy with the selection, click <em>Submit</em>:": [
+		"Choose ",
+		["em", "tag", ["Play After"]],
+		" to add these layers to the end of the queue instead of the front. When you're happy with the selection, click ",
+		["em", "tag", ["Submit"]],
+		":"
+	],
+	"Click <em>Add Layers</em> to open the <strong>layer selection dialog</strong>.": [
+		"Click ",
+		["em", "tag", ["Add Layers"]],
+		" to open the ",
+		["strong", "tag", ["layer selection dialog"]],
+		"."
+	],
+	"Click <em>Start Editing</em> to tell other admins you are about to change the queue:": [
+		"Click ",
+		["em", "tag", ["Start Editing"]],
+		" to tell other admins you are about to change the queue:"
+	],
+	"Click <gear></gear> to open the queue's settings.": ["Click ", ["gear", "tag", []], " to open the queue's settings."],
+	"Click <hideRepeats></hideRepeats> to filter out layers that repeat something played recently.": [
+		"Click ",
+		["hideRepeats", "tag", []],
+		" to filter out layers that repeat something played recently."
+	],
+	"Click <i>anywhere</i> on a player's row other than their username to select them.": [
+		"Click ",
+		["i", "tag", ["anywhere"]],
+		" on a player's row other than their username to select them."
+	],
 	"Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.": [
 		"Click ",
 		["strong", "tag", ["Save"]],
@@ -230,6 +513,14 @@
 		["strong", "tag", ["Swap Now"]],
 		" to immediately execute all saved swaps."
 	],
+	"Click here to filter columns to only display players with specific criteria. Try filtering to only display players of group \"{group}. Note that selecting the filter on either teams table applies <i>across</i> teams\"": [
+		"Click here to filter columns to only display players with specific criteria. Try filtering to only display players of group \"",
+		["group"],
+		". Note that selecting the filter on either teams table applies ",
+		["i", "tag", ["across"]],
+		" teams\""
+	],
+	"Click here to navigate to the <em>teams tab</em>": ["Click here to navigate to the ", ["em", "tag", ["teams tab"]]],
 	"Colors ({count})": ["Colors (", ["count"], ")"],
 	"Column {column} can only be compared against vehicle values": ["Column ", ["column"], " can only be compared against vehicle values"],
 	"Column {column} is not mapped": ["Column ", ["column"], " is not mapped"],
@@ -265,6 +556,16 @@
 			}
 		]
 	],
+	"Depending on your install, a layer configuration may also carry <strong>scores</strong>. Open them here:": [
+		"Depending on your install, a layer configuration may also carry ",
+		["strong", "tag", ["scores"]],
+		". Open them here:"
+	],
+	"Different <em>grouping modes</em> may be configured for different tasks, like determining team balance, distinguishing clans, or to highlight watchlisted players. Switch between them here.": [
+		"Different ",
+		["em", "tag", ["grouping modes"]],
+		" may be configured for different tasks, like determining team balance, distinguishing clans, or to highlight watchlisted players. Switch between them here."
+	],
 	"Disband squad {squadLabel}?": ["Disband squad ", ["squadLabel"], "?"],
 	"Disband {squadLabel} on team {teamId}?": ["Disband ", ["squadLabel"], " on team ", ["teamId"], "?"],
 	"Disbanded \"{squadName}\" on team {teamLabel}{hasReason, select, yes { for {reason}} other {}}": [
@@ -295,6 +596,13 @@
 		],
 		" BattleMetrics profile as its own note."
 	],
+	"Empty the queue with <trash></trash>, then click <em>Save</em>:": [
+		"Empty the queue with ",
+		["trash", "tag", []],
+		", then click ",
+		["em", "tag", ["Save"]],
+		":"
+	],
 	"Ending match on {serverName}...": ["Ending match on ", ["serverName"], "..."],
 	"Expires in {time}": ["Expires in ", ["time"]],
 	"Faction (team {team})": ["Faction (team ", ["team"], ")"],
@@ -315,6 +623,11 @@
 		"'s BM profile"
 	],
 	"Flagged {flaggedCount} of {playerCount} players": ["Flagged ", ["flaggedCount"], " of ", ["playerCount"], " players"],
+	"Force Save overrides a queue someone else is holding, so there has to be something to save. Remove an item with <remove></remove>:": [
+		"Force Save overrides a queue someone else is holding, so there has to be something to save. Remove an item with ",
+		["remove", "tag", []],
+		":"
+	],
 	"Full ({maxPlayers} players)": ["Full (", ["maxPlayers"], " players)"],
 	"Group{named, select, yes { ({group})} other {}}": [
 		"Group",
@@ -326,6 +639,11 @@
 				"other": []
 			}
 		]
+	],
+	"If the queue runs out of items you set yourself, SLM <strong>generates</strong> a layer to play from the rules configured for this server.": [
+		"If the queue runs out of items you set yourself, SLM ",
+		["strong", "tag", ["generates"]],
+		" a layer to play from the rules configured for this server."
 	],
 	"Kick {targetNoun}": ["Kick ", ["targetNoun"]],
 	"Kick {targetSubject} from the server? They may rejoin immediately.": [
@@ -386,6 +704,7 @@
 			0
 		]
 	],
+	"Let's try <em>timing out</em> a player.": ["Let's try ", ["em", "tag", ["timing out"]], " a player."],
 	"Link to {section}": ["Link to ", ["section"]],
 	"Link {steamId} by sending a code in game instead.": ["Link ", ["steamId"], " by sending a code in game instead."],
 	"Linked by {admin}": ["Linked by ", ["admin"]],
@@ -466,9 +785,27 @@
 	"Player \"{username}\" is not in a squad": ["Player \"", ["username"], "\" is not in a squad"],
 	"Player \"{username}\" is not on a team": ["Player \"", ["username"], "\" is not on a team"],
 	"Players ({count})": ["Players (", ["count"], ")"],
+	"Players can be sorted by <em>kills</em>, <em>wounds</em>, and <em>deaths</em>, in either <em>descending</em> or <em>ascending</em> order.": [
+		"Players can be sorted by ",
+		["em", "tag", ["kills"]],
+		", ",
+		["em", "tag", ["wounds"]],
+		", and ",
+		["em", "tag", ["deaths"]],
+		", in either ",
+		["em", "tag", ["descending"]],
+		" or ",
+		["em", "tag", ["ascending"]],
+		" order."
+	],
 	"Pool Cutoff ({value})": ["Pool Cutoff (", ["value"], ")"],
 	"Prefix {position}": ["Prefix ", ["position"]],
 	"Queue ({count})": ["Queue (", ["count"], ")"],
+	"Queue items have a few more editing actions. Drag <grip></grip> to move an item through the queue:": [
+		"Queue items have a few more editing actions. Drag ",
+		["grip", "tag", []],
+		" to move an item through the queue:"
+	],
 	"Queue synced to a layer change by {who}": ["Queue synced to a layer change by ", ["who"]],
 	"Queued teamswaps executed on map change ({playerCount, plural, one {# player} other {# players}})": [
 		"Queued teamswaps executed on map change (",
@@ -517,6 +854,7 @@
 			}
 		]
 	],
+	"Remove an item from the queue with <remove></remove>:": ["Remove an item from the queue with ", ["remove", "tag", []], ":"],
 	"Remove grouping {groupingId}": ["Remove grouping ", ["groupingId"]],
 	"Remove prefix {position}": ["Remove prefix ", ["position"]],
 	"Remove this player from {squadLabel}?": ["Remove this player from ", ["squadLabel"], "?"],
@@ -560,6 +898,16 @@
 	"Reply 1-{last}, or 0 to cancel": ["Reply 1-", ["last"], ", or 0 to cancel"],
 	"Reset the name of {squadLabel} to default?": ["Reset the name of ", ["squadLabel"], " to default?"],
 	"Reset to default ({value})": ["Reset to default (", ["value"], ")"],
+	"Results are randomized by default. Click <dice></dice> to reroll them.": [
+		"Results are randomized by default. Click ",
+		["dice", "tag", []],
+		" to reroll them."
+	],
+	"Results that repeat something played recently carry <repeat></repeat> indicators.": [
+		"Results that repeat something played recently carry ",
+		["repeat", "tag", []],
+		" indicators."
+	],
 	"Right-click a player and choose <strong>Swap Next</strong> to queue them.": [
 		"Right-click a player and choose ",
 		["strong", "tag", ["Swap Next"]],
@@ -586,6 +934,25 @@
 		["strong", "tag", [["winnerTickets"], " to ", ["loserTickets"]]],
 		" against ",
 		["loser"]
+	],
+	"SLM can also detect when a layer configuration repeats a map, faction or gamemode that was played recently. A repeat is marked with <repeat></repeat>. Hover it to highlight the parts of the layer that repeat.": [
+		"SLM can also detect when a layer configuration repeats a map, faction or gamemode that was played recently. A repeat is marked with ",
+		["repeat", "tag", []],
+		". Hover it to highlight the parts of the layer that repeat."
+	],
+	"SLM can be configured to warn you when a queue you are saving holds layers that match, or fail to match, a <strong>layer filter</strong>, or that violate a <strong>repeat rule</strong>. Fix what you can, or click <em>Save Anyway</em> to save regardless.": [
+		"SLM can be configured to warn you when a queue you are saving holds layers that match, or fail to match, a ",
+		["strong", "tag", ["layer filter"]],
+		", or that violate a ",
+		["strong", "tag", ["repeat rule"]],
+		". Fix what you can, or click ",
+		["em", "tag", ["Save Anyway"]],
+		" to save regardless."
+	],
+	"SLM chose this layer itself, which is what <dice></dice> means.": [
+		"SLM chose this layer itself, which is what ",
+		["dice", "tag", []],
+		" means."
 	],
 	"SLM is built and maintained by <strong>grey275</strong>, but it exists because of the <strong>TacTrig</strong> community. These are the people who made significant contributions to it.": [
 		"SLM is built and maintained by ",
@@ -627,6 +994,23 @@
 	"Set by {displayName}": ["Set by ", ["displayName"]],
 	"Shortcut for \"{command}\"": ["Shortcut for \"", ["command"], "\""],
 	"Should be > {within}": ["Should be > ", ["within"]],
+	"Some additional actions are available by clicking the <ellipsis></ellipsis>, or by right clicking anywhere on the queue item.": [
+		"Some additional actions are available by clicking the ",
+		["ellipsis", "tag", []],
+		", or by right clicking anywhere on the queue item."
+	],
+	"Some of the columns that are likely to provide an ingame advantage are hidden by default. click <em>Show Spoilers</em> to reveal them.": [
+		"Some of the columns that are likely to provide an ingame advantage are hidden by default. click ",
+		["em", "tag", ["Show Spoilers"]],
+		" to reveal them."
+	],
+	"Sometimes someone forgets to save and leaves the queue stuck in an editing session. <em>Force Save</em> (<sword></sword>) saves it anyway and ends everyone else's session. Try it now:": [
+		"Sometimes someone forgets to save and leaves the queue stuck in an editing session. ",
+		["em", "tag", ["Force Save"]],
+		" (",
+		["sword", "tag", []],
+		") saves it anyway and ends everyone else's session. Try it now:"
+	],
 	"Squad \"{squadName}\" has no players": ["Squad \"", ["squadName"], "\" has no players"],
 	"Squad {squadId}": ["Squad ", ["squadId"]],
 	"Squad{named, select, yes { ({squadName})} other {}}": [
@@ -643,6 +1027,7 @@
 	"Starting \"{displayName}\"": ["Starting \"", ["displayName"], "\""],
 	"Steam account linked to {discordName}.": ["Steam account linked to ", ["discordName"], "."],
 	"Supports <link>Mustache {syntax} syntax</link>.": ["Supports ", ["link", "tag", ["Mustache ", ["syntax"], " syntax"]], "."],
+	"Swap which team gets which faction with <swap></swap>:": ["Swap which team gets which faction with ", ["swap", "tag", []], ":"],
 	"Swap {targetNoun} Now": ["Swap ", ["targetNoun"], " Now"],
 	"Swapping {count, plural, one {# player} other {# players}} from \"{squadName}\" to {toTeam} now": [
 		"Swapping ",
@@ -673,11 +1058,29 @@
 		" on a team column clears all for that team."
 	],
 	"The choice for \"{command}\" expired": ["The choice for \"", ["command"], "\" expired"],
+	"The groupings column displays the chosen <em>Grouping</em> for each player. <em>Player Groupings</em> are a powerful categorization tool that make it easy to distinguish between diferent <i>kinds</i> of players at a glance. <a>click here</a> for documentation on how to set up player groupings for your SLM instance, if you have permissions to do so.": [
+		"The groupings column displays the chosen ",
+		["em", "tag", ["Grouping"]],
+		" for each player. ",
+		["em", "tag", ["Player Groupings"]],
+		" are a powerful categorization tool that make it easy to distinguish between diferent ",
+		["i", "tag", ["kinds"]],
+		" of players at a glance. ",
+		["a", "tag", ["click here"]],
+		" for documentation on how to set up player groupings for your SLM instance, if you have permissions to do so."
+	],
 	"The layer request list is full (max {max}).": ["The layer request list is full (max ", ["max"], ")."],
 	"The next layer set on the server is still {layer}. Save the changes to set this layer instead. If someone has forgotten to save their changes, use force save:": [
 		"The next layer set on the server is still ",
 		["layer"],
 		". Save the changes to set this layer instead. If someone has forgotten to save their changes, use force save:"
+	],
+	"The pool filter decides whether a layer is <strong>in pool</strong> or <strong>out of pool</strong>. It is always indicated on layers, applied by default when selecting them, and warned about on save. Depending on their permissions, some users cannot set an out-of-pool layer at all.": [
+		"The pool filter decides whether a layer is ",
+		["strong", "tag", ["in pool"]],
+		" or ",
+		["strong", "tag", ["out of pool"]],
+		". It is always indicated on layers, applied by default when selecting them, and warned about on save. Depending on their permissions, some users cannot set an out-of-pool layer at all."
 	],
 	"The pool filter must have match and miss indicators configured. Missing: {missing}.": [
 		"The pool filter must have match and miss indicators configured. Missing: ",
@@ -686,6 +1089,16 @@
 	],
 	"The request could not be fulfilled ({code}).": ["The request could not be fulfilled (", ["code"], ")."],
 	"These flags require a reason: {join}": ["These flags require a reason: ", ["join"]],
+	"They may not be available in our tutorial sandbox, but <em>Player flags</em>, sourced from battlemetrics, will be shown, and can be added/removed here.": [
+		"They may not be available in our tutorial sandbox, but ",
+		["em", "tag", ["Player flags"]],
+		", sourced from battlemetrics, will be shown, and can be added/removed here."
+	],
+	"This badge means SLM has already set this layer configuration as the server's next layer. In game, you can type {showNextCommands} to check what layers are next.": [
+		"This badge means SLM has already set this layer configuration as the server's next layer. In game, you can type ",
+		["showNextCommands"],
+		" to check what layers are next."
+	],
 	"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>{lt}</code>/<code>{gt}</code> to compare magnitudes; <code>=</code> only checks whether the value is null.": [
 		"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make ",
 		["code", "tag", ["="]],
@@ -706,6 +1119,41 @@
 		["missing"],
 		" configured. Click to edit the filter."
 	],
+	"This is a composite score, weighting Armor, Transport, Anti-Infantry capability, and Logistics for each matchup. Positive numbers mean Team 1 is favored and negative numbers mean Team 2 is favored. This layer scores <em>{balance}</em>, so Team 1, ADF Combined Arms, has a small edge, well inside the pool cutoff marked on the gauge.": [
+		"This is a composite score, weighting Armor, Transport, Anti-Infantry capability, and Logistics for each matchup. Positive numbers mean Team 1 is favored and negative numbers mean Team 2 is favored. This layer scores ",
+		["em", "tag", [["balance"]]],
+		", so Team 1, ADF Combined Arms, has a small edge, well inside the pool cutoff marked on the gauge."
+	],
+	"This score is meant to give you an idea of the \"asymmetry\" of the matchup. Similar <em>unit types</em> are generally more symmetric, such as Combined Arms versus Combined Arms or Support versus Support, because similar unit types get similar vehicle loadouts. This layer, ADF Combined Arms versus AFU Light Infantry, scores <em>{asymmetry}</em>: quite asymmetric, though not asymmetric enough to fall out of the main pool. When reading these scores, focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.": [
+		"This score is meant to give you an idea of the \"asymmetry\" of the matchup. Similar ",
+		["em", "tag", ["unit types"]],
+		" are generally more symmetric, such as Combined Arms versus Combined Arms or Support versus Support, because similar unit types get similar vehicle loadouts. This layer, ADF Combined Arms versus AFU Light Infantry, scores ",
+		["em", "tag", [["asymmetry"]]],
+		": quite asymmetric, though not asymmetric enough to fall out of the main pool. When reading these scores, focus on the ",
+		["em", "tag", ["relative magnitudes"]],
+		" rather than the specific units, as the units are abstract."
+	],
+	"This tutorial runs on a <strong>sandbox</strong> server, so you can experiment without affecting your real servers.": [
+		"This tutorial runs on a ",
+		["strong", "tag", ["sandbox"]],
+		" server, so you can experiment without affecting your real servers."
+	],
+	"This window holds everything else known about the layer:\n<ul>\n<li>the factions for each team</li>\n<li>the special characteristics of each faction</li>\n<li>the vehicles each team fields</li>\n</ul>": [
+		"This window holds everything else known about the layer:\n",
+		[
+			"ul",
+			"tag",
+			[
+				"\n",
+				["li", "tag", ["the factions for each team"]],
+				"\n",
+				["li", "tag", ["the special characteristics of each faction"]],
+				"\n",
+				["li", "tag", ["the vehicles each team fields"]],
+				"\n"
+			]
+		]
+	],
 	"Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}": [
 		"Timed out until ",
 		["expiresAt"],
@@ -725,6 +1173,8 @@
 		["where"],
 		"."
 	],
+	"Tutorial <em>{tutorial}</em> is complete!": ["Tutorial ", ["em", "tag", [["tutorial"]]], " is complete!"],
+	"Tutorials for the {page}": ["Tutorials for the ", ["page"]],
 	"Unable to resolve player \"{username}\" in battlemetrics": ["Unable to resolve player \"", ["username"], "\" in battlemetrics"],
 	"Unit (team {team})": ["Unit (team ", ["team"], ")"],
 	"Unknown flag: {id}": ["Unknown flag: ", ["id"]],
@@ -883,6 +1333,21 @@
 		"Your Discord account does not have sufficient privileges in ",
 		["where"],
 		" to access this site."
+	],
+	"Your SLM install can define rules that categorize layers, called <strong>layer filters</strong>. A filter can show an emoji <strong>indicator</strong> on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: <em>Tutorial Pool</em> <tutorialPoolIcon></tutorialPoolIcon> and <em>Large Layers</em> <largeLayersIcon></largeLayersIcon>.": [
+		"Your SLM install can define rules that categorize layers, called ",
+		["strong", "tag", ["layer filters"]],
+		". A filter can show an emoji ",
+		["strong", "tag", ["indicator"]],
+		" on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: ",
+		["em", "tag", ["Tutorial Pool"]],
+		" ",
+		["tutorialPoolIcon", "tag", []],
+		" and ",
+		["em", "tag", ["Large Layers"]],
+		" ",
+		["largeLayersIcon", "tag", []],
+		"."
 	],
 	"Your maximum timeout is {maxDuration}": ["Your maximum timeout is ", ["maxDuration"]],
 	"[{triggers}]{signature}: {description}": ["[", ["triggers"], "]", ["signature"], ": ", ["description"]],
@@ -1404,6 +1869,7 @@
 	"{label} ({which}): {layer}": [["label"], " (", ["which"], "): ", ["layer"]],
 	"{label} commands": [["label"], " commands"],
 	"{listId} (not configured)": [["listId"], " (not configured)"],
+	"{minutes} min": [["minutes"], " min"],
 	"{msg}": [["msg"]],
 	"{named, select, yes {You have reached the SLM instance for {guildName}.} other {You have reached this Squad Layer Manager instance.}}": [
 		[

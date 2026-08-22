@@ -1,7 +1,6 @@
 import * as Zus from '@/lib/zustand'
 
 const FEATURE_FLAGS = {
-	reactQueryDevtools: false,
 	displayWsClientId: false,
 	loadConsole: false,
 	showMockBalanceTriggers: false,
