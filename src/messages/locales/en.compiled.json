@@ -73,12 +73,12 @@
 		"\n",
 		["p", "tag", [["em", "tag", ["Cross-team"]], " lives here too, and can only be set on a per-team field."]]
 	],
-	"<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about layer sets.</p>\n<p>Try adding one now:</p>": [
-		["p", "tag", [["strong", "tag", ["Tags"]], " are a simple way of communicating with your fellow admins about layer sets."]],
+	"<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about a queue item.</p>\n<p>Try adding one now:</p>": [
+		["p", "tag", [["strong", "tag", ["Tags"]], " are a simple way of communicating with your fellow admins about a queue item."]],
 		"\n",
 		["p", "tag", ["Try adding one now:"]]
 	],
-	"<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>\n<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>\n<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>\n<p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>": [
+	"<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>\n<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colors mean the same thing everywhere in the app.</p>\n<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>\n<p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>": [
 		[
 			"p",
 			"tag",
@@ -103,7 +103,7 @@
 				["teamB", "tag", ["Team B"]],
 				", and ",
 				["teamA", "tag", ["Team A"]],
-				" is always shown on the left. These colours mean the same thing everywhere in the app."
+				" is always shown on the left. These colors mean the same thing everywhere in the app."
 			]
 		],
 		"\n",
@@ -169,6 +169,32 @@
 			]
 		]
 	],
+	"<p>SLM precomputes <strong>scores</strong> for a layer from a set of heuristics, as a rough measure of how fair the matchup is. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important are the <em>Balance Differential</em> and the <em>Asymmetry Score</em>.</p>\n<p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>\n\t\t\t\t": [
+		[
+			"p",
+			"tag",
+			[
+				"SLM precomputes ",
+				["strong", "tag", ["scores"]],
+				" for a layer from a set of heuristics, as a rough measure of how fair the matchup is. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important are the ",
+				["em", "tag", ["Balance Differential"]],
+				" and the ",
+				["em", "tag", ["Asymmetry Score"]],
+				"."
+			]
+		],
+		"\n",
+		[
+			"p",
+			"tag",
+			[
+				"These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See ",
+				["scoresDocs", "tag", ["layer_data.md"]],
+				" for more."
+			]
+		],
+		"\n\t\t\t\t"
+	],
 	"<p>Several people can edit the queue at once. While anyone else is still editing, the queue is not saved, and the save button reads <em>Finish Editing</em> instead of <em>Save</em>. It reads <em>Finish Editing</em> for you as well until you have actually changed something.</p>\n<p>If everyone leaves the editing session by closing the page, the changes are discarded after a short delay.</p>\n<p>If the map rolls while you are editing, your edits are discarded.</p>": [
 		[
 			"p",
@@ -187,30 +213,6 @@
 		["p", "tag", ["If everyone leaves the editing session by closing the page, the changes are discarded after a short delay."]],
 		"\n",
 		["p", "tag", ["If the map rolls while you are editing, your edits are discarded."]]
-	],
-	"<p>These are precomputed \"Scores\" for layers based on a set of heuristics which are used to determine the relative \"fairness\" of the layer. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important scores are the <em>Balance Score(Balance Differential)</em> and the <em>Asymmetry Score</em>.</p>\n<p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>\n\t\t\t\t": [
-		[
-			"p",
-			"tag",
-			[
-				"These are precomputed \"Scores\" for layers based on a set of heuristics which are used to determine the relative \"fairness\" of the layer. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important scores are the ",
-				["em", "tag", ["Balance Score(Balance Differential)"]],
-				" and the ",
-				["em", "tag", ["Asymmetry Score"]],
-				"."
-			]
-		],
-		"\n",
-		[
-			"p",
-			"tag",
-			[
-				"These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See ",
-				["scoresDocs", "tag", ["layer_data.md"]],
-				" for more."
-			]
-		],
-		"\n\t\t\t\t"
 	],
 	"<p>This is where you search for a layer configuration with a particular map, gamemode, faction and so on.</p>\n<p>Try searching for layers with a <em>Map</em> of <strong>{map}</strong>, a <em>Gamemode</em> of <strong>{gamemode}</strong>, and <strong>{faction}</strong> on either team.</p>": [
 		["p", "tag", ["This is where you search for a layer configuration with a particular map, gamemode, faction and so on."]],
@@ -402,6 +404,13 @@
 	],
 	"A template over the words typed after the trigger, and the numbers count those words: '{{arg1}}' is the first one typed, '{{rest2}}' the second onwards. Pinned text is never typed, so no placeholder refers to it. '{{^arg2}}'default'{{/arg2}}' fills a word in when it is left out.": "A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, {{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. {{^arg2}}default{{/arg2}} fills a word in when it is left out.",
 	"Add BattleMetrics flags to {targetSubject}.": ["Add BattleMetrics flags to ", ["targetSubject"], "."],
+	"Add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:": [
+		"Add one more. Change the ",
+		["em", "tag", ["Map"]],
+		" filter to ",
+		["strong", "tag", [["map"]]],
+		" and pick a layer from the results:"
+	],
 	"Add {column} value": ["Add ", ["column"], " value"],
 	"AdminPing from [T:{teamId} {playerName}]: {message}": ["AdminPing from [T:", ["teamId"], " ", ["playerName"], "]: ", ["message"]],
 	"Admins.cfg: {serverId}": ["Admins.cfg: ", ["serverId"]],
@@ -478,11 +487,16 @@
 		["strong", "tag", ["layer selection dialog"]],
 		"."
 	],
+	"Click <em>Start Editing</em> to tell other admins you are about to change the queue:": [
+		"Click ",
+		["em", "tag", ["Start Editing"]],
+		" to tell other admins you are about to change the queue:"
+	],
 	"Click <gear></gear> to open the queue's settings.": ["Click ", ["gear", "tag", []], " to open the queue's settings."],
-	"Click <hideRepeats></hideRepeats> to filter out layer configurations with repeated elements.": [
+	"Click <hideRepeats></hideRepeats> to filter out layers that repeat something played recently.": [
 		"Click ",
 		["hideRepeats", "tag", []],
-		" to filter out layer configurations with repeated elements."
+		" to filter out layers that repeat something played recently."
 	],
 	"Click <i>anywhere</i> on a player's row other than their username to select them.": [
 		"Click ",
@@ -609,8 +623,8 @@
 		"'s BM profile"
 	],
 	"Flagged {flaggedCount} of {playerCount} players": ["Flagged ", ["flaggedCount"], " of ", ["playerCount"], " players"],
-	"Force save needs a save to force, and the queue was just saved. Remove an item with <remove></remove>:": [
-		"Force save needs a save to force, and the queue was just saved. Remove an item with ",
+	"Force Save overrides a queue someone else is holding, so there has to be something to save. Remove an item with <remove></remove>:": [
+		"Force Save overrides a queue someone else is holding, so there has to be something to save. Remove an item with ",
 		["remove", "tag", []],
 		":"
 	],
@@ -665,11 +679,6 @@
 	"Last seen {when}": ["Last seen ", ["when"]],
 	"Layer Pool Version: {layersVersion}": ["Layer Pool Version: ", ["layersVersion"]],
 	"Layer Requests ({count})": ["Layer Requests (", ["count"], ")"],
-	"Layer items have a few more editing actions. Drag <grip></grip> to move an item through the queue:": [
-		"Layer items have a few more editing actions. Drag ",
-		["grip", "tag", []],
-		" to move an item through the queue:"
-	],
 	"Layer request queued: {parts}. You have {ownCount, plural, one {# request} other {# requests}} queued{evictedCount, plural, =0 {.} one { (your oldest request was dropped to make room).} other { (your oldest # requests were dropped to make room).}}": [
 		"Layer request queued: ",
 		["parts"],
@@ -694,18 +703,6 @@
 			},
 			0
 		]
-	],
-	"Let's add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:": [
-		"Let's add one more. Change the ",
-		["em", "tag", ["Map"]],
-		" filter to ",
-		["strong", "tag", [["map"]]],
-		" and pick a layer from the results:"
-	],
-	"Let's edit the queue. Click <em>Start Editing</em> to communicate to other users that you intend to make changes to the queue:": [
-		"Let's edit the queue. Click ",
-		["em", "tag", ["Start Editing"]],
-		" to communicate to other users that you intend to make changes to the queue:"
 	],
 	"Let's try <em>timing out</em> a player.": ["Let's try ", ["em", "tag", ["timing out"]], " a player."],
 	"Link to {section}": ["Link to ", ["section"]],
@@ -804,6 +801,11 @@
 	"Pool Cutoff ({value})": ["Pool Cutoff (", ["value"], ")"],
 	"Prefix {position}": ["Prefix ", ["position"]],
 	"Queue ({count})": ["Queue (", ["count"], ")"],
+	"Queue items have a few more editing actions. Drag <grip></grip> to move an item through the queue:": [
+		"Queue items have a few more editing actions. Drag ",
+		["grip", "tag", []],
+		" to move an item through the queue:"
+	],
 	"Queue synced to a layer change by {who}": ["Queue synced to a layer change by ", ["who"]],
 	"Queued teamswaps executed on map change ({playerCount, plural, one {# player} other {# players}})": [
 		"Queued teamswaps executed on map change (",
@@ -1092,10 +1094,10 @@
 		["em", "tag", ["Player flags"]],
 		", sourced from battlemetrics, will be shown, and can be added/removed here."
 	],
-	"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type {showNextCommands} to check what layers are next": [
-		"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type ",
+	"This badge means SLM has already set this layer configuration as the server's next layer. In game, you can type {showNextCommands} to check what layers are next.": [
+		"This badge means SLM has already set this layer configuration as the server's next layer. In game, you can type ",
 		["showNextCommands"],
-		" to check what layers are next"
+		" to check what layers are next."
 	],
 	"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>{lt}</code>/<code>{gt}</code> to compare magnitudes; <code>=</code> only checks whether the value is null.": [
 		"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make ",
@@ -1117,17 +1119,24 @@
 		["missing"],
 		" configured. Click to edit the filter."
 	],
-	"This score is meant to give you an idea of the “asymmetry” of the matchup. Generally, similar <em>unit types</em> will be more symmetric (e.g. Combined Arms versus Combined Arms or Support versus Support and so on. This is because similar unit types get similar vehicle loadouts. The third entry in the map setting interface example, ADF Combined Arms versus AFU Light Infantry favours the ADF slightly in terms of balance but is quite asymmetric (though not asymmetric enough to be out of the main pool entirely). In general, when looking at these scores, you should focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.": [
-		"This score is meant to give you an idea of the “asymmetry” of the matchup. Generally, similar ",
+	"This is a composite score, weighting Armor, Transport, Anti-Infantry capability, and Logistics for each matchup. Positive numbers mean Team 1 is favored and negative numbers mean Team 2 is favored. This layer scores <em>{balance}</em>, so Team 1, ADF Combined Arms, has a small edge, well inside the pool cutoff marked on the gauge.": [
+		"This is a composite score, weighting Armor, Transport, Anti-Infantry capability, and Logistics for each matchup. Positive numbers mean Team 1 is favored and negative numbers mean Team 2 is favored. This layer scores ",
+		["em", "tag", [["balance"]]],
+		", so Team 1, ADF Combined Arms, has a small edge, well inside the pool cutoff marked on the gauge."
+	],
+	"This score is meant to give you an idea of the \"asymmetry\" of the matchup. Similar <em>unit types</em> are generally more symmetric, such as Combined Arms versus Combined Arms or Support versus Support, because similar unit types get similar vehicle loadouts. This layer, ADF Combined Arms versus AFU Light Infantry, scores <em>{asymmetry}</em>: quite asymmetric, though not asymmetric enough to fall out of the main pool. When reading these scores, focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.": [
+		"This score is meant to give you an idea of the \"asymmetry\" of the matchup. Similar ",
 		["em", "tag", ["unit types"]],
-		" will be more symmetric (e.g. Combined Arms versus Combined Arms or Support versus Support and so on. This is because similar unit types get similar vehicle loadouts. The third entry in the map setting interface example, ADF Combined Arms versus AFU Light Infantry favours the ADF slightly in terms of balance but is quite asymmetric (though not asymmetric enough to be out of the main pool entirely). In general, when looking at these scores, you should focus on the ",
+		" are generally more symmetric, such as Combined Arms versus Combined Arms or Support versus Support, because similar unit types get similar vehicle loadouts. This layer, ADF Combined Arms versus AFU Light Infantry, scores ",
+		["em", "tag", [["asymmetry"]]],
+		": quite asymmetric, though not asymmetric enough to fall out of the main pool. When reading these scores, focus on the ",
 		["em", "tag", ["relative magnitudes"]],
 		" rather than the specific units, as the units are abstract."
 	],
-	"This tutorial is run in a <em>sandbox</em> environment, so we can experiment without affecting the server.": [
-		"This tutorial is run in a ",
-		["em", "tag", ["sandbox"]],
-		" environment, so we can experiment without affecting the server."
+	"This tutorial runs on a <strong>sandbox</strong> server, so you can experiment without affecting your real servers.": [
+		"This tutorial runs on a ",
+		["strong", "tag", ["sandbox"]],
+		" server, so you can experiment without affecting your real servers."
 	],
 	"This window holds everything else known about the layer:\n<ul>\n<li>the factions for each team</li>\n<li>the special characteristics of each faction</li>\n<li>the vehicles each team fields</li>\n</ul>": [
 		"This window holds everything else known about the layer:\n",
@@ -1163,11 +1172,6 @@
 		"To access this site you must sign in with a Discord account that has sufficient privileges in ",
 		["where"],
 		"."
-	],
-	"To replay a layer from the match history, drag it into the queue. This only works while you are editing, so click <em>Start Editing</em> first.": [
-		"To replay a layer from the match history, drag it into the queue. This only works while you are editing, so click ",
-		["em", "tag", ["Start Editing"]],
-		" first."
 	],
 	"Tutorial <em>{tutorial}</em> is complete!": ["Tutorial ", ["em", "tag", [["tutorial"]]], " is complete!"],
 	"Tutorials for the {page}": ["Tutorials for the ", ["page"]],

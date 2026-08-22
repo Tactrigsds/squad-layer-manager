@@ -25,12 +25,12 @@ export const welcome = {
 
 export const sandbox = {
 	title: def('Sandbox'),
-	body: def(rt('This tutorial is run in a <em>sandbox</em> environment, so we can experiment without affecting the server.')),
+	body: def(rt('This tutorial runs on a <strong>sandbox</strong> server, so you can experiment without affecting your real servers.')),
 }
 
 export const matchHistory = {
 	title: def('Match history'),
-	body: def('This is the match history panel. Right now, it only contains one entry — the current match.'),
+	body: def('This is the match history panel. Right now it holds one entry: the current match.'),
 }
 
 export const queuePanel = {
@@ -58,7 +58,7 @@ export const nextBadge = {
 			triggers.length === 0
 				? rt("This badge means SLM has already set this layer configuration as the server's next layer.")
 				: rt(
-						"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type {showNextCommands} to check what layers are next",
+						"This badge means SLM has already set this layer configuration as the server's next layer. In game, you can type {showNextCommands} to check what layers are next.",
 						{ showNextCommands: I18n.tokenList(triggers, locale, { type: 'disjunction', tag: 'code' }) },
 					),
 	})),
@@ -91,7 +91,7 @@ export const teamNormalize = {
 	body: def((denormalized: React.ReactNode) =>
 		rt(
 			`<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>
-<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>
+<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colors mean the same thing everywhere in the app.</p>
 <p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>
 <p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>`,
 			{ denormalized },
@@ -135,51 +135,54 @@ export namespace LayerDetails {
 	}
 	export const openLayerScores = {
 		title: def('Open the scores'),
-		// TODO needs a variant for an install whose layers carry no scores at all
 		body: def(rt('Depending on your install, a layer configuration may also carry <strong>scores</strong>. Open them here:')),
 	}
 	export const layerScores = {
 		title: def('Layer scores'),
 		body: def(
 			rt(
-				`<p>These are precomputed "Scores" for layers based on a set of heuristics which are used to determine the relative "fairness" of the layer. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important scores are the <em>Balance Score(Balance Differential)</em> and the <em>Asymmetry Score</em>.</p>
+				`<p>SLM precomputes <strong>scores</strong> for a layer from a set of heuristics, as a rough measure of how fair the matchup is. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important are the <em>Balance Differential</em> and the <em>Asymmetry Score</em>.</p>
 <p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>
 				`,
 			),
 		),
 	}
+	// The reading of the number is written for the scenario's head layer (see LQ_TUTORIAL_LAYERS): ADF has the
+	// edge, and it is a small one. The number itself comes from the install's own layer data.
 	export const balanceScore = {
 		title: def('Balance score'),
-		body: def(
+		body: def((balance: string) =>
 			rt(
-				`This is a composite score calculated by weighting the following factors for each matchup: Armour, Transport, Anti-Infantry capability, and Logistics. Positive numbers mean Team 1 is favoured and negative numbers mean Team 2 is favoured. For example, in the map setting interface, you can see that ADF Combined Arms versus AFU Combined Arms has a balance score of -0.24. This means that Team 2, AFU Combined Arms is slightly favoured.`,
+				`This is a composite score, weighting Armor, Transport, Anti-Infantry capability, and Logistics for each matchup. Positive numbers mean Team 1 is favored and negative numbers mean Team 2 is favored. This layer scores <em>{balance}</em>, so Team 1, ADF Combined Arms, has a small edge, well inside the pool cutoff marked on the gauge.`,
+				{ balance },
 			),
 		),
 	}
 	export const asymmetryScore = {
 		title: def('Asymmetry score'),
-		body: def(
+		body: def((asymmetry: string) =>
 			rt(
-				`This score is meant to give you an idea of the “asymmetry” of the matchup. Generally, similar <em>unit types</em> will be more symmetric (e.g. Combined Arms versus Combined Arms or Support versus Support and so on. This is because similar unit types get similar vehicle loadouts. The third entry in the map setting interface example, ADF Combined Arms versus AFU Light Infantry favours the ADF slightly in terms of balance but is quite asymmetric (though not asymmetric enough to be out of the main pool entirely). In general, when looking at these scores, you should focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.`,
+				`This score is meant to give you an idea of the "asymmetry" of the matchup. Similar <em>unit types</em> are generally more symmetric, such as Combined Arms versus Combined Arms or Support versus Support, because similar unit types get similar vehicle loadouts. This layer, ADF Combined Arms versus AFU Light Infantry, scores <em>{asymmetry}</em>: quite asymmetric, though not asymmetric enough to fall out of the main pool. When reading these scores, focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.`,
+				{ asymmetry },
 			),
 		),
 	}
 
 	export const categorySpecificScores = {
 		title: def('Category specific scores'),
-		body: def(rt(`These are scores that are specific to a particular category for each team. Larger is better.`)),
+		body: def(rt(`Each column is one capability, scored for both teams. A higher marker means that team is stronger in that category.`)),
 	}
 
 	export const layerScoresNonstandard = {
 		title: def('Layer scores'),
 		body: def(
-			rt(`These from your organization's custom layer scoring system. Consult your internal documentation for more information.`),
+			rt(`These are from your organization's custom layer scoring system. Consult your internal documentation for more information.`),
 		),
 	}
 }
 
-// AUTHORED, not proofread: the details window is a draggable window, so it stays open over the queue until the
-// reader closes it, and the tour has no way to close it for them
+// The details window is a draggable window, so it stays open over the queue until the reader closes it, and the
+// tour has no way to close it for them.
 export const closeLayerDetails = {
 	title: def('Close the details'),
 	body: def('Close the details window to carry on with the queue:'),
@@ -192,9 +195,7 @@ export const layerContextMenu = {
 
 export const startEditing = {
 	title: def('Start editing'),
-	body: def(
-		rt("Let's edit the queue. Click <em>Start Editing</em> to communicate to other users that you intend to make changes to the queue:"),
-	),
+	body: def(rt('Click <em>Start Editing</em> to tell other admins you are about to change the queue:')),
 }
 
 // The reader opens an edit session three times, because saving ends one. The first press is where it is
@@ -213,7 +214,7 @@ export const startEditingToClear = {
 export const queueUserPresence = {
 	title: def('Checking for other editors'),
 	body: def(
-		"All current editors and what they're currently working on is shown here. Avatars that are greyed out but are still shown as editing have been idle for an extended period. Mouse over them to see how long they've been idle.",
+		'Everyone editing this server, and what they have open, is shown here. A grayed-out avatar is someone still in the session who has gone idle. Hover it to see for how long.',
 	),
 }
 
@@ -225,7 +226,7 @@ export namespace AddLayersSequence {
 
 	export const addLayersDialogTour = {
 		title: def('The layer selection dialog'),
-		body: def("This is the layer selection dialog. It looks busy at first, so let's break it down."),
+		body: def('This is the layer selection dialog. It looks busy at first, so here it is piece by piece.'),
 	}
 
 	export const layerFilterMenu = {
@@ -275,7 +276,7 @@ export namespace AddLayersSequence {
 
 	export const hideRepeats = {
 		title: def('Hide repeats'),
-		body: def(rt('Click <hideRepeats></hideRepeats> to filter out layer configurations with repeated elements.')),
+		body: def(rt('Click <hideRepeats></hideRepeats> to filter out layers that repeat something played recently.')),
 	}
 
 	export const clickToSelect = {
@@ -287,7 +288,7 @@ export namespace AddLayersSequence {
 		title: def('The context menu, again'),
 		body: def(
 			rt(
-				"The right-click context menu is available for layer configurations in the results, too. If you right click any selected layer while multiple are selected, it's possible to perform actions for all selected layers.",
+				'The right-click context menu is available for layer configurations in the results, too. With several selected, right click any one of them to act on all of them at once.',
 			),
 		),
 	}
@@ -295,7 +296,7 @@ export namespace AddLayersSequence {
 	export const addAnother = {
 		title: def('Add a second layer'),
 		body: def((map: string) =>
-			rt("Let's add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:", {
+			rt('Add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:', {
 				map,
 			}),
 		),
@@ -332,7 +333,7 @@ export const layerAttribution = {
 
 export const reorderLayer = {
 	title: def('Reorder the queue'),
-	body: def(rt('Layer items have a few more editing actions. Drag <grip></grip> to move an item through the queue:')),
+	body: def(rt('Queue items have a few more editing actions. Drag <grip></grip> to move an item through the queue:')),
 }
 
 export const removeLayer = {
@@ -366,7 +367,7 @@ export const replayLayer = {
 	title: def('Replay a layer'),
 	body: def(
 		rt(
-			'To replay a layer from the match history, drag it into the queue. This only works while you are editing, so click <em>Start Editing</em> first.',
+			'To replay a layer from the match history, drag it into the queue. This only works while you are editing, so make sure you have a session open.',
 		),
 	),
 }
@@ -375,7 +376,7 @@ export const addTag = {
 	title: def('Tag an item'),
 	body: def(
 		rt(
-			`<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about layer sets.</p>
+			`<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about a queue item.</p>
 <p>Try adding one now:</p>`,
 		),
 	),
@@ -413,7 +414,11 @@ export const collaborativeEditing = {
 
 export const forceSaveEdit = {
 	title: def('Make a change'),
-	body: def(rt('Force save needs a save to force, and the queue was just saved. Remove an item with <remove></remove>:')),
+	body: def(
+		rt(
+			'Force Save overrides a queue someone else is holding, so there has to be something to save. Remove an item with <remove></remove>:',
+		),
+	),
 }
 
 export const forceSave = {
@@ -467,7 +472,7 @@ export namespace PoolSettings {
 
 	export const indicateMatchesAndMisses = {
 		title: def('Indicate matches and misses'),
-		body: def('Further filters to "indicate" on layer items, and in layer selection dialogs'),
+		body: def('Filters listed here are indicated on queue items and in the layer selection dialog, the same way the pool filter is.'),
 	}
 
 	export const defaultSelect = {

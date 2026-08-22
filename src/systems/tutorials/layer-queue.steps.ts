@@ -294,22 +294,32 @@ function resetClient(run: Tour.RunStores) {
 //
 // Read off the seeded head layer rather than the queue, because the queue is not loaded yet when the run starts,
 // and that layer is a constant of the scenario.
-async function scoreSupport(): Promise<{ any: boolean; builtin: boolean; categories: boolean }> {
+async function scoreSupport(): Promise<{ any: boolean; builtin: boolean; categories: boolean; balance: number; asymmetry: number }> {
 	try {
 		const layer = await LayerQueriesClient.fetchLayerInfo(LAYERS.initial[0])
 		const scores = LC.partitionScores(layer, LC.getEffectiveColumnConfig())
+		const balance = scores.diffs['Balance_Differential']
+		const asymmetry = scores.other['Asymmetry_Score']
 		return {
 			any: Object.values(scores).some((group) => Object.values(group).some((score) => typeof score === 'number')),
 			// the two the copy actually explains; a value can only be here if the column is defined
-			builtin: typeof scores.diffs['Balance_Differential'] === 'number' && typeof scores.other['Asymmetry_Score'] === 'number',
+			builtin: typeof balance === 'number' && typeof asymmetry === 'number',
 			// the per-team chart under them, which is only drawn for dimensions score-ranges.json pairs
 			categories: pairedScoreDimensions(scores).length > 0,
+			// the cards quote them, so they come from the install's data rather than being written into the copy
+			balance,
+			asymmetry,
 		}
 	} catch (error) {
 		// nothing provable about the scores is a reason to leave the arc out, not to narrate it and hope
 		console.error("tour: could not read the tutorial layer's scores, leaving the scores steps out", error)
-		return { any: false, builtin: false, categories: false }
+		return { any: false, builtin: false, categories: false, balance: 0, asymmetry: 0 }
 	}
+}
+
+// the gauge's own caption format, so a card quotes the number the way the reader sees it
+function signedScore(value: number) {
+	return `${value > 0 ? '+' : ''}${value.toFixed(2)}`
 }
 
 // ============================== checkpoints ==============================
@@ -454,14 +464,20 @@ export async function buildSteps() {
 						id: 'balance-score',
 						anchor: 'layer-score-Balance_Differential',
 						spotlight: 'layer-details-window',
-						msg: M.LayerDetails.balanceScore,
+						msg: {
+							title: M.LayerDetails.balanceScore.title,
+							body: () => M.LayerDetails.balanceScore.body(signedScore(scores.balance)),
+						},
 						premise: domPresent('layer-scores'),
 					},
 					{
 						id: 'asymmetry-score',
 						anchor: 'layer-score-Asymmetry_Score',
 						spotlight: 'layer-details-window',
-						msg: M.LayerDetails.asymmetryScore,
+						msg: {
+							title: M.LayerDetails.asymmetryScore.title,
+							body: () => M.LayerDetails.asymmetryScore.body(signedScore(scores.asymmetry)),
+						},
 						premise: domPresent('layer-scores'),
 					},
 					...(scores.categories
