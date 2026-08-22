@@ -27,7 +27,7 @@ describe('pool configuration schema', () => {
 			warnFor: [{ filterId: 'b-filter', applyAs: 'regular' }],
 			constrainGeneration: [{ filterId: 'the-pool', applyAs: 'regular' }],
 			skipWarningsForTags: ['planned:aaaaaa'],
-			repeatRules: [{ label: 'Map', field: 'Map', within: 4 }],
+			repeatRules: [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }],
 		}
 		const parsed = SETTINGS.PoolConfigurationSchema.parse(config)
 		expect(parsed).toEqual(config)
@@ -80,8 +80,8 @@ describe('getSettingsConstraints', () => {
 		],
 		constrainGeneration: [{ filterId: 'e-filter', applyAs: 'inverted' }],
 		repeatRules: [
-			{ label: 'Map', field: 'Map', within: 4 },
-			{ label: 'Gen', field: 'Layer', within: 2, autogen: true },
+			{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true },
+			{ label: 'Gen', field: 'Layer', within: 2, autogen: true, warn: true, indicate: true },
 		],
 	})
 

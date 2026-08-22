@@ -40,6 +40,12 @@ export type DragItem =
 			type: 'backburner-item'
 			id: string
 	  }
+	| {
+			// a row in a pool's repeat-rule list. Rules are identified by position, so the id is panel + index --
+			// see ruleDragId (pool-config-panels), which owns the encoding.
+			type: 'repeat-rule'
+			id: string
+	  }
 
 {
 	const _: DragItem = undefined! satisfies { id: string | number }
