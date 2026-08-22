@@ -29,7 +29,6 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
 import * as AppEvents from '@/models/app-events.models'
-import type * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
@@ -128,7 +127,6 @@ export type MatchHistoryState = {
 	historyMtx: Mutex
 	update$: Rx.Subject<CS.Otel>
 	recentMatches: MH.MatchDetails[]
-	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 } & Parts<USR.UserPart>
 
 export const orpcRouter = {

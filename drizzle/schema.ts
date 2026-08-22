@@ -3,7 +3,7 @@ import superjson from 'superjson'
 
 import * as ZodUtils from '@/lib/zod-utils'
 
-import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
+import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
 // 64-bit ids (discord/steam) are stored as TEXT: sqlite INTEGER is signed 64-bit and better-sqlite3
 // returns plain (lossy) JS numbers, so text keeps precision while preserving `bigint` app-facing types.
@@ -52,17 +52,6 @@ export const matchHistory = sqliteTable(
 		serverOrdinalUnique: unique('serverOrdinalUnique').on(table.serverId, table.ordinal),
 	}),
 )
-
-export const balanceTriggerEvents = sqliteTable('balanceTriggerEvents', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	triggerId: text('triggerId').notNull(),
-	triggerVersion: integer('triggerVersion').notNull(),
-	matchTriggeredId: integer('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
-	// the generic form of the message
-	strongerTeam: text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
-	level: text('level', { enum: ZodUtils.enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
-	evaluationResult: json('evaluationResult').notNull(),
-})
 
 export const serverEvents = sqliteTable(
 	'serverEvents',

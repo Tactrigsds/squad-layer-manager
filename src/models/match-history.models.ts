@@ -5,7 +5,6 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
 import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
-import type * as BAL from '@/models/balance-triggers.models'
 import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
@@ -67,7 +66,6 @@ export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }
 
 export type PublicMatchHistoryState = {
 	recentMatches: MatchDetails[]
-	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 }
 
 export const NormedTeamIdSchema = z.enum(['A', 'B'])
@@ -331,22 +329,6 @@ export function getDenormedTeamId(normedTeamId: NormedTeamId | SM.TeamId, parity
 	}
 }
 
-export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
-	const currentMatch = state.recentMatches[state.recentMatches.length - 1] as MatchDetails | undefined
-	const previousMatch = state.recentMatches[state.recentMatches.length - 2] as MatchDetails | undefined
-	const active: BAL.BalanceTriggerEvent[] = []
-	for (let i = state.recentBalanceTriggerEvents.length - 1; i >= 0; i--) {
-		const event = state.recentBalanceTriggerEvents[i]
-		if (
-			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game') ||
-			(previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
-		) {
-			active.push(event)
-		}
-	}
-	return Array.from(active)
-}
-
 // `source` attributes a match no queue item accounts for -- the server picked the layer itself.
 export function getNewMatchHistoryEntry(opts: {
 	layerId: L.LayerId
@@ -385,7 +367,8 @@ export namespace Ctx {
 		mtx: Mutex
 		update$: Rx.Subject<void>
 		dispatchUpdate: () => void
+		// fires once per match that reaches post-game, after the outcome is persisted and state reloaded
+		finalized$: Rx.Subject<{ matchId: number }>
 		recentMatches: MatchDetails[]
-		recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 	} & Parts<USR.UserPart>
 }

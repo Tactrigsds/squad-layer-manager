@@ -27,11 +27,10 @@ const update$ = new Rx.Subject<string>()
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	Servers.setup(ctx, (sctx, cleanup) => {
 		cleanup.push(
-			sctx.server.appEvent$
+			sctx.matchHistory.finalized$
 				.pipe(
-					Rx.filter(([, event]) => event.type === 'MATCH_ENDED'),
-					Instr.durableSub('balance-triggers:evaluate', { module }, async ([, event]) => {
-						await evaluate(sctx, event.matchId)
+					Instr.durableSub('balance-triggers:evaluate', { module }, async ({ matchId }) => {
+						await evaluate(sctx, matchId)
 					}),
 				)
 				.subscribe(),
