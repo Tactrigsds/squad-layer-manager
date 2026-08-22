@@ -1,3 +1,5 @@
+import type { Locator, Page } from '@playwright/test'
+
 import * as FB from '@/models/filter-builders'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
@@ -7,7 +9,8 @@ import { expect, test } from './fixtures'
 // The filter pages, against one app: the entity form (the only tanstack-form surface, so where a
 // form-library upgrade breaks first), the reference graph a filter cannot be deleted out of, and the
 // cycle refusal. The tests read the seeded graph before they mutate it: the reference assertions run
-// before the rename, and the cycle test leaves its unsaved edit to die with the page.
+// before the rename, and the cycle test leaves its unsaved edit to die with the page -- which now means the
+// server discarding the draft once the closing page was the last client editing it.
 
 let app: AppFixture
 
@@ -21,6 +24,10 @@ test.beforeAll(async () => {
 			filter('unused', 'AAS Only', FB.and([FB.eq('Gamemode', 'AAS')])),
 			// its own filter, because the text-mode test runs after `unused` has been deleted out from under it
 			filter('text-mode', 'Text Mode', FB.and([FB.eq('Gamemode', 'AAS')])),
+			// the collaborative journey leaves its draft to be discarded, so it never writes to this one
+			filter('collab', 'Collab Draft', FB.and([FB.eq('Gamemode', 'RAAS')])),
+			// a block with a child of its own, so that cloning it has to carry a subtree rather than one node
+			filter('nested', 'Nested Block', FB.and([FB.eq('Gamemode', 'RAAS'), FB.or([FB.eq('Map', 'Harju')])])),
 		],
 		serverSettings: (settings) => {
 			settings.queue.mainPool.poolFilter = { filterId: 'raas-harju', mode: 'include' }
@@ -174,6 +181,40 @@ test.describe('filter references', () => {
 	})
 })
 
+// The filter's draft lives on the server, one session per filter entity, so two clients on the same page are
+// two replicas of it rather than two private copies. The draft outlives neither of them: once nobody is left
+// editing it, it is discarded rather than saved.
+test.describe('collaborative filter editing', () => {
+	test("one editor's edit shows up in the other, and an abandoned draft is discarded", async ({ page }) => {
+		const pageB = await page.context().newPage()
+		try {
+			await page.goto(app.loginUrl(app.adminUser, '/filters/collab'))
+			await pageB.goto(app.loginUrl(app.adminUser, '/filters/collab'))
+			for (const p of [page, pageB]) {
+				await expect(p.getByRole('button', { name: 'Add comment' }).first()).toBeVisible({ timeout: 25_000 })
+			}
+
+			// A annotates a node; B is a replica of the same draft, so B is looking at the comment too
+			await page.getByRole('button', { name: 'Add comment' }).first().click()
+			await page.getByRole('textbox', { name: 'Node comment' }).fill('a shared draft, not a private copy')
+			// the builder renders the comment and the text mirror repeats it, so match the first
+			await expect(pageB.getByText('a shared draft, not a private copy').first()).toBeVisible({ timeout: 20_000 })
+
+			// A leaves without saving, and was the only one editing -- so there is nobody left to commit the
+			// draft, and B is returned to the filter as it is stored
+			page.once('dialog', (dialog) => void dialog.accept())
+			await page.getByRole('link', { name: 'Filters', exact: true }).click()
+			await page.waitForURL('**/filters')
+			await expect(pageB.getByText('a shared draft, not a private copy')).toHaveCount(0, { timeout: 20_000 })
+
+			const stored = app.readDb().prepare('select name from filters where id = ?').get('collab') as { name: string }
+			expect(stored.name).toBe('Collab Draft')
+		} finally {
+			await pageB.close()
+		}
+	})
+})
+
 // A vehicle picker narrows by two groupings at once. Collection tabs, because there are a handful; the
 // vehicle classes are too many to tab through and drill in instead. Runs against a new filter, so it owns
 // no seeded state and cannot disturb anything above it.
@@ -217,6 +258,70 @@ test.describe('option groupings', () => {
 	})
 })
 
+// Every node renders as one readable row until it is asked to open, which is what lets these read the tree as a
+// list of strings. A condition goes in where it is wanted rather than at the end of its block, and a node is
+// cloned along with everything under it. Against a real filter, so the ops go through the shared draft on the
+// server; the draft is left unsaved and dies with the page.
+test.describe('reading and editing the tree', () => {
+	// one entry per node, in tree order, each the node as it reads
+	const rowsOf = (scope: Page | Locator) => scope.locator('[data-node-summary]')
+
+	test('reads as compact rows, and opens one node at a time', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
+		const rows = rowsOf(page)
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'], { timeout: 20_000 })
+		await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(0)
+
+		// the row is replaced by the comparison's own pickers, the first of which is its column
+		await page.getByRole('button', { name: 'Gamemode = RAAS', exact: true }).click()
+		await expect(page.getByRole('combobox').filter({ hasText: /^Gamemode$/ })).toHaveCount(1)
+
+		// opening a second node hands the editor over rather than leaving two open
+		await page.getByRole('button', { name: 'Map = Harju', exact: true }).click()
+		await expect(page.getByRole('button', { name: 'Gamemode = RAAS', exact: true })).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toHaveCount(1)
+
+		await page.keyboard.press('Escape')
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
+	})
+
+	test('inserts above the first condition, and clones a block with its child', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/nested'))
+		const rows = rowsOf(page)
+		// the editor is only live once the table has been constrained to the filter; editing before that races
+		// the frame's setup
+		await expect(page.getByRole('row').filter({ hasText: 'Harju' }).first()).toBeVisible({ timeout: 20_000 })
+		await expect(rows).toHaveText(['all of', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
+
+		// the gap above the first condition, where the block's own add button would append
+		await page.getByRole('button', { name: 'Insert condition here' }).first().click()
+		await page.getByRole('button', { name: 'layer', exact: true }).click()
+		// a node with nothing to read yet opens as its editor, so it takes a Done to read the tree again
+		await page.getByRole('button', { name: 'Done' }).click()
+		await expect(rows).toHaveText(['all of', 'Layer is any of incomplete', 'Gamemode = RAAS', 'any of', 'Map = Harju'])
+
+		const block = page.getByRole('button', { name: 'any of', exact: true }).locator('xpath=..')
+		await block.getByRole('button', { name: 'Duplicate' }).click()
+		await expect(rows).toHaveText([
+			'all of',
+			'Layer is any of incomplete',
+			'Gamemode = RAAS',
+			'any of',
+			'Map = Harju',
+			'any of',
+			'Map = Harju',
+		])
+		// the copy brought its child rather than landing as an empty block beside the original
+		await expect(rowsOf(page.locator('.filter-node-display').last())).toHaveText(['any of', 'Map = Harju'])
+
+		// a clone shares its args with the original, which used to render as a YAML alias whose anchor sat on a
+		// sibling -- unresolvable once the compact pass rendered that node on its own, and it took the tab down
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+		await expect(page.locator('.cm-content')).toContainText('Harju')
+		await expect(page.getByText('This page failed')).toHaveCount(0)
+	})
+})
+
 // The builder stays mounted behind the text tab, so it re-renders on every keystroke the text editor accepts.
 // A column name is free-form text, which means a half-typed one is a schema-valid filter the builder has to
 // survive; it used to reach an enum lookup keyed on the closed column set and take the whole page down.
@@ -234,7 +339,11 @@ test.describe('the filter text editor', () => {
 
 		await page.getByRole('button', { name: 'Builder', exact: true }).click()
 		await expect(page.getByText('This page failed')).toHaveCount(0)
-		// the column keeps its own name in the picker, and the value editor beside it offers nothing to pick
+		// the compact row falls back to the column's own name, and so does the picker behind it
+		const row = page.getByRole('button', { name: 'Gamemod = AAS', exact: true })
+		await expect(row).toBeVisible()
+		await row.click()
+		// the value editor beside it offers nothing to pick, which is the lookup that used to throw
 		await expect(page.getByRole('combobox', { name: 'Column' })).toContainText('Gamemod')
 	})
 

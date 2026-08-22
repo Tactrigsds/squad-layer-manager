@@ -14,6 +14,7 @@ import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
+import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
@@ -119,6 +120,8 @@ await Instr.spanOp('main', { module }, async () => {
 	// "has this database ever been configured" off
 	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await FilterEntity.setup()
+	// after FilterEntity, whose filter table it reads when provisioning a session
+	FilterEdit.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
 	SquadBrowser.setup()
