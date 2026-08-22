@@ -362,7 +362,7 @@ export const addTag = {
 	title: def('Tag an item'),
 	body: def(
 		rt(
-			`<p><strong>Tags</strong> are short labels your install defines, attached to a layer item so your fellow admins can read them: that a layer was already agreed on, or that it is a risky pick.</p>
+			`<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about layer sets.</p>
 <p>Try adding one now:</p>`,
 		),
 	),
@@ -454,9 +454,7 @@ export namespace PoolSettings {
 
 	export const indicateMatchesAndMisses = {
 		title: def('Indicate matches and misses'),
-		body: def(
-			'Further filters to indicate on layer items and in the layer selection dialog, either when a layer matches or when it misses.',
-		),
+		body: def('Further filters to "indicate" on layer items, and in layer selection dialogs'),
 	}
 
 	export const defaultSelect = {

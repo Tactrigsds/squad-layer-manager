@@ -1,16 +1,8 @@
 {
-	"\n(Winner randomly selected - {count} way tie.)": [
-		"\n(Winner randomly selected - ",
-		[
-			"count"
-		],
-		" way tie.)"
-	],
+	"\n(Winner randomly selected - {count} way tie.)": ["\n(Winner randomly selected - ", ["count"], " way tie.)"],
 	"\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to {toShortLayerNameFromId}": [
 		"\nVote has ended!\nNot enough votes received to decide outcome.\nDefaulting to ",
-		[
-			"toShortLayerNameFromId"
-		]
+		["toShortLayerNameFromId"]
 	],
 	"\nVote {early, select, yes {was ended early} other {has ended}}:": [
 		"\nVote ",
@@ -18,187 +10,55 @@
 			"early",
 			"select",
 			{
-				"yes": [
-					"was ended early"
-				],
-				"other": [
-					"has ended"
-				]
+				"yes": ["was ended early"],
+				"other": ["has ended"]
 			}
 		],
 		":"
 	],
-	" ({choices})": [
-		" (",
-		[
-			"choices"
-		],
-		")"
-	],
-	" ({parts})": [
-		" (",
-		[
-			"parts"
-		],
-		")"
-	],
-	" for {reasonLabel}": [
-		" for ",
-		[
-			"reasonLabel"
-		]
-	],
+	" ({choices})": [" (", ["choices"], ")"],
+	" ({parts})": [" (", ["parts"], ")"],
+	" for {reasonLabel}": [" for ", ["reasonLabel"]],
 	" from their squad{hasReason, select, yes { for {reasonLabel}} other {}}": [
 		" from their squad",
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reasonLabel"
-					]
-				],
+				"yes": [" for ", ["reasonLabel"]],
 				"other": []
 			}
 		]
 	],
-	" with {weapon}": [
-		" with ",
-		[
-			"weapon"
-		]
-	],
+	" with {weapon}": [" with ", ["weapon"]],
 	"'{{arg1}}' 2h '{{rest2}}'": "{{arg1}} 2h {{rest2}}",
-	"(diff: {value})": [
-		"(diff: ",
-		[
-			"value"
-		],
-		")"
-	],
-	"({action} {source}{nextLayer})": [
-		"(",
-		[
-			"action"
-		],
-		" ",
-		[
-			"source"
-		],
-		[
-			"nextLayer"
-		],
-		")"
-	],
-	"({actor} warned {warnee})": [
-		"(",
-		[
-			"actor"
-		],
-		" warned ",
-		[
-			"warnee"
-		],
-		")"
-	],
-	"({length} wins)": [
-		"(",
-		[
-			"length"
-		],
-		" wins)"
-	],
-	"({step}/{total}) {msg}": [
-		"(",
-		[
-			"step"
-		],
-		"/",
-		[
-			"total"
-		],
-		") ",
-		[
-			"msg"
-		]
-	],
-	"+{added}": [
-		"+",
-		[
-			"added"
-		]
-	],
-	"+{count} more": [
-		"+",
-		[
-			"count"
-		],
-		" more"
-	],
+	"(diff: {value})": ["(diff: ", ["value"], ")"],
+	"({action} {source}{nextLayer})": ["(", ["action"], " ", ["source"], ["nextLayer"], ")"],
+	"({actor} warned {warnee})": ["(", ["actor"], " warned ", ["warnee"], ")"],
+	"({length} wins)": ["(", ["length"], " wins)"],
+	"({step}/{total}) {msg}": ["(", ["step"], "/", ["total"], ") ", ["msg"]],
+	"+{added}": ["+", ["added"]],
+	"+{count} more": ["+", ["count"], " more"],
 	", next layer {external, select, yes {now} other {set to}} {layer}": [
 		", next layer ",
 		[
 			"external",
 			"select",
 			{
-				"yes": [
-					"now"
-				],
-				"other": [
-					"set to"
-				]
+				"yes": ["now"],
+				"other": ["set to"]
 			}
 		],
 		" ",
-		[
-			"layer"
-		]
+		["layer"]
 	],
-	", switching to {layer}": [
-		", switching to ",
-		[
-			"layer"
-		]
-	],
-	": \"{reason}\"": [
-		": \"",
-		[
-			"reason"
-		],
-		"\""
-	],
-	": {layer} won": [
-		": ",
-		[
-			"layer"
-		],
-		" won"
-	],
-	"<p><strong>Tags</strong> are short labels your install defines, attached to a layer item so your fellow admins can read them: that a layer was already agreed on, or that it is a risky pick.</p>\n<p>Try adding one now:</p>": [
-		[
-			"p",
-			"tag",
-			[
-				[
-					"strong",
-					"tag",
-					[
-						"Tags"
-					]
-				],
-				" are short labels your install defines, attached to a layer item so your fellow admins can read them: that a layer was already agreed on, or that it is a risky pick."
-			]
-		],
+	", switching to {layer}": [", switching to ", ["layer"]],
+	": \"{reason}\"": [": \"", ["reason"], "\""],
+	": {layer} won": [": ", ["layer"], " won"],
+	"<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about layer sets.</p>\n<p>Try adding one now:</p>": [
+		["p", "tag", [["strong", "tag", ["Tags"]], " are a simple way of communicating with your fellow admins about layer sets."]],
 		"\n",
-		[
-			"p",
-			"tag",
-			[
-				"Try adding one now:"
-			]
-		]
+		["p", "tag", ["Try adding one now:"]]
 	],
 	"<p>A Squad server swaps every player between <team1>Team 1</team1> and <team2>Team 2</team2> on each map roll.</p>\n<p>To make the queue and the match history more easily scannable, SLM <strong>normalizes</strong> the teams: the two persistent teams are named <teamA>Team A</teamA> and <teamB>Team B</teamB>, and <teamA>Team A</teamA> is always shown on the left. These colours mean the same thing everywhere in the app.</p>\n<p>The <mark1>(1)</mark1> and <mark2>(2)</mark2> beside each team indicate which team is <team1>Team 1</team1> and which is <team2>Team 2</team2>.</p>\n<p>Turn normalization off with <em>Normalize Teams</em> in the avatar menu, top right. The same layer then reads: {denormalized}</p>": [
 		[
@@ -206,21 +66,9 @@
 			"tag",
 			[
 				"A Squad server swaps every player between ",
-				[
-					"team1",
-					"tag",
-					[
-						"Team 1"
-					]
-				],
+				["team1", "tag", ["Team 1"]],
 				" and ",
-				[
-					"team2",
-					"tag",
-					[
-						"Team 2"
-					]
-				],
+				["team2", "tag", ["Team 2"]],
 				" on each map roll."
 			]
 		],
@@ -230,37 +78,13 @@
 			"tag",
 			[
 				"To make the queue and the match history more easily scannable, SLM ",
-				[
-					"strong",
-					"tag",
-					[
-						"normalizes"
-					]
-				],
+				["strong", "tag", ["normalizes"]],
 				" the teams: the two persistent teams are named ",
-				[
-					"teamA",
-					"tag",
-					[
-						"Team A"
-					]
-				],
+				["teamA", "tag", ["Team A"]],
 				" and ",
-				[
-					"teamB",
-					"tag",
-					[
-						"Team B"
-					]
-				],
+				["teamB", "tag", ["Team B"]],
 				", and ",
-				[
-					"teamA",
-					"tag",
-					[
-						"Team A"
-					]
-				],
+				["teamA", "tag", ["Team A"]],
 				" is always shown on the left. These colours mean the same thing everywhere in the app."
 			]
 		],
@@ -270,37 +94,13 @@
 			"tag",
 			[
 				"The ",
-				[
-					"mark1",
-					"tag",
-					[
-						"(1)"
-					]
-				],
+				["mark1", "tag", ["(1)"]],
 				" and ",
-				[
-					"mark2",
-					"tag",
-					[
-						"(2)"
-					]
-				],
+				["mark2", "tag", ["(2)"]],
 				" beside each team indicate which team is ",
-				[
-					"team1",
-					"tag",
-					[
-						"Team 1"
-					]
-				],
+				["team1", "tag", ["Team 1"]],
 				" and which is ",
-				[
-					"team2",
-					"tag",
-					[
-						"Team 2"
-					]
-				],
+				["team2", "tag", ["Team 2"]],
 				"."
 			]
 		],
@@ -310,17 +110,9 @@
 			"tag",
 			[
 				"Turn normalization off with ",
-				[
-					"em",
-					"tag",
-					[
-						"Normalize Teams"
-					]
-				],
+				["em", "tag", ["Normalize Teams"]],
 				" in the avatar menu, top right. The same layer then reads: ",
-				[
-					"denormalized"
-				]
+				["denormalized"]
 			]
 		]
 	],
@@ -330,45 +122,15 @@
 			"tag",
 			[
 				"A repeat rule has a ",
-				[
-					"em",
-					"tag",
-					[
-						"Label"
-					]
-				],
+				["em", "tag", ["Label"]],
 				", a ",
-				[
-					"em",
-					"tag",
-					[
-						"Field"
-					]
-				],
+				["em", "tag", ["Field"]],
 				" and a ",
-				[
-					"em",
-					"tag",
-					[
-						"Within"
-					]
-				],
+				["em", "tag", ["Within"]],
 				" value. It matches an item in the queue or the match history when that item's ",
-				[
-					"em",
-					"tag",
-					[
-						"Field"
-					]
-				],
+				["em", "tag", ["Field"]],
 				" -- map, gamemode, faction, and so on -- has already been played ",
-				[
-					"em",
-					"tag",
-					[
-						"Within"
-					]
-				],
+				["em", "tag", ["Within"]],
 				" the configured range."
 			]
 		],
@@ -378,37 +140,13 @@
 			"tag",
 			[
 				"For per-team fields like ",
-				[
-					"em",
-					"tag",
-					[
-						"Faction"
-					]
-				],
+				["em", "tag", ["Faction"]],
 				", only repeats by the same persistent team (",
-				[
-					"teamA",
-					"tag",
-					[
-						"Team A"
-					]
-				],
+				["teamA", "tag", ["Team A"]],
 				" or ",
-				[
-					"teamB",
-					"tag",
-					[
-						"Team B"
-					]
-				],
+				["teamB", "tag", ["Team B"]],
 				") count, unless the rule has ",
-				[
-					"em",
-					"tag",
-					[
-						"Cross-team"
-					]
-				],
+				["em", "tag", ["Cross-team"]],
 				" enabled."
 			]
 		]
@@ -419,48 +157,18 @@
 			"tag",
 			[
 				"Several people can edit the queue at once. While anyone else is still editing, the queue is not saved, and the save button reads ",
-				[
-					"em",
-					"tag",
-					[
-						"Finish Editing"
-					]
-				],
+				["em", "tag", ["Finish Editing"]],
 				" instead of ",
-				[
-					"em",
-					"tag",
-					[
-						"Save"
-					]
-				],
+				["em", "tag", ["Save"]],
 				". It reads ",
-				[
-					"em",
-					"tag",
-					[
-						"Finish Editing"
-					]
-				],
+				["em", "tag", ["Finish Editing"]],
 				" for you as well until you have actually changed something."
 			]
 		],
 		"\n",
-		[
-			"p",
-			"tag",
-			[
-				"If everyone leaves the editing session by closing the page, the changes are discarded after a short delay."
-			]
-		],
+		["p", "tag", ["If everyone leaves the editing session by closing the page, the changes are discarded after a short delay."]],
 		"\n",
-		[
-			"p",
-			"tag",
-			[
-				"If the map rolls while you are editing, your edits are discarded."
-			]
-		]
+		["p", "tag", ["If the map rolls while you are editing, your edits are discarded."]]
 	],
 	"<p>These are precomputed \"Scores\" for layers based on a set of heuristics which are used to determine the relative \"fairness\" of the layer. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important scores are the <em>Balance Score(Balance Differential)</em> and the <em>Asymmetry Score</em>.</p>\n<p>These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See <scoresDocs>layer_data.md</scoresDocs> for more.</p>\n\t\t\t\t": [
 		[
@@ -468,21 +176,9 @@
 			"tag",
 			[
 				"These are precomputed \"Scores\" for layers based on a set of heuristics which are used to determine the relative \"fairness\" of the layer. These are SLM's default scores, and they only exist for RAAS, FRAAS, AAS, and TC. The two most important scores are the ",
-				[
-					"em",
-					"tag",
-					[
-						"Balance Score(Balance Differential)"
-					]
-				],
+				["em", "tag", ["Balance Score(Balance Differential)"]],
 				" and the ",
-				[
-					"em",
-					"tag",
-					[
-						"Asymmetry Score"
-					]
-				],
+				["em", "tag", ["Asymmetry Score"]],
 				"."
 			]
 		],
@@ -492,144 +188,55 @@
 			"tag",
 			[
 				"These are from the standard set of scores that ship with SLM, but it's possible to introduce your own scoring system. See ",
-				[
-					"scoresDocs",
-					"tag",
-					[
-						"layer_data.md"
-					]
-				],
+				["scoresDocs", "tag", ["layer_data.md"]],
 				" for more."
 			]
 		],
 		"\n\t\t\t\t"
 	],
 	"<p>This is where you search for a layer configuration with a particular map, gamemode, faction and so on.</p>\n<p>Try searching for layers with a <em>Map</em> of <strong>{map}</strong>, a <em>Gamemode</em> of <strong>{gamemode}</strong>, and <strong>{faction}</strong> on either team.</p>": [
-		[
-			"p",
-			"tag",
-			[
-				"This is where you search for a layer configuration with a particular map, gamemode, faction and so on."
-			]
-		],
+		["p", "tag", ["This is where you search for a layer configuration with a particular map, gamemode, faction and so on."]],
 		"\n",
 		[
 			"p",
 			"tag",
 			[
 				"Try searching for layers with a ",
-				[
-					"em",
-					"tag",
-					[
-						"Map"
-					]
-				],
+				["em", "tag", ["Map"]],
 				" of ",
-				[
-					"strong",
-					"tag",
-					[
-						[
-							"map"
-						]
-					]
-				],
+				["strong", "tag", [["map"]]],
 				", a ",
-				[
-					"em",
-					"tag",
-					[
-						"Gamemode"
-					]
-				],
+				["em", "tag", ["Gamemode"]],
 				" of ",
-				[
-					"strong",
-					"tag",
-					[
-						[
-							"gamemode"
-						]
-					]
-				],
+				["strong", "tag", [["gamemode"]]],
 				", and ",
-				[
-					"strong",
-					"tag",
-					[
-						[
-							"faction"
-						]
-					]
-				],
+				["strong", "tag", [["faction"]]],
 				" on either team."
 			]
 		]
 	],
 	"<strong>Randy Newman</strong>, instrumental in getting SLM into the TacTrig admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn.": [
-		[
-			"strong",
-			"tag",
-			[
-				"Randy Newman"
-			]
-		],
+		["strong", "tag", ["Randy Newman"]],
 		", instrumental in getting SLM into the TacTrig admin workflow by making hardware available for deployment and writing approachable documentation. He graciously put up with my constant feature additions, which made his job harder at every turn."
 	],
 	"<strong>Revert</strong> discards unsaved edits back to the last saved state.": [
-		[
-			"strong",
-			"tag",
-			[
-				"Revert"
-			]
-		],
+		["strong", "tag", ["Revert"]],
 		" discards unsaved edits back to the last saved state."
 	],
 	"<strong>Zero</strong>, for kicking the project off, and for his incredible work building out the layer scoring system that is integral to SLM. Our discussions also shaped much of the early feature set, which became some of SLM's defining characteristics. Without his effort this project wouldn't have been feasible.": [
-		[
-			"strong",
-			"tag",
-			[
-				"Zero"
-			]
-		],
+		["strong", "tag", ["Zero"]],
 		", for kicking the project off, and for his incredible work building out the layer scoring system that is integral to SLM. Our discussions also shaped much of the early feature set, which became some of SLM's defining characteristics. Without his effort this project wouldn't have been feasible."
 	],
-	"<strong>{count}</strong> matched layers": [
-		[
-			"strong",
-			"tag",
-			[
-				[
-					"count"
-				]
-			]
-		],
-		" matched layers"
-	],
+	"<strong>{count}</strong> matched layers": [["strong", "tag", [["count"]]], " matched layers"],
 	"<strong>{count}</strong> {count, plural, one {setting} other {settings}} changed": [
-		[
-			"strong",
-			"tag",
-			[
-				[
-					"count"
-				]
-			]
-		],
+		["strong", "tag", [["count"]]],
 		" ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					"setting"
-				],
-				"other": [
-					"settings"
-				]
+				"one": ["setting"],
+				"other": ["settings"]
 			},
 			0
 		],
@@ -640,33 +247,21 @@
 			"strong",
 			"tag",
 			[
-				[
-					"team"
-				],
+				["team"],
 				[
 					"hasRole",
 					"select",
 					{
-						"yes": [
-							" (",
-							[
-								"role"
-							],
-							")"
-						],
+						"yes": [" (", ["role"], ")"],
 						"other": []
 					}
 				]
 			]
 		],
 		" - ",
-		[
-			"faction"
-		],
+		["faction"],
 		" (",
-		[
-			"unitType"
-		],
+		["unitType"],
 		")"
 	],
 	"<strong>{team}{hasRole, select, yes { ({role})} other {}}</strong> - {faction} {unit}": [
@@ -674,33 +269,21 @@
 			"strong",
 			"tag",
 			[
-				[
-					"team"
-				],
+				["team"],
 				[
 					"hasRole",
 					"select",
 					{
-						"yes": [
-							" (",
-							[
-								"role"
-							],
-							")"
-						],
+						"yes": [" (", ["role"], ")"],
 						"other": []
 					}
 				]
 			]
 		],
 		" - ",
-		[
-			"faction"
-		],
+		["faction"],
 		" ",
-		[
-			"unit"
-		]
+		["unit"]
 	],
 	"<team>{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}</team>{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}<team>{faction}</team>)} other {}}": [
 		[
@@ -711,18 +294,10 @@
 					"slot",
 					"select",
 					{
-						"1": [
-							"Team 1"
-						],
-						"A": [
-							"Team A"
-						],
-						"B": [
-							"Team B"
-						],
-						"other": [
-							"Team 2"
-						]
+						"1": ["Team 1"],
+						"A": ["Team A"],
+						"B": ["Team B"],
+						"other": ["Team 2"]
 					}
 				]
 			]
@@ -737,21 +312,11 @@
 						"isCurrent",
 						"select",
 						{
-							"yes": [
-								"current "
-							],
+							"yes": ["current "],
 							"other": []
 						}
 					],
-					[
-						"team",
-						"tag",
-						[
-							[
-								"faction"
-							]
-						]
-					],
+					["team", "tag", [["faction"]]],
 					")"
 				],
 				"other": []
@@ -760,29 +325,11 @@
 	],
 	"A <strong>queue item</strong> occupies one slot in the queue. Once an item reaches the top of the queue, SLM runs <code>AdminSetNextLayer</code> over RCON with the <strong>layer configuration</strong> that item holds.": [
 		"A ",
-		[
-			"strong",
-			"tag",
-			[
-				"queue item"
-			]
-		],
+		["strong", "tag", ["queue item"]],
 		" occupies one slot in the queue. Once an item reaches the top of the queue, SLM runs ",
-		[
-			"code",
-			"tag",
-			[
-				"AdminSetNextLayer"
-			]
-		],
+		["code", "tag", ["AdminSetNextLayer"]],
 		" over RCON with the ",
-		[
-			"strong",
-			"tag",
-			[
-				"layer configuration"
-			]
-		],
+		["strong", "tag", ["layer configuration"]],
 		" that item holds."
 	],
 	"A Vote is pending{autostart, select, yes { and will be run in {formattedTime}} other {}}. Run {showNextCmd} to preview the vote": [
@@ -791,19 +338,12 @@
 			"autostart",
 			"select",
 			{
-				"yes": [
-					" and will be run in ",
-					[
-						"formattedTime"
-					]
-				],
+				"yes": [" and will be run in ", ["formattedTime"]],
 				"other": []
 			}
 		],
 		". Run ",
-		[
-			"showNextCmd"
-		],
+		["showNextCmd"],
 		" to preview the vote"
 	],
 	"A layer configuration is made up of:\n<ul>\n    <li>the map, gamemode and layer version: <code>{layerName}</code></li>\n    <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>\n</ul>\n<p>For this layer, the RCON command that will be run on the server is <code>{command}</code>.</p>": [
@@ -813,228 +353,78 @@
 			"tag",
 			[
 				"\n    ",
-				[
-					"li",
-					"tag",
-					[
-						"the map, gamemode and layer version: ",
-						[
-							"code",
-							"tag",
-							[
-								[
-									"layerName"
-								]
-							]
-						]
-					]
-				],
+				["li", "tag", ["the map, gamemode and layer version: ", ["code", "tag", [["layerName"]]]]],
 				"\n    ",
 				[
 					"li",
 					"tag",
-					[
-						"the faction and unit (subfaction) for each team: ",
-						[
-							"code",
-							"tag",
-							[
-								[
-									"team1"
-								]
-							]
-						],
-						" and ",
-						[
-							"code",
-							"tag",
-							[
-								[
-									"team2"
-								]
-							]
-						]
-					]
+					["the faction and unit (subfaction) for each team: ", ["code", "tag", [["team1"]]], " and ", ["code", "tag", [["team2"]]]]
 				],
 				"\n"
 			]
 		],
 		"\n",
-		[
-			"p",
-			"tag",
-			[
-				"For this layer, the RCON command that will be run on the server is ",
-				[
-					"code",
-					"tag",
-					[
-						[
-							"command"
-						]
-					]
-				],
-				"."
-			]
-		]
+		["p", "tag", ["For this layer, the RCON command that will be run on the server is ", ["code", "tag", [["command"]]], "."]]
 	],
 	"A layer you added is <strong>attributed</strong> to you here.": [
 		"A layer you added is ",
-		[
-			"strong",
-			"tag",
-			[
-				"attributed"
-			]
-		],
+		["strong", "tag", ["attributed"]],
 		" to you here."
 	],
 	"A reason is required for {actionName}, but no reasons are configured for it (see Admin Action Reasons in settings).": [
 		"A reason is required for ",
-		[
-			"actionName"
-		],
+		["actionName"],
 		", but no reasons are configured for it (see Admin Action Reasons in settings)."
 	],
-	"A reason is required for {actionName}.": [
-		"A reason is required for ",
-		[
-			"actionName"
-		],
-		"."
-	],
+	"A reason is required for {actionName}.": ["A reason is required for ", ["actionName"], "."],
 	"A rule can also carry a set of <em>Target Values</em>, and then only matches when the field is one of them. That is how you space out niche maps, gamemodes and factions so they are not played too often.": [
 		"A rule can also carry a set of ",
-		[
-			"em",
-			"tag",
-			[
-				"Target Values"
-			]
-		],
+		["em", "tag", ["Target Values"]],
 		", and then only matches when the field is one of them. That is how you space out niche maps, gamemodes and factions so they are not played too often."
 	],
 	"A template over the words typed after the trigger, and the numbers count those words: '{{arg1}}' is the first one typed, '{{rest2}}' the second onwards. Pinned text is never typed, so no placeholder refers to it. '{{^arg2}}'default'{{/arg2}}' fills a word in when it is left out.": "A template over the words typed after the trigger, and the numbers count those words: {{arg1}} is the first one typed, {{rest2}} the second onwards. Pinned text is never typed, so no placeholder refers to it. {{^arg2}}default{{/arg2}} fills a word in when it is left out.",
-	"Add BattleMetrics flags to {targetSubject}.": [
-		"Add BattleMetrics flags to ",
-		[
-			"targetSubject"
-		],
-		"."
-	],
-	"Add {column} value": [
-		"Add ",
-		[
-			"column"
-		],
-		" value"
-	],
-	"AdminPing from [T:{teamId} {playerName}]: {message}": [
-		"AdminPing from [T:",
-		[
-			"teamId"
-		],
-		" ",
-		[
-			"playerName"
-		],
-		"]: ",
-		[
-			"message"
-		]
-	],
-	"Admins.cfg: {serverId}": [
-		"Admins.cfg: ",
-		[
-			"serverId"
-		]
-	],
+	"Add BattleMetrics flags to {targetSubject}.": ["Add BattleMetrics flags to ", ["targetSubject"], "."],
+	"Add {column} value": ["Add ", ["column"], " value"],
+	"AdminPing from [T:{teamId} {playerName}]: {message}": ["AdminPing from [T:", ["teamId"], " ", ["playerName"], "]: ", ["message"]],
+	"Admins.cfg: {serverId}": ["Admins.cfg: ", ["serverId"]],
 	"All players in \"{squadName}\" are already marked to swap teams": [
 		"All players in \"",
-		[
-			"squadName"
-		],
+		["squadName"],
 		"\" are already marked to swap teams"
 	],
-	"All players in \"{squadName}\" are already on {toTeam}": [
-		"All players in \"",
-		[
-			"squadName"
-		],
-		"\" are already on ",
-		[
-			"toTeam"
-		]
-	],
+	"All players in \"{squadName}\" are already on {toTeam}": ["All players in \"", ["squadName"], "\" are already on ", ["toTeam"]],
 	"All players in \"{squadName}\" are already queued to swap to {toTeam} on next map": [
 		"All players in \"",
-		[
-			"squadName"
-		],
+		["squadName"],
 		"\" are already queued to swap to ",
-		[
-			"toTeam"
-		],
+		["toTeam"],
 		" on next map"
 	],
-	"Also constrained by {extras} (kept as-is).": [
-		"Also constrained by ",
-		[
-			"extras"
-		],
-		" (kept as-is)."
+	"Also constrained by {extras} (kept as-is).": ["Also constrained by ", ["extras"], " (kept as-is)."],
+	"Also played {time} on the other team": ["Also played ", ["time"], " on the other team"],
+	"An overview of the different <em>groups</em> of players can be seen here. Mouse over a group to see a list of all players in that group, and Click on a group to filter the table to show only that group.": [
+		"An overview of the different ",
+		["em", "tag", ["groups"]],
+		" of players can be seen here. Mouse over a group to see a list of all players in that group, and Click on a group to filter the table to show only that group."
 	],
-	"Also played {time} on the other team": [
-		"Also played ",
-		[
-			"time"
-		],
-		" on the other team"
-	],
-	"Another tag is already labeled \"{label}\"": [
-		"Another tag is already labeled \"",
-		[
-			"label"
-		],
-		"\""
-	],
-	"App Version: {appVersion}": [
-		"App Version: ",
-		[
-			"appVersion"
-		]
-	],
-	"Are you sure you want to end the match for {serverName}?": [
-		"Are you sure you want to end the match for ",
-		[
-			"serverName"
-		],
-		"?"
-	],
+	"Another tag is already labeled \"{label}\"": ["Another tag is already labeled \"", ["label"], "\""],
+	"App Version: {appVersion}": ["App Version: ", ["appVersion"]],
+	"Are you sure you want to end the match for {serverName}?": ["Are you sure you want to end the match for ", ["serverName"], "?"],
 	"By default your results are limited to <strong>in-pool</strong> layers: whichever layer filter defines the pool starts checked here. Uncheck to widen the search, or ctrl+click it to <strong>invert</strong> it, so the results are only the layers that filter excludes. Add more filters to the toolbar with <addFilter></addFilter>.": [
 		"By default your results are limited to ",
-		[
-			"strong",
-			"tag",
-			[
-				"in-pool"
-			]
-		],
+		["strong", "tag", ["in-pool"]],
 		" layers: whichever layer filter defines the pool starts checked here. Uncheck to widen the search, or ctrl+click it to ",
-		[
-			"strong",
-			"tag",
-			[
-				"invert"
-			]
-		],
+		["strong", "tag", ["invert"]],
 		" it, so the results are only the layers that filter excludes. Add more filters to the toolbar with ",
-		[
-			"addFilter",
-			"tag",
-			[]
-		],
+		["addFilter", "tag", []],
 		"."
+	],
+	"By default, the table is sorted by <em>Squad</em>. In this mode, you can <em>select</em> ": [
+		"By default, the table is sorted by ",
+		["em", "tag", ["Squad"]],
+		". In this mode, you can ",
+		["em", "tag", ["select"]],
+		" "
 	],
 	"Cancelled {count, plural, one {the timeout} other {# timeouts}} for {username}": [
 		"Cancelled ",
@@ -1042,580 +432,236 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					"the timeout"
-				],
-				"other": [
-					0,
-					" timeouts"
-				]
+				"one": ["the timeout"],
+				"other": [0, " timeouts"]
 			},
 			0
 		],
 		" for ",
-		[
-			"username"
-		]
+		["username"]
 	],
-	"Change an item's layer with <pencil></pencil>:": [
-		"Change an item's layer with ",
-		[
-			"pencil",
-			"tag",
-			[]
-		],
-		":"
-	],
+	"Change an item's layer with <pencil></pencil>:": ["Change an item's layer with ", ["pencil", "tag", []], ":"],
 	"Changing the filters hid the layer you selected first, but it is still selected. Click <em>Show Selected</em> to see everything you have picked so far:": [
 		"Changing the filters hid the layer you selected first, but it is still selected. Click ",
-		[
-			"em",
-			"tag",
-			[
-				"Show Selected"
-			]
-		],
+		["em", "tag", ["Show Selected"]],
 		" to see everything you have picked so far:"
 	],
 	"Choose <em>Play After</em> to add these layers to the end of the queue instead of the front. When you're happy with the selection, click <em>Submit</em>:": [
 		"Choose ",
-		[
-			"em",
-			"tag",
-			[
-				"Play After"
-			]
-		],
+		["em", "tag", ["Play After"]],
 		" to add these layers to the end of the queue instead of the front. When you're happy with the selection, click ",
-		[
-			"em",
-			"tag",
-			[
-				"Submit"
-			]
-		],
+		["em", "tag", ["Submit"]],
 		":"
 	],
 	"Click <em>Add Layers</em> to open the <strong>layer selection dialog</strong>.": [
 		"Click ",
-		[
-			"em",
-			"tag",
-			[
-				"Add Layers"
-			]
-		],
+		["em", "tag", ["Add Layers"]],
 		" to open the ",
-		[
-			"strong",
-			"tag",
-			[
-				"layer selection dialog"
-			]
-		],
+		["strong", "tag", ["layer selection dialog"]],
 		"."
 	],
-	"Click <gear></gear> to open the queue's settings.": [
-		"Click ",
-		[
-			"gear",
-			"tag",
-			[]
-		],
-		" to open the queue's settings."
-	],
+	"Click <gear></gear> to open the queue's settings.": ["Click ", ["gear", "tag", []], " to open the queue's settings."],
 	"Click <hideRepeats></hideRepeats> to filter out layer configurations with repeated elements.": [
 		"Click ",
-		[
-			"hideRepeats",
-			"tag",
-			[]
-		],
+		["hideRepeats", "tag", []],
 		" to filter out layer configurations with repeated elements."
+	],
+	"Click <i>anywhere</i> on a player's row other than their username to select them.": [
+		"Click ",
+		["i", "tag", ["anywhere"]],
+		" on a player's row other than their username to select them."
 	],
 	"Click <strong>Save</strong> to commit your queue. Players are notified in-game that they will be swapped at the start of the next round.": [
 		"Click ",
-		[
-			"strong",
-			"tag",
-			[
-				"Save"
-			]
-		],
+		["strong", "tag", ["Save"]],
 		" to commit your queue. Players are notified in-game that they will be swapped at the start of the next round."
 	],
 	"Click <strong>Swap Now</strong> to immediately execute all saved swaps.": [
 		"Click ",
-		[
-			"strong",
-			"tag",
-			[
-				"Swap Now"
-			]
-		],
+		["strong", "tag", ["Swap Now"]],
 		" to immediately execute all saved swaps."
 	],
-	"Colors ({count})": [
-		"Colors (",
-		[
-			"count"
-		],
-		")"
+	"Click here to filter columns to only display players with specific criteria. Try filtering to only display players of group \"{group}. Note that selecting the filter on either teams table applies <i>across</i> teams\"": [
+		"Click here to filter columns to only display players with specific criteria. Try filtering to only display players of group \"",
+		["group"],
+		". Note that selecting the filter on either teams table applies ",
+		["i", "tag", ["across"]],
+		" teams\""
 	],
-	"Column {column} can only be compared against vehicle values": [
-		"Column ",
-		[
-			"column"
-		],
-		" can only be compared against vehicle values"
-	],
-	"Column {column} is not mapped": [
-		"Column ",
-		[
-			"column"
-		],
-		" is not mapped"
-	],
+	"Click here to navigate to the <em>teams tab</em>": ["Click here to navigate to the ", ["em", "tag", ["teams tab"]]],
+	"Colors ({count})": ["Colors (", ["count"], ")"],
+	"Column {column} can only be compared against vehicle values": ["Column ", ["column"], " can only be compared against vehicle values"],
+	"Column {column} is not mapped": ["Column ", ["column"], " is not mapped"],
 	"Columns {left} and {right} are not comparable (different data types)": [
 		"Columns ",
-		[
-			"left"
-		],
+		["left"],
 		" and ",
-		[
-			"right"
-		],
+		["right"],
 		" are not comparable (different data types)"
 	],
-	"Command \"{cmd}\" is disabled": [
-		"Command \"",
-		[
-			"cmd"
-		],
-		"\" is disabled"
-	],
-	"Command not available in this chat. Try using {correctChats}": [
-		"Command not available in this chat. Try using ",
-		[
-			"correctChats"
-		]
-	],
-	"Copy {command}": [
-		"Copy ",
-		[
-			"command"
-		]
-	],
-	"Copy {kind} ID": [
-		"Copy ",
-		[
-			"kind"
-		],
-		" ID"
-	],
-	"Currently voting between {choices}.": [
-		"Currently voting between ",
-		[
-			"choices"
-		],
-		"."
-	],
+	"Command \"{cmd}\" is disabled": ["Command \"", ["cmd"], "\" is disabled"],
+	"Command not available in this chat. Try using {correctChats}": ["Command not available in this chat. Try using ", ["correctChats"]],
+	"Copy {command}": ["Copy ", ["command"]],
+	"Copy {kind} ID": ["Copy ", ["kind"], " ID"],
+	"Currently voting between {choices}.": ["Currently voting between ", ["choices"], "."],
 	"Delete managed server \"{displayName}\" ({serverId})? This cannot be undone.": [
 		"Delete managed server \"",
-		[
-			"displayName"
-		],
+		["displayName"],
 		"\" (",
-		[
-			"serverId"
-		],
+		["serverId"],
 		")? This cannot be undone."
 	],
-	"Delete {name}": [
-		"Delete ",
-		[
-			"name"
-		]
-	],
+	"Delete {name}": ["Delete ", ["name"]],
 	"Demoted {username}{hasReason, select, yes { for {reason}} other {}}": [
 		"Demoted ",
-		[
-			"username"
-		],
+		["username"],
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reason"
-					]
-				],
+				"yes": [" for ", ["reason"]],
 				"other": []
 			}
 		]
 	],
 	"Depending on your install, a layer configuration may also carry <strong>scores</strong>. Open them here:": [
 		"Depending on your install, a layer configuration may also carry ",
-		[
-			"strong",
-			"tag",
-			[
-				"scores"
-			]
-		],
+		["strong", "tag", ["scores"]],
 		". Open them here:"
 	],
-	"Disband squad {squadLabel}?": [
-		"Disband squad ",
-		[
-			"squadLabel"
-		],
-		"?"
+	"Different <em>grouping modes</em> may be configured for different tasks, like determining team balance, distinguishing clans, or to highlight watchlisted players. Switch between them here.": [
+		"Different ",
+		["em", "tag", ["grouping modes"]],
+		" may be configured for different tasks, like determining team balance, distinguishing clans, or to highlight watchlisted players. Switch between them here."
 	],
-	"Disband {squadLabel} on team {teamId}?": [
-		"Disband ",
-		[
-			"squadLabel"
-		],
-		" on team ",
-		[
-			"teamId"
-		],
-		"?"
-	],
+	"Disband squad {squadLabel}?": ["Disband squad ", ["squadLabel"], "?"],
+	"Disband {squadLabel} on team {teamId}?": ["Disband ", ["squadLabel"], " on team ", ["teamId"], "?"],
 	"Disbanded \"{squadName}\" on team {teamLabel}{hasReason, select, yes { for {reason}} other {}}": [
 		"Disbanded \"",
-		[
-			"squadName"
-		],
+		["squadName"],
 		"\" on team ",
-		[
-			"teamLabel"
-		],
+		["teamLabel"],
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reason"
-					]
-				],
+				"yes": [" for ", ["reason"]],
 				"other": []
 			}
 		]
 	],
-	"Discarded the pending choice for \"{command}\"": [
-		"Discarded the pending choice for \"",
-		[
-			"command"
-		],
-		"\""
-	],
-	"Disconnect {playerName}": [
-		"Disconnect ",
-		[
-			"playerName"
-		]
-	],
+	"Discarded the pending choice for \"{command}\"": ["Discarded the pending choice for \"", ["command"], "\""],
+	"Disconnect {playerName}": ["Disconnect ", ["playerName"]],
 	"Each reason is posted to {scope, select, player {the player's} other {every selected player's}} BattleMetrics profile as its own note.": [
 		"Each reason is posted to ",
 		[
 			"scope",
 			"select",
 			{
-				"player": [
-					"the player's"
-				],
-				"other": [
-					"every selected player's"
-				]
+				"player": ["the player's"],
+				"other": ["every selected player's"]
 			}
 		],
 		" BattleMetrics profile as its own note."
 	],
 	"Empty the queue with <trash></trash>, then click <em>Save</em>:": [
 		"Empty the queue with ",
-		[
-			"trash",
-			"tag",
-			[]
-		],
+		["trash", "tag", []],
 		", then click ",
-		[
-			"em",
-			"tag",
-			[
-				"Save"
-			]
-		],
+		["em", "tag", ["Save"]],
 		":"
 	],
-	"Ending match on {serverName}...": [
-		"Ending match on ",
-		[
-			"serverName"
-		],
-		"..."
-	],
-	"Expires in {time}": [
-		"Expires in ",
-		[
-			"time"
-		]
-	],
-	"Faction (team {team})": [
-		"Faction (team ",
-		[
-			"team"
-		],
-		")"
-	],
-	"Failed to delete filter \"{name}\"": [
-		"Failed to delete filter \"",
-		[
-			"name"
-		],
-		"\""
-	],
-	"Failed to load settings: {reason}": [
-		"Failed to load settings: ",
-		[
-			"reason"
-		]
-	],
-	"Failed to remove {count} players": [
-		"Failed to remove ",
-		[
-			"count"
-		],
-		" players"
-	],
-	"Filter \"{name}\" deleted": [
-		"Filter \"",
-		[
-			"name"
-		],
-		"\" deleted"
-	],
-	"Filter is mutually recursive via filter: {filterId}": [
-		"Filter is mutually recursive via filter: ",
-		[
-			"filterId"
-		]
-	],
-	"Filter {filterId} doesn't exist": [
-		"Filter ",
-		[
-			"filterId"
-		],
-		" doesn't exist"
-	],
-	"Filter {name} was deleted by {editor}": [
-		"Filter ",
-		[
-			"name"
-		],
-		" was deleted by ",
-		[
-			"editor"
-		]
-	],
-	"Filter {name} was updated by {editor}": [
-		"Filter ",
-		[
-			"name"
-		],
-		" was updated by ",
-		[
-			"editor"
-		]
-	],
-	"Filters cannot reference each other in a loop: {cycle}": [
-		"Filters cannot reference each other in a loop: ",
-		[
-			"cycle"
-		]
-	],
+	"Ending match on {serverName}...": ["Ending match on ", ["serverName"], "..."],
+	"Expires in {time}": ["Expires in ", ["time"]],
+	"Faction (team {team})": ["Faction (team ", ["team"], ")"],
+	"Failed to delete filter \"{name}\"": ["Failed to delete filter \"", ["name"], "\""],
+	"Failed to load settings: {reason}": ["Failed to load settings: ", ["reason"]],
+	"Failed to remove {count} players": ["Failed to remove ", ["count"], " players"],
+	"Filter \"{name}\" deleted": ["Filter \"", ["name"], "\" deleted"],
+	"Filter is mutually recursive via filter: {filterId}": ["Filter is mutually recursive via filter: ", ["filterId"]],
+	"Filter {filterId} doesn't exist": ["Filter ", ["filterId"], " doesn't exist"],
+	"Filter {name} was deleted by {editor}": ["Filter ", ["name"], " was deleted by ", ["editor"]],
+	"Filter {name} was updated by {editor}": ["Filter ", ["name"], " was updated by ", ["editor"]],
+	"Filters cannot reference each other in a loop: {cycle}": ["Filters cannot reference each other in a loop: ", ["cycle"]],
 	"Flag \"{flag}\" is already removed from {username}'s BM profile": [
 		"Flag \"",
-		[
-			"flag"
-		],
+		["flag"],
 		"\" is already removed from ",
-		[
-			"username"
-		],
+		["username"],
 		"'s BM profile"
 	],
-	"Flagged {flaggedCount} of {playerCount} players": [
-		"Flagged ",
-		[
-			"flaggedCount"
-		],
-		" of ",
-		[
-			"playerCount"
-		],
-		" players"
-	],
+	"Flagged {flaggedCount} of {playerCount} players": ["Flagged ", ["flaggedCount"], " of ", ["playerCount"], " players"],
 	"Force save needs a save to force, and the queue was just saved. Remove an item with <remove></remove>:": [
 		"Force save needs a save to force, and the queue was just saved. Remove an item with ",
-		[
-			"remove",
-			"tag",
-			[]
-		],
+		["remove", "tag", []],
 		":"
 	],
-	"Full ({maxPlayers} players)": [
-		"Full (",
-		[
-			"maxPlayers"
-		],
-		" players)"
-	],
+	"Full ({maxPlayers} players)": ["Full (", ["maxPlayers"], " players)"],
 	"Group{named, select, yes { ({group})} other {}}": [
 		"Group",
 		[
 			"named",
 			"select",
 			{
-				"yes": [
-					" (",
-					[
-						"group"
-					],
-					")"
-				],
+				"yes": [" (", ["group"], ")"],
 				"other": []
 			}
 		]
 	],
 	"If the queue runs out of items you set yourself, SLM <strong>generates</strong> a layer to play from the rules configured for this server.": [
 		"If the queue runs out of items you set yourself, SLM ",
-		[
-			"strong",
-			"tag",
-			[
-				"generates"
-			]
-		],
+		["strong", "tag", ["generates"]],
 		" a layer to play from the rules configured for this server."
 	],
-	"Kick {targetNoun}": [
-		"Kick ",
-		[
-			"targetNoun"
-		]
-	],
+	"Kick {targetNoun}": ["Kick ", ["targetNoun"]],
 	"Kick {targetSubject} from the server? They may rejoin immediately.": [
 		"Kick ",
-		[
-			"targetSubject"
-		],
+		["targetSubject"],
 		" from the server? They may rejoin immediately."
 	],
 	"Kick {targetSubject}? They will be re-kicked on join from any SLM-managed server until the timeout expires.": [
 		"Kick ",
-		[
-			"targetSubject"
-		],
+		["targetSubject"],
 		"? They will be re-kicked on join from any SLM-managed server until the timeout expires."
 	],
 	"Kicked {subject}{hasReason, select, yes { for {reason}} other {}}": [
 		"Kicked ",
-		[
-			"subject"
-		],
+		["subject"],
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reason"
-					]
-				],
+				"yes": [" for ", ["reason"]],
 				"other": []
 			}
 		]
 	],
-	"Kicked {targetAffected}": [
-		"Kicked ",
-		[
-			"targetAffected"
-		]
-	],
-	"Kill {targetNoun}": [
-		"Kill ",
-		[
-			"targetNoun"
-		]
-	],
+	"Kicked {targetAffected}": ["Kicked ", ["targetAffected"]],
+	"Kill {targetNoun}": ["Kill ", ["targetNoun"]],
 	"Kill {targetSubject}? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team.": [
 		"Kill ",
-		[
-			"targetSubject"
-		],
+		["targetSubject"],
 		"? They will be force-switched teams twice in quick succession to trigger a respawn, ending back on their current team."
 	],
-	"Killed {targetAffected}": [
-		"Killed ",
-		[
-			"targetAffected"
-		]
-	],
-	"Last seen {when}": [
-		"Last seen ",
-		[
-			"when"
-		]
-	],
-	"Layer Pool Version: {layersVersion}": [
-		"Layer Pool Version: ",
-		[
-			"layersVersion"
-		]
-	],
-	"Layer Requests ({count})": [
-		"Layer Requests (",
-		[
-			"count"
-		],
-		")"
-	],
+	"Killed {targetAffected}": ["Killed ", ["targetAffected"]],
+	"Last seen {when}": ["Last seen ", ["when"]],
+	"Layer Pool Version: {layersVersion}": ["Layer Pool Version: ", ["layersVersion"]],
+	"Layer Requests ({count})": ["Layer Requests (", ["count"], ")"],
 	"Layer items have a few more editing actions. Drag <grip></grip> to move an item through the queue:": [
 		"Layer items have a few more editing actions. Drag ",
-		[
-			"grip",
-			"tag",
-			[]
-		],
+		["grip", "tag", []],
 		" to move an item through the queue:"
 	],
 	"Layer request queued: {parts}. You have {ownCount, plural, one {# request} other {# requests}} queued{evictedCount, plural, =0 {.} one { (your oldest request was dropped to make room).} other { (your oldest # requests were dropped to make room).}}": [
 		"Layer request queued: ",
-		[
-			"parts"
-		],
+		["parts"],
 		". You have ",
 		[
 			"ownCount",
 			"plural",
 			{
-				"one": [
-					0,
-					" request"
-				],
-				"other": [
-					0,
-					" requests"
-				]
+				"one": [0, " request"],
+				"other": [0, " requests"]
 			},
 			0
 		],
@@ -1624,218 +670,65 @@
 			"evictedCount",
 			"plural",
 			{
-				"=0": [
-					"."
-				],
-				"one": [
-					" (your oldest request was dropped to make room)."
-				],
-				"other": [
-					" (your oldest ",
-					0,
-					" requests were dropped to make room)."
-				]
+				"=0": ["."],
+				"one": [" (your oldest request was dropped to make room)."],
+				"other": [" (your oldest ", 0, " requests were dropped to make room)."]
 			},
 			0
 		]
 	],
 	"Let's add one more. Change the <em>Map</em> filter to <strong>{map}</strong> and pick a layer from the results:": [
 		"Let's add one more. Change the ",
-		[
-			"em",
-			"tag",
-			[
-				"Map"
-			]
-		],
+		["em", "tag", ["Map"]],
 		" filter to ",
-		[
-			"strong",
-			"tag",
-			[
-				[
-					"map"
-				]
-			]
-		],
+		["strong", "tag", [["map"]]],
 		" and pick a layer from the results:"
 	],
 	"Let's edit the queue. Click <em>Start Editing</em> to communicate to other users that you intend to make changes to the queue:": [
 		"Let's edit the queue. Click ",
-		[
-			"em",
-			"tag",
-			[
-				"Start Editing"
-			]
-		],
+		["em", "tag", ["Start Editing"]],
 		" to communicate to other users that you intend to make changes to the queue:"
 	],
-	"Link to {section}": [
-		"Link to ",
-		[
-			"section"
-		]
-	],
-	"Link {steamId} by sending a code in game instead.": [
-		"Link ",
-		[
-			"steamId"
-		],
-		" by sending a code in game instead."
-	],
-	"Linked by {admin}": [
-		"Linked by ",
-		[
-			"admin"
-		]
-	],
-	"Linked to {discordName}.": [
-		"Linked to ",
-		[
-			"discordName"
-		],
-		"."
-	],
-	"Logged in as: {username}": [
-		"Logged in as: ",
-		[
-			"username"
-		]
-	],
-	"Make prefix {position} the default": [
-		"Make prefix ",
-		[
-			"position"
-		],
-		" the default"
-	],
-	"More: {helpString} {placeholder} -- {options}": [
-		"More: ",
-		[
-			"helpString"
-		],
-		" ",
-		[
-			"placeholder"
-		],
-		" -- ",
-		[
-			"options"
-		]
-	],
-	"Move {subject} to the opposite team immediately?": [
-		"Move ",
-		[
-			"subject"
-		],
-		" to the opposite team immediately?"
-	],
-	"Move {subject} to {toTeam} immediately?": [
-		"Move ",
-		[
-			"subject"
-		],
-		" to ",
-		[
-			"toTeam"
-		],
-		" immediately?"
-	],
-	"Multiple({count}) flag matches found for \"{flag}\".": [
-		"Multiple(",
-		[
-			"count"
-		],
-		") flag matches found for \"",
-		[
-			"flag"
-		],
-		"\"."
-	],
-	"Narrow by {grouping}": [
-		"Narrow by ",
-		[
-			"grouping"
-		]
-	],
+	"Let's try <em>timing out</em> a player.": ["Let's try ", ["em", "tag", ["timing out"]], " a player."],
+	"Link to {section}": ["Link to ", ["section"]],
+	"Link {steamId} by sending a code in game instead.": ["Link ", ["steamId"], " by sending a code in game instead."],
+	"Linked by {admin}": ["Linked by ", ["admin"]],
+	"Linked to {discordName}.": ["Linked to ", ["discordName"], "."],
+	"Logged in as: {username}": ["Logged in as: ", ["username"]],
+	"Make prefix {position} the default": ["Make prefix ", ["position"], " the default"],
+	"More: {helpString} {placeholder} -- {options}": ["More: ", ["helpString"], " ", ["placeholder"], " -- ", ["options"]],
+	"Move {subject} to the opposite team immediately?": ["Move ", ["subject"], " to the opposite team immediately?"],
+	"Move {subject} to {toTeam} immediately?": ["Move ", ["subject"], " to ", ["toTeam"], " immediately?"],
+	"Multiple({count}) flag matches found for \"{flag}\".": ["Multiple(", ["count"], ") flag matches found for \"", ["flag"], "\"."],
+	"Narrow by {grouping}": ["Narrow by ", ["grouping"]],
 	"Next layer Changed. Will be chosen via vote (run with {showNextString}):": [
 		"Next layer Changed. Will be chosen via vote (run with ",
-		[
-			"showNextString"
-		],
+		["showNextString"],
 		"):"
 	],
-	"Next layer set to {layer}": [
-		"Next layer set to ",
-		[
-			"layer"
-		]
-	],
-	"No active timeout matches \"{token}\"": [
-		"No active timeout matches \"",
-		[
-			"token"
-		],
-		"\""
-	],
+	"Next layer set to {layer}": ["Next layer set to ", ["layer"]],
+	"No active timeout matches \"{token}\"": ["No active timeout matches \"", ["token"], "\""],
 	"No events yet for {match, select, current {current match} other {this match}}": [
 		"No events yet for ",
 		[
 			"match",
 			"select",
 			{
-				"current": [
-					"current match"
-				],
-				"other": [
-					"this match"
-				]
+				"current": ["current match"],
+				"other": ["this match"]
 			}
 		]
 	],
-	"No flag matches found for \"{flag}\"": [
-		"No flag matches found for \"",
-		[
-			"flag"
-		],
-		"\""
-	],
-	"No layer request #{number}": [
-		"No layer request #",
-		[
-			"number"
-		]
-	],
-	"No layers have this {column} value": [
-		"No layers have this ",
-		[
-			"column"
-		],
-		" value"
-	],
-	"No layers have this {matchup}": [
-		"No layers have this ",
-		[
-			"matchup"
-		]
-	],
-	"No layers in the current pool match \"{request}\".": [
-		"No layers in the current pool match \"",
-		[
-			"request"
-		],
-		"\"."
-	],
+	"No flag matches found for \"{flag}\"": ["No flag matches found for \"", ["flag"], "\""],
+	"No layer request #{number}": ["No layer request #", ["number"]],
+	"No layers have this {column} value": ["No layers have this ", ["column"], " value"],
+	"No layers have this {matchup}": ["No layers have this ", ["matchup"]],
+	"No layers in the current pool match \"{request}\".": ["No layers in the current pool match \"", ["request"], "\"."],
 	"One of {sections}, or \"{allToken}\" for every command. Lists the quick reference when omitted.": [
 		"One of ",
-		[
-			"sections"
-		],
+		["sections"],
 		", or \"",
-		[
-			"allToken"
-		],
+		["allToken"],
 		"\" for every command. Lists the quick reference when omitted."
 	],
 	"Online{known, select, yes { for {elapsed}} other {}}": [
@@ -1844,137 +737,64 @@
 			"known",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"elapsed"
-					]
-				],
+				"yes": [" for ", ["elapsed"]],
 				"other": []
 			}
 		]
 	],
-	"Owner: {owner}": [
-		"Owner: ",
-		[
-			"owner"
-		]
-	],
+	"Owner: {owner}": ["Owner: ", ["owner"]],
 	"Permission denied. You need {checkType} of the following: {failures}": [
 		"Permission denied. You need ",
-		[
-			"checkType"
-		],
+		["checkType"],
 		" of the following: ",
-		[
-			"failures"
-		]
+		["failures"]
 	],
-	"Pick 1-{count}, or 0 to cancel": [
-		"Pick 1-",
-		[
-			"count"
-		],
-		", or 0 to cancel"
-	],
+	"Pick 1-{count}, or 0 to cancel": ["Pick 1-", ["count"], ", or 0 to cancel"],
 	"Pick {pickOrder}. Unlisted pairings weigh {defaultWeight}. Pairings are unordered: the weight applies whichever team fields which side.": [
 		"Pick ",
-		[
-			"pickOrder"
-		],
+		["pickOrder"],
 		". Unlisted pairings weigh ",
-		[
-			"defaultWeight"
-		],
+		["defaultWeight"],
 		". Pairings are unordered: the weight applies whichever team fields which side."
 	],
 	"Pick {pickOrder}. Unlisted {column} values weigh {defaultWeight}. Shares assume every value is available in the pool.": [
 		"Pick ",
-		[
-			"pickOrder"
-		],
+		["pickOrder"],
 		". Unlisted ",
-		[
-			"column"
-		],
+		["column"],
 		" values weigh ",
-		[
-			"defaultWeight"
-		],
+		["defaultWeight"],
 		". Shares assume every value is available in the pool."
 	],
-	"Player \"{username}\" does not have flag \"{flag}\".": [
-		"Player \"",
-		[
-			"username"
-		],
-		"\" does not have flag \"",
-		[
-			"flag"
-		],
-		"\"."
+	"Player \"{username}\" does not have flag \"{flag}\".": ["Player \"", ["username"], "\" does not have flag \"", ["flag"], "\"."],
+	"Player \"{username}\" is not in a squad": ["Player \"", ["username"], "\" is not in a squad"],
+	"Player \"{username}\" is not on a team": ["Player \"", ["username"], "\" is not on a team"],
+	"Players ({count})": ["Players (", ["count"], ")"],
+	"Players can be sorted by <em>kills</em>, <em>wounds</em>, and <em>deaths</em>, in either <em>descending</em> or <em>ascending</em> order.": [
+		"Players can be sorted by ",
+		["em", "tag", ["kills"]],
+		", ",
+		["em", "tag", ["wounds"]],
+		", and ",
+		["em", "tag", ["deaths"]],
+		", in either ",
+		["em", "tag", ["descending"]],
+		" or ",
+		["em", "tag", ["ascending"]],
+		" order."
 	],
-	"Player \"{username}\" is not in a squad": [
-		"Player \"",
-		[
-			"username"
-		],
-		"\" is not in a squad"
-	],
-	"Player \"{username}\" is not on a team": [
-		"Player \"",
-		[
-			"username"
-		],
-		"\" is not on a team"
-	],
-	"Players ({count})": [
-		"Players (",
-		[
-			"count"
-		],
-		")"
-	],
-	"Pool Cutoff ({value})": [
-		"Pool Cutoff (",
-		[
-			"value"
-		],
-		")"
-	],
-	"Prefix {position}": [
-		"Prefix ",
-		[
-			"position"
-		]
-	],
-	"Queue ({count})": [
-		"Queue (",
-		[
-			"count"
-		],
-		")"
-	],
-	"Queue synced to a layer change by {who}": [
-		"Queue synced to a layer change by ",
-		[
-			"who"
-		]
-	],
+	"Pool Cutoff ({value})": ["Pool Cutoff (", ["value"], ")"],
+	"Prefix {position}": ["Prefix ", ["position"]],
+	"Queue ({count})": ["Queue (", ["count"], ")"],
+	"Queue synced to a layer change by {who}": ["Queue synced to a layer change by ", ["who"]],
 	"Queued teamswaps executed on map change ({playerCount, plural, one {# player} other {# players}})": [
 		"Queued teamswaps executed on map change (",
 		[
 			"playerCount",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
@@ -1986,108 +806,42 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		" from \"",
-		[
-			"squadName"
-		],
+		["squadName"],
 		"\" to swap to ",
-		[
-			"toTeam"
-		],
+		["toTeam"],
 		" on next map"
 	],
-	"Queued {username} to swap to {toTeam} on next map": [
-		"Queued ",
-		[
-			"username"
-		],
-		" to swap to ",
-		[
-			"toTeam"
-		],
-		" on next map"
-	],
-	"Reason {qualifier}": [
-		"Reason ",
-		[
-			"qualifier"
-		]
-	],
+	"Queued {username} to swap to {toTeam} on next map": ["Queued ", ["username"], " to swap to ", ["toTeam"], " on next map"],
+	"Reason {qualifier}": ["Reason ", ["qualifier"]],
 	"Received: {received} of {players} votes{hasPercentage, select, yes { ({percentage}%)} other {}}": [
 		"Received: ",
-		[
-			"received"
-		],
+		["received"],
 		" of ",
-		[
-			"players"
-		],
+		["players"],
 		" votes",
 		[
 			"hasPercentage",
 			"select",
 			{
-				"yes": [
-					" (",
-					[
-						"percentage"
-					],
-					"%)"
-				],
+				"yes": [" (", ["percentage"], "%)"],
 				"other": []
 			}
 		]
 	],
-	"Remove an item from the queue with <remove></remove>:": [
-		"Remove an item from the queue with ",
-		[
-			"remove",
-			"tag",
-			[]
-		],
-		":"
-	],
-	"Remove grouping {groupingId}": [
-		"Remove grouping ",
-		[
-			"groupingId"
-		]
-	],
-	"Remove prefix {position}": [
-		"Remove prefix ",
-		[
-			"position"
-		]
-	],
-	"Remove this player from {squadLabel}?": [
-		"Remove this player from ",
-		[
-			"squadLabel"
-		],
-		"?"
-	],
-	"Remove trigger {position}": [
-		"Remove trigger ",
-		[
-			"position"
-		]
-	],
+	"Remove an item from the queue with <remove></remove>:": ["Remove an item from the queue with ", ["remove", "tag", []], ":"],
+	"Remove grouping {groupingId}": ["Remove grouping ", ["groupingId"]],
+	"Remove prefix {position}": ["Remove prefix ", ["position"]],
+	"Remove this player from {squadLabel}?": ["Remove this player from ", ["squadLabel"], "?"],
+	"Remove trigger {position}": ["Remove trigger ", ["position"]],
 	"Remove {action} text (this reason will no longer be available for that action)": [
 		"Remove ",
-		[
-			"action"
-		],
+		["action"],
 		" text (this reason will no longer be available for that action)"
 	],
 	"Remove {count, plural, one {# player} other {# players}} from their squads?": [
@@ -2096,119 +850,47 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		" from their squads?"
 	],
-	"Remove {label}": [
-		"Remove ",
-		[
-			"label"
-		]
-	],
-	"Remove {value}": [
-		"Remove ",
-		[
-			"value"
-		]
-	],
-	"Removed layer request: {description}": [
-		"Removed layer request: ",
-		[
-			"description"
-		]
-	],
-	"Removed {count} players from their squads": [
-		"Removed ",
-		[
-			"count"
-		],
-		" players from their squads"
-	],
+	"Remove {label}": ["Remove ", ["label"]],
+	"Remove {value}": ["Remove ", ["value"]],
+	"Removed layer request: {description}": ["Removed layer request: ", ["description"]],
+	"Removed {count} players from their squads": ["Removed ", ["count"], " players from their squads"],
 	"Removed {username} from their squad{hasReason, select, yes { for {reason}} other {}}": [
 		"Removed ",
-		[
-			"username"
-		],
+		["username"],
 		" from their squad",
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reason"
-					]
-				],
+				"yes": [" for ", ["reason"]],
 				"other": []
 			}
 		]
 	],
-	"Removing {count} players from their squads...": [
-		"Removing ",
-		[
-			"count"
-		],
-		" players from their squads..."
-	],
-	"Reply 1-{last}, or 0 to cancel": [
-		"Reply 1-",
-		[
-			"last"
-		],
-		", or 0 to cancel"
-	],
-	"Reset the name of {squadLabel} to default?": [
-		"Reset the name of ",
-		[
-			"squadLabel"
-		],
-		" to default?"
-	],
-	"Reset to default ({value})": [
-		"Reset to default (",
-		[
-			"value"
-		],
-		")"
-	],
+	"Removing {count} players from their squads...": ["Removing ", ["count"], " players from their squads..."],
+	"Reply 1-{last}, or 0 to cancel": ["Reply 1-", ["last"], ", or 0 to cancel"],
+	"Reset the name of {squadLabel} to default?": ["Reset the name of ", ["squadLabel"], " to default?"],
+	"Reset to default ({value})": ["Reset to default (", ["value"], ")"],
 	"Results are randomized by default. Click <dice></dice> to reroll them.": [
 		"Results are randomized by default. Click ",
-		[
-			"dice",
-			"tag",
-			[]
-		],
+		["dice", "tag", []],
 		" to reroll them."
 	],
 	"Results that repeat something played recently carry <repeat></repeat> indicators.": [
 		"Results that repeat something played recently carry ",
-		[
-			"repeat",
-			"tag",
-			[]
-		],
+		["repeat", "tag", []],
 		" indicators."
 	],
 	"Right-click a player and choose <strong>Swap Next</strong> to queue them.": [
 		"Right-click a player and choose ",
-		[
-			"strong",
-			"tag",
-			[
-				"Swap Next"
-			]
-		],
+		["strong", "tag", ["Swap Next"]],
 		" to queue them."
 	],
 	"Role{named, select, yes { ({role})} other {}}": [
@@ -2217,603 +899,216 @@
 			"named",
 			"select",
 			{
-				"yes": [
-					" (",
-					[
-						"role"
-					],
-					")"
-				],
+				"yes": [" (", ["role"], ")"],
 				"other": []
 			}
 		]
 	],
-	"Round ended ({layer}) {outcome}": [
-		"Round ended (",
-		[
-			"layer"
-		],
-		") ",
-		[
-			"outcome"
-		]
-	],
+	"Round ended ({layer}) {outcome}": ["Round ended (", ["layer"], ") ", ["outcome"]],
 	"Round ended ({layer}) {winner} won <strong>{winnerTickets} to {loserTickets}</strong> against {loser}": [
 		"Round ended (",
-		[
-			"layer"
-		],
+		["layer"],
 		") ",
-		[
-			"winner"
-		],
+		["winner"],
 		" won ",
-		[
-			"strong",
-			"tag",
-			[
-				[
-					"winnerTickets"
-				],
-				" to ",
-				[
-					"loserTickets"
-				]
-			]
-		],
+		["strong", "tag", [["winnerTickets"], " to ", ["loserTickets"]]],
 		" against ",
-		[
-			"loser"
-		]
+		["loser"]
 	],
 	"SLM can also detect when a layer configuration repeats a map, faction or gamemode that was played recently. A repeat is marked with <repeat></repeat>. Hover it to highlight the parts of the layer that repeat.": [
 		"SLM can also detect when a layer configuration repeats a map, faction or gamemode that was played recently. A repeat is marked with ",
-		[
-			"repeat",
-			"tag",
-			[]
-		],
+		["repeat", "tag", []],
 		". Hover it to highlight the parts of the layer that repeat."
 	],
 	"SLM can be configured to warn you when a queue you are saving holds layers that match, or fail to match, a <strong>layer filter</strong>, or that violate a <strong>repeat rule</strong>. Fix what you can, or click <em>Save Anyway</em> to save regardless.": [
 		"SLM can be configured to warn you when a queue you are saving holds layers that match, or fail to match, a ",
-		[
-			"strong",
-			"tag",
-			[
-				"layer filter"
-			]
-		],
+		["strong", "tag", ["layer filter"]],
 		", or that violate a ",
-		[
-			"strong",
-			"tag",
-			[
-				"repeat rule"
-			]
-		],
+		["strong", "tag", ["repeat rule"]],
 		". Fix what you can, or click ",
-		[
-			"em",
-			"tag",
-			[
-				"Save Anyway"
-			]
-		],
+		["em", "tag", ["Save Anyway"]],
 		" to save regardless."
 	],
 	"SLM chose this layer itself, which is what <dice></dice> means.": [
 		"SLM chose this layer itself, which is what ",
-		[
-			"dice",
-			"tag",
-			[]
-		],
+		["dice", "tag", []],
 		" means."
 	],
 	"SLM is built and maintained by <strong>grey275</strong>, but it exists because of the <strong>TacTrig</strong> community. These are the people who made significant contributions to it.": [
 		"SLM is built and maintained by ",
-		[
-			"strong",
-			"tag",
-			[
-				"grey275"
-			]
-		],
+		["strong", "tag", ["grey275"]],
 		", but it exists because of the ",
-		[
-			"strong",
-			"tag",
-			[
-				"TacTrig"
-			]
-		],
+		["strong", "tag", ["TacTrig"]],
 		" community. These are the people who made significant contributions to it."
 	],
 	"SLM overrode a layer set by {who}, next layer set to {layer}": [
 		"SLM overrode a layer set by ",
-		[
-			"who"
-		],
+		["who"],
 		", next layer set to ",
-		[
-			"layer"
-		]
+		["layer"]
 	],
-	"SLM restored the queue's next layer, set to {layer}": [
-		"SLM restored the queue's next layer, set to ",
-		[
-			"layer"
-		]
-	],
-	"Sandbox: {serverId}": [
-		"Sandbox: ",
-		[
-			"serverId"
-		]
-	],
-	"Save {displayName} settings?": [
-		"Save ",
-		[
-			"displayName"
-		],
-		" settings?"
-	],
-	"Selected ({count})": [
-		"Selected (",
-		[
-			"count"
-		],
-		")"
-	],
-	"Selected ({count}/{limit})": [
-		"Selected (",
-		[
-			"count"
-		],
-		"/",
-		[
-			"limit"
-		],
-		")"
-	],
-	"Selected {noun}s ({count})": [
-		"Selected ",
-		[
-			"noun"
-		],
-		"s (",
-		[
-			"count"
-		],
-		")"
-	],
-	"Selected {noun}s ({count}/{limit})": [
-		"Selected ",
-		[
-			"noun"
-		],
-		"s (",
-		[
-			"count"
-		],
-		"/",
-		[
-			"limit"
-		],
-		")"
-	],
+	"SLM restored the queue's next layer, set to {layer}": ["SLM restored the queue's next layer, set to ", ["layer"]],
+	"Sandbox: {serverId}": ["Sandbox: ", ["serverId"]],
+	"Save {displayName} settings?": ["Save ", ["displayName"], " settings?"],
+	"Selected ({count})": ["Selected (", ["count"], ")"],
+	"Selected ({count}/{limit})": ["Selected (", ["count"], "/", ["limit"], ")"],
+	"Selected {noun}s ({count})": ["Selected ", ["noun"], "s (", ["count"], ")"],
+	"Selected {noun}s ({count}/{limit})": ["Selected ", ["noun"], "s (", ["count"], "/", ["limit"], ")"],
 	"Selected{any, select, yes { ({count})} other {}}": [
 		"Selected",
 		[
 			"any",
 			"select",
 			{
-				"yes": [
-					" (",
-					[
-						"count"
-					],
-					")"
-				],
+				"yes": [" (", ["count"], ")"],
 				"other": []
 			}
 		]
 	],
-	"Sent when performing {action}": [
-		"Sent when performing ",
-		[
-			"action"
-		]
-	],
-	"Server \"{displayName}\" Disabled": [
-		"Server \"",
-		[
-			"displayName"
-		],
-		"\" Disabled"
-	],
-	"Server \"{displayName}\" Has Invalid Settings": [
-		"Server \"",
-		[
-			"displayName"
-		],
-		"\" Has Invalid Settings"
-	],
-	"Server \"{displayName}\" Not Found": [
-		"Server \"",
-		[
-			"displayName"
-		],
-		"\" Not Found"
-	],
-	"Server console: {serverId}": [
-		"Server console: ",
-		[
-			"serverId"
-		]
-	],
-	"Server's next layer is {layer}": [
-		"Server's next layer is ",
-		[
-			"layer"
-		]
-	],
-	"Set by {displayName}": [
-		"Set by ",
-		[
-			"displayName"
-		]
-	],
-	"Shortcut for \"{command}\"": [
-		"Shortcut for \"",
-		[
-			"command"
-		],
-		"\""
-	],
-	"Should be > {within}": [
-		"Should be > ",
-		[
-			"within"
-		]
-	],
+	"Sent when performing {action}": ["Sent when performing ", ["action"]],
+	"Server \"{displayName}\" Disabled": ["Server \"", ["displayName"], "\" Disabled"],
+	"Server \"{displayName}\" Has Invalid Settings": ["Server \"", ["displayName"], "\" Has Invalid Settings"],
+	"Server \"{displayName}\" Not Found": ["Server \"", ["displayName"], "\" Not Found"],
+	"Server console: {serverId}": ["Server console: ", ["serverId"]],
+	"Server's next layer is {layer}": ["Server's next layer is ", ["layer"]],
+	"Set by {displayName}": ["Set by ", ["displayName"]],
+	"Shortcut for \"{command}\"": ["Shortcut for \"", ["command"], "\""],
+	"Should be > {within}": ["Should be > ", ["within"]],
 	"Some additional actions are available by clicking the <ellipsis></ellipsis>, or by right clicking anywhere on the queue item.": [
 		"Some additional actions are available by clicking the ",
-		[
-			"ellipsis",
-			"tag",
-			[]
-		],
+		["ellipsis", "tag", []],
 		", or by right clicking anywhere on the queue item."
+	],
+	"Some of the columns that are likely to provide an ingame advantage are hidden by default. click <em>Show Spoilers</em> to reveal them.": [
+		"Some of the columns that are likely to provide an ingame advantage are hidden by default. click ",
+		["em", "tag", ["Show Spoilers"]],
+		" to reveal them."
 	],
 	"Sometimes someone forgets to save and leaves the queue stuck in an editing session. <em>Force Save</em> (<sword></sword>) saves it anyway and ends everyone else's session. Try it now:": [
 		"Sometimes someone forgets to save and leaves the queue stuck in an editing session. ",
-		[
-			"em",
-			"tag",
-			[
-				"Force Save"
-			]
-		],
+		["em", "tag", ["Force Save"]],
 		" (",
-		[
-			"sword",
-			"tag",
-			[]
-		],
+		["sword", "tag", []],
 		") saves it anyway and ends everyone else's session. Try it now:"
 	],
-	"Squad \"{squadName}\" has no players": [
-		"Squad \"",
-		[
-			"squadName"
-		],
-		"\" has no players"
-	],
-	"Squad {squadId}": [
-		"Squad ",
-		[
-			"squadId"
-		]
-	],
+	"Squad \"{squadName}\" has no players": ["Squad \"", ["squadName"], "\" has no players"],
+	"Squad {squadId}": ["Squad ", ["squadId"]],
 	"Squad{named, select, yes { ({squadName})} other {}}": [
 		"Squad",
 		[
 			"named",
 			"select",
 			{
-				"yes": [
-					" (",
-					[
-						"squadName"
-					],
-					")"
-				],
+				"yes": [" (", ["squadName"], ")"],
 				"other": []
 			}
 		]
 	],
-	"Starting \"{displayName}\"": [
-		"Starting \"",
-		[
-			"displayName"
-		],
-		"\""
-	],
-	"Steam account linked to {discordName}.": [
-		"Steam account linked to ",
-		[
-			"discordName"
-		],
-		"."
-	],
-	"Supports <link>Mustache {syntax} syntax</link>.": [
-		"Supports ",
-		[
-			"link",
-			"tag",
-			[
-				"Mustache ",
-				[
-					"syntax"
-				],
-				" syntax"
-			]
-		],
-		"."
-	],
-	"Swap which team gets which faction with <swap></swap>:": [
-		"Swap which team gets which faction with ",
-		[
-			"swap",
-			"tag",
-			[]
-		],
-		":"
-	],
-	"Swap {targetNoun} Now": [
-		"Swap ",
-		[
-			"targetNoun"
-		],
-		" Now"
-	],
+	"Starting \"{displayName}\"": ["Starting \"", ["displayName"], "\""],
+	"Steam account linked to {discordName}.": ["Steam account linked to ", ["discordName"], "."],
+	"Supports <link>Mustache {syntax} syntax</link>.": ["Supports ", ["link", "tag", ["Mustache ", ["syntax"], " syntax"]], "."],
+	"Swap which team gets which faction with <swap></swap>:": ["Swap which team gets which faction with ", ["swap", "tag", []], ":"],
+	"Swap {targetNoun} Now": ["Swap ", ["targetNoun"], " Now"],
 	"Swapping {count, plural, one {# player} other {# players}} from \"{squadName}\" to {toTeam} now": [
 		"Swapping ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		" from \"",
-		[
-			"squadName"
-		],
+		["squadName"],
 		"\" to ",
-		[
-			"toTeam"
-		],
+		["toTeam"],
 		" now"
 	],
-	"Swapping {username} to {toTeam} now": [
-		"Swapping ",
-		[
-			"username"
-		],
-		" to ",
-		[
-			"toTeam"
-		],
-		" now"
-	],
-	"Team column \"{column}\" could not be resolved to a team": [
-		"Team column \"",
-		[
-			"column"
-		],
-		"\" could not be resolved to a team"
-	],
-	"Team {teamId}": [
-		"Team ",
-		[
-			"teamId"
-		]
-	],
-	"Team {teamId} wins": [
-		"Team ",
-		[
-			"teamId"
-		],
-		" wins"
-	],
-	"Team {team}": [
-		"Team ",
-		[
-			"team"
-		]
-	],
-	"Teams ({count})": [
-		"Teams (",
-		[
-			"count"
-		],
-		")"
-	],
+	"Swapping {username} to {toTeam} now": ["Swapping ", ["username"], " to ", ["toTeam"], " now"],
+	"Team column \"{column}\" could not be resolved to a team": ["Team column \"", ["column"], "\" could not be resolved to a team"],
+	"Team {teamId}": ["Team ", ["teamId"]],
+	"Team {teamId} wins": ["Team ", ["teamId"], " wins"],
+	"Team {team}": ["Team ", ["team"]],
+	"Teams ({count})": ["Teams (", ["count"], ")"],
 	"The <strong>trash icon</strong> on a team column clears all for that team.": [
 		"The ",
-		[
-			"strong",
-			"tag",
-			[
-				"trash icon"
-			]
-		],
+		["strong", "tag", ["trash icon"]],
 		" on a team column clears all for that team."
 	],
-	"The choice for \"{command}\" expired": [
-		"The choice for \"",
-		[
-			"command"
-		],
-		"\" expired"
+	"The choice for \"{command}\" expired": ["The choice for \"", ["command"], "\" expired"],
+	"The groupings column displays the chosen <em>Grouping</em> for each player. <em>Player Groupings</em> are a powerful categorization tool that make it easy to distinguish between diferent <i>kinds</i> of players at a glance. <a>click here</a> for documentation on how to set up player groupings for your SLM instance, if you have permissions to do so.": [
+		"The groupings column displays the chosen ",
+		["em", "tag", ["Grouping"]],
+		" for each player. ",
+		["em", "tag", ["Player Groupings"]],
+		" are a powerful categorization tool that make it easy to distinguish between diferent ",
+		["i", "tag", ["kinds"]],
+		" of players at a glance. ",
+		["a", "tag", ["click here"]],
+		" for documentation on how to set up player groupings for your SLM instance, if you have permissions to do so."
 	],
-	"The layer request list is full (max {max}).": [
-		"The layer request list is full (max ",
-		[
-			"max"
-		],
-		")."
-	],
+	"The layer request list is full (max {max}).": ["The layer request list is full (max ", ["max"], ")."],
 	"The next layer set on the server is still {layer}. Save the changes to set this layer instead. If someone has forgotten to save their changes, use force save:": [
 		"The next layer set on the server is still ",
-		[
-			"layer"
-		],
+		["layer"],
 		". Save the changes to set this layer instead. If someone has forgotten to save their changes, use force save:"
 	],
 	"The pool filter decides whether a layer is <strong>in pool</strong> or <strong>out of pool</strong>. It is always indicated on layers, applied by default when selecting them, and warned about on save. Depending on their permissions, some users cannot set an out-of-pool layer at all.": [
 		"The pool filter decides whether a layer is ",
-		[
-			"strong",
-			"tag",
-			[
-				"in pool"
-			]
-		],
+		["strong", "tag", ["in pool"]],
 		" or ",
-		[
-			"strong",
-			"tag",
-			[
-				"out of pool"
-			]
-		],
+		["strong", "tag", ["out of pool"]],
 		". It is always indicated on layers, applied by default when selecting them, and warned about on save. Depending on their permissions, some users cannot set an out-of-pool layer at all."
 	],
 	"The pool filter must have match and miss indicators configured. Missing: {missing}.": [
 		"The pool filter must have match and miss indicators configured. Missing: ",
-		[
-			"missing"
-		],
+		["missing"],
 		"."
 	],
-	"The request could not be fulfilled ({code}).": [
-		"The request could not be fulfilled (",
-		[
-			"code"
-		],
-		")."
-	],
-	"These flags require a reason: {join}": [
-		"These flags require a reason: ",
-		[
-			"join"
-		]
+	"The request could not be fulfilled ({code}).": ["The request could not be fulfilled (", ["code"], ")."],
+	"These flags require a reason: {join}": ["These flags require a reason: ", ["join"]],
+	"They may not be available in our tutorial sandbox, but <em>Player flags</em>, sourced from battlemetrics, will be shown, and can be added/removed here.": [
+		"They may not be available in our tutorial sandbox, but ",
+		["em", "tag", ["Player flags"]],
+		", sourced from battlemetrics, will be shown, and can be added/removed here."
 	],
 	"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type {showNextCommands} to check what layers are next": [
 		"This badge means SLM has already set this layer configuration as the server's next layer. Ingame, you can type ",
-		[
-			"showNextCommands"
-		],
+		["showNextCommands"],
 		" to check what layers are next"
 	],
 	"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>{lt}</code>/<code>{gt}</code> to compare magnitudes; <code>=</code> only checks whether the value is null.": [
 		"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make ",
-		[
-			"code",
-			"tag",
-			[
-				"="
-			]
-		],
+		["code", "tag", ["="]],
 		" unreliable, so use a range (",
-		[
-			"code",
-			"tag",
-			[
-				"[..]"
-			]
-		],
+		["code", "tag", ["[..]"]],
 		") or ",
-		[
-			"code",
-			"tag",
-			[
-				[
-					"lt"
-				]
-			]
-		],
+		["code", "tag", [["lt"]]],
 		"/",
-		[
-			"code",
-			"tag",
-			[
-				[
-					"gt"
-				]
-			]
-		],
+		["code", "tag", [["gt"]]],
 		" to compare magnitudes; ",
-		[
-			"code",
-			"tag",
-			[
-				"="
-			]
-		],
+		["code", "tag", ["="]],
 		" only checks whether the value is null."
 	],
 	"This filter's {kind} indicator won't display: it has no {missing} configured. Click to edit the filter.": [
 		"This filter's ",
-		[
-			"kind"
-		],
+		["kind"],
 		" indicator won't display: it has no ",
-		[
-			"missing"
-		],
+		["missing"],
 		" configured. Click to edit the filter."
 	],
 	"This score is meant to give you an idea of the “asymmetry” of the matchup. Generally, similar <em>unit types</em> will be more symmetric (e.g. Combined Arms versus Combined Arms or Support versus Support and so on. This is because similar unit types get similar vehicle loadouts. The third entry in the map setting interface example, ADF Combined Arms versus AFU Light Infantry favours the ADF slightly in terms of balance but is quite asymmetric (though not asymmetric enough to be out of the main pool entirely). In general, when looking at these scores, you should focus on the <em>relative magnitudes</em> rather than the specific units, as the units are abstract.": [
 		"This score is meant to give you an idea of the “asymmetry” of the matchup. Generally, similar ",
-		[
-			"em",
-			"tag",
-			[
-				"unit types"
-			]
-		],
+		["em", "tag", ["unit types"]],
 		" will be more symmetric (e.g. Combined Arms versus Combined Arms or Support versus Support and so on. This is because similar unit types get similar vehicle loadouts. The third entry in the map setting interface example, ADF Combined Arms versus AFU Light Infantry favours the ADF slightly in terms of balance but is quite asymmetric (though not asymmetric enough to be out of the main pool entirely). In general, when looking at these scores, you should focus on the ",
-		[
-			"em",
-			"tag",
-			[
-				"relative magnitudes"
-			]
-		],
+		["em", "tag", ["relative magnitudes"]],
 		" rather than the specific units, as the units are abstract."
 	],
 	"This tutorial is run in a <em>sandbox</em> environment, so we can experiment without affecting the server.": [
 		"This tutorial is run in a ",
-		[
-			"em",
-			"tag",
-			[
-				"sandbox"
-			]
-		],
+		["em", "tag", ["sandbox"]],
 		" environment, so we can experiment without affecting the server."
 	],
 	"This window holds everything else known about the layer:\n<ul>\n<li>the factions for each team</li>\n<li>the special characteristics of each faction</li>\n<li>the vehicles each team fields</li>\n</ul>": [
@@ -2823,177 +1118,67 @@
 			"tag",
 			[
 				"\n",
-				[
-					"li",
-					"tag",
-					[
-						"the factions for each team"
-					]
-				],
+				["li", "tag", ["the factions for each team"]],
 				"\n",
-				[
-					"li",
-					"tag",
-					[
-						"the special characteristics of each faction"
-					]
-				],
+				["li", "tag", ["the special characteristics of each faction"]],
 				"\n",
-				[
-					"li",
-					"tag",
-					[
-						"the vehicles each team fields"
-					]
-				],
+				["li", "tag", ["the vehicles each team fields"]],
 				"\n"
 			]
 		]
 	],
 	"Timed out until {expiresAt}{hasReason, select, yes { ({reasonLabel})} other {}}": [
 		"Timed out until ",
-		[
-			"expiresAt"
-		],
+		["expiresAt"],
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" (",
-					[
-						"reasonLabel"
-					],
-					")"
-				],
+				"yes": [" (", ["reasonLabel"], ")"],
 				"other": []
 			}
 		]
 	],
-	"Timed out {targetAffected} for {duration}": [
-		"Timed out ",
-		[
-			"targetAffected"
-		],
-		" for ",
-		[
-			"duration"
-		]
-	],
-	"Timeout {targetNoun}": [
-		"Timeout ",
-		[
-			"targetNoun"
-		]
-	],
+	"Timed out {targetAffected} for {duration}": ["Timed out ", ["targetAffected"], " for ", ["duration"]],
+	"Timeout {targetNoun}": ["Timeout ", ["targetNoun"]],
 	"To access this site you must sign in with a Discord account that has sufficient privileges in {where}.": [
 		"To access this site you must sign in with a Discord account that has sufficient privileges in ",
-		[
-			"where"
-		],
+		["where"],
 		"."
 	],
 	"To replay a layer from the match history, drag it into the queue. This only works while you are editing, so click <em>Start Editing</em> first.": [
 		"To replay a layer from the match history, drag it into the queue. This only works while you are editing, so click ",
-		[
-			"em",
-			"tag",
-			[
-				"Start Editing"
-			]
-		],
+		["em", "tag", ["Start Editing"]],
 		" first."
 	],
-	"Tutorial <em>{tutorial}</em> is complete!": [
-		"Tutorial ",
-		[
-			"em",
-			"tag",
-			[
-				[
-					"tutorial"
-				]
-			]
-		],
-		" is complete!"
-	],
-	"Tutorials for the {page}": [
-		"Tutorials for the ",
-		[
-			"page"
-		]
-	],
-	"Unable to resolve player \"{username}\" in battlemetrics": [
-		"Unable to resolve player \"",
-		[
-			"username"
-		],
-		"\" in battlemetrics"
-	],
-	"Unit (team {team})": [
-		"Unit (team ",
-		[
-			"team"
-		],
-		")"
-	],
-	"Unknown flag: {id}": [
-		"Unknown flag: ",
-		[
-			"id"
-		]
-	],
-	"Unknown section \"{sectionToken}\"": [
-		"Unknown section \"",
-		[
-			"sectionToken"
-		],
-		"\""
-	],
-	"Unknown section \"{sectionToken}\". Try one of: {options}": [
-		"Unknown section \"",
-		[
-			"sectionToken"
-		],
-		"\". Try one of: ",
-		[
-			"options"
-		]
-	],
+	"Tutorial <em>{tutorial}</em> is complete!": ["Tutorial ", ["em", "tag", [["tutorial"]]], " is complete!"],
+	"Tutorials for the {page}": ["Tutorials for the ", ["page"]],
+	"Unable to resolve player \"{username}\" in battlemetrics": ["Unable to resolve player \"", ["username"], "\" in battlemetrics"],
+	"Unit (team {team})": ["Unit (team ", ["team"], ")"],
+	"Unknown flag: {id}": ["Unknown flag: ", ["id"]],
+	"Unknown section \"{sectionToken}\"": ["Unknown section \"", ["sectionToken"], "\""],
+	"Unknown section \"{sectionToken}\". Try one of: {options}": ["Unknown section \"", ["sectionToken"], "\". Try one of: ", ["options"]],
 	"Unsaved {draft, select, queue {queue} other {layer request}} edits were discarded: nobody was left editing them": [
 		"Unsaved ",
 		[
 			"draft",
 			"select",
 			{
-				"queue": [
-					"queue"
-				],
-				"other": [
-					"layer request"
-				]
+				"queue": ["queue"],
+				"other": ["layer request"]
 			}
 		],
 		" edits were discarded: nobody was left editing them"
 	],
-	"Updated flags: {summary}": [
-		"Updated flags: ",
-		[
-			"summary"
-		]
-	],
+	"Updated flags: {summary}": ["Updated flags: ", ["summary"]],
 	"Updates from SLM are {enabled, select, yes {enabled} other {disabled}}.{byVote, select, yes { An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting off.} other {}}": [
 		"Updates from SLM are ",
 		[
 			"enabled",
 			"select",
 			{
-				"yes": [
-					"enabled"
-				],
-				"other": [
-					"disabled"
-				]
+				"yes": ["enabled"],
+				"other": ["disabled"]
 			}
 		],
 		".",
@@ -3001,9 +1186,7 @@
 			"byVote",
 			"select",
 			{
-				"yes": [
-					" An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting off."
-				],
+				"yes": [" An in-game vote is deciding the next layer. Enabling SLM updates will also turn in-game voting off."],
 				"other": []
 			}
 		]
@@ -3014,12 +1197,8 @@
 			"enabled",
 			"select",
 			{
-				"yes": [
-					"enabled"
-				],
-				"other": [
-					"disabled"
-				]
+				"yes": ["enabled"],
+				"other": ["disabled"]
 			}
 		],
 		".",
@@ -3027,79 +1206,39 @@
 			"turnedOff",
 			"select",
 			{
-				"yes": [
-					" In-game voting has been turned off, so it no longer decides the next layer."
-				],
+				"yes": [" In-game voting has been turned off, so it no longer decides the next layer."],
 				"other": []
 			}
 		]
 	],
-	"Value {value} is not mapped for column {column}": [
-		"Value ",
-		[
-			"value"
-		],
-		" is not mapped for column ",
-		[
-			"column"
-		]
-	],
-	"View {count} notes": [
-		"View ",
-		[
-			"count"
-		],
-		" notes"
-	],
-	"Vote cast for {toShortLayerNameFromId}.": [
-		"Vote cast for ",
-		[
-			"toShortLayerNameFromId"
-		],
-		"."
-	],
+	"Value {value} is not mapped for column {column}": ["Value ", ["value"], " is not mapped for column ", ["column"]],
+	"View {count} notes": ["View ", ["count"], " notes"],
+	"Vote cast for {toShortLayerNameFromId}.": ["Vote cast for ", ["toShortLayerNameFromId"], "."],
 	"Vote for the next layer{internal, select, yes { (internal)} other {}}:\n{lines}\nYou have {duration} to vote.\n": [
 		"Vote for the next layer",
 		[
 			"internal",
 			"select",
 			{
-				"yes": [
-					" (internal)"
-				],
+				"yes": [" (internal)"],
 				"other": []
 			}
 		],
 		":\n",
-		[
-			"lines"
-		],
+		["lines"],
 		"\nYou have ",
-		[
-			"duration"
-		],
+		["duration"],
 		" to vote.\n"
 	],
-	"Vote must be cast in {correctChannel}": [
-		"Vote must be cast in ",
-		[
-			"correctChannel"
-		]
-	],
+	"Vote must be cast in {correctChannel}": ["Vote must be cast in ", ["correctChannel"]],
 	"WARNING: only {count, plural, one {# item} other {# items}} in the queue. Consider adding some more": [
 		"WARNING: only ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" item"
-				],
-				"other": [
-					0,
-					" items"
-				]
+				"one": [0, " item"],
+				"other": [0, " items"]
 			},
 			0
 		],
@@ -3111,131 +1250,41 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" selected player"
-				],
-				"other": [
-					0,
-					" selected players"
-				]
+				"one": [0, " selected player"],
+				"other": [0, " selected players"]
 			},
 			0
 		],
 		"…"
 	],
-	"Warn {playerName}…": [
-		"Warn ",
-		[
-			"playerName"
-		],
-		"…"
-	],
-	"Warn {squadName}…": [
-		"Warn ",
-		[
-			"squadName"
-		],
-		"…"
-	],
-	"Warn {targetNoun}": [
-		"Warn ",
-		[
-			"targetNoun"
-		]
-	],
-	"Warn {targetSubject} with a preset reason?": [
-		"Warn ",
-		[
-			"targetSubject"
-		],
-		" with a preset reason?"
-	],
-	"Warned {squadLabel}: \"{message}\"": [
-		"Warned ",
-		[
-			"squadLabel"
-		],
-		": \"",
-		[
-			"message"
-		],
-		"\""
-	],
-	"Warned {targetAffected} for {presetReasonLabel}": [
-		"Warned ",
-		[
-			"targetAffected"
-		],
-		" for ",
-		[
-			"presetReasonLabel"
-		]
-	],
-	"Warned {username}: \"{message}\"": [
-		"Warned ",
-		[
-			"username"
-		],
-		": \"",
-		[
-			"message"
-		],
-		"\""
-	],
-	"WebSocket Client ID: {wsClientId}": [
-		"WebSocket Client ID: ",
-		[
-			"wsClientId"
-		]
-	],
-	"Will display as: \"{nickname}\"": [
-		"Will display as: \"",
-		[
-			"nickname"
-		],
-		"\""
-	],
-	"With {arg}": [
-		"With ",
-		[
-			"arg"
-		]
-	],
+	"Warn {playerName}…": ["Warn ", ["playerName"], "…"],
+	"Warn {squadName}…": ["Warn ", ["squadName"], "…"],
+	"Warn {targetNoun}": ["Warn ", ["targetNoun"]],
+	"Warn {targetSubject} with a preset reason?": ["Warn ", ["targetSubject"], " with a preset reason?"],
+	"Warned {squadLabel}: \"{message}\"": ["Warned ", ["squadLabel"], ": \"", ["message"], "\""],
+	"Warned {targetAffected} for {presetReasonLabel}": ["Warned ", ["targetAffected"], " for ", ["presetReasonLabel"]],
+	"Warned {username}: \"{message}\"": ["Warned ", ["username"], ": \"", ["message"], "\""],
+	"WebSocket Client ID: {wsClientId}": ["WebSocket Client ID: ", ["wsClientId"]],
+	"Will display as: \"{nickname}\"": ["Will display as: \"", ["nickname"], "\""],
+	"With {arg}": ["With ", ["arg"]],
 	"You have {count, plural, one {# permission} other {# permissions}}": [
 		"You have ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" permission"
-				],
-				"other": [
-					0,
-					" permissions"
-				]
+				"one": [0, " permission"],
+				"other": [0, " permissions"]
 			},
 			0
 		]
 	],
-	"You moved up: now #{position} in line to switch teams.": [
-		"You moved up: now #",
-		[
-			"position"
-		],
-		" in line to switch teams."
-	],
+	"You moved up: now #{position} in line to switch teams.": ["You moved up: now #", ["position"], " in line to switch teams."],
 	"You're #{position} in line to switch teams. You'll be switched when the balance allows. Type {cancelCommand} to cancel.": [
 		"You're #",
-		[
-			"position"
-		],
+		["position"],
 		" in line to switch teams. You'll be switched when the balance allows. Type ",
-		[
-			"cancelCommand"
-		],
+		["cancelCommand"],
 		" to cancel."
 	],
 	"You're active in {count, plural, one {# other session} other {# other sessions}}.": [
@@ -3244,14 +1293,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" other session"
-				],
-				"other": [
-					0,
-					" other sessions"
-				]
+				"one": [0, " other session"],
+				"other": [0, " other sessions"]
 			},
 			0
 		],
@@ -3259,195 +1302,69 @@
 	],
 	"You're already #{position} in line to switch teams. Type {cancelCommand} to cancel.": [
 		"You're already #",
-		[
-			"position"
-		],
+		["position"],
 		" in line to switch teams. Type ",
-		[
-			"cancelCommand"
-		],
+		["cancelCommand"],
 		" to cancel."
 	],
 	"Your Discord account does not have sufficient privileges in {where} to access this site.": [
 		"Your Discord account does not have sufficient privileges in ",
-		[
-			"where"
-		],
+		["where"],
 		" to access this site."
 	],
 	"Your SLM install can define rules that categorize layers, called <strong>layer filters</strong>. A filter can show an emoji <strong>indicator</strong> on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: <em>Tutorial Pool</em> <tutorialPoolIcon></tutorialPoolIcon> and <em>Large Layers</em> <largeLayersIcon></largeLayersIcon>.": [
 		"Your SLM install can define rules that categorize layers, called ",
-		[
-			"strong",
-			"tag",
-			[
-				"layer filters"
-			]
-		],
+		["strong", "tag", ["layer filters"]],
 		". A filter can show an emoji ",
-		[
-			"strong",
-			"tag",
-			[
-				"indicator"
-			]
-		],
+		["strong", "tag", ["indicator"]],
 		" on the layers it matches. Hover an indicator to see which filter put it there. For this tutorial, we'll be working with two tutorial-specific filters: ",
-		[
-			"em",
-			"tag",
-			[
-				"Tutorial Pool"
-			]
-		],
+		["em", "tag", ["Tutorial Pool"]],
 		" ",
-		[
-			"tutorialPoolIcon",
-			"tag",
-			[]
-		],
+		["tutorialPoolIcon", "tag", []],
 		" and ",
-		[
-			"em",
-			"tag",
-			[
-				"Large Layers"
-			]
-		],
+		["em", "tag", ["Large Layers"]],
 		" ",
-		[
-			"largeLayersIcon",
-			"tag",
-			[]
-		],
+		["largeLayersIcon", "tag", []],
 		"."
 	],
-	"Your maximum timeout is {maxDuration}": [
-		"Your maximum timeout is ",
-		[
-			"maxDuration"
-		]
-	],
-	"[{triggers}]{signature}: {description}": [
-		"[",
-		[
-			"triggers"
-		],
-		"]",
-		[
-			"signature"
-		],
-		": ",
-		[
-			"description"
-		]
-	],
+	"Your maximum timeout is {maxDuration}": ["Your maximum timeout is ", ["maxDuration"]],
+	"[{triggers}]{signature}: {description}": ["[", ["triggers"], "]", ["signature"], ": ", ["description"]],
 	"a vote ({count, plural, one {# choice} other {# choices}}): ": [
 		"a vote (",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" choice"
-				],
-				"other": [
-					0,
-					" choices"
-				]
+				"one": [0, " choice"],
+				"other": [0, " choices"]
 			},
 			0
 		],
 		"): "
 	],
-	"always {pins}": [
-		"always ",
-		[
-			"pins"
-		]
-	],
-	"and {count} more": [
-		"and ",
-		[
-			"count"
-		],
-		" more"
-	],
-	"any {column}": [
-		"any ",
-		[
-			"column"
-		]
-	],
-	"by {who}": [
-		"by ",
-		[
-			"who"
-		]
-	],
-	"default: {value}": [
-		"default: ",
-		[
-			"value"
-		]
-	],
-	"fixed at {values}": [
-		"fixed at ",
-		[
-			"values"
-		]
-	],
-	"linked by {admin}": [
-		"linked by ",
-		[
-			"admin"
-		]
-	],
-	"no longer to {faction}: {names}": [
-		"no longer to ",
-		[
-			"faction"
-		],
-		": ",
-		[
-			"names"
-		]
-	],
-	"now queued for next map: {totals}": [
-		"now queued for next map: ",
-		[
-			"totals"
-		]
-	],
-	"squad \"{squadName}\"": [
-		"squad \"",
-		[
-			"squadName"
-		],
-		"\""
-	],
+	"always {pins}": ["always ", ["pins"]],
+	"and {count} more": ["and ", ["count"], " more"],
+	"any {column}": ["any ", ["column"]],
+	"by {who}": ["by ", ["who"]],
+	"default: {value}": ["default: ", ["value"]],
+	"fixed at {values}": ["fixed at ", ["values"]],
+	"linked by {admin}": ["linked by ", ["admin"]],
+	"no longer to {faction}: {names}": ["no longer to ", ["faction"], ": ", ["names"]],
+	"now queued for next map: {totals}": ["now queued for next map: ", ["totals"]],
+	"squad \"{squadName}\"": ["squad \"", ["squadName"], "\""],
 	"the {count, plural, one {# member} other {# members}} of squad \"{squadName}\"": [
 		"the ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" member"
-				],
-				"other": [
-					0,
-					" members"
-				]
+				"one": [0, " member"],
+				"other": [0, " members"]
 			},
 			0
 		],
 		" of squad \"",
-		[
-			"squadName"
-		],
+		["squadName"],
 		"\""
 	],
 	"to enable SLM Updates{alsoStopsIngameVote, select, yes { and turn off in-game voting on the server} other {}}.": [
@@ -3456,125 +1373,46 @@
 			"alsoStopsIngameVote",
 			"select",
 			{
-				"yes": [
-					" and turn off in-game voting on the server"
-				],
+				"yes": [" and turn off in-game voting on the server"],
 				"other": []
 			}
 		],
 		"."
 	],
-	"to {faction}: {names}": [
-		"to ",
-		[
-			"faction"
-		],
-		": ",
-		[
-			"names"
-		]
-	],
-	"via {chain}": [
-		"via ",
-		[
-			"chain"
-		]
-	],
-	"via {tool}": [
-		"via ",
-		[
-			"tool"
-		]
-	],
-	"within {within}": [
-		"within ",
-		[
-			"within"
-		]
-	],
-	"{action} (squad)": [
-		[
-			"action"
-		],
-		" (squad)"
-	],
-	"{actor} aborted the vote": [
-		[
-			"actor"
-		],
-		" aborted the vote"
-	],
-	"{actor} broadcast \"{message}\"": [
-		[
-			"actor"
-		],
-		" broadcast \"",
-		[
-			"message"
-		],
-		"\""
-	],
-	"{actor} cancelled {target}'s timeout": [
-		[
-			"actor"
-		],
-		" cancelled ",
-		[
-			"target"
-		],
-		"'s timeout"
-	],
-	"{actor} cleared the queued teamswaps": [
-		[
-			"actor"
-		],
-		" cleared the queued teamswaps"
-	],
+	"to {faction}: {names}": ["to ", ["faction"], ": ", ["names"]],
+	"via {chain}": ["via ", ["chain"]],
+	"via {tool}": ["via ", ["tool"]],
+	"within {within}": ["within ", ["within"]],
+	"{action} (squad)": [["action"], " (squad)"],
+	"{actor} aborted the vote": [["actor"], " aborted the vote"],
+	"{actor} broadcast \"{message}\"": [["actor"], " broadcast \"", ["message"], "\""],
+	"{actor} cancelled {target}'s timeout": [["actor"], " cancelled ", ["target"], "'s timeout"],
+	"{actor} cleared the queued teamswaps": [["actor"], " cleared the queued teamswaps"],
 	"{actor} demoted {target}{hasReason, select, yes { for {reasonLabel}} other {}}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" demoted ",
-		[
-			"target"
-		],
+		["target"],
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reasonLabel"
-					]
-				],
+				"yes": [" for ", ["reasonLabel"]],
 				"other": []
 			}
 		]
 	],
 	"{actor} disbanded {squadName} (Team {teamId}){hasReason, select, yes { for {reasonLabel}} other {}}{memberCount, plural, =0 {} one {, # player} other {, # players}}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" disbanded ",
-		[
-			"squadName"
-		],
+		["squadName"],
 		" (Team ",
-		[
-			"teamId"
-		],
+		["teamId"],
 		")",
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reasonLabel"
-					]
-				],
+				"yes": [" for ", ["reasonLabel"]],
 				"other": []
 			}
 		],
@@ -3583,172 +1421,88 @@
 			"plural",
 			{
 				"=0": [],
-				"one": [
-					", ",
-					0,
-					" player"
-				],
-				"other": [
-					", ",
-					0,
-					" players"
-				]
+				"one": [", ", 0, " player"],
+				"other": [", ", 0, " players"]
 			},
 			0
 		]
 	],
-	"{actor} ended the match": [
-		[
-			"actor"
-		],
-		" ended the match"
-	],
-	"{actor} ended the vote early": [
-		[
-			"actor"
-		],
-		" ended the vote early"
-	],
+	"{actor} ended the match": [["actor"], " ended the match"],
+	"{actor} ended the vote early": [["actor"], " ended the vote early"],
 	"{actor} executed the queued teamswaps ({playerCount, plural, one {# player} other {# players}})": [
-		[
-			"actor"
-		],
+		["actor"],
 		" executed the queued teamswaps (",
 		[
 			"playerCount",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		")"
 	],
-	"{actor} renamed {squadName} (Team {teamId})": [
-		[
-			"actor"
-		],
-		" renamed ",
-		[
-			"squadName"
-		],
-		" (Team ",
-		[
-			"teamId"
-		],
-		")"
-	],
+	"{actor} renamed {squadName} (Team {teamId})": [["actor"], " renamed ", ["squadName"], " (Team ", ["teamId"], ")"],
 	"{actor} started a vote ({choiceCount, plural, one {# option} other {# options}})": [
-		[
-			"actor"
-		],
+		["actor"],
 		" started a vote (",
 		[
 			"choiceCount",
 			"plural",
 			{
-				"one": [
-					0,
-					" option"
-				],
-				"other": [
-					0,
-					" options"
-				]
+				"one": [0, " option"],
+				"other": [0, " options"]
 			},
 			0
 		],
 		")"
 	],
 	"{actor} timed out {target} for {duration}{hasReason, select, yes { for {reasonLabel}} other {}}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" timed out ",
-		[
-			"target"
-		],
+		["target"],
 		" for ",
-		[
-			"duration"
-		],
+		["duration"],
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" for ",
-					[
-						"reasonLabel"
-					]
-				],
+				"yes": [" for ", ["reasonLabel"]],
 				"other": []
 			}
 		]
 	],
 	"{actor} turned fog of war {enabled, select, yes {on} other {off}}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" turned fog of war ",
 		[
 			"enabled",
 			"select",
 			{
-				"yes": [
-					"on"
-				],
-				"other": [
-					"off"
-				]
+				"yes": ["on"],
+				"other": ["off"]
 			}
 		]
 	],
 	"{actor} updated the queued teamswaps ({delta}), {queued} queued for next map": [
-		[
-			"actor"
-		],
+		["actor"],
 		" updated the queued teamswaps (",
-		[
-			"delta"
-		],
+		["delta"],
 		"), ",
-		[
-			"queued"
-		],
+		["queued"],
 		" queued for next map"
 	],
-	"{actor} {description}": [
-		[
-			"actor"
-		],
-		" ",
-		[
-			"description"
-		]
-	],
+	"{actor} {description}": [["actor"], " ", ["description"]],
 	"{actor} {force, select, yes {force-saved} other {saved}} the queue{hasOverride, select, yes {, overriding {overrode}} other {}}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" ",
 		[
 			"force",
 			"select",
 			{
-				"yes": [
-					"force-saved"
-				],
-				"other": [
-					"saved"
-				]
+				"yes": ["force-saved"],
+				"other": ["saved"]
 			}
 		],
 		" the queue",
@@ -3756,55 +1510,33 @@
 			"hasOverride",
 			"select",
 			{
-				"yes": [
-					", overriding ",
-					[
-						"overrode"
-					]
-				],
+				"yes": [", overriding ", ["overrode"]],
 				"other": []
 			}
 		]
 	],
 	"{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" ",
-		[
-			"verb"
-		],
+		["verb"],
 		" ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					"a player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": ["a player"],
+				"other": [0, " players"]
 			},
 			0
 		],
-		[
-			"suffix"
-		]
+		["suffix"]
 	],
 	"{actor} {verb} {targets}{many, select, yes { ({count, plural, one {# player} other {# players}})} other {}}{suffix}": [
-		[
-			"actor"
-		],
+		["actor"],
 		" ",
-		[
-			"verb"
-		],
+		["verb"],
 		" ",
-		[
-			"targets"
-		],
+		["targets"],
 		[
 			"many",
 			"select",
@@ -3815,14 +1547,8 @@
 						"count",
 						"plural",
 						{
-							"one": [
-								0,
-								" player"
-							],
-							"other": [
-								0,
-								" players"
-							]
+							"one": [0, " player"],
+							"other": [0, " players"]
 						},
 						0
 					],
@@ -3831,25 +1557,15 @@
 				"other": []
 			}
 		],
-		[
-			"suffix"
-		]
+		["suffix"]
 	],
 	"{capped, select, yes {e.g. 30m, 2h (max {max})} other {e.g. 30m, 2h, 1d}}": [
 		[
 			"capped",
 			"select",
 			{
-				"yes": [
-					"e.g. 30m, 2h (max ",
-					[
-						"max"
-					],
-					")"
-				],
-				"other": [
-					"e.g. 30m, 2h, 1d"
-				]
+				"yes": ["e.g. 30m, 2h (max ", ["max"], ")"],
+				"other": ["e.g. 30m, 2h, 1d"]
 			}
 		]
 	],
@@ -3858,19 +1574,9 @@
 			"count",
 			"plural",
 			{
-				"=0": [
-					"Add Layers"
-				],
-				"one": [
-					"Add ",
-					0,
-					" Layer"
-				],
-				"other": [
-					"Add ",
-					0,
-					" Layers"
-				]
+				"=0": ["Add Layers"],
+				"one": ["Add ", 0, " Layer"],
+				"other": ["Add ", 0, " Layers"]
 			},
 			0
 		]
@@ -3880,14 +1586,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" error"
-				],
-				"other": [
-					0,
-					" errors"
-				]
+				"one": [0, " error"],
+				"other": [0, " errors"]
 			},
 			0
 		]
@@ -3897,14 +1597,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" layer"
-				],
-				"other": [
-					0,
-					" layers"
-				]
+				"one": [0, " layer"],
+				"other": [0, " layers"]
 			},
 			0
 		]
@@ -3914,14 +1608,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" new event"
-				],
-				"other": [
-					0,
-					" new events"
-				]
+				"one": [0, " new event"],
+				"other": [0, " new events"]
 			},
 			0
 		]
@@ -3931,14 +1619,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" permission"
-				],
-				"other": [
-					0,
-					" permissions"
-				]
+				"one": [0, " permission"],
+				"other": [0, " permissions"]
 			},
 			0
 		]
@@ -3948,14 +1630,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		]
@@ -3965,14 +1641,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
@@ -3983,14 +1653,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
@@ -4001,21 +1665,13 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		" were warned: \"",
-		[
-			"reason"
-		],
+		["reason"],
 		"\""
 	],
 	"{count, plural, one {# queued teamswap dropped, the player} other {# queued teamswaps dropped, those players}} left or changed teams": [
@@ -4023,14 +1679,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" queued teamswap dropped, the player"
-				],
-				"other": [
-					0,
-					" queued teamswaps dropped, those players"
-				]
+				"one": [0, " queued teamswap dropped, the player"],
+				"other": [0, " queued teamswaps dropped, those players"]
 			},
 			0
 		],
@@ -4041,14 +1691,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" reference"
-				],
-				"other": [
-					0,
-					" references"
-				]
+				"one": [0, " reference"],
+				"other": [0, " references"]
 			},
 			0
 		]
@@ -4058,14 +1702,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" reference"
-				],
-				"other": [
-					0,
-					" references"
-				]
+				"one": [0, " reference"],
+				"other": [0, " references"]
 			},
 			0
 		],
@@ -4076,14 +1714,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" role defined"
-				],
-				"other": [
-					0,
-					" roles defined"
-				]
+				"one": [0, " role defined"],
+				"other": [0, " roles defined"]
 			},
 			0
 		]
@@ -4093,14 +1725,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" timeout failed"
-				],
-				"other": [
-					0,
-					" timeouts failed"
-				]
+				"one": [0, " timeout failed"],
+				"other": [0, " timeouts failed"]
 			},
 			0
 		]
@@ -4110,14 +1736,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" use"
-				],
-				"other": [
-					0,
-					" uses"
-				]
+				"one": [0, " use"],
+				"other": [0, " uses"]
 			},
 			0
 		]
@@ -4127,12 +1747,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					"Copied History Entry ID"
-				],
-				"other": [
-					"Copied History Entry IDs"
-				]
+				"one": ["Copied History Entry ID"],
+				"other": ["Copied History Entry IDs"]
 			},
 			0
 		]
@@ -4142,14 +1758,8 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					"this player"
-				],
-				"other": [
-					"these ",
-					0,
-					" players"
-				]
+				"one": ["this player"],
+				"other": ["these ", 0, " players"]
 			},
 			0
 		]
@@ -4159,171 +1769,44 @@
 			"count",
 			"plural",
 			{
-				"one": [
-					[
-						"what"
-					],
-					" copied to clipboard"
-				],
-				"other": [
-					0,
-					" ",
-					[
-						"what"
-					],
-					"s copied to clipboard"
-				]
+				"one": [["what"], " copied to clipboard"],
+				"other": [0, " ", ["what"], "s copied to clipboard"]
 			},
 			0
 		]
 	],
-	"{count} not permitted": [
-		[
-			"count"
-		],
-		" not permitted"
-	],
-	"{count} selected": [
-		[
-			"count"
-		],
-		" selected"
-	],
-	"{count} strings still use this prefix": [
-		[
-			"count"
-		],
-		" strings still use this prefix"
-	],
-	"{count} timed-out players match \"{token}\"": [
-		[
-			"count"
-		],
-		" timed-out players match \"",
-		[
-			"token"
-		],
-		"\""
-	],
-	"{count} to {faction}": [
-		[
-			"count"
-		],
-		" to ",
-		[
-			"faction"
-		]
-	],
-	"{creator} created {squad} on {team}": [
-		[
-			"creator"
-		],
-		" created ",
-		[
-			"squad"
-		],
-		" on ",
-		[
-			"team"
-		]
-	],
-	"{current} of {total}": [
-		[
-			"current"
-		],
-		" of ",
-		[
-			"total"
-		]
-	],
-	"{current} of {total}+": [
-		[
-			"current"
-		],
-		" of ",
-		[
-			"total"
-		],
-		"+"
-	],
-	"{descriptor} ({players})": [
-		[
-			"descriptor"
-		],
-		" (",
-		[
-			"players"
-		],
-		")"
-	],
-	"{discordId} could not be resolved in the home guild.": [
-		[
-			"discordId"
-		],
-		" could not be resolved in the home guild."
-	],
-	"{displayName} {did}": [
-		[
-			"displayName"
-		],
-		" ",
-		[
-			"did"
-		]
-	],
-	"{edited} changed": [
-		[
-			"edited"
-		],
-		" changed"
-	],
+	"{count} not permitted": [["count"], " not permitted"],
+	"{count} selected": [["count"], " selected"],
+	"{count} strings still use this prefix": [["count"], " strings still use this prefix"],
+	"{count} timed-out players match \"{token}\"": [["count"], " timed-out players match \"", ["token"], "\""],
+	"{count} to {faction}": [["count"], " to ", ["faction"]],
+	"{creator} created {squad} on {team}": [["creator"], " created ", ["squad"], " on ", ["team"]],
+	"{current} of {total}": [["current"], " of ", ["total"]],
+	"{current} of {total}+": [["current"], " of ", ["total"], "+"],
+	"{descriptor} ({players})": [["descriptor"], " (", ["players"], ")"],
+	"{discordId} could not be resolved in the home guild.": [["discordId"], " could not be resolved in the home guild."],
+	"{displayName} {did}": [["displayName"], " ", ["did"]],
+	"{edited} changed": [["edited"], " changed"],
 	"{final, select, yes {VOTE NOW: {duration} left to cast your vote!} other {{duration} to cast your vote!}}\n{lines}": [
 		[
 			"final",
 			"select",
 			{
-				"yes": [
-					"VOTE NOW: ",
-					[
-						"duration"
-					],
-					" left to cast your vote!"
-				],
-				"other": [
-					[
-						"duration"
-					],
-					" to cast your vote!"
-				]
+				"yes": ["VOTE NOW: ", ["duration"], " left to cast your vote!"],
+				"other": [["duration"], " to cast your vote!"]
 			}
 		],
 		"\n",
-		[
-			"lines"
-		]
+		["lines"]
 	],
-	"{gap} later, resuming {resumesAt}": [
-		[
-			"gap"
-		],
-		" later, resuming ",
-		[
-			"resumesAt"
-		]
-	],
+	"{gap} later, resuming {resumesAt}": [["gap"], " later, resuming ", ["resumesAt"]],
 	"{hasReason, select, yes {{reason}} other {You have been kicked by an admin.}}": [
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					[
-						"reason"
-					]
-				],
-				"other": [
-					"You have been kicked by an admin."
-				]
+				"yes": [["reason"]],
+				"other": ["You have been kicked by an admin."]
 			}
 		]
 	],
@@ -4332,146 +1815,59 @@
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					[
-						"reason"
-					]
-				],
-				"other": [
-					"You have been killed by an admin."
-				]
+				"yes": [["reason"]],
+				"other": ["You have been killed by an admin."]
 			}
 		]
 	],
-	"{hours}h": [
-		[
-			"hours"
-		],
-		"h"
-	],
-	"{index}) {label}": [
-		[
-			"index"
-		],
-		") ",
-		[
-			"label"
-		]
-	],
+	"{hours}h": [["hours"], "h"],
+	"{index}) {label}": [["index"], ") ", ["label"]],
 	"{inferred, select, yes {The server no longer has a next layer set, which most likely means in-game voting was enabled.} other {An in-game vote is running.}} The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. Re-enabling them will turn in-game voting off.": [
 		[
 			"inferred",
 			"select",
 			{
-				"yes": [
-					"The server no longer has a next layer set, which most likely means in-game voting was enabled."
-				],
-				"other": [
-					"An in-game vote is running."
-				]
+				"yes": ["The server no longer has a next layer set, which most likely means in-game voting was enabled."],
+				"other": ["An in-game vote is running."]
 			}
 		],
 		" The vote decides the next layer, so updates from SLM have been disabled to stop it fighting the vote. Re-enabling them will turn in-game voting off."
 	],
-	"{kills} kills, {deaths} deaths": [
-		[
-			"kills"
-		],
-		" kills, ",
-		[
-			"deaths"
-		],
-		" deaths"
-	],
+	"{kills} kills, {deaths} deaths": [["kills"], " kills, ", ["deaths"], " deaths"],
 	"{known, select, yes {SLM has been restarted by {restartedBy}.} other {SLM has been started.}}": [
 		[
 			"known",
 			"select",
 			{
-				"yes": [
-					"SLM has been restarted by ",
-					[
-						"restartedBy"
-					],
-					"."
-				],
-				"other": [
-					"SLM has been started."
-				]
+				"yes": ["SLM has been restarted by ", ["restartedBy"], "."],
+				"other": ["SLM has been started."]
 			}
 		]
 	],
-	"{label} ({which}): {layer}": [
-		[
-			"label"
-		],
-		" (",
-		[
-			"which"
-		],
-		"): ",
-		[
-			"layer"
-		]
-	],
-	"{label} commands": [
-		[
-			"label"
-		],
-		" commands"
-	],
-	"{listId} (not configured)": [
-		[
-			"listId"
-		],
-		" (not configured)"
-	],
-	"{minutes} min": [
-		[
-			"minutes"
-		],
-		" min"
-	],
-	"{msg}": [
-		[
-			"msg"
-		]
-	],
+	"{label} ({which}): {layer}": [["label"], " (", ["which"], "): ", ["layer"]],
+	"{label} commands": [["label"], " commands"],
+	"{listId} (not configured)": [["listId"], " (not configured)"],
+	"{minutes} min": [["minutes"], " min"],
+	"{msg}": [["msg"]],
 	"{named, select, yes {You have reached the SLM instance for {guildName}.} other {You have reached this Squad Layer Manager instance.}}": [
 		[
 			"named",
 			"select",
 			{
-				"yes": [
-					"You have reached the SLM instance for ",
-					[
-						"guildName"
-					],
-					"."
-				],
-				"other": [
-					"You have reached this Squad Layer Manager instance."
-				]
+				"yes": ["You have reached the SLM instance for ", ["guildName"], "."],
+				"other": ["You have reached this Squad Layer Manager instance."]
 			}
 		]
 	],
 	"{name} cancelled {removed, plural, one {# teamswap} other {# teamswaps}}{colon, select, yes {:} other {}}": [
-		[
-			"name"
-		],
+		["name"],
 		" cancelled ",
 		[
 			"removed",
 			"plural",
 			{
-				"one": [
-					0,
-					" teamswap"
-				],
-				"other": [
-					0,
-					" teamswaps"
-				]
+				"one": [0, " teamswap"],
+				"other": [0, " teamswaps"]
 			},
 			0
 		],
@@ -4479,77 +1875,45 @@
 			"colon",
 			"select",
 			{
-				"yes": [
-					":"
-				],
+				"yes": [":"],
 				"other": []
 			}
 		]
 	],
-	"{name} cleared all queued teamswaps for next map.": [
-		[
-			"name"
-		],
-		" cleared all queued teamswaps for next map."
-	],
-	"{name} cleared the saved teamswaps.": [
-		[
-			"name"
-		],
-		" cleared the saved teamswaps."
-	],
+	"{name} cleared all queued teamswaps for next map.": [["name"], " cleared all queued teamswaps for next map."],
+	"{name} cleared the saved teamswaps.": [["name"], " cleared the saved teamswaps."],
 	"{name} queued {added, plural, one {# teamswap} other {# teamswaps}} and cancelled {removed}{colon, select, yes {:} other {}}": [
-		[
-			"name"
-		],
+		["name"],
 		" queued ",
 		[
 			"added",
 			"plural",
 			{
-				"one": [
-					0,
-					" teamswap"
-				],
-				"other": [
-					0,
-					" teamswaps"
-				]
+				"one": [0, " teamswap"],
+				"other": [0, " teamswaps"]
 			},
 			0
 		],
 		" and cancelled ",
-		[
-			"removed"
-		],
+		["removed"],
 		[
 			"colon",
 			"select",
 			{
-				"yes": [
-					":"
-				],
+				"yes": [":"],
 				"other": []
 			}
 		]
 	],
 	"{name} queued {added, plural, one {# teamswap} other {# teamswaps}}{colon, select, yes {:} other {}}": [
-		[
-			"name"
-		],
+		["name"],
 		" queued ",
 		[
 			"added",
 			"plural",
 			{
-				"one": [
-					0,
-					" teamswap"
-				],
-				"other": [
-					0,
-					" teamswaps"
-				]
+				"one": [0, " teamswap"],
+				"other": [0, " teamswaps"]
 			},
 			0
 		],
@@ -4557,133 +1921,85 @@
 			"colon",
 			"select",
 			{
-				"yes": [
-					":"
-				],
+				"yes": [":"],
 				"other": []
 			}
 		]
 	],
 	"{name} saved {count, plural, one {# teamswap} other {# teamswaps}}.": [
-		[
-			"name"
-		],
+		["name"],
 		" saved ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" teamswap"
-				],
-				"other": [
-					0,
-					" teamswaps"
-				]
+				"one": [0, " teamswap"],
+				"other": [0, " teamswaps"]
 			},
 			0
 		],
 		"."
 	],
 	"{name} swapped {count, plural, one {# player} other {# players}} to the other team.": [
-		[
-			"name"
-		],
+		["name"],
 		" swapped ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		" to the other team."
 	],
 	"{name} swapped {count, plural, one {# player} other {# players}} to their assigned teams.": [
-		[
-			"name"
-		],
+		["name"],
 		" swapped ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		" to their assigned teams."
 	],
 	"{name} swapped {count, plural, one {# player} other {# players}}:": [
-		[
-			"name"
-		],
+		["name"],
 		" swapped ",
 		[
 			"count",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		],
 		":"
 	],
 	"{name}{isYou, select, yes { (You)} other {}}": [
-		[
-			"name"
-		],
+		["name"],
 		[
 			"isYou",
 			"select",
 			{
-				"yes": [
-					" (You)"
-				],
+				"yes": [" (You)"],
 				"other": []
 			}
 		]
 	],
-	"{pair} (not in any current list)": [
-		[
-			"pair"
-		],
-		" (not in any current list)"
-	],
+	"{pair} (not in any current list)": [["pair"], " (not in any current list)"],
 	"{partial, select, yes {{shown} of } other {}}{total, plural, one {# player} other {# players}}": [
 		[
 			"partial",
 			"select",
 			{
-				"yes": [
-					[
-						"shown"
-					],
-					" of "
-				],
+				"yes": [["shown"], " of "],
 				"other": []
 			}
 		],
@@ -4691,254 +2007,98 @@
 			"total",
 			"plural",
 			{
-				"one": [
-					0,
-					" player"
-				],
-				"other": [
-					0,
-					" players"
-				]
+				"one": [0, " player"],
+				"other": [0, " players"]
 			},
 			0
 		]
 	],
-	"{playerName} has requested feedback for": [
-		[
-			"playerName"
-		],
-		" has requested feedback for"
-	],
-	"{playerName} is an admin": [
-		[
-			"playerName"
-		],
-		" is an admin"
-	],
-	"{playerName} leads this squad": [
-		[
-			"playerName"
-		],
-		" leads this squad"
-	],
-	"{playerName}'s squad": [
-		[
-			"playerName"
-		],
-		"'s squad"
-	],
-	"{playerName}'s team": [
-		[
-			"playerName"
-		],
-		"'s team"
-	],
-	"{players} were warned: \"{reason}\"": [
-		[
-			"players"
-		],
-		" were warned: \"",
-		[
-			"reason"
-		],
-		"\""
-	],
-	"{player} changed to {team}": [
-		[
-			"player"
-		],
-		" changed to ",
-		[
-			"team"
-		]
-	],
+	"{playerName} has requested feedback for": [["playerName"], " has requested feedback for"],
+	"{playerName} is an admin": [["playerName"], " is an admin"],
+	"{playerName} leads this squad": [["playerName"], " leads this squad"],
+	"{playerName}'s squad": [["playerName"], "'s squad"],
+	"{playerName}'s team": [["playerName"], "'s team"],
+	"{players} were warned: \"{reason}\"": [["players"], " were warned: \"", ["reason"], "\""],
+	"{player} changed to {team}": [["player"], " changed to ", ["team"]],
 	"{player} connected{hasTeam, select, yes {, joining {team}} other {}}": [
-		[
-			"player"
-		],
+		["player"],
 		" connected",
 		[
 			"hasTeam",
 			"select",
 			{
-				"yes": [
-					", joining ",
-					[
-						"team"
-					]
-				],
+				"yes": [", joining ", ["team"]],
 				"other": []
 			}
 		]
 	],
-	"{player} disconnected": [
-		[
-			"player"
-		],
-		" disconnected"
-	],
-	"{player} entered admin camera": [
-		[
-			"player"
-		],
-		" entered admin camera"
-	],
-	"{player} exited admin camera": [
-		[
-			"player"
-		],
-		" exited admin camera"
-	],
-	"{player} joined {squad}": [
-		[
-			"player"
-		],
-		" joined ",
-		[
-			"squad"
-		]
-	],
+	"{player} disconnected": [["player"], " disconnected"],
+	"{player} entered admin camera": [["player"], " entered admin camera"],
+	"{player} exited admin camera": [["player"], " exited admin camera"],
+	"{player} joined {squad}": [["player"], " joined ", ["squad"]],
 	"{player} left {squad}{wasLeader, select, yes { (was leader)} other {}}": [
-		[
-			"player"
-		],
+		["player"],
 		" left ",
-		[
-			"squad"
-		],
+		["squad"],
 		[
 			"wasLeader",
 			"select",
 			{
-				"yes": [
-					" (was leader)"
-				],
+				"yes": [" (was leader)"],
 				"other": []
 			}
 		]
 	],
-	"{player} promoted to squad leader": [
-		[
-			"player"
-		],
-		" promoted to squad leader"
-	],
+	"{player} promoted to squad leader": [["player"], " promoted to squad leader"],
 	"{player} to {team}{hasQueuedBy, select, yes { (queued by {queuedBy})} other {}}": [
-		[
-			"player"
-		],
+		["player"],
 		" to ",
-		[
-			"team"
-		],
+		["team"],
 		[
 			"hasQueuedBy",
 			"select",
 			{
-				"yes": [
-					" (queued by ",
-					[
-						"queuedBy"
-					],
-					")"
-				],
+				"yes": [" (queued by ", ["queuedBy"], ")"],
 				"other": []
 			}
 		]
 	],
-	"{player} was banned reason: \"{interval}\"": [
-		[
-			"player"
-		],
-		" was banned reason: \"",
-		[
-			"interval"
-		],
-		"\""
-	],
+	"{player} was banned reason: \"{interval}\"": [["player"], " was banned reason: \"", ["interval"], "\""],
 	"{player} was kicked{hasReason, select, yes { - {reason}} other {}}": [
-		[
-			"player"
-		],
+		["player"],
 		" was kicked",
 		[
 			"hasReason",
 			"select",
 			{
-				"yes": [
-					" - ",
-					[
-						"reason"
-					]
-				],
+				"yes": [" - ", ["reason"]],
 				"other": []
 			}
 		]
 	],
-	"{player} was warned: \"{reason}\"": [
-		[
-			"player"
-		],
-		" was warned: \"",
-		[
-			"reason"
-		],
-		"\""
-	],
-	"{received} of {players} votes received": [
-		[
-			"received"
-		],
-		" of ",
-		[
-			"players"
-		],
-		" votes received"
-	],
+	"{player} was warned: \"{reason}\"": [["player"], " was warned: \"", ["reason"], "\""],
+	"{received} of {players} votes received": [["received"], " of ", ["players"], " votes received"],
 	"{shape, select, single {You need the following permission:} all {You need all of the following permissions:} other {You need one of the following permissions:}}": [
 		[
 			"shape",
 			"select",
 			{
-				"single": [
-					"You need the following permission:"
-				],
-				"all": [
-					"You need all of the following permissions:"
-				],
-				"other": [
-					"You need one of the following permissions:"
-				]
+				"single": ["You need the following permission:"],
+				"all": ["You need all of the following permissions:"],
+				"other": ["You need one of the following permissions:"]
 			}
 		]
 	],
-	"{side} (team {team})": [
-		[
-			"side"
-		],
-		" (team ",
-		[
-			"team"
-		],
-		")"
-	],
+	"{side} (team {team})": [["side"], " (team ", ["team"], ")"],
 	"{slot, select, A {Team A} B {Team B} 1 {Team 1} other {Team 2}}{hasFaction, select, yes {({isCurrent, select, yes {current } other {}}{faction})} other {}}": [
 		[
 			"slot",
 			"select",
 			{
-				"1": [
-					"Team 1"
-				],
-				"A": [
-					"Team A"
-				],
-				"B": [
-					"Team B"
-				],
-				"other": [
-					"Team 2"
-				]
+				"1": ["Team 1"],
+				"A": ["Team A"],
+				"B": ["Team B"],
+				"other": ["Team 2"]
 			}
 		],
 		[
@@ -4951,73 +2111,29 @@
 						"isCurrent",
 						"select",
 						{
-							"yes": [
-								"current "
-							],
+							"yes": ["current "],
 							"other": []
 						}
 					],
-					[
-						"faction"
-					],
+					["faction"],
 					")"
 				],
 				"other": []
 			}
 		]
 	],
-	"{squadId}. {squadName} ({size})": [
-		[
-			"squadId"
-		],
-		". ",
-		[
-			"squadName"
-		],
-		" (",
-		[
-			"size"
-		],
-		")"
-	],
-	"{squad} renamed to <strong>\"{newName}\"</strong>": [
-		[
-			"squad"
-		],
-		" renamed to ",
-		[
-			"strong",
-			"tag",
-			[
-				"\"",
-				[
-					"newName"
-				],
-				"\""
-			]
-		]
-	],
-	"{squad} was disbanded": [
-		[
-			"squad"
-		],
-		" was disbanded"
-	],
+	"{squadId}. {squadName} ({size})": [["squadId"], ". ", ["squadName"], " (", ["size"], ")"],
+	"{squad} renamed to <strong>\"{newName}\"</strong>": [["squad"], " renamed to ", ["strong", "tag", ["\"", ["newName"], "\""]]],
+	"{squad} was disbanded": [["squad"], " was disbanded"],
 	"{squad} {locked, select, yes {locked} other {unlocked}}": [
-		[
-			"squad"
-		],
+		["squad"],
 		" ",
 		[
 			"locked",
 			"select",
 			{
-				"yes": [
-					"locked"
-				],
-				"other": [
-					"unlocked"
-				]
+				"yes": ["locked"],
+				"other": ["unlocked"]
 			}
 		]
 	],
@@ -5026,422 +2142,157 @@
 			"state",
 			"select",
 			{
-				"waiting": [
-					"Loading ",
-					[
-						"subject"
-					],
-					"…"
-				],
-				"slow": [
-					"Still waiting on ",
-					[
-						"subject"
-					],
-					"…"
-				],
-				"other": [
-					"Reconnecting, ",
-					[
-						"subject"
-					],
-					" will load once we're back…"
-				]
+				"waiting": ["Loading ", ["subject"], "…"],
+				"slow": ["Still waiting on ", ["subject"], "…"],
+				"other": ["Reconnecting, ", ["subject"], " will load once we're back…"]
 			}
 		]
 	],
-	"{steamId} is linked to another account.": [
-		[
-			"steamId"
-		],
-		" is linked to another account."
-	],
-	"{tab} console output": [
-		[
-			"tab"
-		],
-		" console output"
-	],
-	"{tag}: {reason}": [
-		[
-			"tag"
-		],
-		": ",
-		[
-			"reason"
-		]
-	],
-	"{team} players": [
-		[
-			"team"
-		],
-		" players"
-	],
+	"{steamId} is linked to another account.": [["steamId"], " is linked to another account."],
+	"{tab} console output": [["tab"], " console output"],
+	"{tag}: {reason}": [["tag"], ": ", ["reason"]],
+	"{team} players": [["team"], " players"],
 	"{timedOut, select, yes {{subject} didn't load} other {{subject} failed}}": [
 		[
 			"timedOut",
 			"select",
 			{
-				"yes": [
-					[
-						"subject"
-					],
-					" didn't load"
-				],
-				"other": [
-					[
-						"subject"
-					],
-					" failed"
-				]
+				"yes": [["subject"], " didn't load"],
+				"other": [["subject"], " failed"]
 			}
 		]
 	],
-	"{time} on this team": [
-		[
-			"time"
-		],
-		" on this team"
-	],
-	"{title}:": [
-		[
-			"title"
-		],
-		":"
-	],
-	"{title}: none.": [
-		[
-			"title"
-		],
-		": none."
-	],
-	"{triggerName} level": [
-		[
-			"triggerName"
-		],
-		" level"
-	],
+	"{time} on this team": [["time"], " on this team"],
+	"{title}:": [["title"], ":"],
+	"{title}: none.": [["title"], ": none."],
+	"{triggerName} level": [["triggerName"], " level"],
 	"{updated, select, yes {Next Layer changed} other {Next Layer}} (Chosen via vote)\n{layer}": [
 		[
 			"updated",
 			"select",
 			{
-				"yes": [
-					"Next Layer changed"
-				],
-				"other": [
-					"Next Layer"
-				]
+				"yes": ["Next Layer changed"],
+				"other": ["Next Layer"]
 			}
 		],
 		" (Chosen via vote)\n",
-		[
-			"layer"
-		]
+		["layer"]
 	],
 	"{updated, select, yes {Next Layer changed} other {Next Layer}}:\n{layer}\n": [
 		[
 			"updated",
 			"select",
 			{
-				"yes": [
-					"Next Layer changed"
-				],
-				"other": [
-					"Next Layer"
-				]
+				"yes": ["Next Layer changed"],
+				"other": ["Next Layer"]
 			}
 		],
 		":\n",
-		[
-			"layer"
-		],
+		["layer"],
 		"\n"
 	],
-	"{username} is already marked to swap teams": [
-		[
-			"username"
-		],
-		" is already marked to swap teams"
-	],
-	"{username} is already on {toTeam}": [
-		[
-			"username"
-		],
-		" is already on ",
-		[
-			"toTeam"
-		]
-	],
+	"{username} is already marked to swap teams": [["username"], " is already marked to swap teams"],
+	"{username} is already on {toTeam}": [["username"], " is already on ", ["toTeam"]],
 	"{username} is already queued to swap to {toTeam} on next map": [
-		[
-			"username"
-		],
+		["username"],
 		" is already queued to swap to ",
-		[
-			"toTeam"
-		],
+		["toTeam"],
 		" on next map"
 	],
 	"{value} was played {offset} {matchCount, plural, one {match} other {matches}} prior": [
-		[
-			"value"
-		],
+		["value"],
 		" was played ",
-		[
-			"offset"
-		],
+		["offset"],
 		" ",
 		[
 			"matchCount",
 			"plural",
 			{
-				"one": [
-					"match"
-				],
-				"other": [
-					"matches"
-				]
+				"one": ["match"],
+				"other": ["matches"]
 			},
 			0
 		],
 		" prior"
 	],
-	"{verb}, next layer now {nextLayer}": [
-		[
-			"verb"
-		],
-		", next layer now ",
-		[
-			"nextLayer"
-		]
-	],
-	"{victim} teamkilled by {attacker}{weapon}": [
-		[
-			"victim"
-		],
-		" teamkilled by ",
-		[
-			"attacker"
-		],
-		[
-			"weapon"
-		]
-	],
+	"{verb}, next layer now {nextLayer}": [["verb"], ", next layer now ", ["nextLayer"]],
+	"{victim} teamkilled by {attacker}{weapon}": [["victim"], " teamkilled by ", ["attacker"], ["weapon"]],
 	"{victim} {wounded, select, yes {wounded by} other {killed by}} {attacker}{weapon}": [
-		[
-			"victim"
-		],
+		["victim"],
 		" ",
 		[
 			"wounded",
 			"select",
 			{
-				"yes": [
-					"wounded by"
-				],
-				"other": [
-					"killed by"
-				]
+				"yes": ["wounded by"],
+				"other": ["killed by"]
 			}
 		],
 		" ",
-		[
-			"attacker"
-		],
-		[
-			"weapon"
-		]
+		["attacker"],
+		["weapon"]
 	],
 	"{victim} {wounded, select, yes {wounded themselves} other {killed themselves}}{weapon}": [
-		[
-			"victim"
-		],
+		["victim"],
 		" ",
 		[
 			"wounded",
 			"select",
 			{
-				"yes": [
-					"wounded themselves"
-				],
-				"other": [
-					"killed themselves"
-				]
+				"yes": ["wounded themselves"],
+				"other": ["killed themselves"]
 			}
 		],
-		[
-			"weapon"
-		]
+		["weapon"]
 	],
 	"{votes, plural, one {# vote} other {# votes}} ({percentage}%)": [
 		[
 			"votes",
 			"plural",
 			{
-				"one": [
-					0,
-					" vote"
-				],
-				"other": [
-					0,
-					" votes"
-				]
+				"one": [0, " vote"],
+				"other": [0, " votes"]
 			},
 			0
 		],
 		" (",
-		[
-			"percentage"
-		],
+		["percentage"],
 		"%)"
 	],
 	"{votes} votes - ({percentage}%) {isWinner, select, yes {[WINNER] } other {}}{layerName}": [
-		[
-			"votes"
-		],
+		["votes"],
 		" votes - (",
-		[
-			"percentage"
-		],
+		["percentage"],
 		"%) ",
 		[
 			"isWinner",
 			"select",
 			{
-				"yes": [
-					"[WINNER] "
-				],
+				"yes": ["[WINNER] "],
 				"other": []
 			}
 		],
-		[
-			"layerName"
-		]
+		["layerName"]
 	],
 	"{which, select, both {WARNING: repeat violations ({repeatedList}) and pool violations ({poolList})} repeat {WARNING: repeat violations ({repeatedList})} other {WARNING: pool violations ({poolList})}}. Check SLM for more details.": [
 		[
 			"which",
 			"select",
 			{
-				"both": [
-					"WARNING: repeat violations (",
-					[
-						"repeatedList"
-					],
-					") and pool violations (",
-					[
-						"poolList"
-					],
-					")"
-				],
-				"repeat": [
-					"WARNING: repeat violations (",
-					[
-						"repeatedList"
-					],
-					")"
-				],
-				"other": [
-					"WARNING: pool violations (",
-					[
-						"poolList"
-					],
-					")"
-				]
+				"both": ["WARNING: repeat violations (", ["repeatedList"], ") and pool violations (", ["poolList"], ")"],
+				"repeat": ["WARNING: repeat violations (", ["repeatedList"], ")"],
+				"other": ["WARNING: pool violations (", ["poolList"], ")"]
 			}
 		],
 		". Check SLM for more details."
 	],
-	"{who} added {vote}{layers}": [
-		[
-			"who"
-		],
-		" added ",
-		[
-			"vote"
-		],
-		[
-			"layers"
-		]
-	],
-	"{who} changed {from} to {to}": [
-		[
-			"who"
-		],
-		" changed ",
-		[
-			"from"
-		],
-		" to ",
-		[
-			"to"
-		]
-	],
-	"{who} moved {layers} from #{fromIndex} to #{toIndex}": [
-		[
-			"who"
-		],
-		" moved ",
-		[
-			"layers"
-		],
-		" from #",
-		[
-			"fromIndex"
-		],
-		" to #",
-		[
-			"toIndex"
-		]
-	],
-	"{who} removed {vote}{layers}": [
-		[
-			"who"
-		],
-		" removed ",
-		[
-			"vote"
-		],
-		[
-			"layers"
-		]
-	],
-	"{who} set the next layer to {layer}": [
-		[
-			"who"
-		],
-		" set the next layer to ",
-		[
-			"layer"
-		]
-	],
-	"{why} The pending swaps have been cancelled.": [
-		[
-			"why"
-		],
-		" The pending swaps have been cancelled."
-	],
-	"{wounds} wounds dealt, {wounded} taken": [
-		[
-			"wounds"
-		],
-		" wounds dealt, ",
-		[
-			"wounded"
-		],
-		" taken"
-	],
-	"· created by {creator}": [
-		"· created by ",
-		[
-			"creator"
-		]
-	],
-	"−{removed}": [
-		"−",
-		[
-			"removed"
-		]
-	]
+	"{who} added {vote}{layers}": [["who"], " added ", ["vote"], ["layers"]],
+	"{who} changed {from} to {to}": [["who"], " changed ", ["from"], " to ", ["to"]],
+	"{who} moved {layers} from #{fromIndex} to #{toIndex}": [["who"], " moved ", ["layers"], " from #", ["fromIndex"], " to #", ["toIndex"]],
+	"{who} removed {vote}{layers}": [["who"], " removed ", ["vote"], ["layers"]],
+	"{who} set the next layer to {layer}": [["who"], " set the next layer to ", ["layer"]],
+	"{why} The pending swaps have been cancelled.": [["why"], " The pending swaps have been cancelled."],
+	"{wounds} wounds dealt, {wounded} taken": [["wounds"], " wounds dealt, ", ["wounded"], " taken"],
+	"· created by {creator}": ["· created by ", ["creator"]],
+	"−{removed}": ["−", ["removed"]]
 }
