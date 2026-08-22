@@ -4,6 +4,7 @@ import React from 'react'
 
 import { StackedBarChart } from '@/components/charts/stacked-bar-chart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TrackingTooltip } from '@/components/ui/tracking-tooltip'
 import * as ChatPrt from '@/frame-partials/chat.partial'
@@ -50,22 +51,51 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 		SettingsClient.PublicSettingsStore,
 		StatsModels.Sel.hasData(historicalEvents),
 	)
+	const groupings = Zus.useStore_Susp(
+		squadServer,
+		MatchHistoryClient.currentMatch$(serverId),
+		MatchHistoryClient.recentMatches$(serverId),
+		ClientOnlySettings.Store,
+		BattlemetricsClient.playerBmData$,
+		BattlemetricsClient.Store,
+		SettingsClient.PublicSettingsStore,
+		StatsModels.Sel.groupings,
+	)
 
 	return (
 		<Card className="w-full">
-			<CardHeader className="flex flex-row items-center pb-3">
+			<CardHeader className="flex flex-row items-center justify-between pb-3">
 				<CardTitle className="flex items-center gap-2">
 					<Icons.BarChart2 className="h-5 w-5" />
 					{tr.text(MH_Msgs.statsTitle())}
 				</CardTitle>
+				{hasData && groupings.ids.length > 1 && (
+					<div className="flex gap-0.5">
+						{groupings.ids.map((groupingId) => (
+							<button
+								type="button"
+								key={groupingId}
+								onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
+								className={cn(
+									'text-xs px-2 py-0.5 rounded',
+									groupings.active === groupingId
+										? 'bg-primary text-primary-foreground'
+										: 'text-muted-foreground hover:text-foreground',
+								)}
+							>
+								{groupingId}
+							</button>
+						))}
+					</div>
+				)}
 			</CardHeader>
 			<CardContent>
 				{!hasData ? (
 					<div className="text-muted-foreground text-sm text-center py-4">{tr.text(MH_Msgs.noChartData())}</div>
 				) : (
 					<div className="w-full flex flex-col gap-2">
-						<CombatStats stores={props.stores} historicalEvents={historicalEvents} />
 						<TeamBreakdown stores={props.stores} historicalEvents={historicalEvents} />
+						<CombatStats stores={props.stores} historicalEvents={historicalEvents} />
 					</div>
 				)}
 			</CardContent>
@@ -175,17 +205,16 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 		SettingsClient.PublicSettingsStore,
 		StatsModels.Sel.breakdown(props.historicalEvents),
 	)
-	const groupings = Zus.useStore_Susp(
-		squadServer,
-		currentMatch$,
-		recentMatches$,
-		ClientOnlySettings.Store,
-		BattlemetricsClient.playerBmData$,
-		BattlemetricsClient.Store,
-		SettingsClient.PublicSettingsStore,
-		StatsModels.Sel.groupings,
-	)
 	if (!breakdown) return null
+
+	// series a real player on the server actually matched; the rest still exist in the grouping config but would
+	// only ever render empty segments, so they move behind the "N unmatched" popover instead
+	const keptIndices = breakdown.series
+		.map((_, seriesIndex) => seriesIndex)
+		.filter((seriesIndex) => breakdown.rows.some((row) => row.values[seriesIndex] > 0))
+	const chartSeries = keptIndices.map((i) => breakdown.series[i])
+	const chartRows = breakdown.rows.map((row) => ({ ...row, values: keptIndices.map((i) => row.values[i]) }))
+	const unmatchedSeries = breakdown.series.filter((_, i) => !keptIndices.includes(i))
 
 	// A segment names a group on one team, which is the pair the teams panel filters and selects by. Plain click
 	// filters, shift adds that team's members to the selection, ctrl+shift takes the group on both teams. The teams
@@ -194,13 +223,14 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 		selectedMatchOrdinal !== null
 			? undefined
 			: (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => {
-					let group = breakdown.series[datum.seriesIndex].label
+					const originalIndex = keptIndices[datum.seriesIndex]
+					let group = chartSeries[datum.seriesIndex].label
 					if (group === 'Other') group = TeamsPanelPrt.FILTER_NONE
 					if (modifiers.shift) {
 						const rows = modifiers.ctrl ? breakdown.members : [breakdown.members[datum.rowIndex]]
 						SquadServerFrame.Actions.selectPlayerIds(
 							props.stores,
-							rows.flatMap((row) => row[datum.seriesIndex].map((member) => member.id)),
+							rows.flatMap((row) => row[originalIndex].map((member) => member.id)),
 						)
 					} else {
 						// clicking the group the panel is already filtered to lifts the filter, so the segment is its own undo. A
@@ -214,8 +244,8 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 				}
 
 	const renderTooltip = (datum: Chart.Datum) => {
-		const series = breakdown.series[datum.seriesIndex]
-		const members = breakdown.members[datum.rowIndex][datum.seriesIndex]
+		const series = chartSeries[datum.seriesIndex]
+		const members = breakdown.members[datum.rowIndex][keptIndices[datum.seriesIndex]]
 		return (
 			<div className="flex flex-col gap-1">
 				<span className="font-semibold">{breakdown.rows[datum.rowIndex].label}</span>
@@ -230,50 +260,60 @@ function TeamBreakdown(props: { stores: SquadServerFrame.KeyProp; historicalEven
 		)
 	}
 
-	const renderLegendTooltip = (seriesIndex: number) => (
-		<div className="flex flex-col gap-0.5">
-			<span className="font-semibold">{breakdown.series[seriesIndex].label}</span>
-			{breakdown.rows.map((row) => (
-				<span key={row.key}>
-					{row.label}: {row.values[seriesIndex]}
-				</span>
-			))}
-		</div>
+	const renderLegendTooltip = (seriesIndex: number) => {
+		const originalIndex = keptIndices[seriesIndex]
+		return (
+			<div className="flex flex-col gap-0.5">
+				<span className="font-semibold">{chartSeries[seriesIndex].label}</span>
+				{breakdown.rows.map((row) => (
+					<span key={row.key}>
+						{row.label}: {row.values[originalIndex]}
+					</span>
+				))}
+			</div>
+		)
+	}
+
+	const unmatchedGroupsButton = unmatchedSeries.length > 0 && (
+		<Popover>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<PopoverTrigger asChild>
+						<button
+							type="button"
+							aria-label={tr.text(MH_Msgs.breakdownUnmatchedGroups(unmatchedSeries.length))}
+							className="text-muted-foreground hover:text-foreground"
+						>
+							<Icons.Ellipsis className="h-3.5 w-3.5" />
+						</button>
+					</PopoverTrigger>
+				</TooltipTrigger>
+				<TooltipContent>{tr.text(MH_Msgs.breakdownUnmatchedGroups(unmatchedSeries.length))}</TooltipContent>
+			</Tooltip>
+			<PopoverContent className="w-56 p-2">
+				<ul className="flex flex-col gap-1">
+					{unmatchedSeries.map((series) => (
+						<li key={series.key} className="flex items-center gap-1.5 text-xs">
+							<span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: series.color }} />
+							{series.label}
+						</li>
+					))}
+				</ul>
+			</PopoverContent>
+		</Popover>
 	)
 
 	return (
-		<div>
-			<div className="flex items-center gap-1 px-1 mb-0.5">
-				<span className="text-xs text-muted-foreground">{tr.text(MH_Msgs.teamBreakdowns())}</span>
-				{groupings.ids.length > 1 && (
-					<div className="flex gap-0.5 ml-2">
-						{groupings.ids.map((groupingId) => (
-							<button
-								type="button"
-								key={groupingId}
-								onClick={() => BattlemetricsClient.Actions.setSelectedGroupingId(groupingId || null)}
-								className={cn(
-									'text-xs px-2 py-0.5 rounded',
-									groupings.active === groupingId
-										? 'bg-primary text-primary-foreground'
-										: 'text-muted-foreground hover:text-foreground',
-								)}
-							>
-								{groupingId}
-							</button>
-						))}
-					</div>
-				)}
-				<BreakdownHelp interactive={selectedMatchOrdinal === null} />
-			</div>
-			<StackedBarChart
-				rows={breakdown.rows}
-				series={breakdown.series}
-				ariaLabel={tr.text(MH_Msgs.teamBreakdowns())}
-				renderTooltip={renderTooltip}
-				renderLegendTooltip={renderLegendTooltip}
-				onSegmentClick={onSegmentClick}
-			/>
-		</div>
+		<StackedBarChart
+			rows={chartRows}
+			series={chartSeries}
+			ariaLabel={tr.text(MH_Msgs.teamBreakdowns())}
+			renderTooltip={renderTooltip}
+			renderLegendTooltip={renderLegendTooltip}
+			onSegmentClick={onSegmentClick}
+			legendLeading={<span className="text-xs text-muted-foreground shrink-0">{tr.text(MH_Msgs.teamBreakdowns())}</span>}
+			legendExtra={unmatchedGroupsButton}
+			legendTrailing={<BreakdownHelp interactive={selectedMatchOrdinal === null} />}
+		/>
 	)
 }

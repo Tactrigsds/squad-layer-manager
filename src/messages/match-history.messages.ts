@@ -67,3 +67,5 @@ export const breakdownFilterHint = def('Click a segment to filter the teams pane
 export const breakdownSelectTeamHint = def("Shift-click to also select that team's players in it")
 
 export const breakdownSelectBothHint = def('Ctrl+Shift-click to select the group on both teams')
+
+export const breakdownUnmatchedGroups = def('{count} unmatched', (count: number) => ({ count }))

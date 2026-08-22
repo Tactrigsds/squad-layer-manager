@@ -25,6 +25,13 @@ export function StackedBarChart(props: {
 	renderLegendTooltip?: (seriesIndex: number) => React.ReactNode
 	// what the modifiers mean is the caller's to decide; the chart only reports which were held
 	onSegmentClick?: (datum: Chart.Datum, modifiers: { shift: boolean; ctrl: boolean }) => void
+	// rendered at the start of the legend row, e.g. the chart's title
+	legendLeading?: React.ReactNode
+	// rendered right after the series swatches, and wraps to its own row together with them when the row is too
+	// narrow, rather than leaving legendLeading/legendTrailing stranded next to a half-wrapped legend
+	legendExtra?: React.ReactNode
+	// rendered at the end of the legend row, e.g. the chart's help affordance
+	legendTrailing?: React.ReactNode
 }) {
 	const barHeight = props.barHeight ?? 20
 	const [container, setContainer] = React.useState<HTMLDivElement | null>(null)
@@ -47,21 +54,28 @@ export function StackedBarChart(props: {
 
 	return (
 		<div ref={setContainer} className={cn('w-full', props.className)}>
-			<ul className="flex flex-wrap gap-x-3 gap-y-0.5 mb-1" onPointerLeave={() => setHoveredSeries(null)}>
-				{props.series.map((series, seriesIndex) => (
-					<li
-						key={series.key}
-						className={cn(
-							'flex items-center gap-1 text-xs text-muted-foreground cursor-default transition-opacity',
-							highlighted !== null && highlighted !== seriesIndex && 'opacity-50',
-						)}
-						onPointerEnter={() => setHoveredSeries(seriesIndex)}
-					>
-						<span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: series.color }} />
-						{series.label}
-					</li>
-				))}
-			</ul>
+			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
+				{props.legendLeading}
+				<div className="flex shrink-0 items-center gap-2">
+					<ul className="flex flex-wrap gap-x-3 gap-y-0.5" onPointerLeave={() => setHoveredSeries(null)}>
+						{props.series.map((series, seriesIndex) => (
+							<li
+								key={series.key}
+								className={cn(
+									'flex items-center gap-1 text-xs text-muted-foreground cursor-default transition-opacity',
+									highlighted !== null && highlighted !== seriesIndex && 'opacity-50',
+								)}
+								onPointerEnter={() => setHoveredSeries(seriesIndex)}
+							>
+								<span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: series.color }} />
+								{series.label}
+							</li>
+						))}
+					</ul>
+					{props.legendExtra}
+				</div>
+				{props.legendTrailing && <span className="ml-auto">{props.legendTrailing}</span>}
+			</div>
 			{width > 0 && (
 				<svg width={width} height={height} role="img" aria-label={props.ariaLabel} onPointerLeave={() => setHovered(null)}>
 					<g className="text-border" stroke="currentColor" strokeWidth={1} opacity={0.6}>
