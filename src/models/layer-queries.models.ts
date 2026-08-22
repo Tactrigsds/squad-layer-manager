@@ -117,7 +117,7 @@ export type Constraint =
 			rule: RepeatRule
 			filterApplState: FilterApplicationState
 			warn: boolean
-			showIndicator: 'regular'
+			showIndicator: 'regular' | 'disabled'
 			id: string
 	  }
 	| {

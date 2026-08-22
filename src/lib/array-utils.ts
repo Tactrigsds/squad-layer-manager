@@ -193,3 +193,17 @@ export function shallowEquals<T>(arr: T[], other: T[]): boolean {
 	}
 	return true
 }
+
+// Moves the item at `from` to sit before/after the item currently at `to`, which is how a drag-to-reorder drop reads.
+// The target is resolved by identity before the move, so pulling the dragged item out of the list can't shift the
+// insertion point out from under us. A no-op drop (onto itself) returns the same array.
+export function moveItem<T>(arr: T[], from: number, to: number, position: 'before' | 'after'): T[] {
+	const moved = arr[from]
+	const target = arr[to]
+	if (!moved || !target) return arr
+	const without = arr.filter((_, i) => i !== from)
+	let insertAt = without.indexOf(target)
+	if (insertAt < 0) return arr
+	if (position === 'after') insertAt += 1
+	return [...without.slice(0, insertAt), moved, ...without.slice(insertAt)]
+}

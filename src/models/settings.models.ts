@@ -587,11 +587,11 @@ export function defaultRbacSettings() {
 // ============================== per-server settings ==============================
 
 // autogen on by default: a fresh server that generates layers violating its own repeat rules is never what
-// anyone wants, and the per-rule checkbox is there to turn it off
+// anyone wants, and the per-rule option is there to turn it off
 const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
-	{ label: 'Map', field: 'Map', within: 4, autogen: true },
-	{ label: 'Layer', field: 'Layer', within: 7, autogen: true },
-	{ label: 'Faction', field: 'Faction', within: 3, autogen: true },
+	{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true },
+	{ label: 'Layer', field: 'Layer', within: 7, autogen: true, warn: true, indicate: true },
+	{ label: 'Faction', field: 'Faction', within: 3, autogen: true, warn: true, indicate: true },
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
@@ -631,8 +631,13 @@ export const SelectableFilterSettingSchema = z.object({
 })
 export type SelectableFilterSetting = z.infer<typeof SelectableFilterSettingSchema>
 
+// warn and indicate default on rather than off: every rule warned and indicated before either was configurable, so
+// an existing rule that says nothing about them must keep doing both.
 export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
-	warn: z.boolean().optional().meta({
+	indicate: z.boolean().prefault(true).meta({
+		description: 'Mark layers violating this rule wherever layers are displayed',
+	}),
+	warn: z.boolean().prefault(true).meta({
 		description: 'Users should be warned before saving or before the layer violating this repeat rule is played',
 	}),
 	autogen: z.boolean().optional().meta({
@@ -963,6 +968,12 @@ export function getRepeatRuleConstraintId(poolName: string, opts: { label: strin
 	return `layer-pool:${poolName}:${opts.label}`
 }
 
+// the per-rule switches, in the shape CB.repeatRule takes. Every path that builds a rule's constraint goes through
+// here, so the switches cannot diverge between the queue view, the layer table and the save-time warnings.
+export function repeatRuleConstraintOpts(rule: PoolRepeatRuleConfig) {
+	return { warn: rule.warn, showIndicator: rule.indicate ? ('regular' as const) : ('disabled' as const) }
+}
+
 export function getPoolFilterConstraint(
 	settings: PublicServerSettings,
 	opts?: { applyAs?: LQY.FilterApplicationState; warn?: boolean },
@@ -1026,7 +1037,7 @@ export function getSettingsConstraints(settings: PublicServerSettings, opts?: { 
 		if (poolFilterConstraint) constraints.push(poolFilterConstraint)
 		constraints.push(...getIndicationAndWarnConstraints(settings))
 		for (const rule of queue.mainPool.repeatRules) {
-			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule))
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule, repeatRuleConstraintOpts(rule)))
 		}
 	}
 

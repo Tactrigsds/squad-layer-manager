@@ -296,11 +296,22 @@ export const repeatRuleFieldPicker = def('Rule')
 
 export const repeatRuleTargetPicker = def('Target')
 
+export const repeatRuleOptions = def('Options')
+
+// the picker that carries the per-rule switches, named for what it picks rather than for the column it sits under
+export const repeatRuleOptionsPicker = def('Rule option')
+
+export const repeatRuleNoOptions = def('None')
+
+export const repeatRuleReorder = def('Drag to reorder')
+
+export const repeatRuleIndicate = def('Indicate')
+
+export const repeatRuleIndicateHelp = def(
+	'Mark layers breaking this rule wherever they are shown: the repeat icon in the layer table and the queue, and the underline on the repeated field.',
+)
+
 export const repeatRuleWarn = def('Warn')
-
-export const repeatRuleWarnTitle = def('Warn when a layer violating this rule is queued or about to be played')
-
-export const aboutRepeatRuleWarn = def('About repeat rule warnings')
 
 export const repeatRuleWarnHelp = def(
 	'Warn the editor before saving a layer that violates this rule, and in-game admins when one is about to be played',
@@ -308,20 +319,12 @@ export const repeatRuleWarnHelp = def(
 
 export const repeatRuleAutogen = def('Autogen')
 
-export const repeatRuleAutogenTitle = def('Apply this rule when autogenerating layers')
-
-export const aboutRepeatRuleAutogen = def('About repeat rules during autogeneration')
-
 export const repeatRuleAutogenHelp = def('Also apply this rule when autogenerating layers')
 
 export const repeatRuleCrossTeam = def('Cross-team')
 
-export const repeatRuleCrossTeamTitle = def('Count a value either team played as a repeat for both teams')
-
-export const repeatRuleCrossTeamHelpTitle = def('About cross-team repeat rules')
-
 export const repeatRuleCrossTeamHelp = def(
-	'By default a Faction or Alliance rule compares each team against the same team in earlier matches. Cross-team pools both teams together, so a faction one team played counts as a repeat when the other team plays it. Only applies to Faction and Alliance rules.',
+	'By default a Faction, Unit or Alliance rule compares each team against the same team in earlier matches. Cross-team pools both teams together, so a value one team played counts as a repeat when the other team plays it. Only applies to team-specific rules.',
 )
 
 // -------- saving --------

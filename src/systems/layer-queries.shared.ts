@@ -816,6 +816,18 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		}
 	}
 
+	// descriptors are what every display of a violation reads (the indicator tooltip, the underlined field), so a rule
+	// that does not indicate drops out here -- after the warns, which it may still raise.
+	const unindicated = new Set(constraints.filter((c) => c.type === 'do-not-repeat' && c.showIndicator === 'disabled').map((c) => c.id))
+	if (unindicated.size > 0) {
+		for (const [itemId, descriptors] of matchDescriptors) {
+			matchDescriptors.set(
+				itemId,
+				descriptors.filter((d) => !unindicated.has(d.constraintId)),
+			)
+		}
+	}
+
 	const statuses: LQY.LayerItemStatuses = {
 		present,
 		matchDescriptors,
@@ -900,7 +912,7 @@ function postProcessLayers(
 			const descriptors = getRepeatRuleMatchDescriptors(list, cursorIndex.outerIndex, constraint.id, constraint.rule, layerId)
 			if (descriptors) {
 				constraintResults[i] = true
-				matchDescriptors.push(...descriptors)
+				if (constraint.showIndicator !== 'disabled') matchDescriptors.push(...descriptors)
 			}
 		}
 

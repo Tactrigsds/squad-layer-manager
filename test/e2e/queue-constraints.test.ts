@@ -18,7 +18,7 @@ test.describe('queue item constraints', () => {
 			serverSettings: (settings) => {
 				selectableFilter(settings.queue.mainPool, 'raas-only')
 				// just the one rule, so an item's indicators are attributable to it and nothing else
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true }]
 			},
 		})
 		try {
@@ -56,11 +56,42 @@ test.describe('queue item constraints', () => {
 		}
 	})
 
+	// Indication is per rule, not per violation: two rules can find the same repeat and only the one that indicates
+	// may say so.
+	test('leaves a violation of a rule that does not indicate off the item', async ({ page }) => {
+		const app = await createAppFixture({
+			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.gorodokAas),
+			serverSettings: (settings) => {
+				// both rules are broken by the second Gorodok, so what the tooltip omits is down to `indicate` alone
+				settings.queue.mainPool.repeatRules = [
+					{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true },
+					{ label: 'Recent map', field: 'Map', within: 4, warn: true, indicate: false },
+				]
+			},
+		})
+		try {
+			await page.goto(app.loginUrl())
+			await expect(page.getByRole('tab', { name: 'Queue (3)' })).toBeVisible({ timeout: 20_000 })
+
+			const items = page.getByRole('tabpanel', { name: /^Queue/ }).getByRole('listitem')
+			await items
+				.filter({ hasText: layerText('Gorodok_AAS_v1') })
+				.getByRole('button', { name: 'Layer indicators' })
+				.hover()
+			const tooltip = page.getByRole('tooltip')
+			await expect(tooltip).toContainText('Repeats Detected')
+			await expect(tooltip).toContainText('Map')
+			await expect(tooltip).not.toContainText('Recent map')
+		} finally {
+			await app.dispose()
+		}
+	})
+
 	test('warns before saving a queue that violates a repeat rule the pool warns on', async ({ page }) => {
 		const app = await createAppFixture({
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }]
 			},
 		})
 		try {
@@ -124,7 +155,7 @@ test.describe('queue item constraints', () => {
 			// Gorodok twice, two apart: already repeating before anyone starts editing
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.gorodokAas),
 			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }]
 			},
 		})
 		try {
@@ -178,7 +209,7 @@ test.describe('queue item constraints', () => {
 			// the two Gorodoks are three apart, one past the rule's window, so the saved queue repeats nothing
 			layerQueue: queue(LAYERS.gorodokRaas, LAYERS.harjuRaas, LAYERS.narvaRaas, LAYERS.gorodokAas),
 			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 2, warn: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 2, warn: true, indicate: true }]
 			},
 		})
 		try {
@@ -233,7 +264,7 @@ test.describe('queue item constraints', () => {
 				settings.layerTags = [planned]
 			},
 			serverSettings: (settings) => {
-				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true }]
+				settings.queue.mainPool.repeatRules = [{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }]
 				settings.queue.mainPool.skipWarningsForTags = [planned.id]
 			},
 		})
