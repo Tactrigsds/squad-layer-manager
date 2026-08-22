@@ -4,6 +4,7 @@ import React from 'react'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useDebounced } from '@/hooks/use-debounce.ts'
+import * as Arr from '@/lib/array-utils.ts'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
@@ -13,7 +14,9 @@ import * as L from '@/models/layer'
 import type * as LC from '@/models/layer-columns.ts'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LTag from '@/models/layer-tags.models.ts'
+import type * as Msgs from '@/models/messages.models.ts'
 import * as SETTINGS from '@/models/settings.models.ts'
+import * as DndKit from '@/systems/dndkit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 
@@ -415,8 +418,50 @@ export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettin
 	)
 }
 
+// The switches a rule carries, keyed by the field each writes. `indicate` and `warn` default on, so they are written
+// as explicit booleans; the other two are absent when off, which is what the rest of the app already reads.
+const RULE_OPTIONS = ['indicate', 'warn', 'autogen', 'crossTeam'] as const
+type RuleOption = (typeof RULE_OPTIONS)[number]
+
+const RULE_OPTION_LABELS: Record<RuleOption, () => Msgs.Variants.Textable> = {
+	indicate: SETTINGS_Msgs.repeatRuleIndicate,
+	warn: SETTINGS_Msgs.repeatRuleWarn,
+	autogen: SETTINGS_Msgs.repeatRuleAutogen,
+	crossTeam: SETTINGS_Msgs.repeatRuleCrossTeam,
+}
+
+const RULE_OPTION_HELP: Record<RuleOption, () => Msgs.Variants.Textable> = {
+	indicate: SETTINGS_Msgs.repeatRuleIndicateHelp,
+	warn: SETTINGS_Msgs.repeatRuleWarnHelp,
+	autogen: SETTINGS_Msgs.repeatRuleAutogenHelp,
+	crossTeam: SETTINGS_Msgs.repeatRuleCrossTeamHelp,
+}
+
+// Rules have no identity of their own -- their order is the list -- so panel + index identifies a row. The panel id
+// keeps two panels mounted at once (a server form per managed server) from sharing drag ids.
+function ruleDragId(panelId: string, idx: number): string {
+	return JSON.stringify([panelId, idx])
+}
+
+function parseRuleDragId(id: string): { panelId: string; idx: number } {
+	const [panelId, idx] = JSON.parse(id) as [string, number]
+	return { panelId, idx }
+}
+
+// a thin gap between rows that highlights while a rule is dragged over it, and is invisible otherwise
+function RuleDropSeparator({ position, panelId, idx }: { position: 'before' | 'after'; panelId: string; idx: number }) {
+	const drop = DndKit.useDroppable({
+		type: 'relative-to-drag-item',
+		slots: [{ position, dragItem: { type: 'repeat-rule', id: ruleDragId(panelId, idx) } }],
+	})
+	return <li ref={drop.ref} data-over={drop.isDropTarget} className="my-0.5 h-1 rounded bg-primary data-[over=false]:invisible" />
+}
+
+const RULE_ROW_GRID = 'grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_60px_minmax(0,3fr)_minmax(240px,2fr)_auto] items-center gap-2'
+
 function RepeatRuleRow(props: {
 	index: number
+	panelId: string
 	api: PoolConfigApi
 	// signals the panel to remount the (uncontrolled) rows so they re-seed after a shift/programmatic label change
 	onStructural: () => void
@@ -426,6 +471,7 @@ function RepeatRuleRow(props: {
 	const rulePath = [...rulesPath, index]
 
 	const rule = usePoolValue(api, rulePath) as SETTINGS.PoolRepeatRuleConfig
+	const drag = DndKit.useDraggable({ type: 'repeat-rule', id: ruleDragId(props.panelId, index) }, { feedback: 'default' })
 
 	const setLabel = useDebounced({
 		onChange: (label: string) => api.set([...rulePath, 'label'], label),
@@ -452,16 +498,15 @@ function RepeatRuleRow(props: {
 		api.set([...rulePath, 'targetValues'], targetValues.length === 0 ? undefined : targetValues)
 	}
 
-	const setWarn = (warn: boolean) => {
-		api.set([...rulePath, 'warn'], warn || undefined)
-	}
+	const teamSpecific = LQY.isTeamSpecificRepeatRuleField(rule.field)
+	const selectedOptions = RULE_OPTIONS.filter((option) => !!rule[option])
 
-	const setAutogen = (autogen: boolean) => {
-		api.set([...rulePath, 'autogen'], autogen || undefined)
-	}
-
-	const setCrossTeam = (crossTeam: boolean) => {
-		api.set([...rulePath, 'crossTeam'], crossTeam || undefined)
+	const setOptions = (update: React.SetStateAction<RuleOption[]>) => {
+		const next = new Set(typeof update === 'function' ? update(selectedOptions) : update)
+		api.set([...rulePath, 'indicate'], next.has('indicate'))
+		api.set([...rulePath, 'warn'], next.has('warn'))
+		api.set([...rulePath, 'autogen'], next.has('autogen') || undefined)
+		api.set([...rulePath, 'crossTeam'], (teamSpecific && next.has('crossTeam')) || undefined)
 	}
 
 	const deleteRule = () => {
@@ -518,93 +563,89 @@ function RepeatRuleRow(props: {
 	}))
 
 	return (
-		<>
-			<div className="contents">
-				<Input
-					placeholder={tr.text(SETTINGS_Msgs.repeatRuleLabel())}
-					defaultValue={rule.label ?? rule.field}
-					disabled={!!api.writeDenied}
-					onChange={(e) => {
-						setLabel(e.target.value)
-					}}
-					className="h-8"
-				/>
-			</div>
-			<div className="contents">
-				<ComboBox
-					title={tr.text(SETTINGS_Msgs.repeatRuleFieldPicker())}
-					options={LQY.RepeatRuleFieldSchema.options}
-					value={rule.field}
-					allowEmpty={false}
-					onSelect={(value) => {
-						if (!value) return
-						setField(value as LQY.RepeatRuleField)
-					}}
-					disabled={!!api.writeDenied}
-				/>
-			</div>
-			<div className="contents">
-				<Input
-					type="number"
-					defaultValue={rule.within}
-					disabled={!!api.writeDenied}
-					onChange={(e) => {
-						setWithin(Math.floor(Number(e.target.value)))
-					}}
-					className="h-8"
-				/>
-			</div>
-			<div className="contents">
-				<ComboBoxMulti
-					className="w-full min-w-0"
-					title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
-					selectOnClose
-					options={targetOptions}
-					groupings={targetValueColumn ? enumGroupings(targetValueColumn) : undefined}
-					disabled={!!api.writeDenied}
-					values={rule.targetValues ?? []}
-					onSelect={(updated) => {
-						setTargetValues(updated)
-					}}
-				/>
-			</div>
-			<div className="contents">
-				<Checkbox
-					title={tr.text(SETTINGS_Msgs.repeatRuleCrossTeamTitle())}
-					checked={!!rule.crossTeam}
-					disabled={!!api.writeDenied || !LQY.isTeamSpecificRepeatRuleField(rule.field)}
-					onCheckedChange={(checked) => setCrossTeam(checked === true)}
-				/>
-			</div>
-			<div className="contents">
-				<Checkbox
-					title={tr.text(SETTINGS_Msgs.repeatRuleWarnTitle())}
-					checked={!!rule.warn}
-					disabled={!!api.writeDenied}
-					onCheckedChange={(checked) => setWarn(checked === true)}
-				/>
-			</div>
-			<div className="contents">
-				<Checkbox
-					title={tr.text(SETTINGS_Msgs.repeatRuleAutogenTitle())}
-					checked={!!rule.autogen}
-					disabled={!!api.writeDenied}
-					onCheckedChange={(checked) => setAutogen(checked === true)}
-				/>
-			</div>
-			<div className="contents">
-				<PermissionDeniedTooltip denied={api.writeDenied}>
-					<Button size="icon" variant="outline" onClick={deleteRule} disabled={!!api.writeDenied} className="h-8 w-8">
-						<Icons.Minus className="h-4 w-4" />
-					</Button>
-				</PermissionDeniedTooltip>
-			</div>
-		</>
+		<li
+			ref={drag.ref}
+			data-dragging={drag.isDragging}
+			className={cn(RULE_ROW_GRID, 'rounded-md bg-background data-[dragging=true]:opacity-40')}
+		>
+			<button
+				type="button"
+				ref={drag.handleRef}
+				disabled={!!api.writeDenied}
+				className="cursor-grab rounded text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+				aria-label={tr.text(SETTINGS_Msgs.repeatRuleReorder())}
+			>
+				<Icons.GripVertical className="h-4 w-4" />
+			</button>
+			<Input
+				placeholder={tr.text(SETTINGS_Msgs.repeatRuleLabel())}
+				defaultValue={rule.label ?? rule.field}
+				disabled={!!api.writeDenied}
+				onChange={(e) => {
+					setLabel(e.target.value)
+				}}
+				className="h-8"
+			/>
+			<ComboBox
+				title={tr.text(SETTINGS_Msgs.repeatRuleFieldPicker())}
+				options={LQY.RepeatRuleFieldSchema.options}
+				value={rule.field}
+				allowEmpty={false}
+				onSelect={(value) => {
+					if (!value) return
+					setField(value as LQY.RepeatRuleField)
+				}}
+				disabled={!!api.writeDenied}
+			/>
+			<Input
+				type="number"
+				defaultValue={rule.within}
+				disabled={!!api.writeDenied}
+				onChange={(e) => {
+					setWithin(Math.floor(Number(e.target.value)))
+				}}
+				className="h-8"
+			/>
+			<ComboBoxMulti
+				className="w-full min-w-0"
+				title={tr.text(SETTINGS_Msgs.repeatRuleTargetPicker())}
+				selectOnClose
+				options={targetOptions}
+				groupings={targetValueColumn ? enumGroupings(targetValueColumn) : undefined}
+				disabled={!!api.writeDenied}
+				values={rule.targetValues ?? []}
+				onSelect={(updated) => {
+					setTargetValues(updated)
+				}}
+			/>
+			<ComboBoxMulti
+				className="w-full min-w-0 font-sans"
+				title={tr.text(SETTINGS_Msgs.repeatRuleOptionsPicker())}
+				emptyLabel={tr.text(SETTINGS_Msgs.repeatRuleNoOptions())}
+				sort={false}
+				options={RULE_OPTIONS.map((option) => ({
+					value: option,
+					label: tr.text(RULE_OPTION_LABELS[option]()),
+					description: tr.text(RULE_OPTION_HELP[option]()),
+					// a non-team-specific field has no per-team reading for cross-team to widen
+					disabled: option === 'crossTeam' && !teamSpecific,
+				}))}
+				disabled={!!api.writeDenied}
+				values={selectedOptions}
+				onSelect={setOptions}
+			/>
+			<PermissionDeniedTooltip denied={api.writeDenied}>
+				<Button size="icon" variant="outline" onClick={deleteRule} disabled={!!api.writeDenied} className="h-8 w-8">
+					<Icons.Minus className="h-4 w-4" />
+				</Button>
+			</PermissionDeniedTooltip>
+		</li>
 	)
 }
 
 export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi }) {
 	const { api } = props
+	const panelId = React.useId()
 	const rulesPath = ['repeatRules']
 	const rulesLength = ((usePoolValue(api, rulesPath) as LQY.RepeatRule[] | null) ?? []).length
 	// remounts the uncontrolled rows after edits that shift or rewrite their seeded values
@@ -613,8 +654,31 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 
 	const addRule = () => {
 		const rules = (api.getValue(rulesPath) as LQY.RepeatRule[] | null) ?? []
-		api.set(rulesPath, [...rules, { field: 'Map', within: 0, label: 'Map' }])
+		api.set(rulesPath, [...rules, { field: 'Map', within: 0, label: 'Map', indicate: true, warn: true }])
 	}
+
+	// drag-to-reorder via the shared dnd-kit provider (see dndkit.client). The handler is registered once and reads
+	// the latest api off a ref; another panel's drop is ignored by its panel id.
+	const stateRef = React.useRef({ panelId, api, onStructural })
+	stateRef.current = { panelId, api, onStructural }
+	DndKit.useDragEnd(
+		React.useCallback((evt) => {
+			const { active, over } = evt
+			if (active.type !== 'repeat-rule' || !over) return
+			const slot = over.slots.find((s) => s.dragItem.type === 'repeat-rule')
+			// the separators only ever register before/after; 'on' would mean dropping onto a rule itself, which reorders nothing
+			if (!slot || slot.position === 'on') return
+			const from = parseRuleDragId(active.id)
+			const to = parseRuleDragId(String(slot.dragItem.id))
+			const { panelId, api, onStructural } = stateRef.current
+			if (from.panelId !== panelId || to.panelId !== panelId) return
+			const rules = (api.getValue(['repeatRules']) as SETTINGS.PoolRepeatRuleConfig[] | null) ?? []
+			const reordered = Arr.moveItem(rules, from.idx, to.idx, slot.position)
+			if (reordered === rules) return
+			api.set(['repeatRules'], reordered)
+			onStructural()
+		}, []),
+	)
 
 	return (
 		<div className={cn('space-y-3', props.className)}>
@@ -631,44 +695,25 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 				</PermissionDeniedTooltip>
 			</div>
 			<div className="border rounded-md p-3">
-				<div
-					className="grid gap-2 items-center"
-					style={{ gridTemplateColumns: '2fr 2fr 60px 4fr max-content max-content max-content max-content' }}
-				>
-					{/* Header Row */}
-					<div className="contents text-sm font-medium text-muted-foreground">
-						<div>{tr.text(SETTINGS_Msgs.repeatRuleLabel())}</div>
-						<div>{tr.text(SETTINGS_Msgs.repeatRuleField())}</div>
-						<div>{tr.text(SETTINGS_Msgs.repeatRuleWithin())}</div>
-						<div>{tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}</div>
-						<div>
-							<HelpTooltip
-								label={tr.text(SETTINGS_Msgs.repeatRuleCrossTeamHelpTitle())}
-								trigger={tr.text(SETTINGS_Msgs.repeatRuleCrossTeam())}
-							>
-								<p>{tr.text(SETTINGS_Msgs.repeatRuleCrossTeamHelp())}</p>
-							</HelpTooltip>
-						</div>
-						<div>
-							<HelpTooltip label={tr.text(SETTINGS_Msgs.aboutRepeatRuleWarn())} trigger={tr.text(SETTINGS_Msgs.repeatRuleWarn())}>
-								<p>{tr.text(SETTINGS_Msgs.repeatRuleWarnHelp())}</p>
-							</HelpTooltip>
-						</div>
-						<div>
-							<HelpTooltip
-								label={tr.text(SETTINGS_Msgs.aboutRepeatRuleAutogen())}
-								trigger={tr.text(SETTINGS_Msgs.repeatRuleAutogen())}
-							>
-								<p>{tr.text(SETTINGS_Msgs.repeatRuleAutogenHelp())}</p>
-							</HelpTooltip>
-						</div>
-						<div></div>
-					</div>
-					{/* Rules; keyed on resetKey/structuralKey too so uncontrolled inputs re-seed after structural changes/resets */}
-					{Array.from({ length: rulesLength }, (_, index) => (
-						<RepeatRuleRow key={`${api.resetKey}:${structuralKey}:${index}`} index={index} api={api} onStructural={onStructural} />
-					))}
+				<div className={cn(RULE_ROW_GRID, 'text-sm font-medium text-muted-foreground')}>
+					<span />
+					<span>{tr.text(SETTINGS_Msgs.repeatRuleLabel())}</span>
+					<span>{tr.text(SETTINGS_Msgs.repeatRuleField())}</span>
+					<span>{tr.text(SETTINGS_Msgs.repeatRuleWithin())}</span>
+					<span>{tr.text(SETTINGS_Msgs.repeatRuleTargetValues())}</span>
+					<span>{tr.text(SETTINGS_Msgs.repeatRuleOptions())}</span>
+					<span />
 				</div>
+				{/* Rules; keyed on resetKey/structuralKey too so uncontrolled inputs re-seed after structural changes/resets */}
+				<ol>
+					{Array.from({ length: rulesLength }, (_, index) => (
+						<React.Fragment key={`${api.resetKey}:${structuralKey}:${index}`}>
+							<RuleDropSeparator position="before" panelId={panelId} idx={index} />
+							<RepeatRuleRow index={index} panelId={panelId} api={api} onStructural={onStructural} />
+						</React.Fragment>
+					))}
+					{rulesLength > 0 && <RuleDropSeparator position="after" panelId={panelId} idx={rulesLength - 1} />}
+				</ol>
 			</div>
 		</div>
 	)

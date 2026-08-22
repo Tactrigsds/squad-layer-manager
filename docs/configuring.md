@@ -482,16 +482,18 @@ _Target Values_ narrows a rule to named values:
 
 That rule covers Skorpo alone, over 10 matches. A _Within_ of 0 turns a rule off.
 
-On its own a rule only marks the repeat, which the layer table can hide behind _Hide Repeats_. Two checkboxes
-decide what else it does:
+A rule always hides its repeats behind the layer table's _Hide Repeats_. _Options_ decides what else it does:
 
+- _Indicate_ marks a layer that breaks the rule wherever it is shown: the repeat icon on the queue item and in the
+  layer table, and the underline on the field that repeats.
 - _Warn_ warns the editor before saving a layer that breaks the rule, and warns in-game admins when one is about
   to be played.
 - _Autogen_ applies the rule when autogenerating layers as well. It is on for all three defaults, and off for the
   Skorpo rule above.
+- _Cross-team_ pools both teams together, so a value one team played counts as a repeat when the other team plays
+  it. Only a rule on a team-specific attribute can take it.
 
-![repeat_rules_warn](configuring_screenshots/repeat_rules_warn.png)
-![repeat_rules_autogen](configuring_screenshots/repeat_rules_autogen.png)
+Drag a rule by its grip to reorder the list.
 
 A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
 opt out of that.

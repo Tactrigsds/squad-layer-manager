@@ -121,7 +121,7 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 									ServerSettingsPrt.Actions.reset({ settings: stores.squadServer! })
 								}}
 							>
-								<Icons.Trash className="h-4 w-4" />
+								<Icons.Undo className="h-4 w-4" />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent>
