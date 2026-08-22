@@ -119,6 +119,12 @@ export function readBuildStamp() {
 	return DbMeta.readBuildStamp(driver)
 }
 
+// the raw better-sqlite3 connection, for the plugin migration runner (same contract as core migrations:
+// DDL and data reshaping outside drizzle). Everything else goes through ctx.db().
+export function rawDriver(): Database {
+	return driver
+}
+
 // try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
 export function addPooledDb<T extends object>(ctx: T) {
 	if ('db' in ctx) return ctx as T & C.Db

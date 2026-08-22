@@ -77,10 +77,11 @@ export const APP_EVENT_TYPE = z.enum([
 	'LAYER_REQUEST_ADDED',
 	'LAYER_REQUEST_REMOVED',
 	'LAYER_REQUEST_CONSUMED',
+	'PLUGIN_EVENT',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 
-export const APP_EVENT_ACTOR_TYPE = z.enum(['slm-user', 'ingame-user', 'system'])
+export const APP_EVENT_ACTOR_TYPE = z.enum(['slm-user', 'ingame-user', 'system', 'plugin'])
 export type AppEventActorType = z.infer<typeof APP_EVENT_ACTOR_TYPE>
 
 export const SERVER_EVENT_PLAYER_ASSOC_TYPE = z.enum([

@@ -97,6 +97,7 @@ export default defineConfig({
 		alias: {
 			'@': path.resolve(import.meta.dirname, 'src'),
 			$root: path.resolve(import.meta.dirname),
+			slm: path.resolve(import.meta.dirname, 'src/plugin-api'),
 		},
 	},
 	test: {

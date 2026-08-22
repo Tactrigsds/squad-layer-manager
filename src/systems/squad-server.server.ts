@@ -62,6 +62,7 @@ import * as Commands from '@/systems/commands.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerAgent from '@/systems/server-agent.server'
@@ -1194,6 +1195,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 	// outbound service: looking them up would spam it with garbage and any flag or note written while looking at
 	// the sandbox would land on the live org. It is left off entirely rather than stubbed.
 	if (!Sandbox.isSandbox(settings.connections)) Battlemetrics.setupSquadServerInstance({ ...ctx, ...managedServer })
+	PluginsSys.setupServerInstances(managedServer)
 
 	server.cleanupId = CleanupSys.register(async () => {
 		await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))

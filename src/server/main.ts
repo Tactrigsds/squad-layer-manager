@@ -1,3 +1,4 @@
+import { INSTALLED_PLUGINS } from '$root/plugins/index.server.ts'
 import * as Prom from '@/lib/promise-utils'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -27,6 +28,7 @@ import * as MatchHistory from '@/systems/match-history.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
+import * as Plugins from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as Seed from '@/systems/seed.server'
@@ -157,6 +159,9 @@ await Instr.spanOp('main', { module }, async () => {
 
 	// after SquadServer.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()
+	// after the managed servers are up: enabled plugins attach their per-server instances here, and later
+	// servers reach them through the hook in setupManagedServer
+	await Plugins.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), INSTALLED_PLUGINS)
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
 		AppEvents.create<AppEvents.AppStarted>({

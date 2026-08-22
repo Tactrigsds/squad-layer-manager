@@ -100,6 +100,7 @@ export const appEvents = sqliteTable(
 		actorType: text('actorType', { enum: ZodUtils.enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
 		actorUserId: bigintText('actorUserId'),
 		actorPlayerId: text('actorPlayerId'),
+		actorPluginId: text('actorPluginId'),
 		// scope: null for global (audit-only) actions
 		serverId: text('serverId').references(() => servers.id, { onDelete: 'cascade' }),
 		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }),
@@ -283,6 +284,14 @@ export const servers = sqliteTable('servers', {
 export const globalSettings = sqliteTable('globalSettings', {
 	id: integer('id').primaryKey().default(1),
 	settings: json('settings').notNull().default(superjson.serialize({})),
+})
+
+// installed-plugin state: whether it should run, and its config (encoded z.input shape, like globalSettings).
+// The tables a plugin owns are its own business (p_<id>_*, see src/models/plugins.models.ts).
+export const plugins = sqliteTable('plugins', {
+	id: text('id').primaryKey(),
+	enabled: boolean('enabled').notNull().default(false),
+	config: json('config').notNull().default(superjson.serialize({})),
 })
 
 export type Server = typeof servers.$inferSelect

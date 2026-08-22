@@ -10,12 +10,10 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
-import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -42,6 +40,7 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
+import * as Cleanup from '@/lib/cleanup'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
@@ -368,6 +367,16 @@ export const setupInstance = Instr.spanOp(
 	},
 )
 
+// post-roll announcement tasks contributed by plugins (see slm/systems/layer-queue). Run in
+// registration order ahead of the built-in announcements, only while reminders are enabled, with
+// the same per-task error isolation and pacing.
+type PostRollTask = (ctx: C.Db & CS.AbortSignal & C.ManagedServer) => Promise<void>
+const pluginPostRollTasks = new Set<PostRollTask>()
+export function addPostRollTask(cleanup: Cleanup.Tasks, task: PostRollTask) {
+	pluginPostRollTasks.add(task)
+	cleanup.push(() => pluginPostRollTasks.delete(task))
+}
+
 export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
@@ -390,17 +399,14 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 	// -------- schedule post-roll announcements --------
 	if (SETTINGS.remindersEnabled(ctx.serverSettings.settings)) {
 		const announcementTasks: Rx.Observable<void>[] = []
-		announcementTasks.push(
-			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
-				const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
-				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-				if (!currentMatch) return
-				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
-				if (!mostRelevantEvent) return
-				await SquadRcon.warnAllAdmins(ctx, BAL_Msgs.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
-			}),
-		)
+		for (const task of pluginPostRollTasks) {
+			announcementTasks.push(
+				Rx.Ext.toCold(async () => {
+					const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+					await task(ctx)
+				}),
+			)
+		}
 
 		announcementTasks.push(
 			Rx.Ext.toCold(async () => {
