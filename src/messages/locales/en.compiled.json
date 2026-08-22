@@ -1149,6 +1149,17 @@
 			0
 		]
 	],
+	"{count, plural, one {# layer} other {# layers}}": [
+		[
+			"count",
+			"plural",
+			{
+				"one": [0, " layer"],
+				"other": [0, " layers"]
+			},
+			0
+		]
+	],
 	"{count, plural, one {# new event} other {# new events}}": [
 		[
 			"count",

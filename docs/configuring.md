@@ -325,9 +325,12 @@ Open one and you get the expression that decides what it matches:
 
 ![filter_edit](configuring_screenshots/filter_edit.png)
 
-The block at the top sets how the conditions under it combine. The four block types are _all of (and)_,
-_any of (or)_, _none of (nor)_ and _not all of (nand)_. _No Mech on Hilly Maps_ uses _not all of (nand)_,
-so a layer matches unless both of these hold:
+Each condition is one line, written out. Click a line to edit it, then click _Done_ or press _Escape_. Only one
+line is open at a time. The buttons for commenting, copying and removing a line appear when you point at it.
+
+The block at the top sets how the conditions under it combine. The four block types are _all of_, _any of_,
+_none of_ and _not all of_; opening one names the operation it stands for as well. _No Mech on Hilly Maps_ uses
+_not all of_, so a layer matches unless both of these hold:
 
 - `Map` is Manicouagan, Skorpo or Lashkar
 - `Unit (Either)` is Mechanized or Armored
@@ -338,7 +341,7 @@ _Main Pool_ is built out of two of the others:
 ![main_pool](configuring_screenshots/main_pool_card.png)
 ![main_pool_edit](configuring_screenshots/main_pool_edit.png)
 
-It uses _all of (and)_, so a layer has to meet every one of:
+It uses _all of_, so a layer has to meet every one of:
 
 - `Z_Pool` is true, shown as `Z Pool` in the builder. This is one of the extra columns that ship with SLM's layer
   data, and it marks the competitive pool. See [layer_data.md](layer_data.md).
@@ -346,8 +349,8 @@ It uses _all of (and)_, so a layer has to meet every one of:
 - the layer is included in _No Mech on Hilly Maps_
 
 Switch a filter between _Builder_ and _Text_. The text view edits the expression as text, which is easier for
-changes the builder makes you do a row at a time, such as copying part of an expression or changing how its
-conditions nest. _Reformat_ tidies the text up.
+changes the builder makes you do a line at a time, such as changing how the conditions nest. _Reformat_ tidies the
+text up.
 
 #### 8.2. Pool configuration
 

@@ -13,7 +13,11 @@ const FLOW_WIDTH = 100
 // three. Compact collapses the collections that fit, keeping documents about a third the length of the block form;
 // block is the one to reach for when a document is being diffed or read a line at a time.
 export function stringifyDoc(value: unknown, compact = true): string {
-	const doc = new Document(value)
+	// An object graph that shares a reference twice -- a duplicated filter node shares its `args` with the
+	// original -- otherwise renders as a YAML anchor and an alias. Nobody hand-editing a filter wants to
+	// meet one, and the compact pass renders sub-nodes in isolation, where an alias whose anchor is on a
+	// sibling cannot be resolved at all.
+	const doc = new Document(value, { aliasDuplicateObjects: false })
 	if (compact) visit(doc, { Map: collapseIfShort, Seq: collapseIfShort })
 	// the default 80-column fold breaks long scalars (a mustache template, a url) across lines
 	return doc.toString({ lineWidth: 0 })
