@@ -1831,6 +1831,7 @@
 	"{count} strings still use this prefix": "{count} strings still use this prefix",
 	"{count} timed-out players match \"{token}\"": "{count} timed-out players match \"{token}\"",
 	"{count} to {faction}": "{count} to {faction}",
+	"{count} unmatched": "{count} unmatched",
 	"{creator} created {squad} on {team}": "{creator} created {squad} on {team}",
 	"{current} of {total}": "{current} of {total}",
 	"{current} of {total}+": "{current} of {total}+",
