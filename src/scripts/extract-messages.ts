@@ -152,6 +152,10 @@ for (const full of files()) {
 			// raw() is deliberately untranslated, so it is neither extracted nor counted as work left to do
 			if (fn === 'raw') return
 
+			// an empty message is a placeholder for copy that is not written yet. Keying the catalogue on it gives
+			// every locale an entry that says nothing, and ICU has nothing to parse.
+			if (literalText(first) === '') return
+
 			// a string resolved inside a message body, which carries its values inline rather than through a mapper
 			if (fn === 't' || fn === 'rt') {
 				const source = literalText(first)
