@@ -153,7 +153,6 @@
 		"@tailwindcss/postcss": "^4.3.3",
 		"@tanstack/react-form": "^1.33.2",
 		"@tanstack/react-query": "^5.101.4",
-		"@tanstack/react-query-devtools": "^5.101.4",
 		"@tanstack/react-router": "^1.170.31",
 		"@tanstack/react-table": "^8.21.3",
 		"@tanstack/router-plugin": "^1.168.34",

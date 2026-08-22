@@ -103,6 +103,9 @@ jobs:
          - name: Run linting
            run: pnpm run lint
 
+         - name: Check the message catalogue is up to date
+           run: pnpm run i18n:lint
+
          - name: Run tests
            run: pnpm run test
 

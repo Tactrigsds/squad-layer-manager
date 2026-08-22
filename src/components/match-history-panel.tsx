@@ -176,7 +176,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 
 	return (
 		<>
-			<CardHeader className="flex flex-row justify-between items-start">
+			<CardHeader data-tour="match-history" className="flex flex-row justify-between items-start">
 				<CardTitle>{tr.text(MH_Msgs.title())}</CardTitle>
 				<div className="flex items-center gap-1">
 					<div className="flex items-center">
@@ -210,7 +210,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 					</div>
 				</div>
 			</CardHeader>
-			<CardContent className="px-1">
+			<CardContent data-tour="match-history" className="px-1">
 				<Table>
 					<TableHeader>
 						<TableRow className="font-medium">

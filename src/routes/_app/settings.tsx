@@ -82,7 +82,7 @@ function RouteComponent() {
 	// a server section renders for every server the user may at least read; registry management is gated separately
 	const allServers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
 	const servers = React.useMemo(
-		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id)),
+		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id, RBAC.NO_SCOPED_SERVERS)),
 		[allServers, loggedInPerms],
 	)
 

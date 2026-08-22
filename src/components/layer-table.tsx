@@ -423,7 +423,7 @@ export default function LayerTable(props: {
 					<Table>
 						<TableHeader>
 							{table.getHeaderGroups().map((headerGroup) => (
-								<TableRow key={headerGroup.id}>
+								<TableRow data-tour="table-sort" key={headerGroup.id}>
 									{headerGroup.headers.map((header) => (
 										<TableHead className="px-0" key={header.id} style={{ width: header.getSize() }}>
 											{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
@@ -684,7 +684,7 @@ export function LayerTableControlPanel(props: {
 					<Separator orientation="vertical" className="h-full min-h-0" />
 
 					{/*--------- show selected ---------*/}
-					<div className="flex items-center space-x-1">
+					<div data-tour="table-show-selected" className="flex items-center space-x-1">
 						<Switch
 							id={showSelectedId}
 							checked={frameState.showSelectedLayers}
@@ -719,6 +719,7 @@ export function LayerTableControlPanel(props: {
 				<span className="flex h-10 items-center space-x-2 ">
 					{props.extraPanelItems}
 					<Button
+						data-tour="table-randomize"
 						onClick={() => LayerTablePrt.Actions.randomize(props.stores)}
 						disabled={frameState.isFetching}
 						variant="ghost"
@@ -730,7 +731,7 @@ export function LayerTableControlPanel(props: {
 					</Button>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<div className="flex items-center space-x-1">
+							<div data-tour="table-randomize" className="flex items-center space-x-1">
 								<Switch
 									disabled={frameState.showSelectedLayers}
 									checked={randomized}
@@ -888,7 +889,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 	)
 
 	return (
-		<div className="flex items-center justify-between space-x-4 py-2">
+		<div data-tour="table-pagination" className="flex items-center justify-between space-x-4 py-2">
 			<div className="flex items-center space-x-2">
 				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">

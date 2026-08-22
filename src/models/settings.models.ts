@@ -716,6 +716,19 @@ export const SandboxConnectionSchema = z.object({
 	type: z.literal('sandbox'),
 	serverName: z.string().min(1).prefault('SLM Sandbox').describe('The name the emulated server reports over RCON.'),
 	maxPlayers: z.int().min(2).max(200).prefault(100).describe('The player slot count the emulated server reports.'),
+	// Pacing overrides for scenario-driven sandboxes (tutorials). Absent means the emulator's realistic defaults:
+	// a ~30s post-match wait and constant tick chatter. A tutorial turns the wait down so a staged roll is quick
+	// and silences the chatter so the narrated log stays legible.
+	postMatchDelayMs: z
+		.int()
+		.min(0)
+		.optional()
+		.describe('ms in WaitingPostMatch before the next world comes up. Omit for the realistic 30s.'),
+	tickChatter: z.boolean().optional().describe('Whether the emulated server emits its periodic tick-rate log lines. Omit to keep them.'),
+	// The layer the emulated server should hold as next at boot. A scenario-seeded sandbox sets this to its queue
+	// head so SLM's first reconcile sees the head already staged, rather than the emulator's default seed -- which
+	// it would otherwise pull into the queue as an external layer change and displace what the scenario seeded.
+	nextLayerId: z.string().optional().describe('Layer id the emulated server holds as next at boot. Omit for the emulator default.'),
 })
 
 // How SLM reaches a squad server, as four mutually-exclusive modes:
@@ -1168,16 +1181,16 @@ export namespace Grants {
 		const hasSensitivePaths = dottedPaths.some(isSensitive)
 
 		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('all', [
-			(perms) => {
-				const access = RBAC.serverSettingsWriteAccess(perms, serverId)
+			(perms, scoped) => {
+				const access = RBAC.serverSettingsWriteAccess(perms, serverId, scoped)
 				const missing = nonSensitivePaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
 				if (missing.length === 0) return
 				return `server-settings:write missing paths: ${missing.join(', ')}`
 			},
 			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
 			hasSensitivePaths
-				? (perms) => {
-						if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
+				? (perms, scoped) => {
+						if (RBAC.canWriteSensitiveServerSettings(perms, serverId, scoped)) return
 						return `server-settings:write-sensitive on ${serverId}`
 					}
 				: undefined,

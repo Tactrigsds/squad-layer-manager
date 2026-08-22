@@ -40,6 +40,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Steam from '@/systems/steam.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
+import * as Tutorials from '@/systems/tutorials.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -142,6 +143,8 @@ await Instr.spanOp('main', { module }, async () => {
 	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+
+	await Tutorials.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
 	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()

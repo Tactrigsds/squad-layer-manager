@@ -8,10 +8,12 @@ import { compile, UnsupportedPatternError } from '@/scripts/compile-messages'
 // Collects every translatable message into a catalogue template, keyed the way the runtime keys them: by the
 // message's own English, plus a context where two messages share one. Run with `pnpm i18n:extract`.
 //
-// `pnpm i18n:lint` runs the same visitor as a check instead: a message is only translatable when its source is
-// written at the call site, so a t/rt call whose first argument is not a string literal, or a non-literal
-// `context`, is an error. This is the lexical half of the guarantee; the type-level half is `Literal` in
-// src/models/messages.models.ts.
+// `pnpm i18n:lint` runs the same visitor as a check instead, and fails on two things. First, a message is only
+// translatable when its source is written at the call site, so a t/rt call whose first argument is not a string
+// literal, or a non-literal `context`, is an error. This is the lexical half of the guarantee; the type-level
+// half is `Literal` in src/models/messages.models.ts. Second, the committed catalogues have to match what the
+// source would produce right now: nothing else notices when a message is edited and they are not regenerated,
+// and every gate keeps passing while the reader is shown a key that no longer exists.
 //
 // Prose still built in JavaScript inside a def body is not translatable either; the summary counts those so the
 // remaining conversion work stays visible rather than looking like an empty catalogue.
