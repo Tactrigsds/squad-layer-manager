@@ -21,6 +21,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as TUT from '@/models/tutorial.models'
 import * as UP from '@/models/user-presence'
+import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as ConfigClient from '@/systems/config.client'
 import { DraggableWindowStore, openOrFocusWindow } from '@/systems/draggable-window.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -282,6 +283,10 @@ function resetClient(run: Tour.RunStores) {
 	const store = DraggableWindowStore.getState()
 	for (const w of [...store.windows]) store.closeWindow(w.id)
 	setGlobalHandle(TUT.TOUR_HANDLES.queueSaveWarnings, false)
+	// the tab is a persisted preference, so a reader who left the dashboard on Teams starts here on Teams. Both
+	// panels stay mounted in one grid cell, so the queue anchors still measure and the spotlight lands on a panel
+	// the reader cannot see.
+	ClientOnlySettings.Actions.setPrimaryPanelTab('VIEWING_QUEUE')
 	void run
 }
 
