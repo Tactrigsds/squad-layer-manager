@@ -491,11 +491,12 @@ export namespace PoolSettings {
 		),
 	}
 
-	export const warnsAndAutogen = {
-		title: def('Warns and generation'),
+	export const ruleOptions = {
+		title: def('Rule options'),
 		body: def(
 			rt(
-				'Like a filter, a repeat rule can be indicated on queue and history items, warn you on save, or be applied when SLM generates a layer.',
+				`<p><em>Options</em> is what the rule does when it matches. <em>Indicate</em> marks the item in the queue and the match history, <em>Warn</em> warns you when a save would introduce the repeat, and <em>Autogen</em> applies the rule when SLM generates a layer.</p>
+<p><em>Cross-team</em> lives here too, and can only be set on a per-team field.</p>`,
 			),
 		),
 	}

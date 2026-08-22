@@ -938,10 +938,10 @@ export async function buildSteps() {
 			premise: domPresent('pool-repeat-rules'),
 		},
 		{
-			id: 'warns-and-autogen',
-			anchor: { all: 'repeat-rule-flags' },
+			id: 'rule-options',
+			anchor: 'repeat-rule-options',
 			spotlight: 'pool-repeat-rules',
-			msg: M.PoolSettings.warnsAndAutogen,
+			msg: M.PoolSettings.ruleOptions,
 			premise: domPresent('pool-repeat-rules'),
 		},
 	])

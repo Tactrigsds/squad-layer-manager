@@ -55,6 +55,24 @@
 	", switching to {layer}": [", switching to ", ["layer"]],
 	": \"{reason}\"": [": \"", ["reason"], "\""],
 	": {layer} won": [": ", ["layer"], " won"],
+	"<p><em>Options</em> is what the rule does when it matches. <em>Indicate</em> marks the item in the queue and the match history, <em>Warn</em> warns you when a save would introduce the repeat, and <em>Autogen</em> applies the rule when SLM generates a layer.</p>\n<p><em>Cross-team</em> lives here too, and can only be set on a per-team field.</p>": [
+		[
+			"p",
+			"tag",
+			[
+				["em", "tag", ["Options"]],
+				" is what the rule does when it matches. ",
+				["em", "tag", ["Indicate"]],
+				" marks the item in the queue and the match history, ",
+				["em", "tag", ["Warn"]],
+				" warns you when a save would introduce the repeat, and ",
+				["em", "tag", ["Autogen"]],
+				" applies the rule when SLM generates a layer."
+			]
+		],
+		"\n",
+		["p", "tag", [["em", "tag", ["Cross-team"]], " lives here too, and can only be set on a per-team field."]]
+	],
 	"<p><strong>Tags</strong> are a simple way of communicating with your fellow admins about layer sets.</p>\n<p>Try adding one now:</p>": [
 		["p", "tag", [["strong", "tag", ["Tags"]], " are a simple way of communicating with your fellow admins about layer sets."]],
 		"\n",
