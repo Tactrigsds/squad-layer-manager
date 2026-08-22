@@ -816,7 +816,7 @@ export async function buildSteps() {
 			id: 'force-save-editing',
 			anchor: 'queue-edit',
 			interact: 'anchor-only',
-			msg: M.startEditing,
+			msg: M.startEditingAgain,
 			checkpoint: CP.saved,
 			// arrives when the second save press goes through and ends the reader's session
 			advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
@@ -859,7 +859,7 @@ export async function buildSteps() {
 			// armed and pressed: done once the queue is no longer the reader's to edit
 			advanceFromPrevious: { type: 'state', inputs: () => [UPClient.Store], select: (upState: any) => !editingQueue.select(upState) },
 		},
-		{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditing },
+		{ id: 'autogen-editing', anchor: 'queue-edit', interact: 'anchor-only', msg: M.startEditingToClear },
 		{
 			// one step for both halves of the instruction: empty the queue, then save. Done is a generated head.
 			id: 'autogen-try',
