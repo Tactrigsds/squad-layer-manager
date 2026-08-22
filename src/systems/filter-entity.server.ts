@@ -1,5 +1,4 @@
 import * as Orpc from '@orpc/server'
-import { aliasedTable } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -155,27 +154,24 @@ export async function updateFilter(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, id: 
 }
 
 export const filtersRouter = {
+	// users and roles are read separately: joining both onto the filter crosses them, so each user came back
+	// once per role and each role once per user
 	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
-		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
-		const contributorAccounts = aliasedTable(Schema.discordAccounts, 'contributingAccounts')
-		const rows = await ctx
+		const contributingUserIds = ctx
 			.db()
-			.select({
-				user: { discordId: userContributors.discordId, nickname: userContributors.nickname, username: contributorAccounts.username },
-				role: Schema.filterRoleContributors.roleId,
-			})
-			.from(Schema.filters)
-			.where(E.eq(Schema.filters.id, input))
-			.leftJoin(Schema.filterUserContributors, E.eq(Schema.filterUserContributors.filterId, input))
-			.leftJoin(userContributors, E.eq(userContributors.discordId, Schema.filterUserContributors.userId))
-			.leftJoin(contributorAccounts, E.eq(contributorAccounts.discordId, userContributors.discordId))
-			.leftJoin(Schema.filterRoleContributors, E.eq(Schema.filterRoleContributors.filterId, input))
+			.select({ userId: Schema.filterUserContributors.userId })
+			.from(Schema.filterUserContributors)
+			.where(E.eq(Schema.filterUserContributors.filterId, input))
+		const userRows = await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, contributingUserIds))
+		const roleRows = await ctx
+			.db()
+			.select({ roleId: Schema.filterRoleContributors.roleId })
+			.from(Schema.filterRoleContributors)
+			.where(E.eq(Schema.filterRoleContributors.filterId, input))
 
 		return {
-			users: await Users.buildUsers(
-				rows.map((row) => row.user).filter((user) => user.discordId !== null && user.username !== null) as Users.DbUser[],
-			),
-			roles: rows.map((row) => row.role).filter((role) => role !== null),
+			users: await Users.buildUsers(userRows),
+			roles: roleRows.map((row) => row.roleId),
 		}
 	}),
 

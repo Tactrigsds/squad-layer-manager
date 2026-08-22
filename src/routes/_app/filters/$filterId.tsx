@@ -63,7 +63,9 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 		sweepFrameKeys(match.params.filterId)
 	},
 	loader: async ({ params, preload }) => {
-		const filterContributorsRes = await RPC.queryClient.fetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId))
+		// the popover reads this query itself, so the result is not returned. Still awaited: letting it land
+		// after first paint measurably worsened the filter editor's add-strip teardown race.
+		await RPC.queryClient.prefetchQuery(FilterEntityClient.getFilterContributorsBase(params.filterId))
 		const filterEntities = await Rx.firstValueFrom(FilterEntityClient.initializedFilterEntities$())
 		const filterEntity = filterEntities.get(params.filterId)
 		if (!filterEntity) return null
@@ -88,7 +90,6 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 			frameKey,
 			// kept so the component can revive the frame when cached loaderData outlives it (see useLiveFrameKey)
 			frameInput,
-			contributors: filterContributorsRes,
 			owner: ownerRes.user,
 		}
 	},
@@ -160,7 +161,6 @@ function RouteComponent() {
 			// (form, tabs, codemirror) would survive the swap holding the previous filter's state
 			key={params.filterId}
 			entity={loaderData.entity}
-			contributors={loaderData.contributors}
 			owner={loaderData.owner}
 			stores={{ filterEditor: frameKey }}
 		/>
