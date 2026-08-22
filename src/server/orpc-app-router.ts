@@ -15,6 +15,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
 import * as Timeouts from '@/systems/timeouts.server'
+import * as Tutorials from '@/systems/tutorials.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -42,4 +43,5 @@ export const orpcAppRouter = {
 	timeouts: Timeouts.router,
 	sandbox: Sandbox.orpcRouter,
 	serverConsole: ServerConsole.orpcRouter,
+	tutorials: Tutorials.orpcRouter,
 }

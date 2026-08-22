@@ -17,6 +17,7 @@ import * as LL from '@/models/layer-list.models'
 import * as SB from '@/models/sandbox.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
+import * as TUT from '@/models/tutorial.models'
 import * as Migrate from '@/server/migrate'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
@@ -106,6 +107,9 @@ export type AppFixtureOptions = {
 	otel?: { endpoint?: string; metricIntervalMs?: number }
 	// extra users to seed beyond the default admin; only the admin gets superuser perms
 	users?: TestUser[]
+	// leave the dashboard's recommended-tutorials prompt armed for this app's users. Off by default because it
+	// is a modal over the page most tests drive.
+	tutorialPrompts?: boolean
 	// steam ids linked to the seeded admin, so an in-game player sending a chat command resolves to
 	// a user the permission checks recognise
 	adminSteamIds?: string[]
@@ -142,6 +146,9 @@ export type AppFixtureOptions = {
 	// servers. Off by default: it costs a second emulator and a second slice, and every other test would rather
 	// have one server whose state it fully controls.
 	secondServer?: boolean | { id?: string; displayName?: string }
+	// scoped servers to seed, each an enabled in-process sandbox owned by a user. A scoped server is delivered to and
+	// usable by only its owner (see ServerVisibility), which is what these exercise.
+	scopedServers?: { id: string; displayName?: string; owner: TestUser }[]
 }
 
 export type AppFixture = {
@@ -442,6 +449,26 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		)
 	}
 
+	// scoped servers are in-process sandboxes (no external emulator), so they cost far less than secondServer
+	for (const scoped of opts.scopedServers ?? []) {
+		const scopedSettings = SETTINGS.ServerSettingsSchema.parse({ connections: { type: 'sandbox' } })
+		applyTestServerTimings(scopedSettings)
+		scopedSettings.adminLists = [TEST_ADMIN_LIST]
+		await db.insert(Schema.servers).values(
+			superjsonify(Schema.servers, {
+				id: scoped.id,
+				displayName: scoped.displayName ?? scoped.id,
+				enabled: true,
+				defaultServer: false,
+				layerQueue: [],
+				backburner: [],
+				visibility: 'scoped',
+				ownerDiscordId: scoped.owner.discordId,
+				settings: scopedSettings,
+			}),
+		)
+	}
+
 	// -------- users --------
 	// the bypass login resolves users by username against this table; the admin additionally gets
 	// every permission via the SUPER_USERS env bootstrap below
@@ -459,6 +486,18 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		})),
 	)
 	if (steamLinks.length > 0) await db.insert(Schema.linkedSteamAccounts).values(steamLinks)
+
+	// A page offers its tutorials in a modal the first time a user opens it, which would otherwise land on top of
+	// every test that drives one. Seeded as already dismissed, unless the test is about the prompt itself.
+	if (!opts.tutorialPrompts) {
+		await db
+			.insert(Schema.tutorialPromptDismissals)
+			.values(
+				users.flatMap((u) =>
+					TUT.SurfaceIdSchema.options.map((surfaceId) => ({ userId: u.discordId, surfaceId, dismissedAt: new Date() })),
+				),
+			)
+	}
 
 	// -------- filters --------
 	// after the users, since a filter's owner is a foreign key onto one. Inserted raw, not superjsonified:

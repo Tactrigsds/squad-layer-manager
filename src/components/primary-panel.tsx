@@ -94,7 +94,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							{
 								value: 'queue',
 								label: (
-									<div className="flex justify-between">
+									<div data-tour="queue-editors" className="flex justify-between">
 										<span>{tr.text(APP_Msgs.queueTab(queueLength))}</span>
 										<UserPresencePanel
 											stores={props.stores}
@@ -163,7 +163,10 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 						>
 							<IngameVoteAlert stores={props.stores} />
 							<SlmUpdatesDisabledAlert stores={props.stores} />
-							<QueuePanelContent stores={props.stores} />
+							{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
+							<div data-tour="queue-panel">
+								<QueuePanelContent stores={props.stores} />
+							</div>
 							<BackburnerPanel stores={props.stores} />
 						</div>
 						<div

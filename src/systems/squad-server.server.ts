@@ -1702,7 +1702,9 @@ async function collectEvents(ctx: SQS.Ctx & C.Db & CS.AbortSignal, addEventsCb: 
 // resolves a default server id for a request given the route and a previously stored default server id
 export function manageDefaultServerIdForRequest<Ctx extends C.HttpRequest>(ctx: Ctx) {
 	const servers = Settings.listServerEntries()
-		.filter((s) => s.enabled && globalState.managedServers.has(s.id))
+		// scoped servers are entered explicitly (a tutorial), never resolved as somebody's default server, so they must
+		// not be picked here or persisted into the default-server cookie via the /servers/:id sync below.
+		.filter((s) => s.enabled && globalState.managedServers.has(s.id) && s.visibility !== 'scoped')
 		.toSorted((a, b) => {
 			if (a.defaultServer !== b.defaultServer) return a.defaultServer ? -1 : 1
 			return 0

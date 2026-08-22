@@ -1,6 +1,7 @@
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
 import React from 'react'
 
+import RecommendedTutorialsDialog from '@/components/recommended-tutorials-dialog'
 import ServerDashboard from '@/components/server-dashboard'
 import ServerUnavailable from '@/components/server-unavailable'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
@@ -157,7 +158,12 @@ function ServerDashboardHost(props: { serverId: string }) {
 		}
 	}, [serverId])
 
-	return <ServerDashboard stores={FRM.toProp(frameKey)} />
+	return (
+		<>
+			<ServerDashboard stores={FRM.toProp(frameKey)} />
+			<RecommendedTutorialsDialog surface="server-dashboard" />
+		</>
+	)
 }
 
 // The queue and the layer-request drafts are shared, and the server drops one the moment its last editor

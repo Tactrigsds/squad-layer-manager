@@ -28,6 +28,13 @@ export const ZI_OFFSETS = {
 	DRAGGABLE_WINDOW_FLOOR: 70,
 	DRAGGABLE_WINDOW_CEILING: 170,
 	DIALOG: 180,
+	// The tutorial tour overlay. It layers just above the stacking context of whatever it is pointing at rather
+	// than above everything, so a menu, popover or tooltip the reader opens from the anchor renders over the tour
+	// instead of under its scrim -- which is where it belongs, since it is the thing the step just asked for.
+	// TOUR_FLOOR is where it lands when the anchor is the page itself: under POPOVER, so a menu opened from the
+	// page clears it. TOUR is for a step with no anchor at all, which has nothing to layer against.
+	TOUR_FLOOR: 58,
+	TOUR: 190,
 }
 
 /** How many windows can be stacked within one context before ordering degrades. */

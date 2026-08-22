@@ -94,7 +94,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<SquadServer
 	const options = addableFilters.map((filter) => ({ value: filter.id, label: <FilterEntityLabel filter={filter} /> }))
 
 	return (
-		<div className="flex items-center gap-1">
+		<div data-tour="applied-filters" className="flex items-center gap-1">
 			<Button
 				variant="ghost"
 				size="icon"
