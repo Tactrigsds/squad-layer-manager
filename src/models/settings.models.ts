@@ -917,6 +917,15 @@ export const PublicServerSettingsSchema = z.object({
 				),
 		})
 		.prefault({}),
+
+	teamkillNotifications: z
+		.object({
+			enabled: z.boolean().prefault(false),
+			template: z.string().prefault('You have been teamkilled by {{attacker}} with {{weapon}}. An admin has been notified.'),
+		})
+		.prefault({})
+		.describe('Notify players when they are teamkilled. Available variables: attacker, weapon.'),
+
 	rconCacheTTL: z
 		.object({
 			layersStatus: ZodUtils.HumanTime.prefault('5s').describe(
