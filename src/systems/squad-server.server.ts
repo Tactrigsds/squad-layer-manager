@@ -1165,6 +1165,30 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			.subscribe(),
 	)
 
+	cleanup.push(
+		server.event$
+			.pipe(
+				Rx.filter(([ctx, e]) => e.type === 'PLAYER_WOUNDED' && e.variant === 'teamkill'),
+				Instr.durableSub('notifyTeamkills', { module }, async ([_ctx, e], signal) => {
+					const ctx = resolveCtx(CS.addSignal(getBaseCtx(), signal), serverId)
+					const settings = (await Settings.getServerSettings(ctx, serverId)).teamkillNotifications
+					if (e.type !== 'PLAYER_WOUNDED') return
+					if (!settings.enabled) return
+					const players = getCurrTeams(ctx)?.players
+					if (!players) return
+					const attacker = SM.PlayerIds.find(players, (p) => p.ids, e.attacker)
+					const victim = SM.PlayerIds.find(players, (p) => p.ids, e.victim)
+					if (!attacker || !victim) return
+					const rendered = Templating.renderTemplate(settings.template, {
+						attacker: attacker.ids.username,
+						weapon: e.weapon ?? '',
+					})
+					await SquadRcon.warn(ctx, victim.ids, rendered)
+				}),
+			)
+			.subscribe(),
+	)
+
 	void LayerQueue.setupInstance({ ...ctx, ...managedServer })
 	// A sandbox's players are fabricated, so their eos ids belong to nobody. BattleMetrics is a real, org-wide
 	// outbound service: looking them up would spam it with garbage and any flag or note written while looking at
