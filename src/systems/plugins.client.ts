@@ -1,14 +1,22 @@
 import * as React from 'react'
+import { toast } from 'sonner'
 
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
+import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import type * as PLG from '@/models/plugins.models'
 import * as RPC from '@/orpc.client'
+import { tr } from '@/systems/messages.client'
+import * as ApiRegistry from '@/systems/plugin-api-registry.client'
 
 // Client half of the plugin host: watches which plugins are active, loads their client entries, and
 // holds what those entries register -- slot components, row decorations, rpc query stores. Anchors
 // are a closed, typed set: a plugin renders only where the host has placed one.
+//
+// A builtin's client is a lazy import in the app bundle. A packaged plugin's is fetched from
+// /plugin-assets and resolves `slm/*` and react through the import map in index.html, so it shares
+// this page's instances rather than shipping its own.
 
 export type ClientCtx<M extends PLG.Manifest<any> = PLG.Manifest> = {
 	plugin: { id: PLG.PluginId; manifest: M }
@@ -52,12 +60,17 @@ type DecorationReg = {
 	select: (...args: any[]) => Decoration | null | undefined
 }
 
-// version bumps whenever the registration set changes; consumers re-subscribe off it
-export const Store = Zus.createStore<{ plugins: PLG.RuntimeInfo[]; version: number }>(() => ({ plugins: [], version: 0 }))
+// version bumps whenever the registration set changes; consumers re-subscribe off it. `manifests`
+// carries every known plugin's manifest, builtin or packaged, which is what the settings form needs
+// to render a config editor for a plugin that is not running.
+export const Store = Zus.createStore<{ plugins: PLG.RuntimeInfo[]; version: number; manifests: Record<string, PLG.Manifest> }>(() => ({
+	plugins: [],
+	version: 0,
+	manifests: {},
+}))
 const slotRegs = new Map<string, SlotReg[]>()
 const decoRegs = new Map<string, DecorationReg[]>()
 const undoByPlugin = new Map<string, (() => void)[]>()
-const loadedPlugins = new Set<string>()
 let installed: InstalledClientPlugin[] = []
 
 let regCounter = 0
@@ -221,8 +234,20 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 
 // ---- host lifecycle ----
 
+// what this page has already evaluated for each plugin. Never dropped: esm cannot unload, so once a
+// bundle has run here, a different one for the same plugin means the page is stale.
+const evaluatedFrom = new Map<string, string>()
+// plugins whose registrations are currently live
+const liveClients = new Set<string>()
+const requestedManifests = new Set<string>()
+const reloadPrompted = new Set<string>()
+const BUILTIN = 'builtin'
+
 export function setup(installedPlugins: InstalledClientPlugin[]) {
 	installed = installedPlugins
+	// before any packaged bundle is imported: its `slm/*` and react shims read from what this publishes
+	ApiRegistry.setup()
+	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(installedPlugins.map((e) => [e.manifest.id, e.manifest])) }))
 	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((infos) => {
 		Store.setState((s) => ({ ...s, plugins: infos as PLG.RuntimeInfo[] }))
 		void reconcile(infos as PLG.RuntimeInfo[])
@@ -231,23 +256,60 @@ export function setup(installedPlugins: InstalledClientPlugin[]) {
 
 async function reconcile(infos: PLG.RuntimeInfo[]) {
 	for (const info of infos) {
+		if (info.manifestEntry && !requestedManifests.has(info.manifestEntry)) {
+			requestedManifests.add(info.manifestEntry)
+			await loadManifest(info)
+		}
 		const active = info.status === 'active'
-		if (active && info.hasClient && !loadedPlugins.has(info.id)) {
-			loadedPlugins.add(info.id)
-			const entry = installed.find((e) => e.manifest.id === info.id)
-			if (!entry?.client) continue
-			try {
-				const mod = (await entry.client()).default
-				mod.setup({ plugin: { id: info.id, manifest: entry.manifest } })
-				bumpVersion()
-			} catch (err) {
-				console.error(`plugin ${info.id}: client setup failed`, err)
+		if (active && info.hasClient) {
+			const source = info.clientEntry ?? BUILTIN
+			const previous = evaluatedFrom.get(info.id)
+			if (previous !== undefined && previous !== source) {
+				promptReload(info)
+				continue
 			}
-		} else if (!active && loadedPlugins.has(info.id)) {
-			loadedPlugins.delete(info.id)
+			if (liveClients.has(info.id)) continue
+			liveClients.add(info.id)
+			evaluatedFrom.set(info.id, source)
+			await loadClient(info)
+		} else if (!active && liveClients.has(info.id)) {
+			liveClients.delete(info.id)
 			for (const undo of undoByPlugin.get(info.id) ?? []) undo()
 			undoByPlugin.delete(info.id)
 			bumpVersion()
 		}
 	}
+}
+
+async function loadManifest(info: PLG.RuntimeInfo) {
+	try {
+		const mod = (await import(/* @vite-ignore */ info.manifestEntry!)) as { default: PLG.Manifest }
+		Store.setState((s) => ({ ...s, manifests: { ...s.manifests, [info.id]: mod.default } }))
+	} catch (err) {
+		console.error(`plugin ${info.id}: loading its manifest failed`, err)
+	}
+}
+
+async function loadClient(info: PLG.RuntimeInfo) {
+	try {
+		const mod = info.clientEntry
+			? ((await import(/* @vite-ignore */ info.clientEntry)) as { default: ClientModule }).default
+			: (await installed.find((e) => e.manifest.id === info.id)?.client?.())?.default
+		if (!mod) return
+		mod.setup({ plugin: { id: info.id, manifest: Store.getState().manifests[info.id] ?? mod.manifest } })
+		bumpVersion()
+	} catch (err) {
+		console.error(`plugin ${info.id}: client setup failed`, err)
+	}
+}
+
+// The page holds the old bundle and cannot let go of it, so the only honest fix is a reload. Asked
+// for rather than taken: an admin may be halfway through a queue edit.
+function promptReload(info: PLG.RuntimeInfo) {
+	if (reloadPrompted.has(info.id)) return
+	reloadPrompted.add(info.id)
+	toast.warning(tr.text(PLUGINS_Msgs.clientUpdated(info.name)), {
+		duration: Infinity,
+		action: { label: tr.text(PLUGINS_Msgs.reload()), onClick: () => window.location.reload() },
+	})
 }

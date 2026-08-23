@@ -1,5 +1,6 @@
 import { Mutex } from 'async-mutex'
 import { eq } from 'drizzle-orm'
+import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
@@ -20,13 +21,20 @@ import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as ApiRegistry from '@/systems/plugin-api-registry.server'
+import * as Pkgs from '@/systems/plugin-packages.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
-// The plugin host: loads the installed plugins (plugins/index.server.ts), runs their migrations,
-// activates/deactivates them, holds their config, and dispatches their client RPC. A plugin is
-// trusted in-process code; "sandboxing" here is about lifecycle (cleanup, abort) and namespacing
-// (tables, permissions), not security.
+// The plugin host: loads the installed plugins, runs their migrations, activates/deactivates them,
+// holds their config, and dispatches their client RPC. A plugin is trusted in-process code;
+// "sandboxing" here is about lifecycle (cleanup, abort) and namespacing (tables, permissions), not
+// security -- a plugin can do anything the app can.
+//
+// Plugins arrive two ways. Builtins are registered statically from plugins/index.server.ts and live
+// in the app bundle. Packaged plugins are directories under data/plugins (see
+// plugin-packages.server.ts), loaded as standalone esm at runtime, which is what install-from-url
+// and refresh act on. Both end up as the same Entry.
 
 const module = initModule('plugins')
 let log!: CS.Logger
@@ -50,13 +58,31 @@ export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS
 
 export type ServerSetupFn = (ctx: ServerCtx<any>, cleanup: Cleanup.Tasks) => void
 
-export type ServerModule = { activate: (ctx: Ctx<any>) => void | Promise<void> }
+// A packaged plugin's migrations ride along with its server bundle; a builtin keeps them in their own
+// module, reached through InstalledPlugin.migrations.
+export type ServerModule = { activate: (ctx: Ctx<any>) => void | Promise<void>; migrations?: PLG.PluginMigration[] }
 
+// how a builtin registers itself (plugins/index.server.ts)
 export type InstalledPlugin = {
 	manifest: PLG.Manifest
 	server: () => Promise<ServerModule>
 	migrations?: () => Promise<{ migrations: PLG.PluginMigration[] }>
 	hasClient: boolean
+}
+
+// a builtin or a package, normalized
+type Entry = {
+	manifest: PLG.Manifest
+	server: () => Promise<ServerModule>
+	migrations?: () => Promise<{ migrations: PLG.PluginMigration[] }>
+	hasClient: boolean
+	source: PLG.Source
+	sourceUrl: string | null
+	// asset urls the browser imports, hash-stamped; null for a builtin
+	manifestEntry: string | null
+	clientEntry: string | null
+	// the package this came from, for refresh and for noticing an upgraded bundle
+	pkg: Pkgs.Package | null
 }
 
 // ---- runtime state ----
@@ -74,7 +100,7 @@ type Instance = {
 }
 
 type Runtime = {
-	entry: InstalledPlugin
+	entry: Entry
 	ref: PluginRef
 	log: CS.Logger
 	enabled: boolean
@@ -105,44 +131,28 @@ function requireRuntime(pluginId: string): Runtime {
 
 // ---- boot ----
 
-export async function setup(ctx: C.Db, installed: InstalledPlugin[]) {
+// A package that would not load, kept so the settings page can say why instead of silently omitting
+// it. plugin.json is enough to name it; what failed is the manifest module or the package itself.
+type BrokenPackage = { manifest: PLG.PackageManifest; error: string; source: PLG.Source; sourceUrl: string | null }
+const brokenPackages = new Map<string, BrokenPackage>()
+
+export async function setup(ctx: C.Db, builtins: InstalledPlugin[]) {
 	log = module.getLogger()
-	const rows = new Map(
-		(await ctx.db().select().from(Schema.plugins)).map((raw) => {
-			const row = unsuperjsonify(Schema.plugins, raw) as { id: string; enabled: boolean; config: Record<string, unknown> }
-			return [row.id, row]
-		}),
-	)
-	for (const entry of installed) {
-		const id = entry.manifest.id
-		if (plugins.has(id)) throw new Error(`duplicate plugin id: ${id}`)
-		let row = rows.get(id)
-		if (!row) {
-			row = { id, enabled: false, config: {} }
-			await ctx
-				.db()
-				.insert(Schema.plugins)
-				.values(superjsonify(Schema.plugins, { id, enabled: false, config: {} }))
-		}
-		plugins.set(id, {
-			entry,
-			ref: { id, manifest: entry.manifest },
-			log: log.child({ pluginId: id }),
-			enabled: row.enabled,
-			status: 'inactive',
-			error: null,
-			configInput: row.config ?? {},
-			config: null,
-			cleanup: [],
-			abort: null,
-			serverSetups: [],
-			instances: new Map(),
-			rpc: new Map(),
-		})
+	// before any package is imported: this is what makes `slm/*` resolve inside one
+	ApiRegistry.setup()
+	Pkgs.setup()
+
+	for (const builtin of builtins) {
+		await ensureRuntime(ctx, { ...builtin, source: 'builtin', sourceUrl: null, manifestEntry: null, clientEntry: null, pkg: null })
 	}
-	for (const id of rows.keys()) {
-		if (!plugins.has(id)) log.warn('plugin %s has a db row but is not installed; leaving its state alone', id)
+	await loadPackages(ctx)
+
+	const known = new Set(plugins.keys())
+	for (const raw of await ctx.db().select().from(Schema.plugins)) {
+		const row = unsuperjsonify(Schema.plugins, raw) as { id: string }
+		if (!known.has(row.id)) log.warn('plugin %s has a db row but is not installed; leaving its state alone', row.id)
 	}
+
 	for (const rt of plugins.values()) {
 		if (!rt.enabled) continue
 		await lifecycleMtx.runExclusive(() => activateLocked(rt))
@@ -152,6 +162,113 @@ export async function setup(ctx: C.Db, installed: InstalledPlugin[]) {
 			if (rt.status === 'active') await lifecycleMtx.runExclusive(() => deactivateLocked(rt))
 		}
 	})
+}
+
+// Creates the runtime for an entry, seeding it from the plugin's row (inserting one the first time
+// it is seen). Config survives an uninstall, so reinstalling a plugin keeps its settings.
+async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
+	const id = entry.manifest.id
+	if (plugins.has(id)) throw new Error(`duplicate plugin id: ${id}`)
+	const [raw] = await ctx.db().select().from(Schema.plugins).where(eq(Schema.plugins.id, id))
+	let row = raw ? (unsuperjsonify(Schema.plugins, raw) as { id: string; enabled: boolean; config: Record<string, unknown> }) : undefined
+	if (!row) {
+		row = { id, enabled: false, config: {} }
+		await ctx
+			.db()
+			.insert(Schema.plugins)
+			.values(superjsonify(Schema.plugins, { id, enabled: false, config: {} }))
+	}
+	const rt: Runtime = {
+		entry,
+		ref: { id, manifest: entry.manifest },
+		log: log.child({ pluginId: id }),
+		enabled: row.enabled,
+		status: 'inactive',
+		error: null,
+		configInput: row.config ?? {},
+		config: null,
+		cleanup: [],
+		abort: null,
+		serverSetups: [],
+		instances: new Map(),
+		rpc: new Map(),
+	}
+	plugins.set(id, rt)
+	return rt
+}
+
+// ---- packages ----
+
+// The bundle url carries its content hash so an upgraded package is a different module: esm caches
+// by url, and the old graph is unreachable but never unloaded.
+function moduleUrl(filePath: string, assetId: string): string {
+	return `${pathToFileURL(filePath).href}?v=${assetId}`
+}
+
+function assetUrl(id: string, rel: string, assetId: string): string {
+	return `/plugin-assets/${id}/${rel}?v=${assetId}`
+}
+
+async function entryFromPackage(pkg: Pkgs.Package): Promise<Entry> {
+	const mod = (await import(moduleUrl(pkg.manifestPath, pkg.manifestAssetId))) as { default?: PLG.Manifest }
+	const manifest = mod.default
+	if (!manifest || typeof manifest !== 'object' || manifest.id !== pkg.id) {
+		throw new Error(`${pkg.manifest.manifest} must default-export the manifest definePlugin() returned, with id '${pkg.id}'`)
+	}
+	return {
+		manifest,
+		server: async () => (await import(moduleUrl(pkg.serverPath, pkg.serverAssetId))) as ServerModule,
+		hasClient: pkg.clientPath !== null,
+		source: pkg.install ? 'url' : 'directory',
+		sourceUrl: pkg.install?.sourceUrl ?? null,
+		manifestEntry: assetUrl(pkg.id, pkg.manifest.manifest, pkg.manifestAssetId),
+		clientEntry: pkg.clientPath ? assetUrl(pkg.id, pkg.manifest.client!, pkg.clientAssetId!) : null,
+		pkg,
+	}
+}
+
+async function loadPackages(ctx: C.Db) {
+	brokenPackages.clear()
+	for (const pkg of Pkgs.scan()) {
+		try {
+			if (plugins.has(pkg.id)) throw new Error(`a builtin plugin already uses the id '${pkg.id}'`)
+			await ensureRuntime(ctx, await entryFromPackage(pkg))
+		} catch (err) {
+			log.error(err, 'plugin package %s failed to load', pkg.id)
+			brokenPackages.set(pkg.id, {
+				manifest: pkg.manifest,
+				error: err instanceof Error ? err.message : String(err),
+				source: pkg.install ? 'url' : 'directory',
+				sourceUrl: pkg.install?.sourceUrl ?? null,
+			})
+		}
+	}
+}
+
+// Re-reads the plugins directory: picks up new directories, drops removed ones, and reloads a
+// package whose bundles changed on disk. An affected plugin is stopped first and restarted after if
+// it was enabled, since a reloaded package is a different module graph.
+export async function reloadPackages(ctx: C.Db) {
+	await lifecycleMtx.runExclusive(async () => {
+		const found = new Map(Pkgs.scan().map((pkg) => [pkg.id, pkg]))
+		for (const rt of [...plugins.values()]) {
+			const old = rt.entry.pkg
+			if (!old) continue
+			const next = found.get(rt.ref.id)
+			if (next && !changed(old, next)) continue
+			await deactivateLocked(rt)
+			plugins.delete(rt.ref.id)
+		}
+		await loadPackages(ctx)
+		for (const rt of plugins.values()) {
+			if (rt.enabled && rt.status === 'inactive') await activateLocked(rt)
+		}
+	})
+	update$.next('*')
+}
+
+function changed(a: Pkgs.Package, b: Pkgs.Package): boolean {
+	return a.manifestAssetId !== b.manifestAssetId || a.serverAssetId !== b.serverAssetId || a.clientAssetId !== b.clientAssetId
 }
 
 // ---- lifecycle ----
@@ -171,11 +288,11 @@ async function activateLocked(rt: Runtime) {
 		const cfg = rt.entry.manifest.configSchema.safeParse(rt.configInput)
 		if (!cfg.success) throw new Error(`invalid config:\n${z.prettifyError(cfg.error)}`)
 		rt.config = cfg.data
-		if (rt.entry.migrations) {
-			const { migrations } = await rt.entry.migrations()
-			await applyPluginMigrations(id, migrations)
-		}
+		// the module body is inert (a plugin does its work in activate), so loading it first to reach a
+		// package's migrations costs nothing
 		const mod = await rt.entry.server()
+		const migrations = rt.entry.migrations ? (await rt.entry.migrations()).migrations : (mod.migrations ?? [])
+		if (migrations.length > 0) await applyPluginMigrations(id, migrations)
 		rt.abort = new AbortController()
 		rt.cleanup = []
 		await mod.activate(mkCtx(rt))
@@ -384,7 +501,7 @@ async function persistRow(ctx: C.Db, rt: Runtime) {
 // ---- router ----
 
 function listRuntimeInfo(): PLG.RuntimeInfo[] {
-	return [...plugins.values()].map((rt) => ({
+	const loaded = [...plugins.values()].map((rt) => ({
 		id: rt.ref.id,
 		name: rt.entry.manifest.name,
 		description: rt.entry.manifest.description,
@@ -393,10 +510,43 @@ function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		status: rt.status,
 		error: rt.error,
 		hasClient: rt.entry.hasClient,
+		source: rt.entry.source,
+		sourceUrl: rt.entry.sourceUrl,
+		manifestEntry: rt.entry.manifestEntry,
+		clientEntry: rt.entry.clientEntry,
 	}))
+	const broken = [...brokenPackages].map(([id, pkg]): PLG.RuntimeInfo => ({
+		id,
+		name: pkg.manifest.name,
+		description: pkg.manifest.description,
+		version: pkg.manifest.version,
+		enabled: false,
+		status: 'errored',
+		error: pkg.error,
+		hasClient: false,
+		source: pkg.source,
+		sourceUrl: pkg.sourceUrl,
+		manifestEntry: null,
+		clientEntry: null,
+	}))
+	return [...loaded, ...broken].toSorted((a, b) => (a.name < b.name ? -1 : 1))
 }
 
+// a hand-run install should not hang forever on a url that never answers
+const FETCH_BUDGET_MS = 60_000
+
 const manageReq = () => RBAC.permReq('all', [RBAC.perm('plugins:manage')])
+
+// The only two files a browser may fetch out of a package: its manifest module and its client
+// bundle. Matching against the names plugin.json declares is what keeps the server bundle (and
+// everything else on disk) unreachable.
+export function servableAsset(pluginId: string, rel: string): string | null {
+	const pkg = plugins.get(pluginId)?.entry.pkg
+	if (!pkg) return null
+	if (rel === pkg.manifest.manifest) return pkg.manifestPath
+	if (pkg.manifest.client && rel === pkg.manifest.client) return pkg.clientPath
+	return null
+}
 
 export const router = {
 	// public: every client needs to know which plugins are active to load their client entries
@@ -485,6 +635,57 @@ export const router = {
 				return reg.project(sctx, parsed.data).pipe(Rx.map((data) => ({ code: 'ok' as const, data })))
 			}).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
+		}),
+
+	installFromUrl: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ url: z.url() }))
+		.handler(async ({ context: ctx, input, signal }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
+			if (denyRes) return denyRes
+			const res = await Pkgs.installFromUrl({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, input.url)
+			if (res.code !== 'ok') return res
+			await reloadPackages(ctx)
+			return { code: 'ok' as const, pluginId: res.pkg.id }
+		}),
+
+	// re-fetches a url-installed package from the source it recorded, and reloads it if the bundles moved
+	refresh: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ pluginId: z.string() }))
+		.handler(async ({ context: ctx, input, signal }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
+			if (denyRes) return denyRes
+			const pkg = Pkgs.scan().find((p) => p.id === input.pluginId)
+			if (!pkg) return { code: 'err:unknown-plugin' as const }
+			const res = await Pkgs.refresh({ signal: signal ?? AbortSignal.timeout(FETCH_BUDGET_MS) }, pkg)
+			if (res.code !== 'ok') return res
+			await reloadPackages(ctx)
+			return { code: 'ok' as const, pluginId: res.pkg.id }
+		}),
+
+	// picks up whatever is in the plugins directory now: a hand-placed package, or a rebuilt bundle
+	rescan: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
+		if (denyRes) return denyRes
+		await reloadPackages(ctx)
+		return { code: 'ok' as const }
+	}),
+
+	// removes the directory. The plugin's row and its tables stay, so reinstalling keeps its config
+	// and its data.
+	uninstall: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ pluginId: z.string() }))
+		.handler(async ({ context: ctx, input }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
+			if (denyRes) return denyRes
+			const rt = plugins.get(input.pluginId)
+			if (rt && rt.entry.source === 'builtin') return { code: 'err:builtin' as const }
+			if (!rt && !brokenPackages.has(input.pluginId)) return { code: 'err:unknown-plugin' as const }
+			await Pkgs.remove(input.pluginId)
+			await reloadPackages(ctx)
+			return { code: 'ok' as const }
 		}),
 
 	rpcCall: orpcBase

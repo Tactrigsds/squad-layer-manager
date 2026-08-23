@@ -877,6 +877,7 @@
 		" from their squads?"
 	],
 	"Remove {label}": ["Remove ", ["label"]],
+	"Remove {name}? Its settings and data are kept.": ["Remove ", ["name"], "? Its settings and data are kept."],
 	"Remove {value}": ["Remove ", ["value"]],
 	"Removed layer request: {description}": ["Removed layer request: ", ["description"]],
 	"Removed {count} players from their squads": ["Removed ", ["count"], " players from their squads"],
@@ -1906,6 +1907,7 @@
 	"{name} cleared the saved teamswaps.": [["name"], " cleared the saved teamswaps."],
 	"{name} configuration saved": [["name"], " configuration saved"],
 	"{name} enabled": [["name"], " enabled"],
+	"{name} installed": [["name"], " installed"],
 	"{name} queued {added, plural, one {# teamswap} other {# teamswaps}} and cancelled {removed}{colon, select, yes {:} other {}}": [
 		["name"],
 		" queued ",
@@ -1950,6 +1952,7 @@
 			}
 		]
 	],
+	"{name} re-fetched from its source": [["name"], " re-fetched from its source"],
 	"{name} saved {count, plural, one {# teamswap} other {# teamswaps}}.": [
 		["name"],
 		" saved ",
@@ -2006,6 +2009,7 @@
 		],
 		":"
 	],
+	"{name} was updated. Reload to run the new version.": [["name"], " was updated. Reload to run the new version."],
 	"{name}{isYou, select, yes { (You)} other {}}": [
 		["name"],
 		[

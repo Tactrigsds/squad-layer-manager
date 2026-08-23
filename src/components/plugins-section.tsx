@@ -3,11 +3,11 @@ import React from 'react'
 import { toast } from 'sonner'
 import type { z } from 'zod'
 
-import { INSTALLED_PLUGIN_CLIENTS } from '$root/plugins/index.ts'
 import SettingsForm from '@/components/settings-form'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import * as Obj from '@/lib/object-utils'
@@ -22,6 +22,9 @@ import * as PluginsClient from '@/systems/plugins.client'
 // The plugins area of the settings page. Deliberately self-contained: enable/disable applies
 // immediately (it starts/stops the plugin), and each plugin's config has its own save/discard,
 // outside the settings page's draft machinery.
+//
+// Installing writes into SLM's plugins folder and runs that copy, so a plugin keeps working when its
+// source url does not. Refresh is the only thing that fetches again.
 
 const STATUS_VARIANT = {
 	inactive: 'outline',
@@ -44,25 +47,85 @@ export function PluginsSection(props: { canManage: boolean }) {
 				{plugins.map((info) => (
 					<PluginRow key={info.id} info={info} canManage={props.canManage} />
 				))}
+				{props.canManage && <InstallPanel />}
 			</CardContent>
 		</Card>
 	)
 }
 
+function InstallPanel() {
+	const urlRef = React.useRef<HTMLInputElement>(null)
+	const [busy, setBusy] = React.useState(false)
+
+	async function run(action: () => Promise<{ code: string; message?: string }>, ok: string) {
+		setBusy(true)
+		try {
+			const res = await action()
+			if (res.code === 'ok') toast.success(ok)
+			else toast.error(tr.text(PLUGINS_Msgs.installFailed()), { description: res.message })
+		} catch {
+			toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	async function install() {
+		const url = urlRef.current?.value?.trim()
+		if (!url) return
+		await run(() => RPC.orpc.plugins.installFromUrl.call({ url }), tr.text(PLUGINS_Msgs.installed(url)))
+		if (urlRef.current) urlRef.current.value = ''
+	}
+
+	return (
+		<div className="rounded-md border border-dashed p-4 space-y-2">
+			<div className="space-y-0.5">
+				<p className="text-sm font-medium">{tr.text(PLUGINS_Msgs.installTitle())}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(PLUGINS_Msgs.installBlurb())}</p>
+			</div>
+			<div className="flex items-center gap-2">
+				<Input
+					ref={urlRef}
+					type="url"
+					disabled={busy}
+					placeholder={tr.text(PLUGINS_Msgs.installPlaceholder())}
+					className="h-8 text-xs"
+				/>
+				<Button size="sm" disabled={busy} onClick={() => void install()}>
+					{tr.text(PLUGINS_Msgs.install())}
+				</Button>
+				<Button
+					size="sm"
+					variant="outline"
+					disabled={busy}
+					onClick={() => void run(() => RPC.orpc.plugins.rescan.call(), tr.text(PLUGINS_Msgs.rescanned()))}
+				>
+					{tr.text(PLUGINS_Msgs.rescan())}
+				</Button>
+			</div>
+		</div>
+	)
+}
+
 function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: boolean }) {
 	const [toggling, setToggling] = React.useState(false)
-	const manifest = INSTALLED_PLUGIN_CLIENTS.find((e) => e.manifest.id === info.id)?.manifest
+	const manifest = Zus.useStore(PluginsClient.Store, (s) => s.manifests[info.id])
 
-	async function setEnabled(enabled: boolean) {
+	async function act(action: () => Promise<{ code: string; message?: string }>, ok?: string) {
 		setToggling(true)
 		try {
-			const res = await RPC.orpc.plugins.setEnabled.call({ pluginId: info.id, enabled })
-			if (res.code !== 'ok') toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
+			const res = await action()
+			if (res.code !== 'ok') toast.error(tr.text(PLUGINS_Msgs.actionFailed()), { description: res.message })
+			else if (ok) toast.success(ok)
 		} catch {
 			toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
 		} finally {
 			setToggling(false)
 		}
+	}
+
+	async function setEnabled(enabled: boolean) {
+		await act(() => RPC.orpc.plugins.setEnabled.call({ pluginId: info.id, enabled }))
 	}
 
 	return (
@@ -86,6 +149,33 @@ function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: bool
 					/>
 				</Label>
 			</div>
+			{canManage && info.source !== 'builtin' && (
+				<div className="flex items-center gap-2">
+					{info.source === 'url' && (
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={toggling}
+							onClick={() =>
+								void act(() => RPC.orpc.plugins.refresh.call({ pluginId: info.id }), tr.text(PLUGINS_Msgs.refreshed(info.name)))
+							}
+						>
+							{tr.text(PLUGINS_Msgs.refresh())}
+						</Button>
+					)}
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={toggling}
+						onClick={() => {
+							if (!window.confirm(tr.text(PLUGINS_Msgs.uninstallConfirm(info.name)))) return
+							void act(() => RPC.orpc.plugins.uninstall.call({ pluginId: info.id }), tr.text(PLUGINS_Msgs.uninstalled()))
+						}}
+					>
+						{tr.text(PLUGINS_Msgs.uninstall())}
+					</Button>
+				</div>
+			)}
 			{canManage && manifest && <PluginConfigEditor pluginId={info.id} manifest={manifest} />}
 		</div>
 	)

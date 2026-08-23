@@ -635,6 +635,26 @@ serialized behind one mutex. Activation failures (bad config, failed migration, 
 in `errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations
 but the old module graph stays resident; re-activation reuses it.
 
+**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/index.server.ts` and lives in
+the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` (default `data/plugins`, which a deployment
+already mounts, so plugins survive an image upgrade), holding a `plugin.json` plus the prebuilt esm bundles it
+names: `plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mjs`, and optionally `client.mjs`.
+`pnpm plugin:pack <dir>` builds one from ordinary plugin source. Installing from a url downloads into that same
+folder and runs the local copy, so a plugin keeps working when its origin does not; refresh is the only thing that
+fetches again, and a directory placed there by hand is picked up by rescan.
+
+**A package carries no copy of SLM.** Its bundles import `slm/*`, rxjs, zod, drizzle-orm and react as bare
+specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
+through a `module.registerHooks` resolver, in the browser through the import map in `index.html` and the
+`/plugin-api/*` route. That is what keeps one zod (or `configSchema instanceof z.ZodObject` fails) and one React
+(or hooks break) in play. The export names come from `models/plugin-api-exports.ts`, generated beside the API
+report, since the server serves the browser's shims but cannot import the client entries to enumerate them.
+
+**Upgrades cross a line ESM cannot.** Every bundle url carries its content hash, so a refreshed package is a new
+module and the server gets a clean graph, with the old one resident but unreachable. A page that already evaluated
+the previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be
+halfway through a queue edit.
+
 **Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with
 `p_<id>_`, and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`)
 run at activation rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside

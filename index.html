@@ -29,6 +29,24 @@
 	</head>
 	<body>
 		<div class="min-h-screen" id="root"></div>
+		<!--
+      How a packaged plugin's client bundle reaches the app's own React, zustand and slm/* rather than
+      shipping copies: every specifier below resolves to a generated shim module that re-exports from
+      this page. Must precede the module script. See src/models/plugin-api-shim.ts.
+    -->
+		<script type="importmap">
+			{
+				"imports": {
+					"slm/": "/plugin-api/slm/",
+					"react": "/plugin-api/pkg/react",
+					"react/jsx-runtime": "/plugin-api/pkg/react/jsx-runtime",
+					"rxjs": "/plugin-api/pkg/rxjs",
+					"drizzle-orm": "/plugin-api/pkg/drizzle-orm",
+					"drizzle-orm/sqlite-core": "/plugin-api/pkg/drizzle-orm/sqlite-core",
+					"zod": "/plugin-api/pkg/zod"
+				}
+			}
+		</script>
 		<script type="module" src="/src/main.tsx"></script>
 	</body>
 </html>

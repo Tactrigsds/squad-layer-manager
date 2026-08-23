@@ -61,6 +61,9 @@ export type ConfigInput<M extends Manifest<any>> = z.input<M['configSchema']>
 export const StatusSchema = z.enum(['inactive', 'activating', 'active', 'stopping', 'errored'])
 export type Status = z.infer<typeof StatusSchema>
 
+export const SourceSchema = z.enum(['builtin', 'directory', 'url'])
+export type Source = z.infer<typeof SourceSchema>
+
 export const RuntimeInfoSchema = z.object({
 	id: PluginIdSchema,
 	name: z.string(),
@@ -71,8 +74,51 @@ export const RuntimeInfoSchema = z.object({
 	// what put the plugin in 'errored', for the settings UI
 	error: z.string().nullable(),
 	hasClient: z.boolean(),
+	source: SourceSchema,
+	// where a url-installed package was fetched from, and what refresh re-fetches
+	sourceUrl: z.string().nullable(),
+	// urls the browser imports a packaged plugin's modules from, each carrying its bundle's hash. Both
+	// null for a builtin, whose modules are in the app bundle; clientEntry is null for a plugin with no
+	// client. A change to clientEntry is an upgrade the running page cannot pick up -- ESM never
+	// unloads -- so the client asks for a reload.
+	manifestEntry: z.string().nullable(),
+	clientEntry: z.string().nullable(),
 })
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>
+
+// ---- packages: a plugin as it exists in the plugins directory ----
+
+// A plugin directory holds plugin.json plus the prebuilt esm bundles it names. The bundles resolve
+// `slm/*` and the shared packages (rxjs, zod, drizzle-orm, react) through the host rather than
+// bundling their own: see src/systems/plugin-api-registry.server.ts.
+export const PackageManifestSchema = z.object({
+	id: PluginIdSchema,
+	name: z.string().min(1),
+	version: z.string().regex(/^\d+\.\d+\.\d+$/),
+	apiVersion: z.string().regex(/^\^\d+(\.\d+)?$/),
+	description: z.string().prefault(''),
+	// the isomorphic manifest module, mirroring an in-repo plugin.ts: `export default definePlugin(...)`.
+	// Both halves import it, which is how the settings form gets a config schema for a plugin that is
+	// inactive, or has no client at all, without evaluating its server bundle.
+	manifest: z.string().prefault('plugin.mjs'),
+	server: z.string().prefault('server.mjs'),
+	client: z.string().optional(),
+})
+export type PackageManifest = z.infer<typeof PackageManifestSchema>
+
+export const PACKAGE_MANIFEST_FILE = 'plugin.json'
+// written beside a package SLM fetched, so refresh knows where to look again. A directory without
+// one was put there by hand, and SLM only ever reads it.
+export const INSTALL_RECORD_FILE = '.slm-install.json'
+
+export const InstallRecordSchema = z.object({
+	sourceUrl: z.url(),
+	installedAt: z.number(),
+	// relative path -> sha256, recorded at fetch time. Trust on first use: this pins what was
+	// installed so a refresh can report what changed, and is not a signature.
+	files: z.record(z.string(), z.string()),
+})
+export type InstallRecord = z.infer<typeof InstallRecordSchema>
 
 // ---- persistence owned by a plugin ----
 
