@@ -1,7 +1,7 @@
 import { desc, inArray } from 'drizzle-orm'
+import * as Rx from 'rxjs'
 import * as z from 'zod'
 
-import * as Rx from 'slm/lib/rxjs'
 import * as MH from 'slm/models/match-history'
 import type * as P from 'slm/plugin'
 import * as PluginConfig from 'slm/plugin/config'

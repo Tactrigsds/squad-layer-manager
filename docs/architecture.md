@@ -621,9 +621,9 @@ client entry and migrations. They import the core exclusively through the `slm/*
 curated entry files in `src/plugin-api/`. Each entry names its exports explicitly, so joining the contract is a
 deliberate act: lifecycle and host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion,
 `persistAppEvent`) are reachable in core and absent here. A few entries add plugin-shaped adapters instead
-(`slm/plugin/*`, `AppEvents.emit`, `LayerQueue.addPostRollReminder`). `slm/lib/rxjs` is the one star re-export,
-since curating rxjs buys nothing and rxjs carries its own semver. One tsconfig path covers tsc, tsx and the
-rolldown server bundle; vite and vitest carry a hand-written alias.
+(`slm/plugin/*`, `AppEvents.emit`, `LayerQueue.addPostRollReminder`). Third-party packages stay out: `slm/lib/rxjs-ext`
+exposes our rxjs additions and nothing else, and a plugin imports `rxjs` itself, which carries its own semver. One
+tsconfig path covers tsc, tsx and the rolldown server bundle; vite and vitest carry a hand-written alias.
 
 **The plugin way is the core way.** A plugin gets a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin`
 for identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
