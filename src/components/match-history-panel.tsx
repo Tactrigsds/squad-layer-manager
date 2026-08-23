@@ -29,7 +29,6 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as UPClient from '@/systems/user-presence.client'
 
 import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
