@@ -1,4 +1,6 @@
-export * from '@/systems/layer-queue.server'
+// queue reads and edits (dispatchOp is the same op path the web client goes through), plus the
+// plugin post-roll reminder hook. Lifecycle, sync and the router stay with the host.
+export { dispatchOp, getSavedBackburner, getSavedQueue, getSlmUpdatesEnabled } from '@/systems/layer-queue.server'
 
 import type * as PLG from '@/models/plugins.models'
 import * as LayerQueueSys from '@/systems/layer-queue.server'

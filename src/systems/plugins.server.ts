@@ -8,7 +8,12 @@ import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as CS from '@/models/context-shared'
+import type * as LQ from '@/models/layer-queue.models'
+import type * as MH from '@/models/match-history.models'
+import type * as Msgs from '@/models/messages.models'
 import * as PLG from '@/models/plugins.models'
+import type * as SETTINGS from '@/models/settings.models'
+import type * as SQS from '@/models/squad-server.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -38,7 +43,10 @@ export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log &
 		cleanup: Cleanup.Tasks
 	}
 
-export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & C.ManagedServer
+// The plugin-facing slice of a managed server: the domains the slm/* entries expose functions for.
+// The runtime object is the full C.ManagedServer, so widening this later is additive; vote,
+// teamswaps, switch-requests and the match-events cache are deliberately not in the contract yet.
+export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS.Ctx & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & Msgs.Ctx
 
 export type ServerSetupFn = (ctx: ServerCtx<any>, cleanup: Cleanup.Tasks) => void
 

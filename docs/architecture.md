@@ -639,6 +639,14 @@ the plugin's prefix. Config lives in the `plugins` table in encoded (`z.input`) 
 zod schema, and rendered by the same schema-driven settings form as everything else; `PluginConfig.get(ctx)` always
 reads the latest saved value, so config changes need no restart.
 
+**The contract is versioned mechanically.** `src/plugin-api/api-report.md` is a generated snapshot of every
+export reachable through the slm/* entries, with values carrying their resolved signatures; `pnpm api:report`
+regenerates it and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines need a
+major bump, added lines at least a minor), judged against origin/main's copy so a branch bumps once. The pre-push
+hook runs `pnpm api:report:check`, which fails on a stale report. The report records exports and signatures, not
+the internal structure of named types; reshaping a model type without renaming it is review's to catch, and the
+report diff is what flags the PR as touching the plugin API at all.
+
 **Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points
 (each boundary-wrapped), `Decorations.register` contributes data (tint/badge/title) the host styles itself, and
 `Rpc.queryStore` gives a keyed family of stores over a server-registered watch stream, dispatched through the

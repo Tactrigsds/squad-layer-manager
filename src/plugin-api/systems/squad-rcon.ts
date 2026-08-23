@@ -1,1 +1,24 @@
-export * from '@/systems/squad-rcon.server'
+// everything but the lifecycle (setup/initSquadRcon): reads, warns, broadcasts and player management
+export {
+	adminRenameSquad,
+	broadcast,
+	demoteCommander,
+	disbandSquad,
+	endMatch,
+	getCurrentLayer,
+	getLayerStatus,
+	getNextLayer,
+	getPlayer,
+	getServerInfo,
+	kickPlayer,
+	killPlayers,
+	removeFromSquad,
+	setFogOfWar,
+	setIngameVotingEnabled,
+	setNextLayer,
+	splitBroadcast,
+	switchPlayers,
+	warn,
+	warnAll,
+	warnAllAdmins,
+} from '@/systems/squad-rcon.server'

@@ -1,4 +1,6 @@
-export * from '@/systems/app-events.server'
+// persistAppEvent writes a global audit-only event; emit is the per-server form, which also lands
+// in that server's activity feed
+export { persistAppEvent } from '@/systems/app-events.server'
 
 import * as AppEvents from '@/models/app-events.models'
 import type * as PluginsSys from '@/systems/plugins.server'

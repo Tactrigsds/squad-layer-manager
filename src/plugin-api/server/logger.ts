@@ -1,1 +1,1 @@
-export * from '@/server/logger'
+export { initModule } from '@/server/logger'
