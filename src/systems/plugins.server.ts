@@ -199,10 +199,19 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 
 // ---- packages ----
 
-// The bundle url carries its content hash so an upgraded package is a different module: esm caches
-// by url, and the old graph is unreachable but never unloaded.
-function moduleUrl(filePath: string, assetId: string): string {
-	return `${pathToFileURL(filePath).href}?v=${assetId}`
+// Counts activations across all plugins, so each one loads its server bundle under a url nothing has
+// used before.
+let activationSeq = 0
+
+// The bundle url carries its content hash, so an upgraded package is a different module. `activation`
+// additionally makes every start a different module: esm caches by url, so without it a stop/start
+// would re-run activate() against whatever the previous run left in module scope, and "restart"
+// would not mean restart. Both leave the old graph resident -- node's module map has no eviction and
+// V8 only drops the compilation cache under a GC it never runs on its own -- which is the price.
+// Builtins cannot do this: their modules are in the app bundle, so their module scope is per-process.
+function moduleUrl(filePath: string, assetId: string, activation?: number): string {
+	const url = `${pathToFileURL(filePath).href}?v=${assetId}`
+	return activation === undefined ? url : `${url}&a=${activation}`
 }
 
 function assetUrl(id: string, rel: string, assetId: string): string {
@@ -217,7 +226,7 @@ async function entryFromPackage(pkg: Pkgs.Package): Promise<Entry> {
 	}
 	return {
 		manifest,
-		server: async () => (await import(moduleUrl(pkg.serverPath, pkg.serverAssetId))) as ServerModule,
+		server: async () => (await import(moduleUrl(pkg.serverPath, pkg.serverAssetId, ++activationSeq))) as ServerModule,
 		hasClient: pkg.clientPath !== null,
 		source: pkg.install ? 'url' : 'directory',
 		sourceUrl: pkg.install?.sourceUrl ?? null,
@@ -356,12 +365,18 @@ function ensureInstance(rt: Runtime, managedServer: C.ManagedServer): Instance {
 	}
 	const inst: Instance = { sctx, cleanup, ran: new Set() }
 	rt.instances.set(managedServer.serverId, inst)
-	// disposal runs whichever comes first, server teardown or plugin deactivation, exactly once
+	// Disposal runs whichever comes first, server teardown or plugin deactivation, exactly once, and
+	// then drops itself from the server's list. That second part is what keeps a stopped plugin
+	// collectable: the closure holds sctx, which reaches the manifest and so the plugin's module, and
+	// a managed server outlives every plugin that ever attached to it. Splicing mid-run is safe
+	// because runCleanup iterates a reversed copy.
 	let disposed = false
 	const dispose = () => {
 		if (disposed) return
 		disposed = true
 		rt.instances.delete(managedServer.serverId)
+		const idx = managedServer.cleanup.indexOf(dispose)
+		if (idx >= 0) managedServer.cleanup.splice(idx, 1)
 		return Cleanup.runCleanup({ ...CS.init(), log: sctx.log }, cleanup)
 	}
 	managedServer.cleanup.push(dispose)

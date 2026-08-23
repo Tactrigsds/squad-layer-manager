@@ -110,6 +110,18 @@ describe('packaged plugins', () => {
 		expect((await get('/plugin-assets/hello/server.mjs')).status).toBe(404)
 	})
 
+	it('gives a restarted plugin a fresh module graph', async () => {
+		const stats = async () =>
+			(await client.plugins.rpcCall({ pluginId: 'hello', name: 'stats', input: {} })) as { code: string; data?: { activations: number } }
+		expect((await stats()).data?.activations).toBe(1)
+
+		await client.plugins.setEnabled({ pluginId: 'hello', enabled: false })
+		await client.plugins.setEnabled({ pluginId: 'hello', enabled: true })
+
+		// 2 would mean the second activate() ran against the first run's module scope
+		expect((await stats()).data?.activations).toBe(1)
+	})
+
 	it('re-fetches on refresh and removes the directory on uninstall', async () => {
 		expect(await client.plugins.refresh({ pluginId: 'hello' })).toMatchObject({ code: 'ok' })
 		await app.waitFor(async () => ((await pluginInfo())?.status === 'active' ? true : undefined), {

@@ -655,6 +655,16 @@ module and the server gets a clean graph, with the old one resident but unreacha
 the previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be
 halfway through a queue edit.
 
+**Module scope belongs to one activation, for a packaged plugin.** The server bundle's url also carries an
+activation counter, so starting a stopped plugin evaluates a fresh graph rather than re-running `activate()`
+against what the previous run left behind. A builtin cannot do this, since its modules are in the app bundle:
+there, module scope lasts for the process. Two things follow either way. Nothing is ever reclaimed, because node's
+module map has no eviction and V8 drops the compilation cache only under a GC it never runs on its own, so each
+activation leaves a graph resident; it is bounded by how often an admin restarts a plugin. And a side effect
+started at module scope is outside the lifecycle entirely: teardown undoes what went through `ctx.cleanup`, the
+registration APIs and the abort signal, so a subscription taken at module scope keeps running after the plugin
+stops. Plugin state belongs in `activate()`.
+
 **Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with
 `p_<id>_`, and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`)
 run at activation rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside

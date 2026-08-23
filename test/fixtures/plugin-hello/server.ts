@@ -27,7 +27,13 @@ export const migrations: PluginMigration[] = [
 	},
 ]
 
+// module scope, deliberately: a stop/start loads the bundle under a fresh url, so a restarted plugin
+// sees 1 here rather than 2. Without that, activate() would run again against the previous run's state.
+let activations = 0
+
 export async function activate(ctx: P.Ctx<typeof manifest>) {
+	activations++
+
 	// runs once per managed server: writes a row proving the plugin reached its own table, a core
 	// system (match history) and its config, all through shimmed slm/* imports
 	Servers.setup(ctx, (sctx) => {
@@ -40,6 +46,8 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 			await AppEventsSys.emit(sctx, 'greeted', { serverId: sctx.serverId }, `hello plugin greeted ${sctx.serverId}`)
 		})()
 	})
+
+	Rpc.handle(ctx, 'stats', z.object({}), async () => ({ activations }))
 
 	Rpc.stream(ctx, 'greetings', z.object({ serverId: z.string() }), (sctx, input) =>
 		from(sctx.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))),
