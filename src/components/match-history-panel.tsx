@@ -426,7 +426,6 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 
 	const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal, globalSettings.displayTeamsNormalized, extraLayerStyles)
 
-
 	const gameRuntime =
 		entry.startTime && entry.status === 'post-game' && entry.endTime !== 'unknown'
 			? entry.endTime.getTime() - entry.startTime.getTime()

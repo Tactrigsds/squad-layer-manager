@@ -2,11 +2,11 @@
 import * as L from 'slm/models/layer'
 import * as MH from 'slm/models/match-history'
 
-export type TriggerInput = { history: MH.PostGameMatchDetails[] }
+export type TriggerInput = { history: MH.MatchDetails[] }
 export type Evaluation = {
 	strongerTeam: MH.NormedTeamProp
 	message: string
-	relevantInput: TriggerInput
+	relevantInput: { history: MH.PostGameMatchDetails[] }
 }
 export type Trigger = {
 	id: string
@@ -17,26 +17,30 @@ export type Trigger = {
 	evaluate: (input: TriggerInput) => Evaluation | undefined
 }
 
-export function isPostGame(m: MH.MatchDetails): m is MH.PostGameMatchDetails {
-	return m.status === 'post-game'
-}
-
 // a "session" ends at any match whose gamemode resets the balance picture
 const SESSION_BREAKERS = ['Training', 'Seed', 'Invasion', 'Destruction', 'Insurgency']
 
-export function sessionSlice(history: MH.PostGameMatchDetails[], n: number): TriggerInput {
+// The last up-to-n matches of the current session, newest last. The still-in-progress match after the
+// one just finalized is skipped; any earlier match without an outcome ends the session rather than
+// being skipped over, so a gap in the record can't stitch two runs into one streak.
+export function sessionSlice(history: MH.MatchDetails[], n: number): MH.PostGameMatchDetails[] {
 	const out: MH.PostGameMatchDetails[] = []
 	for (let i = history.length - 1; i >= 0 && out.length < n; i--) {
-		if (SESSION_BREAKERS.includes(L.toLayer(history[i].layerId)?.Gamemode as string)) break
-		out.unshift(history[i])
+		const match = history[i]
+		if (match.status !== 'post-game') {
+			if (i === history.length - 1) continue
+			break
+		}
+		if (SESSION_BREAKERS.includes(L.toLayer(match.layerId)?.Gamemode as string)) break
+		out.unshift(match)
 	}
-	return { history: out }
+	return out
 }
 
 type Win = { margin: number }
 
-function streak(input: TriggerInput): { team: MH.NormedTeamProp; wins: Win[] } | undefined {
-	const outcomes = input.history.map((m) => MH.getTeamNormalizedOutcome(m))
+function streak(session: MH.PostGameMatchDetails[]): { team: MH.NormedTeamProp; wins: Win[] } | undefined {
+	const outcomes = session.map((m) => MH.getTeamNormalizedOutcome(m))
 	const last = outcomes.at(-1)
 	if (!last || (last.type !== 'teamA' && last.type !== 'teamB')) return undefined
 	const wins: Win[] = []
@@ -55,13 +59,14 @@ function marginStreak(id: string, name: string, priority: number, margin: number
 		version: 1,
 		priority,
 		evaluate: (input) => {
-			const s = streak(sessionSlice(input.history, count))
+			const session = sessionSlice(input.history, count)
+			const s = streak(session)
 			if (!s || s.wins.length < count) return undefined
 			if (!s.wins.slice(-count).every((w) => w.margin >= margin)) return undefined
 			return {
 				strongerTeam: s.team,
 				message: `won the last ${count} matches by ${margin}+ tickets`,
-				relevantInput: { history: input.history.slice(-count) },
+				relevantInput: { history: session.slice(-count) },
 			}
 		},
 	}
@@ -76,12 +81,13 @@ export const TRIGGERS: Trigger[] = [
 		version: 1,
 		priority: 4,
 		evaluate: (input) => {
-			const s = streak(sessionSlice(input.history, 10))
+			const session = sessionSlice(input.history, 10)
+			const s = streak(session)
 			if (!s || s.wins.length < 5) return undefined
 			return {
 				strongerTeam: s.team,
 				message: 'has won 5 matches in a row',
-				relevantInput: { history: input.history.slice(-5) },
+				relevantInput: { history: session.slice(-5) },
 			}
 		},
 	},
@@ -91,14 +97,15 @@ export const TRIGGERS: Trigger[] = [
 		version: 1,
 		priority: 1,
 		evaluate: (input) => {
-			const s = streak(sessionSlice(input.history, 6))
+			const session = sessionSlice(input.history, 6)
+			const s = streak(session)
 			if (!s || s.wins.length < 3) return undefined
 			const avg = s.wins.reduce((sum, w) => sum + w.margin, 0) / s.wins.length
 			if (avg < 125) return undefined
 			return {
 				strongerTeam: s.team,
 				message: `is averaging ${Math.round(avg)} tickets over ${s.wins.length} matches`,
-				relevantInput: { history: input.history.slice(-s.wins.length) },
+				relevantInput: { history: session.slice(-s.wins.length) },
 			}
 		},
 	},

@@ -58,7 +58,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 
 async function evaluate(ctx: Ctx, matchId: number | null) {
 	const cfg = PluginConfig.get(ctx)
-	const history = (await MatchHistory.getRecentMatches(ctx)).filter(TR.isPostGame)
+	const history = await MatchHistory.getRecentMatches(ctx)
 	if (history.length === 0) return
 
 	let fired = false
@@ -97,9 +97,8 @@ async function evaluate(ctx: Ctx, matchId: number | null) {
 
 // trigger events belonging to the current session's matches, newest first
 async function activeEvents(ctx: Ctx): Promise<S.TriggerEvent[]> {
-	const history = (await MatchHistory.getRecentMatches(ctx)).filter(TR.isPostGame)
-	const session = TR.sessionSlice(history, 20)
-	const ids = session.history.map((m) => m.historyEntryId)
+	const session = TR.sessionSlice(await MatchHistory.getRecentMatches(ctx), 20)
+	const ids = session.map((m) => m.historyEntryId)
 	if (ids.length === 0) return []
 	return await ctx
 		.db()

@@ -16,6 +16,7 @@ and this document disagree, the code wins. Individual modules document their own
 - [Messages and locales](#messages-and-locales)
 - [The layer engine (rust/wasm)](#the-layer-engine-rustwasm)
 - [Data and persistence](#data-and-persistence)
+- [Plugins](#plugins)
 - [Observability](#observability)
 - [Testing](#testing)
 - [Browser support](#browser-support)
@@ -611,6 +612,38 @@ latency bug and failing the write would be worse.
 
 **Secrets** are read from a mounted `.env.secrets` file rather than `process.env`, switched by `secret: true` in the
 env schema's `.meta()`. Connection secrets are sealed at the db boundary only, and always plaintext in memory.
+
+## Plugins
+
+Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`,
+imported by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a
+client entry and migrations. They import the core exclusively through the `slm/*` alias, which resolves to the
+curated entry files in `src/plugin-api/`. Those entries mostly re-export core modules 1:1; a few add plugin-shaped
+adapters (`slm/plugin/*`, `AppEvents.emit`, `LayerQueue.addPostRollReminder`). One tsconfig path covers tsc, tsx and
+the rolldown server bundle; vite and vitest carry a hand-written alias.
+
+**The plugin way is the core way.** A plugin gets a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin`
+for identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
+`Servers.setup(ctx, cb)` runs `cb` once per managed server, now and future, with a cleanup scoped to the
+(plugin, server) pair -- it runs on server teardown or plugin stop, whichever comes first.
+
+The host (`src/systems/plugins.server.ts`) owns lifecycle (inactive → activating → active → stopping, or errored),
+serialized behind one mutex. Activation failures (bad config, failed migration, thrown `activate`) land the plugin
+in `errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations
+but the old module graph stays resident; re-activation reuses it.
+
+**Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with
+`p_<id>_`, and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`)
+run at activation rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside
+the plugin's prefix. Config lives in the `plugins` table in encoded (`z.input`) shape, validated by the manifest's
+zod schema, and rendered by the same schema-driven settings form as everything else; `PluginConfig.get(ctx)` always
+reads the latest saved value, so config changes need no restart.
+
+**Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points
+(each boundary-wrapped), `Decorations.register` contributes data (tint/badge/title) the host styles itself, and
+`Rpc.queryStore` gives a keyed family of stores over a server-registered watch stream, dispatched through the
+generic `plugins.rpcStream` procedure. The installed set is registered statically in `plugins/index.ts` (client)
+and `plugins/index.server.ts` (server) so both bundles include them.
 
 ## Observability
 
