@@ -365,11 +365,7 @@ export const layerItemEllipsis = {
 
 export const replayLayer = {
 	title: def('Replay a layer'),
-	body: def(
-		rt(
-			'To replay a layer from the match history, drag it into the queue. This only works while you are editing, so make sure you have a session open.',
-		),
-	),
+	body: def(rt('To replay a layer from the match history, drag it into the queue.')),
 }
 
 export const addTag = {
