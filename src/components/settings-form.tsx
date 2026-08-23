@@ -1604,9 +1604,8 @@ function AdminActionReasonsField({ value$, reset$, onChange }: OverrideProps) {
 			onChange={onChange}
 			headers={
 				<>
-					<TableHead className="w-[11rem]">{tr.text(AAR_Msgs.labelColumn())}</TableHead>
+					<TableHead className="w-44">{tr.text(AAR_Msgs.labelColumn())}</TableHead>
 					<TableHead>{tr.text(AAR_Msgs.textsColumn())}</TableHead>
-					<TableHead className="w-[10rem]">{tr.text(AAR_Msgs.keywordsColumn())}</TableHead>
 					<TableHead className="w-8" />
 				</>
 			}
@@ -1760,7 +1759,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 
 	return (
 		<TableRow>
-			<TableCell className="align-top">
+			<TableCell className="align-top gap-0.5 h-full">
 				<TextInputField
 					value$={label$}
 					reset$={reset$}
@@ -1768,6 +1767,7 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 					numeric={false}
 					placeholder={tr.text(AAR_Msgs.labelPlaceholder())}
 				/>
+				<KeywordsCell value$={keywords$} reset$={reset$} seedFrom$={label$} onChange={setField('keywords')} />
 			</TableCell>
 			<TableCell className="align-top">
 				<div className="space-y-1.5">
@@ -1817,14 +1817,11 @@ function AdminActionReasonRow({ idx, parent$, reset$, parentOnChange, onRemove }
 				</div>
 			</TableCell>
 			<TableCell className="align-top">
-				<KeywordsCell value$={keywords$} reset$={reset$} seedFrom$={label$} onChange={setField('keywords')} />
-			</TableCell>
-			<TableCell className="align-top">
 				<div className="flex flex-col gap-1">
-					<ReasonPreviewButton row$={row$} reset$={reset$} />
 					<Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={onRemove}>
 						<Icons.X className="h-4 w-4" />
 					</Button>
+					<ReasonPreviewButton row$={row$} reset$={reset$} />
 				</div>
 			</TableCell>
 		</TableRow>
@@ -1993,8 +1990,8 @@ function KeywordsCell({
 	seedFrom$: ValueState
 	onChange: (v: string[]) => void
 }) {
-	const ref = React.useRef<HTMLInputElement>(null)
-	const format = (v: string[] | undefined) => (v ?? []).join(' ')
+	const ref = React.useRef<HTMLTextAreaElement>(null)
+	const format = (v: string[] | undefined) => (v ?? []).join('\n')
 	const parse = (text: string) => text.split(/[,\s]+/).filter(Boolean)
 	const push = useDebounced<string[]>({ delay: DEBOUNCE_MS, onChange })
 	useReset(reset$, () => {
@@ -2019,8 +2016,22 @@ function KeywordsCell({
 	}, [seedSource, push])
 
 	return (
-		<Input
-			ref={ref}
+		<Textarea
+			ref={(elt) => {
+				ref.current = elt
+				if (!elt) return
+				const parent = ref.current?.parentElement
+				if (!parent) return
+				let otherEltsSize = 0
+				if (parent) {
+					for (const child of parent.children) {
+						const childOffsetHeight = (child as HTMLElement).offsetHeight ?? 0
+						console.log({ child, offsetHeight: childOffsetHeight, equal: child == elt })
+						if (child != elt) otherEltsSize += childOffsetHeight
+					}
+				}
+				if (otherEltsSize > 0) elt.style.height = `${parent.clientHeight - otherEltsSize}px`
+			}}
 			defaultValue={format(value$.getValue())}
 			placeholder={tr.text(AAR_Msgs.keywordsPlaceholder())}
 			onChange={(e) => push(parse(e.currentTarget.value))}
