@@ -27,7 +27,7 @@ export const actionTextPlaceholder = def('Sent when performing {action}', (actio
 export const addActionText = def('Add action text…')
 
 // keywords are space or comma separated, and the placeholder is two of them
-export const keywordsPlaceholder = def('tk afk')
+export const keywordsPlaceholder = def('keywords')
 
 // -------- the delivered-message preview --------
 
