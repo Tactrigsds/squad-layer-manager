@@ -30,19 +30,17 @@ import { BmServer } from '../../src/emulator/bm-server'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 
-// How to start the app under test. SLM_TEST_SERVER_ENTRY points at a bundled server: the docker image sets it
-// to the artifact it ships, so CI drives the very thing that gets deployed, and locally the test scripts build
-// one first, because transpiling the module graph through tsx costs ~3.5s of every boot and there are dozens
-// of those in a run (see scripts/test-server-bundle.mjs). Without it, the tsx path below runs the sources
-// directly, which is what `test:integration:src` / `test:e2e:src` are for.
+// How to start the app under test: the same entry, loader and sources production runs. It used to spawn a
+// rolldown bundle, which saved ~2.7s of tsx transform per fixture and there are dozens of those in a run --
+// but production stopped bundling the server (so that plugins can import SLM's own modules), and a test that
+// drives something other than what ships is not worth the seconds.
 function serverCommand(): [string, string[]] {
 	// main-instrumented is the entry production runs: it starts the otel sdk (when OTEL_ENABLED) and then
 	// hands off to main. Spawning it -- rather than main directly -- is what lets a test's telemetry exist
 	// at all. register-otel.mjs installs the loader hook the auto-instrumentations need.
 	const otelLoader = ['--import', path.join(REPO_ROOT, 'register-otel.mjs')]
-	const entry = process.env.SLM_TEST_SERVER_ENTRY
-	// the same two preloads, in the same order, that `pnpm run server:prod` passes
-	if (entry) return ['node', ['--import', path.join(REPO_ROOT, 'register-source-maps.mjs'), ...otelLoader, entry]]
+	// the same entry, loader and sources production runs: `pnpm run server:prod` is this command with
+	// NODE_ENV set
 	return [
 		path.join(REPO_ROOT, 'node_modules/.bin/tsx'),
 		['--tsconfig', 'tsconfig.node.json', ...otelLoader, 'src/server/main-instrumented.ts'],

@@ -112,8 +112,13 @@ describe('packaged plugins', () => {
 
 	it('gives a restarted plugin a fresh module graph', async () => {
 		const stats = async () =>
-			(await client.plugins.rpcCall({ pluginId: 'hello', name: 'stats', input: {} })) as { code: string; data?: { activations: number } }
+			(await client.plugins.rpcCall({ pluginId: 'hello', name: 'stats', input: {} })) as {
+				code: string
+				data?: { activations: number; managedServers: number }
+			}
 		expect((await stats()).data?.activations).toBe(1)
+		// reached SquadServer through slm-internal/* and saw the app's own state, not a fresh module
+		expect((await stats()).data?.managedServers).toBeGreaterThan(0)
 
 		await client.plugins.setEnabled({ pluginId: 'hello', enabled: false })
 		await client.plugins.setEnabled({ pluginId: 'hello', enabled: true })

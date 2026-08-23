@@ -1,5 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { from } from 'rxjs'
+// deliberately outside the api: proves a plugin can reach SLM's own modules, and gets the instance the
+// app is running rather than a second copy
+import * as SquadServer from 'slm-internal/systems/squad-server.server'
 import * as z from 'zod'
 
 import type * as P from 'slm/plugin'
@@ -47,7 +50,11 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		})()
 	})
 
-	Rpc.handle(ctx, 'stats', z.object({}), async () => ({ activations }))
+	Rpc.handle(ctx, 'stats', z.object({}), async () => ({
+		activations,
+		// a second copy of the module would report 0 here
+		managedServers: SquadServer.globalState.managedServers.size,
+	}))
 
 	Rpc.stream(ctx, 'greetings', z.object({ serverId: z.string() }), (sctx, input) =>
 		from(sctx.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))),

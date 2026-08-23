@@ -1,12 +1,10 @@
-// Runs a test command against bundles rather than the TypeScript sources, building whichever of them the
-// checkout is missing so that either suite works run first, in any order, from a fresh worktree.
+// Runs a test command with whatever the checkout is missing built first, so that either suite works run
+// first, in any order, from a fresh worktree.
 //
-// The harness spawns a fresh app process per fixture (test/harness/app-fixture.ts), and there are dozens of
-// those in a run. Loading the server's module graph through tsx costs ~3.5s each time; bundling it once with
-// rolldown costs ~1.5s total, so it pays for itself before the second fixture.
-//
-// An SLM_TEST_SERVER_ENTRY already in the environment wins and nothing is built: that is the docker test image
-// pointing at the bundle it ships, which is the artifact CI is meant to be exercising.
+// Only the client bundle is built here. The server is not bundled at all any more: production runs the
+// TypeScript sources through tsx (see `pnpm run server:prod`), and so does the harness, which is what
+// keeps plugins able to reach SLM's own modules at runtime. The harness spawns a fresh app per fixture
+// and each pays tsx's transform cost, measured at ~2.7s over the bundle it used to load.
 
 import { spawn } from 'node:child_process'
 import * as fs from 'node:fs'
@@ -35,13 +33,6 @@ if (!command) {
 	process.exit(2)
 }
 
-let entry = process.env.SLM_TEST_SERVER_ENTRY
-if (!entry) {
-	const buildCode = await run('pnpm', ['run', 'build:server'])
-	if (buildCode !== 0) process.exit(buildCode)
-	entry = path.join(repoRoot, 'dist-server/main-instrumented.js')
-}
-
 // The integration suite's file-serving tests read the client bundle out of dist/, and fail on ENOENT in a
 // checkout that has never built one. Only built when missing: they assert response headers, which an older
 // bundle answers just as well, while e2e is served the bundle and rebuilds it unconditionally before getting
@@ -51,4 +42,4 @@ if (!fs.existsSync(path.join(repoRoot, 'dist/index.html'))) {
 	if (buildCode !== 0) process.exit(buildCode)
 }
 
-process.exit(await run('pnpm', ['exec', command, ...args], { SLM_TEST_SERVER_ENTRY: entry }))
+process.exit(await run('pnpm', ['exec', command, ...args]))

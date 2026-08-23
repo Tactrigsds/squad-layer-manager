@@ -52,6 +52,27 @@ importers:
       '@dnd-kit/dom':
         specifier: 0.1.21
         version: 0.1.21
+      '@fastify/cookie':
+        specifier: ^10.0.1
+        version: 10.0.1
+      '@fastify/formbody':
+        specifier: ^8.0.2
+        version: 8.0.2
+      '@fastify/oauth2':
+        specifier: ^8.2.0
+        version: 8.2.0
+      '@fastify/send':
+        specifier: ^4.1.0
+        version: 4.1.0
+      '@fastify/static':
+        specifier: ^8.3.0
+        version: 8.3.0
+      '@fastify/websocket':
+        specifier: ^11.3.0
+        version: 11.3.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@formatjs/intl-durationformat':
+        specifier: ^0.10.18
+        version: 0.10.18
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -85,9 +106,21 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.43.0
         version: 1.43.0
+      '@orpc/client':
+        specifier: ^1.14.8
+        version: 1.14.8(@opentelemetry/api@1.9.1)
       '@orpc/otel':
         specifier: ^1.14.8
         version: 1.14.8(@opentelemetry/api@1.9.1)(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))
+      '@orpc/server':
+        specifier: ^1.14.8
+        version: 1.14.8(@opentelemetry/api@1.9.1)(fastify@5.10.0)(ws@8.21.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+      async-mutex:
+        specifier: ^0.5.0
+        version: 0.5.0
+      basic-ftp:
+        specifier: ^5.3.1
+        version: 5.3.1
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -103,30 +136,75 @@ importers:
       codemirror-json-schema:
         specifier: ^0.8.1
         version: 0.8.1(@codemirror/language@6.12.4)(@codemirror/lint@6.9.7)(@codemirror/state@6.7.1)(@codemirror/view@6.43.6)(@lezer/common@1.5.2)
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      cookie:
+        specifier: ^0.7.2
+        version: 0.7.2
+      date-fns:
+        specifier: ^4.4.0
+        version: 4.4.0
+      discord.js:
+        specifier: ^14.27.0
+        version: 14.27.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       dockerode:
         specifier: ^4.0.12
         version: 4.0.12
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client-wasm@0.15.9)(@libsql/client@0.15.9(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(@types/sql.js@1.4.11)(better-sqlite3@12.11.1)(gel@2.1.1)(mysql2@3.23.1(@types/node@22.20.1))(sql.js@1.14.1)(sqlite3@5.1.7)
+      emoji-name-map:
+        specifier: ^2.0.3
+        version: 2.0.3
+      fast-deep-equal:
+        specifier: ^3.1.3
+        version: 3.1.3
       fastify:
         specifier: ^5.10.0
         version: 5.10.0
       fastify-plugin:
         specifier: ^5.1.0
         version: 5.1.0
+      glob:
+        specifier: ^13.0.6
+        version: 13.0.6
+      immer:
+        specifier: ^10.2.0
+        version: 10.2.0
       jsonpath:
         specifier: ^1.3.0
         version: 1.3.0
+      mustache:
+        specifier: ^4.2.0
+        version: 4.2.0
       pino:
         specifier: ^9.14.0
         version: 9.14.0
+      quick-format-unescaped:
+        specifier: ^4.0.4
+        version: 4.0.4
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
       reselect:
         specifier: ^5.2.0
         version: 5.2.0
+      rxjs:
+        specifier: ^7.8.2
+        version: 7.8.2
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -136,6 +214,9 @@ importers:
       ssh2:
         specifier: ^1.17.0
         version: 1.17.0
+      string-comparison:
+        specifier: ^1.3.0
+        version: 1.3.0
       superjson:
         specifier: ^2.2.6
         version: 2.2.6
@@ -148,9 +229,15 @@ importers:
       utf-8-validate:
         specifier: ^6.0.6
         version: 6.0.6
+      ws:
+        specifier: ^8.21.1
+        version: 8.21.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@babel/core':
         specifier: ^8.0.1
@@ -161,36 +248,15 @@ importers:
       '@dnd-kit/react':
         specifier: ^0.1.21
         version: 0.1.21(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@fastify/cookie':
-        specifier: ^10.0.1
-        version: 10.0.1
       '@fastify/cors':
         specifier: ^10.1.0
         version: 10.1.0
-      '@fastify/formbody':
-        specifier: ^8.0.2
-        version: 8.0.2
-      '@fastify/oauth2':
-        specifier: ^8.2.0
-        version: 8.2.0
-      '@fastify/send':
-        specifier: ^4.1.0
-        version: 4.1.0
-      '@fastify/static':
-        specifier: ^8.3.0
-        version: 8.3.0
-      '@fastify/websocket':
-        specifier: ^11.3.0
-        version: 11.3.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@formatjs/icu-messageformat-parser':
         specifier: ^3.5.17
         version: 3.5.17
       '@formatjs/intl':
         specifier: ^4.1.17
         version: 4.1.17
-      '@formatjs/intl-durationformat':
-        specifier: ^0.10.18
-        version: 0.10.18
       '@headlessui/react':
         specifier: ^2.2.10
         version: 2.2.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -200,12 +266,6 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: 2.9.0
         version: 2.9.0(@opentelemetry/api@1.9.1)
-      '@orpc/client':
-        specifier: ^1.14.8
-        version: 1.14.8(@opentelemetry/api@1.9.1)
-      '@orpc/server':
-        specifier: ^1.14.8
-        version: 1.14.8(@opentelemetry/api@1.9.1)(fastify@5.10.0)(ws@8.21.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@orpc/tanstack-query':
         specifier: ^1.14.8
         version: 1.14.8(@opentelemetry/api@1.9.1)(@orpc/client@1.14.8(@opentelemetry/api@1.9.1))(@tanstack/query-core@5.101.4)
@@ -350,60 +410,24 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.0
         version: 6.1.0(@rolldown/plugin-babel@0.2.3(@babel/core@8.0.1)(@babel/runtime@7.29.7)(rolldown@1.2.5)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0)))(babel-plugin-react-compiler@1.0.0)(oxc-transform-react@0.145.0)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
-      async-mutex:
-        specifier: ^0.5.0
-        version: 0.5.0
-      basic-ftp:
-        specifier: ^5.3.1
-        version: 5.3.1
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.1.0))(@types/react@19.1.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      commander:
-        specifier: ^13.1.0
-        version: 13.1.0
-      cookie:
-        specifier: ^0.7.2
-        version: 0.7.2
-      date-fns:
-        specifier: ^4.4.0
-        version: 4.4.0
       date-fns-tz:
         specifier: ^3.2.0
         version: 3.2.0(date-fns@4.4.0)
-      discord.js:
-        specifier: ^14.27.0
-        version: 14.27.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
-      emoji-name-map:
-        specifier: ^2.0.3
-        version: 2.0.3
       emoji-picker-react:
         specifier: ^4.19.1
         version: 4.19.1(react@19.2.8)
-      fast-deep-equal:
-        specifier: ^3.1.3
-        version: 3.1.3
-      glob:
-        specifier: ^13.0.6
-        version: 13.0.6
       happy-dom:
         specifier: ^20.11.6
         version: 20.11.6(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      immer:
-        specifier: ^10.2.0
-        version: 10.2.0
       lucide-react:
         specifier: ^0.446.0
         version: 0.446.0(react@19.2.8)
-      mustache:
-        specifier: ^4.2.0
-        version: 4.2.0
       oxc-transform-react:
         specifier: ^0.145.0
         version: 0.145.0
@@ -422,36 +446,18 @@ importers:
       postcss:
         specifier: ^8.5.26
         version: 8.5.26
-      quick-format-unescaped:
-        specifier: ^4.0.4
-        version: 4.0.4
-      react:
-        specifier: ^19.2.8
-        version: 19.2.8
       react-colorful:
         specifier: ^5.8.0
         version: 5.8.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react-day-picker:
         specifier: ^9.14.0
         version: 9.14.0(react@19.2.8)
-      react-dom:
-        specifier: ^19.2.8
-        version: 19.2.8(react@19.2.8)
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.1.0)(react@19.2.8)
       rolldown:
         specifier: ^1.2.5
         version: 1.2.5
-      rxjs:
-        specifier: ^7.8.2
-        version: 7.8.2
-      semver:
-        specifier: ^7.8.5
-        version: 7.8.5
-      string-comparison:
-        specifier: ^1.3.0
-        version: 1.3.0
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -470,12 +476,6 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(happy-dom@20.11.6(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.4.11(typescript@7.0.2))(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
-      ws:
-        specifier: ^8.21.1
-        version: 8.21.1(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.1.0)(immer@10.2.0)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))

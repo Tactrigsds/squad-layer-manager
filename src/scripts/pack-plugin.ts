@@ -38,7 +38,8 @@ if (!manifest?.id) throw new Error(`${srcDir}/plugin.ts must default-export the 
 fs.rmSync(outDir, { recursive: true, force: true })
 fs.mkdirSync(outDir, { recursive: true })
 
-const external = [/^slm\//, ...SHIM.SHARED_PACKAGES]
+// slm-internal/* is the unversioned way into SLM's own modules; like slm/*, the host resolves it
+const external = [/^slm\//, /^slm-internal\//, ...SHIM.SHARED_PACKAGES]
 const built: string[] = []
 for (const entry of ENTRIES) {
 	const input = path.join(srcDir, entry.source)

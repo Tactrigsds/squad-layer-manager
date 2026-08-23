@@ -70,9 +70,18 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # Copy built artifacts from builder stage
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/dist-server ./dist-server
 
-# The two preloads `server:prod` passes to `node --import`, so the server does not start without them.
+# The server runs its TypeScript sources through tsx rather than a bundle. A bundle has no importable
+# modules, so a plugin could reach only the curated slm/* surface; from source it can import SLM's own
+# modules and get the instance the app is running. The cost is the tree and the dependencies below,
+# which used to be inlined at build time.
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/plugins ./plugins
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/paths.ts ./paths.ts
+COPY --from=builder /app/tsconfig.json /app/tsconfig.paths.json /app/tsconfig.node.json /app/tsconfig.app.json ./
+
+# The two preloads `server:prod` passes through NODE_OPTIONS, so the server does not start without them.
 # register-otel.mjs installs the import-in-the-middle loader hook, without which the auto-instrumentations
 # load but patch nothing; register-source-maps.mjs scopes source map support to our own code.
 COPY --from=builder /app/register-otel.mjs /app/register-source-maps.mjs ./
@@ -104,10 +113,10 @@ CMD ["pnpm", "run", "server:prod"]
 
 # Test stage - the production image, plus the machinery to drive it.
 #
-# Deliberately built on top of `runtime` rather than beside it: the tests spawn the very server
-# bundle that gets deployed (SLM_TEST_SERVER_ENTRY below), against the same dist/ the browser loads,
-# so what CI exercises is the artifact, not a re-derivation of it. What's added is only what a test
-# needs and production must not carry: dev dependencies, a browser, and the test sources.
+# Deliberately built on top of `runtime` rather than beside it: the tests spawn the very sources that
+# get deployed, against the same dist/ the browser loads, so what CI exercises is the artifact, not a
+# re-derivation of it. What's added is only what a test needs and production must not carry: dev
+# dependencies, a browser, and the test sources.
 FROM runtime AS test
 
 # before the install: the runtime stage sets NODE_ENV=production, and pnpm skips devDependencies when
@@ -118,14 +127,10 @@ ENV NODE_ENV=test
 # dev dependencies come back
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod=false
 
-COPY src ./src
+# src, plugins, drizzle and the tsconfigs are already here from the runtime stage: the app runs from them
 COPY test ./test
-COPY drizzle ./drizzle
-COPY plugins ./plugins
-# the launcher both suites go through. It finds SLM_TEST_SERVER_ENTRY already set below and builds nothing,
-# which is what keeps this image testing the bundle it ships rather than a rebuild of it.
+# the launcher both suites go through; it builds the client bundle if this image ever lacks one
 COPY scripts/test-server-bundle.mjs ./scripts/
-COPY paths.ts tsconfig.json tsconfig.paths.json tsconfig.app.json tsconfig.node.json ./
 COPY vite.config.ts vitest.integration.config.ts playwright.config.ts index.html ./
 
 # Only the headless shell, not the full chromium: `playwright install chromium` fetches both (646MB),
@@ -133,9 +138,6 @@ COPY vite.config.ts vitest.integration.config.ts playwright.config.ts index.html
 # it links against.
 RUN pnpm exec playwright install --with-deps chromium-headless-shell
 
-# drive the deployed bundle rather than the source: the point of testing in this image is that it is
-# the image
-ENV SLM_TEST_SERVER_ENTRY=dist-server/main-instrumented.js
 # nothing to mount: the layer artifacts the tests run against are the ones baked into the runtime stage,
 # which are the ones production runs.
 

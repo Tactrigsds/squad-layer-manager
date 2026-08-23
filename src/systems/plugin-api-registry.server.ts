@@ -1,11 +1,15 @@
 import * as drizzle from 'drizzle-orm'
 import * as drizzleSqliteCore from 'drizzle-orm/sqlite-core'
+import * as fs from 'node:fs'
 import { registerHooks } from 'node:module'
+import * as path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import * as react from 'react'
 import * as reactJsxRuntime from 'react/jsx-runtime'
 import * as rxjs from 'rxjs'
 import * as zod from 'zod'
 
+import { PROJECT_ROOT } from '$root/paths'
 import * as SHIM from '@/models/plugin-api-shim'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
@@ -29,6 +33,11 @@ import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
 // The map is built inside a function rather than at module scope because several slm/* entries
 // re-export from plugins.server, which imports this module: at evaluation time that cycle is still
 // open, and touching those namespaces would hit the TDZ.
+//
+// `slm-internal/*` is the way out of the curated surface: it maps onto src/, so a plugin that needs
+// something the api does not expose can reach it rather than wait for an upstream release or fork the
+// app. It resolves to the same file the app imports, so the plugin shares the module instance and its
+// state. Nothing about it is versioned or covered by the api report, which is what the name is for.
 
 let entries: Record<string, object> = {}
 let installed = false
@@ -64,6 +73,10 @@ export function setup() {
 
 	registerHooks({
 		resolve(specifier, context, nextResolve) {
+			// rewritten rather than short-circuited, so tsx still gets to resolve and transform it
+			if (specifier.startsWith(INTERNAL_PREFIX)) {
+				return nextResolve(internalPath(specifier.slice(INTERNAL_PREFIX.length)), context)
+			}
 			// an unregistered slm/* is still ours to answer: the shim's "not available here" beats a
 			// resolution error at naming what went wrong. Anything else falls through to node.
 			if (specifier.startsWith('slm/') || specifier in entries) {
@@ -77,6 +90,18 @@ export function setup() {
 			return { format: 'module', source: SHIM.shimSource(specifier, exportNames(specifier)), shortCircuit: true }
 		},
 	})
+}
+
+const INTERNAL_PREFIX = 'slm-internal/'
+
+// `slm-internal/systems/vote.server` -> <root>/src/systems/vote.server.ts. The extension is probed
+// rather than required, so the specifier reads like the `@/` import the app itself writes.
+function internalPath(rest: string): string {
+	const base = path.join(PROJECT_ROOT, 'src', rest)
+	for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts'), base]) {
+		if (fs.existsSync(candidate)) return pathToFileURL(candidate).href
+	}
+	throw new Error(`${INTERNAL_PREFIX}${rest} does not name a file under src/`)
 }
 
 export function exportNames(specifier: string): readonly string[] {

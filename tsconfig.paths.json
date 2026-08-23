@@ -4,7 +4,8 @@
 			"@/*": ["./src/*"],
 			"$root/*": ["./*"],
 			"slm/plugin": ["./src/plugin-api/plugin/index.ts"],
-			"slm/*": ["./src/plugin-api/*"]
+			"slm/*": ["./src/plugin-api/*"],
+			"slm-internal/*": ["./src/*"]
 		},
 		"resolveJsonModule": true,
 		/* Linting */
