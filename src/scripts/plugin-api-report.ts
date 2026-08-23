@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import ts from 'typescript5'
+import { API, type Checker, fileNameToDocumentURI, NodeBuilderFlags, type Symbol as TsSymbol, SymbolFlags } from 'typescript/unstable/sync'
 
 import * as PLG from '@/models/plugins.models'
 
@@ -17,7 +17,8 @@ import * as PLG from '@/models/plugins.models'
 // the internal structure of named types, so reshaping e.g. MatchDetails without renaming it is not
 // caught here; that judgement stays with review, which the report diff flags.
 //
-// Uses typescript5 (aliased TS 5.x): tsgo (typescript@7) does not expose the JS checker API.
+// Runs on tsgo's in-package experimental API (typescript/unstable/sync), which drives the native
+// binary over IPC; the stable TS JS checker API does not exist in typescript@7.
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..')
 const apiDir = path.join(repoRoot, 'src', 'plugin-api')
@@ -42,49 +43,45 @@ function specifierFor(file: string): string {
 	return `slm/${rel}`.replace(/\/index$/, '')
 }
 
-function buildProgram(files: string[]): ts.Program {
-	const configPath = path.join(repoRoot, 'tsconfig.app.json')
-	const parsed = ts.getParsedCommandLineOfConfigFile(
-		configPath,
-		{},
-		{
-			...ts.sys,
-			onUnRecoverableConfigFileDiagnostic: (d) => {
-				throw new Error(ts.flattenDiagnosticMessageText(d.messageText, '\n'))
-			},
-		},
-	)!
-	return ts.createProgram({ rootNames: files, options: { ...parsed.options, noEmit: true, skipLibCheck: true } })
-}
-
-const FMT = ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope
-
-function describeExport(checker: ts.TypeChecker, sym: ts.Symbol, location: ts.Node): string {
-	const resolved = sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym
+function describeExport(checker: Checker, sym: TsSymbol): string {
+	const resolved = sym.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym
 	const flags = resolved.flags
-	if (flags & ts.SymbolFlags.ValueModule || flags & ts.SymbolFlags.NamespaceModule) {
+	if (flags & SymbolFlags.ValueModule || flags & SymbolFlags.NamespaceModule) {
 		const members = checker
 			.getExportsOfModule(resolved)
 			.map((m) => m.name)
 			.sort()
 		return `namespace { ${members.join(', ')} }`
 	}
-	if (flags & ts.SymbolFlags.Class) return `class ${resolved.name}`
-	if (flags & ts.SymbolFlags.Enum) return `enum ${resolved.name}`
-	if (flags & (ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias)) {
-		const params = (resolved.declarations ?? []).flatMap((d) =>
-			ts.isInterfaceDeclaration(d) || ts.isTypeAliasDeclaration(d) ? (d.typeParameters ?? []).map((t) => t.name.text) : [],
-		)
-		return `type${params.length > 0 ? `<${params.join(', ')}>` : ''}`
+	if (flags & SymbolFlags.Class) return `class ${resolved.name}`
+	if (flags & SymbolFlags.Enum) return `enum ${resolved.name}`
+	if (flags & (SymbolFlags.Interface | SymbolFlags.TypeAlias)) {
+		const declared = checker.getDeclaredTypeOfSymbol(resolved)
+		const params = (declared as { typeParameters?: unknown[] }).typeParameters?.length
+		return `type${params ? `<${params} params>` : ''}`
 	}
-	const type = checker.getTypeOfSymbolAtLocation(resolved, location)
-	return `value: ${checker.typeToString(type, undefined, FMT)}`
+	const type = checker.getTypeOfSymbol(resolved)
+	if (!type) return 'value'
+	return `value: ${checker.typeToString(type, undefined, NodeBuilderFlags.NoTruncation)}`
 }
 
 function generateContent(): string {
 	const files = entryFiles()
-	const program = buildProgram(files)
-	const checker = program.getTypeChecker()
+	const api = new API({ cwd: repoRoot })
+	try {
+		return generateWith(api, files)
+	} finally {
+		api.close()
+	}
+}
+
+function generateWith(api: API, files: string[]): string {
+	const snapshot = api.updateSnapshot({
+		openProjects: [{ uri: fileNameToDocumentURI(path.join(repoRoot, 'tsconfig.app.json')) }],
+	})
+	const project = snapshot.getProjects()[0]
+	const program = project.program
+	const checker = project.checker
 	const lines: string[] = [
 		'# slm plugin API report',
 		'',
@@ -101,11 +98,11 @@ function generateContent(): string {
 		const moduleSymbol = checker.getSymbolAtLocation(sf)
 		lines.push(`## ${specifierFor(file)}`, '')
 		if (moduleSymbol) {
-			const exports = checker.getExportsOfModule(moduleSymbol).sort((a, b) => (a.name < b.name ? -1 : 1))
+			const exports = checker.getExportsOfModule(moduleSymbol).toSorted((a: TsSymbol, b: TsSymbol) => (a.name < b.name ? -1 : 1))
 			for (const sym of exports) {
 				// oxlint-disable-next-line no-useless-catch
 				try {
-					lines.push(`- \`${sym.name}\` — ${describeExport(checker, sym, sf)}`)
+					lines.push(`- \`${sym.name}\` — ${describeExport(checker, sym)}`)
 				} catch (err) {
 					throw new Error(`failed to describe ${specifierFor(file)} export ${sym.name}`, { cause: err })
 				}
