@@ -525,8 +525,8 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent side="right" className="w-auto flex flex-col gap-1">
-										{decorations.map((deco, i) => (
-											<span key={i}>
+										{decorations.map((deco) => (
+											<span key={deco.regKey}>
 												{deco.badge && (
 													<Badge variant="outline" className="mr-1">
 														{deco.badge}

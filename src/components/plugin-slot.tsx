@@ -11,8 +11,8 @@ export function PluginSlot<A extends PluginsClient.SlotAnchorId>(props: { anchor
 	if (regs.length === 0) return null
 	return (
 		<>
-			{regs.map((reg, i) => (
-				<PluginErrorBoundary key={`${reg.pluginId}:${version}:${i}`} pluginId={reg.pluginId}>
+			{regs.map((reg) => (
+				<PluginErrorBoundary key={`${reg.regKey}:${version}`} pluginId={reg.pluginId}>
 					<reg.component {...props.anchorProps} />
 				</PluginErrorBoundary>
 			))}

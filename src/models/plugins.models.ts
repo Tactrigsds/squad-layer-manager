@@ -89,9 +89,18 @@ export type PluginMigration = {
 	up: (db: MigrationDriver) => void | Promise<void>
 }
 
-export function defineTables(manifest: Pick<Manifest, 'id'>) {
+// named rather than inferred so the API report prints `TableFactory` instead of drizzle's six
+// kilobytes of expanded SQLiteTableWithColumns
+export interface TableFactory {
+	table: <Cols extends Record<string, D.SQLiteColumnBuilderBase>>(
+		name: string,
+		columns: Cols,
+	) => ReturnType<typeof D.sqliteTable<string, Cols>>
+}
+
+export function defineTables(manifest: { id: PluginId }): TableFactory {
 	const prefix = tablePrefix(manifest.id)
 	return {
-		table: <Cols extends Record<string, D.SQLiteColumnBuilderBase>>(name: string, columns: Cols) => D.sqliteTable(prefix + name, columns),
+		table: (name, columns) => D.sqliteTable(prefix + name, columns),
 	}
 }

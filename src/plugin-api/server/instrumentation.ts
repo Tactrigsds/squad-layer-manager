@@ -1,1 +1,1 @@
-export * from '@/server/instrumentation'
+export { durableSub, recordGenericError, setSpanOpAttrs, setSpanStatus, spanOp } from '@/server/instrumentation'

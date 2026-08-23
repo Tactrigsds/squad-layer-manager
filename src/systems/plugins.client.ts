@@ -35,14 +35,19 @@ export type SlotAnchorId = keyof SlotAnchors
 // decorations contribute data, not markup: the host maps tints onto its own styling
 export type Tint = 'info' | 'warn' | 'violation'
 export type Decoration = { tint?: Tint; badge?: string; title?: string }
+// what a host anchor renders: the plugin's decoration plus which registration produced it
+export type DecorationEntry = Decoration & { regKey: string }
 export type DecorationAnchors = {
 	'match-history:row': { serverId: string; matchId: number }
 }
 export type DecorationAnchorId = keyof DecorationAnchors
 
-type SlotReg = { pluginId: string; component: React.FC<any> }
+// regKey is stable per registration, so React can key a slot or a decoration by its origin rather
+// than its position: one plugin may register twice at the same anchor.
+type SlotReg = { pluginId: string; regKey: string; component: React.FC<any> }
 type DecorationReg = {
 	pluginId: string
+	regKey: string
 	stores: (props: any) => Zus.AnyInput<any>[]
 	select: (...args: any[]) => Decoration | null | undefined
 }
@@ -54,6 +59,11 @@ const decoRegs = new Map<string, DecorationReg[]>()
 const undoByPlugin = new Map<string, (() => void)[]>()
 const loadedPlugins = new Set<string>()
 let installed: InstalledClientPlugin[] = []
+
+let regCounter = 0
+function nextRegKey(pluginId: string) {
+	return `${pluginId}:${regCounter++}`
+}
 
 function bumpVersion() {
 	Store.setState((s) => ({ ...s, version: s.version + 1 }))
@@ -73,7 +83,7 @@ function pushReg<T>(map: Map<string, T[]>, key: string, pluginId: string, reg: T
 }
 
 export function registerSlot<A extends SlotAnchorId>(ctx: ClientCtx<any>, anchor: A, component: React.FC<SlotAnchors[A]>) {
-	pushReg(slotRegs, anchor, ctx.plugin.id, { pluginId: ctx.plugin.id, component })
+	pushReg(slotRegs, anchor, ctx.plugin.id, { pluginId: ctx.plugin.id, regKey: nextRegKey(ctx.plugin.id), component })
 	bumpVersion()
 }
 
@@ -86,7 +96,7 @@ export function registerDecoration<A extends DecorationAnchorId>(
 		select: (...args: any[]) => Decoration | null | undefined
 	},
 ) {
-	pushReg(decoRegs, anchor, ctx.plugin.id, { pluginId: ctx.plugin.id, ...reg })
+	pushReg(decoRegs, anchor, ctx.plugin.id, { pluginId: ctx.plugin.id, regKey: nextRegKey(ctx.plugin.id), ...reg })
 	bumpVersion()
 }
 
@@ -169,14 +179,14 @@ function readInput(input: Zus.AnyInput<any>): unknown {
 	return undefined
 }
 
-const NO_DECOS: Decoration[] = []
+const NO_DECOS: DecorationEntry[] = []
 
 // Manual subscription rather than one Zus.useStore per registration, so the hook count stays fixed
 // while plugins register and unregister at runtime.
-export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: DecorationAnchors[A]): Decoration[] {
+export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: DecorationAnchors[A]): DecorationEntry[] {
 	const version = Zus.useStore(Store, (s) => s.version)
 	const propsKey = JSON.stringify(props)
-	const cache = React.useRef<{ key: string; decos: Decoration[] }>({ key: '', decos: NO_DECOS })
+	const cache = React.useRef<{ key: string; decos: DecorationEntry[] }>({ key: '', decos: NO_DECOS })
 	const subscribe = React.useCallback(
 		(onChange: () => void) => {
 			const unsubs: (() => void)[] = []
@@ -191,12 +201,12 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 		[anchor, propsKey, version],
 	)
 	const getSnapshot = () => {
-		const decos: Decoration[] = []
+		const decos: DecorationEntry[] = []
 		for (const reg of decoRegs.get(anchor) ?? []) {
 			const states = reg.stores(props).map(readInput)
 			try {
 				const deco = reg.select(...states, props)
-				if (deco) decos.push(deco)
+				if (deco) decos.push({ ...deco, regKey: reg.regKey })
 			} catch {
 				// a selector tripping over a pending state reads as no decoration
 			}

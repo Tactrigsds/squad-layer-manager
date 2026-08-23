@@ -1,1 +1,33 @@
-export * from '@/lib/zustand'
+// everything but the host's wiring (registerQueryClient, registerFrameKeyResolver)
+export {
+	create,
+	createJSONStorage,
+	createStore,
+	getState,
+	immer,
+	persist,
+	resolveReadStore,
+	resolveStore,
+	toObservable,
+	toPartialGetter,
+	toPartialSetter,
+	toPartialStore,
+	toStream,
+	useDeep,
+	usePartialStore,
+	useShallow,
+	useStore,
+	useStore_Susp,
+} from '@/lib/zustand'
+export type {
+	AnyInput,
+	AnyStore,
+	Getter,
+	Mutate,
+	QuerySource,
+	Setter,
+	StoreApi,
+	SubArg,
+	UnsubscribeFn,
+	ValueObservable,
+} from '@/lib/zustand'
