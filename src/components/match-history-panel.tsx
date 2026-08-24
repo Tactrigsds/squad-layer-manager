@@ -342,6 +342,16 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 		ordinal: entry.ordinal,
 	})
 	const rowTint = topTint(decorations)
+	// one icon per level tripped, most severe first, each carrying its own level's alerts. A decoration
+	// that named no tint reads as info rather than vanishing.
+	const decorationsByTint = React.useMemo(() => {
+		const groups = new Map<PluginsClient.Tint, PluginsClient.DecorationEntry[]>()
+		for (const deco of decorations) {
+			const tint = deco.tint ?? 'info'
+			groups.set(tint, [...(groups.get(tint) ?? []), deco])
+		}
+		return [...groups].toSorted(([a], [b]) => TINT_PRIORITY[b] - TINT_PRIORITY[a])
+	}, [decorations])
 
 	const violationDisplayElt = statusData && (
 		<ConstraintEvalTooltip
@@ -514,36 +524,35 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 
 					<TableCell className="text-center">
 						<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
-							{rowTint && (
-								<Tooltip delayDuration={0}>
+							{decorationsByTint.map(([tint, decos]) => (
+								<Tooltip key={tint} delayDuration={0}>
 									<TooltipTrigger asChild>
-										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${TINT_DISPLAY[rowTint].text}`}>
-											{React.createElement(TINT_DISPLAY[rowTint].icon, { className: 'h-4 w-4' })}
+										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${TINT_DISPLAY[tint].text}`}>
+											{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4' })}
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent
 										side="right"
 										className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
 									>
-										{[...decorations]
-											.sort((a, b) => (b.tint ? TINT_PRIORITY[b.tint] : 0) - (a.tint ? TINT_PRIORITY[a.tint] : 0))
-											.map((deco) => {
-												const display = deco.tint ? TINT_DISPLAY[deco.tint] : undefined
-												return (
-													<Alert key={deco.regKey} variant={display?.variant} className="w-full bg-background! rounded-none">
-														{deco.title && (
-															<AlertTitle className="flex items-center space-x-2">
-																{display && React.createElement(display.icon, { className: 'h-4 w-4 mr-2' })}
-																{deco.title}
-															</AlertTitle>
-														)}
-														{deco.body && <AlertDescription>{deco.body}</AlertDescription>}
-													</Alert>
-												)
-											})}
+										{decos.map((deco) => (
+											<Alert
+												key={deco.regKey}
+												variant={TINT_DISPLAY[tint].variant}
+												className="w-full bg-background! rounded-none"
+											>
+												{deco.title && (
+													<AlertTitle className="flex items-center space-x-2">
+														{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4 mr-2' })}
+														{deco.title}
+													</AlertTitle>
+												)}
+												{deco.body && <AlertDescription>{deco.body}</AlertDescription>}
+											</Alert>
+										))}
 									</TooltipContent>
 								</Tooltip>
-							)}
+							))}
 							{violationDisplayElt}
 						</div>
 					</TableCell>
