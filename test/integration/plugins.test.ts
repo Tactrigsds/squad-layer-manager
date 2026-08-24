@@ -74,10 +74,10 @@ describe('plugin host', () => {
 		expect(readRows(`SELECT 1 FROM _plugin_migrations WHERE pluginId = 'balance-triggers' AND name = '0001_init'`)).toHaveLength(1)
 		expect(readRows(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'p_balance_triggers_events'`)).toHaveLength(1)
 
-		const infos = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), {
+		const next = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), {
 			label: 'the plugin list stream',
 		})
-		expect(infos).toContainEqual(expect.objectContaining({ id: 'balance-triggers', status: 'active', enabled: true }))
+		expect(next.plugins).toContainEqual(expect.objectContaining({ id: 'balance-triggers', status: 'active', enabled: true }))
 	})
 
 	it('fires 150x2 when one side wins two same-session matches by 150+, recording the event and a plugin app event', async () => {

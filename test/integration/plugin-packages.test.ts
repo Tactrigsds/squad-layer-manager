@@ -52,9 +52,14 @@ function readRows<T>(query: string, ...params: unknown[]): T[] {
 	}
 }
 
+async function leftoverData() {
+	const next = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), { label: 'the plugin list stream' })
+	return (next.leftoverData as { pluginId: string }[]).find((e) => e.pluginId === 'hello')
+}
+
 async function pluginInfo() {
-	const infos = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), { label: 'the plugin list stream' })
-	return (infos as { id: string }[]).find((i) => i.id === 'hello') as
+	const next = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), { label: 'the plugin list stream' })
+	return (next.plugins as { id: string }[]).find((i) => i.id === 'hello') as
 		| { id: string; status: string; enabled: boolean; source: string; sourceUrl: string | null; clientEntry: string | null }
 		| undefined
 }
@@ -130,13 +135,33 @@ describe('packaged plugins', () => {
 		expect((await stats()).data?.activations).toBe(1)
 	})
 
-	it('re-fetches on refresh and removes the directory on uninstall', async () => {
+	it('re-fetches on refresh and removes the directory on uninstall, keeping the data behind', async () => {
 		expect(await client.plugins.refresh({ pluginId: 'hello' })).toMatchObject({ code: 'ok' })
 		await app.waitFor(async () => ((await pluginInfo())?.status === 'active' ? true : undefined), {
 			label: 'hello active again after refresh',
 		})
 
+		// data belongs to a plugin that is still there, so it is not anyone's to delete yet
+		expect(await client.plugins.purgeData({ pluginId: 'hello' })).toMatchObject({ code: 'err:plugin-present' })
+
 		expect(await client.plugins.uninstall({ pluginId: 'hello' })).toMatchObject({ code: 'ok' })
 		expect(await pluginInfo()).toBeUndefined()
+
+		expect(readRows(`SELECT 1 FROM plugins WHERE id = 'hello'`)).toHaveLength(1)
+		expect(readRows(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'p_hello_greetings'`)).toHaveLength(1)
+		expect(await leftoverData()).toMatchObject({ pluginId: 'hello', migrations: 1, tables: [{ name: 'p_hello_greetings' }] })
+	})
+
+	it("deletes an uninstalled plugin's settings and tables on request", async () => {
+		expect(await client.plugins.purgeData({ pluginId: 'hello' })).toMatchObject({ code: 'ok' })
+
+		expect(readRows(`SELECT 1 FROM plugins WHERE id = 'hello'`)).toHaveLength(0)
+		expect(readRows(`SELECT 1 FROM sqlite_master WHERE name LIKE 'p\\_hello\\_%' ESCAPE '\\'`)).toHaveLength(0)
+		expect(readRows(`SELECT 1 FROM _plugin_migrations WHERE pluginId = 'hello'`)).toHaveLength(0)
+		expect(await leftoverData()).toBeUndefined()
+
+		// the plugin sharing the database keeps everything it owns
+		expect(readRows(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'p_balance_triggers_events'`)).toHaveLength(1)
+		expect(readRows(`SELECT 1 FROM _plugin_migrations WHERE pluginId = 'balance-triggers'`).length).toBeGreaterThan(0)
 	})
 })

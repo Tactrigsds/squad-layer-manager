@@ -95,6 +95,15 @@ export const RuntimeInfoSchema = z.object({
 })
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>
 
+// What an uninstall leaves behind: a plugins row (config + enabled) and the plugin's own tables, kept so
+// reinstalling restores its settings and data. Nothing reclaims them, so an admin has to ask.
+export const LeftoverDataSchema = z.object({
+	pluginId: PluginIdSchema,
+	tables: z.array(z.object({ name: z.string(), rows: z.number() })),
+	migrations: z.number(),
+})
+export type LeftoverData = z.infer<typeof LeftoverDataSchema>
+
 // ---- packages: a plugin as it exists in the plugins directory ----
 
 // A plugin directory holds plugin.json plus the prebuilt esm bundles it names. The bundles resolve

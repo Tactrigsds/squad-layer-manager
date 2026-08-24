@@ -390,6 +390,14 @@ export const PluginEventSchema = event('PLUGIN_EVENT', {
 })
 export type PluginEvent = z.infer<typeof PluginEventSchema>
 
+// an uninstalled plugin's leftovers, removed on request. Names the tables, since once they are dropped
+// nothing else records that they existed.
+export const PluginDataPurgedSchema = event('PLUGIN_DATA_PURGED', {
+	pluginId: z.string(),
+	tables: z.array(z.string()),
+})
+export type PluginDataPurged = z.infer<typeof PluginDataPurgedSchema>
+
 export const AppEventSchema = z.discriminatedUnion('type', [
 	PlayerWarnedSchema,
 	SquadDisbandedSchema,
@@ -424,6 +432,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	BackupCreatedSchema,
 	MapSetSchema,
 	PluginEventSchema,
+	PluginDataPurgedSchema,
 ])
 export type AppEvent = z.infer<typeof AppEventSchema>
 
@@ -478,6 +487,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'APP_RESTARTED':
 		case 'BACKUP_CREATED':
 		case 'PLUGIN_EVENT':
+		case 'PLUGIN_DATA_PURGED':
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
