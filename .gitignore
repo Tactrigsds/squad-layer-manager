@@ -48,6 +48,9 @@ google-credentials.json
 # reads back, and anything else a scenario leaves behind
 /data/dev/
 
+# PLUGINS_DIR: what an install downloads, or what someone dropped in by hand. Runtime state either way.
+/data/plugins/
+
 # the layer artifacts ship in assets/layers (tracked). ./data is only ever a local/deployment override, so
 # anything dropped in there stays out of the repo.
 /data/layers_v*.bin
