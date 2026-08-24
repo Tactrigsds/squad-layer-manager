@@ -635,7 +635,7 @@ serialized behind one mutex. Activation failures (bad config, failed migration, 
 in `errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations
 but the old module graph stays resident; re-activation reuses it.
 
-**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/index.server.ts` and lives in
+**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/builtins.server.ts` and lives in
 the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` (default `data/plugins`, which a deployment
 already mounts, so plugins survive an image upgrade), holding a `plugin.json` plus the prebuilt esm bundles it
 names: `plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mjs`, and optionally `client.mjs`.
@@ -696,8 +696,9 @@ and `plugins.rpcStream` procedures, and the streaming one keeps `stream$`'s re-p
 back self-heals the stream.
 
 **Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points
-(each boundary-wrapped) and `Decorations.register` contributes data (tint/badge/title) the host styles itself. The installed set is registered statically in `plugins/index.ts` (client)
-and `plugins/index.server.ts` (server) so both bundles include them.
+(each boundary-wrapped) and `Decorations.register` contributes data (tint/badge/title) the host styles itself. The builtin set is registered statically in `plugins/builtins.ts` (client)
+and `plugins/builtins.server.ts` (server) so both bundles include them. A packaged plugin registers nothing: the host
+finds it in `PLUGINS_DIR`.
 
 ## Observability
 

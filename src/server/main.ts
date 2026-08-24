@@ -1,4 +1,4 @@
-import { INSTALLED_PLUGINS } from '$root/plugins/index.server.ts'
+import { BUILTIN_PLUGINS } from '$root/plugins/builtins.server.ts'
 import * as Prom from '@/lib/promise-utils'
 import * as CoreRcon from '@/lib/rcon/core-rcon'
 import * as FetchAdminLists from '@/lib/rcon/fetch-admin-lists'
@@ -161,7 +161,7 @@ await Instr.spanOp('main', { module }, async () => {
 	Metrics.setup()
 	// after the managed servers are up: enabled plugins attach their per-server instances here, and later
 	// servers reach them through the hook in setupManagedServer
-	await Plugins.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), INSTALLED_PLUGINS)
+	await Plugins.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), BUILTIN_PLUGINS)
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
 		AppEvents.create<AppEvents.AppStarted>({
