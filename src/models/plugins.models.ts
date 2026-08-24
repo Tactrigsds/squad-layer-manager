@@ -8,9 +8,18 @@ import type { MigrationDriver } from '@/server/migrate'
 // runs when the plugin starts, and optionally a client entry (client.tsx) and migrations (migrations.ts).
 // The runtime lives in src/systems/plugins.server.ts / plugins.client.ts.
 
-// the API surface reachable through slm/* entries. Bump minor on additions, major on breaking changes.
-/** The slm/* surface this build provides. A manifest declares the range it needs as `apiVersion`. */
-export const API_VERSION = { major: 2, minor: 0 }
+/**
+ * The slm/* surface this build provides. A manifest declares the range it needs as `apiVersion`.
+ *
+ * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
+ * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
+ */
+export const API_VERSION = { major: 0, minor: 1, patch: 0 }
+
+/** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
+export function formatApiVersion(): string {
+	return `${API_VERSION.major}.${API_VERSION.minor}.${API_VERSION.patch}`
+}
 
 // ids double as table/permission namespace segments, so the alphabet stays small
 export const PluginIdSchema = z
@@ -23,7 +32,7 @@ export interface Manifest<ConfigSchema extends z.ZodObject<z.ZodRawShape> = z.Zo
 	id: PluginId
 	name: string
 	version: string
-	// the slm API versions this plugin works against, e.g. '^1' or '^1.2'
+	// the slm API versions this plugin works against, e.g. '^0.1' or '^1.2'
 	apiVersion: string
 	description: string
 	configSchema: ConfigSchema
@@ -33,7 +42,7 @@ const ManifestFieldsSchema = z.object({
 	id: PluginIdSchema,
 	name: z.string().min(1),
 	version: z.string().regex(/^\d+\.\d+\.\d+$/),
-	apiVersion: z.string().regex(/^\^\d+(\.\d+)?$/),
+	apiVersion: z.string().regex(/^\^\d+(\.\d+){0,2}$/),
 	description: z.string(),
 })
 
@@ -61,13 +70,21 @@ export function moduleName(pluginId: PluginId, submodule?: string): string {
 	return submodule ? `plugin:${pluginId}:${submodule}` : `plugin:${pluginId}`
 }
 
-/** Whether this build satisfies a manifest's apiVersion range ('^1', '^1.2'). Checked before activation. */
+/**
+ * Whether this build satisfies a manifest's caret range ('^0.1', '^1.2', '^1.2.3'). Checked before
+ * activation. Follows semver's 0.x rule, so `^0.1` admits 0.1.x and nothing else: below 1.0 a minor
+ * bump is breaking, and accepting it here is what the check exists to prevent.
+ */
 export function satisfiesApiVersion(range: string): boolean {
-	const match = /^\^(\d+)(?:\.(\d+))?$/.exec(range)
+	const match = /^\^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(range)
 	if (!match) return false
 	const major = Number(match[1])
 	const minor = match[2] === undefined ? 0 : Number(match[2])
-	return major === API_VERSION.major && minor <= API_VERSION.minor
+	const patch = match[3] === undefined ? 0 : Number(match[3])
+	if (major !== API_VERSION.major) return false
+	if (major === 0 && minor !== API_VERSION.minor) return false
+	if (minor > API_VERSION.minor) return false
+	return minor < API_VERSION.minor || patch <= API_VERSION.patch
 }
 
 export type Config<M extends Manifest<any>> = z.infer<M['configSchema']>
@@ -86,7 +103,7 @@ export const RuntimeInfoSchema = z.object({
 	name: z.string(),
 	description: z.string(),
 	version: z.string(),
-	// the slm api range the manifest declares, e.g. '^1.2'. Checked against API_VERSION before activation
+	// the slm api range the manifest declares, e.g. '^0.1'. Checked against API_VERSION before activation
 	apiVersion: z.string(),
 	enabled: z.boolean(),
 	status: StatusSchema,
@@ -123,7 +140,7 @@ export const PackageManifestSchema = z.object({
 	id: PluginIdSchema,
 	name: z.string().min(1),
 	version: z.string().regex(/^\d+\.\d+\.\d+$/),
-	apiVersion: z.string().regex(/^\^\d+(\.\d+)?$/),
+	apiVersion: z.string().regex(/^\^\d+(\.\d+){0,2}$/),
 	description: z.string().prefault(''),
 	// the isomorphic manifest module, mirroring an in-repo plugin.ts: `export default definePlugin(...)`.
 	// Both halves import it, which is how the settings form gets a config schema for a plugin that is
