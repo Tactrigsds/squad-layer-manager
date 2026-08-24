@@ -1099,6 +1099,7 @@
 		["showNextCommands"],
 		" to check what layers are next."
 	],
+	"This build provides slm api {version}.": ["This build provides slm api ", ["version"], "."],
 	"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make <code>=</code> unreliable, so use a range (<code>[..]</code>) or <code>{lt}</code>/<code>{gt}</code> to compare magnitudes; <code>=</code> only checks whether the value is null.": [
 		"This column holds decimal (floating-point) values, which can't be matched with exact equality. Tiny rounding differences make ",
 		["code", "tag", ["="]],
@@ -1373,6 +1374,7 @@
 	"linked by {admin}": ["linked by ", ["admin"]],
 	"no longer to {faction}: {names}": ["no longer to ", ["faction"], ": ", ["names"]],
 	"now queued for next map: {totals}": ["now queued for next map: ", ["totals"]],
+	"slm api {range}": ["slm api ", ["range"]],
 	"squad \"{squadName}\"": ["squad \"", ["squadName"], "\""],
 	"the {count, plural, one {# member} other {# members}} of squad \"{squadName}\"": [
 		"the ",
@@ -1905,6 +1907,7 @@
 	],
 	"{name} cleared all queued teamswaps for next map.": [["name"], " cleared all queued teamswaps for next map."],
 	"{name} cleared the saved teamswaps.": [["name"], " cleared the saved teamswaps."],
+	"{name} configuration editor": [["name"], " configuration editor"],
 	"{name} configuration saved": [["name"], " configuration saved"],
 	"{name} enabled": [["name"], " enabled"],
 	"{name} installed": [["name"], " installed"],
