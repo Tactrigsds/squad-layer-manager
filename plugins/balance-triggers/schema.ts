@@ -14,6 +14,8 @@ export const triggerEvents = t.table('events', {
 	matchTriggeredId: D.integer('matchTriggeredId'),
 	strongerTeam: D.text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
 	level: D.text('level', { enum: ['info', 'warn', 'violation'] }).notNull(),
+	// the sentence to show, as a template: see Evaluation.message
+	message: D.text('message').notNull().default(''),
 	// the slice of history the trigger fired on, for the UI to explain itself
 	input: D.text('input', { mode: 'json' }).notNull(),
 	time: D.integer('time', { mode: 'timestamp_ms' }).notNull(),

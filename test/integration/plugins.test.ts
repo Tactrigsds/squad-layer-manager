@@ -110,7 +110,7 @@ describe('plugin host', () => {
 			label: 'the balance reminder warned to the admin after the roll',
 			timeoutMs: 30_000,
 		})
-		expect(warnsTo(app, admin).join('\n')).toContain('150+ tickets, twice')
+		expect(warnsTo(app, admin).join('\n')).toContain('150 tickets x2')
 	})
 
 	it('serves the active events over the generic rpc stream', async () => {
@@ -123,7 +123,7 @@ describe('plugin host', () => {
 			{ label: 'the activeEvents plugin stream' },
 		)
 		expect(first).toMatchObject({ code: 'ok' })
-		const events = (first as { code: 'ok'; data: { triggerId: string }[] }).data
+		const events = (first as { code: 'ok'; data: { events: { triggerId: string }[] } }).data.events
 		expect(events.some((e) => e.triggerId === '150x2')).toBe(true)
 	})
 

@@ -31,10 +31,18 @@ const os = Rpc.os<typeof manifest>()
 // annotated by hand. An async generator handler is a stream.
 export const router = {
 	// a watch stream, not a one-shot: emits current events on subscribe and re-reads on each pulse
+	// events plus the match they should be described against: which side a normalized team is reads
+	// differently per match, and the dashboard alert speaks about the one being played
 	activeEvents: os.input(z.object({})).handler(async function* ({ context }) {
 		const events$ = Rx.merge(Rx.of(context.serverId), update$).pipe(
 			Rx.filter((serverId) => serverId === context.serverId),
-			Rx.switchMap(() => activeEvents(context)),
+			Rx.switchMap(async () => {
+				const current = await MatchHistory.getCurrentMatch(context)
+				return {
+					events: await activeEvents(context),
+					current: current ? { layerId: current.layerId, ordinal: current.ordinal } : null,
+				}
+			}),
 		)
 		yield* RxExt.toAsyncGenerator(events$)
 	}),
@@ -86,6 +94,7 @@ async function evaluate(ctx: Ctx, matchId: number | null) {
 					triggerId: trigger.id,
 					triggerVersion: trigger.version,
 					level,
+					message: result.message,
 					strongerTeam: result.strongerTeam,
 					input: result.relevantInput.history.map((m) => m.historyEntryId),
 					time: new Date(),
@@ -94,7 +103,7 @@ async function evaluate(ctx: Ctx, matchId: number | null) {
 				ctx,
 				'trigger-fired',
 				{ triggerId: trigger.id, level, strongerTeam: result.strongerTeam },
-				`balance trigger ${trigger.name}: one side ${result.message}`,
+				`balance trigger ${trigger.name}: ${result.message.replace('{{strongerTeam}}', `Team ${MH.toNormedTeamId(result.strongerTeam)}`)}`,
 			)
 			fired = true
 		} catch (err) {

@@ -4,7 +4,8 @@ import type { PluginMigration } from 'slm/plugin'
 // p_balance_triggers_events rather than dropping it, because core migrations run at boot, before
 // any plugin activates. So this either creates the table fresh, or reshapes the adopted one:
 // evaluationResult (the whole superjson-wrapped evaluation) becomes input (just the relevant
-// slice), and time is backfilled from the triggering match's end time.
+// slice) plus message (the sentence the UI shows), and time is backfilled from the triggering
+// match's end time.
 export const migrations: PluginMigration[] = [
 	{
 		name: '0001_init',
@@ -17,12 +18,20 @@ export const migrations: PluginMigration[] = [
 				strongerTeam TEXT NOT NULL,
 				level TEXT NOT NULL,
 				input TEXT NOT NULL DEFAULT '{}',
+				message TEXT NOT NULL DEFAULT '',
 				time INTEGER NOT NULL DEFAULT 0
 			)`)
 			const cols = (db.prepare(`SELECT name FROM pragma_table_info('p_balance_triggers_events')`).all() as { name: string }[]).map(
 				(c) => c.name,
 			)
 			if (cols.includes('evaluationResult')) {
+				// before the rename: it is the only copy of the sentence, and the reshape below drops it
+				if (!cols.includes('message')) {
+					db.exec(`ALTER TABLE p_balance_triggers_events ADD COLUMN message TEXT NOT NULL DEFAULT ''`)
+					db.exec(
+						`UPDATE p_balance_triggers_events SET message = COALESCE(json_extract(evaluationResult, '$.json.messageTemplate'), '')`,
+					)
+				}
 				db.exec(`ALTER TABLE p_balance_triggers_events RENAME COLUMN evaluationResult TO input`)
 				db.exec(`UPDATE p_balance_triggers_events SET input = COALESCE(json_extract(input, '$.json.relevantInput'), '{}')`)
 			}
@@ -32,6 +41,19 @@ export const migrations: PluginMigration[] = [
 					(SELECT mh.endTime FROM matchHistory mh WHERE mh.id = p_balance_triggers_events.matchTriggeredId), 0)`)
 			}
 			db.exec(`CREATE INDEX IF NOT EXISTS p_balance_triggers_events_match ON p_balance_triggers_events (matchTriggeredId)`)
+		},
+	},
+	{
+		// for a database that applied 0001 before it captured the sentence. There is nothing left to
+		// backfill from by then, so those rows show their trigger's name without a description.
+		name: '0002_event_message',
+		up: (db) => {
+			const cols = (db.prepare(`SELECT name FROM pragma_table_info('p_balance_triggers_events')`).all() as { name: string }[]).map(
+				(c) => c.name,
+			)
+			if (!cols.includes('message')) {
+				db.exec(`ALTER TABLE p_balance_triggers_events ADD COLUMN message TEXT NOT NULL DEFAULT ''`)
+			}
 		},
 	},
 ]
