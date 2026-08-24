@@ -18,6 +18,9 @@ export default definePluginClient(manifest, (ctx) => {
 	const streams = Rpc.stores<typeof router>(ctx)
 	const activeEvents = (serverId: string) => streams.activeEvents(serverId, {})
 
+	// most severe first, as the match history tooltip orders them
+	const LEVEL_ORDER: Record<string, number> = { violation: 3, warn: 2, info: 1 }
+
 	const TINT_CLASSES: Record<string, string> = {
 		info: 'border-blue-500/50 text-blue-500',
 		warn: 'border-yellow-500/50 text-yellow-600',
@@ -34,10 +37,15 @@ export default definePluginClient(manifest, (ctx) => {
 	Slots.register(ctx, 'server-dashboard:alerts', function BalanceTriggerAlert(props) {
 		const state = Zus.useStore(activeEvents(props.serverId), (s) => s)
 		const current = state?.current
-		if (!state?.events?.length || !current) return null
+		// only what the match just played tripped: everything still active in the session would repeat
+		// the same few lines once per match that raised them
+		const events = (state?.events?.filter((e) => e.matchTriggeredId === state.lastPlayedMatchId) ?? []).toSorted(
+			(a, b) => (LEVEL_ORDER[b.level] ?? 0) - (LEVEL_ORDER[a.level] ?? 0),
+		)
+		if (events.length === 0 || !current) return null
 		return (
 			<div className="flex flex-col gap-1 p-2">
-				{state.events.map((event) => (
+				{events.map((event) => (
 					<div key={event.id} className={`rounded border p-2 text-sm ${TINT_CLASSES[event.level] ?? ''}`}>
 						<p className="font-medium">{TR.TRIGGERS.find((t) => t.id === event.triggerId)?.name ?? event.triggerId}</p>
 						<p>{describe(event, current.layerId, current.ordinal)}</p>
