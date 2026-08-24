@@ -20,6 +20,7 @@ only install one you would be willing to run as a fork.
 - [Logging and telemetry](#logging-and-telemetry)
 - [Packing and publishing](#packing-and-publishing)
 - [Repo layouts](#repo-layouts)
+- [The dev loop](#the-dev-loop)
 - [How an admin installs it](#how-an-admin-installs-it)
 - [API versions](#api-versions)
 - [Things that will bite you](#things-that-will-bite-you)
@@ -350,9 +351,9 @@ what Refresh re-fetches: a tag url stays where it is, and the `latest` url picks
 Bump `version` in `plugin.ts` for every release. It is what an admin sees in settings and what your telemetry is
 tagged with.
 
-To try a build without publishing it, copy `dist/` into your dev instance's `data/plugins/<id>` and press _Rescan
-folder_ in settings. A plugin shipped inside SLM itself skips packing entirely: register it in
-`plugins/builtins.server.ts` and `plugins/builtins.ts`, which is how `balance-triggers` ships.
+To try a package without publishing it, copy `dist/` into your dev instance's `data/plugins/<id>` and press
+_Rescan folder_ in settings. Do that at least once before you release, since it is the only thing that exercises
+the packed bundles and the shim registry. Day to day you want [the dev loop](#the-dev-loop) instead.
 
 ## Repo layouts
 
@@ -406,14 +407,53 @@ discover in a diff. Git warns when it happens.
 
 What being in-tree buys you:
 
-- `pnpm run check` typechecks your plugin against the exact `slm/*` surface you are building against, because
-  `plugins` is in the tsconfig's include
+- `pnpm dev` runs your plugin, with no registration step. See [The dev loop](#the-dev-loop)
+- `pnpm run check` typechecks it against the exact `slm/*` surface you are building against, because `plugins` is
+  in the tsconfig's include
 - `pnpm test` runs your `*.test.ts` files alongside SLM's
 - `pnpm plugin:pack plugins/my-plugin` needs no arguments beyond the path, and writes to `plugins/my-plugin/dist`,
   which SLM's `.gitignore` already covers. Your own repo needs its own `dist` ignore.
 
-Do not register your plugin in `plugins/builtins.server.ts`. That file is SLM's, and a builtin is a plugin that
-ships as part of SLM. Pack yours and let SLM install it.
+You never edit `plugins/builtins.server.ts` or `plugins/builtins.ts`. Those name what SLM itself ships.
+
+## The dev loop
+
+`pnpm dev` loads every directory in `plugins/` from source, so your own repo cloned in there runs with nothing to
+register. Enable it once in settings and the choice sticks. From then on you get what host code gets.
+
+| You edit                                  | What happens                                                     |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| `server.ts`, or anything it imports       | the server restarts under `tsx watch` and the plugin reactivates |
+| a component in a components-only `.tsx`   | it swaps in place, with its state intact                         |
+| `client.tsx`, or anything else it imports | the page reloads                                                 |
+
+The middle row is worth arranging your files around, and the rule behind it is the one SLM follows for its own
+code: a module that exports components and nothing else is a Fast Refresh boundary, and a module that exports
+anything else is not. `client.tsx` default-exports what `definePluginClient` returns, so it can never be one. Keep
+components out of it.
+
+```tsx
+// alert.tsx, which exports one component and nothing else
+export function Alert(props: { serverId: string }) { ... }
+
+// client.tsx
+import { Alert } from './alert.tsx'
+
+export default definePluginClient(manifest, (ctx) => {
+	Slots.register(ctx, 'server-dashboard:alerts', Alert)
+})
+```
+
+The host holds the component you registered, and that reference is stale the moment you edit the file. React
+resolves it through the refresh runtime's family for that component, so the new implementation renders against the
+old state anyway. Defining the component inline inside `setup()` gives that up: an edit to `client.tsx` reloads the
+page and every component in it starts from scratch.
+
+Whatever your components need that only exists at setup time, an rpc client above all, goes in a plain `.ts`
+module they import. `plugins/balance-triggers` is laid out this way.
+
+Discovery is dev-only. A plugin that has only ever run this way has never been through `plugin:pack` or the shim
+registry, which is most of what running it proves, so pack and install it before you release.
 
 ## How an admin installs it
 
