@@ -194,9 +194,13 @@ export function stores<TRouter extends AnyRouter>(ctx: ClientCtx<any>): Stores<T
 }
 
 function streamFamily(ctx: ClientCtx<any>, name: string) {
-	const [, family$] = ReactRx.bind(`plugins.${ctx.plugin.id}.${name}`, (serverId: string, input: unknown) =>
+	// Keyed on a serialized input rather than the object itself: the family caches instances by its
+	// arguments, and a caller writing `streams.things(serverId, {})` in a component body hands over a
+	// fresh object every render. Keying on that would mint a new stream per render instead of sharing
+	// one, so nothing would ever settle.
+	const [, family$] = ReactRx.bind(`plugins.${ctx.plugin.id}.${name}`, (serverId: string, inputKey: string) =>
 		RPC.observe(`plugins.rpcStream:${ctx.plugin.id}.${name}`, () =>
-			RPC.orpc.plugins.rpcStream.call({ pluginId: ctx.plugin.id, path: [name], serverId, input: input ?? {} }),
+			RPC.orpc.plugins.rpcStream.call({ pluginId: ctx.plugin.id, path: [name], serverId, input: JSON.parse(inputKey) }),
 		).pipe(Rx.map((res) => (res && typeof res === 'object' && 'code' in res && res.code === 'ok' ? res.data : undefined))),
 	)
 	// Wrapped so getValue is total: a raw StateObservable throws NoSubscribersError before its first
@@ -205,7 +209,7 @@ function streamFamily(ctx: ClientCtx<any>, name: string) {
 	// args keep sharing one store.
 	const safeCache = new WeakMap<object, Zus.ValueObservable<unknown>>()
 	return (serverId: string, input: unknown) => {
-		const obs = family$(serverId, input)
+		const obs = family$(serverId, JSON.stringify(input ?? {}))
 		let safe = safeCache.get(obs)
 		if (!safe) {
 			safe = Object.assign(new Rx.Observable<unknown>((subscriber) => obs.subscribe(subscriber)), {
