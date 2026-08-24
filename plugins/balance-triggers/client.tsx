@@ -44,9 +44,9 @@ export default definePluginClient(manifest, (ctx) => {
 		)
 		if (events.length === 0 || !current) return null
 		return (
-			<div className="flex flex-col gap-1 p-2">
+			<div className="flex flex-row flex-wrap items-start gap-1 p-2">
 				{events.map((event) => (
-					<div key={event.id} className={`rounded border p-2 text-sm ${TINT_CLASSES[event.level] ?? ''}`}>
+					<div key={event.id} className={`max-w-full rounded border p-2 text-sm ${TINT_CLASSES[event.level] ?? ''}`}>
 						<p className="font-medium">{TR.TRIGGERS.find((t) => t.id === event.triggerId)?.name ?? event.triggerId}</p>
 						<p>{describe(event, current.layerId, current.ordinal)}</p>
 					</div>
