@@ -527,7 +527,7 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 							{decorationsByTint.map(([tint, decos]) => (
 								<Tooltip key={tint} delayDuration={0}>
 									<TooltipTrigger asChild>
-										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${TINT_DISPLAY[tint].text}`}>
+										<Button variant="ghost" size="sm" className={`h-6 w-5 p-0 ${TINT_DISPLAY[tint].text}`}>
 											{React.createElement(TINT_DISPLAY[tint].icon, { className: 'h-4 w-4' })}
 										</Button>
 									</TooltipTrigger>
