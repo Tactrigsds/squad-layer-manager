@@ -8,7 +8,6 @@ import * as Templating from '@/lib/templating'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AAR from '@/models/admin-action-reasons.models.ts'
 import * as AppEvents from '@/models/app-events.models'
-import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CHAT from '@/models/chat.models.ts'
 import * as CMD from '@/models/command.models.ts'
 import * as CB from '@/models/constraint-builders'
@@ -326,13 +325,6 @@ export const GlobalSettingsSchema = z
 			})
 			.prefault({})
 			.describe('Thresholds for coloring the live server tick rate display'),
-		balanceTriggerLevels: z
-			.partialRecord(BAL.TRIGGER_IDS, BAL.TRIGGER_LEVEL)
-			.prefault({ '150x2': 'warn' })
-			.describe(
-				'Which balance triggers run, and how severely each one reports when it fires (info, warn, or violation). A trigger with no ' +
-					'level set here is not evaluated at all.',
-			),
 		playerFlagsRequiringNote: z
 			.array(z.uuid())
 			.prefault([])
@@ -893,8 +885,8 @@ export const PublicServerSettingsSchema = z.object({
 				'in-game command never warn: every admin has already read the command in admin chat.',
 		),
 	postRollAnnouncementsTimeout: ZodUtils.HumanTime.prefault('5m').describe(
-		'How long after a map rolls before admins are told the balance trigger in effect, the next layer, and whether the queue is ' +
-			'running low.',
+		'How long after a map rolls before the post-roll announcements: the next layer, whether the queue is running low, and any ' +
+			'reminders plugins add.',
 	),
 	fogOffDelay: ZodUtils.HumanTime.prefault('25s').describe(
 		'How long after a FRAAS layer starts before fog of war is turned off and announced in-game. Other gamemodes are unaffected.',

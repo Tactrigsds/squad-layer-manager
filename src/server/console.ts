@@ -10,7 +10,6 @@ import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as Rx from '@/lib/rxjs'
 import * as SetUtils from '@/lib/set-utils'
-import * as BAL from '@/models/balance-triggers.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import * as CMD from '@/models/command.models'
@@ -92,7 +91,6 @@ const namespaces = {
 	WsSessionSys,
 
 	// models
-	BAL,
 	BM,
 	CHAT,
 	CMD,

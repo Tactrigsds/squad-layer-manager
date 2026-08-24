@@ -2,9 +2,6 @@ import { z } from 'zod'
 
 // this file exists so that most modules don't have to depend on a full module import of the schema. tree shaking probably would have taken care of it anyway but not in dev mode I guess :shrug:
 
-export const BALANCE_TRIGGER_LEVEL = z.enum(['info', 'warn', 'violation'])
-export type BalanceTriggerLevel = z.infer<typeof BALANCE_TRIGGER_LEVEL>
-
 // this is APPEND ONLY, so that we don't mix up the existing enum indexes
 export const SERVER_EVENT_TYPE = z.enum([
 	'NEW_GAME',
@@ -77,10 +74,12 @@ export const APP_EVENT_TYPE = z.enum([
 	'LAYER_REQUEST_ADDED',
 	'LAYER_REQUEST_REMOVED',
 	'LAYER_REQUEST_CONSUMED',
+	'PLUGIN_EVENT',
+	'PLUGIN_DATA_PURGED',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 
-export const APP_EVENT_ACTOR_TYPE = z.enum(['slm-user', 'ingame-user', 'system'])
+export const APP_EVENT_ACTOR_TYPE = z.enum(['slm-user', 'ingame-user', 'system', 'plugin'])
 export type AppEventActorType = z.infer<typeof APP_EVENT_ACTOR_TYPE>
 
 export const SERVER_EVENT_PLAYER_ASSOC_TYPE = z.enum([

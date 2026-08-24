@@ -259,7 +259,10 @@ export function showLogEvent(
 	let mainBracketContent = levelLabel.padEnd(5)
 	if (moduleName) {
 		const moduleColor = getModuleColor(moduleName)
-		const truncatedModule = moduleName.slice(0, MAX_MODULE_NAME_LENGTH)
+		// truncated from the left: what distinguishes one module from another sits at the end of the name,
+		// for `plugin:<id>` and for the `parent/submodule` a submodule logger builds
+		const truncatedModule =
+			moduleName.length > MAX_MODULE_NAME_LENGTH ? '\u2026' + moduleName.slice(-(MAX_MODULE_NAME_LENGTH - 1)) : moduleName
 		const paddedModule = align ? truncatedModule.padEnd(maxModuleNameLength) : truncatedModule
 		mainBracketContent += ` ${moduleColor}${paddedModule}${resetColor}`
 	} else if (align && maxModuleNameLength > 0) {

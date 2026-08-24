@@ -7,6 +7,7 @@ import fastifyWebsocket from '@fastify/websocket'
 import * as Otel from '@opentelemetry/api'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import fastify from 'fastify'
+import * as fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { WebSocket } from 'ws'
 
@@ -18,6 +19,8 @@ import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared'
+import { PLUGIN_API_EXPORTS } from '@/models/plugin-api-exports'
+import * as SHIM from '@/models/plugin-api-shim'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
@@ -32,6 +35,8 @@ import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LogoSys from '@/systems/logo.server'
+import * as ApiRegistry from '@/systems/plugin-api-registry.server'
+import * as Plugins from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
@@ -229,6 +234,31 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			return res.type(logo.contentType).send(logo.body)
 		})
 	}
+
+	// One generated module per specifier a packaged plugin can import, each re-exporting from the app's
+	// own instance. Not files on disk: the names come from the generated table for slm/* and from the
+	// live namespace for a shared package.
+	instance.get(AR.route('/plugin-api/*'), async (req, res) => {
+		const specifier = SHIM.routeToSpecifier((req.params as { '*': string })['*'])
+		const names = specifier ? (PLUGIN_API_EXPORTS[specifier] ?? ApiRegistry.exportNames(specifier)) : undefined
+		if (!specifier || !names || names.length === 0) return res.code(404).send()
+		res.header('Content-Type', 'text/javascript; charset=utf-8')
+		res.header('Cache-Control', 'no-cache')
+		return res.send(SHIM.shimSource(specifier, names))
+	})
+
+	// A packaged plugin's manifest module and client bundle. Only the files plugin.json names are
+	// reachable, which keeps its server bundle (and the rest of the directory) off the wire.
+	instance.get(AR.route('/plugin-assets/*'), async (req, res) => {
+		const rest = (req.params as { '*': string })['*']
+		const slash = rest.indexOf('/')
+		const filePath = slash > 0 ? Plugins.servableAsset(rest.slice(0, slash), rest.slice(slash + 1)) : null
+		if (!filePath) return res.code(404).send()
+		res.header('Content-Type', 'text/javascript; charset=utf-8')
+		// the url carries the bundle's content hash, so a stale copy is impossible
+		res.header('Cache-Control', 'public, max-age=31536000, immutable')
+		return res.send(await fsp.readFile(filePath, 'utf8'))
+	})
 
 	instance.get(AR.route('/layers.bin.gz'), async (req, res) => {
 		for (const [key, value] of Object.entries(BASE_HEADERS)) {

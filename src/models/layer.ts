@@ -31,6 +31,7 @@ function unloadedLayerDataProxy<T extends object>(name: string): T {
 	return new Proxy({} as T, { get: fail, has: fail, ownKeys: fail })
 }
 
+/** The loaded layer data: maps, gamemodes, factions and units. Every function here defaults to it. */
 export let StaticLayerComponents: LC.LayerComponents = unloadedLayerDataProxy('StaticLayerComponents')
 export let StaticFactionunitConfigs: FactionUnitConfigMapping = unloadedLayerDataProxy('StaticFactionunitConfigs')
 export let StaticExtraColumns: LC.ColumnDef[] = unloadedLayerDataProxy('StaticExtraColumns')
@@ -143,7 +144,7 @@ function hasKnownLayerShape(layer: Partial<KnownLayer>) {
 	return isStr(layer.id) && hasLayerIdArgsShape(layer) && isStr(layer.Alliance_1) && isStr(layer.Alliance_2)
 }
 
-// expects and backwards compat mappings to be applied already
+/** Type guard for a layer the loaded layer data recognizes. Expects backwards-compat mappings to be applied already. */
 export function isKnownLayer(layer: UnvalidatedLayer | LayerId, components = StaticLayerComponents): layer is KnownLayer {
 	layer = toLayer(layer, components)
 	if (!hasKnownLayerShape(layer)) return false
@@ -298,6 +299,7 @@ export function getLayerIdTeamString(faction: string, unit: string, components =
 	return `${faction}-${unitAbbr}`
 }
 
+/** Builds the canonical id (e.g. "GD-RAAS-V1:USA-CA:RGF-CA") from its parts, or null if they name no known layer. */
 export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComponents) {
 	if (!areLayerIdArgsValid(layer, components)) {
 		return null
@@ -330,6 +332,7 @@ export function getKnownLayerId(layer: LayerIdArgs, components = StaticLayerComp
 	const team2 = getLayerIdTeamString(layer.Faction_2, layer.Unit_2!, components)
 	return `${mapLayer}:${team1}:${team2}`
 }
+/** The known layer matching these parts, or null. isKnownLayer is the type guard for one you already hold. */
 export function getKnownLayer(layer: LayerIdArgs, components = StaticLayerComponents): KnownLayer | null {
 	const id = getKnownLayerId(layer, components)
 	if (id === null) return null
@@ -348,6 +351,11 @@ export function isRawLayerId(layerId: LayerId) {
 	return layerId.startsWith('RAW:')
 }
 
+/**
+ * Parses a canonical layer id. Returns a result union: 'ok' with the known layer, or one of
+ * 'err:invalid-layer-id', 'err:unknown-training-layer', or 'err:unknown-layer', the last of which
+ * still carries the parsed parts.
+ */
 export function parseLayerId(id: string, components = StaticLayerComponents) {
 	const match = knownLayerIdRegex.exec(id)
 
@@ -458,6 +466,7 @@ export function swapFactionsInId(id: LayerId) {
 	return `${layer}:${faction2}:${faction1}`
 }
 
+/** Every column matches. For "one of these is a partial of the other", see areLayersCompatible. */
 export function layersEqual(a: LayerId | UnvalidatedLayer, b: LayerId | UnvalidatedLayer) {
 	if (a === b) return true
 	if (typeof a === 'string') a = toLayer(a)
@@ -475,7 +484,7 @@ export function layerMatchesIngameLayerClassname(_layer: LayerId | UnvalidatedLa
 	return normalizedLayerName === classname
 }
 
-// try to convert raw layers into known layers where possible
+/** Resolves a raw layer to the known layer it matches, where there is one. Returns the input unchanged otherwise. */
 export function normalize<Original extends LayerId | UnvalidatedLayer>(original: Original, components = StaticLayerComponents): Original {
 	const layer = toLayer(original, components)
 
@@ -518,6 +527,7 @@ export function areLayersPartialMatch(
 	return Obj.isPartial(layerRes, targetLayerRes, ['id'])
 }
 
+/** areLayersPartialMatch in either direction, so neither argument has to be the more specific one. */
 export function areLayersCompatible(
 	layer1: LayerId | UnvalidatedLayer,
 	layer2: LayerId | UnvalidatedLayer,
@@ -534,6 +544,7 @@ export function isSeedingOrTrainingLayer(layerOrId: UnvalidatedLayer | LayerId, 
 	return layer.Gamemode === 'Seed' || layer.Gamemode === 'Training'
 }
 
+/** Accepts an id or a layer and gives back a layer. Coercion only: it validates nothing. */
 export function toLayer(unvalidatedLayerOrId: UnvalidatedLayer | LayerId, components = StaticLayerComponents): UnvalidatedLayer {
 	if (typeof unvalidatedLayerOrId === 'string') {
 		return fromPossibleRawId(unvalidatedLayerOrId, components)

@@ -50,6 +50,12 @@ process.stdin.on('end', () => {
 		execSync('pnpm run i18n:lint', { stdio: 'inherit' })
 		console.log('✅ Message catalogue up to date\n')
 
+		// same failure mode as the catalogue: a core change can reshape the slm/* plugin surface with
+		// every other gate green, and API_VERSION only moves if something forces the question
+		console.log('🔌 Checking plugin API report...')
+		execSync('pnpm run api:report:check', { stdio: 'inherit' })
+		console.log('✅ Plugin API report up to date\n')
+
 		console.log('🧪 Running unit tests...')
 		execSync('pnpm run test', { stdio: 'inherit' })
 		console.log('✅ Unit tests passed\n')

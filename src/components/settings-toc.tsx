@@ -13,10 +13,12 @@ import * as SettingsNav from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
+import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SETTINGS from '@/models/settings.models'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 // A tree-of-contents for the settings page. Nodes mirror the global-settings schema tree; clicking one scrolls the
@@ -260,11 +262,15 @@ function buildParentMap(nodes: TocNode[], parentId: string | null, map: Map<stri
 export default function SettingsToc({
 	showServers,
 	showGlobal,
+	showPlugins,
+	canManagePlugins,
 	servers,
 	sectionKeys,
 }: {
 	showServers: boolean
 	showGlobal: boolean
+	showPlugins: boolean
+	canManagePlugins: boolean
 	servers: { id: string; displayName: string }[]
 	sectionKeys: SettingsEditorFrame.Key[]
 }) {
@@ -272,7 +278,7 @@ export default function SettingsToc({
 	const [query, setQuery] = React.useState('')
 	// the search box's keyboard focus: which TOC row Enter jumps to, moved by up/down. Reset when the query changes.
 	const [focusedId, setFocusedId] = React.useState<string | null>(null)
-	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:servers', 'section:global']))
+	const [expanded, setExpanded] = React.useState<Set<string>>(new Set(['section:servers', 'section:plugins', 'section:global']))
 	const containerRef = React.useRef<HTMLDivElement>(null)
 	const searchRef = React.useRef<HTMLInputElement>(null)
 
@@ -308,6 +314,27 @@ export default function SettingsToc({
 		[globalMode, globalWrite],
 	)
 
+	// unlike the global/server schemas these are only known at runtime, so the json-schema conversion happens here
+	// rather than once for the module
+	const pluginInfos = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const pluginManifests = Zus.useStore(PluginsClient.Store, (s) => s.manifests)
+	const pluginModes = Zus.useStore(PluginsClient.ConfigEditorModeStore, (s) => s)
+	const pluginNodes = React.useMemo(() => {
+		const write = canManagePlugins ? WRITE_ALL : WRITE_NONE
+		return pluginInfos.map((info): TocNode => {
+			// as for global/server sections, the field anchors only exist in the gui editor
+			const configSchema = (pluginModes[info.id] ?? 'gui') === 'yaml' ? undefined : pluginManifests[info.id]?.configSchema
+			const jsonSchema = configSchema && (z.toJSONSchema(configSchema, { io: 'input', unrepresentable: 'any' }) as Node)
+			return {
+				id: `section:plugin:${info.id}`,
+				label: info.name,
+				path: '',
+				writable: canManagePlugins,
+				children: jsonSchema ? buildChildren(jsonSchema, [], `setting:plugin:${info.id}:`, write) : [],
+			}
+		})
+	}, [pluginInfos, pluginManifests, pluginModes, canManagePlugins])
+
 	const serverNodes = React.useMemo(() => {
 		const nodes: TocNode[] = servers.map((s) => {
 			const write = serverWriteById.get(s.id) ?? WRITE_NONE
@@ -342,6 +369,16 @@ export default function SettingsToc({
 				children: serverNodes,
 			})
 		}
+		// mirrors the page's document order, which the scroll-spy depends on
+		if (showPlugins) {
+			roots.push({
+				id: 'section:plugins',
+				label: tr.text(PLUGINS_Msgs.sectionTitle()),
+				path: '',
+				writable: canManagePlugins,
+				children: pluginNodes,
+			})
+		}
 		if (showGlobal) {
 			roots.push({
 				id: 'section:global',
@@ -353,7 +390,7 @@ export default function SettingsToc({
 			roots.push({ id: 'section:audit', label: tr.text(AppEvents_Msgs.auditLog()), path: '', writable: false, children: [] })
 		}
 		return roots
-	}, [showServers, showGlobal, globalChildren, serverNodes, globalWrite])
+	}, [showServers, showGlobal, showPlugins, canManagePlugins, globalChildren, serverNodes, pluginNodes, globalWrite])
 
 	// markers only add signal when something on the page is write-restricted; a fully-unrestricted admin sees none
 	const showMarkers =
@@ -372,7 +409,7 @@ export default function SettingsToc({
 	// re-run scroll-spy when the anchor set changes (gui/yaml switch, servers added/removed, per-server mode)
 	const anchorSetSig = `${globalMode}|${servers.map((s) => `${s.id}:${serverModes[s.id] ?? 'gui'}`).join(',')}|${
 		creatingServer ? newServerMode : ''
-	}`
+	}|${pluginInfos.map((p) => `${p.id}:${pluginModes[p.id] ?? 'gui'}`).join(',')}`
 	const activeAnchorId = useActiveAnchor(anchorSetSig)
 
 	// if the active anchor sits inside a collapsed branch, highlight the deepest ancestor that's actually visible

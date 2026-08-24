@@ -5,7 +5,6 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
 import type * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
-import type * as BAL from '@/models/balance-triggers.models'
 import * as CS from '@/models/context-shared'
 import type * as LL from '@/models/layer-list.models'
 import type * as SM from '@/models/squad.models'
@@ -16,6 +15,7 @@ import * as L from './layer'
 
 export type NewMatchHistory = Omit<SchemaModels.NewMatchHistory, 'ordinal'>
 
+/** How many matches the in-memory window getRecentMatches reads from holds. */
 export const MAX_RECENT_MATCHES = 100
 
 type MatchDetailsCommon = {
@@ -67,7 +67,6 @@ export type PostGameMatchDetails = Extract<MatchDetails, { status: 'post-game' }
 
 export type PublicMatchHistoryState = {
 	recentMatches: MatchDetails[]
-	recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 }
 
 export const NormedTeamIdSchema = z.enum(['A', 'B'])
@@ -79,9 +78,11 @@ export type NormedTeamProp = z.infer<typeof NormedTeamPropSchema>
 export const NormedTeamIdOrPropSchema = z.union([NormedTeamIdSchema, NormedTeamPropSchema])
 export type NormedTeamIdOrProp = z.infer<typeof NormedTeamIdOrPropSchema>
 
+/** 'teamA' | 'A' -> 'A'. Neither form says which in-game team that is; see getDenormedTeamId. */
 export function toNormedTeamId(team: NormedTeamIdOrProp): NormedTeamId {
 	return team.slice(team.length - 1) as NormedTeamId
 }
+/** 'A' | 'teamA' -> 'teamA'. The property-name form, as stored on layers and settings. */
 export function toNormedTeamProp(team: NormedTeamIdOrProp): NormedTeamProp {
 	if (team.startsWith('team')) {
 		return team as NormedTeamProp
@@ -89,10 +90,16 @@ export function toNormedTeamProp(team: NormedTeamIdOrProp): NormedTeamProp {
 	return `team${team}` as NormedTeamProp
 }
 
+/**
+ * The team1/team2 <-> A/B mapping for a match `offset` matches after this one, since sides swap every
+ * match. Every norm/denorm function below takes this rather than a match, so callers can ask about
+ * the next match as easily as the current one. Pass offset 0 for this match.
+ */
 export function getTeamParityForOffset(matchDetails: Pick<MatchDetails, 'ordinal'>, offset: number) {
 	return (matchDetails.ordinal + offset) % 2
 }
 
+/** Restates a finished match's outcome in terms of team A and team B. Draws and unknowns pass through. */
 export function getTeamNormalizedOutcome(matchDetails: Extract<MatchDetails, { status: 'post-game' }>): NormalizedMatchOutcome {
 	if (matchDetails.outcome.type === 'draw' || matchDetails.outcome.type === 'unknown') {
 		return matchDetails.outcome
@@ -117,6 +124,7 @@ export function getTeamNormalizedOutcome(matchDetails: Extract<MatchDetails, { s
 	}
 }
 
+/** The inverse of getTeamNormalizedOutcome: back to the raw team1/team2 the game reported. */
 export function getTeamDenormalizedOutcome(matchDetails: { ordinal: number }, normalizedOutcome: NormalizedMatchOutcome): MatchOutcome {
 	if (normalizedOutcome.type === 'draw' || normalizedOutcome.type === 'unknown') {
 		return normalizedOutcome
@@ -283,45 +291,52 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 	return entry
 }
 
+/** Which of a layer's Faction_1/Faction_2 belongs to the given normalized team. */
 export function getTeamNormalizedFactionProp(offset: number, team: NormedTeamIdOrProp) {
 	const props = ['Faction_1', 'Faction_2'] as const
 	const normedTeam = toNormedTeamId(team)
 	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
+/** Which of a layer's Unit_1/Unit_2 belongs to the given normalized team. */
 export function getTeamNormalizedUnitProp(offset: number, team: NormedTeamIdOrProp) {
 	const props = ['Unit_1', 'Unit_2'] as const
 	const normedTeam = toNormedTeamId(team)
 	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
+/** Which of a layer's Alliance_1/Alliance_2 belongs to the given normalized team. */
 export function getTeamNormalizedAllianceProp(offset: number, team: NormedTeamIdOrProp) {
 	const props = ['Alliance_1', 'Alliance_2'] as const
 	const normedTeam = toNormedTeamId(team)
 	return props[(offset + Number(normedTeam === 'B')) % 2]
 }
 
-// the faction the given normalized team is playing in this match, e.g. "GFI"
+/** The faction the given normalized team is playing in this match, e.g. "GFI". */
 export function getNormedTeamFaction(match: Pick<MatchDetails, 'ordinal' | 'layerId'>, team: NormedTeamId): string | undefined {
 	return L.toLayer(match.layerId)[getTeamNormalizedFactionProp(match.ordinal, team)] ?? undefined
 }
 
-// the faction the given in-game (denormalized) team is playing in this match, e.g. "PLA"
+/** The faction the given in-game (denormalized) team is playing in this match, e.g. "PLA". */
 export function getTeamFaction(match: Pick<MatchDetails, 'ordinal' | 'layerId'>, teamId: SM.TeamId): string | undefined {
 	return getNormedTeamFaction(match, getNormedTeamId(teamId, match.ordinal))
 }
 
-// The left-to-right order teams should be laid out in. Normalized display keeps team A on the left across
-// matches, denormalized display keeps in-game team 1 on the left.
+/**
+ * The left-to-right order teams should be laid out in. Normalized display keeps team A on the left
+ * across matches, denormalized display keeps in-game team 1 on the left.
+ */
 export function getDisplayedTeamOrder(parity: number, displayTeamsNormalized: boolean): [NormedTeamId, NormedTeamId] {
 	if (displayTeamsNormalized) return ['A', 'B']
 	return [getNormedTeamId(1, parity), getNormedTeamId(2, parity)]
 }
 
+/** In-game team 1|2 -> the persistent side A|B that held it, for a match with the given parity. */
 export function getNormedTeamId(teamId: SM.TeamId, parity: number) {
 	const normIds = ['A', 'B'] as const
 	return normIds[(parity + teamId - 1) % 2]
 }
+/** A|B -> the in-game team 1|2 that side holds in a match with the given parity. Passes 1|2 through. */
 export function getDenormedTeamId(normedTeamId: NormedTeamId | SM.TeamId, parity: number) {
 	if (typeof normedTeamId === 'number') return normedTeamId
 	if (parity % 2 === 0) {
@@ -329,22 +344,6 @@ export function getDenormedTeamId(normedTeamId: NormedTeamId | SM.TeamId, parity
 	} else {
 		return normedTeamId === 'A' ? 2 : 1
 	}
-}
-
-export function getActiveTriggerEvents(state: PublicMatchHistoryState) {
-	const currentMatch = state.recentMatches[state.recentMatches.length - 1] as MatchDetails | undefined
-	const previousMatch = state.recentMatches[state.recentMatches.length - 2] as MatchDetails | undefined
-	const active: BAL.BalanceTriggerEvent[] = []
-	for (let i = state.recentBalanceTriggerEvents.length - 1; i >= 0; i--) {
-		const event = state.recentBalanceTriggerEvents[i]
-		if (
-			(currentMatch && currentMatch.historyEntryId === event.matchTriggeredId && currentMatch.status === 'post-game') ||
-			(previousMatch && previousMatch.historyEntryId === event.matchTriggeredId && currentMatch!.status === 'in-progress')
-		) {
-			active.push(event)
-		}
-	}
-	return Array.from(active)
 }
 
 // `source` attributes a match no queue item accounts for -- the server picked the layer itself.
@@ -385,7 +384,8 @@ export namespace Ctx {
 		mtx: Mutex
 		update$: Rx.Subject<void>
 		dispatchUpdate: () => void
+		// fires once per match that reaches post-game, after the outcome is persisted and state reloaded
+		finalized$: Rx.Subject<{ matchId: number }>
 		recentMatches: MatchDetails[]
-		recentBalanceTriggerEvents: BAL.BalanceTriggerEvent[]
 	} & Parts<USR.UserPart>
 }

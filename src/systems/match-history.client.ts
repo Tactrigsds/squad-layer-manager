@@ -13,7 +13,7 @@ export const [useMatchHistoryState, matchHistoryState$] = ReactRx.bindWithDefaul
 			RPC.dropServerNotLoaded(),
 			Rx.map(PartsSys.stripParts),
 		),
-	{ recentBalanceTriggerEvents: [], recentMatches: [] } satisfies MH.PublicMatchHistoryState,
+	{ recentMatches: [] } satisfies MH.PublicMatchHistoryState,
 )
 
 export const [useRecentMatches, recentMatches$] = ReactRx.bind('matchHistory.recentMatches', (serverId: string) =>

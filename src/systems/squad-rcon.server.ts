@@ -309,6 +309,7 @@ async function fetchTeams(ctx: SR.Ctx.Rcon & CS.ServerId & C.AsyncResourceInvoca
 
 // the rcon calls a broadcast takes: one per message, each of which the game logs separately. Exposed so a caller
 // attributing the broadcast can arm an expectation per line (see broadcastAction).
+/** Splits a message into chunks rcon will accept, breaking at blank lines first, then newlines. */
 export function splitBroadcast(message: string): string[] {
 	if (message.length <= SM.RCON_MAX_BUF_LEN) return [message]
 	const messages: string[] = []
@@ -343,6 +344,7 @@ export async function getPlayer(ctx: SR.Ctx & CS.AbortSignal, query: SM.PlayerId
 
 // Takes the message itself, and resolves it here: RCON renders plain strings, and this is the point where the
 // reader is known, so a per-recipient message gets the player it is being written to.
+/** Warns one player. See warnAll for a list of them, warnAllAdmins for everyone holding admin. */
 export async function warn(ctx: SR.Ctx & CS.AbortSignal & Msgs.Ctx, ids: SM.PlayerIds.EosIdQueryOrPlayerId, input: SR.WarnInput) {
 	const _opts = Msgs.isMsg(input) ? ctx.tr.warn(input) : input
 	let opts: SR.WarnOptionsBase<string>
@@ -371,6 +373,7 @@ export async function warn(ctx: SR.Ctx & CS.AbortSignal & Msgs.Ctx, ids: SM.Play
 	}
 }
 
+/** Warns each of the given players. For everyone holding admin instead, see warnAllAdmins. */
 export const warnAll = Instr.spanOp(
 	'warnAll',
 	{ module, levels: { event: 'info' } },
@@ -384,6 +387,7 @@ export const warnAll = Instr.spanOp(
 	},
 )
 
+/** Warns every admin currently in game, resolved from the server's admin lists. Silent if rcon is down. */
 export const warnAllAdmins = Instr.spanOp(
 	'warnAllAdmins',
 	{ module, levels: { event: 'info' } },
@@ -429,6 +433,7 @@ export async function getServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<
 	}
 }
 
+/** Current and next layer in one call. Prefer it over getCurrentLayer + getNextLayer, which costs two round trips. */
 export const getLayerStatus = Instr.spanOp(
 	'getLayerStatus',
 	{ module },
@@ -452,6 +457,7 @@ export const getLayerStatus = Instr.spanOp(
 	},
 )
 
+/** Sets the next layer on the game server directly. Bypasses the queue: LayerQueue.dispatchOp is the path that keeps SLM's state in step. */
 export const setNextLayer = Instr.spanOp(
 	'setNextLayer',
 	{ module },
@@ -492,6 +498,7 @@ export function setFogOfWar(ctx: SR.Ctx.Rcon & CS.AbortSignal, mode: 'on' | 'off
 	return ctx.rcon.execute(`AdminSetFogOfWar ${mode}`, { level: 'info', signal: ctx.signal })
 }
 
+/** Ends the match in progress immediately. The server rolls to whatever the next layer is set to. */
 export async function endMatch(ctx: SR.Ctx.Rcon) {
 	log.info(`Ending match`)
 	await ctx.rcon.execute('AdminEndMatch', { level: 'info' })

@@ -30,7 +30,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as Arr from '@/lib/array-utils'
-import { TRIGGER_LEVEL_DISPLAY } from '@/lib/balance-trigger-display'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
@@ -44,7 +43,6 @@ import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as AAR_Msgs from '@/messages/admin-action-reasons.messages'
-import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as PG_Msgs from '@/messages/player-groupings.messages'
@@ -52,7 +50,6 @@ import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
 import * as AAR from '@/models/admin-action-reasons.models'
-import * as BAL from '@/models/balance-triggers.models'
 import type * as BM from '@/models/battlemetrics.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
@@ -97,7 +94,6 @@ type Node = any
 type Path = (string | number)[]
 
 // a trigger with no level configured is not evaluated at all; the picker needs a value to represent that
-const TRIGGER_OFF = '__off__'
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
 type ValueState<T = any> = Zus.ValueObservable<T>
@@ -3107,65 +3103,6 @@ function RoleAssignmentsEditor({
 	)
 }
 
-// bespoke editor for `balanceTriggerLevels`. A trigger is off unless it carries a level, and the level decides how
-// loudly it lands on the match history, so each row pairs the picker with a live preview of the alert it produces.
-function BalanceTriggerLevelsField({ value$, reset$, onChange }: OverrideProps) {
-	const value = (useFieldValue(value$) as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>> | undefined) ?? {}
-
-	function setLevel(id: BAL.TriggerId, level: BAL.TriggerWarnLevel | typeof TRIGGER_OFF) {
-		const next = { ...((value$.getValue() as Partial<Record<BAL.TriggerId, BAL.TriggerWarnLevel>>) ?? {}) }
-		if (level === TRIGGER_OFF) delete next[id]
-		else next[id] = level
-		onChange(next)
-		reset$.next()
-	}
-
-	return (
-		<div className="space-y-2">
-			{BAL.TRIGGER_IDS.options.map((id) => {
-				const level = value[id]
-				const display = level ? TRIGGER_LEVEL_DISPLAY[level] : undefined
-				const AlertIcon = display?.icon
-				return (
-					<div key={id} className="space-y-2 rounded-md border p-3">
-						<div className="flex items-start justify-between gap-3">
-							<div className="min-w-0 space-y-0.5">
-								<p className="text-sm font-medium">{BAL.TRIGGERS[id].name}</p>
-								<p className="text-xs text-muted-foreground">{tr.text(BAL_Msgs.descriptions[id])}</p>
-							</div>
-							<Select value={level ?? TRIGGER_OFF} onValueChange={(next) => setLevel(id, next as BAL.TriggerWarnLevel)}>
-								<SelectTrigger
-									className={cn('h-8 w-36 shrink-0', display?.text)}
-									aria-label={tr.text(BAL_Msgs.levelPickerLabel(BAL.TRIGGERS[id].name))}
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value={TRIGGER_OFF}>{tr.text(BAL_Msgs.levelOff())}</SelectItem>
-									{BAL.TRIGGER_LEVEL.options.map((opt) => (
-										<SelectItem key={opt} value={opt} className={TRIGGER_LEVEL_DISPLAY[opt].text}>
-											{humanize(opt)}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-						{display && AlertIcon && (
-							<Alert variant={display.variant} className="bg-background!">
-								<AlertTitle className="flex items-center space-x-2">
-									<AlertIcon className="mr-2 h-4 w-4" />
-									{BAL.TRIGGERS[id].name}
-								</AlertTitle>
-								<AlertDescription>{tr.text(BAL_Msgs.sampleMessages[id])}</AlertDescription>
-							</Alert>
-						)}
-					</div>
-				)
-			})}
-		</div>
-	)
-}
-
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const last = path[path.length - 1]
 	// global settings define the lists (a record); a server picks from them (an array of names)
@@ -3178,7 +3115,6 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
 	if (path.length === 1 && last === 'layerTags') return LayerTagsField
-	if (path.length === 1 && last === 'balanceTriggerLevels') return BalanceTriggerLevelsField
 	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
 	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
 	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
