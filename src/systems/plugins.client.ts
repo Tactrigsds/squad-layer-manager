@@ -77,6 +77,15 @@ export const Store = Zus.createStore<{ plugins: PLG.RuntimeInfo[]; version: numb
 	version: 0,
 	manifests: {},
 }))
+// which editor the settings page shows for each plugin's config, defaulting to 'gui'. Module state rather
+// than component state on two counts: a save remounts the config form, and the settings table of contents
+// has to drop a plugin's field anchors when it switches to yaml.
+export const ConfigEditorModeStore = Zus.createStore<Record<string, 'gui' | 'yaml'>>(() => ({}))
+
+export function setConfigEditorMode(pluginId: string, mode: 'gui' | 'yaml') {
+	ConfigEditorModeStore.setState((s) => ({ ...s, [pluginId]: mode }))
+}
+
 const slotRegs = new Map<string, SlotReg[]>()
 const decoRegs = new Map<string, DecorationReg[]>()
 const undoByPlugin = new Map<string, (() => void)[]>()

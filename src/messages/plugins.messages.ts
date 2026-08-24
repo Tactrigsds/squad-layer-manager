@@ -14,7 +14,13 @@ export const statusLabels = {
 	errored: def('Failed'),
 }
 
+export const apiVersionLabel = def('slm api {range}', (range: string) => ({ range }))
+
+export const apiVersionProvided = def('This build provides slm api {version}.', (version: string) => ({ version }))
+
 export const enableLabel = def('{name} enabled', (name: string) => ({ name }))
+
+export const configEditorModeLabel = def('{name} configuration editor', (name: string) => ({ name }))
 
 export const saveConfig = def('Save')
 

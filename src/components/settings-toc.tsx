@@ -318,10 +318,12 @@ export default function SettingsToc({
 	// rather than once for the module
 	const pluginInfos = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
 	const pluginManifests = Zus.useStore(PluginsClient.Store, (s) => s.manifests)
+	const pluginModes = Zus.useStore(PluginsClient.ConfigEditorModeStore, (s) => s)
 	const pluginNodes = React.useMemo(() => {
 		const write = canManagePlugins ? WRITE_ALL : WRITE_NONE
 		return pluginInfos.map((info): TocNode => {
-			const configSchema = pluginManifests[info.id]?.configSchema
+			// as for global/server sections, the field anchors only exist in the gui editor
+			const configSchema = (pluginModes[info.id] ?? 'gui') === 'yaml' ? undefined : pluginManifests[info.id]?.configSchema
 			const jsonSchema = configSchema && (z.toJSONSchema(configSchema, { io: 'input', unrepresentable: 'any' }) as Node)
 			return {
 				id: `section:plugin:${info.id}`,
@@ -331,7 +333,7 @@ export default function SettingsToc({
 				children: jsonSchema ? buildChildren(jsonSchema, [], `setting:plugin:${info.id}:`, write) : [],
 			}
 		})
-	}, [pluginInfos, pluginManifests, canManagePlugins])
+	}, [pluginInfos, pluginManifests, pluginModes, canManagePlugins])
 
 	const serverNodes = React.useMemo(() => {
 		const nodes: TocNode[] = servers.map((s) => {
@@ -407,7 +409,7 @@ export default function SettingsToc({
 	// re-run scroll-spy when the anchor set changes (gui/yaml switch, servers added/removed, per-server mode)
 	const anchorSetSig = `${globalMode}|${servers.map((s) => `${s.id}:${serverModes[s.id] ?? 'gui'}`).join(',')}|${
 		creatingServer ? newServerMode : ''
-	}|${pluginInfos.map((p) => p.id).join(',')}`
+	}|${pluginInfos.map((p) => `${p.id}:${pluginModes[p.id] ?? 'gui'}`).join(',')}`
 	const activeAnchorId = useActiveAnchor(anchorSetSig)
 
 	// if the active anchor sits inside a collapsed branch, highlight the deepest ancestor that's actually visible

@@ -76,6 +76,8 @@ export const RuntimeInfoSchema = z.object({
 	name: z.string(),
 	description: z.string(),
 	version: z.string(),
+	// the slm api range the manifest declares, e.g. '^1.2'. Checked against API_VERSION before activation
+	apiVersion: z.string(),
 	enabled: z.boolean(),
 	status: StatusSchema,
 	// what put the plugin in 'errored', for the settings UI

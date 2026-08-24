@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import * as Icons from 'lucide-react'
 import React from 'react'
 import { toast } from 'sonner'
 import type { z } from 'zod'
 
+import type SchemaYamlEditorComponent from '@/components/schema-yaml-editor'
+import type { SchemaYamlEditorHandle } from '@/components/schema-yaml-editor.types'
 import SettingsForm from '@/components/settings-form'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,11 +13,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
-import type * as PLG from '@/models/plugins.models'
+import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as PLG from '@/models/plugins.models'
 import * as RPC from '@/orpc.client'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
@@ -25,6 +31,14 @@ import * as PluginsClient from '@/systems/plugins.client'
 //
 // Installing writes into SLM's plugins folder and runs that copy, so a plugin keeps working when its
 // source url does not. Refresh is the only thing that fetches again.
+
+const HOST_API_VERSION = `${PLG.API_VERSION.major}.${PLG.API_VERSION.minor}`
+
+// same lazy-load dance as the settings page: the CodeMirror bundle is only paid for once an editor is
+// actually shown, and the `as` casts restore the generic signature React.lazy erases
+const SchemaYamlEditor = React.lazy(
+	() => import('@/components/schema-yaml-editor') as unknown as Promise<{ default: React.FC<any> }>,
+) as unknown as typeof SchemaYamlEditorComponent
 
 const STATUS_VARIANT = {
 	inactive: 'outline',
@@ -135,6 +149,19 @@ function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: bool
 					<div className="flex items-center gap-2">
 						<p className="text-sm font-medium">{info.name}</p>
 						<span className="text-xs text-muted-foreground font-mono">v{info.version}</span>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span
+									className={cn(
+										'text-xs font-mono',
+										PLG.satisfiesApiVersion(info.apiVersion) ? 'text-muted-foreground' : 'text-destructive',
+									)}
+								>
+									{tr.text(PLUGINS_Msgs.apiVersionLabel(info.apiVersion))}
+								</span>
+							</TooltipTrigger>
+							<TooltipContent>{tr.text(PLUGINS_Msgs.apiVersionProvided(HOST_API_VERSION))}</TooltipContent>
+						</Tooltip>
 						<Badge variant={STATUS_VARIANT[info.status]}>{tr.text(PLUGINS_Msgs.statusLabels[info.status]())}</Badge>
 					</div>
 					<p className="text-xs text-muted-foreground">{info.description}</p>
@@ -195,12 +222,35 @@ function PluginConfigForm(props: { pluginId: string; manifest: PLG.Manifest; sav
 	const [dirty, setDirty] = React.useState(false)
 	const [issues, setIssues] = React.useState<readonly z.core.$ZodIssue[] | undefined>()
 	const [saving, setSaving] = React.useState(false)
+	const mode = Zus.useStore(PluginsClient.ConfigEditorModeStore, (s) => s[props.pluginId] ?? 'gui')
+	// the editor re-syncs its contents whenever this changes by value, so it holds the draft as of the last
+	// deliberate reseed (entering yaml, discarding) rather than every keystroke
+	const [yamlSeed, setYamlSeed] = React.useState<any>(() => Obj.deepClone(props.saved))
+	const [yamlValid, setYamlValid] = React.useState(true)
+	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
 
 	function onChange(next: any) {
 		value$.next(next)
 		setDirty(!Obj.deepEqual(next, props.saved))
 		const res = props.manifest.configSchema.safeParse(next)
 		setIssues(res.success ? undefined : res.error.issues)
+	}
+
+	// null means the contents don't parse or don't validate; anything else already satisfies the schema
+	function onYamlChange(next: any) {
+		setYamlValid(next !== null)
+		if (next === null) return
+		value$.next(next)
+		setDirty(!Obj.deepEqual(next, props.saved))
+		setIssues(undefined)
+	}
+
+	function switchMode(next: 'gui' | 'yaml') {
+		if (next === 'yaml') {
+			setYamlSeed(Obj.deepClone(value$.getValue()))
+			setYamlValid(true)
+		}
+		PluginsClient.setConfigEditorMode(props.pluginId, next)
 	}
 
 	async function save() {
@@ -223,32 +273,74 @@ function PluginConfigForm(props: { pluginId: string; manifest: PLG.Manifest; sav
 	}
 
 	function discard() {
-		value$.next(Obj.deepClone(props.saved))
+		const restored = Obj.deepClone(props.saved)
+		value$.next(restored)
+		setYamlSeed(restored)
+		setYamlValid(true)
 		setDirty(false)
 		setIssues(undefined)
 		reset$.next()
 	}
 
+	const canSave = dirty && !issues && yamlValid
+	const actions = (
+		<>
+			<Button size="sm" onClick={() => void save()} disabled={!canSave || saving}>
+				{tr.text(PLUGINS_Msgs.saveConfig())}
+			</Button>
+			<Button size="sm" variant="outline" onClick={discard} disabled={saving || !dirty}>
+				{tr.text(PLUGINS_Msgs.discardConfig())}
+			</Button>
+		</>
+	)
+
 	return (
 		<div className="space-y-2">
-			<SettingsForm
-				schema={props.manifest.configSchema}
-				value$={value$}
-				reset$={reset$}
-				onChange={onChange}
-				saved={props.saved}
-				idPrefix={`setting:plugin:${props.pluginId}:`}
-				issues={issues}
-			/>
-			{dirty && (
-				<div className="flex items-center gap-2">
-					<Button size="sm" onClick={() => void save()} disabled={saving || !!issues}>
-						{tr.text(PLUGINS_Msgs.saveConfig())}
-					</Button>
-					<Button size="sm" variant="outline" onClick={discard} disabled={saving}>
-						{tr.text(PLUGINS_Msgs.discardConfig())}
-					</Button>
-				</div>
+			<div
+				role="group"
+				aria-label={tr.text(PLUGINS_Msgs.configEditorModeLabel(props.manifest.name))}
+				className="flex items-center gap-1"
+			>
+				<Button size="sm" variant={mode === 'gui' ? 'secondary' : 'ghost'} onClick={() => switchMode('gui')}>
+					GUI
+				</Button>
+				<Button size="sm" variant={mode === 'yaml' ? 'secondary' : 'ghost'} onClick={() => switchMode('yaml')}>
+					YAML
+				</Button>
+			</div>
+			{mode === 'gui' ? (
+				<>
+					<SettingsForm
+						schema={props.manifest.configSchema}
+						value$={value$}
+						reset$={reset$}
+						onChange={onChange}
+						saved={props.saved}
+						idPrefix={`setting:plugin:${props.pluginId}:`}
+						issues={issues}
+					/>
+					{dirty && <div className="flex items-center gap-2">{actions}</div>}
+				</>
+			) : (
+				<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
+					<SchemaYamlEditor
+						ref={editorRef}
+						schema={props.manifest.configSchema}
+						value={yamlSeed}
+						onValidChange={onYamlChange}
+						minHeightPx={250}
+						label={props.manifest.name}
+						toolbar={
+							<>
+								<Button size="sm" variant="outline" onClick={() => editorRef.current?.format()}>
+									<Icons.Braces className="h-4 w-4" />
+									{tr.text(SETTINGS_Msgs.format())}
+								</Button>
+								{actions}
+							</>
+						}
+					/>
+				</React.Suspense>
 			)}
 		</div>
 	)
