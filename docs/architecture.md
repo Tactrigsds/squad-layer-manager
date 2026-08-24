@@ -615,6 +615,8 @@ env schema's `.meta()`. Connection secrets are sealed at the db boundary only, a
 
 ## Plugins
 
+[writing_plugins.md](writing_plugins.md) is the author-facing guide. This is the host's side of the same contract.
+
 Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`,
 imported by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a
 client entry and migrations. They import the core exclusively through the `slm/*` alias, which resolves to the
@@ -642,6 +644,11 @@ names: `plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mj
 `pnpm plugin:pack <dir>` builds one from ordinary plugin source. Installing from a url downloads into that same
 folder and runs the local copy, so a plugin keeps working when its origin does not; refresh is the only thing that
 fetches again, and a directory placed there by hand is picked up by rescan.
+
+**In dev, every other directory under `plugins/` is loaded from source too**, so a plugin author's own repo cloned
+in there runs with nothing to register: `tsx watch` on the server, vite's own module graph on the client, which is
+where a plugin's HMR comes from. Discovery is dev-only on both halves, the client's through a virtual module rather
+than a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
 
 **A package carries no copy of SLM.** Its bundles import `slm/*`, rxjs, zod, drizzle-orm and react as bare
 specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
