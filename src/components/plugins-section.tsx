@@ -32,7 +32,7 @@ import * as PluginsClient from '@/systems/plugins.client'
 // Installing writes into SLM's plugins folder and runs that copy, so a plugin keeps working when its
 // source url does not. Refresh is the only thing that fetches again.
 
-const HOST_API_VERSION = `${PLG.API_VERSION.major}.${PLG.API_VERSION.minor}`
+const HOST_API_VERSION = PLG.formatApiVersion()
 
 // same lazy-load dance as the settings page: the CodeMirror bundle is only paid for once an editor is
 // actually shown, and the `as` casts restore the generic signature React.lazy erases

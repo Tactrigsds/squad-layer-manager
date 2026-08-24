@@ -127,9 +127,7 @@ export async function installFromUrl(ctx: CS.AbortSignal, url: string): Promise<
 		const manifestBytes = await fetchFile(ctx, manifestUrl)
 		const manifest = PLG.PackageManifestSchema.parse(JSON.parse(manifestBytes.toString('utf8')))
 		if (!PLG.satisfiesApiVersion(manifest.apiVersion)) {
-			throw new Error(
-				`plugin requires slm api ${manifest.apiVersion}, this build provides ${PLG.API_VERSION.major}.${PLG.API_VERSION.minor}`,
-			)
+			throw new Error(`plugin requires slm api ${manifest.apiVersion}, this build provides ${PLG.formatApiVersion()}`)
 		}
 
 		const files = new Map<string, Buffer>([[PLG.PACKAGE_MANIFEST_FILE, manifestBytes]])

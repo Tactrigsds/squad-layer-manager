@@ -319,9 +319,7 @@ async function activateLocked(rt: Runtime) {
 	update$.next(id)
 	try {
 		if (!PLG.satisfiesApiVersion(rt.entry.manifest.apiVersion)) {
-			throw new Error(
-				`requires slm api ${rt.entry.manifest.apiVersion}, host provides ${PLG.API_VERSION.major}.${PLG.API_VERSION.minor}`,
-			)
+			throw new Error(`requires slm api ${rt.entry.manifest.apiVersion}, host provides ${PLG.formatApiVersion()}`)
 		}
 		const cfg = rt.entry.manifest.configSchema.safeParse(rt.configInput)
 		if (!cfg.success) throw new Error(`invalid config:\n${z.prettifyError(cfg.error)}`)

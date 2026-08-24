@@ -692,8 +692,9 @@ client), left alone where the name already says it.
 
 **The contract is versioned mechanically.** `src/plugin-api/api-report.md` is a generated snapshot of every
 export reachable through the slm/* entries, with values carrying their resolved signatures; `pnpm api:report`
-regenerates it and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines need a
-major bump, added lines at least a minor), judged against origin/main's copy so a branch bumps once. The pre-push
+regenerates it and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines are
+breaking, added lines additive), judged against origin/main's copy so a branch bumps once. Which component each
+moves follows semver, so at today's 0.1.0 that is the minor and the patch. The pre-push
 hook runs `pnpm api:report:check`, which fails on a stale report. The report records exports and signatures, not
 the internal structure of named types; reshaping a model type without renaming it is review's to catch, and the
 report diff is what flags the PR as touching the plugin API at all.
