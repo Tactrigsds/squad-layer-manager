@@ -14,9 +14,37 @@ import * as Env from './src/server/env.ts'
 Env.ensureEnvSetup()
 const ENV = Env.getEnvBuilder({ ...Env.groups.general })()
 
+// Feeds plugins/builtins.ts the source of every plugin directory, in dev only. It is a virtual module
+// rather than a glob guarded by import.meta.env.DEV because a glob's imports are real: eager ones
+// survive dead-code elimination, and a plugin author's own repo cloned into plugins/ ended up in the
+// shipped bundle. A build gets the empty stub, so it cannot.
+function devSourcePlugins(): Plugin {
+	const ID = 'virtual:slm-dev-plugins'
+	const RESOLVED = '\0' + ID
+	let serving = false
+	return {
+		name: 'slm-dev-source-plugins',
+		configResolved(config) {
+			serving = config.command === 'serve'
+		},
+		resolveId(id) {
+			return id === ID ? RESOLVED : null
+		},
+		load(id) {
+			if (id !== RESOLVED) return null
+			if (!serving) return 'export const manifests = {}\nexport const clients = {}\n'
+			return [
+				"export const manifests = import.meta.glob('/plugins/*/plugin.ts', { eager: true })",
+				"export const clients = import.meta.glob('/plugins/*/client.tsx')",
+			].join('\n')
+		},
+	}
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
+		devSourcePlugins(),
 		tanstackRouter({
 			target: 'react',
 		}),
