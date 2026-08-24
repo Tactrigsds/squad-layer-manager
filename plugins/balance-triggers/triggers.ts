@@ -5,6 +5,8 @@ import * as MH from 'slm/models/match-history'
 export type TriggerInput = { history: MH.MatchDetails[] }
 export type Evaluation = {
 	strongerTeam: MH.NormedTeamProp
+	// the sentence the UI shows, with {{strongerTeam}} left for the reader to substitute: which team
+	// that is reads differently depending on the match it is shown against
 	message: string
 	relevantInput: { history: MH.PostGameMatchDetails[] }
 }
@@ -62,7 +64,7 @@ function marginStreak(id: string, name: string, margin: number, count: number): 
 			if (!s.wins.slice(-count).every((w) => w.margin >= margin)) return undefined
 			return {
 				strongerTeam: s.team,
-				message: `won the last ${count} matches by ${margin}+ tickets`,
+				message: `{{strongerTeam}} has won ${count} games by ${margin}+ tickets.`,
 				relevantInput: { history: session.slice(-count) },
 			}
 		},
@@ -70,11 +72,11 @@ function marginStreak(id: string, name: string, margin: number, count: number): 
 }
 
 export const TRIGGERS: Trigger[] = [
-	marginStreak('150x2', '150+ tickets, twice', 150, 2),
-	marginStreak('200x2', '200+ tickets, twice', 200, 2),
+	marginStreak('150x2', '150 tickets x2', 150, 2),
+	marginStreak('200x2', '200 tickets x2', 200, 2),
 	{
 		id: 'RWS5',
-		name: 'Raw win streak of 5',
+		name: 'Raw Win Streak Across 5',
 		version: 1,
 		evaluate: (input) => {
 			const session = sessionSlice(input.history, 10)
@@ -82,14 +84,14 @@ export const TRIGGERS: Trigger[] = [
 			if (!s || s.wins.length < 5) return undefined
 			return {
 				strongerTeam: s.team,
-				message: 'has won 5 matches in a row',
+				message: '{{strongerTeam}} has won five games in a row.',
 				relevantInput: { history: session.slice(-5) },
 			}
 		},
 	},
 	{
 		id: 'RAM3+',
-		name: 'High rolling average margin',
+		name: 'Maximum Rolling Average Across 3+',
 		version: 1,
 		evaluate: (input) => {
 			const session = sessionSlice(input.history, 6)
@@ -99,7 +101,7 @@ export const TRIGGERS: Trigger[] = [
 			if (avg < 125) return undefined
 			return {
 				strongerTeam: s.team,
-				message: `is averaging ${Math.round(avg)} tickets over ${s.wins.length} matches`,
+				message: `{{strongerTeam}} has been winning for ${s.wins.length} games with an average of (125+)(${avg.toFixed(2)}) tickets`,
 				relevantInput: { history: session.slice(-s.wins.length) },
 			}
 		},

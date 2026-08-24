@@ -1,4 +1,6 @@
 import * as Zus from 'slm/lib/zustand'
+import * as L from 'slm/models/layer'
+import * as MH from 'slm/models/match-history'
 import { definePluginClient } from 'slm/plugin/client'
 import * as Decorations from 'slm/plugin/decorations'
 import * as Rpc from 'slm/plugin/rpc.client'
@@ -8,6 +10,7 @@ import manifest from './plugin.ts'
 import type * as S from './schema.ts'
 // type-only, so none of the server bundle reaches the browser: it is where the rpc types come from
 import type { router } from './server.ts'
+import * as TR from './triggers.ts'
 
 export default definePluginClient(manifest, (ctx) => {
 	// inferred from the server's router, so nothing here is annotated. A keyed family: deep-equal
@@ -21,23 +24,40 @@ export default definePluginClient(manifest, (ctx) => {
 		violation: 'border-red-500/50 text-red-500',
 	}
 
+	// the same sentence the reminder uses, with the side named for the match it is shown against
+	function describe(event: S.TriggerEvent, layerId: string, ordinal: number) {
+		const faction = L.toLayer(layerId)[MH.getTeamNormalizedFactionProp(ordinal, event.strongerTeam as MH.NormedTeamProp)]
+		const team = MH.toNormedTeamId(event.strongerTeam as MH.NormedTeamProp)
+		return event.message.replace('{{strongerTeam}}', faction ? `Team ${team}(${faction})` : `Team ${team}`)
+	}
+
 	Slots.register(ctx, 'server-dashboard:alerts', function BalanceTriggerAlert(props) {
-		const top = Zus.useStore(activeEvents(props.serverId), (events) => events?.[0])
-		if (!top) return null
+		const state = Zus.useStore(activeEvents(props.serverId), (s) => s)
+		const current = state?.current
+		if (!state?.events?.length || !current) return null
 		return (
-			<div className={`rounded border p-2 text-sm ${TINT_CLASSES[top.level] ?? ''}`}>
-				Balance trigger active: {top.triggerId} favours {top.strongerTeam === 'teamA' ? 'Team A' : 'Team B'}
+			<div className="flex flex-col gap-1 p-2">
+				{state.events.map((event) => (
+					<div key={event.id} className={`rounded border p-2 text-sm ${TINT_CLASSES[event.level] ?? ''}`}>
+						<p className="font-medium">{TR.TRIGGERS.find((t) => t.id === event.triggerId)?.name ?? event.triggerId}</p>
+						<p>{describe(event, current.layerId, current.ordinal)}</p>
+					</div>
+				))}
 			</div>
 		)
 	})
 
-	// decorations contribute data, not markup: the host maps tints onto its own row styling
+	// decorations contribute data, not markup: the host renders the alert and owns its styling
 	Decorations.register(ctx, 'match-history:row', {
 		stores: (props) => [activeEvents(props.serverId)],
-		select: (events: S.TriggerEvent[] | undefined, props) => {
-			const event = events?.find((e) => e.matchTriggeredId === props.matchId)
-			if (!event) return null
-			return { tint: event.level, title: `balance trigger: ${event.triggerId}` }
-		},
+		// one per event, as the native alert stack did: a match can trip more than one trigger
+		select: (state: { events: S.TriggerEvent[] } | undefined, props) =>
+			(state?.events ?? [])
+				.filter((e) => e.matchTriggeredId === props.matchId)
+				.map((event) => ({
+					tint: event.level,
+					title: TR.TRIGGERS.find((t) => t.id === event.triggerId)?.name ?? event.triggerId,
+					body: describe(event, props.layerId, props.ordinal),
+				})),
 	})
 })

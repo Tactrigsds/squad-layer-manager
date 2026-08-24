@@ -88,6 +88,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 		<Card className="flex flex-col flex-1 min-h-0 @container">
 			<ScrollArea className="flex-1">
 				<MatchHistoryPanelContent stores={props.stores} />
+				<PluginSlot anchor="server-dashboard:alerts" anchorProps={{ serverId }} />
 				<Separator />
 				<div className="bg-background" ref={headerRef}>
 					<TabBar
@@ -164,7 +165,6 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 						>
 							<IngameVoteAlert stores={props.stores} />
 							<SlmUpdatesDisabledAlert stores={props.stores} />
-							<PluginSlot anchor="server-dashboard:alerts" anchorProps={{ serverId }} />
 							{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
 							<div data-tour="queue-panel">
 								<QueuePanelContent stores={props.stores} />

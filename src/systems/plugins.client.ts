@@ -49,11 +49,13 @@ export type SlotAnchorId = keyof SlotAnchors
 
 // decorations contribute data, not markup: the host maps tints onto its own styling
 export type Tint = 'info' | 'warn' | 'violation'
-export type Decoration = { tint?: Tint; badge?: string; title?: string }
+export type Decoration = { tint?: Tint; title?: string; body?: string }
 // what a host anchor renders: the plugin's decoration plus which registration produced it
 export type DecorationEntry = Decoration & { regKey: string }
 export type DecorationAnchors = {
-	'match-history:row': { serverId: string; matchId: number }
+	// layerId and ordinal come along because a decoration describing the match needs them to name a
+	// side: which faction a normalized team held depends on both
+	'match-history:row': { serverId: string; matchId: number; layerId: string; ordinal: number }
 }
 export type DecorationAnchorId = keyof DecorationAnchors
 
@@ -64,7 +66,7 @@ type DecorationReg = {
 	pluginId: string
 	regKey: string
 	stores: (props: any) => Zus.AnyInput<any>[]
-	select: (...args: any[]) => Decoration | null | undefined
+	select: (...args: any[]) => Decoration | Decoration[] | null | undefined
 }
 
 // version bumps whenever the registration set changes; consumers re-subscribe off it. `manifests`
@@ -121,8 +123,9 @@ export function registerDecoration<A extends DecorationAnchorId>(
 	anchor: A,
 	reg: {
 		stores: (props: DecorationAnchors[A]) => Zus.AnyInput<any>[]
-		// called as select(...storeStates, props)
-		select: (...args: any[]) => Decoration | null | undefined
+		// called as select(...storeStates, props). Return several when one registration has several
+		// things to say about the same row; the host renders one of each.
+		select: (...args: any[]) => Decoration | Decoration[] | null | undefined
 	},
 ) {
 	pushReg(decoRegs, anchor, ctx.plugin.id, { pluginId: ctx.plugin.id, regKey: nextRegKey(ctx.plugin.id), ...reg })
@@ -281,8 +284,10 @@ export function useDecorations<A extends DecorationAnchorId>(anchor: A, props: D
 		for (const reg of decoRegs.get(anchor) ?? []) {
 			const states = reg.stores(props).map(readInput)
 			try {
-				const deco = reg.select(...states, props)
-				if (deco) decos.push({ ...deco, regKey: reg.regKey })
+				const selected = reg.select(...states, props)
+				const list = Array.isArray(selected) ? selected : selected ? [selected] : []
+				// the index keeps React keys distinct when one registration contributes several
+				list.forEach((deco, i) => decos.push({ ...deco, regKey: `${reg.regKey}:${i}` }))
 			} catch {
 				// a selector tripping over a pending state reads as no decoration
 			}

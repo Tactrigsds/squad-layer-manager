@@ -5,6 +5,7 @@ import React from 'react'
 import { contextMenuSlots } from '@/components/player-context-menu-options'
 import { ServerActionMenuItems } from '@/components/server-actions-dropdown'
 import { getTeamsDisplay } from '@/components/teams-display'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Table, TableBody, TableCell as ShadcnTableCell, TableHead as ShadcnTableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -337,6 +338,8 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 	const decorations = PluginsClient.useDecorations('match-history:row', {
 		serverId: stores.squadServer!.serverId,
 		matchId: entry.historyEntryId,
+		layerId: entry.layerId,
+		ordinal: entry.ordinal,
 	})
 	const rowTint = topTint(decorations)
 
@@ -518,17 +521,26 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 											{React.createElement(TINT_DISPLAY[rowTint].icon, { className: 'h-4 w-4' })}
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent side="right" className="w-auto flex flex-col gap-1">
-										{decorations.map((deco) => (
-											<span key={deco.regKey}>
-												{deco.badge && (
-													<Badge variant="outline" className="mr-1">
-														{deco.badge}
-													</Badge>
-												)}
-												{deco.title}
-											</span>
-										))}
+									<TooltipContent
+										side="right"
+										className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
+									>
+										{[...decorations]
+											.sort((a, b) => (b.tint ? TINT_PRIORITY[b.tint] : 0) - (a.tint ? TINT_PRIORITY[a.tint] : 0))
+											.map((deco) => {
+												const display = deco.tint ? TINT_DISPLAY[deco.tint] : undefined
+												return (
+													<Alert key={deco.regKey} variant={display?.variant} className="w-full bg-background! rounded-none">
+														{deco.title && (
+															<AlertTitle className="flex items-center space-x-2">
+																{display && React.createElement(display.icon, { className: 'h-4 w-4 mr-2' })}
+																{deco.title}
+															</AlertTitle>
+														)}
+														{deco.body && <AlertDescription>{deco.body}</AlertDescription>}
+													</Alert>
+												)
+											})}
 									</TooltipContent>
 								</Tooltip>
 							)}
@@ -557,10 +569,25 @@ function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowP
 }
 
 const TINT_DISPLAY = {
-	violation: { icon: Icons.AlertOctagon, text: 'text-red-500', bg: 'bg-red-500/10', hoverBg: 'hover:bg-red-500/20' },
-	warn: { icon: Icons.AlertTriangle, text: 'text-yellow-500', bg: 'bg-yellow-500/10', hoverBg: 'hover:bg-yellow-500/20' },
-	info: { icon: Icons.Info, text: 'text-blue-500', bg: 'bg-blue-500/10', hoverBg: 'hover:bg-blue-500/20' },
-} satisfies Record<PluginsClient.Tint, unknown>
+	violation: {
+		icon: Icons.AlertOctagon,
+		variant: 'destructive',
+		text: 'text-red-500',
+		bg: 'bg-red-500/10',
+		hoverBg: 'hover:bg-red-500/20',
+	},
+	warn: {
+		icon: Icons.AlertTriangle,
+		variant: 'warning',
+		text: 'text-yellow-500',
+		bg: 'bg-yellow-500/10',
+		hoverBg: 'hover:bg-yellow-500/20',
+	},
+	info: { icon: Icons.Info, variant: 'info', text: 'text-blue-500', bg: 'bg-blue-500/10', hoverBg: 'hover:bg-blue-500/20' },
+} satisfies Record<
+	PluginsClient.Tint,
+	{ icon: unknown; variant: 'destructive' | 'warning' | 'info'; text: string; bg: string; hoverBg: string }
+>
 
 const TINT_PRIORITY: Record<PluginsClient.Tint, number> = { violation: 3, warn: 2, info: 1 }
 

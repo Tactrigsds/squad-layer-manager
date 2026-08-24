@@ -145,7 +145,7 @@ change (major bump); added lines are additive (minor bump). See src/scripts/plug
 - `DecorationAnchorId` — type
 - `DecorationAnchors` — type
 - `Tint` — type
-- `register` — value: <A extends DecorationAnchorId>(ctx: ClientCtx<any>, anchor: A, reg: { stores: (props: DecorationAnchors[A]) => AnyInput<any>[]; select: (...args: any[]) => Decoration | null | undefined; }) => void
+- `register` — value: <A extends DecorationAnchorId>(ctx: ClientCtx<any>, anchor: A, reg: { stores: (props: DecorationAnchors[A]) => AnyInput<any>[]; select: (...args: any[]) => Decoration[] | Decoration | null | undefined; }) => void
 
 ## slm/plugin
 
