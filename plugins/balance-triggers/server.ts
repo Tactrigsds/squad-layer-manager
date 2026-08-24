@@ -37,10 +37,15 @@ export const router = {
 		const events$ = Rx.merge(Rx.of(context.serverId), update$).pipe(
 			Rx.filter((serverId) => serverId === context.serverId),
 			Rx.switchMap(async () => {
+				const history = await MatchHistory.getRecentMatches(context)
 				const current = await MatchHistory.getCurrentMatch(context)
+				// the alert speaks about the match just played, so it needs to know which that was: every
+				// event still in the session is streamed, because the match history decorates all of them
+				const lastPlayed = history.findLast((m) => m.status === 'post-game')
 				return {
 					events: await activeEvents(context),
 					current: current ? { layerId: current.layerId, ordinal: current.ordinal } : null,
+					lastPlayedMatchId: lastPlayed?.historyEntryId ?? null,
 				}
 			}),
 		)
