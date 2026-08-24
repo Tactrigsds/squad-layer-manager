@@ -2,21 +2,25 @@ import { eq } from 'drizzle-orm'
 import * as z from 'zod'
 
 import type * as P from 'slm/plugin'
-import type { PluginMigration } from 'slm/plugin'
+import { defineTables, type PluginMigration } from 'slm/plugin'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
 import * as AppEventsSys from 'slm/systems/app-events'
 import * as MatchHistory from 'slm/systems/match-history'
 
-import type manifest from './plugin.ts'
+import manifest from './plugin.ts'
 import * as S from './schema.ts'
+
+// built from the manifest the way schema.ts does, with the unprefixed name spelled out here so a
+// later rename cannot reach back and change what this migration did
+const greetings = defineTables(manifest).name('greetings')
 
 export const migrations: PluginMigration[] = [
 	{
 		name: '0001_init',
 		up: (db) => {
-			db.exec(`CREATE TABLE IF NOT EXISTS p_hello_greetings (
+			db.exec(`CREATE TABLE IF NOT EXISTS ${greetings} (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				serverId TEXT NOT NULL,
 				text TEXT NOT NULL,
