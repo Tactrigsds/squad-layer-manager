@@ -12,7 +12,6 @@ import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as SetUtils from '@/lib/set-utils'
 import * as Zus from '@/lib/zustand'
-import * as BAL from '@/models/balance-triggers.models'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import * as CMD from '@/models/command.models'
@@ -83,7 +82,6 @@ const namespaces = {
 	VoteClient,
 
 	// models
-	BAL,
 	BM,
 	CHAT,
 	CMD,

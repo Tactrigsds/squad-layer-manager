@@ -67,6 +67,11 @@ function getOpDurationHistogram() {
 	return opDuration
 }
 
+/**
+ * Wraps a function so each call is a traced span, with duration recorded and errors marked. `opts.mutexes`
+ * takes locks for the call's lifetime, in the order given. Most exported operations in SLM are built with
+ * it, and a plugin's should be too, so its work appears in the same traces.
+ */
 export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
 	opts: {

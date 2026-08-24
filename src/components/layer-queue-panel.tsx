@@ -522,6 +522,7 @@ function DisabledReason(props: { reason: SETTINGS.SlmUpdatesDisabled }) {
 		case 'ingame-user':
 			return <>{tr.text(LL_Msgs.disabledByIngameAdmin())}</>
 		case 'system':
+		case 'plugin':
 			return <>{tr.text(LL_Msgs.disabledBySlm())}</>
 		case undefined:
 			return <>{tr.text(LL_Msgs.disabledByUnrecorded())}</>

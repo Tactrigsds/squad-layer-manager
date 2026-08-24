@@ -10,6 +10,8 @@
 		"lint:fix": "oxlint --type-aware --fix-suggestions --fix-dangerously",
 		"preview": "vite preview",
 		"check": "tsc -b",
+		"api:report": "tsx --tsconfig tsconfig.node.json src/scripts/plugin-api-report.ts generate",
+		"api:report:check": "tsx --tsconfig tsconfig.node.json src/scripts/plugin-api-report.ts check",
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
 		"i18n:extract": "tsx --tsconfig tsconfig.node.json src/scripts/extract-messages.ts",
@@ -58,7 +60,8 @@
 		"test:ci": "pnpm run test:integration && pnpm run test:e2e:ci",
 		"build:engine": "cd layer-engine && cargo build --release --target wasm32-unknown-unknown && cd .. && mkdir -p assets && cp layer-engine/target/wasm32-unknown-unknown/release/layer_engine.wasm assets/layer-engine.wasm",
 		"build:agent": "cargo build --release --manifest-path server-agent/agent/Cargo.toml",
-		"build:all": "pnpm run build:engine && pnpm run build:prod"
+		"build:all": "pnpm run build:engine && pnpm run build:prod",
+		"plugin:pack": "tsx --tsconfig tsconfig.node.json src/scripts/pack-plugin.ts"
 	},
 	"dependencies": {
 		"@codemirror/autocomplete": "^6.20.3",

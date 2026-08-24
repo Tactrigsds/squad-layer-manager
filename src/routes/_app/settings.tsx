@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import { PluginsSection } from '@/components/plugins-section'
 import type SchemaYamlEditorComponent from '@/components/schema-yaml-editor'
 import type { SchemaYamlEditorHandle } from '@/components/schema-yaml-editor.types'
 import { useOpenServerConsoleWindow } from '@/components/server-console-window.helpers'
@@ -70,6 +71,7 @@ export const Route = createFileRoute('/_app/settings')({
 
 function RouteComponent() {
 	const manageServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-servers'))
+	const managePluginsDenied = RbacClient.usePermsCheck(RBAC.perm('plugins:manage'))
 	const globalAccess = RbacClient.useGlobalSettingsAccess()
 	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
 	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
@@ -230,6 +232,11 @@ function RouteComponent() {
 									onAddServer={() => setCreatingNonce(createId(4))}
 									onCancelCreate={() => setCreatingNonce(null)}
 								/>
+							</div>
+						)}
+						{(globalAccess.canRead || !managePluginsDenied) && (
+							<div id="section:plugins" className="scroll-mt-2 rounded-xl">
+								<PluginsSection canManage={!managePluginsDenied} />
 							</div>
 						)}
 						{globalAccess.canRead &&

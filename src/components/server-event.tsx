@@ -863,6 +863,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			</EventLine>
 		)
 	}
+	if (appEvent.type === 'PLUGIN_EVENT') {
+		return (
+			<EventLine time={event.time} icon={<Icons.Puzzle className="h-4 w-4 text-slate-400 shrink-0" />}>
+				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
+			</EventLine>
+		)
+	}
 	if (
 		appEvent.type === 'SETTINGS_UPDATED' ||
 		appEvent.type === 'SERVER_REGISTRY_CHANGED' ||

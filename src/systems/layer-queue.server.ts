@@ -10,12 +10,10 @@ import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
 import * as ZodUtils from '@/lib/zod-utils'
-import * as BAL_Msgs from '@/messages/balance-triggers.messages'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
-import * as BAL from '@/models/balance-triggers.models.ts'
 import * as CS from '@/models/context-shared'
 import type * as F from '@/models/filter.models'
 import * as L from '@/models/layer'
@@ -23,7 +21,7 @@ import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LQY from '@/models/layer-queries.models.ts'
 import type * as LQ from '@/models/layer-queue.models'
-import * as MH from '@/models/match-history.models'
+import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs'
 import * as SE from '@/models/server-events.models'
@@ -47,6 +45,7 @@ import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueriesServer from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared.ts'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Reminders from '@/systems/post-roll-reminders.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -368,6 +367,9 @@ export const setupInstance = Instr.spanOp(
 	},
 )
 
+// how long to leave between one post-roll announcement and the next
+const ANNOUNCEMENT_GAP_MS = 2000
+
 export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
 	const serverId = ctx.serverId
 
@@ -389,51 +391,40 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 
 	// -------- schedule post-roll announcements --------
 	if (SETTINGS.remindersEnabled(ctx.serverSettings.settings)) {
-		const announcementTasks: Rx.Observable<void>[] = []
-		announcementTasks.push(
-			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
-				const historyState = MatchHistory.getPublicMatchHistoryState(ctx)
-				const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-				if (!currentMatch) return
-				const mostRelevantEvent = BAL.getHighestPriorityTriggerEvent(MH.getActiveTriggerEvents(historyState))
-				if (!mostRelevantEvent) return
-				await SquadRcon.warnAllAdmins(ctx, BAL_Msgs.showEvent(mostRelevantEvent, currentMatch, { isCurrent: true }))
-			}),
-		)
+		// what the registered providers have to say right now, then the standing announcements
+		const announcements: (() => Promise<void>)[] = []
 
-		announcementTasks.push(
-			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
-				await warnShowNext(ctx, 'all-admins')
-			}),
-		)
-
-		announcementTasks.push(
-			Rx.Ext.toCold(async () => {
-				const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
-				const queue = getSavedQueue(ctx)
-				const threshold = ctx.serverSettings.settings.queue.lowQueueWarningThreshold
-				if (threshold !== null && queue && queue.length <= threshold) {
-					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length))
-				}
-			}),
-		)
-
-		const withWaits: Rx.Observable<unknown>[] = []
-		withWaits.push(Rx.timer(ctx.serverSettings.settings.postRollAnnouncementsTimeout))
-
-		for (let i = 0; i < announcementTasks.length; i++) {
-			withWaits.push(announcementTasks[i].pipe(Rx.catchError(() => Rx.EMPTY)))
-			if (i !== announcementTasks.length - 1) {
-				withWaits.push(Rx.timer(2000))
+		announcements.push(async () => {
+			const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+			const messages = await Reminders.collect(ctx, log)
+			for (const [i, message] of messages.entries()) {
+				if (i > 0) await Prom.sleep(ANNOUNCEMENT_GAP_MS)
+				await SquadRcon.warnAllAdmins(ctx, message)
 			}
-		}
+		})
 
-		// concat over the observables themselves, not over an observable *of* them: Rx.from(withWaits)
+		announcements.push(async () => {
+			await warnShowNext(SquadServer.resolveCtx(getBaseCtx(), serverId), 'all-admins')
+		})
+
+		announcements.push(async () => {
+			const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+			const queue = getSavedQueue(ctx)
+			const threshold = ctx.serverSettings.settings.queue.lowQueueWarningThreshold
+			if (threshold !== null && queue && queue.length <= threshold) {
+				await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length))
+			}
+		})
+
+		// concat over the observables themselves, not over an observable *of* them: Rx.from(paced)
 		// emits each task as a value and never subscribes to it, so every post-roll announcement was
-		// silently skipped
-		ctx.server.postRollEventsSub.add(Rx.concat(...withWaits).subscribe())
+		// silently skipped. A failing announcement must not take the rest of the chain with it.
+		const paced: Rx.Observable<unknown>[] = [Rx.timer(ctx.serverSettings.settings.postRollAnnouncementsTimeout)]
+		for (const [i, announce] of announcements.entries()) {
+			if (i > 0) paced.push(Rx.timer(ANNOUNCEMENT_GAP_MS))
+			paced.push(Rx.Ext.toCold(announce).pipe(Rx.catchError(() => Rx.EMPTY)))
+		}
+		ctx.server.postRollEventsSub.add(Rx.concat(...paced).subscribe())
 	}
 }
 
@@ -447,6 +438,7 @@ export function externalActor(source: SE.MapSet['source']): { type: 'player'; pl
 }
 
 // get the queue which is synced to the squad server
+/** The committed queue. Edits a user has open but not saved are not in it. */
 export function getSavedQueue(ctx: LQ.Ctx) {
 	return ctx.layerQueue.session.state.savedList
 }
@@ -779,6 +771,7 @@ export async function toggleUpdatesToSquadServer({
 	return { code: 'ok' as const }
 }
 
+/** Whether SLM is currently allowed to push layer changes to the game server, and if not, whether an in-game vote is why. */
 export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS.Ctx & LQ.Ctx) {
 	const serverState = await SquadServer.getServerState(ctx)
 	const disabled = serverState.settings.updatesToSquadServerDisabled
@@ -1142,6 +1135,7 @@ export async function removeBackburnerRequestsFromChat(
 	})
 }
 
+/** The committed backburner: layers set aside rather than queued. Same saved-only rule as getSavedQueue. */
 export function getSavedBackburner(ctx: LQ.Ctx): BB.BackburnerItem[] {
 	return ctx.layerQueue.session.state.savedBackburner
 }
@@ -1169,6 +1163,11 @@ function getForceWriteCandidateLayerIds(state: SLL.State, op: SLL.Operation): L.
 	}
 }
 
+/**
+ * Applies a queue operation: the same path the web client's edits go through, so a plugin's edit is an
+ * ordinary edit and produces the same side effects, app events and client updates. Rejected ops are
+ * logged and dropped rather than thrown.
+ */
 export const dispatchOp = Instr.spanOp(
 	'dispatchOp',
 	{

@@ -121,6 +121,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY src ./src
 COPY test ./test
 COPY drizzle ./drizzle
+COPY plugins ./plugins
 # the launcher both suites go through. It finds SLM_TEST_SERVER_ENTRY already set below and builds nothing,
 # which is what keeps this image testing the bundle it ships rather than a rebuild of it.
 COPY scripts/test-server-bundle.mjs ./scripts/

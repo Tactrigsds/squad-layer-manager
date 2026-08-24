@@ -12,25 +12,22 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as DH from '@/lib/display-helpers'
-import { assertNever } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as MH_Msgs from '@/messages/match-history.messages'
-import * as BAL from '@/models/balance-triggers.models'
 import * as L from '@/models/layer'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as DndKit from '@/systems/dndkit.client'
-import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
-import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import LayerContextMenuOptions from './layer-context-menu-options'
 import LayerSourceDisplay from './layer-source-display'
@@ -46,12 +43,11 @@ const MATCH_LIMIT = 8
 
 export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyProp }) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const featureFlags = FeatureFlags.useFeatureFlags()
 	const historyState = MatchHistoryClient.useMatchHistoryState(props.stores.squadServer!.serverId)
 	const history = historyState.recentMatches
 	const [showFullDay, setShowFullDay] = React.useState(false)
 	type MatchesByDate = [string, MH.MatchDetails[]][]
-	const [currentStreak, matchesByDate, currentMatchOrdinal] = React.useMemo(() => {
+	const [matchesByDate, currentMatchOrdinal] = React.useMemo(() => {
 		const matchesByDate: MatchesByDate = []
 
 		// We can't resolve a day of matches without any previous dates to go by so we just skip those
@@ -89,7 +85,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 		}
 
 		const currentMatchOrdinal = history[history.length - 1]?.ordinal ?? 0
-		return [BAL.getCurrentStreak(history), matchesByDate, currentMatchOrdinal]
+		return [matchesByDate, currentMatchOrdinal]
 	}, [history])
 
 	// -------- Page-based navigation --------
@@ -216,25 +212,9 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 							<TableHead className="text-right px-0.5"></TableHead>
 							<TableHead className="hidden @[820px]:table-cell">{tr.text(MH_Msgs.timeColumn())}</TableHead>
 							<TableHead>{tr.text(MH_Msgs.layerColumn())}</TableHead>
-							<TableHead>
-								{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}
-								{globalSettings.displayTeamsNormalized &&
-									currentStreak &&
-									currentStreak.length > 1 &&
-									currentStreak.team === 'teamA' && (
-										<span className="text-green-600 font-medium ml-1">{tr.text(MH_Msgs.winStreak(currentStreak.length))}</span>
-									)}
-							</TableHead>
+							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'A' : 1))}</TableHead>
 							<TableHead className="text-center">{tr.text(MH_Msgs.outcomeColumn())}</TableHead>
-							<TableHead>
-								{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2))}
-								{globalSettings.displayTeamsNormalized &&
-									currentStreak &&
-									currentStreak.length > 1 &&
-									currentStreak.team === 'teamB' && (
-										<span className="text-green-600 font-medium ml-1">{tr.text(MH_Msgs.winStreak(currentStreak.length))}</span>
-									)}
-							</TableHead>
+							<TableHead>{tr.text(L_Msgs.teamName(globalSettings.displayTeamsNormalized ? 'B' : 2))}</TableHead>
 							<TableHead className="text-center px-0.5" title={tr.text(MH_Msgs.layerIndicatorsColumn())}>
 								<div className="flex flex-row justify-end items-center">
 									<Icons.Flag />
@@ -279,21 +259,14 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 										</TableCell>
 									</TableRow>
 								)}
-								{displayedEntries.map((entry) => {
-									const balanceTriggerEvents = historyState.recentBalanceTriggerEvents.filter(
-										(event) => event.matchTriggeredId === entry.historyEntryId,
-									)
-									return (
-										<MatchHistoryRow
-											key={entry.historyEntryId}
-											entry={entry}
-											currentMatchOffset={entry.ordinal - currentMatchOrdinal}
-											balanceTriggerEvents={balanceTriggerEvents}
-											debug__showBalanceTriggers={featureFlags.showMockBalanceTriggers}
-											stores={props.stores}
-										/>
-									)
-								})}
+								{displayedEntries.map((entry) => (
+									<MatchHistoryRow
+										key={entry.historyEntryId}
+										entry={entry}
+										currentMatchOffset={entry.ordinal - currentMatchOrdinal}
+										stores={props.stores}
+									/>
+								))}
 							</>
 						)}
 					</TableBody>
@@ -306,12 +279,10 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 interface MatchHistoryRowProps {
 	entry: MH.MatchDetails
 	currentMatchOffset: number
-	balanceTriggerEvents: BAL.BalanceTriggerEvent[]
-	debug__showBalanceTriggers?: boolean
 	stores: SquadServerFrame.KeyProp
 }
 
-function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debug__showBalanceTriggers, stores }: MatchHistoryRowProps) {
+function MatchHistoryRow({ entry, currentMatchOffset, stores }: MatchHistoryRowProps) {
 	const globalSettings = Zus.useStore(GlobalSettingsStore)
 	const serverRolling = !!SquadServerClient.useServerRolling(stores.squadServer!.serverId)
 	const selectedMatchOrdinalFromStore = Zus.useStore(stores.squadServer!, (s) => s.chat.selectedMatchOrdinal)
@@ -363,25 +334,11 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 	}, [])
 	const statusData = LayerQueriesClient.useLayerItemStatusData(entry.historyEntryId, stores.squadServer)
 
-	const historyEntryId = entry.historyEntryId
-	const effectiveBalanceTriggerEvents = React.useMemo(
-		() => (debug__showBalanceTriggers ? [mockBalanceTriggerEvent(currentMatchOffset, historyEntryId)] : balanceTriggerEvents),
-		[debug__showBalanceTriggers, currentMatchOffset, historyEntryId, balanceTriggerEvents],
-	)
-
-	// Get trigger info for this entry
-	const triggerLevel = BAL.getHighestPriorityTriggerEvent(effectiveBalanceTriggerEvents)?.level
-
-	// Create trigger alerts for this entry
-	const entryTriggerAlerts = React.useMemo(() => {
-		if (effectiveBalanceTriggerEvents.length === 0) return []
-
-		const alerts: React.ReactNode[] = [...effectiveBalanceTriggerEvents]
-			.sort((a, b) => BAL.getTriggerPriority(b.level) - BAL.getTriggerPriority(a.level))
-			.map((event) => <BalanceTriggerAlert key={event.id} className="rounded-none" event={event} referenceMatch={entry} />)
-
-		return alerts
-	}, [effectiveBalanceTriggerEvents, entry])
+	const decorations = PluginsClient.useDecorations('match-history:row', {
+		serverId: stores.squadServer!.serverId,
+		matchId: entry.historyEntryId,
+	})
+	const rowTint = topTint(decorations)
 
 	const violationDisplayElt = statusData && (
 		<ConstraintEvalTooltip
@@ -464,34 +421,12 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 
 	const [leftTeam, rightTeam] = getTeamsDisplay(layer, entry.ordinal, globalSettings.displayTeamsNormalized, extraLayerStyles)
 
-	// Determine trigger icon
-	let TriggerIcon = null
-	let triggerIconColor = ''
-	if (triggerLevel) {
-		switch (triggerLevel) {
-			case 'violation':
-				TriggerIcon = Icons.AlertOctagon
-				triggerIconColor = 'text-red-500'
-				break
-			case 'warn':
-				TriggerIcon = Icons.AlertTriangle
-				triggerIconColor = 'text-yellow-500'
-				break
-			case 'info':
-				TriggerIcon = Icons.Info
-				triggerIconColor = 'text-blue-500'
-				break
-			default:
-				assertNever(triggerLevel)
-		}
-	}
-
 	const gameRuntime =
 		entry.startTime && entry.status === 'post-game' && entry.endTime !== 'unknown'
 			? entry.endTime.getTime() - entry.startTime.getTime()
 			: undefined
 
-	// Determine background color and hover state based on trigger level or current match
+	// Determine background color and hover state based on plugin decorations or current match
 	let bgColor = ''
 	let hoverColor = ''
 	if (isViewingThisMatch && entry.status === 'in-progress') {
@@ -500,15 +435,9 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 	} else if (isViewingThisMatch) {
 		bgColor = 'bg-blue-500/10'
 		hoverColor = 'hover:bg-blue-500/20'
-	} else if (triggerLevel === 'violation') {
-		bgColor = 'bg-red-500/10'
-		hoverColor = 'hover:bg-red-500/20'
-	} else if (triggerLevel === 'warn') {
-		bgColor = 'bg-yellow-500/10'
-		hoverColor = 'hover:bg-yellow-500/20'
-	} else if (triggerLevel === 'info') {
-		bgColor = 'bg-blue-500/10'
-		hoverColor = 'hover:bg-blue-500/20'
+	} else if (rowTint) {
+		bgColor = TINT_DISPLAY[rowTint].bg
+		hoverColor = TINT_DISPLAY[rowTint].hoverBg
 	}
 
 	return (
@@ -582,18 +511,24 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 
 					<TableCell className="text-center">
 						<div className="flex flex-row flex-nowrap group-data-[is-dragging=true]:invisible">
-							{TriggerIcon && entryTriggerAlerts.length > 0 && (
+							{rowTint && (
 								<Tooltip delayDuration={0}>
 									<TooltipTrigger asChild>
-										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${triggerIconColor}`}>
-											<TriggerIcon className="h-4 w-4" />
+										<Button variant="ghost" size="sm" className={`h-6 w-6 p-0 ${TINT_DISPLAY[rowTint].text}`}>
+											{React.createElement(TINT_DISPLAY[rowTint].icon, { className: 'h-4 w-4' })}
 										</Button>
 									</TooltipTrigger>
-									<TooltipContent
-										side="right"
-										className="w-auto overflow-y-auto border-none bg-background rounded-none p-0 text-muted-foreground flex flex-col gap-1"
-									>
-										{entryTriggerAlerts}
+									<TooltipContent side="right" className="w-auto flex flex-col gap-1">
+										{decorations.map((deco) => (
+											<span key={deco.regKey}>
+												{deco.badge && (
+													<Badge variant="outline" className="mr-1">
+														{deco.badge}
+													</Badge>
+												)}
+												{deco.title}
+											</span>
+										))}
 									</TooltipContent>
 								</Tooltip>
 							)}
@@ -619,6 +554,22 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 			</ContextMenuContent>
 		</ContextMenu>
 	)
+}
+
+const TINT_DISPLAY = {
+	violation: { icon: Icons.AlertOctagon, text: 'text-red-500', bg: 'bg-red-500/10', hoverBg: 'hover:bg-red-500/20' },
+	warn: { icon: Icons.AlertTriangle, text: 'text-yellow-500', bg: 'bg-yellow-500/10', hoverBg: 'hover:bg-yellow-500/20' },
+	info: { icon: Icons.Info, text: 'text-blue-500', bg: 'bg-blue-500/10', hoverBg: 'hover:bg-blue-500/20' },
+} satisfies Record<PluginsClient.Tint, unknown>
+
+const TINT_PRIORITY: Record<PluginsClient.Tint, number> = { violation: 3, warn: 2, info: 1 }
+
+function topTint(decorations: PluginsClient.Decoration[]): PluginsClient.Tint | undefined {
+	let top: PluginsClient.Tint | undefined
+	for (const deco of decorations) {
+		if (deco.tint && (!top || TINT_PRIORITY[deco.tint] > TINT_PRIORITY[top])) top = deco.tint
+	}
+	return top
 }
 
 function TableHead({ className = '', ...props }: React.ComponentProps<typeof ShadcnTableHead>) {
@@ -650,23 +601,4 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 			<span className="text-muted-foreground">({matchLengthMinutes ? `${matchLengthMinutes}m` : '???'})</span>
 		</span>
 	)
-}
-
-function mockBalanceTriggerEvent(currentMatchOffset: number, historyEntryId: number): BAL.BalanceTriggerEvent {
-	const triggerLevels: BAL.TriggerWarnLevel[] = ['violation', 'warn', 'info']
-	const level = triggerLevels[Math.abs(currentMatchOffset) % triggerLevels.length]
-	return {
-		id: Math.abs(currentMatchOffset) * 1000 + historyEntryId,
-		level,
-		matchTriggeredId: historyEntryId,
-		triggerId: 'mock-trigger',
-		triggerVersion: 1,
-		strongerTeam: 'teamA',
-		evaluationResult: {
-			code: 'triggered',
-			strongerTeam: 'teamA',
-			messageTemplate: `Mock ${level} trigger for testing`,
-			relevantInput: [],
-		},
-	}
 }

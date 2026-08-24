@@ -26,6 +26,7 @@ export const unnamedActors: Record<AppEvents.Actor['type'], TString> = {
 	'slm-user': t('Admin'),
 	'ingame-user': t('An in-game admin'),
 	system: t('System'),
+	plugin: t('A plugin'),
 }
 
 // -------- the activity feed's app-event lines --------
@@ -337,6 +338,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return `cancelled a player's timeout`
 		case 'MATCH_ENDED':
 			return 'ended the match'
+		case 'PLUGIN_EVENT':
+			return e.message
 		case 'VOTE_STARTED':
 			return `started a vote (${e.choiceCount} ${e.choiceCount === 1 ? 'option' : 'options'})`
 		case 'VOTE_ENDED': {

@@ -55,6 +55,7 @@ import * as m0100 from './0100_scoped_server_entries'
 import * as m0101 from './0101_tutorial_progress'
 import * as m0102 from './0102_tutorial_prompt_dismissals'
 import * as m0103 from './0103_drop_unique_emojis_constraint'
+import * as m0104 from './0104_plugin_system'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -97,4 +98,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0101_tutorial_progress', up: m0101.up },
 	{ name: '0102_tutorial_prompt_dismissals', up: m0102.up },
 	{ name: '0103_drop_unique_emojis_constraint', up: m0103.up },
+	{ name: '0104_plugin_system', up: m0104.up },
 ]

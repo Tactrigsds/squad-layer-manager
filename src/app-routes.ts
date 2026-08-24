@@ -52,6 +52,11 @@ export const routes = [
 	defRoute('/maskable-icon.png', [], 'custom', { authed: false }),
 	defRoute('/manifest.webmanifest', [], 'custom', { authed: false }),
 
+	// the shim modules a packaged plugin's bundles import `slm/*` and the shared packages through, and
+	// the browser-facing files of a packaged plugin. See models/plugin-api-shim.ts.
+	defRoute('/plugin-api/*', [], 'custom'),
+	defRoute('/plugin-assets/*', [], 'custom'),
+
 	defRoute('/layers.bin.gz', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),

@@ -45,6 +45,9 @@ Never import rxjs, zustand or react-rxjs directly. Each is reached through its w
 `ReactRx`), which re-exports the package alongside our own additions. Import other packages directly, since a
 wrapper that adds nothing is just indirection.
 
+Plugins under `plugins/` are the exception for rxjs: they import it directly, because `slm/lib/rxjs-ext` carries
+only our additions and rxjs is not part of the slm API contract.
+
 # Comments
 
 Only write a comment that is _absolutely necessary_: one without which it would be hard to work out what is going

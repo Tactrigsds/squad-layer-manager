@@ -12,12 +12,14 @@ import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerDataClient from '@/systems/layer-data.client'
 import * as MessagesClient from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
+import { INSTALLED_PLUGIN_CLIENTS } from '../plugins/index.ts'
 import { Providers } from './components/providers.tsx'
 import { rootRouter } from './root-router.ts'
 
@@ -41,6 +43,7 @@ await LayerDataClient.setup()
 	BattlemetricsClient.setup()
 	UsersClient.setup()
 	void UserPresenceClient.setup()
+	PluginsClient.setup(INSTALLED_PLUGIN_CLIENTS)
 	console.debug('systems initialized')
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')

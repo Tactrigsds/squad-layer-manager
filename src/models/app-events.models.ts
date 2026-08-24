@@ -32,7 +32,8 @@ export function createAppEventId(): AppEventId {
 export const ActorSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('slm-user'), userId: USR.UserIdSchema }), // web/orpc operator
 	z.object({ type: z.literal('ingame-user'), playerId: SM.PlayerIdSchema }), // chat-command sender (eos)
-	z.object({ type: z.literal('system') }), // automated: roll, balance, schedule, startup
+	z.object({ type: z.literal('system') }), // automated: roll, schedule, startup
+	z.object({ type: z.literal('plugin'), pluginId: z.string() }), // a plugin acting on its own initiative
 ])
 export type Actor = z.infer<typeof ActorSchema>
 
@@ -378,6 +379,17 @@ export const MapSetSchema = event('MAP_SET', {
 })
 export type MapSet = z.infer<typeof MapSetSchema>
 
+// something a plugin wants on the record. `name` scopes within the plugin; the payload is the plugin's
+// own shape, carried opaquely (a plugin's schema is not ours to validate on read).
+export const PluginEventSchema = event('PLUGIN_EVENT', {
+	pluginId: z.string(),
+	name: z.string(),
+	payload: z.unknown(),
+	// one line for the feed/audit log; plugins render their own richer UI elsewhere
+	message: z.string(),
+})
+export type PluginEvent = z.infer<typeof PluginEventSchema>
+
 export const AppEventSchema = z.discriminatedUnion('type', [
 	PlayerWarnedSchema,
 	SquadDisbandedSchema,
@@ -411,6 +423,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	AppRestartedSchema,
 	BackupCreatedSchema,
 	MapSetSchema,
+	PluginEventSchema,
 ])
 export type AppEvent = z.infer<typeof AppEventSchema>
 
@@ -464,6 +477,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'APP_STARTED':
 		case 'APP_RESTARTED':
 		case 'BACKUP_CREATED':
+		case 'PLUGIN_EVENT':
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]
@@ -718,6 +732,7 @@ export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 		actorType: actor.type,
 		actorUserId: actor.type === 'slm-user' ? actor.userId : null,
 		actorPlayerId: actor.type === 'ingame-user' ? actor.playerId : null,
+		actorPluginId: actor.type === 'plugin' ? actor.pluginId : null,
 		serverId,
 		matchId,
 		causeId,
@@ -742,7 +757,9 @@ export function fromRow(row: SchemaModels.AppEvent): AppEvent | null {
 			? { type: 'slm-user', userId: row.actorUserId }
 			: row.actorType === 'ingame-user'
 				? { type: 'ingame-user', playerId: row.actorPlayerId }
-				: { type: 'system' }
+				: row.actorType === 'plugin'
+					? { type: 'plugin', pluginId: row.actorPluginId }
+					: { type: 'system' }
 	const candidate = {
 		...(payload as object),
 		id: row.id,

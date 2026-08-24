@@ -17,5 +17,5 @@
 		"noEmit": true,
 		"jsx": "react-jsx"
 	},
-	"include": ["src", "drizzle", "test"]
+	"include": ["src", "drizzle", "test", "plugins"]
 }
