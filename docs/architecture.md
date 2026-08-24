@@ -645,6 +645,11 @@ names: `plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mj
 folder and runs the local copy, so a plugin keeps working when its origin does not; refresh is the only thing that
 fetches again, and a directory placed there by hand is picked up by rescan.
 
+**In dev, every other directory under `plugins/` is loaded from source too**, so a plugin author's own repo cloned
+in there runs with nothing to register: `tsx watch` on the server, vite's own module graph on the client, which is
+where a plugin's HMR comes from. Discovery is dev-only on both halves, the client's through a virtual module rather
+than a glob guarded on `import.meta.env.DEV`, since a glob's imports are real and survive into a build.
+
 **A package carries no copy of SLM.** Its bundles import `slm/*`, rxjs, zod, drizzle-orm and react as bare
 specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
 through a `module.registerHooks` resolver, in the browser through the import map in `index.html` and the
