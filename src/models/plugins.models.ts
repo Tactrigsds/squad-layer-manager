@@ -159,8 +159,9 @@ export const INSTALL_RECORD_FILE = '.slm-install.json'
 export const InstallRecordSchema = z.object({
 	sourceUrl: z.url(),
 	installedAt: z.number(),
-	// relative path -> sha256, recorded at fetch time. Trust on first use: this pins what was
-	// installed so a refresh can report what changed, and is not a signature.
+	// relative path -> sha256, recorded at fetch time and not read back by anything yet. A record of
+	// what this install pulled down, for an admin comparing it against the source by hand; not a
+	// signature, and not checked on refresh, which overwrites whatever the url serves now.
 	files: z.record(z.string(), z.string()),
 })
 export type InstallRecord = z.infer<typeof InstallRecordSchema>
