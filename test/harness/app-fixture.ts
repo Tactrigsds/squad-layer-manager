@@ -561,6 +561,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		...otelEnv,
 		DB_PATH: dbPath,
 		DB_AUTOMIGRATE: 'false',
+		// per-fixture, so an installed package cannot leak into the checkout's data directory or another run
+		PLUGINS_DIR: path.join(tmpDir, 'plugins'),
 		PORT: String(appPort),
 		HOST: '127.0.0.1',
 		ORIGIN: appUrl,

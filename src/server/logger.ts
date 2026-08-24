@@ -16,6 +16,7 @@ import * as ATTRS from '@/models/otel-attrs'
 import * as Env from './env'
 export let baseLogger!: CS.Logger
 
+/** Names a logger for a subsystem. A plugin's ctx.log is already a child of its own module logger. */
 export function initModule(name: string): OtelModule {
 	// memoized: spanOp calls getLogger() on every invocation, and each pino child allocation also
 	// invalidates the bindings cache below, which is keyed on the logger instance.

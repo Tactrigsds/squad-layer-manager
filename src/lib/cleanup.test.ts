@@ -97,4 +97,61 @@ describe('runCleanup', () => {
 		expect(order).toEqual(['ran'])
 		expect(errors).toHaveLength(1)
 	})
+
+	// a task holds whatever its closure captured, and the list often outlives the drain
+	it('drops each task once it has run, so a second drain is a no-op', async () => {
+		const { ctx } = testCtx()
+		let runs = 0
+		const tasks: Cleanup.Tasks = [() => void runs++, () => void runs++]
+
+		await Cleanup.runCleanup(ctx, tasks)
+		expect(runs).toBe(2)
+		expect(tasks).toEqual([null, null])
+
+		await Cleanup.runCleanup(ctx, tasks)
+		expect(runs).toBe(2)
+	})
+
+	it('drops a throwing task too', async () => {
+		const { ctx, errors } = testCtx()
+		const tasks: Cleanup.Tasks = [
+			() => {
+				throw new Error('boom')
+			},
+		]
+		await Cleanup.runCleanup(ctx, tasks)
+		expect(tasks).toEqual([null])
+		expect(errors).toHaveLength(1)
+	})
+})
+
+describe('a list registered in two places', () => {
+	// how a plugin's per-server instance is torn down: whichever of the server or the plugin ends
+	// first runs it, and the other must neither re-run it nor be left holding what it captured
+	it('runs once, on whichever drain reaches it first', async () => {
+		const { ctx } = testCtx()
+		let runs = 0
+		const cleanup: Cleanup.Tasks = [() => void runs++]
+		const server: Cleanup.Tasks = [cleanup]
+		const plugin: Cleanup.Tasks = [cleanup]
+
+		await Cleanup.runCleanup(ctx, server)
+		expect(runs).toBe(1)
+		expect(cleanup).toEqual([null])
+
+		await Cleanup.runCleanup(ctx, plugin)
+		expect(runs).toBe(1)
+	})
+
+	it('empties a nested list through the outer drain', async () => {
+		const { ctx } = testCtx()
+		let runs = 0
+		const inner: Cleanup.Tasks = [() => void runs++]
+		const outer: Cleanup.Tasks = [inner]
+
+		await Cleanup.runCleanup(ctx, outer)
+		expect(runs).toBe(1)
+		expect(inner).toEqual([null])
+		expect(outer).toEqual([null])
+	})
 })

@@ -13,13 +13,9 @@ import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
 import * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
-import * as BAL_Msgs from '@/messages/balance-triggers.messages'
-import * as I18n from '@/messages/i18n'
-import * as BAL from '@/models/balance-triggers.models'
 import * as CHAT from '@/models/chat.models'
-import * as CS from '@/models/context-shared'
+import type * as CS from '@/models/context-shared'
 import * as L from '@/models/layer'
-import * as LOG from '@/models/logs'
 import type * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
@@ -32,7 +28,6 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
-import * as Settings from '@/systems/settings.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UsersClient from '@/systems/users.server'
 
@@ -53,7 +48,7 @@ export function initMatchHistoryContext(event$: SQS.Ctx.Payload['event$'], clean
 		dispatchUpdate: () => update$.next(),
 		parts: { users: [] },
 		recentMatches: [],
-		recentBalanceTriggerEvents: [],
+		finalized$: new IsolatedSubject<{ matchId: number }>(),
 	}
 
 	event$
@@ -67,16 +62,16 @@ export function initMatchHistoryContext(event$: SQS.Ctx.Payload['event$'], clean
 		)
 		.subscribe()
 
-	cleanup.push(ctx.update$, ctx.mtx)
+	cleanup.push(ctx.update$, ctx.finalized$, ctx.mtx)
 
 	return ctx
 }
 
+/** The recent window plus the user records its entries refer to. Read directly, no mutex. */
 export function getPublicMatchHistoryState(ctx: MH.Ctx): MH.PublicMatchHistoryState & Parts<USR.UserPart> {
 	const state = ctx.matchHistory
 	return {
 		recentMatches: state.recentMatches,
-		recentBalanceTriggerEvents: state.recentBalanceTriggerEvents,
 		parts: state.parts,
 	}
 }
@@ -100,7 +95,7 @@ export const loadState = Instr.spanOp(
 					.limit(MH.MAX_RECENT_MATCHES),
 			)
 
-		const [rows, balanceTriggerRows, eventRows] = await Promise.all([
+		const [rows, eventRows] = await Promise.all([
 			ctx
 				.db()
 				.with(recentMatchesCte)
@@ -112,14 +107,6 @@ export const loadState = Instr.spanOp(
 				.db()
 				.with(recentMatchesCte)
 				.select({
-					balanceTriggerEvents: Schema.balanceTriggerEvents,
-				})
-				.from(Schema.balanceTriggerEvents)
-				.innerJoin(recentMatchesCte, E.eq(Schema.balanceTriggerEvents.matchTriggeredId, recentMatchesCte.id)),
-			ctx
-				.db()
-				.with(recentMatchesCte)
-				.select({
 					serverEvents: Schema.serverEvents,
 					matchId: recentMatchesCte.id,
 				})
@@ -127,12 +114,7 @@ export const loadState = Instr.spanOp(
 				.innerJoin(recentMatchesCte, E.eq(Schema.serverEvents.matchId, recentMatchesCte.id)),
 		])
 
-		log.info(
-			'found %d match history rows, %d balance trigger events, %d server events',
-			rows.length,
-			balanceTriggerRows.length,
-			eventRows.length,
-		)
+		log.info('found %d match history rows, %d server events', rows.length, eventRows.length)
 
 		rows.reverse()
 		const currentMatchId = rows[rows.length - 1]?.recent_matches.id
@@ -165,10 +147,6 @@ export const loadState = Instr.spanOp(
 			})
 		}
 
-		for (const row of balanceTriggerRows) {
-			Arr.upsertOn(state.recentBalanceTriggerEvents, unsuperjsonify(Schema.balanceTriggerEvents, row.balanceTriggerEvents), 'id')
-		}
-
 		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
 			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
 		}
@@ -197,6 +175,10 @@ export const initState = Instr.spanOp(
 	},
 )
 
+/**
+ * The in-memory window of recent matches for this server, oldest first, capped at
+ * MAX_RECENT_MATCHES. The last entry is the current match, which may still be in progress.
+ */
 export const getRecentMatches = Instr.spanOp(
 	'getRecentMatches',
 	{
@@ -209,6 +191,7 @@ export const getRecentMatches = Instr.spanOp(
 	},
 )
 
+/** The match in progress, or the most recently finished one. Undefined on a server with no history. */
 export const getCurrentMatch = Instr.spanOp(
 	'getCurrentMatch',
 	{
@@ -221,6 +204,7 @@ export const getCurrentMatch = Instr.spanOp(
 	},
 )
 
+/** Looks only in the recent window, not the database: null for anything older than it holds. */
 export const getMatchById = Instr.spanOp(
 	'getMatchById',
 	{
@@ -568,42 +552,11 @@ export const finalizeCurrentMatch = Instr.spanOp(
 				.where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
 			await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
 
-			// -------- look for tripped balance triggers --------
-			for (const [trigId, level] of Object.entries(Settings.GLOBAL_SETTINGS.balanceTriggerLevels)) {
-				let inputStored: any
-				const trig = BAL.TRIGGERS[trigId as BAL.TriggerId]
-				try {
-					log.info('Evaluating trigger %s', trig.id)
-					const input = trig.resolveInput({ history: ctx.matchHistory.recentMatches })
-					inputStored = input
-					const res = trig.evaluate(
-						{ ...CS.init(), ...ctx, log: LOG.getSubmoduleLogger(`balance-trigger-eval::${trig.id}`, log) },
-						input,
-					)
-					if (!res) continue
-					const event = {
-						strongerTeam: res.strongerTeam,
-						level: level,
-						triggerId: trig.id,
-						triggerVersion: trig.version,
-						matchTriggeredId: currentMatch.historyEntryId,
-						evaluationResult: res,
-					}
-					const [{ id }] = await ctx
-						.db()
-						.insert(Schema.balanceTriggerEvents)
-						.values(superjsonify(Schema.balanceTriggerEvents, event))
-						.returning({ id: Schema.balanceTriggerEvents.id })
-					log.info('Trigger %s fired: message: "%s"', trig.id, I18n.ambient.text(BAL_Msgs.showEvent({ ...event, id }, currentMatch)))
-				} catch (err) {
-					log.error(err, 'Error evaluating trigger %s input: %s', trig.id, JSON.stringify(inputStored ?? null))
-				}
-			}
-			await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
-			return { code: 'ok' as const }
+			return { code: 'ok' as const, matchId: currentMatch.historyEntryId }
 		})
 		if (res.code !== 'ok') return res
 		addReleaseTask(ctx.matchHistory.dispatchUpdate)
+		addReleaseTask(() => ctx.matchHistory.finalized$.next({ matchId: res.matchId }))
 		return { ...res }
 	},
 )

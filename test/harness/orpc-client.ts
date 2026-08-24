@@ -19,7 +19,7 @@ export type TestOrpcClient = RouterClient<OrpcAppRouter> & { close: () => void }
 // run-level error even though every test passed. Let the client live for the fixture's lifetime -- disposing the
 // app takes the connection down with the process it belonged to. `close` exists for tests that outlive their app.
 
-async function sessionCookie(app: AppFixture, user: TestUser): Promise<string> {
+export async function sessionCookie(app: AppFixture, user: TestUser = ADMIN_USER): Promise<string> {
 	const res = await fetch(`${app.appUrl}${AR.route('/check-auth')}?login=${encodeURIComponent(user.username)}`, {
 		redirect: 'manual',
 	})

@@ -24,7 +24,7 @@ export const GLOBAL_SETTINGS_GROUPS: SettingsGroup[] = [
 		keys: ['adminActionReasons', 'requireReasonFor', 'messageVariables', 'chat'],
 	},
 	{ slug: 'commands', label: 'In-game Commands', keys: ['allowedPrefixes', 'defaultPrefix', 'commands'] },
-	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote', 'balanceTriggerLevels'] },
+	{ slug: 'players', label: 'Players & Balance', keys: ['playerGroupings', 'playerFlagsRequiringNote'] },
 	{ slug: 'layers', label: 'Layers', keys: ['layerTags', 'layerTable', 'layerGeneration'] },
 	{
 		slug: 'misc',
@@ -77,7 +77,6 @@ export const LOCAL_YAML_EDITOR_PATHS: ReadonlySet<string> = new Set([
 	'layerTags',
 	'layerTable',
 	'layerGeneration',
-	'balanceTriggerLevels',
 	'chat',
 	// server
 	'queue',

@@ -16,6 +16,7 @@ and this document disagree, the code wins. Individual modules document their own
 - [Messages and locales](#messages-and-locales)
 - [The layer engine (rust/wasm)](#the-layer-engine-rustwasm)
 - [Data and persistence](#data-and-persistence)
+- [Plugins](#plugins)
 - [Observability](#observability)
 - [Testing](#testing)
 - [Browser support](#browser-support)
@@ -611,6 +612,92 @@ latency bug and failing the write would be worse.
 
 **Secrets** are read from a mounted `.env.secrets` file rather than `process.env`, switched by `secret: true` in the
 env schema's `.meta()`. Connection secrets are sealed at the db boundary only, and always plaintext in memory.
+
+## Plugins
+
+Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`,
+imported by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a
+client entry and migrations. They import the core exclusively through the `slm/*` alias, which resolves to the
+curated entry files in `src/plugin-api/`. Each entry names its exports explicitly, so joining the contract is a
+deliberate act: lifecycle and host-wiring functions (`setLayerData`, `registerQueryClient`, row conversion,
+`persistAppEvent`) are reachable in core and absent here. A few entries add plugin-shaped adapters instead
+(`slm/plugin/*`, `AppEvents.emit`, `PostRollReminders.register`). Third-party packages stay out: `slm/lib/rxjs-ext`
+exposes our rxjs additions and nothing else, and a plugin imports `rxjs` itself, which carries its own semver. One
+tsconfig path covers tsc, tsx and the rolldown server bundle; vite and vitest carry a hand-written alias.
+
+**The plugin way is the core way.** A plugin gets a real ctx (`P.Ctx`: log, db, signal, cleanup, plus `ctx.plugin`
+for identity) and uses the same idioms core systems do: `durableSub` pipelines, `Cleanup.Tasks`, watch streams.
+`Servers.setup(ctx, cb)` runs `cb` once per managed server, now and future, with a cleanup scoped to the
+(plugin, server) pair -- it runs on server teardown or plugin stop, whichever comes first.
+
+The host (`src/systems/plugins.server.ts`) owns lifecycle (inactive → activating → active → stopping, or errored),
+serialized behind one mutex. Activation failures (bad config, failed migration, thrown `activate`) land the plugin
+in `errored` and are never boot-fatal. ESM cannot unload, so deactivation tears down subscriptions and registrations
+but the old module graph stays resident; re-activation reuses it.
+
+**A plugin arrives one of two ways.** A builtin is registered statically in `plugins/index.server.ts` and lives in
+the app bundle. A packaged plugin is a directory under `PLUGINS_DIR` (default `data/plugins`, which a deployment
+already mounts, so plugins survive an image upgrade), holding a `plugin.json` plus the prebuilt esm bundles it
+names: `plugin.mjs` (the manifest, mirroring an in-repo `plugin.ts`), `server.mjs`, and optionally `client.mjs`.
+`pnpm plugin:pack <dir>` builds one from ordinary plugin source. Installing from a url downloads into that same
+folder and runs the local copy, so a plugin keeps working when its origin does not; refresh is the only thing that
+fetches again, and a directory placed there by hand is picked up by rescan.
+
+**A package carries no copy of SLM.** Its bundles import `slm/*`, rxjs, zod, drizzle-orm and react as bare
+specifiers, and the host resolves each to a generated shim module re-exporting its own instance: on the server
+through a `module.registerHooks` resolver, in the browser through the import map in `index.html` and the
+`/plugin-api/*` route. That is what keeps one zod (or `configSchema instanceof z.ZodObject` fails) and one React
+(or hooks break) in play. The export names come from `models/plugin-api-exports.ts`, generated beside the API
+report, since the server serves the browser's shims but cannot import the client entries to enumerate them.
+
+**Upgrades cross a line ESM cannot.** Every bundle url carries its content hash, so a refreshed package is a new
+module and the server gets a clean graph, with the old one resident but unreachable. A page that already evaluated
+the previous client bundle cannot do the same, so it asks for a reload rather than taking one: an admin may be
+halfway through a queue edit.
+
+**Module scope belongs to one activation, for a packaged plugin.** The server bundle's url also carries an
+activation counter, so starting a stopped plugin evaluates a fresh graph rather than re-running `activate()`
+against what the previous run left behind. A builtin cannot do this, since its modules are in the app bundle:
+there, module scope lasts for the process. Two things follow either way. Nothing is ever reclaimed, because node's
+module map has no eviction and V8 drops the compilation cache only under a GC it never runs on its own, so each
+activation leaves a graph resident; it is bounded by how often an admin restarts a plugin. And a side effect
+started at module scope is outside the lifecycle entirely: teardown undoes what went through `ctx.cleanup`, the
+registration APIs and the abort signal, so a subscription taken at module scope keeps running after the plugin
+stops. Plugin state belongs in `activate()`.
+
+**Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with
+`p_<id>_`, and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`)
+run at activation rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside
+the plugin's prefix. Config lives in the `plugins` table in encoded (`z.input`) shape, validated by the manifest's
+zod schema, and rendered by the same schema-driven settings form as everything else; `PluginConfig.get(ctx)` always
+reads the latest saved value, so config changes need no restart.
+
+**The surface documents itself through JSDoc**, on the declaration rather than the `slm/*` entry: a
+docblock above an `export ... from` reaches nobody, since TypeScript resolves a re-export to its
+original. Documented where a plugin author would otherwise guess wrong (the team1/team2 <-> A/B
+normalization, what `getRecentMatches` holds, `dispatchOp` going through the same path as the web
+client), left alone where the name already says it.
+
+**The contract is versioned mechanically.** `src/plugin-api/api-report.md` is a generated snapshot of every
+export reachable through the slm/* entries, with values carrying their resolved signatures; `pnpm api:report`
+regenerates it and refuses to write unless `API_VERSION` moved to match the diff (changed or removed lines need a
+major bump, added lines at least a minor), judged against origin/main's copy so a branch bumps once. The pre-push
+hook runs `pnpm api:report:check`, which fails on a stale report. The report records exports and signatures, not
+the internal structure of named types; reshaping a model type without renaming it is review's to catch, and the
+report diff is what flags the PR as touching the plugin API at all.
+
+**A plugin's rpc is oRPC.** Its server half builds a router with `Rpc.os<typeof manifest>()`, whose procedures
+receive that plugin's per-server ctx, and registers it. The client is created from the router's _type_
+(`import type { router } from './server.ts'`, erased at compile time), so nothing on the client is annotated by
+hand: `Rpc.client<typeof router>` for plain procedures, `Rpc.stores<typeof router>` for async-generator ones,
+which become keyed families of stores. The router is never mounted on the core router, which is frozen at module
+evaluation; both clients are oRPC clients over a custom link that tunnels through the generic `plugins.rpcCall`
+and `plugins.rpcStream` procedures, and the streaming one keeps `stream$`'s re-projection, so a server coming
+back self-heals the stream.
+
+**Client** entries register into typed anchors: `Slots.register` mounts components at host-placed anchor points
+(each boundary-wrapped) and `Decorations.register` contributes data (tint/badge/title) the host styles itself. The installed set is registered statically in `plugins/index.ts` (client)
+and `plugins/index.server.ts` (server) so both bundles include them.
 
 ## Observability
 

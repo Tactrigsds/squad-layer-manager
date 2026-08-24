@@ -3,7 +3,6 @@ import * as Zus from '@/lib/zustand'
 const FEATURE_FLAGS = {
 	displayWsClientId: false,
 	loadConsole: false,
-	showMockBalanceTriggers: false,
 }
 
 interface FeatureFlagsState {

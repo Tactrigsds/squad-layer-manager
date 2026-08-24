@@ -2,7 +2,9 @@
 	"compilerOptions": {
 		"paths": {
 			"@/*": ["./src/*"],
-			"$root/*": ["./*"]
+			"$root/*": ["./*"],
+			"slm/plugin": ["./src/plugin-api/plugin/index.ts"],
+			"slm/*": ["./src/plugin-api/*"]
 		},
 		"resolveJsonModule": true,
 		/* Linting */

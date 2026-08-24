@@ -3,7 +3,7 @@ import superjson from 'superjson'
 
 import * as ZodUtils from '@/lib/zod-utils'
 
-import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, BALANCE_TRIGGER_LEVEL, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
+import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
 // 64-bit ids (discord/steam) are stored as TEXT: sqlite INTEGER is signed 64-bit and better-sqlite3
 // returns plain (lossy) JS numbers, so text keeps precision while preserving `bigint` app-facing types.
@@ -53,17 +53,6 @@ export const matchHistory = sqliteTable(
 	}),
 )
 
-export const balanceTriggerEvents = sqliteTable('balanceTriggerEvents', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	triggerId: text('triggerId').notNull(),
-	triggerVersion: integer('triggerVersion').notNull(),
-	matchTriggeredId: integer('matchTriggeredId').references(() => matchHistory.id, { onDelete: 'cascade' }),
-	// the generic form of the message
-	strongerTeam: text('strongerTeam', { enum: ['teamA', 'teamB'] }).notNull(),
-	level: text('level', { enum: ZodUtils.enumTupleOptions(BALANCE_TRIGGER_LEVEL) }).notNull(),
-	evaluationResult: json('evaluationResult').notNull(),
-})
-
 export const serverEvents = sqliteTable(
 	'serverEvents',
 	{
@@ -100,6 +89,7 @@ export const appEvents = sqliteTable(
 		actorType: text('actorType', { enum: ZodUtils.enumTupleOptions(APP_EVENT_ACTOR_TYPE) }).notNull(),
 		actorUserId: bigintText('actorUserId'),
 		actorPlayerId: text('actorPlayerId'),
+		actorPluginId: text('actorPluginId'),
 		// scope: null for global (audit-only) actions
 		serverId: text('serverId').references(() => servers.id, { onDelete: 'cascade' }),
 		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }),
@@ -283,6 +273,14 @@ export const servers = sqliteTable('servers', {
 export const globalSettings = sqliteTable('globalSettings', {
 	id: integer('id').primaryKey().default(1),
 	settings: json('settings').notNull().default(superjson.serialize({})),
+})
+
+// installed-plugin state: whether it should run, and its config (encoded z.input shape, like globalSettings).
+// The tables a plugin owns are its own business (p_<id>_*, see src/models/plugins.models.ts).
+export const plugins = sqliteTable('plugins', {
+	id: text('id').primaryKey(),
+	enabled: boolean('enabled').notNull().default(false),
+	config: json('config').notNull().default(superjson.serialize({})),
 })
 
 export type Server = typeof servers.$inferSelect
