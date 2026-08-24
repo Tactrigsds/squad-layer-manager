@@ -10,7 +10,7 @@ import type { MigrationDriver } from '@/server/migrate'
 
 // the API surface reachable through slm/* entries. Bump minor on additions, major on breaking changes.
 /** The slm/* surface this build provides. A manifest declares the range it needs as `apiVersion`. */
-export const API_VERSION = { major: 1, minor: 0 }
+export const API_VERSION = { major: 1, minor: 1 }
 
 // ids double as table/permission namespace segments, so the alphabet stays small
 export const PluginIdSchema = z
@@ -161,6 +161,12 @@ export interface TableFactory {
 		name: string,
 		columns: Cols,
 	) => ReturnType<typeof D.sqliteTable<string, Cols>>
+	/**
+	 * The prefixed name `table(name, ...)` would produce, for the raw sql in migrations. Spell the
+	 * unprefixed name out there rather than reaching into the schema module: a migration is frozen in
+	 * time, and a later rename must not reach back and change what it did.
+	 */
+	name: (name: string) => string
 }
 
 /**
@@ -171,5 +177,6 @@ export function defineTables(manifest: { id: PluginId }): TableFactory {
 	const prefix = tablePrefix(manifest.id)
 	return {
 		table: (name, columns) => D.sqliteTable(prefix + name, columns),
+		name: (name) => prefix + name,
 	}
 }
