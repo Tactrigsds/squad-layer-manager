@@ -24,6 +24,7 @@ export default defineConfig({
 			NODE_ENV: ENV.NODE_ENV,
 		}),
 		quietCompilerBailouts(react({ compiler: true })),
+		declareOrphanedRefreshGlobals(),
 		{
 			name: 'html-proxy-middleware',
 			configureServer(server) {
@@ -121,6 +122,29 @@ function quietCompilerBailouts(plugins: Plugin[]): Plugin[] {
 		}
 	}
 	return plugins
+}
+
+// @vitejs/plugin-react asks for Fast Refresh on every file its compiler plugin touches, but the wrapper that
+// declares `$RefreshReg$` only runs on modules that export components. Anything in between is left calling globals
+// nobody declared. The window's preamble hides that behind a no-op; a web worker has no preamble, so the
+// layer-queries worker dies on `$RefreshReg$ is not defined` before it initializes.
+//
+// Runs post so it sees whether the wrapper declared them. Declarations hoist, so appending covers calls above.
+// Drop this once the plugin stops injecting refresh into modules it does not wrap.
+function declareOrphanedRefreshGlobals(): Plugin {
+	return {
+		name: 'slm:orphaned-refresh-globals',
+		enforce: 'post',
+		apply: 'serve',
+		transform(code) {
+			if (!code.includes('$RefreshReg$(') && !code.includes('$RefreshSig$()')) return
+			if (code.includes('function $RefreshReg$')) return
+			return {
+				code: code + '\nfunction $RefreshReg$() {}\nfunction $RefreshSig$() { return (type) => type }\n',
+				map: null,
+			}
+		},
+	}
 }
 
 // Headers.get('set-cookie') joins multiple cookies into one comma-separated header, which a browser reads as a
