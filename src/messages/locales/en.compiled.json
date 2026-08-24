@@ -757,6 +757,21 @@
 		]
 	],
 	"Owner: {owner}": ["Owner: ", ["owner"]],
+	"Permanently delete {name}'s settings and {tables, plural, one {# table} other {# tables}}? This cannot be undone.": [
+		"Permanently delete ",
+		["name"],
+		"'s settings and ",
+		[
+			"tables",
+			"plural",
+			{
+				"one": [0, " table"],
+				"other": [0, " tables"]
+			},
+			0
+		],
+		"? This cannot be undone."
+	],
 	"Permission denied. You need {checkType} of the following: {failures}": [
 		"Permission denied. You need ",
 		["checkType"],
@@ -1909,6 +1924,7 @@
 	"{name} cleared the saved teamswaps.": [["name"], " cleared the saved teamswaps."],
 	"{name} configuration editor": [["name"], " configuration editor"],
 	"{name} configuration saved": [["name"], " configuration saved"],
+	"{name} data deleted": [["name"], " data deleted"],
 	"{name} enabled": [["name"], " enabled"],
 	"{name} installed": [["name"], " installed"],
 	"{name} queued {added, plural, one {# teamswap} other {# teamswaps}} and cancelled {removed}{colon, select, yes {:} other {}}": [
@@ -2180,6 +2196,27 @@
 		]
 	],
 	"{steamId} is linked to another account.": [["steamId"], " is linked to another account."],
+	"{tables, plural, one {# table} other {# tables}}, {rows, plural, one {# row} other {# rows}}": [
+		[
+			"tables",
+			"plural",
+			{
+				"one": [0, " table"],
+				"other": [0, " tables"]
+			},
+			0
+		],
+		", ",
+		[
+			"rows",
+			"plural",
+			{
+				"one": [0, " row"],
+				"other": [0, " rows"]
+			},
+			0
+		]
+	],
 	"{tab} console output": [["tab"], " console output"],
 	"{tag}: {reason}": [["tag"], ": ", ["reason"]],
 	"{team} players": [["team"], " players"],

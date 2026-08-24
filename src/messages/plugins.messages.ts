@@ -62,6 +62,26 @@ export const uninstalled = def('Plugin removed')
 
 export const uninstallConfirm = def('Remove {name}? Its settings and data are kept.', (name: string) => ({ name }))
 
+export const leftoverTitle = def('Leftover data')
+
+export const leftoverBlurb = def(
+	"Uninstalling keeps a plugin's settings and data so reinstalling restores them. Nothing else removes them.",
+)
+
+export const leftoverSummary = def(
+	'{tables, plural, one {# table} other {# tables}}, {rows, plural, one {# row} other {# rows}}',
+	(tables: number, rows: number) => ({ tables, rows }),
+)
+
+export const deleteData = def('Delete data')
+
+export const deleteDataConfirm = def(
+	"Permanently delete {name}'s settings and {tables, plural, one {# table} other {# tables}}? This cannot be undone.",
+	(name: string, tables: number) => ({ name, tables }),
+)
+
+export const dataDeleted = def('{name} data deleted', (name: string) => ({ name }))
+
 export const sourceLabels = {
 	builtin: def('Built in'),
 	directory: def('From folder'),

@@ -9,6 +9,7 @@ import * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
+import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
@@ -21,6 +22,7 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as Pkgs from '@/systems/plugin-packages.server'
@@ -571,6 +573,59 @@ function listRuntimeInfo(): PLG.RuntimeInfo[] {
 	return [...loaded, ...broken].toSorted((a, b) => (a.name < b.name ? -1 : 1))
 }
 
+// Rows in the plugins table with no plugin behind them: an uninstall, a hand-deleted directory, or a
+// builtin dropped from the repo. Nothing else in the UI surfaces them, and nothing reclaims them.
+function listLeftoverData(): PLG.LeftoverData[] {
+	const driver = DB.rawDriver()
+	const objects = driver.prepare(`SELECT type, name FROM sqlite_master`).all() as { type: string; name: string }[]
+	const hasLedger = objects.some((o) => o.type === 'table' && o.name === LEDGER)
+	const out: PLG.LeftoverData[] = []
+	for (const { id } of driver.prepare(`SELECT id FROM plugins`).all() as { id: string }[]) {
+		if (plugins.has(id) || brokenPackages.has(id)) continue
+		const prefix = PLG.tablePrefix(id)
+		out.push({
+			pluginId: id,
+			tables: objects
+				.filter((o) => o.type === 'table' && o.name.startsWith(prefix))
+				.map((o) => ({ name: o.name, rows: (driver.prepare(`SELECT count(*) AS n FROM "${o.name}"`).get() as { n: number }).n })),
+			migrations: hasLedger
+				? (driver.prepare(`SELECT count(*) AS n FROM "${LEDGER}" WHERE pluginId = ?`).get(id) as { n: number }).n
+				: 0,
+		})
+	}
+	return out.toSorted((a, b) => (a.pluginId < b.pluginId ? -1 : 1))
+}
+
+// Drops everything an uninstalled plugin owns, in one transaction. Safe to enumerate by prefix because
+// the migration runner rejects any DDL that creates something outside it.
+function purgeLeftoverData(pluginId: string): { code: 'ok'; tables: string[] } | { code: 'err:plugin-present' } {
+	if (plugins.has(pluginId) || brokenPackages.has(pluginId)) return { code: 'err:plugin-present' }
+	const driver = DB.rawDriver()
+	const prefix = PLG.tablePrefix(pluginId)
+	// an autoindex is not dropped on its own; it goes with its table, and the loop below never names one
+	const owned = (driver.prepare(`SELECT type, name FROM sqlite_master`).all() as { type: string; name: string }[]).filter((o) =>
+		o.name.startsWith(prefix),
+	)
+	const tables = owned.filter((o) => o.type === 'table').map((o) => o.name)
+	driver.exec('BEGIN IMMEDIATE')
+	try {
+		for (const kind of ['trigger', 'view', 'index', 'table'] as const) {
+			for (const o of owned.filter((o) => o.type === kind)) driver.exec(`DROP ${kind.toUpperCase()} IF EXISTS "${o.name}"`)
+		}
+		// the ledger is created lazily by the first migration any plugin runs, so it may not exist yet
+		if (driver.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(LEDGER)) {
+			driver.prepare(`DELETE FROM "${LEDGER}" WHERE pluginId = ?`).run(pluginId)
+		}
+		driver.prepare(`DELETE FROM plugins WHERE id = ?`).run(pluginId)
+		driver.exec('COMMIT')
+	} catch (err) {
+		if (driver.inTransaction) driver.exec('ROLLBACK')
+		throw err
+	}
+	log.info('purged leftover data for %s (%d tables)', pluginId, tables.length)
+	return { code: 'ok', tables }
+}
+
 // a hand-run install should not hang forever on a url that never answers
 const FETCH_BUDGET_MS = 60_000
 
@@ -592,7 +647,7 @@ export const router = {
 	watchPlugins: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
 		const obs = update$.pipe(
 			Rx.startWith(null),
-			Rx.map(() => listRuntimeInfo()),
+			Rx.map(() => ({ plugins: listRuntimeInfo(), leftoverData: listLeftoverData() })),
 			Rx.Ext.distinctDeepEquals(),
 			Rx.Ext.withAbortSignal(signal!),
 		)
@@ -704,8 +759,34 @@ export const router = {
 		return { code: 'ok' as const }
 	}),
 
+	// the counterpart to uninstall: drops what uninstall deliberately keeps. Only for a plugin that is
+	// no longer present, so it can never race a running one.
+	purgeData: orpcBase
+		.meta({ type: 'mutation' })
+		.input(z.object({ pluginId: z.string() }))
+		.handler(async ({ context: ctx, input }) => {
+			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, manageReq())
+			if (denyRes) return denyRes
+			const res = purgeLeftoverData(input.pluginId)
+			if (res.code !== 'ok') return res
+			await AppEventsSys.persistAppEvent(
+				ctx,
+				AppEvents.create<AppEvents.PluginDataPurged>({
+					type: 'PLUGIN_DATA_PURGED',
+					actor: { type: 'slm-user', userId: ctx.user.discordId },
+					serverId: null,
+					matchId: null,
+					causeId: null,
+					pluginId: input.pluginId,
+					tables: res.tables,
+				}),
+			)
+			update$.next('*')
+			return { code: 'ok' as const }
+		}),
+
 	// removes the directory. The plugin's row and its tables stay, so reinstalling keeps its config
-	// and its data.
+	// and its data. purgeData drops those once the plugin is gone.
 	uninstall: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ pluginId: z.string() }))

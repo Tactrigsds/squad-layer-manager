@@ -62,8 +62,58 @@ export function PluginsSection(props: { canManage: boolean }) {
 					<PluginRow key={info.id} info={info} canManage={props.canManage} />
 				))}
 				{props.canManage && <InstallPanel />}
+				{props.canManage && <LeftoverDataPanel />}
 			</CardContent>
 		</Card>
+	)
+}
+
+// An uninstalled plugin's row and tables outlive it deliberately, so reinstalling restores its settings and
+// data. This is the only thing that reclaims them.
+function LeftoverDataPanel() {
+	const leftoverData = Zus.useStore(PluginsClient.Store, (s) => s.leftoverData)
+	if (leftoverData.length === 0) return null
+	return (
+		<div id="section:plugin-leftover-data" className="scroll-mt-2 rounded-md border p-4 space-y-2">
+			<div className="space-y-0.5">
+				<p className="text-sm font-medium">{tr.text(PLUGINS_Msgs.leftoverTitle())}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(PLUGINS_Msgs.leftoverBlurb())}</p>
+			</div>
+			{leftoverData.map((entry) => (
+				<LeftoverRow key={entry.pluginId} entry={entry} />
+			))}
+		</div>
+	)
+}
+
+function LeftoverRow({ entry }: { entry: PLG.LeftoverData }) {
+	const [busy, setBusy] = React.useState(false)
+	const rows = entry.tables.reduce((sum, t) => sum + t.rows, 0)
+
+	async function purge() {
+		if (!window.confirm(tr.text(PLUGINS_Msgs.deleteDataConfirm(entry.pluginId, entry.tables.length)))) return
+		setBusy(true)
+		try {
+			const res = await RPC.orpc.plugins.purgeData.call({ pluginId: entry.pluginId })
+			if (res.code === 'ok') toast.success(tr.text(PLUGINS_Msgs.dataDeleted(entry.pluginId)))
+			else toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
+		} catch {
+			toast.error(tr.text(PLUGINS_Msgs.actionFailed()))
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	return (
+		<div className="flex items-center justify-between gap-3">
+			<div className="min-w-0">
+				<p className="text-sm font-mono">{entry.pluginId}</p>
+				<p className="text-xs text-muted-foreground">{tr.text(PLUGINS_Msgs.leftoverSummary(entry.tables.length, rows))}</p>
+			</div>
+			<Button size="sm" variant="destructive" disabled={busy} onClick={() => void purge()}>
+				{tr.text(PLUGINS_Msgs.deleteData())}
+			</Button>
+		</div>
 	)
 }
 

@@ -340,6 +340,8 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			return 'ended the match'
 		case 'PLUGIN_EVENT':
 			return e.message
+		case 'PLUGIN_DATA_PURGED':
+			return `deleted ${e.pluginId}'s leftover data (${e.tables.length} ${e.tables.length === 1 ? 'table' : 'tables'})`
 		case 'VOTE_STARTED':
 			return `started a vote (${e.choiceCount} ${e.choiceCount === 1 ? 'option' : 'options'})`
 		case 'VOTE_ENDED': {

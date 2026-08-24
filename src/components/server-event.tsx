@@ -879,7 +879,8 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		appEvent.type === 'PLAYER_FLAGS_UPDATED' ||
 		appEvent.type === 'APP_STARTED' ||
 		appEvent.type === 'APP_RESTARTED' ||
-		appEvent.type === 'BACKUP_CREATED'
+		appEvent.type === 'BACKUP_CREATED' ||
+		appEvent.type === 'PLUGIN_DATA_PURGED'
 	) {
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).

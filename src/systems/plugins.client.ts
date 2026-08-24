@@ -72,8 +72,15 @@ type DecorationReg = {
 // version bumps whenever the registration set changes; consumers re-subscribe off it. `manifests`
 // carries every known plugin's manifest, builtin or packaged, which is what the settings form needs
 // to render a config editor for a plugin that is not running.
-export const Store = Zus.createStore<{ plugins: PLG.RuntimeInfo[]; version: number; manifests: Record<string, PLG.Manifest> }>(() => ({
+export const Store = Zus.createStore<{
+	plugins: PLG.RuntimeInfo[]
+	// what uninstalled plugins left in the database, for the settings page to offer to delete
+	leftoverData: PLG.LeftoverData[]
+	version: number
+	manifests: Record<string, PLG.Manifest>
+}>(() => ({
 	plugins: [],
+	leftoverData: [],
 	version: 0,
 	manifests: {},
 }))
@@ -325,9 +332,10 @@ export function setup(builtinPlugins: BuiltinClientPlugin[]) {
 	// before any packaged bundle is imported: its `slm/*` and react shims read from what this publishes
 	ApiRegistry.setup()
 	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(builtinPlugins.map((e) => [e.manifest.id, e.manifest])) }))
-	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((infos) => {
-		Store.setState((s) => ({ ...s, plugins: infos as PLG.RuntimeInfo[] }))
-		void reconcile(infos as PLG.RuntimeInfo[])
+	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((next) => {
+		const infos = next.plugins as PLG.RuntimeInfo[]
+		Store.setState((s) => ({ ...s, plugins: infos, leftoverData: next.leftoverData as PLG.LeftoverData[] }))
+		void reconcile(infos)
 	})
 }
 
