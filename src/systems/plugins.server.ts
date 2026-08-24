@@ -7,6 +7,7 @@ import { z } from 'zod'
 import * as Schema from '$root/drizzle/schema'
 import * as Cleanup from '@/lib/cleanup'
 import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
+import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
@@ -14,6 +15,7 @@ import * as CS from '@/models/context-shared'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
+import * as ATTRS from '@/models/otel-attrs'
 import * as PLG from '@/models/plugins.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as SQS from '@/models/squad-server.models'
@@ -52,6 +54,9 @@ export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log &
 	CS.AbortSignal & {
 		plugin: PluginRef<M>
 		cleanup: Cleanup.Tasks
+		// the plugin's telemetry scope, `plugin:<id>`. Hand it to spanOp/durableSub so the op is named
+		// and traced under the plugin rather than under whatever module happens to be calling.
+		module: OtelModule
 	}
 
 // The plugin-facing slice of a managed server: the domains the slm/* entries expose functions for.
@@ -101,6 +106,7 @@ type Instance = {
 type Runtime = {
 	entry: Entry
 	ref: PluginRef
+	module: OtelModule
 	log: CS.Logger
 	enabled: boolean
 	status: PLG.Status
@@ -122,6 +128,25 @@ const plugins = new Map<string, Runtime>()
 export const update$ = new Rx.Subject<string>()
 // serializes every enable/disable/activate transition, process-wide
 const lifecycleMtx = new Mutex()
+
+// The plugin's telemetry scope. Its logger carries the plugin's identity as well as the module name,
+// so every record a plugin emits -- its own log calls and the op lines spanOp writes -- is attributable
+// without the call site doing anything. Memoized for the same reason initModule memoizes: the otel
+// bridge in server/logger.ts caches bindings keyed on the logger instance.
+function pluginModule(entry: Entry): OtelModule {
+	const base = initModule(PLG.moduleName(entry.manifest.id))
+	let log: CS.Logger | undefined
+	return {
+		name: base.name,
+		tracer: base.tracer,
+		getLogger: () =>
+			(log ??= base.getLogger().child({
+				[ATTRS.Plugin.ID]: entry.manifest.id,
+				[ATTRS.Plugin.VERSION]: entry.manifest.version,
+				[ATTRS.Plugin.SOURCE]: entry.source,
+			})),
+	}
+}
 
 function requireRuntime(pluginId: string): Runtime {
 	const rt = plugins.get(pluginId)
@@ -150,7 +175,9 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	const known = new Set(plugins.keys())
 	for (const raw of await ctx.db().select().from(Schema.plugins)) {
 		const row = unsuperjsonify(Schema.plugins, raw) as { id: string }
-		if (!known.has(row.id)) log.warn('plugin %s has a db row but is not installed; leaving its state alone', row.id)
+		if (!known.has(row.id)) {
+			log.warn({ [ATTRS.Plugin.ID]: row.id }, 'plugin %s has a db row but is not installed; leaving its state alone', row.id)
+		}
 	}
 
 	for (const rt of plugins.values()) {
@@ -178,10 +205,12 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 			.insert(Schema.plugins)
 			.values(superjsonify(Schema.plugins, { id, enabled: false, config: {} }))
 	}
+	const mod = pluginModule(entry)
 	const rt: Runtime = {
 		entry,
 		ref: { id, manifest: entry.manifest },
-		log: log.child({ pluginId: id }),
+		module: mod,
+		log: mod.getLogger(),
 		enabled: row.enabled,
 		status: 'inactive',
 		error: null,
@@ -346,6 +375,7 @@ function mkCtx(rt: Runtime): Ctx<any> {
 		signal: Prom.anySignal(CleanupSys.shutdownSignal, rt.abort!.signal)!,
 		plugin: rt.ref,
 		cleanup: rt.cleanup,
+		module: rt.module,
 	}
 }
 
@@ -362,6 +392,7 @@ function ensureInstance(rt: Runtime, managedServer: C.ManagedServer): Instance {
 		signal: Prom.anySignal(managedServer.signal, rt.abort!.signal)!,
 		plugin: rt.ref,
 		cleanup,
+		module: rt.module,
 	}
 	const inst: Instance = { sctx, cleanup, ran: new Set() }
 	rt.instances.set(managedServer.serverId, inst)
@@ -451,6 +482,7 @@ function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: 
 		signal: Prom.anySignal(serverCtx.signal, rt.abort?.signal)!,
 		plugin: rt.ref,
 		cleanup: [],
+		module: rt.module,
 	}
 	return fallback
 }
@@ -484,7 +516,7 @@ async function applyPluginMigrations(pluginId: string, migrations: PLG.PluginMig
 	try {
 		const insert = driver.prepare(`INSERT INTO "${LEDGER}" (pluginId, name, applied_at) VALUES (?, ?, ?)`)
 		for (const m of pending) {
-			log.info('applying plugin migration %s/%s', pluginId, m.name)
+			log.info({ [ATTRS.Plugin.ID]: pluginId }, 'applying plugin migration %s/%s', pluginId, m.name)
 			const before = snapshotSchema(driver)
 			driver.exec('BEGIN IMMEDIATE')
 			try {
@@ -539,7 +571,7 @@ async function persistRow(ctx: C.Db, rt: Runtime) {
 
 // ---- router ----
 
-function listRuntimeInfo(): PLG.RuntimeInfo[] {
+export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 	const loaded = [...plugins.values()].map((rt) => ({
 		id: rt.ref.id,
 		name: rt.entry.manifest.name,
@@ -622,7 +654,7 @@ function purgeLeftoverData(pluginId: string): { code: 'ok'; tables: string[] } |
 		if (driver.inTransaction) driver.exec('ROLLBACK')
 		throw err
 	}
-	log.info('purged leftover data for %s (%d tables)', pluginId, tables.length)
+	log.info({ [ATTRS.Plugin.ID]: pluginId }, 'purged leftover data for %s (%d tables)', pluginId, tables.length)
 	return { code: 'ok', tables }
 }
 

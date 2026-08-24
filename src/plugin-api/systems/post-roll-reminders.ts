@@ -21,6 +21,7 @@ export function register<M extends PLG.Manifest<any>>(
 			plugin: ctx.plugin,
 			log: ctx.log.child({ serverId: serverCtx.serverId }),
 			cleanup: ctx.cleanup,
+			module: ctx.module,
 		} as PluginsSys.ServerCtx<M>),
 	)
 }

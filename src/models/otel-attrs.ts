@@ -26,6 +26,23 @@ export namespace Module {
 	export const NAME = 'slm.module.name'
 }
 
+// A plugin's logs, spans and op metrics are separated from the host's by its module name, which is
+// always `plugin:<id>` (PLG.moduleName). These carry the rest of its identity. All four are bounded by
+// what is installed, so they are safe as metric dimensions; only ID is used as one, on slm.op.duration.
+// The rest ride the INFO gauge, so a plugin's own series don't each carry a copy.
+export namespace Plugin {
+	export const ID = 'slm.plugin.id'
+	export const VERSION = 'slm.plugin.version'
+	export const SOURCE = 'slm.plugin.source'
+	export const API_VERSION = 'slm.plugin.api_version'
+	// doubles as the name of the gauge below, which is legal: a metric name and an attribute key are
+	// separate namespaces
+	export const STATUS = 'slm.plugin.status'
+	// Two value-1 gauges. INFO is the join target and carries only what is fixed for a given version;
+	// status lives on its own so a transition does not strand a stale INFO series behind it.
+	export const INFO = 'slm.plugin.info'
+}
+
 export namespace WebSocket {
 	export const CLIENT_ID = 'slm.websocket.client_id'
 	export const CONNECTED_CLIENTS = 'slm.websocket.connected_clients'

@@ -9,7 +9,7 @@ export default definePlugin({
 	id: 'balance-triggers',
 	name: 'Balance Triggers',
 	version: '1.0.0',
-	apiVersion: '^1',
+	apiVersion: '^2',
 	description: 'Watches recent match outcomes and warns admins when they look one-sided.',
 	configSchema: z.object({
 		levels: z

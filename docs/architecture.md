@@ -665,6 +665,18 @@ started at module scope is outside the lifecycle entirely: teardown undoes what 
 registration APIs and the abort signal, so a subscription taken at module scope keeps running after the plugin
 stops. Plugin state belongs in `activate()`.
 
+**Telemetry is namespaced the same way persistence is.** The host builds each plugin an otel module named
+`plugin:<id>` (`PLG.moduleName`) and hands it over as `ctx.module`, with `ctx.log` already its logger. That
+prefix is the whole separation: it is the tracer and log scope, it prefixes every `spanOp`/`durableSub` name,
+and it lands as `slm.module.name` on the plugin's records. A plugin cannot name itself -- `slm/server/logger`
+exposes only `childModule`, which narrows the scope it was given. Identity rides along without a call site
+asking for it: the logger binds `slm.plugin.id/version/source`, and `spanOp` reads id and version off `ctx.plugin`
+through `CONTEXT_ATTR_MAPPING`, so `slm.op.duration` is groupable by plugin rather than by string prefix. The
+browser half mirrors it, so one plugin reads the same on both sides. What is left -- source, declared api range,
+current status -- is on two host gauges, `slm.plugin.info` and `slm.plugin.status`, to be joined on
+`slm.plugin.id`, rather than stamped onto every series a plugin emits. Plugins get no meter of their own yet;
+`spanOp` already gives every op rate, error and duration.
+
 **Persistence** is drizzle on the shared db, namespaced: `defineTables(manifest)` prefixes every table with
 `p_<id>_`, and per-plugin migrations (same contract as core `.ts` migrations, ledgered in `_plugin_migrations`)
 run at activation rather than boot. The runner diffs `sqlite_master` around each migration and rejects DDL outside

@@ -1,6 +1,7 @@
 import * as Otel from '@opentelemetry/api'
 
 import * as ATTRS from '@/models/otel-attrs'
+import * as Plugins from '@/systems/plugins.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 // Domain gauges. Everything here is read synchronously out of in-memory managed server state on the metric
@@ -15,6 +16,34 @@ const meter = Otel.metrics.getMeter('squad-layer-manager')
 // setup rather than module scope so the gauges register against the real meter provider (the global
 // one is a no-op until NodeSDK.start()) and after squad-server has its globalState.
 export function setup() {
+	// A plugin's own telemetry is separated from the host's by its `plugin:<id>` module name, and its ops
+	// carry slm.plugin.id on slm.op.duration. These two carry the rest of its identity: join a plugin's
+	// series against INFO on slm.plugin.id rather than stamping version and source onto each of them.
+	meter
+		.createObservableGauge(ATTRS.Plugin.INFO, {
+			description: 'Constant 1 per installed plugin, carrying its version, source and declared api range',
+		})
+		.addCallback((result) => {
+			for (const info of Plugins.listRuntimeInfo()) {
+				result.observe(1, {
+					[ATTRS.Plugin.ID]: info.id,
+					[ATTRS.Plugin.VERSION]: info.version,
+					[ATTRS.Plugin.SOURCE]: info.source,
+					[ATTRS.Plugin.API_VERSION]: info.apiVersion,
+				})
+			}
+		})
+
+	meter
+		.createObservableGauge(ATTRS.Plugin.STATUS, {
+			description: 'Constant 1 on the status each plugin is currently in',
+		})
+		.addCallback((result) => {
+			for (const info of Plugins.listRuntimeInfo()) {
+				result.observe(1, { [ATTRS.Plugin.ID]: info.id, [ATTRS.Plugin.STATUS]: info.status })
+			}
+		})
+
 	meter
 		.createObservableGauge(ATTRS.SquadServer.COUNT, {
 			description: 'Number of managed servers currently initialized',
