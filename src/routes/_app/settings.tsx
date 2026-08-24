@@ -82,6 +82,8 @@ function RouteComponent() {
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
 	// a server section renders for every server the user may at least read; registry management is gated separately
+	// managing plugins is grant enough on its own; global read otherwise carries the list as a read-only view
+	const canSeePlugins = globalAccess.canRead || !managePluginsDenied
 	const allServers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
 	const servers = React.useMemo(
 		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id, RBAC.NO_SCOPED_SERVERS)),
@@ -186,7 +188,7 @@ function RouteComponent() {
 		return SettingsNav.scrollToAnchorSettled('section:server:__new__', { deadlineMs: 1500 })
 	}, [creating])
 
-	if (manageServersDenied && !globalAccess.canRead && servers.length === 0) {
+	if (manageServersDenied && !globalAccess.canRead && servers.length === 0 && !canSeePlugins) {
 		return (
 			<div className="w-full h-full grid place-items-center">
 				<p className="text-muted-foreground">{tr.text(SETTINGS_Msgs.noAccess())}</p>
@@ -208,6 +210,8 @@ function RouteComponent() {
 					<SettingsToc
 						showServers={!manageServersDenied || servers.length > 0}
 						showGlobal={globalAccess.canRead}
+						showPlugins={canSeePlugins}
+						canManagePlugins={!managePluginsDenied}
 						servers={servers}
 						sectionKeys={sectionKeys}
 					/>
@@ -234,7 +238,7 @@ function RouteComponent() {
 								/>
 							</div>
 						)}
-						{(globalAccess.canRead || !managePluginsDenied) && (
+						{canSeePlugins && (
 							<div id="section:plugins" className="scroll-mt-2 rounded-xl">
 								<PluginsSection canManage={!managePluginsDenied} />
 							</div>

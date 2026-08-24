@@ -10,16 +10,20 @@ export function globalSettingAnchor(path: string): string {
 	return `setting:${path}`
 }
 
+// `setting:<scope>:<scopeId>:<path>` -> `section:<scope>:<scopeId>`
+function scopedSection(id: string, scope: 'server' | 'plugin'): string | null {
+	const rest = id.slice(`setting:${scope}:`.length)
+	const sep = rest.indexOf(':')
+	const scopeId = sep === -1 ? rest : rest.slice(0, sep)
+	return scopeId ? `section:${scope}:${scopeId}` : null
+}
+
 // the section-level anchor that owns a given anchor id. A `setting:*` field degrades to its `section:*` header when the
 // field itself isn't rendered (the section is in JSON mode, or hasn't mounted yet). Returns null for unrecognized ids.
 export function sectionForAnchor(id: string): string | null {
 	if (id.startsWith('section:')) return id
-	if (id.startsWith('setting:server:')) {
-		const rest = id.slice('setting:server:'.length)
-		const sep = rest.indexOf(':')
-		const serverId = sep === -1 ? rest : rest.slice(0, sep)
-		return serverId ? `section:server:${serverId}` : null
-	}
+	if (id.startsWith('setting:server:')) return scopedSection(id, 'server')
+	if (id.startsWith('setting:plugin:')) return scopedSection(id, 'plugin')
 	if (id.startsWith('setting:')) return 'section:global'
 	return null
 }
