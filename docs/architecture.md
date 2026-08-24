@@ -615,6 +615,8 @@ env schema's `.meta()`. Connection secrets are sealed at the db boundary only, a
 
 ## Plugins
 
+[writing_plugins.md](writing_plugins.md) is the author-facing guide. This is the host's side of the same contract.
+
 Plugins are trusted, in-process extensions living in `plugins/<id>/`: a side-effect-free manifest (`plugin.ts`,
 imported by everything else), a server entry whose `activate(ctx)` runs when the plugin starts, and optionally a
 client entry and migrations. They import the core exclusively through the `slm/*` alias, which resolves to the

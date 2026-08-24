@@ -34,4 +34,5 @@ docker run --rm -p 3000:3000 -e DEMO=1 ghcr.io/tactrigsds/squad-layer-manager:la
 - [Backups and restoring](docs/backups.md) - what gets backed up, uploading it offsite, and putting one back
 - [Server agent](docs/server_agent.md) - stream a game host's logs and proxy its RCON to SLM
 - [Layer data](docs/layer_data.md) - the layer artifact pair, how it is resolved, and building your own
+- [Writing a plugin](docs/writing_plugins.md) - the plugin contract, and packing one for admins to install
 - [Contributing](CONTRIBUTING.md) - local dev setup, the test suites, and the pre-push hook
