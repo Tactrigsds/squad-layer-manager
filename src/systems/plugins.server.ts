@@ -32,7 +32,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 // "sandboxing" here is about lifecycle (cleanup, abort) and namespacing (tables, permissions), not
 // security -- a plugin can do anything the app can.
 //
-// Plugins arrive two ways. Builtins are registered statically from plugins/index.server.ts and live
+// Plugins arrive two ways. Builtins are registered statically from plugins/builtins.server.ts and live
 // in the app bundle. Packaged plugins are directories under data/plugins (see
 // plugin-packages.server.ts), loaded as standalone esm at runtime, which is what install-from-url
 // and refresh act on. Both end up as the same Entry.
@@ -60,11 +60,11 @@ export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS
 export type ServerSetupFn = (ctx: ServerCtx<any>, cleanup: Cleanup.Tasks) => void
 
 // A packaged plugin's migrations ride along with its server bundle; a builtin keeps them in their own
-// module, reached through InstalledPlugin.migrations.
+// module, reached through BuiltinPlugin.migrations.
 export type ServerModule = { activate: (ctx: Ctx<any>) => void | Promise<void>; migrations?: PLG.PluginMigration[] }
 
-// how a builtin registers itself (plugins/index.server.ts)
-export type InstalledPlugin = {
+// how a builtin registers itself (plugins/builtins.server.ts)
+export type BuiltinPlugin = {
 	manifest: PLG.Manifest
 	server: () => Promise<ServerModule>
 	migrations?: () => Promise<{ migrations: PLG.PluginMigration[] }>
@@ -134,7 +134,7 @@ function requireRuntime(pluginId: string): Runtime {
 type BrokenPackage = { manifest: PLG.PackageManifest; error: string; source: PLG.Source; sourceUrl: string | null }
 const brokenPackages = new Map<string, BrokenPackage>()
 
-export async function setup(ctx: C.Db, builtins: InstalledPlugin[]) {
+export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	log = module.getLogger()
 	// before any package is imported: this is what makes `slm/*` resolve inside one
 	ApiRegistry.setup()

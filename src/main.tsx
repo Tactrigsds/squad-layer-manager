@@ -19,7 +19,7 @@ import * as ThemeSys from '@/systems/theme.client'
 import * as UserPresenceClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
-import { INSTALLED_PLUGIN_CLIENTS } from '../plugins/index.ts'
+import { BUILTIN_PLUGIN_CLIENTS } from '../plugins/builtins.ts'
 import { Providers } from './components/providers.tsx'
 import { rootRouter } from './root-router.ts'
 
@@ -43,7 +43,7 @@ await LayerDataClient.setup()
 	BattlemetricsClient.setup()
 	UsersClient.setup()
 	void UserPresenceClient.setup()
-	PluginsClient.setup(INSTALLED_PLUGIN_CLIENTS)
+	PluginsClient.setup(BUILTIN_PLUGIN_CLIENTS)
 	console.debug('systems initialized')
 
 	const loadConsoleOnStartup = import.meta.env.DEV || FeatureFlags.get('loadConsole')

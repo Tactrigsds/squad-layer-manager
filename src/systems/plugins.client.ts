@@ -35,7 +35,7 @@ export function definePluginClient<M extends PLG.Manifest<any>>(manifest: M, set
 	return { manifest, setup: setupFn as ClientModule['setup'] }
 }
 
-export type InstalledClientPlugin = {
+export type BuiltinClientPlugin = {
 	manifest: PLG.Manifest
 	client?: () => Promise<{ default: ClientModule }>
 }
@@ -89,7 +89,7 @@ export function setConfigEditorMode(pluginId: string, mode: 'gui' | 'yaml') {
 const slotRegs = new Map<string, SlotReg[]>()
 const decoRegs = new Map<string, DecorationReg[]>()
 const undoByPlugin = new Map<string, (() => void)[]>()
-let installed: InstalledClientPlugin[] = []
+let builtins: BuiltinClientPlugin[] = []
 
 let regCounter = 0
 function nextRegKey(pluginId: string) {
@@ -320,11 +320,11 @@ const requestedManifests = new Set<string>()
 const reloadPrompted = new Set<string>()
 const BUILTIN = 'builtin'
 
-export function setup(installedPlugins: InstalledClientPlugin[]) {
-	installed = installedPlugins
+export function setup(builtinPlugins: BuiltinClientPlugin[]) {
+	builtins = builtinPlugins
 	// before any packaged bundle is imported: its `slm/*` and react shims read from what this publishes
 	ApiRegistry.setup()
-	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(installedPlugins.map((e) => [e.manifest.id, e.manifest])) }))
+	Store.setState((s) => ({ ...s, manifests: Object.fromEntries(builtinPlugins.map((e) => [e.manifest.id, e.manifest])) }))
 	RPC.observe('plugins.watchPlugins', () => RPC.orpc.plugins.watchPlugins.call()).subscribe((infos) => {
 		Store.setState((s) => ({ ...s, plugins: infos as PLG.RuntimeInfo[] }))
 		void reconcile(infos as PLG.RuntimeInfo[])
@@ -371,7 +371,7 @@ async function loadClient(info: PLG.RuntimeInfo) {
 	try {
 		const mod = info.clientEntry
 			? ((await import(/* @vite-ignore */ info.clientEntry)) as { default: ClientModule }).default
-			: (await installed.find((e) => e.manifest.id === info.id)?.client?.())?.default
+			: (await builtins.find((e) => e.manifest.id === info.id)?.client?.())?.default
 		if (!mod) return
 		mod.setup({ plugin: { id: info.id, manifest: Store.getState().manifests[info.id] ?? mod.manifest } })
 		bumpVersion()
