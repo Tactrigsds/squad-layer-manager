@@ -19,6 +19,7 @@ only install one you would be willing to run as a fork.
 - [What you can reach](#what-you-can-reach)
 - [Logging and telemetry](#logging-and-telemetry)
 - [Packing and publishing](#packing-and-publishing)
+- [Repo layouts](#repo-layouts)
 - [How an admin installs it](#how-an-admin-installs-it)
 - [API versions](#api-versions)
 - [Things that will bite you](#things-that-will-bite-you)
@@ -34,9 +35,11 @@ cd squad-layer-manager
 pnpm install
 ```
 
-Write your plugin in its own directory. `plugins/<id>/` is the natural place. Two working plugins are already
-there to read: `test/fixtures/plugin-hello` is about sixty lines and touches every part of the contract, and
-`plugins/balance-triggers` is a real one.
+Write your plugin in its own directory. `plugins/<id>/` is the natural place, and your plugin's own git repo can
+sit there without either repo noticing the other. See [Repo layouts](#repo-layouts).
+
+Two working plugins are already there to read: `test/fixtures/plugin-hello` is about sixty lines and touches every
+part of the contract, and `plugins/balance-triggers` is a real one.
 
 ## The files
 
@@ -350,6 +353,67 @@ tagged with.
 To try a build without publishing it, copy `dist/` into your dev instance's `data/plugins/<id>` and press _Rescan
 folder_ in settings. A plugin shipped inside SLM itself skips packing entirely: register it in
 `plugins/builtins.server.ts` and `plugins/builtins.ts`, which is how `balance-triggers` ships.
+
+## Repo layouts
+
+SLM asks one thing of your repo: whatever you publish has to put `plugin.json` and its bundles in one directory,
+because the manifest's siblings are resolved relative to its url. Where the source lives is up to you.
+
+### One plugin, one repo
+
+The repo is the plugin directory: `plugin.ts`, `server.ts` and `client.tsx` at its root. Attach the packed output
+to each release.
+
+```
+https://github.com/<owner>/my-plugin/releases/download/v1.0.0/plugin.json
+```
+
+### Several plugins, one repo
+
+One directory per plugin, packed separately. A GitHub release's assets share one flat namespace, and every packed
+plugin produces a file called `plugin.json`, so two plugins cannot go in the same release. Either tag per plugin,
+
+```
+git tag my-plugin-v1.0.0
+git tag other-plugin-v2.1.0
+```
+
+so each release carries one plugin's files, or publish the packed directories to GitHub Pages, where each plugin
+keeps its own path:
+
+```
+https://<owner>.github.io/<repo>/my-plugin/plugin.json
+https://<owner>.github.io/<repo>/other-plugin/plugin.json
+```
+
+### Your repo, inside the SLM checkout
+
+You need an SLM checkout to build against. Your plugin's repo can live inside it:
+
+```sh
+cd squad-layer-manager
+git clone git@github.com:<owner>/my-plugin.git plugins/my-plugin
+echo 'plugins/my-plugin/' >> .git/info/exclude
+```
+
+The two repos do not interact. Git never recurses into a nested repository, so SLM's `git status` sees one
+untracked directory and your commits, branches and pulls stay entirely inside your own. `.git/info/exclude` is
+per-clone and never committed, so hiding your directory needs no change to SLM.
+
+Add that exclude line before you run anything. Without it `git add -A` in the SLM repo adds your plugin as an
+embedded repository: a gitlink recording a commit hash nobody else can fetch, which is a confusing thing to
+discover in a diff. Git warns when it happens.
+
+What being in-tree buys you:
+
+- `pnpm run check` typechecks your plugin against the exact `slm/*` surface you are building against, because
+  `plugins` is in the tsconfig's include
+- `pnpm test` runs your `*.test.ts` files alongside SLM's
+- `pnpm plugin:pack plugins/my-plugin` needs no arguments beyond the path, and writes to `plugins/my-plugin/dist`,
+  which SLM's `.gitignore` already covers. Your own repo needs its own `dist` ignore.
+
+Do not register your plugin in `plugins/builtins.server.ts`. That file is SLM's, and a builtin is a plugin that
+ships as part of SLM. Pack yours and let SLM install it.
 
 ## How an admin installs it
 
