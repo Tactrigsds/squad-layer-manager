@@ -107,7 +107,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/plugin/servers': ['setup'],
 	'slm/plugin/slots': ['register'],
 	'slm/server/instrumentation': ['durableSub', 'recordGenericError', 'setSpanOpAttrs', 'setSpanStatus', 'spanOp'],
-	'slm/server/logger': ['initModule'],
+	'slm/server/logger': ['childModule'],
 	'slm/systems/app-events': ['emit'],
 	'slm/systems/layer-queue': ['dispatchOp', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
 	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getPublicMatchHistoryState', 'getRecentMatches'],

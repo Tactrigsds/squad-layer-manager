@@ -10,7 +10,7 @@ import type { MigrationDriver } from '@/server/migrate'
 
 // the API surface reachable through slm/* entries. Bump minor on additions, major on breaking changes.
 /** The slm/* surface this build provides. A manifest declares the range it needs as `apiVersion`. */
-export const API_VERSION = { major: 1, minor: 1 }
+export const API_VERSION = { major: 2, minor: 0 }
 
 // ids double as table/permission namespace segments, so the alphabet stays small
 export const PluginIdSchema = z
@@ -49,6 +49,16 @@ export function definePlugin<M extends Manifest<z.ZodObject<any>>>(manifest: M):
 		throw new Error(`plugin ${manifest.id}: configSchema must be a z.object(...)`)
 	}
 	return Object.freeze(manifest)
+}
+
+/**
+ * The telemetry scope for a plugin, `plugin:<id>`, or `plugin:<id>:<submodule>`. It names the otel
+ * tracer and log scope, prefixes every spanOp name, and is the `slm.module.name` on the plugin's log
+ * records, so the `plugin:` prefix is the one thing separating a plugin's telemetry from the host's.
+ * The host builds it; a plugin reaches its module through `ctx.module` rather than naming itself.
+ */
+export function moduleName(pluginId: PluginId, submodule?: string): string {
+	return submodule ? `plugin:${pluginId}:${submodule}` : `plugin:${pluginId}`
 }
 
 /** Whether this build satisfies a manifest's apiVersion range ('^1', '^1.2'). Checked before activation. */

@@ -8,8 +8,11 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
-import type * as PLG from '@/models/plugins.models'
+import type * as CS from '@/models/context-shared'
+import * as ATTRS from '@/models/otel-attrs'
+import * as PLG from '@/models/plugins.models'
 import * as RPC from '@/orpc.client'
+import { baseLogger } from '@/systems/logger.client'
 import { tr } from '@/systems/messages.client'
 import * as ApiRegistry from '@/systems/plugin-api-registry.client'
 
@@ -23,9 +26,22 @@ import * as ApiRegistry from '@/systems/plugin-api-registry.client'
 
 export type ClientCtx<M extends PLG.Manifest<any> = PLG.Manifest> = {
 	plugin: { id: PLG.PluginId; manifest: M }
+	// named `plugin:<id>` like its server half's, so a browser log says which plugin it came from
+	log: CS.Logger
 }
 
 export type ClientModule = { manifest: PLG.Manifest; setup: (ctx: ClientCtx<any>) => void }
+
+// What ctx.log is, and what the host logs a plugin's own failures through. The module name matches the
+// server half's, so one plugin reads the same on both sides of the wire.
+function pluginLogger(info: Pick<PLG.RuntimeInfo, 'id' | 'version' | 'source'>): CS.Logger {
+	return baseLogger.child({
+		[ATTRS.Module.NAME]: PLG.moduleName(info.id),
+		[ATTRS.Plugin.ID]: info.id,
+		[ATTRS.Plugin.VERSION]: info.version,
+		[ATTRS.Plugin.SOURCE]: info.source,
+	})
+}
 
 /**
  * Declares a plugin's client entry. Default-export the result from client.tsx: the host calls `setupFn`
@@ -371,7 +387,7 @@ async function loadManifest(info: PLG.RuntimeInfo) {
 		const mod = (await import(/* @vite-ignore */ info.manifestEntry!)) as { default: PLG.Manifest }
 		Store.setState((s) => ({ ...s, manifests: { ...s.manifests, [info.id]: mod.default } }))
 	} catch (err) {
-		console.error(`plugin ${info.id}: loading its manifest failed`, err)
+		pluginLogger(info).error(err, 'loading its manifest failed')
 	}
 }
 
@@ -381,10 +397,10 @@ async function loadClient(info: PLG.RuntimeInfo) {
 			? ((await import(/* @vite-ignore */ info.clientEntry)) as { default: ClientModule }).default
 			: (await builtins.find((e) => e.manifest.id === info.id)?.client?.())?.default
 		if (!mod) return
-		mod.setup({ plugin: { id: info.id, manifest: Store.getState().manifests[info.id] ?? mod.manifest } })
+		mod.setup({ plugin: { id: info.id, manifest: Store.getState().manifests[info.id] ?? mod.manifest }, log: pluginLogger(info) })
 		bumpVersion()
 	} catch (err) {
-		console.error(`plugin ${info.id}: client setup failed`, err)
+		pluginLogger(info).error(err, 'client setup failed')
 	}
 }
 

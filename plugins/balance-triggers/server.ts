@@ -9,7 +9,6 @@ import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
 import * as Instr from 'slm/server/instrumentation'
-import * as Logger from 'slm/server/logger'
 import * as AppEventsSys from 'slm/systems/app-events'
 import * as MatchHistory from 'slm/systems/match-history'
 import * as Reminders from 'slm/systems/post-roll-reminders'
@@ -19,8 +18,6 @@ import * as S from './schema.ts'
 import * as TR from './triggers.ts'
 
 type Ctx = P.ServerCtx<typeof manifest>
-
-const module = Logger.initModule('plugin:balance-triggers')
 
 // pulses a serverId whenever that server's trigger events change
 const update$ = new Rx.Subject<string>()
@@ -60,7 +57,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		cleanup.push(
 			sctx.matchHistory.finalized$
 				.pipe(
-					Instr.durableSub('balance-triggers:evaluate', { module }, async ({ matchId }) => {
+					Instr.durableSub('evaluate', { module: sctx.module }, async ({ matchId }) => {
 						await evaluate(sctx, matchId)
 					}),
 				)
