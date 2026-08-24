@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
+import { PluginsSection } from '@/components/plugins-section'
 import type SchemaYamlEditorComponent from '@/components/schema-yaml-editor'
 import type { SchemaYamlEditorHandle } from '@/components/schema-yaml-editor.types'
 import { useOpenServerConsoleWindow } from '@/components/server-console-window.helpers'
@@ -70,6 +71,7 @@ export const Route = createFileRoute('/_app/settings')({
 
 function RouteComponent() {
 	const manageServersDenied = RbacClient.usePermsCheck(RBAC.perm('admin:manage-servers'))
+	const managePluginsDenied = RbacClient.usePermsCheck(RBAC.perm('plugins:manage'))
 	const globalAccess = RbacClient.useGlobalSettingsAccess()
 	const loggedInPerms = RbacClient.useSuspendableLoggedInUserPerms()
 	// creating a server requires supplying its connection details, so it needs write-sensitive in addition to manage-servers
@@ -80,6 +82,8 @@ function RouteComponent() {
 	const [creatingNonce, setCreatingNonce] = React.useState<string | null>(null)
 
 	// a server section renders for every server the user may at least read; registry management is gated separately
+	// managing plugins is grant enough on its own; global read otherwise carries the list as a read-only view
+	const canSeePlugins = globalAccess.canRead || !managePluginsDenied
 	const allServers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers) ?? NO_SERVERS
 	const servers = React.useMemo(
 		() => allServers.filter((s) => RBAC.canReadServerSettings(loggedInPerms, s.id, RBAC.NO_SCOPED_SERVERS)),
@@ -184,7 +188,7 @@ function RouteComponent() {
 		return SettingsNav.scrollToAnchorSettled('section:server:__new__', { deadlineMs: 1500 })
 	}, [creating])
 
-	if (manageServersDenied && !globalAccess.canRead && servers.length === 0) {
+	if (manageServersDenied && !globalAccess.canRead && servers.length === 0 && !canSeePlugins) {
 		return (
 			<div className="w-full h-full grid place-items-center">
 				<p className="text-muted-foreground">{tr.text(SETTINGS_Msgs.noAccess())}</p>
@@ -206,6 +210,8 @@ function RouteComponent() {
 					<SettingsToc
 						showServers={!manageServersDenied || servers.length > 0}
 						showGlobal={globalAccess.canRead}
+						showPlugins={canSeePlugins}
+						canManagePlugins={!managePluginsDenied}
 						servers={servers}
 						sectionKeys={sectionKeys}
 					/>
@@ -230,6 +236,11 @@ function RouteComponent() {
 									onAddServer={() => setCreatingNonce(createId(4))}
 									onCancelCreate={() => setCreatingNonce(null)}
 								/>
+							</div>
+						)}
+						{canSeePlugins && (
+							<div id="section:plugins" className="scroll-mt-2 rounded-xl">
+								<PluginsSection canManage={!managePluginsDenied} />
 							</div>
 						)}
 						{globalAccess.canRead &&

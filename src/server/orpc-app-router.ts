@@ -7,6 +7,7 @@ import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Plugins from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Sandbox from '@/systems/sandbox.server'
 import * as ServerConsole from '@/systems/server-console.server'
@@ -40,6 +41,7 @@ export const orpcAppRouter = {
 	teamswaps: Teamswaps.orpcRouter,
 	switchRequests: SwitchRequests.orpcRouter,
 	appEvents: AppEvents.router,
+	plugins: Plugins.router,
 	timeouts: Timeouts.router,
 	sandbox: Sandbox.orpcRouter,
 	serverConsole: ServerConsole.orpcRouter,

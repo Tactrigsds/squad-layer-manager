@@ -234,6 +234,13 @@ export const groups = {
 			}),
 	},
 
+	plugins: {
+		PLUGINS_DIR: z.string().min(1).prefault(path.join(Paths.DATA, 'plugins')).meta({
+			description:
+				'where packaged plugins live, one directory each. Under ./data by default, which a deployment already mounts, so plugins survive an image upgrade and can be dropped in by hand.',
+		}),
+	},
+
 	db: {
 		DB_PATH: z.string().min(1).prefault('./data/db.sqlite3').meta({
 			description: 'the main sqlite database. -wal and -shm files are created alongside it, so mount the directory, not the file.',
@@ -547,6 +554,7 @@ export const groupMeta: Record<keyof typeof groups, { title: string; description
 	rbac: { title: 'Permissions' },
 	encryption: { title: 'Encryption' },
 	db: { title: 'Database' },
+	plugins: { title: 'Plugins' },
 	backups: { title: 'Backups' },
 	discord: {
 		title: 'Discord',

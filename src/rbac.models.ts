@@ -226,6 +226,10 @@ export const PERMISSION_DEFINITION = {
 		description: 'Manage the server registry: create servers, start/stop them and set the default server',
 		scope: 'global',
 	}),
+	...definePermission('plugins:manage', {
+		description: 'Start, stop and configure plugins. Plugins run with full SLM access, so treat this like admin access',
+		scope: 'global',
+	}),
 	...definePermission('admin:delete-servers', { description: 'Delete servers', scope: 'global' }),
 	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
 

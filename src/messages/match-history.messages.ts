@@ -19,8 +19,6 @@ export const layerIndicatorsColumn = def('Layer Indicators')
 
 export const setByColumn = def('Set By')
 
-export const winStreak = def('({length} wins)', (length: number) => ({ length }))
-
 export const noMatches = def('No matches found')
 
 export const switchingLayer = def('Switching to New Layer...')

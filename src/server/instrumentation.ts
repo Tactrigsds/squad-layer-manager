@@ -30,7 +30,14 @@ const CONTEXT_ATTR_MAPPING = [
 		ctxPath: (ctx: Partial<C.WSSession>) => ctx?.wsClientId,
 		attr: ATTR.WebSocket.CLIENT_ID,
 	},
+	// structurally typed rather than importing the plugin host's Ctx, which would close a cycle. Every
+	// op a plugin runs is under a `plugin:<id>:` name already; these make it a group-by instead of a
+	// string prefix match, and pin the span to the version that produced it.
+	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.id, attr: ATTR.Plugin.ID },
+	{ ctxPath: (ctx: Partial<PluginCtx>) => ctx?.plugin?.manifest?.version, attr: ATTR.Plugin.VERSION },
 ] as const
+
+type PluginCtx = { plugin: { id: string; manifest: { version: string } } }
 
 /**
  * Take the ctx's links, and hand the callback a shallow clone whose links are spent.
@@ -67,6 +74,11 @@ function getOpDurationHistogram() {
 	return opDuration
 }
 
+/**
+ * Wraps a function so each call is a traced span, with duration recorded and errors marked. `opts.mutexes`
+ * takes locks for the call's lifetime, in the order given. Most exported operations in SLM are built with
+ * it, and a plugin's should be too, so its work appears in the same traces.
+ */
 export function spanOp<Cb extends (...args: any[]) => any>(
 	name: string,
 	opts: {
@@ -253,8 +265,10 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 				getOpDurationHistogram().record((performance.now() - startedAt) / 1000, {
 					[ATTR.Op.NAME]: fullName,
 					[ATTR.Op.OUTCOME]: metricOutcome,
-					// already resolved from ctx by CONTEXT_ATTR_MAPPING above; bounded by the number of servers
+					// already resolved from ctx by CONTEXT_ATTR_MAPPING above; both bounded, by the number of
+					// configured servers and of installed plugins
 					...(spanAttrs[ATTR.SquadServer.ID] ? { [ATTR.SquadServer.ID]: spanAttrs[ATTR.SquadServer.ID] } : {}),
+					...(spanAttrs[ATTR.Plugin.ID] ? { [ATTR.Plugin.ID]: spanAttrs[ATTR.Plugin.ID] } : {}),
 				})
 				spanStatusMap.delete(span.spanContext().spanId)
 				span.end()

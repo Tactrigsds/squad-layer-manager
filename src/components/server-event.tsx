@@ -863,6 +863,13 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 			</EventLine>
 		)
 	}
+	if (appEvent.type === 'PLUGIN_EVENT') {
+		return (
+			<EventLine time={event.time} icon={<Icons.Puzzle className="h-4 w-4 text-slate-400 shrink-0" />}>
+				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
+			</EventLine>
+		)
+	}
 	if (
 		appEvent.type === 'SETTINGS_UPDATED' ||
 		appEvent.type === 'SERVER_REGISTRY_CHANGED' ||
@@ -872,7 +879,8 @@ function AppEventEntry({ event, stores }: { event: Extract<CHAT.EventEnriched, {
 		appEvent.type === 'PLAYER_FLAGS_UPDATED' ||
 		appEvent.type === 'APP_STARTED' ||
 		appEvent.type === 'APP_RESTARTED' ||
-		appEvent.type === 'BACKUP_CREATED'
+		appEvent.type === 'BACKUP_CREATED' ||
+		appEvent.type === 'PLUGIN_DATA_PURGED'
 	) {
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).

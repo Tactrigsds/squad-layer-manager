@@ -42,14 +42,27 @@ export function runCleanup(ctx: CS.Log, tasks: Tasks): Promise<unknown> {
 	// concat takes its sources variadically -- `concat(array)` emits the array's members as values and subscribes to
 	// none of them. Each task is also deferred, so the chain runs in sequence: mapping to$ directly would fire every
 	// task's side effect during the map, before the first async one had finished, which is not FILO at all.
+	const total = tasks.length
 	const chain = tasks.toReversed().map((task, index) => Rx.defer(() => to$(task, index)))
 	return Rx.lastValueFrom(Rx.concat(...chain).pipe(Rx.endWith(0)))
 
+	// Drops a task once it has run. It holds whatever its closure captured and the list may outlive the
+	// drain, and a second drain of the same list becomes a no-op rather than a re-run -- which is what
+	// lets one list be registered in two places without either of them running it twice. By identity
+	// rather than index, so a task that reorders the list while it runs cannot make us null the wrong
+	// slot.
+	function forget(task: Task) {
+		const idx = tasks.indexOf(task)
+		if (idx >= 0) tasks[idx] = null
+	}
+
 	function to$(task: Task, index: number): Rx.Observable<unknown> {
-		// the position the caller passed this task at, undoing the reverse above
-		const taskIndex = tasks.length - index - 1
+		// the position the caller passed this task at, undoing the reverse above. Off the length captured
+		// before the drain, since a task may shorten the list while it runs.
+		const taskIndex = total - index - 1
 		try {
 			const classified = classify(typeof task === 'function' ? task() : task)
+			forget(task)
 			switch (classified.kind) {
 				case 'noop':
 					return Rx.EMPTY
@@ -74,6 +87,7 @@ export function runCleanup(ctx: CS.Log, tasks: Tasks): Promise<unknown> {
 					assertNever(classified)
 			}
 		} catch (err) {
+			forget(task)
 			return onError(err, taskIndex)
 		}
 	}

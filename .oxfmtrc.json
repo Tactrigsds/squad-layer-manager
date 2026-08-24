@@ -18,10 +18,11 @@
 		".tanstack/**",
 		"drizzle/**/*.json",
 		"drizzle-sqlite/**/*.json",
-		".claude/worktrees/**"
+		".claude/worktrees/**",
+		".local/**"
 	],
 	"sortImports": {
-		"internalPattern": ["@/", "$root/"],
+		"internalPattern": ["@/", "$root/", "slm/"],
 		"groups": [
 			["side_effect_style", "side_effect"],
 			["value-builtin", "value-external", "type-import"],
