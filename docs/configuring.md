@@ -325,9 +325,12 @@ Open one and you get the expression that decides what it matches:
 
 ![filter_edit](configuring_screenshots/filter_edit.png)
 
-The block at the top sets how the conditions under it combine. The four block types are _all of (and)_,
-_any of (or)_, _none of (nor)_ and _not all of (nand)_. _No Mech on Hilly Maps_ uses _not all of (nand)_,
-so a layer matches unless both of these hold:
+Each condition is one line, written out. Click a line to edit it, then click _Done_ or press _Escape_. Only one
+line is open at a time. The buttons for commenting, copying and removing a line appear when you point at it.
+
+The block at the top sets how the conditions under it combine. The four block types are _all of_, _any of_,
+_none of_ and _not all of_; opening one names the operation it stands for as well. _No Mech on Hilly Maps_ uses
+_not all of_, so a layer matches unless both of these hold:
 
 - `Map` is Manicouagan, Skorpo or Lashkar
 - `Unit (Either)` is Mechanized or Armored
@@ -338,7 +341,7 @@ _Main Pool_ is built out of two of the others:
 ![main_pool](configuring_screenshots/main_pool_card.png)
 ![main_pool_edit](configuring_screenshots/main_pool_edit.png)
 
-It uses _all of (and)_, so a layer has to meet every one of:
+It uses _all of_, so a layer has to meet every one of:
 
 - `Z_Pool` is true, shown as `Z Pool` in the builder. This is one of the extra columns that ship with SLM's layer
   data, and it marks the competitive pool. See [layer_data.md](layer_data.md).
@@ -346,8 +349,8 @@ It uses _all of (and)_, so a layer has to meet every one of:
 - the layer is included in _No Mech on Hilly Maps_
 
 Switch a filter between _Builder_ and _Text_. The text view edits the expression as text, which is easier for
-changes the builder makes you do a row at a time, such as copying part of an expression or changing how its
-conditions nest. _Reformat_ tidies the text up.
+changes the builder makes you do a line at a time, such as changing how the conditions nest. _Reformat_ tidies the
+text up.
 
 #### 8.2. Pool configuration
 
@@ -479,16 +482,18 @@ _Target Values_ narrows a rule to named values:
 
 That rule covers Skorpo alone, over 10 matches. A _Within_ of 0 turns a rule off.
 
-On its own a rule only marks the repeat, which the layer table can hide behind _Hide Repeats_. Two checkboxes
-decide what else it does:
+A rule always hides its repeats behind the layer table's _Hide Repeats_. _Options_ decides what else it does:
 
+- _Indicate_ marks a layer that breaks the rule wherever it is shown: the repeat icon on the queue item and in the
+  layer table, and the underline on the field that repeats.
 - _Warn_ warns the editor before saving a layer that breaks the rule, and warns in-game admins when one is about
   to be played.
 - _Autogen_ applies the rule when autogenerating layers as well. It is on for all three defaults, and off for the
   Skorpo rule above.
+- _Cross-team_ pools both teams together, so a value one team played counts as a repeat when the other team plays
+  it. Only a rule on a team-specific attribute can take it.
 
-![repeat_rules_warn](configuring_screenshots/repeat_rules_warn.png)
-![repeat_rules_autogen](configuring_screenshots/repeat_rules_autogen.png)
+Drag a rule by its grip to reorder the list.
 
 A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule
 opt out of that.

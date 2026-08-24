@@ -426,6 +426,12 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 
 	const user = UsersClient.useLoggedInUser()
 
+	// the tutorial tour spotlights one row's controls; the head row stands in for "a layer". The first few rows all
+	// carry the queue-item anchor: a plain 'queue-item' anchor still resolves to the head (first laid-out match), and
+	// { all: 'queue-item' } bounds the run of rows, which the normalization step highlights as a sequence.
+	const isTourRow = LL.isLocallyFirstIndex(index)
+	const isTourSeqRow = index.innerIndex === null && index.outerIndex < 3
+
 	const isVoteChoice = !!parentItem
 
 	const isModified = Zus.useStore(props.stores.squadServer, LayerQueuePrt.Sel.isModified)
@@ -530,7 +536,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 		const serverNextLayer = layersStatus?.nextLayer
 		if (updatesDisabled) {
 			badges.push(
-				<Badge key="next-layer" variant="destructive">
+				<Badge key="next-layer" data-tour={isTourRow ? 'queue-next-badge' : undefined} variant="destructive">
 					{tr.text(LL_Msgs.notNextLayerBlocked())}
 				</Badge>,
 			)
@@ -538,7 +544,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 			badges.push(
 				<Tooltip key="next-layer">
 					<TooltipTrigger>
-						<Badge variant="added">{tr.text(LL_Msgs.isNextLayer())}</Badge>
+						<Badge data-tour={isTourRow ? 'queue-next-badge' : undefined} variant="added">
+							{tr.text(LL_Msgs.isNextLayer())}
+						</Badge>
 					</TooltipTrigger>
 					<TooltipContent>{tr.text(LL_Msgs.isNextLayerBlurb())}</TooltipContent>
 				</Tooltip>,
@@ -547,7 +555,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 			badges.push(
 				<Tooltip key="next-layer">
 					<TooltipTrigger>
-						<Badge variant="edited">{tr.text(LL_Msgs.notNextLayerUnsaved())}</Badge>
+						<Badge data-tour={isTourRow ? 'queue-next-badge' : undefined} variant="edited">
+							{tr.text(LL_Msgs.notNextLayerUnsaved())}
+						</Badge>
 					</TooltipTrigger>
 					<TooltipContent className="max-w-xs">
 						{tr.text(LL_Msgs.notNextLayerUnsavedBlurb(DH.toShortLayerNameFromId(serverNextLayer.id)))}
@@ -562,7 +572,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 			badges.push(
 				<Tooltip key="next-layer">
 					<TooltipTrigger>
-						<Badge variant="secondary" className="gap-1">
+						<Badge data-tour={isTourRow ? 'queue-next-badge' : undefined} variant="secondary" className="gap-1">
 							<Icons.LoaderCircle className="h-3 w-3 animate-spin" />
 							{tr.text(LL_Msgs.settingNextLayer())}
 						</Badge>
@@ -574,7 +584,9 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 			badges.push(
 				<Tooltip key="next-layer">
 					<TooltipTrigger>
-						<Badge variant="destructive">{tr.text(LL_Msgs.notNextLayer())}</Badge>
+						<Badge data-tour={isTourRow ? 'queue-next-badge' : undefined} variant="destructive">
+							{tr.text(LL_Msgs.notNextLayer())}
+						</Badge>
 					</TooltipTrigger>
 					<TooltipContent>{tr.text(LL_Msgs.notCurrentNextLayer())}</TooltipContent>
 				</Tooltip>,
@@ -596,6 +608,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						'group/single-item flex data-[is-voting=true]:border-added data-[is-voting=true]:bg-secondary w-full min-w-10 min-h-5 max items-center justify-between space-x-2 bg-background border-2 border-transparent data-[mutation=added]:border-added data-[mutation=moved]:border-moved data-[mutation=edited]:border-edited data-[is-dragging=true]:outline-2 data-[is-dragging=true]:outline-solid data-[is-dragging=true]:outline-white data-[is-dragging=true]:bg-transparent! [&[data-is-dragging=true]>*]:invisible rounded-md cursor-default data-[is-hovered=true]:outline-solid',
 					)}
 					data-mutation={displayedMutation}
+					data-tour={isTourSeqRow ? 'queue-item' : undefined}
 					data-is-dragging={dragProps.isDragging}
 					data-is-voting={voteState?.code === 'in-progress'}
 					data-is-hovered={activityHovered}
@@ -604,14 +617,22 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<span data-mobile={isMobile} className="min-w-[4ch] text-right font-mono text-muted-foreground data-[mobile=true]:hidden">
 							{LL.getItemNumber(index)}
 						</span>
-						<Button ref={dragProps.handleRef} variant="ghost" size="icon" {...editButtonProps('data-[can-edit=true]:cursor-grab')}>
+						<Button
+							ref={dragProps.handleRef}
+							variant="ghost"
+							size="icon"
+							data-tour={isTourRow ? 'queue-reorder' : undefined}
+							{...editButtonProps('data-[can-edit=true]:cursor-grab')}
+						>
 							<Icons.GripVertical />
 						</Button>
 					</span>
-					<span className="rounded flex space-y-1 w-full flex-col">
+					<span data-tour={isTourRow ? 'queue-item-display' : undefined} className="rounded flex space-y-1 w-full flex-col">
 						<LayerDisplay
 							stores={props.stores}
 							droppable={true}
+							layerNameTourId={isTourRow ? 'queue-layer-name' : undefined}
+							indicatorsTourId={isTourRow ? 'layer-indicators' : undefined}
 							item={{ type: 'single-list-item', layerId: item.layerId, itemId: item.itemId }}
 							badges={badges}
 							tags={
@@ -666,7 +687,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					{sourceDisplay && (
 						<>
 							<Separator orientation="vertical" />
-							{sourceDisplay}
+							<span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>
 						</>
 					)}
 					<StartActivityInteraction
@@ -675,6 +696,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						matchKey={(key) => Obj.deepEqualStrict(key, { ...editActivity, serverId: props.stores.squadServer.serverId })}
 						preload="viewport"
 						render={Button}
+						data-tour={isTourRow ? 'queue-item-edit' : undefined}
 						variant="ghost"
 						size="icon"
 						title={tr.text(LL_Msgs.editItem())}
@@ -685,6 +707,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
+						data-tour={isTourRow ? 'queue-swap' : undefined}
 						title={tr.text(LL_Msgs.swapFactions())}
 						disabled={!canEdit || !L.swapFactions(item.layerId)}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'swap-factions' })}
@@ -694,6 +717,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 					<Button
 						variant="ghost"
 						size="icon"
+						data-tour={isTourRow ? 'queue-delete' : undefined}
 						title={tr.text(LL_Msgs.deleteItem())}
 						disabled={!canEdit}
 						onClick={() => LayerQueuePrt.Actions.dispatchItemOp(itemStores, props.itemId, { op: 'delete' })}
@@ -701,7 +725,7 @@ const SingleLayerListItem = React.memo(function SingleLayerListItem(props: Layer
 						<Icons.X />
 					</Button>
 					<ItemDropdown {...dropdownProps}>
-						<Button {...editButtonProps()} variant="ghost" size="icon">
+						<Button {...editButtonProps()} data-tour={isTourRow ? 'queue-item-menu' : undefined} variant="ghost" size="icon">
 							<Icons.EllipsisVertical />
 						</Button>
 					</ItemDropdown>
@@ -762,7 +786,7 @@ function VoteLayerListItem(props: LayerListItemProps) {
 		create: UP.createEditingQueueVariant({ _tag: 'leaf', id: 'CONFIGURING_VOTE', opts: { itemId: item.itemId } }),
 		match: React.useCallback(
 			(state) => {
-				const node = state ? UP.Trans.editingQueue(state.opts.serverId).match(state)?.chosen : null
+				const node = UP.editingQueueNode(state)?.chosen
 				return node?.id === 'CONFIGURING_VOTE' && node.opts.itemId === item.itemId
 			},
 			[item.itemId],

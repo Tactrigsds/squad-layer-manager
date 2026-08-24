@@ -26,6 +26,9 @@ export type WorldOptions = {
 	maxPlayers?: number
 	// injectable for deterministic scenarios
 	now?: () => Date
+	// disambiguates fabricated player ids across instances (see makePlayer); the sandbox passes the server id so
+	// concurrent emulated servers do not collide on the shared players table
+	idSalt?: string
 	currentLayer?: Fmt.LayerLike
 	nextLayer?: Fmt.LayerLike | null
 	// when set, AdminSetNextLayer/AdminChangeLayer reject layers outside this list (for testing
@@ -85,26 +88,33 @@ function seedFrom(name: string): () => number {
 	}
 }
 
+// A salt disambiguates the derivation so two emulator instances that both connect "Player1" mint different ids:
+// their fabricated players would otherwise collide on the shared `players` table, which is keyed by eos id, not
+// server. Within one instance (one salt) the ids stay stable, so the name-is-the-player property still holds.
+function saltedSeed(kind: string, name: string, salt?: string): () => number {
+	return seedFrom(salt ? `${salt}\0${kind}:${name}` : `${kind}:${name}`)
+}
+
 // 17 digits, as steam ids are, in the range the emulator drew from before
-export function steamIdForName(name: string): string {
-	const next = seedFrom(`steam:${name}`)
+export function steamIdForName(name: string, salt?: string): string {
+	const next = saltedSeed('steam', name, salt)
 	let digits = String(1 + (next() % 9))
 	while (digits.length < 10) digits += String(next() % 10)
 	return `7656119${digits}`
 }
 
 // 32 hex characters, the leading `0002` an eos id carries
-export function eosIdForName(name: string): string {
-	const next = seedFrom(`eos:${name}`)
+export function eosIdForName(name: string, salt?: string): string {
+	const next = saltedSeed('eos', name, salt)
 	let hex = ''
 	while (hex.length < 28) hex += (next() % 16).toString(16)
 	return `0002${hex}`
 }
 
-export function makePlayer(opts: Partial<EmuPlayer> & { name: string }): EmuPlayer {
+export function makePlayer(opts: Partial<EmuPlayer> & { name: string }, salt?: string): EmuPlayer {
 	return {
-		eos: opts.eos ?? eosIdForName(opts.name),
-		steam: opts.steam ?? steamIdForName(opts.name),
+		eos: opts.eos ?? eosIdForName(opts.name, salt),
+		steam: opts.steam ?? steamIdForName(opts.name, salt),
 		name: opts.name,
 		teamId: opts.teamId ?? null,
 		squadId: opts.squadId ?? null,
@@ -127,6 +137,8 @@ export type EmuSquad = {
 export class World {
 	serverName: string
 	maxPlayers: number
+	// salt for fabricated player ids, so concurrent instances don't collide (see makePlayer); undefined = unsalted
+	idSalt: string | undefined
 	teams: Fmt.TeamLike[] = []
 	currentLayer: Fmt.LayerLike
 	nextLayer: Fmt.LayerLike | null
@@ -163,6 +175,7 @@ export class World {
 		this.#now = opts.now ?? (() => new Date())
 		this.serverName = opts.serverName ?? 'SLM Emulated Squad Server'
 		this.maxPlayers = opts.maxPlayers ?? 100
+		this.idSalt = opts.idSalt
 		this.currentLayer = opts.currentLayer ?? { ...DEFAULT_CURRENT }
 		this.nextLayer =
 			opts.nextLayer !== undefined

@@ -74,7 +74,7 @@ describe('reducer enabled-server gating', () => {
 			[clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: 'server-1' } })],
 			[],
 		)
-		expect(next.presence.get('client-1')?.activityState?.opts.serverId).toBe('server-1')
+		expect(UP.activityServerId(next.presence.get('client-1')?.activityState)).toBe('server-1')
 	})
 
 	it('ends editing (and drops locks) only for clients on the saved server', () => {
@@ -123,7 +123,7 @@ describe('reducer enabled-server gating', () => {
 			[clientOp({ code: 'update-activity', update: { code: 'enter-server-dashboard', serverId: 'server-1' } })],
 			[],
 		)
-		expect(state.presence.get('client-1')?.activityState?.opts.serverId).toBe('server-1')
+		expect(UP.activityServerId(state.presence.get('client-1')?.activityState)).toBe('server-1')
 		;[state] = UP.reducer(state, [{ opId: 'disable', time: Date.now(), code: 'set-enabled-servers', serverIds: [] }], [])
 		expect(state.presence.get('client-1')?.activityState).toBeNull()
 		expect(state.enabledServers.size).toBe(0)

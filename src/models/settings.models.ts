@@ -587,11 +587,11 @@ export function defaultRbacSettings() {
 // ============================== per-server settings ==============================
 
 // autogen on by default: a fresh server that generates layers violating its own repeat rules is never what
-// anyone wants, and the per-rule checkbox is there to turn it off
+// anyone wants, and the per-rule option is there to turn it off
 const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
-	{ label: 'Map', field: 'Map', within: 4, autogen: true },
-	{ label: 'Layer', field: 'Layer', within: 7, autogen: true },
-	{ label: 'Faction', field: 'Faction', within: 3, autogen: true },
+	{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true },
+	{ label: 'Layer', field: 'Layer', within: 7, autogen: true, warn: true, indicate: true },
+	{ label: 'Faction', field: 'Faction', within: 3, autogen: true, warn: true, indicate: true },
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
@@ -631,8 +631,13 @@ export const SelectableFilterSettingSchema = z.object({
 })
 export type SelectableFilterSetting = z.infer<typeof SelectableFilterSettingSchema>
 
+// warn and indicate default on rather than off: every rule warned and indicated before either was configurable, so
+// an existing rule that says nothing about them must keep doing both.
 export const RepeatRuleConfigSchema = LQY.RepeatRuleSchema.extend({
-	warn: z.boolean().optional().meta({
+	indicate: z.boolean().prefault(true).meta({
+		description: 'Mark layers violating this rule wherever layers are displayed',
+	}),
+	warn: z.boolean().prefault(true).meta({
 		description: 'Users should be warned before saving or before the layer violating this repeat rule is played',
 	}),
 	autogen: z.boolean().optional().meta({
@@ -711,6 +716,19 @@ export const SandboxConnectionSchema = z.object({
 	type: z.literal('sandbox'),
 	serverName: z.string().min(1).prefault('SLM Sandbox').describe('The name the emulated server reports over RCON.'),
 	maxPlayers: z.int().min(2).max(200).prefault(100).describe('The player slot count the emulated server reports.'),
+	// Pacing overrides for scenario-driven sandboxes (tutorials). Absent means the emulator's realistic defaults:
+	// a ~30s post-match wait and constant tick chatter. A tutorial turns the wait down so a staged roll is quick
+	// and silences the chatter so the narrated log stays legible.
+	postMatchDelayMs: z
+		.int()
+		.min(0)
+		.optional()
+		.describe('ms in WaitingPostMatch before the next world comes up. Omit for the realistic 30s.'),
+	tickChatter: z.boolean().optional().describe('Whether the emulated server emits its periodic tick-rate log lines. Omit to keep them.'),
+	// The layer the emulated server should hold as next at boot. A scenario-seeded sandbox sets this to its queue
+	// head so SLM's first reconcile sees the head already staged, rather than the emulator's default seed -- which
+	// it would otherwise pull into the queue as an external layer change and displace what the scenario seeded.
+	nextLayerId: z.string().optional().describe('Layer id the emulated server holds as next at boot. Omit for the emulator default.'),
 })
 
 // How SLM reaches a squad server, as four mutually-exclusive modes:
@@ -899,6 +917,15 @@ export const PublicServerSettingsSchema = z.object({
 				),
 		})
 		.prefault({}),
+
+	teamkillNotifications: z
+		.object({
+			enabled: z.boolean().prefault(false),
+			template: z.string().prefault('You have been teamkilled by {{attacker}} with {{weapon}}. An admin has been notified.'),
+		})
+		.prefault({})
+		.describe('Notify players when they are teamkilled. Available variables: attacker, weapon.'),
+
 	rconCacheTTL: z
 		.object({
 			layersStatus: ZodUtils.HumanTime.prefault('5s').describe(
@@ -961,6 +988,12 @@ export function remindersEnabled(settings: PublicServerSettings) {
 
 export function getRepeatRuleConstraintId(poolName: string, opts: { label: string }) {
 	return `layer-pool:${poolName}:${opts.label}`
+}
+
+// the per-rule switches, in the shape CB.repeatRule takes. Every path that builds a rule's constraint goes through
+// here, so the switches cannot diverge between the queue view, the layer table and the save-time warnings.
+export function repeatRuleConstraintOpts(rule: PoolRepeatRuleConfig) {
+	return { warn: rule.warn, showIndicator: rule.indicate ? ('regular' as const) : ('disabled' as const) }
 }
 
 export function getPoolFilterConstraint(
@@ -1026,7 +1059,7 @@ export function getSettingsConstraints(settings: PublicServerSettings, opts?: { 
 		if (poolFilterConstraint) constraints.push(poolFilterConstraint)
 		constraints.push(...getIndicationAndWarnConstraints(settings))
 		for (const rule of queue.mainPool.repeatRules) {
-			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule))
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule, repeatRuleConstraintOpts(rule)))
 		}
 	}
 
@@ -1157,16 +1190,16 @@ export namespace Grants {
 		const hasSensitivePaths = dottedPaths.some(isSensitive)
 
 		return RBAC.permReq<'server-settings:write' | 'server-settings:write-sensitive'>('all', [
-			(perms) => {
-				const access = RBAC.serverSettingsWriteAccess(perms, serverId)
+			(perms, scoped) => {
+				const access = RBAC.serverSettingsWriteAccess(perms, serverId, scoped)
 				const missing = nonSensitivePaths.filter((p) => !RBAC.settingsPathAllowed(access, p))
 				if (missing.length === 0) return
 				return `server-settings:write missing paths: ${missing.join(', ')}`
 			},
 			// connections are never a path grant; editing them requires write-sensitive regardless of the write grant above
 			hasSensitivePaths
-				? (perms) => {
-						if (RBAC.canWriteSensitiveServerSettings(perms, serverId)) return
+				? (perms, scoped) => {
+						if (RBAC.canWriteSensitiveServerSettings(perms, serverId, scoped)) return
 						return `server-settings:write-sensitive on ${serverId}`
 					}
 				: undefined,

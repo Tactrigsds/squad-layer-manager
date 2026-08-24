@@ -229,7 +229,7 @@ export const filters = sqliteTable('filters', {
 	owner: bigintText('owner').references(() => users.discordId, { onDelete: 'set null' }),
 	alertMessage: text('alertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
-	emoji: text('emoji').unique(),
+	emoji: text('emoji'),
 	invertedAlertMessage: text('invertedAlertMessage'),
 	// either a unicode emoji or a custom emoji (prefix discord_)
 	invertedEmoji: text('invertedEmoji'),
@@ -274,6 +274,10 @@ export const servers = sqliteTable('servers', {
 	backburner: json('backburner').notNull().default(superjson.serialize([])),
 	switchRequests: json('switchRequests').default(superjson.serialize(null)),
 	settings: json('settings').default(superjson.serialize({})),
+	// 'scoped' entries are visible and usable only to their owner (ownerDiscordId); tutorials spin up per-user
+	// emulated servers this way. 'public' (the default) is every server that existed before this column.
+	visibility: text('visibility').notNull().default('public'),
+	ownerDiscordId: bigintText('ownerDiscordId'),
 })
 
 export const globalSettings = sqliteTable('globalSettings', {
@@ -365,5 +369,45 @@ export const persistedCache = sqliteTable(
 	},
 	(table) => ({
 		updatedAtIndex: index('persistedCacheUpdatedAtIndex').on(table.updatedAt),
+	}),
+)
+
+// Where a user is in each tutorial. Per user rather than per browser, so a run can be picked up later or from
+// another machine. stepId is the step's own id, not its index: the step list is built per run from what the
+// install supports, so an index means something different elsewhere. Null stepId with a completedAt is a finished
+// tutorial; both null is one that was started and abandoned at the very beginning.
+// A page's tutorial prompt, once the user has told it to stop. A row exists only for a dismissal, so the absence
+// of one is the default.
+export const tutorialPromptDismissals = sqliteTable(
+	'tutorialPromptDismissals',
+	{
+		userId: bigintText('userId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		surfaceId: text('surfaceId').notNull(),
+		dismissedAt: timestamp('dismissedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.userId, table.surfaceId] }),
+	}),
+)
+
+export const tutorialProgress = sqliteTable(
+	'tutorialProgress',
+	{
+		userId: bigintText('userId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		scenarioId: text('scenarioId').notNull(),
+		stepId: text('stepId'),
+		completedAt: timestamp('completedAt'),
+		updatedAt: timestamp('updatedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.userId, table.scenarioId] }),
 	}),
 )

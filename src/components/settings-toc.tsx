@@ -289,8 +289,8 @@ export default function SettingsToc({
 	const serverWriteById = React.useMemo(() => {
 		const map = new Map<string, RBAC.SettingsWriteAccess>()
 		for (const s of servers) {
-			let write = RBAC.serverSettingsWriteAccess(perms, s.id)
-			if (write.kind !== 'all' && RBAC.canWriteSensitiveServerSettings(perms, s.id)) {
+			let write = RBAC.serverSettingsWriteAccess(perms, s.id, RBAC.NO_SCOPED_SERVERS)
+			if (write.kind !== 'all' && RBAC.canWriteSensitiveServerSettings(perms, s.id, RBAC.NO_SCOPED_SERVERS)) {
 				const paths = write.kind === 'paths' ? write.paths : []
 				write = { kind: 'paths', paths: [...paths, 'connections'] }
 			}

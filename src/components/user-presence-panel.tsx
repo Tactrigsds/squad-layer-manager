@@ -96,10 +96,8 @@ export const sortEditingPresence: SortPresenceFn = (a, b) => {
 	}
 
 	// Priority: has queue non-idle edit activity > editing > present
-	const aRoot = aPresence.activityState
-	const bRoot = bPresence.activityState
-	const aEditingActivity = aRoot ? UP.Trans.editingQueue(aRoot.opts.serverId).match(aRoot) : null
-	const bEditingActivity = bRoot ? UP.Trans.editingQueue(bRoot.opts.serverId).match(bRoot) : null
+	const aEditingActivity = UP.editingQueueNode(aPresence.activityState)
+	const bEditingActivity = UP.editingQueueNode(bPresence.activityState)
 
 	const aNonIdle = !!aEditingActivity?.chosen && aEditingActivity.chosen.id !== 'IDLE'
 	const bNonIdle = !!bEditingActivity?.chosen && bEditingActivity.chosen.id !== 'IDLE'

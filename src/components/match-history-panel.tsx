@@ -29,7 +29,6 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
-import * as UPClient from '@/systems/user-presence.client'
 
 import BalanceTriggerAlert from './balance-trigger-alert'
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
@@ -176,7 +175,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 
 	return (
 		<>
-			<CardHeader className="flex flex-row justify-between items-start">
+			<CardHeader data-tour="match-history" className="flex flex-row justify-between items-start">
 				<CardTitle>{tr.text(MH_Msgs.title())}</CardTitle>
 				<div className="flex items-center gap-1">
 					<div className="flex items-center">
@@ -210,7 +209,7 @@ export function MatchHistoryPanelContent(props: { stores: SquadServerFrame.KeyPr
 					</div>
 				</div>
 			</CardHeader>
-			<CardContent className="px-1">
+			<CardContent data-tour="match-history" className="px-1">
 				<Table>
 					<TableHeader>
 						<TableRow className="font-medium">
@@ -321,14 +320,10 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 	const isViewingThisMatch =
 		selectedMatchOrdinalFromStore === null ? entry.isCurrentMatch : selectedMatchOrdinalFromStore === entry.ordinal
 
-	const isEditingQueue = UPClient.useIsEditing()
-	const dragProps = DndKit.useDraggable(
-		{
-			type: 'history-entry',
-			id: entry.historyEntryId,
-		},
-		{ disabled: !isEditingQueue },
-	)
+	const dragProps = DndKit.useDraggable({
+		type: 'history-entry',
+		id: entry.historyEntryId,
+	})
 
 	// Track mouse down/up to detect clicks vs drags
 	const mouseDownPosRef = React.useRef<{ x: number; y: number } | null>(null)
@@ -527,13 +522,12 @@ function MatchHistoryRow({ entry, currentMatchOffset, balanceTriggerEvents, debu
 					role="row"
 					ref={dragProps.ref}
 					data-is-dragging={dragProps.isDragging}
-					data-is-editing={isEditingQueue}
 					onMouseDown={handleMouseDown}
 					onMouseUp={handleMouseUp}
 					onMouseLeave={handleMouseLeave}
 					className={cn(
 						Typo.LayerText,
-						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs data-is-editing:cursor-grab cursor-pointer',
+						'whitespace-nowrap bg-background data-[is-dragging=true]:outline-solid group rounded text-xs cursor-grab select-none',
 						bgColor,
 						hoverColor,
 					)}

@@ -130,7 +130,7 @@ export namespace Sel {
 
 	export const permsCheck = RSel.memoizeFactory(
 		<T extends RBAC.PermissionType>(req: RBAC.PermitChecker<T> | RBAC.PermitChecker<T>[] | RBAC.PermissionReq<T>) =>
-			RSel.createDeepSelector([loggedInUser], (user) => RBAC.tryDenyPermissionsForRbacUser(user, req)),
+			RSel.createDeepSelector([loggedInUser], (user) => RBAC.tryDenyPermissionsForRbacUser(user, req, RBAC.NO_SCOPED_SERVERS)),
 	)
 
 	export const loggedInUserPerms = RSel.createDeepSelector([loggedInUser], (user): RBAC.Permission[] =>
@@ -144,9 +144,9 @@ export namespace Sel {
 
 	export const serverSettingsAccess = RSel.memoizeFactory((serverId: string) =>
 		RSel.createDeepSelector([loggedInUserPerms], (perms): ServerSettingsAccess => ({
-			canRead: RBAC.canReadServerSettings(perms, serverId),
-			write: RBAC.serverSettingsWriteAccess(perms, serverId),
-			sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId),
+			canRead: RBAC.canReadServerSettings(perms, serverId, RBAC.NO_SCOPED_SERVERS),
+			write: RBAC.serverSettingsWriteAccess(perms, serverId, RBAC.NO_SCOPED_SERVERS),
+			sensitive: RBAC.canWriteSensitiveServerSettings(perms, serverId, RBAC.NO_SCOPED_SERVERS),
 		})),
 	)
 
@@ -164,9 +164,12 @@ export namespace Sel {
 	export const settingsLinkVisible = RSel.createSelector(
 		[(...[user, rbac]: SettingsLinkArgs) => loggedInUser(user, rbac), (...[, , settings]: SettingsLinkArgs) => settings?.servers],
 		(user, servers) => {
-			if (!RBAC.tryDenyPermissionsForRbacUser(user, SERVER_REGISTRY_REQ)) return true
+			if (!RBAC.tryDenyPermissionsForRbacUser(user, SERVER_REGISTRY_REQ, RBAC.NO_SCOPED_SERVERS)) return true
 			const perms = RBAC.fromTracedPermissions(user.perms)
-			return RBAC.canReadGlobalSettings(perms) || (servers ?? []).some((server) => RBAC.canReadServerSettings(perms, server.id))
+			return (
+				RBAC.canReadGlobalSettings(perms) ||
+				(servers ?? []).some((server) => RBAC.canReadServerSettings(perms, server.id, RBAC.NO_SCOPED_SERVERS))
+			)
 		},
 	)
 

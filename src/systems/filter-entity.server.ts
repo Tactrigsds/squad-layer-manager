@@ -1,5 +1,4 @@
 import * as Orpc from '@orpc/server'
-import { aliasedTable } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -92,6 +91,48 @@ async function recordFilterContributor(
 	)
 }
 
+// Filters the runtime owns rather than a person: the tutorial stands its own up alongside its scoped server,
+// because no particular filter is guaranteed to exist in an install and a pool config naming one that does not
+// fails every layer-status query for that server. Deliberately not the oRPC handlers above -- those enforce RBAC
+// and the reference index for a human editing the filter index, neither of which applies to a row the runtime
+// creates and deletes within one run. Both emit on filterMutation$ so open clients see the change.
+export async function putRuntimeFilters(ctx: C.Db, filters: F.FilterEntity[]) {
+	if (filters.length === 0) return
+	await ctx.db().insert(Schema.filters).values(filters)
+	for (const filter of filters) {
+		filterMutation$.next([
+			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
+			{ type: 'add', key: filter.id, userId: filter.owner, value: filter },
+		])
+	}
+}
+
+// Deletes the named rows, ignoring any that are already gone. Takes explicit ids rather than a prefix: which ids
+// a runtime owns is the caller's to know, and a prefix wide enough to sweep every run would also match a filter a
+// person (or a test fixture) happened to name that way.
+export async function deleteRuntimeFilters(ctx: C.Db, ids: F.FilterEntityId[]) {
+	if (ids.length === 0) return 0
+	const rows = await ctx.db().select().from(Schema.filters).where(E.inArray(Schema.filters.id, ids))
+	if (rows.length === 0) return 0
+	await ctx
+		.db()
+		.delete(Schema.filters)
+		.where(
+			E.inArray(
+				Schema.filters.id,
+				rows.map((row) => row.id),
+			),
+		)
+	for (const row of rows) {
+		const filter = F.FilterEntitySchema.parse(row)
+		filterMutation$.next([
+			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
+			{ type: 'delete', key: filter.id, userId: filter.owner, value: filter },
+		])
+	}
+	return rows.length
+}
+
 async function selectFilters(ctx: C.Db) {
 	return (await ctx.db().select().from(Schema.filters)).map((row) => F.FilterEntitySchema.parse(row))
 }
@@ -107,28 +148,72 @@ export async function computeReferenceIndex(ctx: C.Db): Promise<FR.Index> {
 // the live reference index every client watches. Assigned in setup, since it needs a db context.
 export let filterReferences$!: Rx.Observable<FR.Index>
 
-export const filtersRouter = {
-	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
-		const userContributors = aliasedTable(Schema.users, 'contributingUsers')
-		const contributorAccounts = aliasedTable(Schema.discordAccounts, 'contributingAccounts')
-		const rows = await ctx
-			.db()
-			.select({
-				user: { discordId: userContributors.discordId, nickname: userContributors.nickname, username: contributorAccounts.username },
-				role: Schema.filterRoleContributors.roleId,
+// The write itself, without the permission check. The rpc handler and the shared-draft save path
+// (filter-edit.server.ts) both go through here, so a filter is only ever written one way.
+export async function updateFilter(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, id: F.FilterEntityId, update: Partial<F.FilterEntityUpdate>) {
+	const res = await DB.runTransaction(ctx, async (ctx) => {
+		const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, id))
+		if (!rawFilter) {
+			return { code: 'err:not-found' as const }
+		}
+		if (update.filter) {
+			// the tree the engine sees is the referenced filters inlined, so a loop among them has no
+			// fixed point: it has to be refused at the point it would be written
+			const candidates = (await selectFilters(ctx)).map((f) => (f.id === id ? { ...f, ...update } : f))
+			const cycle = FR.findCycle(candidates, id)
+			if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
+		}
+		const updateResult = await ctx.db().update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
+
+		if (updateResult.changes === 0) {
+			throw new Orpc.ORPCError('INTERNAL_SERVER_ERROR', {
+				message: 'Unable to update filter',
 			})
-			.from(Schema.filters)
-			.where(E.eq(Schema.filters.id, input))
-			.leftJoin(Schema.filterUserContributors, E.eq(Schema.filterUserContributors.filterId, input))
-			.leftJoin(userContributors, E.eq(userContributors.discordId, Schema.filterUserContributors.userId))
-			.leftJoin(contributorAccounts, E.eq(contributorAccounts.discordId, userContributors.discordId))
-			.leftJoin(Schema.filterRoleContributors, E.eq(Schema.filterRoleContributors.filterId, input))
+		}
+		const filter = F.FilterEntitySchema.parse(rawFilter)
+		return { code: 'ok' as const, filter: { ...filter, ...update }, prevFilter: filter }
+	})
+	// res carries the whole filter entity (AST included); flattening that into attributes wrote a key
+	// per node of the filter tree on every update, at info level
+	log.info({ [ATTRS.Filter.ID]: id, [ATTRS.Filter.OUTCOME]: res.code }, 'Updated filter %s: %s', id, res.code)
+	if (res.code === 'ok') {
+		filterMutation$.next([
+			CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
+			{
+				type: 'update',
+				key: id,
+				value: res.filter,
+				userId: ctx.user.discordId,
+			},
+		])
+		// the update is a partial, and a field resubmitted unchanged isn't a change worth recording
+		const changedFields = Object.keys(update).filter(
+			(field) => !Obj.deepEqual((res.prevFilter as Record<string, unknown>)[field], (update as Record<string, unknown>)[field]),
+		)
+		await recordFilterChange(ctx, 'updated', id, { filterName: res.filter.name, changedFields })
+	}
+	return res
+}
+
+export const filtersRouter = {
+	// users and roles are read separately: joining both onto the filter crosses them, so each user came back
+	// once per role and each role once per user
+	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
+		const contributingUserIds = ctx
+			.db()
+			.select({ userId: Schema.filterUserContributors.userId })
+			.from(Schema.filterUserContributors)
+			.where(E.eq(Schema.filterUserContributors.filterId, input))
+		const userRows = await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, contributingUserIds))
+		const roleRows = await ctx
+			.db()
+			.select({ roleId: Schema.filterRoleContributors.roleId })
+			.from(Schema.filterRoleContributors)
+			.where(E.eq(Schema.filterRoleContributors.filterId, input))
 
 		return {
-			users: await Users.buildUsers(
-				rows.map((row) => row.user).filter((user) => user.discordId !== null && user.username !== null) as Users.DbUser[],
-			),
-			roles: rows.map((row) => row.role).filter((role) => role !== null),
+			users: await Users.buildUsers(userRows),
+			roles: roleRows.map((row) => row.roleId),
 		}
 	}),
 
@@ -272,48 +357,7 @@ export const filtersRouter = {
 			if (deniedRes) {
 				return deniedRes
 			}
-			const res = await DB.runTransaction(ctx, async (ctx) => {
-				const [rawFilter] = await ctx.db().select().from(Schema.filters).where(E.eq(Schema.filters.id, id))
-				if (!rawFilter) {
-					return { code: 'err:not-found' as const }
-				}
-				if (update.filter) {
-					// the tree the engine sees is the referenced filters inlined, so a loop among them has no
-					// fixed point: it has to be refused at the point it would be written
-					const candidates = (await selectFilters(ctx)).map((f) => (f.id === id ? { ...f, ...update } : f))
-					const cycle = FR.findCycle(candidates, id)
-					if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
-				}
-				const updateResult = await ctx.db().update(Schema.filters).set(update).where(E.eq(Schema.filters.id, id))
-
-				if (updateResult.changes === 0) {
-					throw new Orpc.ORPCError('INTERNAL_SERVER_ERROR', {
-						message: 'Unable to update filter',
-					})
-				}
-				const filter = F.FilterEntitySchema.parse(rawFilter)
-				return { code: 'ok' as const, filter: { ...filter, ...update }, prevFilter: filter }
-			})
-			// res carries the whole filter entity (AST included); flattening that into attributes wrote a key
-			// per node of the filter tree on every update, at info level
-			log.info({ [ATTRS.Filter.ID]: id, [ATTRS.Filter.OUTCOME]: res.code }, 'Updated filter %s: %s', id, res.code)
-			if (res.code === 'ok') {
-				filterMutation$.next([
-					CS.storeLinkToActiveSpan(ctx, 'event.emitter'),
-					{
-						type: 'update',
-						key: id,
-						value: res.filter,
-						userId: ctx.user.discordId,
-					},
-				])
-				// the update is a partial, and a field resubmitted unchanged isn't a change worth recording
-				const changedFields = Object.keys(update).filter(
-					(field) => !Obj.deepEqual((res.prevFilter as Record<string, unknown>)[field], (update as Record<string, unknown>)[field]),
-				)
-				await recordFilterChange(ctx, 'updated', id, { filterName: res.filter.name, changedFields })
-			}
-			return res
+			return await updateFilter(ctx, id, update)
 		}),
 	deleteFilter: orpcBase
 		.meta({ type: 'mutation' })

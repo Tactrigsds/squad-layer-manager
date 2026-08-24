@@ -24,6 +24,17 @@ import * as User from '@/systems/users.server'
 // the role type attributed to permissions granted by the env-level SUPER_USERS/SUPER_ROLES bootstrap
 const SUPER_ROLE: RBAC.Role = { type: 'super' }
 
+// attributed to the implicit full-control grant a scoped server's owner holds on it (resolveScopedOwnerPerms)
+const SCOPED_OWNER_ROLE: RBAC.Role = { type: 'scoped-server-owner' }
+
+// Which server ids are scoped, and to whom. Pushed from settings.server via applyScopedServers whenever the registry
+// changes: rbac.server cannot import settings.server (settings.server imports this), so the data flows the other way,
+// exactly like applyRbacSettings. The matcher reads scopedServerIds to keep wildcard grants off scoped servers;
+// resolveScopedOwnerPerms reads scopedServersByOwner to hand the owner an explicit grant that does reach theirs.
+let scopedServers: ReadonlyMap<string, bigint | null> = new Map()
+let scopedServerIds: ReadonlySet<string> = new Set()
+let scopedServersByOwner = new Map<bigint, string[]>()
+
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.demo, ...Env.groups.rbac, ...Env.groups.discord })
 let ENV!: ReturnType<typeof envBuilder>
 
@@ -69,6 +80,9 @@ export function setup() {
 		players: new Map(),
 	}
 	userPlayerIndex = new Map()
+	scopedServers = new Map()
+	scopedServerIds = new Set()
+	scopedServersByOwner = new Map()
 	// role config comes from admin-editable global settings and is pushed in via applyRbacSettings() once settings load;
 	// start from an empty set (not the schema's preset default) so we never reference an unset binding
 	applyRbacSettings(SETTINGS.RbacSettingsSchema.parse({ roles: {} }))
@@ -291,6 +305,7 @@ async function resolveUserRbac(
 	const perms = permsFromRoles(roles)
 	const superUserPerms = await resolveSuperUserPerms(discordUserId)
 	RBAC.addTracedPerms(perms, ...superUserPerms)
+	RBAC.addTracedPerms(perms, ...resolveScopedOwnerPerms(discordUserId))
 	return { roles, perms }
 }
 
@@ -315,11 +330,11 @@ export async function tryDenySteamLinkEscalation(
 		resolveUserRbac(ctx, subjectDiscordId, without).then((rbac) => RBAC.fromTracedPermissions(rbac.perms)),
 		resolveUserRbac(ctx, subjectDiscordId, withLink).then((rbac) => RBAC.fromTracedPermissions(rbac.perms)),
 	])
-	const delta = withPerms.filter((perm) => !RBAC.permSubsumedBy(perm, withoutPerms))
+	const delta = withPerms.filter((perm) => !RBAC.permSubsumedBy(perm, withoutPerms, scopedServerIds))
 	if (delta.length === 0) return
 
 	const actorPerms = await getUserPermissions(ctx)
-	const failures = delta.filter((perm) => !RBAC.permSubsumedBy(perm, actorPerms)).map((perm) => RBAC.describePermit(perm))
+	const failures = delta.filter((perm) => !RBAC.permSubsumedBy(perm, actorPerms, scopedServerIds)).map((perm) => RBAC.describePermit(perm))
 	if (failures.length === 0) return
 	return { code: 'err:permission-denied', checkType: 'all', failures }
 }
@@ -377,6 +392,60 @@ async function resolveDiscordAssignments(ctx: CS.Ctx, userId: bigint) {
 		}
 	}
 	return roles
+}
+
+// Replace the known set of scoped servers. Called by settings.server on every registry change. Cheap to call with an
+// unchanged set (public-only registries, most writes): it no-ops unless the scoped membership actually moved, so it
+// never needlessly flushes everyone's cached perms.
+export function applyScopedServers(next: ReadonlyMap<string, bigint | null>) {
+	if (scopedServersEqual(scopedServers, next)) return
+	scopedServers = new Map(next)
+	const ids = new Set<string>()
+	const byOwner = new Map<bigint, string[]>()
+	for (const [id, owner] of next) {
+		ids.add(id)
+		if (owner !== null) {
+			const owned = byOwner.get(owner) ?? []
+			owned.push(id)
+			byOwner.set(owner, owned)
+		}
+	}
+	scopedServerIds = ids
+	scopedServersByOwner = byOwner
+	invalidateAll()
+}
+
+function scopedServersEqual(a: ReadonlyMap<string, bigint | null>, b: ReadonlyMap<string, bigint | null>): boolean {
+	if (a.size !== b.size) return false
+	for (const [id, owner] of a) {
+		if (!b.has(id) || b.get(id) !== owner) return false
+	}
+	return true
+}
+
+// The implicit grant a scoped server's owner holds on it: full operational control (every server-scoped permission),
+// but not settings-write or connection editing -- those are not server-scoped perms, so iterating SERVER_PERMISSION_TYPE
+// deliberately leaves them out, and the owner cannot reconfigure a scoped sandbox into something that reaches the network.
+function resolveScopedOwnerPerms(discordUserId: bigint): RBAC.TracedPermission[] {
+	const owned = scopedServersByOwner.get(discordUserId)
+	if (!owned || owned.length === 0) return []
+	const perms: RBAC.TracedPermission[] = []
+	for (const serverId of owned) {
+		// the plain server-scoped perms (view, kick, sandbox:control, ...) take a bare { serverId }. timeout-players and
+		// request-layers are comparators that carry their own args, so they are granted explicitly below rather than here.
+		for (const permType of RBAC.SERVER_PERMISSION_TYPE.options) {
+			RBAC.addTracedPerms(perms, RBAC.tracedPerm(permType, [SCOPED_OWNER_ROLE], { negated: false }, { serverId }))
+		}
+		RBAC.addTracedPerms(
+			perms,
+			RBAC.tracedPerm('squad-server:timeout-players', [SCOPED_OWNER_ROLE], { negated: false }, { serverId, maxDurationMs: null }),
+		)
+		RBAC.addTracedPerms(
+			perms,
+			RBAC.tracedPerm('queue:request-layers', [SCOPED_OWNER_ROLE], { negated: false }, { serverId, maxQueued: null }),
+		)
+	}
+	return perms
 }
 
 async function resolveSuperUserPerms(userId: bigint) {
@@ -578,7 +647,7 @@ export async function tryDenyPermissionsForUser<T extends RBAC.PermissionType>(
 					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
 				}
 
-	return RBAC.tryDenyPermissions(perms, req)
+	return RBAC.tryDenyPermissions(perms, req, scopedServerIds)
 }
 
 export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>(
@@ -595,7 +664,7 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 					permits: Array.isArray(reqOrPerms) ? reqOrPerms : [reqOrPerms],
 				}
 
-	return RBAC.tryDenyPermissions(perms, req)
+	return RBAC.tryDenyPermissions(perms, req, scopedServerIds)
 }
 
 // Deliberately no `tryDenyPermissionsFor(Actor)` here: authorization happens at the entry point, where the identity
@@ -605,7 +674,7 @@ export async function tryDenyPermissionsForPlayer<T extends RBAC.PermissionType>
 
 // whether this user may look at `serverId` at all; see RBAC.canViewServer for why it is not a plain permission check
 export async function canViewServerForUser(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, serverId: string): Promise<boolean> {
-	return RBAC.canViewServer(await getUserPermissions(ctx), serverId)
+	return RBAC.canViewServer(await getUserPermissions(ctx), serverId, scopedServerIds)
 }
 
 // for the aggregate (non-equality) checks: settings access, timeouts
@@ -619,13 +688,13 @@ export async function getMaxLayerRequestsForUser(
 	ctx: C.Db & CS.AbortSignal & USR.Ctx.Id & CS.ServerId,
 ): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForDiscordUser(ctx)).perms)
-	return RBAC.maxLayerRequests(perms, ctx.serverId)
+	return RBAC.maxLayerRequests(perms, ctx.serverId, scopedServerIds)
 }
 export async function getMaxLayerRequestsForPlayer(
 	ctx: C.Db & CS.AbortSignal & SM.Ctx.Ids & CS.ServerId,
 ): Promise<number | null | undefined> {
 	const perms = RBAC.fromTracedPermissions((await getRbacForPlayer(ctx)).perms)
-	return RBAC.maxLayerRequests(perms, ctx.serverId)
+	return RBAC.maxLayerRequests(perms, ctx.serverId, scopedServerIds)
 }
 
 export const orpcRouter = {
@@ -655,7 +724,7 @@ export const orpcRouter = {
 			// a role granting nothing (or only negations) is vacuously subsumed, and simulating it is still meaningful:
 			// its negations take access away
 			const granted = RBAC.fromTracedPermissions(perms)
-			if (!granted.every((p) => RBAC.permSubsumedBy(p, userPerms))) continue
+			if (!granted.every((p) => RBAC.permSubsumedBy(p, userPerms, scopedServerIds))) continue
 			simulatable.push({ role, perms })
 		}
 		return simulatable

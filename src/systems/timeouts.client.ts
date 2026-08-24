@@ -95,5 +95,5 @@ export function useCanCancelSomeTimeout(): boolean {
 export function useMaxTimeout(serverId: string): number | null | undefined {
 	const user = UsersClient.useLoggedInUser()
 	if (!user) return undefined
-	return RBAC.maxTimeoutDurationMs(RBAC.fromTracedPermissions(user.perms), serverId)
+	return RBAC.maxTimeoutDurationMs(RBAC.fromTracedPermissions(user.perms), serverId, RBAC.NO_SCOPED_SERVERS)
 }

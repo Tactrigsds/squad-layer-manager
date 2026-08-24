@@ -1,8 +1,10 @@
-import { createIntl, type IntlShape } from '@formatjs/intl'
 import * as React from 'react'
 
+import * as ICU from '@/messages/icu'
 // messages.models is itself a type-only leaf, so this value import keeps i18n one too
 import * as Msgs from '@/models/messages.models'
+
+import compiledEnglish from './locales/en.compiled.json'
 
 // Where a message's text is resolved against a locale. Kept beside the vocabulary (models/messages.models.ts)
 // rather than inside it so the two stay separable, and kept an import leaf for the same reason that one is: models
@@ -20,16 +22,25 @@ export const DEFAULT_LOCALE = 'en'
 
 export type MessageValues = Record<string, React.ReactNode | Date | ((chunks: React.ReactNode[]) => React.ReactNode)>
 
-// The catalogues a build carries. English is absent on purpose: a message IS its English, so resolving en means
-// handing the key straight back, with no ICU parse and no allocation.
-const catalogues: Record<string, Record<string, string>> = {}
+// The catalogues a build carries, holding each message's compiled form (@/messages/icu).
+//
+// English is built in rather than registered, so there is no boot step to miss: it is the source language, and a
+// process that renders anything at all needs it. It holds only the messages that have structure. The ~1,300 that
+// are only text are absent from it, and resolving one hands the key straight back, with no allocation.
+//
+// The compiled form is the only one the runtime can read, so a message interpolates its arguments only if the
+// extractor saw it. `pnpm i18n:lint` is what makes that true of every message in src.
+const catalogues: Record<string, Record<string, ICU.Entry>> = {
+	// through unknown because JSON widens the compiled form's tuples to arrays; the extractor is what types it
+	[DEFAULT_LOCALE]: compiledEnglish as unknown as Record<string, ICU.Entry>,
+}
 
-export function registerCatalogue(locale: string, messages: Record<string, string>) {
-	catalogues[locale] = { ...catalogues[locale], ...messages }
+export function registerCatalogue(locale: string, messages: Record<string, ICU.Entry>) {
+	catalogues[locale] = catalogues[locale] ? { ...catalogues[locale], ...messages } : messages
 }
 
 export function availableLocales() {
-	return [DEFAULT_LOCALE, ...Object.keys(catalogues)]
+	return [...new Set([DEFAULT_LOCALE, ...Object.keys(catalogues)])]
 }
 
 // The locale of whoever this process is rendering for. Ambient because in a browser there is exactly one viewer, so
@@ -81,48 +92,64 @@ export function parseAcceptLanguage(header: string | undefined): string[] {
 	return entries.sort((a, b) => b.q - a.q).map((e) => e.tag)
 }
 
-const intls = new Map<string, IntlShape<React.ReactNode>>()
+const intlLocales = new Map<string, string>()
 
-function intlFor(locale: string) {
-	let intl = intls.get(locale)
-	if (!intl) {
-		intl = createIntl<React.ReactNode>({
-			// A locale reaching here from a stored setting or an Accept-Language header may be anything at all, and
-			// createIntl throws on a tag it cannot parse. English is a better answer than a blank page.
-			locale: Intl.DateTimeFormat.supportedLocalesOf(locale).length ? locale : DEFAULT_LOCALE,
-			defaultLocale: DEFAULT_LOCALE,
-			messages: catalogues[locale] ?? {},
-			// A key with no entry renders its English, which is the useful outcome for a partly translated locale.
-			onError: () => {},
-		})
-		intls.set(locale, intl)
+// A locale reaching here from a stored setting or an Accept-Language header may be anything at all, and the Intl
+// constructors a plural needs throw on a tag they cannot parse. English is a better answer than a blank page.
+function intlLocale(locale: string) {
+	let resolved = intlLocales.get(locale)
+	if (resolved === undefined) {
+		resolved = Intl.DateTimeFormat.supportedLocalesOf(locale).length ? locale : DEFAULT_LOCALE
+		intlLocales.set(locale, resolved)
 	}
-	return intl
+	return resolved
 }
 
 export function key(source: string, context?: string) {
 	return context ? `${source} [${context}]` : source
 }
 
-// Resolves a message to a string. `source` is both the key and the English, and doubles as the ICU pattern once a
-// message carries arguments.
-export function translate(source: string, values?: MessageValues, locale?: string, context?: string): string {
-	const resolved = locale ?? ambientLocale
-	if (!values && (resolved === DEFAULT_LOCALE || !catalogues[resolved])) return source
-	return intlFor(resolved).formatMessage(
-		{ id: key(source, context), defaultMessage: source },
-		values as Record<string, string | number>,
-	) as string
+// A message's text, or the parts of it once its arguments are interpolated. A locale that is missing a key falls
+// back to the English compiled form rather than to the source, so an untranslated message still interpolates.
+function resolve(source: string, values: MessageValues | undefined, locale: string, context: string | undefined): string | unknown[] {
+	const k = key(source, context)
+	const entry = catalogues[locale]?.[k] ?? catalogues[DEFAULT_LOCALE]?.[k] ?? source
+	if (typeof entry === 'string') return entry
+	try {
+		return ICU.evaluate(entry, (values ?? {}) as ICU.Values, intlLocale(locale))
+	} catch {
+		// a value or a tag renderer the caller did not supply; its own English reads better than a half-built sentence
+		return source
+	}
 }
 
-// The same, for a message whose arguments are rendered nodes. Returns the node list ICU assembled around them.
+// Resolves a message to a string. `source` is both the key and the English.
+export function translate(source: string, values?: MessageValues, locale?: string, context?: string): string {
+	const parts = resolve(source, values, locale ?? ambientLocale, context)
+	return typeof parts === 'string' ? parts : parts.join('')
+}
+
+// The same, for a message whose arguments are rendered nodes. Returns the node list assembled around them.
 export function translateNode(source: string, values?: MessageValues, locale?: string, context?: string): React.ReactNode {
-	const resolved = locale ?? ambientLocale
-	return normalizeNode(
-		intlFor(resolved).formatMessage(
-			{ id: key(source, context), defaultMessage: source },
-			values as Record<string, React.ReactNode>,
-		) as React.ReactNode,
+	const parts = resolve(source, values, locale ?? ambientLocale, context)
+	if (typeof parts === 'string') return parts
+	return normalizeNode(parts.length === 1 ? (parts[0] as React.ReactNode) : (parts as React.ReactNode[]))
+}
+
+// A run of literal tokens -- command triggers, ids, filenames -- dropped into a sentence. Two things this gets
+// right that `join(', ')` does not: the separators and the final conjunction come from the locale, and each token
+// is wrapped in a `bdi`, which isolates its direction. Without that isolation an LTR token like `!shownext` in an
+// RTL sentence reorders around the neighbouring punctuation, and the reader is shown a command they cannot type.
+export function tokenList(
+	tokens: string[],
+	locale: string,
+	opts?: { type?: 'conjunction' | 'disjunction'; tag?: string },
+): React.ReactNode {
+	const parts = new Intl.ListFormat(locale, { type: opts?.type ?? 'conjunction', style: 'short' }).formatToParts(tokens)
+	return parts.map((part, index) =>
+		part.type === 'element'
+			? React.createElement('bdi', { key: index }, opts?.tag ? React.createElement(opts.tag, null, part.value) : part.value)
+			: React.createElement(React.Fragment, { key: index }, part.value),
 	)
 }
 
@@ -131,6 +158,7 @@ export function translateNode(source: string, values?: MessageValues, locale?: s
 // the formatting vocabulary every translator renders unasked; custom tags come in through Translator.withTags
 export const STANDARD_TAGS: Msgs.TagRenderers<Msgs.StandardTag> = {
 	strong: (chunks) => React.createElement('strong', null, ...chunks),
+	em: (chunks) => React.createElement('em', null, ...chunks),
 	code: (chunks) => React.createElement('code', null, ...chunks),
 }
 

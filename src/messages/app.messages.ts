@@ -102,6 +102,7 @@ export const navServer = def('Server')
 export const navCommands = def('Commands')
 
 export const navFilters = def('Filters')
+export const navTutorials = def('Tutorials')
 
 export const navSettings = def('Settings')
 

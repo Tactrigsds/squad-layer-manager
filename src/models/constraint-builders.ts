@@ -52,12 +52,12 @@ export const poolFilter = (
 export const repeatRule = (
 	id: string,
 	rule: LQY.RepeatRule,
-	opts?: { filterApplState?: LQY.FilterApplicationState; warn?: boolean },
+	opts?: { filterApplState?: LQY.FilterApplicationState; warn?: boolean; showIndicator?: 'regular' | 'disabled' },
 ): LQY.Constraint => ({
 	type: 'do-not-repeat',
 	id,
 	rule,
-	showIndicator: 'regular',
+	showIndicator: opts?.showIndicator ?? 'regular',
 	filterApplState: opts?.filterApplState ?? 'inverted',
 	warn: opts?.warn ?? true,
 })

@@ -24,6 +24,8 @@ export default function ShortLayerName({
 	backfillLayerId,
 	matchDescriptors,
 	allowShowInfo: _allowShowInfo,
+	normalized,
+	tourId,
 	ref,
 	className,
 }: {
@@ -32,6 +34,9 @@ export default function ShortLayerName({
 	backfillLayerId?: L.LayerId
 	matchDescriptors?: LQY.MatchDescriptor[]
 	allowShowInfo?: boolean
+	// overrides the global displayTeamsNormalized setting; see TeamFactionDisplay
+	normalized?: boolean
+	tourId?: string
 	className?: string
 	ref?: React.Ref<HTMLDivElement>
 }) {
@@ -92,12 +97,17 @@ export default function ShortLayerName({
 	let rightTeamElt: React.ReactNode | undefined
 
 	if (backfilledLayer.Faction_1 && backfilledLayer.Faction_2) {
-		;[leftTeamElt, rightTeamElt] = getTeamsDisplay(backfilledLayer, teamParity ?? 0, globalSettings.displayTeamsNormalized, extraStyles)
+		;[leftTeamElt, rightTeamElt] = getTeamsDisplay(
+			backfilledLayer,
+			teamParity ?? 0,
+			normalized ?? globalSettings.displayTeamsNormalized,
+			extraStyles,
+		)
 	}
 	// flex-wrap so a long "Map_Gamemode_v1 . FactionA vs FactionB" can break across lines in a narrow
 	// container; each segment stays intact because it carries its own nowrap
 	const content = (
-		<span className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
+		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
 			{backfilledLayer.Layer && <MapLayerDisplay layer={backfilledLayer.Layer} extraLayerStyles={extraStyles} />}
 			{backfilledLayer.Faction_1 && backfilledLayer.Faction_2 && (
 				<>

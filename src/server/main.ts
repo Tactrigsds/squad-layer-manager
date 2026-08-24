@@ -14,6 +14,7 @@ import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
+import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
@@ -39,6 +40,7 @@ import * as SquadServer from '@/systems/squad-server.server'
 import * as Steam from '@/systems/steam.server'
 import * as SwitchRequests from '@/systems/switch-requests.server'
 import * as Teamswaps from '@/systems/teamswaps.server'
+import * as Tutorials from '@/systems/tutorials.server'
 import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
@@ -118,6 +120,8 @@ await Instr.spanOp('main', { module }, async () => {
 	// "has this database ever been configured" off
 	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	await FilterEntity.setup()
+	// after FilterEntity, whose filter table it reads when provisioning a session
+	FilterEdit.setup()
 	PersistedCache.setup()
 	await Battlemetrics.setup()
 	SquadBrowser.setup()
@@ -139,6 +143,8 @@ await Instr.spanOp('main', { module }, async () => {
 	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	await Promise.all([SquadServer.setup(), Discord.setup()])
+
+	await Tutorials.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
 	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()
