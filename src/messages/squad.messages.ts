@@ -544,13 +544,19 @@ export const cancelTimeout = def('Cancel')
 // who issued a timeout, when their account or in-game name cannot be resolved
 export const timeoutActorFallbacks = { 'slm-user': 'Admin', 'ingame-user': 'In-game admin', system: 'System' }
 
-// the id kinds a player row offers to copy
-// A player id names its own kind, inline and in the copy button's tooltip. The button takes the kind rather than
-// the label so the tooltip is a whole phrase rather than one built around a noun the caller passed in.
-export type IdKind = 'steam' | 'eos' | 'epic'
+export type IdKind = Exclude<SM.PlayerIds.Fields, 'usernameNoTag'>
 
-export const idKindLabels: Record<IdKind, string> = { steam: 'steam', eos: 'eos', epic: 'epic' }
+export const idKindLabels: Record<IdKind, string> = {
+	steam: 'SteamID',
+	eos: 'EOSID',
+	epic: 'Epic',
+	username: 'Username',
+	playerController: 'PlayerController',
+}
+export function isCopyableIdKind(kind: string): kind is IdKind {
+	return kind in idKindLabels
+}
 
-export const copyIdHint = def('Copy {kind} ID', (kind: IdKind) => ({ kind: idKindLabels[kind] }))
+export const copyIdHint = def('Copy {kind}', (kind: IdKind) => ({ kind: idKindLabels[kind] }))
 
 export const copiedFeedback = def('Copied!')

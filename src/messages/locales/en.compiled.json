@@ -533,7 +533,7 @@
 	"Command \"{cmd}\" is disabled": ["Command \"", ["cmd"], "\" is disabled"],
 	"Command not available in this chat. Try using {correctChats}": ["Command not available in this chat. Try using ", ["correctChats"]],
 	"Copy {command}": ["Copy ", ["command"]],
-	"Copy {kind} ID": ["Copy ", ["kind"], " ID"],
+	"Copy {kind}": ["Copy ", ["kind"]],
 	"Currently voting between {choices}.": ["Currently voting between ", ["choices"], "."],
 	"Delete managed server \"{displayName}\" ({serverId})? This cannot be undone.": [
 		"Delete managed server \"",
