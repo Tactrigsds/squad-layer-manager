@@ -18,6 +18,7 @@
 		".tanstack/**",
 		"drizzle/**/*.json",
 		"drizzle-sqlite/**/*.json",
+		"src/messages/locales/*.compiled.json",
 		".claude/worktrees/**",
 		".local/**"
 	],

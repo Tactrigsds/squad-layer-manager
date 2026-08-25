@@ -22,7 +22,8 @@ const SRC_DIR = 'src'
 const OUT_DIR = 'src/messages/locales'
 const COMPILED_SUFFIX = '.compiled.json'
 
-function serialize(value: unknown) {
+function serialize(value: unknown, minify: boolean) {
+	if (minify) return JSON.stringify(value) + '\n'
 	return JSON.stringify(value, null, '\t') + '\n'
 }
 
@@ -285,9 +286,9 @@ if (mode === 'lint') {
 const collisions = [...byKey].filter(([, group]) => group.length > 1 && new Set(group.map((e) => e.from)).size > 1)
 
 fs.mkdirSync(OUT_DIR, { recursive: true })
-fs.writeFileSync(path.join(OUT_DIR, 'en.json'), serialize(template))
+fs.writeFileSync(path.join(OUT_DIR, 'en.json'), serialize(template, false))
 for (const [locale, catalogue] of Object.entries(compiled)) {
-	fs.writeFileSync(path.join(OUT_DIR, locale + COMPILED_SUFFIX), serialize(catalogue))
+	fs.writeFileSync(path.join(OUT_DIR, locale + COMPILED_SUFFIX), serialize(catalogue, true))
 }
 
 const existing = catalogueFiles
