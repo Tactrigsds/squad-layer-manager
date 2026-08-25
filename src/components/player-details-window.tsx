@@ -197,11 +197,20 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 			</DraggableWindowDragBar>
 			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
 				<PlayerTimeoutStatus playerId={playerId} />
-				<div className="inline-flex gap-1 items-baseline">
-					{livePlayer?.role && <div className="text-muted-foreground">{livePlayer.role}</div>}
-					<CopyIdButton kind="eos" id={playerId} />
-					{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton kind="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
-					{ids?.epic && <CopyIdButton kind="epic" id={ids.epic} />}
+				<div className="flex flex-col ">
+					<div className="inline-flex gap-2 items-baseline">
+						{ids?.username && <CopyIdButton kind="username" id={ids?.username} />}
+						{(ids?.steam ?? profile?.playerIds.steam) && <CopyIdButton kind="steam" id={(ids?.steam ?? profile?.playerIds.steam)!} />}
+					</div>
+					<div className="inline-flex gap-1 items-baseline">
+						<CopyIdButton kind="eos" id={playerId} />
+						{ids?.epic && <CopyIdButton kind="epic" id={ids.epic} />}
+					</div>
+					{ids?.playerController && (
+						<div className="inline-flex gap-1 items-baseline">
+							<CopyIdButton kind="playerController" id={ids.playerController} />
+						</div>
+					)}
 				</div>
 				<div className="flex items-center gap-2 text-muted-foreground">
 					{(ids?.steam ?? profile?.playerIds.steam) ? (

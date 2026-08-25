@@ -352,7 +352,7 @@
 	"Copy layer id": "Copy layer id",
 	"Copy token": "Copy token",
 	"Copy {command}": "Copy {command}",
-	"Copy {kind} ID": "Copy {kind} ID",
+	"Copy {kind}": "Copy {kind}",
 	"Copy...": "Copy...",
 	"Could not copy command to clipboard": "Could not copy command to clipboard",
 	"Could not get a join link": "Could not get a join link",
