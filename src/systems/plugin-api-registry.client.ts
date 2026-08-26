@@ -11,6 +11,7 @@ import * as libZustand from '@/plugin-api/lib/zustand'
 import * as modelsConstraintBuilders from '@/plugin-api/models/constraint-builders'
 import * as modelsFilter from '@/plugin-api/models/filter'
 import * as modelsFilterBuilders from '@/plugin-api/models/filter-builders'
+import * as modelsGenVote from '@/plugin-api/models/gen-vote'
 import * as modelsLayer from '@/plugin-api/models/layer'
 import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
@@ -32,6 +33,7 @@ export function setup() {
 		'slm/lib/zustand': libZustand,
 		'slm/models/constraint-builders': modelsConstraintBuilders,
 		'slm/models/filter': modelsFilter,
+		'slm/models/gen-vote': modelsGenVote,
 		'slm/models/filter-builders': modelsFilterBuilders,
 		'slm/models/layer': modelsLayer,
 		'slm/models/layer-queries': modelsLayerQueries,

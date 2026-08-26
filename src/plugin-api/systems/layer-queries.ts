@@ -2,6 +2,7 @@ import { assertNever } from '@/lib/type-guards'
 import type * as F from '@/models/filter.models'
 import type * as L from '@/models/layer'
 import type * as LQY from '@/models/layer-queries.models'
+import type * as GV from '@/plugin-api/models/gen-vote'
 import * as LayerQueriesSys from '@/systems/layer-queries.server'
 import * as LayerQueries from '@/systems/layer-queries.shared'
 import type * as PluginsSys from '@/systems/plugins.server'
@@ -92,6 +93,29 @@ export async function itemStatuses(ctx: PluginsSys.ServerCtx<any>, input: LQY.La
 		ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx),
 		input: await withList(ctx, input),
 	})
+}
+
+export type GenVoteResult =
+	| {
+			code: 'ok'
+			/** One per input choice, in order. Undefined where the choice already named a layer, or nothing was drawn. */
+			chosenLayers: (LayerQueries.PostProcessedLayer | undefined)[]
+			/** Indices of the choices that had no layer and could not be filled. Empty on a full draw. */
+			unfilledChoices: number[]
+	  }
+	| F.InvalidFilterNodeResult
+
+/**
+ * Draws a layer for each choice that does not already name one, from the constraints minus what the other
+ * choices took. Pass `seed` to make the draw reproducible, and `onlyIndex` to redraw a single choice.
+ */
+export async function genVote(ctx: PluginsSys.ServerCtx<any>, input: GV.Input): Promise<GenVoteResult> {
+	const res = await LayerQueries.genVote({ ctx: await LayerQueriesSys.resolveLayerQueryCtx(ctx), input: await withList(ctx, input) })
+	if (res.code !== 'ok') return res
+	// the host reports a failed draw as an english sentence per choice, which is not a string to freeze into
+	// this contract. Which choices came up empty is the same information and cannot rot.
+	const unfilledChoices = res.choiceErrors.flatMap((err, i) => (err ? [i] : []))
+	return { code: 'ok', chosenLayers: res.chosenLayers, unfilledChoices }
 }
 
 /** The min and max of every score column, for putting one layer's score in context. */

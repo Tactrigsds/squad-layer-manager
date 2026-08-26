@@ -3,6 +3,7 @@ import * as z from 'zod'
 
 import * as CB from 'slm/models/constraint-builders'
 import * as FB from 'slm/models/filter-builders'
+import * as GV from 'slm/models/gen-vote'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
 import * as PluginConfig from 'slm/plugin/config'
@@ -84,6 +85,19 @@ export const router = {
 		.input(z.object({ layerIds: z.array(z.string()) }))
 		.handler(async ({ context, input }) => LayerQueries.exists(context, input.layerIds)),
 	mapValues: os.input(z.object({})).handler(async ({ context }) => LayerQueries.componentValues(context, { column: 'Map' })),
+	drawVote: os
+		.input(z.object({ filterId: z.string(), seed: z.string(), presetLayerId: z.string() }))
+		.handler(async ({ context, input }) => {
+			const res = await LayerQueries.genVote(context, {
+				seed: input.seed,
+				// the middle choice is already decided, so the draw has to leave it alone and route around it
+				choices: [GV.initChoice(), { choiceConstraints: {}, layerId: input.presetLayerId }, GV.initChoice()],
+				uniqueConstraints: ['Map'],
+				constraints: [CB.filterEntity('pool', input.filterId)],
+			})
+			if (res.code !== 'ok') return res
+			return { code: 'ok' as const, maps: res.chosenLayers.map((l) => l?.Map ?? null), unfilledChoices: res.unfilledChoices }
+		}),
 	greetings: os.input(z.object({ serverId: z.string() })).handler(async function* ({ context, input }) {
 		yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
 	}),

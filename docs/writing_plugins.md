@@ -261,6 +261,7 @@ if (res.code === 'ok') res.layers // one page, with every column
 | `componentValues` | the distinct values of one column, for a picker                |
 | `outOfPool`       | which of these layers the constraints reject                   |
 | `itemStatuses`    | what each queue item violates, and the warnings admins see     |
+| `genVote`         | draws a layer for each undecided choice of a vote              |
 | `scoreRanges`     | the min and max of every score column                          |
 | `itemsState`      | the queue and recent matches a repeat rule is measured against |
 
@@ -275,6 +276,27 @@ only to ask about a queue other than the current one.
 
 A malformed filter comes back as `{ code: 'err:invalid-node', errors }` rather than throwing. Each error names the
 node and the reason, and `msg.original` is that reason in english.
+
+`genVote` draws rather than lists. A choice either names a layer already or carries constraints to draw one from,
+and `uniqueConstraints` names the properties the drawn choices have to differ on.
+
+```ts
+import * as GV from 'slm/models/gen-vote'
+
+const res = await LayerQueries.genVote(ctx, {
+	seed: 'anything-stable',
+	choices: [GV.initChoice(), GV.initChoice(), { choiceConstraints: { Gamemode: 'RAAS' } }],
+	uniqueConstraints: ['Map'],
+	constraints: [CB.filterEntity('pool', 'no-seed')],
+})
+if (res.code === 'ok') res.chosenLayers // one per choice, undefined where a choice already named a layer
+```
+
+The same seed draws the same layers, so a redraw you have to be able to repeat is a matter of keeping the seed.
+`onlyIndex` redraws one choice and leaves the rest. `unfilledChoices` holds the indices nothing could be found for,
+which is how an over-constrained draw reports itself.
+
+Starting the vote is not here. Draw the choices, then put them in the queue.
 
 There is no client half. The browser runs these in a worker over its own copy of the engine, and that is not part
 of the contract. Reach them from your server and hand the results to your client through your own rpc.
@@ -386,6 +408,7 @@ absent.
 | `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers          |
 | `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one          |
 | `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one      |
+| `slm/models/gen-vote`                                      | the choices a drawn vote is made of         |
 | `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages             |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import

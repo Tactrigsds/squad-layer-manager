@@ -246,6 +246,32 @@ describe('packaged plugins', () => {
 		await call('dropFilter', { id: 'hello-owi' })
 	})
 
+	// genVote is a query that draws rather than lists, and the two things worth pinning are that a choice
+	// already decided is left alone and that the drawn ones differ on what uniqueConstraints names.
+	it('draws vote choices, honouring a preset choice and the uniqueness keys', async () => {
+		await call('makeFilter', { id: 'hello-vote', owner: String(ADMIN_USER.discordId) })
+
+		const draw = async (seed: string) =>
+			await call<{ code: string; maps: (string | null)[]; unfilledChoices: number[] }>('drawVote', {
+				filterId: 'hello-vote',
+				seed,
+				presetLayerId: LAYERS.harjuRaas,
+			})
+
+		const first = await draw('seed-a')
+		expect(first.code).toBe('ok')
+		expect(first.unfilledChoices).toEqual([])
+		// the preset choice is not drawn for, so it comes back with no layer of its own
+		expect(first.maps[1]).toBeNull()
+		// uniqueConstraints: ['Map'], so the two drawn choices cannot share a map, nor take the preset's
+		expect(new Set([first.maps[0], first.maps[2], 'Harju']).size).toBe(3)
+
+		// the seed is what makes a draw reproducible, and a different one is free to differ
+		expect((await draw('seed-a')).maps).toEqual(first.maps)
+
+		await call('dropFilter', { id: 'hello-vote' })
+	})
+
 	it('gives a restarted plugin a fresh module graph', async () => {
 		const stats = async () =>
 			(await client.plugins.rpcCall({ pluginId: 'hello', path: ['stats'], serverId: app.serverId, input: {} })) as {
