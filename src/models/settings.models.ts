@@ -581,9 +581,9 @@ export function defaultRbacSettings() {
 // autogen on by default: a fresh server that generates layers violating its own repeat rules is never what
 // anyone wants, and the per-rule option is there to turn it off
 const DEFAULT_REPEAT_RULE_CONFIGS: PoolRepeatRuleConfig[] = [
-	{ label: 'Map', field: 'Map', within: 4, autogen: true, warn: true, indicate: true },
-	{ label: 'Layer', field: 'Layer', within: 7, autogen: true, warn: true, indicate: true },
-	{ label: 'Faction', field: 'Faction', within: 3, autogen: true, warn: true, indicate: true },
+	{ field: 'Map', within: 4, autogen: true, warn: true, indicate: true },
+	{ field: 'Layer', within: 7, autogen: true, warn: true, indicate: true },
+	{ field: 'Faction', within: 3, autogen: true, warn: true, indicate: true },
 ]
 
 export const POOL_FILTER_APPLY_AS = z.enum(['regular', 'inverted', 'disabled'])
@@ -675,10 +675,7 @@ export const PoolConfigurationSchema = z.object({
 		.describe(
 			'How far apart a map, layer or faction has to be spaced in the queue and recent match history. Each rule can warn when it is ' +
 				'broken, constrain autogeneration, or both.',
-		)
-		.refine((rules) => new Set(rules.map((r) => r.label)).size === rules.length, {
-			error: 'Repeat rule labels must be unique',
-		}),
+		),
 })
 
 export type PoolConfiguration = z.infer<typeof PoolConfigurationSchema>
@@ -978,8 +975,9 @@ export function remindersEnabled(settings: PublicServerSettings) {
 	return settings.remindersAndAnnouncementsEnabled && !settings.updatesToSquadServerDisabled
 }
 
-export function getRepeatRuleConstraintId(poolName: string, opts: { label: string }) {
-	return `layer-pool:${poolName}:${opts.label}`
+// keyed on the rule's position, which is the only identity a rule has: labels are optional and need not be unique
+export function getRepeatRuleConstraintId(poolName: string, index: number) {
+	return `layer-pool:${poolName}:${index}`
 }
 
 // the per-rule switches, in the shape CB.repeatRule takes. Every path that builds a rule's constraint goes through
@@ -1042,17 +1040,17 @@ export function getSettingsConstraints(settings: PublicServerSettings, opts?: { 
 		for (const { filterId, applyAs } of queue.mainPool.constrainGeneration) {
 			constraints.push(CB.filterEntity(`gen:${filterId}`, filterId, { filterApplState: applyAs }))
 		}
-		for (const rule of queue.mainPool.repeatRules) {
-			if (!rule.autogen) continue
-			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule))
-		}
+		queue.mainPool.repeatRules.forEach((rule, index) => {
+			if (!rule.autogen) return
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', index), rule))
+		})
 	} else {
 		const poolFilterConstraint = getPoolFilterConstraint(settings, { warn: true })
 		if (poolFilterConstraint) constraints.push(poolFilterConstraint)
 		constraints.push(...getIndicationAndWarnConstraints(settings))
-		for (const rule of queue.mainPool.repeatRules) {
-			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', { label: rule.label }), rule, repeatRuleConstraintOpts(rule)))
-		}
+		queue.mainPool.repeatRules.forEach((rule, index) => {
+			constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', index), rule, repeatRuleConstraintOpts(rule)))
+		})
 	}
 
 	return constraints

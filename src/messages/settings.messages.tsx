@@ -285,6 +285,9 @@ export const addRepeatRule = def('Add Repeat Rule')
 
 export const repeatRuleLabel = def('Label')
 
+// on the button standing in for the label box on a rule that has none
+export const repeatRuleAddLabel = def('Add label')
+
 export const repeatRuleField = def('Field')
 
 export const repeatRuleWithin = def('Within')

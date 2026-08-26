@@ -23,7 +23,7 @@ export const RepeatRuleFieldSchema = z.enum(['Map', 'Layer', 'Gamemode', 'Factio
 export type RepeatRuleField = z.infer<typeof RepeatRuleFieldSchema>
 export const RepeatRuleSchema = z.object({
 	field: RepeatRuleFieldSchema,
-	label: z.string().min(1).max(100).describe('A label for the rule'),
+	label: z.string().min(1).max(100).optional().describe('What to call the rule wherever it is shown. Defaults to the field name.'),
 	targetValues: z.array(z.string()).optional().describe('A "Whitelist" of values which the rule applies to'),
 	within: z.number().min(0).max(50).describe('the number of matches in which this rule applies. if 0, the rule should be ignored'),
 	crossTeam: z
