@@ -8,6 +8,8 @@ import * as SHIM from '@/models/plugin-api-shim'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
 import * as libZustand from '@/plugin-api/lib/zustand'
+import * as modelsFilter from '@/plugin-api/models/filter'
+import * as modelsFilterBuilders from '@/plugin-api/models/filter-builders'
 import * as modelsLayer from '@/plugin-api/models/layer'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
 import * as plugin from '@/plugin-api/plugin'
@@ -26,6 +28,8 @@ export function setup() {
 		'slm/lib/rxjs-ext': libRxjsExt,
 		'slm/lib/zod-utils': libZodUtils,
 		'slm/lib/zustand': libZustand,
+		'slm/models/filter': modelsFilter,
+		'slm/models/filter-builders': modelsFilterBuilders,
 		'slm/models/layer': modelsLayer,
 		'slm/models/match-history': modelsMatchHistory,
 		'slm/plugin': plugin,

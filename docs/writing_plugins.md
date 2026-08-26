@@ -14,6 +14,7 @@ only install one you would be willing to run as a fork.
 - [The manifest](#the-manifest)
 - [The server entry](#the-server-entry)
 - [Storing data](#storing-data)
+- [Filters](#filters)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
 - [What you can reach](#what-you-can-reach)
@@ -187,6 +188,53 @@ Two rules. List them in name order, which the host checks. And build the table n
 importing it from `schema.ts`: a migration is frozen in time, and renaming a table later must not reach back and
 change what an applied migration did.
 
+## Filters
+
+A filter is a predicate over layers: what a server's pool admits, what an indicator marks. `slm/systems/filter-entity`
+reads and writes the same filters admins see in the filter index, and `slm/models/filter-builders` is how you write
+a tree without assembling the nodes by hand.
+
+```ts
+import * as FB from 'slm/models/filter-builders'
+import * as Filters from 'slm/systems/filter-entity'
+
+await Filters.create(ctx, {
+	id: 'no-seed',
+	name: 'Not a seed layer',
+	filter: FB.and([FB.eq('Collection', 'OWI'), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
+	owner: 123456789012345678n,
+	description: null,
+	alertMessage: null,
+	emoji: null,
+	invertedAlertMessage: null,
+	invertedEmoji: null,
+})
+
+Filters.list() // every filter
+Filters.get('no-seed') // one, or undefined
+await Filters.update(ctx, 'no-seed', { name: 'No seed layers' })
+await Filters.remove(ctx, 'no-seed')
+Filters.changes(ctx).subscribe((c) => ...) // every write, yours included
+```
+
+`owner` is a discord user id. A filter belongs to a person even when a plugin wrote it, so name the admin who is
+answerable for it: they get the filter-owner role over it and can edit it by hand afterwards.
+
+Four things to know.
+
+Your writes are ordinary writes. Open editors update, the reference index rebuilds, and the audit log records a
+`FILTER_CHANGED` naming your plugin rather than a person. Writing the `filters` table through `ctx.db()` skips all
+of that and leaves every open page stale until a restart.
+
+Nothing marks a filter as yours. You can write any filter, including one an admin made, and an admin can edit or
+delete one you made. Prefix your ids if you want them to be recognisable.
+
+Deactivating your plugin leaves its filters behind. That is deliberate: a server pool naming a filter that
+disappeared fails every layer status query for that server. Clean up explicitly if that is wrong for yours, and
+delete the pool config first.
+
+`remove` refuses to delete a filter anything still points at, and hands back the references so you can say what.
+
 ## Your own rpc
 
 A plugin's rpc is [oRPC](https://orpc.unnoq.com/). The server half builds a router whose procedures receive your
@@ -287,9 +335,11 @@ absent.
 | `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management |
 | `slm/systems/layer-queue`                                  | queue reads and edits                       |
 | `slm/systems/match-history`                                | match reads                                 |
+| `slm/systems/filter-entity`                                | filter reads and writes                     |
 | `slm/systems/app-events`                                   | writing to the audit log                    |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll         |
 | `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers          |
+| `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one          |
 | `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages             |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import
