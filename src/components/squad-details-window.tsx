@@ -59,7 +59,7 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 	getId: (props) => String(props.uniqueSquadId),
 	loadAsync: async ({ props }) => {
 		const squadServerFrameKey = props.stores.squadServer
-		const isLive = ChatPrt.Sel.chatState(Zus.getState(squadServerFrameKey)).squads.some((sq) => sq.uniqueId === props.uniqueSquadId)
+		const isLive = ChatPrt.Sel.squads(Zus.getState(squadServerFrameKey)).some((sq) => sq.uniqueId === props.uniqueSquadId)
 		if (!isLive) {
 			const serverId = squadServerFrameKey.serverId
 			await RPC.queryClient.fetchQuery(
@@ -74,10 +74,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const serverId = squadServerFrameKey.serverId
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 
-	const liveSquad = Zus.useStore(
-		squadServerFrameKey,
-		(s) => ChatPrt.Sel.chatState(s).squads.find((sq) => sq.uniqueId === uniqueSquadId) ?? null,
-	)
+	const liveSquad = Zus.useStore(squadServerFrameKey, (s) => ChatPrt.Sel.squads(s).find((sq) => sq.uniqueId === uniqueSquadId) ?? null)
 	// a squad that disbands while this window is open drops off `squads`, but a RecentSquad still names the instance,
 	// so the window keeps its title/team/creator instead of blanking out. Its live state (locked, the member list)
 	// legitimately goes away with it.
@@ -112,7 +109,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 	const currentPlayers = Zus.useStore(
 		squadServerFrameKey,
 		Zus.useShallow((s) =>
-			liveSquad ? ChatPrt.Sel.chatState(s).players.filter((p) => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId) : [],
+			liveSquad ? ChatPrt.Sel.players(s).filter((p) => p.squadId === liveSquad.squadId && p.teamId === liveSquad.teamId) : [],
 		),
 	)
 
