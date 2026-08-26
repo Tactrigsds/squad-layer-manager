@@ -490,7 +490,7 @@ export namespace PoolSettings {
 		title: def('A repeat rule'),
 		body: def(
 			rt(
-				`<p>A repeat rule has a <em>Label</em>, a <em>Field</em> and a <em>Within</em> value. It matches an item in the queue or the match history when that item's <em>Field</em> -- map, gamemode, faction, and so on -- has already been played <em>Within</em> the configured range.</p>
+				`<p>A repeat rule has a <em>Field</em> and a <em>Within</em> value. It matches an item in the queue or the match history when that item's <em>Field</em> -- map, gamemode, faction, and so on -- has already been played <em>Within</em> the configured range. <em>Add label</em> gives the rule a name of its own; without one it is called after its field.</p>
 <p>For per-team fields like <em>Faction</em>, only repeats by the same persistent team (<teamA>Team A</teamA> or <teamB>Team B</teamB>) count, unless the rule has <em>Cross-team</em> enabled.</p>`,
 			),
 		),
