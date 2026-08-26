@@ -15,6 +15,7 @@ only install one you would be willing to run as a fork.
 - [The server entry](#the-server-entry)
 - [Storing data](#storing-data)
 - [Filters](#filters)
+- [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
 - [What you can reach](#what-you-can-reach)
@@ -235,6 +236,49 @@ delete the pool config first.
 
 `remove` refuses to delete a filter anything still points at, and hands back the references so you can say what.
 
+## Layer queries
+
+`slm/systems/layer-queries` asks the layer table the questions the web client asks it, against the same engine.
+Every call takes your per-server ctx and resolves what it needs itself, so there is no setup step.
+
+```ts
+import * as CB from 'slm/models/constraint-builders'
+import * as LayerQueries from 'slm/systems/layer-queries'
+
+const res = await LayerQueries.query(ctx, {
+	pageSize: 20,
+	sort: { type: 'column', sortBy: 'Asymmetry_Score', direction: 'ASC:ABS' },
+	constraints: [CB.filterEntity('pool', 'no-seed'), CB.repeatRule('no-repeat-map', { field: 'Map', label: 'Map', within: 3 })],
+})
+if (res.code === 'ok') res.layers // one page, with every column
+```
+
+|                   |                                                                |
+| ----------------- | -------------------------------------------------------------- |
+| `query`           | a page of layers matching the constraints                      |
+| `exists`          | whether these ids name layers this install knows               |
+| `info`            | every column of one layer, scores included                     |
+| `componentValues` | the distinct values of one column, for a picker                |
+| `outOfPool`       | which of these layers the constraints reject                   |
+| `itemStatuses`    | what each queue item violates, and the warnings admins see     |
+| `scoreRanges`     | the min and max of every score column                          |
+| `itemsState`      | the queue and recent matches a repeat rule is measured against |
+
+Constraints are how a query is narrowed, and `slm/models/constraint-builders` is how you write one. Do not assemble
+them by hand: which of `filterApplState`, `showIndicator` and `warn` a constraint needs is not obvious, and
+`poolFilter` in particular does not mean what its fields look like. The `id` you give a constraint comes back on
+every warning and match descriptor it produces, which is how you tell which one a result is about.
+
+Repeat rules need to know what is already queued and what was played. `query` and `itemStatuses` fill that in from
+the live queue when you leave `input.list` out, which is almost always what you want. Pass `itemsState` yourself
+only to ask about a queue other than the current one.
+
+A malformed filter comes back as `{ code: 'err:invalid-node', errors }` rather than throwing. Each error names the
+node and the reason, and `msg.original` is that reason in english.
+
+There is no client half. The browser runs these in a worker over its own copy of the engine, and that is not part
+of the contract. Reach them from your server and hand the results to your client through your own rpc.
+
 ## Your own rpc
 
 A plugin's rpc is [oRPC](https://orpc.unnoq.com/). The server half builds a router whose procedures receive your
@@ -336,10 +380,12 @@ absent.
 | `slm/systems/layer-queue`                                  | queue reads and edits                       |
 | `slm/systems/match-history`                                | match reads                                 |
 | `slm/systems/filter-entity`                                | filter reads and writes                     |
+| `slm/systems/layer-queries`                                | asking the layer table what matches         |
 | `slm/systems/app-events`                                   | writing to the audit log                    |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll         |
 | `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers          |
 | `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one          |
+| `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one      |
 | `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages             |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import

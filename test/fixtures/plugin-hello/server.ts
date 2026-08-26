@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import * as z from 'zod'
 
+import * as CB from 'slm/models/constraint-builders'
 import * as FB from 'slm/models/filter-builders'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
@@ -9,6 +10,7 @@ import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
 import * as AppEventsSys from 'slm/systems/app-events'
 import * as Filters from 'slm/systems/filter-entity'
+import * as LayerQueries from 'slm/systems/layer-queries'
 import * as MatchHistory from 'slm/systems/match-history'
 
 import manifest from './plugin.ts'
@@ -62,6 +64,26 @@ export const router = {
 		.handler(async ({ context, input }) => Filters.update(context, input.id, { name: input.name })),
 	dropFilter: os.input(z.object({ id: z.string() })).handler(async ({ context, input }) => Filters.remove(context, input.id)),
 	filterIds: os.input(z.object({})).handler(async () => Filters.list().map((f) => f.id)),
+
+	// the filter the query is constrained by is one the plugin made itself, which is the pairing worth
+	// covering: neither half is much use to a plugin without the other
+	inFilter: os.input(z.object({ filterId: z.string() })).handler(async ({ context, input }) => {
+		const res = await LayerQueries.query(context, {
+			pageSize: 5,
+			sort: null,
+			constraints: [CB.filterEntity('pool', input.filterId)],
+		})
+		return res.code === 'ok' ? { code: 'ok' as const, total: res.totalCount, collections: res.layers.map((l) => l.Collection) } : res
+	}),
+	outOfPool: os
+		.input(z.object({ filterId: z.string(), layerIds: z.array(z.string()) }))
+		.handler(async ({ context, input }) =>
+			LayerQueries.outOfPool(context, { layerIds: input.layerIds, constraints: [CB.filterEntity('pool', input.filterId)] }),
+		),
+	layersExist: os
+		.input(z.object({ layerIds: z.array(z.string()) }))
+		.handler(async ({ context, input }) => LayerQueries.exists(context, input.layerIds)),
+	mapValues: os.input(z.object({})).handler(async ({ context }) => LayerQueries.componentValues(context, { column: 'Map' })),
 	greetings: os.input(z.object({ serverId: z.string() })).handler(async function* ({ context, input }) {
 		yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
 	}),
