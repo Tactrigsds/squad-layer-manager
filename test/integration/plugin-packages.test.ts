@@ -5,7 +5,8 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { LAYERS } from '../harness/arrange'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // The packaged-plugin path end to end: a plugin built into standalone esm, served over http, then
@@ -92,6 +93,17 @@ function readRows<T>(query: string, ...params: unknown[]): T[] {
 	}
 }
 
+// One of the plugin's own procedures, over the host's generic plugin-rpc route -- the same way the browser
+// reaches it. `data` is whatever the procedure returned.
+async function call<T>(path: string, input: unknown): Promise<T> {
+	const res = (await client.plugins.rpcCall({ pluginId: 'hello', path: [path], serverId: app.serverId, input })) as {
+		code: string
+		data?: T
+	}
+	if (res.code !== 'ok') throw new Error(`plugin rpc ${path} failed: ${res.code}`)
+	return res.data as T
+}
+
 async function leftoverData() {
 	const next = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), { label: 'the plugin list stream' })
 	return (next.leftoverData as { pluginId: string }[]).find((e) => e.pluginId === 'hello')
@@ -169,6 +181,95 @@ describe('packaged plugins', () => {
 
 		// only the files plugin.json names as browser-facing are reachable
 		expect((await get('/plugin-assets/hello/server.mjs')).status).toBe(404)
+	})
+
+	// Filters are core state a plugin shares with every admin, so the interesting part is not that the row
+	// appears: it is that the write went through the host's own path. The FILTER_CHANGED rows are what
+	// prove it, since only that path writes them, and they name the plugin rather than a person.
+	it('creates, updates and deletes filters, recorded against the plugin', async () => {
+		const owner = String(ADMIN_USER.discordId)
+		const filterRow = () => readRows<{ name: string; owner: string; filter: string }>(`SELECT * FROM filters WHERE id = 'hello-pool'`)[0]
+
+		expect(await call('makeFilter', { id: 'hello-pool', owner })).toMatchObject({ code: 'ok' })
+		expect(filterRow()).toMatchObject({ name: 'Hello pool', owner })
+		// FB.and built a real tree through the shim, not a string the plugin happened to send
+		expect(JSON.parse(filterRow().filter)).toMatchObject({ type: 'and', children: [{ type: 'eq' }, { type: 'in', neg: true }] })
+		// the in-memory index the whole server reads from, which only the mutation stream keeps current
+		expect(await call('filterIds', {})).toContain('hello-pool')
+
+		expect(await call('makeFilter', { id: 'hello-pool', owner })).toMatchObject({ code: 'err:already-exists' })
+
+		expect(await call('renameFilter', { id: 'hello-pool', name: 'Hello pool v2' })).toMatchObject({ code: 'ok' })
+		expect(filterRow().name).toBe('Hello pool v2')
+
+		expect(await call('dropFilter', { id: 'hello-pool' })).toMatchObject({ code: 'ok' })
+		expect(filterRow()).toBeUndefined()
+
+		expect(
+			readRows<{ action: string }>(
+				`SELECT json_extract(data, '$.json.action') AS action FROM appEvents
+				 WHERE type = 'FILTER_CHANGED' AND actorPluginId = 'hello' ORDER BY rowid`,
+			).map((r) => r.action),
+		).toEqual(['created', 'updated', 'deleted'])
+	})
+
+	// A plugin's two halves of the same job: it makes a filter, then asks the engine what matches it. The
+	// filter is created and dropped here rather than reused from the test above, so neither depends on the
+	// other's leftovers.
+	it('queries the layer table through a filter it created', async () => {
+		await call('makeFilter', { id: 'hello-owi', owner: String(ADMIN_USER.discordId) })
+
+		const matching = await call<{ code: string; total: number; collections: string[] }>('inFilter', { filterId: 'hello-owi' })
+		expect(matching.code).toBe('ok')
+		expect(matching.total).toBeGreaterThan(0)
+		// the filter is `Collection = OWI and Gamemode not in (Seed, Training)`, so the engine applied it
+		expect(matching.collections.every((c) => c === 'OWI')).toBe(true)
+
+		// the same filter as a pool: a seed layer fails it, an ordinary one does not, and an id naming no
+		// layer is out of pool rather than an error
+		const pool = await call<{ code: string; outOfPool: string[] }>('outOfPool', {
+			filterId: 'hello-owi',
+			layerIds: [LAYERS.gorodokRaas, LAYERS.sumariSeed, 'NOT-A-LAYER:XX:YY'],
+		})
+		expect(pool.outOfPool).toEqual([LAYERS.sumariSeed, 'NOT-A-LAYER:XX:YY'])
+
+		expect(await call('layersExist', { layerIds: [LAYERS.harjuRaas, 'NOT-A-LAYER:XX:YY'] })).toMatchObject({
+			results: [
+				{ id: LAYERS.harjuRaas, exists: true },
+				{ id: 'NOT-A-LAYER:XX:YY', exists: false },
+			],
+		})
+
+		const maps = await call<{ code: string; values: string[] }>('mapValues', {})
+		expect(maps.values).toContain('Gorodok')
+
+		await call('dropFilter', { id: 'hello-owi' })
+	})
+
+	// genVote is a query that draws rather than lists, and the two things worth pinning are that a choice
+	// already decided is left alone and that the drawn ones differ on what uniqueConstraints names.
+	it('draws vote choices, honouring a preset choice and the uniqueness keys', async () => {
+		await call('makeFilter', { id: 'hello-vote', owner: String(ADMIN_USER.discordId) })
+
+		const draw = async (seed: string) =>
+			await call<{ code: string; maps: (string | null)[]; unfilledChoices: number[] }>('drawVote', {
+				filterId: 'hello-vote',
+				seed,
+				presetLayerId: LAYERS.harjuRaas,
+			})
+
+		const first = await draw('seed-a')
+		expect(first.code).toBe('ok')
+		expect(first.unfilledChoices).toEqual([])
+		// the preset choice is not drawn for, so it comes back with no layer of its own
+		expect(first.maps[1]).toBeNull()
+		// uniqueConstraints: ['Map'], so the two drawn choices cannot share a map, nor take the preset's
+		expect(new Set([first.maps[0], first.maps[2], 'Harju']).size).toBe(3)
+
+		// the seed is what makes a draw reproducible, and a different one is free to differ
+		expect((await draw('seed-a')).maps).toEqual(first.maps)
+
+		await call('dropFilter', { id: 'hello-vote' })
 	})
 
 	it('gives a restarted plugin a fresh module graph', async () => {

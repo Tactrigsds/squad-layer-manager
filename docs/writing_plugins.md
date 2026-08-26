@@ -14,6 +14,8 @@ only install one you would be willing to run as a fork.
 - [The manifest](#the-manifest)
 - [The server entry](#the-server-entry)
 - [Storing data](#storing-data)
+- [Filters](#filters)
+- [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
 - [What you can reach](#what-you-can-reach)
@@ -187,6 +189,118 @@ Two rules. List them in name order, which the host checks. And build the table n
 importing it from `schema.ts`: a migration is frozen in time, and renaming a table later must not reach back and
 change what an applied migration did.
 
+## Filters
+
+A filter is a predicate over layers: what a server's pool admits, what an indicator marks. `slm/systems/filter-entity`
+reads and writes the same filters admins see in the filter index, and `slm/models/filter-builders` is how you write
+a tree without assembling the nodes by hand.
+
+```ts
+import * as FB from 'slm/models/filter-builders'
+import * as Filters from 'slm/systems/filter-entity'
+
+await Filters.create(ctx, {
+	id: 'no-seed',
+	name: 'Not a seed layer',
+	filter: FB.and([FB.eq('Collection', 'OWI'), FB.notInValues('Gamemode', ['Seed', 'Training'])]),
+	owner: 123456789012345678n,
+	description: null,
+	alertMessage: null,
+	emoji: null,
+	invertedAlertMessage: null,
+	invertedEmoji: null,
+})
+
+Filters.list() // every filter
+Filters.get('no-seed') // one, or undefined
+await Filters.update(ctx, 'no-seed', { name: 'No seed layers' })
+await Filters.remove(ctx, 'no-seed')
+Filters.changes(ctx).subscribe((c) => ...) // every write, yours included
+```
+
+`owner` is a discord user id. A filter belongs to a person even when a plugin wrote it, so name the admin who is
+answerable for it: they get the filter-owner role over it and can edit it by hand afterwards.
+
+Four things to know.
+
+Your writes are ordinary writes. Open editors update, the reference index rebuilds, and the audit log records a
+`FILTER_CHANGED` naming your plugin rather than a person. Writing the `filters` table through `ctx.db()` skips all
+of that and leaves every open page stale until a restart.
+
+Nothing marks a filter as yours. You can write any filter, including one an admin made, and an admin can edit or
+delete one you made. Prefix your ids if you want them to be recognisable.
+
+Deactivating your plugin leaves its filters behind. That is deliberate: a server pool naming a filter that
+disappeared fails every layer status query for that server. Clean up explicitly if that is wrong for yours, and
+delete the pool config first.
+
+`remove` refuses to delete a filter anything still points at, and hands back the references so you can say what.
+
+## Layer queries
+
+`slm/systems/layer-queries` asks the layer table the questions the web client asks it, against the same engine.
+Every call takes your per-server ctx and resolves what it needs itself, so there is no setup step.
+
+```ts
+import * as CB from 'slm/models/constraint-builders'
+import * as LayerQueries from 'slm/systems/layer-queries'
+
+const res = await LayerQueries.query(ctx, {
+	pageSize: 20,
+	sort: { type: 'column', sortBy: 'Asymmetry_Score', direction: 'ASC:ABS' },
+	constraints: [CB.filterEntity('pool', 'no-seed'), CB.repeatRule('no-repeat-map', { field: 'Map', label: 'Map', within: 3 })],
+})
+if (res.code === 'ok') res.layers // one page, with every column
+```
+
+|                   |                                                                |
+| ----------------- | -------------------------------------------------------------- |
+| `query`           | a page of layers matching the constraints                      |
+| `exists`          | whether these ids name layers this install knows               |
+| `info`            | every column of one layer, scores included                     |
+| `componentValues` | the distinct values of one column, for a picker                |
+| `outOfPool`       | which of these layers the constraints reject                   |
+| `itemStatuses`    | what each queue item violates, and the warnings admins see     |
+| `genVote`         | draws a layer for each undecided choice of a vote              |
+| `scoreRanges`     | the min and max of every score column                          |
+| `itemsState`      | the queue and recent matches a repeat rule is measured against |
+
+Constraints are how a query is narrowed, and `slm/models/constraint-builders` is how you write one. Do not assemble
+them by hand: which of `filterApplState`, `showIndicator` and `warn` a constraint needs is not obvious, and
+`poolFilter` in particular does not mean what its fields look like. The `id` you give a constraint comes back on
+every warning and match descriptor it produces, which is how you tell which one a result is about.
+
+Repeat rules need to know what is already queued and what was played. `query` and `itemStatuses` fill that in from
+the live queue when you leave `input.list` out, which is almost always what you want. Pass `itemsState` yourself
+only to ask about a queue other than the current one.
+
+A malformed filter comes back as `{ code: 'err:invalid-node', errors }` rather than throwing. Each error names the
+node and the reason, and `msg.original` is that reason in english.
+
+`genVote` draws rather than lists. A choice either names a layer already or carries constraints to draw one from,
+and `uniqueConstraints` names the properties the drawn choices have to differ on.
+
+```ts
+import * as GV from 'slm/models/gen-vote'
+
+const res = await LayerQueries.genVote(ctx, {
+	seed: 'anything-stable',
+	choices: [GV.initChoice(), GV.initChoice(), { choiceConstraints: { Gamemode: 'RAAS' } }],
+	uniqueConstraints: ['Map'],
+	constraints: [CB.filterEntity('pool', 'no-seed')],
+})
+if (res.code === 'ok') res.chosenLayers // one per choice, undefined where a choice already named a layer
+```
+
+The same seed draws the same layers, so a redraw you have to be able to repeat is a matter of keeping the seed.
+`onlyIndex` redraws one choice and leaves the rest. `unfilledChoices` holds the indices nothing could be found for,
+which is how an over-constrained draw reports itself.
+
+Starting the vote is not here. Draw the choices, then put them in the queue.
+
+There is no client half. The browser runs these in a worker over its own copy of the engine, and that is not part
+of the contract. Reach them from your server and hand the results to your client through your own rpc.
+
 ## Your own rpc
 
 A plugin's rpc is [oRPC](https://orpc.unnoq.com/). The server half builds a router whose procedures receive your
@@ -287,9 +401,14 @@ absent.
 | `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management |
 | `slm/systems/layer-queue`                                  | queue reads and edits                       |
 | `slm/systems/match-history`                                | match reads                                 |
+| `slm/systems/filter-entity`                                | filter reads and writes                     |
+| `slm/systems/layer-queries`                                | asking the layer table what matches         |
 | `slm/systems/app-events`                                   | writing to the audit log                    |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll         |
 | `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers          |
+| `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one          |
+| `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one      |
+| `slm/models/gen-vote`                                      | the choices a drawn vote is made of         |
 | `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages             |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import

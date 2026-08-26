@@ -85,6 +85,10 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 					toast.error(...tr.toast(F_Msgs.cyclicalReference(res.cycle)))
 					break
 
+				case 'err:already-exists':
+					toast.error(...tr.toast(F_Msgs.idTaken(value.id)))
+					break
+
 				default:
 					assertNever(res)
 			}
