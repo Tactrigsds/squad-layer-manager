@@ -218,6 +218,196 @@ export type AggregatedWarns = {
 	warns: EnrichedWarn[]
 }
 
+// The other half of ServerEvent's switch (server-event.tsx): each entry decides, from the event alone, whether that
+// renderer draws anything. Every `return null` in the component that depends only on the event is mirrored here, and
+// the feed filters on it (see showEventInFeed) so an entry that draws nothing is never mounted. Half a busy match's
+// entries are roster bookkeeping the feed does not show, and mounting them costs more than everything else on the
+// client put together.
+//
+// Only conditions the event answers by itself belong here. ROUND_ENDED draws nothing until its match reaches
+// post-game, which the event cannot know and which changes after the event is buffered, so that stays in the
+// component.
+const RENDERS_IN_FEED = {
+	CHAT_MESSAGE: (event) => event.player.teamId !== null,
+	ADMIN_BROADCAST: () => true,
+	PLAYER_CONNECTED: () => true,
+	// roster backfill from the teams poll -- state only, never surfaced
+	PLAYER_RECONCILED: () => false,
+	PLAYER_DISCONNECTED: () => true,
+	POSSESSED_ADMIN_CAMERA: () => true,
+	UNPOSSESSED_ADMIN_CAMERA: () => true,
+	PLAYER_KICKED: () => true,
+	SQUAD_CREATED: () => true,
+	PLAYER_BANNED: () => true,
+	PLAYER_WARNED: () => true,
+	WARNS_AGGREGATED: () => true,
+	// an audit-only MAP_SET repeats the layer its QUEUE_UPDATED already named
+	APP_EVENT: (event) => !(event.appEvent.type === 'MAP_SET' && event.appEvent.reason === 'queue-updated'),
+	NEW_GAME: () => true,
+	// reseeds the roster for a boundary NEW_GAME has already announced
+	RESET: () => false,
+	ROUND_ENDED: () => true,
+	PLAYER_DETAILS_CHANGED: () => false,
+	// the only detail with a line of its own is the lock, and only when it actually changed
+	SQUAD_DETAILS_CHANGED: (event) => event.details.locked !== undefined && event.details.locked !== event.prevDetails.locked,
+	SQUAD_RENAMED: () => true,
+	PLAYER_CHANGED_TEAM: () => true,
+	PLAYER_LEFT_SQUAD: () => true,
+	SQUAD_DISBANDED: () => true,
+	PLAYER_JOINED_SQUAD: () => true,
+	PLAYER_PROMOTED_TO_LEADER: () => true,
+	TEAMS_POLLED_UPDATE: () => false,
+	PLAYER_DIED: () => true,
+	PLAYER_WOUNDED: () => true,
+	MAP_SET: () => true,
+	INGAME_VOTE_STARTED: (event) => event.container === 'Vote_NextLayer',
+	RCON_CONNECTED: () => true,
+	RCON_DISCONNECTED: () => true,
+	NOOP: () => false,
+} satisfies { [T in EventEnriched['type']]: (event: Extract<EventEnriched, { type: T }>) => boolean }
+
+/**
+ * Wire form for a batch of enriched events.
+ *
+ * Enrichment embeds a whole player object per event, so a busy match sends the same ~160 people several thousand
+ * times: two thirds of the payload, and that many objects for the client to allocate. Interpolation hands the same
+ * object to every event that mentions a player until something about them changes, so hoisting them into a shared
+ * table keyed on object identity -- a Map lookup per field, never a structural comparison -- collapses most of it.
+ *
+ * Which fields hold one is fixed per event type (FIELDS below), so encoding touches those and nothing else rather
+ * than walking each event. Decoding hands the client back the same sharing, so a player is one object there too.
+ */
+export namespace Wire {
+	type Fields = {
+		// keys holding a single SM.Player, or nothing
+		players?: readonly string[]
+		// keys holding an SM.Player[]
+		playerLists?: readonly string[]
+		// keys holding a single SM.UniqueSquad
+		squads?: readonly string[]
+		// keys holding an SM.UniqueTeams, i.e. a roster of both
+		rosters?: readonly string[]
+		// keys holding an EventEnriched[], encoded recursively
+		nested?: readonly string[]
+	}
+
+	// Exhaustive over the union so a new event type has to declare what it embeds, even if that is nothing.
+	const FIELDS = {
+		CHAT_MESSAGE: { players: ['player'] },
+		ADMIN_BROADCAST: { players: ['player'] },
+		PLAYER_CONNECTED: { players: ['player'] },
+		PLAYER_RECONCILED: { players: ['player'] },
+		PLAYER_DISCONNECTED: { players: ['player'] },
+		PLAYER_DETAILS_CHANGED: { players: ['player'] },
+		PLAYER_CHANGED_TEAM: { players: ['player'] },
+		PLAYER_WARNED: { players: ['player'] },
+		PLAYER_BANNED: { players: ['player'] },
+		PLAYER_KICKED: { players: ['player'] },
+		POSSESSED_ADMIN_CAMERA: { players: ['player'] },
+		UNPOSSESSED_ADMIN_CAMERA: { players: ['player'] },
+		PLAYER_JOINED_SQUAD: { players: ['player'], squads: ['squad'] },
+		PLAYER_LEFT_SQUAD: { players: ['player'], squads: ['squad'] },
+		PLAYER_PROMOTED_TO_LEADER: { players: ['player'], squads: ['squad'] },
+		SQUAD_CREATED: { players: ['creator'], squads: ['squad'] },
+		SQUAD_DISBANDED: { squads: ['squad'] },
+		SQUAD_DETAILS_CHANGED: { squads: ['squad'] },
+		SQUAD_RENAMED: { squads: ['squad'] },
+		PLAYER_DIED: { players: ['victim', 'attacker'] },
+		PLAYER_WOUNDED: { players: ['victim', 'attacker'] },
+		MAP_SET: { players: ['actorPlayer'] },
+		ROUND_ENDED: { players: ['actorPlayer'] },
+		APP_EVENT: { players: ['actorPlayer'], playerLists: ['targetPlayers'], nested: ['collapsed'] },
+		WARNS_AGGREGATED: { nested: ['warns'] },
+		NEW_GAME: { rosters: ['state'] },
+		RESET: { rosters: ['state'] },
+		TEAMS_POLLED_UPDATE: {},
+		INGAME_VOTE_STARTED: {},
+		RCON_CONNECTED: {},
+		RCON_DISCONNECTED: {},
+		NOOP: {},
+	} satisfies Record<EventEnriched['type'], Fields>
+
+	// an event type with nothing to hoist crosses the wire untouched, so a match's several hundred teams polls cost
+	// neither a copy on the way out nor one on the way back
+	const HOISTS = new Set(
+		Object.entries(FIELDS)
+			.filter(([, f]) => Object.keys(f).length > 0)
+			.map(([type]) => type),
+	)
+
+	export type Batch = {
+		players: SM.Player[]
+		squads: SM.UniqueSquad[]
+		// each event with the fields FIELDS names replaced by an index into the tables above. Opaque: decode is the
+		// only thing that reads them.
+		events: readonly unknown[]
+	}
+
+	type Interner<T> = (value: T) => number
+
+	function interner<T extends object>(table: T[]): Interner<T> {
+		const indices = new Map<T, number>()
+		return (value) => {
+			let index = indices.get(value)
+			if (index === undefined) {
+				index = table.push(value) - 1
+				indices.set(value, index)
+			}
+			return index
+		}
+	}
+
+	export function encode(events: readonly EventEnriched[]): Batch {
+		const players: SM.Player[] = []
+		const squads: SM.UniqueSquad[] = []
+		const internPlayer = interner(players)
+		const internSquad = interner(squads)
+
+		function encodeEvent(event: EventEnriched): unknown {
+			if (!HOISTS.has(event.type)) return event
+			const fields: Fields = FIELDS[event.type]
+			const out = { ...event } as Record<string, any>
+			for (const key of fields.players ?? []) if (out[key]) out[key] = internPlayer(out[key])
+			for (const key of fields.playerLists ?? []) if (out[key]) out[key] = out[key].map(internPlayer)
+			for (const key of fields.squads ?? []) if (out[key]) out[key] = internSquad(out[key])
+			for (const key of fields.rosters ?? []) {
+				if (!out[key]) continue
+				out[key] = { ...out[key], players: out[key].players.map(internPlayer), squads: out[key].squads.map(internSquad) }
+			}
+			for (const key of fields.nested ?? []) if (out[key]) out[key] = out[key].map(encodeEvent)
+			return out
+		}
+
+		return { players, squads, events: events.map(encodeEvent) }
+	}
+
+	export function decode(batch: Batch): EventEnriched[] {
+		const { players, squads } = batch
+
+		function decodeEvent(encoded: unknown): EventEnriched {
+			const event = encoded as EventEnriched
+			if (!HOISTS.has(event.type)) return event
+			const fields: Fields = FIELDS[event.type]
+			const out = { ...event } as Record<string, any>
+			for (const key of fields.players ?? []) if (typeof out[key] === 'number') out[key] = players[out[key]]
+			for (const key of fields.playerLists ?? []) if (out[key]) out[key] = out[key].map((i: number) => players[i])
+			for (const key of fields.squads ?? []) if (typeof out[key] === 'number') out[key] = squads[out[key]]
+			for (const key of fields.rosters ?? []) {
+				if (!out[key]) continue
+				out[key] = {
+					...out[key],
+					players: out[key].players.map((i: number) => players[i]),
+					squads: out[key].squads.map((i: number) => squads[i]),
+				}
+			}
+			for (const key of fields.nested ?? []) if (out[key]) out[key] = out[key].map(decodeEvent)
+			return out as EventEnriched
+		}
+
+		return batch.events.map(decodeEvent)
+	}
+}
+
 export type ChatState = {
 	eventBuffer: EventEnriched[]
 
@@ -988,6 +1178,8 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 }
 
 export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilterState, ctx?: SecondaryFilterContext): boolean {
+	// ahead of the pinned check: a RESET is pinned by kind but draws nothing
+	if (!isRenderableInFeed(event)) return false
 	if (isPinnedSystemEvent(event)) return true
 	if (!matchesFilterState(event, filterState)) return false
 	if (ctx?.selectedOnly) {
@@ -998,17 +1190,11 @@ export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilt
 	return true
 }
 
-// event types the feed renderer (ServerEvent) always renders as nothing. Callers that inject separators/markers
-// between events (e.g. the player details window) must drop these first, else an invisible event still produces a
-// leading separator, showing up as an empty gap or two markers in a row.
+// Whether the feed renderer draws anything for this event; see RENDERS_IN_FEED. showEventInFeed already applies it,
+// so this is for callers that filter by something else and still have to drop invisible entries -- one that injects
+// separators between events would otherwise emit a leading separator or two markers in a row.
 export function isRenderableInFeed(event: EventEnriched): boolean {
-	return (
-		event.type !== 'RESET' &&
-		event.type !== 'PLAYER_DETAILS_CHANGED' &&
-		event.type !== 'TEAMS_POLLED_UPDATE' &&
-		event.type !== 'PLAYER_RECONCILED' &&
-		event.type !== 'NOOP'
-	)
+	return (RENDERS_IN_FEED[event.type] as (event: EventEnriched) => boolean)(event)
 }
 
 // the raw server-event assoc types, plus 'actor' for the admin who took an app event's action

@@ -234,7 +234,9 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
 		queryFn: async () => {
 			if (selectedMatchOrdinal === null) return null
-			return RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })) ?? null
+			const res = RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal }))
+			// decoded here rather than at the read, so the query cache holds events the renderer can use directly
+			return res ? { ...res, events: CHAT.Wire.decode(res.events) } : null
 		},
 		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
 		staleTime: Infinity,
