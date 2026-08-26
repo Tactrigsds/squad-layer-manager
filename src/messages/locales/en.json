@@ -63,6 +63,7 @@
 	"A comparison's first operand must be a column": "A comparison's first operand must be a column",
 	"A configured reason, by one of its keywords. Custom text is not accepted here.": "A configured reason, by one of its keywords. Custom text is not accepted here.",
 	"A filter can appear in several of these lists at once.": "A filter can appear in several of these lists at once.",
+	"A filter with the id \"{id}\" already exists": "A filter with the id \"{id}\" already exists",
 	"A flag on the player's battlemetrics profile.": "A flag on the player's battlemetrics profile.",
 	"A generated item": "A generated item",
 	"A layer configuration is made up of:\n<ul>\n    <li>the map, gamemode and layer version: <code>{layerName}</code></li>\n    <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>\n</ul>\n<p>For this layer, the RCON command that will be run on the server is <code>{command}</code>.</p>": "A layer configuration is made up of:\n<ul>\n    <li>the map, gamemode and layer version: <code>{layerName}</code></li>\n    <li>the faction and unit (subfaction) for each team: <code>{team1}</code> and <code>{team2}</code></li>\n</ul>\n<p>For this layer, the RCON command that will be run on the server is <code>{command}</code>.</p>",

@@ -81,6 +81,10 @@ export const notFound = def(() => ({ toast: [t('Unable to save: Filter Not Found
 
 export const created = def(() => ({ toast: [t('Filter created')] }))
 
+export const idTaken = def((id: string) => ({
+	toast: [t('A filter with the id "{id}" already exists', { id })],
+}))
+
 export const invalid = def(() => ({
 	toast: [t('Invalid filter'), { description: t('Please check filter configuration') }],
 }))
