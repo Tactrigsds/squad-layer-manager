@@ -298,7 +298,7 @@ export const matchHistoryRouter = {
 		const events = await MatchEventsCache.getEventsForMatches(ctx, match.historyEntryId)
 
 		return {
-			events,
+			events: CHAT.Wire.encode(events),
 			previousOrdinal: previousMatch?.ordinal,
 		}
 	}),
@@ -367,7 +367,7 @@ export const matchHistoryRouter = {
 			const historicalMatchIds = ctx.matchHistory.recentMatches
 				.filter((m) => m.historyEntryId !== currentMatch?.historyEntryId)
 				.map((m) => m.historyEntryId)
-			if (historicalMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+			if (historicalMatchIds.length === 0) return { events: CHAT.Wire.encode([]), nextCursor: undefined }
 
 			// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
 			const matchCountRows = await ctx
@@ -402,14 +402,14 @@ export const matchHistoryRouter = {
 					break
 				}
 			}
-			if (includedMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+			if (includedMatchIds.length === 0) return { events: CHAT.Wire.encode([]), nextCursor: undefined }
 
 			const nextCursor = index < matchesWithEvents.length ? includedMatchIds[includedMatchIds.length - 1] : undefined
 
 			const enriched = await MatchEventsCache.getEventsForMatches(ctx, ...includedMatchIds)
 			const events = enriched.filter((e) => e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)).sort((a, b) => a.time - b.time)
 
-			return { events, nextCursor }
+			return { events: CHAT.Wire.encode(events), nextCursor }
 		}),
 
 	getSquadDetails: orpcBase

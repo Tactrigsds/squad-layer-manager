@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
-import type * as CHAT from '@/models/chat.models'
+import * as CHAT from '@/models/chat.models'
 import * as StatsModels from '@/models/stats-panel.models'
 import * as RPC from '@/orpc.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -34,7 +34,9 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
 		queryFn: async () => {
 			if (selectedMatchOrdinal === null) return null
-			return RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })) ?? null
+			const res = RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal }))
+			// decoded here rather than at the read, so the query cache holds events the renderer can use directly
+			return res ? { ...res, events: CHAT.Wire.decode(res.events) } : null
 		},
 		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
 		staleTime: Infinity,

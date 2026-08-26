@@ -747,3 +747,75 @@ describe('admin camera tracking', () => {
 		expect(state.interpolatedState.adminCamPlayerIds).toEqual([])
 	})
 })
+
+describe('Wire codec', () => {
+	// a buffer covering every kind of hoisted field: a bare player, a roster, a squad, a player list plus nested
+	// collapsed events, and a type the codec leaves alone
+	function enrichedBuffer() {
+		const alice = makePlayer('eos-1')
+		const bob = makePlayer('eos-2', { teamId: 2 })
+		const squad = makeSquad(1, 1, 'eos-1', 10)
+		const state = CHAT.getInitialChatState()
+		CHAT.handleEvent(state, {
+			type: 'RESET',
+			id: 1,
+			time: 1,
+			matchId: 1,
+			source: 'server-roll',
+			state: { players: [alice, bob], squads: [squad] },
+		})
+		CHAT.handleEvent(state, { type: 'PLAYER_JOINED_SQUAD', id: 2, time: 2, matchId: 1, player: 'eos-2', uniqueId: 10 })
+		CHAT.handleEvent(state, { type: 'TEAMS_POLLED_UPDATE', id: 3, time: 3, matchId: 1 })
+		CHAT.handleEvent(state, {
+			type: 'PLAYER_DIED',
+			id: 4,
+			time: 4,
+			matchId: 1,
+			victim: 'eos-1',
+			attacker: 'eos-2',
+			damage: 100,
+			weapon: 'BP_M4',
+			variant: 'normal',
+		})
+		CHAT.handleEvent(state, {
+			type: 'PLAYER_WOUNDED',
+			id: 5,
+			time: 5,
+			matchId: 1,
+			victim: 'eos-2',
+			attacker: 'eos-1',
+			damage: 50,
+			weapon: null,
+			variant: 'teamkill',
+		})
+		CHAT.handleEvent(state, warnAppEvent(['eos-1', 'eos-2']))
+		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 6, { type: 'event', id: 'app-1' }))
+		return state.eventBuffer
+	}
+
+	it('round-trips an enriched buffer unchanged', () => {
+		const buffer = enrichedBuffer()
+		expect(CHAT.Wire.decode(CHAT.Wire.encode(buffer))).toEqual(buffer)
+	})
+
+	it('collapses repeated players and squads and restores them as one object', () => {
+		const buffer = enrichedBuffer()
+		const batch = CHAT.Wire.encode(buffer)
+		// ten embedded players across the buffer, and three objects: identity is what dedupes, so bob costs a second
+		// entry from the moment joining a squad copies him
+		expect(batch.players).toHaveLength(3)
+		expect(batch.squads).toHaveLength(1)
+
+		const decoded = CHAT.Wire.decode(batch)
+		const died = decoded.find((e) => e.type === 'PLAYER_DIED')!
+		const wounded = decoded.find((e) => e.type === 'PLAYER_WOUNDED')!
+		expect(died.victim).toBe(wounded.attacker)
+		expect(died.attacker).toBe(wounded.victim)
+	})
+
+	it('leaves an event with nothing to hoist untouched', () => {
+		const buffer = enrichedBuffer()
+		const polled = buffer.find((e) => e.type === 'TEAMS_POLLED_UPDATE')!
+		expect(CHAT.Wire.encode(buffer).events).toContain(polled)
+	})
+})
