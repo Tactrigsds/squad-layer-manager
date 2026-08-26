@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as SE from '@/models/server-events.models'
-import type * as SM from '@/models/squad.models'
+import * as SM from '@/models/squad.models'
 
 function makePlayer(eos: string, opts: Partial<SM.Player> = {}): SM.Player {
 	return {
@@ -47,7 +47,7 @@ function warnServerEvent(player: SM.PlayerId, reason: string, id: number, source
 describe('chat.models application-event collapse', () => {
 	function seededState(players: SM.Player[]): CHAT.ChatState {
 		const state = CHAT.getInitialChatState()
-		state.interpolatedState.players = players
+		state.interpolatedState.players = SM.toLiveTeams({ players, squads: [] }).players
 		return state
 	}
 
@@ -219,7 +219,7 @@ describe('chat.models application-event collapse', () => {
 	it('names a target who has left the server, rather than dropping them', () => {
 		const state = seededState([])
 		// the player took part in the match and has since disconnected -- which is what a kick does to its own target
-		state.interpolatedState.recentPlayers = [{ ids: { eos: 'eos-gone', username: 'Gone' }, isAdmin: false }]
+		state.interpolatedState.recentPlayers = new Map([['eos-gone', { ids: { eos: 'eos-gone', username: 'Gone' }, isAdmin: false }]])
 		const appEvent: CHAT.AppFeedEvent = {
 			type: 'APP_EVENT',
 			appEvent: {
@@ -287,7 +287,7 @@ describe('mergeAppEvents', () => {
 describe('standalone warn burst aggregation', () => {
 	function seededState(players: SM.Player[]): CHAT.ChatState {
 		const state = CHAT.getInitialChatState()
-		state.interpolatedState.players = players
+		state.interpolatedState.players = SM.toLiveTeams({ players, squads: [] }).players
 		return state
 	}
 	const rcon = { type: 'rcon' } as const
@@ -387,8 +387,8 @@ describe('standalone warn burst aggregation', () => {
 describe('warn target summary grouping', () => {
 	function summaryFor(players: SM.Player[], squads: SM.UniqueSquad[], targets: SM.PlayerId[]): CHAT.WarnSummary {
 		const state = CHAT.getInitialChatState()
-		state.interpolatedState.players = players
-		state.interpolatedState.squads = squads
+		state.interpolatedState.players = SM.toLiveTeams({ players, squads: [] }).players
+		state.interpolatedState.squads = SM.toLiveTeams({ players: [], squads }).squads
 		CHAT.handleEvent(state, warnAppEvent(targets))
 		const entry = state.eventBuffer[0]
 		if (entry.type !== 'APP_EVENT') throw new Error('expected APP_EVENT')
@@ -500,7 +500,7 @@ describe('chat.models recent players', () => {
 	function newGame(id: number): SE.NewGame {
 		return { type: 'NEW_GAME', id, time: 100 + id, matchId: 1, source: 'new-game-detected', layerId: 'l1' }
 	}
-	const recentIds = (state: CHAT.ChatState) => state.interpolatedState.recentPlayers.map((p) => p.ids.eos)
+	const recentIds = (state: CHAT.ChatState) => [...state.interpolatedState.recentPlayers.values()].map((p) => p.ids.eos)
 
 	it('keeps a disconnected player in recentPlayers, but off the live roster', () => {
 		const state = CHAT.getInitialChatState()
@@ -508,7 +508,7 @@ describe('chat.models recent players', () => {
 		CHAT.handleEvent(state, connected(makePlayer('b'), 2))
 		CHAT.handleEvent(state, disconnected('a', 3))
 
-		expect(state.interpolatedState.players.map((p) => p.ids.eos)).toEqual(['b'])
+		expect([...state.interpolatedState.players.values()].map((p) => p.ids.eos)).toEqual(['b'])
 		expect(recentIds(state)).toEqual(['a', 'b'])
 	})
 
@@ -594,8 +594,8 @@ describe('chat.models recent squads', () => {
 	function resetEmpty(id: number): SE.Reset {
 		return { type: 'RESET', id, time: 100 + id, matchId: 1, source: 'rcon-reconnected', state: { players: [], squads: [] } }
 	}
-	const recentUniqueIds = (state: CHAT.ChatState) => state.interpolatedState.recentSquads.map((s) => s.uniqueId)
-	const byEos = (state: CHAT.ChatState, eos: string) => state.interpolatedState.players.find((p) => p.ids.eos === eos)!
+	const recentUniqueIds = (state: CHAT.ChatState) => [...state.interpolatedState.recentSquads.values()].map((s) => s.uniqueId)
+	const byEos = (state: CHAT.ChatState, eos: string) => state.interpolatedState.players.get(eos)!
 
 	function stateWithSquad() {
 		const state = CHAT.getInitialChatState()
@@ -644,8 +644,8 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, joinedSquad('a', 101, 4))
 		CHAT.handleEvent(state, joinedSquad('b', 101, 5))
 
-		expect(state.interpolatedState.squads.map((s) => s.uniqueId)).toEqual([101])
-		const byEos = (eos: string) => state.interpolatedState.players.find((p) => p.ids.eos === eos)
+		expect([...state.interpolatedState.squads.values()].map((s) => s.uniqueId)).toEqual([101])
+		const byEos = (eos: string) => state.interpolatedState.players.get(eos)
 		expect(byEos('a')?.squadId).toBe(1)
 		expect(byEos('b')?.squadId).toBe(1)
 	})
@@ -662,7 +662,7 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, promoted('a', 101, 5))
 		CHAT.handleEvent(state, joinedSquad('b', 101, 6))
 
-		expect(state.interpolatedState.squads.map((s) => s.uniqueId)).toEqual([101])
+		expect([...state.interpolatedState.squads.values()].map((s) => s.uniqueId)).toEqual([101])
 		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
 		expect(byEos(state, 'b')).toMatchObject({ squadId: 1, isLeader: false })
 	})
@@ -688,7 +688,7 @@ describe('chat.models recent squads', () => {
 		CHAT.handleEvent(state, promoted('a', 102, 10))
 		CHAT.handleEvent(state, joinedSquad('b', 102, 11))
 
-		expect(state.interpolatedState.squads.map((s) => s.uniqueId)).toEqual([102])
+		expect([...state.interpolatedState.squads.values()].map((s) => s.uniqueId)).toEqual([102])
 		expect(byEos(state, 'a')).toMatchObject({ squadId: 1, isLeader: true })
 		expect(byEos(state, 'b')).toMatchObject({ squadId: 1, isLeader: false })
 	})
@@ -705,7 +705,7 @@ describe('chat.models recent squads', () => {
 describe('admin camera tracking', () => {
 	function seededState(players: SM.Player[]): CHAT.ChatState {
 		const state = CHAT.getInitialChatState()
-		state.interpolatedState.players = players
+		state.interpolatedState.players = SM.toLiveTeams({ players, squads: [] }).players
 		return state
 	}
 

@@ -4,7 +4,7 @@ import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
-import * as SM from '@/models/squad.models'
+import type * as SM from '@/models/squad.models'
 import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -117,8 +117,17 @@ export namespace Sel {
 	}
 
 	const currentMatchArg = (_store: Store, currentMatch: MH.MatchDetails | undefined) => currentMatch
+
+	// The interpolated state keys players and squads by id, since that is what the event pipeline looks them up by.
+	// The UI wants lists, so they are materialized here, once per interpolated-state change rather than per read.
+	export const players = RSel.createSelector([(store: Store) => chatState(store).players], (players) => [...players.values()])
+	// sorted here because this is the only place the order is wanted: the teams panel's squad filter lists them
+	export const squads = RSel.createSelector([(store: Store) => chatState(store).squads], (squads) =>
+		[...squads.values()].sort((a, b) => a.squadId - b.squadId),
+	)
+
 	export const playersForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
-		RSel.createDeepSelector([(store: Store) => chatState(store).players, currentMatchArg], (players, currentMatch): SM.Player[] => {
+		RSel.createDeepSelector([players, currentMatchArg], (players, currentMatch): SM.Player[] => {
 			if (!currentMatch) return []
 			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
 			return players.filter((p) => p.teamId === teamId)
@@ -128,21 +137,17 @@ export namespace Sel {
 	// the live roster entry, i.e. only resolves while the player is connected. Callers that just need to put a name or
 	// an id on screen want recentPlayer instead; this one's emptiness is also read as "is offline".
 	export function player(playerId: SM.PlayerId) {
-		return (store: Store) => SM.PlayerIds.find(chatState(store).players, (p) => p.ids, playerId)
+		return (store: Store) => chatState(store).players.get(playerId)
 	}
 
-	export function recentPlayers(store: Store) {
-		return chatState(store).recentPlayers
-	}
+	export const recentPlayers = RSel.createSelector([(store: Store) => chatState(store).recentPlayers], (recent) => [...recent.values()])
 
 	// resolves anyone who has taken part in the current match, connected or not
 	export function recentPlayer(playerId: SM.PlayerId) {
 		return (store: Store) => CHAT.InterpolableState.findRecentPlayer(chatState(store), playerId)
 	}
 
-	export function recentSquads(store: Store) {
-		return chatState(store).recentSquads
-	}
+	export const recentSquads = RSel.createSelector([(store: Store) => chatState(store).recentSquads], (recent) => [...recent.values()])
 
 	// resolves any squad instance from the current match, disbanded or not. Its emptiness is not a "disbanded" test --
 	// use squads/squad for that.
@@ -151,7 +156,7 @@ export namespace Sel {
 	}
 
 	export const squadsForTeam = RSel.memoizeFactory((maybeNormedTeamId: MH.NormedTeamId | SM.TeamId) =>
-		RSel.createDeepSelector([(store: Store) => chatState(store).squads, currentMatchArg], (squads, currentMatch): SM.UniqueSquad[] => {
+		RSel.createDeepSelector([squads, currentMatchArg], (squads, currentMatch): SM.UniqueSquad[] => {
 			if (!currentMatch) return []
 			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
 			return squads.filter((s) => s.teamId === teamId)
@@ -162,7 +167,7 @@ export namespace Sel {
 			if (!currentMatch) return 0
 			const teamId = MH.getDenormedTeamId(maybeNormedTeamId, currentMatch.ordinal)
 			let count = 0
-			for (const player of players) {
+			for (const player of players.values()) {
 				if (player.teamId === teamId) count++
 			}
 			return count

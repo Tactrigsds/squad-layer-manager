@@ -167,7 +167,7 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer!.serverId
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes(serverId)
 	const playerCount = Zus.useStore(props.stores.squadServer!, (s) =>
-		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.length : null,
+		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.size : null,
 	)
 	const tickRate = SquadServerClient.useTickRate(serverId)
 	const tickRateThresholds = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.tickRateThresholds)

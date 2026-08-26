@@ -75,7 +75,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const tab = Zus.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
 
 	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
-	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.chatState(s).players.length)
+	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
 
 	// subjects are created once per frame instance, so reading them outside a selector is fine
 	const frameState = Zus.getState(props.stores.squadServer)

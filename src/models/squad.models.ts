@@ -447,13 +447,27 @@ export type PlayerId = EosId
 export const RecentPlayerSchema = PlayerSchema.pick({ ids: true, isAdmin: true, adminGroups: true, discordRoles: true })
 export type RecentPlayer = z.infer<typeof RecentPlayerSchema>
 
+// Shared rather than allocated, so a player who is absent from both lists costs no arrays at all. Frozen because
+// sharing it is only safe while nobody writes to it.
+const NO_GROUPS: readonly string[] = Object.freeze([])
+
+// Narrows rather than copies: the point is to drop the live fields, so a departed player carries no stale position.
+// The fields it keeps are shared, not cloned -- nothing writes through a player's ids or either group array (all
+// three are replaced wholesale when they change) -- and this runs once per connect/reconcile/details-change,
+// thousands of times over a match. A player persisted before either group list existed still reads as an empty one.
 export function toRecentPlayer(player: RecentPlayer): RecentPlayer {
 	return {
-		ids: { ...player.ids },
+		ids: player.ids,
 		isAdmin: player.isAdmin,
-		adminGroups: [...(player.adminGroups ?? [])],
-		discordRoles: [...(player.discordRoles ?? [])],
+		adminGroups: player.adminGroups ?? (NO_GROUPS as string[]),
+		discordRoles: player.discordRoles ?? (NO_GROUPS as string[]),
 	}
+}
+
+// True when the two describe the same player with the same admin standing, by reference. Lets a caller skip
+// re-recording a recent player when the poll reported no change, which is the usual case.
+export function recentPlayerUnchanged(a: RecentPlayer, b: RecentPlayer): boolean {
+	return a.ids === b.ids && a.isAdmin === b.isAdmin && a.adminGroups === b.adminGroups && a.discordRoles === b.discordRoles
 }
 
 // A departed player in roster shape, for the displays that need a `Player` to name someone who is no longer on the
@@ -543,6 +557,52 @@ export type PlayerListRes = { code: 'ok'; players: Player[] } | RconError
 export type SquadListRes = { code: 'ok'; squads: Squad[] } | RconError
 export type Teams<P = Player> = { players: P[]; squads: Squad[] }
 export type UniqueTeams<P = Player> = { players: P[]; squads: UniqueSquad[] }
+
+/**
+ * The roster as the event pipeline holds it in memory, keyed for lookup.
+ *
+ * Every lookup the pipeline does is by player id or squad uniqueId, and doing them by linear scan over ~100 players
+ * was 77% of the time spent replaying a match. `UniqueTeams` stays the array-shaped form, because that is what a
+ * RESET carries on disk and over the wire; this is what everything holds between those boundaries.
+ *
+ * Squads keep no ordering here. The one consumer that wants them ordered (the teams panel's squad filter) sorts at
+ * read, which is where the requirement actually lives.
+ */
+export type LiveTeams = {
+	players: Map<PlayerId, Player>
+	squads: Map<number, UniqueSquad>
+}
+
+export function toLiveTeams(teams: UniqueTeams): LiveTeams {
+	const players = new Map<PlayerId, Player>()
+	for (const player of teams.players) players.set(PlayerIds.getPlayerId(player.ids), player)
+	const squads = new Map<number, UniqueSquad>()
+	for (const squad of teams.squads) squads.set(squad.uniqueId, squad)
+	return { players, squads }
+}
+
+// Squads come back in uniqueId order, which is creation order, so a roster written out and read back reads the same
+// way regardless of what happened to the map in between.
+export function fromLiveTeams(teams: LiveTeams): UniqueTeams {
+	return {
+		players: [...teams.players.values()],
+		squads: [...teams.squads.values()].sort((a, b) => a.uniqueId - b.uniqueId),
+	}
+}
+
+// The squad occupying an in-game squad slot. Squads are keyed by uniqueId, so this is a scan -- over the ~20 squads
+// a server has, which is not worth a second index. A slot is only a slot once both halves are known, so a null in
+// either resolves to nothing, as Squads.idsEqual has it.
+export function findSquadForPlayer(
+	squads: LiveTeams['squads'],
+	key: { squadId: number | null; teamId: number | null },
+): UniqueSquad | undefined {
+	if (key.squadId === null || key.teamId === null) return undefined
+	for (const squad of squads.values()) {
+		if (squad.squadId === key.squadId && squad.teamId === key.teamId) return squad
+	}
+	return undefined
+}
 // The roster in its persisted form (P = Player), i.e. what a RESET (and a legacy NEW_GAME) carries. The generic
 // above stays hand-written since zod can't express it; this validates the one instantiation that hits the db.
 export const UniqueTeamsSchema = z.object({
@@ -582,8 +642,6 @@ export namespace Squads {
 		)
 	}
 }
-
-export function findSquadLeader(players: Player[]) {}
 
 // https://squad.fandom.com/wiki/Server_Configuration#Admins.cfg
 export const PLAYER_PERM = z.enum([

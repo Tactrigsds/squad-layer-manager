@@ -228,7 +228,7 @@ async function passLocked(ctx: PassCtx, opts?: PassOpts) {
 
 	const now = Date.now()
 	const players = SquadServer.getCurrTeams(ctx)?.players
-	const roster = players ? SRQ.rosterOf(players) : null
+	const roster = players ? SRQ.rosterOf([...players.values()]) : null
 
 	// in-flight sweep: clear what landed (or left), re-fire what stalled, give up on what keeps failing
 	const failed: SM.PlayerId[] = []
