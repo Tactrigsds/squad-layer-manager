@@ -340,6 +340,12 @@ export const invalid = def((reason: string) => ({
 	toast: [t('Invalid settings'), { description: raw(reason) }],
 }))
 
+// the pool config window discards the save promise, so without this a rejected call leaves the window looking
+// like nothing happened
+export const saveFailed = def((reason: string) => ({
+	toast: [t('Could not save settings'), { description: raw(reason) }],
+}))
+
 export const serverNotFound = def(() => ({ toast: [t('Server not found')] }))
 
 export const serverIdTaken = def(() => ({ toast: [t('A server with that ID already exists')] }))

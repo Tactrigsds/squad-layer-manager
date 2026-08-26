@@ -1095,9 +1095,12 @@ export const SettingsPathSchema = z.array(z.union([z.string(), z.number()])).ref
 
 export type SettingsPath = (string | number)[]
 
+// An absent `value` unsets the key, the same thing an absent key means in the settings object the settings page
+// sends. It has to be optional: JSON drops an undefined property, so a mutation written as `{path, value: undefined}`
+// arrives as `{path}` and a required `value` rejects the whole batch.
 export const SettingMutationSchema = z.object({
 	path: SettingsPathSchema,
-	value: z.any(),
+	value: z.any().optional(),
 })
 
 export type SettingMutation = z.infer<typeof SettingMutationSchema>
@@ -1139,7 +1142,11 @@ export function applySettingMutation<T extends PublicServerSettings>(
 		if (!current[key]) current[key] = {}
 		current = current[key]
 	}
-	current[path[path.length - 1]] = resolvedValue
+	const key = path[path.length - 1]
+	// deleted rather than assigned undefined, so an unset optional key compares equal to the settings the server
+	// sends back, where it is simply absent
+	if (resolvedValue === undefined) delete current[key]
+	else current[key] = resolvedValue
 }
 export function applySettingMutations(settings: PublicServerSettings, mutations: SettingMutation[]) {
 	for (const mutation of mutations) {

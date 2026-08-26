@@ -321,8 +321,9 @@ test.describe('queue item constraints', () => {
 	})
 
 	// The exemption is only useful if an admin can set it up without editing settings by hand, so the pool
-	// configuration window has to both render the control and persist what is picked in it.
-	test('configures skipWarningsForTags from the pool configuration window', async ({ page }) => {
+	// configuration window has to both render the control and persist what is picked in it. The repeat-rule leg
+	// covers unsetting an optional field, which the window writes as a mutation with no value at all.
+	test('persists pool configuration edits made in the window', async ({ page }) => {
 		const planned = layerTag('planned', 'aaaaaa')
 		const app = await createAppFixture({
 			globalSettings: (settings) => {
@@ -354,6 +355,38 @@ test.describe('queue item constraints', () => {
 				},
 				{ label: 'skipWarningsForTags persisted' },
 			)
+
+			await page.getByRole('button', { name: 'Repeat Rules' }).click()
+			// a rule has no identity of its own, so it is found by the label it was seeded with
+			const mapRule = page.getByRole('listitem').filter({ has: page.locator('input[value="Map"]') })
+			// the row's third combobox, after the field picker and the target values
+			const options = mapRule.getByRole('combobox').nth(2)
+			await expect(options).toContainText('Autogen')
+			await options.click()
+			await page.getByRole('option', { name: 'Autogen', exact: true }).click()
+			await page.keyboard.press('Escape')
+			await expect(options).not.toContainText('Autogen')
+
+			await page.getByRole('button', { name: 'Save Changes' }).click()
+			await app.waitFor(
+				() => {
+					const db = app.readDb()
+					try {
+						const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
+						const rules = JSON.parse(row.settings).json.queue.mainPool.repeatRules as { label: string; autogen?: boolean }[]
+						return rules.find((rule) => rule.label === 'Map')?.autogen === undefined
+					} finally {
+						db.close()
+					}
+				},
+				{ label: 'the Map rule stopped constraining generation' },
+			)
+			// the save round-trip must not put the option back
+			await page.reload()
+			await expect(page.getByRole('button', { name: 'Pool Configuration' })).toBeVisible({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'Pool Configuration' }).click()
+			await page.getByRole('button', { name: 'Repeat Rules' }).click()
+			await expect(mapRule.getByRole('combobox').nth(2)).not.toContainText('Autogen')
 		} finally {
 			await app.dispose()
 		}
