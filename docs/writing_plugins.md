@@ -66,7 +66,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.1',
+	apiVersion: '^0.2',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -592,10 +592,10 @@ halfway through a queue edit.
 
 `API_VERSION` in `src/models/plugins.models.ts` is the version of the slm surface a build provides, and
 `src/plugin-api/api-report.md` records what that version contains. Your manifest declares the range you need as a
-caret range: `^0.1`, or `^1.2`.
+caret range: `^0.2`, or `^1.2`.
 
-The surface is at 0.1.0, and semver's 0.x rule applies: below 1.0 the minor carries breaking changes and additions
-move the patch. So `^0.1` accepts any 0.1.x build and refuses 0.2.0. Once the surface reaches 1.0, `^1.2` will
+The surface is at 0.2.0, and semver's 0.x rule applies: below 1.0 the minor carries breaking changes and additions
+move the patch. So `^0.2` accepts any 0.2.x build and refuses 0.3.0. Once the surface reaches 1.0, `^1.2` will
 accept 1.2 and later 1.x.
 
 A plugin whose range this build does not satisfy is refused at activation, with the mismatch shown in settings. It

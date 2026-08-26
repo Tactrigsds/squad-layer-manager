@@ -493,6 +493,9 @@ A rule always hides its repeats behind the layer table's _Hide Repeats_. _Option
 - _Cross-team_ pools both teams together, so a value one team played counts as a repeat when the other team plays
   it. Only a rule on a team-specific attribute can take it.
 
+A rule is named after its attribute. _Add label_ gives it a name of its own, which is then what the repeat is
+reported under. Empty the box to take the name away again.
+
 Drag a rule by its grip to reorder the list.
 
 A repeat rule looks back only as far as the most recent seeding or training layer. A future version may let a rule

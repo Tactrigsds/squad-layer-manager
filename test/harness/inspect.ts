@@ -28,6 +28,19 @@ export function savedBackburner(app: AppFixture): { itemId: string; description:
 	}
 }
 
+export function savedPool(app: AppFixture): {
+	skipWarningsForTags?: string[]
+	repeatRules: { field: string; label?: string; autogen?: boolean; targetValues?: string[] }[]
+} {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
+		return JSON.parse(row.settings).json.queue.mainPool
+	} finally {
+		db.close()
+	}
+}
+
 export function latestMatch(app: AppFixture): { id: number; layerId: string } {
 	const db = app.readDb()
 	try {

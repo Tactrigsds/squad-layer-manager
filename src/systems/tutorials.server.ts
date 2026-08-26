@@ -310,9 +310,9 @@ function buildSandboxSettings(owner: bigint, pacing: ScenarioDef<string>['pacing
 				// rule before the edit session warns about nothing, since only new violations stop a save. crossTeam,
 				// because consecutive items swap sides and the repeat would otherwise fall on the other persistent team.
 				repeatRules: [
-					{ label: 'Map', field: 'Map' as const, within: 4, autogen: true },
-					{ label: 'Layer', field: 'Layer' as const, within: 7, autogen: true },
-					{ label: 'Faction', field: 'Faction' as const, within: 3, autogen: true, warn: true, crossTeam: true },
+					{ field: 'Map' as const, within: 4, autogen: true },
+					{ field: 'Layer' as const, within: 7, autogen: true },
+					{ field: 'Faction' as const, within: 3, autogen: true, warn: true, crossTeam: true },
 				],
 			},
 		},
