@@ -459,11 +459,42 @@ function RuleDropSeparator({ position, panelId, idx }: { position: 'before' | 'a
 
 const RULE_ROW_GRID = 'grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_60px_minmax(0,3fr)_minmax(240px,2fr)_auto] items-center gap-2'
 
+// A rule's name is its label, or its field when it has none. Most rules never get one, so the box only appears
+// once asked for; emptying it again unsets the label, and the button comes back when the row next re-seeds.
+function RuleLabelCell(props: { label: string | undefined; disabled: boolean; onChange: (label: string) => void }) {
+	const [open, setOpen] = React.useState(props.label !== undefined)
+	const setLabel = useDebounced({ onChange: props.onChange, delay: 250 })
+	if (!open) {
+		return (
+			<Button
+				variant="ghost"
+				disabled={props.disabled}
+				onClick={() => setOpen(true)}
+				className="h-8 w-full justify-start border border-dashed px-3 font-normal text-muted-foreground"
+			>
+				<Icons.Plus className="mr-2 h-3 w-3" />
+				{tr.text(SETTINGS_Msgs.repeatRuleAddLabel())}
+			</Button>
+		)
+	}
+	return (
+		<Input
+			autoFocus={props.label === undefined}
+			aria-label={tr.text(SETTINGS_Msgs.repeatRuleLabel())}
+			placeholder={tr.text(SETTINGS_Msgs.repeatRuleLabel())}
+			defaultValue={props.label ?? ''}
+			disabled={props.disabled}
+			onChange={(e) => setLabel(e.target.value)}
+			className="h-8"
+		/>
+	)
+}
+
 function RepeatRuleRow(props: {
 	index: number
 	panelId: string
 	api: PoolConfigApi
-	// signals the panel to remount the (uncontrolled) rows so they re-seed after a shift/programmatic label change
+	// signals the panel to remount the (uncontrolled) rows so they re-seed once a delete or a reorder shifts them
 	onStructural: () => void
 }) {
 	const { index, api, onStructural } = props
@@ -473,18 +504,14 @@ function RepeatRuleRow(props: {
 	const rule = usePoolValue(api, rulePath) as SETTINGS.PoolRepeatRuleConfig
 	const drag = DndKit.useDraggable({ type: 'repeat-rule', id: ruleDragId(props.panelId, index) }, { feedback: 'default' })
 
-	const setLabel = useDebounced({
-		onChange: (label: string) => api.set([...rulePath, 'label'], label),
-		delay: 250,
-	})
+	// an empty box is how a label is taken away again, so it unsets rather than saving ''
+	const setLabel = (label: string) => api.set([...rulePath, 'label'], label.trim() || undefined)
 
 	const setField = (field: LQY.RepeatRuleField) => {
 		api.set([...rulePath, 'field'], field)
-		api.set([...rulePath, 'label'], field)
 		if (!LQY.isTeamSpecificRepeatRuleField(field)) api.set([...rulePath, 'crossTeam'], undefined)
 		// values named for the old field match nothing under the new one, which would leave the rule silently inert
 		api.set([...rulePath, 'targetValues'], undefined)
-		onStructural()
 	}
 
 	const setWithin = useDebounced({
@@ -577,15 +604,7 @@ function RepeatRuleRow(props: {
 			>
 				<Icons.GripVertical className="h-4 w-4" />
 			</button>
-			<Input
-				placeholder={tr.text(SETTINGS_Msgs.repeatRuleLabel())}
-				defaultValue={rule.label ?? rule.field}
-				disabled={!!api.writeDenied}
-				onChange={(e) => {
-					setLabel(e.target.value)
-				}}
-				className="h-8"
-			/>
+			<RuleLabelCell label={rule.label} disabled={!!api.writeDenied} onChange={setLabel} />
 			<ComboBox
 				title={tr.text(SETTINGS_Msgs.repeatRuleFieldPicker())}
 				options={LQY.RepeatRuleFieldSchema.options}
@@ -654,7 +673,7 @@ export function RepeatRulesPanel(props: { className?: string; api: PoolConfigApi
 
 	const addRule = () => {
 		const rules = (api.getValue(rulesPath) as LQY.RepeatRule[] | null) ?? []
-		api.set(rulesPath, [...rules, { field: 'Map', within: 0, label: 'Map', indicate: true, warn: true }])
+		api.set(rulesPath, [...rules, { field: 'Map', within: 0, indicate: true, warn: true }])
 	}
 
 	// drag-to-reorder via the shared dnd-kit provider (see dndkit.client). The handler is registered once and reads

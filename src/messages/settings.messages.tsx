@@ -285,6 +285,9 @@ export const addRepeatRule = def('Add Repeat Rule')
 
 export const repeatRuleLabel = def('Label')
 
+// on the button standing in for the label box on a rule that has none
+export const repeatRuleAddLabel = def('Add label')
+
 export const repeatRuleField = def('Field')
 
 export const repeatRuleWithin = def('Within')
@@ -338,6 +341,12 @@ export const serverCreated = def(() => ({ toast: [t('Server created')] }))
 // reason is the server's own account of which field failed
 export const invalid = def((reason: string) => ({
 	toast: [t('Invalid settings'), { description: raw(reason) }],
+}))
+
+// the pool config window discards the save promise, so without this a rejected call leaves the window looking
+// like nothing happened
+export const saveFailed = def((reason: string) => ({
+	toast: [t('Could not save settings'), { description: raw(reason) }],
 }))
 
 export const serverNotFound = def(() => ({ toast: [t('Server not found')] }))

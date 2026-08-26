@@ -1,13 +1,30 @@
+import type { Page } from '@playwright/test'
+
 import * as FB from '@/models/filter-builders'
 
 import { createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
+import { savedPool } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
 // What a queued layer violates has to be visible on the item itself: the indicators are the only thing
 // standing between an admin and saving a queue that repeats a map or leaves the pool. They come from two
 // independent sources -- the pool's repeat rules and its filters -- so both are exercised here, on a queue
 // arranged so that each item carries a different combination of them.
+
+// rules carry no id, so the seeded pool's one Map rule is found by its field
+function mapRuleSaved(app: Parameters<typeof savedPool>[0]) {
+	return savedPool(app).repeatRules.find((rule) => rule.field === 'Map')!
+}
+
+// A save pushes the settings back, which toasts, and the toast lands over the window's own save button. It
+// dismisses itself, but not while the pointer is on it -- and the pointer is exactly there, having just clicked
+// the button underneath. So consecutive saves move the pointer off first and then wait it out.
+async function saveSettings(page: Page) {
+	await page.mouse.move(10, 10)
+	await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 15_000 })
+	await page.getByRole('button', { name: 'Save Changes' }).click()
+}
 
 test.describe('queue item constraints', () => {
 	test('indicates repeat-rule violations and filter matches on the items that carry them', async ({ page }) => {
@@ -321,8 +338,9 @@ test.describe('queue item constraints', () => {
 	})
 
 	// The exemption is only useful if an admin can set it up without editing settings by hand, so the pool
-	// configuration window has to both render the control and persist what is picked in it.
-	test('configures skipWarningsForTags from the pool configuration window', async ({ page }) => {
+	// configuration window has to both render the control and persist what is picked in it. The repeat-rule leg
+	// covers unsetting an optional field, which the window writes as a mutation with no value at all.
+	test('persists pool configuration edits made in the window', async ({ page }) => {
 		const planned = layerTag('planned', 'aaaaaa')
 		const app = await createAppFixture({
 			globalSettings: (settings) => {
@@ -341,19 +359,42 @@ test.describe('queue item constraints', () => {
 			await expect(section.getByText('planned')).toBeVisible()
 
 			await page.getByRole('button', { name: 'Save Changes' }).click()
-			await app.waitFor(
-				() => {
-					const db = app.readDb()
-					try {
-						const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
-						const pool = JSON.parse(row.settings).json.queue.mainPool as { skipWarningsForTags?: string[] }
-						return pool.skipWarningsForTags?.includes(planned.id) ?? false
-					} finally {
-						db.close()
-					}
-				},
-				{ label: 'skipWarningsForTags persisted' },
-			)
+			await app.waitFor(() => savedPool(app).skipWarningsForTags?.includes(planned.id) ?? false, {
+				label: 'skipWarningsForTags persisted',
+			})
+
+			await page.getByRole('button', { name: 'Repeat Rules' }).click()
+			// a rule has no identity of its own, so it is found by the field its unlabelled row is named after
+			const mapRule = page
+				.getByRole('listitem')
+				.filter({ has: page.getByRole('combobox', { name: 'Rule' }).getByText('Map', { exact: true }) })
+			// the row's third combobox, after the field picker and the target values
+			const options = mapRule.getByRole('combobox').nth(2)
+			await expect(options).toContainText('Autogen')
+			await options.click()
+			await page.getByRole('option', { name: 'Autogen', exact: true }).click()
+			await page.keyboard.press('Escape')
+			await expect(options).not.toContainText('Autogen')
+
+			await page.getByRole('button', { name: 'Save Changes' }).click()
+			await app.waitFor(() => mapRuleSaved(app).autogen === undefined, { label: 'the Map rule stopped constraining generation' })
+			// the save round-trip must not put the option back
+			await page.reload()
+			await expect(page.getByRole('button', { name: 'Pool Configuration' })).toBeVisible({ timeout: 20_000 })
+			await page.getByRole('button', { name: 'Pool Configuration' }).click()
+			await page.getByRole('button', { name: 'Repeat Rules' }).click()
+			await expect(mapRule.getByRole('combobox').nth(2)).not.toContainText('Autogen')
+
+			// an unlabelled rule offers the box rather than showing it; emptying it again takes the label away.
+			// Save is disabled until the debounced write lands, so clicking it waits for that on its own.
+			await mapRule.getByRole('button', { name: 'Add label' }).click()
+			await mapRule.getByRole('textbox', { name: 'Label' }).fill('Recent map')
+			await saveSettings(page)
+			await app.waitFor(() => mapRuleSaved(app).label === 'Recent map', { label: 'the Map rule took its label' })
+
+			await mapRule.getByRole('textbox', { name: 'Label' }).fill('')
+			await saveSettings(page)
+			await app.waitFor(() => mapRuleSaved(app).label === undefined, { label: 'the Map rule gave its label back' })
 		} finally {
 			await app.dispose()
 		}

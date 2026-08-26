@@ -33,17 +33,6 @@ describe('pool configuration schema', () => {
 		expect(parsed).toEqual(config)
 		expect(SETTINGS.PoolConfigurationSchema.parse(parsed)).toEqual(parsed)
 	})
-
-	test('rejects duplicate repeat rule labels', () => {
-		expect(() =>
-			SETTINGS.PoolConfigurationSchema.parse({
-				repeatRules: [
-					{ label: 'Map', field: 'Map', within: 4 },
-					{ label: 'Map', field: 'Layer', within: 2 },
-				],
-			}),
-		).toThrow()
-	})
 })
 
 describe('pool membership constraint', () => {
@@ -79,9 +68,10 @@ describe('getSettingsConstraints', () => {
 			{ filterId: 'd-filter', applyAs: 'regular' },
 		],
 		constrainGeneration: [{ filterId: 'e-filter', applyAs: 'inverted' }],
+		// deliberately sharing a label, which rules may do: only their position tells them apart
 		repeatRules: [
-			{ label: 'Map', field: 'Map', within: 4, warn: true, indicate: true },
-			{ label: 'Gen', field: 'Layer', within: 2, autogen: true, warn: true, indicate: true },
+			{ label: 'Repeats', field: 'Map', within: 4, warn: true, indicate: true },
+			{ label: 'Repeats', field: 'Layer', within: 2, autogen: true, warn: true, indicate: true },
 		],
 	})
 
@@ -98,9 +88,10 @@ describe('getSettingsConstraints', () => {
 		// warn-only: no indication configured, but the warn still needs the constraint present
 		expect(byId.get('filter-cfg:d-filter')).toMatchObject({ showIndicator: 'disabled', warn: 'regular' })
 
-		// all repeat rules apply in selection/status contexts, autogen-flagged or not
-		expect(byId.get('layer-pool:mainPool:Map')).toMatchObject({ type: 'do-not-repeat' })
-		expect(byId.get('layer-pool:mainPool:Gen')).toMatchObject({ type: 'do-not-repeat' })
+		// all repeat rules apply in selection/status contexts, autogen-flagged or not, and the two same-labelled
+		// rules stay distinct
+		expect(byId.get('layer-pool:mainPool:0')).toMatchObject({ type: 'do-not-repeat', rule: { field: 'Map' } })
+		expect(byId.get('layer-pool:mainPool:1')).toMatchObject({ type: 'do-not-repeat', rule: { field: 'Layer' } })
 		// generation-only config stays out of selection contexts
 		expect(constraints.some((c) => c.type === 'filter-entity' && c.filterId === 'e-filter')).toBe(false)
 	})
@@ -111,9 +102,10 @@ describe('getSettingsConstraints', () => {
 
 		expect(byId.get('pool-filter')).toMatchObject({ filterApplState: 'regular', warn: 'disabled' })
 		expect(byId.get('gen:e-filter')).toMatchObject({ filterApplState: 'inverted' })
-		// only autogen-flagged repeat rules constrain generation
-		expect(byId.has('layer-pool:mainPool:Gen')).toBe(true)
-		expect(byId.has('layer-pool:mainPool:Map')).toBe(false)
+		// only autogen-flagged repeat rules constrain generation, and the id still names their position in the
+		// whole list rather than among the ones that survived
+		expect(byId.has('layer-pool:mainPool:1')).toBe(true)
+		expect(byId.has('layer-pool:mainPool:0')).toBe(false)
 		// indication lists don't constrain generation
 		expect(byId.has('filter-cfg:a-filter')).toBe(false)
 	})
