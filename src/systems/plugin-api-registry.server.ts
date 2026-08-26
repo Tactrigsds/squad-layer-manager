@@ -11,9 +11,11 @@ import * as zod from 'zod'
 import * as SHIM from '@/models/plugin-api-shim'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
+import * as modelsConstraintBuilders from '@/plugin-api/models/constraint-builders'
 import * as modelsFilter from '@/plugin-api/models/filter'
 import * as modelsFilterBuilders from '@/plugin-api/models/filter-builders'
 import * as modelsLayer from '@/plugin-api/models/layer'
+import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
 import * as plugin from '@/plugin-api/plugin'
 import * as pluginConfig from '@/plugin-api/plugin/config'
@@ -23,6 +25,7 @@ import * as serverInstrumentation from '@/plugin-api/server/instrumentation'
 import * as serverLogger from '@/plugin-api/server/logger'
 import * as systemsAppEvents from '@/plugin-api/systems/app-events'
 import * as systemsFilterEntity from '@/plugin-api/systems/filter-entity'
+import * as systemsLayerQueries from '@/plugin-api/systems/layer-queries'
 import * as systemsLayerQueue from '@/plugin-api/systems/layer-queue'
 import * as systemsMatchHistory from '@/plugin-api/systems/match-history'
 import * as systemsPostRollReminders from '@/plugin-api/systems/post-roll-reminders'
@@ -45,9 +48,11 @@ export function setup() {
 	entries = {
 		'slm/lib/rxjs-ext': libRxjsExt,
 		'slm/lib/zod-utils': libZodUtils,
+		'slm/models/constraint-builders': modelsConstraintBuilders,
 		'slm/models/filter': modelsFilter,
 		'slm/models/filter-builders': modelsFilterBuilders,
 		'slm/models/layer': modelsLayer,
+		'slm/models/layer-queries': modelsLayerQueries,
 		'slm/models/match-history': modelsMatchHistory,
 		'slm/plugin': plugin,
 		'slm/plugin/config': pluginConfig,
@@ -57,6 +62,7 @@ export function setup() {
 		'slm/server/logger': serverLogger,
 		'slm/systems/app-events': systemsAppEvents,
 		'slm/systems/filter-entity': systemsFilterEntity,
+		'slm/systems/layer-queries': systemsLayerQueries,
 		'slm/systems/layer-queue': systemsLayerQueue,
 		'slm/systems/match-history': systemsMatchHistory,
 		'slm/systems/post-roll-reminders': systemsPostRollReminders,

@@ -48,6 +48,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'useStore',
 		'useStore_Susp',
 	],
+	'slm/models/constraint-builders': ['filterAnon', 'filterEntity', 'filterMenuItems', 'poolFilter', 'repeatRule'],
 	'slm/models/filter-builders': [
 		'allowMatchups',
 		'and',
@@ -87,6 +88,16 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'TeamColumnSchema',
 		'UpdateFilterEntitySchema',
 		'ValueSchema',
+	],
+	'slm/models/layer-queries': [
+		'DEFAULT_PAGE_SIZE',
+		'DEFAULT_SORT',
+		'LAYERS_QUERY_SORT_DIRECTION',
+		'LayersQuerySortSchema',
+		'RepeatRuleFieldSchema',
+		'RepeatRuleSchema',
+		'initLayerItemsState',
+		'mergeBaseInputs',
 	],
 	'slm/models/layer': [
 		'ASYMM_GAMEMODES',
@@ -150,6 +161,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/server/logger': ['childModule'],
 	'slm/systems/app-events': ['emit'],
 	'slm/systems/filter-entity': ['changes', 'create', 'get', 'list', 'remove', 'update'],
+	'slm/systems/layer-queries': ['componentValues', 'exists', 'info', 'itemStatuses', 'itemsState', 'outOfPool', 'query', 'scoreRanges'],
 	'slm/systems/layer-queue': ['dispatchOp', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
 	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getPublicMatchHistoryState', 'getRecentMatches'],
 	'slm/systems/post-roll-reminders': ['register'],
