@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { type AppFixture, createAppFixture } from '../harness/app-fixture'
+import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // The packaged-plugin path end to end: a plugin built into standalone esm, served over http, then
@@ -169,6 +169,41 @@ describe('packaged plugins', () => {
 
 		// only the files plugin.json names as browser-facing are reachable
 		expect((await get('/plugin-assets/hello/server.mjs')).status).toBe(404)
+	})
+
+	// Filters are core state a plugin shares with every admin, so the interesting part is not that the row
+	// appears: it is that the write went through the host's own path. The FILTER_CHANGED rows are what
+	// prove it, since only that path writes them, and they name the plugin rather than a person.
+	it('creates, updates and deletes filters, recorded against the plugin', async () => {
+		const call = async (path: string, input: unknown) =>
+			(await client.plugins.rpcCall({ pluginId: 'hello', path: [path], serverId: app.serverId, input })) as {
+				code: string
+				data?: { code: string; references?: unknown[] }
+			}
+		const owner = String(ADMIN_USER.discordId)
+		const filterRow = () => readRows<{ name: string; owner: string; filter: string }>(`SELECT * FROM filters WHERE id = 'hello-pool'`)[0]
+
+		expect((await call('makeFilter', { id: 'hello-pool', owner })).data).toMatchObject({ code: 'ok' })
+		expect(filterRow()).toMatchObject({ name: 'Hello pool', owner })
+		// FB.and built a real tree through the shim, not a string the plugin happened to send
+		expect(JSON.parse(filterRow().filter)).toMatchObject({ type: 'and', children: [{ type: 'eq' }, { type: 'in', neg: true }] })
+		// the in-memory index the whole server reads from, which only the mutation stream keeps current
+		expect((await call('filterIds', {})).data).toContain('hello-pool')
+
+		expect((await call('makeFilter', { id: 'hello-pool', owner })).data).toMatchObject({ code: 'err:already-exists' })
+
+		expect((await call('renameFilter', { id: 'hello-pool', name: 'Hello pool v2' })).data).toMatchObject({ code: 'ok' })
+		expect(filterRow().name).toBe('Hello pool v2')
+
+		expect((await call('dropFilter', { id: 'hello-pool' })).data).toMatchObject({ code: 'ok' })
+		expect(filterRow()).toBeUndefined()
+
+		expect(
+			readRows<{ action: string }>(
+				`SELECT json_extract(data, '$.json.action') AS action FROM appEvents
+				 WHERE type = 'FILTER_CHANGED' AND actorPluginId = 'hello' ORDER BY rowid`,
+			).map((r) => r.action),
+		).toEqual(['created', 'updated', 'deleted'])
 	})
 
 	it('gives a restarted plugin a fresh module graph', async () => {
