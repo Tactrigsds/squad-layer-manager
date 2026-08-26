@@ -305,15 +305,20 @@ export function structuralMerge<T>(original: T, updated: T): T {
 		return (changed ? result : original) as T
 	}
 
-	const result = { ...original }
+	// built from `updated`'s keys rather than spreading `original`, so a key the update dropped is a removal rather
+	// than something carried over
+	const result = {} as T
 	let changed = false
+	let keyCount = 0
 	for (const key in updated) {
+		keyCount++
 		const originalValue = original[key as keyof T]
 		const updatedValue = updated[key as keyof T]
 		const merged = structuralMerge(originalValue, updatedValue)
 		result[key as keyof T] = merged
 		if (merged !== originalValue) changed = true
 	}
+	if (keyCount !== Object.keys(original).length) changed = true
 
 	return changed ? result : original
 }
