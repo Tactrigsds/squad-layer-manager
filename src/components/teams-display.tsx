@@ -1,59 +1,32 @@
-import type * as React from 'react'
+import React from 'react'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
-import { withThrown } from '@/lib/error'
-import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
-import * as L_Msgs from '@/messages/layer.messages'
-import * as SM_Msgs from '@/messages/squad.messages'
-import * as L from '@/models/layer'
+import type * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
-import { tr } from '@/systems/messages.client'
 
-import * as DH from '../lib/display-helpers'
-
-// What names the team is set apart from the parenthetical around it: the team's colour and a heavier weight
-// against the muted, regular-weight text the enclosing span sets. The colour rides in on a custom property so this
-// renderer can be a module constant -- one built during a render is a fresh component identity on every pass,
-// which is what react/no-unstable-nested-components is about.
-const TEAM_NAME_COLOR = '--team-name-color'
-const trTeamName = tr.withTags({
-	team: (chunks) => (
-		<span className="font-semibold" style={{ color: `var(${TEAM_NAME_COLOR})` }}>
-			{chunks}
-		</span>
-	),
-})
-
-export function TeamIndicator(props: { team: MH.NormedTeamId | SM.TeamId }) {
-	return (
-		<span className="font-mono text" style={{ color: DH.TEAM_COLORS[`team${props.team}`] }}>
-			({props.team})
-		</span>
-	)
-}
+import * as Atoms from './feed/atoms'
+import { useDomContent } from './feed/dom-content'
 
 export function getTeamsDisplay(
-	_partialLayer: L.UnvalidatedLayer | L.LayerId,
-	_teamParity: number | undefined,
+	partialLayer: L.UnvalidatedLayer | L.LayerId,
+	teamParity: number | undefined,
 	displayLayersNormalized: boolean,
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>,
 	includeUnits: boolean = true,
 ) {
-	const teamParity = _teamParity ?? 0
-
-	return MH.getDisplayedTeamOrder(teamParity, displayLayersNormalized).map((normedTeam) => {
-		const team = MH.getDenormedTeamId(normedTeam, teamParity)
+	const parity = teamParity ?? 0
+	return MH.getDisplayedTeamOrder(parity, displayLayersNormalized).map((normedTeam) => {
+		const team = MH.getDenormedTeamId(normedTeam, parity)
 		return (
 			<TeamFactionDisplay
 				key={team}
-				parity={teamParity}
+				parity={parity}
 				includeUnits={includeUnits}
-				layer={_partialLayer}
+				layer={partialLayer}
 				team={team}
 				showAltTeamIndicator={true}
 				normalized={displayLayersNormalized}
@@ -63,6 +36,7 @@ export function getTeamsDisplay(
 	})
 }
 
+/** A team's faction and unit. The markup is Atoms.teamFactionDisplay's; this resolves the setting and mounts it. */
 export function TeamFactionDisplay(props: {
 	className?: string
 	parity: number
@@ -78,83 +52,24 @@ export function TeamFactionDisplay(props: {
 	normalized?: boolean
 }) {
 	const globalNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
-	const displayTeamsNormalized = props.normalized ?? globalNormalized
-	const [partialLayer, error] = withThrown(() => (typeof props.layer === 'string' ? L.toLayer(props.layer) : props.layer))
-
-	if (error || !partialLayer) {
-		const layerId = typeof props.layer === 'string' ? props.layer : props.layer.id
-		return (
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<span className="inline-block whitespace-nowrap text-destructive cursor-help">{layerId}</span>
-				</TooltipTrigger>
-				<TooltipContent>
-					<div className="text-xs">
-						<div className="font-semibold">{tr.text(SM_Msgs.failedToParseLayer())}</div>
-						<div className="text-muted-foreground mt-1">{error instanceof Error ? error.message : 'Unknown error'}</div>
-					</div>
-				</TooltipContent>
-			</Tooltip>
-		)
-	}
-
-	// Determine which team we're displaying (1 or 2)
-	const allianceProp = props.team === 1 ? 'Alliance_1' : 'Alliance_2'
-	const factionProp = props.team === 1 ? 'Faction_1' : 'Faction_2'
-	const unitProp = props.team === 1 ? 'Unit_1' : 'Unit_2'
-
-	// Get faction  based on team
-	const faction = partialLayer[factionProp]
-
-	const allianceStyles = props.extraStyles?.[allianceProp]
-	const factionStyles = props.extraStyles?.[factionProp]
-	const unitStyles = props.extraStyles?.[unitProp]
-
-	// Get unit based on team
-	const unit = partialLayer[unitProp]
-	const shortUnit = unit !== undefined ? DH.toShortUnit(unit) : undefined
-
-	let attrs = [
-		{
-			color: [DH.TEAM_COLORS.team1, DH.TEAM_COLORS.team2][props.team - 1],
-			label: ['(1)', '(2)'][props.team - 1],
-			title: ['Team 1', 'Team 2'][props.team - 1],
-			id: props.team,
-		},
-		{
-			color: [DH.TEAM_COLORS.teamA, DH.TEAM_COLORS.teamB][(props.parity + props.team - 1) % 2],
-			label: ['(A)', '(B)'][(props.parity + props.team - 1) % 2],
-			title: ['Team A', 'Team B'][(props.parity + props.team - 1) % 2],
-			id: MH.getNormedTeamId(props.team, props.parity),
-		},
-	] as const satisfies { label: string; color: string; title: string; id: MH.NormedTeamId | SM.TeamId }[]
-
-	if (displayTeamsNormalized) attrs.reverse()
-
-	if (!faction) return
-
-	return (
-		<span className={cn('inline-block whitespace-nowrap', props.className)}>
-			<span
-				title={attrs[0].title}
-				style={props.leadWithTeamName ? ({ [TEAM_NAME_COLOR]: attrs[0].color } as React.CSSProperties) : { color: attrs[0].color }}
-				className={props.leadWithTeamName ? 'font-normal text-muted-foreground' : 'font-semibold'}
-			>
-				<span className={cn(allianceStyles, factionStyles)}>
-					{props.leadWithTeamName ? trTeamName.richText(L_Msgs.teamName(attrs[0].id, faction, true)) : faction}
-				</span>
-				{props.includeUnits && shortUnit && <span className={unitStyles}>{` ${shortUnit}`}</span>}
-				{props.showAltTeamIndicator && <TeamIndicator team={attrs[1].id} />}
-			</span>
-			{/*<span
-			 	title={attrs[1].title}
-			 	className="font-mono text-sm"
-			 	style={{ color: attrs[1].color }}
-			 >
-			 	{attrs[1].label}
-			// </span>*/}
-		</span>
+	const { className, parity, layer, team, includeUnits, showAltTeamIndicator, leadWithTeamName, extraStyles, normalized } = props
+	const node = React.useMemo(
+		() =>
+			Atoms.teamFactionDisplay({
+				className,
+				parity,
+				layer,
+				team,
+				includeUnits,
+				showAltTeamIndicator,
+				leadWithTeamName,
+				extraStyles,
+				normalized: normalized ?? globalNormalized,
+			}),
+		[className, parity, layer, team, includeUnits, showAltTeamIndicator, leadWithTeamName, extraStyles, normalized, globalNormalized],
 	)
+	const ref = useDomContent<HTMLSpanElement>(node)
+	return <span ref={ref} className="contents" />
 }
 
 export function MatchTeamDisplay(props: {
@@ -175,12 +90,11 @@ export function MatchTeamDisplay(props: {
 		match = recentMatches.find((m) => m.historyEntryId === props.matchId)
 	}
 	if (!match) return null
-	const teamId = MH.getDenormedTeamId(props.teamId, match.ordinal)
 	return (
 		<TeamFactionDisplay
 			className={props.className}
 			parity={match.ordinal}
-			team={teamId}
+			team={MH.getDenormedTeamId(props.teamId, match.ordinal)}
 			layer={match.layerId}
 			includeUnits={props.includeUnits}
 			showAltTeamIndicator={props.showAltTeamIndicator}

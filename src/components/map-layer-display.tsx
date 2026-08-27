@@ -1,5 +1,7 @@
-import { cn } from '@/lib/utils.ts'
-import * as L from '@/models/layer'
+import React from 'react'
+
+import * as Atoms from './feed/atoms'
+import { useDomContent } from './feed/dom-content'
 
 export default function MapLayerDisplay({
 	layer,
@@ -10,28 +12,7 @@ export default function MapLayerDisplay({
 	extraLayerStyles?: Record<string, string | undefined>
 	className?: string
 }) {
-	const _extraLayerStyles = extraLayerStyles ?? {}
-	let segments = L.parseLayerStringSegment(layer)
-	if (segments) segments = L.applyBackwardsCompatMappings(segments)
-	if (!segments || segments.Gamemode === 'Training') return segments?.Map ?? layer
-	return (
-		<span className={cn(_extraLayerStyles.Layer, _extraLayerStyles.Size, className)}>
-			<span className={_extraLayerStyles.Map}>{segments.Map}</span>
-			{segments.Gamemode && (
-				<>
-					_<span className={_extraLayerStyles.Gamemode}>{segments.Gamemode}</span>
-				</>
-			)}
-			{segments.LayerVersion && (
-				<>
-					_<span className={_extraLayerStyles.Layer}>{segments.LayerVersion?.toLowerCase()}</span>
-				</>
-			)}
-			{segments.Collection && L.StaticLayerComponents.collectionAbbreviations[segments.Collection] !== null && (
-				<>
-					_<span className={_extraLayerStyles.Collection}>{L.StaticLayerComponents.collectionAbbreviations[segments.Collection]}</span>
-				</>
-			)}
-		</span>
-	)
+	const node = React.useMemo(() => Atoms.mapLayerDisplay(layer, extraLayerStyles, className), [layer, extraLayerStyles, className])
+	const ref = useDomContent<HTMLSpanElement>(node)
+	return <span ref={ref} className="contents" />
 }
