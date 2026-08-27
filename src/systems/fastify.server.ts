@@ -378,7 +378,12 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		done(null, undefined)
 	})
 
-	instance.register(fastifyWebsocket)
+	// A match's event history is upwards of a megabyte of json and compresses ~11x. `ws` leaves permessage-deflate
+	// off by default because it costs a zlib context per connection, so the threshold keeps the live chat stream's
+	// small frames uncompressed and no-context-takeover keeps a sliding window from being retained per socket.
+	instance.register(fastifyWebsocket, {
+		options: { perMessageDeflate: { threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true } },
+	})
 	instance.register(async function (instance) {
 		instance.get(AR.route('/orpc'), { websocket: true }, async (connection, req) => {
 			// carries the connection-level signal; orpc middleware narrows it per-call

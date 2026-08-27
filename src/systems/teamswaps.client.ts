@@ -74,7 +74,7 @@ export namespace Sel {
 
 	export function swapsToTeamEnriched(store: Store & ChatPrt.Store, team: MH.NormedTeamId): Map<SM.PlayerId, TSW.EnrichedTeamswap> {
 		const swaps = localState(store).editedSwaps
-		const players = ChatPrt.Sel.chatState(store).players
+		const players = ChatPrt.Sel.players(store)
 		const result: Map<SM.PlayerId, TSW.EnrichedTeamswap> = new Map()
 		for (const [playerId, swap_] of swaps.entries()) {
 			if (swap_.toTeam !== team) continue
@@ -94,7 +94,7 @@ export namespace Sel {
 		team: MH.NormedTeamId,
 	): Map<SM.PlayerId, EnrichedTeamswapWithMutation> {
 		const { editedSwaps: swaps, savedSwaps } = localState(store)
-		const players = ChatPrt.Sel.chatState(store).players
+		const players = ChatPrt.Sel.players(store)
 
 		const mutations = ItemMut.initMutations<SM.PlayerId>()
 		const allPlayerIds = new Set<SM.PlayerId>()
@@ -130,7 +130,7 @@ function getPlayerOppositeTeam(stores: SquadServerFrame.KeyProp, playerId: SM.Pl
 	if (matchesResult instanceof Promise) return null
 	const currentMatch = matchesResult[matchesResult.length - 1] as MH.MatchDetails | undefined
 	const state = Zus.getState(stores.squadServer)
-	const players = ChatPrt.Sel.chatState(state).players
+	const players = ChatPrt.Sel.players(state)
 	return TSWPrt.getPlayerOppositeTeam(playerId, currentMatch, players)
 }
 

@@ -36,7 +36,7 @@ export namespace Sel {
 			[
 				(s: Store & ChatPrt.Store) => s.switchRequests.requests,
 				(s: Store & ChatPrt.Store) => s.switchRequests.swapping,
-				(s: Store & ChatPrt.Store) => ChatPrt.Sel.chatState(s).players,
+				(s: Store & ChatPrt.Store) => ChatPrt.Sel.players(s),
 			],
 			(requests, swapping, players): EnrichedRequest[] =>
 				SRQ.queueFor(requests, fromTeam).map((request, index) => ({
@@ -62,7 +62,7 @@ export namespace Actions {
 // the queued players on a team, for the shift-click "select all requesters" action
 export function switchRequesterIds(state: Store & ChatPrt.Store, teamId?: SM.TeamId): SM.PlayerId[] {
 	const queued = new Set(state.switchRequests.requests.map((r) => r.playerId))
-	return ChatPrt.Sel.chatState(state)
-		.players.filter((p) => queued.has(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
+	return ChatPrt.Sel.players(state)
+		.filter((p) => queued.has(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
 		.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 }

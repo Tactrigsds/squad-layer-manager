@@ -157,8 +157,8 @@ export const loadState = Instr.spanOp(
 			.slice(-MatchEventsCache.MAX_CACHED_MATCHES)
 			.map((match) => match.historyEntryId)
 		if (matchIdsToPrime.length > 0) {
-			// getEventsForMatches populates the cache internally with a single batched query
-			void MatchEventsCache.getEventsForMatches(ctx, ...matchIdsToPrime)
+			// getFeedEventsForMatches populates the cache internally with a single batched query
+			void MatchEventsCache.getFeedEventsForMatches(ctx, ...matchIdsToPrime)
 		}
 	},
 )
@@ -295,7 +295,9 @@ export const matchHistoryRouter = {
 			throw new Error(`Match with ordinal ${ordinal} not found`)
 		}
 
-		const events = await MatchEventsCache.getEventsForMatches(ctx, match.historyEntryId)
+		// Raw, as the live chat stream sends them: the client replays them into feed entries itself. Enriching here
+		// would embed a player object per event, which is most of what a busy match costs to send.
+		const events = (await MatchEventsCache.getFeedEventsForMatches(ctx, match.historyEntryId)).get(match.historyEntryId) ?? []
 
 		return {
 			events,
@@ -367,7 +369,7 @@ export const matchHistoryRouter = {
 			const historicalMatchIds = ctx.matchHistory.recentMatches
 				.filter((m) => m.historyEntryId !== currentMatch?.historyEntryId)
 				.map((m) => m.historyEntryId)
-			if (historicalMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+			if (historicalMatchIds.length === 0) return { events: CHAT.Wire.encode([]), nextCursor: undefined }
 
 			// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
 			const matchCountRows = await ctx
@@ -402,14 +404,16 @@ export const matchHistoryRouter = {
 					break
 				}
 			}
-			if (includedMatchIds.length === 0) return { events: [] as CHAT.EventEnriched[], nextCursor: undefined }
+			if (includedMatchIds.length === 0) return { events: CHAT.Wire.encode([]), nextCursor: undefined }
 
 			const nextCursor = index < matchesWithEvents.length ? includedMatchIds[includedMatchIds.length - 1] : undefined
 
-			const enriched = await MatchEventsCache.getEventsForMatches(ctx, ...includedMatchIds)
+			// enriched here, not on the client: this is a slice of each match rather than the whole of it, and a slice
+			// carries no roster to replay against
+			const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, ...includedMatchIds)
 			const events = enriched.filter((e) => e.type === 'NEW_GAME' || CHAT.hasAssocPlayer(e, playerId)).sort((a, b) => a.time - b.time)
 
-			return { events, nextCursor }
+			return { events: CHAT.Wire.encode(events), nextCursor }
 		}),
 
 	getSquadDetails: orpcBase

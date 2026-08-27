@@ -91,6 +91,7 @@ the abbreviations reads any file quickly. The lib vocabulary:
 | `ReactRx`                        | `react-rxjs`                                                  | react-rxjs itself, plus the first-emit guard       |
 | `Typo` `ItemMut`                 | `typography` `item-mutations`                                 |                                                    |
 | `Find`                           | `subtree-find`                                                | ctrl+F over one subtree                            |
+| `Dom`                            | `dom`                                                         | building dom nodes by hand                         |
 
 Modules exporting a data structure rather than free functions (`lru-map`, `one-to-many-map`) are outside the
 convention.
@@ -329,6 +330,28 @@ Conventions from CLAUDE.md, each with a specific reason:
 - **Never hardcode a z-index.** Take an offset from `src/models/zindex.ts` via `useZIndex(ZI_OFFSETS.<BAND>)`. The
   bands are relative to the nearest enclosing `BaseZIndexContext`, so a popover opened inside a dialog lands above
   that dialog without either callsite knowing about the other.
+
+### The activity feed is built as dom, not rendered
+
+`src/components/feed` builds the server activity feed's rows with `document.createElement` instead of react. It
+exists because of one number: opening a past match mounts ~600 rows and ~10,000 nodes in a single update, which
+react spent ~200ms on and the browser spends ~35ms on. The rows have nothing react was buying -- no state, no
+changing props, no children that reorder.
+
+What they do have is a context menu, a tooltip and a window to open per name. Those became one delegated handler
+each (`interactions.ts`) plus one shared radix instance each (`dom-overlays.tsx`), rather than one root per name.
+An element carries its payload as a symbol-keyed expando and the handler reads it back at interaction time, so a
+row closes over nothing. The ambient state a row is built against -- which server, how teams are labelled, the
+active player grouping -- is a `RenderCtx` (`render-context.ts`) whose identity is what says a row is stale.
+
+The pieces are shared rather than duplicated: `atoms.ts` builds a player, a squad, a team, a layer and a
+timestamp, and the react components of the same names (`PlayerDisplay`, `SquadDisplay`, `TeamFactionDisplay`,
+`MapLayerDisplay`, `EventTime`, `ShortLayerName`) are wrappers that mount what it builds into a
+`display:contents` host. `rows.ts` builds every row type except `APP_EVENT`, which stays a react component
+portalled into a placeholder: app events are a fraction of a percent of a feed and query, expand and attribute in
+ways that would need most of a component model rebuilt. Messages resolve through `@/messages/i18n-dom`, which
+shares the catalogue, the ICU evaluation and the message builders with the react path and differs only in what it
+assembles at the end.
 
 ### Charts
 

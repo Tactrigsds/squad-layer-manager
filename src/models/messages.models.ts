@@ -16,7 +16,12 @@ type Serializable = string | number | boolean | bigint | Date | undefined | null
 // activity feed is the case that needs it -- its slots are players, squads and layers the feed renders as links,
 // one per event, which is content rather than the static formatting a custom tag stands for.
 export type TArgs = Record<string, Serializable | TString>
-export type TRichArgs<T extends string = string> = Record<string, Serializable | TString | TRichText<T> | React.ReactNode>
+export type TRichArgs<T extends string = string> = Record<string, Serializable | TString | TRichText<T> | Rendered>
+
+// An already-rendered slot, whose node type belongs to the surface doing the rendering rather than to the message.
+// Every react surface passes a ReactNode; the activity feed passes a dom node, because it builds its rows without
+// react. A message only positions the thing, so it never looks inside either.
+export type Rendered = React.ReactNode | Node
 
 // The inline elements a rich pattern may put around parts of its own sentence: `press <strong>{key}</strong>`,
 // `edited by <user>{name}</user>`. A renderer resolves one tag's chunks to a node. The standard formatting set is

@@ -82,8 +82,7 @@ export default function PlayerBulkContextMenuOptions({
 	// when the selection is exactly one full squad, the warn action targets the squad details window and the
 	// menu item reads "Warn Squad"; otherwise it routes to the server activity "selected" warn box
 	const fullSquad = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
-		const state = ChatPrt.Sel.chatState(chatStore)
-		return detectFullSquadSelection(playerIds, state.players, state.squads)
+		return detectFullSquadSelection(playerIds, ChatPrt.Sel.players(chatStore), ChatPrt.Sel.squads(chatStore))
 	})
 
 	const msgTarget = { kind: 'players', count: playerIds.length } as const satisfies Tgt.Target

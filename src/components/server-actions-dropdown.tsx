@@ -73,7 +73,7 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const stores = props.stores
 	const serverId = stores.squadServer!.serverId
 	const playerCount = Zus.useStore(stores.squadServer!, (s) =>
-		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.length : null,
+		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.size : null,
 	)
 	const hasPlayers = playerCount !== null && playerCount > 0
 	const endMatchDenied = RbacClient.usePermsCheck(RBAC.perm('squad-server:end-match', { serverId: serverId }))

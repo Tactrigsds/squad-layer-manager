@@ -268,7 +268,7 @@ export function PlayerMenuItems({
 		MatchHistoryClient.currentMatch$(serverId),
 		(chatStore: ChatPrt.Store, currentMatch: MH.MatchDetails | undefined): { id: MH.NormedTeamId; faction?: string } | null => {
 			if (!currentMatch) return null
-			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, (p) => p.ids, playerId)
+			const player = SM.PlayerIds.find(ChatPrt.Sel.players(chatStore), (p) => p.ids, playerId)
 			if (!player?.teamId) return null
 			const normed = MH.getNormedTeamId(player.teamId, currentMatch.ordinal)
 			const id = normed === 'A' ? 'B' : 'A'
@@ -277,8 +277,8 @@ export function PlayerMenuItems({
 	)
 
 	const playerInfo = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
-		const players = ChatPrt.Sel.chatState(chatStore).players
-		const squads = ChatPrt.Sel.chatState(chatStore).squads
+		const players = ChatPrt.Sel.players(chatStore)
+		const squads = ChatPrt.Sel.squads(chatStore)
 		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 		if (!player) return null
 		const squad = player.squadId !== null ? squads.find((s) => s.squadId === player.squadId && s.teamId === player.teamId) : undefined
@@ -308,7 +308,7 @@ export function PlayerMenuItems({
 			bmStore: BM.StoreState,
 			settings: PublicSettings | undefined,
 		): string | undefined => {
-			const player = SM.PlayerIds.find(ChatPrt.Sel.chatState(chatStore).players, (p) => p.ids, playerId)
+			const player = SM.PlayerIds.find(ChatPrt.Sel.players(chatStore), (p) => p.ids, playerId)
 			if (player?.teamId == null) return undefined
 			const enriched = TeamsPanelModels.Sel.playersForTeam(player.teamId)(chatStore, currentMatch, bmData, bmStore, settings)
 			return SM.PlayerIds.find(enriched, (p) => p.ids, playerId)?.group

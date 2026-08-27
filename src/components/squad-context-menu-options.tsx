@@ -81,8 +81,8 @@ export function SquadMenuItems({
 	// null when the squad isn't currently live, in which case there's nothing to warn
 	const { squadPlayerIds, squadExists, uniqueId } = Zus.useStore(stores.squadServer, (chatStore: ChatPrt.Store) => {
 		const state = ChatPrt.Sel.chatState(chatStore)
-		const liveSquad = state.squads.find((s) => s.squadId === squad.squadId && s.teamId === squad.teamId)
-		const squadPlayerIds = state.players
+		const liveSquad = SM.findSquadForPlayer(state.squads, squad)
+		const squadPlayerIds = ChatPrt.Sel.players(chatStore)
 			.filter((p) => p.squadId === squad.squadId && p.teamId === squad.teamId)
 			.map((p) => SM.PlayerIds.getPlayerId(p.ids))
 		return { squadPlayerIds, squadExists: !!liveSquad, uniqueId: liveSquad?.uniqueId ?? null }

@@ -54,15 +54,15 @@ export type PlayerStatsMap = Record<SM.PlayerId, PlayerStats>
 
 export type InterpolableState = {
 	// the live roster: only players currently connected
-	players: SM.Player[]
+	players: Map<SM.PlayerId, SM.Player>
 	// everyone who has taken part in the current match, including players who have since disconnected. Reset at match
 	// boundaries alongside playerStats, whose keys it is the domain of.
-	recentPlayers: SM.RecentPlayer[]
-	// the live squads: only squads that currently exist
-	squads: SM.UniqueSquad[]
+	recentPlayers: Map<SM.PlayerId, SM.RecentPlayer>
+	// the live squads: only squads that currently exist, by uniqueId
+	squads: Map<number, SM.UniqueSquad>
 	// every squad instance that has existed in the current match, including disbanded ones. Same bargain as
 	// recentPlayers: keyed by uniqueId, which is stable for the lifetime of an instance.
-	recentSquads: SM.RecentSquad[]
+	recentSquads: Map<number, SM.RecentSquad>
 	// per-match combat stats, keyed by recent player id. kept separate from the player records rather than stored on
 	// them, so a player who reconnects mid-match keeps the score they built up before dropping.
 	playerStats: PlayerStatsMap
@@ -72,37 +72,40 @@ export type InterpolableState = {
 }
 
 export namespace InterpolableState {
+	// New collection identities so the selectors reading them recompute; the entries inside are shared, since every
+	// mutation here replaces a player or squad rather than writing through one.
 	export function clone(state: InterpolableState): InterpolableState {
 		return {
-			players: state.players.map((p) => ({ ...p, ids: { ...p.ids } })),
-			recentPlayers: [...state.recentPlayers],
-			squads: [...state.squads],
-			recentSquads: [...state.recentSquads],
+			players: new Map(state.players),
+			recentPlayers: new Map(state.recentPlayers),
+			squads: new Map(state.squads),
+			recentSquads: new Map(state.recentSquads),
 			playerStats: { ...state.playerStats },
 			adminCamPlayerIds: [...state.adminCamPlayerIds],
 		}
 	}
 
 	// records a player as having taken part in the current match, refreshing the ids/admin status of an existing entry.
+	// A poll that reported nothing new about them -- the common case, since a details change is usually a role or a
+	// squad -- leaves the entry alone rather than rebuilding it.
 	export function recordRecentPlayer(state: InterpolableState, player: SM.RecentPlayer) {
-		const index = SM.PlayerIds.indexOf(state.recentPlayers, (p) => p.ids, player.ids)
-		if (index === -1) state.recentPlayers.push(SM.toRecentPlayer(player))
-		else state.recentPlayers[index] = SM.toRecentPlayer(player)
+		const id = SM.PlayerIds.getPlayerId(player.ids)
+		const existing = state.recentPlayers.get(id)
+		if (existing && SM.recentPlayerUnchanged(existing, player)) return
+		state.recentPlayers.set(id, SM.toRecentPlayer(player))
 	}
 
 	export function findRecentPlayer(state: InterpolableState, id: SM.PlayerIds.Ref) {
-		return SM.PlayerIds.find(state.recentPlayers, (p) => p.ids, id)
+		return state.recentPlayers.get(SM.PlayerIds.normalizeToPlayerId(id as SM.PlayerIds.EosIdQueryOrPlayerId))
 	}
 
 	// records a squad instance as having existed in the current match, refreshing an existing entry (e.g. a rename).
 	export function recordRecentSquad(state: InterpolableState, squad: SM.RecentSquad) {
-		const index = state.recentSquads.findIndex((s) => s.uniqueId === squad.uniqueId)
-		if (index === -1) state.recentSquads.push(SM.toRecentSquad(squad))
-		else state.recentSquads[index] = SM.toRecentSquad(squad)
+		state.recentSquads.set(squad.uniqueId, SM.toRecentSquad(squad))
 	}
 
 	export function findRecentSquad(state: InterpolableState, uniqueSquadId: number) {
-		return state.recentSquads.find((s) => s.uniqueId === uniqueSquadId)
+		return state.recentSquads.get(uniqueSquadId)
 	}
 }
 
@@ -218,6 +221,196 @@ export type AggregatedWarns = {
 	warns: EnrichedWarn[]
 }
 
+// The other half of ServerEvent's switch (server-event.tsx): each entry decides, from the event alone, whether that
+// renderer draws anything. Every `return null` in the component that depends only on the event is mirrored here, and
+// the feed filters on it (see showEventInFeed) so an entry that draws nothing is never mounted. Half a busy match's
+// entries are roster bookkeeping the feed does not show, and mounting them costs more than everything else on the
+// client put together.
+//
+// Only conditions the event answers by itself belong here. ROUND_ENDED draws nothing until its match reaches
+// post-game, which the event cannot know and which changes after the event is buffered, so that stays in the
+// component.
+const RENDERS_IN_FEED = {
+	CHAT_MESSAGE: (event) => event.player.teamId !== null,
+	ADMIN_BROADCAST: () => true,
+	PLAYER_CONNECTED: () => true,
+	// roster backfill from the teams poll -- state only, never surfaced
+	PLAYER_RECONCILED: () => false,
+	PLAYER_DISCONNECTED: () => true,
+	POSSESSED_ADMIN_CAMERA: () => true,
+	UNPOSSESSED_ADMIN_CAMERA: () => true,
+	PLAYER_KICKED: () => true,
+	SQUAD_CREATED: () => true,
+	PLAYER_BANNED: () => true,
+	PLAYER_WARNED: () => true,
+	WARNS_AGGREGATED: () => true,
+	// an audit-only MAP_SET repeats the layer its QUEUE_UPDATED already named
+	APP_EVENT: (event) => !(event.appEvent.type === 'MAP_SET' && event.appEvent.reason === 'queue-updated'),
+	NEW_GAME: () => true,
+	// reseeds the roster for a boundary NEW_GAME has already announced
+	RESET: () => false,
+	ROUND_ENDED: () => true,
+	PLAYER_DETAILS_CHANGED: () => false,
+	// the only detail with a line of its own is the lock, and only when it actually changed
+	SQUAD_DETAILS_CHANGED: (event) => event.details.locked !== undefined && event.details.locked !== event.prevDetails.locked,
+	SQUAD_RENAMED: () => true,
+	PLAYER_CHANGED_TEAM: () => true,
+	PLAYER_LEFT_SQUAD: () => true,
+	SQUAD_DISBANDED: () => true,
+	PLAYER_JOINED_SQUAD: () => true,
+	PLAYER_PROMOTED_TO_LEADER: () => true,
+	TEAMS_POLLED_UPDATE: () => false,
+	PLAYER_DIED: () => true,
+	PLAYER_WOUNDED: () => true,
+	MAP_SET: () => true,
+	INGAME_VOTE_STARTED: (event) => event.container === 'Vote_NextLayer',
+	RCON_CONNECTED: () => true,
+	RCON_DISCONNECTED: () => true,
+	NOOP: () => false,
+} satisfies { [T in EventEnriched['type']]: (event: Extract<EventEnriched, { type: T }>) => boolean }
+
+/**
+ * Wire form for a batch of enriched events.
+ *
+ * Enrichment embeds a whole player object per event, so a busy match sends the same ~160 people several thousand
+ * times: two thirds of the payload, and that many objects for the client to allocate. Interpolation hands the same
+ * object to every event that mentions a player until something about them changes, so hoisting them into a shared
+ * table keyed on object identity -- a Map lookup per field, never a structural comparison -- collapses most of it.
+ *
+ * Which fields hold one is fixed per event type (FIELDS below), so encoding touches those and nothing else rather
+ * than walking each event. Decoding hands the client back the same sharing, so a player is one object there too.
+ */
+export namespace Wire {
+	type Fields = {
+		// keys holding a single SM.Player, or nothing
+		players?: readonly string[]
+		// keys holding an SM.Player[]
+		playerLists?: readonly string[]
+		// keys holding a single SM.UniqueSquad
+		squads?: readonly string[]
+		// keys holding an SM.UniqueTeams, i.e. a roster of both
+		rosters?: readonly string[]
+		// keys holding an EventEnriched[], encoded recursively
+		nested?: readonly string[]
+	}
+
+	// Exhaustive over the union so a new event type has to declare what it embeds, even if that is nothing.
+	const FIELDS = {
+		CHAT_MESSAGE: { players: ['player'] },
+		ADMIN_BROADCAST: { players: ['player'] },
+		PLAYER_CONNECTED: { players: ['player'] },
+		PLAYER_RECONCILED: { players: ['player'] },
+		PLAYER_DISCONNECTED: { players: ['player'] },
+		PLAYER_DETAILS_CHANGED: { players: ['player'] },
+		PLAYER_CHANGED_TEAM: { players: ['player'] },
+		PLAYER_WARNED: { players: ['player'] },
+		PLAYER_BANNED: { players: ['player'] },
+		PLAYER_KICKED: { players: ['player'] },
+		POSSESSED_ADMIN_CAMERA: { players: ['player'] },
+		UNPOSSESSED_ADMIN_CAMERA: { players: ['player'] },
+		PLAYER_JOINED_SQUAD: { players: ['player'], squads: ['squad'] },
+		PLAYER_LEFT_SQUAD: { players: ['player'], squads: ['squad'] },
+		PLAYER_PROMOTED_TO_LEADER: { players: ['player'], squads: ['squad'] },
+		SQUAD_CREATED: { players: ['creator'], squads: ['squad'] },
+		SQUAD_DISBANDED: { squads: ['squad'] },
+		SQUAD_DETAILS_CHANGED: { squads: ['squad'] },
+		SQUAD_RENAMED: { squads: ['squad'] },
+		PLAYER_DIED: { players: ['victim', 'attacker'] },
+		PLAYER_WOUNDED: { players: ['victim', 'attacker'] },
+		MAP_SET: { players: ['actorPlayer'] },
+		ROUND_ENDED: { players: ['actorPlayer'] },
+		APP_EVENT: { players: ['actorPlayer'], playerLists: ['targetPlayers'], nested: ['collapsed'] },
+		WARNS_AGGREGATED: { nested: ['warns'] },
+		NEW_GAME: { rosters: ['state'] },
+		RESET: { rosters: ['state'] },
+		TEAMS_POLLED_UPDATE: {},
+		INGAME_VOTE_STARTED: {},
+		RCON_CONNECTED: {},
+		RCON_DISCONNECTED: {},
+		NOOP: {},
+	} satisfies Record<EventEnriched['type'], Fields>
+
+	// an event type with nothing to hoist crosses the wire untouched, so a match's several hundred teams polls cost
+	// neither a copy on the way out nor one on the way back
+	const HOISTS = new Set(
+		Object.entries(FIELDS)
+			.filter(([, f]) => Object.keys(f).length > 0)
+			.map(([type]) => type),
+	)
+
+	export type Batch = {
+		players: SM.Player[]
+		squads: SM.UniqueSquad[]
+		// each event with the fields FIELDS names replaced by an index into the tables above. Opaque: decode is the
+		// only thing that reads them.
+		events: readonly unknown[]
+	}
+
+	type Interner<T> = (value: T) => number
+
+	function interner<T extends object>(table: T[]): Interner<T> {
+		const indices = new Map<T, number>()
+		return (value) => {
+			let index = indices.get(value)
+			if (index === undefined) {
+				index = table.push(value) - 1
+				indices.set(value, index)
+			}
+			return index
+		}
+	}
+
+	export function encode(events: readonly EventEnriched[]): Batch {
+		const players: SM.Player[] = []
+		const squads: SM.UniqueSquad[] = []
+		const internPlayer = interner(players)
+		const internSquad = interner(squads)
+
+		function encodeEvent(event: EventEnriched): unknown {
+			if (!HOISTS.has(event.type)) return event
+			const fields: Fields = FIELDS[event.type]
+			const out = { ...event } as Record<string, any>
+			for (const key of fields.players ?? []) if (out[key]) out[key] = internPlayer(out[key])
+			for (const key of fields.playerLists ?? []) if (out[key]) out[key] = out[key].map(internPlayer)
+			for (const key of fields.squads ?? []) if (out[key]) out[key] = internSquad(out[key])
+			for (const key of fields.rosters ?? []) {
+				if (!out[key]) continue
+				out[key] = { ...out[key], players: out[key].players.map(internPlayer), squads: out[key].squads.map(internSquad) }
+			}
+			for (const key of fields.nested ?? []) if (out[key]) out[key] = out[key].map(encodeEvent)
+			return out
+		}
+
+		return { players, squads, events: events.map(encodeEvent) }
+	}
+
+	export function decode(batch: Batch): EventEnriched[] {
+		const { players, squads } = batch
+
+		function decodeEvent(encoded: unknown): EventEnriched {
+			const event = encoded as EventEnriched
+			if (!HOISTS.has(event.type)) return event
+			const fields: Fields = FIELDS[event.type]
+			const out = { ...event } as Record<string, any>
+			for (const key of fields.players ?? []) if (typeof out[key] === 'number') out[key] = players[out[key]]
+			for (const key of fields.playerLists ?? []) if (out[key]) out[key] = out[key].map((i: number) => players[i])
+			for (const key of fields.squads ?? []) if (typeof out[key] === 'number') out[key] = squads[out[key]]
+			for (const key of fields.rosters ?? []) {
+				if (!out[key]) continue
+				out[key] = {
+					...out[key],
+					players: out[key].players.map((i: number) => players[i]),
+					squads: out[key].squads.map((i: number) => squads[i]),
+				}
+			}
+			for (const key of fields.nested ?? []) if (out[key]) out[key] = out[key].map(decodeEvent)
+			return out as EventEnriched
+		}
+
+		return batch.events.map(decodeEvent)
+	}
+}
+
 export type ChatState = {
 	eventBuffer: EventEnriched[]
 
@@ -231,10 +424,10 @@ export type ChatState = {
 
 export function getInitialInterpolatedState(): InterpolableState {
 	return {
-		players: [],
-		recentPlayers: [],
-		squads: [],
-		recentSquads: [],
+		players: new Map(),
+		recentPlayers: new Map(),
+		squads: new Map(),
+		recentSquads: new Map(),
 		playerStats: {},
 		adminCamPlayerIds: [],
 	}
@@ -389,13 +582,13 @@ export function lastServerEventId(buffer: EventEnriched[]): number | undefined {
 // the unique (instance) id of the squad a player is in per the interpolated state, or undefined if squadless
 function playerSquadUniqueId(state: InterpolableState, player: SM.Player): number | undefined {
 	if (player.squadId === null || player.teamId === null) return undefined
-	return state.squads.find((s) => s.squadId === player.squadId && s.teamId === player.teamId)?.uniqueId
+	return SM.findSquadForPlayer(state.squads, player)?.uniqueId
 }
 
 // resolves an eos id against the live roster, falling back to everyone who has taken part in this match. The fallback
 // is what names the target of an action that removed them (a kick, a dropped teamswap) instead of printing their id.
 function resolvePlayer(state: InterpolableState, playerId: SM.PlayerId): SM.Player | undefined {
-	const live = SM.PlayerIds.find(state.players, (p) => p.ids, { eos: playerId })
+	const live = state.players.get(playerId)
 	if (live) return live
 	const recent = InterpolableState.findRecentPlayer(state, { eos: playerId })
 	return recent ? SM.fromRecentPlayer(recent) : undefined
@@ -411,7 +604,7 @@ function enrichAppEvent(state: InterpolableState, appEvent: AppEvents.AppEvent):
 	// squad-typed actions name an in-game squad + team directly; resolve to the live instance (it still exists when the
 	// action is recorded, as the resulting server events arrive afterwards)
 	if (appEvent.type === 'SQUAD_DISBANDED' || appEvent.type === 'SQUAD_RENAMED') {
-		const squad = state.squads.find((s) => s.squadId === appEvent.squadId && s.teamId === appEvent.teamId)
+		const squad = SM.findSquadForPlayer(state.squads, { squadId: appEvent.squadId, teamId: appEvent.teamId })
 		if (squad) targetSquadIds.add(squad.uniqueId)
 	}
 	for (const player of targetPlayers) {
@@ -443,12 +636,13 @@ function summarizeWarnTargets(state: InterpolableState, targets: SM.Player[]): W
 	if (targets.length === 0) return { type: 'players' }
 	const idOf = (p: SM.Player) => SM.PlayerIds.getPlayerId(p.ids)
 	const targetIds = new Set(targets.map(idOf))
-	const players = state.players
+	// materialized once: this runs per warn, and every check below is a whole-roster pass anyway
+	const players = [...state.players.values()]
 
 	// squads warned in full, plus however many loose players remain
 	const fullSquads: { uniqueId: number; squadName: string; teamId: SM.TeamId }[] = []
 	let coveredBySquads = 0
-	for (const squad of state.squads) {
+	for (const squad of state.squads.values()) {
 		const members = players.filter((p) => p.squadId === squad.squadId && p.teamId === squad.teamId)
 		if (members.length > 0 && members.every((p) => targetIds.has(idOf(p)))) {
 			fullSquads.push({ uniqueId: squad.uniqueId, squadName: squad.squadName, teamId: squad.teamId })
@@ -536,7 +730,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				const source = event.source
 				return {
 					...event,
-					actorPlayer: source?.type === 'player' ? SM.PlayerIds.find(state.players, (p) => p.ids, source.playerIds) : undefined,
+					actorPlayer: source?.type === 'player' ? state.players.get(SM.PlayerIds.getPlayerId(source.playerIds)) : undefined,
 				}
 			}
 			if (event.type === 'NEW_GAME') {
@@ -545,15 +739,17 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				// a boundary NEW_GAME already announced, but is ALSO emitted on a same-match rcon reconnect
 				// (source 'rcon-reconnected'), where wiping would cost the match its scores so far.
 				state.playerStats = {}
-				state.recentPlayers = state.players.map(SM.toRecentPlayer)
-				state.recentSquads = state.squads.map(SM.toRecentSquad)
+				state.recentPlayers = new Map()
+				for (const [id, player] of state.players) state.recentPlayers.set(id, SM.toRecentPlayer(player))
+				state.recentSquads = new Map()
+				for (const [id, squad] of state.squads) state.recentSquads.set(id, SM.toRecentSquad(squad))
 			} else if (event.type === 'RESET') {
 				// RESET restates the roster from scratch and carries no admin camera information, so anyone we thought
 				// was in admin camera is no longer known to be
 				state.adminCamPlayerIds = []
 				// the reseeded roster may name players and squads we haven't seen participate yet
-				for (const player of state.players) InterpolableState.recordRecentPlayer(state, player)
-				for (const squad of state.squads) InterpolableState.recordRecentSquad(state, squad)
+				for (const player of state.players.values()) InterpolableState.recordRecentPlayer(state, player)
+				for (const squad of state.squads.values()) InterpolableState.recordRecentSquad(state, squad)
 			}
 			return event
 		}
@@ -564,39 +760,43 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		case 'INGAME_VOTE_STARTED': {
 			if (event.type === 'INGAME_VOTE_STARTED' && event.container !== 'Vote_NextLayer')
 				return noop("Skipping INGAME_VOTE_STARTED that doesn't have container Vote_NextLayer")
-			return { ...event }
+			// enrichment adds nothing to these, and nothing downstream writes through a feed entry, so the event is
+			// its own enriched form -- a copy per teams poll is several hundred objects a match for no difference
+			return event
 		}
 
 		case 'ROUND_ENDED': {
 			const source = event.action?.source
 			return {
 				...event,
-				actorPlayer: source?.type === 'player' ? SM.PlayerIds.find(state.players, (p) => p.ids, source.playerIds) : undefined,
+				actorPlayer: source?.type === 'player' ? state.players.get(SM.PlayerIds.getPlayerId(source.playerIds)) : undefined,
 			}
 		}
 
 		case 'PLAYER_CONNECTED': {
-			if (SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)) {
+			if (state.players.has(SM.PlayerIds.getPlayerId(event.player.ids))) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} connected but was already in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
 			InterpolableState.recordRecentPlayer(state, event.player)
-			return { ...event, player: event.player }
+			// the event already carries the whole player; enrichment has nothing to add
+			return event
 		}
 
 		// roster backfill from the teams poll -- adds the player to client state like a connect, but is not
 		// rendered in the feed (see isRenderableInFeed / ServerEvent).
 		case 'PLAYER_RECONCILED': {
-			const known = SM.PlayerIds.find(state.players, (p) => p.ids, event.player.ids)
+			const playerId = SM.PlayerIds.getPlayerId(event.player.ids)
+			const known = state.players.get(playerId)
 			if (known) {
 				// Already on the roster, so this is the poll correcting what only it can know. A player who arrived on
 				// the log stream carries no role and no admin-list membership: the log does not report either, and this
-				// is what fills them in.
-				known.role = event.player.role
-				known.isAdmin = event.player.isAdmin
-				known.adminGroups = event.player.adminGroups
-				InterpolableState.recordRecentPlayer(state, known)
-				return { ...event, player: known }
+				// is what fills them in. Replaced rather than written through: feed entries emitted earlier hold this
+				// object, and they describe the roster as it was when they happened.
+				const corrected = { ...known, role: event.player.role, isAdmin: event.player.isAdmin, adminGroups: event.player.adminGroups }
+				state.players.set(playerId, corrected)
+				InterpolableState.recordRecentPlayer(state, corrected)
+				return { ...event, player: corrected }
 			}
 			applyEventTeamMutations(chatLog, state, event)
 			InterpolableState.recordRecentPlayer(state, event.player)
@@ -604,124 +804,113 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		}
 
 		case 'PLAYER_DISCONNECTED': {
-			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const player = state.players.get(event.player)
+			if (!player) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
 			}
-			const player = state.players[index]
 			state.adminCamPlayerIds = state.adminCamPlayerIds.filter((id) => id !== event.player)
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, player }
 		}
 
 		case 'PLAYER_DETAILS_CHANGED': {
-			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			if (!state.players.has(event.player)) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} had details changed but was not found in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
-			InterpolableState.recordRecentPlayer(state, state.players[index])
-			return { ...event, player: state.players[index] }
+			const changed = state.players.get(event.player)!
+			InterpolableState.recordRecentPlayer(state, changed)
+			return { ...event, player: changed }
 		}
 
 		case 'SQUAD_DETAILS_CHANGED': {
-			const index = state.squads.findIndex((s) => s.uniqueId === event.uniqueId)
-			if (index === -1) {
+			const prev = state.squads.get(event.uniqueId)
+			if (!prev) {
 				return noop(`Squad ${event.uniqueId} had details changed but was not found in the squad list`)
 			}
-			const prevDetails: SE.SquadDetailsChanged['details'] = { locked: state.squads[index].locked }
+			const prevDetails: SE.SquadDetailsChanged['details'] = { locked: prev.locked }
 			applyEventTeamMutations(chatLog, state, event)
-			return { ...event, squad: state.squads[index], prevDetails }
+			return { ...event, squad: state.squads.get(event.uniqueId)!, prevDetails }
 		}
 
 		case 'SQUAD_RENAMED': {
-			const index = state.squads.findIndex((s) => s.uniqueId === event.uniqueId)
-			if (index === -1) {
+			if (!state.squads.has(event.uniqueId)) {
 				return noop(`Squad ${event.uniqueId} was renamed but was not found in the squad list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
-			InterpolableState.recordRecentSquad(state, state.squads[index])
-			return { ...event, squad: state.squads[index] }
+			const renamed = state.squads.get(event.uniqueId)!
+			InterpolableState.recordRecentSquad(state, renamed)
+			return { ...event, squad: renamed }
 		}
 
 		case 'PLAYER_CHANGED_TEAM': {
-			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const before = state.players.get(event.player)
+			if (!before) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
-			const prevTeamId = state.players[index].teamId
+			const prevTeamId = before.teamId
 			applyEventTeamMutations(chatLog, state, event)
-			return { ...event, player: state.players[index], prevTeamId }
+			return { ...event, player: state.players.get(event.player)!, prevTeamId }
 		}
 
 		case 'PLAYER_JOINED_SQUAD': {
-			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const joiner = state.players.get(event.player)
+			if (!joiner) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was not found in the player list`)
 			}
-			const squad = state.squads.find((s) => s.uniqueId === event.uniqueId)
+			const squad = state.squads.get(event.uniqueId)
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found`)
 			}
-			if (SM.Squads.idsEqual(state.players[index], squad)) {
+			if (SM.Squads.idsEqual(joiner, squad)) {
 				return noop(
 					`Player ${SM.PlayerIds.prettyPrint(event.player)} joined squad but was already in it ${
-						SM.PlayerIds.match(state.players[index].ids, squad.creator) ? '(is creator)' : ''
+						event.player === squad.creator ? '(is creator)' : ''
 					}`,
 				)
 			}
 			applyEventTeamMutations(chatLog, state, event)
-			return { ...event, player: state.players[index], squad }
+			return { ...event, player: state.players.get(event.player)!, squad }
 		}
 
 		case 'PLAYER_PROMOTED_TO_LEADER': {
-			const squad = state.squads.find((s) => s.uniqueId === event.uniqueId)
+			const squad = state.squads.get(event.uniqueId)
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found for PLAYER_PROMOTED_TO_LEADER`)
 			}
-			let newLeaderIdx = -1
-			for (let i = 0; i < state.players.length; i++) {
-				const player = state.players[i]
-				if (player.squadId !== squad.squadId || player.teamId !== squad.teamId) continue
-				if (SM.PlayerIds.match(player.ids, event.player)) {
-					newLeaderIdx = i
-					break
-				}
-			}
-			if (newLeaderIdx === -1) {
+			const promoted = state.players.get(event.player)
+			if (!promoted || promoted.squadId !== squad.squadId || promoted.teamId !== squad.teamId) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} promoted to leader but was not found in the player list`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
-			return { ...event, player: state.players[newLeaderIdx], squad }
+			return { ...event, player: state.players.get(event.player)!, squad }
 		}
 
 		case 'SQUAD_DISBANDED': {
-			const squadIndex = state.squads.findIndex((s) => s.uniqueId === event.uniqueId)
-			if (squadIndex === -1) {
+			const squad = state.squads.get(event.uniqueId)
+			if (!squad) {
 				return noop(`Squad ${event.uniqueId} disbanded but was not found in the squad list`)
 			}
-			const squad = state.squads[squadIndex]
 			applyEventTeamMutations(chatLog, state, event)
 			return { ...event, squad }
 		}
 
 		case 'PLAYER_LEFT_SQUAD': {
-			const index = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const leaver = state.players.get(event.player)
+			if (!leaver) {
 				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} left squad but was not found in the player list`)
 			}
-			const wasLeader = state.players[index].isLeader
-			const squad = state.squads.find((s) => s.uniqueId === event.uniqueId)
+			const wasLeader = leaver.isLeader
+			const squad = state.squads.get(event.uniqueId)
 			if (!squad) {
 				return noop(`Squad ${event.uniqueId} not found for PLAYER_LEFT_SQUAD`)
 			}
 			applyEventTeamMutations(chatLog, state, event)
-			return { ...event, player: state.players[index], wasLeader, squad }
+			return { ...event, player: state.players.get(event.player)!, wasLeader, squad }
 		}
 
 		case 'SQUAD_CREATED': {
-			const existingSquad = state.squads.find((s) => s.uniqueId === event.squad.uniqueId)
-			if (existingSquad) {
+			if (state.squads.has(event.squad.uniqueId)) {
 				return noop(`Squad ${event.squad.uniqueId} already exists`)
 			}
 			const squad: SM.UniqueSquad = event.squad
@@ -732,29 +921,29 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 			// establishing membership when the creator is unknown.
 			applyEventTeamMutations(chatLog, state, event)
 			InterpolableState.recordRecentSquad(state, squad)
-			const creatorIndex = SM.PlayerIds.indexOf(state.players, (p) => p.ids, event.squad.creator)
-			if (creatorIndex === -1) {
+			const creator = state.players.get(event.squad.creator)
+			if (!creator) {
 				return noop(
 					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${SM.PlayerIds.prettyPrint(
 						squad.creator,
 					)}`,
 				)
 			}
-			if (state.players[creatorIndex].teamId !== squad.teamId) {
+			if (creator.teamId !== squad.teamId) {
 				return noop(
-					`Creator ${SM.PlayerIds.prettyPrint(state.players[creatorIndex].ids)} is not in the same team as the squad they created ${SM.Squads.printKey(
+					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(
 						squad,
 					)}`,
 				)
 			}
-			return { ...event, creator: state.players[creatorIndex] }
+			return { ...event, creator }
 		}
 
 		case 'PLAYER_WARNED': {
 			if (testPatterns(opts?.warnSuppressionPatterns ?? [], event.reason)) {
 				return noop(`Warn reason ${event.reason} matches warn suppression pattern`)
 			}
-			const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.player)
+			const player = state.players.get(event.player)
 			if (!player) {
 				return noop(
 					`Player ${SM.PlayerIds.prettyPrint(
@@ -769,7 +958,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		case 'PLAYER_KICKED':
 		case 'POSSESSED_ADMIN_CAMERA':
 		case 'UNPOSSESSED_ADMIN_CAMERA': {
-			const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.player)
+			const player = state.players.get(event.player)
 			if (!player) {
 				return noop(
 					`Player ${SM.PlayerIds.prettyPrint(
@@ -790,7 +979,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 		}
 
 		case 'CHAT_MESSAGE': {
-			const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.player)
+			const player = state.players.get(event.player)
 			if (!player) {
 				return noop(
 					`Player ${SM.PlayerIds.prettyPrint(
@@ -809,7 +998,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 					}
 					return { ...event, player: undefined } as SE.AdminBroadcast & { player: undefined }
 				}
-				const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.from)
+				const player = state.players.get(SM.PlayerIds.getPlayerId(event.from))
 				if (!player) {
 					return noop(
 						`Player ${SM.PlayerIds.prettyPrint(
@@ -820,7 +1009,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 				return { ...event, player } as SE.AdminBroadcast & { player: SM.Player }
 			} else if (event.source) {
 				if (event.source.type === 'player') {
-					const player = SM.PlayerIds.find(state.players, (p) => p.ids, event.source.playerIds)
+					const player = state.players.get(SM.PlayerIds.getPlayerId(event.source.playerIds))
 					if (!player) {
 						return noop(
 							`Player ${SM.PlayerIds.prettyPrint(
@@ -840,7 +1029,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED': {
-			const victim = SM.PlayerIds.find(state.players, (p) => p.ids, event.victim)
+			const victim = state.players.get(event.victim)
 			if (!victim) {
 				return noop(
 					`Victim ${SM.PlayerIds.prettyPrint(
@@ -848,7 +1037,7 @@ function interpolateEvent(state: InterpolableState, event: SE.Event, opts?: Inte
 					)} was involved in ${event.type} but was not found in the interpolated player list`,
 				)
 			}
-			const attacker = SM.PlayerIds.find(state.players, (p) => p.ids, event.attacker)
+			const attacker = state.players.get(event.attacker)
 			if (!attacker) {
 				return noop(
 					`Attacker ${SM.PlayerIds.prettyPrint(
@@ -988,6 +1177,8 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 }
 
 export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilterState, ctx?: SecondaryFilterContext): boolean {
+	// ahead of the pinned check: a RESET is pinned by kind but draws nothing
+	if (!isRenderableInFeed(event)) return false
 	if (isPinnedSystemEvent(event)) return true
 	if (!matchesFilterState(event, filterState)) return false
 	if (ctx?.selectedOnly) {
@@ -998,17 +1189,11 @@ export function showEventInFeed(event: EventEnriched, filterState: SecondaryFilt
 	return true
 }
 
-// event types the feed renderer (ServerEvent) always renders as nothing. Callers that inject separators/markers
-// between events (e.g. the player details window) must drop these first, else an invisible event still produces a
-// leading separator, showing up as an empty gap or two markers in a row.
+// Whether the feed renderer draws anything for this event; see RENDERS_IN_FEED. showEventInFeed already applies it,
+// so this is for callers that filter by something else and still have to drop invisible entries -- one that injects
+// separators between events would otherwise emit a leading separator or two markers in a row.
 export function isRenderableInFeed(event: EventEnriched): boolean {
-	return (
-		event.type !== 'RESET' &&
-		event.type !== 'PLAYER_DETAILS_CHANGED' &&
-		event.type !== 'TEAMS_POLLED_UPDATE' &&
-		event.type !== 'PLAYER_RECONCILED' &&
-		event.type !== 'NOOP'
-	)
+	return (RENDERS_IN_FEED[event.type] as (event: EventEnriched) => boolean)(event)
 }
 
 // the raw server-event assoc types, plus 'actor' for the admin who took an app event's action

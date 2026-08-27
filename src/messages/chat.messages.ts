@@ -1,8 +1,5 @@
-// see settings.messages.tsx on why a messages module with a react target keeps React in scope
-import * as React from 'react'
-
 import type * as CHAT from '@/models/chat.models'
-import { def, raw, rt, t, type TString } from '@/models/messages.models'
+import { def, raw, type Rendered, rt, t, type TString } from '@/models/messages.models'
 import type * as TA from '@/models/team-attribution.models'
 
 export const secondaryFilterLabels: Record<CHAT.SecondaryFilterState, TString> = {
@@ -151,18 +148,18 @@ export const broadcastFromRcon = def('RCON')
 
 export const broadcastFromUnknown = def('unknown')
 
-export const playerConnected = def((player: React.ReactNode, team?: React.ReactNode) =>
+export const playerConnected = def((player: Rendered, team?: Rendered) =>
 	rt('{player} connected{hasTeam, select, yes {, joining {team}} other {}}', { player, team, hasTeam: team !== undefined ? 'yes' : 'no' }),
 )
 
-export const playerDisconnected = def((player: React.ReactNode) => rt('{player} disconnected', { player }))
+export const playerDisconnected = def((player: Rendered) => rt('{player} disconnected', { player }))
 
-export const enteredAdminCamera = def((player: React.ReactNode) => rt('{player} entered admin camera', { player }))
+export const enteredAdminCamera = def((player: Rendered) => rt('{player} entered admin camera', { player }))
 
-export const exitedAdminCamera = def((player: React.ReactNode) => rt('{player} exited admin camera', { player }))
+export const exitedAdminCamera = def((player: Rendered) => rt('{player} exited admin camera', { player }))
 
 // the reason is styled down by the caller; the separator that introduces it is part of the sentence
-export const playerKicked = def((player: React.ReactNode, reason?: React.ReactNode) =>
+export const playerKicked = def((player: Rendered, reason?: Rendered) =>
 	rt('{player} was kicked{hasReason, select, yes { - {reason}} other {}}', {
 		player,
 		reason,
@@ -170,44 +167,44 @@ export const playerKicked = def((player: React.ReactNode, reason?: React.ReactNo
 	}),
 )
 
-export const squadCreated = def((creator: React.ReactNode, squad: React.ReactNode, team: React.ReactNode) =>
+export const squadCreated = def((creator: Rendered, squad: Rendered, team: Rendered) =>
 	rt('{creator} created {squad} on {team}', { creator, squad, team }),
 )
 
-export const playerBanned = def((player: React.ReactNode, interval: string) =>
+export const playerBanned = def((player: Rendered, interval: string) =>
 	rt('{player} was banned reason: "{interval}"', { player, interval }),
 )
 
-export const playerWarned = def((player: React.ReactNode, reason: string) => rt('{player} was warned: "{reason}"', { player, reason }))
+export const playerWarned = def((player: Rendered, reason: string) => rt('{player} was warned: "{reason}"', { player, reason }))
 
-export const playersWarned = def((players: React.ReactNode, reason: string) => rt('{players} were warned: "{reason}"', { players, reason }))
+export const playersWarned = def((players: Rendered, reason: string) => rt('{players} were warned: "{reason}"', { players, reason }))
 
 export const playerCountWarned = def((count: number, reason: string) =>
 	rt('{count, plural, one {# player} other {# players}} were warned: "{reason}"', { count, reason }),
 )
 
-export const playerChangedTeam = def((player: React.ReactNode, team: React.ReactNode) => rt('{player} changed to {team}', { player, team }))
+export const playerChangedTeam = def((player: Rendered, team: Rendered) => rt('{player} changed to {team}', { player, team }))
 
-export const playerLeftSquad = def((player: React.ReactNode, squad: React.ReactNode, wasLeader: boolean) =>
+export const playerLeftSquad = def((player: Rendered, squad: Rendered, wasLeader: boolean) =>
 	rt('{player} left {squad}{wasLeader, select, yes { (was leader)} other {}}', { player, squad, wasLeader: wasLeader ? 'yes' : 'no' }),
 )
 
-export const playerJoinedSquad = def((player: React.ReactNode, squad: React.ReactNode) => rt('{player} joined {squad}', { player, squad }))
+export const playerJoinedSquad = def((player: Rendered, squad: Rendered) => rt('{player} joined {squad}', { player, squad }))
 
-export const playerPromotedToLeader = def((player: React.ReactNode) => rt('{player} promoted to squad leader', { player }))
+export const playerPromotedToLeader = def((player: Rendered) => rt('{player} promoted to squad leader', { player }))
 
-export const squadWasDisbanded = def((squad: React.ReactNode) => rt('{squad} was disbanded', { squad }))
+export const squadWasDisbanded = def((squad: Rendered) => rt('{squad} was disbanded', { squad }))
 
-export const squadLockChanged = def((squad: React.ReactNode, locked: boolean) =>
+export const squadLockChanged = def((squad: Rendered, locked: boolean) =>
 	rt('{squad} {locked, select, yes {locked} other {unlocked}}', { squad, locked: locked ? 'yes' : 'no' }),
 )
 
 // the new name is emphasised, which is part of the sentence; the feed styles `strong` itself
-export const squadRenamed = def((squad: React.ReactNode, newName: string) =>
+export const squadRenamed = def((squad: Rendered, newName: string) =>
 	rt('{squad} renamed to <strong>"{newName}"</strong>', { squad, newName }),
 )
 
-export const playerSuicide = def((victim: React.ReactNode, wounded: boolean, weapon?: React.ReactNode) =>
+export const playerSuicide = def((victim: Rendered, wounded: boolean, weapon?: Rendered) =>
 	rt('{victim} {wounded, select, yes {wounded themselves} other {killed themselves}}{weapon}', {
 		victim,
 		wounded: wounded ? 'yes' : 'no',
@@ -215,11 +212,11 @@ export const playerSuicide = def((victim: React.ReactNode, wounded: boolean, wea
 	}),
 )
 
-export const playerTeamkilled = def((victim: React.ReactNode, attacker: React.ReactNode, weapon?: React.ReactNode) =>
+export const playerTeamkilled = def((victim: Rendered, attacker: Rendered, weapon?: Rendered) =>
 	rt('{victim} teamkilled by {attacker}{weapon}', { victim, attacker, weapon }),
 )
 
-export const playerDowned = def((victim: React.ReactNode, wounded: boolean, attacker: React.ReactNode, weapon?: React.ReactNode) =>
+export const playerDowned = def((victim: Rendered, wounded: boolean, attacker: Rendered, weapon?: Rendered) =>
 	rt('{victim} {wounded, select, yes {wounded by} other {killed by}} {attacker}{weapon}', {
 		victim,
 		wounded: wounded ? 'yes' : 'no',
@@ -241,39 +238,36 @@ export const newGameOnRconReconnect = def('New game detected on RCON Reconnect')
 export const currentMatch = def('Current Match')
 
 // `{label} ({which}): {layer}` -- which is either "Current Match" or how many matches back this one is
-export const newGameLine = def((label: string, which: React.ReactNode, layer: React.ReactNode) =>
+export const newGameLine = def((label: string, which: Rendered, layer: Rendered) =>
 	rt('{label} ({which}): {layer}', { label, which, layer }),
 )
 
 // the draw readout is coloured on its own rather than by the container, which the winner line also uses
 export const draw = def('Draw')
 
-export const roundEndedDraw = def((layer: React.ReactNode, outcome: React.ReactNode) =>
-	rt('Round ended ({layer}) {outcome}', { layer, outcome }),
-)
+export const roundEndedDraw = def((layer: Rendered, outcome: Rendered) => rt('Round ended ({layer}) {outcome}', { layer, outcome }))
 
 // the ticket score is emphasised, which is part of the sentence; the feed styles `strong` itself
-export const roundEndedWinner = def(
-	(layer: React.ReactNode, winner: React.ReactNode, winnerTickets: number, loserTickets: number, loser: React.ReactNode) =>
-		rt('Round ended ({layer}) {winner} won <strong>{winnerTickets} to {loserTickets}</strong> against {loser}', {
-			layer,
-			winner,
-			winnerTickets,
-			loserTickets,
-			loser,
-		}),
+export const roundEndedWinner = def((layer: Rendered, winner: Rendered, winnerTickets: number, loserTickets: number, loser: Rendered) =>
+	rt('Round ended ({layer}) {winner} won <strong>{winnerTickets} to {loserTickets}</strong> against {loser}', {
+		layer,
+		winner,
+		winnerTickets,
+		loserTickets,
+		loser,
+	}),
 )
 
 // how the round was ended, when something ended it rather than the tickets running out
-export const roundEndAction = def((action: string, source: React.ReactNode, nextLayer?: React.ReactNode) =>
+export const roundEndAction = def((action: string, source: Rendered, nextLayer?: Rendered) =>
 	rt('({action} {source}{nextLayer})', { action, source, nextLayer }),
 )
 
-export const roundEndBy = def((who: React.ReactNode) => rt('by {who}', { who }))
+export const roundEndBy = def((who: Rendered) => rt('by {who}', { who }))
 
-export const roundEndVia = def((tool: React.ReactNode) => rt('via {tool}', { tool }))
+export const roundEndVia = def((tool: Rendered) => rt('via {tool}', { tool }))
 
-export const roundEndSwitchingTo = def((layer: React.ReactNode) => rt(', switching to {layer}', { layer }))
+export const roundEndSwitchingTo = def((layer: Rendered) => rt(', switching to {layer}', { layer }))
 
 export const rconTool = def('RCON')
 
@@ -281,13 +275,11 @@ export const slmTool = def('SLM')
 
 // -------- the layer the server is about to play --------
 
-export const observedNextLayer = def((layer: React.ReactNode) => rt("Server's next layer is {layer}", { layer }))
+export const observedNextLayer = def((layer: Rendered) => rt("Server's next layer is {layer}", { layer }))
 
-export const nextLayerSetBy = def((who: React.ReactNode, layer: React.ReactNode) =>
-	rt('{who} set the next layer to {layer}', { who, layer }),
-)
+export const nextLayerSetBy = def((who: Rendered, layer: Rendered) => rt('{who} set the next layer to {layer}', { who, layer }))
 
-export const nextLayerSet = def((layer: React.ReactNode) => rt('Next layer set to {layer}', { layer }))
+export const nextLayerSet = def((layer: Rendered) => rt('Next layer set to {layer}', { layer }))
 
 export const ingameAdmin = def('an in-game admin')
 
