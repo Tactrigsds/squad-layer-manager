@@ -1,6 +1,5 @@
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
-import * as Zus from '@/lib/zustand'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import {
 	DraggableWindowContext,
@@ -628,13 +627,16 @@ export function OpenWindowInteraction<TProps>(_props: OpenWindowInteractionProps
 	const eltRef = React.useRef<Element | null>(null)
 	const [props, otherEltProps] = Obj.partition(_props, 'ref', 'windowId', 'windowProps', 'preload', 'intentDelay', 'render')
 
-	const isLoaded = Zus.useStore(DraggableWindowStore, (state) => {
+	// Read at interaction time rather than subscribed: this only ever gates a redundant preload, and a
+	// subscription here costs two linear scans of the definitions and the loader cache per render, on every
+	// element that can open a window. The activity feed renders one per player mention.
+	const isLoaded = () => {
+		const state = DraggableWindowStore.getState()
 		const def = state.definitions.find((d) => d.type === props.windowId)
 		if (!def) return false
 		const instanceId = def.getId(props.windowProps)
-		const entry = state.loaderCache.find((e) => e.key?.windowId === instanceId)
-		return !!entry?.data
-	})
+		return !!state.loaderCache.find((e) => e.key?.windowId === instanceId)?.data
+	}
 
 	const outletKey = useOutletKey()
 	const openWindow = React.useCallback(
@@ -645,11 +647,12 @@ export function OpenWindowInteraction<TProps>(_props: OpenWindowInteractionProps
 	)
 
 	const preloadWindow = React.useCallback(() => {
-		if (isLoaded) return
+		if (isLoaded()) return
 		DraggableWindowStore.getState().preloadWindow(props.windowId, props.windowProps, outletKey)
-	}, [props.windowId, props.windowProps, isLoaded, outletKey])
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- isLoaded reads the store, so it is not a dep
+	}, [props.windowId, props.windowProps, outletKey])
 
-	const [intentTimeout, setIntentTimeout] = React.useState<NodeJS.Timeout | null>(null)
+	const intentTimeout = React.useRef<NodeJS.Timeout | null>(null)
 
 	// Preload on render
 	React.useEffect(() => {
@@ -660,7 +663,7 @@ export function OpenWindowInteraction<TProps>(_props: OpenWindowInteractionProps
 
 	// Preload on viewport intersection
 	React.useEffect(() => {
-		if (props.preload !== 'viewport' || !eltRef.current || isLoaded) return
+		if (props.preload !== 'viewport' || !eltRef.current || isLoaded()) return
 
 		const observer = new IntersectionObserver(
 			(entries) => {
@@ -678,22 +681,19 @@ export function OpenWindowInteraction<TProps>(_props: OpenWindowInteractionProps
 		return () => {
 			observer.disconnect()
 		}
-	}, [props.preload, preloadWindow, isLoaded])
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- isLoaded reads the store, so it is not a dep
+	}, [props.preload, preloadWindow])
 
 	const handleMouseEnter = () => {
-		if (props.preload === 'intent' && !isLoaded) {
-			const delay = props.intentDelay ?? 150
-			const timeout = setTimeout(() => {
-				preloadWindow()
-			}, delay)
-			setIntentTimeout(timeout)
+		if (props.preload === 'intent' && !isLoaded()) {
+			intentTimeout.current = setTimeout(() => preloadWindow(), props.intentDelay ?? 150)
 		}
 	}
 
 	const handleMouseLeave = () => {
-		if (intentTimeout) {
-			clearTimeout(intentTimeout)
-			setIntentTimeout(null)
+		if (intentTimeout.current) {
+			clearTimeout(intentTimeout.current)
+			intentTimeout.current = null
 		}
 	}
 

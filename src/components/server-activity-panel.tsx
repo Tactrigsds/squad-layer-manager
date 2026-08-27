@@ -115,7 +115,17 @@ function ServerChatEvents(props: {
 			)}
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
+				{/*
+				  A past match mounts hundreds of rows and only ~30 are ever on screen. content-visibility lets the browser
+				  skip style, layout and paint for the rest until they scroll into view; every row stays mounted and in the
+				  dom, so find-in-page and the find bar still reach them. The intrinsic size is the measured median row,
+				  and `auto` makes the browser keep each row's real height once it has been rendered once, so the scroll
+				  height stops being an estimate as the feed is read.
+				*/}
+				<div
+					ref={eventsContainerRef}
+					className="flex flex-col gap-0.5 pr-4 min-h-0 w-full [&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
+				>
 					{noPlayersSelected && (
 						<div className="text-muted-foreground text-sm text-center py-8">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>
 					)}
