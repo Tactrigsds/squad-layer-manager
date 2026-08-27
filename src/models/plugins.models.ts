@@ -14,7 +14,7 @@ import type { MigrationDriver } from '@/server/migrate'
  * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
  * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
  */
-export const API_VERSION = { major: 0, minor: 2, patch: 0 }
+export const API_VERSION = { major: 0, minor: 2, patch: 1 }
 
 /** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
 export function formatApiVersion(): string {
@@ -207,4 +207,40 @@ export function defineTables(manifest: { id: PluginId }): TableFactory {
 		table: (name, columns) => D.sqliteTable(prefix + name, columns),
 		name: (name) => prefix + name,
 	}
+}
+
+// -------- config field controls --------
+
+/**
+ * The JSON Schema key a config field names its control with. settings-form.tsx picks its own controls by
+ * setting path, which a plugin has no way to reach; this survives z.toJSONSchema, so a plugin's schema can
+ * ask for one by declaring it.
+ */
+export const FIELD_CONTROL_KEY = 'x-slm-field'
+
+export const FIELD_CONTROLS = ['filter-id', 'filter-ids', 'server-id', 'server-ids', 'discord-channel-id', 'discord-channel-ids'] as const
+export type FieldControl = (typeof FIELD_CONTROLS)[number]
+
+/** Reads the control a JSON Schema node asks for, or undefined for an ordinary field. */
+export function fieldControl(node: unknown): FieldControl | undefined {
+	const declared = (node as Record<string, unknown> | null | undefined)?.[FIELD_CONTROL_KEY]
+	return FIELD_CONTROLS.includes(declared as FieldControl) ? (declared as FieldControl) : undefined
+}
+
+const withControl = <S extends z.ZodType>(schema: S, control: FieldControl): S => schema.meta({ [FIELD_CONTROL_KEY]: control }) as S
+
+/**
+ * Config fields that render as one of SLM's pickers instead of a text box. Each stores what its name says:
+ * a filter entity id, a managed server id, a Discord channel id.
+ *
+ * The value is still a plain string (or array of them), so a config written by hand or through the YAML
+ * editor is unaffected, and an id whose target has since been deleted still round-trips.
+ */
+export const Fields = {
+	filterId: () => withControl(z.string(), 'filter-id'),
+	filterIds: () => withControl(z.array(z.string()), 'filter-ids'),
+	serverId: () => withControl(z.string(), 'server-id'),
+	serverIds: () => withControl(z.array(z.string()), 'server-ids'),
+	discordChannelId: () => withControl(z.string(), 'discord-channel-id'),
+	discordChannelIds: () => withControl(z.array(z.string()), 'discord-channel-ids'),
 }

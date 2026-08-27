@@ -5,6 +5,15 @@
 // table (see models/plugin-api-shim.ts). The client entries are the reason it is a table and not
 // Object.keys of the real namespace: the server serves their shims but cannot import them.
 export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
+	'slm/components/combo-box': ['ComboBox', 'ComboBoxMulti', 'LOADING'],
+	'slm/components/pickers': [
+		'DiscordChannelMultiSelect',
+		'DiscordChannelSelect',
+		'FilterMultiSelect',
+		'FilterSelect',
+		'ServerMultiSelect',
+		'ServerSelect',
+	],
 	'slm/lib/rxjs-ext': [
 		'distinctDeepEquals',
 		'filterTruthy',
@@ -14,6 +23,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'traceTag',
 		'withAbortSignal',
 	],
+	'slm/lib/templating': ['renderTemplate', 'templateVars'],
 	'slm/lib/zod-utils': [
 		'BasicStrNoWhitespace',
 		'HumanTime',
@@ -150,9 +160,12 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'toNormedTeamId',
 		'toNormedTeamProp',
 	],
+	'slm/models/server-events': [],
+	'slm/models/squad': [],
 	'slm/plugin/client': ['definePluginClient'],
 	'slm/plugin/config': ['get'],
 	'slm/plugin/decorations': ['register'],
+	'slm/plugin/fields': ['Fields'],
 	'slm/plugin': ['API_VERSION', 'definePlugin', 'defineTables'],
 	'slm/plugin/rpc.client': ['client', 'stores'],
 	'slm/plugin/rpc.server': ['os', 'register'],
@@ -161,6 +174,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/server/instrumentation': ['durableSub', 'recordGenericError', 'setSpanOpAttrs', 'setSpanStatus', 'spanOp'],
 	'slm/server/logger': ['childModule'],
 	'slm/systems/app-events': ['emit'],
+	'slm/systems/discord': ['isEnabled', 'postMessage'],
 	'slm/systems/filter-entity': ['changes', 'create', 'get', 'list', 'remove', 'update'],
 	'slm/systems/layer-queries': [
 		'componentValues',
@@ -173,7 +187,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'query',
 		'scoreRanges',
 	],
-	'slm/systems/layer-queue': ['dispatchOp', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
+	'slm/systems/layer-queue': ['dispatchOp', 'editSaved', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
 	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getPublicMatchHistoryState', 'getRecentMatches'],
 	'slm/systems/post-roll-reminders': ['register'],
 	'slm/systems/squad-rcon': [
@@ -187,6 +201,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'getNextLayer',
 		'getPlayer',
 		'getServerInfo',
+		'getTeams',
 		'kickPlayer',
 		'killPlayers',
 		'removeFromSquad',
@@ -199,4 +214,5 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'warnAll',
 		'warnAllAdmins',
 	],
+	'slm/systems/squad-server': ['endMatch', 'events$'],
 }

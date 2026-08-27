@@ -10,6 +10,7 @@ import * as zod from 'zod'
 
 import * as SHIM from '@/models/plugin-api-shim'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
+import * as libTemplating from '@/plugin-api/lib/templating'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
 import * as modelsConstraintBuilders from '@/plugin-api/models/constraint-builders'
 import * as modelsFilter from '@/plugin-api/models/filter'
@@ -20,17 +21,20 @@ import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
 import * as plugin from '@/plugin-api/plugin'
 import * as pluginConfig from '@/plugin-api/plugin/config'
+import * as pluginFields from '@/plugin-api/plugin/fields'
 import * as pluginRpcServer from '@/plugin-api/plugin/rpc.server'
 import * as pluginServers from '@/plugin-api/plugin/servers'
 import * as serverInstrumentation from '@/plugin-api/server/instrumentation'
 import * as serverLogger from '@/plugin-api/server/logger'
 import * as systemsAppEvents from '@/plugin-api/systems/app-events'
+import * as systemsDiscord from '@/plugin-api/systems/discord'
 import * as systemsFilterEntity from '@/plugin-api/systems/filter-entity'
 import * as systemsLayerQueries from '@/plugin-api/systems/layer-queries'
 import * as systemsLayerQueue from '@/plugin-api/systems/layer-queue'
 import * as systemsMatchHistory from '@/plugin-api/systems/match-history'
 import * as systemsPostRollReminders from '@/plugin-api/systems/post-roll-reminders'
 import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
+import * as systemsSquadServer from '@/plugin-api/systems/squad-server'
 
 // Makes `slm/*` and the shared packages resolvable inside a packaged plugin, which is a standalone
 // esm bundle loaded from the plugins directory and so has neither our tsconfig paths nor our
@@ -48,6 +52,7 @@ export function setup() {
 	installed = true
 	entries = {
 		'slm/lib/rxjs-ext': libRxjsExt,
+		'slm/lib/templating': libTemplating,
 		'slm/lib/zod-utils': libZodUtils,
 		'slm/models/constraint-builders': modelsConstraintBuilders,
 		'slm/models/filter': modelsFilter,
@@ -58,17 +63,20 @@ export function setup() {
 		'slm/models/match-history': modelsMatchHistory,
 		'slm/plugin': plugin,
 		'slm/plugin/config': pluginConfig,
+		'slm/plugin/fields': pluginFields,
 		'slm/plugin/rpc.server': pluginRpcServer,
 		'slm/plugin/servers': pluginServers,
 		'slm/server/instrumentation': serverInstrumentation,
 		'slm/server/logger': serverLogger,
 		'slm/systems/app-events': systemsAppEvents,
+		'slm/systems/discord': systemsDiscord,
 		'slm/systems/filter-entity': systemsFilterEntity,
 		'slm/systems/layer-queries': systemsLayerQueries,
 		'slm/systems/layer-queue': systemsLayerQueue,
 		'slm/systems/match-history': systemsMatchHistory,
 		'slm/systems/post-roll-reminders': systemsPostRollReminders,
 		'slm/systems/squad-rcon': systemsSquadRcon,
+		'slm/systems/squad-server': systemsSquadServer,
 		'@orpc/server': orpcServer,
 		'@orpc/client': orpcClient,
 		'drizzle-orm': drizzle,
