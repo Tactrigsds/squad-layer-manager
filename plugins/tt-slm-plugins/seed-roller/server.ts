@@ -239,6 +239,8 @@ function describePrepareFailure(result: Roll.PrepareResult): string {
 	switch (result.code) {
 		case 'err:unsaved-edits':
 			return 'An admin has unsaved queue edits open, so the queue was left alone.'
+		case 'err:no-pool':
+			return `No ${result.pool} pool is configured, so there is nothing to draw from.`
 		case 'err:empty-pool':
 			return `The ${result.pool} pool matched no layers.`
 		case 'err:queue':

@@ -19,6 +19,7 @@
 		"drizzle/**/*.json",
 		"drizzle-sqlite/**/*.json",
 		"src/messages/locales/*.compiled.json",
+		"src/plugin-api/api-report.md",
 		".claude/worktrees/**",
 		".local/**"
 	],

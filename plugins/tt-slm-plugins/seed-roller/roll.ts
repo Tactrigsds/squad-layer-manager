@@ -26,6 +26,7 @@ export function isTrainingLayer(layerId: string): boolean {
 export type PrepareResult =
 	| { code: 'ok'; seedLayerId: string; followUpLayerId: string }
 	| { code: 'err:unsaved-edits' }
+	| { code: 'err:no-pool'; pool: 'seed' | 'follow-up' }
 	| { code: 'err:empty-pool'; pool: 'seed' | 'follow-up' }
 	| { code: 'err:queue'; message: string }
 
@@ -64,10 +65,12 @@ export async function prepareQueue(
 	const headIsSeed = kept.length > 0 && isSeedLayer(kept[0].layerId)
 	const tail = headIsSeed ? kept.slice(1) : kept
 
+	if (!headIsSeed && !cfg.seedPool) return { code: 'err:no-pool', pool: 'seed' }
 	const seedLayerId = headIsSeed ? kept[0].layerId : await draw(ctx, cfg.seedPool, `${seed}:seed`)
 	if (!seedLayerId) return { code: 'err:empty-pool', pool: 'seed' }
 
 	const keptFollowUp = tail.length > 0 && tail[0].source.type !== 'generated' ? tail[0] : undefined
+	if (!keptFollowUp && !cfg.followUpPool) return { code: 'err:no-pool', pool: 'follow-up' }
 	const drawnFollowUp = keptFollowUp ? null : await draw(ctx, cfg.followUpPool, `${seed}:follow-up`)
 	if (!keptFollowUp && !drawnFollowUp) return { code: 'err:empty-pool', pool: 'follow-up' }
 
@@ -93,7 +96,9 @@ export async function waitForNextLayer(ctx: Ctx, layerId: string, timeoutMs = 15
 	const deadline = Date.now() + timeoutMs
 	while (Date.now() < deadline && !ctx.signal.aborted) {
 		const res = await SquadRcon.getNextLayer(ctx)
-		if (res.code === 'ok' && res.layer && L.layersEqual(res.layer, layerId)) return true
+		// compatible, not equal: the game reports an FRAAS layer back as its RAAS counterpart, so a strict
+		// comparison never matches one. This is the same check the host's own sync makes.
+		if (res.code === 'ok' && res.layer && L.areLayersCompatible(res.layer, layerId)) return true
 		await new Promise((resolve) => setTimeout(resolve, 1000))
 	}
 	return false

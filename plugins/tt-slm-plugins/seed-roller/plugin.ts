@@ -23,9 +23,15 @@ export default definePlugin({
 		timezone: z.string().prefault('America/New_York').describe('IANA timezone the criteria read the clock in'),
 		afkWindow: ZU.HumanTime.prefault('5m').describe('How long since a player last did anything before they count as AFK'),
 
-		seedPool: Fields.filterId().describe('Pool the seeding layer is drawn from'),
-		followUpPool: Fields.filterId().describe('Pool the layer after the seeding layer is drawn from'),
-		editorUserId: ZU.Steam64IdSchema.or(z.string())
+		// prefaulted so a freshly installed plugin is idle and says what it needs, rather than failing
+		// activation with a config error before an admin has had a chance to configure it
+		seedPool: Fields.filterId().prefault('').describe('Pool the seeding layer is drawn from'),
+		followUpPool: Fields.filterId().prefault('').describe('Pool the layer after the seeding layer is drawn from'),
+		// empty means unconfigured, which the panel reports; anything else has to be a snowflake, since the
+		// queue ops take it as a bigint
+		editorUserId: z
+			.string()
+			.regex(/^\d*$/, 'a discord id is digits only')
 			.prefault('')
 			.describe('Discord id the queue edits are recorded against. Name the admin answerable for them.'),
 
