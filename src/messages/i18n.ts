@@ -20,7 +20,11 @@ import compiledEnglish from './locales/en.compiled.json'
 
 export const DEFAULT_LOCALE = 'en'
 
-export type MessageValues = Record<string, React.ReactNode | Date | ((chunks: React.ReactNode[]) => React.ReactNode)>
+// What ICU is handed for one message's arguments. ICU never looks inside a value, so the node type is whichever
+// surface is rendering: react's for a component tree, the dom's for the activity feed (see @/messages/i18n-dom).
+export type MessageValues = Record<string, Msgs.Rendered | Date | Msgs.TagRenderer | DomTagRenderer>
+
+export type DomTagRenderer = (chunks: (Node | string)[]) => Node | string
 
 // The catalogues a build carries, holding each message's compiled form (@/messages/icu).
 //
@@ -111,7 +115,12 @@ export function key(source: string, context?: string) {
 
 // A message's text, or the parts of it once its arguments are interpolated. A locale that is missing a key falls
 // back to the English compiled form rather than to the source, so an untranslated message still interpolates.
-function resolve(source: string, values: MessageValues | undefined, locale: string, context: string | undefined): string | unknown[] {
+export function resolve(
+	source: string,
+	values: MessageValues | undefined,
+	locale: string,
+	context: string | undefined,
+): string | unknown[] {
 	const k = key(source, context)
 	const entry = catalogues[locale]?.[k] ?? catalogues[DEFAULT_LOCALE]?.[k] ?? source
 	if (typeof entry === 'string') return entry

@@ -232,7 +232,7 @@ export type State = {
 
 	isFirstConnection: boolean | null
 	admins: Set<string>
-	currTeams: SM.UniqueTeams | null
+	currTeams: SM.LiveTeams | null
 	// consecutive teams polls in which a player currently in currTeams was absent from RCON ListPlayers. Used to
 	// debounce poll-driven culling (see reconcileTeamsUpdate) so a single dropped/partial poll doesn't evict a
 	// still-connected player. Only ever holds currently-absent, not-yet-culled players; entries self-prune.
@@ -246,7 +246,7 @@ export type State = {
 	// the roster at the moment of the last RCON disconnect. When the reconnect resolves to the SAME match, the
 	// reseeding RESET reuses these squads' uniqueIds (an RCON blip shouldn't make every squad look recreated) and
 	// backfills name-derived player ids (usernameNoTag) that polls can't provide. Consumed on the next sync.
-	staleTeamsFromDisconnect: { matchId: number; teams: SM.UniqueTeams } | null
+	staleTeamsFromDisconnect: { matchId: number; teams: SM.LiveTeams } | null
 
 	// players RCON currently reports without a team (still loading / unassigned). currTeams stays teamed-only, so
 	// these aren't in it yet. When one later appears teamed we recognize it as a backfill of a player we were
@@ -278,7 +278,7 @@ export type State = {
 
 type StateWithCurrentMatchAndPlayers = State & {
 	currentMatch: { historyEntryId: number; layerId: L.LayerId }
-	currTeams: SM.UniqueTeams
+	currTeams: SM.LiveTeams
 }
 
 type PendingEvent = State['eventBufs'][keyof State['eventBufs']][number]
@@ -373,13 +373,13 @@ function expectationMatches(state: State, match: ExpectationMatch, event: SE.New
 			if (event.type !== 'SQUAD_DISBANDED' || !eventIsAdminCaused(event)) return false
 			// the emitted event only carries the unique squad id; resolve it back to the in-game (teamId, squadId).
 			// applyExpectations runs before applyEventTeamMutations so the squad is still in currTeams here.
-			const squad = state.currTeams?.squads.find((s) => s.uniqueId === event.uniqueId)
+			const squad = state.currTeams?.squads.get(event.uniqueId)
 			return !!squad && squad.teamId === match.teamId && squad.squadId === match.squadId
 		}
 		case 'SQUAD_RENAMED': {
 			// renames only ever come from an admin command (no organic path, no native source), so no gate
 			if (event.type !== 'SQUAD_RENAMED') return false
-			const squad = state.currTeams?.squads.find((s) => s.uniqueId === event.uniqueId)
+			const squad = state.currTeams?.squads.get(event.uniqueId)
 			return !!squad && squad.teamId === match.teamId && squad.squadId === match.squadId
 		}
 		case 'ROUND_ENDED':
@@ -579,7 +579,7 @@ export async function* process(state: State, time: number): AsyncGenerator<SE.Ev
 	}
 }
 
-export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, event: SE.Event) {
+export function applyEventTeamMutations(ctx: CS.Log, teams: SM.LiveTeams, event: SE.Event) {
 	const log = ctx.log
 	switch (event.type) {
 		case 'NEW_GAME':
@@ -588,32 +588,27 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 			// reseeds it. RESET, and legacy NEW_GAME-with-state, replace the roster wholesale.
 			const roster = SE.eventRoster(event)
 			if (!roster) break
-			teams.players.splice(0, teams.players.length, ...roster.players)
-			teams.squads.splice(0, teams.squads.length, ...roster.squads)
-			teams.squads.sort((a, b) => a.squadId - b.squadId)
+			teams.players.clear()
+			for (const player of roster.players) teams.players.set(SM.PlayerIds.getPlayerId(player.ids), player)
+			teams.squads.clear()
+			for (const squad of roster.squads) teams.squads.set(squad.uniqueId, squad)
 			break
 		}
 
 		case 'SQUAD_CREATED': {
-			const existingSquad = teams.squads.find((s) => s.uniqueId === event.squad.uniqueId)
-			if (existingSquad) {
+			if (teams.squads.has(event.squad.uniqueId)) {
 				log.warn(`Squad %s already exists`, event.squad.uniqueId)
 				break
 			}
 			const squad: SM.UniqueSquad = event.squad
-			const insertIndex = teams.squads.findIndex((s) => s.squadId > squad.squadId)
-			if (insertIndex === -1) {
-				teams.squads.push(squad)
-			} else {
-				teams.squads.splice(insertIndex, 0, squad)
-			}
+			teams.squads.set(squad.uniqueId, squad)
 			// a synthesized event carries no creation-time membership info; the join/promote events reconciled from
 			// the same poll establish it instead
 			if (event.synthesized) break
 			// the squad is tracked even when the creator can't be resolved (they may have already left) -- refusing to
 			// track it would deadlock poll reconciliation on the unknown squad. We just can't establish membership.
-			const creatorIndex = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.squad.creator)
-			if (creatorIndex === -1) {
+			const creator = teams.players.get(event.squad.creator)
+			if (!creator) {
 				log.warn(
 					`Squad ${SM.Squads.printKey(squad)} "${event.squad.squadName}" created by unknown player ${SM.PlayerIds.prettyPrint(
 						squad.creator,
@@ -621,138 +616,126 @@ export function applyEventTeamMutations(ctx: CS.Log, teams: SM.UniqueTeams, even
 				)
 				break
 			}
-			const creator = teams.players[creatorIndex]
 			if (creator.teamId !== squad.teamId) {
 				log.warn(
 					`Creator ${SM.PlayerIds.prettyPrint(creator.ids)} is not in the same team as the squad they created ${SM.Squads.printKey(squad)}`,
 				)
 				break
 			}
-			teams.players[creatorIndex] = { ...creator, isLeader: true, squadId: squad.squadId }
+			teams.players.set(event.squad.creator, { ...creator, isLeader: true, squadId: squad.squadId })
 			break
 		}
 
 		case 'PLAYER_CHANGED_TEAM': {
-			const index = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const player = teams.players.get(event.player)
+			if (!player) {
 				log.warn('Player not found for team change: %s', event.player)
 				break
 			}
-			teams.players[index] = { ...teams.players[index], teamId: event.newTeamId }
+			teams.players.set(event.player, { ...player, teamId: event.newTeamId })
 			break
 		}
 
 		case 'PLAYER_JOINED_SQUAD': {
-			const playerIndex = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player)
-			if (playerIndex === -1) {
+			const player = teams.players.get(event.player)
+			if (!player) {
 				log.warn('Player not found for squad join: %s', event.player)
 				break
 			}
-			const squad = teams.squads.find((s) => s.uniqueId === event.uniqueId)
+			const squad = teams.squads.get(event.uniqueId)
 			if (!squad) {
 				log.warn('Squad not found for squad join: %s', event.uniqueId)
 				break
 			}
-			teams.players[playerIndex] = { ...teams.players[playerIndex], squadId: squad.squadId, isLeader: false }
+			teams.players.set(event.player, { ...player, squadId: squad.squadId, isLeader: false })
 			break
 		}
 
 		case 'PLAYER_LEFT_SQUAD': {
-			const index = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const player = teams.players.get(event.player)
+			if (!player) {
 				log.warn('Player not found for squad leave: %s', event.player)
 				break
 			}
-			teams.players[index] = { ...teams.players[index], squadId: null, isLeader: false }
+			teams.players.set(event.player, { ...player, squadId: null, isLeader: false })
 			break
 		}
 
 		case 'PLAYER_PROMOTED_TO_LEADER': {
-			const playerIndex = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player)
-			if (playerIndex === -1) {
+			const promotedPlayer = teams.players.get(event.player)
+			if (!promotedPlayer) {
 				log.warn('Player not found for promotion: %s', event.player)
 				break
 			}
-			const promotedPlayer = teams.players[playerIndex]
 			if (!promotedPlayer.squadId) {
 				log.warn('Player has no squad for promotion: %s', event.player)
 				break
 			}
-			for (let i = 0; i < teams.players.length; i++) {
-				const p = teams.players[i]
+			for (const [id, p] of teams.players) {
 				if (!SM.Squads.idsEqual(p, promotedPlayer)) continue
-				const isNewLeader = i === playerIndex
+				const isNewLeader = id === event.player
 				if (p.isLeader === isNewLeader) continue
-				teams.players[i] = { ...p, isLeader: isNewLeader }
+				teams.players.set(id, { ...p, isLeader: isNewLeader })
 			}
 			break
 		}
 
 		case 'SQUAD_DISBANDED': {
-			const squadIndex = teams.squads.findIndex((s) => s.uniqueId === event.uniqueId)
-			if (squadIndex === -1) {
+			if (!teams.squads.delete(event.uniqueId)) {
 				log.warn('Squad not found for disband: %s', event.uniqueId)
-				break
 			}
-			teams.squads.splice(squadIndex, 1)
 			break
 		}
 
 		case 'PLAYER_DETAILS_CHANGED': {
-			const index = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			const player = teams.players.get(event.player)
+			if (!player) {
 				log.warn('Player not found for details change: %s', event.player)
 				break
 			}
-			const player = teams.players[index]
-			teams.players[index] = {
+			teams.players.set(event.player, {
 				...player,
 				...event.details,
 				ids: { ...player.ids, username: event.newUsername ?? player.ids.username },
-			}
+			})
 			break
 		}
 
 		case 'SQUAD_DETAILS_CHANGED': {
-			const index = teams.squads.findIndex((s) => s.uniqueId === event.uniqueId)
-			if (index === -1) {
+			const squad = teams.squads.get(event.uniqueId)
+			if (!squad) {
 				log.warn('Squad not found for details change: %s', event.uniqueId)
 				break
 			}
-			teams.squads[index] = { ...teams.squads[index], ...event.details }
+			teams.squads.set(event.uniqueId, { ...squad, ...event.details })
 			break
 		}
 
 		case 'SQUAD_RENAMED': {
-			const index = teams.squads.findIndex((s) => s.uniqueId === event.uniqueId)
-			if (index === -1) {
+			const squad = teams.squads.get(event.uniqueId)
+			if (!squad) {
 				log.warn('Squad not found for rename: %s', event.uniqueId)
 				break
 			}
-			teams.squads[index] = { ...teams.squads[index], squadName: event.newSquadName }
+			teams.squads.set(event.uniqueId, { ...squad, squadName: event.newSquadName })
 			break
 		}
 
 		case 'PLAYER_CONNECTED':
 		// PLAYER_RECONCILED is a roster backfill (from the teams poll) and mutates the roster identically to a connect.
 		case 'PLAYER_RECONCILED': {
-			const existingPlayerIndex = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player.ids)
-			if (existingPlayerIndex !== -1) {
+			const playerId = SM.PlayerIds.getPlayerId(event.player.ids)
+			if (teams.players.has(playerId)) {
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player.ids)} ${event.type} but was already in the player list`)
-				teams.players[existingPlayerIndex] = event.player
-			} else {
-				teams.players.push(event.player)
 			}
+			teams.players.set(playerId, event.player)
 			break
 		}
 
 		case 'PLAYER_DISCONNECTED': {
-			const index = SM.PlayerIds.indexOf(teams.players, (p) => p.ids, event.player)
-			if (index === -1) {
+			if (!teams.players.delete(event.player)) {
 				log.warn(`Player ${SM.PlayerIds.prettyPrint(event.player)} disconnected but was not found in the player list`)
-				break
 			}
-			teams.players.splice(index, 1)
 			break
 		}
 	}
@@ -867,7 +850,8 @@ async function* processPendingEvent(
 		yield await createEvent(state, {
 			type: 'RESET',
 			matchId: state.currentMatch.historyEntryId,
-			state: teams,
+			// the roster crosses into the event in its array form, which is what the db and the wire carry
+			state: SM.fromLiveTeams(teams),
 			time: pendingEvent.time,
 			source: state.isFirstConnection ? 'slm-started' : 'rcon-reconnected',
 		})
@@ -897,7 +881,8 @@ async function* processPendingEvent(
 			type: 'RESET',
 			time: pendingEvent.time,
 			matchId: state.currentMatch.historyEntryId,
-			state: teams,
+			// the roster crosses into the event in its array form, which is what the db and the wire carry
+			state: SM.fromLiveTeams(teams),
 			source: 'server-roll',
 		})
 		state.syncState = { type: 'synced' }
@@ -1151,7 +1136,7 @@ async function* processPendingEvent(
 
 		case 'PLAYER_WARNED': {
 			// the RCON acknowledgement only echoes the display name
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds, { inexact: true })
+			const player = SM.PlayerIds.find([...state.currTeams.players.values()], (p) => p.ids, pendingEvent.playerIds, { inexact: true })
 			if (!player) {
 				log.error('Player not found in currTeams: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
@@ -1204,7 +1189,7 @@ async function* processPendingEvent(
 			// took in first, not a second arrival. Happens whenever the log stream is delayed past the poll that
 			// carried them -- most visibly across a roll, where the RESET absorbs everyone who connected during
 			// the loading screen and the connect line can land after it.
-			if (SM.PlayerIds.indexOf(state.currTeams.players, (p) => p.ids, player.ids) !== -1) {
+			if (state.currTeams.players.has(SM.PlayerIds.getPlayerId(player.ids))) {
 				log.debug('Dropping PLAYER_CONNECTED for %s: already in the roster', SM.PlayerIds.prettyPrint(player.ids))
 				break
 			}
@@ -1249,10 +1234,10 @@ async function* processPendingEvent(
 				locked: false,
 			}
 
-			const player = SM.PlayerIds.find(state.currTeams?.players, (p) => p.ids, pendingEvent.creatorIds)
-			const existingSquad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, squad))
+			const player = state.currTeams?.players.get(SM.PlayerIds.getPlayerId(pendingEvent.creatorIds))
+			const existingSquad = SM.findSquadForPlayer(state.currTeams.squads, squad)
 			if (existingSquad) {
-				for (const player of state.currTeams.players) {
+				for (const player of state.currTeams.players.values()) {
 					if (!SM.Squads.idsEqual(player, squad)) continue
 					yield await createEvent(state, {
 						type: 'PLAYER_LEFT_SQUAD',
@@ -1273,7 +1258,7 @@ async function* processPendingEvent(
 
 			if (player) {
 				if (player.squadId && (!existingSquad || !SM.Squads.idsEqual(player, existingSquad))) {
-					const playerSquad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, player))
+					const playerSquad = SM.findSquadForPlayer(state.currTeams.squads, player)
 					if (playerSquad) {
 						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, playerSquad.uniqueId)
 					} else {
@@ -1314,10 +1299,10 @@ async function* processPendingEvent(
 
 		case 'PLAYER_DISCONNECTED': {
 			if (!state.currTeams) break
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds)
+			const player = state.currTeams.players.get(SM.PlayerIds.getPlayerId(pendingEvent.playerIds))
 			if (player) {
 				if (player.squadId) {
-					const squad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, player))
+					const squad = SM.findSquadForPlayer(state.currTeams.squads, player)
 					if (squad) {
 						yield* emitLeaveSquadEvents(state as StateWithCurrentMatchAndPlayers, pendingEvent.time, player, squad.uniqueId)
 					} else {
@@ -1337,7 +1322,7 @@ async function* processPendingEvent(
 		}
 
 		case 'SQUAD_RENAMED': {
-			const squad = state.currTeams.squads.find((s) => s.squadId === pendingEvent.squadId && s.teamId === pendingEvent.teamId)
+			const squad = SM.findSquadForPlayer(state.currTeams.squads, { squadId: pendingEvent.squadId, teamId: pendingEvent.teamId })
 			if (!squad) {
 				log.error('SQUAD_RENAMED: squad not found for squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
 				break
@@ -1362,12 +1347,12 @@ async function* processPendingEvent(
 		}
 
 		case 'ADMIN_DISBANDED_SQUAD': {
-			const squad = state.currTeams.squads.find((s) => s.squadId === pendingEvent.squadId && s.teamId === pendingEvent.teamId)
+			const squad = SM.findSquadForPlayer(state.currTeams.squads, { squadId: pendingEvent.squadId, teamId: pendingEvent.teamId })
 			if (!squad) {
 				log.warn('Disband for unknown squad: squadId=%d, teamId=%d', pendingEvent.squadId, pendingEvent.teamId)
 				break
 			}
-			for (const player of state.currTeams.players) {
+			for (const player of state.currTeams.players.values()) {
 				if (!SM.Squads.idsEqual(player, squad)) continue
 				yield await createEvent(state, {
 					type: 'PLAYER_LEFT_SQUAD',
@@ -1390,7 +1375,7 @@ async function* processPendingEvent(
 		case 'ADMIN_REMOVED_FROM_SQUAD': {
 			// the log only carries a display name, so resolution is by username; if it's ambiguous/unknown we skip and
 			// let the teams poll reconcile the leave organically (without attribution)
-			const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds, { inexact: true })
+			const player = SM.PlayerIds.find([...state.currTeams.players.values()], (p) => p.ids, pendingEvent.playerIds, { inexact: true })
 			if (!player) {
 				log.warn('Remove from squad for unknown player: %s', SM.PlayerIds.prettyPrint(pendingEvent.playerIds))
 				break
@@ -1399,7 +1384,7 @@ async function* processPendingEvent(
 				log.warn('Remove from squad for player not in a squad: %s', SM.PlayerIds.prettyPrint(player.ids))
 				break
 			}
-			const squad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, player))
+			const squad = SM.findSquadForPlayer(state.currTeams.squads, player)
 			if (!squad) {
 				log.warn("Remove from squad but player's squad not found in currTeams: %s", SM.PlayerIds.prettyPrint(player.ids))
 				break
@@ -1429,7 +1414,11 @@ async function* processPendingEvent(
 		case 'PLAYER_WOUNDED': {
 			// the log identifies the victim by display name only, which can carry a clan tag the RCON roster name
 			// lacks, so a loose unique match is the only way to resolve them
-			const victim = SM.PlayerIds.findByUsernameLoose(state.currTeams.players, (p) => p.ids, pendingEvent.victimIds.username)
+			const victim = SM.PlayerIds.findByUsernameLoose(
+				[...state.currTeams.players.values()],
+				(p) => p.ids,
+				pendingEvent.victimIds.username,
+			)
 			if (victim) {
 				log.debug(
 					'resolved %s victim "%s" -> %s',
@@ -1438,7 +1427,7 @@ async function* processPendingEvent(
 					SM.PlayerIds.prettyPrint(victim.ids),
 				)
 			}
-			const attacker = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.attackerIds)
+			const attacker = state.currTeams.players.get(SM.PlayerIds.getPlayerId(pendingEvent.attackerIds))
 			if (!victim || !attacker) {
 				const missing: string[] = []
 				if (!victim) missing.push(`victim: ${SM.PlayerIds.prettyPrint(pendingEvent.victimIds)}`)
@@ -1474,7 +1463,7 @@ async function* processPendingEvent(
 			if (pendingEvent.channelType === 'ChatAdmin' || pendingEvent.channelType === 'ChatAll') {
 				channel = { type: pendingEvent.channelType }
 			} else if (pendingEvent.channelType === 'ChatTeam' || pendingEvent.channelType === 'ChatSquad') {
-				const player = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, pendingEvent.playerIds)
+				const player = state.currTeams.players.get(SM.PlayerIds.getPlayerId(pendingEvent.playerIds))
 				if (!player) {
 					log.error(`player ${SM.PlayerIds.prettyPrint(pendingEvent.playerIds)} not found`)
 					break
@@ -1504,7 +1493,7 @@ async function* processPendingEvent(
 
 			if (channel.type === 'ChatSquad') {
 				const squadChannel = channel
-				const squad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, squadChannel))
+				const squad = SM.findSquadForPlayer(state.currTeams.squads, squadChannel)
 				if (squad) channel = { ...squadChannel, uniqueId: squad.uniqueId }
 			}
 
@@ -1555,9 +1544,12 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	// roll) -> PLAYER_CONNECTED. Squad/leader state is then established by the reconciliation loops below.
 	const prevUnassigned = state.unassignedPlayers
 	const nextUnassigned = new Set<SM.PlayerId>()
+	// the poll's roster as a set, so the REMOVE loop below is a lookup per player rather than a scan per player
+	const polledIds = new Set<SM.PlayerId>()
+	for (const player of nextTeams.players) polledIds.add(SM.PlayerIds.getPlayerId(player.ids))
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
-		const known = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, nextPlayer.ids)
+		const known = state.currTeams.players.get(playerId)
 		const inCurrTeams = !!known
 		if (nextPlayer.teamId == null) {
 			if (!inCurrTeams) nextUnassigned.add(playerId)
@@ -1600,9 +1592,9 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 
 	// REMOVE: a player in currTeams absent from the poll has a missed disconnect. Debounce across polls
 	// (POLL_ABSENCE_CULL_THRESHOLD) so a single dropped/partial poll never evicts a still-connected player.
-	for (const player of state.currTeams.players) {
+	for (const player of state.currTeams.players.values()) {
 		const playerId = SM.PlayerIds.getPlayerId(player.ids)
-		if (SM.PlayerIds.find(nextTeams.players, (p) => p.ids, player.ids)) {
+		if (polledIds.has(playerId)) {
 			state.pollAbsenceStreaks.delete(playerId)
 			continue
 		}
@@ -1627,7 +1619,13 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	const currentUnknownSquadKeys = new Set<string>()
 	let awaitingSquadCreated = false
 	for (const squad of nextTeams.squads) {
-		const prevSquad = state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, squad) && s.creator === squad.creator)
+		let prevSquad: SM.UniqueSquad | undefined
+		for (const candidate of state.currTeams.squads.values()) {
+			if (SM.Squads.idsEqual(candidate, squad) && candidate.creator === squad.creator) {
+				prevSquad = candidate
+				break
+			}
+		}
 		if (prevSquad) {
 			nextSquads.push({
 				...squad,
@@ -1668,11 +1666,10 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
-		const currPlayer = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, nextPlayer.ids)
+		const currPlayer = state.currTeams.players.get(playerId)
 		const squad = nextPlayer.squadId && nextSquads.find((s) => SM.Squads.idsEqual(s, nextPlayer))
 		const currSquad =
-			currPlayer?.squadId &&
-			state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, { squadId: currPlayer.squadId, teamId: currPlayer.teamId }))
+			currPlayer?.squadId && SM.findSquadForPlayer(state.currTeams.squads, { squadId: currPlayer.squadId, teamId: currPlayer.teamId })
 
 		if (currSquad && (!squad || currSquad.uniqueId !== squad.uniqueId)) {
 			// currPlayer.squadId = null
@@ -1687,7 +1684,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 	}
 
 	const disbandedSquads = new Set<number>()
-	for (const currSquad of state.currTeams.squads) {
+	for (const currSquad of state.currTeams.squads.values()) {
 		const nextSquad = nextSquads.find((s) => s.uniqueId === currSquad.uniqueId)
 		if (!nextSquad) {
 			disbandedSquads.add(currSquad.uniqueId)
@@ -1715,7 +1712,7 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 
 	for (const nextPlayer of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(nextPlayer.ids)
-		const currPlayer = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, nextPlayer.ids)
+		const currPlayer = state.currTeams.players.get(playerId)
 
 		if (currPlayer && nextPlayer.teamId !== currPlayer.teamId) {
 			emittedEvent = true
@@ -1732,10 +1729,10 @@ async function* reconcileTeamsUpdate(state: State, event: TeamsUpdateEvent): Asy
 
 	for (const player of nextTeams.players) {
 		const playerId = SM.PlayerIds.getPlayerId(player.ids)
-		const prevPlayer = SM.PlayerIds.find(state.currTeams.players, (p) => p.ids, player.ids)
+		const prevPlayer = state.currTeams.players.get(playerId)
 		const squad = (player.squadId && nextSquads.find((s) => SM.Squads.idsEqual(s, player))) || undefined
 
-		let prevSquad = (prevPlayer?.squadId && state.currTeams.squads.find((s) => SM.Squads.idsEqual(s, prevPlayer))) || undefined
+		let prevSquad = (prevPlayer?.squadId && SM.findSquadForPlayer(state.currTeams.squads, prevPlayer)) || undefined
 
 		if (squad) {
 			const hasChangedSquad = squad.uniqueId !== prevSquad?.uniqueId
@@ -1807,7 +1804,7 @@ async function* emitLeaveSquadEvents(
 			source,
 		})
 		const otherPlayers: SM.Player[] = []
-		for (const otherPlayer of state.currTeams.players) {
+		for (const otherPlayer of state.currTeams.players.values()) {
 			if (SM.Squads.idsEqual(otherPlayer, player) && !SM.PlayerIds.match(player.ids, otherPlayer.ids)) {
 				otherPlayers.push(otherPlayer)
 			}
@@ -1838,20 +1835,28 @@ async function* emitLeaveSquadEvents(
 // `prior` (when available) carries identity across a reseed that RCON polls can't provide: usernameNoTag gathered
 // from join logs, and, for a same-match reseed (RCON blip), squad uniqueIds -- so a reconnect doesn't make every
 // squad look recreated.
-function initUniqueTeams(state: State, teams: SM.Teams, prior?: { teams: SM.UniqueTeams; sameMatch: boolean }) {
-	const players = teams.players.map((p) => {
-		const prev = prior && SM.PlayerIds.find(prior.teams.players, (pp) => pp.ids, p.ids)
+function initUniqueTeams(state: State, teams: SM.Teams, prior?: { teams: SM.LiveTeams; sameMatch: boolean }): SM.LiveTeams {
+	const players = new Map<SM.PlayerId, SM.Player>()
+	for (const player of teams.players) {
+		const id = SM.PlayerIds.getPlayerId(player.ids)
+		const prev = prior?.teams.players.get(id)
 		// only trust the cached name-derived id if the username is unchanged
-		if (!prev?.ids.usernameNoTag || prev.ids.username !== p.ids.username) return p
-		return { ...p, ids: { usernameNoTag: prev.ids.usernameNoTag, ...p.ids } }
-	})
-	const uniqueSquads: SM.UniqueSquad[] = teams.squads.map((s) => {
-		const prev = prior?.sameMatch ? prior.teams.squads.find((ps) => SM.Squads.idsEqual(ps, s) && ps.creator === s.creator) : undefined
-		return {
-			...Obj.deepClone(s),
-			uniqueId: prev?.uniqueId ?? Gen.next(state.counters.squadId),
+		if (!prev?.ids.usernameNoTag || prev.ids.username !== player.ids.username) players.set(id, player)
+		else players.set(id, { ...player, ids: { usernameNoTag: prev.ids.usernameNoTag, ...player.ids } })
+	}
+	const squads = new Map<number, SM.UniqueSquad>()
+	for (const squad of teams.squads) {
+		let prev: SM.UniqueSquad | undefined
+		if (prior?.sameMatch) {
+			for (const candidate of prior.teams.squads.values()) {
+				if (SM.Squads.idsEqual(candidate, squad) && candidate.creator === squad.creator) {
+					prev = candidate
+					break
+				}
+			}
 		}
-	})
-	const uniqueTeams: SM.UniqueTeams = { ...teams, players, squads: Obj.deepClone(uniqueSquads) }
-	return uniqueTeams
+		const uniqueId = prev?.uniqueId ?? Gen.next(state.counters.squadId)
+		squads.set(uniqueId, { ...Obj.deepClone(squad), uniqueId })
+	}
+	return { players, squads }
 }

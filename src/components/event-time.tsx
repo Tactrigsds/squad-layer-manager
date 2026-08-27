@@ -1,6 +1,7 @@
-import * as dateFns from 'date-fns'
+import React from 'react'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import * as Atoms from './feed/atoms'
+import { useDomContent } from './feed/dom-content'
 
 interface EventTimeProps {
 	time: number
@@ -8,14 +9,6 @@ interface EventTimeProps {
 }
 
 export function EventTime({ time }: EventTimeProps) {
-	const formattedTime = dateFns.format(time, 'HH:mm')
-
-	return (
-		<Tooltip>
-			<TooltipTrigger className="shrink-0">
-				<span className="text-muted-foreground font-mono text-xs">{formattedTime}</span>
-			</TooltipTrigger>
-			<TooltipContent>{dateFns.format(time, 'yyyy-MM-dd HH:mm:ss zzz')}</TooltipContent>
-		</Tooltip>
-	)
+	const ref = useDomContent<HTMLSpanElement>(React.useMemo(() => Atoms.eventTime(time), [time]))
+	return <span ref={ref} className="contents" />
 }

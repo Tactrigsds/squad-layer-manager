@@ -8,7 +8,7 @@ export const CtxDef = CD.defCtx<Ctx>()(['matchEventsCache'], { name: 'matchEvent
 
 export namespace Ctx {
 	export type Payload = {
-		// matchId -> enriched events
-		events: LRUMap<number, Promise<CHAT.EventEnriched[]>>
+		// matchId -> its raw feed events, server events with app events interleaved
+		events: LRUMap<number, Promise<CHAT.Event[]>>
 	}
 }

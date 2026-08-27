@@ -533,7 +533,8 @@ export const orpcRouter = {
 			const ctx = ctxRes.ctx
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:manage-players', { serverId: ctx.serverId }))
 			if (denyRes) return denyRes
-			const squad = getCurrTeams(ctx)?.squads.find((s) => s.teamId === input.teamId && s.squadId === input.squadId)
+			const currTeams = getCurrTeams(ctx)
+			const squad = currTeams && SM.findSquadForPlayer(currTeams.squads, { squadId: input.squadId, teamId: input.teamId })
 			const reasonRes = resolveReasonInput('disband-squad', input, squad ? { squadName: squad.squadName } : undefined)
 			if (reasonRes.code !== 'ok') return reasonRes
 			await disbandSquadAction(ctx, input.teamId, input.squadId, { type: 'slm-user', userId: ctx.user.discordId }, reasonRes.applied)
@@ -1175,8 +1176,8 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 					if (!settings.enabled) return
 					const players = getCurrTeams(ctx)?.players
 					if (!players) return
-					const attacker = SM.PlayerIds.find(players, (p) => p.ids, e.attacker)
-					const victim = SM.PlayerIds.find(players, (p) => p.ids, e.victim)
+					const attacker = players.get(e.attacker)
+					const victim = players.get(e.victim)
 					if (!attacker || !victim) return
 					const rendered = Templating.renderTemplate(settings.template, {
 						attacker: attacker.ids.username,
@@ -1471,9 +1472,11 @@ export async function disbandSquadAction(
 ) {
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
 	const teams = getCurrTeams(ctx)
-	const squad = teams?.squads.find((s) => s.teamId === teamId && s.squadId === squadId)
-	const members =
-		teams?.players.filter((p) => p.teamId === teamId && p.squadId === squadId).map((p) => SM.PlayerIds.getPlayerId(p.ids)) ?? []
+	const squad = teams && SM.findSquadForPlayer(teams.squads, { squadId, teamId })
+	const members: SM.PlayerId[] = []
+	for (const [id, player] of teams?.players ?? []) {
+		if (player.teamId === teamId && player.squadId === squadId) members.push(id)
+	}
 	const appEvent = AppEvents.create<AppEvents.SquadDisbanded>({
 		type: 'SQUAD_DISBANDED',
 		actor,
@@ -1629,7 +1632,8 @@ export async function renameSquadAction(
 	actor: AppEvents.Actor,
 ) {
 	const currentMatch = await MatchHistory.getCurrentMatch(ctx)
-	const squad = getCurrTeams(ctx)?.squads.find((s) => s.teamId === teamId && s.squadId === squadId)
+	const renameTeams = getCurrTeams(ctx)
+	const squad = renameTeams && SM.findSquadForPlayer(renameTeams.squads, { squadId, teamId })
 	const appEvent = AppEvents.create<AppEvents.SquadRenamed>({
 		type: 'SQUAD_RENAMED',
 		actor,
@@ -1704,7 +1708,8 @@ export function actorFromUser(ctx: SQS.Ctx, source: USR.GuiOrChatUserId | 'autos
 	if (!source || source === 'autostart') return { type: 'system' }
 	if (source.discordId) return { type: 'slm-user', userId: source.discordId }
 	if (source.steamId) {
-		const player = SM.PlayerIds.find(getCurrTeams(ctx)?.players ?? [], (p) => p.ids, { steam: source.steamId })
+		// by steam id, which the roster is not keyed on -- one of the few lookups that still has to scan
+		const player = SM.PlayerIds.find([...(getCurrTeams(ctx)?.players.values() ?? [])], (p) => p.ids, { steam: source.steamId })
 		if (player) return { type: 'ingame-user', playerId: SM.PlayerIds.getPlayerId(player.ids) }
 	}
 	return { type: 'system' }

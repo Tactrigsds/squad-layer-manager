@@ -723,12 +723,16 @@ describe('toRecentPlayer', () => {
 		expect(recent.isAdmin).toBe(true)
 	})
 
-	it('copies admin groups rather than aliasing them', () => {
-		const groups = ['Admins']
-		const recent = SM.toRecentPlayer({ ids: { eos: 'e1', playerController: 'c', username: 'u' }, isAdmin: true, adminGroups: groups })
-		expect(recent.adminGroups).toEqual(['Admins'])
-		groups.push('Whitelist')
-		expect(recent.adminGroups).toEqual(['Admins'])
+	// recordRecentPlayer skips the write when the poll reported nothing new, which it decides by reference. That only
+	// works while toRecentPlayer hands the same objects back rather than copying them.
+	it('keeps the fields it carries over by reference, so an unchanged player compares equal', () => {
+		const player = {
+			ids: { eos: 'e1', playerController: 'c', username: 'u' },
+			isAdmin: true,
+			adminGroups: ['Admins'],
+		} satisfies SM.RecentPlayer
+		expect(SM.recentPlayerUnchanged(SM.toRecentPlayer(player), SM.toRecentPlayer(player))).toBe(true)
+		expect(SM.recentPlayerUnchanged(SM.toRecentPlayer(player), SM.toRecentPlayer({ ...player, isAdmin: false }))).toBe(false)
 	})
 })
 

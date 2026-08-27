@@ -199,7 +199,7 @@ export namespace Sel {
 	// mirrors the server's admin-target rule so the warn boxes can default their "notify admins" toggle to match
 	export function allTargetsAreAdmins(targets: Iterable<SM.PlayerId>) {
 		return (s: State) => {
-			const players = ChatPrt.Sel.chatState(s).players
+			const players = ChatPrt.Sel.players(s)
 			let any = false
 			for (const target of targets) {
 				any = true
@@ -319,7 +319,7 @@ export namespace Actions {
 	// off the panel state, which the search input only writes debounced.
 	export function selectSearchMatches(stores: KeyProp, searchQuery: string) {
 		if (!searchQuery.trim()) return
-		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 		const matched = TeamsPanelPrt.matchPlayersBySearch(players, searchQuery)
 		selectPlayers(
 			stores,
@@ -334,7 +334,7 @@ export namespace Actions {
 	}
 
 	export function selectSquad(stores: KeyProp, playerId: SM.PlayerId) {
-		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 		const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
 		if (!player?.squadId || !player.teamId) return
 		const squadIds = players
@@ -345,7 +345,7 @@ export namespace Actions {
 
 	// teamId (raw): when given, only players on that team are selected
 	export function selectAllAdmins(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
 			players.filter((p) => p.isAdmin && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -356,7 +356,7 @@ export namespace Actions {
 		const chatState = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
-			chatState.players
+			ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 				.filter((p) => chatState.adminCamPlayerIds.includes(SM.PlayerIds.getPlayerId(p.ids)) && (teamId == null || p.teamId === teamId))
 				.map((p) => SM.PlayerIds.getPlayerId(p.ids)),
 		)
@@ -367,7 +367,7 @@ export namespace Actions {
 	}
 
 	export function selectAllWithRole(stores: KeyProp, role: string, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
 			players.filter((p) => p.role === role && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -375,7 +375,7 @@ export namespace Actions {
 	}
 
 	export function selectAllSquadLeaders(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
 			players.filter((p) => p.isLeader && (teamId == null || p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -383,7 +383,7 @@ export namespace Actions {
 	}
 
 	export function selectAllTeamPlayers(stores: KeyProp, teamId?: SM.TeamId) {
-		const players = ChatPrt.Sel.chatState(Zus.getState(stores.squadServer!)).players
+		const players = ChatPrt.Sel.players(Zus.getState(stores.squadServer!))
 		selectPlayers(
 			stores,
 			players.filter((p) => (teamId == null ? p.teamId !== null : p.teamId === teamId)).map((p) => SM.PlayerIds.getPlayerId(p.ids)),
@@ -403,7 +403,7 @@ export namespace Actions {
 	export function invertSelection(stores: KeyProp, teamId?: SM.TeamId) {
 		const s = store(stores)
 		const state = s.getState()
-		const players = ChatPrt.Sel.chatState(state).players
+		const players = ChatPrt.Sel.players(state)
 		const current = state.playerSelection
 		const visible = visiblePlayerSet(state)
 		// without a teamId every on-team player flips and stale entries are dropped; but hidden players

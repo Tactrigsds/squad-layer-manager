@@ -143,7 +143,7 @@ export namespace Sel {
 		RSel.createDeepSelector(
 			[
 				(...[store]: BreakdownInputs) => ChatPrt.Sel.selectedMatchOrdinal(store),
-				(...[store]: BreakdownInputs) => ChatPrt.Sel.chatState(store).players,
+				(...[store]: BreakdownInputs) => ChatPrt.Sel.players(store),
 				attribution(historicalEvents),
 				(...[, , , , bmData]: BreakdownInputs) => bmData,
 				(...[, , , , , bmStore]: BreakdownInputs) => bmStore.slsOnly,

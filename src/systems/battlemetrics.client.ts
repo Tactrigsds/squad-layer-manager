@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
+import React from 'react'
 
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
@@ -69,22 +70,36 @@ export function usePlayerProfile(playerId: string) {
 	return profile
 }
 
-// the color of the group this player falls into under the active grouping, or null when nothing matches. The roster
+// The color of the group a player falls into under the active grouping, or null when nothing matches. The roster
 // entry is passed in rather than looked up here: what it carries is per-server (the admin list a server recognises,
-// the name it saw them under) and this hook has no server.
-export function usePlayerGroupColor(playerId: string, player: PG.PlayerFactsSource | undefined): string | null {
-	const flags = usePlayerFlags(playerId)
+// the name it saw them under) and this has no server.
+//
+// The resolver form is for a caller colouring many players at once -- the activity feed names hundreds -- which
+// would otherwise be one subscription to the whole bm stream per name.
+export function useGroupColorResolver(): (playerId: string, player: PG.PlayerFactsSource | undefined) => string | null {
+	const bmData = usePlayerBmData()
 	const orgFlags = useOrgFlags()
 	const config = Zus.useStore(SettingsClient.PublicSettingsStore)
 	const playerGroupings = config?.playerGroupings
 	const groupingIds = playerGroupings ? PG.getGroupingIds(playerGroupings) : []
 	const activeGroupingId = Zus.useStore(Store, Sel.activeGroupingId(groupingIds))
 
-	if (!playerGroupings || activeGroupingId === null || !player) return null
-	const grouping = playerGroupings[activeGroupingId]
-	if (!grouping) return null
-	const group = PG.resolveGroup(grouping, PG.playerFacts(player, flags ?? []))
-	return group === undefined ? null : PG.getGroupColor(grouping, group, orgFlags)
+	return React.useCallback(
+		(playerId, player) => {
+			if (!playerGroupings || activeGroupingId === null || !player) return null
+			const grouping = playerGroupings[activeGroupingId]
+			if (!grouping) return null
+			const flagIds = bmData[playerId]?.flagIds
+			const flags = flagIds && orgFlags ? BM.resolveFlags(flagIds, orgFlags) : []
+			const group = PG.resolveGroup(grouping, PG.playerFacts(player, flags))
+			return group === undefined ? null : PG.getGroupColor(grouping, group, orgFlags)
+		},
+		[bmData, orgFlags, playerGroupings, activeGroupingId],
+	)
+}
+
+export function usePlayerGroupColor(playerId: string, player: PG.PlayerFactsSource | undefined): string | null {
+	return useGroupColorResolver()(playerId, player)
 }
 
 export function setup() {

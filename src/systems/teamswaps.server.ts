@@ -136,7 +136,7 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ManagedServerCleanup) {
 						if (executedAt >= e.time) return
 
 						for (const [playerId, { toTeam }] of state.pendingSwaps.entries()) {
-							const player = SM.PlayerIds.find(players, (p) => p.ids, playerId)
+							const player = players.get(playerId)
 							if (!player || player.teamId === null) continue
 							if (MH.getNormedTeamId(player.teamId, match.ordinal) !== toTeam) return
 						}
@@ -673,7 +673,7 @@ const dispatchOp = Instr.spanOp(
 							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
 							const layerRes = L.parseLayerId(currentMatch.layerId)
 							const layer = 'layer' in layerRes ? layerRes.layer : null
-							const currPlayers = SquadServer.getCurrTeams(ctx)?.players ?? []
+							const currPlayers = [...(SquadServer.getCurrTeams(ctx)?.players.values() ?? [])]
 							const groups = (playerIds: SM.PlayerId[], swaps: TSW.TeamswapCollection) =>
 								buildSwapGroups(playerIds, swaps, currPlayers, layer, currentMatch.ordinal)
 							// the players this save changed are named; the queue it left behind is only counted, so a long

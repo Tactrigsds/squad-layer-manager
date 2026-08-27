@@ -45,8 +45,9 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { CopyIdButton } from './copy-id-button'
+import { ServerEvent } from './feed/server-event'
+import { useRenderCtx } from './feed/use-render-ctx'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
-import { ServerEvent } from './server-event'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
@@ -87,6 +88,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 })
 
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
+	const feedCtx = useRenderCtx(stores)
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
 	const { data } = useQuery(
@@ -123,10 +125,10 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 
 	// pages arrive most-recent-match first; reverse to interleave chronologically ahead of the live current-match events.
 	// gated on the request rather than on the data, so hovering the button warms the cache without the feed jumping.
-	const historicalEvents = (historyRequested ? (eventsQuery.data?.pages ?? []) : [])
-		.slice()
-		.reverse()
-		.flatMap((p) => RPC.selectLoaded(p)?.events ?? [])
+	const historicalEvents = React.useMemo(
+		() => (historyRequested ? (eventsQuery.data?.pages ?? []) : []).slice().reverse().flatMap(decodePageEvents),
+		[historyRequested, eventsQuery.data?.pages],
+	)
 	const allEvents = [...historicalEvents, ...currentMatchEvents]
 	// while the player is connected we render their full details; once they aren't, only what a RecentPlayer carries
 	// (their ids, and that they're an admin) is still true of them, so team/squad/role drop off rather than going stale.
@@ -139,7 +141,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 	const elapsed = useElapsed(connectionStatus?.status === 'online' ? connectionStatus.connectedSince : null)
 	const isOnline = !!livePlayer
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
-	const filteredEvents = allEvents.filter((e) => CHAT.isRenderableInFeed(e) && CHAT.showEventInFeed(e, filterState))
+	const filteredEvents = allEvents.filter((e) => CHAT.showEventInFeed(e, filterState))
 	const { scrollAreaRef, contentRef, showScrollButton, isAtTop, scrollToBottom, anchorForPrepend } = useTailingScroll()
 	const { setIsPinned } = useDraggableWindow()
 	const aboveChatZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
@@ -271,7 +273,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							{filteredEvents.map((e, i) => (
 								<React.Fragment key={e.id}>
 									<EventSeparator time={e.time} prevTime={i > 0 ? filteredEvents[i - 1].time : null} />
-									<ServerEvent event={e} stores={stores} />
+									<ServerEvent event={e} ctx={feedCtx} stores={stores} />
 								</React.Fragment>
 							))}
 						</div>
@@ -478,6 +480,22 @@ function useElapsed(since: number | null): string | null {
 // date+time header before the first event, a date line whenever we cross a day boundary, and a "picked up N later"
 // marker for any gap larger than this threshold within the same day.
 const TIME_JUMP_THRESHOLD_MS = 15 * 60 * 1000
+
+type PlayerEventsPage = Awaited<ReturnType<typeof RPC.orpc.matchHistory.getPlayerEvents.call>>
+
+// Cached on the page object because fetching another page re-derives the whole list, and a page's events never
+// change once fetched.
+const decodedPages = new WeakMap<object, CHAT.EventEnriched[]>()
+function decodePageEvents(page: PlayerEventsPage): CHAT.EventEnriched[] {
+	const loaded = RPC.selectLoaded(page)
+	if (!loaded) return []
+	let events = decodedPages.get(loaded)
+	if (!events) {
+		events = CHAT.Wire.decode(loaded.events)
+		decodedPages.set(loaded, events)
+	}
+	return events
+}
 
 function playerEventsInfiniteOptions(serverId: string, playerId: string) {
 	return RPC.orpc.matchHistory.getPlayerEvents.infiniteOptions({

@@ -1579,7 +1579,7 @@ function TeamsAfterSwap(props: { leftTeam: MH.NormedTeamId; rightTeam: MH.Normed
 			const counts: Record<MH.NormedTeamId, number> = { A: 0, B: 0 }
 			if (!currentMatch) return counts
 			const editedSwaps = TSWClient.Sel.localState(frameState).editedSwaps
-			const players = ChatPrt.Sel.chatState(frameState).players
+			const players = ChatPrt.Sel.players(frameState)
 			for (const player of players) {
 				if (player.teamId === null) continue
 				const playerId = SM.PlayerIds.getPlayerId(player.ids)

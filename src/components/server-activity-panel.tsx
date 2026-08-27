@@ -4,9 +4,9 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import EventFilterSelect from '@/components/event-filter-select'
+import { FeedList } from '@/components/feed/feed-list'
 import HistoricalTeamsView from '@/components/historical-teams-view'
 import ServerChatBox from '@/components/server-chat-box'
-import { ServerEvent } from '@/components/server-event'
 import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -23,7 +23,6 @@ import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.ts'
-import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -125,10 +124,7 @@ function ServerChatEvents(props: {
 							{tr.text(CHAT_Msgs.noEventsYet(selectedMatchOrdinal === null ? 'current' : 'historical'))}
 						</div>
 					)}
-					{props.filteredEvents &&
-						props.filteredEvents.map((event: CHAT.EventEnriched) => (
-							<ServerEvent key={event.id} event={event} stores={props.stores} />
-						))}
+					<FeedList events={props.filteredEvents} stores={props.stores} />
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST' ? (
@@ -167,7 +163,7 @@ function ServerCounts(props: { stores: SquadServerFrame.KeyProp }) {
 	const serverId = props.stores.squadServer!.serverId
 	const serverInfoStatusRes = SquadServerClient.useServerInfoRes(serverId)
 	const playerCount = Zus.useStore(props.stores.squadServer!, (s) =>
-		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.length : null,
+		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.size : null,
 	)
 	const tickRate = SquadServerClient.useTickRate(serverId)
 	const tickRateThresholds = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.tickRateThresholds)
@@ -230,15 +226,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	// Fetch historical events when viewing a past match
-	const historicalEventsQuery = useQuery({
-		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
-		queryFn: async () => {
-			if (selectedMatchOrdinal === null) return null
-			return RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal })) ?? null
-		},
-		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
-		staleTime: Infinity,
-	})
+	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(serverId, selectedMatchOrdinal))
 
 	// Reset to current match when a new match starts
 	const prevCurrentMatchId = React.useRef<number | undefined>(undefined)
