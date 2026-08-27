@@ -4,9 +4,9 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import EventFilterSelect from '@/components/event-filter-select'
+import { FeedList } from '@/components/feed/feed-list'
 import HistoricalTeamsView from '@/components/historical-teams-view'
 import ServerChatBox from '@/components/server-chat-box'
-import { ServerEvent } from '@/components/server-event'
 import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -115,17 +115,7 @@ function ServerChatEvents(props: {
 			)}
 			<ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
 				{/* it's important that the only things which can significantly resize the scrollarea are in this container, otherwise the autoscroll will break */}
-				{/*
-				  A past match mounts hundreds of rows and only ~30 are ever on screen. content-visibility lets the browser
-				  skip style, layout and paint for the rest until they scroll into view; every row stays mounted and in the
-				  dom, so find-in-page and the find bar still reach them. The intrinsic size is the measured median row,
-				  and `auto` makes the browser keep each row's real height once it has been rendered once, so the scroll
-				  height stops being an estimate as the feed is read.
-				*/}
-				<div
-					ref={eventsContainerRef}
-					className="flex flex-col gap-0.5 pr-4 min-h-0 w-full [&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
-				>
+				<div ref={eventsContainerRef} className="flex flex-col gap-0.5 pr-4 min-h-0 w-full">
 					{noPlayersSelected && (
 						<div className="text-muted-foreground text-sm text-center py-8">{tr.text(CHAT_Msgs.noPlayersSelected())}</div>
 					)}
@@ -134,10 +124,7 @@ function ServerChatEvents(props: {
 							{tr.text(CHAT_Msgs.noEventsYet(selectedMatchOrdinal === null ? 'current' : 'historical'))}
 						</div>
 					)}
-					{props.filteredEvents &&
-						props.filteredEvents.map((event: CHAT.EventEnriched) => (
-							<ServerEvent key={event.id} event={event} stores={props.stores} />
-						))}
+					<FeedList events={props.filteredEvents} stores={props.stores} />
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST' ? (
@@ -364,12 +351,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		),
 	)
 
-	// A past match arrives as ~600 rows at once, and a default-priority update does not time-slice, so react
-	// renders all of them in one uninterruptible block. Deferring puts that render on a transition lane, where it
-	// yields to input between rows. The live feed is deliberately not deferred: it grows a row at a time, and a
-	// transition restarts whenever the state behind it moves, which on a busy server is constantly.
-	const deferredHistoricalEvents = React.useDeferredValue(filteredEvents)
-	const finalFilteredEvents = selectedMatchOrdinal !== null ? deferredHistoricalEvents : liveFilteredEvents
+	const finalFilteredEvents = selectedMatchOrdinal !== null ? filteredEvents : liveFilteredEvents
 
 	const canGoPrevious = React.useMemo(() => {
 		if (!recentMatches.length) return false

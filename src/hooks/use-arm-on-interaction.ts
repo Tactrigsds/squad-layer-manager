@@ -12,9 +12,8 @@ export type ArmProps = {
 /**
  * Holds back an overlay's machinery until the user first interacts with its trigger.
  *
- * A radix root costs a provider, a state and a handful of listeners. That is free once and ruinous across the
- * activity feed, which mounts one per row and one per player mention for interactions almost none of them will
- * ever see: the 628-row feed spent 193ms of its 292ms render on tooltip and context-menu roots nobody opened.
+ * A radix root costs a provider, a state and a handful of listeners. That is free once and ruinous across a long
+ * list that hangs one off every row for an interaction almost none of them will ever see.
  *
  * Nothing arms on a press. Swapping the placeholder for the real thing remounts the subtree under it, so a press
  * that armed would lose the click it was going to become, and a trigger can wrap a button. A mouse enters an

@@ -45,8 +45,9 @@ import * as TimeoutsClient from '@/systems/timeouts.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { CopyIdButton } from './copy-id-button'
+import { ServerEvent } from './feed/server-event'
+import { useRenderCtx } from './feed/use-render-ctx'
 import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
-import { ServerEvent } from './server-event'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
@@ -87,6 +88,7 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 })
 
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
+	const feedCtx = useRenderCtx(stores)
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
 	const { data } = useQuery(
@@ -271,7 +273,7 @@ function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
 							{filteredEvents.map((e, i) => (
 								<React.Fragment key={e.id}>
 									<EventSeparator time={e.time} prevTime={i > 0 ? filteredEvents[i - 1].time : null} />
-									<ServerEvent event={e} stores={stores} />
+									<ServerEvent event={e} ctx={feedCtx} stores={stores} />
 								</React.Fragment>
 							))}
 						</div>
