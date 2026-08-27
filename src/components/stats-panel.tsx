@@ -15,9 +15,8 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as MH_Msgs from '@/messages/match-history.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
-import * as CHAT from '@/models/chat.models'
+import type * as CHAT from '@/models/chat.models'
 import * as StatsModels from '@/models/stats-panel.models'
-import * as RPC from '@/orpc.client'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
@@ -30,17 +29,7 @@ export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp }) 
 	const serverId = squadServer.serverId
 	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
 
-	const historicalEventsQuery = useQuery({
-		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
-		queryFn: async () => {
-			if (selectedMatchOrdinal === null) return null
-			const res = RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal }))
-			// decoded here rather than at the read, so the query cache holds events the renderer can use directly
-			return res ? { ...res, events: CHAT.Wire.decode(res.events) } : null
-		},
-		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
-		staleTime: Infinity,
-	})
+	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(serverId, selectedMatchOrdinal))
 	const historicalEvents = historicalEventsQuery.data?.events ?? null
 
 	const hasData = Zus.useStore_Susp(
