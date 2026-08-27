@@ -18,21 +18,28 @@ export function setup() {
 	log = module.getLogger()
 }
 
-// Enriched events embed a player object per event, so a busy match costs single-digit MB of heap. Keep only
-// enough for the windows the UI actually pages through back-to-back; anything older is re-read from the db.
+// Raw events are what the cache holds, so a match costs roughly its rows rather than the enriched form's embedded
+// player per event. Keep only enough for the windows the UI pages through back-to-back; anything older is re-read.
 export const MAX_CACHED_MATCHES = 3
 
 export function initMatchEventsCacheContext(): MEC.Ctx.Payload {
 	return { events: new LRUMap(MAX_CACHED_MATCHES) }
 }
 
-export const getEventsForMatches = Instr.spanOp(
-	'getEventsForMatches',
+/**
+ * A match's feed events in the same form the live chat stream sends: raw server events with the app events SLM
+ * recorded against that match interleaved, ready to be replayed into enriched entries.
+ *
+ * Cached per match and shared between callers, so nothing may write through an entry. Replay does not: interpolation
+ * copies the event it enriches, and the types it passes through untouched are never mutated afterwards.
+ */
+export const getFeedEventsForMatches = Instr.spanOp(
+	'getFeedEventsForMatches',
 	{ module, levels: { event: 'trace' } },
 	async (ctx: C.Db & MEC.Ctx & CS.AbortSignal, ..._matches: number[]) => {
 		const matches = _matches.toSorted((a, b) => a - b)
 
-		const ops = new Map<number, Promise<CHAT.EventEnriched[]>>()
+		const ops = new Map<number, Promise<CHAT.Event[]>>()
 		const uncached: number[] = []
 		for (const matchId of matches) {
 			const cachedEvents$ = ctx.matchEventsCache.events.get(matchId)
@@ -52,7 +59,6 @@ export const getEventsForMatches = Instr.spanOp(
 					.where(E.inArray(Schema.serverEvents.matchId, uncached))
 					.orderBy(E.asc(Schema.serverEvents.id))
 
-				// the same events the live feed holds for the current match, so a past match reads like the present one:
 				// SLM's own actions are entries in their own right, and the server events they caused collapse under them.
 				// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
 				const rawAppEvents = await ctx
@@ -84,14 +90,10 @@ export const getEventsForMatches = Instr.spanOp(
 				}
 				if (dropped > 0) log.warn('dropped %d unparseable app-event row(s) from the match feed', dropped)
 
-				const eventsByMatch = new Map<number, CHAT.EventEnriched[]>()
+				const eventsByMatch = new Map<number, CHAT.Event[]>()
 				for (const matchId of uncached) {
-					const state = CHAT.getInitialChatState()
 					const serverEvents = SE.fromEventRows({ ...ctx, log }, rowsByMatch.get(matchId) ?? [])
-					for (const event of CHAT.mergeAppEvents(serverEvents, appEventsByMatch.get(matchId) ?? [])) {
-						CHAT.handleEvent(state, event)
-					}
-					eventsByMatch.set(matchId, state.eventBuffer)
+					eventsByMatch.set(matchId, CHAT.mergeAppEvents(serverEvents, appEventsByMatch.get(matchId) ?? []))
 				}
 				return eventsByMatch
 			})()
@@ -111,7 +113,30 @@ export const getEventsForMatches = Instr.spanOp(
 			}
 		}
 
-		const allEvents = (await Promise.all(matches.map((matchId) => ops.get(matchId)!))).flat()
-		return allEvents
+		return new Map(await Promise.all(matches.map(async (matchId) => [matchId, await ops.get(matchId)!] as const)))
+	},
+)
+
+/**
+ * The enriched feed for each match, replayed here rather than on the client.
+ *
+ * Only for readers that hand back a filtered slice of a match rather than the whole of it -- a slice cannot be
+ * replayed, so whoever receives one cannot enrich it themselves. Everything that ships a whole match sends the raw
+ * events and lets the client replay them.
+ *
+ * Each match replays from an empty roster, so its entries never resolve against another match's players.
+ */
+export const getEnrichedEventsForMatches = Instr.spanOp(
+	'getEnrichedEventsForMatches',
+	{ module, levels: { event: 'trace' } },
+	async (ctx: C.Db & MEC.Ctx & CS.AbortSignal, ..._matches: number[]) => {
+		const byMatch = await getFeedEventsForMatches(ctx, ..._matches)
+		const enriched: CHAT.EventEnriched[] = []
+		for (const events of byMatch.values()) {
+			const state = CHAT.getInitialChatState()
+			for (const event of events) CHAT.handleEvent(state, event)
+			enriched.push(...state.eventBuffer)
+		}
+		return enriched
 	},
 )

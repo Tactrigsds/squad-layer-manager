@@ -23,7 +23,6 @@ import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.ts'
-import * as RPC from '@/orpc.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -230,17 +229,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	// Fetch historical events when viewing a past match
-	const historicalEventsQuery = useQuery({
-		queryKey: [...RPC.orpc.matchHistory.getMatchEvents.key(), selectedMatchOrdinal],
-		queryFn: async () => {
-			if (selectedMatchOrdinal === null) return null
-			const res = RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal: selectedMatchOrdinal }))
-			// decoded here rather than at the read, so the query cache holds events the renderer can use directly
-			return res ? { ...res, events: CHAT.Wire.decode(res.events) } : null
-		},
-		enabled: selectedMatchOrdinal !== null && selectedMatchOrdinal !== undefined,
-		staleTime: Infinity,
-	})
+	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(serverId, selectedMatchOrdinal))
 
 	// Reset to current match when a new match starts
 	const prevCurrentMatchId = React.useRef<number | undefined>(undefined)
