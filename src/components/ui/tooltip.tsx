@@ -1,20 +1,16 @@
 import * as PopoverPrimitive from '@radix-ui/react-popover'
-import { Slot } from '@radix-ui/react-slot'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import * as React from 'react'
 
-import { type ArmedBy, type ArmProps, composeArm, useArmOnInteraction, useReplayArming } from '@/hooks/use-arm-on-interaction'
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { cn } from '@/lib/utils'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 
 const TooltipProvider = TooltipPrimitive.Provider
 
-// `arm` is non-null exactly while the tooltip is still deferred, and carries the handlers that wake it.
+// Context to share mobile state and ensure consistent behavior across all tooltip components
 const TooltipMobileContext = React.createContext<{
 	isMobile: boolean
-	arm: ArmProps | null
-	armedBy: ArmedBy
 } | null>(null)
 
 const useTooltipMobile = () => {
@@ -33,11 +29,6 @@ const useTooltipMobile = () => {
  * - Mobile: Uses popover behavior (tap to open, tap elsewhere or button again to close)
  *
  * This ensures better mobile UX since tooltips are difficult to interact with on touch devices.
- *
- * Nothing below is mounted until the trigger is first hovered, focused or pressed, so a list that hangs a tooltip
- * off every row pays for the ones that get opened rather than the ones that get rendered. Everything a deferred
- * tooltip would otherwise cost lives in ArmedTooltip, including `useIsMobile`, which registers a resize listener
- * per instance. See `useArmOnInteraction`.
  */
 const Tooltip = ({
 	children,
@@ -45,37 +36,28 @@ const Tooltip = ({
 }: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root> & {
 	children: React.ReactNode
 }) => {
-	// a caller driving `open` itself has already decided this tooltip matters, and would never see our arming events
-	const [armed, armProps, armedBy] = useArmOnInteraction(props.open !== undefined || props.defaultOpen !== undefined)
-	const deferred = React.useMemo(() => ({ isMobile: false, arm: armProps, armedBy: null }), [armProps])
-
-	if (!armed) return <TooltipMobileContext.Provider value={deferred}>{children}</TooltipMobileContext.Provider>
-	return (
-		<ArmedTooltip armedBy={armedBy} {...props}>
-			{children}
-		</ArmedTooltip>
-	)
-}
-Tooltip.displayName = 'Tooltip'
-
-const ArmedTooltip = ({
-	children,
-	armedBy,
-	...props
-}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Root> & {
-	children: React.ReactNode
-	armedBy: ArmedBy
-}) => {
 	const isMobile = useIsMobile()
-	const contextValue = React.useMemo(() => ({ isMobile, arm: null, armedBy }), [isMobile, armedBy])
-	const Root = isMobile ? PopoverPrimitive.Root : TooltipPrimitive.Root
 
+	// Provide mobile state to all child components via context
+	const contextValue = React.useMemo(() => ({ isMobile }), [isMobile])
+
+	// On mobile devices, use Popover which supports tap-to-open/close behavior
+	if (isMobile) {
+		return (
+			<TooltipMobileContext.Provider value={contextValue}>
+				<PopoverPrimitive.Root {...props}>{children}</PopoverPrimitive.Root>
+			</TooltipMobileContext.Provider>
+		)
+	}
+
+	// On desktop, use standard Tooltip with hover behavior
 	return (
 		<TooltipMobileContext.Provider value={contextValue}>
-			<Root {...props}>{children}</Root>
+			<TooltipPrimitive.Root {...props}>{children}</TooltipPrimitive.Root>
 		</TooltipMobileContext.Provider>
 	)
 }
+Tooltip.displayName = 'Tooltip'
 
 /**
  * Enhanced TooltipTrigger that adapts trigger behavior:
@@ -86,60 +68,17 @@ const TooltipTrigger = React.forwardRef<
 	React.ElementRef<typeof TooltipPrimitive.Trigger>,
 	React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
 >(({ ...props }, ref) => {
-	const { isMobile, arm, armedBy } = useTooltipMobile()
-
-	// Stand in for whichever primitive will render here. Both render a button, or the child under asChild, so the
-	// tree keeps its shape, and arming swaps the real handlers in underneath the pointer that is already there.
-	if (arm) {
-		const { asChild, ...rest } = props
-		const Comp = asChild ? Slot : 'button'
-		return (
-			<Comp
-				ref={ref}
-				data-state="closed"
-				{...(asChild ? {} : { type: 'button' as const })}
-				{...rest}
-				onPointerEnter={props.onPointerEnter ? composeArm(props.onPointerEnter, arm.onPointerEnter) : arm.onPointerEnter}
-				onClick={props.onClick ? composeArm(props.onClick, arm.onClick) : arm.onClick}
-				onFocus={props.onFocus ? composeArm(props.onFocus, arm.onFocus) : arm.onFocus}
-			/>
-		)
-	}
-
-	return <ArmedTooltipTrigger isMobile={isMobile} armedBy={armedBy} forwardedRef={ref} {...props} />
-})
-TooltipTrigger.displayName = 'TooltipTrigger'
-
-function ArmedTooltipTrigger({
-	isMobile,
-	armedBy,
-	forwardedRef,
-	...props
-}: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
-	isMobile: boolean
-	armedBy: ArmedBy
-	forwardedRef: React.Ref<React.ElementRef<typeof TooltipPrimitive.Trigger>>
-}) {
-	const ref = useReplayArming(armedBy, forwardedRef)
+	const { isMobile } = useTooltipMobile()
 
 	// On mobile, use PopoverTrigger which handles click-to-toggle
-	if (isMobile) return <PopoverPrimitive.Trigger ref={ref} {...props} />
+	if (isMobile) {
+		return <PopoverPrimitive.Trigger ref={ref} {...props} />
+	}
 
 	// On desktop, use standard TooltipTrigger with hover behavior
 	return <TooltipPrimitive.Trigger ref={ref} {...props} />
-}
-
-const TooltipContent = React.forwardRef<
-	React.ElementRef<typeof TooltipPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content> & {
-		sideOffset?: number
-	}
->((props, ref) => {
-	// nothing to portal into before the root exists, and the hooks below are not worth paying for until there is
-	if (useTooltipMobile().arm) return null
-	return <ArmedTooltipContent ref={ref} {...props} />
 })
-TooltipContent.displayName = 'TooltipContent'
+TooltipTrigger.displayName = 'TooltipTrigger'
 
 /**
  * Enhanced TooltipContent that adapts content presentation:
@@ -148,7 +87,7 @@ TooltipContent.displayName = 'TooltipContent'
  *
  * Mobile popovers are more prominent since they require explicit user interaction.
  */
-const ArmedTooltipContent = React.forwardRef<
+const TooltipContent = React.forwardRef<
 	React.ElementRef<typeof TooltipPrimitive.Content>,
 	React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content> & {
 		sideOffset?: number
@@ -197,6 +136,6 @@ const ArmedTooltipContent = React.forwardRef<
 		</TooltipPrimitive.Portal>
 	)
 })
-ArmedTooltipContent.displayName = 'ArmedTooltipContent'
+TooltipContent.displayName = 'TooltipContent'
 
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }
