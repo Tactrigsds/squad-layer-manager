@@ -1,23 +1,24 @@
-import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { getTeamsDisplay } from '@/components/teams-display.tsx'
-import * as Obj from '@/lib/object-utils'
-import { isNullOrUndef } from '@/lib/type-guards.ts'
-import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
-import * as L_Msgs from '@/messages/layer.messages'
 import * as L from '@/models/layer'
-import * as LQY from '@/models/layer-queries.models.ts'
+import type * as LQY from '@/models/layer-queries.models.ts'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
-import { tr } from '@/systems/messages.client'
 
+import * as Atoms from './feed/atoms'
+import { useDomContent } from './feed/dom-content'
 import LayerInfoDialog from './layer-info'
-import MapLayerDisplay from './map-layer-display.tsx'
 
 void import('./layer-info')
 
+/**
+ * A layer's name, broken into its parts.
+ *
+ * The parts are built by Atoms.shortLayerNameContent, which the activity feed uses directly. What stays here is the
+ * host element: it takes a forwarded ref (the queue's rows make it a drop target) and the layer-info affordance,
+ * neither of which survives `display:contents`.
+ */
 export default function ShortLayerName({
 	layerId,
 	teamParity,
@@ -38,92 +39,32 @@ export default function ShortLayerName({
 	normalized?: boolean
 	tourId?: string
 	className?: string
-	ref?: React.Ref<HTMLDivElement>
+	ref?: React.Ref<HTMLSpanElement>
 }) {
 	const allowShowInfo = _allowShowInfo ?? true
-	const backfilledStyle = 'text-gray-500'
-
-	const globalSettings = Zus.useStore(GlobalSettingsStore)
-	const partialLayer = Obj.trimUndefined(L.toLayer(layerId))
-	let backfillLayer: Partial<L.KnownLayer> | undefined
-	if (backfillLayerId) {
-		backfillLayer = L.toLayer(backfillLayerId)
-	}
-
-	const extraStyles = React.useMemo(() => {
-		let violatedFieldDescriptors: Map<keyof L.KnownLayer, LQY.MatchDescriptor> = new Map()
-		if (matchDescriptors && !isNullOrUndef(teamParity)) {
-			violatedFieldDescriptors = LQY.resolveRepeatedFieldToDescriptorMap(matchDescriptors, teamParity)
-		}
-		const combineStyles = (prop: keyof typeof partialLayer) => {
-			const styles: string[] = []
-
-			// Add backfilled style if applicable
-			if (!partialLayer[prop] && !!backfillLayer?.[prop]) {
-				styles.push(backfilledStyle)
-			}
-
-			// Add violation style if applicable
-			if (violatedFieldDescriptors.has(prop)) {
-				styles.push(Typo.ConstraintViolationDescriptor)
-			}
-
-			return styles.length > 0 ? styles.join(' ') : undefined
-		}
-
-		const extraStyles: Record<keyof L.KnownLayer, string | undefined> = {
-			id: undefined,
-			Layer: combineStyles('Layer'),
-			Size: combineStyles('Size'),
-			Map: combineStyles('Map'),
-			Gamemode: combineStyles('Gamemode'),
-			LayerVersion: combineStyles('LayerVersion'),
-			Faction_1: combineStyles('Faction_1'),
-			Unit_1: combineStyles('Unit_1'),
-			Alliance_1: combineStyles('Alliance_1'),
-			Faction_2: combineStyles('Faction_2'),
-			Unit_2: combineStyles('Unit_2'),
-			Alliance_2: combineStyles('Alliance_2'),
-			Collection: combineStyles('Collection'),
-		}
-		return extraStyles
-	}, [partialLayer, backfillLayer, matchDescriptors, teamParity])
-
-	const backfilledLayer = React.useMemo(() => ({ ...(backfillLayer ?? {}), ...partialLayer }), [backfillLayer, partialLayer])
-
-	if (!partialLayer.Layer) return layerId.slice('RAW:'.length)
-
-	let leftTeamElt: React.ReactNode | undefined
-	let rightTeamElt: React.ReactNode | undefined
-
-	if (backfilledLayer.Faction_1 && backfilledLayer.Faction_2) {
-		;[leftTeamElt, rightTeamElt] = getTeamsDisplay(
-			backfilledLayer,
-			teamParity ?? 0,
-			normalized ?? globalSettings.displayTeamsNormalized,
-			extraStyles,
-		)
-	}
-	// flex-wrap so a long "Map_Gamemode_v1 . FactionA vs FactionB" can break across lines in a narrow
-	// container; each segment stays intact because it carries its own nowrap
-	const content = (
-		<span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={ref}>
-			{backfilledLayer.Layer && <MapLayerDisplay layer={backfilledLayer.Layer} extraLayerStyles={extraStyles} />}
-			{backfilledLayer.Faction_1 && backfilledLayer.Faction_2 && (
-				<>
-					<Icons.Dot className="self-center" width={20} height={20} />
-					{leftTeamElt}
-					<span className="mx-1">{tr.text(L_Msgs.versus())}</span>
-					{rightTeamElt}
-				</>
-			)}
-		</span>
+	const globalNormalized = Zus.useStore(GlobalSettingsStore, (s) => s.displayTeamsNormalized)
+	const content = React.useMemo(
+		() =>
+			Atoms.shortLayerNameContent({
+				layerId,
+				teamParity,
+				backfillLayerId,
+				matchDescriptors,
+				normalized: normalized ?? globalNormalized,
+			}),
+		[layerId, teamParity, backfillLayerId, matchDescriptors, normalized, globalNormalized],
 	)
-	if (!allowShowInfo || !L.isKnownLayer(layerId)) return content
+	const hostRef = useDomContent<HTMLSpanElement>(content, ref)
+
+	// an unparseable layer id is its own display, with nothing to break into parts and nothing to look up
+	if (typeof content === 'string') return content
+
+	const host = <span data-tour={tourId} className={cn('inline-flex flex-wrap items-baseline', className)} ref={hostRef} />
+	if (!allowShowInfo || !L.isKnownLayer(layerId)) return host
 	return (
 		<LayerInfoDialog layerId={layerId}>
 			<button type="button" className="text-primary underline-offset-4 [&:hover>span]:underline">
-				{content}
+				{host}
 			</button>
 		</LayerInfoDialog>
 	)

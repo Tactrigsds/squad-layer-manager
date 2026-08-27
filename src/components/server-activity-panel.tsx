@@ -4,9 +4,9 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import EventFilterSelect from '@/components/event-filter-select'
+import { FeedList } from '@/components/feed/feed-list'
 import HistoricalTeamsView from '@/components/historical-teams-view'
 import ServerChatBox from '@/components/server-chat-box'
-import { ServerEvent } from '@/components/server-event'
 import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -124,10 +124,7 @@ function ServerChatEvents(props: {
 							{tr.text(CHAT_Msgs.noEventsYet(selectedMatchOrdinal === null ? 'current' : 'historical'))}
 						</div>
 					)}
-					{props.filteredEvents &&
-						props.filteredEvents.map((event: CHAT.EventEnriched) => (
-							<ServerEvent key={event.id} event={event} stores={props.stores} />
-						))}
+					<FeedList events={props.filteredEvents} stores={props.stores} />
 					{connectionError && (
 						<div className="flex gap-2 py-1 text-destructive">
 							{connectionError.code === 'CONNECTION_LOST' ? (

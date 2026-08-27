@@ -31,7 +31,8 @@ import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 
-import { ServerEvent } from './server-event'
+import { ServerEvent } from './feed/server-event'
+import { useRenderCtx } from './feed/use-render-ctx'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
 import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
@@ -70,6 +71,7 @@ DraggableWindowStore.getState().registerDefinition<SquadDetailsWindowProps, unkn
 })
 
 function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) {
+	const feedCtx = useRenderCtx(stores)
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
@@ -215,7 +217,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 									</div>
 								)}
 								{allEvents.map((e) => (
-									<ServerEvent key={e.id} event={e} stores={stores} />
+									<ServerEvent key={e.id} event={e} ctx={feedCtx} stores={stores} />
 								))}
 							</div>
 						</ScrollArea>

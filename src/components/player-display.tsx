@@ -1,22 +1,12 @@
-import { ContextMenu } from '@radix-ui/react-context-menu'
-import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { MatchTeamDisplay } from '@/components/teams-display'
-import * as SquadServerFrame from '@/frames/squad-server.frame'
-import { cn } from '@/lib/utils'
-import * as SM_Msgs from '@/messages/squad.messages'
-import { WINDOW_ID } from '@/models/draggable-windows.models'
-import * as SM from '@/models/squad.models'
-import { usePlayerGroupColor } from '@/systems/battlemetrics.client'
-import { tr } from '@/systems/messages.client'
+import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import type * as SM from '@/models/squad.models'
 
-import PlayerContextMenuOptions from './player-context-menu-options'
-import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
-import { ContextMenuContent, ContextMenuTrigger } from './ui/context-menu'
-import { OpenWindowInteraction } from './ui/draggable-window'
-
-void import('@/components/player-details-window')
+import * as Atoms from './feed/atoms'
+import { useDomContent } from './feed/dom-content'
+import { SCOPE_ATTR } from './feed/render-context'
+import { useRenderCtx } from './feed/use-render-ctx'
 
 export interface PlayerDisplayProps {
 	player: SM.Player
@@ -27,98 +17,25 @@ export interface PlayerDisplayProps {
 	// only the team display needs it, so a caller showing neither team nor squad can omit it
 	matchId?: number
 	stores: SquadServerFrame.KeyProp
-	// when true, the name doesn't mount its own context menu so an enclosing one (e.g. the teams-panel
-	// row's bulk-aware menu) handles the right-click instead
+	// when true, the name doesn't offer a context menu so an enclosing one (e.g. the teams-panel row's bulk-aware
+	// menu) handles the right-click instead
 	disableContextMenu?: boolean
 }
 
-function PlayerButton({
-	username,
-	stores,
-	ref,
-	disableContextMenu,
-	playerId,
-	...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-	username: string
-	playerId: string
-	stores: SquadServerFrame.KeyProp
-	disableContextMenu?: boolean
-	ref?: React.Ref<HTMLButtonElement>
-}) {
-	const button = (
-		<button ref={ref} type="button" className="font-bold hover:underline cursor-pointer" {...props}>
-			{username}
-		</button>
+/**
+ * A player's name, with their badges, team and squad.
+ *
+ * The markup and every interaction on it are Atoms.playerDisplay's; this mounts them. The activity feed builds the
+ * same thing without going through react at all, which is the point -- a feed names hundreds of players, and this
+ * component costs a context menu, a window preloader and a battlemetrics subscription each.
+ */
+export function PlayerDisplay(props: PlayerDisplayProps) {
+	const ctx = useRenderCtx(props.stores)
+	const { player, showTeam, showSquad, showRole, className, matchId, disableContextMenu } = props
+	const node = React.useMemo(
+		() => Atoms.playerDisplay(ctx, { player, showTeam, showSquad, showRole, className, matchId, disableContextMenu }),
+		[ctx, player, showTeam, showSquad, showRole, className, matchId, disableContextMenu],
 	)
-	if (disableContextMenu) return button
-	return (
-		<ContextMenu>
-			<ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
-			<ContextMenuContent>
-				<PlayerContextMenuOptions playerId={playerId} stores={stores} />
-			</ContextMenuContent>
-		</ContextMenu>
-	)
-}
-
-export function PlayerDisplay({
-	player,
-	showTeam,
-	showSquad,
-	showRole,
-	className,
-	matchId,
-	stores,
-	disableContextMenu,
-}: PlayerDisplayProps) {
-	const playerId = SM.PlayerIds.getPlayerId(player.ids)
-	const windowProps: PlayerDetailsWindowProps = { playerId, stores }
-	const groupColor = usePlayerGroupColor(playerId, player)
-
-	return (
-		<span className={cn('inline-flex items-baseline', className)}>
-			{player.isAdmin && (
-				<span
-					title={tr.text(SM_Msgs.adminBadgeHint())}
-					className="inline-block"
-					onClickCapture={(e) => {
-						if (!e.shiftKey) return
-						e.preventDefault()
-						e.stopPropagation()
-						SquadServerFrame.Actions.selectAllAdmins(stores, e.ctrlKey ? undefined : (player.teamId ?? undefined))
-					}}
-				>
-					<Icons.ShieldCheckIcon className="h-[1em] w-[1em] text-background fill-admin" />
-				</span>
-			)}
-			{player.isLeader && (
-				<span title={tr.text(SM_Msgs.squadLeaderBadge())}>
-					<Icons.Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
-				</span>
-			)}
-			<OpenWindowInteraction
-				windowId={WINDOW_ID.enum['player-details']}
-				windowProps={windowProps}
-				preload="intent"
-				render={PlayerButton}
-				username={player.ids.username}
-				playerId={SM.PlayerIds.getPlayerId(player.ids)}
-				stores={stores}
-				disableContextMenu={disableContextMenu}
-				style={groupColor ? { color: groupColor } : undefined}
-			/>
-			{(showTeam && player.teamId !== null && matchId !== undefined) || (showSquad && player.squadId !== null) ? (
-				<span className="inline-flex flex-nowrap">
-					(
-					{showTeam && player.teamId !== null && matchId !== undefined && (
-						<MatchTeamDisplay matchId={matchId} teamId={player.teamId} stores={stores} />
-					)}
-					{showTeam && player.teamId !== null && matchId !== undefined && showSquad && player.squadId !== null && ', '}
-					{showSquad && player.squadId !== null && player.squadId})
-				</span>
-			) : null}
-			{showRole && player.role && <span className="text-muted-foreground text-xs">[{player.role}]</span>}
-		</span>
-	)
+	const ref = useDomContent<HTMLSpanElement>(node)
+	return <span ref={ref} className="contents" {...{ [SCOPE_ATTR]: ctx.scopeId }} />
 }

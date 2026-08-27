@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import React from 'react'
 
+import { DomOverlays } from '@/components/feed/dom-overlays'
 import { ResetOtherSessionsManager } from '@/components/reset-other-sessions-manager'
 import { TourOverlay } from '@/components/tour-overlay'
 import { Toaster } from '@/components/ui/sonner'
@@ -31,7 +32,10 @@ function ProvidersInner(props: { children: ReactNode }) {
 					<Toaster />
 					<ResetOtherSessionsManager />
 					<TourOverlay />
-					<DraggableWindowOutlet outletKey="default">{props.children}</DraggableWindowOutlet>
+					<DraggableWindowOutlet outletKey="default">
+						<DomOverlays />
+						{props.children}
+					</DraggableWindowOutlet>
 				</AlertDialogProvider>
 			</DragContextProvider>
 		</TooltipProvider>
