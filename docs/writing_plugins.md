@@ -18,6 +18,7 @@ only install one you would be willing to run as a fork.
 - [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
+- [Pickers](#pickers)
 - [What you can reach](#what-you-can-reach)
 - [Logging and telemetry](#logging-and-telemetry)
 - [Packing and publishing](#packing-and-publishing)
@@ -383,33 +384,69 @@ A decoration is `{ tint?, title?, body? }`, where tint is `info`, `warn` or `vio
 contribute several to one row, or null for none. A slot that throws is caught by a boundary and a selector that
 throws reads as no decoration, so neither takes the page down.
 
+## Pickers
+
+A config field that stores a filter, a server or a Discord channel id can render as the picker SLM uses for
+one, instead of a text box. Declare it in the schema:
+
+```ts
+import { Fields } from 'slm/plugin/fields'
+
+configSchema: z.object({
+	seedPool: Fields.filterId().describe('Pool the seeding layer is drawn from'),
+	announceIn: Fields.discordChannelId().describe('Where the roll is announced'),
+	onlyOn: Fields.serverIds().describe('Servers this applies to. Empty means all of them.'),
+})
+```
+
+Six of them: `filterId`, `serverId`, `discordChannelId`, and an `Ids` plural of each. The value stored is
+still a plain string or array of strings, so a config written through the YAML editor is unaffected, and an
+id whose target has since been deleted still round-trips rather than being dropped.
+
+The same six are components, for a slot that picks something rather than a setting that stores it:
+
+```tsx
+import { FilterSelect } from 'slm/components/pickers'
+
+;<FilterSelect value={filterId} onChange={setFilterId} />
+```
+
+Each takes `value` and `onChange` (or `values` and `onChange` for the plural), and finds its own options.
+For anything else, `slm/components/combo-box` is what they are built from.
+
 ## What you can reach
 
 `slm/*` is a curated surface, not the whole codebase. `src/plugin-api/api-report.md` lists every export in the
 current build, generated from the source, and each entry's JSDoc says what belongs to the host and is therefore
 absent.
 
-| Entry                                                      | What it is                                  |
-| ---------------------------------------------------------- | ------------------------------------------- |
-| `slm/plugin`                                               | manifests, tables, the ctx types            |
-| `slm/plugin/config`                                        | your config                                 |
-| `slm/plugin/servers`                                       | per-server setup                            |
-| `slm/plugin/rpc.server`, `slm/plugin/rpc.client`           | your own rpc                                |
-| `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                            |
-| `slm/server/instrumentation`                               | `spanOp`, `durableSub`                      |
-| `slm/server/logger`                                        | `childModule`                               |
-| `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management |
-| `slm/systems/layer-queue`                                  | queue reads and edits                       |
-| `slm/systems/match-history`                                | match reads                                 |
-| `slm/systems/filter-entity`                                | filter reads and writes                     |
-| `slm/systems/layer-queries`                                | asking the layer table what matches         |
-| `slm/systems/app-events`                                   | writing to the audit log                    |
-| `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll         |
-| `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers          |
-| `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one          |
-| `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one      |
-| `slm/models/gen-vote`                                      | the choices a drawn vote is made of         |
-| `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages             |
+| Entry                                                      | What it is                                   |
+| ---------------------------------------------------------- | -------------------------------------------- |
+| `slm/plugin`                                               | manifests, tables, the ctx types             |
+| `slm/plugin/config`                                        | your config                                  |
+| `slm/plugin/servers`                                       | per-server setup                             |
+| `slm/plugin/rpc.server`, `slm/plugin/rpc.client`           | your own rpc                                 |
+| `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                             |
+| `slm/plugin/fields`                                        | config fields that render as a picker        |
+| `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
+| `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |
+| `slm/server/logger`                                        | `childModule`                                |
+| `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
+| `slm/systems/squad-server`                                 | the live event stream, and ending a match    |
+| `slm/systems/discord`                                      | posting to a channel                         |
+| `slm/systems/layer-queue`                                  | queue reads and edits                        |
+| `slm/systems/match-history`                                | match reads                                  |
+| `slm/systems/filter-entity`                                | filter reads and writes                      |
+| `slm/systems/layer-queries`                                | asking the layer table what matches          |
+| `slm/systems/app-events`                                   | writing to the audit log                     |
+| `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |
+| `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers           |
+| `slm/models/server-events`, `slm/models/squad`             | event and roster types, for `events$`        |
+| `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one           |
+| `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one       |
+| `slm/models/gen-vote`                                      | the choices a drawn vote is made of          |
+| `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages              |
+| `slm/lib/templating`                                       | rendering the {{var}} templates admins write |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import
 them normally and they resolve to SLM's copies at load time. There has to be exactly one of each in the process,
@@ -539,6 +576,9 @@ You never edit `plugins/builtins.server.ts` or `plugins/builtins.ts`. Those name
 
 `pnpm dev` loads every directory in `plugins/` from source, so your own repo cloned in there runs with nothing to
 register. Enable it once in settings and the choice sticks. From then on you get what host code gets.
+
+Discovery goes two levels, so a repo holding several plugins is cloned in as one directory and each plugin
+inside it is found: `plugins/my-plugins/first/plugin.ts` works as well as `plugins/first/plugin.ts`.
 
 | You edit                                  | What happens                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------- |
