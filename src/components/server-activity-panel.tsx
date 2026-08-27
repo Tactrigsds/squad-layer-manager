@@ -364,7 +364,12 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 		),
 	)
 
-	const finalFilteredEvents = selectedMatchOrdinal !== null ? filteredEvents : liveFilteredEvents
+	// A past match arrives as ~600 rows at once, and a default-priority update does not time-slice, so react
+	// renders all of them in one uninterruptible block. Deferring puts that render on a transition lane, where it
+	// yields to input between rows. The live feed is deliberately not deferred: it grows a row at a time, and a
+	// transition restarts whenever the state behind it moves, which on a busy server is constantly.
+	const deferredHistoricalEvents = React.useDeferredValue(filteredEvents)
+	const finalFilteredEvents = selectedMatchOrdinal !== null ? deferredHistoricalEvents : liveFilteredEvents
 
 	const canGoPrevious = React.useMemo(() => {
 		if (!recentMatches.length) return false
