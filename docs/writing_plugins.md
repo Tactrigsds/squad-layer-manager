@@ -408,6 +408,41 @@ the line sits in the feed like every other one. `icon` is one of `plugin`, `info
 `message` is still what the audit log shows, and what an admin sees while the plugin is stopped, so write it to
 stand on its own. The event's `payload` is yours and is stored as-is, which is why the renderer casts it.
 
+## In-game commands
+
+A plugin can contribute a command admins run from in-game chat. The host owns everything around it: trigger
+matching, the admin/public chat rule, the enabled gate, and the permission check. The handler runs only for a
+caller who was allowed to run it.
+
+```ts
+import * as Commands from 'slm/plugin/commands'
+
+Commands.register(ctx, {
+	name: 'rolltoseed',
+	description: 'Roll to a seeding layer now, without waiting for the criteria.',
+	// unprefixed. The default prefix is attached unless an admin configures the command
+	triggers: ['rolltoseed'],
+	allowedChats: ['admin'],
+	permission: 'squad-server:end-match',
+	handler: async (sctx, input) => {
+		// input.text is everything typed after the trigger; input.player is who typed it
+		return 'Preparing a seed roll.'
+	},
+})
+```
+
+Returned text is warned back to the caller. The handler is given the ctx of whichever server the command was
+typed on, so it reads that server's state without being registered per server.
+
+A plugin command takes the words after its trigger as they were typed: `input.text`, or `input.args` split on
+spaces. The typed arguments core commands declare (players, squads, durations, reasons, and the prompts that
+disambiguate them) are driven by declarations the host can see at compile time, which a plugin's command has
+none of.
+
+Admins retune the triggers and chats under `pluginCommands` in global settings, keyed by the id the commands
+page shows. A command with no entry there runs under what the plugin declared. Every trigger across core and
+plugin commands is one namespace, and core wins: a plugin cannot shadow an existing command.
+
 ## Pickers
 
 A config field that stores a filter, a server or a Discord channel id can render as the picker SLM uses for
@@ -452,6 +487,7 @@ absent.
 | `slm/plugin/rpc.server`, `slm/plugin/rpc.client`           | your own rpc                                 |
 | `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                             |
 | `slm/plugin/events`                                        | rendering your own events in the feed        |
+| `slm/plugin/commands`                                      | in-game commands                             |
 | `slm/plugin/fields`                                        | config fields that render as a picker        |
 | `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
 | `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |

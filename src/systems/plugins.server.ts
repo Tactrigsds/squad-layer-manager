@@ -11,6 +11,7 @@ import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
+import * as CMD from '@/models/command.models'
 import * as CS from '@/models/context-shared'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
@@ -19,6 +20,8 @@ import * as ATTRS from '@/models/otel-attrs'
 import * as PLG from '@/models/plugins.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as SQS from '@/models/squad-server.models'
+import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -119,6 +122,8 @@ type Runtime = {
 	abort: AbortController | null
 	serverSetups: ServerSetupFn[]
 	instances: Map<string, Instance>
+	// in-game commands the plugin contributes, by declared name
+	commands: Map<string, PluginCommand>
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
 	router: AnyRouter | null
 }
@@ -220,6 +225,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		abort: null,
 		serverSetups: [],
 		instances: new Map(),
+		commands: new Map(),
 		router: null,
 	}
 	plugins.set(id, rt)
@@ -457,6 +463,73 @@ export function registerRouter(ctx: Ctx<any>, router: AnyRouter) {
 	ctx.cleanup.push(() => (rt.router = null))
 }
 
+// ---- in-game commands ----
+
+/** What a plugin command's handler is given. `text` is everything after the trigger, `args` the same split on spaces. */
+export type PluginCommandInput = {
+	text: string
+	args: string[]
+	// the player who typed it, always resolved against the live roster
+	player: SM.Player
+	// their SLM account, when their steam id is linked to one
+	userId: USR.UserId | undefined
+}
+
+/** Returned text is warned back to the caller. Nothing means the command said what it had to say by itself. */
+export type PluginCommandHandler = (ctx: ServerCtx<any>, input: PluginCommandInput) => Promise<string | void> | string | void
+
+export type PluginCommand = CMD.PluginCommandDeclaration & { handler: PluginCommandHandler }
+
+/** A plugin's command, as the dispatcher needs it: the declaration plus which plugin owns it. */
+export type RegisteredCommand = { id: string; pluginId: string; decl: CMD.PluginCommandDeclaration }
+
+/**
+ * Contributes an in-game command. The host owns matching, the chat and enabled gates and the permission check, so
+ * the handler runs only for a caller who was allowed to run it. Registered per plugin rather than per server; the
+ * handler is called with the ctx of whichever server it was typed on.
+ */
+export function registerCommand(ctx: Ctx<any>, command: PluginCommand) {
+	const rt = requireRuntime(ctx.plugin.id)
+	if (rt.commands.has(command.name)) throw new Error(`plugin ${ctx.plugin.id}: command '${command.name}' is already registered`)
+	rt.commands.set(command.name, command)
+	ctx.cleanup.push(() => rt.commands.delete(command.name))
+}
+
+/** Every active plugin's commands. Only active plugins: a stopped one's command must not answer. */
+export function commandDeclarations(): RegisteredCommand[] {
+	const out: RegisteredCommand[] = []
+	for (const rt of plugins.values()) {
+		if (rt.status !== 'active') continue
+		for (const command of rt.commands.values()) {
+			out.push({ id: CMD.pluginCommandId(rt.ref.id, command.name), pluginId: rt.ref.id, decl: command })
+		}
+	}
+	return out
+}
+
+/**
+ * Runs a plugin command that has already passed the host's gates. Errors are contained: a plugin throwing here
+ * would otherwise take down the chat handler for every command, not just its own.
+ */
+export async function runCommand(
+	serverCtx: C.Db & C.ManagedServer,
+	id: string,
+	input: PluginCommandInput,
+): Promise<{ code: 'ok'; msg?: string } | { code: 'err:unknown-command' } | { code: 'err:plugin-failed' }> {
+	const found = commandDeclarations().find((c) => c.id === id)
+	if (!found) return { code: 'err:unknown-command' }
+	const rt = requireRuntime(found.pluginId)
+	const command = rt.commands.get(found.decl.name)
+	if (!command) return { code: 'err:unknown-command' }
+	try {
+		const msg = await command.handler(procedureCtx(rt, serverCtx, serverCtx.serverId), input)
+		return { code: 'ok', msg: msg ?? undefined }
+	} catch (err) {
+		rt.log.error(err, "plugin command '%s' failed", command.name)
+		return { code: 'err:plugin-failed' }
+	}
+}
+
 // Resolves a procedure by path against the plugin's router and calls it with a per-server ctx. The
 // same entry point for both transports: what differs is whether the result is awaited or iterated.
 function callProcedure(rt: Runtime, sctx: ServerCtx<any>, path: readonly string[], input: unknown): Promise<unknown> {
@@ -580,6 +653,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		status: rt.status,
 		error: rt.error,
 		hasClient: rt.entry.hasClient,
+		commands: rt.status === 'active' ? [...rt.commands.values()].map(({ handler: _handler, ...decl }) => decl) : [],
 		source: rt.entry.source,
 		sourceUrl: rt.entry.sourceUrl,
 		manifestEntry: rt.entry.manifestEntry,
@@ -595,6 +669,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		status: 'errored',
 		error: pkg.error,
 		hasClient: false,
+		commands: [],
 		source: pkg.source,
 		sourceUrl: pkg.sourceUrl,
 		manifestEntry: null,

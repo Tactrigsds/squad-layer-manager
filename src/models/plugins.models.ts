@@ -1,6 +1,7 @@
 import * as D from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
+import * as CMD from '@/models/command.models'
 import type { MigrationDriver } from '@/server/migrate'
 
 // Plugins are trusted, in-process extensions. A plugin directory under plugins/ holds a side-effect-free
@@ -14,7 +15,7 @@ import type { MigrationDriver } from '@/server/migrate'
  * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
  * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
  */
-export const API_VERSION = { major: 0, minor: 3, patch: 2 }
+export const API_VERSION = { major: 0, minor: 3, patch: 3 }
 
 /** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
 export function formatApiVersion(): string {
@@ -110,6 +111,9 @@ export const RuntimeInfoSchema = z.object({
 	// what put the plugin in 'errored', for the settings UI
 	error: z.string().nullable(),
 	hasClient: z.boolean(),
+	// the in-game commands this plugin contributes, for the commands page. Empty while it is not active, since a
+	// stopped plugin's command does not answer
+	commands: z.array(CMD.PluginCommandInfoSchema).prefault([]),
 	source: SourceSchema,
 	// where a url-installed package was fetched from, and what refresh re-fetches
 	sourceUrl: z.string().nullable(),

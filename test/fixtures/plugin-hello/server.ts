@@ -6,6 +6,7 @@ import * as FB from 'slm/models/filter-builders'
 import * as GV from 'slm/models/gen-vote'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
+import * as Commands from 'slm/plugin/commands'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
@@ -150,6 +151,18 @@ export const router = {
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	activations++
 	Rpc.register(ctx, router)
+
+	// an in-game command, answering with its config and whatever was typed after the trigger, so a test can
+	// tell the handler ran with the right ctx and the right arguments
+	Commands.register(ctx, {
+		name: 'hello',
+		description: 'Says hello back.',
+		triggers: ['hello'],
+		allowedChats: ['admin'],
+		permission: 'squad-server:end-match',
+		usage: '[name]',
+		handler: (sctx, input) => `${PluginConfig.get(sctx).greeting} ${input.text || 'nobody'} on ${sctx.serverId}`,
+	})
 
 	// runs once per managed server: writes a row proving the plugin reached its own table, a core
 	// system (match history) and its config, all through shimmed slm/* imports

@@ -5,6 +5,7 @@ import * as RxExt from 'slm/lib/rxjs-ext'
 import * as Templating from 'slm/lib/templating'
 import * as ZU from 'slm/lib/zod-utils'
 import type * as P from 'slm/plugin'
+import * as Commands from 'slm/plugin/commands'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
@@ -114,6 +115,30 @@ export const router = {
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	Rpc.register(ctx, router)
 
+	// The manual counterpart to the criteria: an admin who can end a match can decide it is seeding time. It
+	// overrides a cancelled or backed-off phase, which are answers to the automatic path, not to a person asking.
+	Commands.register(ctx, {
+		name: 'rolltoseed',
+		description: 'Roll to a seeding layer now, without waiting for the criteria.',
+		triggers: ['rolltoseed'],
+		allowedChats: ['admin'],
+		permission: 'squad-server:end-match',
+		handler: async (sctx) => {
+			const state = servers.get(sctx.serverId)
+			if (!state) return 'The seed roller is not running on this server.'
+			if (state.status.notReady) return state.status.notReady
+			const phase = state.status.phase
+			if (phase.kind === 'armed') return `Already rolling to ${phase.seedLayerId}. Cancel on the SLM dashboard.`
+			if (phase.kind === 'rolling') return 'Already rolling to seed.'
+			const census = await takeCensus(sctx, state)
+			if (!census) return 'Could not read the server roster, so there is nothing to announce the roll with.'
+			// not awaited: arming warns every admin, counts down and then ends the match, which is far longer than
+			// a chat command should hold the handler open for. It reports for itself from there.
+			void arm(sctx, state, census).catch((err: unknown) => sctx.log.error(err, 'manual seed roll failed'))
+			return 'Preparing a seed roll.'
+		},
+	})
+
 	Servers.setup(ctx, (sctx, cleanup) => {
 		const state: ServerState = { activity: Activity.init(), status: { ...INITIAL_STATUS }, arming: null }
 		servers.set(sctx.serverId, state)
@@ -162,10 +187,7 @@ const evaluate = async (ctx: Ctx, state: ServerState) => {
 	const current = await MatchHistory.getCurrentMatch(ctx)
 	const onTrainingLayer = !!current && Roll.isTrainingLayer(current.layerId)
 
-	const teams = await SquadRcon.getTeams(ctx)
-	const roster = teams.code === 'ok' ? teams.players : []
-	Activity.prune(state.activity, roster)
-	const census = teams.code === 'ok' ? Activity.census(state.activity, roster, Date.now(), cfg.afkWindow) : null
+	const census = await takeCensus(ctx, state)
 
 	const compiled = Criteria.compile(cfg.criteria)
 	const evaluation =
@@ -196,6 +218,16 @@ const evaluate = async (ctx: Ctx, state: ServerState) => {
 	if (!canArm(state.status.phase, now)) return
 	if (evaluation?.code !== 'ok' || !evaluation.passed) return
 	await arm(ctx, state, census!)
+}
+
+// The roster read the criteria and the announcement both run off. Null when rcon could not be reached, which the
+// criteria treat as "cannot say" rather than as an empty server.
+async function takeCensus(ctx: Ctx, state: ServerState): Promise<Activity.Census | null> {
+	const teams = await SquadRcon.getTeams(ctx)
+	const roster = teams.code === 'ok' ? teams.players : []
+	Activity.prune(state.activity, roster)
+	if (teams.code !== 'ok') return null
+	return Activity.census(state.activity, roster, Date.now(), PluginConfig.get(ctx).afkWindow)
 }
 
 /**

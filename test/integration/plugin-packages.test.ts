@@ -23,6 +23,7 @@ import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from
 // given, before any redirect -- and flipping which tag `latest` points at is what an upgrade is.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
+const ADMIN_STEAM_ID = '76561198000000001'
 
 let app: AppFixture
 let client: TestOrpcClient
@@ -77,7 +78,8 @@ beforeAll(async () => {
 	await new Promise<void>((resolve) => origin.listen(0, '127.0.0.1', resolve))
 	manifestUrl = `http://127.0.0.1:${(origin.address() as { port: number }).port}/releases/latest/download/plugin.json`
 
-	app = await createAppFixture()
+	// an in-game admin who is also the seeded superuser, so the plugin's command has somebody allowed to run it
+	app = await createAppFixture({ admins: [ADMIN_STEAM_ID], adminSteamIds: [ADMIN_STEAM_ID] })
 	client = await createOrpcClient(app)
 	cookie = await sessionCookie(app)
 }, 180_000)
@@ -326,6 +328,26 @@ describe('packaged plugins', () => {
 				`SELECT actorPluginId AS actor FROM appEvents WHERE type = 'MATCH_ENDED' ORDER BY rowid DESC LIMIT 1`,
 			)[0],
 		).toMatchObject({ actor: 'hello' })
+	})
+
+	// The whole point of the host owning command dispatch: the plugin declares what it needs and the host
+	// applies it, so a caller who is not allowed never reaches the handler. Both halves are checked here.
+	it('runs an in-game command it contributed, gated by the host', async () => {
+		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_admin', steam: ADMIN_STEAM_ID, teamId: 1 }))
+		const outsider = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_outsider', teamId: 2 }))
+		await app.waitForRosterSync()
+
+		app.emu.world.chat(admin, 'ChatAdmin', '/hello world')
+		await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('world')), { label: "the plugin command's reply" })
+		expect(Inspect.warnsTo(app, admin).at(-1)).toContain(`hello world on ${app.serverId}`)
+
+		// declared allowedChats is admin-only, so the same words in all-chat are not a command at all
+		app.emu.world.chat(admin, 'ChatAll', '/hello nobody-should-see-this')
+		// nobody holding the permission means the handler never runs, whatever chat it was typed in
+		app.emu.world.chat(outsider, 'ChatAdmin', '/hello me')
+		await new Promise((resolve) => setTimeout(resolve, 1500))
+		expect(Inspect.warnsTo(app, outsider).join('\n')).not.toContain('hello me')
+		expect(Inspect.warnsTo(app, admin).join('\n')).not.toContain('nobody-should-see-this')
 	})
 
 	// A dev instance and the test harness both run with discord off, which is the case worth pinning: a

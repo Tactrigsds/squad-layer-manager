@@ -32,6 +32,7 @@ import * as CommandPrompts from '@/systems/command-prompts.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Plugins from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as SquadRcon from '@/systems/squad-rcon.server'
@@ -50,6 +51,26 @@ export function setup() {
 }
 
 type HandlerResult = { code: string; msg?: string } | undefined
+
+// Core commands plus whatever the active plugins contribute. Core first, so a plugin can never shadow one: the
+// first trigger match wins, and the settings schema only polices collisions between the configs it stores.
+// the active plugins' commands with the config each actually runs under, for the in-game help listing
+function pluginCommandListings(): CMDH.PluginCommandListing[] {
+	return Plugins.commandDeclarations().map(({ id, decl }) => ({
+		id,
+		decl,
+		config: CMD.pluginCommandConfig(decl, Settings.GLOBAL_SETTINGS.pluginCommands[id], Settings.GLOBAL_SETTINGS.defaultPrefix),
+	}))
+}
+
+function allCommandConfigs(): CMD.AnyCommandConfigs {
+	const configs: CMD.AnyCommandConfigs = { ...Settings.GLOBAL_SETTINGS.commands }
+	for (const { id, config } of pluginCommandListings()) {
+		if (configs[id]) continue
+		configs[id] = config
+	}
+	return configs
+}
 
 // What every message from a chat sender is handled against, whether it runs a command or answers a prompt.
 type ChatCtx = {
@@ -136,7 +157,7 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 
 	// the trigger that matched decides the arguments: a plain one takes them as typed, one with an args template
 	// pins some of them and feeds the rest through its placeholders (see CMD.parseCommand)
-	const parseRes = CMD.parseCommand(msg, Settings.GLOBAL_SETTINGS.commands, Settings.GLOBAL_SETTINGS.allowedPrefixes)
+	const parseRes = CMD.parseCommand(msg, allCommandConfigs(), Settings.GLOBAL_SETTINGS.allowedPrefixes)
 	if (parseRes.code === 'err:unknown-command') {
 		// nothing to say to a non-admin, or under a prefix whose unknown commands we stay quiet about
 		if (!sender.isAdmin || !parseRes.msg) return
@@ -158,13 +179,14 @@ export async function handleCommand(baseCtx: C.Db & C.ManagedServer & CS.AbortSi
 // handleCommand. Permissions and the live roster are checked against the moment the command actually runs.
 async function runCommand(
 	chat: ChatCtx,
-	cmd: CMD.CommandId,
+	cmd: string,
 	trigger: CMD.CommandTrigger,
 	tokens: string[],
 	typed: string,
 ): Promise<HandlerResult> {
 	const { ctx, sender, msg } = chat
-	const cmdConfig = Settings.GLOBAL_SETTINGS.commands[cmd as keyof typeof Settings.GLOBAL_SETTINGS.commands]
+	const cmdConfig = allCommandConfigs()[cmd]
+	if (!cmdConfig) return
 	if (!CMD.chatAllowed(cmdConfig.allowedChats, msg.channelType)) {
 		if (!sender.isAdmin && Obj.deepEqual(cmdConfig.allowedChats, ['admin'])) {
 			// non-admin is trying to use admin command, just ignore them
@@ -180,7 +202,9 @@ async function runCommand(
 	// Authorization sits here, next to the allowed-chat and enabled gates, rather than in each handler: the declaration is
 	// exhaustive over CommandId, so a command cannot reach its handler without having stated what it requires.
 	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
-	const permission = CMD.COMMAND_DECLARATIONS[cmd].permission
+	const pluginCommand = CMD.isPluginCommandId(cmd) ? Plugins.commandDeclarations().find((c) => c.id === cmd) : undefined
+	if (CMD.isPluginCommandId(cmd) && !pluginCommand) return
+	const permission = pluginCommand ? pluginCommand.decl.permission : CMD.COMMAND_DECLARATIONS[cmd as CMD.CommandId].permission
 	if (permission !== null) {
 		const required =
 			permission === 'battlemetrics:write-flags'
@@ -190,15 +214,32 @@ async function runCommand(
 		if (denyRes) return await chat.error('permission-denied', ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
 	}
 
-	const resolved = await resolveArgs(ctx, cmd, cmdConfig, tokens, sender, trigger)
+	// a plugin command takes the words after its trigger as typed: the argument machinery below is driven by
+	// declarations the host can see, which a plugin's command has none of
+	if (pluginCommand) {
+		const res = await Plugins.runCommand(ctx, cmd, {
+			text: tokens.join(' '),
+			args: tokens,
+			player: sender,
+			userId: chat.user.discordId,
+		})
+		if (res.code === 'err:plugin-failed') {
+			return await chat.error('plugin-failed', ctx.tr.text(CMD_Msgs.pluginCommandFailed(pluginCommand.pluginId)))
+		}
+		if (res.code === 'err:unknown-command') return
+		if (res.msg) await chat.reply(res.msg)
+		return { code: 'ok' }
+	}
+
+	const resolved = await resolveArgs(ctx, cmd as CMD.CommandId, cmdConfig, tokens, sender, trigger)
 	if (resolved.code === 'err:near-miss') {
-		return await raisePrompt(chat, { cmd, trigger, tokens, typed, ranges: resolved.ranges }, resolved.nearMisses)
+		return await raisePrompt(chat, { cmd: cmd as CMD.CommandId, trigger, tokens, typed, ranges: resolved.ranges }, resolved.nearMisses)
 	}
 	if (resolved.code !== 'ok') {
 		return await chat.error('invalid-args', resolved.msg)
 	}
 
-	const invocation: Invocation = { cmd, trigger, tokens, typed, ranges: resolved.ranges }
+	const invocation: Invocation = { cmd: cmd as CMD.CommandId, trigger, tokens, typed, ranges: resolved.ranges }
 	const h: HandlerCtx = {
 		...chat,
 		invocation,
@@ -207,7 +248,7 @@ async function runCommand(
 
 	// TS cannot correlate handlers[cmd] with CommandArgs<typeof cmd> across the union, so the args
 	// are cast at this single dispatch point; each handler's signature is still fully typed
-	return await handlers[cmd](h, resolved.args as never)
+	return await handlers[cmd as CMD.CommandId](h, resolved.args as never)
 }
 
 // Asks the caller to pick, and holds what to run once they have. The command itself does not run: every near miss
@@ -640,7 +681,8 @@ async function resolveFlagArg(
 // exhaustive by construction: a new CommandId without a handler is a compile error
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
 	help: async (h, args) => {
-		const listing = CMDH.resolveHelpListing(Settings.GLOBAL_SETTINGS.commands, args.section)
+		const plugins = pluginCommandListings()
+		const listing = CMDH.resolveHelpListing(Settings.GLOBAL_SETTINGS.commands, args.section, plugins)
 		if (listing.code === 'err:unknown-section') {
 			return await h.nearMiss('section', {
 				msg: h.ctx.tr.text(listing.msg),
@@ -649,7 +691,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				choices: listing.choices,
 			})
 		}
-		await h.reply(CMD_Msgs.help(Settings.GLOBAL_SETTINGS.commands, args.section))
+		await h.reply(CMD_Msgs.help(Settings.GLOBAL_SETTINGS.commands, args.section, plugins))
 		return { code: 'ok' }
 	},
 

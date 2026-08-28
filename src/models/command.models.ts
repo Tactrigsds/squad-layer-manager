@@ -59,6 +59,10 @@ export type CommandConfig = {
 
 export type CommandConfigs = { [k in CommandId]: CommandConfig }
 
+// Core commands plus whatever plugins contribute, keyed by dispatch id. Every trigger string across the two is one
+// namespace, so anything that matches or lists commands takes this rather than the core-only record.
+export type AnyCommandConfigs = Record<string, CommandConfig>
+
 // -------- sections --------
 
 // The section a command belongs to. Declared per command rather than configured: sections are the axis both the
@@ -641,6 +645,87 @@ export const AllCommandConfigSchema = z.object(
 	>,
 )
 
+// -------- plugin commands --------
+
+// A command a plugin contributes. Declared at activation rather than in COMMAND_DECLARATIONS, whose ids are a
+// compile-time union: the typed argument machinery (windows, prompts, near misses) needs a declaration the host can
+// see, so a plugin command instead takes the words after its trigger exactly as they were typed.
+export type PluginCommandDeclaration = {
+	// unique within the plugin. The dispatch id is pluginCommandId(pluginId, name)
+	name: string
+	// one line, for the commands page and the in-game help listing
+	description: string
+	// unprefixed here (`rolltoseed`); defaultPrefix is attached unless an admin has configured the command
+	triggers: string[]
+	allowedChats: ChatGroup[]
+	// checked before the handler runs, against the server the command was typed on. null for a command that only reads
+	permission: RBAC.ServerPermissionType | null
+	// what follows the trigger, for the usage line, e.g. '<duration>'. Omit for a command taking nothing
+	usage?: string
+	quickReference?: boolean
+}
+
+// The declaration as it reaches the browser, for the commands page. `permission` widens to a plain string: the
+// client only prints it. A PluginCommandDeclaration is assignable to this, which is where the shapes are checked
+// against each other (see plugins.server listRuntimeInfo).
+export const PluginCommandInfoSchema = z.object({
+	name: z.string(),
+	description: z.string(),
+	triggers: z.array(z.string()),
+	allowedChats: z.array(CHAT_GROUPS),
+	permission: z.string().nullable(),
+	usage: z.string().optional(),
+	quickReference: z.boolean().optional(),
+})
+export type PluginCommandInfo = z.infer<typeof PluginCommandInfoSchema>
+
+const PLUGIN_COMMAND_PREFIX = 'plugin:'
+
+/** The dispatch id of a plugin's command. Carries a colon, which no core command id can. */
+export function pluginCommandId(pluginId: string, name: string): string {
+	return `${PLUGIN_COMMAND_PREFIX}${pluginId}:${name}`
+}
+
+export function isPluginCommandId(id: string): boolean {
+	return id.startsWith(PLUGIN_COMMAND_PREFIX)
+}
+
+export const PluginCommandConfigSchema = z.object({
+	triggers: z
+		.array(ZodUtils.BasicStrNoWhitespace)
+		.min(1)
+		.describe('Strings that run this command, each starting with one of the allowed prefixes'),
+	allowedChats: z.array(CHAT_GROUPS).min(1).describe('Which in-game chats accept this command'),
+	enabled: z.boolean(),
+	quickReference: z.boolean().describe('Show this command on the quick reference, and in a bare help command'),
+})
+export type PluginCommandConfig = z.infer<typeof PluginCommandConfigSchema>
+
+/**
+ * What a plugin command actually runs under: the admin's stored config, or the plugin's declared defaults with
+ * `defaultPrefix` attached. Read through rather than seeded, since a plugin is not active when settings load.
+ */
+export function pluginCommandConfig(
+	decl: PluginCommandInfo,
+	stored: PluginCommandConfig | undefined,
+	defaultPrefix: string,
+): CommandConfig {
+	if (stored) return stored
+	return {
+		triggers: decl.triggers.map((t) => defaultPrefix + t),
+		allowedChats: decl.allowedChats,
+		enabled: true,
+		quickReference: decl.quickReference ?? false,
+	}
+}
+
+/** `/rolltoseed <duration>`: the line the commands page and the help listing show. */
+export function pluginCommandUsage(decl: PluginCommandInfo, config: CommandConfig): string {
+	const primary = primaryTrigger(config)
+	const trigger = primary ? triggerString(primary) : decl.triggers[0]
+	return decl.usage ? `${trigger} ${decl.usage}` : trigger
+}
+
 // -------- resolved argument shapes --------
 
 export type ResolvedReasonArg = { type: 'preset'; reason: AAR.AdminActionReason } | { type: 'custom'; text: string }
@@ -677,7 +762,7 @@ export type CommandArgs<Id extends CommandId> = ResolvedArgs<CommandDeclaration<
 // Trigger strings carry their own prefix (`!help`), so the whole first word is matched as-is. A trigger with an args
 // template feeds the words after it through that template; a plain one passes them straight through, which is the
 // same thing with nothing pinned.
-export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: CommandConfigs, prefixes: readonly PrefixConfig[]) {
+export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: AnyCommandConfigs, prefixes: readonly PrefixConfig[]) {
 	const words = msg.message
 		.trim()
 		.split(/\s+/)
@@ -947,10 +1032,10 @@ export function formatUsage(
 
 // Every trigger string across every command is one namespace, so the first match is the only match (the settings
 // schema rejects duplicates). Matching is case-insensitive, as it has always been.
-function matchCommandText(configs: CommandConfigs, cmdText: string): { cmdId: CommandId; trigger: CommandTrigger } | null {
+function matchCommandText(configs: AnyCommandConfigs, cmdText: string): { cmdId: string; trigger: CommandTrigger } | null {
 	for (const [cmd, config] of Object.entries(configs)) {
 		const trigger = config.triggers.find((t) => triggerString(t).toLowerCase() === cmdText.toLowerCase())
-		if (trigger !== undefined) return { cmdId: cmd as CommandId, trigger }
+		if (trigger !== undefined) return { cmdId: cmd, trigger }
 	}
 	return null
 }

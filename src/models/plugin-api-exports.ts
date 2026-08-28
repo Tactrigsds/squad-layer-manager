@@ -163,6 +163,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/models/server-events': [],
 	'slm/models/squad': [],
 	'slm/plugin/client': ['definePluginClient'],
+	'slm/plugin/commands': ['register'],
 	'slm/plugin/config': ['get'],
 	'slm/plugin/decorations': ['register'],
 	'slm/plugin/events': ['register'],

@@ -31,8 +31,8 @@ function groupDifference(id: CMD.CommandId, group: CMDH.TriggerGroup): TString {
 // `section` is the raw token typed after the help command; omitted means the quick reference. The brackets and the
 // colon are the listing's own layout rather than prose, so they sit in the pattern where a translator can see what
 // they punctuate.
-export const help = def((commands: CMD.CommandConfigs, section?: string) => {
-	const listing = CMDH.resolveHelpListing(commands, section)
+export const help = def((commands: CMD.CommandConfigs, section?: string, plugins: CMDH.PluginCommandListing[] = []) => {
+	const listing = CMDH.resolveHelpListing(commands, section, plugins)
 	if (listing.code === 'err:unknown-section') return { warn: [listing.msg] }
 
 	// one line per way of running the command: triggers that take the same thing from the caller share a line, and one
@@ -44,6 +44,19 @@ export const help = def((commands: CMD.CommandConfigs, section?: string) => {
 				signature: group.signature ? ` ${group.signature}` : '',
 				// the first line is the command; the rest only have to say how they differ from it
 				description: i === 0 ? descriptions[id] : groupDifference(id, group),
+			}),
+		),
+	)
+	// a plugin's command has no declared arguments, so it lists as its triggers, its usage line and its own blurb
+	lines.push(
+		...listing.pluginCommands.map(({ decl, config }) =>
+			t('[{triggers}]{signature}: {description}', {
+				triggers: config.triggers
+					.map(CMD.triggerString)
+					.toSorted((a, b) => a.length - b.length)
+					.join(', '),
+				signature: decl.usage ? ` ${decl.usage}` : '',
+				description: decl.description,
 			}),
 		),
 	)
@@ -292,6 +305,13 @@ export const rconError = def('RCON error')
 export const playerNotFound = def('Player not found')
 
 export const commandDisabled = def('Command "{cmd}" is disabled', (cmd: string) => ({ cmd }))
+
+export const pluginCommandFailed = def('The {plugin} plugin could not run that command', (plugin: string) => ({ plugin }))
+
+export const pluginOwner = def('Provided by')
+export const pluginRequires = def('Requires')
+export const pluginSettingsKey = def('Settings key')
+export const pluginsSectionLabel = def('Plugins')
 
 export const itemNotFound = def('Item not found')
 

@@ -20,6 +20,7 @@ import * as modelsLayer from '@/plugin-api/models/layer'
 import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
 import * as plugin from '@/plugin-api/plugin'
+import * as pluginCommands from '@/plugin-api/plugin/commands'
 import * as pluginConfig from '@/plugin-api/plugin/config'
 import * as pluginFields from '@/plugin-api/plugin/fields'
 import * as pluginRpcServer from '@/plugin-api/plugin/rpc.server'
@@ -62,6 +63,7 @@ export function setup() {
 		'slm/models/layer-queries': modelsLayerQueries,
 		'slm/models/match-history': modelsMatchHistory,
 		'slm/plugin': plugin,
+		'slm/plugin/commands': pluginCommands,
 		'slm/plugin/config': pluginConfig,
 		'slm/plugin/fields': pluginFields,
 		'slm/plugin/rpc.server': pluginRpcServer,
