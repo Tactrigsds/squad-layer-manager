@@ -166,11 +166,6 @@ const evaluate = async (ctx: Ctx, state: ServerState) => {
 
 async function arm(ctx: Ctx, state: ServerState, census: Activity.Census) {
 	const cfg = PluginConfig.get(ctx)
-	if (!cfg.editorUserId) {
-		patch(ctx.serverId, { phase: { kind: 'blocked', reason: 'No editor discord id configured, so the queue cannot be edited.' } })
-		return
-	}
-
 	// the queue is prepared before anyone is told, so a failure is reported instead of announced, and a
 	// cancel during the countdown leaves a correct queue rather than a half-edited one
 	const seed = `${ctx.serverId}:${Date.now()}`

@@ -33,8 +33,6 @@ move when daylight saving changes.
 kills, squad changes, kit changes and joining all count; SLM's own polling and things done _to_ a player by
 an admin do not.
 
-**Editor discord id** is who the queue edits are recorded against. Name the admin answerable for them.
-
 The two pools are filters, and the messages are `{{variable}}` templates. Repeat rules are not applied to
 either draw: a seeding layer is played because the server is empty, not because it is due.
 

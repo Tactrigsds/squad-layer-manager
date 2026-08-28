@@ -56,11 +56,7 @@ async function draw(ctx: Ctx, filterId: string, seed: string): Promise<string | 
  * Repeat rules are deliberately not applied. A seeding layer is played because the server is empty, not
  * because it is due.
  */
-export async function prepareQueue(
-	ctx: Ctx,
-	cfg: { seedPool: string; followUpPool: string; editorUserId: string },
-	seed: string,
-): Promise<PrepareResult> {
+export async function prepareQueue(ctx: Ctx, cfg: { seedPool: string; followUpPool: string }, seed: string): Promise<PrepareResult> {
 	const kept = LayerQueue.getSavedQueue(ctx).filter((item) => !isTrainingLayer(item.layerId))
 	const headIsSeed = kept.length > 0 && isSeedLayer(kept[0].layerId)
 	const tail = headIsSeed ? kept.slice(1) : kept
@@ -74,7 +70,7 @@ export async function prepareQueue(
 	const drawnFollowUp = keptFollowUp ? null : await draw(ctx, cfg.followUpPool, `${seed}:follow-up`)
 	if (!keptFollowUp && !drawnFollowUp) return { code: 'err:empty-pool', pool: 'follow-up' }
 
-	const res = await LayerQueue.editSaved(ctx, { userId: BigInt(cfg.editorUserId) }, (entries) => {
+	const res = await LayerQueue.editSaved(ctx, (entries) => {
 		const surviving = entries.filter((e) => !isTrainingLayer(e.layerId))
 		const head = surviving.length > 0 && isSeedLayer(surviving[0].layerId) ? surviving[0] : seedLayerId
 		const rest = typeof head === 'string' ? surviving : surviving.slice(1)

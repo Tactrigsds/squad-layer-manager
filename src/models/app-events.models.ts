@@ -535,12 +535,26 @@ export type QueueChange = { itemId: LL.ItemId; actor: Actor; layerIds: L.LayerId
 	| { kind: 'moved'; fromIndex: number; toIndex: number }
 )
 
-// the last actor to touch each item within the op span. an op without a userId is a server-side op (a roll, a vote
-// result, a generated item), which is SLM acting on its own.
+/**
+ * What an op is attributed to. The source is authoritative where it exists, since it is the only thing that
+ * can name a plugin; `userId` covers the ops that carry no source.
+ */
+export function opActor(op: SLL.Operation): Actor {
+	// backburner ops carry a `source` of their own that names a user rather than a provenance, so narrow on
+	// the discriminant rather than the field name
+	const source = 'source' in op && op.source && 'type' in op.source ? op.source : undefined
+	if (source?.type === 'plugin') return { type: 'plugin', pluginId: source.pluginId }
+	if (source?.type === 'manual') return { type: 'slm-user', userId: source.userId }
+	if ('userId' in op && op.userId !== undefined) return { type: 'slm-user', userId: op.userId }
+	return { type: 'system' }
+}
+
+// the last actor to touch each item within the op span. an op naming neither a source nor a user is a
+// server-side op (a roll, a vote result, a generated item), which is SLM acting on its own.
 function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 	const actors = new Map<LL.ItemId, Actor>()
 	for (const op of ops) {
-		const actor: Actor = 'userId' in op && op.userId !== undefined ? { type: 'slm-user', userId: op.userId } : { type: 'system' }
+		const actor = opActor(op)
 		switch (op.op) {
 			case 'add':
 				// a vote item's choices are added with it, so attribute the whole subtree

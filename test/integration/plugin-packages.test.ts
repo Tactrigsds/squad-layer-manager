@@ -279,25 +279,30 @@ describe('packaged plugins', () => {
 	// plugin's edit is an ordinary edit, and that it refuses rather than overwriting when someone is
 	// mid-edit. The entries handed back keep their items, which is what preserves tags and notes.
 	it('edits the saved queue, and refuses when an admin has unsaved edits open', async () => {
-		const userId = String(ADMIN_USER.discordId)
 		const before = await call<{ itemId: string; layerId: string }[]>('savedQueue', {})
 
-		expect(await call('prependLayer', { layerId: LAYERS.harjuRaas, userId })).toMatchObject({ code: 'ok' })
+		expect(await call('prependLayer', { layerId: LAYERS.harjuRaas })).toMatchObject({ code: 'ok' })
 		const after = await call<{ itemId: string; layerId: string; source: string; sourcePluginId: string | null }[]>('savedQueue', {})
 		expect(after[0].layerId).toBe(LAYERS.harjuRaas)
 		// the item says which plugin queued it, rather than blaming whoever the edit was performed as
 		expect(after[0].source).toBe('plugin')
 		expect(after[0].sourcePluginId).toBe('hello')
+		// and the audit log names the plugin too, rather than falling back to 'system' because no user issued it
+		expect(
+			readRows<{ actorType: string; actor: string }>(
+				`SELECT actorType, actorPluginId AS actor FROM appEvents WHERE type = 'QUEUE_UPDATED' ORDER BY rowid DESC LIMIT 1`,
+			)[0],
+		).toMatchObject({ actorType: 'plugin', actor: 'hello' })
 		// everything that was there is still there, with the same item ids: passing an entry through keeps it
 		expect(after.slice(1).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
 		expect(Inspect.savedQueue(app)[0]).toMatchObject({ layerId: LAYERS.harjuRaas })
 
-		expect(await call('dropFirstLayer', { userId })).toMatchObject({ code: 'ok' })
+		expect(await call('dropFirstLayer', {})).toMatchObject({ code: 'ok' })
 		expect((await call<{ itemId: string }[]>('savedQueue', {})).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
 
 		// an unknown item id cannot silently vanish from the list
-		expect(await call('prependLayer', { layerId: 'NOT-A-LAYER:XX:YY', userId })).toMatchObject({ code: 'ok' })
-		await call('dropFirstLayer', { userId })
+		expect(await call('prependLayer', { layerId: 'NOT-A-LAYER:XX:YY' })).toMatchObject({ code: 'ok' })
+		await call('dropFirstLayer', {})
 	})
 
 	it('sees server events as they land', async () => {

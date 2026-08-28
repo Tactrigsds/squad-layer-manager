@@ -115,16 +115,10 @@ export const router = {
 	// prepends a layer and keeps the rest, which is the shape a real caller uses: pass entries through to
 	// keep their items, hand back a bare id for a new one
 	prependLayer: os
-		.input(z.object({ layerId: z.string(), userId: z.string() }))
-		.handler(async ({ context, input }) =>
-			LayerQueue.editSaved(context, { userId: BigInt(input.userId) }, (entries) => [input.layerId, ...entries]),
-		),
+		.input(z.object({ layerId: z.string() }))
+		.handler(async ({ context, input }) => LayerQueue.editSaved(context, (entries) => [input.layerId, ...entries])),
 
-	dropFirstLayer: os
-		.input(z.object({ userId: z.string() }))
-		.handler(async ({ context, input }) =>
-			LayerQueue.editSaved(context, { userId: BigInt(input.userId) }, (entries) => entries.slice(1)),
-		),
+	dropFirstLayer: os.input(z.object({})).handler(async ({ context }) => LayerQueue.editSaved(context, (entries) => entries.slice(1))),
 
 	// resolves with the first event of `type` seen after subscribing, or null once `ms` has passed
 	nextEvent: os.input(z.object({ type: z.string(), ms: z.number() })).handler(async ({ context, input }) => {

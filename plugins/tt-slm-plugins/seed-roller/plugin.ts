@@ -27,14 +27,6 @@ export default definePlugin({
 		// activation with a config error before an admin has had a chance to configure it
 		seedPool: Fields.filterId().prefault('').describe('Pool the seeding layer is drawn from'),
 		followUpPool: Fields.filterId().prefault('').describe('Pool the layer after the seeding layer is drawn from'),
-		// empty means unconfigured, which the panel reports; anything else has to be a snowflake, since the
-		// queue ops take it as a bigint
-		editorUserId: z
-			.string()
-			.regex(/^\d*$/, 'a discord id is digits only')
-			.prefault('')
-			.describe('Discord id the queue edits are recorded against. Name the admin answerable for them.'),
-
 		countdown: ZU.HumanTime.prefault('30s').describe('How long admins get to cancel after being warned'),
 		adminWarning: z
 			.string()
