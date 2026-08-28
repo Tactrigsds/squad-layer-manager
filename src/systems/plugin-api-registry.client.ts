@@ -21,6 +21,7 @@ import * as modelsMatchHistory from '@/plugin-api/models/match-history'
 import * as plugin from '@/plugin-api/plugin'
 import * as pluginClient from '@/plugin-api/plugin/client'
 import * as pluginDecorations from '@/plugin-api/plugin/decorations'
+import * as pluginEvents from '@/plugin-api/plugin/events'
 import * as pluginFields from '@/plugin-api/plugin/fields'
 import * as pluginRpcClient from '@/plugin-api/plugin/rpc.client'
 import * as pluginSlots from '@/plugin-api/plugin/slots'
@@ -48,6 +49,7 @@ export function setup() {
 		'slm/plugin': plugin,
 		'slm/plugin/client': pluginClient,
 		'slm/plugin/decorations': pluginDecorations,
+		'slm/plugin/events': pluginEvents,
 		'slm/plugin/fields': pluginFields,
 		'slm/plugin/rpc.client': pluginRpcClient,
 		'slm/plugin/slots': pluginSlots,

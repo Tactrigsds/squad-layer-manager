@@ -8,6 +8,7 @@ import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as AppEvents from '@/models/app-events.models'
@@ -17,7 +18,10 @@ import * as LL from '@/models/layer-list.models'
 import type * as USR from '@/models/users.models'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as UsersClient from '@/systems/users.client'
+
+import { PluginErrorBoundary } from './plugin-slot.tsx'
 
 // warns render like chat messages, keyed by who was targeted. `admins` is the admin chat channel's own colour
 // (just a different channel name); `single`/`selection` inherit WarnChatBox's warm warn accent, split into two
@@ -316,6 +320,45 @@ function TeamswapsUpdatedEvent({
 
 // an app (audit) event, e.g. a warnAll that aggregates its individual PLAYER_WARNED server events into one
 // expandable entry. Uses a native <details> so no local state is needed.
+// The icons a plugin may pick from for its own events. Fixed markup per name so a plugin line looks like
+// every other feed line, and so no plugin has to ship an icon set.
+const PLUGIN_EVENT_ICONS: Record<PluginsClient.EventIcon, React.ReactNode> = {
+	plugin: <Icons.Puzzle className="h-4 w-4 text-slate-400 shrink-0" />,
+	info: <Icons.Info className="h-4 w-4 text-blue-400 shrink-0" />,
+	success: <Icons.CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />,
+	warning: <Icons.AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />,
+	error: <Icons.XCircle className="h-4 w-4 text-red-500 shrink-0" />,
+}
+
+// A plugin's own event. The plugin may have registered a renderer for this event name (see
+// registerEventRenderer), which supplies the predicate only -- the plugin's name stays the prefix, as on
+// every other feed line. Without one, the line is the `message` the event recorded, which is also what the
+// audit log shows and what an admin sees while the plugin is stopped.
+function PluginEventLine({ appEvent, time, actorLabel }: { appEvent: AppEvents.PluginEvent; time: number; actorLabel: React.ReactNode }) {
+	// subscription only: a version bump re-renders this so the renderer map is re-read live
+	Zus.useStore(PluginsClient.Store, (s) => s.version)
+	const rendering = PluginsClient.getEventRendering(appEvent.pluginId, {
+		name: appEvent.name,
+		payload: appEvent.payload,
+		message: appEvent.message,
+		time: appEvent.time,
+		serverId: appEvent.serverId,
+		matchId: appEvent.matchId,
+	})
+	return (
+		<EventLine time={time} icon={PLUGIN_EVENT_ICONS[rendering?.icon ?? 'plugin']}>
+			{rendering
+				? tr.richText(
+						AppEvents_Msgs.pluginLine(
+							actorLabel,
+							<PluginErrorBoundary pluginId={appEvent.pluginId}>{rendering.content}</PluginErrorBoundary>,
+						),
+					)
+				: tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
+		</EventLine>
+	)
+}
+
 export function AppEventEntry({
 	event,
 	stores,
@@ -332,6 +375,12 @@ export function AppEventEntry({
 	const userRes = UsersClient.useUser(actorUserId, { enabled: !!actorUserId && !userPartial && !isMe })
 	const actorUser = (userRes.data?.code === 'ok' ? userRes.data.user : undefined) ?? userPartial ?? (isMe ? loggedInUser : undefined)
 	const matchId = event.matchId
+	// a plugin can be the actor on more than its own events: ending a match and editing the queue are both
+	// attributed to it. Its display name, or its id while the plugin list is still loading.
+	const actorPluginId = appEvent.actor.type === 'plugin' ? appEvent.actor.pluginId : undefined
+	const pluginName = Zus.useStore(PluginsClient.Store, (s) =>
+		actorPluginId ? (s.plugins.find((p) => p.id === actorPluginId)?.name ?? actorPluginId) : undefined,
+	)
 
 	// an in-game admin is named like anyone else in the feed: enrichment resolved them from the roster (see
 	// enrichAppEvent), and the fallback only applies to someone who left before the roster last reset
@@ -340,6 +389,8 @@ export function AppEventEntry({
 			(actorUser?.displayName ?? tr.text(AppEvents_Msgs.unnamedSlmUser()))
 		) : appEvent.actor.type === 'system' ? (
 			tr.text(AppEvents_Msgs.systemActor())
+		) : appEvent.actor.type === 'plugin' ? (
+			pluginName
 		) : event.actorPlayer && matchId !== null ? (
 			<PlayerDisplay player={event.actorPlayer} matchId={matchId} stores={stores} />
 		) : (
@@ -534,11 +585,7 @@ export function AppEventEntry({
 		)
 	}
 	if (appEvent.type === 'PLUGIN_EVENT') {
-		return (
-			<EventLine time={event.time} icon={<Icons.Puzzle className="h-4 w-4 text-slate-400 shrink-0" />}>
-				{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
-			</EventLine>
-		)
+		return <PluginEventLine appEvent={appEvent} time={event.time} actorLabel={actorLabel} />
 	}
 	if (
 		appEvent.type === 'SETTINGS_UPDATED' ||

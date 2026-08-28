@@ -165,6 +165,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/plugin/client': ['definePluginClient'],
 	'slm/plugin/config': ['get'],
 	'slm/plugin/decorations': ['register'],
+	'slm/plugin/events': ['register'],
 	'slm/plugin/fields': ['Fields'],
 	'slm/plugin': ['API_VERSION', 'definePlugin', 'defineTables'],
 	'slm/plugin/rpc.client': ['client', 'stores'],

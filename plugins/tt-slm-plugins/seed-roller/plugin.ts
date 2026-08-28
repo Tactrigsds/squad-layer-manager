@@ -10,7 +10,7 @@ export default definePlugin({
 	id: 'seed-roller',
 	name: 'Seed Roller',
 	version: '0.1.0',
-	apiVersion: '^0.3',
+	apiVersion: '^0.3.2',
 	description: 'Rolls a training layer onto a seeding layer once the server is busy enough, at the time of day seeding happens.',
 	configSchema: z.object({
 		criteria: z

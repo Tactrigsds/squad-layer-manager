@@ -385,6 +385,29 @@ A decoration is `{ tint?, title?, body? }`, where tint is `info`, `warn` or `vio
 contribute several to one row, or null for none. A slot that throws is caught by a boundary and a selector that
 throws reads as no decoration, so neither takes the page down.
 
+## Your events in the feed
+
+`AppEvents.emit(ctx, name, payload, message)` records an event against the server and the match in progress. It
+shows up in the activity feed and the audit log as `message`, attributed to your plugin.
+
+A client entry can render those lines itself, keyed by the `name` it was recorded under:
+
+```tsx
+import * as Events from 'slm/plugin/events'
+
+Events.register(ctx, 'counted', (e) => ({
+	icon: 'success',
+	content: <>counted {(e.payload as { count: number }).count} matches</>,
+}))
+```
+
+`content` is the predicate alone: the host renders the time, the icon and your plugin's name in front of it, so
+the line sits in the feed like every other one. `icon` is one of `plugin`, `info`, `success`, `warning`,
+`error`, defaulting to `plugin`. Return null to take the `message` fallback for a particular event.
+
+`message` is still what the audit log shows, and what an admin sees while the plugin is stopped, so write it to
+stand on its own. The event's `payload` is yours and is stored as-is, which is why the renderer casts it.
+
 ## Pickers
 
 A config field that stores a filter, a server or a Discord channel id can render as the picker SLM uses for
@@ -428,6 +451,7 @@ absent.
 | `slm/plugin/servers`                                       | per-server setup                             |
 | `slm/plugin/rpc.server`, `slm/plugin/rpc.client`           | your own rpc                                 |
 | `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                             |
+| `slm/plugin/events`                                        | rendering your own events in the feed        |
 | `slm/plugin/fields`                                        | config fields that render as a picker        |
 | `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
 | `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |

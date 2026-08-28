@@ -1833,6 +1833,7 @@
 	"{actor} timed out {target} for {duration}{hasReason, select, yes { for {reasonLabel}} other {}}": "{actor} timed out {target} for {duration}{hasReason, select, yes { for {reasonLabel}} other {}}",
 	"{actor} turned fog of war {enabled, select, yes {on} other {off}}": "{actor} turned fog of war {enabled, select, yes {on} other {off}}",
 	"{actor} updated the queued teamswaps ({delta}), {queued} queued for next map": "{actor} updated the queued teamswaps ({delta}), {queued} queued for next map",
+	"{actor} {content}": "{actor} {content}",
 	"{actor} {description}": "{actor} {description}",
 	"{actor} {force, select, yes {force-saved} other {saved}} the queue{hasOverride, select, yes {, overriding {overrode}} other {}}": "{actor} {force, select, yes {force-saved} other {saved}} the queue{hasOverride, select, yes {, overriding {overrode}} other {}}",
 	"{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}": "{actor} {verb} {count, plural, one {a player} other {# players}}{suffix}",

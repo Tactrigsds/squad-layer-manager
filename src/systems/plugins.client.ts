@@ -17,7 +17,8 @@ import { tr } from '@/systems/messages.client'
 import * as ApiRegistry from '@/systems/plugin-api-registry.client'
 
 // Client half of the plugin host: watches which plugins are active, loads their client entries, and
-// holds what those entries register -- slot components, row decorations, rpc query stores. Anchors
+// holds what those entries register -- slot components, row decorations, event renderers, rpc query
+// stores. Anchors
 // are a closed, typed set: a plugin renders only where the host has placed one.
 //
 // A builtin's client is a lazy import in the app bundle. A packaged plugin's is fetched from
@@ -169,6 +170,68 @@ export function registerDecoration<A extends DecorationAnchorId>(
 
 export function getSlotRegs(anchor: SlotAnchorId): SlotReg[] {
 	return slotRegs.get(anchor) ?? []
+}
+
+// ---- plugin event rendering ----
+
+// The icons a plugin event may carry. A closed set, like decoration tints: the host owns what each one
+// looks like, so a plugin's line sits in the feed like every other one and no plugin ships an icon set.
+export const EVENT_ICONS = ['plugin', 'info', 'success', 'warning', 'error'] as const
+export type EventIcon = (typeof EVENT_ICONS)[number]
+
+// What a plugin says about one of its own events. `content` is the predicate alone: the host keeps the row,
+// including the plugin's name as the prefix, so the feed stays one consistent surface.
+export type EventRendering = { icon?: EventIcon; content: React.ReactNode }
+
+/** The fields of a PLUGIN_EVENT a renderer is given. `payload` is the plugin's own shape, so it casts. */
+export type PluginEventView = {
+	name: string
+	payload: unknown
+	message: string
+	time: number
+	serverId: string | null
+	matchId: number | null
+}
+
+type EventRendererReg = { pluginId: string; regKey: string; render: (event: PluginEventView) => EventRendering | null | undefined }
+const eventRenderers = new Map<string, EventRendererReg[]>()
+
+const rendererKey = (pluginId: string, name: string) => `${pluginId}:${name}`
+
+/**
+ * Renders the plugin's own `name`d events in the activity feed, in place of the one-line fallback built
+ * from the event's `message`. Return null to take that fallback for a particular event.
+ *
+ * The returned `content` is rendered inside an error boundary, so a component that throws costs its own
+ * line rather than the feed. Scoped to the registering plugin: a renderer only ever sees its own events.
+ */
+export function registerEventRenderer(
+	ctx: ClientCtx<any>,
+	name: string,
+	render: (event: PluginEventView) => EventRendering | null | undefined,
+) {
+	pushReg(eventRenderers, rendererKey(ctx.plugin.id, name), ctx.plugin.id, {
+		pluginId: ctx.plugin.id,
+		regKey: nextRegKey(ctx.plugin.id),
+		render,
+	})
+	bumpVersion()
+}
+
+/** How a plugin wants one of its events rendered, or null for the host's generic line. */
+export function getEventRendering(pluginId: string, event: PluginEventView): (EventRendering & { regKey: string }) | null {
+	const regs = eventRenderers.get(rendererKey(pluginId, event.name))
+	// last registration wins, so a plugin re-registering a name replaces rather than shadows
+	const reg = regs?.[regs.length - 1]
+	if (!reg) return null
+	try {
+		const rendering = reg.render(event)
+		return rendering ? { ...rendering, regKey: reg.regKey } : null
+	} catch {
+		// a renderer tripping over a payload it did not expect reads as no renderer, which is the
+		// generic line it would have got anyway
+		return null
+	}
 }
 
 // ---- rpc ----

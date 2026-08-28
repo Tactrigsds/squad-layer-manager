@@ -52,6 +52,15 @@ export type Status = {
 	phase: Phase
 }
 
+// The `payload` of each event this plugin records. Shared with the client so its feed renderers read the
+// payload instead of parsing the message back out (see client.tsx).
+export type EventPayloads = {
+	'seed-roll-armed': { seedLayerId: string; followUpLayerId: string } & Activity.Census
+	'seed-roll-completed': { seedLayerId: string }
+	'seed-roll-cancelled': Record<string, never>
+	'seed-roll-failed': { code: string; reason: string; attempts: number; retryIn: string }
+}
+
 type ServerState = {
 	activity: Activity.Activity
 	status: Status
@@ -287,7 +296,7 @@ async function fail(ctx: Ctx, state: ServerState, code: string, reason: string) 
 	await AppEvents.emit(
 		ctx,
 		'seed-roll-failed',
-		{ reason: code, attempts: phase.attempts },
+		{ code, reason, attempts: phase.attempts, retryIn },
 		`seed roll failed: ${reason} Retrying in ${retryIn}.`,
 	)
 }
