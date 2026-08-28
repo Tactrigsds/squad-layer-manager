@@ -87,3 +87,9 @@ export const sourceLabels = {
 	directory: def('From folder'),
 	url: def('Installed'),
 }
+
+// The trigger, not the count: the string that was taken and what took it is the whole of what an admin acts on.
+export const commandTriggerTaken = def(
+	'The trigger "{trigger}" is already used by {owner}, so it does nothing here. Set a different one under pluginCommands in global settings.',
+	(trigger: string, owner: string) => ({ trigger, owner }),
+)

@@ -45,6 +45,7 @@ import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
@@ -279,11 +280,13 @@ function AuditLogSection() {
 
 	// resolved server-side from the players table, since the audit log has no roster to look anyone up in
 	const playerNames: Record<string, string> = data?.code === 'ok' ? data.playerNames : {}
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
 	const playerName = (id: string) => playerNames[id]
 
 	function actorName(actor: AppEvents.Actor): string {
 		if (actor.type === 'slm-user') return userMap.get(actor.userId)?.displayName ?? tr.text(AppEvents_Msgs.unnamedActors['slm-user'])
 		if (actor.type === 'ingame-user') return playerName(actor.playerId) ?? AppEvents_Msgs.unnamedActors['ingame-user']
+		if (actor.type === 'plugin') return plugins.find((p) => p.id === actor.pluginId)?.name ?? actor.pluginId
 		return tr.text(AppEvents_Msgs.unnamedActors.system)
 	}
 

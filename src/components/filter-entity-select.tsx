@@ -1,6 +1,7 @@
 import * as Icons from 'lucide-react'
 import React from 'react'
 
+import ComboBoxMulti from '@/components/combo-box/combo-box-multi.tsx'
 import ComboBox from '@/components/combo-box/combo-box.tsx'
 import { LOADING } from '@/components/combo-box/constants.ts'
 import EmojiDisplay from '@/components/emoji-display.tsx'
@@ -91,5 +92,64 @@ export function FilterEntityLink(props: { filterId: F.FilterEntityId; className?
 		>
 			<Icons.ExternalLink />
 		</a>
+	)
+}
+
+// The pair a plugin reaches through slm/components/pickers, and what the `filter-id`/`filter-ids` config
+// fields render. Narrower than FilterEntitySelect above on purpose: value in, value out, so the component
+// it delegates to stays free to change.
+
+function filterOptions(filters: Map<string, F.FilterEntity>, selected: string[]) {
+	const known = [...filters.values()].map((f) => ({
+		value: f.id,
+		label: <FilterEntityLabel filter={f} />,
+		keywords: [f.name],
+	}))
+	// a stored id naming a filter that has since been deleted stays selectable, so opening an editor can
+	// never silently drop it
+	const unknown = selected.filter((id) => !filters.has(id)).map((id) => ({ value: id }))
+	return [...unknown, ...known]
+}
+
+export function FilterSelect(props: {
+	value: string | null
+	onChange: (value: string | null) => void
+	disabled?: boolean
+	className?: string
+	title?: string
+}) {
+	const filters = FilterEntityClient.useFilterEntities()
+	return (
+		<ComboBox
+			className={props.className}
+			title={props.title ?? 'Filter'}
+			value={props.value ?? undefined}
+			options={filterOptions(filters, props.value ? [props.value] : [])}
+			disabled={props.disabled}
+			onSelect={(id) => props.onChange(id ?? null)}
+		/>
+	)
+}
+
+export function FilterMultiSelect(props: {
+	values: string[]
+	onChange: (values: string[]) => void
+	selectionLimit?: number
+	disabled?: boolean
+	className?: string
+	title?: string
+}) {
+	const filters = FilterEntityClient.useFilterEntities()
+	return (
+		<ComboBoxMulti
+			className={props.className}
+			title={props.title ?? 'Filters'}
+			values={props.values}
+			options={filterOptions(filters, props.values)}
+			selectionLimit={props.selectionLimit}
+			disabled={props.disabled}
+			chipDisplay
+			onSelect={(next) => props.onChange(typeof next === 'function' ? next(props.values) : next)}
+		/>
 	)
 }

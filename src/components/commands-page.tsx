@@ -15,9 +15,11 @@ import * as CMD_Msgs from '@/messages/command.messages'
 import type * as AAR from '@/models/admin-action-reasons.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
+import type * as PLG from '@/models/plugins.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
 import type { PublicSettings } from '@/systems/settings.server'
@@ -36,10 +38,14 @@ type Entry = {
 	id: string
 	label: string
 	search: string
-	cmdId: CMD.CommandId
+	// a dispatch id: a core CommandId, or a plugin's `plugin:<pluginId>:<name>`
+	cmdId: string
 	cmd: CMD.CommandConfig
 	usages: string[]
 	shortcuts: Shortcut[]
+	// set for a command a plugin contributes. Those have no declared arguments and no settings anchor, so the
+	// entry renders its blurb and its id in place of the generated help
+	plugin?: { pluginName: string; decl: CMD.PluginCommandInfo }
 }
 
 type Section = { id: string; label: string; blurb?: string; entries: Entry[] }
@@ -79,7 +85,7 @@ export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string;
 	)
 }
 
-function PinButton({ cmdId, pinned }: { cmdId: CMD.CommandId; pinned: boolean }) {
+function PinButton({ cmdId, pinned }: { cmdId: string; pinned: boolean }) {
 	return (
 		<Button
 			variant="ghost"
@@ -182,6 +188,29 @@ function CommandDetails({
 	)
 }
 
+// A plugin command has no declared arguments to explain and no seeded settings entry to link to, so what is left
+// worth saying is which plugin owns it and the id an admin needs to configure it under `pluginCommands`.
+function PluginCommandDetails({ cmdId, plugin }: { cmdId: string; plugin: NonNullable<Entry['plugin']> }) {
+	return (
+		<dl className="space-y-2 border-l-2 pl-3 ml-1 text-sm">
+			<div>
+				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginOwner())}</dt>
+				<dd>{plugin.pluginName}</dd>
+			</div>
+			{plugin.decl.permission && (
+				<div>
+					<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginRequires())}</dt>
+					<dd className="font-mono text-xs">{plugin.decl.permission}</dd>
+				</div>
+			)}
+			<div>
+				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginSettingsKey())}</dt>
+				<dd className="font-mono text-xs wrap-anywhere">{cmdId}</dd>
+			</div>
+		</dl>
+	)
+}
+
 function CommandEntry({
 	entry,
 	settings,
@@ -207,7 +236,7 @@ function CommandEntry({
 						<CopyableCommand key={usage} cmdString={usage} chatCommand={chatCommand} />
 					))}
 					<AnchorLinkIcon id={entry.id} onNavigate={onLink} label={tr.text(CMD_Msgs.linkToCommand())} />
-					{showSettingsLink && <SettingsCrossLink cmdId={cmdId} />}
+					{showSettingsLink && !entry.plugin && <SettingsCrossLink cmdId={cmdId as CMD.CommandId} />}
 				</div>
 				<div className="flex-1" />
 				{!cmd.enabled && (
@@ -231,9 +260,15 @@ function CommandEntry({
 					</Button>
 				</CollapsibleTrigger>
 			</div>
-			<p className="text-sm text-muted-foreground">{tr.text(CMD_Msgs.descriptions[cmdId])}</p>
+			<p className="text-sm text-muted-foreground">
+				{entry.plugin ? entry.plugin.decl.description : tr.text(CMD_Msgs.descriptions[cmdId as CMD.CommandId])}
+			</p>
 			<CollapsibleContent>
-				<CommandDetails cmdId={cmdId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
+				{entry.plugin ? (
+					<PluginCommandDetails cmdId={cmdId} plugin={entry.plugin} />
+				) : (
+					<CommandDetails cmdId={cmdId as CMD.CommandId} cmd={cmd} shortcuts={entry.shortcuts} settings={settings} />
+				)}
 			</CollapsibleContent>
 		</Collapsible>
 	)
@@ -299,7 +334,7 @@ function SettingsCrossLink({ cmdId }: { cmdId: CMD.CommandId }) {
 // `onUnpin` is set for the pinned cards, adding an unpin control at the bottom-left.
 function CompactEntry({ entry, onDetails, onUnpin }: { entry: Entry; onDetails: (id: string) => void; onUnpin?: () => void }) {
 	const string = entry.label
-	const description = tr.text(CMD_Msgs.descriptions[entry.cmdId])
+	const description = entry.plugin ? entry.plugin.decl.description : tr.text(CMD_Msgs.descriptions[entry.cmdId as CMD.CommandId])
 	return (
 		<div className="flex h-full flex-col gap-1 rounded-md border bg-background px-2.5 py-1.5">
 			<div className="flex items-center justify-between gap-1">
@@ -339,7 +374,7 @@ function CompactGrid({
 }: {
 	entries: Entry[]
 	onDetails: (id: string) => void
-	onUnpin?: (cmdId: CMD.CommandId) => void
+	onUnpin?: (cmdId: string) => void
 }) {
 	return (
 		<div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
@@ -361,7 +396,7 @@ function CompactSection({
 	title: string
 	section: Section
 	onDetails: (id: string) => void
-	onUnpin?: (cmdId: CMD.CommandId) => void
+	onUnpin?: (cmdId: string) => void
 }) {
 	return (
 		<section className="rounded-lg bg-secondary/60 p-4">
@@ -451,13 +486,75 @@ function commandEntry(
 	}
 }
 
-function buildSections(settings: PublicSettings, pinnedCommands: string[]): Section[] {
-	const sections: Section[] = []
-	const entry = (sectionId: string, cmdId: CMD.CommandId, sectionLabel: string) =>
-		commandEntry(sectionId, cmdId, settings.commands[cmdId], sectionLabel, settings.requireReasonFor)
+// A plugin's command as a page entry. The generated help does not apply: the arguments it takes are the plugin's
+// business, so what it can show is the trigger, the usage line the plugin declared, and its blurb.
+function pluginCommandEntry(sectionId: string, cmd: PluginEntryInput, sectionLabel: string): Entry {
+	const primary = CMD.primaryTrigger(cmd.config)
+	const label = primary ? CMD.triggerString(primary) : cmd.decl.name
+	return {
+		key: cmd.id,
+		id: `${sectionId}/command:${cmd.id}`,
+		label,
+		search: [cmd.id, ...cmd.config.triggers.map(CMD.triggerString), cmd.decl.description, cmd.pluginName, sectionLabel]
+			.join(' ')
+			.toLowerCase(),
+		cmdId: cmd.id,
+		cmd: cmd.config,
+		usages: cmd.config.triggers
+			.map((t) => CMD.pluginCommandUsage(cmd.decl, { ...cmd.config, triggers: [t] }))
+			.toSorted((a, b) => b.length - a.length),
+		shortcuts: [],
+		plugin: { pluginName: cmd.pluginName, decl: cmd.decl },
+	}
+}
 
-	// pins are per-browser, so an id can outlive the command it named (a downgrade, or a renamed id)
-	const pinned = pinnedCommands.filter((id): id is CMD.CommandId => id in settings.commands)
+type PluginEntryInput = {
+	id: string
+	pluginName: string
+	decl: CMD.PluginCommandInfo
+	config: CMD.CommandConfig
+	configured: boolean
+}
+
+// What the active plugins contribute, resolved exactly as the dispatcher resolves it: stored overrides applied,
+// then the trigger namespace settled against core and against each other. Listing a command the dispatcher has
+// shadowed would be advertising a string that does nothing.
+function pluginEntryInputs(settings: PublicSettings, plugins: PLG.RuntimeInfo[]) {
+	const declared = plugins.flatMap((info) =>
+		info.commands.map((decl): PluginEntryInput => {
+			const id = CMD.pluginCommandId(info.id, decl.name)
+			const stored = settings.pluginCommands[id]
+			return {
+				id,
+				pluginName: info.name,
+				decl,
+				config: CMD.pluginCommandConfig(decl, stored, settings.defaultPrefix),
+				configured: stored !== undefined,
+			}
+		}),
+	)
+	return CMD.resolvePluginCommandTriggers(settings.commands, declared)
+}
+
+function buildSections(settings: PublicSettings, pinnedCommands: string[], plugins: PLG.RuntimeInfo[]): Section[] {
+	const sections: Section[] = []
+	const { kept: pluginCommands, conflicts } = pluginEntryInputs(settings, plugins)
+	const pluginById = new Map(pluginCommands.map((c) => [c.id, c]))
+	const entry = (sectionId: string, cmdId: string, sectionLabel: string) => {
+		const pluginCmd = pluginById.get(cmdId)
+		return pluginCmd
+			? pluginCommandEntry(sectionId, pluginCmd, sectionLabel)
+			: commandEntry(
+					sectionId,
+					cmdId as CMD.CommandId,
+					settings.commands[cmdId as CMD.CommandId],
+					sectionLabel,
+					settings.requireReasonFor,
+				)
+	}
+
+	// pins are per-browser, so an id can outlive the command it named (a downgrade, a renamed id, an uninstalled plugin)
+	const pinned = pinnedCommands.filter((id) => id in settings.commands || pluginById.has(id))
 	const pinnedSet = new Set(pinned)
 	if (pinned.length > 0) {
 		sections.push({
@@ -468,7 +565,10 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 	}
 
 	// a pinned command is already called out in the Pinned subsection above, so it drops out of the quick-reference grid
-	const quickRef = CMD.COMMAND_IDS.filter((id) => settings.commands[id].quickReference && !pinnedSet.has(id))
+	const quickRef = [
+		...CMD.COMMAND_IDS.filter((id) => settings.commands[id].quickReference),
+		...pluginCommands.filter((c) => c.config.quickReference).map((c) => c.id),
+	].filter((id) => !pinnedSet.has(id))
 	if (quickRef.length > 0) {
 		sections.push({
 			id: QUICK_REF_SECTION_ID,
@@ -480,6 +580,20 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[]): Sect
 	for (const { section, label, ids } of CMDH.splitCommandsBySection(CMD.COMMAND_IDS)) {
 		const id = `section:${section}`
 		sections.push({ id, label, entries: ids.map((cmdId) => entry(id, cmdId, label)) })
+	}
+
+	// their own section rather than one of the declared ones: sections are the axis the page and `!help` navigate
+	// by, and a plugin cannot be given a say in what they are
+	if (pluginCommands.length > 0 || conflicts.length > 0) {
+		const label = tr.text(CMD_Msgs.pluginsSectionLabel())
+		sections.push({
+			id: CMDH.PLUGINS_SECTION_ID,
+			label,
+			// a shadowed trigger is not listed anywhere else on this page: it is not a command, so the section it
+			// would have appeared in is the only place left to say it exists
+			blurb: conflicts.length > 0 ? tr.text(CMD_Msgs.pluginTriggerConflicts(conflicts)) : undefined,
+			entries: pluginCommands.map((c) => pluginCommandEntry(CMDH.PLUGINS_SECTION_ID, c, label)),
+		})
 	}
 
 	return sections
@@ -555,7 +669,11 @@ export default function CommandsPage() {
 		return () => window.removeEventListener('hashchange', onHash)
 	}, [landOnEntry])
 
-	const sections = React.useMemo(() => (settings ? buildSections(settings, pinnedCommands) : []), [settings, pinnedCommands])
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const sections = React.useMemo(
+		() => (settings ? buildSections(settings, pinnedCommands, plugins) : []),
+		[settings, pinnedCommands, plugins],
+	)
 	const pinnedSet = new Set(pinnedCommands)
 
 	// Pinned and Quick Reference render as one block above the menu, never as body sections or table-of-contents rows --

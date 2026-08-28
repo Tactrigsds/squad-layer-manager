@@ -9,12 +9,15 @@ import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
 import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
-import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import { DiscordChannelMultiSelect, DiscordChannelSelect, DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import { FilterMultiSelect, FilterSelect } from '@/components/filter-entity-select'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
 import { ListEditor } from '@/components/list-editor.tsx'
 import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
+import { ServerMultiSelect, ServerSelect } from '@/components/server-select'
+import { serverOptionsFor } from '@/components/server-select.helpers.ts'
 import { StickyGroup } from '@/components/sticky-group'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -57,6 +60,7 @@ import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
+import * as PLG from '@/models/plugins.models'
 import * as PermRows from '@/models/rbac-perm-rows'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -2863,17 +2867,6 @@ function PermScopeCell({
 	}
 }
 
-// unknown ids (a server that has since been deleted) stay selectable so opening the editor can't silently drop a grant
-function serverOptionsFor(servers: { id: string; displayName: string }[], selected: string[]): ComboBoxOption<string>[] {
-	const known: ComboBoxOption<string>[] = servers.map((s) => ({
-		value: s.id,
-		label: `${s.displayName} (${s.id})`,
-		keywords: [s.displayName],
-	}))
-	const unknown = selected.filter((id) => !servers.some((s) => s.id === id)).map((id) => ({ value: id }))
-	return [...unknown, ...known]
-}
-
 // One dropdown per selected value rather than a single multi-select: the values here are long (dotted setting paths,
 // `Display Name (server-id)`) and a combined trigger could only show them comma-joined and ellipsed, which truncated
 // exactly the tail that distinguishes them.
@@ -3103,7 +3096,79 @@ function RoleAssignmentsEditor({
 	)
 }
 
+// -------- controls a schema asks for by name --------
+//
+// The overrides below this are chosen by setting path, which a plugin's config has no way to reach. A
+// plugin declares the control it wants in its schema instead (see Fields in models/plugins.models), and it
+// arrives here as a JSON Schema key.
+
+function PluginFilterField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <FilterSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
+}
+
+function PluginFilterMultiField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string[] | undefined
+	return <FilterMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+function PluginServerField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <ServerSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
+}
+
+function PluginServerMultiField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string[] | undefined
+	return <ServerMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+function PluginChannelField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <DiscordChannelSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
+}
+
+function PluginChannelMultiField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string[] | undefined
+	return <DiscordChannelMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+// uncontrolled and debounced like TextInputField; a template is long enough that a one-line input hides most
+// of what has been written
+function PluginMultilineField({ value$, reset$, onChange }: OverrideProps) {
+	const ref = React.useRef<HTMLTextAreaElement>(null)
+	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
+	const push = useDebounced<string>({ delay: DEBOUNCE_MS, onChange })
+	useReset(reset$, () => {
+		const formatted = format(value$.getValue())
+		if (ref.current && ref.current.value !== formatted) {
+			ref.current.value = formatted
+			push(formatted)
+		}
+	})
+	return (
+		<Textarea
+			ref={ref}
+			rows={3}
+			className="resize-y"
+			defaultValue={format(value$.getValue())}
+			onChange={(e) => push(e.currentTarget.value)}
+		/>
+	)
+}
+
+const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
+	'filter-id': PluginFilterField,
+	'filter-ids': PluginFilterMultiField,
+	'server-id': PluginServerField,
+	'server-ids': PluginServerMultiField,
+	'discord-channel-id': PluginChannelField,
+	'discord-channel-ids': PluginChannelMultiField,
+	multiline: PluginMultilineField,
+}
+
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
+	const declared = PLG.fieldControl(_node)
+	if (declared) return DECLARED_CONTROLS[declared]
 	const last = path[path.length - 1]
 	// global settings define the lists (a record); a server picks from them (an array of names)
 	if (path.length === 1 && last === 'adminLists') return _node.type === 'array' ? ServerAdminListsField : AdminListsField

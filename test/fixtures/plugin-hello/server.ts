@@ -6,13 +6,17 @@ import * as FB from 'slm/models/filter-builders'
 import * as GV from 'slm/models/gen-vote'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
+import * as Commands from 'slm/plugin/commands'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
 import * as AppEventsSys from 'slm/systems/app-events'
+import * as Discord from 'slm/systems/discord'
 import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
+import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as SquadServer from 'slm/systems/squad-server'
 
 import manifest from './plugin.ts'
 import * as S from './schema.ts'
@@ -98,6 +102,47 @@ export const router = {
 			if (res.code !== 'ok') return res
 			return { code: 'ok' as const, maps: res.chosenLayers.map((l) => l?.Map ?? null), unfilledChoices: res.unfilledChoices }
 		}),
+	// --- the automation surface: the queue, the event stream, ending a match, discord ---
+
+	savedQueue: os.input(z.object({})).handler(async ({ context }) =>
+		LayerQueue.getSavedQueue(context).map((item) => ({
+			itemId: item.itemId,
+			layerId: item.layerId,
+			source: item.source.type,
+			sourcePluginId: item.source.type === 'plugin' ? item.source.pluginId : null,
+		})),
+	),
+
+	// prepends a layer and keeps the rest, which is the shape a real caller uses: pass entries through to
+	// keep their items, hand back a bare id for a new one
+	prependLayer: os
+		.input(z.object({ layerId: z.string() }))
+		.handler(async ({ context, input }) => LayerQueue.editSaved(context, (entries) => [input.layerId, ...entries])),
+
+	dropFirstLayer: os.input(z.object({})).handler(async ({ context }) => LayerQueue.editSaved(context, (entries) => entries.slice(1))),
+
+	// resolves with the first event of `type` seen after subscribing, or null once `ms` has passed
+	nextEvent: os.input(z.object({ type: z.string(), ms: z.number() })).handler(async ({ context, input }) => {
+		return await new Promise<{ type: string } | null>((resolve) => {
+			const timer = setTimeout(() => {
+				sub.unsubscribe()
+				resolve(null)
+			}, input.ms)
+			const sub = SquadServer.events$(context).subscribe((event) => {
+				if (event.type !== input.type) return
+				clearTimeout(timer)
+				sub.unsubscribe()
+				resolve({ type: event.type })
+			})
+		})
+	}),
+
+	endMatch: os.input(z.object({})).handler(async ({ context }) => SquadServer.endMatch(context)),
+
+	postToDiscord: os
+		.input(z.object({ channelId: z.string(), content: z.string() }))
+		.handler(async ({ input }) => ({ enabled: Discord.isEnabled(), res: await Discord.postMessage(input.channelId, input.content) })),
+
 	greetings: os.input(z.object({ serverId: z.string() })).handler(async function* ({ context, input }) {
 		yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
 	}),
@@ -106,6 +151,18 @@ export const router = {
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	activations++
 	Rpc.register(ctx, router)
+
+	// an in-game command, answering with its config and whatever was typed after the trigger, so a test can
+	// tell the handler ran with the right ctx and the right arguments
+	Commands.register(ctx, {
+		name: 'hello',
+		description: 'Says hello back.',
+		triggers: ['hello'],
+		allowedChats: ['admin'],
+		permission: 'squad-server:end-match',
+		usage: '[name]',
+		handler: (sctx, input) => `${PluginConfig.get(sctx).greeting} ${input.text || 'nobody'} on ${sctx.serverId}`,
+	})
 
 	// runs once per managed server: writes a row proving the plugin reached its own table, a core
 	// system (match history) and its config, all through shimmed slm/* imports

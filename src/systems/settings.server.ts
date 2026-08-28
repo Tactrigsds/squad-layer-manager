@@ -472,6 +472,9 @@ export type PublicSettings = {
 	navLinks: SETTINGS.GlobalSettings['navLinks']
 	chat: SETTINGS.GlobalSettings['chat']
 	commands: SETTINGS.GlobalSettings['commands']
+	// the commands page resolves a plugin command's triggers against these, falling back to what the plugin declares
+	pluginCommands: SETTINGS.GlobalSettings['pluginCommands']
+	defaultPrefix: SETTINGS.GlobalSettings['defaultPrefix']
 	servers: PublicServerEntry[]
 	playerGroupings: SETTINGS.GlobalSettings['playerGroupings']
 	teamAttribution: SETTINGS.GlobalSettings['teamAttribution']
@@ -492,6 +495,8 @@ function buildPublicSettings(): PublicSettings {
 		navLinks: GLOBAL_SETTINGS.navLinks,
 		chat: GLOBAL_SETTINGS.chat,
 		commands: GLOBAL_SETTINGS.commands,
+		pluginCommands: GLOBAL_SETTINGS.pluginCommands,
+		defaultPrefix: GLOBAL_SETTINGS.defaultPrefix,
 		servers: listServerEntries().map(({ ownerDiscordId: _ownerDiscordId, ...entry }) => entry),
 		playerGroupings: GLOBAL_SETTINGS.playerGroupings,
 		teamAttribution: GLOBAL_SETTINGS.teamAttribution,
