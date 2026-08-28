@@ -3132,6 +3132,30 @@ function PluginChannelMultiField({ value$, onChange }: OverrideProps) {
 	return <DiscordChannelMultiSelect values={value ?? []} onChange={onChange} />
 }
 
+// uncontrolled and debounced like TextInputField; a template is long enough that a one-line input hides most
+// of what has been written
+function PluginMultilineField({ value$, reset$, onChange }: OverrideProps) {
+	const ref = React.useRef<HTMLTextAreaElement>(null)
+	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
+	const push = useDebounced<string>({ delay: DEBOUNCE_MS, onChange })
+	useReset(reset$, () => {
+		const formatted = format(value$.getValue())
+		if (ref.current && ref.current.value !== formatted) {
+			ref.current.value = formatted
+			push(formatted)
+		}
+	})
+	return (
+		<Textarea
+			ref={ref}
+			rows={3}
+			className="resize-y"
+			defaultValue={format(value$.getValue())}
+			onChange={(e) => push(e.currentTarget.value)}
+		/>
+	)
+}
+
 const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
 	'filter-id': PluginFilterField,
 	'filter-ids': PluginFilterMultiField,
@@ -3139,6 +3163,7 @@ const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
 	'server-ids': PluginServerMultiField,
 	'discord-channel-id': PluginChannelField,
 	'discord-channel-ids': PluginChannelMultiField,
+	multiline: PluginMultilineField,
 }
 
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {

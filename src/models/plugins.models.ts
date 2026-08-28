@@ -218,7 +218,15 @@ export function defineTables(manifest: { id: PluginId }): TableFactory {
  */
 export const FIELD_CONTROL_KEY = 'x-slm-field'
 
-export const FIELD_CONTROLS = ['filter-id', 'filter-ids', 'server-id', 'server-ids', 'discord-channel-id', 'discord-channel-ids'] as const
+export const FIELD_CONTROLS = [
+	'filter-id',
+	'filter-ids',
+	'server-id',
+	'server-ids',
+	'discord-channel-id',
+	'discord-channel-ids',
+	'multiline',
+] as const
 export type FieldControl = (typeof FIELD_CONTROLS)[number]
 
 /** Reads the control a JSON Schema node asks for, or undefined for an ordinary field. */
@@ -243,4 +251,6 @@ export const Fields = {
 	serverIds: () => withControl(z.array(z.string()), 'server-ids'),
 	discordChannelId: () => withControl(z.string(), 'discord-channel-id'),
 	discordChannelIds: () => withControl(z.array(z.string()), 'discord-channel-ids'),
+	/** a string edited in a textarea rather than a one-line input, for message templates and the like */
+	multilineText: () => withControl(z.string(), 'multiline'),
 }

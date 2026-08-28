@@ -46,8 +46,7 @@ export default definePlugin({
 			.describe('Broadcast to the server immediately before the roll. Same variables as the admin warning.'),
 
 		discordChannel: Fields.discordChannelId().prefault('').describe('Where the roll is announced. Empty posts nothing.'),
-		discordMessage: z
-			.string()
+		discordMessage: Fields.multilineText()
 			.prefault('Rolling **{{server}}** to seed: **{{layer}}** ({{population}} players, {{activePopulation}} active).')
 			.describe('The announcement. Variables: {{server}}, {{layer}}, {{seconds}}, {{population}}, {{activePopulation}}'),
 	}),

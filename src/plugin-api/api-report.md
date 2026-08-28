@@ -333,7 +333,7 @@ change; added lines are additive. Which component each has to move follows semve
 ## slm/plugin/fields
 
 - `FieldControl` — type
-- `Fields` — value: { filterId: () => ZodString; filterIds: () => ZodArray<ZodString>; serverId: () => ZodString; serverIds: () => ZodArray<ZodString>; discordChannelId: () => ZodString; discordChannelIds: () => ZodArray<ZodString>; }
+- `Fields` — value: { filterId: () => ZodString; filterIds: () => ZodArray<ZodString>; serverId: () => ZodString; serverIds: () => ZodArray<ZodString>; discordChannelId: () => ZodString; discordChannelIds: () => ZodArray<ZodString>; multilineText: () => ZodString; }
 
 ## slm/plugin
 
