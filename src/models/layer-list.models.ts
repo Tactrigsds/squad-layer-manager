@@ -8,6 +8,7 @@ import { assertNever } from '@/lib/type-guards'
 import type * as DND from '@/models/dndkit.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LTag from '@/models/layer-tags.models'
+import * as PLG from '@/models/plugins.models'
 import * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 
@@ -23,6 +24,9 @@ export const SourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('gameserver') }),
 	z.object({ type: z.literal('unknown') }),
 	z.object({ type: z.literal('manual'), userId: USR.UserIdSchema }),
+	// a plugin acting on its own initiative. Named rather than folded into 'unknown' so an admin looking at an
+	// item nobody remembers queueing can tell which plugin put it there.
+	z.object({ type: z.literal('plugin'), pluginId: PLG.PluginIdSchema }),
 	// Squad's own vote, which picks the next layer itself and ignores whatever SLM set. Only ever the source of a
 	// played match, never of a queue item.
 	z.object({ type: z.literal('ingame-vote') }),

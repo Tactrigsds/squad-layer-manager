@@ -109,6 +109,9 @@ function buildOperationSchema<
 			op: z.literal('add'),
 			items: z.array(itemSchema),
 			index: LL.ItemIndexSchema,
+			// what the added items record as their provenance. Absent means the user performing the edit, which
+			// is every op the web client sends; a plugin names itself instead.
+			itemSource: LL.SourceSchema.optional(),
 		}),
 		z.object({
 			...opPropsBase,
@@ -478,8 +481,9 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		}
 
 		case 'add': {
-			const items = LL.withTagAttribution(newOp.items, source)
-			LL.addItemsDeterministic(list, source, newOp.index, ...items)
+			const itemSource = newOp.itemSource ?? source
+			const items = LL.withTagAttribution(newOp.items, itemSource)
+			LL.addItemsDeterministic(list, itemSource, newOp.index, ...items)
 			ItemMut.tryApplyMutation(
 				'added',
 				items.map((item) => item.itemId),

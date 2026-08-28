@@ -103,11 +103,14 @@ export const router = {
 		}),
 	// --- the automation surface: the queue, the event stream, ending a match, discord ---
 
-	savedQueue: os
-		.input(z.object({}))
-		.handler(async ({ context }) =>
-			LayerQueue.getSavedQueue(context).map((item) => ({ itemId: item.itemId, layerId: item.layerId, source: item.source.type })),
-		),
+	savedQueue: os.input(z.object({})).handler(async ({ context }) =>
+		LayerQueue.getSavedQueue(context).map((item) => ({
+			itemId: item.itemId,
+			layerId: item.layerId,
+			source: item.source.type,
+			sourcePluginId: item.source.type === 'plugin' ? item.source.pluginId : null,
+		})),
+	),
 
 	// prepends a layer and keeps the rest, which is the shape a real caller uses: pass entries through to
 	// keep their items, hand back a bare id for a new one

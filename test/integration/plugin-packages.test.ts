@@ -283,9 +283,11 @@ describe('packaged plugins', () => {
 		const before = await call<{ itemId: string; layerId: string }[]>('savedQueue', {})
 
 		expect(await call('prependLayer', { layerId: LAYERS.harjuRaas, userId })).toMatchObject({ code: 'ok' })
-		const after = await call<{ itemId: string; layerId: string; source: string }[]>('savedQueue', {})
+		const after = await call<{ itemId: string; layerId: string; source: string; sourcePluginId: string | null }[]>('savedQueue', {})
 		expect(after[0].layerId).toBe(LAYERS.harjuRaas)
-		expect(after[0].source).toBe('manual')
+		// the item says which plugin queued it, rather than blaming whoever the edit was performed as
+		expect(after[0].source).toBe('plugin')
+		expect(after[0].sourcePluginId).toBe('hello')
 		// everything that was there is still there, with the same item ids: passing an entry through keeps it
 		expect(after.slice(1).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
 		expect(Inspect.savedQueue(app)[0]).toMatchObject({ layerId: LAYERS.harjuRaas })

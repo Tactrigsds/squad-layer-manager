@@ -460,12 +460,12 @@ export type QueueEntry = {
  * Refuses when anyone has unsaved edits open rather than resetting over them. A caller that finds
  * `err:unsaved-edits` should say so and try again later; discarding an admin's draft is not its call.
  *
- * `userId` is required for the reason a filter needs an owner: a queue edit belongs to a person even when
- * something automated performed it, and that is who the audit log names.
+ * `userId` is who performed the edit, which is what gates the edit window and names the QUEUE_UPDATED. It is
+ * separate from `source`, the provenance recorded on each new item.
  */
 export async function editSaved(
 	ctx: SideEffectCtx,
-	opts: { userId: bigint },
+	opts: { userId: bigint; source?: LL.Source },
 	mutate: (entries: QueueEntry[]) => (QueueEntry | L.LayerId)[],
 ): Promise<{ code: 'ok' } | { code: 'err:unsaved-edits' } | { code: 'err:unknown-item'; itemId: string }> {
 	const state = () => ctx.layerQueue.session.state
@@ -479,7 +479,9 @@ export async function editSaved(
 		generated: item.source.type === 'generated',
 	}))
 
-	const source: LL.Source = { type: 'manual', userId: opts.userId }
+	// what a new item records as its provenance. Defaults to the user performing the edit; a plugin passes
+	// its own, so an item nobody remembers queueing says which plugin put it there.
+	const source: LL.Source = opts.source ?? { type: 'manual', userId: opts.userId }
 	const next: LL.Item[] = []
 	for (const entry of mutate(entries)) {
 		if (typeof entry === 'string') {
@@ -495,7 +497,9 @@ export async function editSaved(
 	const opBase = () => ({ opId: SLL.createOpId(), userId: opts.userId, editWindowSeqId: state().editWindowSeqId })
 	const itemIds = state().list.map((item) => item.itemId)
 	if (itemIds.length > 0) await dispatchOp(ctx, { op: 'clear', itemIds, ...opBase() })
-	if (next.length > 0) await dispatchOp(ctx, { op: 'add', items: next, index: { outerIndex: 0, innerIndex: null }, ...opBase() })
+	if (next.length > 0) {
+		await dispatchOp(ctx, { op: 'add', items: next, index: { outerIndex: 0, innerIndex: null }, itemSource: opts.source, ...opBase() })
+	}
 	await dispatchOp(ctx, { op: 'save', ...opBase() })
 	return { code: 'ok' }
 }

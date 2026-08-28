@@ -1256,6 +1256,8 @@
 	"Set Custom Nickname": "Set Custom Nickname",
 	"Set Nickname": "Set Nickname",
 	"Set by {displayName}": "Set by {displayName}",
+	"Set by {pluginId}": "Set by {pluginId}",
+	"Set by {pluginName}": "Set by {pluginName}",
 	"Setting Next Layer": "Setting Next Layer",
 	"Settings": "Settings",
 	"Settings failed validation and need repair": "Settings failed validation and need repair",

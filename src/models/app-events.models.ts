@@ -665,7 +665,12 @@ export function summarizeQueueChanges(e: QueueUpdated): QueueChange[] {
 		const isVote = LL.isVoteItem(item)
 		if (!before) {
 			// an added item records who added it on the item itself, which survives even if the op span doesn't cover it
-			const actor: Actor = item.source.type === 'manual' ? { type: 'slm-user', userId: item.source.userId } : actorFor(itemId)
+			const actor: Actor =
+				item.source.type === 'manual'
+					? { type: 'slm-user', userId: item.source.userId }
+					: item.source.type === 'plugin'
+						? { type: 'plugin', pluginId: item.source.pluginId }
+						: actorFor(itemId)
 			changes.push({ kind: 'added', itemId, index, layerIds, isVote, actor })
 			continue
 		}

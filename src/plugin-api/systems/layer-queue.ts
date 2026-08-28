@@ -17,8 +17,9 @@ export type { QueueEntry } from '@/systems/layer-queue.server'
  * Refuses with `err:unsaved-edits` when anyone has edits open rather than resetting over them. Discarding an
  * admin's draft is not a plugin's call; say so and try again later.
  *
- * `userId` is required for the reason a filter needs an owner: a queue edit belongs to a person even when
- * something automated performed it, and that is who the audit log names.
+ * Items it adds are sourced to the calling plugin, so the queue shows which plugin put a layer there rather
+ * than blaming whoever the edit was performed as. `userId` is that performer: it gates the edit window and
+ * names the QUEUE_UPDATED, and is separate from the provenance on the items.
  */
 export async function editSaved(
 	ctx: PluginsSys.ServerCtx<any>,
@@ -28,5 +29,9 @@ export async function editSaved(
 	// ServerCtx names only the domains slm/* exposes functions over, and the queue's save path reaches the
 	// vote payload, which is not one of them. The runtime object is the whole managed server (see
 	// plugins.server ServerCtx), so it is there; only the type declines to say so.
-	return await LayerQueueSys.editSaved(ctx as unknown as Parameters<typeof LayerQueueSys.editSaved>[0], opts, mutate)
+	return await LayerQueueSys.editSaved(
+		ctx as unknown as Parameters<typeof LayerQueueSys.editSaved>[0],
+		{ ...opts, source: { type: 'plugin', pluginId: ctx.plugin.id } },
+		mutate,
+	)
 }

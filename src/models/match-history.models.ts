@@ -172,6 +172,12 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 			break
 		}
 
+		case 'plugin': {
+			if (!entry.setByPluginId) throw new Error("Invalid match history: match setByPluginId is null but type is 'plugin'")
+			layerSource = { type: entry.setByType, pluginId: entry.setByPluginId }
+			break
+		}
+
 		case 'manual': {
 			if (!entry.setByUserId) throw new Error("Invalid match history: match setByUserId is null but type is 'manual'")
 			layerSource = { type: entry.setByType, userId: entry.setByUserId }
@@ -263,6 +269,7 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 		startTime: matchDetails.startTime ?? null,
 		setByType: matchDetails.layerSource.type,
 		setByUserId: matchDetails.layerSource.type === 'manual' ? matchDetails.layerSource.userId : null,
+		setByPluginId: matchDetails.layerSource.type === 'plugin' ? matchDetails.layerSource.pluginId : null,
 		endTime: null,
 		outcome: null,
 		team1Tickets: null,
@@ -362,6 +369,7 @@ export function getNewMatchHistoryEntry(opts: {
 		startTime: opts.startTime,
 		setByType: source?.type ?? 'unknown',
 		setByUserId: source?.type === 'manual' ? source.userId : undefined,
+		setByPluginId: source?.type === 'plugin' ? source.pluginId : undefined,
 		lqItemId: opts.lqItem?.itemId,
 	}
 	return newEntry
