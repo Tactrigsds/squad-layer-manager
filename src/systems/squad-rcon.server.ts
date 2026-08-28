@@ -433,6 +433,14 @@ export async function getServerInfo(ctx: SR.Ctx.Rcon & CS.AbortSignal): Promise<
 	}
 }
 
+/**
+ * The current roster, both teams and their squads. Served from the polled resource rather than a fresh
+ * rcon call, so asking often is cheap; `polledAt` says how old the answer is.
+ */
+export async function getTeams(ctx: SR.Ctx & CS.AbortSignal): Promise<SM.TeamsRes> {
+	return await ctx.squadRcon.teams.get(ctx)
+}
+
 /** Current and next layer in one call. Prefer it over getCurrentLayer + getNextLayer, which costs two round trips. */
 export const getLayerStatus = Instr.spanOp(
 	'getLayerStatus',

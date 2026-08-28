@@ -758,6 +758,24 @@ export const orpcRouter = {
 		return Discord.searchGuildMembers(query)
 	}),
 
+	// Beside the two above because rbac.server is what may import discord.server; the reverse is a cycle.
+	// Either grant, unlike them: the channel picker also renders in a plugin's config, and an admin who can
+	// only manage plugins still has to be able to name a channel there.
+	listGuildChannels: orpcBase.handler(async ({ context: ctx }) => {
+		// the same permits globalSettingsRead() carries, plus plugins:manage. Spelled out because a
+		// PermissionReq is not itself a permit, so the two cannot be composed
+		const denyRes = await tryDenyPermissionsForUser(
+			ctx,
+			RBAC.permReq<'global-settings:read' | 'global-settings:write' | 'plugins:manage'>('any', [
+				RBAC.perm('global-settings:read'),
+				'global-settings:write',
+				RBAC.perm('plugins:manage'),
+			]),
+		)
+		if (denyRes) return denyRes
+		return Discord.listGuildChannels()
+	}),
+
 	// the groups each configured admin list defines, for the role-assignment picker. Grouped by list rather than
 	// unioned: an assignment names the list it means, so the picker has to offer the pair, and two lists defining the
 	// same group name are two different grants.

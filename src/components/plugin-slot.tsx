@@ -22,13 +22,15 @@ export function PluginSlot<A extends PluginsClient.SlotAnchorId>(props: { anchor
 	)
 }
 
-class PluginErrorBoundary extends React.Component<{ pluginId: string; children: React.ReactNode }, { failed: boolean }> {
+// Exported so anywhere the host renders plugin-supplied nodes -- a slot, a feed line -- contains a throw
+// the same way.
+export class PluginErrorBoundary extends React.Component<{ pluginId: string; children: React.ReactNode }, { failed: boolean }> {
 	state = { failed: false }
 	static getDerivedStateFromError() {
 		return { failed: true }
 	}
 	componentDidCatch(error: unknown) {
-		console.error(`plugin ${this.props.pluginId}: slot render failed`, error)
+		console.error(`plugin ${this.props.pluginId}: render failed`, error)
 	}
 	render() {
 		return this.state.failed ? null : this.props.children

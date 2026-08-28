@@ -308,6 +308,39 @@ export async function searchGuildMembers(query: string, limit = 25) {
 	return { code: 'ok' as const, members }
 }
 
+// text-capable channels of the home guild, for the channel pickers. Announcement and thread-parent channels
+// are included because a bot can post in them; voice, categories and stage channels are not.
+export async function listGuildChannels() {
+	const res = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
+	if (res.code !== 'ok') return res
+	const channelMap = await res.guild.channels.fetch()
+	const channels = [...channelMap.values()]
+		.filter((c) => c !== null && c.isTextBased() && !c.isThread())
+		.sort((a, b) => a.rawPosition - b.rawPosition)
+		.map((c) => ({ id: c.id, name: c.name, categoryName: c.parent?.name ?? null }))
+	return { code: 'ok' as const, channels }
+}
+
+/**
+ * Posts to a channel as SLM. Needs the bot in the guild with Send Messages there, which is the usual cause
+ * of an err:discord here; the id naming nothing reachable is the other.
+ */
+export async function postMessage(channelId: string, content: string) {
+	if (!ENV.DISCORD_ENABLED) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
+	try {
+		const channel = await client.channels.fetch(channelId)
+		if (!channel?.isTextBased() || !channel.isSendable()) {
+			return { code: 'err:not-postable' as const, msg: `channel ${channelId} is not one this bot can post to` }
+		}
+		const message = await channel.send(content)
+		return { code: 'ok' as const, messageId: message.id }
+	} catch (err) {
+		log.warn({ err }, 'Failed to post to channel %s', channelId)
+		if (err instanceof D.DiscordAPIError) return { code: 'err:discord' as const, msg: err.message }
+		throw err
+	}
+}
+
 export const orpcRouter = {
 	getGuildEmojis: orpcBase.input(z.object({}).optional()).handler(async () => {
 		const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)

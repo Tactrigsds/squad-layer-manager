@@ -4,7 +4,9 @@ import React from 'react'
 
 import ComboBox from '@/components/combo-box/combo-box'
 import type { ComboBoxOption } from '@/components/combo-box/combo-box'
+import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants'
+import type { ComboBoxGroupingDef } from '@/components/combo-box/options'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as RPC from '@/orpc.client'
@@ -160,6 +162,96 @@ export function DiscordMemberSelect({
 				}}
 			/>
 			{unresolved && <UnresolvedNote>{tr.text(USR_Msgs.discordMemberUnresolved())}</UnresolvedNote>}
+		</div>
+	)
+}
+
+// -------- Discord channel pickers (bounded list, grouped by category) --------
+
+function useGuildChannels(): { channels: { id: string; name: string; categoryName: string | null }[]; isResolved: boolean } {
+	const { data } = useQuery(RPC.orpc.rbac.listGuildChannels.queryOptions({ staleTime: Infinity }))
+	const ok = data?.code === 'ok'
+	// only once the authoritative list is in, so a still-loading or denied fetch never mislabels a live
+	// channel as deleted
+	return { channels: ok ? data.channels : [], isResolved: ok }
+}
+
+const UNCATEGORIZED = 'Uncategorized'
+
+// the category each channel sits under, which the combo box narrows by once two are live. Built from the
+// fetched list rather than declared: the categories are whatever the guild has.
+function channelGroupings(channels: { categoryName: string | null }[]): ComboBoxGroupingDef[] {
+	const groups = [...new Set(channels.map((c) => c.categoryName ?? UNCATEGORIZED))]
+	return groups.length > 1 ? [{ key: 'category', label: 'Category', groups }] : []
+}
+
+function channelOptions(
+	channels: { id: string; name: string; categoryName: string | null }[],
+	selected: string[],
+	isResolved: boolean,
+): ComboBoxOption<string>[] {
+	const known: ComboBoxOption<string>[] = channels.map((c) => ({
+		value: c.id,
+		label: `#${c.name}`,
+		keywords: [c.name, c.categoryName ?? UNCATEGORIZED],
+		groups: { category: c.categoryName ?? UNCATEGORIZED },
+	}))
+	const unknown = selected
+		.filter((id) => isResolved && !channels.some((c) => c.id === id))
+		.map((id): ComboBoxOption<string> => ({ value: id, label: <UnresolvedLabel id={id} />, keywords: [id] }))
+	return [...unknown, ...known]
+}
+
+export function DiscordChannelSelect(props: {
+	value: string | null
+	onChange: (value: string | null) => void
+	disabled?: boolean
+	className?: string
+	title?: string
+}) {
+	const { channels, isResolved } = useGuildChannels()
+	const value = props.value ?? ''
+	const unresolved = !!value && isResolved && !channels.some((c) => c.id === value)
+	return (
+		<div className="space-y-1">
+			<ComboBox
+				className={props.className ?? 'w-full'}
+				title={props.title ?? tr.text(USR_Msgs.discordChannelPicker())}
+				value={value || undefined}
+				options={channelOptions(channels, value ? [value] : [], isResolved)}
+				groupings={channelGroupings(channels)}
+				disabled={props.disabled}
+				onSelect={(id) => props.onChange(id ?? null)}
+			/>
+			{unresolved && <UnresolvedNote>{tr.text(USR_Msgs.discordChannelUnresolved())}</UnresolvedNote>}
+		</div>
+	)
+}
+
+export function DiscordChannelMultiSelect(props: {
+	values: string[]
+	onChange: (values: string[]) => void
+	selectionLimit?: number
+	disabled?: boolean
+	className?: string
+	title?: string
+}) {
+	const { channels, isResolved } = useGuildChannels()
+	const unresolved = isResolved && props.values.some((id) => !channels.some((c) => c.id === id))
+	return (
+		<div className="space-y-1">
+			<ComboBoxMulti
+				className={props.className ?? 'w-full'}
+				title={props.title ?? tr.text(USR_Msgs.discordChannelPickerMulti())}
+				values={props.values}
+				options={channelOptions(channels, props.values, isResolved)}
+				groupings={channelGroupings(channels)}
+				selectionLimit={props.selectionLimit}
+				disabled={props.disabled}
+				chipDisplay
+				onSelect={(next) => props.onChange(typeof next === 'function' ? next(props.values) : next)}
+			/>
+			{unresolved && <UnresolvedNote>{tr.text(USR_Msgs.discordChannelUnresolved())}</UnresolvedNote>}
 		</div>
 	)
 }

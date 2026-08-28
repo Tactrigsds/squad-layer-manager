@@ -33,9 +33,10 @@ function devSourcePlugins(): Plugin {
 		load(id) {
 			if (id !== RESOLVED) return null
 			if (!serving) return 'export const manifests = {}\nexport const clients = {}\n'
+			// two levels, matching sourceDirs() in plugins/builtins.server.ts: one repo can hold several plugins
 			return [
-				"export const manifests = import.meta.glob('/plugins/*/plugin.ts', { eager: true })",
-				"export const clients = import.meta.glob('/plugins/*/client.tsx')",
+				"export const manifests = { ...import.meta.glob('/plugins/*/plugin.ts', { eager: true }), ...import.meta.glob('/plugins/*/*/plugin.ts', { eager: true }) }",
+				"export const clients = { ...import.meta.glob('/plugins/*/client.tsx'), ...import.meta.glob('/plugins/*/*/client.tsx') }",
 			].join('\n')
 		},
 	}

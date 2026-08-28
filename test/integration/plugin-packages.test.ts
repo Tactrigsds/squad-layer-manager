@@ -5,8 +5,11 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { makePlayer } from '@/emulator'
+
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS } from '../harness/arrange'
+import * as Inspect from '../harness/inspect'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // The packaged-plugin path end to end: a plugin built into standalone esm, served over http, then
@@ -20,6 +23,7 @@ import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from
 // given, before any redirect -- and flipping which tag `latest` points at is what an upgrade is.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
+const ADMIN_STEAM_ID = '76561198000000001'
 
 let app: AppFixture
 let client: TestOrpcClient
@@ -74,7 +78,8 @@ beforeAll(async () => {
 	await new Promise<void>((resolve) => origin.listen(0, '127.0.0.1', resolve))
 	manifestUrl = `http://127.0.0.1:${(origin.address() as { port: number }).port}/releases/latest/download/plugin.json`
 
-	app = await createAppFixture()
+	// an in-game admin who is also the seeded superuser, so the plugin's command has somebody allowed to run it
+	app = await createAppFixture({ admins: [ADMIN_STEAM_ID], adminSteamIds: [ADMIN_STEAM_ID] })
 	client = await createOrpcClient(app)
 	cookie = await sessionCookie(app)
 }, 180_000)
@@ -270,6 +275,88 @@ describe('packaged plugins', () => {
 		expect((await draw('seed-a')).maps).toEqual(first.maps)
 
 		await call('dropFilter', { id: 'hello-vote' })
+	})
+
+	// The queue is core state every admin shares, so the point is not that the list changes: it is that a
+	// plugin's edit is an ordinary edit, and that it refuses rather than overwriting when someone is
+	// mid-edit. The entries handed back keep their items, which is what preserves tags and notes.
+	it('edits the saved queue, and refuses when an admin has unsaved edits open', async () => {
+		const before = await call<{ itemId: string; layerId: string }[]>('savedQueue', {})
+
+		expect(await call('prependLayer', { layerId: LAYERS.harjuRaas })).toMatchObject({ code: 'ok' })
+		const after = await call<{ itemId: string; layerId: string; source: string; sourcePluginId: string | null }[]>('savedQueue', {})
+		expect(after[0].layerId).toBe(LAYERS.harjuRaas)
+		// the item says which plugin queued it, rather than blaming whoever the edit was performed as
+		expect(after[0].source).toBe('plugin')
+		expect(after[0].sourcePluginId).toBe('hello')
+		// and the audit log names the plugin too, rather than falling back to 'system' because no user issued it
+		expect(
+			readRows<{ actorType: string; actor: string }>(
+				`SELECT actorType, actorPluginId AS actor FROM appEvents WHERE type = 'QUEUE_UPDATED' ORDER BY rowid DESC LIMIT 1`,
+			)[0],
+		).toMatchObject({ actorType: 'plugin', actor: 'hello' })
+		// everything that was there is still there, with the same item ids: passing an entry through keeps it
+		expect(after.slice(1).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
+		expect(Inspect.savedQueue(app)[0]).toMatchObject({ layerId: LAYERS.harjuRaas })
+
+		expect(await call('dropFirstLayer', {})).toMatchObject({ code: 'ok' })
+		expect((await call<{ itemId: string }[]>('savedQueue', {})).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
+
+		// an unknown item id cannot silently vanish from the list
+		expect(await call('prependLayer', { layerId: 'NOT-A-LAYER:XX:YY' })).toMatchObject({ code: 'ok' })
+		await call('dropFirstLayer', {})
+	})
+
+	it('sees server events as they land', async () => {
+		const speaker = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_event_watcher', teamId: 1 }))
+		await app.waitForRosterSync()
+
+		const pending = call<{ type: string } | null>('nextEvent', { type: 'CHAT_MESSAGE', ms: 20_000 })
+		// the stream is hot, so anything before the subscription attaches is missed
+		await new Promise((resolve) => setTimeout(resolve, 500))
+		app.emu.world.chat(speaker, 'ChatAll', 'hello from a test')
+		expect(await pending).toMatchObject({ type: 'CHAT_MESSAGE' })
+	})
+
+	// endMatch is host-owned precisely so the round end is attributed. A plugin cannot emit MATCH_ENDED
+	// itself -- slm/systems/app-events only writes PLUGIN_EVENT -- so the actorPluginId on the row is the
+	// whole point of the function existing.
+	it('ends a match, attributed to the plugin', async () => {
+		expect(await call('endMatch', {})).toMatchObject({ code: 'ok' })
+		expect(
+			readRows<{ actor: string }>(
+				`SELECT actorPluginId AS actor FROM appEvents WHERE type = 'MATCH_ENDED' ORDER BY rowid DESC LIMIT 1`,
+			)[0],
+		).toMatchObject({ actor: 'hello' })
+	})
+
+	// The whole point of the host owning command dispatch: the plugin declares what it needs and the host
+	// applies it, so a caller who is not allowed never reaches the handler. Both halves are checked here.
+	it('runs an in-game command it contributed, gated by the host', async () => {
+		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_admin', steam: ADMIN_STEAM_ID, teamId: 1 }))
+		const outsider = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_outsider', teamId: 2 }))
+		await app.waitForRosterSync()
+
+		app.emu.world.chat(admin, 'ChatAdmin', '/hello world')
+		await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('world')), { label: "the plugin command's reply" })
+		expect(Inspect.warnsTo(app, admin).at(-1)).toContain(`hello world on ${app.serverId}`)
+
+		// declared allowedChats is admin-only, so the same words in all-chat are not a command at all
+		app.emu.world.chat(admin, 'ChatAll', '/hello nobody-should-see-this')
+		// nobody holding the permission means the handler never runs, whatever chat it was typed in
+		app.emu.world.chat(outsider, 'ChatAdmin', '/hello me')
+		await new Promise((resolve) => setTimeout(resolve, 1500))
+		expect(Inspect.warnsTo(app, outsider).join('\n')).not.toContain('hello me')
+		expect(Inspect.warnsTo(app, admin).join('\n')).not.toContain('nobody-should-see-this')
+	})
+
+	// A dev instance and the test harness both run with discord off, which is the case worth pinning: a
+	// plugin gets a result it can branch on rather than an exception on every attempt.
+	it('reports discord as disabled rather than throwing', async () => {
+		expect(await call('postToDiscord', { channelId: '1', content: 'hi' })).toMatchObject({
+			enabled: false,
+			res: { code: 'err:disabled' },
+		})
 	})
 
 	it('gives a restarted plugin a fresh module graph', async () => {

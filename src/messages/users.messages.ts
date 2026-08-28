@@ -214,3 +214,11 @@ export const searchDiscordMembers = def('Type a name or id to search members.')
 export const discordMemberUnresolved = def(
 	"This Discord user isn't a current server member (their id is shown). They may have left the server, or are otherwise unknown.",
 )
+
+export const discordChannelPicker = def('channel')
+
+export const discordChannelPickerMulti = def('channels')
+
+export const discordChannelUnresolved = def(
+	'This Discord channel is not one SLM can see (its id is shown). It may have been deleted, or the bot may not have access to it.',
+)

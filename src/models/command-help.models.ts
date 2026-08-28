@@ -347,8 +347,12 @@ export function buildExamples(
 // what a help command lists. A bare `!help` answers with the quick reference, since an admin mid-match wants the
 // handful of commands they actually use, not thirty lines paged into chat. A command's shortcut triggers ride along
 // with it rather than being listed separately: they are the same command, reached a different way.
+// a plugin's command as a help listing shows it. Plugin commands belong to no section -- sections are declared, and
+// a plugin's are not -- so they ride along with the quick reference and the "all" listing only.
+export type PluginCommandListing = { id: string; decl: CMD.PluginCommandDeclaration; config: CMD.CommandConfig }
+
 export type HelpListing =
-	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; hint?: TString }
+	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; pluginCommands: PluginCommandListing[]; hint?: TString }
 	// `choices` are the sections close enough to what was typed to offer back; the message names the rest only when
 	// there are none, so a caller is never read a list twice
 	| { code: 'err:unknown-section'; msg: TString; choices: CMD.ArgChoice[] }
@@ -356,8 +360,13 @@ export type HelpListing =
 const sectionOptions = () => CMD.sectionTokens().join(', ')
 
 // resolves what `!help [section]` should list. Only enabled commands are listed: a disabled one cannot be run.
-export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: string | undefined): HelpListing {
+export function resolveHelpListing(
+	configs: CMD.CommandConfigs,
+	sectionToken: string | undefined,
+	plugins: PluginCommandListing[] = [],
+): HelpListing {
 	const runnable = (id: CMD.CommandId) => configs[id].enabled
+	const runnablePlugins = plugins.filter((p) => p.config.enabled)
 
 	if (sectionToken === undefined) {
 		const commands = CMD.COMMAND_IDS.filter((id) => runnable(id) && configs[id].quickReference)
@@ -367,13 +376,14 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 			code: 'ok',
 			title: t('Commands'),
 			commands,
+			pluginCommands: runnablePlugins.filter((p) => p.config.quickReference),
 			// the placeholder is syntax rather than prose, and passing it in keeps the pattern free of a literal '<'
 			hint: t('More: {helpString} {placeholder} -- {options}', { helpString, placeholder: '<section>', options: sectionOptions() }),
 		}
 	}
 
 	if (sectionToken.trim().toLowerCase() === CMD.ALL_SECTIONS_TOKEN) {
-		return { code: 'ok', title: t('All commands'), commands: CMD.COMMAND_IDS.filter(runnable) }
+		return { code: 'ok', title: t('All commands'), commands: CMD.COMMAND_IDS.filter(runnable), pluginCommands: runnablePlugins }
 	}
 
 	const section = CMD.resolveSectionToken(sectionToken)
@@ -392,14 +402,20 @@ export function resolveHelpListing(configs: CMD.CommandConfigs, sectionToken: st
 		code: 'ok',
 		title: t('{label} commands', { label: CMD.COMMAND_SECTIONS[section].label }),
 		commands: CMD.commandsInSection(section).filter(runnable),
+		pluginCommands: [],
 	}
 }
 
 // The commands page's fragment for a command's full listing: its entry under its own declared section. The page also
 // lists pinned and quick-reference copies, each under its own fragment, but a link from elsewhere wants the listing
 // carrying the arguments and examples.
-export function commandsPageAnchor(cmdId: CMD.CommandId): string {
-	return `section:${CMD.COMMAND_DECLARATIONS[cmdId].section}/command:${cmdId}`
+// the commands page's section for plugin-contributed commands. They belong to no declared section, so they get
+// one of their own, which the anchor has to agree on.
+export const PLUGINS_SECTION_ID = 'section:plugins'
+
+export function commandsPageAnchor(cmdId: string): string {
+	if (CMD.isPluginCommandId(cmdId)) return `${PLUGINS_SECTION_ID}/command:${cmdId}`
+	return `section:${CMD.COMMAND_DECLARATIONS[cmdId as CMD.CommandId].section}/command:${cmdId}`
 }
 
 // the dotted global-settings path holding a command's configuration

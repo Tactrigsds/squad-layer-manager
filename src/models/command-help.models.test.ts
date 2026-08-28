@@ -193,6 +193,26 @@ describe('resolveHelpListing', () => {
 		expect(listing.commands).not.toContain('kick')
 	})
 
+	// a plugin's command belongs to no declared section, so it rides along with the quick reference and the
+	// "all" listing and stays out of every named one
+	it("carries a plugin's commands into the listings it belongs in", () => {
+		const decl = {
+			name: 'rolltoseed',
+			description: 'Roll to seed now.',
+			triggers: ['rolltoseed'],
+			allowedChats: ['admin'] as CMD.ChatGroup[],
+			permission: null,
+			quickReference: true,
+		}
+		const plugin = { id: CMD.pluginCommandId('a-plugin', 'rolltoseed'), decl, config: CMD.pluginCommandConfig(decl, undefined, P) }
+		expect(CMDH.resolveHelpListing(configs, undefined, [plugin])).toMatchObject({ pluginCommands: [plugin] })
+		expect(CMDH.resolveHelpListing(configs, 'all', [plugin])).toMatchObject({ pluginCommands: [plugin] })
+		expect(CMDH.resolveHelpListing(configs, 'moderation', [plugin])).toMatchObject({ pluginCommands: [] })
+
+		const off = { ...plugin, config: { ...plugin.config, enabled: false } }
+		expect(CMDH.resolveHelpListing(configs, 'all', [off])).toMatchObject({ pluginCommands: [] })
+	})
+
 	it('resolves a section by id or by label, case-insensitively', () => {
 		const byId = CMDH.resolveHelpListing(configs, 'moderation')
 		const byLabel = CMDH.resolveHelpListing(configs, 'Player Flags')
