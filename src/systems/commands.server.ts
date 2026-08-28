@@ -54,13 +54,40 @@ type HandlerResult = { code: string; msg?: string } | undefined
 
 // Core commands plus whatever the active plugins contribute. Core first, so a plugin can never shadow one: the
 // first trigger match wins, and the settings schema only polices collisions between the configs it stores.
-// the active plugins' commands with the config each actually runs under, for the in-game help listing
+// The conflict set as last logged. Compared rather than accumulated, so a steady state is logged once instead
+// of on every chat message, and an admin fixing or reintroducing one is logged again.
+let loggedConflicts = ''
+
+// The active plugins' commands with the config each actually runs under, after the trigger namespace has been
+// settled against core and against each other. A command whose triggers were all taken is gone from here: it
+// cannot be typed, so it must not be listed either.
 function pluginCommandListings(): CMDH.PluginCommandListing[] {
-	return Plugins.commandDeclarations().map(({ id, decl }) => ({
-		id,
-		decl,
-		config: CMD.pluginCommandConfig(decl, Settings.GLOBAL_SETTINGS.pluginCommands[id], Settings.GLOBAL_SETTINGS.defaultPrefix),
-	}))
+	const declared = Plugins.commandDeclarations().map(({ id, decl }) => {
+		const stored = Settings.GLOBAL_SETTINGS.pluginCommands[id]
+		return {
+			id,
+			decl,
+			config: CMD.pluginCommandConfig(decl, stored, Settings.GLOBAL_SETTINGS.defaultPrefix),
+			configured: stored !== undefined,
+		}
+	})
+	const { kept, conflicts } = CMD.resolvePluginCommandTriggers(Settings.GLOBAL_SETTINGS.commands, declared)
+	const signature = conflicts
+		.map((c) => `${c.commandId} ${c.trigger} ${c.ownedBy}`)
+		.toSorted()
+		.join('|')
+	if (signature !== loggedConflicts) {
+		loggedConflicts = signature
+		for (const conflict of conflicts) {
+			log.warn(
+				'plugin command %s cannot use the trigger %s: %s already has it. Retune it under pluginCommands in global settings.',
+				conflict.commandId,
+				conflict.trigger,
+				conflict.ownedBy,
+			)
+		}
+	}
+	return kept
 }
 
 function allCommandConfigs(): CMD.AnyCommandConfigs {

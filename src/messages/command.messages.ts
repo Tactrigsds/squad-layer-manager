@@ -313,6 +313,13 @@ export const pluginRequires = def('Requires')
 export const pluginSettingsKey = def('Settings key')
 export const pluginsSectionLabel = def('Plugins')
 
+// Named rather than counted: which string was taken, and by what, is the whole of what an admin has to act on.
+export const pluginTriggerConflicts = def((conflicts: CMD.CommandConflict[]) =>
+	t('{list}. Set a different trigger under pluginCommands in global settings.', {
+		list: conflicts.map((c) => `"${c.trigger}" is already used by ${c.ownedBy}`).join('; '),
+	}),
+)
+
 export const itemNotFound = def('Item not found')
 
 export const playerNotOnTeam = def('Player "{username}" is not on a team', (username?: string) => ({ username }))

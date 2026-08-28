@@ -719,6 +719,51 @@ export function pluginCommandConfig(
 	}
 }
 
+// A plugin command's trigger that something else already owns, so it never dispatches. `ownedBy` is the command
+// id holding it: a core command id, or another plugin's.
+export type CommandConflict = { commandId: string; trigger: string; ownedBy: string }
+
+/**
+ * Settles the one trigger namespace across core and the plugins, dropping every plugin trigger something else
+ * already owns. Without this the loser is silently unreachable: dispatch takes the first match, so a plugin
+ * declaring a trigger a core command (or an alphabetically earlier plugin) already uses would look installed and
+ * do nothing.
+ *
+ * Precedence is core, then plugin commands an admin has configured, then declared defaults. Configuring a trigger
+ * is an explicit decision, so it outranks whatever another plugin happens to declare -- which is also what makes
+ * editing `pluginCommands` a real fix rather than a race against load order.
+ */
+export function resolvePluginCommandTriggers<T extends { id: string; config: CommandConfig; configured: boolean }>(
+	core: CommandConfigs,
+	listings: readonly T[],
+): { kept: T[]; conflicts: CommandConflict[] } {
+	const owner = new Map<string, string>()
+	for (const [id, config] of Object.entries(core)) {
+		for (const trigger of config.triggers) owner.set(triggerString(trigger).toLowerCase(), id)
+	}
+	const rank = new Map(listings.map((l, i) => [l.id, i]))
+	const kept: T[] = []
+	const conflicts: CommandConflict[] = []
+	for (const listing of [...listings.filter((l) => l.configured), ...listings.filter((l) => !l.configured)]) {
+		const triggers: CommandTrigger[] = []
+		for (const trigger of listing.config.triggers) {
+			const string = triggerString(trigger)
+			const existing = owner.get(string.toLowerCase())
+			if (existing !== undefined) {
+				conflicts.push({ commandId: listing.id, trigger: string, ownedBy: existing })
+				continue
+			}
+			owner.set(string.toLowerCase(), listing.id)
+			triggers.push(trigger)
+		}
+		// nothing left to type means the command cannot be reached at all, so it is not a command any more
+		if (triggers.length > 0) kept.push({ ...listing, config: { ...listing.config, triggers } })
+	}
+	// precedence decided the survivors; the caller's order is what anything listing them should show
+	kept.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)
+	return { kept, conflicts }
+}
+
 /** `/rolltoseed <duration>`: the line the commands page and the help listing show. */
 export function pluginCommandUsage(decl: PluginCommandInfo, config: CommandConfig): string {
 	const primary = primaryTrigger(config)

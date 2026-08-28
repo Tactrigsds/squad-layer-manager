@@ -440,8 +440,15 @@ disambiguate them) are driven by declarations the host can see at compile time, 
 none of.
 
 Admins retune the triggers and chats under `pluginCommands` in global settings, keyed by the id the commands
-page shows. A command with no entry there runs under what the plugin declared. Every trigger across core and
-plugin commands is one namespace, and core wins: a plugin cannot shadow an existing command.
+page shows. A command with no entry there runs under what the plugin declared.
+
+Every trigger across core and plugin commands is one namespace. A plugin trigger something else already owns is
+dropped, not dispatched: precedence is core, then plugin commands an admin has configured, then declared
+defaults. A dropped trigger is logged, shown on the plugin in settings, and left off the commands page, so it
+reads as broken rather than as working. A command whose triggers were all taken is not a command at all.
+
+Declare a trigger specific enough not to collide. Configuring one under `pluginCommands` outranks another
+plugin's default, which is how an admin resolves a collision between two installed plugins.
 
 ## Pickers
 

@@ -508,26 +508,37 @@ function pluginCommandEntry(sectionId: string, cmd: PluginEntryInput, sectionLab
 	}
 }
 
-type PluginEntryInput = { id: string; pluginName: string; decl: CMD.PluginCommandInfo; config: CMD.CommandConfig }
+type PluginEntryInput = {
+	id: string
+	pluginName: string
+	decl: CMD.PluginCommandInfo
+	config: CMD.CommandConfig
+	configured: boolean
+}
 
-// what the active plugins contribute, resolved against the stored overrides the same way the dispatcher resolves them
-function pluginEntryInputs(settings: PublicSettings, plugins: PLG.RuntimeInfo[]): PluginEntryInput[] {
-	return plugins.flatMap((info) =>
-		info.commands.map((decl) => {
+// What the active plugins contribute, resolved exactly as the dispatcher resolves it: stored overrides applied,
+// then the trigger namespace settled against core and against each other. Listing a command the dispatcher has
+// shadowed would be advertising a string that does nothing.
+function pluginEntryInputs(settings: PublicSettings, plugins: PLG.RuntimeInfo[]) {
+	const declared = plugins.flatMap((info) =>
+		info.commands.map((decl): PluginEntryInput => {
 			const id = CMD.pluginCommandId(info.id, decl.name)
+			const stored = settings.pluginCommands[id]
 			return {
 				id,
 				pluginName: info.name,
 				decl,
-				config: CMD.pluginCommandConfig(decl, settings.pluginCommands[id], settings.defaultPrefix),
+				config: CMD.pluginCommandConfig(decl, stored, settings.defaultPrefix),
+				configured: stored !== undefined,
 			}
 		}),
 	)
+	return CMD.resolvePluginCommandTriggers(settings.commands, declared)
 }
 
 function buildSections(settings: PublicSettings, pinnedCommands: string[], plugins: PLG.RuntimeInfo[]): Section[] {
 	const sections: Section[] = []
-	const pluginCommands = pluginEntryInputs(settings, plugins)
+	const { kept: pluginCommands, conflicts } = pluginEntryInputs(settings, plugins)
 	const pluginById = new Map(pluginCommands.map((c) => [c.id, c]))
 	const entry = (sectionId: string, cmdId: string, sectionLabel: string) => {
 		const pluginCmd = pluginById.get(cmdId)
@@ -573,11 +584,14 @@ function buildSections(settings: PublicSettings, pinnedCommands: string[], plugi
 
 	// their own section rather than one of the declared ones: sections are the axis the page and `!help` navigate
 	// by, and a plugin cannot be given a say in what they are
-	if (pluginCommands.length > 0) {
+	if (pluginCommands.length > 0 || conflicts.length > 0) {
 		const label = tr.text(CMD_Msgs.pluginsSectionLabel())
 		sections.push({
 			id: CMDH.PLUGINS_SECTION_ID,
 			label,
+			// a shadowed trigger is not listed anywhere else on this page: it is not a command, so the section it
+			// would have appeared in is the only place left to say it exists
+			blurb: conflicts.length > 0 ? tr.text(CMD_Msgs.pluginTriggerConflicts(conflicts)) : undefined,
 			entries: pluginCommands.map((c) => pluginCommandEntry(CMDH.PLUGINS_SECTION_ID, c, label)),
 		})
 	}
