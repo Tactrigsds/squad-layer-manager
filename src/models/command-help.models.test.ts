@@ -204,7 +204,7 @@ describe('resolveHelpListing', () => {
 			permission: null,
 			quickReference: true,
 		}
-		const plugin = { id: CMD.pluginCommandId('seed-roller', 'rolltoseed'), decl, config: CMD.pluginCommandConfig(decl, undefined, P) }
+		const plugin = { id: CMD.pluginCommandId('a-plugin', 'rolltoseed'), decl, config: CMD.pluginCommandConfig(decl, undefined, P) }
 		expect(CMDH.resolveHelpListing(configs, undefined, [plugin])).toMatchObject({ pluginCommands: [plugin] })
 		expect(CMDH.resolveHelpListing(configs, 'all', [plugin])).toMatchObject({ pluginCommands: [plugin] })
 		expect(CMDH.resolveHelpListing(configs, 'moderation', [plugin])).toMatchObject({ pluginCommands: [] })
