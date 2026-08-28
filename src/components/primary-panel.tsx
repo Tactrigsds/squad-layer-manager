@@ -20,6 +20,8 @@ import { StickyGroup } from './sticky-group.tsx'
 import TeamsPanel from './teams-panel.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
 
+type PanelTab = 'queue' | 'teams'
+
 // stable ids so each tab and its panel can point at each other (aria-controls / aria-labelledby)
 const tabId = (value: string) => `primary-panel-tab-${value}`
 const tabPanelId = (value: string) => `primary-panel-panel-${value}`
@@ -72,7 +74,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 	const serverId = props.stores.squadServer.serverId
 	// the visible panel is client-only state; presence mirrors it while the client is engaged (see the
 	// dashboard route effect). tab switches persist and drive display without needing a presence entry.
-	const tab = Zus.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
+	const tab: PanelTab = Zus.useStore(ClientOnlySettings.Store, (s) => (s.primaryPanelTab === 'VIEWING_TEAMS' ? 'teams' : 'queue'))
 
 	const queueLength = Zus.useStore(props.stores.squadServer, (s) => s.queue.layerList.length)
 	const playerCount = Zus.useStore(props.stores.squadServer, (s) => ChatPrt.Sel.players(s).length)
@@ -84,9 +86,32 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
+	const scrollRootRef = React.useRef<HTMLDivElement>(null)
+	// both panels share one scroller, so without this a switch carries the previous tab's scroll
+	// position over and clamps it against the new tab's height
+	const scrollPositions = React.useRef<Record<PanelTab, number>>({ queue: 0, teams: 0 })
+	const scrolledTabRef = React.useRef(tab)
+
+	React.useEffect(() => {
+		const viewport = scrollRootRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+		if (!viewport) return
+		const onScroll = () => {
+			scrollPositions.current[scrolledTabRef.current] = viewport.scrollTop
+		}
+		viewport.addEventListener('scroll', onScroll, { passive: true })
+		return () => viewport.removeEventListener('scroll', onScroll)
+	}, [])
+
+	React.useLayoutEffect(() => {
+		scrolledTabRef.current = tab
+		const viewport = scrollRootRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+		if (!viewport) return
+		viewport.scrollTop = scrollPositions.current[tab]
+	}, [tab])
+
 	return (
 		<Card className="flex flex-col flex-1 min-h-0 @container">
-			<ScrollArea className="flex-1">
+			<ScrollArea ref={scrollRootRef} className="flex-1">
 				<MatchHistoryPanelContent stores={props.stores} />
 				<PluginSlot anchor="server-dashboard:alerts" anchorProps={{ serverId }} />
 				<Separator />
@@ -153,15 +178,15 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 				</div>
 				<StickyGroup stickyRef={headerRef}>
 					<div className="grid">
-						{/* both panels stay mounted (they hold live state) and share one grid cell. `inert` takes the
-						    inactive one out of the a11y tree and the tab order while leaving that layout intact --
-						    `invisible` alone does neither, so its buttons stayed focusable */}
+						{/* both panels stay mounted, since they hold local state (table sorting, selection) that a
+						    remount would drop. the inactive one is `display: none` rather than `invisible` so it
+						    contributes no height: sharing a grid cell, it would otherwise size the scroller to the
+						    taller of the two and leave the shorter tab scrolling past its own content */}
 						<div
 							role="tabpanel"
 							id={tabPanelId('queue')}
 							aria-labelledby={tabId('queue')}
-							inert={tab !== 'queue'}
-							className={cn('[grid-area:1/1]', tab !== 'queue' && 'invisible -z-20')}
+							className={cn('[grid-area:1/1]', tab !== 'queue' && 'hidden')}
 						>
 							<IngameVoteAlert stores={props.stores} />
 							<SlmUpdatesDisabledAlert stores={props.stores} />
@@ -175,8 +200,7 @@ export default function PrimaryPanel(props: { stores: SquadServerFrame.KeyProp }
 							role="tabpanel"
 							id={tabPanelId('teams')}
 							aria-labelledby={tabId('teams')}
-							inert={tab !== 'teams'}
-							className={cn('[grid-area:1/1]', tab !== 'teams' && 'invisible -z-20')}
+							className={cn('[grid-area:1/1]', tab !== 'teams' && 'hidden')}
 						>
 							<TeamsPanel stores={props.stores} />
 						</div>
