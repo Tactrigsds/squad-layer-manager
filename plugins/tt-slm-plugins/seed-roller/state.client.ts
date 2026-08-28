@@ -1,6 +1,7 @@
 // The plugin's client-side handles, kept out of the .tsx files so those export components and nothing else.
 // That is what makes them Fast Refresh boundaries: editing the panel swaps it in place instead of reloading.
 
+import * as ZU from 'slm/lib/zod-utils'
 import type { ClientCtx } from 'slm/plugin/client'
 import * as Rpc from 'slm/plugin/rpc.client'
 
@@ -25,6 +26,11 @@ export function status(serverId: string) {
 export async function cancel(serverId: string) {
 	if (!ctxRef) throw new Error('seed-roller: init(ctx) has not run')
 	await Rpc.client<typeof router>(ctxRef, serverId).cancel({})
+}
+
+/** "3 minutes", "20 seconds": the host's own phrasing, so the panel reads like the rest of the app */
+export function approxDuration(ms: number): string {
+	return ZU.formatDurationApprox(Math.max(0, ms))
 }
 
 /** mm:ss remaining, floored at zero so a late tick never renders a negative countdown */

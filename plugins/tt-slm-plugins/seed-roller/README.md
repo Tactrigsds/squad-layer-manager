@@ -14,7 +14,9 @@ they are, it:
 3. Counts down, during which any admin can cancel from the server dashboard.
 4. Broadcasts to the server and ends the match.
 
-It arms at most once per match. A cancel, a failure or a completed roll all stand until the next one.
+It arms at most once per match. A cancel stands until the next one: an admin said no, and re-arming over that
+thirty seconds later would be obnoxious. A failure does not stand, because the roll is what ends the match, so
+waiting for the next match would be waiting on itself; it retries instead, backing off from a minute.
 
 ## Settings
 
@@ -38,9 +40,12 @@ either draw: a seeding layer is played because the server is empty, not because 
 
 ## When it does not roll
 
-The panel on the server dashboard says which of these it hit:
+The panel above the queue says what happened, when, and when it will try again:
 
 - an admin has unsaved queue edits open, in which case it leaves the queue alone rather than discarding them
 - either pool matched no layers
 - the game server never reported the seeding layer as next, so ending the match would have rolled onto the
   wrong one
+
+A pool left unconfigured, or criteria that will not compile, are reported separately. They are not a failed
+attempt, so there is nothing to retry: the panel says what is missing and clears as soon as it is set.

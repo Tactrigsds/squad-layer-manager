@@ -375,10 +375,11 @@ export default definePluginClient(manifest, (ctx) => {
 
 There is one anchor of each kind so far.
 
-| Kind       | Anchor                    | Props                                       |
-| ---------- | ------------------------- | ------------------------------------------- |
-| slot       | `server-dashboard:alerts` | `serverId`                                  |
-| decoration | `match-history:row`       | `serverId`, `matchId`, `layerId`, `ordinal` |
+| Kind       | Anchor                          | Props                                       |
+| ---------- | ------------------------------- | ------------------------------------------- |
+| slot       | `server-dashboard:alerts`       | `serverId`                                  |
+| slot       | `server-dashboard:queue-alerts` | `serverId`                                  |
+| decoration | `match-history:row`             | `serverId`, `matchId`, `layerId`, `ordinal` |
 
 A decoration is `{ tint?, title?, body? }`, where tint is `info`, `warn` or `violation`. Return an array to
 contribute several to one row, or null for none. A slot that throws is caught by a boundary and a selector that

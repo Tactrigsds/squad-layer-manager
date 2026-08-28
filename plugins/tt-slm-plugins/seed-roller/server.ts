@@ -3,6 +3,7 @@ import * as z from 'zod'
 
 import * as RxExt from 'slm/lib/rxjs-ext'
 import * as Templating from 'slm/lib/templating'
+import * as ZU from 'slm/lib/zod-utils'
 import type * as P from 'slm/plugin'
 import * as PluginConfig from 'slm/plugin/config'
 import * as Rpc from 'slm/plugin/rpc.server'
@@ -23,14 +24,22 @@ import * as Roll from './roll.ts'
 type Ctx = P.ServerCtx<typeof manifest>
 
 const EVALUATE_EVERY_MS = 5_000
+const RETRY_BASE_MS = 60_000
+const RETRY_CAP_MS = 10 * 60_000
 
 export type Phase =
 	| { kind: 'idle' }
 	| { kind: 'armed'; deadline: number; seedLayerId: string; followUpLayerId: string }
 	| { kind: 'rolling'; seedLayerId: string }
-	| { kind: 'done'; seedLayerId: string }
+	// `matchId` is the match the roll ended, not the one it started. Held so a stale read of the current
+	// match immediately after the roll cannot arm a second time for a match that is already over.
+	| { kind: 'done'; seedLayerId: string; at: number; matchId: number | null }
+	// an admin said no. The one terminal state: it stands until the next match, because re-arming over
+	// somebody's decision thirty seconds later would be obnoxious.
 	| { kind: 'cancelled' }
-	| { kind: 'blocked'; reason: string }
+	// an attempt failed at something that may well work next time. Never terminal: the roll is what ends the
+	// match, so a failure that waited for the next match would be waiting on itself.
+	| { kind: 'retrying'; reason: string; at: number; nextAttempt: number; attempts: number }
 
 export type Status = {
 	onTrainingLayer: boolean
@@ -38,6 +47,8 @@ export type Status = {
 	criteria: Criteria.Evaluation | { code: 'err:compile'; message: string } | null
 	nextIsSeedLayer: boolean
 	seedPool: string
+	/** why the plugin could not act even in principle: configuration, not a failed attempt. Follows the config. */
+	notReady: string | null
 	phase: Phase
 }
 
@@ -60,6 +71,7 @@ const INITIAL_STATUS: Status = {
 	criteria: null,
 	nextIsSeedLayer: false,
 	seedPool: '',
+	notReady: null,
 	phase: { kind: 'idle' },
 }
 
@@ -117,7 +129,11 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 			sctx.matchHistory.finalized$
 				.pipe(
 					Instr.durableSub('reset-phase', { module: sctx.module }, async () => {
-						if (state.status.phase.kind === 'armed' || state.status.phase.kind === 'rolling') return
+						const phase = state.status.phase
+						if (phase.kind === 'armed' || phase.kind === 'rolling') return
+						// a completed roll is what finalized this match, so its own finalization must not clear it.
+						// evaluate() releases it once the current match is genuinely a different one.
+						if (phase.kind === 'done') return
 						patch(sctx.serverId, { phase: { kind: 'idle' } })
 					}),
 				)
@@ -150,18 +166,51 @@ const evaluate = async (ctx: Ctx, state: ServerState) => {
 				? compiled.evaluate({ ...census, currentTime: Criteria.timeVars(cfg.timezone, new Date()) })
 				: null
 
+	// a roll ends the match, and the current match can still read as the old one for a tick afterwards.
+	// Holding 'done' until the id actually moves is what stops a second arm for a match already over.
+	if (state.status.phase.kind === 'done' && current?.historyEntryId !== state.status.phase.matchId) {
+		patch(ctx.serverId, { phase: { kind: 'idle' } })
+	}
+
 	const head = LayerQueue.getSavedQueue(ctx)[0]
+	const now = Date.now()
 	patch(ctx.serverId, {
 		onTrainingLayer,
 		census,
 		criteria: evaluation,
 		nextIsSeedLayer: !!head && Roll.isSeedLayer(head.layerId),
 		seedPool: cfg.seedPool,
+		notReady: readiness(cfg, compiled),
 	})
 
-	if (!onTrainingLayer || state.status.phase.kind !== 'idle') return
+	if (!onTrainingLayer || state.status.notReady) return
+	if (!canArm(state.status.phase, now)) return
 	if (evaluation?.code !== 'ok' || !evaluation.passed) return
 	await arm(ctx, state, census!)
+}
+
+/**
+ * What stops the plugin acting at all, as opposed to an attempt that failed. Recomputed every tick, so
+ * fixing the config clears it without anybody restarting anything.
+ */
+function readiness(cfg: { seedPool: string; followUpPool: string }, compiled: Criteria.Compiled): string | null {
+	if (compiled.code !== 'ok') return `The criteria will not compile: ${compiled.message}`
+	if (!cfg.seedPool) return 'No seeding pool is configured, so there is nothing to draw a seeding layer from.'
+	if (!cfg.followUpPool) return 'No follow-up pool is configured, so there is nothing to queue behind the seeding layer.'
+	return null
+}
+
+function canArm(phase: Phase, now: number): boolean {
+	if (phase.kind === 'idle') return true
+	return phase.kind === 'retrying' && now >= phase.nextAttempt
+}
+
+// doubling from a minute, capped, so a server that will not sync is retried occasionally rather than every
+// five seconds, and a transient failure is retried soon
+function retryAfter(phase: Phase, reason: string): Extract<Phase, { kind: 'retrying' }> {
+	const attempts = phase.kind === 'retrying' ? phase.attempts + 1 : 1
+	const now = Date.now()
+	return { kind: 'retrying', reason, at: now, attempts, nextAttempt: now + Math.min(RETRY_BASE_MS * 2 ** (attempts - 1), RETRY_CAP_MS) }
 }
 
 async function arm(ctx: Ctx, state: ServerState, census: Activity.Census) {
@@ -171,8 +220,7 @@ async function arm(ctx: Ctx, state: ServerState, census: Activity.Census) {
 	const seed = `${ctx.serverId}:${Date.now()}`
 	const prepared = await Roll.prepareQueue(ctx, cfg, seed)
 	if (prepared.code !== 'ok') {
-		patch(ctx.serverId, { phase: { kind: 'blocked', reason: describePrepareFailure(prepared) } })
-		await AppEvents.emit(ctx, 'seed-roll-blocked', { reason: prepared.code }, `seed roll blocked: ${describePrepareFailure(prepared)}`)
+		await fail(ctx, state, prepared.code, describePrepareFailure(prepared))
 		return
 	}
 
@@ -209,24 +257,38 @@ async function arm(ctx: Ctx, state: ServerState, census: Activity.Census) {
 
 	patch(ctx.serverId, { phase: { kind: 'rolling', seedLayerId: prepared.seedLayerId } })
 	if (!(await Roll.waitForNextLayer(ctx, prepared.seedLayerId))) {
-		patch(ctx.serverId, { phase: { kind: 'blocked', reason: 'The game server never reported the seeding layer as next.' } })
-		await AppEvents.emit(ctx, 'seed-roll-blocked', { reason: 'next-layer-timeout' }, 'seed roll blocked: next layer never synced')
+		await fail(ctx, state, 'next-layer-timeout', 'The game server never reported the seeding layer as next.')
 		return
 	}
 
 	await SquadRcon.broadcast(ctx, Templating.renderTemplate(cfg.broadcast, vars))
 	const ended = await SquadServer.endMatch(ctx)
 	if (ended.code !== 'ok') {
-		patch(ctx.serverId, { phase: { kind: 'blocked', reason: ended.message } })
-		await AppEvents.emit(ctx, 'seed-roll-blocked', { reason: ended.code }, `seed roll blocked: ${ended.message}`)
+		await fail(ctx, state, ended.code, ended.message)
 		return
 	}
-	patch(ctx.serverId, { phase: { kind: 'done', seedLayerId: prepared.seedLayerId } })
+	const rolled = await MatchHistory.getCurrentMatch(ctx)
+	patch(ctx.serverId, {
+		phase: { kind: 'done', seedLayerId: prepared.seedLayerId, at: Date.now(), matchId: rolled?.historyEntryId ?? null },
+	})
 	await AppEvents.emit(
 		ctx,
 		'seed-roll-completed',
 		{ seedLayerId: prepared.seedLayerId },
 		`rolled to seeding layer ${prepared.seedLayerId}`,
+	)
+}
+
+/** Records a failed attempt and schedules the next one. */
+async function fail(ctx: Ctx, state: ServerState, code: string, reason: string) {
+	const phase = retryAfter(state.status.phase, reason)
+	patch(ctx.serverId, { phase })
+	const retryIn = ZU.formatDurationApprox(phase.nextAttempt - phase.at)
+	await AppEvents.emit(
+		ctx,
+		'seed-roll-failed',
+		{ reason: code, attempts: phase.attempts },
+		`seed roll failed: ${reason} Retrying in ${retryIn}.`,
 	)
 }
 

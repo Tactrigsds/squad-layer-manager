@@ -59,7 +59,10 @@ export type BuiltinClientPlugin = {
 // ---- anchors ----
 
 export type SlotAnchors = {
+	// above the match history, for something about the server as a whole
 	'server-dashboard:alerts': { serverId: string }
+	// above the queue and below the host's own queue alerts, for something about what is queued next
+	'server-dashboard:queue-alerts': { serverId: string }
 }
 export type SlotAnchorId = keyof SlotAnchors
 
