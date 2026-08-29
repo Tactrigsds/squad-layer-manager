@@ -464,3 +464,8 @@ export const poolFiltersTab = def('Filters')
 export const resetChanges = def('Reset changes')
 
 export const saveChanges = def('Save Changes')
+
+export const serverUnresolved = def(
+	'{count, plural, one {One server named here no longer exists} other {# servers named here no longer exist}}. The raw id is shown; pick another or remove it.',
+	(count: number) => ({ count }),
+)

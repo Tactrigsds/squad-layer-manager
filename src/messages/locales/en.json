@@ -1860,6 +1860,7 @@
 	"{count, plural, one {# timeout failed} other {# timeouts failed}}": "{count, plural, one {# timeout failed} other {# timeouts failed}}",
 	"{count, plural, one {# use} other {# uses}}": "{count, plural, one {# use} other {# uses}}",
 	"{count, plural, one {Copied History Entry ID} other {Copied History Entry IDs}}": "{count, plural, one {Copied History Entry ID} other {Copied History Entry IDs}}",
+	"{count, plural, one {One server named here no longer exists} other {# servers named here no longer exist}}. The raw id is shown; pick another or remove it.": "{count, plural, one {One server named here no longer exists} other {# servers named here no longer exist}}. The raw id is shown; pick another or remove it.",
 	"{count, plural, one {this player} other {these # players}}": "{count, plural, one {this player} other {these # players}}",
 	"{count, plural, one {{what} copied to clipboard} other {# {what}s copied to clipboard}}": "{count, plural, one {{what} copied to clipboard} other {# {what}s copied to clipboard}}",
 	"{count} not permitted": "{count} not permitted",
