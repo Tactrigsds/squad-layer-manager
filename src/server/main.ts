@@ -13,6 +13,7 @@ import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
+import * as ControlSocket from '@/systems/control-socket.server'
 import * as Discord from '@/systems/discord.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
@@ -165,6 +166,8 @@ await Instr.spanOp('main', { module }, async () => {
 		...BUILTIN_PLUGINS,
 		...(ENV.NODE_ENV === 'development' ? await discoverSourcePlugins() : []),
 	])
+	// after Plugins.setup, since reloading plugins is the only thing it does
+	await ControlSocket.setup()
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
 		AppEvents.create<AppEvents.AppStarted>({
