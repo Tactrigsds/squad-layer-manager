@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Talks to a running SLM over its control socket (see src/server/control-socket.ts). Standalone and
+// Talks to a running SLM over its control socket (see src/systems/control-socket.server.ts). Standalone and
 // dependency-free on purpose: the production image ships neither tsx nor src/, so anything reached with
 // `docker exec` has to run on plain node.
 //
