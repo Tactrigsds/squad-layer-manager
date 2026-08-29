@@ -10,6 +10,12 @@ export function globalSettingAnchor(path: string): string {
 	return `setting:${path}`
 }
 
+// the anchor id of one plugin's config field, given its dotted path. Mirrors the idPrefix plugins-section
+// hands its form. A field that is not rendered degrades to the plugin's section header (see sectionForAnchor).
+export function pluginSettingAnchor(pluginId: string, path: string): string {
+	return `setting:plugin:${pluginId}:${path}`
+}
+
 // `setting:<scope>:<scopeId>:<path>` -> `section:<scope>:<scopeId>`
 function scopedSection(id: string, scope: 'server' | 'plugin'): string | null {
 	const rest = id.slice(`setting:${scope}:`.length)

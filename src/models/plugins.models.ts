@@ -239,6 +239,43 @@ export function fieldControl(node: unknown): FieldControl | undefined {
 	return FIELD_CONTROLS.includes(declared as FieldControl) ? (declared as FieldControl) : undefined
 }
 
+/**
+ * Every value a config holds under fields declaring `control`, with the dotted path it sits at.
+ *
+ * Driven off the JSON Schema rather than the zod schema because that is what survives to the settings form,
+ * so what this finds and what renders as a picker cannot drift apart. The path is the one the settings anchor
+ * `setting:plugin:<id>:<path>` uses, so a caller can link straight to the field.
+ */
+export function configFieldValues(schema: unknown, config: unknown, control: FieldControl): { path: string; value: string }[] {
+	const out: { path: string; value: string }[] = []
+	const walk = (node: unknown, value: unknown, path: string) => {
+		if (node === null || typeof node !== 'object') return
+		const obj = node as Record<string, unknown>
+		if (fieldControl(obj) === control) {
+			if (typeof value === 'string') {
+				if (value) out.push({ path, value })
+			} else if (Array.isArray(value)) {
+				value.forEach((entry, i) => {
+					if (typeof entry === 'string' && entry) out.push({ path: `${path}[${i}]`, value: entry })
+				})
+			}
+			return
+		}
+		const properties = obj.properties as Record<string, unknown> | undefined
+		if (properties && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+			for (const [key, child] of Object.entries(properties)) {
+				walk(child, (value as Record<string, unknown>)[key], path ? `${path}.${key}` : key)
+			}
+			return
+		}
+		if (obj.items && Array.isArray(value)) {
+			value.forEach((entry, i) => walk(obj.items, entry, `${path}[${i}]`))
+		}
+	}
+	walk(schema, config, '')
+	return out
+}
+
 const withControl = <S extends z.ZodType>(schema: S, control: FieldControl): S => schema.meta({ [FIELD_CONTROL_KEY]: control }) as S
 
 /**

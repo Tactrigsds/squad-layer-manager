@@ -457,3 +457,17 @@ export const timeoutsCancelled = def(
 export const noLayerRequestNumber = def('No layer request #{number}', (number: number) => ({ number }))
 
 export const noLayerRequests = def('You have no layer requests queued')
+
+export const noPluginCommands = def('No plugin is contributing a command.')
+
+export const pluginCommandOrphans = def('Overrides for commands no running plugin declares. These do nothing.')
+
+export const pluginCommandDropOverride = def('Remove')
+
+export const pluginCommandUseDeclared = def('Use declared')
+
+// the plugin declared this trigger and something else already owns it, so it is dropped rather than dispatched
+export const pluginTriggerTakenBy = def(
+	'The plugin declares this trigger, but {owner} already owns it, so it does nothing. Set a different one here.',
+	(owner: string) => ({ owner }),
+)

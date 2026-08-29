@@ -13,6 +13,7 @@ import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
 import * as CMD from '@/models/command.models'
 import * as CS from '@/models/context-shared'
+import type * as FR from '@/models/filter-references.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
@@ -29,6 +30,7 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as FilterEntity from '@/systems/filter-entity.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as Pkgs from '@/systems/plugin-packages.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -175,6 +177,11 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	// before any package is imported: this is what makes `slm/*` resolve inside one
 	ApiRegistry.setup()
 	Pkgs.setup()
+
+	// a Fields.filterId in a running plugin's config is a reference like a pool config is, so deleting that
+	// filter is refused while it stands. Rebuilt whenever a plugin starts, stops or is reconfigured.
+	FilterEntity.registerPluginFilterRefs(collectFilterRefs)
+	update$.subscribe(() => FilterEntity.invalidateReferences())
 
 	for (const builtin of builtins) {
 		await ensureRuntime(ctx, { ...builtin, source: 'builtin', sourceUrl: null, manifestEntry: null, clientEntry: null, pkg: null })
@@ -465,6 +472,31 @@ export function registerRouter(ctx: Ctx<any>, router: AnyRouter) {
 	if (rt.router) throw new Error(`plugin ${ctx.plugin.id}: a router is already registered`)
 	rt.router = router
 	ctx.cleanup.push(() => (rt.router = null))
+}
+
+/**
+ * Which filters the active plugins' configs name, for the filter reference index. Read from the parsed config
+ * against the plugin's own schema, so a plugin declaring `Fields.filterId()` gets this without doing anything.
+ */
+function collectFilterRefs(): FR.PluginFilterRefs[] {
+	const out: FR.PluginFilterRefs[] = []
+	for (const rt of plugins.values()) {
+		if (rt.status !== 'active') continue
+		let fields: { path: string; value: string }[]
+		try {
+			const jsonSchema = z.toJSONSchema(rt.entry.manifest.configSchema, { io: 'input', unrepresentable: 'any' })
+			fields = PLG.configFieldValues(jsonSchema, rt.config, 'filter-id').concat(
+				PLG.configFieldValues(jsonSchema, rt.config, 'filter-ids'),
+			)
+		} catch (err) {
+			// a schema that will not render is the plugin's problem, not a reason to fail every filter delete
+			rt.log.warn(err, 'could not read filter references out of the config')
+			continue
+		}
+		if (fields.length === 0) continue
+		out.push({ pluginId: rt.ref.id, fields: fields.map((f) => ({ path: f.path, filterId: f.value })) })
+	}
+	return out
 }
 
 // ---- in-game commands ----
