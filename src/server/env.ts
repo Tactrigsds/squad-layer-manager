@@ -235,6 +235,14 @@ export const groups = {
 	},
 
 	plugins: {
+		CONTROL_SOCKET: z
+			.string()
+			.prefault(path.join(Paths.DATA, 'control.sock'))
+			.meta({
+				description:
+					'unix socket for operating the running app from inside its container (see server/control-socket.ts): ' +
+					'reloading plugins a deployment just copied in. Root-owned and 0600. Empty disables it.',
+			}),
 		PLUGINS_DIR: z.string().min(1).prefault(path.join(Paths.DATA, 'plugins')).meta({
 			description:
 				'where packaged plugins live, one directory each. Under ./data by default, which a deployment already mounts, so plugins survive an image upgrade and can be dropped in by hand.',
