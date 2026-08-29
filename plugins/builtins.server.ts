@@ -30,10 +30,8 @@ export const BUILTIN_PLUGINS: BuiltinPlugin[] = [
 export async function discoverSourcePlugins(): Promise<BuiltinPlugin[]> {
 	const known = new Set(BUILTIN_PLUGINS.map((p) => p.manifest.id))
 	const out: BuiltinPlugin[] = []
-	for (const name of fs.readdirSync(import.meta.dirname).sort()) {
-		const dir = path.join(import.meta.dirname, name)
+	for (const dir of sourceDirs(import.meta.dirname)) {
 		const entry = path.join(dir, 'plugin.ts')
-		if (!fs.statSync(dir).isDirectory() || !fs.existsSync(entry)) continue
 		const manifest = ((await import(pathToFileURL(entry).href)) as { default?: PLG.Manifest }).default
 		if (!manifest || known.has(manifest.id)) continue
 		const migrations = path.join(dir, 'migrations.ts')
@@ -45,6 +43,26 @@ export async function discoverSourcePlugins(): Promise<BuiltinPlugin[]> {
 				: {}),
 			hasClient: fs.existsSync(path.join(dir, 'client.tsx')),
 		})
+	}
+	return out
+}
+
+// Directories holding a plugin.ts, one or two levels down. The second level is what lets one repo hold
+// several plugins and still be cloned in here as a unit; it matches the globs builtins.ts asks vite for.
+function sourceDirs(root: string): string[] {
+	const out: string[] = []
+	for (const name of fs.readdirSync(root).sort()) {
+		const dir = path.join(root, name)
+		if (!fs.statSync(dir).isDirectory()) continue
+		if (fs.existsSync(path.join(dir, 'plugin.ts'))) out.push(dir)
+		else
+			out.push(
+				...fs
+					.readdirSync(dir)
+					.sort()
+					.map((n) => path.join(dir, n))
+					.filter((d) => fs.existsSync(path.join(d, 'plugin.ts'))),
+			)
 	}
 	return out
 }

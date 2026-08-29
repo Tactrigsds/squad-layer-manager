@@ -31,8 +31,8 @@ function groupDifference(id: CMD.CommandId, group: CMDH.TriggerGroup): TString {
 // `section` is the raw token typed after the help command; omitted means the quick reference. The brackets and the
 // colon are the listing's own layout rather than prose, so they sit in the pattern where a translator can see what
 // they punctuate.
-export const help = def((commands: CMD.CommandConfigs, section?: string) => {
-	const listing = CMDH.resolveHelpListing(commands, section)
+export const help = def((commands: CMD.CommandConfigs, section?: string, plugins: CMDH.PluginCommandListing[] = []) => {
+	const listing = CMDH.resolveHelpListing(commands, section, plugins)
 	if (listing.code === 'err:unknown-section') return { warn: [listing.msg] }
 
 	// one line per way of running the command: triggers that take the same thing from the caller share a line, and one
@@ -44,6 +44,19 @@ export const help = def((commands: CMD.CommandConfigs, section?: string) => {
 				signature: group.signature ? ` ${group.signature}` : '',
 				// the first line is the command; the rest only have to say how they differ from it
 				description: i === 0 ? descriptions[id] : groupDifference(id, group),
+			}),
+		),
+	)
+	// a plugin's command has no declared arguments, so it lists as its triggers, its usage line and its own blurb
+	lines.push(
+		...listing.pluginCommands.map(({ decl, config }) =>
+			t('[{triggers}]{signature}: {description}', {
+				triggers: config.triggers
+					.map(CMD.triggerString)
+					.toSorted((a, b) => a.length - b.length)
+					.join(', '),
+				signature: decl.usage ? ` ${decl.usage}` : '',
+				description: decl.description,
 			}),
 		),
 	)
@@ -293,6 +306,19 @@ export const playerNotFound = def('Player not found')
 
 export const commandDisabled = def('Command "{cmd}" is disabled', (cmd: string) => ({ cmd }))
 
+export const pluginCommandFailed = def('The {plugin} plugin could not run that command', (plugin: string) => ({ plugin }))
+
+export const pluginOwner = def('Provided by')
+export const pluginSettingsKey = def('Settings key')
+export const pluginsSectionLabel = def('Plugins')
+
+// Named rather than counted: which string was taken, and by what, is the whole of what an admin has to act on.
+export const pluginTriggerConflicts = def((conflicts: CMD.CommandConflict[]) =>
+	t('{list}. Set a different trigger under pluginCommands in global settings.', {
+		list: conflicts.map((c) => `"${c.trigger}" is already used by ${c.ownedBy}`).join('; '),
+	}),
+)
+
 export const itemNotFound = def('Item not found')
 
 export const playerNotOnTeam = def('Player "{username}" is not on a team', (username?: string) => ({ username }))
@@ -431,3 +457,17 @@ export const timeoutsCancelled = def(
 export const noLayerRequestNumber = def('No layer request #{number}', (number: number) => ({ number }))
 
 export const noLayerRequests = def('You have no layer requests queued')
+
+export const noPluginCommands = def('No plugin is contributing a command.')
+
+export const pluginCommandOrphans = def('Overrides for commands no running plugin declares. These do nothing.')
+
+export const pluginCommandDropOverride = def('Remove')
+
+export const pluginCommandUseDeclared = def('Use declared')
+
+// the plugin declared this trigger and something else already owns it, so it is dropped rather than dispatched
+export const pluginTriggerTakenBy = def(
+	'The plugin declares this trigger, but {owner} already owns it, so it does nothing. Set a different one here.',
+	(owner: string) => ({ owner }),
+)

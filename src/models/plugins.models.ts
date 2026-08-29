@@ -1,6 +1,8 @@
 import * as D from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
+import * as CMD from '@/models/command.models'
+import type * as RBAC from '@/rbac.models'
 import type { MigrationDriver } from '@/server/migrate'
 
 // Plugins are trusted, in-process extensions. A plugin directory under plugins/ holds a side-effect-free
@@ -14,7 +16,7 @@ import type { MigrationDriver } from '@/server/migrate'
  * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
  * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
  */
-export const API_VERSION = { major: 0, minor: 2, patch: 0 }
+export const API_VERSION = { major: 0, minor: 4, patch: 0 }
 
 /** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
 export function formatApiVersion(): string {
@@ -98,6 +100,35 @@ export type Status = z.infer<typeof StatusSchema>
 export const SourceSchema = z.enum(['builtin', 'directory', 'url'])
 export type Source = z.infer<typeof SourceSchema>
 
+// -------- plugin-declared permissions --------
+
+/**
+ * An action a plugin defines for itself, so an admin can grant it to a role. Only the two scopes that need no
+ * bespoke arguments: a plugin cannot introduce a comparator ("up to N") or a path-restricted grant, both of
+ * which the permission matcher has to understand specifically.
+ */
+export type PermissionDeclaration = {
+	scope: 'global' | 'server'
+	// one line, shown next to the checkbox in the role editor
+	description: string
+}
+
+export type PermissionInfo = PermissionDeclaration & { name: string }
+
+export const PermissionInfoSchema = z.object({
+	name: z.string(),
+	scope: z.enum(['global', 'server']),
+	description: z.string(),
+})
+
+// What registerPermissions hands back: one builder per declared action, asking for a server only where the
+// declaration said the action is about one.
+export type PermissionBuilders<D extends Record<string, PermissionDeclaration>> = {
+	[K in keyof D]: D[K]['scope'] extends 'server'
+		? (serverId: string) => RBAC.Permission<'plugin:action'>
+		: () => RBAC.Permission<'plugin:action'>
+}
+
 export const RuntimeInfoSchema = z.object({
 	id: PluginIdSchema,
 	name: z.string(),
@@ -110,6 +141,10 @@ export const RuntimeInfoSchema = z.object({
 	// what put the plugin in 'errored', for the settings UI
 	error: z.string().nullable(),
 	hasClient: z.boolean(),
+	// the in-game commands this plugin contributes, for the commands page. Empty while it is not active, since a
+	// stopped plugin's command does not answer
+	commands: z.array(CMD.PluginCommandInfoSchema).prefault([]),
+	permissions: z.array(PermissionInfoSchema).prefault([]),
 	source: SourceSchema,
 	// where a url-installed package was fetched from, and what refresh re-fetches
 	sourceUrl: z.string().nullable(),
@@ -207,4 +242,87 @@ export function defineTables(manifest: { id: PluginId }): TableFactory {
 		table: (name, columns) => D.sqliteTable(prefix + name, columns),
 		name: (name) => prefix + name,
 	}
+}
+
+// -------- config field controls --------
+
+/**
+ * The JSON Schema key a config field names its control with. settings-form.tsx picks its own controls by
+ * setting path, which a plugin has no way to reach; this survives z.toJSONSchema, so a plugin's schema can
+ * ask for one by declaring it.
+ */
+export const FIELD_CONTROL_KEY = 'x-slm-field'
+
+export const FIELD_CONTROLS = [
+	'filter-id',
+	'filter-ids',
+	'server-id',
+	'server-ids',
+	'discord-channel-id',
+	'discord-channel-ids',
+	'multiline',
+] as const
+export type FieldControl = (typeof FIELD_CONTROLS)[number]
+
+/** Reads the control a JSON Schema node asks for, or undefined for an ordinary field. */
+export function fieldControl(node: unknown): FieldControl | undefined {
+	const declared = (node as Record<string, unknown> | null | undefined)?.[FIELD_CONTROL_KEY]
+	return FIELD_CONTROLS.includes(declared as FieldControl) ? (declared as FieldControl) : undefined
+}
+
+/**
+ * Every value a config holds under fields declaring `control`, with the dotted path it sits at.
+ *
+ * Driven off the JSON Schema rather than the zod schema because that is what survives to the settings form,
+ * so what this finds and what renders as a picker cannot drift apart. The path is the one the settings anchor
+ * `setting:plugin:<id>:<path>` uses, so a caller can link straight to the field.
+ */
+export function configFieldValues(schema: unknown, config: unknown, control: FieldControl): { path: string; value: string }[] {
+	const out: { path: string; value: string }[] = []
+	const walk = (node: unknown, value: unknown, path: string) => {
+		if (node === null || typeof node !== 'object') return
+		const obj = node as Record<string, unknown>
+		if (fieldControl(obj) === control) {
+			if (typeof value === 'string') {
+				if (value) out.push({ path, value })
+			} else if (Array.isArray(value)) {
+				value.forEach((entry, i) => {
+					if (typeof entry === 'string' && entry) out.push({ path: `${path}[${i}]`, value: entry })
+				})
+			}
+			return
+		}
+		const properties = obj.properties as Record<string, unknown> | undefined
+		if (properties && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+			for (const [key, child] of Object.entries(properties)) {
+				walk(child, (value as Record<string, unknown>)[key], path ? `${path}.${key}` : key)
+			}
+			return
+		}
+		if (obj.items && Array.isArray(value)) {
+			value.forEach((entry, i) => walk(obj.items, entry, `${path}[${i}]`))
+		}
+	}
+	walk(schema, config, '')
+	return out
+}
+
+const withControl = <S extends z.ZodType>(schema: S, control: FieldControl): S => schema.meta({ [FIELD_CONTROL_KEY]: control }) as S
+
+/**
+ * Config fields that render as one of SLM's pickers instead of a text box. Each stores what its name says:
+ * a filter entity id, a managed server id, a Discord channel id.
+ *
+ * The value is still a plain string (or array of them), so a config written by hand or through the YAML
+ * editor is unaffected, and an id whose target has since been deleted still round-trips.
+ */
+export const Fields = {
+	filterId: () => withControl(z.string(), 'filter-id'),
+	filterIds: () => withControl(z.array(z.string()), 'filter-ids'),
+	serverId: () => withControl(z.string(), 'server-id'),
+	serverIds: () => withControl(z.array(z.string()), 'server-ids'),
+	discordChannelId: () => withControl(z.string(), 'discord-channel-id'),
+	discordChannelIds: () => withControl(z.array(z.string()), 'discord-channel-ids'),
+	/** a string edited in a textarea rather than a one-line input, for message templates and the like */
+	multilineText: () => withControl(z.string(), 'multiline'),
 }

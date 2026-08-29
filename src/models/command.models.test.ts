@@ -550,3 +550,47 @@ describe('describeTriggerExpansion', () => {
 		expect(CMD.describeTriggerExpansion(config([to45]), to45)).toBeUndefined()
 	})
 })
+
+describe('resolvePluginCommandTriggers', () => {
+	const core = CMD.seedCommandConfigs({}, CMD.DEFAULT_PREFIX) as unknown as CMD.CommandConfigs
+	const listing = (id: string, triggers: string[], configured = false) => ({
+		id,
+		configured,
+		config: { triggers, allowedChats: ['admin'] as CMD.ChatGroup[], enabled: true, quickReference: false },
+	})
+
+	it('drops a plugin trigger a core command already owns', () => {
+		const helpTrigger = CMD.triggerString(CMD.primaryTrigger(core.help)!)
+		const { kept, conflicts } = CMD.resolvePluginCommandTriggers(core, [listing('plugin:a:x', [helpTrigger, '/unique'])])
+		expect(conflicts).toEqual([{ commandId: 'plugin:a:x', trigger: helpTrigger, ownedBy: 'help' }])
+		// the surviving trigger still works: a partial collision does not take the whole command down
+		expect(kept[0].config.triggers).toEqual(['/unique'])
+	})
+
+	it('removes a command whose triggers were all taken, rather than listing one nothing dispatches', () => {
+		const { kept, conflicts } = CMD.resolvePluginCommandTriggers(core, [
+			listing('plugin:a:roll', ['/rolltoseed']),
+			listing('plugin:b:roll', ['/rolltoseed']),
+		])
+		expect(kept.map((k) => k.id)).toEqual(['plugin:a:roll'])
+		expect(conflicts).toEqual([{ commandId: 'plugin:b:roll', trigger: '/rolltoseed', ownedBy: 'plugin:a:roll' }])
+	})
+
+	// what makes editing pluginCommands a fix rather than a race against load order
+	it('lets a configured trigger beat another plugin declared default, whatever the order', () => {
+		const { kept, conflicts } = CMD.resolvePluginCommandTriggers(core, [
+			listing('plugin:a:roll', ['/rolltoseed']),
+			listing('plugin:b:roll', ['/rolltoseed'], true),
+		])
+		expect(kept.map((k) => k.id)).toEqual(['plugin:b:roll'])
+		expect(conflicts).toEqual([{ commandId: 'plugin:a:roll', trigger: '/rolltoseed', ownedBy: 'plugin:b:roll' }])
+	})
+
+	it('matches triggers case-insensitively, as dispatch does', () => {
+		const { conflicts } = CMD.resolvePluginCommandTriggers(core, [
+			listing('plugin:a:roll', ['/RollToSeed']),
+			listing('plugin:b:roll', ['/rolltoseed']),
+		])
+		expect(conflicts).toHaveLength(1)
+	})
+})

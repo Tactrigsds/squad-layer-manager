@@ -63,7 +63,9 @@ export function initLayerQueue(args: Args) {
 			toast.info(...tr.toast(LL_Msgs.abandonedEditsDiscarded(draft)))
 			return
 		}
-		if (!('userId' in op)) return
+		// no user means nothing human issued this -- a plugin editing the queue -- and presence speaks about
+		// people, so there is nobody to announce
+		if (!('userId' in op) || op.userId === undefined) return
 		switch (op.op) {
 			case 'add':
 				presenceEvent$.next({ userId: op.userId, action: 'added-layers' })

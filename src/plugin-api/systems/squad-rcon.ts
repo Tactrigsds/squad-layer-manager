@@ -13,6 +13,7 @@ export {
 	getNextLayer,
 	getPlayer,
 	getServerInfo,
+	getTeams,
 	kickPlayer,
 	killPlayers,
 	removeFromSquad,

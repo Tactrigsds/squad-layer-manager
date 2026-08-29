@@ -110,6 +110,10 @@ export const voteAborted = def((actor: React.ReactNode) => rt('{actor} aborted t
 // a generic line for the types the feed has no renderer of its own for; the description comes from the models
 export const genericLine = def((actor: React.ReactNode, description: string) => rt('{actor} {description}', { actor, description }))
 
+// a plugin's own rendering of one of its events. Same shape as genericLine, but the predicate is a node the
+// plugin supplied rather than a string, and the plugin's name is still the prefix.
+export const pluginLine = def((actor: React.ReactNode, content: React.ReactNode) => rt('{actor} {content}', { actor, content }))
+
 // -------- MAP_SET --------
 
 export const nextLayerRestored = def((layer: React.ReactNode) => rt("SLM restored the queue's next layer, set to {layer}", { layer }))

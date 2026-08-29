@@ -53,8 +53,8 @@ export const router = {
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	Rpc.register(ctx, router)
 
-	Servers.setup(ctx, (sctx, cleanup) => {
-		cleanup.push(
+	Servers.setup(ctx, (sctx) => {
+		sctx.cleanup.push(
 			sctx.matchHistory.finalized$
 				.pipe(
 					Instr.durableSub('evaluate', { module: sctx.module }, async ({ matchId }) => {
