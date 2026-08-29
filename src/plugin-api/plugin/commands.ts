@@ -1,7 +1,10 @@
 /**
- * Contributing in-game commands. The host owns trigger matching, the chat and enabled gates and the permission
- * check, so a handler only ever runs for a caller who was allowed to run it. Triggers and chats are configurable
- * under `pluginCommands` in global settings; what a plugin declares is the default.
+ * Contributing in-game commands. The host owns trigger matching and the chat and enabled gates. Triggers and
+ * chats are configurable under `pluginCommands` in global settings; what a plugin declares is the default.
+ *
+ * Authorization is not among the gates. What a command requires can depend on the arguments it was given, so
+ * the handler checks it, against `input.player`, through slm/systems/rbac. A command that only reads may need
+ * nothing; one that acts on the server needs to say so itself.
  */
 export { registerCommand as register } from '@/systems/plugins.server'
 export type { PluginCommandHandler, PluginCommandInput } from '@/systems/plugins.server'

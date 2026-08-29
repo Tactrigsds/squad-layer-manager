@@ -7,8 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
 
-import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { LAYERS } from '../harness/arrange'
+import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { LAYERS, role } from '../harness/arrange'
 import * as Inspect from '../harness/inspect'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
@@ -79,7 +79,14 @@ beforeAll(async () => {
 	manifestUrl = `http://127.0.0.1:${(origin.address() as { port: number }).port}/releases/latest/download/plugin.json`
 
 	// an in-game admin who is also the seeded superuser, so the plugin's command has somebody allowed to run it
-	app = await createAppFixture({ admins: [ADMIN_STEAM_ID], adminSteamIds: [ADMIN_STEAM_ID] })
+	app = await createAppFixture({
+		admins: [ADMIN_STEAM_ID],
+		adminSteamIds: [ADMIN_STEAM_ID],
+		users: [OUTSIDER],
+		globalSettings: (settings) => {
+			settings.rbac.roles['plugin-rpc-outsider'] = role(['site:authorized', 'squad-server:view'], { users: [OUTSIDER] })
+		},
+	})
 	client = await createOrpcClient(app)
 	cookie = await sessionCookie(app)
 }, 180_000)
@@ -88,6 +95,9 @@ afterAll(async () => {
 	await app?.dispose()
 	origin?.close()
 })
+
+// signed in, so the host lets their rpc through, and holding nothing beyond that
+const OUTSIDER: TestUser = { discordId: 900000000000000077n, username: 'plugin-rpc-outsider' }
 
 function readRows<T>(query: string, ...params: unknown[]): T[] {
 	const db = app.readDb()
@@ -330,9 +340,9 @@ describe('packaged plugins', () => {
 		).toMatchObject({ actor: 'hello' })
 	})
 
-	// The whole point of the host owning command dispatch: the plugin declares what it needs and the host
-	// applies it, so a caller who is not allowed never reaches the handler. Both halves are checked here.
-	it('runs an in-game command it contributed, gated by the host', async () => {
+	// The host owns dispatch (trigger, chat, enabled); the plugin owns authorization, because what a command
+	// needs can depend on its arguments. Both halves are checked here.
+	it('runs an in-game command it contributed, gated by the plugin', async () => {
 		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_admin', steam: ADMIN_STEAM_ID, teamId: 1 }))
 		const outsider = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_outsider', teamId: 2 }))
 		await app.waitForRosterSync()
@@ -343,11 +353,29 @@ describe('packaged plugins', () => {
 
 		// declared allowedChats is admin-only, so the same words in all-chat are not a command at all
 		app.emu.world.chat(admin, 'ChatAll', '/hello nobody-should-see-this')
-		// nobody holding the permission means the handler never runs, whatever chat it was typed in
+		// being in admin chat is Squad's admin list, not SLM's roles: the handler's own check is what refuses
 		app.emu.world.chat(outsider, 'ChatAdmin', '/hello me')
-		await new Promise((resolve) => setTimeout(resolve, 1500))
+		await app.waitFor(() => Inspect.warnsTo(app, outsider).length > 0, { label: "the outsider's refusal" })
 		expect(Inspect.warnsTo(app, outsider).join('\n')).not.toContain('hello me')
+		expect(Inspect.warnsTo(app, outsider).join('\n')).toContain('squad-server:end-match')
 		expect(Inspect.warnsTo(app, admin).join('\n')).not.toContain('nobody-should-see-this')
+	})
+
+	// The caller identity the host threads onto an rpc ctx, and the check a procedure makes with it. Without
+	// both, every plugin procedure is reachable by anyone who can open the dashboard.
+	it('authorizes an rpc procedure against the signed-in caller', async () => {
+		expect(await call('whoAmI', {})).toMatchObject({ code: 'ok', discordId: String(ADMIN_USER.discordId) })
+
+		// left open, like every other extra client in the suite: the fixture teardown closes the app under it,
+		// and closing the socket here rejects whatever orpc still has in flight on it
+		const outsiderClient = await createOrpcClient(app, OUTSIDER)
+		const res = (await outsiderClient.plugins.rpcCall({
+			pluginId: 'hello',
+			path: ['whoAmI'],
+			serverId: app.serverId,
+			input: {},
+		})) as { code: string; data?: { code: string } }
+		expect(res.data).toMatchObject({ code: 'err:permission-denied' })
 	})
 
 	// A dev instance and the test harness both run with discord off, which is the case worth pinning: a

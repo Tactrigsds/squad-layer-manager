@@ -8,7 +8,7 @@ export default definePlugin({
 	id: 'hello',
 	name: 'Hello',
 	version: '1.0.0',
-	apiVersion: '^0.3',
+	apiVersion: '^0.4',
 	description: 'A packaged plugin used by the integration tests.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),

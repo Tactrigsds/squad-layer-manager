@@ -21,6 +21,7 @@ import * as modelsGenVote from '@/plugin-api/models/gen-vote'
 import * as modelsLayer from '@/plugin-api/models/layer'
 import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
+import * as modelsRbac from '@/plugin-api/models/rbac'
 import * as plugin from '@/plugin-api/plugin'
 import * as pluginClient from '@/plugin-api/plugin/client'
 import * as pluginDecorations from '@/plugin-api/plugin/decorations'
@@ -52,6 +53,7 @@ export function setup() {
 		'slm/models/layer': modelsLayer,
 		'slm/models/layer-queries': modelsLayerQueries,
 		'slm/models/match-history': modelsMatchHistory,
+		'slm/models/rbac': modelsRbac,
 		'slm/plugin': plugin,
 		'slm/plugin/client': pluginClient,
 		'slm/plugin/decorations': pluginDecorations,
