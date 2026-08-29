@@ -643,8 +643,26 @@ Bump `version` in `plugin.ts` for every release. It is what an admin sees in set
 tagged with.
 
 To try a package without publishing it, copy `dist/` into your dev instance's `data/plugins/<id>` and press
-_Rescan folder_ in settings. Do that at least once before you release, since it is the only thing that exercises
-the packed bundles and the shim registry. Day to day you want [the dev loop](#the-dev-loop) instead.
+_Rescan folder_ in settings, or, from inside the app's container:
+
+```sh
+docker exec <container> pnpm plugins:reload --expect <plugin-id>
+```
+
+That reports each plugin's status and exits non-zero when one named by `--expect` did not come back up, which
+is what lets a deployment fail on a package it just copied in. Nothing restarts, so no admin session is dropped.
+
+Do that at least once before you release, since it is the only thing that exercises the packed bundles and the
+shim registry. To have CI do it, point the smoke test at the packed output:
+
+```sh
+pnpm plugin:pack <source-dir> packed/<id>
+SLM_SMOKE_PLUGIN_DIRS=packed/<id> pnpm test:integration test/integration/plugin-smoke.test.ts
+```
+
+It boots a real app with the package installed, turns it on, and fails with whatever activation said: an
+`apiVersion` this build does not satisfy, or an entry that only exists in the other side's registry. Day to day
+you want [the dev loop](#the-dev-loop) instead.
 
 ## Repo layouts
 
