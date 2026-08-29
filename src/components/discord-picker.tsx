@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import * as Icons from 'lucide-react'
 import React from 'react'
 
 import ComboBox from '@/components/combo-box/combo-box'
@@ -7,26 +6,12 @@ import type { ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants'
 import type { ComboBoxGroupingDef } from '@/components/combo-box/options'
+import { UnresolvedLabel, UnresolvedNote } from '@/components/unresolved-label'
 import { useDebounced } from '@/hooks/use-debounce'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as RPC from '@/orpc.client'
 import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
-
-// a stored id that no longer resolves to a live Discord role/member (deleted role, departed member): surface the raw
-// id with a warning rather than a confusing blank, and explain the situation below the picker
-function UnresolvedLabel({ id }: { id: string }) {
-	return (
-		<span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-500">
-			<Icons.TriangleAlert className="h-3 w-3 shrink-0" />
-			<span className="font-mono">{id}</span>
-		</span>
-	)
-}
-
-function UnresolvedNote({ children }: { children: React.ReactNode }) {
-	return <p className="text-xs text-amber-600 dark:text-amber-500">{children}</p>
-}
 
 // -------- Discord role picker (bounded list, filtered client-side) --------
 

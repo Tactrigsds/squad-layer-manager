@@ -15,6 +15,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'ServerMultiSelect',
 		'ServerSelect',
 	],
+	'slm/components/plugin-settings-link': ['PluginSettingsLink'],
 	'slm/lib/display-helpers': [
 		'toExtraShortLayerNameFromId',
 		'toFullLayerName',
