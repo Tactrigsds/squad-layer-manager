@@ -85,6 +85,10 @@ COPY --from=builder /app/assets/layer-engine.wasm ./assets/layer-engine.wasm
 # searched first (see systems/layer-artifacts.server.ts).
 COPY --from=builder /app/assets/layers ./assets/layers
 
+# operating the running app from inside the container (`pnpm plugins:reload`); plain node, since this stage
+# has neither tsx nor src/
+COPY scripts/slm-control.mjs ./scripts/
+
 # Copy necessary runtime files
 COPY --from=builder /app/drizzle-sqlite ./drizzle-sqlite
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts

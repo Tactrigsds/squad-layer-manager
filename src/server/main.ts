@@ -49,6 +49,7 @@ import * as Vote from '@/systems/vote.server'
 import * as WsSession from '@/systems/ws-session.server'
 
 import * as Config from './config.server.ts'
+import * as ControlSocket from './control-socket.ts'
 import * as DB from './db'
 import * as EnvExample from './env-example.ts'
 import * as Env from './env.ts'
@@ -165,6 +166,8 @@ await Instr.spanOp('main', { module }, async () => {
 		...BUILTIN_PLUGINS,
 		...(ENV.NODE_ENV === 'development' ? await discoverSourcePlugins() : []),
 	])
+	// after Plugins.setup, since reloading plugins is the only thing it does
+	await ControlSocket.setup()
 	await AppEventsSys.persistAppEvent(
 		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
 		AppEvents.create<AppEvents.AppStarted>({
