@@ -15,9 +15,12 @@ import * as PluginsSys from '@/systems/plugins.server'
  *
  * A handler that is an async generator is a stream, reached from the client through Rpc.stores; a
  * plain one is reached through Rpc.client.
+ *
+ * `context` also carries the signed-in user who made the call. The host authorizes nothing beyond site
+ * access, so a procedure that acts on the server must check them itself: see slm/systems/rbac.
  */
 export function os<M extends PLG.Manifest<any>>() {
-	return orpcOs.$context<PluginsSys.ServerCtx<M>>()
+	return orpcOs.$context<PluginsSys.RpcCtx<M>>()
 }
 
 /** Registers the plugin's router. Unregistered when the plugin stops. */

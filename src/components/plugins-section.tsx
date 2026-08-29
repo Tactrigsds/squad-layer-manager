@@ -20,10 +20,12 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as CMD from '@/models/command.models'
 import * as PLG from '@/models/plugins.models'
 import * as RPC from '@/orpc.client'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
+import * as SettingsClient from '@/systems/settings.client'
 
 // The plugins area of the settings page. Deliberately self-contained: enable/disable applies
 // immediately (it starts/stops the plugin), and each plugin's config has its own save/discard,
@@ -171,6 +173,27 @@ function InstallPanel() {
 	)
 }
 
+// The triggers this plugin declared that something else already owns, so its commands never dispatch. Resolved
+// the same way dispatch resolves them, since a plugin that looks installed and silently does nothing is the
+// failure this is here to prevent.
+function useCommandConflicts(info: PLG.RuntimeInfo): CMD.CommandConflict[] {
+	const settings = Zus.useStore(SettingsClient.PublicSettingsStore)
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	return React.useMemo(() => {
+		if (!settings) return []
+		const declared = plugins.flatMap((p) =>
+			p.commands.map((decl) => {
+				const id = CMD.pluginCommandId(p.id, decl.name)
+				const stored = settings.pluginCommands[id]
+				return { id, config: CMD.pluginCommandConfig(decl, stored, settings.defaultPrefix), configured: stored !== undefined }
+			}),
+		)
+		const { conflicts } = CMD.resolvePluginCommandTriggers(settings.commands, declared)
+		const mine = CMD.pluginCommandId(info.id, '')
+		return conflicts.filter((c) => c.commandId.startsWith(mine))
+	}, [settings, plugins, info.id])
+}
+
 function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: boolean }) {
 	const [toggling, setToggling] = React.useState(false)
 	const manifest = Zus.useStore(PluginsClient.Store, (s) => s.manifests[info.id])
@@ -191,6 +214,8 @@ function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: bool
 	async function setEnabled(enabled: boolean) {
 		await act(() => RPC.orpc.plugins.setEnabled.call({ pluginId: info.id, enabled }))
 	}
+
+	const conflicts = useCommandConflicts(info)
 
 	return (
 		<div id={`section:plugin:${info.id}`} className="scroll-mt-2 rounded-md border p-4 space-y-3">
@@ -216,6 +241,11 @@ function PluginRow({ info, canManage }: { info: PLG.RuntimeInfo; canManage: bool
 					</div>
 					<p className="text-xs text-muted-foreground">{info.description}</p>
 					{info.error && <p className="text-xs text-destructive whitespace-pre-wrap">{info.error}</p>}
+					{conflicts.map((conflict) => (
+						<p key={`${conflict.commandId} ${conflict.trigger}`} className="text-xs text-yellow-600">
+							{tr.text(PLUGINS_Msgs.commandTriggerTaken(conflict.trigger, conflict.ownedBy))}
+						</p>
+					))}
 				</div>
 				<Label className="flex items-center gap-2 shrink-0">
 					<Switch

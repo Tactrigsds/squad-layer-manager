@@ -18,6 +18,7 @@ only install one you would be willing to run as a fork.
 - [Layer queries](#layer-queries)
 - [Your own rpc](#your-own-rpc)
 - [The client entry](#the-client-entry)
+- [Pickers](#pickers)
 - [What you can reach](#what-you-can-reach)
 - [Logging and telemetry](#logging-and-telemetry)
 - [Packing and publishing](#packing-and-publishing)
@@ -339,6 +340,9 @@ const streams = Rpc.stores<typeof router>(ctx) // generator procedures, as store
 bundle. `Rpc.stores` gives a keyed family: `streams.greetings(serverId, {})` returns one store per set of
 arguments, shared between every caller that passes equal ones.
 
+`context.user` is the signed-in user who made the call. The host checks only that they may use SLM at all, so a
+procedure that changes anything has to authorize them itself. See "Permissions" below.
+
 ## The client entry
 
 A client entry registers into the host's anchors. There is no way to mount outside them.
@@ -374,14 +378,168 @@ export default definePluginClient(manifest, (ctx) => {
 
 There is one anchor of each kind so far.
 
-| Kind       | Anchor                    | Props                                       |
-| ---------- | ------------------------- | ------------------------------------------- |
-| slot       | `server-dashboard:alerts` | `serverId`                                  |
-| decoration | `match-history:row`       | `serverId`, `matchId`, `layerId`, `ordinal` |
+| Kind       | Anchor                          | Props                                       |
+| ---------- | ------------------------------- | ------------------------------------------- |
+| slot       | `server-dashboard:alerts`       | `serverId`                                  |
+| slot       | `server-dashboard:queue-alerts` | `serverId`                                  |
+| decoration | `match-history:row`             | `serverId`, `matchId`, `layerId`, `ordinal` |
 
 A decoration is `{ tint?, title?, body? }`, where tint is `info`, `warn` or `violation`. Return an array to
 contribute several to one row, or null for none. A slot that throws is caught by a boundary and a selector that
 throws reads as no decoration, so neither takes the page down.
+
+## Your events in the feed
+
+`AppEvents.emit(ctx, name, payload, message)` records an event against the server and the match in progress. It
+shows up in the activity feed and the audit log as `message`, attributed to your plugin.
+
+A client entry can render those lines itself, keyed by the `name` it was recorded under:
+
+```tsx
+import * as Events from 'slm/plugin/events'
+
+Events.register(ctx, 'counted', (e) => ({
+	icon: 'success',
+	content: <>counted {(e.payload as { count: number }).count} matches</>,
+}))
+```
+
+`content` is the predicate alone: the host renders the time, the icon and your plugin's name in front of it, so
+the line sits in the feed like every other one. `icon` is one of `plugin`, `info`, `success`, `warning`,
+`error`, defaulting to `plugin`. Return null to take the `message` fallback for a particular event.
+
+`message` is still what the audit log shows, and what an admin sees while the plugin is stopped, so write it to
+stand on its own. The event's `payload` is yours and is stored as-is, which is why the renderer casts it.
+
+## In-game commands
+
+A plugin can contribute a command admins run from in-game chat. The host owns trigger matching, the
+admin/public chat rule and the enabled gate.
+
+```ts
+import * as Commands from 'slm/plugin/commands'
+import * as RBAC from 'slm/models/rbac'
+import * as Rbac from 'slm/systems/rbac'
+
+Commands.register(ctx, {
+	name: 'rolltoseed',
+	description: 'Roll to a seeding layer now, without waiting for the criteria.',
+	// unprefixed. The default prefix is attached unless an admin configures the command
+	triggers: ['rolltoseed'],
+	allowedChats: ['admin'],
+	handler: async (sctx, input) => {
+		const denial = await Rbac.checkPlayer(sctx, input.player, RBAC.perm('squad-server:end-match', { serverId: sctx.serverId }))
+		if (denial) return Rbac.describe(sctx, denial)
+		// input.text is everything typed after the trigger; input.player is who typed it
+		return 'Preparing a seed roll.'
+	},
+})
+```
+
+Returned text is warned back to the caller. The handler is given the ctx of whichever server the command was
+typed on, so it reads that server's state without being registered per server.
+
+Authorization is the handler's job, not the host's, and being in admin chat is not authorization: that is
+Squad's admin list, not SLM's roles. See "Permissions" below.
+
+A plugin command takes the words after its trigger as they were typed: `input.text`, or `input.args` split on
+spaces. The typed arguments core commands declare (players, squads, durations, reasons, and the prompts that
+disambiguate them) are driven by declarations the host can see at compile time, which a plugin's command has
+none of.
+
+Admins retune the triggers and chats under `pluginCommands` in global settings, keyed by the id the commands
+page shows. A command with no entry there runs under what the plugin declared.
+
+Every trigger across core and plugin commands is one namespace. A plugin trigger something else already owns is
+dropped, not dispatched: precedence is core, then plugin commands an admin has configured, then declared
+defaults. A dropped trigger is logged, shown on the plugin in settings, and left off the commands page, so it
+reads as broken rather than as working. A command whose triggers were all taken is not a command at all.
+
+Declare a trigger specific enough not to collide. Configuring one under `pluginCommands` outranks another
+plugin's default, which is how an admin resolves a collision between two installed plugins.
+
+## Permissions
+
+SLM's permissions are checked where the identity is: against the player who typed a command, or against the
+signed-in user behind an rpc call. Nothing about a plugin is gated up front, because what an action requires
+often depends on the arguments it was given. SLM's own timeout and queue commands work the same way.
+
+```ts
+import * as RBAC from 'slm/models/rbac'
+import * as Rbac from 'slm/systems/rbac'
+
+// in a command handler
+const denial = await Rbac.checkPlayer(ctx, input.player, RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }))
+if (denial) return Rbac.describe(ctx, denial)
+
+// in an rpc handler
+const denial = await Rbac.checkCaller(context, RBAC.perm('queue:write', { serverId: context.serverId }))
+if (denial) return denial
+```
+
+Both return the denial, or null when the caller may proceed. `Rbac.describe` renders one in the server's own
+language, which is what a command warns back; an rpc procedure can hand the structured response to its own
+client instead.
+
+`RBAC.perm(type, args)` builds one requirement. A server-scoped permission carries the server it applies to, so
+a grant on one server never satisfies a check against another: pass `{ serverId: ctx.serverId }`, not the type
+on its own. `RBAC.permReq('any', [...])` and `permReq('all', [...])` combine several.
+
+Reuse an existing permission where one fits. `squad-server:end-match` for anything that decides what plays next,
+`queue:write` for queue edits, `squad-server:warn-players` for warns. Admins already grant these, and a plugin
+that invents its own asks every install to configure something new.
+
+### Declaring your own
+
+Where the plugin does something SLM has no analogue for, declare an action. The host has no idea what it means;
+it only carries the grant.
+
+```ts
+import * as Permissions from 'slm/plugin/permissions'
+
+const Perms = Permissions.register(ctx, {
+	giveaway: { scope: 'server', description: 'Run a giveaway on a server' },
+})
+// asks for a server because the declaration said the action is about one; a 'global' action takes nothing
+const denial = await Rbac.checkCaller(context, Perms.giveaway(context.serverId))
+```
+
+`global` and `server` are the only scopes. A comparator ("up to N") or a path-restricted grant is something the
+permission matcher has to understand specifically, so those stay the host's.
+
+An admin grants it under Plugin Actions on the role, picking from what the running plugins declare. The grant
+stores the plugin id and the action name as plain strings, so stopping or uninstalling the plugin keeps it
+rather than losing it, and an action no running plugin declares grants nothing.
+
+## Pickers
+
+A config field that stores a filter, a server or a Discord channel id can render as the picker SLM uses for
+one, instead of a text box. Declare it in the schema:
+
+```ts
+import { Fields } from 'slm/plugin/fields'
+
+configSchema: z.object({
+	seedPool: Fields.filterId().describe('Pool the seeding layer is drawn from'),
+	announceIn: Fields.discordChannelId().describe('Where the roll is announced'),
+	onlyOn: Fields.serverIds().describe('Servers this applies to. Empty means all of them.'),
+})
+```
+
+Six of them: `filterId`, `serverId`, `discordChannelId`, and an `Ids` plural of each. The value stored is
+still a plain string or array of strings, so a config written through the YAML editor is unaffected, and an
+id whose target has since been deleted still round-trips rather than being dropped.
+
+The same six are components, for a slot that picks something rather than a setting that stores it:
+
+```tsx
+import { FilterSelect } from 'slm/components/pickers'
+
+;<FilterSelect value={filterId} onChange={setFilterId} />
+```
+
+Each takes `value` and `onChange` (or `values` and `onChange` for the plural), and finds its own options.
+For anything else, `slm/components/combo-box` is what they are built from.
 
 ## What you can reach
 
@@ -389,27 +547,41 @@ throws reads as no decoration, so neither takes the page down.
 current build, generated from the source, and each entry's JSDoc says what belongs to the host and is therefore
 absent.
 
-| Entry                                                      | What it is                                  |
-| ---------------------------------------------------------- | ------------------------------------------- |
-| `slm/plugin`                                               | manifests, tables, the ctx types            |
-| `slm/plugin/config`                                        | your config                                 |
-| `slm/plugin/servers`                                       | per-server setup                            |
-| `slm/plugin/rpc.server`, `slm/plugin/rpc.client`           | your own rpc                                |
-| `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                            |
-| `slm/server/instrumentation`                               | `spanOp`, `durableSub`                      |
-| `slm/server/logger`                                        | `childModule`                               |
-| `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management |
-| `slm/systems/layer-queue`                                  | queue reads and edits                       |
-| `slm/systems/match-history`                                | match reads                                 |
-| `slm/systems/filter-entity`                                | filter reads and writes                     |
-| `slm/systems/layer-queries`                                | asking the layer table what matches         |
-| `slm/systems/app-events`                                   | writing to the audit log                    |
-| `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll         |
-| `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers          |
-| `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one          |
-| `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one      |
-| `slm/models/gen-vote`                                      | the choices a drawn vote is made of         |
-| `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages             |
+| Entry                                                      | What it is                                   |
+| ---------------------------------------------------------- | -------------------------------------------- |
+| `slm/plugin`                                               | manifests, tables, the ctx types             |
+| `slm/plugin/config`                                        | your config                                  |
+| `slm/plugin/servers`                                       | per-server setup                             |
+| `slm/plugin/rpc.server`, `slm/plugin/rpc.client`           | your own rpc                                 |
+| `slm/plugin/client`, `.../slots`, `.../decorations`        | the browser half                             |
+| `slm/plugin/events`                                        | rendering your own events in the feed        |
+| `slm/plugin/commands`                                      | in-game commands                             |
+| `slm/plugin/fields`                                        | config fields that render as a picker        |
+| `slm/plugin/permissions`                                   | actions your plugin defines for itself       |
+| `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
+| `slm/components/layer`                                     | a layer's name, rendered as the app does it  |
+| `slm/components/plugin-settings-link`                      | a link to your own config                    |
+| `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |
+| `slm/server/logger`                                        | `childModule`                                |
+| `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
+| `slm/systems/squad-server`                                 | the live event stream, and ending a match    |
+| `slm/systems/discord`                                      | posting to a channel                         |
+| `slm/systems/layer-queue`                                  | queue reads and edits                        |
+| `slm/systems/match-history`                                | match reads                                  |
+| `slm/systems/filter-entity`                                | filter reads and writes                      |
+| `slm/systems/layer-queries`                                | asking the layer table what matches          |
+| `slm/systems/app-events`                                   | writing to the audit log                     |
+| `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |
+| `slm/systems/rbac`                                         | whether a caller may do this                 |
+| `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers           |
+| `slm/models/server-events`, `slm/models/squad`             | event and roster types, for `events$`        |
+| `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one           |
+| `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one       |
+| `slm/models/gen-vote`                                      | the choices a drawn vote is made of          |
+| `slm/models/rbac`                                          | the permission vocabulary                    |
+| `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages              |
+| `slm/lib/templating`                                       | rendering the {{var}} templates admins write |
+| `slm/lib/display-helpers`                                  | naming a layer in text                       |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import
 them normally and they resolve to SLM's copies at load time. There has to be exactly one of each in the process,
@@ -539,6 +711,9 @@ You never edit `plugins/builtins.server.ts` or `plugins/builtins.ts`. Those name
 
 `pnpm dev` loads every directory in `plugins/` from source, so your own repo cloned in there runs with nothing to
 register. Enable it once in settings and the choice sticks. From then on you get what host code gets.
+
+Discovery goes two levels, so a repo holding several plugins is cloned in as one directory and each plugin
+inside it is found: `plugins/my-plugins/first/plugin.ts` works as well as `plugins/first/plugin.ts`.
 
 | You edit                                  | What happens                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------- |

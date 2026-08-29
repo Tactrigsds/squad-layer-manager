@@ -107,6 +107,10 @@ export const PERM_SCOPE_ARGS = {
 	// paths are dotted setting-path prefixes (e.g. "queue.mainPool"); null = all non-sensitive settings
 	'server-settings-write': z.object({ serverId: z.string().nullable(), paths: z.array(z.string()).nullable() }),
 	'global-settings-write': z.object({ paths: z.array(z.string()).nullable() }),
+	// An action a plugin defines for itself, named rather than enumerated: which plugins exist is not known when
+	// this schema is built, and a grant has to survive its plugin being stopped or uninstalled. null serverId =
+	// all servers, and is also what a plugin-global action asks for.
+	'plugin-action': z.object({ pluginId: z.string(), permission: z.string(), serverId: z.string().nullable() }),
 }
 
 type PermScope = keyof typeof PERM_SCOPE_ARGS
@@ -234,6 +238,13 @@ export const PERMISSION_DEFINITION = {
 	...definePermission('admin:restart-slm', { description: 'Restart the SLM application', scope: 'global' }),
 
 	...definePermission('ping-admins', { description: 'Request the attention of admins in the chat', scope: 'server' }),
+
+	// Deliberately not role-grantable as a bare expression: `plugin:action` on its own would mean every action of
+	// every plugin, which is not something anyone means to grant. Roles name them one at a time under pluginGrants.
+	...definePermission('plugin:action', {
+		description: "An action a plugin defines for itself. Granted per plugin and per action under a role's plugin grants",
+		scope: 'plugin-action',
+	}),
 }
 export type KnownPermission = (typeof PERMISSION_DEFINITION)[keyof typeof PERMISSION_DEFINITION]
 export type PermissionType = KnownPermission['type']
@@ -447,9 +458,25 @@ export function permReq<T extends PermissionType>(check: 'all' | 'any', permits:
 	return { check, permits: permits.filter((v) => Boolean(v)) as PermitChecker<T>[] }
 }
 
+// -------- plugin actions --------
+
+// The super-user grant, which cannot enumerate plugins the host has never heard of. Only ever produced by the
+// host: a role names a concrete plugin and action.
+export const ANY_PLUGIN_ACTION = '*'
+
+/**
+ * What a plugin's own action requires. `serverId` is the server it is being asked about, or null for an action
+ * that is not about one server -- which is also what a grant naming no servers holds.
+ */
+export function pluginAction(pluginId: string, permission: string, serverId: string | null = null): Permission<'plugin:action'> {
+	return perm('plugin:action', { pluginId, permission, serverId })
+}
+
 // how a failed static permit is described in a denial response
 export function describePermit<T extends PermissionType>(permit: Permission<T> | T): string {
-	return typeof permit === 'string' ? permit : permit.type
+	if (typeof permit === 'string') return permit
+	if (permit.type === 'plugin:action') return `${permit.args.pluginId}:${permit.args.permission}`
+	return permit.type
 }
 
 export function tryDenyPermissionsForRbacUser<T extends PermissionType>(
@@ -745,6 +772,16 @@ export function permSubsumedBy(perm: Permission, perms: Permission[], scoped: Re
 			return perm.type === 'server-settings:read'
 				? canReadServerSettings(perms, serverId, scoped)
 				: canWriteSensitiveServerSettings(perms, serverId, scoped)
+		}
+		case 'plugin:action': {
+			const need = perm.args
+			return perms.some(
+				(p) =>
+					p.type === 'plugin:action' &&
+					(p.args.pluginId === ANY_PLUGIN_ACTION || p.args.pluginId === need.pluginId) &&
+					(p.args.permission === ANY_PLUGIN_ACTION || p.args.permission === need.permission) &&
+					grantAppliesTo({ serverId: p.args.serverId }, need.serverId, scoped),
+			)
 		}
 		case 'server-settings:write': {
 			const args = perm.args

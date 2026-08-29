@@ -5,8 +5,11 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { LAYERS } from '../harness/arrange'
+import { makePlayer } from '@/emulator'
+
+import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { LAYERS, role } from '../harness/arrange'
+import * as Inspect from '../harness/inspect'
 import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // The packaged-plugin path end to end: a plugin built into standalone esm, served over http, then
@@ -20,6 +23,7 @@ import { createOrpcClient, firstYield, sessionCookie, type TestOrpcClient } from
 // given, before any redirect -- and flipping which tag `latest` points at is what an upgrade is.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
+const ADMIN_STEAM_ID = '76561198000000001'
 
 let app: AppFixture
 let client: TestOrpcClient
@@ -74,7 +78,19 @@ beforeAll(async () => {
 	await new Promise<void>((resolve) => origin.listen(0, '127.0.0.1', resolve))
 	manifestUrl = `http://127.0.0.1:${(origin.address() as { port: number }).port}/releases/latest/download/plugin.json`
 
-	app = await createAppFixture()
+	// an in-game admin who is also the seeded superuser, so the plugin's command has somebody allowed to run it
+	app = await createAppFixture({
+		admins: [ADMIN_STEAM_ID],
+		adminSteamIds: [ADMIN_STEAM_ID],
+		users: [OUTSIDER],
+		globalSettings: (settings) => {
+			settings.rbac.roles['plugin-rpc-outsider'] = {
+				...role(['site:authorized', 'squad-server:view'], { users: [OUTSIDER] }),
+				// an action the host has no definition for: only the plugin knows what it means
+				pluginGrants: [{ pluginId: 'hello', permission: 'greet', serverIds: [] }],
+			}
+		},
+	})
 	client = await createOrpcClient(app)
 	cookie = await sessionCookie(app)
 }, 180_000)
@@ -83,6 +99,9 @@ afterAll(async () => {
 	await app?.dispose()
 	origin?.close()
 })
+
+// signed in, so the host lets their rpc through, and holding nothing beyond that
+const OUTSIDER: TestUser = { discordId: 900000000000000077n, username: 'plugin-rpc-outsider' }
 
 function readRows<T>(query: string, ...params: unknown[]): T[] {
 	const db = app.readDb()
@@ -120,6 +139,7 @@ async function pluginInfo() {
 				source: string
 				sourceUrl: string | null
 				clientEntry: string | null
+				permissions: { name: string; scope: string; description: string }[]
 		  }
 		| undefined
 }
@@ -213,6 +233,56 @@ describe('packaged plugins', () => {
 		).toEqual(['created', 'updated', 'deleted'])
 	})
 
+	// Nothing stopped an admin deleting a filter a plugin's config named, which left the plugin failing later
+	// with "the pool matched no layers". A Fields.filterId field is a reference like a pool config is.
+	it('refuses to delete a filter a running plugin has configured', async () => {
+		await call('makeFilter', { id: 'hello-configured', owner: String(ADMIN_USER.discordId) })
+		await client.plugins.updateConfig({ pluginId: 'hello', config: { greeting: 'hello', pool: 'hello-configured' } })
+
+		const refused = await app.waitFor(
+			async () => {
+				const res = await call<{ code: string; references?: { type: string; pluginId?: string; path?: string }[] }>('dropFilter', {
+					id: 'hello-configured',
+				})
+				return res.code === 'err:filter-in-use' ? res : undefined
+			},
+			{ label: 'the plugin config to reach the reference index' },
+		)
+		expect(refused.references).toContainEqual({ type: 'plugin-config', pluginId: 'hello', path: 'pool', via: [] })
+
+		// clearing the field releases it, so an admin is never stuck with a filter they cannot remove
+		await client.plugins.updateConfig({ pluginId: 'hello', config: { greeting: 'hello', pool: '' } })
+		await app.waitFor(
+			async () => ((await call<{ code: string }>('dropFilter', { id: 'hello-configured' })).code === 'ok' ? true : undefined),
+			{ label: 'the reference to be released' },
+		)
+	})
+
+	// A permission SLM knows nothing about: the plugin declares it, a role is granted it by id (plain strings,
+	// so the grant survives the plugin being stopped and can live in settings that load long before any plugin
+	// does), and the check runs through the same matcher core permissions use.
+	it('authorizes against an action the plugin declared for itself', async () => {
+		const outsiderClient = await createOrpcClient(app, OUTSIDER)
+		const call = async (path: string) =>
+			(
+				(await outsiderClient.plugins.rpcCall({ pluginId: 'hello', path: [path], serverId: app.serverId, input: {} })) as {
+					data?: { code: string; greeting?: string }
+				}
+			).data
+
+		// the role was granted hello:greet and nothing else, so the two procedures answer differently
+		expect(await call('greetIfAllowed')).toMatchObject({ code: 'ok', greeting: 'hello' })
+		expect(await call('whoAmI')).toMatchObject({ code: 'err:permission-denied' })
+	})
+
+	it('reports the actions a running plugin declares', async () => {
+		expect((await pluginInfo())?.permissions).toContainEqual({
+			name: 'greet',
+			scope: 'server',
+			description: 'Send the greeting on a server',
+		})
+	})
+
 	// A plugin's two halves of the same job: it makes a filter, then asks the engine what matches it. The
 	// filter is created and dropped here rather than reused from the test above, so neither depends on the
 	// other's leftovers.
@@ -270,6 +340,106 @@ describe('packaged plugins', () => {
 		expect((await draw('seed-a')).maps).toEqual(first.maps)
 
 		await call('dropFilter', { id: 'hello-vote' })
+	})
+
+	// The queue is core state every admin shares, so the point is not that the list changes: it is that a
+	// plugin's edit is an ordinary edit, and that it refuses rather than overwriting when someone is
+	// mid-edit. The entries handed back keep their items, which is what preserves tags and notes.
+	it('edits the saved queue, and refuses when an admin has unsaved edits open', async () => {
+		const before = await call<{ itemId: string; layerId: string }[]>('savedQueue', {})
+
+		expect(await call('prependLayer', { layerId: LAYERS.harjuRaas })).toMatchObject({ code: 'ok' })
+		const after = await call<{ itemId: string; layerId: string; source: string; sourcePluginId: string | null }[]>('savedQueue', {})
+		expect(after[0].layerId).toBe(LAYERS.harjuRaas)
+		// the item says which plugin queued it, rather than blaming whoever the edit was performed as
+		expect(after[0].source).toBe('plugin')
+		expect(after[0].sourcePluginId).toBe('hello')
+		// and the audit log names the plugin too, rather than falling back to 'system' because no user issued it
+		expect(
+			readRows<{ actorType: string; actor: string }>(
+				`SELECT actorType, actorPluginId AS actor FROM appEvents WHERE type = 'QUEUE_UPDATED' ORDER BY rowid DESC LIMIT 1`,
+			)[0],
+		).toMatchObject({ actorType: 'plugin', actor: 'hello' })
+		// everything that was there is still there, with the same item ids: passing an entry through keeps it
+		expect(after.slice(1).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
+		expect(Inspect.savedQueue(app)[0]).toMatchObject({ layerId: LAYERS.harjuRaas })
+
+		expect(await call('dropFirstLayer', {})).toMatchObject({ code: 'ok' })
+		expect((await call<{ itemId: string }[]>('savedQueue', {})).map((i) => i.itemId)).toEqual(before.map((i) => i.itemId))
+
+		// an unknown item id cannot silently vanish from the list
+		expect(await call('prependLayer', { layerId: 'NOT-A-LAYER:XX:YY' })).toMatchObject({ code: 'ok' })
+		await call('dropFirstLayer', {})
+	})
+
+	it('sees server events as they land', async () => {
+		const speaker = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_event_watcher', teamId: 1 }))
+		await app.waitForRosterSync()
+
+		const pending = call<{ type: string } | null>('nextEvent', { type: 'CHAT_MESSAGE', ms: 20_000 })
+		// the stream is hot, so anything before the subscription attaches is missed
+		await new Promise((resolve) => setTimeout(resolve, 500))
+		app.emu.world.chat(speaker, 'ChatAll', 'hello from a test')
+		expect(await pending).toMatchObject({ type: 'CHAT_MESSAGE' })
+	})
+
+	// endMatch is host-owned precisely so the round end is attributed. A plugin cannot emit MATCH_ENDED
+	// itself -- slm/systems/app-events only writes PLUGIN_EVENT -- so the actorPluginId on the row is the
+	// whole point of the function existing.
+	it('ends a match, attributed to the plugin', async () => {
+		expect(await call('endMatch', {})).toMatchObject({ code: 'ok' })
+		expect(
+			readRows<{ actor: string }>(
+				`SELECT actorPluginId AS actor FROM appEvents WHERE type = 'MATCH_ENDED' ORDER BY rowid DESC LIMIT 1`,
+			)[0],
+		).toMatchObject({ actor: 'hello' })
+	})
+
+	// The host owns dispatch (trigger, chat, enabled); the plugin owns authorization, because what a command
+	// needs can depend on its arguments. Both halves are checked here.
+	it('runs an in-game command it contributed, gated by the plugin', async () => {
+		const admin = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_admin', steam: ADMIN_STEAM_ID, teamId: 1 }))
+		const outsider = app.emu.world.connectPlayer(makePlayer({ name: ' plugin_cmd_outsider', teamId: 2 }))
+		await app.waitForRosterSync()
+
+		app.emu.world.chat(admin, 'ChatAdmin', '/hello world')
+		await app.waitFor(() => Inspect.warnsTo(app, admin).find((w) => w.includes('world')), { label: "the plugin command's reply" })
+		expect(Inspect.warnsTo(app, admin).at(-1)).toContain(`hello world on ${app.serverId}`)
+
+		// declared allowedChats is admin-only, so the same words in all-chat are not a command at all
+		app.emu.world.chat(admin, 'ChatAll', '/hello nobody-should-see-this')
+		// being in admin chat is Squad's admin list, not SLM's roles: the handler's own check is what refuses
+		app.emu.world.chat(outsider, 'ChatAdmin', '/hello me')
+		await app.waitFor(() => Inspect.warnsTo(app, outsider).length > 0, { label: "the outsider's refusal" })
+		expect(Inspect.warnsTo(app, outsider).join('\n')).not.toContain('hello me')
+		expect(Inspect.warnsTo(app, outsider).join('\n')).toContain('squad-server:end-match')
+		expect(Inspect.warnsTo(app, admin).join('\n')).not.toContain('nobody-should-see-this')
+	})
+
+	// The caller identity the host threads onto an rpc ctx, and the check a procedure makes with it. Without
+	// both, every plugin procedure is reachable by anyone who can open the dashboard.
+	it('authorizes an rpc procedure against the signed-in caller', async () => {
+		expect(await call('whoAmI', {})).toMatchObject({ code: 'ok', discordId: String(ADMIN_USER.discordId) })
+
+		// left open, like every other extra client in the suite: the fixture teardown closes the app under it,
+		// and closing the socket here rejects whatever orpc still has in flight on it
+		const outsiderClient = await createOrpcClient(app, OUTSIDER)
+		const res = (await outsiderClient.plugins.rpcCall({
+			pluginId: 'hello',
+			path: ['whoAmI'],
+			serverId: app.serverId,
+			input: {},
+		})) as { code: string; data?: { code: string } }
+		expect(res.data).toMatchObject({ code: 'err:permission-denied' })
+	})
+
+	// A dev instance and the test harness both run with discord off, which is the case worth pinning: a
+	// plugin gets a result it can branch on rather than an exception on every attempt.
+	it('reports discord as disabled rather than throwing', async () => {
+		expect(await call('postToDiscord', { channelId: '1', content: 'hi' })).toMatchObject({
+			enabled: false,
+			res: { code: 'err:disabled' },
+		})
 	})
 
 	it('gives a restarted plugin a fresh module graph', async () => {

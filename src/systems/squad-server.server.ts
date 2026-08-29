@@ -234,45 +234,7 @@ export const orpcRouter = {
 		const ctx = ctxRes.ctx
 		const deniedRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }))
 		if (deniedRes) return deniedRes
-		const matchEnded$ = ctx.server.event$.pipe(
-			Rx.map(([_, e]) => e),
-			Rx.filter((e) => e.type === 'ROUND_ENDED'),
-			Rx.endWith(null),
-		)
-		const result$ = Rx.Ext.firstValueFrom(Rx.race(matchEnded$, Rx.timer(20_000).pipe(Rx.map(() => 'timeout' as const))), ctx.signal)
-
-		// recorded and armed before the command goes out, so the round end it produces is attributed to the admin who
-		// asked for it rather than reported as an anonymous RCON tool's doing (the log can't tell them apart)
-		const matchEnded = AppEvents.create<AppEvents.MatchEnded>({
-			type: 'MATCH_ENDED',
-			actor: { type: 'slm-user', userId: ctx.user.discordId },
-			serverId: ctx.serverId,
-			matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
-			causeId: null,
-		})
-		await emitAppEvent(ctx, matchEnded)
-		await collectEvents(ctx, () => {
-			PendingEvents.armExpectation(ctx.server.eventState, { type: 'ROUND_ENDED' }, { type: 'event', id: matchEnded.id })
-		})
-		await SquadRcon.endMatch(ctx)
-
-		const result = await result$
-		if (result === 'timeout') {
-			return {
-				code: 'err:timeout' as const,
-				message: 'Failed to end match: operation timed out',
-			}
-		}
-		if (result === null) {
-			return {
-				code: 'err:unknown' as const,
-				message: 'Failed to end match: unknown error',
-			}
-		}
-		if (result.type === 'ROUND_ENDED') {
-			return { code: 'ok' as const, message: 'Match ended successfully' }
-		}
-		assertNever(result.type)
+		return await endMatchAction(ctx, { type: 'slm-user', userId: ctx.user.discordId })
 	}),
 
 	watchChatEvents: orpcBase
@@ -1375,6 +1337,44 @@ export async function broadcastAction(
 		}
 	})
 	await SquadRcon.broadcast(ctx, rendered)
+}
+
+/**
+ * Ends the current match and waits for the round end it produces.
+ *
+ * The app event is recorded and the expectation armed before the rcon command goes out, so the ROUND_ENDED
+ * that lands is attributed to `actor` rather than reported as an anonymous RCON tool's doing: the game log
+ * cannot tell the two apart.
+ */
+export async function endMatchAction(
+	ctx: SQS.Ctx & SR.Ctx.Rcon & C.Db & MH.Ctx & CS.AbortSignal,
+	actor: AppEvents.Actor,
+): Promise<{ code: 'ok' | 'err:timeout' | 'err:unknown'; message: string }> {
+	const matchEnded$ = ctx.server.event$.pipe(
+		Rx.map(([_, e]) => e),
+		Rx.filter((e) => e.type === 'ROUND_ENDED'),
+		Rx.endWith(null),
+	)
+	const result$ = Rx.Ext.firstValueFrom(Rx.race(matchEnded$, Rx.timer(20_000).pipe(Rx.map(() => 'timeout' as const))), ctx.signal)
+
+	const matchEnded = AppEvents.create<AppEvents.MatchEnded>({
+		type: 'MATCH_ENDED',
+		actor,
+		serverId: ctx.serverId,
+		matchId: (await MatchHistory.getCurrentMatch(ctx)).historyEntryId,
+		causeId: null,
+	})
+	await emitAppEvent(ctx, matchEnded)
+	await collectEvents(ctx, () => {
+		PendingEvents.armExpectation(ctx.server.eventState, { type: 'ROUND_ENDED' }, { type: 'event', id: matchEnded.id })
+	})
+	await SquadRcon.endMatch(ctx)
+
+	const result = await result$
+	if (result === 'timeout') return { code: 'err:timeout' as const, message: 'Failed to end match: operation timed out' }
+	if (result === null) return { code: 'err:unknown' as const, message: 'Failed to end match: unknown error' }
+	if (result.type === 'ROUND_ENDED') return { code: 'ok' as const, message: 'Match ended successfully' }
+	assertNever(result.type)
 }
 
 // warns players through an app event: creates the PLAYER_WARNED app event (so the feed can aggregate the

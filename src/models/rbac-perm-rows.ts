@@ -19,6 +19,10 @@ export type RoleAssignmentsValue = {
 	ingameAdminLists?: string[]
 	adminListGroups?: { listId: string; groupId: string }[]
 }
+// carried through rowsFromConfig/configFromRows untouched: a plugin action needs the plugin's id beside the
+// permission, which the type-keyed row model cannot hold, so it has its own editor
+export type PluginGrant = { pluginId: string; permission: string; serverIds: string[] }
+
 export type RoleConfig = {
 	permissions?: string[]
 	maxTimeout?: string
@@ -26,6 +30,7 @@ export type RoleConfig = {
 	globalSettingsGrants?: string[]
 	serverSettingsGrants?: ServerSettingsGrant[]
 	serverGrants?: ServerGrant[]
+	pluginGrants?: PluginGrant[]
 	assignments?: RoleAssignmentsValue
 }
 export type RbacValue = { roles?: Record<string, RoleConfig> }
@@ -82,6 +87,8 @@ export function rowScope(type: string): RowScope {
 	if (!def) throw new Error(`unknown permission type: ${type}`)
 	const scope = def.scope
 	if (scope === 'filter') throw new Error(`${type} is inferred-only and cannot be a role permission row`)
+	// named per plugin and per action, so it has its own grant list rather than a row in this table
+	if (scope === 'plugin-action') throw new Error(`${type} is granted under pluginGrants, not as a role permission row`)
 	return scope
 }
 

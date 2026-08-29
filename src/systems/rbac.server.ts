@@ -70,6 +70,7 @@ let roleGlobalSettingsGrants: Record<string, RoleConfig['globalSettingsGrants']>
 let roleServerSettingsGrants: Record<string, RoleConfig['serverSettingsGrants']> = {}
 // per-server grants of the server-scoped permissions (roles[role].serverGrants)
 let roleServerGrants: Record<string, RoleConfig['serverGrants']> = {}
+let rolePluginGrants: Record<string, RoleConfig['pluginGrants']> = {}
 let superUserIds = new Set<bigint>()
 let superRoleIds = new Set<bigint>()
 
@@ -142,6 +143,7 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 	roleGlobalSettingsGrants = {}
 	roleServerSettingsGrants = {}
 	roleServerGrants = {}
+	rolePluginGrants = {}
 	roleAssignments = []
 
 	for (const roleType of objKeys(rbac.roles)) {
@@ -153,6 +155,7 @@ export function applyRbacSettings(rbac: SETTINGS.RbacSettings) {
 		if (cfg.globalSettingsGrants.length > 0) roleGlobalSettingsGrants[roleType] = cfg.globalSettingsGrants
 		if (cfg.serverSettingsGrants.length > 0) roleServerSettingsGrants[roleType] = cfg.serverSettingsGrants
 		if (cfg.serverGrants.length > 0) roleServerGrants[roleType] = cfg.serverGrants
+		if (cfg.pluginGrants.length > 0) rolePluginGrants[roleType] = cfg.pluginGrants
 
 		for (const discordRoleId of cfg.assignments.discordRoleIds) {
 			roleAssignments.push({ type: 'discord-role', role: RBAC.userDefinedRole(roleType), discordRoleId: BigInt(discordRoleId) })
@@ -444,6 +447,16 @@ function resolveScopedOwnerPerms(discordUserId: bigint): RBAC.TracedPermission[]
 			perms,
 			RBAC.tracedPerm('queue:request-layers', [SCOPED_OWNER_ROLE], { negated: false }, { serverId, maxQueued: null }),
 		)
+		// the owner of a scoped server holds everything on it, plugins included
+		RBAC.addTracedPerms(
+			perms,
+			RBAC.tracedPerm(
+				'plugin:action',
+				[SCOPED_OWNER_ROLE],
+				{ negated: false },
+				{ pluginId: RBAC.ANY_PLUGIN_ACTION, permission: RBAC.ANY_PLUGIN_ACTION, serverId },
+			),
+		)
 	}
 	return perms
 }
@@ -462,6 +475,16 @@ async function resolveSuperUserPerms(userId: bigint) {
 	RBAC.addTracedPerms(
 		perms,
 		RBAC.tracedPerm('queue:request-layers', [SUPER_ROLE], { negated: false }, { serverId: null, maxQueued: null }),
+	)
+	// which plugins exist is not knowable here, so a super user holds the wildcard rather than an enumeration
+	RBAC.addTracedPerms(
+		perms,
+		RBAC.tracedPerm(
+			'plugin:action',
+			[SUPER_ROLE],
+			{ negated: false },
+			{ pluginId: RBAC.ANY_PLUGIN_ACTION, permission: RBAC.ANY_PLUGIN_ACTION, serverId: null },
+		),
 	)
 	return perms
 }
@@ -589,6 +612,17 @@ function permsFromRoles(roles: RBAC.Role[]): RBAC.TracedPermission[] {
 		for (const grant of roleServerGrants[role.type] ?? []) {
 			for (const serverId of grant.serverIds) {
 				RBAC.addTracedPerms(perms, RBAC.tracedPerm(grant.permission, [role], { negated: isNegated(grant.permission) }, { serverId }))
+			}
+		}
+		// no negation: `!plugin:action` would deny every plugin's every action, which nobody means. To remove one,
+		// drop the grant -- the same rule the comparator-scoped grants follow.
+		for (const grant of rolePluginGrants[role.type] ?? []) {
+			const serverIds: (string | null)[] = grant.serverIds.length > 0 ? grant.serverIds : [null]
+			for (const serverId of serverIds) {
+				RBAC.addTracedPerms(
+					perms,
+					RBAC.tracedPerm('plugin:action', [role], {}, { pluginId: grant.pluginId, permission: grant.permission, serverId }),
+				)
 			}
 		}
 		for (const grant of roleServerSettingsGrants[role.type] ?? []) {
@@ -756,6 +790,24 @@ export const orpcRouter = {
 		const query = input.query.trim()
 		if (query.length === 0) return { code: 'ok' as const, members: [] }
 		return Discord.searchGuildMembers(query)
+	}),
+
+	// Beside the two above because rbac.server is what may import discord.server; the reverse is a cycle.
+	// Either grant, unlike them: the channel picker also renders in a plugin's config, and an admin who can
+	// only manage plugins still has to be able to name a channel there.
+	listGuildChannels: orpcBase.handler(async ({ context: ctx }) => {
+		// the same permits globalSettingsRead() carries, plus plugins:manage. Spelled out because a
+		// PermissionReq is not itself a permit, so the two cannot be composed
+		const denyRes = await tryDenyPermissionsForUser(
+			ctx,
+			RBAC.permReq<'global-settings:read' | 'global-settings:write' | 'plugins:manage'>('any', [
+				RBAC.perm('global-settings:read'),
+				'global-settings:write',
+				RBAC.perm('plugins:manage'),
+			]),
+		)
+		if (denyRes) return denyRes
+		return Discord.listGuildChannels()
 	}),
 
 	// the groups each configured admin list defines, for the role-assignment picker. Grouped by list rather than

@@ -89,6 +89,18 @@ const ServerGrantSchema = z.object({
 	serverIds: z.array(z.string()).min(1).describe('Server ids this grant applies to'),
 })
 
+// An action a plugin declares, granted to this role. Stored as plain strings rather than validated against a
+// live registry: plugins load long after settings do, so a grant has to survive its plugin being stopped,
+// uninstalled or not yet activated. An id nothing declares simply grants nothing.
+const PluginGrantSchema = z.object({
+	pluginId: z.string().min(1).describe('The plugin that declares the action'),
+	permission: z.string().min(1).describe('The action, as the plugin declares it'),
+	serverIds: z
+		.array(z.string())
+		.prefault([])
+		.describe('Server ids this grant applies to; empty = all servers, which is also what a plugin-wide action needs'),
+})
+
 const RoleConfigSchema = z.object({
 	permissions: z
 		.array(RBAC.ROLE_PERMISSION_EXPRESSION)
@@ -132,6 +144,13 @@ const RoleConfigSchema = z.object({
 		.describe(
 			'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. ' +
 				'Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
+		),
+	pluginGrants: z
+		.array(PluginGrantSchema)
+		.prefault([])
+		.describe(
+			'Actions the installed plugins define for themselves. Each names the plugin and the action; a grant for a plugin ' +
+				'that is not running does nothing, and is kept so stopping a plugin does not lose it.',
 		),
 	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
 })
@@ -352,6 +371,13 @@ export const GlobalSettingsSchema = z
 			'The allowed prefix that commands introduced by future SLM versions are seeded with',
 		),
 		commands: CMD.AllCommandConfigSchema,
+		pluginCommands: z
+			.record(z.string(), CMD.PluginCommandConfigSchema)
+			.prefault({})
+			.describe(
+				'Overrides for in-game commands contributed by plugins, keyed by command id. A command with no entry here runs under ' +
+					'the triggers its plugin declares, prefixed with the default prefix. Entries for plugins that are gone are ignored.',
+			),
 		adminLists: z
 			.record(SM.AdminListIdSchema, SM.AdminListDefSchema)
 			.prefault({})
@@ -457,6 +483,27 @@ export const GlobalSettingsSchema = z
 				if (args === undefined) return
 				const res = CMD.resolveTriggerArgs(id as CMD.CommandId, args)
 				if (res.code !== 'ok') ctx.addIssue({ code: 'custom', message: res.msg, path: ['commands', id, 'triggers', j, 'args'] })
+			})
+		}
+
+		// plugin commands share that one namespace, and are checked after the core ones so a collision names the core
+		// command as the owner. A plugin whose command is gone leaves an entry nothing dispatches, which is harmless.
+		for (const [id, cmd] of Object.entries(val.pluginCommands ?? {})) {
+			;(cmd.triggers ?? []).forEach((string, j) => {
+				if (!hasAllowedPrefix(string)) prefixIssue(string, 'Trigger', ['pluginCommands', id, 'triggers', j])
+				const key = string.toLowerCase()
+				const owner = triggerOwner.get(key)
+				if (owner !== undefined) {
+					ctx.addIssue({
+						code: 'custom',
+						message:
+							owner === id
+								? `Duplicate trigger "${string}"`
+								: `Trigger "${string}" is already used by the "${owner}" command. Pick a different string.`,
+						path: ['pluginCommands', id, 'triggers', j],
+					})
+				}
+				triggerOwner.set(key, id)
 			})
 		}
 

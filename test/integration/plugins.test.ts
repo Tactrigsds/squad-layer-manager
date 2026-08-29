@@ -95,13 +95,15 @@ describe('plugin host', () => {
 			{ label: 'the 150x2 trigger event row' },
 		)
 
-		await app.waitFor(
+		const auditRow = await app.waitFor(
 			() =>
-				readRows<{ actorPluginId: string }>(
-					`SELECT actorPluginId FROM appEvents WHERE type = 'PLUGIN_EVENT' AND actorType = 'plugin'`,
+				readRows<{ actorPluginId: string; matchId: number | null }>(
+					`SELECT actorPluginId, matchId FROM appEvents WHERE type = 'PLUGIN_EVENT' AND actorType = 'plugin'`,
 				).find((r) => r.actorPluginId === 'balance-triggers'),
 			{ label: 'the PLUGIN_EVENT audit row attributed to the plugin' },
 		)
+		// the feed replays by matchId, so an event without one is live-only and disappears on reload
+		expect(auditRow.matchId).not.toBeNull()
 	})
 
 	it('contributes its reminder to the post-roll announcements, warned by the host', async () => {

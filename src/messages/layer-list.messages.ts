@@ -67,6 +67,8 @@ function setByDisplay(item: LL.Item | undefined, setByUser: USR.User | undefined
 			return t('Game Server')
 		case 'ingame-vote':
 			return t('In-game vote')
+		case 'plugin':
+			return t('Set by {pluginId}', { pluginId: item.source.pluginId })
 		case 'manual':
 			return setByUser && item.source.userId === setByUser.discordId
 				? t('Set by {displayName}', { displayName: setByUser.displayName })
@@ -179,12 +181,15 @@ export const ownEditsDiscarded = def(() => ({
 // -------- where a queue item came from --------
 // Shown on the source avatar beside a queue item. A manual source names the user instead, so it has no entry here.
 
-export const sourceNames: Record<Exclude<LL.Source['type'], 'manual'>, string> = {
+export const sourceNames: Record<Exclude<LL.Source['type'], 'manual' | 'plugin'>, string> = {
 	gameserver: 'Game Server',
 	unknown: 'Unknown',
 	generated: 'Generated',
 	'ingame-vote': 'In-Game Vote',
 }
+
+// a plugin source names the plugin, so like a manual one it has no fixed entry above
+export const setByPlugin = def('Set by {pluginName}', (pluginName: string) => ({ pluginName }))
 
 export const setByLabel = def('Set By')
 

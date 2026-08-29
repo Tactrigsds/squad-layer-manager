@@ -9,12 +9,15 @@ import { BmFlagMultiSelect, BmFlagSelect } from '@/components/bm-flag-picker'
 import ComboBox, { type ComboBoxOption } from '@/components/combo-box/combo-box'
 import ComboBoxMulti from '@/components/combo-box/combo-box-multi'
 import { LOADING } from '@/components/combo-box/constants.ts'
-import { DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import { DiscordChannelMultiSelect, DiscordChannelSelect, DiscordMemberSelect, DiscordRoleSelect } from '@/components/discord-picker'
+import { FilterMultiSelect, FilterSelect } from '@/components/filter-entity-select'
 import LayerGenerationConfigEditor from '@/components/layer-generation-config-editor'
 import LayerTableConfigEditor from '@/components/layer-table-config-editor'
 import { ListEditor } from '@/components/list-editor.tsx'
 import { PoolFiltersPanel, RepeatRulesPanel } from '@/components/pool-config-panels'
 import type { PoolConfigApi } from '@/components/pool-config-panels.helpers'
+import { ServerMultiSelect, ServerSelect } from '@/components/server-select'
+import { serverOptionsFor } from '@/components/server-select.helpers.ts'
 import { StickyGroup } from '@/components/sticky-group'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -57,6 +60,7 @@ import * as LP from '@/models/labeled-presets.models'
 import * as LC from '@/models/layer-columns'
 import * as LTag from '@/models/layer-tags.models'
 import * as PG from '@/models/player-groupings.models'
+import * as PLG from '@/models/plugins.models'
 import * as PermRows from '@/models/rbac-perm-rows'
 import * as SETTINGS from '@/models/settings.models'
 import type * as SM from '@/models/squad.models'
@@ -68,6 +72,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -2592,9 +2597,91 @@ function RoleDetail({
 				/>
 			</RoleSubsection>
 
+			<RoleSubsection title={tr.text(RBAC_Msgs.pluginActions())} description={tr.text(RBAC_Msgs.pluginActionsBlurb())}>
+				<RolePluginGrants roleId={roleId} cfg={cfg} update={update} />
+			</RoleSubsection>
+
 			<RoleSubsection title={tr.text(RBAC_Msgs.assignments())} description={tr.text(RBAC_Msgs.assignmentsBlurb())}>
 				<RoleAssignmentsEditor roleId={roleId} cfg={cfg} update={update} assigned={assigned} />
 			</RoleSubsection>
+		</div>
+	)
+}
+
+// What the running plugins define for themselves. Not rows in the permissions table above: that table is keyed by
+// permission type alone, and a plugin action needs the plugin's id beside it. Listed from the live declarations so
+// an admin picks rather than types, with any grant nothing declares kept and shown as unresolved -- a stopped or
+// not-yet-installed plugin must not silently lose the grants an admin made for it.
+function RolePluginGrants({ roleId, cfg, update }: { roleId: string; cfg: RoleConfig; update: RbacUpdate }) {
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const grants = cfg.pluginGrants ?? []
+	const declared = plugins.flatMap((info) => info.permissions.map((decl) => ({ pluginId: info.id, pluginName: info.name, decl })))
+	const heldBy = (pluginId: string, name: string) => grants.find((g) => g.pluginId === pluginId && g.permission === name)
+	const unresolved = grants.filter((g) => !declared.some((d) => d.pluginId === g.pluginId && d.decl.name === g.permission))
+
+	function setGrants(next: RoleConfig['pluginGrants']) {
+		update((r) => withRoleConfig(r, roleId, (c) => ({ ...c, pluginGrants: next })))
+	}
+	function toggle(pluginId: string, name: string, on: boolean) {
+		setGrants(
+			on
+				? [...grants, { pluginId, permission: name, serverIds: [] }]
+				: grants.filter((g) => !(g.pluginId === pluginId && g.permission === name)),
+		)
+	}
+	function setServers(pluginId: string, name: string, serverIds: string[]) {
+		setGrants(grants.map((g) => (g.pluginId === pluginId && g.permission === name ? { ...g, serverIds } : g)))
+	}
+
+	if (declared.length === 0 && unresolved.length === 0) {
+		return <p className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.noPluginActions())}</p>
+	}
+	return (
+		<div className="space-y-2">
+			{declared.map(({ pluginId, pluginName, decl }) => {
+				const grant = heldBy(pluginId, decl.name)
+				return (
+					<div key={`${pluginId}:${decl.name}`} className="flex flex-wrap items-start gap-2">
+						<Checkbox className="mt-1" checked={!!grant} onCheckedChange={(v) => toggle(pluginId, decl.name, v === true)} />
+						<div className="min-w-0 space-y-0.5">
+							<div className="flex flex-wrap items-baseline gap-2">
+								<span className="font-mono text-xs">{decl.name}</span>
+								<span className="text-xs text-muted-foreground">{pluginName}</span>
+							</div>
+							<p className="text-xs text-muted-foreground">{decl.description}</p>
+							{grant && decl.scope === 'server' && (
+								<ServerMultiSelect
+									className="max-w-md"
+									values={grant.serverIds}
+									onChange={(next) => setServers(pluginId, decl.name, next)}
+									title={tr.text(RBAC_Msgs.pluginActionServers())}
+								/>
+							)}
+						</div>
+					</div>
+				)
+			})}
+			{unresolved.length > 0 && (
+				<div className="space-y-1 rounded-md border border-dashed p-2">
+					<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.pluginActionsUnresolved())}</p>
+					{unresolved.map((g) => (
+						<div key={`${g.pluginId}:${g.permission}`} className="flex items-center gap-2">
+							<code className="text-xs">
+								{g.pluginId}:{g.permission}
+							</code>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-6 px-2 text-xs"
+								onClick={() => toggle(g.pluginId, g.permission, false)}
+							>
+								{tr.text(RBAC_Msgs.removeGrant())}
+							</Button>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	)
 }
@@ -2863,17 +2950,6 @@ function PermScopeCell({
 	}
 }
 
-// unknown ids (a server that has since been deleted) stay selectable so opening the editor can't silently drop a grant
-function serverOptionsFor(servers: { id: string; displayName: string }[], selected: string[]): ComboBoxOption<string>[] {
-	const known: ComboBoxOption<string>[] = servers.map((s) => ({
-		value: s.id,
-		label: `${s.displayName} (${s.id})`,
-		keywords: [s.displayName],
-	}))
-	const unknown = selected.filter((id) => !servers.some((s) => s.id === id)).map((id) => ({ value: id }))
-	return [...unknown, ...known]
-}
-
 // One dropdown per selected value rather than a single multi-select: the values here are long (dotted setting paths,
 // `Display Name (server-id)`) and a combined trigger could only show them comma-joined and ellipsed, which truncated
 // exactly the tail that distinguishes them.
@@ -3103,7 +3179,256 @@ function RoleAssignmentsEditor({
 	)
 }
 
+// -------- controls a schema asks for by name --------
+//
+// The overrides below this are chosen by setting path, which a plugin's config has no way to reach. A
+// plugin declares the control it wants in its schema instead (see Fields in models/plugins.models), and it
+// arrives here as a JSON Schema key.
+
+function PluginFilterField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <FilterSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
+}
+
+function PluginFilterMultiField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string[] | undefined
+	return <FilterMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+function PluginServerField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <ServerSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
+}
+
+function PluginServerMultiField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string[] | undefined
+	return <ServerMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+function PluginChannelField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string | undefined
+	return <DiscordChannelSelect value={value || null} onChange={(v) => onChange(v ?? '')} />
+}
+
+function PluginChannelMultiField({ value$, onChange }: OverrideProps) {
+	const value = useFieldValue(value$) as string[] | undefined
+	return <DiscordChannelMultiSelect values={value ?? []} onChange={onChange} />
+}
+
+// uncontrolled and debounced like TextInputField; a template is long enough that a one-line input hides most
+// of what has been written
+function PluginMultilineField({ value$, reset$, onChange }: OverrideProps) {
+	const ref = React.useRef<HTMLTextAreaElement>(null)
+	const format = (v: any) => (v === null || v === undefined ? '' : String(v))
+	const push = useDebounced<string>({ delay: DEBOUNCE_MS, onChange })
+	useReset(reset$, () => {
+		const formatted = format(value$.getValue())
+		if (ref.current && ref.current.value !== formatted) {
+			ref.current.value = formatted
+			push(formatted)
+		}
+	})
+	return (
+		<Textarea
+			ref={ref}
+			rows={3}
+			className="resize-y"
+			defaultValue={format(value$.getValue())}
+			onChange={(e) => push(e.currentTarget.value)}
+		/>
+	)
+}
+
+const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
+	'filter-id': PluginFilterField,
+	'filter-ids': PluginFilterMultiField,
+	'server-id': PluginServerField,
+	'server-ids': PluginServerMultiField,
+	'discord-channel-id': PluginChannelField,
+	'discord-channel-ids': PluginChannelMultiField,
+	multiline: PluginMultilineField,
+}
+
+// The overrides are keyed by a command id an admin would otherwise have to know and type by hand, which is why
+// the raw record editor was unusable for the one thing it exists for: retuning a trigger that collides. This
+// renders a card per command the active plugins actually declare and writes the key itself. A trigger another
+// command already owns is dead rather than merely duplicated (see CMD.resolvePluginCommandTriggers), so it is
+// flagged on the input that entered it.
+function PluginCommandsField({ value$, reset$, onChange }: OverrideProps) {
+	const stored = (useFieldValue(value$) as Record<string, CMD.PluginCommandConfig> | undefined) ?? {}
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	// scoped rather than the whole document: this field renders once, but the root changes on every keystroke anywhere
+	const defaultPrefix = (useFieldValue(scopeValue(root$, 'defaultPrefix')) as string | undefined) ?? ''
+	const coreCommands = (useFieldValue(scopeValue(root$, 'commands')) as CMD.AnyCommandConfigs | undefined) ?? {}
+
+	// not memoized: `stored` and `coreCommands` are fresh objects every render, so a memo over them would never
+	// hit, and this is a flatMap over a handful of commands plus one pass over the trigger namespace
+	const declared = plugins.flatMap((info) =>
+		info.commands.map((decl) => {
+			const id = CMD.pluginCommandId(info.id, decl.name)
+			return {
+				id,
+				pluginName: info.name,
+				decl,
+				config: CMD.pluginCommandConfig(decl, stored[id], defaultPrefix),
+				configured: stored[id] !== undefined,
+			}
+		}),
+	)
+	const { conflicts } = CMD.resolvePluginCommandTriggers(coreCommands, declared)
+	// an override whose plugin is gone: ignored at runtime, but only an admin can decide it is safe to drop
+	const orphans = Object.keys(stored).filter((id) => !declared.some((entry) => entry.id === id))
+
+	function write(next: Record<string, unknown>) {
+		onChange(next)
+		reset$.next()
+	}
+	function patch(id: string, base: CMD.CommandConfig, next: Partial<CMD.PluginCommandConfig>) {
+		const current = (value$.getValue() as Record<string, unknown>) ?? {}
+		// an unconfigured command materializes at its effective config, so editing one field does not silently
+		// pin the others at whatever the schema default happens to be
+		write({ ...current, [id]: { ...((current[id] as object | undefined) ?? base), ...next } })
+	}
+	function clear(id: string) {
+		const current = { ...((value$.getValue() as Record<string, unknown>) ?? {}) }
+		delete current[id]
+		write(current)
+	}
+
+	if (declared.length === 0 && orphans.length === 0) {
+		return <p className="text-sm text-muted-foreground">{tr.text(CMD_Msgs.noPluginCommands())}</p>
+	}
+	return (
+		<div className="space-y-3">
+			{declared.map((entry) => (
+				<PluginCommandCard
+					key={entry.id}
+					entry={entry}
+					conflicts={conflicts.filter((c) => c.commandId === entry.id)}
+					onPatch={(next) => patch(entry.id, entry.config, next)}
+					onReset={() => clear(entry.id)}
+				/>
+			))}
+			{orphans.length > 0 && (
+				<div className="space-y-1 rounded-md border border-dashed p-2">
+					<p className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.pluginCommandOrphans())}</p>
+					{orphans.map((id) => (
+						<div key={id} className="flex items-center gap-2">
+							<code className="text-xs">{id}</code>
+							<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => clear(id)}>
+								{tr.text(CMD_Msgs.pluginCommandDropOverride())}
+							</Button>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	)
+}
+
+type PluginCommandEntry = { id: string; pluginName: string; decl: CMD.PluginCommandInfo; config: CMD.CommandConfig; configured: boolean }
+
+function PluginCommandCard({
+	entry,
+	conflicts,
+	onPatch,
+	onReset,
+}: {
+	entry: PluginCommandEntry
+	conflicts: CMD.CommandConflict[]
+	onPatch: (next: Partial<CMD.PluginCommandConfig>) => void
+	onReset: () => void
+}) {
+	const triggers = entry.config.triggers.map(CMD.triggerString)
+	// Only for a declared default. A trigger an admin typed into `pluginCommands` collides against the settings
+	// schema, which reports it as a field issue and refuses the save outright -- a better answer than this one,
+	// and saying both would be noise. Nothing but this checks what a plugin declares.
+	const takenBy = (trigger: string) =>
+		entry.configured ? undefined : conflicts.find((c) => c.trigger.toLowerCase() === trigger.toLowerCase())?.ownedBy
+	const setTriggers = (next: string[]) => onPatch({ triggers: next })
+	return (
+		<div className="space-y-2 rounded-md border p-2">
+			<div className="flex flex-wrap items-baseline gap-2">
+				<span className="text-sm font-medium">{entry.decl.name}</span>
+				<span className="text-xs text-muted-foreground">{entry.pluginName}</span>
+				<code className="text-[10px] text-muted-foreground">{entry.id}</code>
+				<div className="flex-1" />
+				{entry.configured && (
+					<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onReset}>
+						{tr.text(CMD_Msgs.pluginCommandUseDeclared())}
+					</Button>
+				)}
+			</div>
+			<p className="text-xs text-muted-foreground">{entry.decl.description}</p>
+			<div className="space-y-1">
+				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+					{tr.text(CMD_Msgs.triggers())} <HelpTip text={tr.text(CMD_Msgs.triggersHelp())} />
+				</span>
+				{triggers.map((trigger, idx) => {
+					const owner = takenBy(trigger)
+					return (
+						// oxlint-disable-next-line no-array-index-key
+						<div key={idx} className="space-y-0.5">
+							<div className="flex items-center gap-1">
+								<Input
+									className="h-7 w-40 text-xs"
+									defaultValue={trigger}
+									key={`${entry.configured}:${trigger}`}
+									placeholder={tr.text(CMD_Msgs.triggerStringPlaceholder())}
+									onBlur={(e) => setTriggers(triggers.map((t, i) => (i === idx ? e.target.value.trim() : t)))}
+								/>
+								{triggers.length > 1 && (
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="h-6 px-2 text-xs"
+										onClick={() => setTriggers(triggers.filter((_, i) => i !== idx))}
+									>
+										<Icons.X className="h-3 w-3" />
+									</Button>
+								)}
+							</div>
+							{owner && <p className="text-xs text-yellow-600">{tr.text(CMD_Msgs.pluginTriggerTakenBy(owner))}</p>}
+						</div>
+					)
+				})}
+				<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setTriggers([...triggers, ''])}>
+					{tr.text(SETTINGS_Msgs.addEntry())}
+				</Button>
+			</div>
+			<div className="flex flex-wrap items-center gap-4">
+				<div className="flex items-center gap-2">
+					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+						{tr.text(CMD_Msgs.allowedChats())} <HelpTip text={tr.text(CMD_Msgs.allowedChatsHelp())} />
+					</span>
+					<ComboBoxMulti
+						title={tr.text(CMD_Msgs.allowedChats())}
+						values={entry.config.allowedChats}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: tr.text(CMD_Msgs.chatGroupLabels[group]) }))}
+						onSelect={(next) => onPatch({ allowedChats: typeof next === 'function' ? next(entry.config.allowedChats) : next })}
+					/>
+				</div>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Switch checked={entry.config.enabled} onCheckedChange={(v) => onPatch({ enabled: v })} />
+					{tr.text(CMD_Msgs.enabled())}
+				</label>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Checkbox checked={entry.config.quickReference} onCheckedChange={(v) => onPatch({ quickReference: v === true })} />
+					<span className="flex items-center gap-1">
+						{tr.text(CMD_Msgs.quickReference())}
+						<HelpTip text={tr.text(CMD_Msgs.quickReferenceHelp())} />
+					</span>
+				</label>
+			</div>
+		</div>
+	)
+}
+
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
+	const declared = PLG.fieldControl(_node)
+	if (declared) return DECLARED_CONTROLS[declared]
 	const last = path[path.length - 1]
 	// global settings define the lists (a record); a server picks from them (an array of names)
 	if (path.length === 1 && last === 'adminLists') return _node.type === 'array' ? ServerAdminListsField : AdminListsField
@@ -3111,6 +3436,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'locale') return LocaleField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
+	if (path.length === 1 && last === 'pluginCommands') return PluginCommandsField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField

@@ -97,6 +97,7 @@ export function role(
 		globalSettingsGrants: [],
 		serverSettingsGrants: [],
 		serverGrants: [],
+		pluginGrants: [],
 		assignments: {
 			discordRoleIds: [],
 			discordUserIds: (assign.users ?? []).map((u) => String(u.discordId)),

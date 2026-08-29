@@ -202,3 +202,17 @@ export const permissionsNeeded = def(
 		shape: count === 1 ? 'single' : checkType === 'all' ? 'all' : 'any',
 	}),
 )
+
+export const pluginActions = def('Plugin Actions')
+
+export const pluginActionsBlurb = def(
+	'Actions the installed plugins define for themselves. A grant for a plugin that is not running does nothing, and is kept so stopping one does not lose it.',
+)
+
+export const noPluginActions = def('No running plugin defines an action.')
+
+export const pluginActionServers = def('Servers')
+
+export const pluginActionsUnresolved = def('Granted actions no running plugin defines:')
+
+export const removeGrant = def('Remove')

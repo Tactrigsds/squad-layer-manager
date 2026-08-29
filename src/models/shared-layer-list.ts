@@ -15,7 +15,11 @@ import * as V from '@/models/vote.models'
 import * as L from './layer'
 
 const opPropsBase = { opId: z.string() }
-const opPropsClient = { userId: USR.UserIdSchema }
+// `userId` is the person operating the editor: it drives presence and who a save overrode. Absent when
+// nothing human issued the op, which is a plugin editing the queue; everything reading it already guards for
+// that. `source` is what the op is attributed to, and what new items record. They agree for a person, and
+// only `source` can name a plugin, so it is what the audit log reads.
+const opPropsClient = { userId: USR.UserIdSchema.optional(), source: LL.SourceSchema.optional() }
 const opPropsEditWindow = { editWindowSeqId: z.number() }
 
 // when present ensures that this op is only applied during the edit window it was intended for
@@ -423,12 +427,9 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 	}
 	let source: LL.Source
 	{
+		const declared = (newOp as { source?: LL.Source })?.source
 		const userId = (newOp as { userId?: USR.UserId })?.userId
-		if (userId) {
-			source = { type: 'manual', userId }
-		} else {
-			source = { type: 'unknown' }
-		}
+		source = declared ?? (userId ? { type: 'manual', userId } : { type: 'unknown' })
 	}
 	// don't write to mutations if we're applying changes to the saved list, just throw them away instead
 	const mutations = session.mutations

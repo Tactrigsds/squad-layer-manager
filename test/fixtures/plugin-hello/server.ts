@@ -4,15 +4,22 @@ import * as z from 'zod'
 import * as CB from 'slm/models/constraint-builders'
 import * as FB from 'slm/models/filter-builders'
 import * as GV from 'slm/models/gen-vote'
+import * as RBAC from 'slm/models/rbac'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
+import * as Commands from 'slm/plugin/commands'
 import * as PluginConfig from 'slm/plugin/config'
+import * as Permissions from 'slm/plugin/permissions'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
 import * as AppEventsSys from 'slm/systems/app-events'
+import * as Discord from 'slm/systems/discord'
 import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
+import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as Rbac from 'slm/systems/rbac'
+import * as SquadServer from 'slm/systems/squad-server'
 
 import manifest from './plugin.ts'
 import * as S from './schema.ts'
@@ -47,6 +54,21 @@ const FilterInput = z.object({ id: z.string(), owner: z.string() })
 
 export const router = {
 	stats: os.input(z.object({})).handler(async () => ({ activations })),
+
+	// An rpc procedure is reachable by anyone who may use the site, so one that acts on the server has to
+	// authorize the caller itself. Reports who it saw, so the test can tell an allowed call from a refused one.
+	whoAmI: os.input(z.object({})).handler(async ({ context }) => {
+		const denial = await Rbac.checkCaller(context, RBAC.perm('squad-server:end-match', { serverId: context.serverId }))
+		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
+		return { code: 'ok' as const, discordId: String(context.user.discordId) }
+	}),
+
+	// the same check against an action SLM knows nothing about beyond the id a role was granted
+	greetIfAllowed: os.input(z.object({})).handler(async ({ context }) => {
+		const denial = await Rbac.checkCaller(context, perms!.greet(context.serverId))
+		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
+		return { code: 'ok' as const, greeting: PluginConfig.get(context).greeting }
+	}),
 	makeFilter: os.input(FilterInput).handler(async ({ context, input }) =>
 		Filters.create(context, {
 			id: input.id,
@@ -98,14 +120,77 @@ export const router = {
 			if (res.code !== 'ok') return res
 			return { code: 'ok' as const, maps: res.chosenLayers.map((l) => l?.Map ?? null), unfilledChoices: res.unfilledChoices }
 		}),
+	// --- the automation surface: the queue, the event stream, ending a match, discord ---
+
+	savedQueue: os.input(z.object({})).handler(async ({ context }) =>
+		LayerQueue.getSavedQueue(context).map((item) => ({
+			itemId: item.itemId,
+			layerId: item.layerId,
+			source: item.source.type,
+			sourcePluginId: item.source.type === 'plugin' ? item.source.pluginId : null,
+		})),
+	),
+
+	// prepends a layer and keeps the rest, which is the shape a real caller uses: pass entries through to
+	// keep their items, hand back a bare id for a new one
+	prependLayer: os
+		.input(z.object({ layerId: z.string() }))
+		.handler(async ({ context, input }) => LayerQueue.editSaved(context, (entries) => [input.layerId, ...entries])),
+
+	dropFirstLayer: os.input(z.object({})).handler(async ({ context }) => LayerQueue.editSaved(context, (entries) => entries.slice(1))),
+
+	// resolves with the first event of `type` seen after subscribing, or null once `ms` has passed
+	nextEvent: os.input(z.object({ type: z.string(), ms: z.number() })).handler(async ({ context, input }) => {
+		return await new Promise<{ type: string } | null>((resolve) => {
+			const timer = setTimeout(() => {
+				sub.unsubscribe()
+				resolve(null)
+			}, input.ms)
+			const sub = SquadServer.events$(context).subscribe((event) => {
+				if (event.type !== input.type) return
+				clearTimeout(timer)
+				sub.unsubscribe()
+				resolve({ type: event.type })
+			})
+		})
+	}),
+
+	endMatch: os.input(z.object({})).handler(async ({ context }) => SquadServer.endMatch(context)),
+
+	postToDiscord: os
+		.input(z.object({ channelId: z.string(), content: z.string() }))
+		.handler(async ({ input }) => ({ enabled: Discord.isEnabled(), res: await Discord.postMessage(input.channelId, input.content) })),
+
 	greetings: os.input(z.object({ serverId: z.string() })).handler(async function* ({ context, input }) {
 		yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
 	}),
 }
 
+// an action this plugin defines for itself, so a role can be granted it without SLM knowing what it means.
+// Held module-level so the router can ask for it; the builders are the plugin's own, not the host's.
+let perms: { greet: (serverId: string) => RBAC.Permission<'plugin:action'> } | undefined
+
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	activations++
+	perms = Permissions.register(ctx, {
+		greet: { scope: 'server', description: 'Send the greeting on a server' },
+	})
 	Rpc.register(ctx, router)
+
+	// an in-game command, answering with its config and whatever was typed after the trigger, so a test can
+	// tell the handler ran with the right ctx and the right arguments
+	Commands.register(ctx, {
+		name: 'hello',
+		description: 'Says hello back.',
+		triggers: ['hello'],
+		allowedChats: ['admin'],
+		usage: '[name]',
+		handler: async (sctx, input) => {
+			const denial = await Rbac.checkPlayer(sctx, input.player, RBAC.perm('squad-server:end-match', { serverId: sctx.serverId }))
+			if (denial) return Rbac.describe(sctx, denial)
+			return `${PluginConfig.get(sctx).greeting} ${input.text || 'nobody'} on ${sctx.serverId}`
+		},
+	})
 
 	// runs once per managed server: writes a row proving the plugin reached its own table, a core
 	// system (match history) and its config, all through shimmed slm/* imports

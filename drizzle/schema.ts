@@ -40,9 +40,12 @@ export const matchHistory = sqliteTable(
 		team1Tickets: integer('team1Tickets'),
 		team2Tickets: integer('team2Tickets'),
 		setByType: text('setByType', {
-			enum: ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote'],
+			enum: ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin'],
 		}).notNull(),
 		setByUserId: bigintText('setByUserId'),
+		// which plugin, when setByType is 'plugin'. Kept even after that plugin is uninstalled, so an old
+		// match still says what queued it.
+		setByPluginId: text('setByPluginId'),
 	},
 	(table) => ({
 		layerIdIndex: index('layerIdIndex').on(table.layerId),

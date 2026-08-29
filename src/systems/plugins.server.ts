@@ -11,7 +11,9 @@ import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import * as AppEvents from '@/models/app-events.models'
+import * as CMD from '@/models/command.models'
 import * as CS from '@/models/context-shared'
+import type * as FR from '@/models/filter-references.models'
 import type * as LQ from '@/models/layer-queue.models'
 import type * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
@@ -19,6 +21,8 @@ import * as ATTRS from '@/models/otel-attrs'
 import * as PLG from '@/models/plugins.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as SQS from '@/models/squad-server.models'
+import type * as SM from '@/models/squad.models'
+import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -26,6 +30,7 @@ import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as FilterEntity from '@/systems/filter-entity.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as Pkgs from '@/systems/plugin-packages.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -64,7 +69,11 @@ export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log &
 // teamswaps, switch-requests and the match-events cache are deliberately not in the contract yet.
 export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS.Ctx & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & Msgs.Ctx
 
-export type ServerSetupFn = (ctx: ServerCtx<any>, cleanup: Cleanup.Tasks) => void
+export type ServerSetupFn = (ctx: ServerCtx<any>) => void
+
+// A plugin's rpc procedure context: the per-server ctx plus the signed-in user who made the call. Handlers
+// authorize against that user themselves (see slm/systems/rbac); the host only carries the identity here.
+export type RpcCtx<M extends PLG.Manifest<any> = PLG.Manifest> = ServerCtx<M> & USR.Ctx.Id
 
 // A packaged plugin's migrations ride along with its server bundle; a builtin keeps them in their own
 // module, reached through BuiltinPlugin.migrations.
@@ -119,6 +128,10 @@ type Runtime = {
 	abort: AbortController | null
 	serverSetups: ServerSetupFn[]
 	instances: Map<string, Instance>
+	// actions the plugin defines for itself, by declared name
+	permissions: Map<string, PLG.PermissionInfo>
+	// in-game commands the plugin contributes, by declared name
+	commands: Map<string, PluginCommand>
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
 	router: AnyRouter | null
 }
@@ -166,6 +179,11 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	// before any package is imported: this is what makes `slm/*` resolve inside one
 	ApiRegistry.setup()
 	Pkgs.setup()
+
+	// a Fields.filterId in a running plugin's config is a reference like a pool config is, so deleting that
+	// filter is refused while it stands. Rebuilt whenever a plugin starts, stops or is reconfigured.
+	FilterEntity.registerPluginFilterRefs(collectFilterRefs)
+	update$.subscribe(() => FilterEntity.invalidateReferences())
 
 	for (const builtin of builtins) {
 		await ensureRuntime(ctx, { ...builtin, source: 'builtin', sourceUrl: null, manifestEntry: null, clientEntry: null, pkg: null })
@@ -220,6 +238,8 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		abort: null,
 		serverSetups: [],
 		instances: new Map(),
+		permissions: new Map(),
+		commands: new Map(),
 		router: null,
 	}
 	plugins.set(id, rt)
@@ -409,7 +429,7 @@ function invokeSetup(rt: Runtime, inst: Instance, cb: ServerSetupFn) {
 	if (inst.ran.has(cb)) return
 	inst.ran.add(cb)
 	try {
-		cb(inst.sctx, inst.cleanup)
+		cb(inst.sctx)
 	} catch (err) {
 		inst.sctx.log.error(err, 'plugin server setup failed')
 	}
@@ -457,6 +477,124 @@ export function registerRouter(ctx: Ctx<any>, router: AnyRouter) {
 	ctx.cleanup.push(() => (rt.router = null))
 }
 
+/**
+ * Which filters the active plugins' configs name, for the filter reference index. Read from the parsed config
+ * against the plugin's own schema, so a plugin declaring `Fields.filterId()` gets this without doing anything.
+ */
+function collectFilterRefs(): FR.PluginFilterRefs[] {
+	const out: FR.PluginFilterRefs[] = []
+	for (const rt of plugins.values()) {
+		if (rt.status !== 'active') continue
+		let fields: { path: string; value: string }[]
+		try {
+			const jsonSchema = z.toJSONSchema(rt.entry.manifest.configSchema, { io: 'input', unrepresentable: 'any' })
+			fields = PLG.configFieldValues(jsonSchema, rt.config, 'filter-id').concat(
+				PLG.configFieldValues(jsonSchema, rt.config, 'filter-ids'),
+			)
+		} catch (err) {
+			// a schema that will not render is the plugin's problem, not a reason to fail every filter delete
+			rt.log.warn(err, 'could not read filter references out of the config')
+			continue
+		}
+		if (fields.length === 0) continue
+		out.push({ pluginId: rt.ref.id, fields: fields.map((f) => ({ path: f.path, filterId: f.value })) })
+	}
+	return out
+}
+
+// ---- plugin-declared permissions ----
+
+/**
+ * Registers the actions this plugin defines for itself and returns a builder per action, typed by the scope it
+ * declared. A server-scoped action asks which server; a global one takes nothing.
+ *
+ * The host stores nothing: a grant names the plugin and the action as plain strings (settings load long before
+ * plugins do), and an action nothing declares grants nothing. What this buys is the settings UI knowing the
+ * action exists and what it is for, and the plugin never spelling its own ids by hand.
+ */
+export function registerPermissions<D extends Record<string, PLG.PermissionDeclaration>>(
+	ctx: Ctx<any>,
+	declarations: D,
+): PLG.PermissionBuilders<D> {
+	const rt = requireRuntime(ctx.plugin.id)
+	const builders = {} as Record<string, unknown>
+	for (const [name, decl] of Object.entries(declarations)) {
+		rt.permissions.set(name, { name, ...decl })
+		builders[name] = (serverId: string | null = null) => RBAC.pluginAction(rt.ref.id, name, decl.scope === 'server' ? serverId : null)
+	}
+	ctx.cleanup.push(() => {
+		for (const name of Object.keys(declarations)) rt.permissions.delete(name)
+	})
+	return builders as PLG.PermissionBuilders<D>
+}
+
+// ---- in-game commands ----
+
+/** What a plugin command's handler is given. `text` is everything after the trigger, `args` the same split on spaces. */
+export type PluginCommandInput = {
+	text: string
+	args: string[]
+	// the player who typed it, always resolved against the live roster
+	player: SM.Player
+	// their SLM account, when their steam id is linked to one
+	userId: USR.UserId | undefined
+}
+
+/** Returned text is warned back to the caller. Nothing means the command said what it had to say by itself. */
+export type PluginCommandHandler = (ctx: ServerCtx<any>, input: PluginCommandInput) => Promise<string | void> | string | void
+
+export type PluginCommand = CMD.PluginCommandDeclaration & { handler: PluginCommandHandler }
+
+/** A plugin's command, as the dispatcher needs it: the declaration plus which plugin owns it. */
+export type RegisteredCommand = { id: string; pluginId: string; decl: CMD.PluginCommandDeclaration }
+
+/**
+ * Contributes an in-game command. The host owns matching, the chat and enabled gates and the permission check, so
+ * the handler runs only for a caller who was allowed to run it. Registered per plugin rather than per server; the
+ * handler is called with the ctx of whichever server it was typed on.
+ */
+export function registerCommand(ctx: Ctx<any>, command: PluginCommand) {
+	const rt = requireRuntime(ctx.plugin.id)
+	if (rt.commands.has(command.name)) throw new Error(`plugin ${ctx.plugin.id}: command '${command.name}' is already registered`)
+	rt.commands.set(command.name, command)
+	ctx.cleanup.push(() => rt.commands.delete(command.name))
+}
+
+/** Every active plugin's commands. Only active plugins: a stopped one's command must not answer. */
+export function commandDeclarations(): RegisteredCommand[] {
+	const out: RegisteredCommand[] = []
+	for (const rt of plugins.values()) {
+		if (rt.status !== 'active') continue
+		for (const command of rt.commands.values()) {
+			out.push({ id: CMD.pluginCommandId(rt.ref.id, command.name), pluginId: rt.ref.id, decl: command })
+		}
+	}
+	return out
+}
+
+/**
+ * Runs a plugin command that has already passed the host's gates. Errors are contained: a plugin throwing here
+ * would otherwise take down the chat handler for every command, not just its own.
+ */
+export async function runCommand(
+	serverCtx: C.Db & C.ManagedServer,
+	id: string,
+	input: PluginCommandInput,
+): Promise<{ code: 'ok'; msg?: string } | { code: 'err:unknown-command' } | { code: 'err:plugin-failed' }> {
+	const found = commandDeclarations().find((c) => c.id === id)
+	if (!found) return { code: 'err:unknown-command' }
+	const rt = requireRuntime(found.pluginId)
+	const command = rt.commands.get(found.decl.name)
+	if (!command) return { code: 'err:unknown-command' }
+	try {
+		const msg = await command.handler(serverScopedCtx(rt, serverCtx, serverCtx.serverId), input)
+		return { code: 'ok', msg: msg ?? undefined }
+	} catch (err) {
+		rt.log.error(err, "plugin command '%s' failed", command.name)
+		return { code: 'err:plugin-failed' }
+	}
+}
+
 // Resolves a procedure by path against the plugin's router and calls it with a per-server ctx. The
 // same entry point for both transports: what differs is whether the result is awaited or iterated.
 function callProcedure(rt: Runtime, sctx: ServerCtx<any>, path: readonly string[], input: unknown): Promise<unknown> {
@@ -471,10 +609,10 @@ function callProcedure(rt: Runtime, sctx: ServerCtx<any>, path: readonly string[
 
 // the ctx a plugin procedure runs with: the live per-server instance when the plugin has one, a
 // throwaway otherwise, so a call still works while the plugin has registered no server setups
-function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: string): ServerCtx<any> {
+function serverScopedCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: string): ServerCtx<any> {
 	const instance = rt.instances.get(serverId)
 	if (instance) return instance.sctx
-	const fallback: ServerCtx<any> = {
+	return {
 		...serverCtx,
 		log: rt.log.child({ serverId }),
 		signal: Prom.anySignal(serverCtx.signal, rt.abort?.signal)!,
@@ -482,7 +620,12 @@ function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: 
 		cleanup: [],
 		module: rt.module,
 	}
-	return fallback
+}
+
+// The same ctx plus this call's caller. Spread rather than stamped: the instance ctx is shared by everything
+// the plugin runs for that server, so writing one call's caller onto it would leak into the next call's.
+function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: string, user: USR.Ctx.Id['user']): RpcCtx<any> {
+	return { ...serverScopedCtx(rt, serverCtx, serverId), user }
 }
 
 // ---- plugin migrations ----
@@ -580,6 +723,8 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		status: rt.status,
 		error: rt.error,
 		hasClient: rt.entry.hasClient,
+		commands: rt.status === 'active' ? [...rt.commands.values()].map(({ handler: _handler, ...decl }) => decl) : [],
+		permissions: rt.status === 'active' ? [...rt.permissions.values()] : [],
 		source: rt.entry.source,
 		sourceUrl: rt.entry.sourceUrl,
 		manifestEntry: rt.entry.manifestEntry,
@@ -595,6 +740,8 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		status: 'errored',
 		error: pkg.error,
 		hasClient: false,
+		commands: [],
+		permissions: [],
 		source: pkg.source,
 		sourceUrl: pkg.sourceUrl,
 		manifestEntry: null,
@@ -746,7 +893,7 @@ export const router = {
 				return
 			}
 			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (serverCtx) =>
-				Rx.defer(() => callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId), input.path, input.input)).pipe(
+				Rx.defer(() => callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId, context.user), input.path, input.input)).pipe(
 					Rx.switchMap((result) => Rx.from(result as AsyncIterable<unknown>)),
 					Rx.map((data) => ({ code: 'ok' as const, data })),
 				),
@@ -839,7 +986,7 @@ export const router = {
 			if (!rt?.router || rt.status !== 'active') return { code: 'err:unknown-rpc' as const }
 			const managedServer = SquadServer.globalState.managedServers.get(input.serverId)
 			if (!managedServer) return { code: 'err:server-not-loaded' as const }
-			const sctx = procedureCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, input.serverId)
+			const sctx = procedureCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, input.serverId, context.user)
 			return { code: 'ok' as const, data: await callProcedure(rt, sctx, input.path, input.input) }
 		}),
 }

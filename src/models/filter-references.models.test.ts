@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest'
+import * as z from 'zod'
 
 import * as FB from './filter-builders'
 import * as FR from './filter-references.models'
 import type * as F from './filter.models'
+import * as PLG from './plugins.models'
 import * as SETTINGS from './settings.models'
 
 function filter(id: string, node: F.FilterNode): F.FilterEntity {
@@ -105,5 +107,62 @@ describe('findCycle', () => {
 
 	test('a reference to a filter that does not exist is not a loop', () => {
 		expect(FR.findCycle([filter('a', FB.and([FB.includedIn('gone')]))], 'a')).toBeNull()
+	})
+})
+
+describe('plugin config references', () => {
+	const refs = (fields: { path: string; filterId: string }[]): FR.PluginFilterRefs[] => [{ pluginId: 'seed-roller', fields }]
+
+	test("a plugin's config field references the filter it names", () => {
+		const index = FR.buildIndex([], [], refs([{ path: 'seedPool', filterId: 'seeding' }]))
+		expect(index.get('seeding')).toEqual([{ type: 'plugin-config', pluginId: 'seed-roller', path: 'seedPool', via: [] }])
+	})
+
+	// the same reachability pool configs get: a plugin naming a filter holds everything that filter applies
+	test('reaches through apply-filter, recording the hops', () => {
+		const index = FR.buildIndex(
+			[filter('base', FB.and([])), filter('pool', FB.and([FB.includedIn('base')]))],
+			[],
+			refs([{ path: 'seedPool', filterId: 'pool' }]),
+		)
+		expect(index.get('base')).toContainEqual({ type: 'plugin-config', pluginId: 'seed-roller', path: 'seedPool', via: ['pool'] })
+	})
+})
+
+describe('configFieldValues', () => {
+	const schema = z.toJSONSchema(
+		z.object({
+			seedPool: PLG.Fields.filterId(),
+			extraPools: PLG.Fields.filterIds(),
+			servers: PLG.Fields.serverIds(),
+			nested: z.object({ pool: PLG.Fields.filterId() }),
+			plain: z.string(),
+		}),
+		{ io: 'input', unrepresentable: 'any' },
+	)
+
+	test('finds every field declaring the control, and nothing else', () => {
+		const config = {
+			seedPool: 'seeding',
+			extraPools: ['a', 'b'],
+			servers: ['sandbox'],
+			nested: { pool: 'deep' },
+			plain: 'not-a-filter',
+		}
+		expect(PLG.configFieldValues(schema, config, 'filter-id')).toEqual([
+			{ path: 'seedPool', value: 'seeding' },
+			{ path: 'nested.pool', value: 'deep' },
+		])
+		expect(PLG.configFieldValues(schema, config, 'filter-ids')).toEqual([
+			{ path: 'extraPools[0]', value: 'a' },
+			{ path: 'extraPools[1]', value: 'b' },
+		])
+		expect(PLG.configFieldValues(schema, config, 'server-ids')).toEqual([{ path: 'servers[0]', value: 'sandbox' }])
+	})
+
+	// an unconfigured picker stores '', which is not a reference to anything
+	test('skips empty values and missing keys', () => {
+		expect(PLG.configFieldValues(schema, { seedPool: '', extraPools: [] }, 'filter-id')).toEqual([])
+		expect(PLG.configFieldValues(schema, {}, 'filter-id')).toEqual([])
 	})
 })

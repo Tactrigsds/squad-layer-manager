@@ -351,6 +351,8 @@ export const referencingFiltersLabel = def('Filters:')
 
 export const referencingPoolsLabel = def('Layer pools:')
 
+export const referencingPluginsLabel = def('Plugins:')
+
 // the apply-filter hops between a configured filter and this one, e.g. "via pool-base -> vehicles"
 export const referenceVia = def('via {chain}', (chain: string) => ({ chain }))
 
