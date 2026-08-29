@@ -107,6 +107,9 @@ export type AppFixtureOptions = {
 	otel?: { endpoint?: string; metricIntervalMs?: number }
 	// extra users to seed beyond the default admin; only the admin gets superuser perms
 	users?: TestUser[]
+	// Packed plugin directories (what `pnpm plugin:pack` writes) to place in the app's plugins dir before it
+	// boots, as copying one in by hand does. They install disabled, the same as any other package.
+	installPlugins?: string[]
 	// leave the dashboard's recommended-tutorials prompt armed for this app's users. Off by default because it
 	// is a modal over the page most tests drive.
 	tutorialPrompts?: boolean
@@ -555,6 +558,16 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		)
 	}
 
+	const pluginsDir = path.join(tmpDir, 'plugins')
+	for (const src of opts.installPlugins ?? []) {
+		// named for the manifest id rather than the source directory: a package is only readable when the two
+		// agree, and `plugin:pack` is routinely pointed at a `dist` or a temp directory
+		const manifestPath = path.join(src, 'plugin.json')
+		if (!fs.existsSync(manifestPath)) throw new Error(`${src} is not a packed plugin: no plugin.json`)
+		const { id } = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { id: string }
+		fs.cpSync(src, path.join(pluginsDir, id), { recursive: true })
+	}
+
 	const env: Record<string, string> = {
 		...(process.env as Record<string, string>),
 		NODE_ENV: 'test',
@@ -562,7 +575,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		DB_PATH: dbPath,
 		DB_AUTOMIGRATE: 'false',
 		// per-fixture, so an installed package cannot leak into the checkout's data directory or another run
-		PLUGINS_DIR: path.join(tmpDir, 'plugins'),
+		PLUGINS_DIR: pluginsDir,
 		PORT: String(appPort),
 		HOST: '127.0.0.1',
 		ORIGIN: appUrl,

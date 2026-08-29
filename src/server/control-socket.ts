@@ -1,0 +1,91 @@
+import * as fs from 'node:fs'
+import * as net from 'node:net'
+import * as path from 'node:path'
+
+import * as CS from '@/models/context-shared'
+import * as DB from '@/server/db'
+import * as Env from '@/server/env'
+import { initModule } from '@/server/logger'
+import * as CleanupSys from '@/systems/cleanup.server'
+import * as Plugins from '@/systems/plugins.server'
+
+/**
+ * A unix socket for operating the running app from inside its own container, where there is no session to
+ * authenticate and no browser to click. Deployment uses it to load a plugin it just copied in:
+ *
+ *   docker exec slm-app-prod pnpm plugins:reload --expect seed-roller
+ *
+ * A socket rather than a port or a signal: it answers, so a deploy can fail on a plugin that did not come
+ * back up, which neither of the others can tell it. The file is root-owned and 0600, so reaching it means
+ * already being root in the container -- which is why the commands here take no identity and check none.
+ *
+ * One request per connection: a JSON line in, a JSON line back, close.
+ */
+
+const module = initModule('control-socket')
+let log!: CS.Logger
+
+type Request = { command: string; args?: Record<string, unknown> }
+type Response = { code: string; [key: string]: unknown }
+
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.plugins })
+
+async function handle(req: Request): Promise<Response> {
+	switch (req.command) {
+		case 'reload-plugins': {
+			const ctx = DB.addPooledDb({ ...CS.init(), log })
+			await Plugins.reloadPackages(ctx)
+			return {
+				code: 'ok',
+				plugins: Plugins.listRuntimeInfo().map((p) => ({ id: p.id, enabled: p.enabled, status: p.status, error: p.error })),
+			}
+		}
+		default:
+			return { code: 'err:unknown-command', command: req.command }
+	}
+}
+
+export async function setup() {
+	log = module.getLogger()
+	const socketPath = envBuilder().CONTROL_SOCKET
+	if (!socketPath) return
+
+	// a socket file outlives an unclean exit, and binding over it fails with EADDRINUSE
+	await fs.promises.mkdir(path.dirname(socketPath), { recursive: true })
+	await fs.promises.rm(socketPath, { force: true })
+
+	const server = net.createServer((socket) => {
+		socket.setEncoding('utf8')
+		let buffer = ''
+		socket.on('data', (chunk: string) => {
+			buffer += chunk
+			const newline = buffer.indexOf('\n')
+			if (newline === -1) return
+			const line = buffer.slice(0, newline)
+			buffer = ''
+			void (async () => {
+				let res: Response
+				try {
+					res = await handle(JSON.parse(line) as Request)
+				} catch (err) {
+					log.error(err, 'control command failed')
+					res = { code: 'err:failed', message: err instanceof Error ? err.message : String(err) }
+				}
+				socket.end(JSON.stringify(res) + '\n')
+			})()
+		})
+		socket.on('error', (err) => log.warn(err, 'control socket connection failed'))
+	})
+
+	await new Promise<void>((resolve, reject) => {
+		server.once('error', reject)
+		server.listen(socketPath, () => resolve())
+	})
+	// after listen: the path does not exist to chmod before it
+	await fs.promises.chmod(socketPath, 0o600)
+	CleanupSys.register(async () => {
+		server.close()
+		await fs.promises.rm(socketPath, { force: true })
+	})
+	log.info('control socket listening on %s', socketPath)
+}
