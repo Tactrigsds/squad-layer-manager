@@ -25,6 +25,7 @@ import * as plugin from '@/plugin-api/plugin'
 import * as pluginCommands from '@/plugin-api/plugin/commands'
 import * as pluginConfig from '@/plugin-api/plugin/config'
 import * as pluginFields from '@/plugin-api/plugin/fields'
+import * as pluginPermissions from '@/plugin-api/plugin/permissions'
 import * as pluginRpcServer from '@/plugin-api/plugin/rpc.server'
 import * as pluginServers from '@/plugin-api/plugin/servers'
 import * as serverInstrumentation from '@/plugin-api/server/instrumentation'
@@ -71,6 +72,7 @@ export function setup() {
 		'slm/plugin/commands': pluginCommands,
 		'slm/plugin/config': pluginConfig,
 		'slm/plugin/fields': pluginFields,
+		'slm/plugin/permissions': pluginPermissions,
 		'slm/plugin/rpc.server': pluginRpcServer,
 		'slm/plugin/servers': pluginServers,
 		'slm/server/instrumentation': serverInstrumentation,

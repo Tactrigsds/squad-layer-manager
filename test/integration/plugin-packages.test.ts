@@ -84,7 +84,11 @@ beforeAll(async () => {
 		adminSteamIds: [ADMIN_STEAM_ID],
 		users: [OUTSIDER],
 		globalSettings: (settings) => {
-			settings.rbac.roles['plugin-rpc-outsider'] = role(['site:authorized', 'squad-server:view'], { users: [OUTSIDER] })
+			settings.rbac.roles['plugin-rpc-outsider'] = {
+				...role(['site:authorized', 'squad-server:view'], { users: [OUTSIDER] }),
+				// an action the host has no definition for: only the plugin knows what it means
+				pluginGrants: [{ pluginId: 'hello', permission: 'greet', serverIds: [] }],
+			}
 		},
 	})
 	client = await createOrpcClient(app)
@@ -135,6 +139,7 @@ async function pluginInfo() {
 				source: string
 				sourceUrl: string | null
 				clientEntry: string | null
+				permissions: { name: string; scope: string; description: string }[]
 		  }
 		| undefined
 }
@@ -251,6 +256,31 @@ describe('packaged plugins', () => {
 			async () => ((await call<{ code: string }>('dropFilter', { id: 'hello-configured' })).code === 'ok' ? true : undefined),
 			{ label: 'the reference to be released' },
 		)
+	})
+
+	// A permission SLM knows nothing about: the plugin declares it, a role is granted it by id (plain strings,
+	// so the grant survives the plugin being stopped and can live in settings that load long before any plugin
+	// does), and the check runs through the same matcher core permissions use.
+	it('authorizes against an action the plugin declared for itself', async () => {
+		const outsiderClient = await createOrpcClient(app, OUTSIDER)
+		const call = async (path: string) =>
+			(
+				(await outsiderClient.plugins.rpcCall({ pluginId: 'hello', path: [path], serverId: app.serverId, input: {} })) as {
+					data?: { code: string; greeting?: string }
+				}
+			).data
+
+		// the role was granted hello:greet and nothing else, so the two procedures answer differently
+		expect(await call('greetIfAllowed')).toMatchObject({ code: 'ok', greeting: 'hello' })
+		expect(await call('whoAmI')).toMatchObject({ code: 'err:permission-denied' })
+	})
+
+	it('reports the actions a running plugin declares', async () => {
+		expect((await pluginInfo())?.permissions).toContainEqual({
+			name: 'greet',
+			scope: 'server',
+			description: 'Send the greeting on a server',
+		})
 	})
 
 	// A plugin's two halves of the same job: it makes a filter, then asks the engine what matches it. The

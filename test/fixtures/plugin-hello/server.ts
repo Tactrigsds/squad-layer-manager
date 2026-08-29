@@ -9,6 +9,7 @@ import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
 import * as Commands from 'slm/plugin/commands'
 import * as PluginConfig from 'slm/plugin/config'
+import * as Permissions from 'slm/plugin/permissions'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Servers from 'slm/plugin/servers'
 import * as AppEventsSys from 'slm/systems/app-events'
@@ -60,6 +61,13 @@ export const router = {
 		const denial = await Rbac.checkCaller(context, RBAC.perm('squad-server:end-match', { serverId: context.serverId }))
 		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
 		return { code: 'ok' as const, discordId: String(context.user.discordId) }
+	}),
+
+	// the same check against an action SLM knows nothing about beyond the id a role was granted
+	greetIfAllowed: os.input(z.object({})).handler(async ({ context }) => {
+		const denial = await Rbac.checkCaller(context, perms!.greet(context.serverId))
+		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
+		return { code: 'ok' as const, greeting: PluginConfig.get(context).greeting }
 	}),
 	makeFilter: os.input(FilterInput).handler(async ({ context, input }) =>
 		Filters.create(context, {
@@ -158,8 +166,15 @@ export const router = {
 	}),
 }
 
+// an action this plugin defines for itself, so a role can be granted it without SLM knowing what it means.
+// Held module-level so the router can ask for it; the builders are the plugin's own, not the host's.
+let perms: { greet: (serverId: string) => RBAC.Permission<'plugin:action'> } | undefined
+
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	activations++
+	perms = Permissions.register(ctx, {
+		greet: { scope: 'server', description: 'Send the greeting on a server' },
+	})
 	Rpc.register(ctx, router)
 
 	// an in-game command, answering with its config and whatever was typed after the trigger, so a test can

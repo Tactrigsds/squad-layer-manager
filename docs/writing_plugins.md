@@ -489,6 +489,28 @@ Reuse an existing permission where one fits. `squad-server:end-match` for anythi
 `queue:write` for queue edits, `squad-server:warn-players` for warns. Admins already grant these, and a plugin
 that invents its own asks every install to configure something new.
 
+### Declaring your own
+
+Where the plugin does something SLM has no analogue for, declare an action. The host has no idea what it means;
+it only carries the grant.
+
+```ts
+import * as Permissions from 'slm/plugin/permissions'
+
+const Perms = Permissions.register(ctx, {
+	giveaway: { scope: 'server', description: 'Run a giveaway on a server' },
+})
+// asks for a server because the declaration said the action is about one; a 'global' action takes nothing
+const denial = await Rbac.checkCaller(context, Perms.giveaway(context.serverId))
+```
+
+`global` and `server` are the only scopes. A comparator ("up to N") or a path-restricted grant is something the
+permission matcher has to understand specifically, so those stay the host's.
+
+An admin grants it under Plugin Actions on the role, picking from what the running plugins declare. The grant
+stores the plugin id and the action name as plain strings, so stopping or uninstalling the plugin keeps it
+rather than losing it, and an action no running plugin declares grants nothing.
+
 ## Pickers
 
 A config field that stores a filter, a server or a Discord channel id can render as the picker SLM uses for
@@ -535,6 +557,7 @@ absent.
 | `slm/plugin/events`                                        | rendering your own events in the feed        |
 | `slm/plugin/commands`                                      | in-game commands                             |
 | `slm/plugin/fields`                                        | config fields that render as a picker        |
+| `slm/plugin/permissions`                                   | actions your plugin defines for itself       |
 | `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
 | `slm/components/layer`                                     | a layer's name, rendered as the app does it  |
 | `slm/components/plugin-settings-link`                      | a link to your own config                    |
