@@ -395,6 +395,12 @@ change; added lines are additive. Which component each has to move follows semve
 - `definePlugin` — value: <M extends Manifest<z.ZodObject<any>>>(manifest: M) => M
 - `defineTables` — value: (manifest: { id: string; }) => TableFactory
 
+## slm/plugin/permissions
+
+- `PermissionBuilders` — type
+- `PermissionDeclaration` — type
+- `register` — value: <D extends Record<string, PLG.PermissionDeclaration>>(ctx: Ctx<any>, declarations: D) => PermissionBuilders<D>
+
 ## slm/plugin/rpc.client
 
 - `Stores` — type

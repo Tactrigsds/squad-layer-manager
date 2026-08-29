@@ -89,6 +89,18 @@ const ServerGrantSchema = z.object({
 	serverIds: z.array(z.string()).min(1).describe('Server ids this grant applies to'),
 })
 
+// An action a plugin declares, granted to this role. Stored as plain strings rather than validated against a
+// live registry: plugins load long after settings do, so a grant has to survive its plugin being stopped,
+// uninstalled or not yet activated. An id nothing declares simply grants nothing.
+const PluginGrantSchema = z.object({
+	pluginId: z.string().min(1).describe('The plugin that declares the action'),
+	permission: z.string().min(1).describe('The action, as the plugin declares it'),
+	serverIds: z
+		.array(z.string())
+		.prefault([])
+		.describe('Server ids this grant applies to; empty = all servers, which is also what a plugin-wide action needs'),
+})
+
 const RoleConfigSchema = z.object({
 	permissions: z
 		.array(RBAC.ROLE_PERMISSION_EXPRESSION)
@@ -132,6 +144,13 @@ const RoleConfigSchema = z.object({
 		.describe(
 			'Restricted grants of the per-server permissions (queue, votes, in-game actions), limited to specific servers. ' +
 				'Granting one of these in `permissions` instead applies it to every server. A matching denial in permissions overrides these.',
+		),
+	pluginGrants: z
+		.array(PluginGrantSchema)
+		.prefault([])
+		.describe(
+			'Actions the installed plugins define for themselves. Each names the plugin and the action; a grant for a plugin ' +
+				'that is not running does nothing, and is kept so stopping a plugin does not lose it.',
 		),
 	assignments: RoleAssignmentsSchema.describe('Which discord roles/users/members are granted this role'),
 })

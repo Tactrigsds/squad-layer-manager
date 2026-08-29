@@ -128,6 +128,8 @@ type Runtime = {
 	abort: AbortController | null
 	serverSetups: ServerSetupFn[]
 	instances: Map<string, Instance>
+	// actions the plugin defines for itself, by declared name
+	permissions: Map<string, PLG.PermissionInfo>
 	// in-game commands the plugin contributes, by declared name
 	commands: Map<string, PluginCommand>
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
@@ -236,6 +238,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		abort: null,
 		serverSetups: [],
 		instances: new Map(),
+		permissions: new Map(),
 		commands: new Map(),
 		router: null,
 	}
@@ -499,6 +502,32 @@ function collectFilterRefs(): FR.PluginFilterRefs[] {
 	return out
 }
 
+// ---- plugin-declared permissions ----
+
+/**
+ * Registers the actions this plugin defines for itself and returns a builder per action, typed by the scope it
+ * declared. A server-scoped action asks which server; a global one takes nothing.
+ *
+ * The host stores nothing: a grant names the plugin and the action as plain strings (settings load long before
+ * plugins do), and an action nothing declares grants nothing. What this buys is the settings UI knowing the
+ * action exists and what it is for, and the plugin never spelling its own ids by hand.
+ */
+export function registerPermissions<D extends Record<string, PLG.PermissionDeclaration>>(
+	ctx: Ctx<any>,
+	declarations: D,
+): PLG.PermissionBuilders<D> {
+	const rt = requireRuntime(ctx.plugin.id)
+	const builders = {} as Record<string, unknown>
+	for (const [name, decl] of Object.entries(declarations)) {
+		rt.permissions.set(name, { name, ...decl })
+		builders[name] = (serverId: string | null = null) => RBAC.pluginAction(rt.ref.id, name, decl.scope === 'server' ? serverId : null)
+	}
+	ctx.cleanup.push(() => {
+		for (const name of Object.keys(declarations)) rt.permissions.delete(name)
+	})
+	return builders as PLG.PermissionBuilders<D>
+}
+
 // ---- in-game commands ----
 
 /** What a plugin command's handler is given. `text` is everything after the trigger, `args` the same split on spaces. */
@@ -695,6 +724,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		error: rt.error,
 		hasClient: rt.entry.hasClient,
 		commands: rt.status === 'active' ? [...rt.commands.values()].map(({ handler: _handler, ...decl }) => decl) : [],
+		permissions: rt.status === 'active' ? [...rt.permissions.values()] : [],
 		source: rt.entry.source,
 		sourceUrl: rt.entry.sourceUrl,
 		manifestEntry: rt.entry.manifestEntry,
@@ -711,6 +741,7 @@ export function listRuntimeInfo(): PLG.RuntimeInfo[] {
 		error: pkg.error,
 		hasClient: false,
 		commands: [],
+		permissions: [],
 		source: pkg.source,
 		sourceUrl: pkg.sourceUrl,
 		manifestEntry: null,

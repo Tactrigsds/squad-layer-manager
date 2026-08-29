@@ -2,6 +2,7 @@ import * as D from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
 import * as CMD from '@/models/command.models'
+import type * as RBAC from '@/rbac.models'
 import type { MigrationDriver } from '@/server/migrate'
 
 // Plugins are trusted, in-process extensions. A plugin directory under plugins/ holds a side-effect-free
@@ -99,6 +100,35 @@ export type Status = z.infer<typeof StatusSchema>
 export const SourceSchema = z.enum(['builtin', 'directory', 'url'])
 export type Source = z.infer<typeof SourceSchema>
 
+// -------- plugin-declared permissions --------
+
+/**
+ * An action a plugin defines for itself, so an admin can grant it to a role. Only the two scopes that need no
+ * bespoke arguments: a plugin cannot introduce a comparator ("up to N") or a path-restricted grant, both of
+ * which the permission matcher has to understand specifically.
+ */
+export type PermissionDeclaration = {
+	scope: 'global' | 'server'
+	// one line, shown next to the checkbox in the role editor
+	description: string
+}
+
+export type PermissionInfo = PermissionDeclaration & { name: string }
+
+export const PermissionInfoSchema = z.object({
+	name: z.string(),
+	scope: z.enum(['global', 'server']),
+	description: z.string(),
+})
+
+// What registerPermissions hands back: one builder per declared action, asking for a server only where the
+// declaration said the action is about one.
+export type PermissionBuilders<D extends Record<string, PermissionDeclaration>> = {
+	[K in keyof D]: D[K]['scope'] extends 'server'
+		? (serverId: string) => RBAC.Permission<'plugin:action'>
+		: () => RBAC.Permission<'plugin:action'>
+}
+
 export const RuntimeInfoSchema = z.object({
 	id: PluginIdSchema,
 	name: z.string(),
@@ -114,6 +144,7 @@ export const RuntimeInfoSchema = z.object({
 	// the in-game commands this plugin contributes, for the commands page. Empty while it is not active, since a
 	// stopped plugin's command does not answer
 	commands: z.array(CMD.PluginCommandInfoSchema).prefault([]),
+	permissions: z.array(PermissionInfoSchema).prefault([]),
 	source: SourceSchema,
 	// where a url-installed package was fetched from, and what refresh re-fetches
 	sourceUrl: z.string().nullable(),

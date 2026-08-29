@@ -142,6 +142,32 @@ describe('permSubsumedBy', () => {
 		expect(RBAC.permSubsumedBy(RBAC.perm('vote:manage', { serverId: 's1' }), allServers, RBAC.NO_SCOPED_SERVERS)).toBe(false)
 	})
 
+	// A plugin action is one permission carrying the plugin's id, rather than a type of its own: which plugins
+	// exist is not known when the permission table is built, and a grant has to outlive its plugin.
+	it('plugin actions match on plugin, action and server together', () => {
+		const held = [RBAC.pluginAction('seed-roller', 'roll', 's1')]
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('seed-roller', 'roll', 's1'), held, RBAC.NO_SCOPED_SERVERS)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('seed-roller', 'roll', 's2'), held, RBAC.NO_SCOPED_SERVERS)).toBe(false)
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('seed-roller', 'cancel', 's1'), held, RBAC.NO_SCOPED_SERVERS)).toBe(false)
+		// the id is namespaced, so two plugins naming their actions the same do not share a grant
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('other-plugin', 'roll', 's1'), held, RBAC.NO_SCOPED_SERVERS)).toBe(false)
+
+		// a grant naming no servers is the all-servers grant, which is also what a plugin-global action asks for
+		const anyServer = [RBAC.pluginAction('seed-roller', 'roll', null)]
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('seed-roller', 'roll', 's9'), anyServer, RBAC.NO_SCOPED_SERVERS)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('seed-roller', 'roll', null), held, RBAC.NO_SCOPED_SERVERS)).toBe(false)
+	})
+
+	// the super-user grant, which cannot enumerate plugins the host has never heard of
+	it('the plugin-action wildcard covers every plugin and action', () => {
+		const superUser = [RBAC.pluginAction(RBAC.ANY_PLUGIN_ACTION, RBAC.ANY_PLUGIN_ACTION, null)]
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('anything', 'at-all', 's1'), superUser, RBAC.NO_SCOPED_SERVERS)).toBe(true)
+		// scoped to one server, it stops at that server
+		const owner = [RBAC.pluginAction(RBAC.ANY_PLUGIN_ACTION, RBAC.ANY_PLUGIN_ACTION, 's1')]
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('anything', 'at-all', 's1'), owner, RBAC.NO_SCOPED_SERVERS)).toBe(true)
+		expect(RBAC.permSubsumedBy(RBAC.pluginAction('anything', 'at-all', 's2'), owner, RBAC.NO_SCOPED_SERVERS)).toBe(false)
+	})
+
 	it('filter-scoped perms match on their args', () => {
 		expect(
 			RBAC.permSubsumedBy(

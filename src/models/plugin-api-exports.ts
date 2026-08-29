@@ -180,6 +180,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/plugin/events': ['register'],
 	'slm/plugin/fields': ['Fields'],
 	'slm/plugin': ['API_VERSION', 'definePlugin', 'defineTables'],
+	'slm/plugin/permissions': ['register'],
 	'slm/plugin/rpc.client': ['client', 'stores'],
 	'slm/plugin/rpc.server': ['os', 'register'],
 	'slm/plugin/servers': ['setup'],

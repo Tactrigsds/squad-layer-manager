@@ -2597,9 +2597,91 @@ function RoleDetail({
 				/>
 			</RoleSubsection>
 
+			<RoleSubsection title={tr.text(RBAC_Msgs.pluginActions())} description={tr.text(RBAC_Msgs.pluginActionsBlurb())}>
+				<RolePluginGrants roleId={roleId} cfg={cfg} update={update} />
+			</RoleSubsection>
+
 			<RoleSubsection title={tr.text(RBAC_Msgs.assignments())} description={tr.text(RBAC_Msgs.assignmentsBlurb())}>
 				<RoleAssignmentsEditor roleId={roleId} cfg={cfg} update={update} assigned={assigned} />
 			</RoleSubsection>
+		</div>
+	)
+}
+
+// What the running plugins define for themselves. Not rows in the permissions table above: that table is keyed by
+// permission type alone, and a plugin action needs the plugin's id beside it. Listed from the live declarations so
+// an admin picks rather than types, with any grant nothing declares kept and shown as unresolved -- a stopped or
+// not-yet-installed plugin must not silently lose the grants an admin made for it.
+function RolePluginGrants({ roleId, cfg, update }: { roleId: string; cfg: RoleConfig; update: RbacUpdate }) {
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const grants = cfg.pluginGrants ?? []
+	const declared = plugins.flatMap((info) => info.permissions.map((decl) => ({ pluginId: info.id, pluginName: info.name, decl })))
+	const heldBy = (pluginId: string, name: string) => grants.find((g) => g.pluginId === pluginId && g.permission === name)
+	const unresolved = grants.filter((g) => !declared.some((d) => d.pluginId === g.pluginId && d.decl.name === g.permission))
+
+	function setGrants(next: RoleConfig['pluginGrants']) {
+		update((r) => withRoleConfig(r, roleId, (c) => ({ ...c, pluginGrants: next })))
+	}
+	function toggle(pluginId: string, name: string, on: boolean) {
+		setGrants(
+			on
+				? [...grants, { pluginId, permission: name, serverIds: [] }]
+				: grants.filter((g) => !(g.pluginId === pluginId && g.permission === name)),
+		)
+	}
+	function setServers(pluginId: string, name: string, serverIds: string[]) {
+		setGrants(grants.map((g) => (g.pluginId === pluginId && g.permission === name ? { ...g, serverIds } : g)))
+	}
+
+	if (declared.length === 0 && unresolved.length === 0) {
+		return <p className="text-sm text-muted-foreground">{tr.text(RBAC_Msgs.noPluginActions())}</p>
+	}
+	return (
+		<div className="space-y-2">
+			{declared.map(({ pluginId, pluginName, decl }) => {
+				const grant = heldBy(pluginId, decl.name)
+				return (
+					<div key={`${pluginId}:${decl.name}`} className="flex flex-wrap items-start gap-2">
+						<Checkbox className="mt-1" checked={!!grant} onCheckedChange={(v) => toggle(pluginId, decl.name, v === true)} />
+						<div className="min-w-0 space-y-0.5">
+							<div className="flex flex-wrap items-baseline gap-2">
+								<span className="font-mono text-xs">{decl.name}</span>
+								<span className="text-xs text-muted-foreground">{pluginName}</span>
+							</div>
+							<p className="text-xs text-muted-foreground">{decl.description}</p>
+							{grant && decl.scope === 'server' && (
+								<ServerMultiSelect
+									className="max-w-md"
+									values={grant.serverIds}
+									onChange={(next) => setServers(pluginId, decl.name, next)}
+									title={tr.text(RBAC_Msgs.pluginActionServers())}
+								/>
+							)}
+						</div>
+					</div>
+				)
+			})}
+			{unresolved.length > 0 && (
+				<div className="space-y-1 rounded-md border border-dashed p-2">
+					<p className="text-xs text-muted-foreground">{tr.text(RBAC_Msgs.pluginActionsUnresolved())}</p>
+					{unresolved.map((g) => (
+						<div key={`${g.pluginId}:${g.permission}`} className="flex items-center gap-2">
+							<code className="text-xs">
+								{g.pluginId}:{g.permission}
+							</code>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-6 px-2 text-xs"
+								onClick={() => toggle(g.pluginId, g.permission, false)}
+							>
+								{tr.text(RBAC_Msgs.removeGrant())}
+							</Button>
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	)
 }
