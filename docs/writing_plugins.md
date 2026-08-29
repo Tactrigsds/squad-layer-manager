@@ -340,6 +340,9 @@ const streams = Rpc.stores<typeof router>(ctx) // generator procedures, as store
 bundle. `Rpc.stores` gives a keyed family: `streams.greetings(serverId, {})` returns one store per set of
 arguments, shared between every caller that passes equal ones.
 
+`context.user` is the signed-in user who made the call. The host checks only that they may use SLM at all, so a
+procedure that changes anything has to authorize them itself. See "Permissions" below.
+
 ## The client entry
 
 A client entry registers into the host's anchors. There is no way to mount outside them.
@@ -410,12 +413,13 @@ stand on its own. The event's `payload` is yours and is stored as-is, which is w
 
 ## In-game commands
 
-A plugin can contribute a command admins run from in-game chat. The host owns everything around it: trigger
-matching, the admin/public chat rule, the enabled gate, and the permission check. The handler runs only for a
-caller who was allowed to run it.
+A plugin can contribute a command admins run from in-game chat. The host owns trigger matching, the
+admin/public chat rule and the enabled gate.
 
 ```ts
 import * as Commands from 'slm/plugin/commands'
+import * as RBAC from 'slm/models/rbac'
+import * as Rbac from 'slm/systems/rbac'
 
 Commands.register(ctx, {
 	name: 'rolltoseed',
@@ -423,8 +427,9 @@ Commands.register(ctx, {
 	// unprefixed. The default prefix is attached unless an admin configures the command
 	triggers: ['rolltoseed'],
 	allowedChats: ['admin'],
-	permission: 'squad-server:end-match',
 	handler: async (sctx, input) => {
+		const denial = await Rbac.checkPlayer(sctx, input.player, RBAC.perm('squad-server:end-match', { serverId: sctx.serverId }))
+		if (denial) return Rbac.describe(sctx, denial)
 		// input.text is everything typed after the trigger; input.player is who typed it
 		return 'Preparing a seed roll.'
 	},
@@ -433,6 +438,9 @@ Commands.register(ctx, {
 
 Returned text is warned back to the caller. The handler is given the ctx of whichever server the command was
 typed on, so it reads that server's state without being registered per server.
+
+Authorization is the handler's job, not the host's, and being in admin chat is not authorization: that is
+Squad's admin list, not SLM's roles. See "Permissions" below.
 
 A plugin command takes the words after its trigger as they were typed: `input.text`, or `input.args` split on
 spaces. The typed arguments core commands declare (players, squads, durations, reasons, and the prompts that
@@ -449,6 +457,37 @@ reads as broken rather than as working. A command whose triggers were all taken 
 
 Declare a trigger specific enough not to collide. Configuring one under `pluginCommands` outranks another
 plugin's default, which is how an admin resolves a collision between two installed plugins.
+
+## Permissions
+
+SLM's permissions are checked where the identity is: against the player who typed a command, or against the
+signed-in user behind an rpc call. Nothing about a plugin is gated up front, because what an action requires
+often depends on the arguments it was given. SLM's own timeout and queue commands work the same way.
+
+```ts
+import * as RBAC from 'slm/models/rbac'
+import * as Rbac from 'slm/systems/rbac'
+
+// in a command handler
+const denial = await Rbac.checkPlayer(ctx, input.player, RBAC.perm('squad-server:end-match', { serverId: ctx.serverId }))
+if (denial) return Rbac.describe(ctx, denial)
+
+// in an rpc handler
+const denial = await Rbac.checkCaller(context, RBAC.perm('queue:write', { serverId: context.serverId }))
+if (denial) return denial
+```
+
+Both return the denial, or null when the caller may proceed. `Rbac.describe` renders one in the server's own
+language, which is what a command warns back; an rpc procedure can hand the structured response to its own
+client instead.
+
+`RBAC.perm(type, args)` builds one requirement. A server-scoped permission carries the server it applies to, so
+a grant on one server never satisfies a check against another: pass `{ serverId: ctx.serverId }`, not the type
+on its own. `RBAC.permReq('any', [...])` and `permReq('all', [...])` combine several.
+
+Reuse an existing permission where one fits. `squad-server:end-match` for anything that decides what plays next,
+`queue:write` for queue edits, `squad-server:warn-players` for warns. Admins already grant these, and a plugin
+that invents its own asks every install to configure something new.
 
 ## Pickers
 
@@ -497,6 +536,8 @@ absent.
 | `slm/plugin/commands`                                      | in-game commands                             |
 | `slm/plugin/fields`                                        | config fields that render as a picker        |
 | `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
+| `slm/components/layer`                                     | a layer's name, rendered as the app does it  |
+| `slm/components/plugin-settings-link`                      | a link to your own config                    |
 | `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |
 | `slm/server/logger`                                        | `childModule`                                |
 | `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
@@ -508,13 +549,16 @@ absent.
 | `slm/systems/layer-queries`                                | asking the layer table what matches          |
 | `slm/systems/app-events`                                   | writing to the audit log                     |
 | `slm/systems/post-roll-reminders`                          | lines warned to admins after a roll          |
+| `slm/systems/rbac`                                         | whether a caller may do this                 |
 | `slm/models/layer`, `slm/models/match-history`             | the domain types and their helpers           |
 | `slm/models/server-events`, `slm/models/squad`             | event and roster types, for `events$`        |
 | `slm/models/filter`, `slm/models/filter-builders`          | filter trees, and how to write one           |
 | `slm/models/layer-queries`, `.../constraint-builders`      | query inputs, and how to constrain one       |
 | `slm/models/gen-vote`                                      | the choices a drawn vote is made of          |
+| `slm/models/rbac`                                          | the permission vocabulary                    |
 | `slm/lib/rxjs-ext`, `slm/lib/zod-utils`, `slm/lib/zustand` | our additions to those packages              |
 | `slm/lib/templating`                                       | rendering the {{var}} templates admins write |
+| `slm/lib/display-helpers`                                  | naming a layer in text                       |
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import
 them normally and they resolve to SLM's copies at load time. There has to be exactly one of each in the process,

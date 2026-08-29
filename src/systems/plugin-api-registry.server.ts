@@ -20,6 +20,7 @@ import * as modelsGenVote from '@/plugin-api/models/gen-vote'
 import * as modelsLayer from '@/plugin-api/models/layer'
 import * as modelsLayerQueries from '@/plugin-api/models/layer-queries'
 import * as modelsMatchHistory from '@/plugin-api/models/match-history'
+import * as modelsRbac from '@/plugin-api/models/rbac'
 import * as plugin from '@/plugin-api/plugin'
 import * as pluginCommands from '@/plugin-api/plugin/commands'
 import * as pluginConfig from '@/plugin-api/plugin/config'
@@ -35,6 +36,7 @@ import * as systemsLayerQueries from '@/plugin-api/systems/layer-queries'
 import * as systemsLayerQueue from '@/plugin-api/systems/layer-queue'
 import * as systemsMatchHistory from '@/plugin-api/systems/match-history'
 import * as systemsPostRollReminders from '@/plugin-api/systems/post-roll-reminders'
+import * as systemsRbac from '@/plugin-api/systems/rbac'
 import * as systemsSquadRcon from '@/plugin-api/systems/squad-rcon'
 import * as systemsSquadServer from '@/plugin-api/systems/squad-server'
 
@@ -64,6 +66,7 @@ export function setup() {
 		'slm/models/layer': modelsLayer,
 		'slm/models/layer-queries': modelsLayerQueries,
 		'slm/models/match-history': modelsMatchHistory,
+		'slm/models/rbac': modelsRbac,
 		'slm/plugin': plugin,
 		'slm/plugin/commands': pluginCommands,
 		'slm/plugin/config': pluginConfig,
@@ -79,6 +82,7 @@ export function setup() {
 		'slm/systems/layer-queue': systemsLayerQueue,
 		'slm/systems/match-history': systemsMatchHistory,
 		'slm/systems/post-roll-reminders': systemsPostRollReminders,
+		'slm/systems/rbac': systemsRbac,
 		'slm/systems/squad-rcon': systemsSquadRcon,
 		'slm/systems/squad-server': systemsSquadServer,
 		'@orpc/server': orpcServer,

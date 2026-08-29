@@ -658,22 +658,18 @@ export type PluginCommandDeclaration = {
 	// unprefixed here (`rolltoseed`); defaultPrefix is attached unless an admin has configured the command
 	triggers: string[]
 	allowedChats: ChatGroup[]
-	// checked before the handler runs, against the server the command was typed on. null for a command that only reads
-	permission: RBAC.ServerPermissionType | null
 	// what follows the trigger, for the usage line, e.g. '<duration>'. Omit for a command taking nothing
 	usage?: string
 	quickReference?: boolean
 }
 
-// The declaration as it reaches the browser, for the commands page. `permission` widens to a plain string: the
-// client only prints it. A PluginCommandDeclaration is assignable to this, which is where the shapes are checked
-// against each other (see plugins.server listRuntimeInfo).
+// The declaration as it reaches the browser, for the commands page. A PluginCommandDeclaration is assignable to
+// this, which is where the shapes are checked against each other (see plugins.server listRuntimeInfo).
 export const PluginCommandInfoSchema = z.object({
 	name: z.string(),
 	description: z.string(),
 	triggers: z.array(z.string()),
 	allowedChats: z.array(CHAT_GROUPS),
-	permission: z.string().nullable(),
 	usage: z.string().optional(),
 	quickReference: z.boolean().optional(),
 })

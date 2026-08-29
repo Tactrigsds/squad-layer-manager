@@ -226,12 +226,15 @@ async function runCommand(
 		return await chat.error('command-disabled', ctx.tr.text(CMD_Msgs.commandDisabled(cmd)))
 	}
 
-	// Authorization sits here, next to the allowed-chat and enabled gates, rather than in each handler: the declaration is
-	// exhaustive over CommandId, so a command cannot reach its handler without having stated what it requires.
-	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
 	const pluginCommand = CMD.isPluginCommandId(cmd) ? Plugins.commandDeclarations().find((c) => c.id === cmd) : undefined
 	if (CMD.isPluginCommandId(cmd) && !pluginCommand) return
-	const permission = pluginCommand ? pluginCommand.decl.permission : CMD.COMMAND_DECLARATIONS[cmd as CMD.CommandId].permission
+
+	// Authorization for a core command sits here, next to the allowed-chat and enabled gates: the declaration is
+	// exhaustive over CommandId, so one cannot reach its handler without having stated what it requires. A plugin's
+	// command authorizes inside its own handler (slm/systems/rbac), the way the comparator-scoped core commands
+	// below do, since neither can be settled before the arguments are.
+	// Being in admin chat is not authorization on its own -- that is Squad's admin list, not SLM's roles.
+	const permission = pluginCommand ? null : CMD.COMMAND_DECLARATIONS[cmd as CMD.CommandId].permission
 	if (permission !== null) {
 		const required =
 			permission === 'battlemetrics:write-flags'

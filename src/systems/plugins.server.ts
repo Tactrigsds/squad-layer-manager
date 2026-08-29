@@ -67,7 +67,11 @@ export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log &
 // teamswaps, switch-requests and the match-events cache are deliberately not in the contract yet.
 export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS.Ctx & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & Msgs.Ctx
 
-export type ServerSetupFn = (ctx: ServerCtx<any>, cleanup: Cleanup.Tasks) => void
+export type ServerSetupFn = (ctx: ServerCtx<any>) => void
+
+// A plugin's rpc procedure context: the per-server ctx plus the signed-in user who made the call. Handlers
+// authorize against that user themselves (see slm/systems/rbac); the host only carries the identity here.
+export type RpcCtx<M extends PLG.Manifest<any> = PLG.Manifest> = ServerCtx<M> & USR.Ctx.Id
 
 // A packaged plugin's migrations ride along with its server bundle; a builtin keeps them in their own
 // module, reached through BuiltinPlugin.migrations.
@@ -415,7 +419,7 @@ function invokeSetup(rt: Runtime, inst: Instance, cb: ServerSetupFn) {
 	if (inst.ran.has(cb)) return
 	inst.ran.add(cb)
 	try {
-		cb(inst.sctx, inst.cleanup)
+		cb(inst.sctx)
 	} catch (err) {
 		inst.sctx.log.error(err, 'plugin server setup failed')
 	}
@@ -522,7 +526,7 @@ export async function runCommand(
 	const command = rt.commands.get(found.decl.name)
 	if (!command) return { code: 'err:unknown-command' }
 	try {
-		const msg = await command.handler(procedureCtx(rt, serverCtx, serverCtx.serverId), input)
+		const msg = await command.handler(serverScopedCtx(rt, serverCtx, serverCtx.serverId), input)
 		return { code: 'ok', msg: msg ?? undefined }
 	} catch (err) {
 		rt.log.error(err, "plugin command '%s' failed", command.name)
@@ -544,10 +548,10 @@ function callProcedure(rt: Runtime, sctx: ServerCtx<any>, path: readonly string[
 
 // the ctx a plugin procedure runs with: the live per-server instance when the plugin has one, a
 // throwaway otherwise, so a call still works while the plugin has registered no server setups
-function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: string): ServerCtx<any> {
+function serverScopedCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: string): ServerCtx<any> {
 	const instance = rt.instances.get(serverId)
 	if (instance) return instance.sctx
-	const fallback: ServerCtx<any> = {
+	return {
 		...serverCtx,
 		log: rt.log.child({ serverId }),
 		signal: Prom.anySignal(serverCtx.signal, rt.abort?.signal)!,
@@ -555,7 +559,12 @@ function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: 
 		cleanup: [],
 		module: rt.module,
 	}
-	return fallback
+}
+
+// The same ctx plus this call's caller. Spread rather than stamped: the instance ctx is shared by everything
+// the plugin runs for that server, so writing one call's caller onto it would leak into the next call's.
+function procedureCtx(rt: Runtime, serverCtx: C.Db & C.ManagedServer, serverId: string, user: USR.Ctx.Id['user']): RpcCtx<any> {
+	return { ...serverScopedCtx(rt, serverCtx, serverId), user }
 }
 
 // ---- plugin migrations ----
@@ -821,7 +830,7 @@ export const router = {
 				return
 			}
 			const obs = SquadServer.stream$(context.wsClientId, input.serverId, (serverCtx) =>
-				Rx.defer(() => callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId), input.path, input.input)).pipe(
+				Rx.defer(() => callProcedure(rt, procedureCtx(rt, serverCtx, input.serverId, context.user), input.path, input.input)).pipe(
 					Rx.switchMap((result) => Rx.from(result as AsyncIterable<unknown>)),
 					Rx.map((data) => ({ code: 'ok' as const, data })),
 				),
@@ -914,7 +923,7 @@ export const router = {
 			if (!rt?.router || rt.status !== 'active') return { code: 'err:unknown-rpc' as const }
 			const managedServer = SquadServer.globalState.managedServers.get(input.serverId)
 			if (!managedServer) return { code: 'err:server-not-loaded' as const }
-			const sctx = procedureCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, input.serverId)
+			const sctx = procedureCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, input.serverId, context.user)
 			return { code: 'ok' as const, data: await callProcedure(rt, sctx, input.path, input.input) }
 		}),
 }

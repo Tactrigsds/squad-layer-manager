@@ -170,6 +170,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'toNormedTeamId',
 		'toNormedTeamProp',
 	],
+	'slm/models/rbac': ['describePermit', 'perm', 'permReq'],
 	'slm/models/server-events': [],
 	'slm/models/squad': [],
 	'slm/plugin/client': ['definePluginClient'],
@@ -202,6 +203,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/systems/layer-queue': ['dispatchOp', 'editSaved', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
 	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getPublicMatchHistoryState', 'getRecentMatches'],
 	'slm/systems/post-roll-reminders': ['register'],
+	'slm/systems/rbac': ['checkCaller', 'checkPlayer', 'describe'],
 	'slm/systems/squad-rcon': [
 		'adminRenameSquad',
 		'broadcast',

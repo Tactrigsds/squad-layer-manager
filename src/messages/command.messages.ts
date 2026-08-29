@@ -309,7 +309,6 @@ export const commandDisabled = def('Command "{cmd}" is disabled', (cmd: string) 
 export const pluginCommandFailed = def('The {plugin} plugin could not run that command', (plugin: string) => ({ plugin }))
 
 export const pluginOwner = def('Provided by')
-export const pluginRequires = def('Requires')
 export const pluginSettingsKey = def('Settings key')
 export const pluginsSectionLabel = def('Plugins')
 

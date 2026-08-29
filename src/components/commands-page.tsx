@@ -197,12 +197,6 @@ function PluginCommandDetails({ cmdId, plugin }: { cmdId: string; plugin: NonNul
 				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginOwner())}</dt>
 				<dd>{plugin.pluginName}</dd>
 			</div>
-			{plugin.decl.permission && (
-				<div>
-					<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginRequires())}</dt>
-					<dd className="font-mono text-xs">{plugin.decl.permission}</dd>
-				</div>
-			)}
 			<div>
 				<dt className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.pluginSettingsKey())}</dt>
 				<dd className="font-mono text-xs wrap-anywhere">{cmdId}</dd>

@@ -4,6 +4,7 @@ import * as z from 'zod'
 import * as CB from 'slm/models/constraint-builders'
 import * as FB from 'slm/models/filter-builders'
 import * as GV from 'slm/models/gen-vote'
+import * as RBAC from 'slm/models/rbac'
 import type * as P from 'slm/plugin'
 import { defineTables, type PluginMigration } from 'slm/plugin'
 import * as Commands from 'slm/plugin/commands'
@@ -16,6 +17,7 @@ import * as Filters from 'slm/systems/filter-entity'
 import * as LayerQueries from 'slm/systems/layer-queries'
 import * as LayerQueue from 'slm/systems/layer-queue'
 import * as MatchHistory from 'slm/systems/match-history'
+import * as Rbac from 'slm/systems/rbac'
 import * as SquadServer from 'slm/systems/squad-server'
 
 import manifest from './plugin.ts'
@@ -51,6 +53,14 @@ const FilterInput = z.object({ id: z.string(), owner: z.string() })
 
 export const router = {
 	stats: os.input(z.object({})).handler(async () => ({ activations })),
+
+	// An rpc procedure is reachable by anyone who may use the site, so one that acts on the server has to
+	// authorize the caller itself. Reports who it saw, so the test can tell an allowed call from a refused one.
+	whoAmI: os.input(z.object({})).handler(async ({ context }) => {
+		const denial = await Rbac.checkCaller(context, RBAC.perm('squad-server:end-match', { serverId: context.serverId }))
+		if (denial) return { code: 'err:permission-denied' as const, failures: denial.failures }
+		return { code: 'ok' as const, discordId: String(context.user.discordId) }
+	}),
 	makeFilter: os.input(FilterInput).handler(async ({ context, input }) =>
 		Filters.create(context, {
 			id: input.id,
@@ -159,9 +169,12 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		description: 'Says hello back.',
 		triggers: ['hello'],
 		allowedChats: ['admin'],
-		permission: 'squad-server:end-match',
 		usage: '[name]',
-		handler: (sctx, input) => `${PluginConfig.get(sctx).greeting} ${input.text || 'nobody'} on ${sctx.serverId}`,
+		handler: async (sctx, input) => {
+			const denial = await Rbac.checkPlayer(sctx, input.player, RBAC.perm('squad-server:end-match', { serverId: sctx.serverId }))
+			if (denial) return Rbac.describe(sctx, denial)
+			return `${PluginConfig.get(sctx).greeting} ${input.text || 'nobody'} on ${sctx.serverId}`
+		},
 	})
 
 	// runs once per managed server: writes a row proving the plugin reached its own table, a core
