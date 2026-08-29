@@ -240,7 +240,7 @@ export const groups = {
 			.prefault(path.join(Paths.DATA, 'control.sock'))
 			.meta({
 				description:
-					'unix socket for operating the running app from inside its container (see server/control-socket.ts): ' +
+					'unix socket for operating the running app from inside its container (see systems/control-socket.server.ts): ' +
 					'reloading plugins a deployment just copied in. Root-owned and 0600. Empty disables it.',
 			}),
 		PLUGINS_DIR: z.string().min(1).prefault(path.join(Paths.DATA, 'plugins')).meta({
