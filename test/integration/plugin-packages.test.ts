@@ -228,6 +228,31 @@ describe('packaged plugins', () => {
 		).toEqual(['created', 'updated', 'deleted'])
 	})
 
+	// Nothing stopped an admin deleting a filter a plugin's config named, which left the plugin failing later
+	// with "the pool matched no layers". A Fields.filterId field is a reference like a pool config is.
+	it('refuses to delete a filter a running plugin has configured', async () => {
+		await call('makeFilter', { id: 'hello-configured', owner: String(ADMIN_USER.discordId) })
+		await client.plugins.updateConfig({ pluginId: 'hello', config: { greeting: 'hello', pool: 'hello-configured' } })
+
+		const refused = await app.waitFor(
+			async () => {
+				const res = await call<{ code: string; references?: { type: string; pluginId?: string; path?: string }[] }>('dropFilter', {
+					id: 'hello-configured',
+				})
+				return res.code === 'err:filter-in-use' ? res : undefined
+			},
+			{ label: 'the plugin config to reach the reference index' },
+		)
+		expect(refused.references).toContainEqual({ type: 'plugin-config', pluginId: 'hello', path: 'pool', via: [] })
+
+		// clearing the field releases it, so an admin is never stuck with a filter they cannot remove
+		await client.plugins.updateConfig({ pluginId: 'hello', config: { greeting: 'hello', pool: '' } })
+		await app.waitFor(
+			async () => ((await call<{ code: string }>('dropFilter', { id: 'hello-configured' })).code === 'ok' ? true : undefined),
+			{ label: 'the reference to be released' },
+		)
+	})
+
 	// A plugin's two halves of the same job: it makes a filter, then asks the engine what matches it. The
 	// filter is created and dropped here rather than reused from the test above, so neither depends on the
 	// other's leftovers.

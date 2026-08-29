@@ -72,6 +72,7 @@ import * as ConfigClient from '@/systems/config.client'
 import * as DndKit from '@/systems/dndkit.client'
 import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
 
@@ -3166,6 +3167,183 @@ const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
 	multiline: PluginMultilineField,
 }
 
+// The overrides are keyed by a command id an admin would otherwise have to know and type by hand, which is why
+// the raw record editor was unusable for the one thing it exists for: retuning a trigger that collides. This
+// renders a card per command the active plugins actually declare and writes the key itself. A trigger another
+// command already owns is dead rather than merely duplicated (see CMD.resolvePluginCommandTriggers), so it is
+// flagged on the input that entered it.
+function PluginCommandsField({ value$, reset$, onChange }: OverrideProps) {
+	const stored = (useFieldValue(value$) as Record<string, CMD.PluginCommandConfig> | undefined) ?? {}
+	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
+	const root$ = React.useContext(RootValueContext) ?? EMPTY_ROOT_VALUE$
+	// scoped rather than the whole document: this field renders once, but the root changes on every keystroke anywhere
+	const defaultPrefix = (useFieldValue(scopeValue(root$, 'defaultPrefix')) as string | undefined) ?? ''
+	const coreCommands = (useFieldValue(scopeValue(root$, 'commands')) as CMD.AnyCommandConfigs | undefined) ?? {}
+
+	// not memoized: `stored` and `coreCommands` are fresh objects every render, so a memo over them would never
+	// hit, and this is a flatMap over a handful of commands plus one pass over the trigger namespace
+	const declared = plugins.flatMap((info) =>
+		info.commands.map((decl) => {
+			const id = CMD.pluginCommandId(info.id, decl.name)
+			return {
+				id,
+				pluginName: info.name,
+				decl,
+				config: CMD.pluginCommandConfig(decl, stored[id], defaultPrefix),
+				configured: stored[id] !== undefined,
+			}
+		}),
+	)
+	const { conflicts } = CMD.resolvePluginCommandTriggers(coreCommands, declared)
+	// an override whose plugin is gone: ignored at runtime, but only an admin can decide it is safe to drop
+	const orphans = Object.keys(stored).filter((id) => !declared.some((entry) => entry.id === id))
+
+	function write(next: Record<string, unknown>) {
+		onChange(next)
+		reset$.next()
+	}
+	function patch(id: string, base: CMD.CommandConfig, next: Partial<CMD.PluginCommandConfig>) {
+		const current = (value$.getValue() as Record<string, unknown>) ?? {}
+		// an unconfigured command materializes at its effective config, so editing one field does not silently
+		// pin the others at whatever the schema default happens to be
+		write({ ...current, [id]: { ...((current[id] as object | undefined) ?? base), ...next } })
+	}
+	function clear(id: string) {
+		const current = { ...((value$.getValue() as Record<string, unknown>) ?? {}) }
+		delete current[id]
+		write(current)
+	}
+
+	if (declared.length === 0 && orphans.length === 0) {
+		return <p className="text-sm text-muted-foreground">{tr.text(CMD_Msgs.noPluginCommands())}</p>
+	}
+	return (
+		<div className="space-y-3">
+			{declared.map((entry) => (
+				<PluginCommandCard
+					key={entry.id}
+					entry={entry}
+					conflicts={conflicts.filter((c) => c.commandId === entry.id)}
+					onPatch={(next) => patch(entry.id, entry.config, next)}
+					onReset={() => clear(entry.id)}
+				/>
+			))}
+			{orphans.length > 0 && (
+				<div className="space-y-1 rounded-md border border-dashed p-2">
+					<p className="text-xs text-muted-foreground">{tr.text(CMD_Msgs.pluginCommandOrphans())}</p>
+					{orphans.map((id) => (
+						<div key={id} className="flex items-center gap-2">
+							<code className="text-xs">{id}</code>
+							<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => clear(id)}>
+								{tr.text(CMD_Msgs.pluginCommandDropOverride())}
+							</Button>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	)
+}
+
+type PluginCommandEntry = { id: string; pluginName: string; decl: CMD.PluginCommandInfo; config: CMD.CommandConfig; configured: boolean }
+
+function PluginCommandCard({
+	entry,
+	conflicts,
+	onPatch,
+	onReset,
+}: {
+	entry: PluginCommandEntry
+	conflicts: CMD.CommandConflict[]
+	onPatch: (next: Partial<CMD.PluginCommandConfig>) => void
+	onReset: () => void
+}) {
+	const triggers = entry.config.triggers.map(CMD.triggerString)
+	// Only for a declared default. A trigger an admin typed into `pluginCommands` collides against the settings
+	// schema, which reports it as a field issue and refuses the save outright -- a better answer than this one,
+	// and saying both would be noise. Nothing but this checks what a plugin declares.
+	const takenBy = (trigger: string) =>
+		entry.configured ? undefined : conflicts.find((c) => c.trigger.toLowerCase() === trigger.toLowerCase())?.ownedBy
+	const setTriggers = (next: string[]) => onPatch({ triggers: next })
+	return (
+		<div className="space-y-2 rounded-md border p-2">
+			<div className="flex flex-wrap items-baseline gap-2">
+				<span className="text-sm font-medium">{entry.decl.name}</span>
+				<span className="text-xs text-muted-foreground">{entry.pluginName}</span>
+				<code className="text-[10px] text-muted-foreground">{entry.id}</code>
+				<div className="flex-1" />
+				{entry.configured && (
+					<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onReset}>
+						{tr.text(CMD_Msgs.pluginCommandUseDeclared())}
+					</Button>
+				)}
+			</div>
+			<p className="text-xs text-muted-foreground">{entry.decl.description}</p>
+			<div className="space-y-1">
+				<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+					{tr.text(CMD_Msgs.triggers())} <HelpTip text={tr.text(CMD_Msgs.triggersHelp())} />
+				</span>
+				{triggers.map((trigger, idx) => {
+					const owner = takenBy(trigger)
+					return (
+						// oxlint-disable-next-line no-array-index-key
+						<div key={idx} className="space-y-0.5">
+							<div className="flex items-center gap-1">
+								<Input
+									className="h-7 w-40 text-xs"
+									defaultValue={trigger}
+									key={`${entry.configured}:${trigger}`}
+									placeholder={tr.text(CMD_Msgs.triggerStringPlaceholder())}
+									onBlur={(e) => setTriggers(triggers.map((t, i) => (i === idx ? e.target.value.trim() : t)))}
+								/>
+								{triggers.length > 1 && (
+									<Button
+										type="button"
+										variant="ghost"
+										size="sm"
+										className="h-6 px-2 text-xs"
+										onClick={() => setTriggers(triggers.filter((_, i) => i !== idx))}
+									>
+										<Icons.X className="h-3 w-3" />
+									</Button>
+								)}
+							</div>
+							{owner && <p className="text-xs text-yellow-600">{tr.text(CMD_Msgs.pluginTriggerTakenBy(owner))}</p>}
+						</div>
+					)
+				})}
+				<Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setTriggers([...triggers, ''])}>
+					{tr.text(SETTINGS_Msgs.addEntry())}
+				</Button>
+			</div>
+			<div className="flex flex-wrap items-center gap-4">
+				<div className="flex items-center gap-2">
+					<span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+						{tr.text(CMD_Msgs.allowedChats())} <HelpTip text={tr.text(CMD_Msgs.allowedChatsHelp())} />
+					</span>
+					<ComboBoxMulti
+						title={tr.text(CMD_Msgs.allowedChats())}
+						values={entry.config.allowedChats}
+						options={CMD.CHAT_GROUPS.options.map((group) => ({ value: group, label: tr.text(CMD_Msgs.chatGroupLabels[group]) }))}
+						onSelect={(next) => onPatch({ allowedChats: typeof next === 'function' ? next(entry.config.allowedChats) : next })}
+					/>
+				</div>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Switch checked={entry.config.enabled} onCheckedChange={(v) => onPatch({ enabled: v })} />
+					{tr.text(CMD_Msgs.enabled())}
+				</label>
+				<label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+					<Checkbox checked={entry.config.quickReference} onCheckedChange={(v) => onPatch({ quickReference: v === true })} />
+					<span className="flex items-center gap-1">
+						{tr.text(CMD_Msgs.quickReference())}
+						<HelpTip text={tr.text(CMD_Msgs.quickReferenceHelp())} />
+					</span>
+				</label>
+			</div>
+		</div>
+	)
+}
+
 function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefined {
 	const declared = PLG.fieldControl(_node)
 	if (declared) return DECLARED_CONTROLS[declared]
@@ -3176,6 +3354,7 @@ function overrideFor(path: Path, _node: Node): React.FC<OverrideProps> | undefin
 	if (path.length === 1 && last === 'locale') return LocaleField
 	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
 	if (path.length === 2 && path[0] === 'commands') return CommandCard
+	if (path.length === 1 && last === 'pluginCommands') return PluginCommandsField
 	if (path.length === 1 && last === 'adminActionReasons') return AdminActionReasonsField
 	if (path.length === 1 && last === 'layerTable') return LayerTableField
 	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField

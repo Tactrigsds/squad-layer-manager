@@ -149,7 +149,22 @@ async function selectFilters(ctx: C.Db) {
 // keeping an incremental one honest.
 export async function computeReferenceIndex(ctx: C.Db): Promise<FR.Index> {
 	const [filters, servers] = await Promise.all([selectFilters(ctx), Settings.listServerPoolConfigs(ctx)])
-	return FR.buildIndex(filters, servers)
+	return FR.buildIndex(filters, servers, pluginFilterRefs())
+}
+
+// What the active plugins' configs name, pushed in from plugins.server rather than pulled: importing it here
+// would close a cycle back through the queue. Same direction as rbac.server's applyScopedServers.
+let pluginFilterRefs: () => FR.PluginFilterRefs[] = () => []
+const referenceSourcesChanged$ = new Rx.Subject<void>()
+
+export function registerPluginFilterRefs(read: () => FR.PluginFilterRefs[]) {
+	pluginFilterRefs = read
+	referenceSourcesChanged$.next()
+}
+
+/** A plugin's config, or which plugins are running, has changed. */
+export function invalidateReferences() {
+	referenceSourcesChanged$.next()
 }
 
 // the live reference index every client watches. Assigned in setup, since it needs a db context.
@@ -525,6 +540,7 @@ export async function setup() {
 		filterMutation$,
 		// a pool config lives in a server's settings, and the registry decides which servers there are
 		Settings.settings$.pipe(Rx.filter((e) => e.scope === 'server' || e.scope === 'registry')),
+		referenceSourcesChanged$,
 	).pipe(
 		// a settings write broadcasts once per changed scope, and a filter mutation lands beside it; one rebuild covers the burst
 		Rx.debounceTime(0),

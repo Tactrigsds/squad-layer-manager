@@ -730,7 +730,7 @@ export type CommandConflict = { commandId: string; trigger: string; ownedBy: str
  * editing `pluginCommands` a real fix rather than a race against load order.
  */
 export function resolvePluginCommandTriggers<T extends { id: string; config: CommandConfig; configured: boolean }>(
-	core: CommandConfigs,
+	core: AnyCommandConfigs,
 	listings: readonly T[],
 ): { kept: T[]; conflicts: CommandConflict[] } {
 	const owner = new Map<string, string>()

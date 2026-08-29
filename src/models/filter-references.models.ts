@@ -20,11 +20,19 @@ export type Reference =
 	// a server's pool configuration reaches the referenced filter. `via` is the chain of apply-filter hops from
 	// the configured filter down to it, empty when the pool names it directly.
 	| { type: 'pool-config'; serverId: string; key: PoolConfigKey; via: F.FilterEntityId[] }
+	// an active plugin's config names the referenced filter through a Fields.filterId/filterIds field. `path` is
+	// the dotted config path, which is also the settings anchor the filter's page links to.
+	| { type: 'plugin-config'; pluginId: string; path: string; via: F.FilterEntityId[] }
 
 // filter id -> everything referencing it. A filter with no entry is referenced by nothing.
 export type Index = Map<F.FilterEntityId, Reference[]>
 
 export type ServerPoolConfig = { serverId: string; mainPool: SETTINGS.PoolConfiguration }
+
+// What one active plugin's config names, already extracted from its schema (see PLG.configFieldValues). Only
+// active plugins contribute: a stopped plugin's config is inert, and holding a filter hostage to it would mean
+// an admin could not clean up after uninstalling something.
+export type PluginFilterRefs = { pluginId: string; fields: { path: string; filterId: F.FilterEntityId }[] }
 
 // The filter ids one pool config key names. The switch is what makes this systematic: a new mainPool list of
 // filters fails to typecheck here until it is either counted as a reference or excluded from POOL_CONFIG_KEYS.
@@ -57,13 +65,36 @@ export function buildGraph(filters: Iterable<F.FilterEntity>): FilterGraph {
 	return graph
 }
 
-export function buildIndex(filters: Iterable<F.FilterEntity>, servers: Iterable<ServerPoolConfig>): Index {
+export function buildIndex(
+	filters: Iterable<F.FilterEntity>,
+	servers: Iterable<ServerPoolConfig>,
+	plugins: Iterable<PluginFilterRefs> = [],
+): Index {
 	const graph = buildGraph(filters)
 	const index: Index = new Map()
 	const add = (filterId: F.FilterEntityId, reference: Reference) => {
 		const references = index.get(filterId)
 		if (references) references.push(reference)
 		else index.set(filterId, [reference])
+	}
+
+	// a configured filter and everything it reaches through apply-filter, each recording the shortest chain of
+	// hops that got there. `seen` also stops a cycle among the filters from looping forever.
+	const reachable = (from: F.FilterEntityId, record: (id: F.FilterEntityId, via: F.FilterEntityId[]) => void) => {
+		const seen = new Set<F.FilterEntityId>([from])
+		let frontier: { id: F.FilterEntityId; via: F.FilterEntityId[] }[] = [{ id: from, via: [] }]
+		while (frontier.length > 0) {
+			const next: typeof frontier = []
+			for (const { id, via } of frontier) {
+				record(id, via)
+				for (const appliedId of graph.get(id) ?? []) {
+					if (seen.has(appliedId)) continue
+					seen.add(appliedId)
+					next.push({ id: appliedId, via: [...via, id] })
+				}
+			}
+			frontier = next
+		}
 	}
 
 	for (const [filterId, applied] of graph) {
@@ -75,23 +106,14 @@ export function buildIndex(filters: Iterable<F.FilterEntity>, servers: Iterable<
 	for (const { serverId, mainPool } of servers) {
 		for (const key of POOL_CONFIG_KEYS) {
 			for (const configuredId of poolConfigFilterIds(mainPool, key)) {
-				// breadth-first from the configured filter so each reachable filter records the shortest chain of
-				// hops that got there. `seen` also stops a cycle among the filters from looping forever.
-				const seen = new Set<F.FilterEntityId>([configuredId])
-				let frontier: { id: F.FilterEntityId; via: F.FilterEntityId[] }[] = [{ id: configuredId, via: [] }]
-				while (frontier.length > 0) {
-					const next: typeof frontier = []
-					for (const { id, via } of frontier) {
-						add(id, { type: 'pool-config', serverId, key, via })
-						for (const appliedId of graph.get(id) ?? []) {
-							if (seen.has(appliedId)) continue
-							seen.add(appliedId)
-							next.push({ id: appliedId, via: [...via, id] })
-						}
-					}
-					frontier = next
-				}
+				reachable(configuredId, (id, via) => add(id, { type: 'pool-config', serverId, key, via }))
 			}
+		}
+	}
+
+	for (const { pluginId, fields } of plugins) {
+		for (const { path, filterId } of fields) {
+			reachable(filterId, (id, via) => add(id, { type: 'plugin-config', pluginId, path, via }))
 		}
 	}
 

@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import type React from 'react'
 
+import * as SettingsNav from '@/lib/settings-nav'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -10,6 +11,7 @@ import * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+import * as PluginsClient from '@/systems/plugins.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 import { Badge } from './ui/badge'
@@ -26,6 +28,7 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 	const fromPools = references.filter(
 		(ref): ref is Extract<FR.Reference, { type: 'pool-config' }> => ref.type === 'pool-config' && !FR.isPoolFilterReference(ref),
 	)
+	const fromPlugins = references.filter((ref): ref is Extract<FR.Reference, { type: 'plugin-config' }> => ref.type === 'plugin-config')
 
 	return (
 		<section aria-label={tr.text(F_Msgs.referencesHeading())} className="flex flex-col gap-2">
@@ -58,6 +61,14 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 							<Label className={Typo.Label}>{tr.text(F_Msgs.referencingPoolsLabel())}</Label>
 							{fromPools.map((ref) => (
 								<PoolReferenceBadge key={`${ref.serverId}:${ref.key}:${ref.via.join('>')}`} reference={ref} />
+							))}
+						</div>
+					)}
+					{fromPlugins.length > 0 && (
+						<div className="flex items-center gap-2 flex-wrap">
+							<Label className={Typo.Label}>{tr.text(F_Msgs.referencingPluginsLabel())}</Label>
+							{fromPlugins.map((ref) => (
+								<PluginReferenceBadge key={`${ref.pluginId}:${ref.path}:${ref.via.join('>')}`} reference={ref} />
 							))}
 						</div>
 					)}
@@ -119,6 +130,24 @@ function PoolReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'p
 			<span>{tr.text(F_Msgs.poolConfigKeyNames[props.reference.key])}</span>
 			{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
 		</ServerBadgeLink>
+	)
+}
+
+// Links to the config field itself rather than the plugin's section: what an admin has to change to free the
+// filter is one setting, and the plugin's section can be long.
+function PluginReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'plugin-config' }> }) {
+	const { pluginId, path, via } = props.reference
+	const pluginName = Zus.useStore(PluginsClient.Store, (s) => s.plugins.find((p) => p.id === pluginId)?.name ?? pluginId)
+	return (
+		<Link to="/settings" hash={SettingsNav.pluginSettingAnchor(pluginId, path)}>
+			<Badge variant="secondary" className="gap-1">
+				<span>{pluginName}</span>
+				<Icons.Dot className="h-3 w-3" />
+				<span className="font-mono text-xs">{path}</span>
+				{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
+				<LinkIndicator />
+			</Badge>
+		</Link>
 	)
 }
 
