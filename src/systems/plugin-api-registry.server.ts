@@ -9,6 +9,7 @@ import * as rxjs from 'rxjs'
 import * as zod from 'zod'
 
 import * as SHIM from '@/models/plugin-api-shim'
+import * as libDisplayHelpers from '@/plugin-api/lib/display-helpers'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libTemplating from '@/plugin-api/lib/templating'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
@@ -52,6 +53,7 @@ export function setup() {
 	if (installed) return
 	installed = true
 	entries = {
+		'slm/lib/display-helpers': libDisplayHelpers,
 		'slm/lib/rxjs-ext': libRxjsExt,
 		'slm/lib/templating': libTemplating,
 		'slm/lib/zod-utils': libZodUtils,

@@ -6,7 +6,9 @@ import * as zod from 'zod'
 
 import * as SHIM from '@/models/plugin-api-shim'
 import * as componentsComboBox from '@/plugin-api/components/combo-box'
+import * as componentsLayer from '@/plugin-api/components/layer'
 import * as componentsPickers from '@/plugin-api/components/pickers'
+import * as libDisplayHelpers from '@/plugin-api/lib/display-helpers'
 import * as libRxjsExt from '@/plugin-api/lib/rxjs-ext'
 import * as libTemplating from '@/plugin-api/lib/templating'
 import * as libZodUtils from '@/plugin-api/lib/zod-utils'
@@ -34,7 +36,9 @@ import * as pluginSlots from '@/plugin-api/plugin/slots'
 export function setup() {
 	;(globalThis as Record<string, unknown>)[SHIM.API_GLOBAL] = {
 		'slm/components/combo-box': componentsComboBox,
+		'slm/components/layer': componentsLayer,
 		'slm/components/pickers': componentsPickers,
+		'slm/lib/display-helpers': libDisplayHelpers,
 		'slm/lib/rxjs-ext': libRxjsExt,
 		'slm/lib/templating': libTemplating,
 		'slm/lib/zod-utils': libZodUtils,
