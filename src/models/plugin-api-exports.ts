@@ -6,6 +6,7 @@
 // Object.keys of the real namespace: the server serves their shims but cannot import them.
 export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/components/combo-box': ['ComboBox', 'ComboBoxMulti', 'LOADING'],
+	'slm/components/layer': ['LayerName'],
 	'slm/components/pickers': [
 		'DiscordChannelMultiSelect',
 		'DiscordChannelSelect',
@@ -13,6 +14,14 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'FilterSelect',
 		'ServerMultiSelect',
 		'ServerSelect',
+	],
+	'slm/lib/display-helpers': [
+		'toExtraShortLayerNameFromId',
+		'toFullLayerName',
+		'toFullLayerNameFromId',
+		'toShortLayerName',
+		'toShortLayerNameFromId',
+		'toShortTeamsDisplay',
 	],
 	'slm/lib/rxjs-ext': [
 		'distinctDeepEquals',
