@@ -37,7 +37,7 @@ export type RollingFixture = AppFixture & {
 	// match creation is purely log-driven (onNewGameDuringRoll), so it can lag slightly behind
 	// waitForRosterSync's RCON-based notion of "settled" -- poll rather than read once
 	waitForNewMatch: (oldMatchId: number) => Promise<{ id: number; layerId: string }>
-	// a RESET's roster is recorded via playerEventAssociations (assocType 'game-participant'), so "was this
+	// a RESET's roster is recorded via playerEventIndex (assocType 'game-participant'), so "was this
 	// player in the roster this RESET carried" is just a join, no need to touch the superjson-encoded payload
 	inResetRoster: (matchId: number, eos: string) => boolean
 	countEventsFor: (type: string, eos: string, matchId?: number) => number
@@ -47,11 +47,20 @@ export type RollingFixture = AppFixture & {
 	latestTeamChangeIsOrganic: (matchId: number, eos: string) => boolean | undefined
 }
 
-export async function createRollingFixture(): Promise<RollingFixture> {
+export async function createRollingFixture(opts?: { env?: Record<string, string> }): Promise<RollingFixture> {
 	const app = await createAppFixture({
 		layerQueue: queue(LAYERS.gorodokRaas, LAYERS.sumariSeed),
 		admins: [ROLL_ADMIN_STEAM_ID],
 		adminSteamIds: [ROLL_ADMIN_STEAM_ID],
+		env: {
+			// The archive scenario at the end of server-rolling.test.ts needs a match to be compactable as soon
+			// as it is not the newest one. Inert for every test before it: with the scheduled pass an hour out,
+			// nothing is compacted until that test drives a pass over the control socket.
+			EVENT_ARCHIVE_WINDOW: '1ms',
+			EVENT_ARCHIVE_MIN_HOT_MATCHES: '0',
+			EVENT_ARCHIVE_INTERVAL: '1h',
+			...opts?.env,
+		},
 	})
 
 	const latestMatch = () => latestMatchOf(app)
@@ -91,8 +100,8 @@ export async function createRollingFixture(): Promise<RollingFixture> {
 				const row = db
 					.prepare(
 						`SELECT se.id FROM serverEvents se
-						 JOIN playerEventAssociations pea ON pea.serverEventId = se.id
-						 WHERE se.type = 'RESET' AND se.matchId = ? AND pea.playerId = ?`,
+						 JOIN playerEventIndex pei ON pei.serverEventId = se.id
+						 WHERE se.type = 'RESET' AND se.matchId = ? AND pei.playerId = ?`,
 					)
 					.get(matchId, eos)
 				return !!row
@@ -106,8 +115,8 @@ export async function createRollingFixture(): Promise<RollingFixture> {
 				const row = db
 					.prepare(
 						`SELECT count(*) as n FROM serverEvents se
-						 JOIN playerEventAssociations pea ON pea.serverEventId = se.id
-						 WHERE se.type = ? AND pea.playerId = ?${matchId !== undefined ? ' AND se.matchId = ?' : ''}`,
+						 JOIN playerEventIndex pei ON pei.serverEventId = se.id
+						 WHERE se.type = ? AND pei.playerId = ?${matchId !== undefined ? ' AND se.matchId = ?' : ''}`,
 					)
 					.get(...(matchId !== undefined ? [type, eos, matchId] : [type, eos])) as { n: number }
 				return row.n
@@ -121,8 +130,8 @@ export async function createRollingFixture(): Promise<RollingFixture> {
 				const row = db
 					.prepare(
 						`SELECT se.appEventId as appEventId FROM serverEvents se
-						 JOIN playerEventAssociations pea ON pea.serverEventId = se.id
-						 WHERE se.type = 'PLAYER_CHANGED_TEAM' AND se.matchId = ? AND pea.playerId = ?
+						 JOIN playerEventIndex pei ON pei.serverEventId = se.id
+						 WHERE se.type = 'PLAYER_CHANGED_TEAM' AND se.matchId = ? AND pei.playerId = ?
 						 ORDER BY se.id DESC LIMIT 1`,
 					)
 					.get(matchId, eos) as { appEventId: string | null } | undefined

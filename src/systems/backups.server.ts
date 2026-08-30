@@ -1,7 +1,6 @@
 import * as E from 'drizzle-orm'
 import fs from 'node:fs'
 import path from 'node:path'
-import * as Timers from 'node:timers/promises'
 
 import * as Schema from '$root/drizzle/schema'
 import * as Prom from '@/lib/promise-utils'
@@ -9,7 +8,6 @@ import * as SFS from '@/lib/sftp-file-store'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared'
-import * as MH from '@/models/match-history.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as DbBackup from '@/server/db-backup'
@@ -18,17 +16,13 @@ import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as EventArchive from '@/systems/event-archive.server'
 
 const module = initModule('backups')
 let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db, ...Env.groups.backups })
 let ENV!: ReturnType<typeof buildEnv>
-
-// the most recent matches per server are never pruned, however old they are. MAX_RECENT_MATCHES of them are loaded
-// into match-history state at boot (with their events), so pruning below that line would leave the recent-match feed
-// with matches whose events have been deleted.
-const MIN_RETAINED_MATCHES = Math.max(100, MH.MAX_RECENT_MATCHES)
 
 // how long a boot that comes up already due for a backup waits before taking it, so the snapshot doesn't land while
 // the rest of the app is still setting itself up
@@ -219,88 +213,15 @@ export const runBackup = Instr.spanOp('runBackup', { module }, async (ctx: C.Db 
 	)
 })
 
-// deletes the server events of matches that both ended before the retention cutoff and fall outside the most recent
-// MIN_RETAINED_MATCHES on their server. The matchHistory rows themselves stay: they're small, and they're what the
-// balance/repeat-rule history is computed from. player/squad event associations go with the events via FK cascade.
+// Retention deletes what compaction has already packed: an archived match older than the cutoff, along with
+// the player-index entries pointing into it. The matchHistory rows themselves stay -- they're small, and
+// they're what the balance and repeat rules are computed from.
 //
-// The deleting is done in bounded batches rather than one statement. better-sqlite3 is synchronous, so a DELETE is an
-// unyielding block of the event loop -- and the first prune on a long-lived server is a big one (a 600k-event db here
-// froze the process for ~3s, which is 3s of no websocket, rcon or http). A batch is small enough to be unnoticeable,
-// gets its own short-lived write lock, and the loop breathes in between.
-const PRUNE_BATCH_SIZE = 5_000
-
+// Matches inside the recent window are never archived in the first place, so they can't be reached from here.
 const pruneEventHistory = Instr.spanOp('pruneEventHistory', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const retention = ENV.EVENT_HISTORY_RETENTION_PERIOD
 	if (retention === undefined) return undefined
-
-	const cutoff = new Date(Date.now() - retention)
-	const serverIds = await ctx.db().selectDistinct({ serverId: Schema.matchHistory.serverId }).from(Schema.matchHistory)
-
-	let events = 0
-	let matches = 0
-	for (const { serverId } of serverIds) {
-		ctx.signal.throwIfAborted()
-
-		// the ordinal of the oldest match we must keep regardless of age. absent when the server hasn't played
-		// MIN_RETAINED_MATCHES matches yet, in which case nothing on it is prunable.
-		const [floor] = await ctx
-			.db()
-			.select({ ordinal: Schema.matchHistory.ordinal })
-			.from(Schema.matchHistory)
-			.where(E.eq(Schema.matchHistory.serverId, serverId))
-			.orderBy(E.desc(Schema.matchHistory.ordinal))
-			.limit(1)
-			.offset(MIN_RETAINED_MATCHES - 1)
-		if (!floor) continue
-
-		// a match that never recorded an end (crashed, or was never finalized) is dated by its start, and failing
-		// that by when we first saw it. a null time compares as null here, so such a match is kept.
-		const matchTime = E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
-		const staleMatches = ctx
-			.db()
-			.select({ id: Schema.matchHistory.id })
-			.from(Schema.matchHistory)
-			.where(
-				E.and(
-					E.eq(Schema.matchHistory.serverId, serverId),
-					E.lt(Schema.matchHistory.ordinal, floor.ordinal),
-					E.lt(matchTime, cutoff.getTime()),
-				),
-			)
-
-		const [matchCount] = await ctx
-			.db()
-			.select({ matches: E.countDistinct(Schema.serverEvents.matchId) })
-			.from(Schema.serverEvents)
-			.where(E.inArray(Schema.serverEvents.matchId, staleMatches))
-		if (!matchCount?.matches) continue
-
-		let deleted = 0
-		for (;;) {
-			ctx.signal.throwIfAborted()
-			// the batch is picked and deleted in one statement, inside one transaction, so nothing can slip in between
-			// the pick and the delete
-			const batch = await DB.runTransaction(ctx, async (ctx) => {
-				const ids = ctx
-					.db()
-					.select({ id: Schema.serverEvents.id })
-					.from(Schema.serverEvents)
-					.where(E.inArray(Schema.serverEvents.matchId, staleMatches))
-					.limit(PRUNE_BATCH_SIZE)
-				return await ctx.db().delete(Schema.serverEvents).where(E.inArray(Schema.serverEvents.id, ids))
-			})
-			deleted += batch.changes
-			if (batch.changes < PRUNE_BATCH_SIZE) break
-			// hand the loop back before taking the write lock again, so a batch never queues up behind another
-			await Timers.setImmediate(undefined, { signal: ctx.signal })
-		}
-
-		events += deleted
-		matches += matchCount.matches
-		log.info('pruned %d events from %d matches on server %s', deleted, matchCount.matches, serverId)
-	}
-
-	return { events, matches }
+	return await EventArchive.pruneArchivedMatches(ctx, { retention })
 })
 
 function getSftpTarget() {

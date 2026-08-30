@@ -234,9 +234,9 @@ describe('teamswaps', () => {
 			const row = db
 				.prepare(
 					`SELECT ae.type as type FROM serverEvents se
-					 JOIN playerEventAssociations pea ON pea.serverEventId = se.id
+					 JOIN playerEventIndex pei ON pei.serverEventId = se.id
 					 LEFT JOIN appEvents ae ON ae.id = se.appEventId
-					 WHERE se.type = 'PLAYER_CHANGED_TEAM' AND se.matchId = ? AND pea.playerId = ?
+					 WHERE se.type = 'PLAYER_CHANGED_TEAM' AND se.matchId = ? AND pei.playerId = ?
 					 ORDER BY se.id DESC LIMIT 1`,
 				)
 				.get(latestMatch(app).id, eos) as { type: string | null } | undefined

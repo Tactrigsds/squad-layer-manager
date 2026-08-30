@@ -1963,9 +1963,10 @@ const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: 
 // the rows that hang off an event, and so can only be built once the insert has allocated its id
 type EventAssociationRows = {
 	playerRows: SchemaModels.NewPlayer[]
-	playerAssociationRows: SchemaModels.NewPlayerEventAssociation[]
+	playerIndexRows: SchemaModels.NewPlayerEventIndexEntry[]
 	squadRows: SchemaModels.NewSquad[]
 	squadAssociationRows: SchemaModels.NewSquadEventAssociation[]
+	chatSearchRow?: { message: string; serverEventId: number; playerId: string; matchId: number; serverId: string; time: number }
 }
 
 function buildEventRow(event: SE.NewEvent): SchemaModels.NewServerEvent {
@@ -1981,9 +1982,9 @@ function buildEventRow(event: SE.NewEvent): SchemaModels.NewServerEvent {
 	}
 }
 
-function buildAssociationRows(ctx: CS.Log, event: SE.Event): EventAssociationRows {
+function buildAssociationRows(ctx: CS.Log, serverId: string, event: SE.Event): EventAssociationRows {
 	const playerRows: SchemaModels.NewPlayer[] = []
-	const playerAssociationRows: SchemaModels.NewPlayerEventAssociation[] = []
+	const playerIndexRows: SchemaModels.NewPlayerEventIndexEntry[] = []
 	for (const [player, assocType] of SE.iterAssocPlayers(event)) {
 		let playerId: SM.PlayerId
 		if (typeof player === 'object') {
@@ -1997,7 +1998,15 @@ function buildAssociationRows(ctx: CS.Log, event: SE.Event): EventAssociationRow
 		} else {
 			playerId = player
 		}
-		playerAssociationRows.push({ assocType, playerId, serverEventId: event.id })
+		playerIndexRows.push({
+			playerId,
+			time: new Date(event.time),
+			serverEventId: event.id,
+			assocType,
+			matchId: event.matchId,
+			serverId,
+			type: event.type,
+		})
 	}
 
 	const squadRows: SchemaModels.NewSquad[] = []
@@ -2011,6 +2020,7 @@ function buildAssociationRows(ctx: CS.Log, event: SE.Event): EventAssociationRow
 				name: squad.squadName,
 				creatorId: squad.creator,
 				teamId: squad.teamId,
+				matchId: event.matchId,
 			})
 			uniqueSquadId = squad.uniqueId
 		} else {
@@ -2019,7 +2029,19 @@ function buildAssociationRows(ctx: CS.Log, event: SE.Event): EventAssociationRow
 		squadAssociationRows.push({ squadId: uniqueSquadId, serverEventId: event.id })
 	}
 
-	return { playerRows, playerAssociationRows, squadRows, squadAssociationRows }
+	const chatSearchRow =
+		event.type === 'CHAT_MESSAGE'
+			? {
+					message: event.message,
+					serverEventId: event.id,
+					playerId: event.player,
+					matchId: event.matchId,
+					serverId,
+					time: event.time,
+				}
+			: undefined
+
+	return { playerRows, playerIndexRows, squadRows, squadAssociationRows, chatSearchRow }
 }
 
 async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
@@ -2038,9 +2060,9 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 			})
 	}
 
-	if (rows.playerAssociationRows.length > 0) {
+	if (rows.playerIndexRows.length > 0) {
 		const insertedEosIds = new Set(rows.playerRows.map((p) => p.eosId))
-		const playersToLookup = [...new Set(rows.playerAssociationRows.map((r) => r.playerId).filter((id) => !insertedEosIds.has(id)))]
+		const playersToLookup = [...new Set(rows.playerIndexRows.map((r) => r.playerId).filter((id) => !insertedEosIds.has(id)))]
 		let existingIds = new Set<SM.PlayerId>()
 		if (playersToLookup.length > 0) {
 			const existingPlayers = await ctx
@@ -2050,22 +2072,23 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 				.where(E.inArray(Schema.players.eosId, playersToLookup))
 			existingIds = new Set(existingPlayers.map((p) => p.eosId))
 		}
-		const validRows = rows.playerAssociationRows.filter((r) => {
+		const validRows = rows.playerIndexRows.filter((r) => {
 			if (insertedEosIds.has(r.playerId)) return true
 			if (existingIds.has(r.playerId)) return true
-			log.error('skipping playerEventAssociation for unknown player %s (event %d)', r.playerId, r.serverEventId)
+			log.error('skipping playerEventIndex entry for unknown player %s (event %d)', r.playerId, r.serverEventId)
 			return false
 		})
 		if (validRows.length > 0) {
 			await ctx
 				.db()
-				.insert(Schema.playerEventAssociations)
+				.insert(Schema.playerEventIndex)
 				.values(validRows)
 				.onConflictDoNothing({
 					target: [
-						Schema.playerEventAssociations.serverEventId,
-						Schema.playerEventAssociations.playerId,
-						Schema.playerEventAssociations.assocType,
+						Schema.playerEventIndex.playerId,
+						Schema.playerEventIndex.time,
+						Schema.playerEventIndex.serverEventId,
+						Schema.playerEventIndex.assocType,
 					],
 				})
 		}
@@ -2103,8 +2126,19 @@ async function insertAssociationRows(ctx: C.Db, rows: EventAssociationRows) {
 					teamId: sql`excluded.teamId`,
 					name: sql`excluded.name`,
 					creatorId: sql`excluded.creatorId`,
+					matchId: sql`excluded.matchId`,
 				},
 			})
+	}
+
+	// chat text goes into the standalone fts index at insert time, so it survives the compaction that
+	// deletes the event it came from. Raw sql because fts5 is a virtual table drizzle cannot model; not
+	// awaited because run() on the better-sqlite3 driver executes synchronously and returns no thenable.
+	if (rows.chatSearchRow) {
+		const r = rows.chatSearchRow
+		ctx.db().run(
+			sql`INSERT INTO chatSearch (message, serverEventId, playerId, matchId, serverId, time) VALUES (${r.message}, ${r.serverEventId}, ${r.playerId}, ${r.matchId}, ${r.serverId}, ${r.time})`,
+		)
 	}
 
 	if (rows.squadAssociationRows.length > 0) {
@@ -2140,7 +2174,7 @@ const createEvent =
 						.values(buildEventRow(newEvent))
 						.returning({ id: Schema.serverEvents.id })
 					const event = { ...newEvent, id: inserted.id } as SE.Event
-					await insertAssociationRows(ctx, buildAssociationRows({ ...ctx, log }, event))
+					await insertAssociationRows(ctx, buildAssociationRows({ ...ctx, log }, serverId, event))
 					return event
 				}),
 		)()
