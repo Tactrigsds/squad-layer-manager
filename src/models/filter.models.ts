@@ -925,6 +925,22 @@ function upsertTreeInPlaceFromSparse(sparseTree: Sparse.SparseNode, basePath: Sp
 	return tree
 }
 
+/**
+ * The id a node gets when a tree is built from a bare filter, derived from its position rather than minted
+ * at random, so every replica building a tree from the same filter agrees on it.
+ *
+ * The editor seeds a placeholder tree from the saved filter and then swaps in the server's snapshot, which
+ * is built from that same filter. With random ids those are two disjoint sets: every NodePortal key changes
+ * and the whole tree remounts under the user, taking component state with it -- an add strip opened in that
+ * window dies with the click still pending, and nothing reports an error.
+ *
+ * The dot keeps these clear of createId's alphabet, so a path id can never collide with one minted for a
+ * node added later.
+ */
+function pathNodeId(path: Sparse.NodePath): string {
+	return path.length === 0 ? 'n' : `n.${path.join('.')}`
+}
+
 export function upsertFilterNodeTreeInPlace(
 	filter: EditableFilterNode,
 	baseFilterPath?: Sparse.NodePath,
@@ -941,7 +957,7 @@ export function upsertFilterNodeTreeInPlace(
 	// add/update nodes
 	for (const [node, _path] of walkNodes(filter)) {
 		const path = [...baseFilterPath, ..._path]
-		const id: string = (node as any)._id ?? createId(4)
+		const id: string = (node as any)._id ?? pathNodeId(path)
 		const shallowNode = toShallowNode(node)
 		if (Obj.deepEqual(shallowNode, tree.nodes.get(id))) {
 			continue
