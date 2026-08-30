@@ -188,7 +188,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/server/instrumentation': ['durableSub', 'recordGenericError', 'setSpanOpAttrs', 'setSpanStatus', 'spanOp'],
 	'slm/server/logger': ['childModule'],
 	'slm/systems/app-events': ['emit'],
-	'slm/systems/discord': ['isEnabled', 'postMessage'],
+	'slm/systems/discord': ['deleteMessage', 'isEnabled', 'postMessage'],
 	'slm/systems/filter-entity': ['changes', 'create', 'get', 'list', 'remove', 'update'],
 	'slm/systems/layer-queries': [
 		'componentValues',
