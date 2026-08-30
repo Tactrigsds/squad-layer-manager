@@ -534,4 +534,25 @@ describe('packaged plugins', () => {
 		expect(await client.plugins.setEnabled({ pluginId: 'hello', enabled: true })).toMatchObject({ code: 'ok', status: 'active' })
 		expect(readRows(`SELECT 1 FROM _plugin_migrations WHERE pluginId = 'hello' AND name = '0001_init'`)).toHaveLength(1)
 	})
+
+	// A reload leaves a package whose files have not changed exactly where it is, so the scan that follows
+	// meets an id already loaded. That used to be reported as a collision with a builtin, which filed the
+	// running plugin as broken and listed it a second time -- from one deploy that shipped identical bytes,
+	// or from pressing rescan twice.
+	it('survives a rescan that finds nothing changed', async () => {
+		const before = (await pluginInfo())!
+		expect(before.status).toBe('active')
+
+		for (let i = 0; i < 2; i++) {
+			expect(await client.plugins.rescan()).toMatchObject({ code: 'ok' })
+		}
+
+		const next = await firstYield((signal) => client.plugins.watchPlugins(undefined, { signal }), { label: 'the plugin list stream' })
+		const listed = (next.plugins as { id: string; status: string; error: string | null }[]).filter((p) => p.id === 'hello')
+		expect(listed).toHaveLength(1)
+		expect(listed[0]).toMatchObject({ status: 'active', error: null })
+		expect((next.leftoverData as { pluginId: string }[] | undefined) ?? []).not.toContainEqual(
+			expect.objectContaining({ pluginId: 'hello' }),
+		)
+	})
 })

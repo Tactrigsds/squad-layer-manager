@@ -289,7 +289,12 @@ async function loadPackages(ctx: C.Db) {
 	brokenPackages.clear()
 	for (const pkg of Pkgs.scan()) {
 		try {
-			if (plugins.has(pkg.id)) throw new Error(`a builtin plugin already uses the id '${pkg.id}'`)
+			const loaded = plugins.get(pkg.id)
+			// A builtin owns its id outright; a package cannot take it. A package already loaded under that id
+			// is this same package, left in place by reloadPackages because nothing about it changed -- which
+			// is the common case for a reload, and used to be reported as the builtin collision below.
+			if (loaded && !loaded.entry.pkg) throw new Error(`a builtin plugin already uses the id '${pkg.id}'`)
+			if (loaded) continue
 			await ensureRuntime(ctx, await entryFromPackage(pkg))
 		} catch (err) {
 			log.error(err, 'plugin package %s failed to load', pkg.id)
