@@ -155,6 +155,51 @@ describe('the event archive', () => {
 		}
 	})
 
+	// combat detail is projected out of the payload at insert time, because after compaction the payload is a
+	// blob and no SQL -- dashboard or otherwise -- can reach into it
+	it('projects the damage source and variant, interned, so combat survives compaction as queryable columns', async () => {
+		const attacker = app.emu.world.connectPlayer(makePlayer({ name: ' shooter', teamId: 1 }))
+		const victim = app.emu.world.connectPlayer(makePlayer({ name: ' target', teamId: 2 }))
+		await app.waitForRosterSync()
+		app.emu.world.killPlayer(victim, attacker, 'BP_M4_M68')
+
+		await app.waitFor(
+			() => {
+				const db = app.readDb()
+				try {
+					const row = db
+						.prepare(`SELECT count(*) AS n FROM playerEventIndex WHERE type = 'PLAYER_DIED' AND damageSourceId IS NOT NULL`)
+						.get() as { n: number }
+					return row.n > 0 || undefined
+				} finally {
+					db.close()
+				}
+			},
+			{ label: 'the kill reaching the player event index with an interned damage source' },
+		)
+
+		const db = app.readDb()
+		try {
+			const rows = db
+				.prepare(
+					`SELECT ds.name AS source, pei.variant, count(*) AS n
+					 FROM playerEventIndex pei JOIN damageSources ds ON ds.id = pei.damageSourceId
+					 WHERE pei.type IN ('PLAYER_DIED', 'PLAYER_WOUNDED') GROUP BY ds.name, pei.variant`,
+				)
+				.all() as { source: string; variant: string; n: number }[]
+			expect(rows.length).toBeGreaterThan(0)
+			for (const row of rows) {
+				expect(row.source).toBeTruthy()
+				expect(['normal', 'suicide', 'teamkill']).toContain(row.variant)
+			}
+			// interned, not repeated inline: one row per distinct name however many events used it
+			const names = db.prepare(`SELECT count(*) AS n, count(DISTINCT name) AS d FROM damageSources`).get() as { n: number; d: number }
+			expect(names.n).toBe(names.d)
+		} finally {
+			db.close()
+		}
+	})
+
 	it('keeps chat text searchable after the events it came from have been packed away', async () => {
 		const res = await client.eventSearch.searchEvents({ serverId: app.serverId, messageContains: 'archive' })
 		expect(res.code).toBe('ok')
