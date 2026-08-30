@@ -161,6 +161,10 @@ export const router = {
 		.input(z.object({ channelId: z.string(), content: z.string() }))
 		.handler(async ({ input }) => ({ enabled: Discord.isEnabled(), res: await Discord.postMessage(input.channelId, input.content) })),
 
+	deleteFromDiscord: os
+		.input(z.object({ channelId: z.string(), messageId: z.string() }))
+		.handler(async ({ input }) => ({ enabled: Discord.isEnabled(), res: await Discord.deleteMessage(input.channelId, input.messageId) })),
+
 	greetings: os.input(z.object({ serverId: z.string() })).handler(async function* ({ context, input }) {
 		yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
 	}),

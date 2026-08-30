@@ -440,6 +440,10 @@ describe('packaged plugins', () => {
 			enabled: false,
 			res: { code: 'err:disabled' },
 		})
+		expect(await call('deleteFromDiscord', { channelId: '1', messageId: '2' })).toMatchObject({
+			enabled: false,
+			res: { code: 'err:disabled' },
+		})
 	})
 
 	it('gives a restarted plugin a fresh module graph', async () => {
