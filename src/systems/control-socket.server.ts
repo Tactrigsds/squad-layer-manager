@@ -7,6 +7,8 @@ import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as EventArchive from '@/systems/event-archive.server'
+import * as MatchLayers from '@/systems/match-layers.server'
 import * as Plugins from '@/systems/plugins.server'
 
 /**
@@ -29,6 +31,7 @@ type Request = { command: string; args?: Record<string, unknown> }
 type Response = { code: string; [key: string]: unknown }
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.plugins })
+const archiveEnvBuilder = Env.getEnvBuilder({ ...Env.groups.backups })
 
 async function handle(req: Request): Promise<Response> {
 	switch (req.command) {
@@ -39,6 +42,24 @@ async function handle(req: Request): Promise<Response> {
 				code: 'ok',
 				plugins: Plugins.listRuntimeInfo().map((p) => ({ id: p.id, enabled: p.enabled, status: p.status, error: p.error })),
 			}
+		}
+		// forces a compaction pass rather than waiting for the next scheduled one -- for after EVENT_ARCHIVE_WINDOW
+		// is changed, or before taking a backup of a database that has just caught up on a long backlog
+		case 'compact-events': {
+			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+			const env = archiveEnvBuilder()
+			const res = await EventArchive.compactAgedMatches(ctx, {
+				window: env.EVENT_ARCHIVE_WINDOW,
+				minHotMatches: env.EVENT_ARCHIVE_MIN_HOT_MATCHES,
+			})
+			return { code: 'ok', ...res }
+		}
+		// re-resolves matches whose layer the engine could not place. Normally driven by a layer artifact
+		// changing; forced here for the pass that follows an out-of-band artifact swap
+		case 'reconcile-layers': {
+			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+			const res = await MatchLayers.reconcileMatchLayers(ctx)
+			return { code: 'ok', ...(res ?? { skipped: 'already reconciled against this layer artifact' }) }
 		}
 		default:
 			return { code: 'err:unknown-command', command: req.command }

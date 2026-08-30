@@ -454,5 +454,10 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			const what = e.reason === 'pre-migration' ? 'backed up the database before migrating it' : 'backed up the database'
 			return `${what}, to ${e.fileName} (${size})${upload}${pruned}`
 		}
+		case 'MATCH_LAYERS_RECONCILED': {
+			const matches = `${e.matchesUpdated} ${e.matchesUpdated === 1 ? 'match' : 'matches'}`
+			const remaining = e.unresolvedRemaining > 0 ? `, ${e.unresolvedRemaining} still unrecognised` : ''
+			return `recognised the layers of ${matches} after a layer data update${remaining}`
+		}
 	}
 }
