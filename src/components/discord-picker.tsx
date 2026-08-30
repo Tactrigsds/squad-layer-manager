@@ -205,6 +205,9 @@ export function DiscordChannelSelect(props: {
 				value={value || undefined}
 				options={channelOptions(channels, value ? [value] : [], isResolved)}
 				groupings={channelGroupings(channels)}
+				// headings, not a per-row prefix: most guilds put most channels under one category, so the prefix
+				// repeats the same word down the whole list and costs every row the width to say it
+				renderGroupPrefix={false}
 				disabled={props.disabled}
 				onSelect={(id) => props.onChange(id ?? null)}
 			/>
@@ -231,6 +234,7 @@ export function DiscordChannelMultiSelect(props: {
 				values={props.values}
 				options={channelOptions(channels, props.values, isResolved)}
 				groupings={channelGroupings(channels)}
+				renderGroupPrefix={false}
 				selectionLimit={props.selectionLimit}
 				disabled={props.disabled}
 				chipDisplay

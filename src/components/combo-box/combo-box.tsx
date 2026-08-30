@@ -281,7 +281,10 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
-				className="relative w-50 p-0"
+				// as wide as what it hangs off, floored for the triggers that are narrower than the list needs
+				// (icon buttons, table cells). A fixed width unrelated to the trigger is what made a full-width
+				// field open a 200px popover and wrap every row.
+				className="relative w-[var(--radix-popover-trigger-width)] min-w-50 p-0"
 				// Escape belongs to the dismissal hook alone. Radix listens for it on the document too, and the
 				// two cannot agree: whichever runs first re-renders the other's state out from under it, so a
 				// drill-in that backed out here would still be dismissed there. Refusing unconditionally leaves
@@ -374,12 +377,17 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 													onSelect(option.value)
 												}}
 											>
-												<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
-												<PrefixedLabel
-													prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-													label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
-													render={prefixRenderer}
+												<Check
+													className={cn('mr-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')}
 												/>
+												{/* a row is one line: too long ellipsizes rather than wrapping the list into a wall of text */}
+												<span className="min-w-0 flex-1 truncate">
+													<PrefixedLabel
+														prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
+														label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+														render={prefixRenderer}
+													/>
+												</span>
 											</CommandItem>
 										))}
 									</CommandGroup>
