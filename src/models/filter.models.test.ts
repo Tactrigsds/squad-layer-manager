@@ -105,6 +105,19 @@ describe('value domains', () => {
 	})
 })
 
+describe('editor tree ids', () => {
+	// the editor seeds a placeholder tree from the saved filter and then swaps in the server's snapshot,
+	// built from that same filter. Ids that disagree change every NodePortal key and remount the tree,
+	// which loses whatever component state was open at the time.
+	it('agree across two independent builds of the same filter', () => {
+		const filter = FB.and([FB.inValues('Gamemode', ['RAAS']), FB.inValues('Map', ['Harju']), FB.and([FB.inValues('Gamemode', ['AAS'])])])
+		const clientSeed = F.upsertFilterNodeTreeInPlace(structuredClone(filter))
+		const serverSnapshot = F.upsertFilterNodeTreeInPlace(structuredClone(filter))
+		expect([...serverSnapshot.paths.keys()].sort()).toEqual([...clientSeed.paths.keys()].sort())
+		expect(clientSeed.paths.size).toBeGreaterThan(3)
+	})
+})
+
 describe('node comments', () => {
 	const commented = (comment: string) => ({ ...FB.inValues('Gamemode', ['RAAS']), comment })
 
