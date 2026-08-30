@@ -498,17 +498,15 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 													>
 														<Check
 															className={cn(
-																'mr-2 h-4 w-4 shrink-0',
+																'mr-2 h-4 w-4',
 																displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
 															)}
 														/>
-														<span className="min-w-0 flex-1 truncate">
-															<PrefixedLabel
-																prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-																label={option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
-																render={prefixRenderer}
-															/>
-														</span>
+														<PrefixedLabel
+															prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
+															label={option.label ?? (option.value === null ? DisplayHelpers.NULL_DISPLAY : option.value)}
+															render={prefixRenderer}
+														/>
 													</CommandItem>
 												))}
 											</CommandGroup>

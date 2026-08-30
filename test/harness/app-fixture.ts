@@ -49,14 +49,35 @@ function serverCommand(): [string, string[]] {
 	]
 }
 
-function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
+// One app port per fixture, taken from a block this worker owns rather than from the OS.
+//
+// `listen(0)` hands back a port and closes it again, but the app does not bind until it has finished
+// booting, seconds later. In that window the kernel gives the same number to another worker's fixture, and
+// whichever app binds second dies with EADDRINUSE at the end of its own boot -- which surfaces as an
+// unrelated flake in whichever test drew the losing port. Measured at ~4% of allocations across four
+// concurrent processes, or about one failed test per full run.
+//
+// The blocks sit below ip_local_port_range (32768 on Linux), so nothing the OS hands out lands in them.
+const WORKER_SLOT = Number(process.env.TEST_PARALLEL_INDEX ?? process.env.VITEST_POOL_ID ?? 0) || 0
+const PORTS_PER_WORKER = 250
+const PORT_BLOCK_START = 20_000 + (WORKER_SLOT % 48) * PORTS_PER_WORKER
+let portCursor = 0
+
+async function freePort(): Promise<number> {
+	for (let attempt = 0; attempt < PORTS_PER_WORKER; attempt++) {
+		const port = PORT_BLOCK_START + (portCursor++ % PORTS_PER_WORKER)
+		if (await nothingListening(port)) return port
+	}
+	throw new Error(`no free port in ${PORT_BLOCK_START}..${PORT_BLOCK_START + PORTS_PER_WORKER - 1} (worker ${WORKER_SLOT})`)
+}
+
+// A probe, not a reservation: it says nothing is listening there right now, which is the most that can be
+// established without holding the port the child is about to need.
+function nothingListening(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
 		const srv = net.createServer()
-		srv.once('error', reject)
-		srv.listen(0, '127.0.0.1', () => {
-			const port = (srv.address() as net.AddressInfo).port
-			srv.close(() => resolve(port))
-		})
+		srv.once('error', () => resolve(false))
+		srv.listen(port, '127.0.0.1', () => srv.close(() => resolve(true)))
 	})
 }
 
@@ -669,7 +690,11 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
 				return res !== null
 			},
-			{ label: 'app readiness', timeoutMs: 60_000 },
+			// Under playwright's 60s hook timeout on purpose. At 60s the two expire together and the hook
+			// usually wins, so a fixture that never came up reports as a bare "beforeAll hook timeout" with
+			// nothing about the app -- which is indistinguishable from a slow machine. Losing the race by
+			// 15s means the app log tail gets read out instead.
+			{ label: 'app readiness', timeoutMs: 45_000 },
 		)
 	}
 
