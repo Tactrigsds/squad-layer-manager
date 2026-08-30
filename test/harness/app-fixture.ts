@@ -690,7 +690,11 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
 				return res !== null
 			},
-			{ label: 'app readiness', timeoutMs: 60_000 },
+			// Under playwright's 60s hook timeout on purpose. At 60s the two expire together and the hook
+			// usually wins, so a fixture that never came up reports as a bare "beforeAll hook timeout" with
+			// nothing about the app -- which is indistinguishable from a slow machine. Losing the race by
+			// 15s means the app log tail gets read out instead.
+			{ label: 'app readiness', timeoutMs: 45_000 },
 		)
 	}
 
