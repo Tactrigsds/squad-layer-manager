@@ -199,6 +199,19 @@ export const playerEventIndex = sqliteTable(
 			.notNull()
 			.references(() => servers.id, { onDelete: 'cascade' }),
 		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
+		// The `caused by` token from the Die()/Wound() log line, for the events that carry one. NOT a weapon in
+		// both cases, which is why it is not called one: on a Wound() the weapon actor is still alive and the
+		// token is the weapon (BP_M240_M145), but by Die() it has usually been destroyed and what is left is the
+		// attacker's pawn (BP_Soldier_TLF_Gendarme_01, BP_Loach_CAS_Small). Measured on production: of 782
+		// distinct death tokens and 1161 wound tokens only 684 overlap. So group by this on PLAYER_WOUNDED for
+		// weapon breakdowns and on PLAYER_DIED for what the killer was running -- never across both at once.
+		//
+		// Interned rather than stored inline: the token averages ~20 bytes and combat is the bulk of this table,
+		// which over a five-year horizon is ~1GB of repeated strings against ~150MB of integers.
+		damageSourceId: integer('damageSourceId').references(() => damageSources.id),
+		// 'normal' | 'suicide' | 'teamkill'. Three values, so not worth interning, and a dashboard filtering on
+		// `variant = 'teamkill'` should not have to join to find out what a number means.
+		variant: text('variant'),
 	},
 	// Deliberately no secondary index on matchId. Every search here is anchored on a player, so the pk already
 	// narrows to one contiguous range and a match filter is applied within it; the only matchId-driven query is
@@ -209,6 +222,13 @@ export const playerEventIndex = sqliteTable(
 		pk: primaryKey({ columns: [table.playerId, table.time, table.serverEventId, table.assocType] }),
 	}),
 )
+
+// The blueprint names playerEventIndex.damageSourceId points at, interned. Small and append-only: an install
+// sees a couple of thousand distinct names, and one is never rewritten once seen.
+export const damageSources = sqliteTable('damageSources', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	name: text('name').notNull().unique(),
+})
 
 // A finalized match's server events, packed into one row once the match falls outside the recent window.
 // The blob is the source of truth for that match from then on: every projection and export is rebuildable

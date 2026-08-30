@@ -8,6 +8,7 @@ import type { MigrationDriver } from '@/server/migrate'
 //    survive the compaction that deletes the row it refers to.
 //  - `archivedMatches` holds compacted matches. Empty until the compaction job runs.
 //  - `chatSearch` is an fts5 index over chat text, backfilled from what is currently stored.
+//  - `damageSources` interns the Die()/Wound() `caused by` tokens playerEventIndex refers to.
 //  - matchHistory gains the parsed layer parts, so a layer-config query over history never calls the
 //    layer engine per row. Backfilled by the app (the engine isn't available here), see reconcileLayerParts.
 export async function up(db: MigrationDriver): Promise<void> {
@@ -26,6 +27,10 @@ export async function up(db: MigrationDriver): Promise<void> {
 
 	// pk order is the dominant query: one player's history, newest first. WITHOUT ROWID so the pk is the
 	// table -- a player's whole trail is one contiguous range, not an index scan plus a row lookup.
+	db.exec(`CREATE TABLE damageSources (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL UNIQUE
+	)`)
 	db.exec(`CREATE TABLE playerEventIndex (
 		playerId TEXT NOT NULL REFERENCES players(eosId) ON DELETE CASCADE,
 		time INTEGER NOT NULL,
@@ -34,6 +39,8 @@ export async function up(db: MigrationDriver): Promise<void> {
 		matchId INTEGER NOT NULL REFERENCES matchHistory(id) ON DELETE CASCADE,
 		serverId TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
 		type TEXT NOT NULL,
+		damageSourceId INTEGER REFERENCES damageSources(id),
+		variant TEXT,
 		PRIMARY KEY (playerId, time, serverEventId, assocType)
 	) WITHOUT ROWID`)
 
@@ -78,11 +85,17 @@ export async function up(db: MigrationDriver): Promise<void> {
 	// INSERT OR IGNORE: the old table's uniqueness was (serverEventId, playerId, assocType) while the new pk
 	// leads with time, so two events recorded in the same millisecond for the same player collapse only if
 	// they also share an id, which they cannot.
-	db.exec(`INSERT OR IGNORE INTO playerEventIndex (playerId, time, serverEventId, assocType, matchId, serverId, type)
-		SELECT pea.playerId, se.time, se.id, pea.assocType, se.matchId, mh.serverId, se.type
+	db.exec(`INSERT INTO damageSources (name)
+		SELECT DISTINCT json_extract(data, '$.json.weapon') FROM serverEvents
+		WHERE type IN ('PLAYER_DIED', 'PLAYER_WOUNDED') AND json_extract(data, '$.json.weapon') IS NOT NULL`)
+
+	db.exec(`INSERT OR IGNORE INTO playerEventIndex (playerId, time, serverEventId, assocType, matchId, serverId, type, damageSourceId, variant)
+		SELECT pea.playerId, se.time, se.id, pea.assocType, se.matchId, mh.serverId, se.type,
+			w.id, json_extract(se.data, '$.json.variant')
 		FROM playerEventAssociations pea
 		JOIN serverEvents se ON se.id = pea.serverEventId
-		JOIN matchHistory mh ON mh.id = se.matchId`)
+		JOIN matchHistory mh ON mh.id = se.matchId
+		LEFT JOIN damageSources w ON w.name = json_extract(se.data, '$.json.weapon')`)
 
 	db.exec(`DROP TABLE playerEventAssociations`)
 }
