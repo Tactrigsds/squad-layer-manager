@@ -341,6 +341,28 @@ export async function postMessage(channelId: string, content: string) {
 	}
 }
 
+/**
+ * Deletes a message SLM posted, for a caller cleaning up an announcement that has stopped being true.
+ * A message already gone answers err:not-found rather than err:discord: for that caller it is the same
+ * outcome as having deleted it.
+ */
+export async function deleteMessage(channelId: string, messageId: string) {
+	if (!ENV.DISCORD_ENABLED) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
+	try {
+		const channel = await client.channels.fetch(channelId)
+		if (!channel?.isTextBased()) return { code: 'err:not-postable' as const, msg: `channel ${channelId} is not one this bot can reach` }
+		await channel.messages.delete(messageId)
+		return { code: 'ok' as const }
+	} catch (err) {
+		if (err instanceof D.DiscordAPIError) {
+			if (err.code === D.RESTJSONErrorCodes.UnknownMessage) return { code: 'err:not-found' as const, msg: 'message no longer exists' }
+			log.warn({ err }, 'Failed to delete message %s in channel %s', messageId, channelId)
+			return { code: 'err:discord' as const, msg: err.message }
+		}
+		throw err
+	}
+}
+
 export const orpcRouter = {
 	getGuildEmojis: orpcBase.input(z.object({}).optional()).handler(async () => {
 		const guildRes = await fetchGuild(ENV.DISCORD_HOME_GUILD_ID)
