@@ -673,6 +673,17 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		)
 	}
 
+	// The app writes pino's stdout and a fatal's console.error to the same fd with separate buffers, so the
+	// two interleave and a plain tail can land inside the fatal object with its first line already scrolled
+	// past. Pull the error lines out by name as well as showing the tail, or a boot failure reads as a slow
+	// machine.
+	function bootFailureReport(): string {
+		if (!fs.existsSync(logFile)) return '\n(no log file)'
+		const lines = fs.readFileSync(logFile, 'utf8').split('\n')
+		const errors = lines.filter((l) => /fatal|error:|EADDRINUSE|Error\b/i.test(l))
+		return (errors.length > 0 ? `\napp errors:\n${errors.slice(-25).join('\n')}` : '') + `\napp log tail:\n${lines.slice(-40).join('\n')}`
+	}
+
 	async function stopApp() {
 		if (!child || child.exitCode !== null) return
 		child.kill('SIGTERM')
@@ -690,8 +701,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		await waitFor(
 			async () => {
 				if (child!.exitCode !== null) {
-					const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
-					throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
+					throw new Error(`app exited with code ${child!.exitCode} during boot.${bootFailureReport()}`)
 				}
 				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
 				return res !== null
