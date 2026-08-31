@@ -1,18 +1,9 @@
-import React from 'react'
-
 import * as Atoms from './feed/atoms'
-import { useDomContent } from './feed/dom-content'
 
-export default function MapLayerDisplay({
-	layer,
-	extraLayerStyles,
-	className,
-}: {
+export default function MapLayerDisplay(props: {
 	layer: string
 	extraLayerStyles?: Record<string, string | undefined>
 	className?: string
 }) {
-	const node = React.useMemo(() => Atoms.mapLayerDisplay(layer, extraLayerStyles, className), [layer, extraLayerStyles, className])
-	const ref = useDomContent<HTMLSpanElement>(node)
-	return <span ref={ref} className="contents" />
+	return <Atoms.MapLayerDisplay layer={props.layer} extraStyles={props.extraLayerStyles} className={props.className} />
 }

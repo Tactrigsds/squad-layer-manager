@@ -9,7 +9,7 @@ import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 
-import * as Atoms from './atoms'
+import { formatFullTime } from './format'
 import * as RC from './render-context'
 
 // the windows a row can open, registered before any click can ask for one. Loaded here rather than in the
@@ -125,7 +125,7 @@ function tipContentOf(element: Element): RC.TipContent | null {
 	const time = element.getAttribute(RC.TIP_TIME_ATTR)
 	// deliberately not formatted until now: a timezone-qualified timestamp per row is most of what a feed's
 	// timestamps cost, and only the one being hovered is ever read
-	if (time !== null) return { text: Atoms.formatFullTime(Number(time)) }
+	if (time !== null) return { text: formatFullTime(Number(time)) }
 	const text = element.getAttribute(RC.TIP_ATTR)
 	if (text === null) return null
 	return { text, heading: element.getAttribute(RC.TIP_HEADING_ATTR) ?? undefined }

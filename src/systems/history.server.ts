@@ -3,9 +3,8 @@ import { Worker } from 'node:worker_threads'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
+import { renderRow } from '@/components/feed/render'
 import type * as RC from '@/components/feed/render-context'
-import { buildRow } from '@/components/feed/rows'
-import * as Dom from '@/lib/dom'
 import { createId } from '@/lib/id'
 import { assertNever } from '@/lib/type-guards'
 import * as I18n from '@/messages/i18n'
@@ -465,8 +464,8 @@ function renderEventRows(events: CHAT.EventEnriched[], matches: MH.MatchDetails[
 		const out: string[] = []
 		for (const event of events) {
 			if (event.type === 'APP_EVENT') continue
-			const node = buildRow(rctx, event)
-			if (node) out.push(Dom.serialize(node))
+			const html = renderRow(rctx, event)
+			if (html !== '') out.push(html)
 		}
 		return out
 	} finally {

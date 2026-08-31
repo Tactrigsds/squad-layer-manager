@@ -22,7 +22,9 @@ export const Route = createFileRoute('/_app/history')({
 function RouteComponent() {
 	const search = Route.useSearch()
 	const navigate = useNavigate()
-	const input = React.useMemo(() => ({ initial: search }), [search])
+	// re-serialized because the router hands back null-prototype objects, which the frame manager's
+	// deep-equal over instance keys chokes on
+	const input = React.useMemo(() => ({ initial: JSON.parse(JSON.stringify(search)) as HQ.Query }), [search])
 	const frameKey = useFrameLifecycle(HistoryFrame.frame, { input })
 	useFrameTeardownOnUnmount(frameKey)
 	return (

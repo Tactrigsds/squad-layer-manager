@@ -56,9 +56,9 @@ export function newScopeId() {
 
 // -------- interaction targets --------
 //
-// Written as attributes, never as element-attached payloads: the same markup may have been rendered on the
-// server, and everything an interaction needs beyond these attributes (which frame, which outlet) is resolved
-// from the enclosing scope at interaction time.
+// Written as attributes, never as element-attached payloads: the markup may have been rendered on the server,
+// and everything an interaction needs beyond these attributes (which frame, which outlet) is resolved from
+// the enclosing scope at interaction time. The builders return attribute objects for a template to spread.
 
 export type MenuTarget =
 	| { kind: 'player'; playerId: SM.PlayerId }
@@ -78,9 +78,7 @@ export type WindowTarget = {
 
 export type TipContent = { heading?: string; text: string }
 
-const PLAYER = Symbol('player')
-
-type Carrier<K extends symbol, T> = Element & { [key in K]?: T }
+export type Attrs = Record<string, string | number | undefined>
 
 export const MENU_ATTR = 'data-dom-menu'
 export const WINDOW_ATTR = 'data-dom-window'
@@ -97,27 +95,34 @@ export const ADMIN_BADGE_ATTR = 'data-dom-admin-badge'
 /** a name whose colour follows the active player grouping, recoloured in place rather than rebuilt */
 export const PLAYER_ATTR = 'data-dom-player'
 
-export function setMenuTarget<E extends Element>(node: E, target: MenuTarget, matchId?: number | null): E {
-	node.setAttribute(MENU_ATTR, JSON.stringify(target))
-	if (matchId !== null && matchId !== undefined) node.setAttribute(MATCH_ATTR, String(matchId))
-	return node
+export function menuAttrs(target: MenuTarget, matchId?: number | null): Attrs {
+	return {
+		[MENU_ATTR]: JSON.stringify(target),
+		[MATCH_ATTR]: matchId ?? undefined,
+	}
 }
 
-export function setWindowTarget<E extends Element>(node: E, target: WindowTarget): E {
-	node.setAttribute(WINDOW_ATTR, target.windowId)
-	node.setAttribute(WINDOW_ARG_ATTR, JSON.stringify(target.arg))
-	if (target.frame) node.setAttribute(WINDOW_FRAME_ATTR, target.frame)
-	if (target.matchId !== null && target.matchId !== undefined) node.setAttribute(MATCH_ATTR, String(target.matchId))
-	if (target.preload) node.setAttribute(WINDOW_PRELOAD_ATTR, '')
-	return node
+export function windowAttrs(target: WindowTarget): Attrs {
+	return {
+		[WINDOW_ATTR]: target.windowId,
+		[WINDOW_ARG_ATTR]: JSON.stringify(target.arg),
+		[WINDOW_FRAME_ATTR]: target.frame,
+		[MATCH_ATTR]: target.matchId ?? undefined,
+		[WINDOW_PRELOAD_ATTR]: target.preload ? '' : undefined,
+	}
 }
 
 export type AdminBadge = { teamId: SM.TeamId | null; matchId?: number | null }
 
-export function setAdminBadge<E extends Element>(node: E, badge: AdminBadge): E {
-	node.setAttribute(ADMIN_BADGE_ATTR, badge.teamId === null ? '' : String(badge.teamId))
-	if (badge.matchId !== null && badge.matchId !== undefined) node.setAttribute(MATCH_ATTR, String(badge.matchId))
-	return node
+export function adminBadgeAttrs(badge: AdminBadge): Attrs {
+	return {
+		[ADMIN_BADGE_ATTR]: badge.teamId === null ? '' : String(badge.teamId),
+		[MATCH_ATTR]: badge.matchId ?? undefined,
+	}
+}
+
+export function colourAttrs(playerId: SM.PlayerId): Attrs {
+	return { [PLAYER_ATTR]: playerId }
 }
 
 export function adminBadgeOf(node: Element): AdminBadge | undefined {
@@ -162,25 +167,23 @@ export function matchIdOf(node: Element): number | undefined {
 	return Number.isFinite(matchId) ? matchId : undefined
 }
 
-type Coloured = { playerId: SM.PlayerId; player: PG.PlayerFactsSource }
-
-export function setColourTarget<E extends Element>(node: E, playerId: SM.PlayerId, player: PG.PlayerFactsSource): E {
-	;(node as Carrier<typeof PLAYER, Coloured>)[PLAYER] = { playerId, player }
-	node.setAttribute(PLAYER_ATTR, '')
-	return node
-}
-
 /**
  * Repaints every name under `root` against the current grouping.
  *
  * Battlemetrics data arrives as a stream, and a name's colour is the only thing in a row that follows it. Rebuilding
  * the rows for that would throw away every open disclosure and every measured row height, so the colours are written
- * over the top instead.
+ * over the top instead. The element carries only the player id; the facts come from the caller, who has the events
+ * the rows were rendered from.
  */
-export function applyGroupColors(root: Element, resolve: (playerId: SM.PlayerId, player: PG.PlayerFactsSource) => string | null) {
+export function applyGroupColors(
+	root: Element,
+	resolve: (playerId: SM.PlayerId, player: PG.PlayerFactsSource) => string | null,
+	factsOf: (playerId: SM.PlayerId) => PG.PlayerFactsSource | undefined,
+) {
 	for (const node of root.querySelectorAll<HTMLElement>(`[${PLAYER_ATTR}]`)) {
-		const target = (node as Carrier<typeof PLAYER, Coloured>)[PLAYER]
-		if (!target) continue
-		node.style.color = resolve(target.playerId, target.player) ?? ''
+		const playerId = node.getAttribute(PLAYER_ATTR)
+		if (!playerId) continue
+		const facts = factsOf(playerId)
+		node.style.color = (facts && resolve(playerId, facts)) ?? ''
 	}
 }
