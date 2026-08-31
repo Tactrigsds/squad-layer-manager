@@ -129,6 +129,15 @@ export type MatchHistoryState = {
 	recentMatches: MH.MatchDetails[]
 } & Parts<USR.UserPart>
 
+// A read costs about 15s while rcon is down: five attempts, each spending 2s waiting for a reconnect that is not
+// coming. The client abandons a stream that has produced no value in 15s, so without a budget one server's dead
+// rcon takes its own dashboard down with it. The read is left running: the resource keeps retrying, and its own
+// emission refreshes the stream once rcon answers.
+const RCON_STREAM_BUDGET = 3_000
+function rconReadWithinBudget<T>(read: Promise<T | SM.RconError>) {
+	return Prom.settleWithin<T | SM.RconError>(read, RCON_STREAM_BUDGET, { code: 'err:rcon', msg: 'Rcon did not answer in time' })
+}
+
 export const orpcRouter = {
 	// The admin-list group names known to any running server, for the player-groupings editor to offer. Player groupings are
 	// global config while an admin list is per-server, so this is the union across servers rather than one server's list: a
@@ -179,8 +188,11 @@ export const orpcRouter = {
 		.handler(async function* ({ context, signal, input }) {
 			const obs = stream$(context.wsClientId, input.serverId, (serverCtx) => {
 				const read = async (): Promise<SM.LayersStatusResExt> => {
-					const currentMatch = await MatchHistory.getCurrentMatch(serverCtx)
-					const statusRes = await serverCtx.squadRcon.layersStatus.get(serverCtx)
+					const currentMatch = MatchHistory.peekCurrentMatch(serverCtx)
+					// nothing records a match until rcon connects and syncs, so a server whose rcon has never come up has
+					// none at all, and the payload has no shape for a status with no current layer
+					if (!currentMatch) return { code: 'err:rcon' as const, msg: 'No match has been recorded for this server yet' }
+					const statusRes = await rconReadWithinBudget(serverCtx.squadRcon.layersStatus.get(serverCtx))
 					return {
 						code: 'ok',
 						data: {
@@ -223,7 +235,12 @@ export const orpcRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, signal, input }) {
 			const obs = stream$(context.wsClientId, input.serverId, (ctx) =>
-				ctx.squadRcon.serverInfo.observe(ctx).pipe(Rx.Ext.distinctDeepEquals()),
+				// observe() only ever publishes successful reads, so on its own it leaves this stream silent for as
+				// long as rcon is down. The seeding read is what carries err:rcon to the client, which renders it.
+				Rx.merge(
+					Rx.defer(() => rconReadWithinBudget(ctx.squadRcon.serverInfo.get(ctx))),
+					ctx.squadRcon.serverInfo.observe(ctx),
+				).pipe(Rx.Ext.distinctDeepEquals()),
 			).pipe(Rx.Ext.withAbortSignal(signal!))
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),

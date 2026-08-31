@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 import * as FB from '@/models/filter-builders'
 import type * as SC from '@/models/server-console.models'
+import type * as SETTINGS from '@/models/settings.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, role } from '../harness/arrange'
@@ -163,5 +164,46 @@ describe('serverConsole.watch', () => {
 		)
 
 		expect(seen).toMatchObject({ type: 'command', channel: 'ChatAll', message: 'said over rcon' })
+	})
+})
+
+// The settings stream replays its last emission, so a client subscribing later is handed the update that moved
+// them before it arrived. The dashboard toasts that update's source, and to a late subscriber there was no
+// transition -- left on, it makes every page load announce an edit that could be hours old.
+describe('watchSettings', () => {
+	function watch(signal: AbortSignal) {
+		return adminClient.settings.server.watchSettings({ serverId: app.serverId }, { signal })
+	}
+
+	// the stream also carries err:server-not-loaded, which none of these should ever be
+	function update(value: unknown): SETTINGS.Ctx.Update {
+		if (!Array.isArray(value)) throw new Error(`expected a settings update, got ${JSON.stringify(value)}`)
+		return value as unknown as SETTINGS.Ctx.Update
+	}
+
+	it('names who moved the settings to a subscriber that was there, and to no one after', async () => {
+		const ac = new AbortController()
+		try {
+			const live = (await watch(ac.signal))[Symbol.asyncIterator]()
+			// the replayed baseline, before anything has happened on this connection
+			expect(update((await live.next()).value)[1]).toBeNull()
+
+			// the handler returns nothing on success; a code means it refused
+			const res = await adminClient.settings.server.updateSettings({
+				serverId: app.serverId,
+				ops: [{ path: ['queue', 'maxQueueSize'], value: 17 }],
+			})
+			expect(res).toBeUndefined()
+
+			const [updated, source] = update((await live.next()).value)
+			expect(updated.queue.maxQueueSize).toBe(17)
+			expect(source).toMatchObject({ type: 'manual', event: 'edit-settings' })
+
+			const [late, lateSource] = update(await firstYield(watch, { label: 'the settings a late subscriber gets' }))
+			expect(late.queue.maxQueueSize).toBe(17)
+			expect(lateSource).toBeNull()
+		} finally {
+			ac.abort()
+		}
 	})
 })

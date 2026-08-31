@@ -191,6 +191,15 @@ export const getRecentMatches = Instr.spanOp(
 	},
 )
 
+/**
+ * getCurrentMatch without the mutex, for a read-only stream. Queue ops hold matchHistory.mtx across their rcon
+ * reads, which take the full retry ladder when rcon is down, so a display read that waits for the lock is one a
+ * server with an unreachable rcon never serves at all. Same read getPublicMatchHistoryState already does.
+ */
+export function peekCurrentMatch(ctx: MH.Ctx) {
+	return ctx.matchHistory.recentMatches[ctx.matchHistory.recentMatches.length - 1]
+}
+
 /** The match in progress, or the most recently finished one. Undefined on a server with no history. */
 export const getCurrentMatch = Instr.spanOp(
 	'getCurrentMatch',

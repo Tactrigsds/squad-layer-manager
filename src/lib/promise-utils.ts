@@ -86,3 +86,15 @@ export async function acquireInBlock(mutex: MutexInterface, opts?: { lock?: bool
 		mutex,
 	}
 }
+
+/**
+ * Resolves with `fallback` if `promise` has not settled within `ms`. The promise is left running rather than
+ * cancelled, so this is for a shared read whose result other callers still want.
+ */
+export function settleWithin<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+	let timeout: ReturnType<typeof setTimeout> | undefined
+	const budget = new Promise<T>((resolve) => {
+		timeout = setTimeout(() => resolve(fallback), ms)
+	})
+	return Promise.race([promise, budget]).finally(() => clearTimeout(timeout))
+}

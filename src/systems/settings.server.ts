@@ -664,9 +664,12 @@ const serverRouter = {
 		.meta({ logLevel: 'trace' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context: _ctx, signal, input }) {
-			const obs = SquadServer.stream$(_ctx.wsClientId, input.serverId, (ctx) => ctx.serverSettings.update$).pipe(
-				Rx.Ext.withAbortSignal(signal!),
-			)
+			const obs = SquadServer.stream$(_ctx.wsClientId, input.serverId, (ctx) =>
+				// update$ replays its last emission, so a subscriber joining later inherits whatever moved the settings
+				// before it arrived. The source names a transition, and to this subscriber there was none: keeping it
+				// makes every page load announce an edit that may be hours old.
+				ctx.serverSettings.update$.pipe(Rx.map((update, i): SettingsUpdate => (i === 0 ? [update[0], null] : update))),
+			).pipe(Rx.Ext.withAbortSignal(signal!))
 
 			yield* Rx.Ext.toAsyncGenerator(obs)
 		}),

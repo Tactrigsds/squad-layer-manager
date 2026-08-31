@@ -7,6 +7,7 @@ import * as L from '@/models/layer'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 import { savedQueue } from '../harness/inspect'
+import { createOrpcClient, firstYield, type TestOrpcClient } from '../harness/orpc-client'
 
 // The failure modes a long-running server actually hits: the app itself is down when the map rolls, rcon
 // drops, the game rotates its log. The app has to notice and pick back up on its own -- these are the paths
@@ -135,5 +136,40 @@ describe('recovering from a broken squad server', () => {
 
 		const setNext = await app.emu.expectCommand(/^AdminSetNextLayer /, { timeoutMs: 30_000 })
 		expect(setNext.body).toContain('Skorpo')
+	})
+})
+
+// Rcon down and staying down, which is what a squad server being off looks like to the app. Every rcon read then
+// costs its whole retry ladder, and queue ops hold matchHistory.mtx across theirs -- so the dashboard's streams
+// have to answer from what the app already knows rather than wait on the connection. They have 15s before the
+// client abandons them and renders an error instead of the dashboard.
+//
+// Last in the file: it leaves rcon offline for the rest of the run.
+describe('a squad server that is simply off', () => {
+	let client: TestOrpcClient
+
+	beforeAll(async () => {
+		client = await createOrpcClient(app)
+		await app.emu.rcon.goOffline()
+	})
+
+	it('still serves the layers status, with no next layer to report', async () => {
+		const first = await firstYield((signal) => client.squadServer.watchLayersStatus({ serverId: app.serverId }, { signal }), {
+			timeoutMs: 10_000,
+			label: 'the layers status',
+		})
+
+		expect(first.code).toBe('ok')
+		expect(first.code === 'ok' && first.data.currentLayer).toBeTruthy()
+		expect(first.code === 'ok' && first.data.nextLayer).toBeNull()
+	})
+
+	it('reports the rcon failure for server info rather than going silent', async () => {
+		const first = await firstYield((signal) => client.squadServer.watchServerInfo({ serverId: app.serverId }, { signal }), {
+			timeoutMs: 10_000,
+			label: 'the server info',
+		})
+
+		expect(first.code).toBe('err:rcon')
 	})
 })
