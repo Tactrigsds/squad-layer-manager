@@ -201,9 +201,9 @@ describe('the event archive', () => {
 	})
 
 	it('keeps chat text searchable after the events it came from have been packed away', async () => {
-		const res = await client.eventSearch.searchEvents({ serverId: app.serverId, messageContains: 'archive' })
+		const res = await client.history.query({ query: { chat: 'archive' } })
 		expect(res.code).toBe('ok')
-		if (res.code !== 'ok') return
+		if (res.code !== 'ok' || res.type !== 'events') return
 		expect(res.events.events.length).toBeGreaterThan(0)
 	})
 })

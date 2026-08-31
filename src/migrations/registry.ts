@@ -58,6 +58,7 @@ import * as m0103 from './0103_drop_unique_emojis_constraint'
 import * as m0104 from './0104_plugin_system'
 import * as m0105 from './0105_queue_item_plugin_source'
 import * as m0106 from './0106_event_archive'
+import * as m0107 from './0107_history_queries'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -103,4 +104,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0104_plugin_system', up: m0104.up },
 	{ name: '0105_queue_item_plugin_source', up: m0105.up },
 	{ name: '0106_event_archive', up: m0106.up },
+	{ name: '0107_history_queries', up: m0107.up },
 ]

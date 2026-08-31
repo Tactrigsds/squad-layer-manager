@@ -598,7 +598,8 @@ export function AppEventEntry({
 		appEvent.type === 'APP_RESTARTED' ||
 		appEvent.type === 'BACKUP_CREATED' ||
 		appEvent.type === 'PLUGIN_DATA_PURGED' ||
-		appEvent.type === 'MATCH_LAYERS_RECONCILED'
+		appEvent.type === 'MATCH_LAYERS_RECONCILED' ||
+		appEvent.type === 'HISTORY_RETENTION_CHANGED'
 	) {
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a
 		// branch. rendered generically via describeAppEvent (the audit log is where these actually show up).

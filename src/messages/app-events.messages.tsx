@@ -459,5 +459,9 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			const remaining = e.unresolvedRemaining > 0 ? `, ${e.unresolvedRemaining} still unrecognised` : ''
 			return `recognised the layers of ${matches} after a layer data update${remaining}`
 		}
+		case 'HISTORY_RETENTION_CHANGED':
+			return e.retain
+				? `made the saved query "${e.savedQueryName}" a retention rule: its matching events now outlive the retention period`
+				: `stopped the saved query "${e.savedQueryName}" from retaining events`
 	}
 }

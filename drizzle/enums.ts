@@ -77,6 +77,7 @@ export const APP_EVENT_TYPE = z.enum([
 	'PLUGIN_EVENT',
 	'PLUGIN_DATA_PURGED',
 	'MATCH_LAYERS_RECONCILED',
+	'HISTORY_RETENTION_CHANGED',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 

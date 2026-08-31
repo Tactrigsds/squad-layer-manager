@@ -195,6 +195,15 @@ export const MatchLayersReconciledSchema = event('MATCH_LAYERS_RECONCILED', {
 })
 export type MatchLayersReconciled = z.infer<typeof MatchLayersReconciledSchema>
 
+// a saved history query's retention rule was switched on or off. Logged because a rule changes what the
+// prune pass keeps, which outlives every other setting on the page.
+export const HistoryRetentionChangedSchema = event('HISTORY_RETENTION_CHANGED', {
+	savedQueryId: z.string(),
+	savedQueryName: z.string(),
+	retain: z.boolean(),
+})
+export type HistoryRetentionChanged = z.infer<typeof HistoryRetentionChangedSchema>
+
 export const VoteAbortedSchema = event('VOTE_ABORTED', {})
 export type VoteAborted = z.infer<typeof VoteAbortedSchema>
 
@@ -430,6 +439,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteEndedSchema,
 	VoteAbortedSchema,
 	MatchLayersReconciledSchema,
+	HistoryRetentionChangedSchema,
 	QueueUpdatedSchema,
 	TeamswapsUpdatedSchema,
 	SwitchRequestsFulfilledSchema,
@@ -504,6 +514,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'PLUGIN_EVENT':
 		case 'PLUGIN_DATA_PURGED':
 		case 'MATCH_LAYERS_RECONCILED':
+		case 'HISTORY_RETENTION_CHANGED':
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]

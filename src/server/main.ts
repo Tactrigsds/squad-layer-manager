@@ -16,8 +16,9 @@ import * as Commands from '@/systems/commands.server'
 import * as ControlSocket from '@/systems/control-socket.server'
 import * as Discord from '@/systems/discord.server'
 import * as EventArchive from '@/systems/event-archive.server'
-import * as EventSearch from '@/systems/event-search.server'
 import * as Fastify from '@/systems/fastify.server'
+import * as History from '@/systems/history.server'
+import * as HistoryRetention from '@/systems/history-retention.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as Landing from '@/systems/landing.server'
@@ -123,7 +124,8 @@ await Instr.spanOp('main', { module }, async () => {
 	// starts its own background loop; nothing else depends on it, but it needs the db open
 	Backups.setup()
 	EventArchive.setup()
-	EventSearch.setup()
+	History.setup()
+	HistoryRetention.setup()
 	MatchLayers.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off

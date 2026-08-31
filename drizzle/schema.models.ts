@@ -43,3 +43,7 @@ export type DamageSource = typeof Schema.damageSources.$inferSelect
 export type NewDamageSource = typeof Schema.damageSources.$inferInsert
 export type ArchivedMatch = typeof Schema.archivedMatches.$inferSelect
 export type NewArchivedMatch = typeof Schema.archivedMatches.$inferInsert
+export type SavedQueryRow = typeof Schema.savedQueries.$inferSelect
+export type NewSavedQueryRow = typeof Schema.savedQueries.$inferInsert
+export type RetainedEvent = typeof Schema.retainedEvents.$inferSelect
+export type NewRetainedEvent = typeof Schema.retainedEvents.$inferInsert

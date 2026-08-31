@@ -243,6 +243,10 @@ export const archivedMatches = sqliteTable(
 			.notNull()
 			.references(() => servers.id, { onDelete: 'cascade' }),
 		eventCount: integer('eventCount').notNull(),
+		// the id range packed inside `events`, so an id-bounded query can prune at match granularity without
+		// unpacking. Null on rows packed before the columns existed.
+		minEventId: integer('minEventId'),
+		maxEventId: integer('maxEventId'),
 		// how `events` is encoded, so a later codec can be introduced without rewriting what is already packed
 		encoding: text('encoding').notNull(),
 		events: blob('events').notNull(),
@@ -252,6 +256,74 @@ export const archivedMatches = sqliteTable(
 	},
 	(table) => ({
 		serverIdIndex: index('archivedMatchesServerIdIndex').on(table.serverId),
+	}),
+)
+
+// A history query a user chose to keep: the page's whole query state as one json value, so loading one is
+// just writing it back into the url. 'shared' rows are visible to every user; `retain` marks an events query
+// as a retention rule (see retainedEvents).
+export const savedQueries = sqliteTable(
+	'savedQueries',
+	{
+		id: text('id').primaryKey(),
+		name: text('name').notNull(),
+		ownerId: bigintText('ownerId')
+			.notNull()
+			.references(() => users.discordId, { onDelete: 'cascade' }),
+		visibility: text('visibility', { enum: ['private', 'shared'] }).notNull().default('private'),
+		retain: boolean('retain').notNull().default(false),
+		query: json('query').notNull(),
+		createdAt: timestamp('createdAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+		updatedAt: timestamp('updatedAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
+	},
+	(table) => ({
+		savedQueriesOwnerIndex: index('savedQueriesOwnerIndex').on(table.ownerId),
+	}),
+)
+
+// Events kept past the retention period because a retention rule matched them, sieved out of a match as it
+// is pruned. Rows mirror serverEvents so a reader can treat them as the rows they once were. matchHistory
+// rows are never pruned, so the FK holds.
+export const retainedEvents = sqliteTable(
+	'retainedEvents',
+	{
+		serverEventId: integer('serverEventId').primaryKey(),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
+		time: timestamp('time').notNull(),
+		matchId: integer('matchId')
+			.notNull()
+			.references(() => matchHistory.id, { onDelete: 'cascade' }),
+		serverId: text('serverId')
+			.notNull()
+			.references(() => servers.id, { onDelete: 'cascade' }),
+		appEventId: text('appEventId'),
+		version: integer('version'),
+		data: json('data').notNull(),
+	},
+	(table) => ({
+		retainedEventsMatchIdIndex: index('retainedEventsMatchIdIndex').on(table.matchId),
+	}),
+)
+
+// Which retention rule keeps which event. An event may be claimed by several rules, and it is only dropped
+// when its last claim goes.
+export const retainedEventClaims = sqliteTable(
+	'retainedEventClaims',
+	{
+		savedQueryId: text('savedQueryId')
+			.notNull()
+			.references(() => savedQueries.id, { onDelete: 'cascade' }),
+		serverEventId: integer('serverEventId')
+			.notNull()
+			.references(() => retainedEvents.serverEventId, { onDelete: 'cascade' }),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.savedQueryId, table.serverEventId] }),
+		retainedEventClaimsEventIndex: index('retainedEventClaimsEventIndex').on(table.serverEventId),
 	}),
 )
 

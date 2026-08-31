@@ -55,6 +55,15 @@ const COMPACT_BATCH = 200
 // so bigger is cheaper -- bounded only to keep the write lock short.
 const PRUNE_BATCH = 500
 
+// Which of a batch's events pruning must keep, moved into retainedEvents by the sieve itself before it
+// returns. Registered by history-retention.server.ts rather than imported: that module reaches back into
+// this one through the layer engine chain, so an import here would close a cycle.
+export type RetentionSieve = (ctx: C.Db & CS.AbortSignal, matchIds: number[]) => Promise<Set<number>>
+let retentionSieve: RetentionSieve | undefined
+export function registerRetentionSieve(sieve: RetentionSieve) {
+	retentionSieve = sieve
+}
+
 // The ordinal below which matches may leave the hot table, or undefined while the server has not yet played
 // enough of them for any to be eligible.
 async function hotFloorOrdinal(ctx: C.Db, serverId: string, minHotMatches: number): Promise<number | undefined> {
@@ -153,6 +162,8 @@ export const compactAgedMatches = Instr.spanOp(
 						matchId,
 						serverId,
 						eventCount: rows.length,
+						minEventId: rows[0].id,
+						maxEventId: rows[rows.length - 1].id,
 						encoding: EA.ENCODING,
 						events: blob,
 					})
@@ -215,6 +226,28 @@ export const loadMatchEvents = Instr.spanOp(
 			}
 		}
 
+		// a pruned match may still have events a retention rule kept; the row shape mirrors serverEvents
+		const prunedIds = matchIds.filter((id) => byMatch.get(id)!.length === 0)
+		if (prunedIds.length > 0) {
+			const kept = await ctx
+				.db()
+				.select()
+				.from(Schema.retainedEvents)
+				.where(E.inArray(Schema.retainedEvents.matchId, prunedIds))
+				.orderBy(E.asc(Schema.retainedEvents.serverEventId))
+			for (const row of kept) {
+				byMatch.get(row.matchId)?.push({
+					id: row.serverEventId,
+					type: row.type,
+					time: row.time,
+					matchId: row.matchId,
+					appEventId: row.appEventId,
+					version: row.version,
+					data: row.data,
+				})
+			}
+		}
+
 		return byMatch
 	},
 )
@@ -259,10 +292,27 @@ export const pruneArchivedMatches = Instr.spanOp(
 			const staleIds = stale.map((s) => s.matchId)
 			for (const batch of Arr.paged(staleIds, PRUNE_BATCH)) {
 				ctx.signal.throwIfAborted()
+				// outside the transaction: the sieve unpacks archive blobs, which yields to the threadpool
+				const retained = retentionSieve ? await retentionSieve(ctx, batch) : new Set<number>()
+				const keep = retained.size > 0 ? JSON.stringify([...retained]) : undefined
 				await DB.runTransaction(ctx, async (ctx) => {
-					await ctx.db().delete(Schema.playerEventIndex).where(E.inArray(Schema.playerEventIndex.matchId, batch))
+					await ctx
+						.db()
+						.delete(Schema.playerEventIndex)
+						.where(
+							E.and(
+								E.inArray(Schema.playerEventIndex.matchId, batch),
+								keep ? E.sql`${Schema.playerEventIndex.serverEventId} NOT IN (SELECT value FROM json_each(${keep}))` : undefined,
+							),
+						)
 					// not awaited: run() on the better-sqlite3 driver is synchronous (see the insert in squad-server)
-					ctx.db().run(E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch}`)
+					ctx
+						.db()
+						.run(
+							keep
+								? E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch} AND serverEventId NOT IN (SELECT value FROM json_each(${keep}))`
+								: E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch}`,
+						)
 					await ctx.db().delete(Schema.archivedMatches).where(E.inArray(Schema.archivedMatches.matchId, batch))
 				})
 				await Timers.setImmediate(undefined, { signal: ctx.signal })
