@@ -561,6 +561,7 @@ absent.
 | `slm/components/pickers`, `.../combo-box`                  | SLM's pickers, and the combo box under them  |
 | `slm/components/layer`                                     | a layer's name, rendered as the app does it  |
 | `slm/components/plugin-settings-link`                      | a link to your own config                    |
+| `slm/components/icons`                                     | the icon set, as one `Icons` namespace       |
 | `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |
 | `slm/server/logger`                                        | `childModule`                                |
 | `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
@@ -585,8 +586,13 @@ absent.
 
 Four packages come from the host rather than from your bundle: `rxjs`, `zod`, `drizzle-orm` and `react`. Import
 them normally and they resolve to SLM's copies at load time. There has to be exactly one of each in the process,
-or zod schemas fail their `instanceof` checks and React hooks break. Everything else you import is bundled into
-your plugin, and is yours to keep working.
+or zod schemas fail their `instanceof` checks and React hooks break.
+
+Those four and `slm/*` are the whole of what you may import by name. Anything else is left as a bare specifier
+the host cannot answer, and a client bundle that carries one loads and then fails to resolve it -- which takes
+your plugin's entire browser half down, panels and all, while its server half keeps running and the plugin still
+reads as healthy. `pnpm plugin:pack` refuses to emit such a bundle. To use another package, vendor it: import it
+by a relative path from your own source so it ends up inside your bundle.
 
 `slm/lib/rxjs-ext` holds our additions to rxjs and nothing else. rxjs itself is your own import.
 
