@@ -58,9 +58,19 @@ function serverCommand(): [string, string[]] {
 // concurrent processes, or about one failed test per full run.
 //
 // The blocks sit below ip_local_port_range (32768 on Linux), so nothing the OS hands out lands in them.
-const WORKER_SLOT = Number(process.env.TEST_PARALLEL_INDEX ?? process.env.VITEST_POOL_ID ?? 0) || 0
-const PORTS_PER_WORKER = 250
-const PORT_BLOCK_START = 20_000 + (WORKER_SLOT % 48) * PORTS_PER_WORKER
+//
+// Keyed on TEST_WORKER_INDEX, which counts every worker process the run starts, rather than
+// TEST_PARALLEL_INDEX, which is the 0..workers-1 slot and is handed straight back to the replacement when
+// playwright restarts a worker. The replacement's cursor starts at 0 and re-walks the block while the old
+// worker's apps are still being torn down -- or have been orphaned by the restart, in which case they hold
+// their ports for the rest of the run. Every EADDRINUSE seen locally was a repeat of a port the same slot
+// had already handed out.
+const WORKER_SLOT = Number(process.env.TEST_WORKER_INDEX ?? process.env.VITEST_POOL_ID ?? 0) || 0
+const PORTS_PER_WORKER = 64
+// as many blocks as fit under 32768. A run with more workers than this wraps onto a block whose worker is
+// long gone, which is the situation the probe below does handle.
+const PORT_BLOCKS = 190
+const PORT_BLOCK_START = 20_000 + (WORKER_SLOT % PORT_BLOCKS) * PORTS_PER_WORKER
 let portCursor = 0
 
 async function freePort(): Promise<number> {
