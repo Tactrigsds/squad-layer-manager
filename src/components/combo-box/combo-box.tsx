@@ -64,6 +64,11 @@ export type ComboBoxProps<T extends string | null = string | null> = {
 	// mount already open. for pickers summoned by another control (an "add" button that becomes this), where the
 	// summoning click is the only click the user should need.
 	autoOpen?: boolean
+	// widen the popover to the trigger instead of the default 200px. For a picker whose trigger is a real
+	// form field and whose options are long enough to be unreadable narrow. Not the default: a popover as
+	// wide as a full-width trigger covers whatever sits under it, and a picker that autoOpens inside a
+	// dialog would land on the dialog's own buttons.
+	matchTriggerWidth?: boolean
 	// fired when the user dismisses the popover (escape, outside click, trigger). NOT fired when a selection closes
 	// it -- `onSelect` covers that -- so a caller can tell "picked nothing" from "picked something".
 	onOpenChange?: (open: boolean) => void
@@ -281,7 +286,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
-				className="relative w-50 p-0"
+				className={cn('relative w-50 p-0', props.matchTriggerWidth && 'w-[var(--radix-popover-trigger-width)] min-w-50')}
 				// Escape belongs to the dismissal hook alone. Radix listens for it on the document too, and the
 				// two cannot agree: whichever runs first re-renders the other's state out from under it, so a
 				// drill-in that backed out here would still be dismissed there. Refusing unconditionally leaves
@@ -374,12 +379,17 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 													onSelect(option.value)
 												}}
 											>
-												<Check className={cn('mr-2 h-4 w-4', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
-												<PrefixedLabel
-													prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-													label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
-													render={prefixRenderer}
+												<Check
+													className={cn('mr-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')}
 												/>
+												{/* one line per row: too long ellipsizes rather than wrapping the list into a wall of text */}
+												<span className="min-w-0 flex-1 truncate">
+													<PrefixedLabel
+														prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
+														label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+														render={prefixRenderer}
+													/>
+												</span>
 											</CommandItem>
 										))}
 									</CommandGroup>
