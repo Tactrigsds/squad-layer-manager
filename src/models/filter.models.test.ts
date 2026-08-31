@@ -116,6 +116,15 @@ describe('editor tree ids', () => {
 		expect([...serverSnapshot.paths.keys()].sort()).toEqual([...clientSeed.paths.keys()].sort())
 		expect(clientSeed.paths.size).toBeGreaterThan(3)
 	})
+
+	// path ids made this reachable: with random ids an upsert never matched an existing node, so the
+	// unchanged-node shortcut below was dead code and never dropped anything
+	it('keeps the nodes an upsert leaves untouched', () => {
+		const filter = FB.and([FB.inValues('Gamemode', ['RAAS']), FB.inValues('Map', ['Harju'])])
+		const tree = F.upsertFilterNodeTreeInPlace(structuredClone(filter))
+		F.upsertFilterNodeTreeInPlace(structuredClone(filter), undefined, tree)
+		expect(tree.paths.size).toBe(3)
+	})
 })
 
 describe('node comments', () => {
