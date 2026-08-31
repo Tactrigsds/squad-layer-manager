@@ -39,6 +39,15 @@ fs.rmSync(outDir, { recursive: true, force: true })
 fs.mkdirSync(outDir, { recursive: true })
 
 const external = [/^slm\//, ...SHIM.SHARED_PACKAGES]
+
+// Anything left external has to be resolvable at load time: `slm/*` and the shared packages through the
+// host's import map, and ./plugin.mjs from the package itself. A bare specifier that is neither resolves
+// nowhere, and the failure is silent -- the module never runs, so nothing registers and nothing logs.
+function servedByHost(specifier: string): boolean {
+	if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/')) return true
+	if (specifier.startsWith('slm/')) return true
+	return (SHIM.SHARED_PACKAGES as readonly string[]).includes(specifier)
+}
 const built: string[] = []
 for (const entry of ENTRIES) {
 	const input = path.join(srcDir, entry.source)
@@ -62,8 +71,21 @@ for (const entry of ENTRIES) {
 			},
 		],
 	})
-	await bundle.write({ file: path.join(outDir, entry.out), format: 'esm', codeSplitting: false })
+	const { output } = await bundle.write({ file: path.join(outDir, entry.out), format: 'esm', codeSplitting: false })
 	await bundle.close()
+	for (const chunk of output) {
+		if (chunk.type !== 'chunk') continue
+		const unresolvable = chunk.imports.filter((spec) => !servedByHost(spec))
+		if (unresolvable.length > 0) {
+			throw new Error(
+				`${entry.out} imports ${unresolvable.join(', ')}, which the host does not serve. ` +
+					`Bare specifiers are left external, and the browser's import map only answers slm/* and ` +
+					`${SHIM.SHARED_PACKAGES.join(', ')} -- so the bundle would load and then fail to resolve, ` +
+					`taking the plugin's whole client half down silently. Import it through an slm/* entry, or ` +
+					`vendor it into the plugin.`,
+			)
+		}
+	}
 	built.push(entry.out)
 }
 
