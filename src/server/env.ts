@@ -293,7 +293,26 @@ export const groups = {
 
 		EVENT_HISTORY_RETENTION_PERIOD: ZodUtils.HumanTime.optional().meta({
 			description:
-				'server events from matches that ended longer ago than this duration (e.g. 90d) are deleted before each backup is taken. The most recent matches are always kept. Unset disables pruning.',
+				'archived matches that ended longer ago than this duration (e.g. 90d) are deleted before each backup is taken, along with their entries in the player event index. The most recent matches are always kept, and matches still inside the recent window are never touched. Unset keeps history forever.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+
+		EVENT_ARCHIVE_MIN_HOT_MATCHES: ZodUtils.ParsedIntSchema.pipe(z.number().min(0))
+			.default(100)
+			.meta({
+				description:
+					'how many of the most recent matches on each server are kept in the hot events table regardless of age. A floor on top of EVENT_ARCHIVE_WINDOW: compacted matches read back identically, so this only trades a little read latency on older matches for a smaller hot table.',
+				envExample: { dev: { include: 'omit' } },
+			}),
+
+		EVENT_ARCHIVE_INTERVAL: ZodUtils.HumanTime.default(() => ZodUtils.parseHumanTime('1h')).meta({
+			description: 'how often matches that have left the archive window are compacted. The first pass runs one interval after boot.',
+			envExample: { dev: { include: 'omit' } },
+		}),
+
+		EVENT_ARCHIVE_WINDOW: ZodUtils.HumanTime.default(() => ZodUtils.parseHumanTime('48h')).meta({
+			description:
+				'how long a finished match stays in the hot events table before its events are compacted into a single compressed row. Compacted matches read back identically, a fraction of a millisecond slower, and stay searchable through the player event index. The most recent matches on each server are kept hot regardless of this setting.',
 			envExample: { dev: { include: 'omit' } },
 		}),
 

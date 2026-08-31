@@ -1,4 +1,4 @@
-import { customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
+import { blob, customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 import superjson from 'superjson'
 
 import * as ZodUtils from '@/lib/zod-utils'
@@ -39,6 +39,18 @@ export const matchHistory = sqliteTable(
 
 		team1Tickets: integer('team1Tickets'),
 		team2Tickets: integer('team2Tickets'),
+
+		// layerId parsed into its parts, so a layer-config query over history is an index walk instead of a
+		// per-row call into the layer engine (which analytics exports and raw SQL readers don't have anyway).
+		// All null for a layer the engine can't parse -- a RAW: id, or one retired from the engine artifact;
+		// see reconcileRawLayerIds, which fills them in when a later artifact recognises the id.
+		layerMap: text('layerMap'),
+		layerGamemode: text('layerGamemode'),
+		layerVersion: text('layerVersion'),
+		layerTeam1Faction: text('layerTeam1Faction'),
+		layerTeam1Unit: text('layerTeam1Unit'),
+		layerTeam2Faction: text('layerTeam2Faction'),
+		layerTeam2Unit: text('layerTeam2Unit'),
 		setByType: text('setByType', {
 			enum: ['manual', 'gameserver', 'generated', 'unknown', 'ingame-vote', 'plugin'],
 		}).notNull(),
@@ -53,6 +65,7 @@ export const matchHistory = sqliteTable(
 		endTimeIndex: index('endTimeIndex').on(table.endTime),
 		userIndex: index('userIndex').on(table.setByUserId),
 		serverOrdinalUnique: unique('serverOrdinalUnique').on(table.serverId, table.ordinal),
+		layerPartsIndex: index('matchHistoryLayerPartsIndex').on(table.layerMap, table.layerGamemode),
 	}),
 )
 
@@ -160,24 +173,85 @@ export const timeouts = sqliteTable(
 	}),
 )
 
-export const playerEventAssociations = sqliteTable(
-	'playerEventAssociations',
+// The permanent, long-horizon index over server events, keyed by the player each one is about. Distinct from
+// serverEvents in two ways that matter: it carries no FK to that table, and it holds the dimensions a search
+// filters on (time, match, server, type) rather than a payload. That is what lets it outlive compaction -- a
+// match whose events have been packed into archivedMatches still answers "what did this player do", and the
+// event bodies are fetched from the archive only for the page actually being shown.
+//
+// WITHOUT ROWID, with the pk ordered for the query that dominates: one player's history, newest first. The
+// pk IS the table, so a player's whole trail is one contiguous range rather than an index scan plus a lookup.
+export const playerEventIndex = sqliteTable(
+	'playerEventIndex',
 	{
-		id: integer('id').primaryKey({ autoIncrement: true }),
-		serverEventId: integer('serverEventId')
-			.references(() => serverEvents.id, { onDelete: 'cascade' })
-			.notNull(),
 		playerId: text('playerId')
-			.references(() => players.eosId, { onDelete: 'cascade' })
-			.notNull(),
+			.notNull()
+			.references(() => players.eosId, { onDelete: 'cascade' }),
+		time: timestamp('time').notNull(),
+		// serverEvents.id. Deliberately not a reference: compaction deletes the row this points at, and the
+		// index entry has to survive that. Resolve event bodies through the match archive, not by joining here.
+		serverEventId: integer('serverEventId').notNull(),
 		assocType: text('assocType', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_PLAYER_ASSOC_TYPE) }).notNull(),
-		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
+		matchId: integer('matchId')
+			.notNull()
+			.references(() => matchHistory.id, { onDelete: 'cascade' }),
+		serverId: text('serverId')
+			.notNull()
+			.references(() => servers.id, { onDelete: 'cascade' }),
+		type: text('type', { enum: ZodUtils.enumTupleOptions(SERVER_EVENT_TYPE) }).notNull(),
+		// The `caused by` token from the Die()/Wound() log line, for the events that carry one. NOT a weapon in
+		// both cases, which is why it is not called one: on a Wound() the weapon actor is still alive and the
+		// token is the weapon (BP_M240_M145), but by Die() it has usually been destroyed and what is left is the
+		// attacker's pawn (BP_Soldier_TLF_Gendarme_01, BP_Loach_CAS_Small). Measured on production: of 782
+		// distinct death tokens and 1161 wound tokens only 684 overlap. So group by this on PLAYER_WOUNDED for
+		// weapon breakdowns and on PLAYER_DIED for what the killer was running -- never across both at once.
+		//
+		// Interned rather than stored inline: the token averages ~20 bytes and combat is the bulk of this table,
+		// which over a five-year horizon is ~1GB of repeated strings against ~150MB of integers.
+		damageSourceId: integer('damageSourceId').references(() => damageSources.id),
+		// 'normal' | 'suicide' | 'teamkill'. Three values, so not worth interning, and a dashboard filtering on
+		// `variant = 'teamkill'` should not have to join to find out what a number means.
+		variant: text('variant'),
+	},
+	// Deliberately no secondary index on matchId. Every search here is anchored on a player, so the pk already
+	// narrows to one contiguous range and a match filter is applied within it; the only matchId-driven query is
+	// retention, which deletes a whole server's stale set in one statement and can afford the scan. On a
+	// WITHOUT ROWID table a secondary index carries the entire pk, so that one index measured 26MB against the
+	// table's own 42MB on the largest install -- more than a third of the cost, for nothing.
+	(table) => ({
+		pk: primaryKey({ columns: [table.playerId, table.time, table.serverEventId, table.assocType] }),
+	}),
+)
+
+// The blueprint names playerEventIndex.damageSourceId points at, interned. Small and append-only: an install
+// sees a couple of thousand distinct names, and one is never rewritten once seen.
+export const damageSources = sqliteTable('damageSources', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	name: text('name').notNull().unique(),
+})
+
+// A finalized match's server events, packed into one row once the match falls outside the recent window.
+// The blob is the source of truth for that match from then on: every projection and export is rebuildable
+// from it, which is what makes it safe to add a new search dimension years later.
+export const archivedMatches = sqliteTable(
+	'archivedMatches',
+	{
+		matchId: integer('matchId')
+			.primaryKey()
+			.references(() => matchHistory.id, { onDelete: 'cascade' }),
+		serverId: text('serverId')
+			.notNull()
+			.references(() => servers.id, { onDelete: 'cascade' }),
+		eventCount: integer('eventCount').notNull(),
+		// how `events` is encoded, so a later codec can be introduced without rewriting what is already packed
+		encoding: text('encoding').notNull(),
+		events: blob('events').notNull(),
+		createdAt: timestamp('createdAt')
+			.$defaultFn(() => new Date())
+			.notNull(),
 	},
 	(table) => ({
-		playerIdIndex: index('playerIdIndex').on(table.playerId),
-		assocTypeIndex: index('assocTypeIndex').on(table.assocType),
-		serverEventIdIndex: index('serverEventIdIndex').on(table.serverEventId),
-		serverEventPlayerAssocUnique: unique('serverEventPlayerAssocUnique').on(table.serverEventId, table.playerId, table.assocType),
+		serverIdIndex: index('archivedMatchesServerIdIndex').on(table.serverId),
 	}),
 )
 
@@ -189,11 +263,15 @@ export const squads = sqliteTable(
 		teamId: integer('teamId').notNull(),
 		name: text('name').notNull(),
 		creatorId: text('creatorId').references(() => players.eosId, { onDelete: 'set null' }),
+		// the match the squad existed in. Recorded here rather than reached through the events that reference it:
+		// those events are deleted when the match is compacted, and a squad still has to name its match afterwards.
+		matchId: integer('matchId').references(() => matchHistory.id, { onDelete: 'cascade' }),
 		createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
 	},
 	(table) => ({
 		nameIndex: index('nameIndex').on(table.name),
 		creatorIdIndex: index('creatorIdIndex').on(table.creatorId),
+		squadMatchIdIndex: index('squadMatchIdIndex').on(table.matchId),
 	}),
 )
 

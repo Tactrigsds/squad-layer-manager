@@ -2,6 +2,7 @@ import * as Config from '@/server/config.server'
 import * as AppEvents from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as Discord from '@/systems/discord.server'
+import * as EventSearch from '@/systems/event-search.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
@@ -34,6 +35,7 @@ export const orpcAppRouter = {
 	userPresence: UserPresence.orpcRouter,
 	discord: Discord.orpcRouter,
 	matchHistory: MatchHistory.matchHistoryRouter,
+	eventSearch: EventSearch.router,
 	filters: FilterEntity.filtersRouter,
 	filterEdit: FilterEdit.orpcRouter,
 	rbac: Rbac.orpcRouter,
