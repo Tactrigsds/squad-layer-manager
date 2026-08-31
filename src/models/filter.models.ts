@@ -959,12 +959,12 @@ export function upsertFilterNodeTreeInPlace(
 		const path = [...baseFilterPath, ..._path]
 		const id: string = (node as any)._id ?? pathNodeId(path)
 		const shallowNode = toShallowNode(node)
+		idsLeft.add(id)
 		if (Obj.deepEqual(shallowNode, tree.nodes.get(id))) {
 			continue
 		}
 		tree.nodes.set(id, shallowNode)
 		tree.paths.set(id, path)
-		idsLeft.add(id)
 	}
 
 	// delete nodes that are no longer in the tree

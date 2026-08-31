@@ -58,9 +58,19 @@ function serverCommand(): [string, string[]] {
 // concurrent processes, or about one failed test per full run.
 //
 // The blocks sit below ip_local_port_range (32768 on Linux), so nothing the OS hands out lands in them.
-const WORKER_SLOT = Number(process.env.TEST_PARALLEL_INDEX ?? process.env.VITEST_POOL_ID ?? 0) || 0
-const PORTS_PER_WORKER = 250
-const PORT_BLOCK_START = 20_000 + (WORKER_SLOT % 48) * PORTS_PER_WORKER
+//
+// Keyed on TEST_WORKER_INDEX, which counts every worker process the run starts, rather than
+// TEST_PARALLEL_INDEX, which is the 0..workers-1 slot and is handed straight back to the replacement when
+// playwright restarts a worker. The replacement's cursor starts at 0 and re-walks the block while the old
+// worker's apps are still being torn down -- or have been orphaned by the restart, in which case they hold
+// their ports for the rest of the run. Every EADDRINUSE seen locally was a repeat of a port the same slot
+// had already handed out.
+const WORKER_SLOT = Number(process.env.TEST_WORKER_INDEX ?? process.env.VITEST_POOL_ID ?? 0) || 0
+const PORTS_PER_WORKER = 64
+// as many blocks as fit under 32768. A run with more workers than this wraps onto a block whose worker is
+// long gone, which is the situation the probe below does handle.
+const PORT_BLOCKS = 190
+const PORT_BLOCK_START = 20_000 + (WORKER_SLOT % PORT_BLOCKS) * PORTS_PER_WORKER
 let portCursor = 0
 
 async function freePort(): Promise<number> {
@@ -673,6 +683,17 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		)
 	}
 
+	// The app writes pino's stdout and a fatal's console.error to the same fd with separate buffers, so the
+	// two interleave and a plain tail can land inside the fatal object with its first line already scrolled
+	// past. Pull the error lines out by name as well as showing the tail, or a boot failure reads as a slow
+	// machine.
+	function bootFailureReport(): string {
+		if (!fs.existsSync(logFile)) return '\n(no log file)'
+		const lines = fs.readFileSync(logFile, 'utf8').split('\n')
+		const errors = lines.filter((l) => /fatal|error:|EADDRINUSE|Error\b/i.test(l))
+		return (errors.length > 0 ? `\napp errors:\n${errors.slice(-25).join('\n')}` : '') + `\napp log tail:\n${lines.slice(-40).join('\n')}`
+	}
+
 	async function stopApp() {
 		if (!child || child.exitCode !== null) return
 		child.kill('SIGTERM')
@@ -690,8 +711,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		await waitFor(
 			async () => {
 				if (child!.exitCode !== null) {
-					const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-40).join('\n')
-					throw new Error(`app exited with code ${child!.exitCode} during boot.\napp log tail:\n${tail}`)
+					throw new Error(`app exited with code ${child!.exitCode} during boot.${bootFailureReport()}`)
 				}
 				const res = await fetch(`${appUrl}/check-auth`).catch(() => null)
 				return res !== null

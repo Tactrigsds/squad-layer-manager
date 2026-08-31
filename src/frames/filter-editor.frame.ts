@@ -160,13 +160,17 @@ const setup: Frame['setup'] = (args) => {
 	}
 	void Prom.sleep(0).then(() => validate(get()))
 
+	// the tree filter comes before the throttle, not inside the subscriber. Throttling first drops emissions,
+	// so the survivor's `prev` is not the state the tree changed from: any unrelated `set` landing in the same
+	// 150ms window makes the change look like a no-op and the edit is never validated again
 	const validateSub = args.update$
-		.pipe(Rx.throttleTime(150, Rx.asyncScheduler, { leading: true, trailing: true }), Rx.retry())
-		.subscribe(([state, prev]) => {
-			if (state.tree !== prev.tree) {
-				validate(state)
-			}
-		})
+		.pipe(
+			Rx.map(([state]) => state),
+			Rx.distinctUntilKeyChanged('tree'),
+			Rx.throttleTime(150, Rx.asyncScheduler, { leading: true, trailing: true }),
+			Rx.retry(),
+		)
+		.subscribe(validate)
 	args.cleanup.push(validateSub)
 
 	if (filterId) {
