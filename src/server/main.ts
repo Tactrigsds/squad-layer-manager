@@ -15,6 +15,8 @@ import * as Cli from '@/systems/cli.server'
 import * as Commands from '@/systems/commands.server'
 import * as ControlSocket from '@/systems/control-socket.server'
 import * as Discord from '@/systems/discord.server'
+import * as EventArchive from '@/systems/event-archive.server'
+import * as EventSearch from '@/systems/event-search.server'
 import * as Fastify from '@/systems/fastify.server'
 import * as FilterEdit from '@/systems/filter-edit.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
@@ -26,6 +28,7 @@ import * as LayerQueue from '@/systems/layer-queue.server'
 import * as LogoSys from '@/systems/logo.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as MatchLayers from '@/systems/match-layers.server'
 import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
@@ -119,6 +122,9 @@ await Instr.spanOp('main', { module }, async () => {
 	await DB.setup()
 	// starts its own background loop; nothing else depends on it, but it needs the db open
 	Backups.setup()
+	EventArchive.setup()
+	EventSearch.setup()
+	MatchLayers.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off
 	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))

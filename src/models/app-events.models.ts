@@ -181,6 +181,20 @@ export const VoteEndedSchema = event('VOTE_ENDED', {
 })
 export type VoteEnded = z.infer<typeof VoteEndedSchema>
 
+// A layer artifact update taught the engine layers it did not previously recognise, and the matches recorded
+// against them were re-resolved. Recorded because it changes what a layer-filtered search over history returns.
+export const MatchLayersReconciledSchema = event('MATCH_LAYERS_RECONCILED', {
+	// the artifact whose arrival triggered the pass
+	layerDataHash: z.string(),
+	matchesUpdated: z.number(),
+	// the ids that became resolvable, with what they resolved to. RAW: ids are rewritten to the resolved id;
+	// an id that was already canonical only gains its parts.
+	resolved: z.array(z.object({ from: z.string(), to: z.string(), matches: z.number() })),
+	// how many matches still have no resolvable layer after the pass
+	unresolvedRemaining: z.number(),
+})
+export type MatchLayersReconciled = z.infer<typeof MatchLayersReconciledSchema>
+
 export const VoteAbortedSchema = event('VOTE_ABORTED', {})
 export type VoteAborted = z.infer<typeof VoteAbortedSchema>
 
@@ -415,6 +429,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	VoteStartedSchema,
 	VoteEndedSchema,
 	VoteAbortedSchema,
+	MatchLayersReconciledSchema,
 	QueueUpdatedSchema,
 	TeamswapsUpdatedSchema,
 	SwitchRequestsFulfilledSchema,
@@ -488,6 +503,7 @@ export function involvedPlayerIds(e: AppEvent): SM.PlayerId[] {
 		case 'BACKUP_CREATED':
 		case 'PLUGIN_EVENT':
 		case 'PLUGIN_DATA_PURGED':
+		case 'MATCH_LAYERS_RECONCILED':
 			return []
 		case 'PLAYER_FLAGS_UPDATED':
 			return [e.playerId]

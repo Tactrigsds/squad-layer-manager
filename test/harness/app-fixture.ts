@@ -209,6 +209,8 @@ export type AppFixture = {
 	// wrong layer, which leaves the head unconsumed and generates nothing.
 	waitForNextLayerSync: (opts?: { timeoutMs?: number }) => Promise<void>
 	// fresh read-only connection to the app's db, for assertions
+	// drives the app's control socket: one json line in, one back. See control-socket.server.ts.
+	control: (command: string) => Promise<Record<string, unknown>>
 	readDb: () => SqliteDb
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
 	// stop the app and boot it again against the same db, emulator and ports. For anything that only happens on
@@ -589,6 +591,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		fs.cpSync(src, path.join(pluginsDir, id), { recursive: true })
 	}
 
+	const controlSocketPath = path.join(tmpDir, 'control.sock')
+
 	const env: Record<string, string> = {
 		...(process.env as Record<string, string>),
 		NODE_ENV: 'test',
@@ -615,6 +619,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		STEAM_API_KEY: '',
 		STEAM_ENABLED: 'false',
 		QUERY_PARAM_AUTH_BYPASS: 'true',
+		// per-fixture, so `control()` reaches this app and not another run's
+		CONTROL_SOCKET: controlSocketPath,
 		// fixed 32-byte base64 key so encrypted settings survive across restarts within a test run
 		SETTINGS_ENCRYPTION_KEY: 'c2xtLXRlc3QtZW5jcnlwdGlvbi1rZXktMzJieXRlcyE=',
 		SUPER_USERS: users
@@ -750,6 +756,22 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				{ label: "the server's next layer to catch up with the queue head", timeoutMs: syncOpts?.timeoutMs ?? 20_000 },
 			)
 		},
+		control: (command: string) =>
+			new Promise<Record<string, unknown>>((resolve, reject) => {
+				const socket = net.createConnection(controlSocketPath)
+				let buffer = ''
+				socket.setEncoding('utf8')
+				socket.on('connect', () => socket.write(JSON.stringify({ command }) + '\n'))
+				socket.on('data', (chunk: string) => (buffer += chunk))
+				socket.on('error', reject)
+				socket.on('close', () => {
+					try {
+						resolve(JSON.parse(buffer) as Record<string, unknown>)
+					} catch (err) {
+						reject(err)
+					}
+				})
+			}),
 		readDb: () => new Database(dbPath, { readonly: true }),
 		waitFor,
 		restart: async (whileDown?: () => Promise<void> | void) => {

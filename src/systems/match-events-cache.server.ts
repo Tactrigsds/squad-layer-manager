@@ -10,6 +10,7 @@ import * as SE from '@/models/server-events.models'
 import type * as C from '@/server/context'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as EventArchive from '@/systems/event-archive.server'
 
 const module = initModule('match-events-cache')
 let log!: CS.Logger
@@ -52,28 +53,20 @@ export const getFeedEventsForMatches = Instr.spanOp(
 
 		if (uncached.length > 0) {
 			const batch$ = (async () => {
-				const rawEvents = await ctx
-					.db()
-					.select()
-					.from(Schema.serverEvents)
-					.where(E.inArray(Schema.serverEvents.matchId, uncached))
-					.orderBy(E.asc(Schema.serverEvents.id))
+				// hot rows for matches still inside the archive window, unpacked blobs for the rest; the two are
+				// indistinguishable from here
+				const rowsByMatch = await EventArchive.loadMatchEvents(ctx, uncached)
 
 				// SLM's own actions are entries in their own right, and the server events they caused collapse under them.
 				// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
+				// app events are not archived: the table is three orders of magnitude smaller than serverEvents and is
+				// read by the global audit log on a time cursor, which a per-match blob cannot serve.
 				const rawAppEvents = await ctx
 					.db()
 					.select()
 					.from(Schema.appEvents)
 					.where(E.inArray(Schema.appEvents.matchId, uncached))
 					.orderBy(E.asc(Schema.appEvents.time))
-
-				const rowsByMatch = new Map<number, typeof rawEvents>()
-				for (const rawEvent of rawEvents) {
-					let rows = rowsByMatch.get(rawEvent.matchId)
-					if (!rows) rowsByMatch.set(rawEvent.matchId, (rows = []))
-					rows.push(rawEvent)
-				}
 
 				const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
 				let dropped = 0

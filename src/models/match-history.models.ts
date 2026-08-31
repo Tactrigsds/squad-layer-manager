@@ -253,6 +253,45 @@ export function matchHistoryEntryToMatchDetails(entry: SchemaModels.MatchHistory
 	throw new Error('Invalid match state: unknown')
 }
 
+// The parsed layer parts stored alongside a match, for the layer-config searches that run over history. All
+// null for a layer this build's engine can't resolve -- a RAW: id, or one retired from the layer components --
+// which is what keeps such a match out of layer-filtered results rather than silently mismatching one.
+// reconcileLayerParts fills them in later if a newer engine artifact recognises the id.
+export type LayerParts = Pick<
+	SchemaModels.MatchHistory,
+	'layerMap' | 'layerGamemode' | 'layerVersion' | 'layerTeam1Faction' | 'layerTeam1Unit' | 'layerTeam2Faction' | 'layerTeam2Unit'
+>
+
+export const NO_LAYER_PARTS: LayerParts = {
+	layerMap: null,
+	layerGamemode: null,
+	layerVersion: null,
+	layerTeam1Faction: null,
+	layerTeam1Unit: null,
+	layerTeam2Faction: null,
+	layerTeam2Unit: null,
+}
+
+export function layerParts(layerId: string): LayerParts {
+	let layer: L.UnvalidatedLayer
+	try {
+		layer = L.toLayer(layerId)
+	} catch {
+		// toLayer reaches the layer components, which throw when layer data isn't loaded yet
+		return NO_LAYER_PARTS
+	}
+	if (!layer || !L.isKnownLayer(layer)) return NO_LAYER_PARTS
+	return {
+		layerMap: layer.Map,
+		layerGamemode: layer.Gamemode,
+		layerVersion: layer.LayerVersion,
+		layerTeam1Faction: layer.Faction_1,
+		layerTeam1Unit: layer.Unit_1,
+		layerTeam2Faction: layer.Faction_2,
+		layerTeam2Unit: layer.Unit_2,
+	}
+}
+
 export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): SchemaModels.MatchHistory {
 	let layerId = matchDetails.layerId
 	if (!L.isKnownLayer(layerId) && matchDetails.rawLayerCommandText) {
@@ -270,6 +309,7 @@ export function matchHistoryEntryFromMatchDetails(matchDetails: MatchDetails): S
 		setByType: matchDetails.layerSource.type,
 		setByUserId: matchDetails.layerSource.type === 'manual' ? matchDetails.layerSource.userId : null,
 		setByPluginId: matchDetails.layerSource.type === 'plugin' ? matchDetails.layerSource.pluginId : null,
+		...layerParts(layerId),
 		endTime: null,
 		outcome: null,
 		team1Tickets: null,

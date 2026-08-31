@@ -1,7 +1,5 @@
 import { Mutex } from 'async-mutex'
-import { sql } from 'drizzle-orm'
 import * as E from 'drizzle-orm'
-import { alias } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
@@ -19,7 +17,6 @@ import * as L from '@/models/layer'
 import type * as MEC from '@/models/match-events-cache.models'
 import * as MH from '@/models/match-history.models'
 import * as ATTRS from '@/models/otel-attrs'
-import * as SE from '@/models/server-events.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
@@ -95,26 +92,15 @@ export const loadState = Instr.spanOp(
 					.limit(MH.MAX_RECENT_MATCHES),
 			)
 
-		const [rows, eventRows] = await Promise.all([
-			ctx
-				.db()
-				.with(recentMatchesCte)
-				.select()
-				.from(recentMatchesCte)
-				.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId))
-				.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId)),
-			ctx
-				.db()
-				.with(recentMatchesCte)
-				.select({
-					serverEvents: Schema.serverEvents,
-					matchId: recentMatchesCte.id,
-				})
-				.from(Schema.serverEvents)
-				.innerJoin(recentMatchesCte, E.eq(Schema.serverEvents.matchId, recentMatchesCte.id)),
-		])
+		const rows = await ctx
+			.db()
+			.with(recentMatchesCte)
+			.select()
+			.from(recentMatchesCte)
+			.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId))
+			.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
 
-		log.info('found %d match history rows, %d server events', rows.length, eventRows.length)
+		log.info('found %d match history rows', rows.length)
 
 		rows.reverse()
 		const currentMatchId = rows[rows.length - 1]?.recent_matches.id
@@ -322,17 +308,16 @@ export const matchHistoryRouter = {
 			// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
 			const connectionRows = await ctx
 				.db()
-				.select({ type: Schema.serverEvents.type, time: Schema.serverEvents.time })
-				.from(Schema.serverEvents)
-				.innerJoin(
-					Schema.playerEventAssociations,
+				.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
+				.from(Schema.playerEventIndex)
+				.where(
 					E.and(
-						E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
-						E.eq(Schema.playerEventAssociations.playerId, playerId),
+						E.eq(Schema.playerEventIndex.playerId, playerId),
+						E.eq(Schema.playerEventIndex.serverId, input.serverId),
+						E.inArray(Schema.playerEventIndex.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']),
 					),
 				)
-				.where(E.inArray(Schema.serverEvents.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']))
-				.orderBy(E.desc(Schema.serverEvents.time))
+				.orderBy(E.desc(Schema.playerEventIndex.time))
 				.limit(1)
 
 			const lastConnectionEvent = connectionRows[0]
@@ -374,18 +359,16 @@ export const matchHistoryRouter = {
 			// per-match counts of player-specific events (game-participant assoc excluded so it counts only shown events)
 			const matchCountRows = await ctx
 				.db()
-				.select({ matchId: Schema.serverEvents.matchId, count: E.count() })
-				.from(Schema.serverEvents)
-				.innerJoin(
-					Schema.playerEventAssociations,
+				.select({ matchId: Schema.playerEventIndex.matchId, count: E.count() })
+				.from(Schema.playerEventIndex)
+				.where(
 					E.and(
-						E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId),
-						E.eq(Schema.playerEventAssociations.playerId, playerId),
-						E.ne(Schema.playerEventAssociations.assocType, SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']),
+						E.eq(Schema.playerEventIndex.playerId, playerId),
+						E.ne(Schema.playerEventIndex.assocType, SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']),
+						E.inArray(Schema.playerEventIndex.matchId, historicalMatchIds),
 					),
 				)
-				.where(E.inArray(Schema.serverEvents.matchId, historicalMatchIds))
-				.groupBy(Schema.serverEvents.matchId)
+				.groupBy(Schema.playerEventIndex.matchId)
 
 			// most-recent match first (matchId is monotonic with recency)
 			const matchesWithEvents = matchCountRows.map((r) => ({ matchId: r.matchId, count: r.count })).sort((a, b) => b.matchId - a.matchId)
@@ -430,71 +413,16 @@ export const matchHistoryRouter = {
 
 			const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
 			if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
+			if (squadRow.matchId === null) return { squad: squadRow, events: [] }
 
-			const associatedPlayers = alias(Schema.playerEventAssociations, 'associatedPlayers')
-
-			const rawEventRows = await ctx
-				.db()
-				.select({
-					playerAssoc: associatedPlayers.playerId,
-					matchId: Schema.serverEvents.matchId,
-					eventId: Schema.serverEvents.id,
-				})
-				.from(Schema.serverEvents)
-				.innerJoin(
-					Schema.squadEventAssociations,
-					E.and(
-						E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId),
-						E.eq(Schema.squadEventAssociations.squadId, input.uniqueSquadId),
-					),
-				)
-				.leftJoin(associatedPlayers, E.eq(Schema.serverEvents.id, associatedPlayers.serverEventId))
-				.orderBy(E.desc(Schema.serverEvents.time))
-
-			const otherPlayers = new Set<string>()
-			for (const row of rawEventRows) {
-				if (row.playerAssoc) otherPlayers.add(row.playerAssoc)
-			}
-			if (squadRow.creatorId) otherPlayers.add(squadRow.creatorId)
-
-			const matchId = rawEventRows[0]?.matchId
-			if (matchId === undefined) {
-				return { squad: squadRow, events: [] }
-			}
-
-			const eventRows = await ctx
-				.db()
-				.select({ event: Schema.serverEvents })
-				.from(Schema.serverEvents)
-				.where(
-					E.and(
-						E.eq(Schema.serverEvents.matchId, matchId),
-						E.or(
-							otherPlayers.size > 0 ? E.inArray(Schema.playerEventAssociations.playerId, [...otherPlayers.values()]) : sql`1=0`,
-							E.inArray(Schema.squadEventAssociations.squadId, [input.uniqueSquadId]),
-							E.eq(Schema.serverEvents.type, 'NEW_GAME'),
-						),
-					),
-				)
-				.innerJoin(Schema.playerEventAssociations, E.eq(Schema.serverEvents.id, Schema.playerEventAssociations.serverEventId))
-				.leftJoin(Schema.squadEventAssociations, E.eq(Schema.serverEvents.id, Schema.squadEventAssociations.serverEventId))
-				.orderBy(E.desc(Schema.serverEvents.id))
-
-			const events = SE.fromEventRows(
-				{ ...ctx, log },
-				eventRows.map((row) => row.event),
-			).toReversed()
-			const state = CHAT.getInitialChatState()
-			const processedEvents = new Set<number>()
-			for (const event of events) {
-				if (processedEvents.has(event.id)) continue
-				processedEvents.add(event.id)
-				CHAT.handleEvent(state, event)
-			}
+			// the whole match is replayed and then filtered, rather than the squad's events being selected out
+			// first: a slice replays against a partial roster, and the match is already the unit everything else
+			// reads and caches.
+			const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, squadRow.matchId)
 
 			return {
 				squad: squadRow,
-				events: state.eventBuffer.filter((event) => CHAT.isSquadFeedEvent(event, input.uniqueSquadId, false)),
+				events: enriched.filter((event) => CHAT.isSquadFeedEvent(event, input.uniqueSquadId, false)),
 			}
 		}),
 }
@@ -509,7 +437,7 @@ export const addNewCurrentMatch = Instr.spanOp(
 			await ctx
 				.db()
 				.insert(Schema.matchHistory)
-				.values(superjsonify(Schema.matchHistory, { ...entry, ordinal, serverId: ctx.serverId }))
+				.values(superjsonify(Schema.matchHistory, { ...entry, ...MH.layerParts(entry.layerId), ordinal, serverId: ctx.serverId }))
 
 			// events are persisted as they're emitted, so the in-memory cache is just dropped; it only ever
 			// holds the current match

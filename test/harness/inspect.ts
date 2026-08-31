@@ -50,6 +50,16 @@ export function latestMatch(app: AppFixture): { id: number; layerId: string } {
 	}
 }
 
+// a match's ordinal on its server, which is what the match-history read api takes rather than the row id
+export function matchOrdinal(app: AppFixture, matchId: number): number {
+	const db = app.readDb()
+	try {
+		return (db.prepare(`SELECT ordinal FROM matchHistory WHERE id = ?`).get(matchId) as { ordinal: number }).ordinal
+	} finally {
+		db.close()
+	}
+}
+
 export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	const db = app.readDb()
 	try {
