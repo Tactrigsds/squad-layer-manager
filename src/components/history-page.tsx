@@ -46,9 +46,17 @@ export default function HistoryPage(props: HistoryPageProps) {
 
 	const run = () => {
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
+		if (!HistoryFrame.Sel.canRun(state)) return
 		const query = HistoryFrame.Sel.builtQuery(state)
 		HistoryClient.pushRecent(query)
 		props.onRun(query)
+	}
+
+	// runs from anywhere on the page, so a query typed into any field goes without reaching for the button
+	const onKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return
+		e.preventDefault()
+		run()
 	}
 
 	const set = (patch: Partial<HQ.Query>) => HistoryFrame.Actions.setDraft(props.stores, patch)
@@ -62,7 +70,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-2 p-2">
+		<div className="flex h-full min-h-0 flex-col gap-2 p-2" onKeyDown={onKeyDown}>
 			<div className="flex flex-wrap items-center gap-2">
 				<TabsList
 					options={[

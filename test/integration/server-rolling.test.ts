@@ -209,6 +209,19 @@ describe('the event archive', () => {
 		expect(res.rowsHtml[0]).toContain('data-dom-')
 	})
 
+	it('finds players by name substring, and a name works as a player ref', async () => {
+		// three or more characters, so this goes through the trigram index rather than the LIKE fallback
+		const players = await client.history.query({ query: { type: 'players', name: 'archive_subj' } })
+		expect(players.code).toBe('ok')
+		if (players.code !== 'ok' || players.type !== 'players') return
+		expect(players.rows.some((r) => r.username?.includes('archive_subject'))).toBe(true)
+
+		const events = await client.history.query({ query: { player: 'archive_subject' } })
+		expect(events.code).toBe('ok')
+		if (events.code !== 'ok' || events.type !== 'events') return
+		expect(events.total).toBeGreaterThan(0)
+	})
+
 	// Last of all: pruning deletes every archived match on the server, so nothing after this can read one.
 	it('a retention rule sieves its events out of a pruned match; everything else is dropped', async () => {
 		const saved = await client.history.save({

@@ -69,13 +69,16 @@ export type ResolvedArtifacts = {
 }
 
 const STEAM64_RE = /^7656\d{13}$/
+const EOS_ID_RE = /^[0-9a-f]{32}$/i
 
+// a ref is an eos id, a steam64 to resolve to one, or anything else, which reads as a name substring
 async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
 	const eosIds: string[] = []
 	const steam64s: bigint[] = []
 	for (const ref of refs) {
 		if (STEAM64_RE.test(ref)) steam64s.push(BigInt(ref))
-		else eosIds.push(ref)
+		else if (EOS_ID_RE.test(ref)) eosIds.push(ref)
+		else eosIds.push(...(await resolveNamedPlayerIds(ctx, ref)))
 	}
 	if (steam64s.length > 0) {
 		const rows = await ctx
@@ -89,7 +92,19 @@ async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
 }
 
 export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<string[]> {
-	const needle = `%${name.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+	const trimmed = name.trim()
+	if (trimmed === '') return []
+	// the trigram index answers substring matches of three or more characters (see migration 0108); a
+	// shorter needle falls back to scanning players, which is what every needle cost before the index
+	if (trimmed.length >= 3) {
+		const rows = ctx
+			.db()
+			.all<{ eosId: string }>(
+				sql`SELECT eosId FROM usernameSearch WHERE usernameSearch MATCH ${`"${trimmed.replaceAll('"', '""')}"`} LIMIT ${MAX_NAME_MATCHES}`,
+			)
+		return rows.map((r) => r.eosId)
+	}
+	const needle = `%${trimmed.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
 	const rows = await ctx
 		.db()
 		.select({ eosId: Schema.players.eosId })
