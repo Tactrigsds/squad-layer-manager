@@ -295,7 +295,8 @@ export namespace Wire {
 	}
 
 	// Exhaustive over the union so a new event type has to declare what it embeds, even if that is nothing.
-	const FIELDS = {
+	// Exported for the history results revival of NOOPed events, which puts players back on the same fields.
+	export const FIELDS = {
 		CHAT_MESSAGE: { players: ['player'] },
 		ADMIN_BROADCAST: { players: ['player'] },
 		PLAYER_CONNECTED: { players: ['player'] },

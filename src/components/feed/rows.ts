@@ -8,10 +8,10 @@ import * as DH from '@/lib/display-helpers'
 import * as Dom from '@/lib/dom'
 import { assertNever } from '@/lib/type-guards'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as I18n from '@/messages/i18n'
 import * as I18nDom from '@/messages/i18n-dom'
 import type * as CHAT from '@/models/chat.models'
 import * as L from '@/models/layer'
-import { tr } from '@/systems/messages.client'
 
 import * as Atoms from './atoms'
 import { icon } from './icons'
@@ -34,7 +34,9 @@ function messageRowStyle(style: { color: string; gradientColor: string }) {
 }
 
 function chatMessage(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { type: 'CHAT_MESSAGE' | 'ADMIN_BROADCAST' }>) {
-	if (event.type === 'CHAT_MESSAGE' && event.player.teamId === null) return null
+	// the live feed suppresses chat from a player not yet on a team (a transient pre-roster state); a results
+	// context has to show every event its query matched, teamless or not
+	if (event.type === 'CHAT_MESSAGE' && event.player.teamId === null && !ctx.showTeamlessChat) return null
 	const match = ctx.matchById(event.matchId)
 
 	const channelStyle = (() => {
@@ -52,16 +54,16 @@ function chatMessage(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { typ
 		if (event.type === 'ADMIN_BROADCAST') {
 			return Dom.el(
 				'span',
-				{ style: `color:${channelStyle.color}`, title: tr.text(CHAT_Msgs.chatChannelBroadcastHint()) },
-				tr.text(CHAT_Msgs.chatChannelBroadcast()),
+				{ style: `color:${channelStyle.color}`, title: I18n.ambient.text(CHAT_Msgs.chatChannelBroadcastHint()) },
+				I18n.ambient.text(CHAT_Msgs.chatChannelBroadcast()),
 			)
 		}
 		switch (event.channel.type) {
 			case 'ChatAll':
 				return Dom.el(
 					'span',
-					{ style: `color:${channelStyle.color}`, title: tr.text(CHAT_Msgs.chatChannelAllHint()) },
-					tr.text(CHAT_Msgs.chatChannelAll()),
+					{ style: `color:${channelStyle.color}`, title: I18n.ambient.text(CHAT_Msgs.chatChannelAllHint()) },
+					I18n.ambient.text(CHAT_Msgs.chatChannelAll()),
 				)
 			case 'ChatTeam':
 				return Dom.el(
@@ -71,7 +73,7 @@ function chatMessage(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { typ
 					Dom.el(
 						'span',
 						{ style: `color:${channelStyle.color}`, class: 'flex items-baseline flex-nowrap whitespace-nowrap gap-1' },
-						Atoms.matchTeamDisplay(ctx, { matchId: event.matchId, teamId: event.player.teamId! }),
+						Atoms.matchTeamDisplay(ctx, { matchId: event.matchId, teamId: event.channel.teamId }),
 					),
 					')',
 				)
@@ -94,15 +96,15 @@ function chatMessage(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { typ
 							showName: false,
 							showTeam: false,
 						}),
-						Atoms.matchTeamDisplay(ctx, { matchId: event.matchId, teamId: event.player.teamId! }),
+						Atoms.matchTeamDisplay(ctx, { matchId: event.matchId, teamId: event.channel.teamId }),
 					),
 					')',
 				)
 			case 'ChatAdmin':
 				return Dom.el(
 					'span',
-					{ style: `color:${channelStyle.color}`, title: tr.text(CHAT_Msgs.chatChannelAdminHint()) },
-					tr.text(CHAT_Msgs.chatChannelAdmin()),
+					{ style: `color:${channelStyle.color}`, title: I18n.ambient.text(CHAT_Msgs.chatChannelAdminHint()) },
+					I18n.ambient.text(CHAT_Msgs.chatChannelAdmin()),
 				)
 			default:
 				return assertNever(event.channel)
@@ -112,8 +114,9 @@ function chatMessage(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { typ
 	const fromDisplay = ((): Node | string | null => {
 		if (event.type === 'ADMIN_BROADCAST') {
 			if (event.player) return Atoms.playerDisplay(ctx, { player: event.player, matchId: event.matchId })
-			if (event.from === 'RCON') return Dom.el('span', { class: 'text-red-400' }, tr.text(CHAT_Msgs.broadcastFromRcon()))
-			if (event.from === 'unknown') return Dom.el('span', { class: 'text-yellow-400/60' }, tr.text(CHAT_Msgs.broadcastFromUnknown()))
+			if (event.from === 'RCON') return Dom.el('span', { class: 'text-red-400' }, I18n.ambient.text(CHAT_Msgs.broadcastFromRcon()))
+			if (event.from === 'unknown')
+				return Dom.el('span', { class: 'text-yellow-400/60' }, I18n.ambient.text(CHAT_Msgs.broadcastFromUnknown()))
 			return null
 		}
 		return Atoms.playerDisplay(ctx, {
@@ -186,13 +189,13 @@ function newGame(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { type: '
 	switch (event.source) {
 		case 'new-game-detected':
 		case 'server-roll':
-			label = tr.text(CHAT_Msgs.newGameStarted())
+			label = I18n.ambient.text(CHAT_Msgs.newGameStarted())
 			break
 		case 'slm-started':
-			label = tr.text(CHAT_Msgs.newGameOnAppStart())
+			label = I18n.ambient.text(CHAT_Msgs.newGameOnAppStart())
 			break
 		case 'rcon-reconnected':
-			label = tr.text(CHAT_Msgs.newGameOnRconReconnect())
+			label = I18n.ambient.text(CHAT_Msgs.newGameOnRconReconnect())
 			break
 		default:
 			assertNever(event.source)
@@ -207,7 +210,7 @@ function newGame(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { type: '
 			trDom.richText(
 				CHAT_Msgs.newGameLine(
 					label,
-					visibleMatchIndex === 0 ? tr.text(CHAT_Msgs.currentMatch()) : visibleMatchIndex,
+					visibleMatchIndex === 0 ? I18n.ambient.text(CHAT_Msgs.currentMatch()) : visibleMatchIndex,
 					Atoms.shortLayerName({
 						normalized: ctx.displayTeamsNormalized,
 						layerId: match.layerId,
@@ -248,10 +251,14 @@ function roundEnded(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { type
 				),
 			)
 		} else if (source.type === 'rcon') {
-			sourceName = Dom.el('span', null, trDom.richText(CHAT_Msgs.roundEndVia(Dom.el('b', null, tr.text(CHAT_Msgs.rconTool())))))
+			sourceName = Dom.el(
+				'span',
+				null,
+				trDom.richText(CHAT_Msgs.roundEndVia(Dom.el('b', null, I18n.ambient.text(CHAT_Msgs.rconTool())))),
+			)
 		} else {
 			// an SLM action: the app event it links to is its own entry in the feed and names the admin
-			sourceName = Dom.el('span', null, trDom.richText(CHAT_Msgs.roundEndVia(Dom.el('b', null, tr.text(CHAT_Msgs.slmTool())))))
+			sourceName = Dom.el('span', null, trDom.richText(CHAT_Msgs.roundEndVia(Dom.el('b', null, I18n.ambient.text(CHAT_Msgs.slmTool())))))
 		}
 		const nextLayerText =
 			event.action.type === 'AdminChangeLayer'
@@ -278,7 +285,9 @@ function roundEnded(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { type
 		icon('Flag', 'h-4 w-4 text-blue-500 shrink-0'),
 		[
 			winnerId === null
-				? trDom.richText(CHAT_Msgs.roundEndedDraw(layerElt(), Dom.el('span', { class: 'text-yellow-400' }, tr.text(CHAT_Msgs.draw()))))
+				? trDom.richText(
+						CHAT_Msgs.roundEndedDraw(layerElt(), Dom.el('span', { class: 'text-yellow-400' }, I18n.ambient.text(CHAT_Msgs.draw()))),
+					)
 				: trDom.richText(
 						CHAT_Msgs.roundEndedWinner(
 							layerElt(),
@@ -317,7 +326,7 @@ function woundedOrDied(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { t
 	})()
 
 	const weaponSuffix = event.weapon
-		? Dom.el('span', { class: 'text-muted-foreground/70' }, tr.text(CHAT_Msgs.withWeapon(event.weapon)))
+		? Dom.el('span', { class: 'text-muted-foreground/70' }, I18n.ambient.text(CHAT_Msgs.withWeapon(event.weapon)))
 		: undefined
 
 	const message = (() => {
@@ -369,9 +378,9 @@ function mapSet(ctx: RC.RenderCtx, event: Extract<CHAT.EventEnriched, { type: 'M
 		event.source?.type === 'player' && event.actorPlayer
 			? Atoms.playerDisplay(ctx, { showTeam: true, player: event.actorPlayer, matchId: event.matchId })
 			: event.source?.type === 'player'
-				? (event.source.playerIds.username ?? tr.text(CHAT_Msgs.ingameAdmin()))
+				? (event.source.playerIds.username ?? I18n.ambient.text(CHAT_Msgs.ingameAdmin()))
 				: event.source?.type === 'rcon'
-					? tr.text(CHAT_Msgs.anotherRconTool())
+					? I18n.ambient.text(CHAT_Msgs.anotherRconTool())
 					: null
 	return Atoms.eventLine(
 		event.time,
@@ -564,18 +573,22 @@ export function buildRow(ctx: RC.RenderCtx, event: CHAT.EventEnriched): Node | n
 		case 'INGAME_VOTE_STARTED':
 			if (event.container !== 'Vote_NextLayer') return null
 			return Atoms.eventLine(event.time, icon('Vote', 'h-4 w-4 text-yellow-500 shrink-0'), [
-				Dom.el('span', null, tr.text(CHAT_Msgs.ingameVoteStarted())),
+				Dom.el('span', null, I18n.ambient.text(CHAT_Msgs.ingameVoteStarted())),
 				event.choices.length > 0 &&
-					Dom.el('span', { class: 'text-muted-foreground' }, tr.text(CHAT_Msgs.ingameVoteChoices(event.choices))),
+					Dom.el('span', { class: 'text-muted-foreground' }, I18n.ambient.text(CHAT_Msgs.ingameVoteChoices(event.choices))),
 			])
 		case 'RCON_CONNECTED':
 			return Atoms.eventLine(
 				event.time,
 				icon('Plug', 'h-4 w-4 text-green-500 shrink-0'),
-				event.reconnected ? tr.text(CHAT_Msgs.rconReconnected()) : tr.text(CHAT_Msgs.rconFirstConnected()),
+				event.reconnected ? I18n.ambient.text(CHAT_Msgs.rconReconnected()) : I18n.ambient.text(CHAT_Msgs.rconFirstConnected()),
 			)
 		case 'RCON_DISCONNECTED':
-			return Atoms.eventLine(event.time, icon('Unplug', 'h-4 w-4 text-red-500 shrink-0'), tr.text(CHAT_Msgs.rconDisconnected()))
+			return Atoms.eventLine(
+				event.time,
+				icon('Unplug', 'h-4 w-4 text-red-500 shrink-0'),
+				I18n.ambient.text(CHAT_Msgs.rconDisconnected()),
+			)
 		// drawn by react, or not drawn at all
 		case 'APP_EVENT':
 		case 'PLAYER_RECONCILED':

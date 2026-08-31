@@ -6,6 +6,7 @@ import React from 'react'
 import { PlayerFlagsButton } from '@/components/bm-flag-workflows'
 import { DiscordMemberSelect } from '@/components/discord-picker'
 import EventFilterSelect from '@/components/event-filter-select'
+import HistoryEvents from '@/components/history-events'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ import * as USR_Msgs from '@/messages/users.messages'
 import * as BM from '@/models/battlemetrics.models'
 import * as CHAT from '@/models/chat.models'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
+import * as HQ from '@/models/history.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
@@ -77,17 +79,103 @@ DraggableWindowStore.getState().registerDefinition<PlayerDetailsWindowProps, unk
 	defaultHeight: 660,
 	getId: (props) => props.playerId,
 	loadAsync: async ({ props }) => {
-		const serverId = props.stores.squadServer.serverId
-		await Promise.all([
-			RPC.queryClient.fetchQuery(RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } })),
+		const prefetches: Promise<unknown>[] = [
 			RPC.queryClient.fetchQuery(
 				RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId: props.playerId }, staleTime: Infinity }),
 			),
-		])
+		]
+		if (props.stores) {
+			const serverId = props.stores.squadServer.serverId
+			prefetches.push(
+				RPC.queryClient.fetchQuery(
+					RPC.orpc.matchHistory.getPlayerDetails.queryOptions({ input: { serverId, playerId: props.playerId } }),
+				),
+			)
+		} else {
+			prefetches.push(RPC.queryClient.fetchQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId: props.playerId } })))
+		}
+		await Promise.all(prefetches)
 	},
 })
 
 function PlayerDetailsWindow({ playerId, stores }: PlayerDetailsWindowProps) {
+	if (!stores) return <FramelessPlayerDetails playerId={playerId} />
+	return <FramedPlayerDetails playerId={playerId} stores={stores} />
+}
+
+// The window without a live server behind it: who the player is and their recorded history, from the same
+// engine the history page queries. Everything that acts on a server (warns, menus, live status) needs the
+// framed variant.
+function FramelessPlayerDetails({ playerId }: { playerId: string }) {
+	const { data: info } = useQuery(RPC.orpc.history.playerInfo.queryOptions({ input: { playerId } }))
+	const username = info?.code === 'ok' ? info.username : undefined
+	const steamId = info?.code === 'ok' ? (info.steamId ?? undefined) : undefined
+	const { data: bmData } = useQuery(RPC.orpc.battlemetrics.getPlayerBmData.queryOptions({ input: { playerId }, staleTime: Infinity }))
+	const orgFlags = useOrgFlags()
+	const flags = bmData && orgFlags ? BM.resolveFlags(bmData.flagIds, orgFlags) : undefined
+	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
+	const groupColor = usePlayerGroupColor(playerId, undefined)
+	const steam = steamId ?? profile?.playerIds.steam
+	const eventsQuery = React.useMemo((): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', player: playerId }), [playerId])
+
+	return (
+		<div className="min-w-0 min-h-0 flex-1 flex flex-col">
+			<DraggableWindowDragBar>
+				<DraggableWindowTitle style={groupColor ? { color: groupColor } : undefined}>
+					{username ?? tr.text(SM_Msgs.playerDetailsTitle())}
+				</DraggableWindowTitle>
+				{flags && flags.length > 0 && <PlayerFlagsList flags={flags} />}
+				<PlayerBmRefreshButton playerId={playerId} />
+				<PlayerFlagsButton playerId={playerId} />
+				<DraggableWindowPinToggle />
+				<DraggableWindowClose />
+			</DraggableWindowDragBar>
+			<div className="px-3 py-2 space-y-1.5 text-xs border-b border-border/50">
+				<PlayerTimeoutStatus playerId={playerId} />
+				<div className="flex flex-col">
+					<div className="inline-flex gap-2 items-baseline">
+						{username && <CopyIdButton kind="username" id={username} />}
+						{steam && <CopyIdButton kind="steam" id={steam} />}
+					</div>
+					<div className="inline-flex gap-1 items-baseline">
+						<CopyIdButton kind="eos" id={playerId} />
+					</div>
+				</div>
+				<div className="flex items-center gap-2 text-muted-foreground">
+					{steam ? (
+						<>
+							<ExtLink href={`https://steamcommunity.com/profiles/${steam}`}>{SM_Msgs.linkNames.steam}</ExtLink>
+							<ExtLink href={`https://communitybanlist.com/search/${steam}`}>{SM_Msgs.linkNames.cbl}</ExtLink>
+							<ExtLink href={`https://mysquadstats.com/search/${steam}#vanillaStats`}>{SM_Msgs.linkNames.mySquadStats}</ExtLink>
+						</>
+					) : (
+						<span className="italic">{tr.text(SM_Msgs.noSteamId())}</span>
+					)}
+					<ExtLink
+						href={
+							profile
+								? profile.profileUrl
+								: `https://www.battlemetrics.com/rcon/players?filter%5Bsearch%5D=${playerId}&filter%5Bservers%5D=false&filter%5BplayerFlags%5D=&sort=score&showServers=true&method=quick`
+						}
+					>
+						{SM_Msgs.linkNames.battlemetrics}
+					</ExtLink>
+					{!!profile?.hoursPlayed && (
+						<span title={tr.text(BM_Msgs.hoursPlayedHint())}>{tr.text(BM_Msgs.hoursPlayed(profile.hoursPlayed))}</span>
+					)}
+				</div>
+				<PlayerDiscordLink steamId={steam} />
+			</div>
+			<Separator />
+			<div className="px-3 py-1 flex-1 min-h-0 flex flex-col">
+				<h3>{tr.text(CHAT_Msgs.activityTitle())}</h3>
+				<HistoryEvents query={eventsQuery} showTotal={false} className="flex min-h-0 flex-1 flex-col gap-1" />
+			</div>
+		</div>
+	)
+}
+
+function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: NonNullable<PlayerDetailsWindowProps['stores']> }) {
 	const feedCtx = useRenderCtx(stores)
 	const squadServerFrameKey = stores.squadServer
 	const serverId = squadServerFrameKey.serverId

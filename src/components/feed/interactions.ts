@@ -12,6 +12,12 @@ import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as Atoms from './atoms'
 import * as RC from './render-context'
 
+// the windows a row can open, registered before any click can ask for one. Loaded here rather than in the
+// (isomorphic) builders: registration only means anything where windows exist.
+void import('@/components/player-details-window')
+void import('@/components/squad-details-window')
+void import('@/components/layer-info')
+
 const INTENT_DELAY = 150
 
 // Both payloads outlive their overlay closing: radix keeps content mounted through the exit animation, and an
@@ -55,23 +61,32 @@ function clearIntent() {
 	intentElement = null
 }
 
-// A scope without a live server frame (the history page) cannot honour interactions whose payload carries
-// its stores: the window or menu they open acts on the frame. Windows that carry no stores (layer info)
-// still work there.
-function frameMissing(element: Element, target?: { windowProps: unknown }) {
+// The squad-server frame behind an element, resolved from its scope: per-match on scopes whose rows span
+// servers (the history page), else the scope's own. Undefined when the scope has none to offer.
+function storesAt(element: Element): SquadServerFrame.KeyProp | undefined {
 	const scope = RC.scopeOf(element)
-	if (!scope || scope.stores.squadServer) return false
-	if (!target) return true
-	const props = target.windowProps
-	return !!props && typeof props === 'object' && 'stores' in props
+	if (!scope) return undefined
+	const perMatch = scope.storesForMatch?.(RC.matchIdOf(element))
+	if (perMatch) return perMatch
+	return scope.stores.squadServer ? scope.stores : undefined
+}
+
+// the props a window target opens with: its serialized arg, plus the scope's frame per the target's mode
+function windowProps(element: Element, target: RC.WindowTarget): Record<string, unknown> | undefined {
+	if (!target.frame) return target.arg
+	const stores = storesAt(element)
+	if (stores) return { ...target.arg, stores }
+	return target.frame === 'require' ? undefined : target.arg
 }
 
 function onClick(event: MouseEvent) {
 	const element = elementAt(event, RC.WINDOW_ATTR)
 	if (!element) return
 	const target = RC.windowTargetOf(element)
-	if (!target || frameMissing(element, target)) return
-	DraggableWindowStore.getState().openWindow(target.windowId, target.windowProps, element as HTMLElement, outletOf(element))
+	if (!target) return
+	const props = windowProps(element, target)
+	if (!props) return
+	DraggableWindowStore.getState().openWindow(target.windowId, props, element as HTMLElement, outletOf(element))
 }
 
 // shift-clicking an admin badge selects every admin on that player's team; ctrl too, and it selects both sides
@@ -80,9 +95,11 @@ function onClickCapture(event: MouseEvent) {
 	const element = elementAt(event, RC.ADMIN_BADGE_ATTR)
 	const badge = element && RC.adminBadgeOf(element)
 	if (!badge) return
+	const stores = storesAt(element)
+	if (!stores) return
 	event.preventDefault()
 	event.stopPropagation()
-	SquadServerFrame.Actions.selectAllAdmins(badge.stores, event.ctrlKey ? undefined : (badge.teamId ?? undefined))
+	SquadServerFrame.Actions.selectAllAdmins(stores, event.ctrlKey ? undefined : (badge.teamId ?? undefined))
 }
 
 // -------- context menu --------
@@ -92,9 +109,11 @@ function onContextMenu(event: MouseEvent) {
 	if (!element || !menuAnchor) return
 	const target = RC.menuTargetOf(element)
 	const ctx = RC.scopeOf(element)
-	if (!target || !ctx || !ctx.stores.squadServer) return
+	const stores = storesAt(element)
+	// the menu's options all act on a server frame, so no frame means the browser's own menu
+	if (!target || !ctx || !stores) return
 	event.preventDefault()
-	OverlayStore.setState({ menu: { target, stores: ctx.stores, zIndexBase: ctx.zIndexBase } })
+	OverlayStore.setState({ menu: { target, stores, zIndexBase: ctx.zIndexBase } })
 	// radix's own trigger is what knows how to place and open the menu, and all it reads off the event is the
 	// point. Re-firing at the parked trigger gets its placement, its focus handling and its dismissal for free.
 	menuAnchor.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: event.clientX, clientY: event.clientY }))
@@ -144,11 +163,12 @@ function onPointerOver(event: PointerEvent) {
 	if (opener === intentElement) return
 	clearIntent()
 	const openerTarget = opener ? RC.windowTargetOf(opener) : undefined
-	if (!opener || !openerTarget?.preload || frameMissing(opener, openerTarget)) return
+	if (!opener || !openerTarget?.preload || !windowProps(opener, openerTarget)) return
 	intentElement = opener
 	intentTimer = setTimeout(() => {
 		const target = RC.windowTargetOf(opener)
-		if (target) DraggableWindowStore.getState().preloadWindow(target.windowId, target.windowProps, outletOf(opener))
+		const props = target && windowProps(opener, target)
+		if (target && props) DraggableWindowStore.getState().preloadWindow(target.windowId, props, outletOf(opener))
 		clearIntent()
 	}, INTENT_DELAY)
 }

@@ -18,7 +18,7 @@ const STANDARD_TAGS: DomTagRenderers<Msgs.StandardTag> = {
 
 function coerce(part: unknown): Dom.Child {
 	if (part === null || part === undefined || part === false) return null
-	if (part instanceof Node) return part
+	if (Dom.isNode(part)) return part
 	if (Array.isArray(part)) return part.map(coerce)
 	// whatever ICU produced that isn't one of ours: a formatted number, plural or date part
 	return String(part as string | number)
@@ -28,7 +28,7 @@ function assemble(parts: string | unknown[]): Node | string {
 	if (typeof parts === 'string') return parts
 	if (parts.length === 1) {
 		const only = coerce(parts[0])
-		if (typeof only === 'string' || only instanceof Node) return only
+		if (typeof only === 'string' || Dom.isNode(only)) return only
 	}
 	return Dom.frag(parts.map(coerce))
 }

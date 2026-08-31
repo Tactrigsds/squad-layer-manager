@@ -3,13 +3,18 @@ import { Worker } from 'node:worker_threads'
 import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
+import type * as RC from '@/components/feed/render-context'
+import { buildRow } from '@/components/feed/rows'
+import * as Dom from '@/lib/dom'
 import { createId } from '@/lib/id'
 import { assertNever } from '@/lib/type-guards'
+import * as I18n from '@/messages/i18n'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
+import type * as SM from '@/models/squad.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as Env from '@/server/env'
@@ -121,6 +126,13 @@ async function dispatch(
 
 const CursorSchema = z.object({ time: z.number().int(), serverEventId: z.number().int() })
 
+// what server-side rendering needs to know about the viewer, since row markup depends on both
+const RenderSchema = z.object({
+	displayTeamsNormalized: z.boolean().prefault(true),
+	locale: z.string().max(35).prefault('en'),
+})
+type RenderOpts = z.infer<typeof RenderSchema>
+
 async function resolveForQuery(ctx: C.OrpcBase, query: HQ.Query) {
 	const node = HQ.queryFilterNode(query)
 	const problems = HQ.validateQueryNode(node)
@@ -145,6 +157,7 @@ export const router = {
 				// events page backwards from newest by compound cursor; players/matches page by offset
 				cursor: CursorSchema.optional(),
 				page: z.number().int().nonnegative().prefault(0),
+				render: RenderSchema.prefault({}),
 			}),
 		)
 		.handler(async ({ input, context: ctx }) => {
@@ -164,7 +177,7 @@ export const router = {
 					})
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-					const page = await assembleEventPage(ctx, res.hits)
+					const page = await assembleEventPage(ctx, res.hits, input.render)
 					const last = res.hits.at(-1)
 					const nextCursor =
 						res.hits.length === HQ.PAGE_SIZES.events && last
@@ -209,6 +222,17 @@ export const router = {
 					assertNever(input.query.type)
 			}
 		}),
+
+	// who a player is, independent of any server: what the frameless player-details window opens with
+	playerInfo: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
+		const [row] = await ctx
+			.db()
+			.select({ username: Schema.players.username, steamId: Schema.players.steamId })
+			.from(Schema.players)
+			.where(E.eq(Schema.players.eosId, input.playerId))
+		if (!row) return { code: 'err:not-found' as const }
+		return { code: 'ok' as const, username: row.username, steamId: row.steamId?.toString() ?? null }
+	}),
 
 	// -------- saved queries --------
 
@@ -327,10 +351,11 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 }
 
 // Event bodies come last and only for the page, read per server because enrichment replays per-server app
-// events. Enriched rather than raw: a filtered slice carries no roster to replay against, so the client
-// cannot enrich it itself.
-async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryQuery.EventHit[]) {
-	if (hits.length === 0) return { events: CHAT.Wire.encode([]), matches: [] as MH.MatchDetails[] }
+// events. The rows go out as rendered html rather than event data: the same builders the live feed uses run
+// here against a shadow dom, the client inserts the strings and holds them behind content-visibility, and
+// interactivity is all attributes resolved against the client's scope (see feed/render-context.ts).
+async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryQuery.EventHit[], render: RenderOpts) {
+	if (hits.length === 0) return { rowsHtml: [] as string[], matches: [] as MH.MatchDetails[] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
 	const matchRows = await ctx.db().select().from(Schema.matchHistory).where(E.inArray(Schema.matchHistory.id, matchIds))
 
@@ -349,6 +374,102 @@ async function assembleEventPage(ctx: C.OrpcBase, hits: HistoryQuery.EventHit[])
 		// app events replay into the same buffer and carry string ids; the index covers server events only
 		events.push(...enriched.filter((e) => typeof e.id === 'number' && wanted.has(e.id)))
 	}
-	events.sort((a, b) => a.time - b.time)
-	return { events: CHAT.Wire.encode(events), matches: matchRows.flatMap((row) => toMatchDetails(row) ?? []) }
+	// newest first, matching the page order: each further page stacks downward into the past
+	events.sort((a, b) => b.time - a.time)
+	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
+	const revived = await reviveNoops(ctx, events)
+	return { rowsHtml: renderEventRows(revived, matches, render), matches }
+}
+
+// Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a
+// match that only survives as retained rows. The hit is still a result, so it is revived: the raw event with
+// minimal players (name from the players table, no team or squad) put back on the fields interpolation reads.
+async function reviveNoops(ctx: C.OrpcBase, events: CHAT.EventEnriched[]): Promise<CHAT.EventEnriched[]> {
+	const playerFieldsOf = (type: string) =>
+		(CHAT.Wire.FIELDS as Record<string, { players?: readonly string[]; playerLists?: readonly string[] }>)[type]
+
+	const missing = new Set<string>()
+	for (const event of events) {
+		if (event.type !== 'NOOP') continue
+		const original = event.originalEvent as unknown as Record<string, unknown>
+		const fields = playerFieldsOf(event.originalEvent.type)
+		for (const key of fields?.players ?? []) {
+			if (typeof original[key] === 'string') missing.add(original[key])
+		}
+		for (const key of fields?.playerLists ?? []) {
+			for (const id of Array.isArray(original[key]) ? (original[key] as unknown[]) : []) {
+				if (typeof id === 'string') missing.add(id)
+			}
+		}
+	}
+	if (missing.size === 0) return events.filter((e) => e.type !== 'NOOP')
+
+	const nameRows = await ctx
+		.db()
+		.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
+		.from(Schema.players)
+		.where(E.inArray(Schema.players.eosId, [...missing]))
+	const names = new Map(nameRows.map((r) => [r.eosId, r]))
+	const synth = (value: unknown) => {
+		if (typeof value !== 'string') return value
+		const row = names.get(value)
+		return {
+			ids: { eos: value, username: row?.username ?? value, steam: row?.steamId?.toString() },
+			teamId: null,
+			squadId: null,
+			isLeader: false,
+			isAdmin: false,
+			role: '',
+		} satisfies SM.Player
+	}
+
+	const out: CHAT.EventEnriched[] = []
+	for (const event of events) {
+		if (event.type !== 'NOOP') {
+			out.push(event)
+			continue
+		}
+		const fields = playerFieldsOf(event.originalEvent.type)
+		if (!fields) continue
+		const revived = { ...(event.originalEvent as unknown as Record<string, unknown>) }
+		for (const key of fields.players ?? []) {
+			if (revived[key] !== undefined && revived[key] !== null) revived[key] = synth(revived[key])
+		}
+		for (const key of fields.playerLists ?? []) {
+			if (Array.isArray(revived[key])) revived[key] = (revived[key] as unknown[]).map(synth)
+		}
+		out.push(revived as unknown as CHAT.EventEnriched)
+	}
+	return out
+}
+
+function renderEventRows(events: CHAT.EventEnriched[], matches: MH.MatchDetails[], render: RenderOpts): string[] {
+	const byId = new Map(matches.map((m) => [m.historyEntryId, m]))
+	const rctx: RC.RenderCtx = {
+		scopeId: '',
+		stores: {} as never,
+		outletKey: 'default',
+		zIndexBase: 0,
+		displayTeamsNormalized: render.displayTeamsNormalized,
+		showTeamlessChat: true,
+		matchById: (matchId) => (matchId === null || matchId === undefined ? undefined : byId.get(matchId)),
+		latestMatch: undefined,
+		currentMatch: undefined,
+		groupColor: () => null,
+	}
+	// safe to set-and-restore without a scope: the render loop below is synchronous, so nothing else can
+	// read the ambient locale while it is ours
+	const prevLocale = I18n.getAmbientLocale()
+	I18n.setAmbientLocale(render.locale)
+	try {
+		const out: string[] = []
+		for (const event of events) {
+			if (event.type === 'APP_EVENT') continue
+			const node = buildRow(rctx, event)
+			if (node) out.push(Dom.serialize(node))
+		}
+		return out
+	} finally {
+		I18n.setAmbientLocale(prevLocale)
+	}
 }

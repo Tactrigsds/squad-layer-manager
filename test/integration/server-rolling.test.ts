@@ -204,7 +204,9 @@ describe('the event archive', () => {
 		const res = await client.history.query({ query: { chat: 'archive' } })
 		expect(res.code).toBe('ok')
 		if (res.code !== 'ok' || res.type !== 'events') return
-		expect(res.events.events.length).toBeGreaterThan(0)
+		expect(res.rowsHtml.length).toBeGreaterThan(0)
+		// server-rendered, and interactivity rides on attributes rather than anything element-attached
+		expect(res.rowsHtml[0]).toContain('data-dom-')
 	})
 
 	// Last of all: pruning deletes every archived match on the server, so nothing after this can read one.
@@ -251,7 +253,7 @@ describe('the event archive', () => {
 		const res = await client.history.query({ query: { chat: 'archive' } })
 		expect(res.code).toBe('ok')
 		if (res.code !== 'ok' || res.type !== 'events') return
-		expect(res.events.events.length).toBeGreaterThan(0)
+		expect(res.rowsHtml.length).toBeGreaterThan(0)
 
 		// dropping the rule garbage-collects the events it alone kept
 		const unmarked = await client.history.setRetain({ id: saved.id, retain: false })

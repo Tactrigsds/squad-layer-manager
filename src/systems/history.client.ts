@@ -3,7 +3,13 @@ import { useMutation } from '@tanstack/react-query'
 import * as HQ from '@/models/history.models'
 import * as RPC from '@/orpc.client'
 
-export type QueryPageInput = { query: HQ.Query; cursor?: { time: number; serverEventId: number }; page?: number }
+export type QueryPageInput = {
+	query: HQ.Query
+	cursor?: { time: number; serverEventId: number }
+	page?: number
+	// events rows are rendered server-side, so the viewer's display settings ride along
+	render?: { displayTeamsNormalized: boolean; locale: string }
+}
 
 export const queryPageBase = (input: QueryPageInput) =>
 	RPC.orpc.history.query.queryOptions({

@@ -3,11 +3,9 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { SERVER_EVENT_TYPE } from '$root/drizzle/enums'
-import * as RC from '@/components/feed/render-context'
-import { buildRow } from '@/components/feed/rows'
 import HistoryAdvancedEditor, { LayerFilterPicker } from '@/components/history-advanced-editor'
+import HistoryEvents from '@/components/history-events'
 import * as HistoryRows from '@/components/history/rows'
-import { useHistoryRenderCtx } from '@/components/history/use-history-render-ctx'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -18,10 +16,8 @@ import TabsList from '@/components/ui/tabs-list'
 import * as HistoryFrame from '@/frames/history.frame'
 import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
-import * as CHAT from '@/models/chat.models'
 import * as HQ from '@/models/history.models'
-import type * as MH from '@/models/match-history.models'
-import * as RPC from '@/orpc.client'
+import type * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
@@ -55,6 +51,13 @@ export default function HistoryPage(props: HistoryPageProps) {
 	}
 
 	const set = (patch: Partial<HQ.Query>) => HistoryFrame.Actions.setDraft(props.stores, patch)
+
+	// a result-type switch is a view switch, so it runs immediately with the current draft
+	const switchType = (type: HQ.ResultType) => {
+		set({ type })
+		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
+		props.onRun({ ...HistoryFrame.Sel.builtQuery(state), type })
+	}
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])
 
 	return (
@@ -67,7 +70,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 						{ value: 'matches', label: tr.text(HistoryMsgs.tabMatches()) },
 					]}
 					active={draft.type}
-					setActive={(type) => set({ type })}
+					setActive={switchType}
 				/>
 				<TabsList
 					options={[
@@ -302,7 +305,7 @@ function BasicFields(props: { draft: HQ.Query; set: (patch: Partial<HQ.Query>) =
 function Results(props: { query: HQ.Query; onRun: (query: HQ.Query) => void }) {
 	switch (props.query.type) {
 		case 'events':
-			return <EventsResults query={props.query} />
+			return <HistoryEvents query={props.query} />
 		case 'players':
 			return <PlayersResults query={props.query} onRun={props.onRun} />
 		case 'matches':
@@ -321,83 +324,6 @@ function ResultNotices(props: { res: QueryRes | undefined }) {
 		return <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.unrecognisedLayers(res.unrecognisedLayerMatches))}</div>
 	}
 	return null
-}
-
-function EventsResults(props: { query: HQ.Query }) {
-	const key = React.useMemo(() => JSON.stringify(props.query), [props.query])
-	const [extra, setExtra] = React.useState<{ key: string; pages: OkRes[] }>({ key, pages: [] })
-	if (extra.key !== key) setExtra({ key, pages: [] })
-	const first = useQuery(HistoryClient.queryPageBase({ query: props.query }))
-
-	const okPages = React.useMemo(() => {
-		const pages: Extract<OkRes, { type: 'events' }>[] = []
-		for (const page of [first.data, ...extra.pages]) {
-			if (page && page.code === 'ok' && page.type === 'events') pages.push(page)
-		}
-		return pages
-	}, [first.data, extra.pages])
-
-	// each page arrives oldest-first; the feed reads newest-first, pages stacking downward into the past
-	const events = React.useMemo(() => okPages.flatMap((page) => CHAT.Wire.decode(page.events).reverse()), [okPages])
-	const matches = React.useMemo(() => okPages.flatMap((page) => page.matches), [okPages])
-	const nextCursor = okPages.at(-1)?.nextCursor
-	const total = okPages[0]?.total
-
-	const [loadingMore, setLoadingMore] = React.useState(false)
-	const loadMore = async () => {
-		if (!nextCursor) return
-		setLoadingMore(true)
-		try {
-			const res = await RPC.queryClient.fetchQuery(HistoryClient.queryPageBase({ query: props.query, cursor: nextCursor }))
-			setExtra((prev) => (prev.key === key && res.code === 'ok' ? { key, pages: [...prev.pages, res] } : prev))
-		} finally {
-			setLoadingMore(false)
-		}
-	}
-
-	return (
-		<div className="flex min-h-0 flex-col gap-1">
-			<ResultNotices res={first.data} />
-			{total !== undefined && <div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.results(total))}</div>}
-			{first.data?.code === 'ok' && events.length === 0 && (
-				<div className="text-xs text-muted-foreground">{tr.text(HistoryMsgs.noResults())}</div>
-			)}
-			<div className="min-h-0 overflow-y-auto">
-				<EventsFeed events={events} matches={matches} />
-				{nextCursor && (
-					<Button variant="outline" size="sm" className="my-2" disabled={loadingMore} onClick={() => void loadMore()}>
-						{tr.text(HistoryMsgs.loadMore())}
-					</Button>
-				)}
-			</div>
-		</div>
-	)
-}
-
-function EventsFeed(props: { events: CHAT.EventEnriched[]; matches: MH.MatchDetails[] }) {
-	const ctx = useHistoryRenderCtx(props.matches)
-	const hostRef = React.useRef<HTMLDivElement | null>(null)
-
-	React.useLayoutEffect(() => {
-		const host = hostRef.current
-		if (!host) return
-		host.replaceChildren()
-		const fragment = document.createDocumentFragment()
-		for (const event of props.events) {
-			if (event.type === 'APP_EVENT') continue
-			const node = buildRow(ctx, event)
-			if (node) fragment.appendChild(node)
-		}
-		host.appendChild(fragment)
-	}, [props.events, ctx])
-
-	return (
-		<div
-			ref={hostRef}
-			{...{ [RC.SCOPE_ATTR]: ctx.scopeId }}
-			className="flex flex-col [&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_29px]"
-		/>
-	)
 }
 
 function usePagedQuery(query: HQ.Query) {

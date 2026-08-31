@@ -12,6 +12,7 @@ import * as Obj from '@/lib/object-utils'
 import { isNullOrUndef } from '@/lib/type-guards'
 import * as Typo from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import * as I18n from '@/messages/i18n'
 import * as I18nDom from '@/messages/i18n-dom'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
@@ -21,16 +22,9 @@ import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import * as MHModels from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
-import { tr } from '@/systems/messages.client'
 
-import type { PlayerDetailsWindowProps } from '../player-details-window.helpers'
-import type { SquadDetailsWindowProps } from '../squad-details-window.helpers'
 import { icon } from './icons'
 import * as RC from './render-context'
-
-void import('@/components/player-details-window')
-void import('@/components/squad-details-window')
-void import('@/components/layer-info')
 
 const trDom = I18nDom.ambient
 
@@ -114,7 +108,7 @@ export function teamFactionDisplay(props: TeamFactionProps): HTMLElement | null 
 			'span',
 			{
 				class: 'inline-block whitespace-nowrap text-destructive cursor-help',
-				[RC.TIP_HEADING_ATTR]: tr.text(SM_Msgs.failedToParseLayer()),
+				[RC.TIP_HEADING_ATTR]: I18n.ambient.text(SM_Msgs.failedToParseLayer()),
 				[RC.TIP_ATTR]: error instanceof Error ? error.message : 'Unknown error',
 			},
 			layerId,
@@ -271,7 +265,12 @@ export function shortLayerNameContent(props: ShortLayerNameProps): Dom.Child {
 
 	return [
 		backfilled.Layer && mapLayerDisplay(backfilled.Layer, extraStyles),
-		hasFactions && [icon('Dot', 'self-center'), leftTeamElt, Dom.el('span', { class: 'mx-1' }, tr.text(L_Msgs.versus())), rightTeamElt],
+		hasFactions && [
+			icon('Dot', 'self-center'),
+			leftTeamElt,
+			Dom.el('span', { class: 'mx-1' }, I18n.ambient.text(L_Msgs.versus())),
+			rightTeamElt,
+		],
 	]
 }
 
@@ -279,7 +278,7 @@ export function shortLayerNameContent(props: ShortLayerNameProps): Dom.Child {
 export function layerInfoButton(layerId: L.LayerId, content: Dom.Child): HTMLElement {
 	return RC.setWindowTarget(
 		Dom.el('button', { type: 'button', class: 'text-primary underline-offset-4 [&:hover>span]:underline' }, content),
-		{ windowId: WINDOW_ID.enum['layer-info'], windowProps: { layerId }, preload: true },
+		{ windowId: WINDOW_ID.enum['layer-info'], arg: { layerId }, preload: true },
 	)
 }
 
@@ -324,12 +323,15 @@ export function playerDisplay(ctx: RC.RenderCtx, props: PlayerDisplayProps): HTM
 		player.ids.username,
 	)
 	RC.setColourTarget(button, playerId, player)
+	// frame: 'attach', not 'require': the window renders what it can without a live server behind it
 	RC.setWindowTarget(button, {
 		windowId: WINDOW_ID.enum['player-details'],
-		windowProps: { playerId, stores: ctx.stores } satisfies PlayerDetailsWindowProps,
+		arg: { playerId },
+		frame: 'attach',
+		matchId: props.matchId,
 		preload: true,
 	})
-	if (!props.disableContextMenu) RC.setMenuTarget(button, { kind: 'player', playerId })
+	if (!props.disableContextMenu) RC.setMenuTarget(button, { kind: 'player', playerId }, props.matchId)
 
 	const showTeam = !!props.showTeam && player.teamId !== null && props.matchId !== undefined && props.matchId !== null
 	const showSquad = !!props.showSquad && player.squadId !== null
@@ -341,13 +343,17 @@ export function playerDisplay(ctx: RC.RenderCtx, props: PlayerDisplayProps): HTM
 			RC.setAdminBadge(
 				Dom.el(
 					'span',
-					{ title: tr.text(SM_Msgs.adminBadgeHint()), class: 'inline-block' },
+					{ title: I18n.ambient.text(SM_Msgs.adminBadgeHint()), class: 'inline-block' },
 					icon('ShieldCheck', 'h-[1em] w-[1em] text-background fill-admin'),
 				),
-				{ stores: ctx.stores, teamId: player.teamId },
+				{ teamId: player.teamId, matchId: props.matchId },
 			),
 		player.isLeader &&
-			Dom.el('span', { title: tr.text(SM_Msgs.squadLeaderBadge()) }, icon('Star', 'h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0')),
+			Dom.el(
+				'span',
+				{ title: I18n.ambient.text(SM_Msgs.squadLeaderBadge()) },
+				icon('Star', 'h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0'),
+			),
 		button,
 		(showTeam || showSquad) &&
 			Dom.el(
@@ -382,12 +388,14 @@ export function squadDisplay(ctx: RC.RenderCtx, props: SquadDisplayProps): HTMLE
 		squad.uniqueId !== undefined
 			? RC.setWindowTarget(Dom.el('button', { type: 'button', class: 'hover:underline cursor-pointer font-bold' }, label), {
 					windowId: WINDOW_ID.enum['squad-details'],
-					windowProps: { uniqueSquadId: squad.uniqueId, stores: ctx.stores } satisfies SquadDetailsWindowProps,
+					arg: { uniqueSquadId: squad.uniqueId },
+					frame: 'require',
+					matchId: props.matchId,
 					preload: true,
 				})
 			: Dom.el('span', { class: 'font-bold' }, label)
 
-	if (props.showMenu ?? true) RC.setMenuTarget(squadLabel, { kind: 'squad', squad })
+	if (props.showMenu ?? true) RC.setMenuTarget(squadLabel, { kind: 'squad', squad }, props.matchId)
 
 	return Dom.el(
 		'span',
