@@ -3,9 +3,10 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { SERVER_EVENT_TYPE } from '$root/drizzle/enums'
+import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor, { LayerFilterPicker } from '@/components/history-advanced-editor'
 import HistoryEvents from '@/components/history-events'
-import * as HistoryRows from '@/components/history/rows'
+import * as HistoryTemplates from '@/components/history/templates'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -359,12 +360,13 @@ function Pager(props: { page: number; pageSize: number; total: number | undefine
 	)
 }
 
-function DomRowsBody(props: { build: () => HTMLElement[] }) {
+// rows are inert templates walked straight to dom (see static-render.ts)
+function DomRowsBody(props: { rows: React.ReactNode[] }) {
 	const ref = React.useRef<HTMLTableSectionElement | null>(null)
 	React.useLayoutEffect(() => {
 		const body = ref.current
 		if (!body) return
-		body.replaceChildren(...props.build())
+		body.replaceChildren(...props.rows.flatMap((row) => renderStatic(row) ?? []))
 	})
 	return <tbody ref={ref} />
 }
@@ -405,7 +407,11 @@ function PlayersResults(props: { query: HQ.Query; onRun: (query: HQ.Query) => vo
 							{sortHeader('lastSeen', tr.text(HistoryMsgs.colLastSeen()))}
 						</tr>
 					</thead>
-					<DomRowsBody build={() => (ok?.rows ?? []).map(HistoryRows.buildPlayerRow)} />
+					<DomRowsBody
+						rows={(ok?.rows ?? []).map((row) => (
+							<HistoryTemplates.PlayerRow key={row.playerId} row={row} />
+						))}
+					/>
 				</table>
 			</div>
 			<Pager page={page} pageSize={HQ.PAGE_SIZES.players} total={ok?.total} setPage={setPage} />
@@ -433,7 +439,11 @@ function MatchesResults(props: { query: HQ.Query }) {
 							<th className={HEADER_CELL}>{tr.text(HistoryMsgs.colSetBy())}</th>
 						</tr>
 					</thead>
-					<DomRowsBody build={() => (ok?.matches ?? []).map((m) => HistoryRows.buildMatchRow(m, displayTeamsNormalized))} />
+					<DomRowsBody
+						rows={(ok?.matches ?? []).map((m) => (
+							<HistoryTemplates.MatchRow key={m.historyEntryId} details={m} displayTeamsNormalized={displayTeamsNormalized} />
+						))}
+					/>
 				</table>
 			</div>
 			<Pager page={page} pageSize={HQ.PAGE_SIZES.matches} total={ok?.total} setPage={setPage} />
