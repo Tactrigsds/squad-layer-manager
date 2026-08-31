@@ -6,6 +6,7 @@ import * as zod from 'zod'
 
 import * as SHIM from '@/models/plugin-api-shim'
 import * as componentsComboBox from '@/plugin-api/components/combo-box'
+import * as componentsIcons from '@/plugin-api/components/icons'
 import * as componentsLayer from '@/plugin-api/components/layer'
 import * as componentsPickers from '@/plugin-api/components/pickers'
 import * as componentsPluginSettingsLink from '@/plugin-api/components/plugin-settings-link'
@@ -38,6 +39,7 @@ import * as pluginSlots from '@/plugin-api/plugin/slots'
 export function setup() {
 	;(globalThis as Record<string, unknown>)[SHIM.API_GLOBAL] = {
 		'slm/components/combo-box': componentsComboBox,
+		'slm/components/icons': componentsIcons,
 		'slm/components/layer': componentsLayer,
 		'slm/components/pickers': componentsPickers,
 		'slm/components/plugin-settings-link': componentsPluginSettingsLink,
