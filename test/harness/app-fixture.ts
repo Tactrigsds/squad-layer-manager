@@ -210,7 +210,7 @@ export type AppFixture = {
 	waitForNextLayerSync: (opts?: { timeoutMs?: number }) => Promise<void>
 	// fresh read-only connection to the app's db, for assertions
 	// drives the app's control socket: one json line in, one back. See control-socket.server.ts.
-	control: (command: string) => Promise<Record<string, unknown>>
+	control: (command: string, args?: Record<string, unknown>) => Promise<Record<string, unknown>>
 	readDb: () => SqliteDb
 	waitFor: <T>(probe: () => T | Promise<T>, opts?: { timeoutMs?: number; intervalMs?: number; label?: string }) => Promise<NonNullable<T>>
 	// stop the app and boot it again against the same db, emulator and ports. For anything that only happens on
@@ -756,12 +756,12 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				{ label: "the server's next layer to catch up with the queue head", timeoutMs: syncOpts?.timeoutMs ?? 20_000 },
 			)
 		},
-		control: (command: string) =>
+		control: (command: string, args?: Record<string, unknown>) =>
 			new Promise<Record<string, unknown>>((resolve, reject) => {
 				const socket = net.createConnection(controlSocketPath)
 				let buffer = ''
 				socket.setEncoding('utf8')
-				socket.on('connect', () => socket.write(JSON.stringify({ command }) + '\n'))
+				socket.on('connect', () => socket.write(JSON.stringify({ command, args }) + '\n'))
 				socket.on('data', (chunk: string) => (buffer += chunk))
 				socket.on('error', reject)
 				socket.on('close', () => {

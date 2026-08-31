@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import * as Schema from '$root/drizzle/schema'
 import { createId } from '@/lib/id'
+import { assertNever } from '@/lib/type-guards'
 import * as AppEvents from '@/models/app-events.models'
 import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
@@ -17,11 +18,11 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.server'
+import type * as HistoryWorker from '@/systems/history-query.worker'
 import * as HistoryResolve from '@/systems/history-resolve.server'
 import * as HistoryRetention from '@/systems/history-retention.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as Rbac from '@/systems/rbac.server'
-import type * as HistoryWorker from '@/systems/history-query.worker'
 
 // The history page's server half. A query request is: authorize and resolve on the main thread
 // (history-resolve.server.ts), then dispatch the resolved tree to the query engine on a worker thread with
@@ -39,7 +40,10 @@ let ENV!: ReturnType<typeof envBuilder>
 
 let worker: Worker | undefined
 let nextSeq = 1
-const pending = new Map<number, { resolve: (res: HistoryQuery.EngineResponse | HistoryQuery.QueryError) => void; reject: (err: unknown) => void }>()
+const pending = new Map<
+	number,
+	{ resolve: (res: HistoryQuery.EngineResponse | HistoryQuery.QueryError) => void; reject: (err: unknown) => void }
+>()
 
 function failPending(err: unknown) {
 	for (const p of pending.values()) p.reject(err)
@@ -121,7 +125,10 @@ async function resolveForQuery(ctx: C.OrpcBase, query: HQ.Query) {
 	const node = HQ.queryFilterNode(query)
 	const problems = HQ.validateQueryNode(node)
 	if (problems.length > 0) {
-		return { code: 'err:invalid-query' as const, message: problems.map((p) => ('column' in p ? `unknown column ${p.column}` : p.code)).join('; ') }
+		return {
+			code: 'err:invalid-query' as const,
+			message: problems.map((p) => ('column' in p ? `unknown column ${p.column}` : p.code)).join('; '),
+		}
 	}
 	const visible = await HistoryResolve.visibleServerIds(ctx)
 	const bounds = HistoryQuery.boundsOf(query, visible)
@@ -199,7 +206,7 @@ export const router = {
 					}
 				}
 				default:
-					throw new Error(`unknown result type ${input.query.type}`)
+					assertNever(input.query.type)
 			}
 		}),
 
@@ -275,39 +282,37 @@ export const router = {
 		return { code: 'ok' as const }
 	}),
 
-	setRetain: orpcBase
-		.input(z.object({ id: HQ.SAVED_QUERY_ID, retain: z.boolean() }))
-		.handler(async ({ input, context: ctx }) => {
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RETAIN_PERM_REQ)
-			if (denyRes) return denyRes
-			const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
-			if (!existing) return { code: 'err:not-found' as const }
-			if (existing.ownerId !== ctx.user.discordId && existing.visibility !== 'shared') return { code: 'err:not-found' as const }
-			const query = HQ.QuerySchema.safeParse(existing.query)
-			if (!query.success || query.data.type !== 'events') {
-				return { code: 'err:invalid-query' as const, message: 'only queries with the events result type can retain their results' }
-			}
-			if (existing.retain === input.retain) return { code: 'ok' as const }
-			await ctx.db().update(Schema.savedQueries).set({ retain: input.retain }).where(E.eq(Schema.savedQueries.id, input.id))
-			if (!input.retain) {
-				await ctx.db().delete(Schema.retainedEventClaims).where(E.eq(Schema.retainedEventClaims.savedQueryId, input.id))
-				await HistoryRetention.gcOrphanRetainedEvents(ctx)
-			}
-			await AppEventsSys.persistAppEvent(
-				ctx,
-				AppEvents.create<AppEvents.HistoryRetentionChanged>({
-					type: 'HISTORY_RETENTION_CHANGED',
-					savedQueryId: input.id,
-					savedQueryName: existing.name,
-					retain: input.retain,
-					actor: { type: 'slm-user', userId: ctx.user.discordId },
-					serverId: null,
-					matchId: null,
-					causeId: null,
-				}),
-			)
-			return { code: 'ok' as const }
-		}),
+	setRetain: orpcBase.input(z.object({ id: HQ.SAVED_QUERY_ID, retain: z.boolean() })).handler(async ({ input, context: ctx }) => {
+		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RETAIN_PERM_REQ)
+		if (denyRes) return denyRes
+		const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
+		if (!existing) return { code: 'err:not-found' as const }
+		if (existing.ownerId !== ctx.user.discordId && existing.visibility !== 'shared') return { code: 'err:not-found' as const }
+		const query = HQ.QuerySchema.safeParse(existing.query)
+		if (!query.success || query.data.type !== 'events') {
+			return { code: 'err:invalid-query' as const, message: 'only queries with the events result type can retain their results' }
+		}
+		if (existing.retain === input.retain) return { code: 'ok' as const }
+		await ctx.db().update(Schema.savedQueries).set({ retain: input.retain }).where(E.eq(Schema.savedQueries.id, input.id))
+		if (!input.retain) {
+			await ctx.db().delete(Schema.retainedEventClaims).where(E.eq(Schema.retainedEventClaims.savedQueryId, input.id))
+			await HistoryRetention.gcOrphanRetainedEvents(ctx)
+		}
+		await AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.HistoryRetentionChanged>({
+				type: 'HISTORY_RETENTION_CHANGED',
+				savedQueryId: input.id,
+				savedQueryName: existing.name,
+				retain: input.retain,
+				actor: { type: 'slm-user', userId: ctx.user.discordId },
+				serverId: null,
+				matchId: null,
+				causeId: null,
+			}),
+		)
+		return { code: 'ok' as const }
+	}),
 }
 
 const RETAIN_PERM_REQ = RBAC.permReq('any', ['global-settings:write'])

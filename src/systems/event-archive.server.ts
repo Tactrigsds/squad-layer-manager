@@ -158,15 +158,18 @@ export const compactAgedMatches = Instr.spanOp(
 				const blob = await EA.pack(rows)
 
 				await DB.runTransaction(ctx, async (ctx) => {
-					await ctx.db().insert(Schema.archivedMatches).values({
-						matchId,
-						serverId,
-						eventCount: rows.length,
-						minEventId: rows[0].id,
-						maxEventId: rows[rows.length - 1].id,
-						encoding: EA.ENCODING,
-						events: blob,
-					})
+					await ctx
+						.db()
+						.insert(Schema.archivedMatches)
+						.values({
+							matchId,
+							serverId,
+							eventCount: rows.length,
+							minEventId: rows[0].id,
+							maxEventId: rows[rows.length - 1].id,
+							encoding: EA.ENCODING,
+							events: blob,
+						})
 					await ctx.db().delete(Schema.serverEvents).where(E.eq(Schema.serverEvents.matchId, matchId))
 				})
 
@@ -306,13 +309,11 @@ export const pruneArchivedMatches = Instr.spanOp(
 							),
 						)
 					// not awaited: run() on the better-sqlite3 driver is synchronous (see the insert in squad-server)
-					ctx
-						.db()
-						.run(
-							keep
-								? E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch} AND serverEventId NOT IN (SELECT value FROM json_each(${keep}))`
-								: E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch}`,
-						)
+					ctx.db().run(
+						keep
+							? E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch} AND serverEventId NOT IN (SELECT value FROM json_each(${keep}))`
+							: E.sql`DELETE FROM chatSearch WHERE matchId IN ${batch}`,
+					)
 					await ctx.db().delete(Schema.archivedMatches).where(E.inArray(Schema.archivedMatches.matchId, batch))
 				})
 				await Timers.setImmediate(undefined, { signal: ctx.signal })

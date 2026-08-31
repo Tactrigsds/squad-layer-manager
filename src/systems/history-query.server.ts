@@ -95,10 +95,7 @@ export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<st
 		.select({ eosId: Schema.players.eosId })
 		.from(Schema.players)
 		.where(
-			E.or(
-				sql`${Schema.players.username} LIKE ${needle} ESCAPE '\\'`,
-				sql`${Schema.players.usernameNoTag} LIKE ${needle} ESCAPE '\\'`,
-			),
+			E.or(sql`${Schema.players.username} LIKE ${needle} ESCAPE '\\'`, sql`${Schema.players.usernameNoTag} LIKE ${needle} ESCAPE '\\'`),
 		)
 		.limit(MAX_NAME_MATCHES)
 	return rows.map((r) => r.eosId)
@@ -158,8 +155,12 @@ export async function resolveArtifacts(
 					.from(mh)
 					.where(E.and(matchBoundsCond(bounds), cond))
 					.limit(MAX_SUBQUERY_MATCHES + 1)
-				if (rows.length > MAX_SUBQUERY_MATCHES) return { code: 'err:too-broad', message: 'a matches sub-query matched too many matches' }
-				artifacts.matchSets.set(node, rows.map((r) => r.id))
+				if (rows.length > MAX_SUBQUERY_MATCHES)
+					return { code: 'err:too-broad', message: 'a matches sub-query matched too many matches' }
+				artifacts.matchSets.set(
+					node,
+					rows.map((r) => r.id),
+				)
 			} else if (node.target === 'players') {
 				const cond = compileEventCond(node.filter, inner.artifacts)
 				const rows = await ctx
@@ -168,8 +169,12 @@ export async function resolveArtifacts(
 					.from(pei)
 					.where(E.and(eventBoundsCond(bounds), cond))
 					.limit(MAX_SUBQUERY_PLAYERS + 1)
-				if (rows.length > MAX_SUBQUERY_PLAYERS) return { code: 'err:too-broad', message: 'a players sub-query matched too many players' }
-				artifacts.playerSets.set(node, rows.map((r) => r.playerId))
+				if (rows.length > MAX_SUBQUERY_PLAYERS)
+					return { code: 'err:too-broad', message: 'a players sub-query matched too many players' }
+				artifacts.playerSets.set(
+					node,
+					rows.map((r) => r.playerId),
+				)
 			} else {
 				assertNever(node.target)
 			}
@@ -188,10 +193,11 @@ export async function resolveArtifacts(
 		if (column === 'event.damageSource') {
 			const names = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			const rows =
-				names.length > 0
-					? await ctx.db().select().from(Schema.damageSources).where(E.inArray(Schema.damageSources.name, names))
-					: []
-			artifacts.damageSourceIds.set(node, rows.map((r) => r.id))
+				names.length > 0 ? await ctx.db().select().from(Schema.damageSources).where(E.inArray(Schema.damageSources.name, names)) : []
+			artifacts.damageSourceIds.set(
+				node,
+				rows.map((r) => r.id),
+			)
 		}
 	}
 	return { code: 'ok', artifacts }
@@ -274,9 +280,7 @@ function compileComp(comp: F.CompNode, col: E.SQL | E.AnyColumn, map: (v: F.Valu
 		case 'inrange': {
 			const [lo, hi] = compValueList(comp)
 			cond =
-				lo === null || hi === null || lo === undefined || hi === undefined
-					? sql`0 = 1`
-					: sql`${col} BETWEEN ${map(lo)} AND ${map(hi)}`
+				lo === null || hi === null || lo === undefined || hi === undefined ? sql`0 = 1` : sql`${col} BETWEEN ${map(lo)} AND ${map(hi)}`
 			break
 		}
 		default:
@@ -308,7 +312,10 @@ function combineBlock(type: F.BlockType, children: (E.SQL | undefined)[]): E.SQL
  */
 export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL | undefined {
 	if (HQ.isBlockNode(node)) {
-		return combineBlock(node.type, node.children.map((child) => compileEventCond(child, art)))
+		return combineBlock(
+			node.type,
+			node.children.map((child) => compileEventCond(child, art)),
+		)
 	}
 	if (node.type === 'match-layer' || (node.type === 'subquery' && node.target === 'matches')) {
 		const matchIds = art.matchSets.get(node) ?? []
@@ -374,7 +381,10 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
  */
 export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: Bounds): E.SQL | undefined {
 	if (HQ.isBlockNode(node)) {
-		return combineBlock(node.type, node.children.map((child) => compileMatchCond(child, art, bounds)))
+		return combineBlock(
+			node.type,
+			node.children.map((child) => compileMatchCond(child, art, bounds)),
+		)
 	}
 	if (node.type === 'match-layer' || (node.type === 'subquery' && node.target === 'matches')) {
 		const matchIds = art.matchSets.get(node) ?? []
@@ -517,7 +527,12 @@ export async function queryPlayerRows(
 		.db()
 		.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
 		.from(Schema.players)
-		.where(E.inArray(Schema.players.eosId, rows.map((r) => r.playerId)))
+		.where(
+			E.inArray(
+				Schema.players.eosId,
+				rows.map((r) => r.playerId),
+			),
+		)
 	const names = new Map(nameRows.map((r) => [r.eosId, r]))
 
 	return {
@@ -630,7 +645,13 @@ export async function runEngineRequest(ctx: C.Db & CS.AbortSignal, req: EngineRe
 			return { code: 'ok', kind: 'players', rows, total }
 		}
 		case 'matches': {
-			const { rows, total } = await queryMatchRows(ctx, { node: req.node, art, bounds: req.bounds, limit: req.limit, offset: req.offset })
+			const { rows, total } = await queryMatchRows(ctx, {
+				node: req.node,
+				art,
+				bounds: req.bounds,
+				limit: req.limit,
+				offset: req.offset,
+			})
 			return { code: 'ok', kind: 'matches', rows, total }
 		}
 		default:

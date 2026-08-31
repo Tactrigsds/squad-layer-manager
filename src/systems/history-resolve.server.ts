@@ -36,11 +36,7 @@ export type RewriteResult = { code: 'ok'; node: HQ.Node; unrecognisedLayerMatche
  * excluded and counted in `unrecognisedLayerMatches` -- silently dropping them would make a layer-filtered
  * query quietly incomplete. Copy-on-write: subtrees without layer nodes are returned as-is.
  */
-export async function rewriteLayerNodes(
-	ctx: C.Db & CS.AbortSignal,
-	root: HQ.Node,
-	bounds: HistoryQuery.Bounds,
-): Promise<RewriteResult> {
+export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Node, bounds: HistoryQuery.Bounds): Promise<RewriteResult> {
 	// most queries carry no layer node, so the engine ctx is resolved on first use
 	let lqCtx: LayerQueries.QueryCtx | undefined
 	let sawLayerNode = false

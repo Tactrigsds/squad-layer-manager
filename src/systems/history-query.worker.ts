@@ -11,7 +11,11 @@ import * as HistoryQuery from '@/systems/history-query.server'
 // also holds the in-process fallback -- the same runEngineRequest call, minus the thread.
 
 export type Request = { seq: number; req: HistoryQuery.EngineRequest }
-export type Response = { seq: number; res?: HistoryQuery.EngineResponse | HistoryQuery.QueryError; err?: { message: string; stack?: string } }
+export type Response = {
+	seq: number
+	res?: HistoryQuery.EngineResponse | HistoryQuery.QueryError
+	err?: { message: string; stack?: string }
+}
 
 const { dbPath } = workerData as { dbPath: string }
 

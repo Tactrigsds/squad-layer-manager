@@ -35,10 +35,10 @@ export type ColumnDomain =
 export type ColumnDef = { key: ColumnKey; displayName: string; domain: ColumnDomain }
 
 export const COLUMN_DEFS = {
-	'time': { key: 'time', displayName: 'Time', domain: { kind: 'timestamp' } },
-	'eventId': { key: 'eventId', displayName: 'Event id', domain: { kind: 'number' } },
-	'server': { key: 'server', displayName: 'Server', domain: { kind: 'dynamic-enum', source: 'servers' } },
-	'player': { key: 'player', displayName: 'Player', domain: { kind: 'player' } },
+	time: { key: 'time', displayName: 'Time', domain: { kind: 'timestamp' } },
+	eventId: { key: 'eventId', displayName: 'Event id', domain: { kind: 'number' } },
+	server: { key: 'server', displayName: 'Server', domain: { kind: 'dynamic-enum', source: 'servers' } },
+	player: { key: 'player', displayName: 'Player', domain: { kind: 'player' } },
 	'event.type': { key: 'event.type', displayName: 'Event type', domain: { kind: 'enum', options: SERVER_EVENT_TYPE.options } },
 	'event.variant': { key: 'event.variant', displayName: 'Kill variant', domain: { kind: 'enum', options: EVENT_VARIANTS } },
 	'event.damageSource': {
@@ -86,9 +86,7 @@ export function columnCompOptions(key: string): F.CompOpSelectOption[] {
 	if (!def) return all
 	switch (def.domain.kind) {
 		case 'text':
-			return all
-				.filter((o) => o.type === 'eq')
-				.map((o) => ({ ...o, label: o.neg ? 'not containing' : 'contains' }))
+			return all.filter((o) => o.type === 'eq').map((o) => ({ ...o, label: o.neg ? 'not containing' : 'contains' }))
 		case 'player':
 			return all.filter((o) => o.type === 'eq' || o.type === 'in')
 		default:

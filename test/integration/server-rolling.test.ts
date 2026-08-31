@@ -206,4 +206,62 @@ describe('the event archive', () => {
 		if (res.code !== 'ok' || res.type !== 'events') return
 		expect(res.events.events.length).toBeGreaterThan(0)
 	})
+
+	// Last of all: pruning deletes every archived match on the server, so nothing after this can read one.
+	it('a retention rule sieves its events out of a pruned match; everything else is dropped', async () => {
+		const saved = await client.history.save({
+			name: 'keep archive chat',
+			visibility: 'private',
+			query: { type: 'events', mode: 'basic', chat: 'archive' },
+		})
+		expect(saved.code).toBe('ok')
+		if (saved.code !== 'ok') return
+		const marked = await client.history.setRetain({ id: saved.id, retain: true })
+		expect(marked.code).toBe('ok')
+
+		const pruned = await app.control('prune-events', { retention: 1 })
+		expect(pruned.code).toBe('ok')
+		expect(pruned.matches as number).toBeGreaterThan(0)
+
+		const db = app.readDb()
+		let retainedIds: number[]
+		try {
+			const rows = db.prepare(`SELECT serverEventId FROM retainedEvents`).all() as { serverEventId: number }[]
+			retainedIds = rows.map((r) => r.serverEventId)
+			expect(retainedIds.length).toBeGreaterThan(0)
+			const claims = db.prepare(`SELECT count(*) AS n FROM retainedEventClaims WHERE savedQueryId = ?`).get(saved.id) as { n: number }
+			expect(claims.n).toBe(retainedIds.length)
+			// the archive blobs are gone, and only the retained events kept their index and chat rows
+			const archives = db.prepare(`SELECT count(*) AS n FROM archivedMatches`).get() as { n: number }
+			expect(archives.n).toBe(0)
+			const strayIndex = db
+				.prepare(
+					`SELECT count(*) AS n FROM playerEventIndex
+					 WHERE matchId IN (SELECT matchId FROM retainedEvents)
+					   AND serverEventId NOT IN (SELECT serverEventId FROM retainedEvents)`,
+				)
+				.get() as { n: number }
+			expect(strayIndex.n).toBe(0)
+		} finally {
+			db.close()
+		}
+
+		// the retained events remain queryable end to end: the index finds them, and the bodies are read
+		// back from retainedEvents now that the archive rows are gone
+		const res = await client.history.query({ query: { chat: 'archive' } })
+		expect(res.code).toBe('ok')
+		if (res.code !== 'ok' || res.type !== 'events') return
+		expect(res.events.events.length).toBeGreaterThan(0)
+
+		// dropping the rule garbage-collects the events it alone kept
+		const unmarked = await client.history.setRetain({ id: saved.id, retain: false })
+		expect(unmarked.code).toBe('ok')
+		const db2 = app.readDb()
+		try {
+			const kept = db2.prepare(`SELECT count(*) AS n FROM retainedEvents`).get() as { n: number }
+			expect(kept.n).toBe(0)
+		} finally {
+			db2.close()
+		}
+	})
 })

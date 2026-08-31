@@ -55,11 +55,22 @@ function clearIntent() {
 	intentElement = null
 }
 
+// A scope without a live server frame (the history page) cannot honour interactions whose payload carries
+// its stores: the window or menu they open acts on the frame. Windows that carry no stores (layer info)
+// still work there.
+function frameMissing(element: Element, target?: { windowProps: unknown }) {
+	const scope = RC.scopeOf(element)
+	if (!scope || scope.stores.squadServer) return false
+	if (!target) return true
+	const props = target.windowProps
+	return !!props && typeof props === 'object' && 'stores' in props
+}
+
 function onClick(event: MouseEvent) {
 	const element = elementAt(event, RC.WINDOW_ATTR)
 	if (!element) return
 	const target = RC.windowTargetOf(element)
-	if (!target) return
+	if (!target || frameMissing(element, target)) return
 	DraggableWindowStore.getState().openWindow(target.windowId, target.windowProps, element as HTMLElement, outletOf(element))
 }
 
@@ -81,7 +92,7 @@ function onContextMenu(event: MouseEvent) {
 	if (!element || !menuAnchor) return
 	const target = RC.menuTargetOf(element)
 	const ctx = RC.scopeOf(element)
-	if (!target || !ctx) return
+	if (!target || !ctx || !ctx.stores.squadServer) return
 	event.preventDefault()
 	OverlayStore.setState({ menu: { target, stores: ctx.stores, zIndexBase: ctx.zIndexBase } })
 	// radix's own trigger is what knows how to place and open the menu, and all it reads off the event is the
@@ -132,7 +143,8 @@ function onPointerOver(event: PointerEvent) {
 	const opener = elementAt(event, RC.WINDOW_ATTR)
 	if (opener === intentElement) return
 	clearIntent()
-	if (!opener || !RC.windowTargetOf(opener)?.preload) return
+	const openerTarget = opener ? RC.windowTargetOf(opener) : undefined
+	if (!opener || !openerTarget?.preload || frameMissing(opener, openerTarget)) return
 	intentElement = opener
 	intentTimer = setTimeout(() => {
 		const target = RC.windowTargetOf(opener)

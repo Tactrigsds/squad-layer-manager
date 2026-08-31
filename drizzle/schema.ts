@@ -270,7 +270,9 @@ export const savedQueries = sqliteTable(
 		ownerId: bigintText('ownerId')
 			.notNull()
 			.references(() => users.discordId, { onDelete: 'cascade' }),
-		visibility: text('visibility', { enum: ['private', 'shared'] }).notNull().default('private'),
+		visibility: text('visibility', { enum: ['private', 'shared'] })
+			.notNull()
+			.default('private'),
 		retain: boolean('retain').notNull().default(false),
 		query: json('query').notNull(),
 		createdAt: timestamp('createdAt')
