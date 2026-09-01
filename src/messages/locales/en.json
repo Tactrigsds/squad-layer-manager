@@ -247,6 +247,8 @@
 	"Broadcast": "Broadcast",
 	"Broadcast to the server…": "Broadcast to the server…",
 	"Broken": "Broken",
+	"Build the query as a tree": "Build the query as a tree",
+	"Build the query from fields": "Build the query from fields",
 	"Builder": "Builder",
 	"Built in": "Built in",
 	"Bulk join": "Bulk join",

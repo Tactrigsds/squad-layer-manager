@@ -74,15 +74,20 @@ export default function HistoryPage(props: HistoryPageProps) {
 	}
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])
 
+	// a button rather than a tab strip: the control has no fixed home (the rail it sits in does not exist in
+	// advanced mode), and a tab strip that moves reads as two different controls. Labelled with the mode it
+	// switches to, which is the only thing a one-shot toggle can usefully say.
+	const target = draft.mode === 'basic' ? 'advanced' : 'basic'
 	const modeToggle = (
-		<TabsList
-			options={[
-				{ value: 'basic', label: tr.text(HistoryMsgs.modeBasic()) },
-				{ value: 'advanced', label: tr.text(HistoryMsgs.modeAdvanced()) },
-			]}
-			active={draft.mode}
-			setActive={(mode) => HistoryFrame.Actions.setMode(props.stores, mode)}
-		/>
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button variant="outline" size="sm" onClick={() => HistoryFrame.Actions.setMode(props.stores, target)}>
+					<Icons.SlidersHorizontal className="mr-1 h-3 w-3" />
+					{tr.text(target === 'advanced' ? HistoryMsgs.modeAdvanced() : HistoryMsgs.modeBasic())}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>{tr.text(target === 'advanced' ? HistoryMsgs.switchToAdvanced() : HistoryMsgs.switchToBasic())}</TooltipContent>
+		</Tooltip>
 	)
 	const runButton = (
 		<Tooltip>
@@ -108,8 +113,10 @@ export default function HistoryPage(props: HistoryPageProps) {
 		<div className="flex h-full min-h-0 gap-2 p-2" onKeyDown={onKeyDown}>
 			{draft.mode === 'basic' && (
 				<aside className="flex w-64 shrink-0 flex-col gap-2 border-r pr-2">
-					{modeToggle}
-					{runButton}
+					<div className="flex items-center gap-2">
+						{modeToggle}
+						<span className="min-w-0 flex-1">{runButton}</span>
+					</div>
 					{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
 					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
 						<HistoryQueryBar draft={draft} set={set} />
