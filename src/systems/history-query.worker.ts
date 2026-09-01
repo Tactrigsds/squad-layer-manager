@@ -12,6 +12,9 @@ import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import type * as C from '@/server/context'
 import {
+	ae,
+	appEventBoundsCond,
+	compileAppEventCond,
 	compileEventCond,
 	compileMatchCond,
 	eventBoundsCond,
@@ -39,8 +42,30 @@ import * as LayerData from '@/systems/layer-data.server'
 const pei = Schema.playerEventIndex
 const mh = Schema.matchHistory
 
-// the one shape both engines share for the events hit list: which event, in which match, when
-export type EventHit = { serverEventId: number; matchId: number; time: Date }
+// One hit: which event, in which match, when. Exactly one of the two ids is set -- the families are indexed
+// separately (playerEventIndex vs appEvents) and their ids are not even the same type.
+export type EventHit = { matchId: number; time: Date } & (
+	| { serverEventId: number; appEventId?: undefined }
+	| { appEventId: string; serverEventId?: undefined }
+)
+
+// The page cursor is a position in the merge, so it names which family it sits in.
+export type EventCursor = { time: number; serverEventId?: number; appEventId?: string }
+
+// The total order the two sources merge into: newest first, server events before app events within a
+// millisecond, then descending id. Arbitrary but total, which is all a cursor needs.
+function hitRank(hit: { serverEventId?: number }): number {
+	return hit.serverEventId !== undefined ? 0 : 1
+}
+
+function compareHits(a: EventHit, b: EventHit): number {
+	const byTime = b.time.getTime() - a.time.getTime()
+	if (byTime !== 0) return byTime
+	const byRank = hitRank(a) - hitRank(b)
+	if (byRank !== 0) return byRank
+	if (a.serverEventId !== undefined && b.serverEventId !== undefined) return b.serverEventId - a.serverEventId
+	return (b.appEventId ?? '').localeCompare(a.appEventId ?? '')
+}
 
 // A single positive player constraint under the root `and` also constrains which index rows can produce
 // hits, so it is added as a direct pk condition. Purely an optimization: the subselect the comp compiled to
@@ -57,34 +82,78 @@ export function playerAnchor(root: HQ.Node, art: ResolvedArtifacts): string[] | 
 	return undefined
 }
 
+/**
+ * One page of hits, merged from both event families.
+ *
+ * Each source is asked for a full page and the two are merged, so the page is correct however lopsided the
+ * split: a page can legitimately be all server events or all app events. Both read a page's worth even when
+ * one contributes nothing, which is the cost of the merge and is bounded by the page size.
+ */
 export async function queryEventHits(
 	ctx: C.Db & CS.AbortSignal,
-	opts: {
-		node: HQ.Node
-		art: ResolvedArtifacts
-		bounds: Bounds
-		cursor?: { time: number; serverEventId: number }
-		pageSize: number
-	},
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number },
+): Promise<EventHit[]> {
+	const [serverHits, appHits] = await Promise.all([queryServerEventHits(ctx, opts), queryAppEventHits(ctx, opts)])
+	return [...serverHits, ...appHits].sort(compareHits).slice(0, opts.pageSize)
+}
+
+async function queryServerEventHits(
+	ctx: C.Db & CS.AbortSignal,
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number },
 ): Promise<EventHit[]> {
 	const anchor = playerAnchor(opts.node, opts.art)
-	const cond = E.and(
-		anchor ? (anchor.length === 1 ? E.eq(pei.playerId, anchor[0]) : inJsonSet(pei.playerId, anchor)) : undefined,
-		E.ne(pei.assocType, GAME_PARTICIPANT),
-		eventBoundsCond(opts.bounds),
-		compileEventCond(opts.node, opts.art),
-		opts.cursor
-			? sql`(${pei.time} < ${opts.cursor.time} OR (${pei.time} = ${opts.cursor.time} AND ${pei.serverEventId} < ${opts.cursor.serverEventId}))`
-			: undefined,
-	)
-	return await ctx
+	const cursor = opts.cursor
+	const rows = await ctx
 		.db()
 		.select({ serverEventId: pei.serverEventId, matchId: pei.matchId, time: pei.time })
 		.from(pei)
-		.where(cond)
+		.where(
+			E.and(
+				anchor ? (anchor.length === 1 ? E.eq(pei.playerId, anchor[0]) : inJsonSet(pei.playerId, anchor)) : undefined,
+				E.ne(pei.assocType, GAME_PARTICIPANT),
+				eventBoundsCond(opts.bounds),
+				compileEventCond(opts.node, opts.art),
+				// a cursor sitting on an app event has already passed every server event of that millisecond,
+				// since server events sort first within one
+				cursor === undefined
+					? undefined
+					: cursor.serverEventId === undefined
+						? sql`${pei.time} < ${cursor.time}`
+						: sql`(${pei.time} < ${cursor.time} OR (${pei.time} = ${cursor.time} AND ${pei.serverEventId} < ${cursor.serverEventId}))`,
+			),
+		)
 		.groupBy(pei.serverEventId)
 		.orderBy(E.desc(pei.time), E.desc(pei.serverEventId))
 		.limit(opts.pageSize)
+	return rows
+}
+
+async function queryAppEventHits(
+	ctx: C.Db & CS.AbortSignal,
+	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds; cursor?: EventCursor; pageSize: number },
+): Promise<EventHit[]> {
+	const cursor = opts.cursor
+	const rows = await ctx
+		.db()
+		.select({ appEventId: ae.id, matchId: ae.matchId, time: ae.time })
+		.from(ae)
+		.where(
+			E.and(
+				appEventBoundsCond(opts.bounds),
+				compileAppEventCond(opts.node, opts.art),
+				// the mirror of the server side: a cursor on a server event has not yet passed any app event of
+				// the same millisecond
+				cursor === undefined
+					? undefined
+					: cursor.appEventId === undefined
+						? sql`${ae.time} <= ${cursor.time}`
+						: sql`(${ae.time} < ${cursor.time} OR (${ae.time} = ${cursor.time} AND ${ae.id} < ${cursor.appEventId}))`,
+			),
+		)
+		.orderBy(E.desc(ae.time), E.desc(ae.id))
+		.limit(opts.pageSize)
+	// appEventBoundsCond keeps only rows with a match, so the null is unreachable; narrowing rather than casting
+	return rows.flatMap((r) => (r.matchId === null ? [] : [{ appEventId: r.appEventId, matchId: r.matchId, time: r.time }]))
 }
 
 export async function queryPlayerRows(
@@ -185,7 +254,7 @@ export type EngineRequest =
 			kind: 'events'
 			node: HQ.Node
 			bounds: Bounds
-			cursor?: { time: number; serverEventId: number }
+			cursor?: EventCursor
 			pageSize: number
 			// count is a second full scan, so it is only asked for on the first page
 			withTotal?: boolean
@@ -218,7 +287,12 @@ async function countEventHits(
 		.select({ n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
 		.from(pei)
 		.where(cond)
-	return row?.n ?? 0
+	const [appRow] = await ctx
+		.db()
+		.select({ n: sql<number>`count(*)` })
+		.from(ae)
+		.where(E.and(appEventBoundsCond(opts.bounds), compileAppEventCond(opts.node, opts.art)))
+	return (row?.n ?? 0) + (appRow?.n ?? 0)
 }
 
 export async function runEngineRequest(ctx: C.Db & CS.AbortSignal, req: EngineRequest): Promise<EngineResponse | QueryError> {

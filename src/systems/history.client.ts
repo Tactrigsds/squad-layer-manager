@@ -5,7 +5,7 @@ import * as RPC from '@/orpc.client'
 
 export type QueryPageInput = {
 	query: HQ.Query
-	cursor?: { time: number; serverEventId: number }
+	cursor?: { time: number; serverEventId?: number; appEventId?: string }
 	page?: number
 	// events rows are rendered server-side, so the viewer's display settings ride along
 	render?: { displayTeamsNormalized: boolean; locale: string }

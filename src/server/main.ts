@@ -146,6 +146,8 @@ await Instr.spanOp('main', { module }, async () => {
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServer.setup) can name who restarted it
 	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	// migration 0109's other half: sql cannot evaluate the extractors the index is built from
+	await AppEventsSys.backfillAppEventIndex(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
 	// both before SquadServer.setup: it boots a managed server per registered server, and the seeded sandbox has to be

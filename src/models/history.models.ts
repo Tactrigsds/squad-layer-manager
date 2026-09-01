@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { SERVER_EVENT_TYPE } from '$root/drizzle/enums'
+import { APP_EVENT_TYPE, SERVER_EVENT_TYPE } from '$root/drizzle/enums'
 import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 
@@ -37,12 +37,17 @@ export type DynamicEnumSource = (typeof DYNAMIC_ENUM_SOURCES)[number]
 
 export type ColumnDef = { key: ColumnKey; displayName: string; domain: ColumnDomain }
 
+// Both event families, since a search runs over both. The two enums overlap on the handful of names that
+// describe the same action from either side (PLAYER_WARNED, MAP_SET, ...), and a shared name deliberately
+// matches both: "show me the warns" wants the admin's action and the warn the server recorded for it.
+export const EVENT_TYPES = [...new Set([...SERVER_EVENT_TYPE.options, ...APP_EVENT_TYPE.options])].sort()
+
 export const COLUMN_DEFS = {
 	time: { key: 'time', displayName: 'Time', domain: { kind: 'timestamp' } },
 	eventId: { key: 'eventId', displayName: 'Event id', domain: { kind: 'number' } },
 	server: { key: 'server', displayName: 'Server', domain: { kind: 'dynamic-enum', source: 'servers' } },
 	player: { key: 'player', displayName: 'Player', domain: { kind: 'player' } },
-	'event.type': { key: 'event.type', displayName: 'Event type', domain: { kind: 'enum', options: SERVER_EVENT_TYPE.options } },
+	'event.type': { key: 'event.type', displayName: 'Event type', domain: { kind: 'enum', options: EVENT_TYPES } },
 	'event.variant': { key: 'event.variant', displayName: 'Kill variant', domain: { kind: 'enum', options: EVENT_VARIANTS } },
 	'event.damageSource': {
 		key: 'event.damageSource',
@@ -245,7 +250,7 @@ export const QuerySchema = z.object({
 
 	// basic mode's fields, one url param each so a basic query reads as a url
 	player: z.string().optional(),
-	types: z.array(z.enum(SERVER_EVENT_TYPE.options)).optional(),
+	types: z.array(z.enum(EVENT_TYPES)).optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
 	chat: z.string().optional(),

@@ -837,9 +837,30 @@ export function toRow(e: AppEvent): SchemaModels.NewAppEvent {
 		matchId,
 		causeId,
 		instanceId,
+		feedVisible: isFeedVisible(e),
 		version: CURRENT_APP_EVENT_VERSION,
 		data: superjson.serialize(redacted) as any,
 	}
+}
+
+/**
+ * The association rows an app event contributes, one per value its metas name.
+ *
+ * The same walk for every dimension, so adding one is an extractor on the meta rather than a branch here.
+ */
+export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociation[] {
+	const rows: SchemaModels.NewAppEventAssociation[] = []
+	const time = new Date(e.time)
+	for (const playerMeta of metaOf(e).players) {
+		for (const player of EM.iterAssocValues(playerMeta.get(e))) {
+			const value = typeof player === 'object' ? SM.PlayerIds.getPlayerId(player.ids) : player
+			rows.push({ dimension: 'player', value, time, appEventId: e.id, role: playerMeta.assocType })
+		}
+	}
+	for (const [layerId, kind] of iterAssocLayerIds(e)) {
+		rows.push({ dimension: 'layer', value: layerId, time, appEventId: e.id, role: kind })
+	}
+	return rows
 }
 
 // reconstructs an app event from a row and validates the payload blob against its schema. returns null (rather than

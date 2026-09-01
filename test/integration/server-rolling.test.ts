@@ -325,6 +325,78 @@ describe('the event archive', () => {
 		expect(CHAT.Wire.decode(without.events!).some((e) => e.type === 'NEW_GAME')).toBe(false)
 	})
 
+	// App events are SLM's own actions, indexed in appEvents plus its association sidecar rather than in
+	// playerEventIndex, and merged into the same result page. The two families overlap on a handful of type
+	// names, and a search for one deliberately gets both.
+	it('returns app events alongside server events, and filters them by the same vocabulary', async () => {
+		const db = app.readDb()
+		let indexed: { total: number; type: string }
+		try {
+			// the backfill is what fills feedVisible, so a null here means it never ran
+			const unbackfilled = db.prepare(`SELECT count(*) AS n FROM appEvents WHERE feedVisible IS NULL`).get() as { n: number }
+			expect(unbackfilled.n).toBe(0)
+			const row = db
+				.prepare(
+					`SELECT count(*) AS total, type FROM appEvents
+					 WHERE feedVisible = 1 AND serverId IS NOT NULL AND matchId IS NOT NULL
+					 GROUP BY type ORDER BY total DESC LIMIT 1`,
+				)
+				.get() as { total: number; type: string } | undefined
+			if (!row) throw new Error('no feed-visible app event was recorded')
+			indexed = row
+		} finally {
+			db.close()
+		}
+
+		const byType = await client.history.query({ query: { type: 'events', types: [indexed.type as never] } })
+		expect(byType.code).toBe('ok')
+		if (byType.code !== 'ok' || byType.type !== 'events') return
+		expect(byType.total).toBeGreaterThan(0)
+		expect(byType.rowsHtml.length).toBeGreaterThan(0)
+
+		// a server-event-only dimension excludes them rather than erroring: an app event has no kill variant
+		const withVariant = await client.history.query({
+			query: {
+				mode: 'advanced',
+				q: {
+					type: 'and',
+					children: [
+						{
+							type: 'eq',
+							neg: false,
+							args: [
+								{ type: 'column', column: 'event.type' },
+								{ type: 'value', value: indexed.type },
+							],
+						},
+						{
+							type: 'eq',
+							neg: false,
+							args: [
+								{ type: 'column', column: 'event.variant' },
+								{ type: 'value', value: 'teamkill' },
+							],
+						},
+					],
+				},
+			},
+		})
+		expect(withVariant.code).toBe('ok')
+		if (withVariant.code !== 'ok' || withVariant.type !== 'events') return
+		expect(withVariant.total).toBe(0)
+	})
+
+	// A match-layer node is rewritten to a match-ids node before it reaches the engine (see history-resolve),
+	// and every compiler has to know that kind. Nothing else covers the advanced editor's layer node.
+	it('runs an advanced query whose layer node resolved to match ids', async () => {
+		// an empty `and` matches every layer, so what is under test is the node kind rather than the filter
+		const layerNode = { type: 'match-layer' as const, neg: false, filter: { type: 'and' as const, children: [] } }
+		for (const type of ['events', 'matches', 'players'] as const) {
+			const res = await client.history.query({ query: { type, mode: 'advanced', q: layerNode } })
+			expect(res.code, `${type} with a layer node`).toBe('ok')
+		}
+	})
+
 	// Last of all: pruning deletes every archived match on the server, so nothing after this can read one.
 	it('a retention rule sieves its events out of a pruned match; everything else is dropped', async () => {
 		const saved = await client.history.save({

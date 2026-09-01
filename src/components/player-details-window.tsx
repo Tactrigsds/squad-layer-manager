@@ -596,7 +596,7 @@ function decodePageEvents(page: PlayerEventsPage): CHAT.EventEnriched[] {
 	return events
 }
 
-type EventCursor = { time: number; serverEventId: number }
+type EventCursor = { time: number; serverEventId?: number; appEventId?: string }
 
 // This player's history, from the same engine the history page runs on -- so it reaches past the recent-match
 // window this window used to be limited to. Asked for as events rather than as rendered rows: they are

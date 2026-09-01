@@ -113,11 +113,16 @@ export const appEvents = sqliteTable(
 		causeId: text('causeId'),
 		// the SLM process (otel service.instance.id) that emitted this event
 		instanceId: text('instanceId'),
+		// queryable projection of AppEvents.isFeedVisible: whether this event is worth a feed line at all, as
+		// against being audit-log-only. The history page searches events the feed draws, so it filters on this
+		// rather than re-deriving the predicate per row. Null on rows recorded before the backfill ran.
+		feedVisible: boolean('feedVisible'),
 		version: integer('version').default(1),
 		data: json('data').notNull(),
 	},
 	(table) => ({
 		appEventTypeIndex: index('appEventTypeIndex').on(table.type),
+		appEventFeedVisibleIndex: index('appEventFeedVisibleIndex').on(table.feedVisible, table.time),
 		appEventTimeIndex: index('appEventTimeIndex').on(table.time),
 		appEventServerIdIndex: index('appEventServerIdIndex').on(table.serverId),
 		appEventMatchIdIndex: index('appEventMatchIdIndex').on(table.matchId),
@@ -220,6 +225,34 @@ export const playerEventIndex = sqliteTable(
 	// table's own 42MB on the largest install -- more than a third of the cost, for nothing.
 	(table) => ({
 		pk: primaryKey({ columns: [table.playerId, table.time, table.serverEventId, table.assocType] }),
+	}),
+)
+
+// What an app event is about, one row per value: the players it names, the layers it names. Generic over the
+// dimension rather than a table per kind, because both have the same query shape and the write path is one walk
+// over the event's meta (see event-meta.models.ts) -- a third dimension is an extractor and a new `dimension`
+// value rather than another migration.
+//
+// The asymmetry with playerEventIndex is deliberate and is about size: that table carries millions of rows and
+// earns a dedicated, tuned shape, where every app event ever recorded is a few thousand.
+export const appEventAssociations = sqliteTable(
+	'appEventAssociations',
+	{
+		// 'player' | 'layer'
+		dimension: text('dimension').notNull(),
+		// an eos id or a layer id, per the dimension
+		value: text('value').notNull(),
+		// denormalized from appEvents so one subject's trail is a contiguous pk range rather than a join then a sort
+		time: timestamp('time').notNull(),
+		appEventId: text('appEventId')
+			.notNull()
+			.references(() => appEvents.id, { onDelete: 'cascade' }),
+		// how the event relates to the value: a ServerEventPlayerAssocType, or an EM.LayerAssocKind
+		role: text('role').notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.dimension, table.value, table.time, table.appEventId, table.role] }),
+		appEventAssociationsEventIdIndex: index('appEventAssociationsEventIdIndex').on(table.appEventId),
 	}),
 )
 

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
-import { SERVER_EVENT_TYPE } from '$root/drizzle/enums'
 import ComboBox from '@/components/combo-box/combo-box'
 import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor, { LayerFilterPicker } from '@/components/history-advanced-editor'
@@ -211,7 +210,7 @@ function BasicFields(props: { draft: HQ.Query; set: (patch: Partial<HQ.Query>) =
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent className="max-h-80 overflow-y-auto">
-								{SERVER_EVENT_TYPE.options.map((type) => (
+								{HQ.EVENT_TYPES.map((type) => (
 									<DropdownMenuCheckboxItem
 										key={type}
 										checked={types.includes(type)}

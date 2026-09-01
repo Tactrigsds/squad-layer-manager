@@ -158,7 +158,12 @@ async function dispatch(
 
 // -------- queries --------
 
-const CursorSchema = z.object({ time: z.number().int(), serverEventId: z.number().int() })
+// a position in the merged event order; exactly one id is set, per the family the cursor sits in
+const CursorSchema = z.object({
+	time: z.number().int(),
+	serverEventId: z.number().int().optional(),
+	appEventId: z.string().optional(),
+})
 
 // what server-side rendering needs to know about the viewer, since row markup depends on both
 const RenderSchema = z.object({
@@ -222,7 +227,7 @@ export const router = {
 					const last = res.hits.at(-1)
 					const nextCursor =
 						res.hits.length === HQ.PAGE_SIZES.events && last
-							? { time: last.time.getTime(), serverEventId: last.serverEventId }
+							? { time: last.time.getTime(), serverEventId: last.serverEventId, appEventId: last.appEventId }
 							: undefined
 					return { code: 'ok' as const, type: 'events' as const, ...page, nextCursor, total: res.total, unrecognisedLayerMatches }
 				}
@@ -413,7 +418,9 @@ async function assembleEventPage(
 		ids.push(row.id)
 	}
 
-	const wanted = new Set<number>(hits.map((h) => h.serverEventId))
+	// hits from either family; a replayed entry is kept when it stands for one of them (see iterContainedEventIds)
+	const wanted = new Set<number>(hits.flatMap((h) => (h.serverEventId === undefined ? [] : [h.serverEventId])))
+	const wantedAppEvents = new Set<string>(hits.flatMap((h) => (h.appEventId === undefined ? [] : [h.appEventId])))
 	const events: CHAT.EventEnriched[] = []
 	for (const [serverId, ids] of byServer) {
 		const serverCtx = { ...ctx, serverId, matchEventsCache: MatchEventsCache.initMatchEventsCacheContext() }
@@ -424,6 +431,7 @@ async function assembleEventPage(
 		events.push(
 			...enriched.filter((e) => {
 				if (includeMatchBoundaries && e.type === 'NEW_GAME') return true
+				if (typeof e.id === 'string' && wantedAppEvents.has(e.id)) return true
 				for (const id of CHAT.iterContainedEventIds(e)) {
 					if (wanted.has(id)) return true
 				}
