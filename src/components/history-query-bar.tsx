@@ -78,24 +78,11 @@ function GroupHeading(props: { children: React.ReactNode }) {
 
 function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 	const { draft, set } = props
-	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 	return (
 		<section className="flex flex-col gap-1">
 			<GroupHeading>{tr.text(HistoryMsgs.groupScope())}</GroupHeading>
 			<Field label={tr.text(HistoryMsgs.fieldServer())}>
-				<Select value={draft.server ?? ANY} onValueChange={(v) => set({ server: v === ANY ? undefined : v })}>
-					<SelectTrigger className="h-7 w-full text-xs">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
-						{servers?.map((server) => (
-							<SelectItem key={server.id} value={server.id}>
-								{server.displayName}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<ServerSelect draft={draft} set={set} />
 			</Field>
 			<Field label={tr.text(HistoryMsgs.fieldTime())}>
 				<TimeRange draft={draft} set={set} />
@@ -110,9 +97,49 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 	)
 }
 
-function Field(props: { label: string; children: React.ReactNode }) {
+/**
+ * The bounds alone, for advanced mode, which has no rail to carry the scope block.
+ *
+ * Server and time only: they are applied outside the tree, so they mean the same thing in either mode, where
+ * the rest of the scope block is basic-mode fields the tree replaces (see queryFilterNode). Showing those
+ * here would offer a control the query then ignores.
+ */
+export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
+	const { draft, set } = props
 	return (
-		<label className="flex items-center gap-2 text-xs text-muted-foreground">
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+			<Field className="w-56" label={tr.text(HistoryMsgs.fieldServer())}>
+				<ServerSelect draft={draft} set={set} />
+			</Field>
+			<Field className="w-max" label={tr.text(HistoryMsgs.fieldTime())}>
+				<TimeRange draft={draft} set={set} />
+			</Field>
+		</div>
+	)
+}
+
+function ServerSelect(props: { draft: HQ.Query; set: Set }) {
+	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	return (
+		<Select value={props.draft.server ?? ANY} onValueChange={(v) => props.set({ server: v === ANY ? undefined : v })}>
+			<SelectTrigger className="h-7 w-full text-xs">
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
+				{servers?.map((server) => (
+					<SelectItem key={server.id} value={server.id}>
+						{server.displayName}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	)
+}
+
+function Field(props: { label: string; className?: string; children: React.ReactNode }) {
+	return (
+		<label className={cn('flex items-center gap-2 text-xs text-muted-foreground', props.className)}>
 			<span className="w-16 shrink-0 truncate">{props.label}</span>
 			<span className="min-w-0 flex-1">{props.children}</span>
 		</label>

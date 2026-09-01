@@ -5,7 +5,7 @@ import React from 'react'
 import { renderStatic } from '@/components/feed/static-render'
 import HistoryAdvancedEditor from '@/components/history-advanced-editor'
 import HistoryEvents from '@/components/history-events'
-import HistoryQueryBar from '@/components/history-query-bar'
+import HistoryQueryBar, { HistoryQueryBounds } from '@/components/history-query-bar'
 import * as HistoryTemplates from '@/components/history/templates'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -108,8 +108,8 @@ export default function HistoryPage(props: HistoryPageProps) {
 	return (
 		// Basic mode builds in a rail, so the results keep the full height of the page: a query that grows
 		// another field pushes the rail's own scroll rather than the result rows down. Advanced mode has no
-		// rail at all -- the tree editor wants the width -- so the controls the rail would carry sit on the
-		// results toolbar instead.
+		// rail at all -- the tree editor wants the width -- so what the rail carries is redistributed: its
+		// buttons to the results toolbar, and the bounds above the editor, since those apply in both modes.
 		<div className="flex h-full min-h-0 gap-2 p-2" onKeyDown={onKeyDown}>
 			{draft.mode === 'basic' && (
 				<aside className="flex w-64 shrink-0 flex-col gap-2 border-r pr-2">
@@ -145,7 +145,14 @@ export default function HistoryPage(props: HistoryPageProps) {
 					<CopyLinkButton />
 					{draft.mode === 'advanced' && <span className="w-20">{runButton}</span>}
 				</div>
-				{draft.mode === 'advanced' && <HistoryAdvancedEditor stores={props.stores} />}
+				{draft.mode === 'advanced' && (
+					<>
+						<div key={executedKey}>
+							<HistoryQueryBounds draft={draft} set={set} />
+						</div>
+						<HistoryAdvancedEditor stores={props.stores} />
+					</>
+				)}
 				<Results query={props.executed} onRun={props.onRun} />
 			</div>
 			<SaveDialog stores={props.stores} open={saveOpen} onOpenChange={setSaveOpen} />
