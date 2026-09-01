@@ -58,6 +58,12 @@ export function getColumnDef(key: string): ColumnDef | undefined {
 	return (COLUMN_DEFS as Record<string, ColumnDef>)[key]
 }
 
+/** The comparison's subject as a known column key, or undefined if it names nothing this vocabulary has. */
+export function compColumnKey(node: F.CompNode | F.EditableCompNode): ColumnKey | undefined {
+	const column = F.compAnchorColumn(node as F.CompNode)
+	return column !== undefined && getColumnDef(column) !== undefined ? (column as ColumnKey) : undefined
+}
+
 // the F.ValueDomain a history column presents to the shared operator machinery. The enum mapping string is
 // only ever compared for equality, so the column key namespaced under 'history:' serves.
 export function columnValueDomain(key: string): F.ValueDomain | undefined {

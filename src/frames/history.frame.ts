@@ -28,7 +28,8 @@ export type Store = {
 	draft: HQ.Query
 	// the advanced tree, kept alongside the draft's basic fields so switching modes loses nothing
 	tree: HQ.EditableNode
-	// bumped when a whole query replaces the draft, so uncontrolled inputs remount with the new values
+	// bumped on every structural change to the tree, so the editor's uncontrolled inputs remount rather than
+	// leaving a removed node's text behind on the sibling that shifted into its place
 	revision: number
 }
 
@@ -80,7 +81,11 @@ export namespace Actions {
 		if (state.draft.mode === mode) return
 		if (mode === 'advanced') {
 			// seed the tree from the basic fields, so the switch shows the same query in tree form
-			s.setState({ draft: { ...state.draft, mode }, tree: seedTree({ ...state.draft, mode: 'basic' }) })
+			s.setState({
+				draft: { ...state.draft, mode },
+				tree: seedTree({ ...state.draft, mode: 'basic' }),
+				revision: state.revision + 1,
+			})
 		} else {
 			s.setState({ draft: { ...state.draft, mode } })
 		}
@@ -94,10 +99,11 @@ export namespace Actions {
 	export function replaceNode(stores: KeyProp, path: Path, node: HQ.EditableNode) {
 		const s = store(stores)
 		if (path.length === 0) {
-			s.setState({ tree: node })
+			s.setState({ tree: node, revision: s.getState().revision + 1 })
 			return
 		}
 		s.setState({
+			revision: s.getState().revision + 1,
 			tree: Im.produce(s.getState().tree, (tree) => {
 				const parent = nodeAt(tree, path.slice(0, -1))
 				const last = path[path.length - 1]
@@ -111,6 +117,7 @@ export namespace Actions {
 		updateNode(stores, blockPath, (block) => {
 			;(block as Extract<HQ.EditableNode, { children: unknown }>).children.push(node)
 		})
+		store(stores).setState((prev) => ({ revision: prev.revision + 1 }))
 	}
 
 	export function removeNode(stores: KeyProp, path: Path) {
@@ -118,6 +125,7 @@ export namespace Actions {
 		const last = path[path.length - 1]
 		if (typeof last !== 'number') return
 		s.setState({
+			revision: s.getState().revision + 1,
 			tree: Im.produce(s.getState().tree, (tree) => {
 				const parent = nodeAt(tree, path.slice(0, -1))
 				;(parent as Extract<HQ.EditableNode, { children: unknown }>).children.splice(last, 1)

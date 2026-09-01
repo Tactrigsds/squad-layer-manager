@@ -66,10 +66,12 @@ export default function HistoryPage(props: HistoryPageProps) {
 
 	const set = (patch: Partial<HQ.Query>) => HistoryFrame.Actions.setDraft(props.stores, patch)
 
-	// a result-type switch is a view switch, so it runs immediately with the current draft
+	// a result-type switch is a view switch, so it runs immediately with the current draft -- unless the draft
+	// cannot run, since running it anyway would silently drop the half-built tree and show unfiltered results
 	const switchType = (type: HQ.ResultType) => {
 		set({ type })
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
+		if (!HistoryFrame.Sel.canRun(state)) return
 		props.onRun({ ...HistoryFrame.Sel.builtQuery(state), type })
 	}
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])

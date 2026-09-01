@@ -30,10 +30,15 @@ const depthColors = ['border-red-700', 'border-green-700', 'border-blue-700', 'b
 type EditorProps = { stores: HistoryFrame.KeyProp }
 
 export default function HistoryAdvancedEditor(props: EditorProps) {
-	const tree = Zus.useStore(props.stores.history, (s) => s.tree)
+	const [tree, revision] = Zus.useStore(
+		props.stores.history,
+		Zus.useShallow((s) => [s.tree, s.revision] as const),
+	)
 	return (
 		<div className="rounded-md border border-border p-2">
-			<NodeEditor stores={props.stores} node={tree} path={[]} depth={0} />
+			{/* keyed on the revision so a structural edit remounts the tree: its inputs are uncontrolled, and a
+			    removed node otherwise leaves its text behind on the sibling that shifts into its index */}
+			<NodeEditor key={revision} stores={props.stores} node={tree} path={[]} depth={0} />
 		</div>
 	)
 }

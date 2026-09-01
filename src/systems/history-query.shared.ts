@@ -222,6 +222,15 @@ export async function resolveArtifacts(
 	return { code: 'ok', artifacts }
 }
 
+// resolveArtifacts rejects a tree naming a column this vocabulary does not have, so reaching a compiler or
+// the evaluator with one is a caller bug rather than bad input. Unlike the `as never` cast this replaces, it
+// leaves the switches genuinely exhaustive: a new column stops them compiling.
+function mustColumnKey(comp: F.CompNode): HQ.ColumnKey {
+	const column = HQ.compColumnKey(comp)
+	if (!column) throw new Error(`history query: unresolved column ${F.compAnchorColumn(comp) ?? '(none)'}`)
+	return column
+}
+
 // -------- sql compilation --------
 
 export const GAME_PARTICIPANT = SchemaModels.SERVER_EVENT_PLAYER_ASSOC_TYPE.enum['game-participant']
@@ -350,8 +359,8 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 		return node.neg ? negate(cond) : cond
 	}
 	const comp = node as F.CompNode
-	const column = F.compAnchorColumn(comp)!
-	switch (column as HQ.ColumnKey) {
+	const column = mustColumnKey(comp)
+	switch (column) {
 		case 'time':
 			return compileComp(comp, pei.time, id)
 		case 'eventId':
@@ -390,7 +399,7 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQL |
 		case 'match.setBy':
 			return compileComp(comp, sql`(SELECT setByType FROM matchHistory WHERE id = ${pei.matchId})`, id)
 		default:
-			assertNever(column as never)
+			assertNever(column)
 	}
 }
 
@@ -419,8 +428,8 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		return node.neg ? negate(cond) : cond
 	}
 	const comp = node as F.CompNode
-	const column = F.compAnchorColumn(comp)!
-	switch (column as HQ.ColumnKey) {
+	const column = mustColumnKey(comp)
+	switch (column) {
 		case 'time':
 			return compileComp(comp, matchTime, id)
 		case 'match.outcome':
@@ -447,7 +456,7 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 			return comp.neg ? negate(cond) : cond
 		}
 		default:
-			assertNever(column as never)
+			assertNever(column)
 	}
 }
 
@@ -514,8 +523,8 @@ export function evalEventNode(node: HQ.Node, art: ResolvedArtifacts, ectx: EvalE
 		return node.neg ? !result : result
 	}
 	const comp = node as F.CompNode
-	const column = F.compAnchorColumn(comp)!
-	switch (column as HQ.ColumnKey) {
+	const column = mustColumnKey(comp)
+	switch (column) {
 		case 'time':
 			return evalComp(comp, ectx.row.time.getTime())
 		case 'eventId':
@@ -554,6 +563,6 @@ export function evalEventNode(node: HQ.Node, art: ResolvedArtifacts, ectx: EvalE
 		case 'match.setBy':
 			return evalComp(comp, ectx.match.setByType)
 		default:
-			assertNever(column as never)
+			assertNever(column)
 	}
 }

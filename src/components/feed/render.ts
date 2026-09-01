@@ -1,7 +1,7 @@
 // Feed rows as html strings: the templates are inert jsx, so "rendering" is a synchronous serialize with no
-// fiber and no per-row lifecycle. The server runs this for history results; the client runs the very same
-// call for the activity feed and inserts the strings, so a 600-row match costs one parse instead of a react
-// commit.
+// fiber and no per-row lifecycle. The server runs this for history results, which travel to the client as
+// html. The activity feed renders the same templates straight to dom instead (see static-render.ts), having
+// no serialize step to pay for.
 
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
