@@ -5,7 +5,6 @@ import * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import * as PartsSys from '@/systems/parts.client'
-import * as SettingsClient from '@/systems/settings.client'
 
 const [initialized$, setInitialized] = ReactRx.createSignal<boolean>()
 
@@ -51,13 +50,10 @@ export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
 }
 
 /**
- * A finished match's feed, replayed here from the raw events the server sends.
- *
- * The same replay the live feed runs, so a past match reads like the present one -- including the suppression
- * patterns, which the server had no way to apply when it enriched these itself.
+ * A finished match's feed, replayed by the server and decoded here.
  *
  * Shared options rather than a hook so the activity panel and the stats panel, which want the same match, agree on
- * the key and replay it once between them.
+ * the key and fetch it once between them.
  */
 export function matchEventsQueryOptions(serverId: string, ordinal: number | null) {
 	return {
@@ -66,9 +62,7 @@ export function matchEventsQueryOptions(serverId: string, ordinal: number | null
 			if (ordinal === null) return null
 			const res = RPC.selectLoaded(await RPC.orpc.matchHistory.getMatchEvents.call({ serverId, ordinal }))
 			if (!res) return null
-			const state = CHAT.getInitialChatState()
-			for (const event of res.events) CHAT.handleEvent(state, event, SettingsClient.getSettings()?.chat)
-			return { events: state.eventBuffer, previousOrdinal: res.previousOrdinal }
+			return { events: CHAT.Wire.decode(res.events) }
 		},
 		enabled: ordinal !== null,
 		staleTime: Infinity,

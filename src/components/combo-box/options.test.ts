@@ -227,6 +227,32 @@ describe('narrowing by several groupings at once', () => {
 	})
 })
 
+describe('membership in several groups of one grouping', () => {
+	const options = normalize(
+		[
+			{ value: 'owi-only', groups: coll('OWI') },
+			{ value: 'shared', groups: { [COLL]: ['both', 'OWI', 'GC'] } },
+			{ value: 'gc-only', groups: coll('GC') },
+		],
+		['OWI', 'GC', 'both'],
+	)
+
+	it('shows the option under either group it belongs to', () => {
+		expect(values(optionsInSelection(options, { [COLL]: 'OWI' }))).toEqual(['owi-only', 'shared'])
+		expect(values(optionsInSelection(options, { [COLL]: 'GC' }))).toEqual(['gc-only', 'shared'])
+	})
+
+	it('orders and prefixes it by the first group it names', () => {
+		expect(values(options)).toEqual(['owi-only', 'gc-only', 'shared'])
+		expect(groupPrefixOf(options[2], grouping(COLL, ['OWI', 'GC', 'both']))).toBe('both')
+	})
+
+	it('lists and counts it under every group it belongs to', () => {
+		expect(liveGroups(options, grouping(COLL, ['OWI', 'GC', 'both'])).map((g) => g.key)).toEqual(['OWI', 'GC', 'both'])
+		expect(Object.fromEntries(groupCounts(options, grouping(COLL, ['OWI', 'GC', 'both']), {}))).toEqual({ OWI: 2, GC: 2, both: 1 })
+	})
+})
+
 describe('grouping controls', () => {
 	const manyGroups = Array.from({ length: MAX_TAB_GROUPS + 1 }, (_, i) => `g${i}`)
 

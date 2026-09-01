@@ -2,16 +2,20 @@ import superjson from 'superjson'
 import { z } from 'zod'
 
 import type * as SchemaModels from '$root/drizzle/schema.models'
-import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
 import type * as Types from '@/lib/types'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared'
+import { type EventMeta, iterAssocLayers, iterAssocValues, type LayerAssocKind, meta } from '@/models/event-meta.models'
 import type * as L from '@/models/layer'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 
-import { type ActionSource, ActionSourceSchema, type Base, BaseSchema, type EventMeta, meta } from './server-events-base.models'
+import { type ActionSource, ActionSourceSchema, type Base, BaseSchema } from './server-events-base.models'
+
+// The player instantiation the extractors are written against: an event reaches them either straight off the
+// wire (a full SM.Player) or read back from the db (an SM.PlayerId), and every extractor must accept both.
+type AnyPlayer = SM.Player | SM.PlayerId
 
 export type MapSet = {
 	type: 'MAP_SET'
@@ -20,7 +24,7 @@ export type MapSet = {
 	// RCON_CONNECTED branch of processPendingEvent. It is not an action, and nobody is its actor.
 	source?: ActionSource | { type: 'layer-queue'; itemId: string } | { type: 'observed' }
 } & Base
-export const MAP_SET_META = meta()
+export const MAP_SET_META = meta<MapSet>({ layers: [{ kind: 'set', get: (e) => e.layerId }] })
 
 // Squad's own vote (AdminEnableVoting), not SLM's. Whatever it resolves to overwrites the next layer SLM set, so
 // SLM stops writing the rotation for the rest of the match.
@@ -29,7 +33,7 @@ export type IngameVoteStarted = {
 	container: string
 	choices: string[]
 } & Base
-export const INGAME_VOTE_STARTED_META = meta()
+export const INGAME_VOTE_STARTED_META = meta<IngameVoteStarted>()
 
 // True when SLM itself caused this map set: a queue save (`layer-queue`), an app-event-attributed
 // set-next (`event`, e.g. a QUEUE_UPDATED), or another internal set-next (`system`). Everything SLM did not
@@ -51,9 +55,10 @@ export type NewGame = {
 	// getInitialRoster / eventRoster rather than this field directly. Do not populate it on newly emitted events.
 	state?: SM.UniqueTeams
 } & Base
-export const NEW_GAME_META = meta({
-	players: [{ assocType: 'game-participant', path: '$.state.players[*]' }],
-	squads: ['$.state.squads[*]'],
+export const NEW_GAME_META = meta<NewGame>({
+	players: [{ assocType: 'game-participant', get: (e) => e.state?.players }],
+	squads: [{ get: (e) => e.state?.squads }],
+	layers: [{ kind: 'played', get: (e) => e.layerId }],
 })
 
 // Whether a NEW_GAME marks a roll that happened while this server was watching, and so is a boundary that held
@@ -80,7 +85,10 @@ export type Reset = {
 	state: SM.UniqueTeams
 } & Base
 
-export const RESET_META = meta({ players: [{ assocType: 'game-participant', path: '$.state.players[*]' }], squads: ['$.state.squads[*]'] })
+export const RESET_META = meta<Reset>({
+	players: [{ assocType: 'game-participant', get: (e) => e.state.players }],
+	squads: [{ get: (e) => e.state.squads }],
+})
 
 // Canonical, backward-compatible accessor for the roster an event carries, if any. RESET always carries one;
 // NEW_GAME carries one only for pre-split (legacy) matches. Centralizes the "which events seed the roster" rule.
@@ -103,12 +111,12 @@ export type RconConnected = {
 	type: 'RCON_CONNECTED'
 	reconnected: boolean
 } & Base
-export const RCON_CONNECTED_META = meta()
+export const RCON_CONNECTED_META = meta<RconConnected>()
 
 export type RconDisconnected = {
 	type: 'RCON_DISCONNECTED'
 } & Base
-export const RCON_DISCONNECTED_META = meta()
+export const RCON_DISCONNECTED_META = meta<RconDisconnected>()
 
 export type RoundEnded = {
 	type: 'ROUND_ENDED'
@@ -124,13 +132,16 @@ export type RoundEnded = {
 				source: ActionSource
 		  }
 } & Base
-export const ROUND_ENDED_META = meta({ players: [{ assocType: 'player', path: '$.action.source.playerIds.eos' }] })
+export const ROUND_ENDED_META = meta<RoundEnded>({
+	players: [{ assocType: 'player', get: (e) => (e.action?.source.type === 'player' ? e.action.source.playerIds.eos : undefined) }],
+	layers: [{ kind: 'set', get: (e) => (e.action?.type === 'AdminChangeLayer' ? e.action.layerId : undefined) }],
+})
 
 export type PlayerConnected<P = SM.Player> = {
 	type: 'PLAYER_CONNECTED'
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_CONNECTED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_CONNECTED_META = meta<PlayerConnected<SM.Player>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 // Emitted by the teams-poll reconciler for a player RCON reports as present but who was missing from our roster
 // (e.g. their PLAYER_CONNECTED landed during a round roll and was dropped). Semantically distinct from
@@ -140,13 +151,13 @@ export type PlayerReconciled<P = SM.Player> = {
 	type: 'PLAYER_RECONCILED'
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_RECONCILED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_RECONCILED_META = meta<PlayerReconciled<SM.Player>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 export type PlayerDisconnected<P = SM.PlayerId> = {
 	type: 'PLAYER_DISCONNECTED'
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_DISCONNECTED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_DISCONNECTED_META = meta<PlayerDisconnected<AnyPlayer>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 export type SquadCreated = {
 	type: 'SQUAD_CREATED'
@@ -157,7 +168,10 @@ export type SquadCreated = {
 	synthesized?: true
 } & Base
 
-export const SQUAD_CREATED_META = meta({ squads: ['$.squad'], players: [{ assocType: 'player', path: '$.squad.creator' }] })
+export const SQUAD_CREATED_META = meta<SquadCreated>({
+	squads: [{ get: (e) => e.squad }],
+	players: [{ assocType: 'player', get: (e) => e.squad.creator }],
+})
 
 export type ChatMessage<P = SM.PlayerId> = {
 	type: 'CHAT_MESSAGE'
@@ -165,7 +179,10 @@ export type ChatMessage<P = SM.PlayerId> = {
 	channel: SM.ChatChannel
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const CHAT_MESSAGE_META = meta({ players: [{ assocType: 'player' }], squads: ['$.channel.uniqueId'] })
+export const CHAT_MESSAGE_META = meta<ChatMessage<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+	squads: [{ get: (e) => (e.channel.type === 'ChatSquad' ? e.channel.uniqueId : undefined) }],
+})
 
 export type AdminBroadcast = {
 	type: 'ADMIN_BROADCAST'
@@ -173,7 +190,7 @@ export type AdminBroadcast = {
 	from?: SM.LogEvents.AdminBroadcast['from']
 	source?: SM.LogEvents.AdminBroadcast['source']
 } & Base
-export const ADMIN_BROADCAST_META = meta()
+export const ADMIN_BROADCAST_META = meta<AdminBroadcast>()
 
 // synthetic events from player state
 export type PlayerDetailsChanged<P = SM.PlayerId> = {
@@ -182,7 +199,9 @@ export type PlayerDetailsChanged<P = SM.PlayerId> = {
 	newUsername?: string
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_DETAILS_CHANGED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_DETAILS_CHANGED_META = meta<PlayerDetailsChanged<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+})
 
 export type PlayerChangedTeam<P = SM.PlayerId> = {
 	type: 'PLAYER_CHANGED_TEAM'
@@ -191,7 +210,7 @@ export type PlayerChangedTeam<P = SM.PlayerId> = {
 	source?: ActionSource
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_CHANGED_TEAM_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_CHANGED_TEAM_META = meta<PlayerChangedTeam<AnyPlayer>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 // can originate if the player manually leaves the squad, or is removed for some other reason
 export type PlayerLeftSquad<P = SM.PlayerId> = {
@@ -201,7 +220,10 @@ export type PlayerLeftSquad<P = SM.PlayerId> = {
 	source?: ActionSource
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_LEFT_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
+export const PLAYER_LEFT_SQUAD_META = meta<PlayerLeftSquad<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+	squads: [{ get: (e) => e.uniqueId }],
+})
 
 // this event is redundant in terms of state transfer, as it could be inferred as the last player leaving a particular squad
 export type SquadDisbanded = {
@@ -210,7 +232,7 @@ export type SquadDisbanded = {
 	// present when an admin disbanded the squad (parsed from the log); absent when inferred from team polling
 	source?: ActionSource
 } & Base
-export const SQUAD_DISBANDED_META = meta({ squads: ['$.uniqueId'] })
+export const SQUAD_DISBANDED_META = meta<SquadDisbanded>({ squads: [{ get: (e) => e.uniqueId }] })
 
 export type SquadDetailsChanged = {
 	type: 'SQUAD_DETAILS_CHANGED'
@@ -219,7 +241,7 @@ export type SquadDetailsChanged = {
 		locked?: boolean
 	}
 } & Base
-export const SQUAD_DETAILS_CHANGED_META = meta({ squads: ['$.uniqueId'] })
+export const SQUAD_DETAILS_CHANGED_META = meta<SquadDetailsChanged>({ squads: [{ get: (e) => e.uniqueId }] })
 
 export type SquadRenamed = {
 	type: 'SQUAD_RENAMED'
@@ -229,7 +251,7 @@ export type SquadRenamed = {
 	// present when an admin renamed the squad through SLM (links to an app event); absent otherwise
 	source?: ActionSource
 } & Base
-export const SQUAD_RENAMED_META = meta({ squads: ['$.uniqueId'] })
+export const SQUAD_RENAMED_META = meta<SquadRenamed>({ squads: [{ get: (e) => e.uniqueId }] })
 
 /**
  * Player joined pre-existing squad
@@ -239,20 +261,26 @@ export type PlayerJoinedSquad<P = SM.PlayerId> = {
 	uniqueId: number
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_JOINED_SQUAD_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
+export const PLAYER_JOINED_SQUAD_META = meta<PlayerJoinedSquad<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+	squads: [{ get: (e) => e.uniqueId }],
+})
 
 export type PlayerPromotedToLeader<P = SM.PlayerId> = {
 	type: 'PLAYER_PROMOTED_TO_LEADER'
 	uniqueId: number
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_PROMOTED_TO_LEADER_META = meta({ players: [{ assocType: 'player' }], squads: ['$.uniqueId'] })
+export const PLAYER_PROMOTED_TO_LEADER_META = meta<PlayerPromotedToLeader<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+	squads: [{ get: (e) => e.uniqueId }],
+})
 
 export type TeamsPolledUpdate = {
 	type: 'TEAMS_POLLED_UPDATE'
 } & Base
 
-export const TEAMS_POLLED_UPDATE_META = meta({})
+export const TEAMS_POLLED_UPDATE_META = meta<TeamsPolledUpdate>()
 
 export type PlayerKicked<P = SM.PlayerId> = {
 	type: 'PLAYER_KICKED'
@@ -260,26 +288,30 @@ export type PlayerKicked<P = SM.PlayerId> = {
 	source?: ActionSource
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_KICKED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_KICKED_META = meta<PlayerKicked<AnyPlayer>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 export type PossessedAdminCamera<P = SM.PlayerId> = {
 	type: 'POSSESSED_ADMIN_CAMERA'
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const POSSESSED_ADMIN_CAMERA_META = meta({ players: [{ assocType: 'player' }] })
+export const POSSESSED_ADMIN_CAMERA_META = meta<PossessedAdminCamera<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+})
 
 export type UnpossessedAdminCamera<P = SM.PlayerId> = {
 	type: 'UNPOSSESSED_ADMIN_CAMERA'
 } & SM.PlayerAssoc<'player', P> &
 	Base
-export const UNPOSSESSED_ADMIN_CAMERA_META = meta({ players: [{ assocType: 'player' }] })
+export const UNPOSSESSED_ADMIN_CAMERA_META = meta<UnpossessedAdminCamera<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+})
 
 export type PlayerBanned<P = SM.PlayerId> = { type: 'PLAYER_BANNED'; interval: string } & SM.PlayerAssoc<'player', P> & Base
-export const PLAYER_BANNED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_BANNED_META = meta<PlayerBanned<AnyPlayer>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 export type PlayerWarned<P = SM.PlayerId> = { type: 'PLAYER_WARNED'; reason: string; source?: ActionSource } & SM.PlayerAssoc<'player', P> &
 	Base
-export const PLAYER_WARNED_META = meta({ players: [{ assocType: 'player' }] })
+export const PLAYER_WARNED_META = meta<PlayerWarned<AnyPlayer>>({ players: [{ assocType: 'player', get: (e) => e.player }] })
 
 export type PlayerDied<P = SM.PlayerId> = {
 	type: 'PLAYER_DIED'
@@ -291,7 +323,12 @@ export type PlayerDied<P = SM.PlayerId> = {
 	SM.PlayerAssoc<'attacker', P> &
 	Base
 
-export const PLAYER_DIED_META = meta({ players: [{ assocType: 'victim' }, { assocType: 'attacker' }] })
+export const PLAYER_DIED_META = meta<PlayerDied<AnyPlayer>>({
+	players: [
+		{ assocType: 'victim', get: (e) => e.victim },
+		{ assocType: 'attacker', get: (e) => e.attacker },
+	],
+})
 
 export type PlayerWoundedOrDiedVariant = 'normal' | 'suicide' | 'teamkill'
 
@@ -305,7 +342,12 @@ export type PlayerWounded<P = SM.PlayerId> = {
 	SM.PlayerAssoc<'attacker', P> &
 	Base
 
-export const PLAYER_WOUNDED_META = meta({ players: [{ assocType: 'victim' }, { assocType: 'attacker' }] })
+export const PLAYER_WOUNDED_META = meta<PlayerWounded<AnyPlayer>>({
+	players: [
+		{ assocType: 'victim', get: (e) => e.victim },
+		{ assocType: 'attacker', get: (e) => e.attacker },
+	],
+})
 
 export type SyntheticEvent<P = SM.PlayerId> =
 	| PlayerDetailsChanged<P>
@@ -538,7 +580,9 @@ export const EVENT_META = {
 	PLAYER_DIED: PLAYER_DIED_META,
 	PLAYER_WOUNDED: PLAYER_WOUNDED_META,
 	TEAMS_POLLED_UPDATE: TEAMS_POLLED_UPDATE_META,
-} satisfies Record<Event['type'], EventMeta>
+	// checked per key rather than against one widened EventMeta, so a declaration whose extractor reads a field
+	// its own event does not have fails here
+} satisfies { [K in Event['type']]: EventMeta<Extract<Event<AnyPlayer>, { type: K }>> }
 
 // Reconstructs an event from a row and validates the payload blob against its schema. Returns null (rather than
 // throwing) for rows that don't parse, mirroring AppEvents.fromRow: the table is append-only and accumulates
@@ -583,20 +627,21 @@ export function fromEventRows(ctx: CS.Log, rows: SchemaModels.ServerEvent[]): Ev
 	return events
 }
 
-export function* iterAssocPlayers(event: Event<SM.PlayerId | SM.Player>) {
-	const meta = EVENT_META[event.type]
-	for (const playerMeta of meta.players) {
-		let values: (SM.Player | SM.PlayerId | undefined | null)[]
-		if (playerMeta.path) {
-			values = Obj.queryPath<SM.Player | SM.PlayerId>(playerMeta.path, event)
-		} else {
-			// @ts-expect-error idgaf
-			values = [event[playerMeta.assocType]]
-		}
+// The registry is keyed by event type, so reading it with an event narrowed only to the union gives a union of
+// metas whose extractors cannot be called directly. Widening happens here, once: every declaration above is
+// checked against its own event type, which is where a mistake would otherwise go unnoticed.
+function metaOf(event: Event<AnyPlayer>): EventMeta<Event<AnyPlayer>> {
+	return EVENT_META[event.type] as EventMeta<Event<AnyPlayer>>
+}
 
-		for (const value of values) {
-			if (!value) continue
-			yield [value, playerMeta.assocType] as const
+export function* iterAssocLayerIds(event: Event<AnyPlayer>): Generator<readonly [L.LayerId, LayerAssocKind]> {
+	yield* iterAssocLayers(metaOf(event), event)
+}
+
+export function* iterAssocPlayers(event: Event<SM.PlayerId | SM.Player>) {
+	for (const playerMeta of metaOf(event).players) {
+		for (const player of iterAssocValues(playerMeta.get(event))) {
+			yield [player, playerMeta.assocType] as const
 		}
 	}
 }
@@ -615,18 +660,16 @@ export function* iterAssocPlayerIds(event: Event<SM.Player | SM.PlayerId>) {
 // dropped squad object is never silent (its squads row would never be written, and every later event referencing
 // its uniqueId would fail its FK).
 export function* iterAssocUniqueSquads(ctx: CS.Log | null, event: Event): Generator<SM.UniqueSquad | number> {
-	const meta = EVENT_META[event.type]
-	for (const path of meta.squads) {
-		const results = Obj.queryPath<unknown>(path, event)
-		for (const result of results) {
-			if (typeof result === 'number') {
-				yield result
+	for (const squadMeta of metaOf(event).squads) {
+		for (const squad of iterAssocValues(squadMeta.get(event))) {
+			if (typeof squad === 'number') {
+				yield squad
 				continue
 			}
-			const parseRes = SM.UniqueSquadSchema.safeParse(result)
+			const parseRes = SM.UniqueSquadSchema.safeParse(squad)
 			if (!parseRes.success) {
 				ctx?.log.error(
-					{ err: parseRes.error, value: result },
+					{ err: parseRes.error, value: squad },
 					'iterAssocUniqueSquads: dropping squad that failed UniqueSquadSchema parse (event %d %s)',
 					event.id,
 					event.type,

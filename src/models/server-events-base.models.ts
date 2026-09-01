@@ -1,6 +1,5 @@
 import { z } from 'zod'
 
-import type { ServerEventPlayerAssocType } from '$root/drizzle/enums'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as SM from '@/models/squad.models'
 
@@ -10,16 +9,6 @@ export const BaseSchema = z.object({
 	matchId: z.number(),
 })
 export type Base = z.infer<typeof BaseSchema>
-
-export type EventMeta = {
-	players: {
-		assocType: ServerEventPlayerAssocType
-		// if no path then we use the assocType as the property name
-		path?: string
-	}[]
-	// json path to objects with squad details (at least squadId, teamId)
-	squads: string[]
-}
 
 export const ActionSourceSchema = z.discriminatedUnion('type', [
 	// native, log-parsed provenance -- external to SLM (an outside RCON tool or an in-game admin action)
@@ -31,10 +20,3 @@ export const ActionSourceSchema = z.discriminatedUnion('type', [
 	z.object({ type: ZodUtils.internedLiteral('system'), reason: z.string().optional() }),
 ])
 export type ActionSource = z.infer<typeof ActionSourceSchema>
-
-export function meta(opts?: Partial<EventMeta>) {
-	return {
-		players: opts?.players ?? [],
-		squads: opts?.squads ?? [],
-	} satisfies EventMeta
-}

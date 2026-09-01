@@ -21,13 +21,17 @@ export let hash!: string
 export let raw!: Buffer
 export let gzipped!: Buffer
 
-export async function setup() {
-	log = module.getLogger()
+/**
+ * Populates L.StaticLayerComponents and nothing else. This is what a thread needs to read a layer id apart
+ * (L.toLayer), as against serving the file, so the query worker loads through here and skips gzipping 13MB it
+ * will never hand to anyone.
+ */
+export async function loadComponents(): Promise<{ raw: Buffer; path: string }> {
 	// the components are half of a versioned pair, and the layer engine loads the other half from the same
 	// directory: whichever table it runs, these are the components its encoded values index into
 	const { layerDataPath } = LayerArtifacts.resolvePair()
-	raw = await fsPromise.readFile(layerDataPath)
-	const file = JSON.parse(raw.toString('utf8')) as L.LayerDataFile
+	const bytes = await fsPromise.readFile(layerDataPath)
+	const file = JSON.parse(bytes.toString('utf8')) as L.LayerDataFile
 	if (!file.components || !file.factionUnits || !file.extraColumns) {
 		throw new Error(`${layerDataPath} is malformed: expected { components, factionUnits, extraColumns }. re-run pnpm preprocess`)
 	}
@@ -38,7 +42,14 @@ export async function setup() {
 		// ever reads layer-db.json
 		extraColumns: z.array(LC.ColumnDefSchema).parse(file.extraColumns),
 	})
+	return { raw: bytes, path: layerDataPath }
+}
+
+export async function setup() {
+	log = module.getLogger()
+	const { raw: bytes, path } = await loadComponents()
+	raw = bytes
 	hash = crypto.createHash('sha256').update(raw).digest('hex')
 	gzipped = await gzip(raw)
-	log.info('loaded %s (%d bytes, hash %s)', layerDataPath, raw.length, hash.slice(0, 12))
+	log.info('loaded %s (%d bytes, hash %s)', path, raw.length, hash.slice(0, 12))
 }

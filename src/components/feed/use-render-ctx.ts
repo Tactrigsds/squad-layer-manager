@@ -2,6 +2,7 @@ import React from 'react'
 
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Zus from '@/lib/zustand'
+import type * as CHAT from '@/models/chat.models'
 import type * as MH from '@/models/match-history.models'
 import { BaseZIndexContext } from '@/models/zindex'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
@@ -11,6 +12,7 @@ import * as MatchHistoryClient from '@/systems/match-history.client'
 
 import * as Interactions from './interactions'
 import * as RC from './render-context'
+import { useActorLabels } from './use-actor-labels'
 
 /**
  * The ambient state a dom-built row is built against, registered so its interactions can find it again.
@@ -19,7 +21,7 @@ import * as RC from './render-context'
  * deliberately not part of that -- see RC.applyGroupColors -- because they follow a stream, and a rebuild would cost
  * every open disclosure in the feed.
  */
-export function useRenderCtx(stores: SquadServerFrame.KeyProp): RC.RenderCtx {
+export function useRenderCtx(stores: SquadServerFrame.KeyProp, events?: readonly CHAT.EventEnriched[] | null): RC.RenderCtx {
 	const serverId = stores.squadServer!.serverId
 	const recentMatches = MatchHistoryClient.useRecentMatches(serverId)
 	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
@@ -28,6 +30,7 @@ export function useRenderCtx(stores: SquadServerFrame.KeyProp): RC.RenderCtx {
 	const zIndexBase = React.useContext(BaseZIndexContext)
 	const groupColor = BattlemetricsClient.useGroupColorResolver()
 	const scopeId = React.useMemo(() => RC.newScopeId(), [])
+	const actorLabels = useActorLabels(events)
 
 	// held behind a ref so a bm update doesn't change the ctx's identity, which is what a rebuild keys on
 	const groupColorRef = React.useRef(groupColor)
@@ -48,8 +51,9 @@ export function useRenderCtx(stores: SquadServerFrame.KeyProp): RC.RenderCtx {
 			latestMatch: recentMatches[recentMatches.length - 1],
 			currentMatch,
 			groupColor: (playerId, player) => groupColorRef.current(playerId, player),
+			...actorLabels,
 		}
-	}, [scopeId, stores, outletKey, zIndexBase, displayTeamsNormalized, recentMatches, currentMatch])
+	}, [scopeId, stores, outletKey, zIndexBase, displayTeamsNormalized, recentMatches, currentMatch, actorLabels])
 
 	React.useLayoutEffect(() => {
 		Interactions.setup()
