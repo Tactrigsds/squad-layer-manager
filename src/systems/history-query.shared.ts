@@ -58,7 +58,8 @@ export type Bounds = {
 }
 
 export function boundsOf(query: HQ.Query, visibleServerIds: string[]): Bounds {
-	const serverIds = query.server ? visibleServerIds.filter((id) => id === query.server) : visibleServerIds
+	const wanted = query.servers
+	const serverIds = wanted?.length ? visibleServerIds.filter((id) => wanted.includes(id)) : visibleServerIds
 	return { serverIds, from: query.from, to: query.to, idMin: query.idMin, idMax: query.idMax }
 }
 

@@ -248,20 +248,27 @@ const EpochMs = z.number().int().nonnegative()
 export const PLAYER_SORT_COLUMNS = ['matches', 'kills', 'deaths', 'teamkills', 'chatMessages', 'lastSeen'] as const
 export type PlayerSortColumn = (typeof PLAYER_SORT_COLUMNS)[number]
 
-export const QuerySchema = z.object({
+const QueryFieldsSchema = z.object({
 	type: z.enum(RESULT_TYPES).prefault('events'),
 	mode: z.enum(['basic', 'advanced']).prefault('basic'),
 
 	// bounds, meaningful in both modes; every engine applies them outside the tree
-	server: z.string().optional(),
+	servers: z.array(z.string()).optional(),
 	from: EpochMs.optional(),
 	to: EpochMs.optional(),
 	idMin: z.number().int().optional(),
 	idMax: z.number().int().optional(),
 
 	// basic mode's fields, one url param each so a basic query reads as a url
+	players: z.array(z.string()).optional(),
+	users: z.array(z.string()).optional(),
+
+	// Superseded by the three lists above, and only ever read on the way in: every saved query and every
+	// shared link written before they were lists still carries these, and folds into them (see foldSingles).
+	server: z.string().optional(),
 	player: z.string().optional(),
 	user: z.string().optional(),
+
 	types: z.array(z.enum(EVENT_TYPES)).optional(),
 	variant: z.enum(EVENT_VARIANTS).optional(),
 	damageSource: z.string().optional(),
@@ -283,6 +290,24 @@ export const QuerySchema = z.object({
 	// advanced mode's tree
 	q: NodeSchema.optional(),
 })
+
+// A one-valued ref folds into its list and stops existing, so nothing downstream has two spellings of the
+// same field to handle. Done in the schema rather than at the call sites because a query is parsed from
+// three places (the url, a saved row, a recent) and any of them can be old.
+type QueryFields = z.infer<typeof QueryFieldsSchema>
+// spelled out rather than inferred: an inferred transform return turns `servers?: string[]` into
+// `servers: string[] | undefined`, which makes every query literal have to name all three
+type FoldedQuery = Omit<QueryFields, 'server' | 'player' | 'user'>
+
+function foldSingles({ server, player, user, ...rest }: QueryFields): FoldedQuery {
+	const fold = (list: string[] | undefined, single: string | undefined) => {
+		const merged = [...new Set([...(list ?? []), ...(single ? [single] : [])])]
+		return merged.length > 0 ? merged : undefined
+	}
+	return { ...rest, servers: fold(rest.servers, server), players: fold(rest.players, player), users: fold(rest.users, user) }
+}
+
+export const QuerySchema = QueryFieldsSchema.transform(foldSingles)
 export type Query = z.infer<typeof QuerySchema>
 
 export const DEFAULT_QUERY: Query = QuerySchema.parse({})
@@ -318,8 +343,8 @@ export function queryFilterNode(query: Query): Node {
 	const children: Node[] = []
 	// `player` on the players result type filters which rows are shown, not which events are aggregated;
 	// the engine reads it from the query directly (see groupPlayerRefs)
-	if (query.player && query.type !== 'players') children.push(comp('player', [query.player]))
-	if (query.user) children.push(comp('user', [query.user]))
+	if (query.players?.length && query.type !== 'players') children.push(comp('player', query.players))
+	if (query.users?.length) children.push(comp('user', query.users))
 	if (query.types && query.types.length > 0) children.push(comp('event.type', query.types))
 	if (query.variant) children.push(comp('event.variant', [query.variant]))
 	if (query.damageSource) children.push(comp('event.damageSource', [query.damageSource]))
@@ -335,9 +360,9 @@ export function queryFilterNode(query: Query): Node {
 }
 
 // the players result type's output filter: which player rows to show, as opposed to which events count
-export function groupPlayerRefs(query: Query): { player?: string; name?: string } {
+export function groupPlayerRefs(query: Query): { players?: string[]; name?: string } {
 	if (query.type !== 'players') return {}
-	return { player: query.player || undefined, name: query.name || undefined }
+	return { players: query.players?.length ? query.players : undefined, name: query.name || undefined }
 }
 
 // -------- validation --------

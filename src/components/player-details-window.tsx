@@ -116,7 +116,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 	const profile = bmData ? (({ flagIds: _, ...rest }) => rest)(bmData) : null
 	const groupColor = usePlayerGroupColor(playerId, undefined)
 	const steam = steamId ?? profile?.playerIds.steam
-	const eventsQuery = React.useMemo((): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', player: playerId }), [playerId])
+	const eventsQuery = React.useMemo((): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId] }), [playerId])
 
 	return (
 		<div className="min-w-0 min-h-0 flex-1 flex flex-col">

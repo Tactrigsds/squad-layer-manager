@@ -264,7 +264,7 @@ export type EngineRequest =
 			node: HQ.Node
 			bounds: Bounds
 			// which player rows to show, as opposed to which events count (see HQ.groupPlayerRefs)
-			group: { player?: string; name?: string }
+			group: { players?: string[]; name?: string }
 			minMatches?: number
 			sort: { column: HQ.PlayerSortColumn; dir: 'asc' | 'desc' }
 			limit: number
@@ -308,7 +308,7 @@ export async function runEngineRequest(ctx: C.Db & CS.AbortSignal, req: EngineRe
 		}
 		case 'players': {
 			let groupPlayerIds: string[] | undefined
-			if (req.group.player) groupPlayerIds = await resolvePlayerRefs(ctx, [req.group.player])
+			if (req.group.players?.length) groupPlayerIds = await resolvePlayerRefs(ctx, req.group.players)
 			if (req.group.name) {
 				const named = await resolveNamedPlayerIds(ctx, req.group.name)
 				groupPlayerIds = groupPlayerIds ? groupPlayerIds.filter((id) => named.includes(id)) : named

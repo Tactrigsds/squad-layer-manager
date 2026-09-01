@@ -410,27 +410,27 @@ describe('the event archive', () => {
 			db.close()
 		}
 
-		const byUser = await client.history.query({ query: { type: 'events', user: subject.value } })
+		const byUser = await client.history.query({ query: { type: 'events', users: [subject.value] } })
 		expect(byUser.code).toBe('ok')
 		if (byUser.code !== 'ok' || byUser.type !== 'events') return
 		expect(byUser.total).toBeGreaterThan(0)
 
 		// a user nobody is: the dimension filters rather than being ignored
-		const nobody = await client.history.query({ query: { type: 'events', user: '00000000000000000' } })
+		const nobody = await client.history.query({ query: { type: 'events', users: ['00000000000000000'] } })
 		expect(nobody.code).toBe('ok')
 		if (nobody.code !== 'ok' || nobody.type !== 'events') return
 		expect(nobody.total).toBe(0)
 
 		// every result type compiles it, matches included, where it reads as "matches containing such an event"
 		for (const type of ['matches', 'players'] as const) {
-			const res = await client.history.query({ query: { type, user: subject.value } })
+			const res = await client.history.query({ query: { type, users: [subject.value] } })
 			expect(res.code, `${type} filtered by user`).toBe('ok')
 		}
 	})
 
-	// Names, not ids: the user field's combo-box is what actually calls this, and it is the only cover for
-	// resolveNamedUserIds, which searches the nickname and the discord username together.
-	it('searches users by name for the query bar', async () => {
+	// The user field lists the whole table and filters it client-side, so what the server owes it is a name
+	// per user. Names also work as query values, which is the only cover for resolveNamedUserIds.
+	it('lists users with names, and accepts a name as a user ref', async () => {
 		const db = app.readDb()
 		let name: string
 		try {
@@ -439,19 +439,24 @@ describe('the event archive', () => {
 					`SELECT coalesce(u.nickname, d.username) AS name FROM users u JOIN discordAccounts d ON d.discordId = u.discordId LIMIT 1`,
 				)
 				.get() as { name: string } | undefined
-			if (!row) throw new Error('no user to search for')
+			if (!row) throw new Error('no user to list')
 			name = row.name
 		} finally {
 			db.close()
 		}
 
-		const found = await client.history.searchUsers({ needle: name.slice(0, 3) })
-		expect(found.code).toBe('ok')
-		if (found.code !== 'ok') return
-		expect(found.users.some((u) => u.name === name)).toBe(true)
+		const listed = await client.history.listUsers()
+		expect(listed.code).toBe('ok')
+		if (listed.code !== 'ok') return
+		expect(listed.users.some((u) => u.name === name)).toBe(true)
 
-		const missing = await client.history.searchUsers({ needle: 'zzz-no-such-user-zzz' })
-		expect(missing.code === 'ok' && missing.users.length).toBe(0)
+		// a ref that is not a discord id resolves as a name substring, so the combo-box's typed needle runs
+		const byName = await client.history.query({ query: { type: 'events', users: [name] } })
+		expect(byName.code).toBe('ok')
+
+		const nobody = await client.history.query({ query: { type: 'events', users: ['zzz-no-such-user-zzz'] } })
+		if (nobody.code !== 'ok' || nobody.type !== 'events') throw new Error('expected an events page')
+		expect(nobody.total).toBe(0)
 	})
 
 	// A match-layer node is rewritten to a match-ids node before it reaches the engine (see history-resolve),

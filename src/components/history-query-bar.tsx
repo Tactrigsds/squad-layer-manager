@@ -17,7 +17,6 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
@@ -25,7 +24,6 @@ import * as Zus from '@/lib/zustand'
 import * as HistoryMsgs from '@/messages/history.messages'
 import type * as HQ from '@/models/history.models'
 import * as L from '@/models/layer'
-import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as HistoryClient from '@/systems/history.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -88,10 +86,10 @@ function ScopeBlock(props: { draft: HQ.Query; set: Set }) {
 				<TimeRange draft={draft} set={set} />
 			</Field>
 			<Field label={tr.text(HistoryMsgs.fieldPlayer())}>
-				<PlayerPicker value={draft.player} onSelect={(player) => set({ player })} />
+				<PlayerPicker values={draft.players ?? []} onSelect={(players) => set({ players: players.length > 0 ? players : undefined })} />
 			</Field>
 			<Field label={tr.text(HistoryMsgs.fieldUser())}>
-				<UserPicker value={draft.user} onSelect={(user) => set({ user })} />
+				<UserPicker values={draft.users ?? []} onSelect={(users) => set({ users: users.length > 0 ? users : undefined })} />
 			</Field>
 		</section>
 	)
@@ -120,20 +118,20 @@ export function HistoryQueryBounds(props: { draft: HQ.Query; set: Set }) {
 
 function ServerSelect(props: { draft: HQ.Query; set: Set }) {
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
+	const options = React.useMemo(() => (servers ?? []).map((s) => ({ value: s.id, label: s.displayName })), [servers])
 	return (
-		<Select value={props.draft.server ?? ANY} onValueChange={(v) => props.set({ server: v === ANY ? undefined : v })}>
-			<SelectTrigger className="h-7 w-full text-xs">
-				<SelectValue />
-			</SelectTrigger>
-			<SelectContent>
-				<SelectItem value={ANY}>{tr.text(HistoryMsgs.anyOption())}</SelectItem>
-				{servers?.map((server) => (
-					<SelectItem key={server.id} value={server.id}>
-						{server.displayName}
-					</SelectItem>
-				))}
-			</SelectContent>
-		</Select>
+		<ComboBoxMulti
+			title={tr.text(HistoryMsgs.fieldServer())}
+			emptyLabel={tr.text(HistoryMsgs.anyOption())}
+			className="w-full"
+			chipDisplay
+			values={props.draft.servers ?? []}
+			options={options}
+			onSelect={(update) => {
+				const next = typeof update === 'function' ? update(props.draft.servers ?? []) : update
+				props.set({ servers: next.length > 0 ? next : undefined })
+			}}
+		/>
 	)
 }
 
@@ -235,11 +233,12 @@ function toDatetimeLocal(value: number | undefined): string {
 
 // Searches names through the trigram index, but any text is a valid value: the engine reads a ref as an eos
 // id, a steam64, or a name substring (resolvePlayerRefs), so a needle nobody picked from the list still runs.
-function PlayerPicker(props: { value: string | undefined; onSelect: (value: string | undefined) => void }) {
+function PlayerPicker(props: { values: string[]; onSelect: (values: string[]) => void }) {
 	const [needle, setNeedle] = React.useState('')
 	const trimmed = needle.trim()
 	const search = useQuery(HistoryClient.playerSearchBase(trimmed))
-	const selectedInfo = useQuery(HistoryClient.playerInfoBase(props.value))
+	// a value that arrived by url or from a saved query was never in a search result, so it has no name yet
+	const selected = useQuery(HistoryClient.playerLabelsBase(props.values))
 
 	const options = React.useMemo(() => {
 		const found = search.data?.code === 'ok' ? search.data.players : []
@@ -248,67 +247,51 @@ function PlayerPicker(props: { value: string | undefined; onSelect: (value: stri
 		if (trimmed !== '' && !list.some((o) => o.label === trimmed)) {
 			list.unshift({ value: trimmed, label: tr.text(HistoryMsgs.filterByTyped(trimmed)) })
 		}
-		// keep the current value in the list, or the combo-box cannot render its own selection
-		if (props.value !== undefined && !list.some((o) => o.value === props.value)) {
-			const name = selectedInfo.data?.code === 'ok' ? selectedInfo.data.username : undefined
-			list.unshift({ value: props.value, label: name ?? props.value })
+		// the combo-box can only render a selection it has an option for
+		const names = new Map((selected.data?.code === 'ok' ? selected.data.players : []).map((p) => [p.eosId, p.username]))
+		for (const value of props.values) {
+			if (!list.some((o) => o.value === value)) list.unshift({ value, label: names.get(value) ?? value })
 		}
 		return list
-	}, [search.data, trimmed, props.value, selectedInfo.data])
+	}, [search.data, trimmed, props.values, selected.data])
 
 	const loading = trimmed.length >= HistoryClient.MIN_PLAYER_NEEDLE && search.isFetching
 	return (
-		<ComboBox
+		<ComboBoxMulti
 			title={tr.text(HistoryMsgs.fieldPlayer())}
-			placeholder={tr.text(HistoryMsgs.playerSearchPlaceholder())}
-			searchPlaceholder={tr.text(HistoryMsgs.playerSearchHint())}
-			emptyMessage={
-				trimmed.length > 0 && trimmed.length < HistoryClient.MIN_PLAYER_NEEDLE ? tr.text(HistoryMsgs.playerSearchShort()) : undefined
-			}
-			allowEmpty
+			emptyLabel={tr.text(HistoryMsgs.playerSearchPlaceholder())}
 			className="w-full"
+			chipDisplay
 			inputValue={needle}
 			setInputValue={setNeedle}
-			value={props.value}
+			values={props.values}
 			options={loading ? LOADING : options}
-			onSelect={(v) => props.onSelect(v ?? undefined)}
+			onSelect={(update) => props.onSelect(typeof update === 'function' ? update(props.values) : update)}
 		/>
 	)
 }
 
-// The user counterpart to PlayerPicker. Same shape, but no minimum needle and no trigram index behind it:
-// an install has hundreds of users where it has hundreds of thousands of players.
-function UserPicker(props: { value: string | undefined; onSelect: (value: string | undefined) => void }) {
-	const [needle, setNeedle] = React.useState('')
-	const trimmed = needle.trim()
-	const search = useQuery(HistoryClient.userSearchBase(trimmed))
-	const selectedInfo = useQuery(HistoryClient.userInfoBase(props.value))
-
+// The whole user table, filtered by the combo-box itself: it is small enough to hold (see listUsers), which
+// also means a selected user always has a name, without a second lookup for it.
+function UserPicker(props: { values: string[]; onSelect: (values: string[]) => void }) {
+	const users = useQuery(HistoryClient.usersBase())
 	const options = React.useMemo(() => {
-		const found = search.data?.code === 'ok' ? search.data.users : []
-		const list = found.map((u) => ({ value: u.userId, label: u.name }))
-		if (trimmed !== '' && !list.some((o) => o.label === trimmed)) {
-			list.unshift({ value: trimmed, label: tr.text(HistoryMsgs.filterByTyped(trimmed)) })
-		}
-		if (props.value !== undefined && !list.some((o) => o.value === props.value)) {
-			const name = selectedInfo.data?.code === 'ok' ? selectedInfo.data.name : undefined
-			list.unshift({ value: props.value, label: name ?? props.value })
+		const list = (users.data?.code === 'ok' ? users.data.users : []).map((u) => ({ value: u.userId, label: u.name }))
+		for (const value of props.values) {
+			if (!list.some((o) => o.value === value)) list.unshift({ value, label: value })
 		}
 		return list
-	}, [search.data, trimmed, props.value, selectedInfo.data])
+	}, [users.data, props.values])
 
 	return (
-		<ComboBox
+		<ComboBoxMulti
 			title={tr.text(HistoryMsgs.fieldUser())}
-			placeholder={tr.text(HistoryMsgs.userSearchPlaceholder())}
-			searchPlaceholder={tr.text(HistoryMsgs.userSearchHint())}
-			allowEmpty
+			emptyLabel={tr.text(HistoryMsgs.userSearchPlaceholder())}
 			className="w-full"
-			inputValue={needle}
-			setInputValue={setNeedle}
-			value={props.value}
-			options={trimmed !== '' && search.isFetching ? LOADING : options}
-			onSelect={(v) => props.onSelect(v ?? undefined)}
+			chipDisplay
+			values={props.values}
+			options={users.isLoading ? LOADING : options}
+			onSelect={(update) => props.onSelect(typeof update === 'function' ? update(props.values) : update)}
 		/>
 	)
 }
@@ -346,45 +329,33 @@ function AddFilterMenu(props: { draft: HQ.Query; shown: readonly QF.FieldKey[]; 
 // A newly added field does not open its own editor: the dropdown that added it holds focus for the length of
 // its exit animation and dismisses any popover opened before that, so auto-opening means racing a duration
 // this component cannot see. The row reads "Any" until it is clicked, which says the same thing.
+// The control itself sits in the row rather than behind a summary that opens a popover. The combo-boxes are
+// already compact-until-clicked -- a trigger that opens its list -- so the popover was a second one wrapping
+// the first, and a click that had to land twice to change anything.
 function FieldRow(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onRemove: () => void }) {
 	const { field, draft, set } = props
-	const [open, setOpen] = React.useState(false)
-	const summary = fieldSummary(draft, field.key)
-	const isSet = QF.isSet(draft, field.key)
-
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<div className="flex items-center gap-2 text-xs">
-				<span className="w-16 shrink-0 truncate text-muted-foreground">{fieldLabel(field.key)}</span>
-				<PopoverTrigger asChild>
-					<button
-						type="button"
-						className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-input bg-transparent px-2 text-left hover:bg-accent"
-					>
-						<span className={cn('truncate', !isSet && 'text-muted-foreground')}>{summary ?? tr.text(HistoryMsgs.anyOption())}</span>
-					</button>
-				</PopoverTrigger>
-				<button
-					type="button"
-					className="shrink-0 text-muted-foreground hover:text-foreground"
-					title={tr.text(HistoryMsgs.clearFilter())}
-					onClick={() => {
-						set(QF.clearPatch(field.key))
-						setOpen(false)
-						props.onRemove()
-					}}
-				>
-					<Icons.X className="h-3 w-3" />
-				</button>
-			</div>
-			<PopoverContent className="w-auto p-2" align="start">
-				<FieldControl field={field} draft={draft} set={set} onDone={() => setOpen(false)} />
-			</PopoverContent>
-		</Popover>
+		<div className="flex items-center gap-2 text-xs">
+			<span className="w-16 shrink-0 truncate text-muted-foreground">{fieldLabel(field.key)}</span>
+			<span className="min-w-0 flex-1">
+				<FieldControl field={field} draft={draft} set={set} />
+			</span>
+			<button
+				type="button"
+				className="shrink-0 text-muted-foreground hover:text-destructive"
+				title={tr.text(HistoryMsgs.clearFilter())}
+				onClick={() => {
+					set(QF.clearPatch(field.key))
+					props.onRemove()
+				}}
+			>
+				<Icons.Trash2 className="h-3.5 w-3.5" />
+			</button>
+		</div>
 	)
 }
 
-function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; onDone: () => void }) {
+function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) {
 	const { field, draft, set } = props
 	const control = field.control
 	switch (control.kind) {
@@ -411,7 +382,6 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; on
 					options={control.options as string[]}
 					onSelect={(v) => {
 						set({ [field.key]: v ?? undefined })
-						props.onDone()
 					}}
 				/>
 			)
@@ -434,7 +404,6 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; on
 					options={L.StaticLayerComponents[control.part] as unknown as string[]}
 					onSelect={(v) => {
 						set({ [field.key]: v ?? undefined })
-						props.onDone()
 					}}
 				/>
 			)
@@ -444,7 +413,6 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set; on
 					value={draft.layer?.type === 'included-in' ? draft.layer.filterId : undefined}
 					onSelect={(filterId) => {
 						set({ layer: filterId ? { type: 'included-in', filterId } : undefined })
-						props.onDone()
 					}}
 				/>
 			)
@@ -539,34 +507,5 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldMinMatches())
 		default:
 			assertNever(key)
-	}
-}
-
-function LayerFilterName(props: { filterId: string }) {
-	const entities = FilterEntityClient.useFilterEntities()
-	return <span>{entities.get(props.filterId)?.name ?? props.filterId}</span>
-}
-
-function fieldSummary(query: HQ.Query, key: QF.FieldKey): React.ReactNode {
-	switch (key) {
-		case 'types': {
-			const types = query.types ?? []
-			return types.length <= 2 ? types.join(', ') : `${types.length} types`
-		}
-		case 'ticketDiff': {
-			const { ticketDiffMin: min, ticketDiffMax: max } = query
-			if (min !== undefined && max !== undefined) return `${min}–${max}`
-			if (min !== undefined) return `≥ ${min}`
-			if (max !== undefined) return `≤ ${max}`
-			return undefined
-		}
-		case 'layer':
-			return query.layer?.type === 'included-in' && query.layer.filterId ? (
-				<LayerFilterName filterId={query.layer.filterId} />
-			) : undefined
-		case 'minMatches':
-			return query.minMatches === undefined ? undefined : `≥ ${query.minMatches}`
-		default:
-			return query[key] as string | undefined
 	}
 }

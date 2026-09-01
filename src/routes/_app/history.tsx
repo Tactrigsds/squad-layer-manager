@@ -27,10 +27,10 @@ export const Route = createFileRoute('/_app/history')({
 function useDefaultServerRedirect(search: HQ.Query) {
 	const navigate = useNavigate()
 	const defaultServer = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers.find((server) => server.defaultServer)?.id)
-	const bare = search.server === undefined && JSON.stringify(search) === JSON.stringify(HQ.DEFAULT_QUERY)
+	const bare = search.servers === undefined && JSON.stringify(search) === JSON.stringify(HQ.DEFAULT_QUERY)
 	React.useEffect(() => {
 		if (!bare || !defaultServer) return
-		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, server: defaultServer }, replace: true })
+		void navigate({ to: '/history', search: { ...HQ.DEFAULT_QUERY, servers: [defaultServer] }, replace: true })
 	}, [bare, defaultServer, navigate])
 }
 

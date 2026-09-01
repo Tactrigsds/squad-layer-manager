@@ -364,8 +364,8 @@ function RecentMenu(props: { onRun: (query: HQ.Query) => void }) {
 
 function describeQuery(query: HQ.Query): string {
 	const parts: string[] = [query.type]
-	if (query.server) parts.push(query.server)
-	if (query.player) parts.push(query.player)
+	if (query.servers?.length) parts.push(query.servers.join(', '))
+	if (query.players?.length) parts.push(query.players.join(', '))
 	if (query.chat) parts.push(`"${query.chat}"`)
 	if (query.types && query.types.length > 0) parts.push(query.types.join(', '))
 	for (const part of [query.map, query.gamemode, query.faction]) {

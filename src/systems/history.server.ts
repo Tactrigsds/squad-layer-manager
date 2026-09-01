@@ -169,7 +169,6 @@ type RenderOpts = z.infer<typeof RenderSchema>
 
 // a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
 const PLAYER_SEARCH_LIMIT = 25
-const USER_SEARCH_LIMIT = 25
 
 async function resolveForQuery(ctx: C.OrpcBase, query: HQ.Query) {
 	const node = HQ.queryFilterNode(query)
@@ -293,31 +292,28 @@ export const router = {
 		return { code: 'ok' as const, players: rows }
 	}),
 
-	// who an SLM user is: the display name the rows already resolve actors to (see actorLabels)
-	userInfo: orpcBase.input(z.object({ userId: z.string() })).handler(async ({ input, context: ctx }) => {
-		const [row] = await ctx
-			.db()
-			.select({ nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
-			.from(Schema.users)
-			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-			.where(E.eq(Schema.users.discordId, BigInt(input.userId)))
-		if (!row) return { code: 'err:not-found' as const }
-		return { code: 'ok' as const, name: row.nickname || row.username }
-	}),
-
-	// the user field's counterpart to searchPlayers. No minimum needle length here: the users table is small
-	// enough that the shortest needle is still a trivial scan (see resolveNamedUserIds).
-	searchUsers: orpcBase.input(z.object({ needle: z.string() })).handler(async ({ input, context: ctx }) => {
-		const userIds = await HistoryQuery.resolveNamedUserIds(ctx, input.needle)
-		if (userIds.length === 0) return { code: 'ok' as const, users: [] }
+	// Every SLM user, for the user field to search and to label its selection from. Listed rather than
+	// searched: an install has hundreds of users where it has hundreds of thousands of players, so the whole
+	// table is cheaper than a round trip per keystroke plus another to name what is already selected.
+	listUsers: orpcBase.handler(async ({ context: ctx }) => {
 		const rows = await ctx
 			.db()
 			.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
 			.from(Schema.users)
 			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-			.where(E.inArray(Schema.users.discordId, userIds.map(BigInt)))
-			.limit(USER_SEARCH_LIMIT)
 		return { code: 'ok' as const, users: rows.map((r) => ({ userId: r.discordId.toString(), name: r.nickname || r.username })) }
+	}),
+
+	// names for players already chosen, which the search-by-needle path cannot supply: a query arriving by
+	// url or as a saved row carries ids nobody typed a needle for
+	playerLabels: orpcBase.input(z.object({ playerIds: z.array(z.string()) })).handler(async ({ input, context: ctx }) => {
+		if (input.playerIds.length === 0) return { code: 'ok' as const, players: [] }
+		const rows = await ctx
+			.db()
+			.select({ eosId: Schema.players.eosId, username: Schema.players.username })
+			.from(Schema.players)
+			.where(E.inArray(Schema.players.eosId, input.playerIds))
+		return { code: 'ok' as const, players: rows }
 	}),
 
 	// -------- saved queries --------
