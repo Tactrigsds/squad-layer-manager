@@ -10,7 +10,6 @@ export const modeBasic = def('Basic')
 export const modeAdvanced = def('Advanced')
 export const switchToAdvanced = def('Build the query as a tree')
 export const switchToBasic = def('Build the query from fields')
-export const finishQueryToSwitch = def('Finish the query before switching result type')
 
 export const run = def('Run')
 export const save = def('Save')
@@ -87,6 +86,8 @@ export const linkCopied = def('Link copied')
 export const results = def((n: number) => t('{n, plural, one {# result} other {# results}}', { n }))
 export const loadMore = def('Load more')
 export const noResults = def('No results')
+export const unfinishedFilter = def('Unfinished filter')
+export const runToSeeResults = def('Run to see these results')
 export const queryFailed = def((code: string) => t('Query failed: {code}', { code }))
 export const unrecognisedLayers = def((n: number) =>
 	t('{n, plural, one {# match} other {# matches}} with an unrecognised layer ignored by the layer filter', { n }),

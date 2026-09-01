@@ -86,30 +86,19 @@ export default function HistoryPage(props: HistoryPageProps) {
 
 	const set = (patch: Partial<HQ.Query>) => HistoryFrame.Actions.setDraft(props.stores, patch)
 
-	// A result-type switch is a view switch, so it runs immediately with the current draft. It is refused
-	// outright while the draft cannot run (see the strip below): running anyway would silently drop the
-	// half-built tree, and moving the tab without running would leave the strip naming a type the results
-	// below it do not answer.
+	// a result-type switch is a view switch, so it runs immediately -- unless the draft cannot run, in which
+	// case it is still a switch of what is being built, and the results say so rather than answering the
+	// previous type (see canRun below)
 	const switchType = (type: HQ.ResultType) => {
+		set({ type })
 		const state = Zus.resolveStore<HistoryFrame.Store>(props.stores.history).getState()
 		if (!HistoryFrame.Sel.canRun(state)) return
-		set({ type })
 		props.onRun({ ...HistoryFrame.Sel.builtQuery(state), type })
 	}
 	const executedKey = React.useMemo(() => JSON.stringify(props.executed), [props.executed])
-	// Refused rather than silently deferred while the draft cannot run, so the strip always names the type
-	// the results answer.
-	const switchBlocked = canRun ? undefined : tr.text(HistoryMsgs.finishQueryToSwitch())
-	const resultTabs: { value: HQ.ResultType; label: string; disabled?: string | false }[] = [
-		{ value: 'events', label: tr.text(HistoryMsgs.tabEvents()) },
-		{ value: 'players', label: tr.text(HistoryMsgs.tabPlayers()) },
-		{ value: 'matches', label: tr.text(HistoryMsgs.tabMatches()) },
-	].map((option) => ({
-		...option,
-		value: option.value as HQ.ResultType,
-		// the tab already active is not a switch, so it stays live
-		disabled: option.value !== props.executed.type && switchBlocked,
-	}))
+	// a type switched while the draft could not run stays pending until Run catches the page up, so the
+	// results never answer a type other than the one the tabs name
+	const resultsPending = !canRun || props.executed.type !== draft.type
 
 	// a button rather than a tab strip: the control has no fixed home (the rail it sits in does not exist in
 	// advanced mode), and a tab strip that moves reads as two different controls. Labelled with the mode it
@@ -129,7 +118,7 @@ export default function HistoryPage(props: HistoryPageProps) {
 	const runButton = (
 		<Tooltip>
 			<TooltipTrigger asChild>
-				<Button size="sm" className="w-full" disabled={!canRun} onClick={run}>
+				<Button size="sm" className="w-full" onClick={run}>
 					{tr.text(HistoryMsgs.run())}
 				</Button>
 			</TooltipTrigger>
@@ -153,9 +142,12 @@ export default function HistoryPage(props: HistoryPageProps) {
 			<div className="flex min-w-0 flex-1 flex-col gap-2">
 				<div className="flex flex-wrap items-center gap-2">
 					<TabsList
-						options={resultTabs}
-						// the executed type, not the draft's: the strip heads the results, so it names what they answer
-						active={props.executed.type}
+						options={[
+							{ value: 'events', label: tr.text(HistoryMsgs.tabEvents()) },
+							{ value: 'players', label: tr.text(HistoryMsgs.tabPlayers()) },
+							{ value: 'matches', label: tr.text(HistoryMsgs.tabMatches()) },
+						]}
+						active={draft.type}
 						setActive={switchType}
 					/>
 					{draft.mode === 'advanced' && modeToggle}
@@ -180,7 +172,14 @@ export default function HistoryPage(props: HistoryPageProps) {
 						<HistoryAdvancedEditor stores={props.stores} />
 					</>
 				)}
-				<Results query={props.executed} onRun={props.onRun} />
+				{/* the results answer the executed query, so they are shown only while it is the type the tabs name */}
+				{resultsPending ? (
+					<div className="text-xs text-muted-foreground">
+						{tr.text(canRun ? HistoryMsgs.runToSeeResults() : HistoryMsgs.unfinishedFilter())}
+					</div>
+				) : (
+					<Results query={props.executed} onRun={props.onRun} />
+				)}
 			</div>
 
 			{draft.mode === 'basic' && (
