@@ -67,6 +67,33 @@ export function useDeleteSavedQuery() {
 	return useMutation(RPC.orpc.history.deleteSaved.mutationOptions({ onSuccess: invalidateSaved }))
 }
 
+// -------- the builder rail's width --------
+// same reasoning as recents: a per-browser convenience, and nothing else should inherit it
+
+const RAIL_WIDTH_KEY = 'slm:history:railWidth'
+export const RAIL_WIDTH = { min: 220, max: 560, default: 288 }
+
+export function loadRailWidth(): number {
+	try {
+		// an unset key reads as null, and Number(null) is 0, which would clamp to the minimum rather than
+		// falling back to the default
+		const stored = localStorage.getItem(RAIL_WIDTH_KEY)
+		const raw = stored === null ? Number.NaN : Number(stored)
+		if (!Number.isFinite(raw)) return RAIL_WIDTH.default
+		return Math.min(RAIL_WIDTH.max, Math.max(RAIL_WIDTH.min, raw))
+	} catch {
+		return RAIL_WIDTH.default
+	}
+}
+
+export function saveRailWidth(width: number) {
+	try {
+		localStorage.setItem(RAIL_WIDTH_KEY, String(Math.round(width)))
+	} catch {
+		// a browser with storage denied still resizes, it just does not remember
+	}
+}
+
 // -------- recents --------
 // purely a convenience, so localStorage is the right home: per browser, survives nothing it shouldn't
 

@@ -4,3 +4,9 @@ import * as dateFns from 'date-fns'
 export function formatFullTime(time: number) {
 	return dateFns.format(time, 'yyyy-MM-dd HH:mm:ss zzz')
 }
+
+// the same instant, minus the zone: a row that carries its date inline repeats the zone on every line, and
+// the tooltip already has it for whoever needs to be sure
+export function formatDateTime(time: number) {
+	return dateFns.format(time, 'yyyy-MM-dd HH:mm:ss')
+}

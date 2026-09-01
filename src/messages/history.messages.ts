@@ -103,6 +103,7 @@ export const colServer = def('Server')
 export const colSetBy = def('Set by')
 export const colTicketDiff = def('Ticket diff')
 // the events results' sort direction, labelled with the order currently in effect
+export const resizeBuilder = def('Resize the query builder')
 export const orderNewest = def('Newest first')
 export const orderOldest = def('Oldest first')
 export const colEvents = def('Events')

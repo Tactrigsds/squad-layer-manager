@@ -110,20 +110,9 @@ export default function HistoryPage(props: HistoryPageProps) {
 		// another field pushes the rail's own scroll rather than the result rows down. Advanced mode has no
 		// rail at all -- the tree editor wants the width -- so what the rail carries is redistributed: its
 		// buttons to the results toolbar, and the bounds above the editor, since those apply in both modes.
-		<div className="flex h-full min-h-0 gap-2 p-2" onKeyDown={onKeyDown}>
-			{draft.mode === 'basic' && (
-				<aside className="flex w-64 shrink-0 flex-col gap-2 border-r pr-2">
-					<div className="flex items-center gap-2">
-						{modeToggle}
-						<span className="min-w-0 flex-1">{runButton}</span>
-					</div>
-					{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
-					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
-						<HistoryQueryBar draft={draft} set={set} />
-					</div>
-				</aside>
-			)}
-
+		// w-full: without it the row sizes to its content, so widening the rail grows the page instead of
+		// taking the space from the results
+		<div className="flex h-full min-h-0 w-full gap-2 p-2" onKeyDown={onKeyDown}>
 			<div className="flex min-w-0 flex-1 flex-col gap-2">
 				<div className="flex flex-wrap items-center gap-2">
 					<TabsList
@@ -155,8 +144,66 @@ export default function HistoryPage(props: HistoryPageProps) {
 				)}
 				<Results query={props.executed} onRun={props.onRun} />
 			</div>
+
+			{draft.mode === 'basic' && (
+				<RailResizer>
+					<div className="flex items-center gap-2">
+						{modeToggle}
+						<span className="min-w-0 flex-1">{runButton}</span>
+					</div>
+					{/* keyed on the executed query so uncontrolled inputs remount when a new query loads via the url */}
+					<div key={executedKey} className="min-h-0 flex-1 overflow-y-auto pr-1">
+						<HistoryQueryBar draft={draft} set={set} />
+					</div>
+				</RailResizer>
+			)}
 			<SaveDialog stores={props.stores} open={saveOpen} onOpenChange={setSaveOpen} />
 		</div>
+	)
+}
+
+/**
+ * The builder rail, with a drag handle on its inner edge.
+ *
+ * Resizable because its contents are not: a layer id, a chat needle or a long field label all want more room
+ * than any one default gives them, and the alternative is picking a width that clips one of them. The width
+ * is per browser rather than per query, so it rides in localStorage rather than the url.
+ *
+ * Pointer capture rather than window listeners: the drag keeps receiving moves when the pointer leaves the
+ * handle, and releases on its own if the gesture is cancelled.
+ */
+function RailResizer(props: { children: React.ReactNode }) {
+	const [width, setWidth] = React.useState(HistoryClient.loadRailWidth)
+	const dragFrom = React.useRef<{ x: number; width: number } | null>(null)
+
+	return (
+		<aside className="flex shrink-0 flex-col gap-2" style={{ width }}>
+			<div className="flex min-h-0 flex-1 gap-2">
+				<div
+					role="separator"
+					aria-orientation="vertical"
+					aria-label={tr.text(HistoryMsgs.resizeBuilder())}
+					className="-ml-1 w-1.5 shrink-0 cursor-col-resize rounded-full bg-transparent transition-colors hover:bg-border"
+					onPointerDown={(e) => {
+						dragFrom.current = { x: e.clientX, width }
+						e.currentTarget.setPointerCapture(e.pointerId)
+					}}
+					onPointerMove={(e) => {
+						const from = dragFrom.current
+						if (!from) return
+						// the rail is on the right, so dragging left widens it
+						const next = from.width + (from.x - e.clientX)
+						setWidth(Math.min(HistoryClient.RAIL_WIDTH.max, Math.max(HistoryClient.RAIL_WIDTH.min, next)))
+					}}
+					onPointerUp={(e) => {
+						dragFrom.current = null
+						e.currentTarget.releasePointerCapture(e.pointerId)
+						HistoryClient.saveRailWidth(width)
+					}}
+				/>
+				<div className="flex min-w-0 flex-1 flex-col gap-2 border-l pl-2">{props.children}</div>
+			</div>
+		</aside>
 	)
 }
 

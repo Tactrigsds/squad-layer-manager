@@ -26,6 +26,7 @@ import type * as MH from '@/models/match-history.models'
 import * as MHModels from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 
+import { formatDateTime } from './format'
 import { Icon } from './icons'
 import * as RC from './render-context'
 
@@ -41,13 +42,11 @@ function shortTime(time: number) {
 	return `${hours < 10 ? '0' : ''}${hours}:${minutes < 10 ? '0' : ''}${minutes}`
 }
 
-const dateAndTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-
 export function EventTime(props: { time: number }) {
 	return (
 		<button type="button" className="shrink-0" data-state="closed" {...{ [RC.TIP_TIME_ATTR]: props.time }}>
 			<span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
-				{RC.usingFullTimestamps() ? dateAndTime.format(props.time) : shortTime(props.time)}
+				{RC.usingFullTimestamps() ? formatDateTime(props.time) : shortTime(props.time)}
 			</span>
 		</button>
 	)
