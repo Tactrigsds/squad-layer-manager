@@ -7,6 +7,7 @@ import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import type * as MEC from '@/models/match-events-cache.models'
 import * as SE from '@/models/server-events.models'
+import type * as SM from '@/models/squad.models'
 import type * as C from '@/server/context'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
@@ -111,17 +112,17 @@ export const getFeedEventsForMatches = Instr.spanOp(
 )
 
 /**
- * The enriched feed for each match, replayed here rather than on the client.
+ * The enriched feed for each match: the replay every reader of a past match gets its entries from.
  *
- * Only for readers that hand back a filtered slice of a match rather than the whole of it -- a slice cannot be
- * replayed, so whoever receives one cannot enrich it themselves. Everything that ships a whole match sends the raw
- * events and lets the client replay them.
+ * Replayed here rather than on the client so that one implementation decides what a match's feed is, whether the
+ * reader wants the whole of it or the slice a query matched. Enrichment embeds a player object per event, which is
+ * most of what a busy match costs to send, so the whole-match readers send it wire-encoded (see CHAT.Wire).
  *
  * Each match replays from an empty roster, so its entries never resolve against another match's players.
  *
- * `opts` is the same interpolation config the client passes, and must be, or the two replays of one match disagree:
- * the suppression patterns drop entries, so omitting them here shows events the live feed never did. Taken as a
- * parameter rather than read from the settings module, which imports this one back.
+ * `opts` is the interpolation config the live feed replays with, and must be, or the two readings of one match
+ * disagree: the suppression patterns drop entries, so omitting them here shows events the live feed never did.
+ * Taken as a parameter rather than read from the settings module, which imports this one back.
  */
 export const getEnrichedEventsForMatches = Instr.spanOp(
 	'getEnrichedEventsForMatches',
@@ -137,3 +138,81 @@ export const getEnrichedEventsForMatches = Instr.spanOp(
 		return enriched
 	},
 )
+
+/**
+ * Put players back on the events a replay could not resolve them for.
+ *
+ * Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a match
+ * that only survives as retained rows. The raw event is revived with minimal players -- name from the players
+ * table, no team or squad -- on the fields interpolation reads.
+ *
+ * A suppressed event is never revived, since that would undo the suppression, so `keepSuppressed` only decides
+ * whether it stays as the NOOP it is. A results page keeps it: it is a hit, the index having no idea a pattern
+ * matches it, and dropping it would leave the page short of its own result count, so the renderer stands a
+ * placeholder in for it (see RenderCtx.placeholderUndrawn). A feed drops it, as the live feed does.
+ */
+export async function reviveNoops(
+	ctx: C.Db,
+	events: CHAT.EventEnriched[],
+	opts: { keepSuppressed: boolean },
+): Promise<CHAT.EventEnriched[]> {
+	const playerFieldsOf = (type: string) =>
+		(CHAT.Wire.FIELDS as Record<string, { players?: readonly string[]; playerLists?: readonly string[] }>)[type]
+	const revivable = (e: CHAT.EventEnriched): e is CHAT.NoopEvent => e.type === 'NOOP' && e.cause === 'unresolved'
+	// everything a revival pass does not touch, which after it is only the suppressed NOOPs
+	const kept = (e: CHAT.EventEnriched) => opts.keepSuppressed || e.type !== 'NOOP'
+
+	const missing = new Set<string>()
+	for (const event of events) {
+		if (!revivable(event)) continue
+		const original = event.originalEvent as unknown as Record<string, unknown>
+		const fields = playerFieldsOf(event.originalEvent.type)
+		for (const key of fields?.players ?? []) {
+			if (typeof original[key] === 'string') missing.add(original[key])
+		}
+		for (const key of fields?.playerLists ?? []) {
+			for (const id of Array.isArray(original[key]) ? (original[key] as unknown[]) : []) {
+				if (typeof id === 'string') missing.add(id)
+			}
+		}
+	}
+	if (missing.size === 0) return events.filter((e) => !revivable(e) && kept(e))
+
+	const nameRows = await ctx
+		.db()
+		.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
+		.from(Schema.players)
+		.where(E.inArray(Schema.players.eosId, [...missing]))
+	const names = new Map(nameRows.map((r) => [r.eosId, r]))
+	const synth = (value: unknown) => {
+		if (typeof value !== 'string') return value
+		const row = names.get(value)
+		return {
+			ids: { eos: value, username: row?.username ?? value, steam: row?.steamId?.toString() },
+			teamId: null,
+			squadId: null,
+			isLeader: false,
+			isAdmin: false,
+			role: '',
+		} satisfies SM.Player
+	}
+
+	const out: CHAT.EventEnriched[] = []
+	for (const event of events) {
+		if (!revivable(event)) {
+			if (kept(event)) out.push(event)
+			continue
+		}
+		const fields = playerFieldsOf(event.originalEvent.type)
+		if (!fields) continue
+		const revived = { ...(event.originalEvent as unknown as Record<string, unknown>) }
+		for (const key of fields.players ?? []) {
+			if (revived[key] !== undefined && revived[key] !== null) revived[key] = synth(revived[key])
+		}
+		for (const key of fields.playerLists ?? []) {
+			if (Array.isArray(revived[key])) revived[key] = (revived[key] as unknown[]).map(synth)
+		}
+		out.push(revived as unknown as CHAT.EventEnriched)
+	}
+	return out
+}

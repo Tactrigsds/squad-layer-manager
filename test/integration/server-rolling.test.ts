@@ -116,7 +116,7 @@ describe('the event archive', () => {
 		const ordinal = matchOrdinal(app, played.id)
 		const before = await client.matchHistory.getMatchEvents({ serverId: app.serverId, ordinal })
 		if (!('events' in before)) throw new Error(`expected the match feed, got ${JSON.stringify(before)}`)
-		expect(before.events.length).toBeGreaterThan(0)
+		expect(CHAT.Wire.decode(before.events).length).toBeGreaterThan(0)
 
 		const hotBefore = hotEventCount(played.id)
 		expect(hotBefore).toBeGreaterThan(0)

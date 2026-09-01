@@ -256,40 +256,23 @@ export const matchHistoryRouter = {
 		}
 
 		let match = ctx.matchHistory.recentMatches.find((m) => ctx.serverId === m.serverId && m.ordinal === ordinal)
-		let previousMatch = ctx.matchHistory.recentMatches.find((m) => ctx.serverId === m.serverId && m.ordinal === ordinal - 1)
-
-		if (!match || !previousMatch) {
-			const ordinalsToFetch: number[] = []
-			if (!match) ordinalsToFetch.push(ordinal)
-			if (!previousMatch) ordinalsToFetch.push(ordinal - 1)
-
-			const matchesRaw = await ctx
+		if (!match) {
+			const [matchRaw] = await ctx
 				.db()
 				.select()
 				.from(Schema.matchHistory)
-				.where(E.and(E.eq(Schema.matchHistory.serverId, ctx.serverId), E.inArray(Schema.matchHistory.ordinal, ordinalsToFetch)))
-
-			for (const matchRaw of matchesRaw) {
-				if (matchRaw.ordinal === ordinal && !match) {
-					match = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
-				} else if (matchRaw.ordinal === ordinal - 1 && !previousMatch) {
-					previousMatch = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
-				}
-			}
+				.where(E.and(E.eq(Schema.matchHistory.serverId, ctx.serverId), E.eq(Schema.matchHistory.ordinal, ordinal)))
+			if (!matchRaw) throw new Error(`Match with ordinal ${ordinal} not found`)
+			match = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
 		}
 
-		if (!match) {
-			throw new Error(`Match with ordinal ${ordinal} not found`)
-		}
+		// Replayed here, not on the client, so a past match reads exactly as the results feed reads it: the same
+		// suppression patterns, the same folding, the same revival of events whose players are gone. Wire-encoded
+		// because enrichment embeds a player object per event, which is most of what a busy match costs to send.
+		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, Settings.GLOBAL_SETTINGS.chat, match.historyEntryId)
+		const events = await MatchEventsCache.reviveNoops(ctx, enriched, { keepSuppressed: false })
 
-		// Raw, as the live chat stream sends them: the client replays them into feed entries itself. Enriching here
-		// would embed a player object per event, which is most of what a busy match costs to send.
-		const events = (await MatchEventsCache.getFeedEventsForMatches(ctx, match.historyEntryId)).get(match.historyEntryId) ?? []
-
-		return {
-			events,
-			previousOrdinal: previousMatch?.ordinal,
-		}
+		return { events: CHAT.Wire.encode(events) }
 	}),
 
 	getPlayerDetails: orpcBase

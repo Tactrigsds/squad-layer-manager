@@ -13,7 +13,6 @@ import * as CHAT from '@/models/chat.models'
 import type * as CS from '@/models/context-shared'
 import * as HQ from '@/models/history.models'
 import * as MH from '@/models/match-history.models'
-import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
@@ -442,76 +441,9 @@ async function assembleEventPage(
 	// newest first, matching the page order: each further page stacks downward into the past
 	events.sort((a, b) => b.time - a.time)
 	const matches = matchRows.flatMap((row) => toMatchDetails(row) ?? [])
-	const revived = await reviveNoops(ctx, events)
+	const revived = await MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true })
 	if (format === 'wire') return { rowsHtml: [] as string[], events: CHAT.Wire.encode(revived), matches }
 	return { rowsHtml: renderEventRows(revived, matches, render, await actorLabels(ctx, revived)), events: null, matches }
-}
-
-// Interpolation NOOPs an event whose players are missing from the replayed roster, which is every event of a
-// match that only survives as retained rows. The hit is still a result, so it is revived: the raw event with
-// minimal players (name from the players table, no team or squad) put back on the fields interpolation reads.
-//
-// A suppressed event is not revived. It is still a hit -- the index has no idea a pattern matches it -- so it
-// goes through as the NOOP it is and the renderer stands a placeholder in for it, rather than being dropped
-// (which would leave the page short of its own result count) or revived (which would undo the suppression).
-async function reviveNoops(ctx: C.OrpcBase, events: CHAT.EventEnriched[]): Promise<CHAT.EventEnriched[]> {
-	const playerFieldsOf = (type: string) =>
-		(CHAT.Wire.FIELDS as Record<string, { players?: readonly string[]; playerLists?: readonly string[] }>)[type]
-	const revivable = (e: CHAT.EventEnriched): e is CHAT.NoopEvent => e.type === 'NOOP' && e.cause === 'unresolved'
-
-	const missing = new Set<string>()
-	for (const event of events) {
-		if (!revivable(event)) continue
-		const original = event.originalEvent as unknown as Record<string, unknown>
-		const fields = playerFieldsOf(event.originalEvent.type)
-		for (const key of fields?.players ?? []) {
-			if (typeof original[key] === 'string') missing.add(original[key])
-		}
-		for (const key of fields?.playerLists ?? []) {
-			for (const id of Array.isArray(original[key]) ? (original[key] as unknown[]) : []) {
-				if (typeof id === 'string') missing.add(id)
-			}
-		}
-	}
-	if (missing.size === 0) return events.filter((e) => !revivable(e))
-
-	const nameRows = await ctx
-		.db()
-		.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
-		.from(Schema.players)
-		.where(E.inArray(Schema.players.eosId, [...missing]))
-	const names = new Map(nameRows.map((r) => [r.eosId, r]))
-	const synth = (value: unknown) => {
-		if (typeof value !== 'string') return value
-		const row = names.get(value)
-		return {
-			ids: { eos: value, username: row?.username ?? value, steam: row?.steamId?.toString() },
-			teamId: null,
-			squadId: null,
-			isLeader: false,
-			isAdmin: false,
-			role: '',
-		} satisfies SM.Player
-	}
-
-	const out: CHAT.EventEnriched[] = []
-	for (const event of events) {
-		if (!revivable(event)) {
-			out.push(event)
-			continue
-		}
-		const fields = playerFieldsOf(event.originalEvent.type)
-		if (!fields) continue
-		const revived = { ...(event.originalEvent as unknown as Record<string, unknown>) }
-		for (const key of fields.players ?? []) {
-			if (revived[key] !== undefined && revived[key] !== null) revived[key] = synth(revived[key])
-		}
-		for (const key of fields.playerLists ?? []) {
-			if (Array.isArray(revived[key])) revived[key] = (revived[key] as unknown[]).map(synth)
-		}
-		out.push(revived as unknown as CHAT.EventEnriched)
-	}
-	return out
 }
 
 // display names for the actors the page's app events name. Resolved here rather than by the rows, which are inert
